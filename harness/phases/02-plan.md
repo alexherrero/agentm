@@ -94,6 +94,8 @@ Use the template at [`templates/PLAN.md`](../../templates/PLAN.md). Structure:
 - <Risk 1 — what could go wrong, what we'll do if it does>
 - <Open question 1 — something we may need to decide mid-work>
 
+Keep this section short. Most plans have 0–2 real risks; padding with generic ones ("what if the API changes?") is noise. If there are no real risks, write "None identified" — don't invent.
+
 ## Verification strategy
 
 <Which deterministic gates apply. Any project-specific extras, e.g. "must manually test on iOS Safari.">
@@ -116,7 +118,9 @@ If the plan introduces net-new user-visible features (as opposed to internal ref
 }
 ```
 
-Features map onto one or more plan tasks. `passes: true` is set later, by `/review`, never by `/plan`.
+**Features and tasks are not 1:1.** A feature is a user-visible capability; a task is a unit of implementation work. Scaffolding tasks (project setup, refactors, infra) produce no feature entry. A single feature may span multiple tasks. Err on the side of fewer feature entries — features are for things a user would list in a changelog, not every PR.
+
+`passes: true` is set later, by `/review`, never by `/plan`.
 
 ### 6. Stop
 
