@@ -1,12 +1,19 @@
 ---
-description: Adversarial review — assume the code has bugs, find them. Executable artifact required.
+description: Adversarial review — assume the code has bugs, find them. Executable artifact required. No fixes applied.
+argument-hint: [optional — commit range, branch name, or task number to scope the review]
 ---
 
-You are running the **review** phase. Full spec: `harness/phases/04-review.md` + `harness/agents/adversarial-reviewer.md`.
+You are running the **review** phase of agentic-harness. The full spec is at `harness/phases/04-review.md`. Read it and follow it.
 
-1. Run deterministic gates first (typecheck, lint, tests, build). If any fail, stop and report — review comes after they're green.
-2. Dispatch the `adversarial-reviewer` sub-agent (or follow its spec inline in a fresh context) with the framing: **"the code under review likely contains bugs — find them."**
-3. The reviewer sees the diff + the relevant `.harness/PLAN.md` task + project `AGENTS.md`. It does NOT see the implementer's reasoning trace.
-4. Required output: a failing test, a specific `file:line` defect, or an explicit "NO ISSUES FOUND" with categories checked.
-5. Prose-only critiques are rejected — re-run if the reviewer returns one.
-6. Append to `.harness/progress.md`: `<date> /review — <outcome>`.
+**Scope (if any):** $ARGUMENTS — if empty, review the most recently-completed task.
+
+**Non-negotiable constraints for this phase:**
+1. **Gates first.** Run typecheck, lint, tests, build. If any fail, stop and report. Do not invoke the reviewer on a broken base.
+2. **Dispatch the `adversarial-reviewer` sub-agent** in a fresh context. Pass the diff + the `PLAN.md` task + `AGENTS.md`. Do NOT pass the implementer's reasoning trace.
+3. **Framing is literal:** "The code under review likely contains bugs. Find them." Do not soften.
+4. **Required output:** failing test, specific `file:line` defect, or explicit `NO ISSUES FOUND` with categories. Prose-only critiques are rejected — re-invoke once with tighter framing, then stop.
+5. **Verify findings reproduce** before reporting them. Run the failing test; open the line reference.
+6. **Do not fix what you find.** `/review` reports; `/work` implements. Recommend a follow-up task if needed.
+7. **Log to `progress.md`** with outcome (`NO ISSUES FOUND` or `N findings`).
+
+Start by verifying gates pass, then identify the artifact (commit range / branch / uncommitted diff) and its plan task, then dispatch the reviewer.
