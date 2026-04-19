@@ -1,16 +1,14 @@
 ---
-description: Pre-merge gate — verify clean state, all tasks done, CI green. Stop if not.
+description: Pre-merge gate — verify plan done, gates green, CI passing. Does NOT push/merge/tag without explicit user approval.
 ---
 
-You are running the **release** phase. Full spec: `harness/phases/05-release.md` (stub).
+You are running the **release** phase of agentic-harness. The full spec is at `harness/phases/05-release.md`. Read it and follow it.
 
-Until the full spec lands, the minimum release gate is:
+**Non-negotiable constraints:**
+1. **Preconditions:** PLAN.md `Status: done`, all tasks `[x]`, `/review` resolved, working tree clean, branch ahead of base. If any fails, stop and report.
+2. **Re-run the full deterministic gate suite.** Full test suite, not a subset. Production build, not just dev-server.
+3. **Set `passes: true` only on verified features.** One feature, one verified test exercise, one clean review — then true. Never speculative.
+4. **Do NOT push, merge, tag, or deploy.** These are high-blast-radius actions requiring explicit human confirmation per action. Prepare and summarize; wait for the word.
+5. **If CI is red, stop.** Do not release past failing checks.
 
-1. Confirm all tasks in `.harness/PLAN.md` are `[x]` and `Status: done`.
-2. Confirm `/review` ran and findings were addressed.
-3. Re-run deterministic gates on a clean working tree.
-4. Update changelog / release notes if the project has them.
-5. Confirm CI is green (`gh pr checks` if there's a PR).
-6. Append to `.harness/progress.md`: `<date> /release — shipped`.
-
-If any of the above fails, stop and report. Do not merge or tag.
+End with a summary listing what's ready and what commands the user can run (`git push`, `gh release create`, `gh pr merge`). Wait for explicit confirmation before running any of them.

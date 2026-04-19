@@ -1,16 +1,123 @@
 # Phase: release
 
-**Status:** stub. Full spec coming.
+Pre-merge gate. The last checkpoint before work becomes shared, visible, or shipped. Enforces that the plan is actually done, gates are green on a clean base, and the human decides to pull the trigger — not the agent.
 
-**Purpose:** pre-merge gate. Final check before the work goes live.
+## Purpose
 
-**Preconditions:**
-- All tasks in the current `PLAN.md` are complete
-- `/review` has been run and findings resolved
-- Deterministic gates pass on a clean working tree
+Release is where coherence meets blast radius. Everything up to this point has been local and reversible; a merge/tag/deploy is neither. The agent's job is to *verify* and *prepare*, not to push the button.
 
-**Produces:**
-- Changelog / release notes
-- Version bump (where applicable)
-- Clean commit history (squashed or rebased per project convention)
-- Confirmation that CI is green
+## Preconditions
+
+1. `.harness/PLAN.md` has `Status: done` and all tasks are `[x]`.
+2. `/review` ran on the last task (or earlier if the task was routine) and findings were resolved — no open defects.
+3. Working tree is clean. No uncommitted changes, no untracked cruft.
+4. The current branch is ahead of its base (there's actually something to release).
+
+If any precondition fails, stop and report which one. Do not proceed to the gate suite.
+
+## Process
+
+### 1. Verify plan completion
+
+Read `.harness/PLAN.md`. Confirm:
+- `Status: done`
+- All tasks are `[x]`
+- No "Risks / open questions" marked unresolved
+
+If a task is still `[ ]`, stop:
+> "Task N ('<title>') is not complete. Run `/work` to finish it, or update PLAN.md if it's intentionally deferred."
+
+### 2. Re-run deterministic gates, full suite
+
+Not a subset. The full gate suite on the current branch:
+- Typecheck
+- Lint
+- Unit tests (full suite)
+- Integration tests (if they exist)
+- Build (production build, not just dev-server)
+
+This is the last local check. Any failure stops the release — go back to `/work` or `/bugfix`.
+
+### 3. Update features.json
+
+Walk the features list. For each feature this plan implemented, set `passes: true` — but *only if* both:
+- The feature's behavior is exercised by the current tests (or was manually verified), AND
+- `/review` did not flag an unresolved issue against it.
+
+This is the one place `passes: true` gets set. Do not set it speculatively.
+
+### 4. Update changelog / release notes
+
+If the project has a `CHANGELOG.md` / `RELEASES.md`, add an entry for this release:
+- Version bump (following project convention — semver, calver, date-based)
+- User-visible changes grouped: Added / Changed / Fixed / Removed
+- Credit where applicable (issue numbers, PRs, contributors)
+
+If the project doesn't have a changelog, skip this step unless the user asks for one. Don't introduce new conventions in a release session.
+
+### 5. Verify CI state (if applicable)
+
+If there's a PR or remote branch:
+- `gh pr checks` — all green
+- Any required approvals satisfied
+
+If CI is red or checks are pending, stop:
+> "CI not green: <failing check>. Wait for it to complete, or fix and `/work` again."
+
+### 6. Prepare, don't execute
+
+At this point the release is *ready*. The agent does not:
+- Push to main
+- Tag the release
+- Create the GitHub release
+- Deploy
+- Merge the PR
+
+These actions are high blast-radius and explicitly require human confirmation. Instead, summarize:
+
+> "Ready to release. Next steps (your call):
+> - `git push` / `git push --tags` — if you want to push the release commit or tag
+> - `gh pr merge` — to merge the PR
+> - `gh release create vX.Y.Z` — to create a GitHub release
+>
+> I'm stopping here. Say the word if you want me to run any of the above."
+
+Wait for explicit confirmation on each action. "Looks good" is not confirmation; "push and merge" is.
+
+### 7. Log
+
+Once the user has taken the release actions (or chosen not to), append to `.harness/progress.md`:
+
+```
+<YYYY-MM-DD HH:MM> /release — prepared vX.Y.Z (M tasks, N features); user <merged|pushed|held>
+```
+
+If the release was held, leave `PLAN.md` as-is. If it shipped, archive or clear `PLAN.md` to make room for the next plan — ask the user which.
+
+## Failure modes to avoid
+
+- **Auto-pushing or auto-merging.** The blast radius is too large to trust to the agent, and a user approving "release" once doesn't mean they approve every push/merge/tag forever.
+- **Setting `passes: true` without verification.** Speculative success claims poison the telemetry. Only set it on features that are actually verified.
+- **Ignoring a red CI.** A failing check that "doesn't apply" still needs to be marked as such. Don't release past it.
+- **Shipping with open `/review` findings.** Resolve first, release second.
+- **Running on a dirty working tree.** Uncommitted state means the release isn't the state you think it is.
+- **Inventing changelogs for projects that don't have one.** Stay in the project's lane.
+
+## Output to the user
+
+```
+Release v1.2.0 is ready.
+
+- Plan complete: 4 of 4 tasks, all gates green
+- Review: clean on last task
+- CHANGELOG.md updated (Added: JSON output mode; Fixed: trailing-newline count)
+- CI: all checks green on origin/main
+- Features set to passes: true: feat-lc-file-mode, feat-lc-stdin-mode, feat-lc-json-output
+
+Next (your call):
+  git push
+  gh release create v1.2.0 --notes-from-tag
+  gh pr merge <num>  (if this is a PR workflow)
+
+Say the word.
+```

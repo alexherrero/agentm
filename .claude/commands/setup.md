@@ -1,15 +1,15 @@
 ---
-description: First-time project scaffold — init.sh, features.json, progress.md. Run once per project.
+description: First-time project scaffold — populate init.sh, features.json, AGENTS.md with real commands. Run once per project.
 ---
 
-You are running the **setup** phase of the agentic-harness workflow. Full spec: `harness/phases/01-setup.md` (stub — use your judgment following the principles in `harness/principles.md`).
+You are running the **setup** phase of agentic-harness. The full spec is at `harness/phases/01-setup.md`. Read it and follow it.
 
-This phase is currently stubbed. Until the full spec lands, the minimum setup is:
+**Non-negotiable constraints:**
+1. **Inventory before interviewing.** Read `README.md`, `package.json`/`go.mod`/etc., `.github/workflows/`, any existing `AGENTS.md` / `CLAUDE.md`. Ask only what the inventory can't answer.
+2. **Populate `init.sh` with real commands, not guesses.** If unsure, ask. A broken `init.sh` breaks every later phase.
+3. **Verify `init.sh` boots cleanly** — run it and confirm exit 0 before finishing.
+4. **Do not invent features** for `features.json`. Empty is fine.
+5. **Merge, don't overwrite** existing `AGENTS.md` / `CLAUDE.md`. They may contain project-specific content.
+6. **No planning.** `/setup` is pure scaffolding. Planning is `/plan`.
 
-1. Confirm `.harness/` exists in the project (create if not).
-2. Copy the templates from the harness repo into `.harness/` if they don't already exist: `PLAN.md`, `features.json`, `progress.md`, `init.sh`.
-3. Edit `.harness/init.sh` so it actually boots this project's dev environment.
-4. Ensure `AGENTS.md` and `CLAUDE.md` reference the harness.
-5. Append to `.harness/progress.md`: `<date> /setup — initialized harness for this project`.
-
-Do not plan or implement anything. Setup is pure scaffolding.
+Start by reading what's in the project now, then interview briefly on anything the inventory didn't settle.

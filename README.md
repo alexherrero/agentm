@@ -41,7 +41,7 @@ See [install.sh](install.sh) for details. It's idempotent and merges with existi
 
 ## Status
 
-Early scaffold. Only `/plan` is fully specified; other phases are stubbed. See [CHANGELOG](#) (coming soon) for progress.
+v0.1 — all six phases fully specified. No version tag yet; the harness is still expected to evolve rapidly as I use it on real projects. Re-audit the docs whenever you adopt a new model version ([principles §6](harness/principles.md)).
 
 ## License
 
