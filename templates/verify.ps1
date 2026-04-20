@@ -22,6 +22,10 @@ if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { exit 0 }
 $ext = [System.IO.Path]::GetExtension($file).ToLowerInvariant()
 
 switch ($ext) {
+    # Uncomment the clause(s) that match your project's toolchain.
+    # A `default` no-op is required so the switch parses even when every
+    # real clause is commented out.
+
     # TypeScript — typecheck single file
     # { $_ -in '.ts', '.tsx' } {
     #     npx tsc --noEmit $file
@@ -51,6 +55,8 @@ switch ($ext) {
     #     cargo check --quiet
     #     if ($LASTEXITCODE -ne 0) { exit 1 }
     # }
+
+    default { }
 }
 
 exit 0
