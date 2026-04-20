@@ -13,6 +13,8 @@ Running bugs through `/plan` + `/work` accidentally lets the discipline lapse. A
 
 ## Four phases
 
+Every phase ends with a posterity update to a GitHub Issue (see [Issue as posterity record](#issue-as-posterity-record)). The issue is opened in Phase 1, commented on in Phases 2–4, and closed at the end of Phase 4. This makes the bug's full trajectory — report, root cause, fix, verification — publicly auditable without the reader having to dig through commits or `PLAN.md` history.
+
 ### 1. Report
 
 Capture the bug report *verbatim* in `.harness/PLAN.md` under a `## Report` section. Do not paraphrase, do not "clean up" the user's words — the specifics matter for reproducing.
@@ -26,6 +28,8 @@ Include:
 - Environment (OS, browser, version) if relevant
 
 If the report is unclear ("the login is broken"), interview before moving on. One-word bug reports are not reports — they're the start of an interview.
+
+**Open the tracking issue.** After writing the Report, propose a GitHub Issue with a one-sentence title + body derived from the report (verbatim quote + source/date/reporter + any reproduction steps). Preview title and body to the user, then run `gh issue create --label bug` on confirmation. Record the issue number in `.harness/PLAN.md` as `**Tracking:** #N` near the top. Reference `#N` in the fix commit. If `gh` is unavailable, the repo has no GitHub origin, or the user opts out, **skip** the issue entirely — fall back to `PLAN.md`-only and note the skip in `## Report`. Covered by [documentation.md §GitHub Projects + Issues](../documentation.md) ("always asks with title + body preview before `gh issue create`").
 
 ### 2. Analyze
 
@@ -48,7 +52,9 @@ Write findings to `.harness/PLAN.md` under `## Analysis`:
 **Fix strategy:** <one-paragraph approach — what code changes, what test proves it>
 ```
 
-If root cause analysis reveals the bug is actually a symptom of a larger design problem, **stop**. Surface it to the user: this may need `/plan`, not `/bugfix`. Patching a symptom of a design flaw creates two bugs.
+If root cause analysis reveals the bug is actually a symptom of a larger design problem, **stop**. Surface it to the user: this may need `/plan`, not `/bugfix`. Patching a symptom of a design flaw creates two bugs. (In this case, post the Analysis comment to the issue anyway and leave it open, pending the `/plan` outcome — then link the resulting PR back from the issue.)
+
+**Post Analysis to the tracking issue.** Propose a comment mirroring the `## Analysis` block (Reproduction / Root cause / Why it happened / Scope / Fix strategy). Preview to the user, then run `gh issue comment $N -b <body>` on confirmation. Skip silently if no issue was opened in Phase 1.
 
 ### 3. Fix
 
@@ -61,6 +67,8 @@ When the fix is done:
 - Regression test passes
 - Pre-existing tests still pass
 - Deterministic gates are green
+
+**Post Fix summary to the tracking issue.** After the commit lands, propose a comment with: commit SHA, regression test path + one-line description, bullet list of files changed (no diff), gate results ("all green: typecheck / lint / test / build"). Preview, then `gh issue comment $N` on confirmation.
 
 ### 4. Verify
 
@@ -78,11 +86,38 @@ Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`]
 
 Over-documentation is drift too. If docsub returns `NO CHANGES` that's the expected outcome for most bugfixes.
 
+**Post Verify summary to the tracking issue, then close it.** Propose a final comment with: `/review` outcome (clean | N findings addressed), evidence that the original reproduction no longer reproduces, docsub outcome (`NO CHANGES` | which wiki pages updated). Preview, then `gh issue comment $N` on confirmation. Immediately after, propose `gh issue close $N --reason completed` with a one-line closing note referencing the fix commit SHA.
+
 Append to `.harness/progress.md`:
 
 ```
-<YYYY-MM-DD HH:MM> /bugfix — fixed <one-line description> (root cause: <summary>, regression test: <path>)
+<YYYY-MM-DD HH:MM> /bugfix — fixed <one-line description> (tracking: #N, root cause: <summary>, regression test: <path>)
 ```
+
+## Issue as posterity record
+
+The tracking issue accumulates the full bug lifecycle as a chronological record:
+
+| Phase | Issue action | Preview required |
+|---|---|---|
+| Report | `gh issue create --label bug` | title + body |
+| Analyze | `gh issue comment` with Analysis | body |
+| Fix | `gh issue comment` with Fix summary + commit SHA | body |
+| Verify | `gh issue comment` with Verify summary, then `gh issue close --reason completed` | body + close reason |
+
+Why:
+- **Commits are a diff, issues are a narrative.** A future reader shouldn't have to reconstruct why a fix was shaped a certain way from the commit alone. The issue comments carry the Analysis, the adversarial-review findings, and the verification evidence.
+- **Issues outlive `.harness/PLAN.md`.** PLAN.md gets overwritten by the next pipeline. The issue persists.
+- **One canonical thread.** Slack threads / chat history disappear or require access. The GitHub Issue is searchable, linkable, and attached to the fix commit via `Closes #N`.
+
+Graceful-skip conditions (checked once, at Phase 1):
+- `gh auth status` exits non-zero, OR
+- `git remote get-url origin` doesn't match `github.com`, OR
+- User opts out when the Phase 1 issue preview is shown.
+
+When skipped, `PLAN.md` alone is the record. Note the skip reason in `## Report`.
+
+"Always ask with preview" is non-negotiable per [documentation.md §GitHub Projects + Issues](../documentation.md). The agent proposes title/body/close-reason text up front; the user confirms before `gh` runs. No silent automation.
 
 ## Failure modes to avoid
 
