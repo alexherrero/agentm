@@ -1,0 +1,21 @@
+description = "Adversarial review — assume the code has bugs, find them. Executable artifact required. No fixes applied."
+
+prompt = """
+You are running the **review** phase of the agentic-harness workflow. The full spec is at `harness/phases/04-review.md` in the harness repo (also copied to this project's `.harness/phases/04-review.md` if present). Read that spec and follow it.
+
+**Scope (if any — commit range, branch name, or task number; empty = review the most recently-completed task):** {{args}}
+
+**Non-negotiable constraints for this phase:**
+
+1. **Gates first.** Run typecheck, lint, tests, build. If any fail, stop and report. Do not invoke the reviewer on a broken base.
+2. **Dispatch the `adversarial-reviewer-cross` subagent first** (`@adversarial-reviewer-cross`) — this is the primary reviewer. On unavailability or contract violation, fall back to in-process.
+3. **Dispatch the `adversarial-reviewer` subagent second** (`@adversarial-reviewer`) in its own isolated context. Pass the diff + the `PLAN.md` task + `AGENTS.md`. Do NOT pass the implementer's reasoning trace. Skip only if cross-model already fell back.
+4. **Framing is literal:** "The code under review likely contains bugs. Find them." Do not soften.
+5. **Required output:** failing test, specific `file:line` defect, or explicit `NO ISSUES FOUND` with categories. Prose-only critiques are rejected — re-invoke once with tighter framing, then stop.
+6. **Verify findings reproduce** before reporting them. Run the failing test; open the line reference.
+7. **Do not fix what you find.** `/review` reports; `/work` implements. Recommend a follow-up task if needed.
+8. **Do NOT dispatch the `documenter` subagent.** Doc drift is `/release`'s concern; surfacing it here as a finding is fine, acting on it is not.
+9. **Log to `progress.md`** with outcome (`NO ISSUES FOUND` or `N findings`).
+
+Start by verifying gates pass, then identify the artifact (commit range / branch / uncommitted diff) and its plan task, then dispatch the reviewers.
+"""

@@ -212,6 +212,23 @@ for f in "$HARNESS_ROOT"/adapters/codex/agents/*.toml; do
   cp_managed "$f" ".codex/agents/$(basename "$f")"
 done
 
+# .gemini/ — Gemini CLI config (full-parity adapter). Commands are TOML,
+# subagents are markdown w/ YAML frontmatter. settings.json uses cp_user
+# semantics (never clobber existing user config — README documents the
+# AGENTS.md fileName merge if they already have a settings.json).
+# Note: dependabot-fixer lives in .agents/skills/ (copied by Codex block
+# above); Gemini reads that path natively per the Agent Skills standard.
+mkdir -p .gemini/commands .gemini/agents
+for f in "$HARNESS_ROOT"/adapters/gemini/commands/*.toml; do
+  [[ -e "$f" ]] || continue
+  cp_managed "$f" ".gemini/commands/$(basename "$f")"
+done
+for f in "$HARNESS_ROOT"/adapters/gemini/agents/*.md; do
+  [[ -e "$f" ]] || continue
+  cp_managed "$f" ".gemini/agents/$(basename "$f")"
+done
+cp_user "$HARNESS_ROOT/adapters/gemini/settings.json" ".gemini/settings.json"
+
 # ── wiki/ — documentation scaffold (per-file walk, skip-if-exists) ──────────
 # Source: $HARNESS_ROOT/templates/wiki/ (NOT $HARNESS_ROOT/wiki/ — that's
 # this repo's own dogfooded docs and never ships to targets).
