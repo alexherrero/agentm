@@ -183,6 +183,22 @@ for d in "$HARNESS_ROOT"/adapters/claude-code/skills/*/; do
   cp_managed_dir "$d" ".claude/skills/$(basename "$d")"
 done
 
+# .agent/ — Antigravity config (full-parity adapter). Copies workflows,
+# skills, and the always-on rules file into the target's .agent/ tree.
+mkdir -p .agent/rules .agent/workflows .agent/skills
+for f in "$HARNESS_ROOT"/adapters/antigravity/rules/*.md; do
+  [[ -e "$f" ]] || continue
+  cp_managed "$f" ".agent/rules/$(basename "$f")"
+done
+for f in "$HARNESS_ROOT"/adapters/antigravity/workflows/*.md; do
+  [[ -e "$f" ]] || continue
+  cp_managed "$f" ".agent/workflows/$(basename "$f")"
+done
+for d in "$HARNESS_ROOT"/adapters/antigravity/skills/*/; do
+  [[ -d "$d" ]] || continue
+  cp_managed_dir "$d" ".agent/skills/$(basename "$d")"
+done
+
 # ── wiki/ — documentation scaffold (per-file walk, skip-if-exists) ──────────
 # Source: $HARNESS_ROOT/templates/wiki/ (NOT $HARNESS_ROOT/wiki/ — that's
 # this repo's own dogfooded docs and never ships to targets).

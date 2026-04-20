@@ -1,18 +1,67 @@
 # Antigravity adapter
 
-Antigravity reads `AGENTS.md` at the project root as its primary instruction source. The harness's universal `AGENTS.md` is the authoritative entry point — no duplicate config needed.
+Full-parity adapter for running agentic-harness in [Antigravity](https://antigravity.google.com/). Every phase command, sub-agent, and skill that Claude Code users get as slash commands and sub-agents is available here as Antigravity workflows and skills.
 
-To run a phase in Antigravity, prompt the agent with one of:
+## Why full parity (was: README-only)
 
-- **Setup:** "Run the setup phase from AGENTS.md — scaffold `.harness/` and `init.sh` for this project."
-- **Plan:** "Run the plan phase per `harness/phases/02-plan.md`. Brief: <your brief here>."
-- **Work:** "Run the work phase — implement the next unchecked task in `.harness/PLAN.md`, stop after one."
-- **Review:** "Run the review phase per `harness/phases/04-review.md`. Assume the code contains bugs."
-- **Release:** "Run the release phase — verify all tasks done, gates green, CI passing."
-- **Bugfix:** "Run the bugfix pipeline from `harness/pipelines/bugfix.md`. Report: <bug report>."
+The original version of this adapter was a single `README.md` pointing users at [`AGENTS.md`](../../AGENTS.md) and telling them to invoke phases by prompt (*"run the plan phase per `harness/phases/02-plan.md`"*). That worked, but:
 
-The phase specs live in [`harness/phases/`](../../harness/phases/) — those are the single source of truth. Claude Code slash commands and Antigravity prompts both point back to them.
+- **Discovery was bad.** The user had to know the phase spec paths and remember the invocation shape.
+- **Non-negotiables lived only in the prose.** No always-on rule kept the project operating contract in scope at every turn — it depended on the agent re-reading `AGENTS.md`.
+- **Sub-agents weren't surfaced.** The `explorer`, `adversarial-reviewer`, and cross-model reviewer had no native handle; the user had to know to ask the agent to "dispatch the reviewer" — and Antigravity had no native sub-agent primitive to route to anyway.
 
-## Why no separate config dir?
+Full parity fixes all three. Antigravity's native surface maps 1:1 to the Claude Code adapter:
 
-Antigravity already honors `AGENTS.md`. A separate `.agent/` config layer would duplicate content and drift. If Antigravity ships first-class slash-command support later, we'll add it then — per the re-audit principle ([principles.md §6](../../harness/principles.md)).
+| Claude Code | Antigravity | Purpose |
+|---|---|---|
+| `.claude/commands/*.md` | `.agent/workflows/*.md` | Phase entrypoints (setup/plan/work/review/release/bugfix) |
+| `.claude/agents/*.md` | `.agent/skills/<name>/SKILL.md` | Dispatchable capabilities (explorer, adversarial-reviewer, adversarial-reviewer-cross, documenter) |
+| `.claude/skills/*/SKILL.md` | `.agent/skills/<name>/SKILL.md` | Project skills (dependabot-fixer) |
+| `CLAUDE.md` pointer | `.agent/rules/harness.md` (`trigger: always_on`) | Always-on operating contract |
+
+The **trade-off:** Antigravity has no native distinction between "sub-agent" and "skill". Both dispatch as skills. This is actually fine — the sub-agents' value is scoped dispatch with a narrow contract, which is exactly what a skill is. The one thing we lose is Claude Code's fresh-context guarantee on sub-agent dispatch (skills share context with the caller). Mitigation: the adversarial-reviewer skills explicitly instruct "do not read the implementer's reasoning trace" — enforced by discipline rather than a context boundary.
+
+## Layout
+
+```
+adapters/antigravity/
+├── README.md                             (this file)
+├── rules/
+│   └── harness.md                        (trigger: always_on — operating contract)
+├── workflows/                            (6 phase entrypoints)
+│   ├── setup.md
+│   ├── plan.md
+│   ├── work.md
+│   ├── review.md
+│   ├── release.md
+│   └── bugfix.md
+└── skills/                               (5 dispatchable skills)
+    ├── explorer/SKILL.md
+    ├── adversarial-reviewer/SKILL.md
+    ├── adversarial-reviewer-cross/SKILL.md
+    ├── documenter/SKILL.md
+    └── dependabot-fixer/SKILL.md
+```
+
+`install.sh` copies this tree to the target's `.agent/` directory (same `cp_managed` semantics as the Claude Code adapter: refreshed on `--update`, preserved on fresh install if already present).
+
+## Invocation
+
+From within Antigravity, prompt the agent:
+
+- **Setup:** *"Run the setup workflow."*
+- **Plan:** *"Run the plan workflow. Brief: `<your brief>`."*
+- **Work:** *"Run the work workflow."* (or *"…on task 3."*)
+- **Review:** *"Run the review workflow."*
+- **Release:** *"Run the release workflow."*
+- **Bugfix:** *"Run the bugfix workflow. Report: `<bug report>`."*
+
+Sub-agent skills are dispatched automatically by the workflows. You can also invoke them directly — *"use the explorer skill to find where X is handled"* — if you need a one-off.
+
+## Single source of truth
+
+Every workflow and skill here points back to the canonical spec under [`harness/phases/`](../../harness/phases/), [`harness/pipelines/`](../../harness/pipelines/), or [`harness/agents/`](../../harness/agents/). If a workflow's non-negotiables drift from the canonical spec, the canonical spec wins — file an issue or fix it.
+
+## Re-audit hook
+
+If Antigravity ships first-class sub-agent support (fresh-context dispatch, explicit tool allowlists per sub-agent, context isolation) later, revisit this adapter and migrate sub-agents off `skills/` — per the re-audit principle ([principles.md §6](../../harness/principles.md)).

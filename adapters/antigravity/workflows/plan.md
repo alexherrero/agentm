@@ -1,0 +1,22 @@
+---
+description: Turn a brief into .harness/PLAN.md with per-task verification criteria. No code written.
+---
+
+# Plan workflow
+
+Run the **plan** phase of agentic-harness. Full spec: [`harness/phases/02-plan.md`](../../../harness/phases/02-plan.md). Read it and follow it.
+
+**Brief:** provide the brief when invoking this workflow (free text, ticket link, or reference to a document).
+
+## Non-negotiable constraints
+
+1. Do not write any application code. Implementation is the `/work` workflow.
+2. Read `.harness/PLAN.md` and `.harness/progress.md` first. If a plan is in flight, ask before replacing it.
+3. Interview the user (≤5 batched questions) only if the brief is ambiguous. Skip if the brief is clear.
+4. Write the plan to `.harness/PLAN.md` using the structure from `templates/PLAN.md`.
+5. Update `.harness/features.json` if this plan introduces user-visible features.
+6. **Dispatch the `documenter` skill** once `PLAN.md` is written to create `pending` Feature/Subsystem pages for tasks that affect user-visible behavior or architecture.
+7. Append a single line to `.harness/progress.md`.
+8. End with a ≤5-bullet summary to the user. Next workflow to run is `/work`.
+
+Start by reading the relevant state files and the full phase spec.
