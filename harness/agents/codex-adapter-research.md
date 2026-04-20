@@ -186,21 +186,26 @@ Every file listed below is created by Task 7b, copied by `install.sh` to the tar
 adapters/codex/
 ├── README.md                                   # Adapter docs: mapping table, rename rationale, hook-gap note
 ├── skills/                                     # copied to target's .agents/skills/
-│   ├── harness-setup/SKILL.md                  # phase entrypoint (renamed to avoid built-in collision)
+│   ├── harness-setup/SKILL.md                  # phase entrypoint (prefixed for uniformity)
 │   ├── harness-plan/SKILL.md                   # phase entrypoint (collides w/ built-in /plan — renamed)
 │   ├── harness-work/SKILL.md                   # phase entrypoint
 │   ├── harness-review/SKILL.md                 # phase entrypoint (collides w/ built-in /review — renamed)
 │   ├── harness-release/SKILL.md                # phase entrypoint
 │   ├── harness-bugfix/SKILL.md                 # phase entrypoint
-│   ├── explorer/SKILL.md                       # sub-agent → skill
-│   ├── adversarial-reviewer/SKILL.md           # sub-agent → skill
-│   ├── adversarial-reviewer-cross/SKILL.md     # sub-agent → skill
-│   ├── documenter/SKILL.md                     # sub-agent → skill
 │   └── dependabot-fixer/SKILL.md               # project skill (unchanged from Claude Code)
-└── (no rules/ dir — AGENTS.md at repo root is read directly by Codex)
+└── agents/                                     # copied to target's .codex/agents/
+    ├── explorer.toml                           # sub-agent (sandbox_mode = read-only)
+    ├── adversarial-reviewer.toml               # sub-agent (sandbox_mode = read-only)
+    ├── adversarial-reviewer-cross.toml         # sub-agent (sandbox_mode = workspace-write)
+    └── documenter.toml                         # sub-agent (sandbox_mode = workspace-write)
 ```
 
-**Destination in target project:** everything under `skills/` goes to the target's `.agents/skills/` (note: plural `.agents/`, distinct from Antigravity's `.agent/`).
+**Destinations in target project:**
+
+- `adapters/codex/skills/*` → target's `.agents/skills/` (plural `.agents/`)
+- `adapters/codex/agents/*.toml` → target's `.codex/agents/` (singular `.codex/`)
+
+No `rules/` dir — AGENTS.md at repo root is read directly by Codex.
 
 **Install.sh wiring needed (Task 7b):**
 
@@ -209,11 +214,14 @@ adapters/codex/
 if [[ -d "$HARNESS_ROOT/adapters/codex/skills" ]]; then
   cp_managed_dir "$HARNESS_ROOT/adapters/codex/skills" "$TARGET/.agents/skills"
 fi
+if [[ -d "$HARNESS_ROOT/adapters/codex/agents" ]]; then
+  cp_managed_dir "$HARNESS_ROOT/adapters/codex/agents" "$TARGET/.codex/agents"
+fi
 ```
 
-We do **not** ship `.codex/` (no subagents, no hooks, no config overrides) — the AGENTS.md at repo root and the `.agents/skills/` tree are sufficient. Keeps install surface minimal and respects user-local `~/.codex/` preferences.
+No hooks.json or config.toml shipped (per Open Question #3). AGENTS.md at repo root already covers instruction loading.
 
-**File count:** 11 SKILL.md + 1 README.md = 12 files.
+**File count:** 7 SKILL.md + 4 TOML + 1 README.md = 12 files.
 
 ## Open questions
 
@@ -237,19 +245,28 @@ We do **not** ship `.codex/` (no subagents, no hooks, no config overrides) — t
 **Options:**
 
 - **(A) All four as skills in `.agents/skills/`** — matches Antigravity's model, same file shape as the Claude Code adapter's dispatch target.
-- **(B) All four as TOML subagents in `.codex/agents/`** — gets `sandbox_mode = "read-only"` enforcement for `explorer` and both `adversarial-reviewer` variants; closer to Claude Code's fresh-context sub-agent semantics.
-- **(C) Mixed** — `explorer` and `adversarial-reviewer*` as TOML subagents (they benefit from read-only sandbox), `documenter` and `dependabot-fixer` as skills (they need write access).
+- **(B) All four as TOML subagents in `.codex/agents/`** — gets `sandbox_mode` enforcement (read-only for reviewers, workspace-write for documenter); closest Codex primitive to Claude Code's sub-agent semantics.
+- **(C) Mixed** — reviewers as TOML subagents (read-only sandbox), documenter as skill (writes).
 
-**Answer before Task 7b:** **(A) — all four as skills.**
+**Answer before Task 7b:** **(B) — all four as TOML subagents.**
 
 **Why:**
-1. **Consistency with Antigravity.** Both adapters treat sub-agents as skills. Documenters reading one adapter can map to the other without re-learning the model.
-2. **Simpler install surface.** One target directory (`.agents/skills/`) rather than two (`.agents/skills/` + `.codex/agents/`).
-3. **TOML vs markdown divergence is high-cost.** TOML subagents require a second authoring format, a second set of adapter files, and a second set of install.sh logic.
-4. **Context isolation was already compromised.** Codex subagents inherit workspace context, so (B) doesn't give us Claude Code's fresh-context property anyway — only the sandbox_mode flag is a net win.
-5. **We can migrate later if needed.** If enough Codex users complain about reviewers reading the implementer's trace, Task 7b's decision is reversible — re-audit principle applies ([principles.md §6](../principles.md)).
+1. **Sandbox enforcement is a real win.** `sandbox_mode = "read-only"` on `explorer` and both `adversarial-reviewer*` structurally prevents the reviewer from editing the code it's reviewing — no discipline-based mitigation needed. `documenter` gets `sandbox_mode = "workspace-write"` which still blocks writes outside the workspace.
+2. **Closest match to Claude Code semantics.** Claude Code dispatches sub-agents with a tool allowlist; Codex TOML subagents achieve the equivalent via sandbox_mode + mcp_servers restriction. Skills have no such enforcement.
+3. **Antigravity parity is not a constraint.** The Antigravity adapter uses skills only because Antigravity has no subagent primitive; Codex has one, so use it.
+4. **Per-subagent model / reasoning-effort tuning.** TOML exposes `model` and `model_reasoning_effort` — useful for `adversarial-reviewer` (high effort) vs. `explorer` (fast).
+5. **Two install targets is tolerable.** `install.sh` already juggles multiple adapter destinations; adding `.codex/agents/` alongside `.agents/skills/` is a small increment.
 
-**Trade-off accepted:** we lose `sandbox_mode = "read-only"` enforcement for `explorer` and the adversarial reviewers. Mitigation: SKILL.md body explicitly instructs "read-only, no Write/Edit," same discipline-based mitigation used in Antigravity.
+**Trade-off accepted:** two authoring formats (markdown skills + TOML subagents) and two install target directories. Mitigated by scoping: skills host phase entrypoints + the one project skill (`dependabot-fixer`); TOML subagents host the four narrow-contract sub-agents.
+
+**Sandbox-mode assignments:**
+
+| Subagent | sandbox_mode | Rationale |
+|---|---|---|
+| `explorer` | `read-only` | Read-only fan-out; no writes needed. |
+| `adversarial-reviewer` | `read-only` | Reviewer must not mutate code under review. |
+| `adversarial-reviewer-cross` | `workspace-write` | Shells out to `gemini` CLI; may need tmpfile for prompt staging. Revisit if `read-only` suffices. |
+| `documenter` | `workspace-write` | Writes to `wiki/**` and `.harness/project.json`. |
 
 ### Open question #3: Do we ship `hooks.json` for Stop-based verification?
 
@@ -270,9 +287,8 @@ We do **not** ship `.codex/` (no subagents, no hooks, no config overrides) — t
 
 ## Summary for Task 7b implementation
 
-- 12 files to create under `adapters/codex/` (11 SKILL.md + 1 README.md).
-- 1 install.sh block to add (`cp_managed_dir` for `.agents/skills/`).
-- No `.codex/` directory — AGENTS.md at repo root + skills-only install surface.
+- 12 files to create under `adapters/codex/` (7 SKILL.md + 4 TOML subagents + 1 README.md).
+- 2 install.sh blocks to add (`cp_managed_dir` for `.agents/skills/` and `.codex/agents/`).
+- Phase entrypoints + `dependabot-fixer` as skills; four sub-agents as TOML subagents with sandbox_mode enforcement.
 - Phase skills all prefixed `harness-` for collision avoidance and consistency.
-- All sub-agents as skills, matching Antigravity's model.
 - No hooks shipped; README documents the per-write hook gap and provides an opt-in snippet.
