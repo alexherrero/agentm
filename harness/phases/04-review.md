@@ -10,6 +10,8 @@ Two things this phase does not do:
 1. **It does not fix what it finds.** Findings flow back into `/work` (or `/plan` if they're large enough). The reviewer is the critic, not the implementer. Keeping the roles separate prevents the critic from softening its own findings to keep the implementation session moving.
 2. **It does not run before deterministic gates are green.** Review is for things typecheckers and tests can't see. If tests are failing, fix those first — no LLM review will help.
 
+The `documenter` sub-agent is **not** invoked in this phase. Review is adversarial *code* inspection; doc drift is `/release`'s concern. If the reviewer incidentally notices that `wiki/` is out of sync with the diff, surface it as a finding but do not dispatch docsub — that's [`/release`](05-release.md)'s full-pass sweep.
+
 ## Preconditions
 
 1. Deterministic gates pass on the current change:

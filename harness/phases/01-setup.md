@@ -95,7 +95,29 @@ This is the block later phases read to know how to operate.
 
 Run `bash .harness/init.sh`. Confirm it exits 0. If it doesn't, fix it now — every later phase depends on this working.
 
-### 7. Log and stop
+### 7. Populate the wiki scaffold
+
+`install.sh` dropped an empty `wiki/` scaffold (four subdirs + seed pages). Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md), convention: [`harness/documentation.md`](../documentation.md)) to fill the seed pages from the codebase scan:
+
+- `development/Getting-Started.md` — from `init.sh` + manifests
+- `operational/Runbook.md` — from CI configs + deploy hints
+- `design/Product-Intent.md` — from `README.md` + the interview
+- `architecture/Overview.md` — from top-level layout + entry points
+- `Home.md` and `_Sidebar.md` — initialized with the project name and four section headers
+
+The documenter returns a structured report of what it created. If it surfaces `OPEN QUESTIONS`, answer them before moving on — a broken `Product-Intent.md` on day one is drift that compounds.
+
+### 8. Offer GitHub Project creation (optional)
+
+Ask the user: *"Create a GitHub Project for 'future ideas' tracking? (`gh project create --owner @me`)"*. If yes, run the `gh` command and write `.harness/project.json`:
+
+```json
+{ "github": { "owner": "<username>", "number": <N>, "url": "https://github.com/users/<username>/projects/<N>" } }
+```
+
+Default: skip. The file stays absent until the user opts in later.
+
+### 9. Log and stop
 
 Append to `.harness/progress.md`:
 

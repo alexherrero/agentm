@@ -14,6 +14,7 @@ You are running the **review** phase of agentic-harness. The full spec is at `ha
 4. **Required output:** failing test, specific `file:line` defect, or explicit `NO ISSUES FOUND` with categories. Prose-only critiques are rejected — re-invoke once with tighter framing, then stop.
 5. **Verify findings reproduce** before reporting them. Run the failing test; open the line reference.
 6. **Do not fix what you find.** `/review` reports; `/work` implements. Recommend a follow-up task if needed.
-7. **Log to `progress.md`** with outcome (`NO ISSUES FOUND` or `N findings`).
+7. **Do NOT dispatch the `documenter` sub-agent.** Doc drift is `/release`'s concern; surfacing it here as a finding is fine, acting on it is not.
+8. **Log to `progress.md`** with outcome (`NO ISSUES FOUND` or `N findings`).
 
 Start by verifying gates pass, then identify the artifact (commit range / branch / uncommitted diff) and its plan task, then dispatch the reviewer.

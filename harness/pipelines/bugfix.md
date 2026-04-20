@@ -71,6 +71,13 @@ Additionally confirm:
 - The regression test *actually exercises the root cause*, not just the symptom
 - The original reproduction steps from `## Report` now produce the expected behavior
 
+Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the bug report and the fix diff. Bugfix is a **lightweight pass** — docsub does nothing for run-of-the-mill bugs (typo fix, null check, off-by-one). It updates only when the fix reveals a gotcha worth persisting:
+
+- **`wiki/development/Known-Issues.md`** — append only if the bug exposes a non-obvious reproduction condition, an environmental dependency, or a surprising interaction between features that a future reader would benefit from seeing listed.
+- **`wiki/architecture/decisions/<NNNN>-<slug>.md`** — add an ADR only if the fix implies a design-decision change that wasn't previously recorded.
+
+Over-documentation is drift too. If docsub returns `NO CHANGES` that's the expected outcome for most bugfixes.
+
 Append to `.harness/progress.md`:
 
 ```

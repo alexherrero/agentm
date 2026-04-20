@@ -13,7 +13,8 @@ You are running the **plan** phase of the agentic-harness workflow. The full spe
 3. Interview the user (≤5 batched questions) only if the brief is ambiguous. Skip if the brief is clear.
 4. Write the plan to `.harness/PLAN.md` using the structure from `templates/PLAN.md`.
 5. Update `.harness/features.json` if this plan introduces user-visible features.
-6. Append a single line to `.harness/progress.md`.
-7. End with a ≤5-bullet summary to the user. Next command to run is `/work`.
+6. **Dispatch the `documenter` sub-agent** once `PLAN.md` is written to create `pending` Feature/Subsystem pages for tasks that affect user-visible behavior or architecture.
+7. Append a single line to `.harness/progress.md`.
+8. End with a ≤5-bullet summary to the user. Next command to run is `/work`.
 
 Start by reading the relevant state files and the full phase spec.

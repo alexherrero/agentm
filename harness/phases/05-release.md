@@ -46,7 +46,19 @@ Walk the features list. For each feature this plan implemented, set `passes: tru
 
 This is the one place `passes: true` gets set. Do not set it speculatively.
 
-### 4. Update changelog / release notes
+### 4. Wiki full-pass sweep
+
+Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the complete diff since `/plan` started (`git diff <plan-start-sha>..HEAD`) and the entire `wiki/` tree. Docsub's release-time responsibilities:
+
+1. Every completed task has reached `Status: implemented` on the right page. Fix any that got missed during `/work`.
+2. Any new subsystem / feature / decision that surfaced during implementation but wasn't documented — create the page now.
+3. Update `Home.md` and `_Sidebar.md` to reflect any pages added / renamed / removed during this plan.
+4. If the plan introduced a non-obvious architectural choice, add an ADR at `wiki/architecture/decisions/<NNNN>-<slug>.md` (Template 3). Number one higher than the highest existing ADR; start at `0001` if none exist.
+5. Append a reverse-chronological entry to `wiki/development/Completed-Features.md` — one line in the overview table + a section below with date, branch/PR ref, and a 2–3 sentence summary.
+
+**Block the release** if docsub returns `OPEN QUESTIONS` it can't auto-answer. Surface them to the user; do not proceed until resolved. Shipping with stale docs is how the wiki becomes untrustworthy, and once it's untrustworthy the whole convention is worthless.
+
+### 5. Update changelog / release notes
 
 If the project has a `CHANGELOG.md` / `RELEASES.md`, add an entry for this release:
 - Version bump (following project convention — semver, calver, date-based)
@@ -55,7 +67,7 @@ If the project has a `CHANGELOG.md` / `RELEASES.md`, add an entry for this relea
 
 If the project doesn't have a changelog, skip this step unless the user asks for one. Don't introduce new conventions in a release session.
 
-### 5. Verify CI state (if applicable)
+### 6. Verify CI state (if applicable)
 
 If there's a PR or remote branch:
 - `gh pr checks` — all green
@@ -64,7 +76,7 @@ If there's a PR or remote branch:
 If CI is red or checks are pending, stop:
 > "CI not green: <failing check>. Wait for it to complete, or fix and `/work` again."
 
-### 6. Prepare, don't execute
+### 7. Prepare, don't execute
 
 At this point the release is *ready*. The agent does not:
 - Push to main
@@ -84,7 +96,7 @@ These actions are high blast-radius and explicitly require human confirmation. I
 
 Wait for explicit confirmation on each action. "Looks good" is not confirmation; "push and merge" is.
 
-### 7. Log
+### 8. Log
 
 Once the user has taken the release actions (or chosen not to), append to `.harness/progress.md`:
 

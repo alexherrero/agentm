@@ -122,7 +122,16 @@ If the plan introduces net-new user-visible features (as opposed to internal ref
 
 `passes: true` is set later, by `/review`, never by `/plan`.
 
-### 6. Stop
+### 6. Declare future state in the wiki
+
+Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the newly-written `PLAN.md` and the current `wiki/design/` + `wiki/architecture/` trees. For each task that affects user-visible behavior or architecture, docsub creates or updates a pending Feature/Subsystem page:
+
+- `wiki/design/features/<slug>.md` — Template 2 ("Status"), `Status: pending`, `Plan: .harness/PLAN.md#task-N`
+- `wiki/architecture/subsystems/<name>.md` — similarly, if a subsystem is new or materially changing
+
+Docsub does not touch unrelated pages, and does not preemptively edit `Home.md` / `_Sidebar.md` — those are `/release`-time concerns. If docsub returns `OPEN QUESTIONS`, resolve them before `/work` starts; an ambiguous intent statement poisons later status flips.
+
+### 7. Stop
 
 **Do not start implementing.** Implementation is `/work`. A plan that bleeds into code is not a plan.
 

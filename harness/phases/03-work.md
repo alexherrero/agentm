@@ -49,6 +49,7 @@ Fan out if there are multiple independent questions. Do not fan out for a single
 - Write code that satisfies the task's "What" clause.
 - Write tests that satisfy the task's "Verification" clause, in the same session. Tests-after is an anti-pattern here; verification must land with the implementation.
 - Follow project conventions (formatters, naming, file layout). If the task implies a deviation, flag it and ask.
+- **Do not touch `wiki/`.** Documentation updates are phase-boundary-only (see [documentation.md](../documentation.md#the-documenter-sub-agent)). Writing docs alongside code biases the implementer toward confirming the plan rather than reporting what actually shipped. Docsub runs in step 8 once gates are green.
 - If mid-implementation you realize the task is bigger than planned, **stop**. Don't silently expand scope. Surface it: "Task N turned out to be bigger than planned because [reason]. Options: (a) finish the original task narrow, (b) expand the task and re-plan, (c) split into N' and N''. Your call." Then wait.
 
 ### 5. Run deterministic gates
@@ -80,7 +81,20 @@ Once all gates are green:
   <YYYY-MM-DD HH:MM> /work — completed task N: "<title>" (<filesChanged> files, <testsAdded> tests added)
   ```
 
-### 8. Commit
+### 8. Update the wiki (post-gates)
+
+Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with: the task's title + What + Verification from `PLAN.md`, the diff (`git diff` scoped to the task's commits or staged changes), and the matching pending wiki entries. Docsub's job:
+
+- Flip `Status: pending → implemented` on the matching Feature/Subsystem page(s) **only if the diff proves it** — speculative flips are a worse failure than missed ones.
+- Fill `## Implementation` with real `file:line` references (GitHub URLs if a remote is set).
+- Update `## Design` only if the diff shows the plan shifted during implementation. If implementation matched the plan, leave Design alone.
+- Create or update pages under `wiki/operational/` if the task introduced operational concerns (new env var, deploy step, runtime dependency, health check).
+
+If docsub returns `OPEN QUESTIONS` (e.g. "task marked `[x]` but diff doesn't touch the claimed surface"), resolve them before committing. If it returns `NO CHANGES`, that's fine — not every task touches documented surface.
+
+**Docsub is NOT invoked during step 4 (Implement).** Only here, once gates are green. If you find yourself reaching for docsub mid-implementation, stop — the urge means the plan's intent was unclear, not that the docs need updating in-line.
+
+### 9. Commit
 
 One task, one commit, unless the project convention says otherwise (squash-on-merge workflows may prefer multiple). Commit message should reference the task:
 
@@ -94,7 +108,7 @@ Follow project convention for trailers (`Co-Authored-By`, issue references, etc.
 
 If the project requires signed commits or has pre-commit hooks, let them run — do not use `--no-verify`.
 
-### 9. Stop
+### 10. Stop
 
 **Do not start the next task.** The next task gets its own session: either `/work` again (clean context) or `/review` first if the task warranted it.
 

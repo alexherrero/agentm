@@ -14,6 +14,8 @@ You are running the **work** phase of agentic-harness. The full spec is at `harn
 4. **Feed full error output back** on gate failures — do not summarize.
 5. **Cap iterations at 5 per gate.** If not green after 5, stop and report.
 6. **Do not silently expand task scope.** If it turns out bigger than planned, stop and ask.
-7. **End by updating `PLAN.md` (mark `[x]`), `progress.md` (append line), and committing.** Then stop.
+7. **Do not touch `wiki/` during implementation.** Documentation updates are phase-boundary-only.
+8. **After gates are green (before committing), dispatch the `documenter` sub-agent** with the task spec + the diff. It flips matching `pending → implemented` pages and adds operational pages if the task introduced one. Resolve `OPEN QUESTIONS` before committing.
+9. **End by updating `PLAN.md` (mark `[x]`), `progress.md` (append line), and committing.** Then stop.
 
 Start by reading `.harness/PLAN.md`, `.harness/progress.md`, and the project's `AGENTS.md` / `CLAUDE.md`. Identify the next unchecked task (or the one the user specified). Confirm the task and its verification criterion with the user before writing code.
