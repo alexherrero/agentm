@@ -159,7 +159,7 @@ SUBAGENTS = {
     "documenter",
     "explorer",
 }
-SKILLS = {"dependabot-fixer"}
+SKILLS = {"dependabot-fixer", "ship-release"}
 
 
 def canonical_phase_exists(name: str) -> bool:

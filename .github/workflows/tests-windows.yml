@@ -11,7 +11,18 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      # windows-latest ships pwsh 7+ preinstalled.
-      - name: Run smoke-install (pwsh)
+      # windows-latest ships pwsh 7+ and Python preinstalled.
+      - name: Install Python deps (for validate script)
+        run: python -m pip install pyyaml
+      - name: Run smoke-install (pwsh) + post-install integrity
         shell: pwsh
         run: pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1
+      - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
+        run: python scripts/validate-adapters.py
+      - name: Check cross-references + hook-fragment schema parity
+        run: python scripts/check-references.py
+      - name: AST-parse every .ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-syntax.ps1
+      # bash -n skipped on Windows (git-bash is present but path-mangling
+      # makes find(1) unreliable; Linux + Mac cover .sh parse).

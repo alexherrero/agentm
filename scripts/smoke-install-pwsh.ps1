@@ -74,7 +74,12 @@ try {
         'scripts/smoke-install-bash.sh',
         'scripts/smoke-install-pwsh.ps1',
         'scripts/check-parity.sh',
-        'scripts/validate-adapters.py'
+        'scripts/validate-adapters.py',
+        'scripts/check-references.py',
+        'scripts/check-syntax.sh',
+        'scripts/check-syntax.ps1',
+        'scripts/check-integrity-bash.sh',
+        'scripts/check-integrity-pwsh.ps1'
     )
     foreach ($p in $leaks) {
         $full = Join-Path $scratch $p
@@ -115,12 +120,38 @@ try {
         exit 1
     }
 
+    # -Update preserves user edits (cp_user semantics)
+    Write-Host '==> -Update preserves user edits (cp_user semantics)'
+    $userMark = "# USER-EDIT-MARKER-$([Guid]::NewGuid().ToString('N'))"
+    $userMark2 = "# USER-AGENTS-MARKER-$([Guid]::NewGuid().ToString('N'))"
+    Add-Content -LiteralPath (Join-Path $scratch 'wiki/Home.md') -Value $userMark
+    Add-Content -LiteralPath (Join-Path $scratch 'AGENTS.md') -Value $userMark2
+
     # -Update refresh
-    Write-Host '==> -Update refresh'
     & pwsh -NoProfile -File (Join-Path $HarnessRoot 'install.ps1') -Update -Hooks $scratch | Out-File (Join-Path $scratch '.update.log')
     $updateLog = Get-Content -LiteralPath (Join-Path $scratch '.update.log') -Raw
+
+    $homeContent = Get-Content -LiteralPath (Join-Path $scratch 'wiki/Home.md') -Raw
+    if ($homeContent -notmatch [regex]::Escape($userMark)) {
+        Write-Host 'FAIL: -Update clobbered user edit in wiki/Home.md'
+        exit 1
+    }
+    $agentsContent = Get-Content -LiteralPath (Join-Path $scratch 'AGENTS.md') -Raw
+    if ($agentsContent -notmatch [regex]::Escape($userMark2)) {
+        Write-Host 'FAIL: -Update clobbered user edit in AGENTS.md'
+        exit 1
+    }
+
     if (-not ($updateLog -match '(up to date|updated)')) {
         Write-Host 'FAIL: -Update produced no up-to-date/updated markers'
+        exit 1
+    }
+
+    # Post-install integrity check
+    Write-Host '==> post-install integrity'
+    & pwsh -NoProfile -File (Join-Path $HarnessRoot 'scripts/check-integrity-pwsh.ps1') $scratch
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host 'FAIL: check-integrity-pwsh failed'
         exit 1
     }
 

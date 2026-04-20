@@ -73,8 +73,14 @@ leaks=(
   .github/workflows/tests-mac.yml
   .github/workflows/tests-windows.yml
   scripts/smoke-install-bash.sh
+  scripts/smoke-install-pwsh.ps1
   scripts/check-parity.sh
   scripts/validate-adapters.py
+  scripts/check-references.py
+  scripts/check-syntax.sh
+  scripts/check-syntax.ps1
+  scripts/check-integrity-bash.sh
+  scripts/check-integrity-pwsh.ps1
 )
 for p in "${leaks[@]}"; do
   if [[ -e "$SCRATCH/$p" ]]; then
@@ -114,13 +120,35 @@ if grep -q "created .claude/commands/plan.md" "$SCRATCH/.rerun.log"; then
   exit 1
 fi
 
-# ── --update: managed files refresh semantics ───────────────────────────────
-echo "==> --update refresh"
+# ── --update preserves user edits to user-owned files ─────────────────────
+echo "==> --update preserves user edits (cp_user semantics)"
+# wiki/Home.md is cp_user — an edit must survive --update.
+USER_MARK="# USER-EDIT-MARKER-$(date +%s%N)"
+echo "$USER_MARK" >> "$SCRATCH/wiki/Home.md"
+# AGENTS.md is cp_user — same deal.
+USER_MARK2="# USER-AGENTS-MARKER-$(date +%s%N)"
+echo "$USER_MARK2" >> "$SCRATCH/AGENTS.md"
+
 bash "$HARNESS_ROOT/install.sh" --update --hooks "$SCRATCH" > "$SCRATCH/.update.log"
+
+if ! grep -qF "$USER_MARK" "$SCRATCH/wiki/Home.md"; then
+  echo "FAIL: --update clobbered user edit in wiki/Home.md" >&2
+  exit 1
+fi
+if ! grep -qF "$USER_MARK2" "$SCRATCH/AGENTS.md"; then
+  echo "FAIL: --update clobbered user edit in AGENTS.md" >&2
+  exit 1
+fi
+
+# ── --update: managed files refresh semantics ───────────────────────────────
 # after --update, managed files should show "up to date" or "updated"
 if ! grep -qE "(up to date|updated)" "$SCRATCH/.update.log"; then
   echo "FAIL: --update produced no 'up to date' / 'updated' markers" >&2
   exit 1
 fi
+
+# ── Post-install integrity check ────────────────────────────────────────────
+echo "==> post-install integrity"
+bash "$HARNESS_ROOT/scripts/check-integrity-bash.sh" "$SCRATCH"
 
 echo "==> smoke-install-bash: OK"

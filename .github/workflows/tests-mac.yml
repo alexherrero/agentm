@@ -11,6 +11,17 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      # macos-latest ships jq and python3 preinstalled.
-      - name: Run smoke-install (bash)
+      # macos-latest ships jq, python3, and pwsh 7+ preinstalled.
+      - name: Install Python deps (for validate script)
+        run: python3 -m pip install --break-system-packages pyyaml
+      - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
+      - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
+        run: python3 scripts/validate-adapters.py
+      - name: Check cross-references + hook-fragment schema parity
+        run: python3 scripts/check-references.py
+      - name: bash -n on every .sh
+        run: bash scripts/check-syntax.sh
+      - name: AST-parse every .ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-syntax.ps1

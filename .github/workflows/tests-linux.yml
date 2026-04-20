@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
-      - name: Run smoke-install (bash)
+      - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
 
   adapter-parity:
@@ -33,4 +33,18 @@ jobs:
           python-version: '3.11'
       - name: Install Python deps
         run: pip install pyyaml
-      - run: python3 scripts/validate-adapters.py
+      - name: Validate adapter frontmatter / TOML / JSON
+        run: python3 scripts/validate-adapters.py
+      - name: Check cross-references + hook-fragment schema parity
+        run: python3 scripts/check-references.py
+
+  syntax:
+    name: syntax
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: bash -n on every .sh
+        run: bash scripts/check-syntax.sh
+      - name: AST-parse every .ps1 (pwsh ships on ubuntu-latest)
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/check-syntax.ps1
