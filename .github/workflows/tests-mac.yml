@@ -1,0 +1,16 @@
+name: "[T] Mac Tests"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  install-smoke:
+    name: install-smoke
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      # macos-latest ships jq and python3 preinstalled.
+      - name: Run smoke-install (bash)
+        run: bash scripts/smoke-install-bash.sh

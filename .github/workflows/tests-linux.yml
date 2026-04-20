@@ -1,0 +1,36 @@
+name: "[T] Linux Tests"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  install-smoke:
+    name: install-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+      - name: Run smoke-install (bash)
+        run: bash scripts/smoke-install-bash.sh
+
+  adapter-parity:
+    name: adapter-parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check-parity.sh
+
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python deps
+        run: pip install pyyaml
+      - run: python3 scripts/validate-adapters.py

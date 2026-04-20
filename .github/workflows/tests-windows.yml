@@ -1,0 +1,17 @@
+name: "[T] Windows Tests"
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  install-smoke:
+    name: install-smoke
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      # windows-latest ships pwsh 7+ preinstalled.
+      - name: Run smoke-install (pwsh)
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1

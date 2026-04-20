@@ -79,6 +79,30 @@ Over time, `.harness/progress.md` accumulates evidence of whether the harness is
 
 v0.1 — all six phases fully specified. No version tag yet; the harness is still expected to evolve rapidly as I use it on real projects. Re-audit the docs whenever you adopt a new model version ([principles §6](harness/principles.md)).
 
+## Contributing
+
+The harness is self-tested on every push to `main` and every PR by three per-OS workflows:
+
+| Workflow | Runs on | Jobs |
+|---|---|---|
+| [`[T] Linux Tests`](.github/workflows/tests-linux.yml) | `ubuntu-latest` | install-smoke + adapter-parity + validate |
+| [`[T] Mac Tests`](.github/workflows/tests-mac.yml) | `macos-latest` | install-smoke |
+| [`[T] Windows Tests`](.github/workflows/tests-windows.yml) | `windows-latest` | install-smoke (via `install.ps1`) |
+
+The three workflows run in parallel automatically. Adapter-parity and validate are OS-agnostic, so they only run on Linux to save CI minutes. Windows is the only place `install.ps1` gets live exercise, so its smoke test is where Windows-specific regressions surface.
+
+**Installer-boundary invariant:** the workflow files at `.github/workflows/tests-*.yml` and the helper scripts under `scripts/` live at the harness repo root, never under `templates/` or `adapters/`, so the installer never propagates them to target projects. The smoke tests assert this explicitly — if you add a test workflow, verify it does not appear in the scratch-install tree.
+
+Run the same gates locally:
+
+```bash
+bash scripts/smoke-install-bash.sh      # fresh install + idempotence + --update
+bash scripts/check-parity.sh            # adapter name-set invariants
+python3 scripts/validate-adapters.py    # TOML/YAML/JSON + canonical-spec backing
+```
+
+On Windows: `pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1`.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
