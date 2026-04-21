@@ -81,8 +81,28 @@ if ($Update) {
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+# Ensure-BoundarySrc: installer-boundary runtime guard. Every file copied into
+# a target project must originate from $HarnessRoot/templates/ or
+# $HarnessRoot/adapters/ — never from elsewhere in the harness repo (e.g.
+# this repo's own wiki/, CI workflows under .github/workflows/tests-*.yml, or
+# an active mirror of a template like .github/workflows/wiki-sync.yml that's
+# byte-identical to its template by design). Makes out-of-boundary cp
+# regressions fail loudly instead of silently propagating source-repo
+# content into target projects.
+function Ensure-BoundarySrc([string]$src) {
+    $srcFull = $null
+    try { $srcFull = (Resolve-Path -LiteralPath $src -ErrorAction Stop).ProviderPath } catch { $srcFull = $src }
+    $tplFull = (Resolve-Path -LiteralPath (Join-Path $HarnessRoot 'templates')).ProviderPath
+    $adpFull = (Resolve-Path -LiteralPath (Join-Path $HarnessRoot 'adapters')).ProviderPath
+    $sep = [System.IO.Path]::DirectorySeparatorChar
+    if ($srcFull.StartsWith($tplFull + $sep) -or $srcFull.StartsWith($adpFull + $sep)) { return }
+    Write-Error "installer-boundary violation - cp source outside allowed roots:`n       src: $srcFull`n       allowed: `$HarnessRoot/templates/*, `$HarnessRoot/adapters/*"
+    exit 1
+}
+
 # Copy-UserFile: copy only if destination is missing. For files the user owns.
 function Copy-UserFile([string]$src, [string]$dst) {
+    Ensure-BoundarySrc $src
     if (-not (Test-Path -LiteralPath $dst)) {
         $parent = Split-Path -Parent $dst
         if ($parent -and -not (Test-Path -LiteralPath $parent)) {
@@ -97,6 +117,7 @@ function Copy-UserFile([string]$src, [string]$dst) {
 
 # Copy-ManagedFile: in -Update mode, always overwrite. Otherwise, skip if exists.
 function Copy-ManagedFile([string]$src, [string]$dst) {
+    Ensure-BoundarySrc $src
     $parent = Split-Path -Parent $dst
     if ($parent -and -not (Test-Path -LiteralPath $parent)) {
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
@@ -140,6 +161,7 @@ function Copy-UserWalk([string]$srcRoot, [string]$dstRoot) {
 
 # Copy-ManagedDir: same -Update semantics for whole directories (e.g. skills).
 function Copy-ManagedDir([string]$src, [string]$dst) {
+    Ensure-BoundarySrc $src
     if ($Update -and (Test-Path -LiteralPath $dst)) {
         Remove-Item -LiteralPath $dst -Recurse -Force
         Copy-Item -LiteralPath $src -Destination $dst -Recurse

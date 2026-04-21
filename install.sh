@@ -89,9 +89,32 @@ fi
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+# ensure_boundary_src: the installer-boundary runtime guard. Every file copied
+# into a target project must originate from $HARNESS_ROOT/templates/ or
+# $HARNESS_ROOT/adapters/ — never from elsewhere in the harness repo (e.g.
+# this repo's own dogfooded wiki/, CI under .github/workflows/tests-*.yml,
+# or an active mirror of a template like .github/workflows/wiki-sync.yml).
+# A regression where a cp_* call reads from an out-of-boundary path would be
+# silent when the out-of-boundary file is byte-identical to its template
+# (e.g. post-wiki-sync-dogfood, .github/workflows/wiki-sync.yml equals its
+# template by design). The guard makes such mutations fail loudly.
+ensure_boundary_src() {
+  local src="$1"
+  case "$src" in
+    "$HARNESS_ROOT"/templates/*|"$HARNESS_ROOT"/adapters/*) return 0 ;;
+    *)
+      echo "Error: installer-boundary violation — cp source outside allowed roots:" >&2
+      echo "       src: $src" >&2
+      echo "       allowed: \$HARNESS_ROOT/templates/*, \$HARNESS_ROOT/adapters/*" >&2
+      exit 1
+      ;;
+  esac
+}
+
 # cp_user: copy only if destination is missing. For files the user owns and edits.
 cp_user() {
   local src="$1" dst="$2"
+  ensure_boundary_src "$src"
   if [[ ! -e "$dst" ]]; then
     cp "$src" "$dst"
     echo "    created $dst"
@@ -104,6 +127,7 @@ cp_user() {
 # For harness-authored files the user should not edit.
 cp_managed() {
   local src="$1" dst="$2"
+  ensure_boundary_src "$src"
   if [[ $UPDATE_MODE -eq 1 && -e "$dst" ]]; then
     if cmp -s "$src" "$dst"; then
       echo "    kept    $dst (up to date)"
@@ -138,6 +162,7 @@ cp_user_walk() {
 # cp_managed_dir: same semantics for directory skills.
 cp_managed_dir() {
   local src="$1" dst="$2"
+  ensure_boundary_src "$src"
   if [[ $UPDATE_MODE -eq 1 && -e "$dst" ]]; then
     # Overwrite directory contents. Safe because skills are harness-authored.
     rm -rf "$dst"
