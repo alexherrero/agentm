@@ -5,6 +5,25 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.8.2] — 2026-04-20 — First bugfix cycle + installer-boundary runtime guard
+
+Three changes shipped together, themed around closing the loop on v0.8.0's documentation convention. (1) The wiki-sync workflow shipped in v0.8.0 as a template was never activated in the harness repo itself — this release activates it and adds a CI gate so the class of omission can't recur. (2) `/bugfix` now maintains a GitHub Issue as the public posterity record across all four phases, turning every bug's trajectory into a searchable narrative. (3) The installer boundary gains a runtime guard, with a test that proves it catches the exact regression scenario flagged by the adversarial reviewer.
+
+### Fixed
+
+- **`wiki/` not syncing to the GitHub Wiki** ([#1](https://github.com/alexherrero/agentic-harness/issues/1)). Root cause: `.github/workflows/wiki-sync.yml` was missing from the harness repo — v0.8.0 shipped the template at `templates/.github/workflows/` but no one activated it in this repo's own `.github/workflows/`. Every push since v0.8.0 had skipped the sync. Fix: copied the template byte-identical to `.github/workflows/wiki-sync.yml`, added `workflow_dispatch:` for backfill + manual re-sync, and a new `dogfood-workflows` job in `tests-linux.yml` that loops every `templates/.github/workflows/*.yml` and asserts a byte-identical counterpart exists at the repo root — so the class of bug can't recur.
+
+### Changed
+
+- **`/bugfix` now maintains a GitHub Issue as the bug's posterity record.** Phase 1 (Report) opens the tracking issue with title + body preview; Phase 2 (Analyze) posts the Analysis; Phase 3 (Fix) posts the Fix summary with commit SHA; Phase 4 (Verify) posts the Verify summary and closes the issue with `gh issue close --reason completed`. Every `gh issue *` call is preview-and-ask per `harness/documentation.md` — no silent automation. Graceful-skip if `gh` is unavailable or the repo isn't on GitHub. Propagated to all four adapter `bugfix` specs (Claude Code / Antigravity / Codex / Gemini).
+
+### Internal
+
+- **Installer-boundary runtime guard.** `install.sh` and `install.ps1` now call `ensure_boundary_src` / `Ensure-BoundarySrc` inside every copy helper (`cp_user`, `cp_managed`, `cp_managed_dir` and their pwsh twins). The guard rejects source paths outside `$HARNESS_ROOT/templates/` or `$HARNESS_ROOT/adapters/` with a loud boundary-violation message. `scripts/test-install.sh` gains check (e) that mutates `install.sh` in place via `sed` — rewriting the wiki-sync `cp_managed` source to the source-repo mirror — runs the mutated installer, and asserts the guard fires with non-zero exit. Addresses Defect 2 from the [#1](https://github.com/alexherrero/agentic-harness/issues/1) adversarial review: after `.github/workflows/wiki-sync.yml` became byte-identical to its template by design, a silent `install.sh` regression copying from the source-repo path would have been undetectable — the new guard makes it impossible.
+- **`.gitignore`** — exclude `.claude/scheduled_tasks.lock` and `.claude/worktrees/` (local Claude Code artifacts).
+
+[v0.8.2]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.2
+
 ## [v0.8.1] — 2026-04-20 — CI hardening + dogfood wiki
 
 Follow-up to v0.8.0. Tightens the cross-platform CI gate suite, ships the agentic-harness repo's own wiki as a worked example of the v0.8.0 documentation convention, and fixes a PowerShell parse regression in the verify.ps1 template.
