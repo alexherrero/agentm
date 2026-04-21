@@ -16,7 +16,7 @@ Run the **plan** phase of agentic-harness. Full spec: [`harness/phases/02-plan.m
 4. Write the plan to `.harness/PLAN.md` using the structure from `templates/PLAN.md`.
 5. Update `.harness/features.json` if this plan introduces user-visible features.
 6. **Dispatch the `documenter` skill** once `PLAN.md` is written to create `pending` Feature/Subsystem pages for tasks that affect user-visible behavior or architecture.
-7. **Offer deferred items to the GitHub Project** (optional, per canonical spec §7). Scan `## Out of scope` for *intentionally-deferred* items (not hard non-goals), propose at most one via `gh project item-create` with title + body preview. Silent-skip if `.harness/project.json` absent or `gh` unavailable. **No `gh` invocation without user confirmation.**
+7. **Offer deferred items to the GitHub Project** (optional, per canonical spec §7). Scan `## Out of scope` for *intentionally-deferred* items (not hard non-goals), propose one item per distinct deferred finding via `gh project item-create`, batched into a single preview (title + body per item) at phase end. Silent-skip if `.harness/project.json` absent or `gh` unavailable. **No `gh` invocation without user confirmation.**
 8. Append a single line to `.harness/progress.md`.
 9. End with a ≤5-bullet summary to the user. Next workflow to run is `/work`.
 

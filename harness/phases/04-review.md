@@ -158,9 +158,9 @@ Do **not** fix the findings in this session. `/review` is not an implementation 
 
 ### 8. Offer deferred findings to the GitHub Project (optional)
 
-If `.harness/project.json` exists and `gh` is available on PATH, and the user elected to **defer** one or more review findings rather than block the change on them, propose **one** project item capturing the deferred finding(s). Not findings the user fixed in-place (those are now resolved). Not a clean review (nothing to defer).
+If `.harness/project.json` exists and `gh` is available on PATH, and the user elected to **defer** one or more review findings rather than block the change on them, propose project items for the deferred findings — either one per finding, or grouped when findings share a theme (e.g. three edge-case misses in the same function). Not findings the user fixed in-place (those are now resolved). Not a clean review (nothing to defer).
 
-Preview title + body to the user. On confirmation, run:
+**Batch the proposals into a single preview at the end of the review report**, so the user confirms the whole set in one pass or picks which to create. No count cap: if the review surfaced five deferred findings and they belong in five distinct items, propose five. Preview title + body per item. On confirmation, run for each accepted item:
 
 ```bash
 gh project item-create <number> --owner <owner> \

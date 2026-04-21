@@ -16,6 +16,6 @@ You are running the **review** phase of agentic-harness. The full spec is at `ha
 6. **Do not fix what you find.** `/review` reports; `/work` implements. Recommend a follow-up task if needed.
 7. **Do NOT dispatch the `documenter` sub-agent.** Doc drift is `/release`'s concern; surfacing it here as a finding is fine, acting on it is not.
 8. **Log to `progress.md`** with outcome (`NO ISSUES FOUND` or `N findings`).
-9. **Offer deferred findings to the GitHub Project** (optional, per canonical spec §8). If the user elected to *defer* one or more findings rather than block the change on them, propose at most one project item via `gh project item-create` with title + body preview. Not clean reviews, not in-place fixes. Silent-skip if `.harness/project.json` absent or `gh` unavailable. **No `gh` invocation without user confirmation.**
+9. **Offer deferred findings to the GitHub Project** (optional, per canonical spec §8). If the user elected to *defer* one or more findings rather than block the change on them, propose project items via `gh project item-create` (one per finding or grouped when findings share a theme), batched into a single preview (title + body per item) at review-report end. Not clean reviews, not in-place fixes. Silent-skip if `.harness/project.json` absent or `gh` unavailable. **No `gh` invocation without user confirmation.**
 
 Start by verifying gates pass, then identify the artifact (commit range / branch / uncommitted diff) and its plan task, then dispatch the reviewer.

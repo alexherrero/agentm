@@ -112,7 +112,9 @@ If the project requires signed commits or has pre-commit hooks, let them run —
 
 If `.harness/project.json` exists and `gh` is available on PATH, consider whether this `/work` session surfaced anything **out of task scope** that the user might want on the backlog: an adjacent bug you noticed while implementing, a refactor opportunity, missing test coverage elsewhere, a stale doc. *Not* follow-ups to the current task — those belong in the next `/work` task, not a project item.
 
-Propose **at most one** project item per session. Preview title + body to the user. On confirmation, run:
+Propose one project item per distinct finding. **Batch the proposals into a single preview after the commit lands**, not interleaved during implementation — the user confirms (or declines) the whole set in one pass, or picks which to create. No count cap: if you noticed three adjacent bugs, propose three. But if you're proposing more than three in one `/work` session, reconsider — over-firing is a failure mode, and the session probably *is* scope-creeping.
+
+Preview title + body per item. On confirmation, run for each accepted item:
 
 ```bash
 gh project item-create <number> --owner <owner> \

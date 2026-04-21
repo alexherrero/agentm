@@ -100,9 +100,9 @@ Once the user confirms the merge (or push to default branch) is done, the `ship-
 
 ### 8. Offer next-release themes to the GitHub Project (optional)
 
-If `.harness/project.json` exists and `gh` is available on PATH, scan this release's accumulated deferred items (from `/plan`'s Out of scope, `/work`'s out-of-task findings, `/review`'s deferred findings) for a **recurring theme** that suggests next-release planning — e.g. "several adapters missing feature X", "user-visible docs need a sweep", "test coverage lag on subsystem Y". A theme is a pattern, not a single item. If no pattern emerges, skip silently.
+If `.harness/project.json` exists and `gh` is available on PATH, scan this release's accumulated deferred items (from `/plan`'s Out of scope, `/work`'s out-of-task findings, `/review`'s deferred findings) for **recurring themes** that suggest next-release planning — e.g. "several adapters missing feature X", "user-visible docs need a sweep", "test coverage lag on subsystem Y". A theme is a pattern, not a single item; individual deferred items have already been offered to the project by their originating phase.
 
-Propose **at most one** project item per release session. Preview title + body to the user. On confirmation, run:
+Propose one theme per distinct pattern. **Batch the proposals into a single preview at release-prep end**, so the user confirms the whole set in one pass or picks which to create. The bar is higher than per-phase items — release-time proposals should be cross-session patterns, not restatements of individual per-phase deferrals. Two or three themes across a substantial release is realistic; more than that, reconsider whether you're double-counting. Preview title + body per theme. On confirmation, run for each accepted theme:
 
 ```bash
 gh project item-create <number> --owner <owner> \

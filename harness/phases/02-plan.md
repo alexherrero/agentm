@@ -133,9 +133,11 @@ Docsub does not touch unrelated pages, and does not preemptively edit `Home.md` 
 
 ### 7. Offer deferred items to the GitHub Project (optional)
 
-If `.harness/project.json` exists and `gh` is available on PATH, scan the plan's `## Out of scope` section for **intentionally-deferred** items — items the user said "not now, but worth revisiting later", *not* items explicitly rejected as non-goals. Propose **at most one** project item per session.
+If `.harness/project.json` exists and `gh` is available on PATH, scan the plan's `## Out of scope` section for **intentionally-deferred** items — items the user said "not now, but worth revisiting later", *not* items explicitly rejected as non-goals. Propose one project item per intentionally-deferred entry.
 
-Preview title + body to the user (same shape as an issue preview). On confirmation, run:
+**Batch the proposals into a single preview at phase end**, not interleaved mid-phase — the user confirms (or declines) the whole set in one pass, or picks which to create. No count cap: if the plan has three intentional defers, propose three. But if you're proposing more than five in one session, reconsider whether you're scope-creeping or whether some of these are actually in-scope tasks.
+
+Preview title + body per item. On confirmation, run for each accepted item:
 
 ```bash
 gh project item-create <number> --owner <owner> \
