@@ -131,7 +131,28 @@ Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`]
 
 Docsub does not touch unrelated pages, and does not preemptively edit `Home.md` / `_Sidebar.md` — those are `/release`-time concerns. If docsub returns `OPEN QUESTIONS`, resolve them before `/work` starts; an ambiguous intent statement poisons later status flips.
 
-### 7. Stop
+### 7. Offer deferred items to the GitHub Project (optional)
+
+If `.harness/project.json` exists and `gh` is available on PATH, scan the plan's `## Out of scope` section for **intentionally-deferred** items — items the user said "not now, but worth revisiting later", *not* items explicitly rejected as non-goals. Propose **at most one** project item per session.
+
+Preview title + body to the user (same shape as an issue preview). On confirmation, run:
+
+```bash
+gh project item-create <number> --owner <owner> \
+  --title "<title>" \
+  --body "<body referencing .harness/PLAN.md out-of-scope entry>"
+```
+
+reading `number` and `owner` from `.harness/project.json`.
+
+**Graceful-skip conditions** (silent, no prompt):
+- `.harness/project.json` is absent.
+- `gh auth status` fails or `gh` is not on PATH.
+- `## Out of scope` is empty or contains only hard non-goals (no intentional defers).
+
+Preview-and-ask is non-negotiable per [`documentation.md §GitHub Projects + Issues`](../documentation.md). No `gh project item-create` runs without explicit user confirmation. If the user declines, record nothing — their `[N]` is the decision.
+
+### 8. Stop
 
 **Do not start implementing.** Implementation is `/work`. A plan that bleeds into code is not a plan.
 

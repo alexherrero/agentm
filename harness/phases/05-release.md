@@ -98,7 +98,28 @@ Wait for explicit confirmation on each action. "Looks good" is not confirmation;
 
 Once the user confirms the merge (or push to default branch) is done, the `ship-release` skill is the recommended follow-up — it handles the tag + GitHub release cut with conventional-commit-driven version sizing. `/release` and `ship-release` are sequential: `/release` is the pre-merge gate, `ship-release` is the post-merge tag cut.
 
-### 8. Log
+### 8. Offer next-release themes to the GitHub Project (optional)
+
+If `.harness/project.json` exists and `gh` is available on PATH, scan this release's accumulated deferred items (from `/plan`'s Out of scope, `/work`'s out-of-task findings, `/review`'s deferred findings) for a **recurring theme** that suggests next-release planning — e.g. "several adapters missing feature X", "user-visible docs need a sweep", "test coverage lag on subsystem Y". A theme is a pattern, not a single item. If no pattern emerges, skip silently.
+
+Propose **at most one** project item per release session. Preview title + body to the user. On confirmation, run:
+
+```bash
+gh project item-create <number> --owner <owner> \
+  --title "<theme — e.g. 'next release: sweep docs for adapter parity'>" \
+  --body "<body — the individual deferred items that surfaced this theme, with links>"
+```
+
+reading `number` and `owner` from `.harness/project.json`.
+
+**Graceful-skip conditions** (silent, no prompt):
+- `.harness/project.json` is absent.
+- `gh auth status` fails or `gh` is not on PATH.
+- No recurring theme emerged this cycle (the default — a single deferred item is not a theme).
+
+Preview-and-ask is non-negotiable per [`documentation.md §GitHub Projects + Issues`](../documentation.md). The bar for a `/release`-time theme is higher than a per-phase item: release proposals should represent real cross-session patterns, not restatements of individual `/work` deferrals.
+
+### 9. Log
 
 Once the user has taken the release actions (or chosen not to), append to `.harness/progress.md`:
 

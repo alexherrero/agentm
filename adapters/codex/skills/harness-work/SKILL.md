@@ -19,6 +19,7 @@ Run the **work** phase of agentic-harness. Full spec: [`harness/phases/03-work.m
 6. **Do not silently expand task scope.** If it turns out bigger than planned, stop and ask.
 7. **Do not touch `wiki/` during implementation.** Documentation updates are phase-boundary-only.
 8. **After gates are green (before committing), dispatch the `documenter` subagent** with the task spec + the diff. It flips matching `pending → implemented` pages and adds operational pages if the task introduced one. Resolve `OPEN QUESTIONS` before committing.
-9. **End by updating `PLAN.md` (mark `[x]`), `progress.md` (append line), and committing.** Then stop.
+9. **End by updating `PLAN.md` (mark `[x]`), `progress.md` (append line), and committing.**
+10. **Offer deferred items to the GitHub Project** (optional, per canonical spec §10). If this session surfaced anything *out of task scope* (adjacent bug, refactor opportunity, stale doc elsewhere — not follow-ups to the current task), propose at most one via `gh project item-create` with title + body preview. Silent-skip if `.harness/project.json` absent or `gh` unavailable. **No `gh` invocation without user confirmation.** Then stop.
 
 Start by reading `.harness/PLAN.md`, `.harness/progress.md`, and the project's `AGENTS.md`. Identify the next unchecked task (or the one the user specified). Confirm the task and its verification criterion with the user before writing code.

@@ -156,6 +156,27 @@ The user decides what to do with findings — they don't get auto-fixed. Present
 
 Do **not** fix the findings in this session. `/review` is not an implementation phase.
 
+### 8. Offer deferred findings to the GitHub Project (optional)
+
+If `.harness/project.json` exists and `gh` is available on PATH, and the user elected to **defer** one or more review findings rather than block the change on them, propose **one** project item capturing the deferred finding(s). Not findings the user fixed in-place (those are now resolved). Not a clean review (nothing to defer).
+
+Preview title + body to the user. On confirmation, run:
+
+```bash
+gh project item-create <number> --owner <owner> \
+  --title "<title — reviewer finding in deferred state>" \
+  --body "<body — the finding verbatim from reviewer, plus link to the /review session's commit>"
+```
+
+reading `number` and `owner` from `.harness/project.json`.
+
+**Graceful-skip conditions** (silent, no prompt):
+- `.harness/project.json` is absent.
+- `gh auth status` fails or `gh` is not on PATH.
+- Review was clean, or all findings were fixed in-place by a follow-up `/work`.
+
+Preview-and-ask is non-negotiable per [`documentation.md §GitHub Projects + Issues`](../documentation.md). A `gh project item-create` without explicit user confirmation is a violation — reject and re-invoke.
+
 ## Failure modes to avoid
 
 - **Running review before gates pass.** Typecheck failures make the reviewer read broken code; you get noise findings. Gates first.

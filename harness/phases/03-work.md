@@ -108,7 +108,28 @@ Follow project convention for trailers (`Co-Authored-By`, issue references, etc.
 
 If the project requires signed commits or has pre-commit hooks, let them run — do not use `--no-verify`.
 
-### 10. Stop
+### 10. Offer deferred items to the GitHub Project (optional)
+
+If `.harness/project.json` exists and `gh` is available on PATH, consider whether this `/work` session surfaced anything **out of task scope** that the user might want on the backlog: an adjacent bug you noticed while implementing, a refactor opportunity, missing test coverage elsewhere, a stale doc. *Not* follow-ups to the current task — those belong in the next `/work` task, not a project item.
+
+Propose **at most one** project item per session. Preview title + body to the user. On confirmation, run:
+
+```bash
+gh project item-create <number> --owner <owner> \
+  --title "<title>" \
+  --body "<body — what you observed, where, and why it's deferred rather than in-task>"
+```
+
+reading `number` and `owner` from `.harness/project.json`.
+
+**Graceful-skip conditions** (silent, no prompt):
+- `.harness/project.json` is absent.
+- `gh auth status` fails or `gh` is not on PATH.
+- Nothing out-of-task-scope surfaced — the cleanest case. Over-firing is a failure mode.
+
+Preview-and-ask is non-negotiable per [`documentation.md §GitHub Projects + Issues`](../documentation.md). If the user declines, record nothing. If accepted, reference the project item URL in the ≤5-bullet summary.
+
+### 11. Stop
 
 **Do not start the next task.** The next task gets its own session: either `/work` again (clean context) or `/review` first if the task warranted it.
 
