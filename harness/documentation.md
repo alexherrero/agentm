@@ -174,7 +174,7 @@ Harness-ships `.github/workflows/wiki-sync.yml`:
 
 Dynamic surfaces, gated on confirmation. Triggered from any phase.
 
-**Projects** — "remember for later", "idea for later", "future work", "we should also…". Agent proposes a project item with title + body. **Always asks before `gh project item-create`.** Project ID stored in `.harness/project.json`, created at `/setup` if the user opts in (`gh project create --owner @me`, user-scoped).
+**Projects** — "remember for later", "idea for later", "future work", "we should also…". Agent proposes a project item with title + body. **Always asks before `gh project item-create`.** Project ID stored in `.harness/project.json`, created at `/setup` if the user opts in. GitHub Projects v2 are owned by a user or org (ProjectsV2 has no repo-owned form); `/setup` creates the project user/org-scoped and then **links it to the repo** via `gh project link --repo <owner>/<repo>` so it appears under `github.com/<owner>/<repo>/projects`. The two-step dance (`gh project create` → `gh project link`) is the canonical shape — see [`phases/01-setup.md` §8](phases/01-setup.md) for the exact sequence and the `--owner` literal-vs-`@me` gotcha.
 
 **Issues** — user instructs directly, or agent encounters an out-of-scope bug to defer, or reviewer flags a bug the user chooses to defer. **Always asks with title + body preview before `gh issue create`.**
 
@@ -183,14 +183,20 @@ Dynamic surfaces, gated on confirmation. Triggered from any phase.
 ```json
 {
   "github": {
-    "owner": "<username>",
+    "owner": "<username-or-org>",
     "number": <N>,
-    "url": "https://github.com/users/<username>/projects/<N>"
+    "url": "https://github.com/users/<username>/projects/<N>",
+    "repo": "<owner>/<repo>"
   }
 }
 ```
 
-Only populated if the user opts into project creation at `/setup`. Absent otherwise.
+- `owner` — the project owner (user or org). `@me` at create time resolves to the authenticated user.
+- `number` — the Project V2 number returned by `gh project create --format json`.
+- `url` — canonical project URL.
+- `repo` — the repo the project is **linked to** via `gh project link` (as `<owner>/<repo>`). Records the linkage on disk so later phases and `--update` runs can re-verify it.
+
+Only populated if the user opts into project creation at `/setup`. Absent otherwise — all per-phase Projects wiring silently no-ops when the file is missing.
 
 ## Installer behavior
 

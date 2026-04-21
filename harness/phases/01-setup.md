@@ -109,13 +109,55 @@ The documenter returns a structured report of what it created. If it surfaces `O
 
 ### 8. Offer GitHub Project creation (optional)
 
-Ask the user: *"Create a GitHub Project for 'future ideas' tracking? (`gh project create --owner @me`)"*. If yes, run the `gh` command and write `.harness/project.json`:
+GitHub Projects v2 are owned by a user or org (never a repo directly), but can be **linked** to a repo so they appear under `github.com/<owner>/<repo>/projects`. Offer create + link as a single flow. Preview-and-ask at each step; default is skip.
 
-```json
-{ "github": { "owner": "<username>", "number": <N>, "url": "https://github.com/users/<username>/projects/<N>" } }
+**Interview (batched)**:
+1. *"Create a GitHub Project for deferred-work tracking?"* — yes / no / later.
+2. If yes: *"Owner — your personal account (`@me`) or an org?"* Default: derive from `gh repo view --json owner` if the repo has a GitHub origin. Ask for the org name if org-owned.
+3. *"Project title?"* Default: `"<repo-name> backlog"` (e.g. `"agentic-harness backlog"`).
+
+**Run the two `gh` calls with preview**:
+
+```bash
+# Step 1 — create (user-scoped example; substitute org name if selected):
+gh project create --owner @me --title "<repo-name> backlog" --format json
+# Parse the JSON output to capture the returned number + url.
+
+# Step 2 — link to the repo so it appears under <owner>/<repo>/projects.
+# NOTE: --owner must be the literal username/org, not @me, even when it
+# matches — gh's ownership check sometimes rejects @me here with
+# "'<repo>' has different owner from '@me'".
+gh project link <number> --owner <literal-owner> --repo <owner>/<repo>
 ```
 
-Default: skip. The file stays absent until the user opts in later.
+**Write `.harness/project.json`**:
+
+```json
+{
+  "github": {
+    "owner": "<username-or-org>",
+    "number": <N>,
+    "url": "https://github.com/users/<username>/projects/<N>",
+    "repo": "<owner>/<repo>"
+  }
+}
+```
+
+The `repo` field records the link — later phase wiring (`gh project item-create` from `/plan`, `/work`, `/review`, `/release`) doesn't consult it directly, but it's the only on-disk record that this project is linked to this repo, which matters for dogfood-freshness checks and `--update` re-verification.
+
+**Verification**:
+
+```bash
+# Should list project #N under the repo:
+gh api graphql -f query='query{repository(owner:"<owner>",name:"<repo>"){projectsV2(first:5){nodes{number title url}}}}'
+```
+
+**Graceful-skip conditions** for step 8 itself (don't even ask):
+- `gh auth status` fails.
+- `git remote get-url origin` doesn't resolve to `github.com`.
+- `gh` missing required scopes (`project` + `read:project`) — print the fix-up line (`gh auth refresh -s project,read:project`) and move on; user can rerun `/setup` after.
+
+Default behavior: **skip entirely**. The file stays absent until the user opts in, which is valid. All per-phase Projects wiring silently no-ops when `.harness/project.json` is missing.
 
 ### 9. Log and stop
 
