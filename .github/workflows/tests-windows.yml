@@ -17,6 +17,9 @@ jobs:
       - name: Run smoke-install (pwsh) + post-install integrity
         shell: pwsh
         run: pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1
+      - name: Run test-install (pwsh) — installer-boundary guard
+        shell: pwsh
+        run: pwsh -NoProfile -File scripts/test-install.ps1
       - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
         run: python scripts/validate-adapters.py
       - name: Check cross-references + hook-fragment schema parity
