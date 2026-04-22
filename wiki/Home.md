@@ -13,12 +13,15 @@ A small, opinionated harness for doing production-quality engineering with AI co
 | Where does the code live? | [Overview](Overview) |
 | Why phase-gated? | [ADR 0001](0001-phase-gated-workflow) |
 | Why phase-boundary docs (not inline)? | [ADR 0002](0002-documentation-convention) |
+| Why ProjectsV2 create + link (not repo-owned)? | [ADR 0003](0003-ProjectsV2-Ownership-And-Linking) |
+| What shipped recently? | [Completed-Features](Completed-Features) |
 
 ## 🛠 Development
 
 Build, install, and contribute to the harness itself.
 
 - [Getting-Started](Getting-Started) — install the harness into a target project; run the local test suite.
+- [Completed-Features](Completed-Features) — reverse-chronological log of what's shipped, maintained at `/release`.
 
 ## 📟 Operational
 
@@ -31,6 +34,7 @@ Run, release, and maintain the harness.
 What the harness is for, who it's for, and why it's shaped the way it is.
 
 - [Product-Intent](Product-Intent) — problem statement, target user, non-goals.
+- [GitHub-Projects-Integration](GitHub-Projects-Integration) — preview-and-ask `gh project item-create` from every phase; opt-in at `/setup`.
 
 ## 🏗 Architecture
 
@@ -39,3 +43,4 @@ How the pieces fit together.
 - [Overview](Overview) — repo layout: `harness/` (canonical specs), `adapters/` (per-tool shims), `templates/` (what `install.sh` drops into a project), `scripts/` (test infra, never propagated).
 - [ADR 0001: Phase-gated workflow](0001-phase-gated-workflow) — why `setup → plan → work → review → release` with hard boundaries and one task per `/work` session.
 - [ADR 0002: Documentation convention](0002-documentation-convention) — why docs live in `wiki/`, are written by a sub-agent at phase boundaries, and why the installer boundary keeps this repo's own `wiki/` out of target projects.
+- [ADR 0003: ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking) — why `/setup` runs a two-step `gh project create` + `gh project link --repo` flow rather than assuming a repo-owned form.
