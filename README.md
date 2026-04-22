@@ -1,8 +1,8 @@
 # agentic-harness
 
-A small, opinionated harness for doing production-quality engineering with AI coding agents (Claude Code, Antigravity, and tools that read `AGENTS.md`).
+A small, opinionated harness for doing production-quality engineering with AI coding agents (Claude Code, Antigravity, Codex, Gemini, and tools that read `AGENTS.md`).
 
-Not a 150-agent supermarket. Six phase-gated slash commands, two sub-agents, deterministic verification, on-disk state. Designed to be installed into any project in one command.
+Not a 150-agent supermarket. Six phase-gated slash commands, three sub-agents (`explorer`, `adversarial-reviewer`, `documenter`), deterministic verification, on-disk state, and a narrative `wiki/` that syncs to the GitHub Wiki. Designed to be installed into any project in one command.
 
 ## Principles (the short version)
 
@@ -39,8 +39,9 @@ Either installer drops in both `.sh` and `.ps1` versions of helper scripts (so m
 
 This drops in:
 - `.harness/` — per-project state (PLAN.md, features.json, progress.md, init.sh, known-migrations.md) and `scripts/` (e.g. `cross-review.sh` for cross-model review via Gemini)
-- `.claude/commands/` + `.claude/agents/` + `.claude/skills/` — slash commands, sub-agents, and skills for Claude Code
-- `AGENTS.md` + `CLAUDE.md` — agent entry points (Antigravity, Cursor, Codex, Claude Code)
+- `.claude/commands/` + `.claude/agents/` + `.claude/skills/` — slash commands, sub-agents (`explorer`, `adversarial-reviewer`, `documenter`), and skills for Claude Code
+- `wiki/` + `.github/workflows/wiki-sync.yml` — narrative documentation scaffold (four subdirs: `development/`, `operational/`, `design/`, `architecture/`) maintained by the `documenter` sub-agent at phase boundaries and mirrored to the GitHub Wiki on every push. Full convention in [harness/documentation.md](harness/documentation.md).
+- `AGENTS.md` + `CLAUDE.md` — agent entry points (Antigravity, Cursor, Codex, Claude Code, Gemini)
 
 With `--hooks` / `-Hooks`:
 - `.harness/verify.sh` + `.harness/verify.ps1` — per-project verification script (edit to uncomment checks for your stack)
@@ -61,7 +62,7 @@ See [harness/hooks.md](harness/hooks.md) for the full design. POSIX `--hooks` re
 | `/work` | Execute one task from the plan; update progress; stop |
 | `/review` | Adversarial critique of the change — must produce executable artifact |
 | `/release` | Pre-merge gate: clean tree, verification passes, changelog |
-| `/bugfix` | Report → Analyze → Fix → Verify pipeline (replaces `/work` for bugs) |
+| `/bugfix` | Report → Analyze → Fix → Verify pipeline (replaces `/work` for bugs). Maintains a GitHub Issue as the public posterity record across all four phases — preview-and-ask on every `gh issue *` call, graceful-skip if `gh` is unavailable. |
 
 ## Skills
 
@@ -70,6 +71,7 @@ Background utilities that auto-trigger or run on a schedule, separate from the p
 | Skill | Triggers when |
 |---|---|
 | `dependabot-fixer` | A Dependabot PR has red CI. Reads failing logs + upstream CHANGELOG, applies a bounded fix loop, pushes commits to the Dependabot branch, comments residual risks. Never merges. ([spec](harness/skills/dependabot-fixer.md)) |
+| `ship-release` | A feature just went green end-to-end (`/release` clean, `features.json` entry flipped to `passes: true`). Computes the next semver from the commit range, writes release notes from CHANGELOG + commit log, tags, pushes, and creates the GitHub release. Sequenced *after* `/release`, not instead of it. ([spec](harness/skills/ship-release.md)) |
 
 ## Telemetry
 
@@ -77,7 +79,7 @@ Over time, `.harness/progress.md` accumulates evidence of whether the harness is
 
 ## Status
 
-v0.1 — all six phases fully specified. No version tag yet; the harness is still expected to evolve rapidly as I use it on real projects. Re-audit the docs whenever you adopt a new model version ([principles §6](harness/principles.md)).
+Actively evolving. Releases and release notes are the source of truth — see [CHANGELOG.md](CHANGELOG.md) and the [latest release](https://github.com/alexherrero/agentic-harness/releases/latest). Re-audit the docs whenever you adopt a new model version ([principles §6](harness/principles.md)).
 
 ## Contributing
 
