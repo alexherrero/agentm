@@ -26,37 +26,48 @@ Four surfaces, each with a defined job:
 
 ## The `wiki/` folder
 
-Four subdirs at repo root, each with multiple files:
+Four subdirs at repo root, organized by **reader intent** per the Diátaxis convention ([ADR 0004](../wiki/explanation/decisions/0004-diataxis-documentation-spec.md), which amends ADR 0002's audience-based layout):
 
 ```
 wiki/
 ├── README.md                   # this convention, installed copy
 ├── Home.md                     # landing page (docsub maintains)
 ├── _Sidebar.md                 # nav (docsub maintains)
-├── development/                # how to build, run, test, contribute locally
-├── operational/                # how to run / observe / debug in production
-├── design/                     # product/UX intent, features, rationale
-└── architecture/               # subsystems, data flow, decisions (ADRs)
+├── .diataxis                   # marker that enables strict-mode check-wiki lint
+├── tutorials/                  # learn by doing (one end-to-end walkthrough each)
+├── how-to/                     # accomplish a specific task (recipe)
+├── reference/                  # look up a detail (tables, flags, commands)
+└── explanation/                # understand *why* (intent, rationale, ADRs)
+    └── decisions/              # ADRs: explanation/decisions/<NNNN>-<slug>.md
 ```
 
-### What belongs where
+### What belongs where (the four modes)
 
-- **development/** — Getting started, environment setup, testing, conventions, troubleshooting, completed-features log.
-- **operational/** — Deployment, runbook, observability, configuration, rollback.
-- **design/** — Product intent, user flows, features (one page per user-visible feature), open design questions.
-- **architecture/** — System overview, subsystems (one page per subsystem), data model, integrations, decisions (ADRs under `architecture/decisions/<NNNN>-<slug>.md`).
+| Mode | Reader intent | Shape | Examples |
+|---|---|---|---|
+| **tutorials/** | Learn by doing | `> [!NOTE]` Goal / Time / Prereqs block, numbered `## Step N — ...` H2s, `## What you learned`, `## Next`. | `01-Getting-Started.md`, `02-Deploying-Your-First-Change.md` |
+| **how-to/** | Accomplish a task (reader already knows basics) | `> [!NOTE]` Goal / Prereqs, `## Steps` numbered list. **No `## Rationale` / `## Why` / `## Background` / `## Context`.** | `Rotate-Access-Token.md`, `Add-A-New-Adapter.md` |
+| **reference/** | Look up a detail | `## ⚡ Quick Reference` table in the first 20 lines; tables-first throughout. | `CLI.md`, `Config-Keys.md`, `Exit-Codes.md`, `Known-Issues.md` |
+| **explanation/** | Understand *why* | Prose-heavy narrative: intent, rationale, trade-offs. Feature/Subsystem pages (Template 2) and ADRs (Template 3) live here. | `Product-Intent.md`, `Auth-Subsystem.md`, `decisions/0001-*.md` |
 
-Pages outside these four sections are not part of the convention — either file them under an existing section or add a subdir with a rationale in that section's `README.md`.
+**The single-mode rule:** each page serves exactly one mode. A page that mixes modes (a how-to with a `## Rationale` section, a reference with `## Steps`, etc.) fails `scripts/check-wiki.py --strict` and breaks the reader contract. If a page would benefit from cross-mode content, create a companion page in the correct mode dir and cross-link.
+
+Pages outside these four mode dirs are not part of the convention — either file them under the correct mode or add a subdir with a rationale in that mode's `README.md`.
 
 ### Filename rules
 
 - `CamelCase-With-Dashes.md` (matches GitHub Wiki URL convention).
-- Globally unique across subdirs — basename collisions fail the sync workflow loudly.
-- Subdirs are allowed (e.g. `design/features/access-token-refresh.md`), kept shallow.
+- **Globally unique** across mode dirs — basename collisions fail the sync workflow loudly.
+- Tutorials are numerically prefixed (`01-`, `02-`, ...) to suggest reading order.
+- ADRs live at `explanation/decisions/<NNNN>-<slug>.md`; the `NNNN` is append-only (never renumber).
+- Subdirs within a mode are allowed but kept shallow — prefer a flat list of basenames.
+
+> [!NOTE]
+> This four-mode layout supersedes the audience-based layout (`development/`, `operational/`, `design/`, `architecture/`) described in earlier revisions of [ADR 0002](../wiki/explanation/decisions/0002-documentation-convention.md). See [ADR 0004](../wiki/explanation/decisions/0004-diataxis-documentation-spec.md) for the rationale and the `documenter:migrate-to-diataxis` skill for the one-shot conversion of already-installed projects.
 
 ## Templates
 
-Every wiki file starts with `#` H1 + a one-paragraph summary. No YAML front-matter. Three shapes:
+Every wiki file starts with `#` H1 + a one-paragraph summary. No YAML front-matter. Four shapes:
 
 ### Template 1 — "Page" (the default)
 
@@ -84,7 +95,7 @@ Every wiki file starts with `#` H1 + a one-paragraph summary. No YAML front-matt
 
 ### Template 2 — "Status" extension
 
-Layered on Template 1. Used for pages `documenter` tracks through `pending → implemented → deprecated`: `design/features/<slug>.md` and `architecture/subsystems/<name>.md`.
+Layered on Template 1. Used for explanation pages `documenter` tracks through `pending → implemented → deprecated`: `explanation/<feature-or-subsystem>.md`.
 
 ```markdown
 # Feature: <Title>
@@ -114,7 +125,7 @@ Layered on Template 1. Used for pages `documenter` tracks through `pending → i
 
 ### Template 3 — "ADR"
 
-Only for `architecture/decisions/<NNNN>-<slug>.md`.
+Only for `explanation/decisions/<NNNN>-<slug>.md`.
 
 ```markdown
 # ADR <NNNN>: <Title>
@@ -128,13 +139,41 @@ Only for `architecture/decisions/<NNNN>-<slug>.md`.
 ## Consequences
 ```
 
+### Template 4 — "Tutorial" / "How-to"
+
+For `tutorials/<NN>-<slug>.md` and `how-to/<Verb-Object>.md`. Opens with a `> [!NOTE]` Goal / (Time / ) Prereqs block; body is numbered steps.
+
+```markdown
+# <Verb the reader is doing>
+
+> [!NOTE]
+> **Goal:** <one sentence: what the reader will have accomplished.>
+> **Time:** ~<N> minutes.   <!-- tutorial only -->
+> **Prereqs:** <environment, tools, prior knowledge.>
+
+<1-paragraph framing for tutorial; how-to skips straight to Steps.>
+
+## Step 1 — <verb the reader is doing>   <!-- tutorial uses numbered ## Step N H2s -->
+<prose + commands>
+
+## Step 2 — ...
+
+## What you learned   <!-- tutorial only -->
+- ...
+
+## Next   <!-- tutorial only: links to ≥1 how-to and ≥1 reference -->
+- <link>
+```
+
+How-to variant: skip the tutorial framing paragraph and the "What you learned" / "Next" sections; use a `## Steps` H2 with a numbered markdown list. **Do not add `## Rationale` / `## Why` / `## Background` / `## Context` — those are explanation H2s and will fail the mode-purity lint.**
+
 ## Stylistic conventions
 
 - **Tables over bullet lists** for comparative information.
 - **Diagrams** — ASCII in fenced code blocks or Mermaid. Use one whenever a relationship is clearer drawn than described.
 - **GitHub alerts** for load-bearing callouts: `> [!NOTE]`, `> [!IMPORTANT]`, `> [!WARNING]`.
-- **Emoji section markers**, consistent across pages: 🛠 Development · 📟 Operational · 🎨 Design · 🏗 Architecture · ⚡ Quick Reference · 📁 File Layout · 🤝 Integration.
-- **Cross-links**: `[text](Page-Name)` for wiki pages, full GitHub URLs (with `#L<line>`) for `file:line` references into code.
+- **Emoji section markers**, consistent across pages: 📚 Tutorials · 🔧 How-to · 📖 Reference · 💡 Explanation · ⚡ Quick Reference.
+- **Cross-links**: wiki pages by basename (`Home`, `01-Getting-Started`, etc.), full GitHub URLs with `#L<line>` for code references.
 
 ## `Home.md` and `_Sidebar.md`
 
@@ -148,14 +187,14 @@ Canonical spec: [`harness/agents/documenter.md`](agents/documenter.md). Adapter 
 
 **Invoked at phase boundaries only. Never during `/work`'s implement step.**
 
-| Phase | When | Goal |
-|---|---|---|
-| `/setup` | After scaffold drops | Populate `Getting-Started.md`, `Runbook.md`, `Product-Intent.md`, `Overview.md` from codebase scan. Initialize `Home.md`, `_Sidebar.md`. Offer to create GitHub Project. |
-| `/plan` | After `PLAN.md` written | Create/update pending Feature/Subsystem pages for each affected task. |
-| `/work` | After gates green, before commit | Flip pending → implemented on matching pages. Fill `## Implementation`. Create operational pages if task touched them. |
-| `/review` | — | Not invoked. Reviewer may note stale docs secondarily. |
-| `/release` | After gates green | Full-pass sweep: verify implementation reaches docs, create missing pages, update Home/Sidebar, append to `Completed-Features.md`, add ADRs for non-obvious architectural decisions. Block release on unresolved questions. |
-| `/bugfix` | Post-fix | Update `Known-Issues.md` if gotcha emerged. Add ADR if fix implies decision change. |
+| Phase | When | Goal | Write targets |
+|---|---|---|---|
+| `/setup` | After scaffold drops | Populate `tutorials/01-Getting-Started.md`, a `reference/` CLI/commands page, and `explanation/Product-Intent.md` from a codebase scan. Initialize `Home.md`, `_Sidebar.md`. Offer to create GitHub Project. | `tutorials/` · `reference/` · `explanation/` (no how-tos — those earn their keep from real demand) |
+| `/plan` | After `PLAN.md` written | Create pending how-to pages for each user-visible task; reserve `explanation/<slug>.md` Status pages for architectural changes. Add rows to `reference/` for new commands / flags / keys. | `how-to/` · `reference/` · `explanation/` |
+| `/work` | After gates green, before commit | Flip pending → implemented on matching how-to / Feature pages. Fill `## Steps` from the diff. Update `reference/` tables. Never add rationale to a how-to. | `how-to/` · `reference/` · `explanation/` |
+| `/review` | — | Not invoked. Reviewer may note stale docs secondarily. | — |
+| `/release` | After gates green | Full-pass sweep across all four modes. Promote stable how-tos to tutorials when appropriate. Create missing pages. Add ADRs at `explanation/decisions/`. Update `Home`/`_Sidebar`. Append to `reference/Completed-Features.md`. Block release on unresolved questions. | all four modes |
+| `/bugfix` | Post-fix | Update `reference/Known-Issues.md` if a gotcha emerged. Add ADR at `explanation/decisions/` if the fix implies a design-decision change. | `reference/` · `explanation/decisions/` |
 
 Humans may edit any wiki file anytime. Docsub respects existing content and asks before deprecating, moving, or deleting pages.
 
