@@ -39,6 +39,9 @@ jobs:
         run: python3 scripts/validate-adapters.py
       - name: Check cross-references + hook-fragment schema parity
         run: python3 scripts/check-references.py
+      - name: Lint wiki (Diátaxis / ADR 0004; warn-only, flips to --strict in task 6)
+        run: python3 scripts/check-wiki.py
+        continue-on-error: true
 
   syntax:
     name: syntax
