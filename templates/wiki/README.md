@@ -1,89 +1,129 @@
 # Wiki convention
 
-How this project documents itself. This `wiki/` folder is the source of truth for human-and-agent-readable documentation. It is mirrored to the repo's GitHub Wiki on every push to the default branch.
+How this project documents itself. This `wiki/` folder is the source of truth for human-and-agent-readable documentation and is mirrored to the repo's GitHub Wiki on every push to the default branch.
+
+This scaffold follows the Diátaxis convention — four modes, one intent per page, never mixed. See [ADR 0004 in agentic-harness](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0004-diataxis-documentation-spec.md) for the rationale.
 
 ## Two readers, one surface
 
 Every page is written for two audiences: a **human** who needs to understand the system without reading every file, and an **agent** who needs to resume work in a future session without the original context. Tables, diagrams, cross-links, and `file:line` references serve both.
 
-## Four sections
+## Four modes
 
-| Section | Purpose | Typical pages |
-|---|---|---|
-| 🛠 `development/` | How to build, run, test, contribute locally | `Getting-Started.md`, `Environment.md`, `Testing.md`, `Conventions.md`, `Troubleshooting.md`, `Completed-Features.md` |
-| 📟 `operational/` | How to run / observe / debug in production | `Runbook.md`, `Deployment.md`, `Observability.md`, `Configuration.md`, `Rollback.md` |
-| 🎨 `design/` | Product / UX intent, features, rationale | `Product-Intent.md`, `User-Flows.md`, `features/<slug>.md`, `Open-Questions.md` |
-| 🏗 `architecture/` | Subsystems, data flow, decisions | `Overview.md`, `subsystems/<name>.md`, `Data-Model.md`, `Integrations.md`, `decisions/<NNNN>-<slug>.md` |
+| Mode | Purpose | Reader's question | Typical pages |
+|---|---|---|---|
+| 📚 `tutorials/` | Learning by doing | "I'm new — walk me through an outcome." | `01-Getting-Started.md`, `02-First-Feature.md` |
+| 🔧 `how-to/` | Task-focused recipes | "How do I X?" | `Run-The-Tests.md`, `Deploy.md`, `Rollback.md` |
+| 📖 `reference/` | Canonical lookup | "What are the flags / keys / codes?" | `CLI.md`, `Config.md`, `Exit-Codes.md` |
+| 💡 `explanation/` | Intent and rationale | "Why is it this way?" | `Product-Intent.md`, `How-The-Pieces-Fit.md`, `decisions/<NNNN>-<slug>.md` |
 
-Pages outside these four sections are not part of the convention — file them under an existing section, or add a subdir with a rationale in that section's `README.md`.
+Pages outside these four dirs are not part of the convention. File under an existing mode, or — if a genuinely new mode is needed — update ADR 0004 in agentic-harness first; don't invent a fifth here.
+
+## The single-mode rule
+
+Each page serves exactly one reader intent. A tutorial does not contain rationale; a how-to does not contain background narrative; a reference is not a walk-through. When content mixes modes, split the page — don't cram modes together under different headings.
+
+The `.diataxis` marker file in this folder enables structural-lint enforcement of this rule (in agentic-harness, via `scripts/check-wiki.py`).
 
 ## Filename rules
 
 - `CamelCase-With-Dashes.md` (matches GitHub Wiki URL convention).
-- **Globally unique across subdirs** — basename collisions fail the sync workflow loudly.
-- Subdirs allowed (e.g. `design/features/access-token-refresh.md`), kept shallow.
+- **Globally unique across mode dirs** — basename collisions fail the sync workflow loudly.
+- Tutorials sort numerically: `01-`, `02-`, etc.
+- ADRs sort numerically: `0001-`, `0002-`, etc.
 
 ## Templates
 
-Every page starts with `#` H1 + a one-paragraph summary. **No YAML front-matter.** Three shapes:
+Four shapes — one per mode. Every page starts with `# H1 — <Title>` and a one-paragraph summary. **No YAML front-matter.**
 
-### Template 1 — "Page" (the default)
+### Template 1 — Tutorial
 
-Used for anything narrative: getting-started, runbook, deployment, overview, data-model, etc.
-
-```markdown
-# <Title>
-
-<1-paragraph summary: what this page covers and who it's for.>
-
-## ⚡ Quick Reference
-
-| Question | Answer |
-|---|---|
-| <common lookup> | <answer with cross-links> |
-| Where's the code? | [`path/to/file.ts`](github-url) |
-| Related pages | [Page One](Page-One), [Page Two](Page-Two) |
-
-## <Semantic section>
-<prose, tables, diagrams, alerts, code blocks>
-
-## <Semantic section>
-...
-```
-
-### Template 2 — "Status" extension
-
-Layered on Template 1. Used for pages tracked through `pending → implemented → deprecated`: `design/features/<slug>.md` and `architecture/subsystems/<name>.md`.
+Used for `tutorials/<NN>-<slug>.md`. Goal-driven walk-through with numbered steps.
 
 ```markdown
-# Feature: <Title>
+# Tutorial N — <Title>
 
 > [!NOTE]
-> **Status:** pending
-> **Plan:** `.harness/PLAN.md#task-N`
-> **Last updated:** YYYY-MM-DD
+> **Goal:** <what the reader will have achieved at the end.>
+> **Time:** <rough duration.>
+> **Prereqs:** <what the reader must have before step 1.>
 
-<1-paragraph summary.>
+<1-paragraph orientation.>
 
-## ⚡ Quick Reference
-| ... | ... |
+## Step 1 — <action>
+## Step 2 — <action>
+## Step 3 — <action>
 
-## Intent
-<user-facing why.>
+## What you learned
 
-## Design
-<how it works. Tables, diagrams, `file:line` links.>
+- <one bullet per learning outcome.>
 
-## Implementation
-<real `file:line` references, actual behavior.>
+## Next
 
-## Notes
-<footguns, follow-ups, deferred items.>
+- <pointer to a how-to or reference for the reader to go deeper.>
 ```
 
-### Template 3 — "ADR"
+### Template 2 — How-to
 
-Only for `architecture/decisions/<NNNN>-<slug>.md`.
+Used for `how-to/<Task>.md`. Task-focused recipe, no rationale, no background.
+
+```markdown
+# How to <task>
+
+> [!NOTE]
+> **Goal:** <one line describing the task.>
+> **Prereqs:** <what the reader needs before step 1.>
+
+## Steps
+
+1. <action>
+2. <action>
+3. <verify>
+
+## Variants
+
+<sub-sections for meaningful variants; skip if none.>
+
+## Verify
+
+<how to confirm the task succeeded.>
+
+## Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| ... | ... |
+```
+
+### Template 3 — Reference
+
+Used for `reference/<Surface>.md`. Tables-first, no narrative.
+
+```markdown
+# <Surface name> reference
+
+<1-paragraph scope statement.>
+
+## ⚡ Quick Reference
+
+| <column> | <column> |
+|---|---|
+| ... | ... |
+
+## <Section — flags / commands / config / etc.>
+
+| ... | ... |
+
+## Related
+
+- <cross-links to tutorials, how-tos, or other references.>
+```
+
+### Template 4 — Explanation / ADR
+
+Used for `explanation/<Topic>.md` and `explanation/decisions/<NNNN>-<slug>.md`.
+
+Explanation pages are narrative and may use any section structure that serves the argument. ADRs use the canonical Nygard shape:
 
 ```markdown
 # ADR <NNNN>: <Title>
@@ -97,22 +137,24 @@ Only for `architecture/decisions/<NNNN>-<slug>.md`.
 ## Consequences
 ```
 
+ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subheadings; supersede by recording a new ADR.
+
 ## Stylistic conventions
 
 - **Tables over bullet lists** for comparative information.
 - **Diagrams** — ASCII in fenced code blocks or Mermaid. Use one whenever a relationship is clearer drawn than described.
 - **GitHub alerts** for load-bearing callouts: `> [!NOTE]`, `> [!IMPORTANT]`, `> [!WARNING]`.
-- **Emoji section markers**, consistent: 🛠 Development · 📟 Operational · 🎨 Design · 🏗 Architecture · ⚡ Quick Reference · 📁 File Layout · 🤝 Integration.
-- **Cross-links**: `[text](Page-Name)` for wiki pages, full GitHub URLs (with `#L<line>`) for code references.
+- **Emoji mode markers**, consistent: 📚 Tutorials · 🔧 How-to · 📖 Reference · 💡 Explanation · ⚡ Quick Reference · 📁 File Layout · 🤝 Integration.
+- **Cross-links**: wiki pages by basename (`Home`, `01-Getting-Started`, etc.), full GitHub URLs with `#L<line>` for code references.
 
 ## Who maintains what
 
 - **Humans** may edit any wiki file anytime.
 - **The `documenter` sub-agent** updates pages at phase boundaries only — never during `/work`'s implement step:
-  - `/setup` — populates seed pages from the codebase.
-  - `/plan` — creates pending Feature/Subsystem pages for the plan.
-  - `/work` (post-gates) — flips pending → implemented, fills Implementation sections.
-  - `/release` — full-pass sweep, updates `Home.md` / `_Sidebar.md`, appends to `Completed-Features.md`, adds ADRs for non-obvious decisions.
+  - `/setup` — populates seed tutorial + reference + explanation from the codebase.
+  - `/plan` — creates pending how-to pages and reference rows for the plan's tasks.
+  - `/work` (post-gates) — flips pending how-tos to implemented, fills reference tables.
+  - `/release` — adversarial sweep across all four modes; may promote stable how-tos to tutorials and may add new ADRs under `explanation/decisions/`.
 - `Home.md` and `_Sidebar.md` are maintained by the sub-agent — not generated by sync.
 
 ## GitHub Wiki sync
@@ -121,4 +163,4 @@ Only for `architecture/decisions/<NNNN>-<slug>.md`.
 
 ## Full spec
 
-[agentic-harness/harness/documentation.md](https://github.com/alexherrero/agentic-harness/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold.
+[agentic-harness/harness/documentation.md](https://github.com/alexherrero/agentic-harness/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0004-diataxis-documentation-spec.md).

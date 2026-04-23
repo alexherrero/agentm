@@ -148,7 +148,7 @@ function Copy-ManagedFile([string]$src, [string]$dst) {
 function Copy-UserWalk([string]$srcRoot, [string]$dstRoot) {
     if (-not (Test-Path -LiteralPath $srcRoot)) { return }
     $srcFull = (Resolve-Path -LiteralPath $srcRoot).ProviderPath
-    Get-ChildItem -LiteralPath $srcFull -Recurse -File | ForEach-Object {
+    Get-ChildItem -LiteralPath $srcFull -Recurse -File -Force | ForEach-Object {
         $rel = $_.FullName.Substring($srcFull.Length).TrimStart('\', '/')
         $dstFile = Join-Path $dstRoot $rel
         $parent = Split-Path -Parent $dstFile

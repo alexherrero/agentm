@@ -52,8 +52,12 @@ expected=(
   wiki/Home.md
   wiki/README.md
   wiki/_Sidebar.md
-  wiki/design/Product-Intent.md
-  wiki/architecture/Overview.md
+  wiki/.diataxis
+  wiki/tutorials/01-Getting-Started.md
+  wiki/how-to/First-How-To.md
+  wiki/reference/First-Reference.md
+  wiki/explanation/First-Explanation.md
+  wiki/explanation/decisions/README.md
   AGENTS.md
   CLAUDE.md
   .github/workflows/wiki-sync.yml

@@ -1,17 +1,17 @@
 - [Home](Home)
 
-### 🛠 Development
+### 📚 Tutorials
 
-- [Getting Started](Getting-Started)
+- [Getting started](01-Getting-Started)
 
-### 📟 Operational
+### 🔧 How-to guides
 
-- [Runbook](Runbook)
+- [First how-to](First-How-To)
 
-### 🎨 Design
+### 📖 Reference
 
-- [Product Intent](Product-Intent)
+- [First reference](First-Reference)
 
-### 🏗 Architecture
+### 💡 Explanation
 
-- [Overview](Overview)
+- [First explanation](First-Explanation)

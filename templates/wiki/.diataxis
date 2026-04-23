@@ -1,0 +1,14 @@
+This file marks that the project's wiki/ follows the Diátaxis four-mode
+convention from ADR 0004 of agentic-harness:
+
+  tutorials/   — learning-oriented, numbered-step walkthroughs
+  how-to/      — task-oriented recipes
+  reference/   — canonical lookup tables, flags, APIs
+  explanation/ — narrative rationale, intent, ADRs
+
+Presence of this marker enables strict-mode `check-wiki.py` for this
+project. Do not remove unless you are migrating away from Diátaxis.
+
+See:
+- wiki/README.md — the convention as it applies here.
+- https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0004-diataxis-documentation-spec.md
