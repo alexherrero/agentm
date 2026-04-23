@@ -3,7 +3,7 @@
 
 Walks a wiki tree and enforces the mode-based layout + per-mode page
 discipline described in
-wiki/architecture/decisions/0004-diataxis-documentation-spec.md.
+wiki/explanation/decisions/0004-diataxis-documentation-spec.md.
 
 Rules (hard = blocking under --strict; soft = always warn-only):
 

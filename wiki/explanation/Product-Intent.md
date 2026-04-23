@@ -9,7 +9,7 @@ What agentic-harness is, who it's for, and the shape of the problem it's trying 
 | What is it? | A phase-gated workflow + state layout that any AI coding agent (Claude Code, Antigravity, Codex, Gemini CLI) can follow. |
 | Who's it for? | A developer who wants agents to do production-quality engineering, not a demo. |
 | How big is it? | Six phase commands, two sub-agents, one skill (`ship-release`). Small on purpose. |
-| How does it get into a project? | One command — `install.sh /path/to/project`. See [Getting-Started](Getting-Started). |
+| How does it get into a project? | One command — `install.sh /path/to/project`. See [Install-Into-Project](Install-Into-Project). |
 | Why this shape? | See the six principles below, or [`harness/principles.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md). |
 
 ## The problem
@@ -65,12 +65,13 @@ Full text: [`harness/principles.md`](https://github.com/alexherrero/agentic-harn
 - **A supermarket of agents.** Two sub-agents (`explorer`, `adversarial-reviewer`) + one skill (`ship-release`). Adding more costs coherence.
 - **Replacing tests or code review.** Deterministic gates come first; LLMs augment.
 - **Dynamic-doc generation from code.** Docs are human-edited narrative, updated by the `documenter` sub-agent at phase boundaries only. See [ADR 0002](0002-documentation-convention).
-- **Universality across every tool.** The harness targets tools that read `AGENTS.md`. Tools without an adapter file tree need one written per [Overview](Overview).
+- **Universality across every tool.** The harness targets tools that read `AGENTS.md`. Tools without an adapter file tree need one written per [Repo-Layout](Repo-Layout).
 
 ## Related
 
-- [Overview](Overview) — repo layout, how phases/adapters/templates/scripts fit together.
-- [Getting-Started](Getting-Started) — install the harness into a project.
-- [Runbook](Runbook) — operate and release the harness.
+- [How-The-Pieces-Fit](How-The-Pieces-Fit) — narrative of how phases, adapters, templates, and scripts interact.
+- [Repo-Layout](Repo-Layout) — on-disk map of the four-adapter shape.
+- [Install-Into-Project](Install-Into-Project) — install the harness into a project.
+- [Cut-A-Release](Cut-A-Release) — cut a tagged release via `ship-release`.
 - [ADR 0001](0001-phase-gated-workflow) — why phase gates.
 - [ADR 0002](0002-documentation-convention) — why wiki + phase-boundary docs + installer boundary.

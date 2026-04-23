@@ -12,4 +12,4 @@ The `documenter` sub-agent proposes new ADRs during `/release` when a non-obviou
 - **Statuses:** `proposed` → `accepted` → `superseded-by-<NNNN>`.
 - **Amendments** to accepted ADRs use `## Amendment YYYY-MM-DD` subheadings — never edit the original body.
 
-The agentic-harness wiki has worked examples: [ADR 0002 — Documentation convention](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0002-documentation-convention.md) and [ADR 0004 — Diátaxis documentation spec](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0004-diataxis-documentation-spec.md).
+The agentic-harness wiki has worked examples: [ADR 0002 — Documentation convention](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0002-documentation-convention.md) and [ADR 0004 — Diátaxis documentation spec](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md).

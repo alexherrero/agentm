@@ -2,7 +2,7 @@
 
 How this project documents itself. This `wiki/` folder is the source of truth for human-and-agent-readable documentation and is mirrored to the repo's GitHub Wiki on every push to the default branch.
 
-This scaffold follows the Diátaxis convention — four modes, one intent per page, never mixed. See [ADR 0004 in agentic-harness](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0004-diataxis-documentation-spec.md) for the rationale.
+This scaffold follows the Diátaxis convention — four modes, one intent per page, never mixed. See [ADR 0004 in agentic-harness](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md) for the rationale.
 
 ## Two readers, one surface
 
@@ -163,4 +163,4 @@ ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subhead
 
 ## Full spec
 
-[agentic-harness/harness/documentation.md](https://github.com/alexherrero/agentic-harness/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0004-diataxis-documentation-spec.md).
+[agentic-harness/harness/documentation.md](https://github.com/alexherrero/agentic-harness/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md).

@@ -40,4 +40,4 @@ The `/bugfix` Issues lifecycle shipped in v0.8.2; this plan closed the symmetric
 
 - [GitHub-Projects-Integration](GitHub-Projects-Integration) — feature design + implementation.
 - [ADR 0003: ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking) — the two-call create-plus-link decision.
-- [Runbook](Runbook) — operational procedures including `ship-release`.
+- [Cut-A-Release](Cut-A-Release) — the procedure that invokes `ship-release`.

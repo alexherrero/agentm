@@ -81,7 +81,7 @@ Target projects get the *empty* scaffold from [`templates/wiki/`](https://github
 
 - **Docs lag behind code.** Between the end of `/work` and the end of `/release`, the wiki does not describe the new behavior. Mitigation: `/work`'s commit step runs `documenter` to flip pending → implemented on the relevant Feature/Subsystem page. It's not zero-lag, but it's bounded.
 - **The `documenter` sub-agent adds adapter surface.** Every adapter must expose documenter at the same phase boundaries. Mitigated by [`scripts/check-parity.sh`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/check-parity.sh) enforcing the canonical sub-agent set.
-- **Dogfood freshness is manual.** This repo's `wiki/` references specific line ranges in `install.sh` and `scripts/`; those can drift. Mitigation: pre-release check in [Runbook](Runbook) "Dogfood-freshness check"; the installer-boundary smoke test ensures drift never leaks into target projects.
+- **Dogfood freshness is manual.** This repo's `wiki/` references specific line ranges in `install.sh` and `scripts/`; those can drift. Mitigation: pre-release check in [Cut-A-Release](Cut-A-Release) "Dogfood-freshness check"; the installer-boundary smoke test ensures drift never leaks into target projects.
 - **No machine-checkable quality score.** `/release`'s documenter pass is adversarial-framed ("find what wasn't documented") but deliberately not an LLM-as-judge quality score — see [principle 4](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md#4-deterministic-verification-before-llm-judgment). Structural checks (cross-links resolve, required pages exist) run in CI; "is this page good" is a human call.
 
 **Load-bearing assumptions**

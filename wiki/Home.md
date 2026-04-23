@@ -1,46 +1,40 @@
-# agentic-harness
+# agentic-harness Wiki
 
-A small, opinionated harness for doing production-quality engineering with AI coding agents — Claude Code, Antigravity, Codex, Gemini CLI, and any tool that reads `AGENTS.md`. Six phase-gated slash commands, two sub-agents, deterministic verification, on-disk state. This wiki is the project's own documentation, maintained by the `documenter` sub-agent at phase boundaries.
+Dogfood documentation for the harness repo itself. Every page is written for a single reader intent — learning, doing, looking up, or understanding — per the Diátaxis convention ([ADR 0004](0004-diataxis-documentation-spec)).
 
-## ⚡ Quick Reference
+> [!NOTE]
+> This wiki documents agentic-harness for contributors to the harness repo. It is **never** installed into target projects — target projects get [`templates/wiki/`](https://github.com/alexherrero/agentic-harness/tree/main/templates/wiki) instead. See [ADR 0002](0002-documentation-convention) for why.
 
-| Question | Answer |
-|---|---|
-| What is this repo? | [Product-Intent](Product-Intent) |
-| How do I install it into a project? | [Getting-Started](Getting-Started) |
-| How do I cut a release? | [Runbook](Runbook) — "Cutting a release" |
-| How does `install.sh --update` behave? | [Runbook](Runbook) — "Updating an installed harness" |
-| Where does the code live? | [Overview](Overview) |
-| Why phase-gated? | [ADR 0001](0001-phase-gated-workflow) |
-| Why phase-boundary docs (not inline)? | [ADR 0002](0002-documentation-convention) |
-| Why ProjectsV2 create + link (not repo-owned)? | [ADR 0003](0003-ProjectsV2-Ownership-And-Linking) |
-| What shipped recently? | [Completed-Features](Completed-Features) |
+## 📚 New here? Learn by doing.
 
-## 🛠 Development
+- [Tutorial 1 — Your first harness install](01-First-Install) — fresh clone to a healthy installed scratch project in ~5 minutes.
 
-Build, install, and contribute to the harness itself.
+## 🔧 Trying to do something specific?
 
-- [Getting-Started](Getting-Started) — install the harness into a target project; run the local test suite.
-- [Completed-Features](Completed-Features) — reverse-chronological log of what's shipped, maintained at `/release`.
+- [How to install the harness into a project](Install-Into-Project) — add the scaffold to an existing repo.
+- [How to refresh an installed harness](Update-Installed-Harness) — pull a newer harness version into a project that already has one.
+- [How to cut a release](Cut-A-Release) — tag, changelog, GitHub release via the `ship-release` skill.
 
-## 📟 Operational
+## 📖 Looking up a detail?
 
-Run, release, and maintain the harness.
+- [Installer CLI reference](Installer-CLI) — flags, prerequisites, ownership table for `install.sh` / `install.ps1`.
+- [CI gates reference](CI-Gates) — what each CI workflow proves and the script behind it.
+- [Repo layout reference](Repo-Layout) — top-level directory map and four-adapter parity table.
+- [Completed features](Completed-Features) — reverse-chronological log of shipped work.
 
-- [Runbook](Runbook) — `install.sh --update`, cutting a release with `ship-release`, CI gates, the dogfood-freshness check.
+## 💡 Want to know why?
 
-## 🎨 Design
+- [Product intent](Product-Intent) — what problem the harness solves and for whom.
+- [How the pieces fit](How-The-Pieces-Fit) — narrative of how phases, adapters, templates, and scripts interact.
+- [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
 
-What the harness is for, who it's for, and why it's shaped the way it is.
+### Architecture decisions
 
-- [Product-Intent](Product-Intent) — problem statement, target user, non-goals.
-- [GitHub-Projects-Integration](GitHub-Projects-Integration) — preview-and-ask `gh project item-create` from every phase; opt-in at `/setup`.
+- [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow)
+- [ADR 0002 — Documentation convention](0002-documentation-convention)
+- [ADR 0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking)
+- [ADR 0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
 
-## 🏗 Architecture
+## Conventions
 
-How the pieces fit together.
-
-- [Overview](Overview) — repo layout: `harness/` (canonical specs), `adapters/` (per-tool shims), `templates/` (what `install.sh` drops into a project), `scripts/` (test infra, never propagated).
-- [ADR 0001: Phase-gated workflow](0001-phase-gated-workflow) — why `setup → plan → work → review → release` with hard boundaries and one task per `/work` session.
-- [ADR 0002: Documentation convention](0002-documentation-convention) — why docs live in `wiki/`, are written by a sub-agent at phase boundaries, and why the installer boundary keeps this repo's own `wiki/` out of target projects.
-- [ADR 0003: ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking) — why `/setup` runs a two-step `gh project create` + `gh project link --repo` flow rather than assuming a repo-owned form.
+Page templates, filename rules, and the Diátaxis four-mode split are described in [`templates/wiki/README.md`](https://github.com/alexherrero/agentic-harness/blob/main/templates/wiki/README.md) — the same conventions this wiki follows.
