@@ -63,7 +63,7 @@ Pages outside these four mode dirs are not part of the convention — either fil
 - Subdirs within a mode are allowed but kept shallow — prefer a flat list of basenames.
 
 > [!NOTE]
-> This four-mode layout supersedes the audience-based layout (`development/`, `operational/`, `design/`, `architecture/`) described in earlier revisions of [ADR 0002](../wiki/explanation/decisions/0002-documentation-convention.md). See [ADR 0004](../wiki/explanation/decisions/0004-diataxis-documentation-spec.md) for the rationale and the `documenter:migrate-to-diataxis` skill for the one-shot conversion of already-installed projects.
+> This four-mode layout supersedes the earlier audience-based layout described in [ADR 0002](../wiki/explanation/decisions/0002-documentation-convention.md). See [ADR 0004](../wiki/explanation/decisions/0004-diataxis-documentation-spec.md) for the rationale and the [Migrating an existing install](#migrating-an-existing-install) section below for the one-shot conversion of already-installed projects.
 
 ## Templates
 
@@ -254,4 +254,17 @@ Only populated if the user opts into project creation at `/setup`. Absent otherw
 - **Auto-generated sidebar.** Docsub owns `_Sidebar.md` — a deliberate, curated nav beats alphabetical autogen.
 - **Docs alongside code in `/work`'s implement step.** Biases the implementer toward confirming the plan. Phase-bounded only.
 - **LLM-as-judge for doc quality.** `/release`'s docsub pass is adversarial-framed ("find what wasn't documented") but not a quality score.
-- **More than three templates.** Every extra template is a decision the sub-agent gets wrong.
+- **Five-mode extensions** (a "glossary" or "changelog" mode). Four modes is the Diátaxis contract; glossaries live under `reference/`, changelogs under `reference/Completed-Features.md`.
+- **More than four templates.** Page, Status, ADR, Tutorial/How-to cover the full surface; every extra template is a decision the sub-agent gets wrong.
+
+## Migrating an existing install
+
+Projects installed from an earlier harness version (before [ADR 0004](../wiki/explanation/decisions/0004-diataxis-documentation-spec.md)) have the old audience-based subdir layout. The `documenter:migrate-to-diataxis` skill performs a one-shot, preview-first, non-destructive conversion:
+
+- Canonical spec: [`harness/skills/migrate-to-diataxis.md`](skills/migrate-to-diataxis.md). Adapter copies under `adapters/*/skills/migrate-to-diataxis/SKILL.md`.
+- Refuses to run on a dirty tree or a wiki that already has `wiki/.diataxis`.
+- Classifies every page by heading shape (ADR / Status / How-to / Tutorial / Reference / Explanation) using deterministic rules; mode-mixed pages are flagged for human split, never auto-moved.
+- Prints a preview (MOVES / LINK REWRITES / NEEDS HUMAN SPLIT / DELETIONS), prompts `Apply? [y/N]`, then uses `git mv` so blame is preserved.
+- Leaves the result staged but uncommitted — the human reviews and commits.
+
+After migration, `scripts/check-wiki.py --strict` (the blocking Diátaxis lint) activates automatically via the `wiki/.diataxis` marker the skill drops.

@@ -124,10 +124,11 @@ If the plan introduces net-new user-visible features (as opposed to internal ref
 
 ### 6. Declare future state in the wiki
 
-Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the newly-written `PLAN.md` and the current `wiki/design/` + `wiki/architecture/` trees. For each task that affects user-visible behavior or architecture, docsub creates or updates a pending Feature/Subsystem page:
+Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the newly-written `PLAN.md` and the current `wiki/how-to/` + `wiki/reference/` + `wiki/explanation/` trees. For each task that affects user-visible behavior or architecture, docsub creates or updates pending pages in the right mode dir:
 
-- `wiki/design/features/<slug>.md` — Template 2 ("Status"), `Status: pending`, `Plan: .harness/PLAN.md#task-N`
-- `wiki/architecture/subsystems/<name>.md` — similarly, if a subsystem is new or materially changing
+- `wiki/explanation/<slug>.md` — Template 2 ("Status"), `Status: pending`, `Plan: .harness/PLAN.md#task-N`, for Feature/Subsystem pages that track pending→implemented
+- `wiki/how-to/<Verb-Object>.md` — Template 4, skeleton `## Steps` to be filled from the diff at `/work`, if the task introduces a user-facing recipe
+- `wiki/reference/<Name>.md` rows — add/update table rows for new commands, flags, config keys
 
 Docsub does not touch unrelated pages, and does not preemptively edit `Home.md` / `_Sidebar.md` — those are `/release`-time concerns. If docsub returns `OPEN QUESTIONS`, resolve them before `/work` starts; an ambiguous intent statement poisons later status flips.
 

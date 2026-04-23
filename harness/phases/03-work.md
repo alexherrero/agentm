@@ -88,7 +88,7 @@ Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`]
 - Flip `Status: pending → implemented` on the matching Feature/Subsystem page(s) **only if the diff proves it** — speculative flips are a worse failure than missed ones.
 - Fill `## Implementation` with real `file:line` references (GitHub URLs if a remote is set).
 - Update `## Design` only if the diff shows the plan shifted during implementation. If implementation matched the plan, leave Design alone.
-- Create or update pages under `wiki/operational/` if the task introduced operational concerns (new env var, deploy step, runtime dependency, health check).
+- Create or update pages under `wiki/how-to/` if the task introduced operational concerns (new env var, deploy step, runtime dependency, health check) — recipe shape, `## Steps`, no rationale.
 
 If docsub returns `OPEN QUESTIONS` (e.g. "task marked `[x]` but diff doesn't touch the claimed surface"), resolve them before committing. If it returns `NO CHANGES`, that's fine — not every task touches documented surface.
 

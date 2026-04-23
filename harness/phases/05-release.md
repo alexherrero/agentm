@@ -53,8 +53,8 @@ Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`]
 1. Every completed task has reached `Status: implemented` on the right page. Fix any that got missed during `/work`.
 2. Any new subsystem / feature / decision that surfaced during implementation but wasn't documented — create the page now.
 3. Update `Home.md` and `_Sidebar.md` to reflect any pages added / renamed / removed during this plan.
-4. If the plan introduced a non-obvious architectural choice, add an ADR at `wiki/architecture/decisions/<NNNN>-<slug>.md` (Template 3). Number one higher than the highest existing ADR; start at `0001` if none exist.
-5. Append a reverse-chronological entry to `wiki/development/Completed-Features.md` — one line in the overview table + a section below with date, branch/PR ref, and a 2–3 sentence summary.
+4. If the plan introduced a non-obvious architectural choice, add an ADR at `wiki/explanation/decisions/<NNNN>-<slug>.md` (Template 3). Number one higher than the highest existing ADR; start at `0001` if none exist.
+5. Append a reverse-chronological entry to `wiki/reference/Completed-Features.md` — one line in the overview table + a section below with date, branch/PR ref, and a 2–3 sentence summary.
 
 **Block the release** if docsub returns `OPEN QUESTIONS` it can't auto-answer. Surface them to the user; do not proceed until resolved. Shipping with stale docs is how the wiki becomes untrustworthy, and once it's untrustworthy the whole convention is worthless.
 
