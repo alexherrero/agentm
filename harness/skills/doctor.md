@@ -39,8 +39,8 @@ For each detected adapter, verify the expected name set is present and each file
 
 For each expected item:
 1. The file exists at the adapter-specific path.
-2. The frontmatter YAML (Claude Code / Antigravity / Codex / Gemini markdown) or TOML block (Codex sub-agents, Gemini commands) parses cleanly.
-3. The `name:` field matches the filename/dirname.
+2. The frontmatter YAML (markdown) or top-level TOML parses cleanly.
+3. **For surfaces that carry an explicit `name:` field**, the field matches the filename/dirname. Surfaces that carry `name:`: Claude Code sub-agents and skills, Antigravity skills (including sub-agents-as-skills), Codex skills, Codex sub-agents (TOML `name = ...`), Gemini sub-agents. Surfaces *without* `name:` (name is implicit from filename): Claude Code phase commands, Antigravity workflows, Gemini TOML commands. Do **not** flag missing `name:` on those.
 
 Then:
 4. **State files**: `.harness/PLAN.md`, `.harness/progress.md`, `.harness/scripts/telemetry.sh` all exist.

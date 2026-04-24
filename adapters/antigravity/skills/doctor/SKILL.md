@@ -33,7 +33,7 @@ Expected name sets:
 For each expected file:
 1. Exists at the right path.
 2. Frontmatter YAML parses cleanly.
-3. `name:` field matches filename/dirname.
+3. `name:` field matches dirname — **only** for skills (sub-agents-as-skills and shared skills both carry `name:`). Antigravity workflows intentionally have no `name:` field; their name is implicit from the filename. Don't flag them for a missing `name:`.
 
 Then:
 4. `.harness/PLAN.md`, `.harness/progress.md`, `.harness/scripts/telemetry.sh` all exist.

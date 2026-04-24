@@ -47,7 +47,7 @@ Additional Gemini name sets (if `.gemini/` present):
 For each expected file:
 1. Exists at the right path.
 2. Frontmatter YAML (markdown) or top-level TOML parses cleanly.
-3. `name:` field matches filename/dirname (stripping the `harness-` prefix for the prefixed-skill set).
+3. `name:` field matches dirname/filename — for Codex skills (including `harness-` prefixed) and Codex TOML sub-agents (which have `name = ...`). Don't require name-match on Gemini TOML commands — those have no `name:` field; the name is implicit from the filename. Gemini sub-agents (markdown) do carry `name:` and should match.
 
 Then:
 4. `.harness/PLAN.md`, `.harness/progress.md`, `.harness/scripts/telemetry.sh` all exist.

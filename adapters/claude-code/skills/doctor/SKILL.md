@@ -34,7 +34,7 @@ Expected name sets (must match exactly — extras and missings both fail):
 For each expected file:
 1. Exists at the right path.
 2. Frontmatter YAML parses cleanly (no trailing-tab or quote issues).
-3. `name:` field matches filename/dirname.
+3. `name:` field matches dirname — **only** for sub-agents and skills (which carry an explicit `name:`). Claude Code phase commands intentionally have no `name:` field; their name is implicit from the filename. Don't flag them for a missing `name:`.
 
 Then:
 4. `.harness/PLAN.md`, `.harness/progress.md`, `.harness/scripts/telemetry.sh` all exist.
