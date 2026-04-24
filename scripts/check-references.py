@@ -84,7 +84,7 @@ NAME_FROM_COMMAND_FILE_RE = re.compile(
 CODEX_PHASE_PREFIX = "harness-"
 
 # Shared skills that live under skills/ but map to harness/skills/<name>.md
-SHARED_SKILLS = {"dependabot-fixer", "migrate-to-diataxis", "ship-release"}
+SHARED_SKILLS = {"dependabot-fixer", "doctor", "migrate-to-diataxis", "ship-release"}
 
 # Antigravity puts sub-agents under skills/ (no separate sub-agent primitive).
 # These skill names map to harness/agents/<name>.md, not harness/skills/<name>.md.

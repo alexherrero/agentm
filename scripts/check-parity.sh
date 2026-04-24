@@ -6,7 +6,7 @@
 #   phase-commands: bugfix, plan, release, review, setup, work
 #   sub-agents:     adversarial-reviewer, adversarial-reviewer-cross,
 #                   documenter, explorer
-#   skills:         dependabot-fixer, migrate-to-diataxis, ship-release
+#   skills:         dependabot-fixer, doctor, migrate-to-diataxis, ship-release
 #
 # Deliberate divergences (documented, not failures):
 #   - codex wraps phase-commands as skills with `harness-` prefix
@@ -28,7 +28,7 @@ cd "$HARNESS_ROOT"
 
 CANON_COMMANDS=(bugfix plan release review setup work)
 CANON_AGENTS=(adversarial-reviewer adversarial-reviewer-cross documenter explorer)
-CANON_SKILLS=(dependabot-fixer migrate-to-diataxis ship-release)
+CANON_SKILLS=(dependabot-fixer doctor migrate-to-diataxis ship-release)
 
 fail=0
 

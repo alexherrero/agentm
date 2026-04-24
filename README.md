@@ -46,6 +46,7 @@ Background utilities that auto-trigger, separate from the phase commands.
 | `dependabot-fixer` | Dependabot PR has red CI. Applies a bounded fix loop; never merges. ([spec](harness/skills/dependabot-fixer.md)) |
 | `ship-release` | A feature just went green end-to-end. Computes semver, writes notes, tags, creates the GitHub release. ([spec](harness/skills/ship-release.md)) |
 | `migrate-to-diataxis` | One-shot migration of an already-installed project's `wiki/` to the Diátaxis four-mode layout. Preview-first, `git mv` for blame, non-destructive. ([spec](harness/skills/migrate-to-diataxis.md)) |
+| `doctor` | User-invoked (`/doctor`). Verifies the install is correctly wired up in this host — structural by default, `--live` adds real sub-agent dispatches and skill dry-runs. ([spec](harness/skills/doctor.md)) |
 
 ## Telemetry
 
