@@ -40,7 +40,11 @@ Installation will provide slash commands, sub-agents, skills, per-project state 
 Requires PowerShell 7+
 
 ```powershell
+# First install (add -Hooks to register verification hooks):
 pwsh -NoProfile -File C:\path\to\agentic-harness\install.ps1 [-Hooks] C:\path\to\your-project
+
+# To refresh harness-authored files, leaves your edits alone:
+pwsh -NoProfile -File C:\path\to\agentic-harness\install.ps1 -Update C:\path\to\your-project
 ```
 
 Full details in [wiki/how-to/Install-Into-Project.md](wiki/how-to/Install-Into-Project.md).
