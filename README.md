@@ -1,8 +1,35 @@
 # agentic-harness
 
+[![Linux Tests](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-linux.yml/badge.svg?branch=main)](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-linux.yml)
+[![Mac Tests](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-mac.yml/badge.svg?branch=main)](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-mac.yml)
+[![Windows Tests](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-windows.yml/badge.svg?branch=main)](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-windows.yml)
+[![Latest release](https://img.shields.io/github/v/release/alexherrero/agentic-harness?label=latest&color=blue)](https://github.com/alexherrero/agentic-harness/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A small, opinionated harness for doing production-quality engineering with AI coding agents (Claude Code, Antigravity, Codex, Gemini, and tools that read `AGENTS.md`).
 
 Six phase-gated slash commands, three sub-agents (`explorer`, `adversarial-reviewer`, `documenter`), deterministic verification, on-disk state, and a narrative `wiki/` that syncs to the GitHub Wiki. Not a 150-agent supermarket — installs into any project in one command.
+
+[![Works with Claude Code](https://img.shields.io/badge/works%20with-Claude%20Code-D97706?style=flat)](adapters/claude-code/)
+[![Works with Antigravity](https://img.shields.io/badge/works%20with-Antigravity-7C3AED?style=flat)](adapters/antigravity/)
+[![Works with Codex](https://img.shields.io/badge/works%20with-Codex-10A37F?style=flat)](adapters/codex/)
+[![Works with Gemini](https://img.shields.io/badge/works%20with-Gemini-4285F4?style=flat)](adapters/gemini/)
+
+```mermaid
+flowchart LR
+    U([User])
+    H[Host<br/>Claude Code · Antigravity<br/>Codex · Gemini]
+    A[Adapter<br/>commands · agents · skills]
+    S[Canonical specs<br/>harness/]
+    ST[(.harness/<br/>state)]
+    W[(wiki/<br/>→ GitHub Wiki)]
+
+    U -->|/slash command| H
+    H --> A
+    A --> S
+    S --> ST
+    S --> W
+```
 
 ## Principles
 
