@@ -230,26 +230,25 @@ for d in "$HARNESS_ROOT"/adapters/antigravity/skills/*/; do
   cp_managed_dir "$d" ".agent/skills/$(basename "$d")"
 done
 
-# .agents/skills/ + .codex/agents/ — Codex CLI config (full-parity adapter).
-# Note: Codex uses plural .agents/ for skills and singular .codex/ for
-# subagents (TOML) — distinct from Antigravity's .agent/ singular.
-mkdir -p .agents/skills .codex/agents
-for d in "$HARNESS_ROOT"/adapters/codex/skills/*/; do
-  [[ -d "$d" ]] || continue
-  cp_managed_dir "$d" ".agents/skills/$(basename "$d")"
-done
-for f in "$HARNESS_ROOT"/adapters/codex/agents/*.toml; do
-  [[ -e "$f" ]] || continue
-  cp_managed "$f" ".codex/agents/$(basename "$f")"
+# .agents/skills/ — shared skills delivery (read by Gemini CLI per the
+# Agent Skills standard). Source: adapters/claude-code/skills/. The
+# shared skills are duplicated across per-host adapter dirs (parity
+# enforces identical content) and claude-code/skills/ is the cleanest
+# source — antigravity/skills/ mixes sub-agents-as-skills with shared
+# skills, so iterating that dir would over-deliver.
+mkdir -p .agents/skills
+for name in dependabot-fixer doctor migrate-to-diataxis ship-release; do
+  src="$HARNESS_ROOT/adapters/claude-code/skills/$name"
+  [[ -d "$src" ]] || continue
+  cp_managed_dir "$src" ".agents/skills/$name"
 done
 
 # .gemini/ — Gemini CLI config (full-parity adapter). Commands are TOML,
 # subagents are markdown w/ YAML frontmatter. settings.json uses cp_user
 # semantics (never clobber existing user config — README documents the
 # AGENTS.md fileName merge if they already have a settings.json).
-# Note: shared skills (dependabot-fixer, ship-release) live in
-# .agents/skills/ (copied by Codex block above); Gemini reads that path
-# natively per the Agent Skills standard.
+# Note: Gemini reads shared skills from .agents/skills/ (delivered above)
+# per the Agent Skills standard.
 mkdir -p .gemini/commands .gemini/agents
 for f in "$HARNESS_ROOT"/adapters/gemini/commands/*.toml; do
   [[ -e "$f" ]] || continue

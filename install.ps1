@@ -223,12 +223,19 @@ Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/antigravity/rules')     '*.m
 Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/antigravity/workflows') '*.md' '.agent/workflows'
 Copy-AdapterDirs  (Join-Path $HarnessRoot 'adapters/antigravity/skills')           '.agent/skills'
 
-# .agents/skills/ + .codex/agents/ — Codex CLI adapter
-# (plural .agents/ for skills; .codex/ for TOML subagents)
-Copy-AdapterDirs  (Join-Path $HarnessRoot 'adapters/codex/skills')  '.agents/skills'
-Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/codex/agents') '*.toml' '.codex/agents'
+# .agents/skills/ — shared skills delivery (read by Gemini CLI per the
+# Agent Skills standard). Source: adapters/claude-code/skills/ (parity
+# enforces identical content; cleanest source — antigravity/skills/
+# mixes sub-agents-as-skills with shared skills).
+New-Item -ItemType Directory -Path '.agents/skills' -Force | Out-Null
+foreach ($name in @('dependabot-fixer', 'doctor', 'migrate-to-diataxis', 'ship-release')) {
+    $src = Join-Path $HarnessRoot "adapters/claude-code/skills/$name"
+    if (Test-Path -LiteralPath $src -PathType Container) {
+        Copy-ManagedDir $src (Join-Path '.agents/skills' $name)
+    }
+}
 
-# .gemini/ — Gemini CLI adapter. Shared skills (dependabot-fixer, ship-release) reused from .agents/skills/.
+# .gemini/ — Gemini CLI adapter. Reads shared skills from .agents/skills/ (delivered above).
 Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/gemini/commands') '*.toml' '.gemini/commands'
 Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/gemini/agents')   '*.md'   '.gemini/agents'
 Copy-UserFile     (Join-Path $HarnessRoot 'adapters/gemini/settings.json') '.gemini/settings.json'
