@@ -42,10 +42,7 @@ expected=(
   .agent/rules/harness.md
   .agent/workflows/plan.md
   .agent/skills/dependabot-fixer/SKILL.md
-  .agents/skills/harness-plan/SKILL.md
   .agents/skills/dependabot-fixer/SKILL.md
-  .codex/agents/explorer.toml
-  .codex/agents/documenter.toml
   .gemini/commands/plan.toml
   .gemini/agents/explorer.md
   .gemini/settings.json

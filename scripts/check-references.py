@@ -80,9 +80,6 @@ NAME_FROM_COMMAND_FILE_RE = re.compile(
     r"adapters/[^/]+/(commands|workflows)/([A-Za-z0-9_-]+)\.(md|toml)$"
 )
 
-# Codex skills are prefixed 'harness-<phase>' — strip the prefix before matching.
-CODEX_PHASE_PREFIX = "harness-"
-
 # Shared skills that live under skills/ but map to harness/skills/<name>.md
 SHARED_SKILLS = {"dependabot-fixer", "doctor", "migrate-to-diataxis", "ship-release"}
 
@@ -107,19 +104,10 @@ def expected_canonical_for(adapter_file: Path) -> str | None:
     m = NAME_FROM_SKILL_DIR_RE.search(rel)
     if m:
         skill_name = m.group(1)
-        # Codex: 'harness-plan' → phase 'plan'
-        if skill_name.startswith(CODEX_PHASE_PREFIX) and "codex" in rel:
-            phase = skill_name[len(CODEX_PHASE_PREFIX):]
-            if phase == "bugfix":
-                return f"harness/pipelines/{phase}.md"
-            # match phases/NN-<phase>.md
-            for p in (ROOT / "harness/phases").glob(f"*-{phase}.md"):
-                return p.relative_to(ROOT).as_posix()
-            return None
         # Antigravity sub-agents-as-skills
         if "antigravity" in rel and skill_name in ANTIGRAVITY_AGENT_LIKE_SKILLS:
             return f"harness/agents/{skill_name}.md"
-        # Shared skills (dependabot-fixer, ship-release)
+        # Shared skills (dependabot-fixer, doctor, migrate-to-diataxis, ship-release)
         if skill_name in SHARED_SKILLS:
             return f"harness/skills/{skill_name}.md"
         return None

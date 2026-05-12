@@ -145,8 +145,7 @@ Print the release URL (`gh release view <tag> --json url -q .url`). If the proje
 |---|---|
 | Claude Code | Skill auto-triggers on keywords like "ship a release" / "cut a release" / explicit `/ship-release [size-or-version]` |
 | Antigravity | Prompt: *"Run the ship-release skill"* (optionally with size) |
-| Codex | `/ship-release` skill, prefix-aligned with other skills |
-| Gemini | Reads skill from `.agents/skills/ship-release/SKILL.md` (reused from Codex delivery, per existing pattern) |
+| Gemini | Reads skill from `.agents/skills/ship-release/SKILL.md` (delivered by `install.sh` per the Agent Skills standard) |
 
 ## Guardrails
 

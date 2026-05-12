@@ -51,7 +51,7 @@ Multi-line strings supported.
 
 **Source:** [Gemini CLI docs — Custom commands](https://geminicli.com/docs/cli/custom-commands/); [Google Cloud blog — Custom slash commands](https://cloud.google.com/blog/topics/developers-practitioners/gemini-cli-custom-slash-commands).
 
-**Implication for harness:** phase entrypoints map 1:1 to `.toml` slash commands. No renaming needed (unlike Codex).
+**Implication for harness:** phase entrypoints map 1:1 to `.toml` slash commands. No renaming needed.
 
 ## (b) Subagents
 
@@ -85,7 +85,7 @@ The markdown body becomes the subagent's system prompt.
 - **Automatic delegation** — main agent picks based on `description` matching task intent.
 - **Explicit forcing** — `@agent-name <prompt>` at the start of a message.
 
-**Context isolation:** each subagent runs in its own context loop with independent conversation history. This IS a fresh-context guarantee (unlike Antigravity skills or Codex subagents, which inherit workspace state).
+**Context isolation:** each subagent runs in its own context loop with independent conversation history. This IS a fresh-context guarantee (unlike Antigravity skills, which inherit workspace state).
 
 **Recursion protection:** subagents cannot call other subagents even with `tools: ["*"]` wildcard.
 
@@ -105,7 +105,7 @@ The markdown body becomes the subagent's system prompt.
 2. User: `~/.gemini/skills/` **or** `~/.agents/skills/`
 3. Extension-bundled skills
 
-**`.agents/skills/` is a shared alias** across Codex, Gemini CLI, and other tools following the convention. This is load-bearing for the harness: **the `dependabot-fixer` skill delivered to `.agents/skills/` by the Codex adapter block is automatically visible to Gemini.** No duplication needed.
+**`.agents/skills/` is a shared alias** across Gemini CLI and other tools following the Agent Skills convention. This is load-bearing for the harness: **shared skills delivered to `.agents/skills/` by `install.sh` are automatically visible to Gemini.** No duplication needed.
 
 **Format:** `<skill-name>/SKILL.md` + optional bundled assets (scripts, references, templates).
 
@@ -118,7 +118,7 @@ The markdown body becomes the subagent's system prompt.
 
 **Source:** [Gemini CLI docs — Agent Skills](https://geminicli.com/docs/cli/skills/).
 
-**Implication for harness:** no separate Gemini skill files needed. The Codex adapter already ships `dependabot-fixer/SKILL.md` to `.agents/skills/`, and Gemini reads that location natively.
+**Implication for harness:** no separate Gemini skill files needed. `install.sh` ships shared skills (`dependabot-fixer`, `doctor`, `migrate-to-diataxis`, `ship-release`) to `.agents/skills/`, and Gemini reads that location natively.
 
 ## (d) Instruction-loading order
 
@@ -148,7 +148,7 @@ This lets Gemini treat the existing repo-root `AGENTS.md` as a native context so
 
 **Source:** [Gemini CLI docs — GEMINI.md](https://geminicli.com/docs/cli/gemini-md/); [Gemini CLI configuration](https://geminicli.com/docs/reference/configuration/).
 
-**Implication for harness:** repo-root `AGENTS.md` is already the universal contract (read by Antigravity, Codex, and — via `context.fileName` — Gemini). Adapter should ship a minimal `settings.json` fragment under `.gemini/` that adds `AGENTS.md` to `context.fileName`, or document the one-line manual addition in the README. Decision in Open Question #2.
+**Implication for harness:** repo-root `AGENTS.md` is already the universal contract (read by Antigravity and — via `context.fileName` — Gemini). Adapter should ship a minimal `settings.json` fragment under `.gemini/` that adds `AGENTS.md` to `context.fileName`, or document the one-line manual addition in the README. Decision in Open Question #2.
 
 ## Layout proposal for Task 9
 
@@ -170,7 +170,7 @@ adapters/gemini/
 └── settings.json                               # → target's .gemini/settings.json (merged, not overwritten)
 ```
 
-**No `skills/` directory** — `dependabot-fixer` is already delivered to `.agents/skills/` by the Codex adapter block and Gemini reads that path natively (see §c).
+**No `skills/` directory** — shared skills are delivered to `.agents/skills/` by `install.sh` and Gemini reads that path natively (see §c).
 
 **Destinations:**
 
@@ -181,7 +181,7 @@ adapters/gemini/
 **Install.sh wiring needed (Task 9):**
 
 ```bash
-# After the Codex block, add:
+# After the Antigravity block, add:
 mkdir -p .gemini/commands .gemini/agents
 for f in "$HARNESS_ROOT"/adapters/gemini/commands/*.toml; do
   [[ -e "$f" ]] || continue
@@ -238,21 +238,21 @@ Our cross-model reviewer **is** Gemini — it shells out to `gemini` CLI with a 
 
 - **(A) Ship `adversarial-reviewer-cross.md` unchanged** — the script already uses a different model (`-m gemini-3.1-pro-preview`) than the session default. Cross-model can still mean cross-*version*-of-Gemini, which catches some same-model failure modes.
 - **(B) Don't ship it on Gemini** — the adapter has only three sub-agents (`explorer`, `adversarial-reviewer`, `documenter`). Phase review skill dispatches only in-process reviewer.
-- **(C) Ship it but have it shell out to a non-Gemini model (Claude, Codex)** — true cross-model, but requires detecting which CLI is available.
+- **(C) Ship it but have it shell out to a non-Gemini model (Claude)** — true cross-model, but requires detecting which CLI is available.
 
 **Answer before Task 9:** **(A) — ship it, unchanged.**
 
 **Why:**
 1. Gemini-3.1-pro-preview vs. the session default is still a real model difference. Same family, different checkpoint and reasoning effort — catches a different slice of defects than same-instance-of-same-model review.
 2. Simpler to maintain. Option (C) introduces a CLI-detection branch in `cross-review.sh` that complicates the script for marginal value.
-3. Users who want true cross-vendor review can edit `cross-review.sh` locally to invoke `claude` or `codex` instead — the abstraction is in place.
+3. Users who want true cross-vendor review can edit `cross-review.sh` locally to invoke `claude` instead — the abstraction is in place.
 4. Parity count stays clean (four sub-agents across all adapters).
 
 ## Summary for Task 9 implementation
 
 - 12 files to create under `adapters/gemini/` (6 TOML commands + 4 markdown subagents + 1 settings.json + 1 README).
 - 2 install.sh cp_managed blocks to add + 1 jq-based settings.json merge (reuse --hooks pattern).
-- **No skills/ directory** — `dependabot-fixer` is already delivered to `.agents/skills/` by the Codex adapter block.
+- **No skills/ directory** — shared skills are delivered to `.agents/skills/` by `install.sh`.
 - Phase commands as native `/setup` / `/plan` / `/work` / `/review` / `/release` / `/bugfix` slash commands (no prefix; no built-in collisions).
 - Sub-agents as native Gemini subagents with YAML frontmatter (same shape as Claude Code — straight port).
 - `context.fileName` in settings.json adds `AGENTS.md` to the auto-loaded context hierarchy.

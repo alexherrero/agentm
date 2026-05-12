@@ -2,13 +2,12 @@
 """Validate adapter files parse and have required keys.
 
 Checks:
-  - TOML (codex/agents/*.toml, gemini/commands/*.toml) parses; has name,
-    description; codex agents have sandbox_mode.
+  - TOML (gemini/commands/*.toml) parses; has description, prompt.
   - Markdown YAML frontmatter (claude-code/agents, claude-code/commands,
     antigravity/workflows, antigravity/skills, gemini/agents) parses; has
     name and description.
-  - SKILL.md files (claude-code/skills, antigravity/skills, codex/skills)
-    have name + description frontmatter.
+  - SKILL.md files (claude-code/skills, antigravity/skills) have name +
+    description frontmatter.
   - JSON (templates/features.json, adapters/gemini/settings.json,
     templates/hooks/settings-fragment-*.json) parses.
   - Every adapter name has a matching canonical spec under harness/phases/,
@@ -82,18 +81,6 @@ def check_toml(path: Path, required: list[str]) -> dict:
         if k not in data or not data[k]:
             err(f"{path.relative_to(ROOT)}: TOML missing '{k}'")
     return data
-
-
-def validate_codex_agents() -> None:
-    for p in sorted((ROOT / "adapters/codex/agents").glob("*.toml")):
-        data = check_toml(p, ["name", "description", "sandbox_mode"])
-        if data.get("sandbox_mode") not in (
-            None,
-            "read-only",
-            "workspace-write",
-            "danger-full-access",
-        ):
-            err(f"{p.relative_to(ROOT)}: invalid sandbox_mode: {data['sandbox_mode']}")
 
 
 def validate_gemini_commands() -> None:
@@ -187,7 +174,6 @@ def check_canonical_backing() -> None:
 # ── main ────────────────────────────────────────────────────────────────────
 def main() -> int:
     # TOML
-    validate_codex_agents()
     validate_gemini_commands()
 
     # Markdown + frontmatter — required keys differ by surface:
@@ -204,7 +190,6 @@ def main() -> int:
     # Skills (SKILL.md)
     validate_skill_dirs("adapters/claude-code/skills")
     validate_skill_dirs("adapters/antigravity/skills")
-    validate_skill_dirs("adapters/codex/skills")
 
     # JSON
     check_json("templates/features.json", required_keys=["features"])

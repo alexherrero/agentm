@@ -9,13 +9,12 @@
 #   skills:         dependabot-fixer, doctor, migrate-to-diataxis, ship-release
 #
 # Deliberate divergences (documented, not failures):
-#   - codex wraps phase-commands as skills with `harness-` prefix
-#     (its `/plan` and `/review` collide with built-in Codex commands).
 #   - antigravity puts sub-agents under skills/ (Antigravity has no
 #     separate sub-agent primitive).
 #   - gemini has no skills/ dir; shared skills (dependabot-fixer,
-#     ship-release) are reused from the .agents/skills/ delivery
-#     (Codex adapter block).
+#     doctor, migrate-to-diataxis, ship-release) are delivered to
+#     `.agents/skills/` by install.sh and Gemini reads that path
+#     natively per the Agent Skills standard.
 #
 # Each failure mode below documents how to reproduce by hand.
 #
@@ -77,19 +76,11 @@ assert_set "antigravity/skills"             adapters/antigravity/skills      "" 
 # exactly one always-on rules file
 assert_set "antigravity/rules"              adapters/antigravity/rules       md  harness
 
-echo "== codex =="
-# Codex wraps phase-commands as skills with harness- prefix (collides with
-# built-in /plan and /review otherwise); sub-agents are TOML.
-codex_prefixed=()
-for c in "${CANON_COMMANDS[@]}"; do codex_prefixed+=("harness-$c"); done
-codex_skills=("${codex_prefixed[@]}" "${CANON_SKILLS[@]}")
-assert_set "codex/skills"                   adapters/codex/skills            ""   "${codex_skills[@]}"
-assert_set "codex/agents"                   adapters/codex/agents            toml "${CANON_AGENTS[@]}"
-
 echo "== gemini =="
 # Gemini has native slash commands + markdown sub-agents. No skills/ dir:
-# shared skills (dependabot-fixer, ship-release) are reused from
-# .agents/skills/ (delivered by the codex block in install.sh/install.ps1).
+# shared skills (dependabot-fixer, doctor, migrate-to-diataxis,
+# ship-release) are delivered to `.agents/skills/` by install.sh and
+# Gemini reads that path natively per the Agent Skills standard.
 assert_set "gemini/commands"                adapters/gemini/commands         toml "${CANON_COMMANDS[@]}"
 assert_set "gemini/agents"                  adapters/gemini/agents           md   "${CANON_AGENTS[@]}"
 if [[ -d adapters/gemini/skills ]]; then

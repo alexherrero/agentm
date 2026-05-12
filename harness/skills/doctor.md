@@ -22,25 +22,24 @@ Before any checks run, `doctor` detects which adapter is installed by looking fo
 |---|---|
 | Claude Code | `.claude/commands/` + `.claude/agents/` |
 | Antigravity | `.agent/workflows/` + `.agent/skills/` |
-| Codex | `.agents/skills/` + `.codex/agents/` |
 | Gemini | `.gemini/commands/` + `.gemini/agents/` |
 
 Multiple adapters may be present in the same project (the installer supports that). Run the full battery against each one found and report per-adapter.
 
-If no adapter is detected, abort with `doctor: no harness adapter found in .claude/, .agent/, .agents/, or .gemini/ — run install.sh first`.
+If no adapter is detected, abort with `doctor: no harness adapter found in .claude/, .agent/, or .gemini/ — run install.sh first`.
 
 ## Default-mode checks (structural)
 
 For each detected adapter, verify the expected name set is present and each file parses. The expected sets come from the same source as `scripts/check-parity.sh`:
 
-- **Phase commands**: `bugfix, plan, release, review, setup, work` (Codex prefixes with `harness-`).
+- **Phase commands**: `bugfix, plan, release, review, setup, work`.
 - **Sub-agents**: `adversarial-reviewer, adversarial-reviewer-cross, documenter, explorer`.
 - **Skills**: `dependabot-fixer, doctor, migrate-to-diataxis, ship-release`.
 
 For each expected item:
 1. The file exists at the adapter-specific path.
 2. The frontmatter YAML (markdown) or top-level TOML parses cleanly.
-3. **For surfaces that carry an explicit `name:` field**, the field matches the filename/dirname. Surfaces that carry `name:`: Claude Code sub-agents and skills, Antigravity skills (including sub-agents-as-skills), Codex skills, Codex sub-agents (TOML `name = ...`), Gemini sub-agents. Surfaces *without* `name:` (name is implicit from filename): Claude Code phase commands, Antigravity workflows, Gemini TOML commands. Do **not** flag missing `name:` on those.
+3. **For surfaces that carry an explicit `name:` field**, the field matches the filename/dirname. Surfaces that carry `name:`: Claude Code sub-agents and skills, Antigravity skills (including sub-agents-as-skills), Gemini sub-agents. Surfaces *without* `name:` (name is implicit from filename): Claude Code phase commands, Antigravity workflows, Gemini TOML commands. Do **not** flag missing `name:` on those.
 
 Then:
 4. **State files**: `.harness/PLAN.md`, `.harness/progress.md`, `.harness/scripts/telemetry.sh` all exist.
@@ -145,8 +144,7 @@ On any `FAIL`, the skill prints the specific reason under the failing row, exits
 |---|---|
 | Claude Code | `/doctor` or `/doctor --live` (skill auto-triggers on "check my harness install" / "is the harness working") |
 | Antigravity | Prompt: *"Run the doctor skill"* (optionally `--live`) |
-| Codex | `/doctor` skill, prefix-aligned with other shared skills |
-| Gemini | Reads skill from `.agents/skills/doctor/SKILL.md` (reused from Codex delivery, per existing shared-skill pattern) |
+| Gemini | Reads skill from `.agents/skills/doctor/SKILL.md` (delivered by `install.sh` per the Agent Skills standard) |
 
 ## Guardrails
 

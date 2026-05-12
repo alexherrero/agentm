@@ -105,11 +105,8 @@ required_non_empty=(
   .agent/workflows/plan.md
   .agent/skills/documenter/SKILL.md
   .agent/skills/ship-release/SKILL.md
-  .agents/skills/harness-plan/SKILL.md
   .agents/skills/ship-release/SKILL.md
   .agents/skills/dependabot-fixer/SKILL.md
-  .codex/agents/explorer.toml
-  .codex/agents/documenter.toml
   .gemini/commands/plan.toml
   .gemini/agents/explorer.md
 )
