@@ -197,10 +197,18 @@ INVOKE_SKILL_RE = re.compile(
     r"`([A-Za-z0-9_-]+)`\s+skill", re.IGNORECASE
 )
 
-# Skills that migrated out of the harness — referenced in phase specs as
-# graceful-skip suggestions, not harness-shipped. Don't assert they exist
-# under harness/skills/.
-EXTERNAL_SKILLS = {"dependabot-fixer", "ship-release"}
+# Customizations that live in the sibling agent-toolkit repo, not in this
+# harness. Phase specs reference them as graceful-skip suggestions; their
+# canonical specs aren't under harness/agents/ or harness/skills/. Renamed
+# from EXTERNAL_SKILLS in v2.1.0 when the evaluator agent landed — the set
+# now covers both kinds.
+EXTERNAL_CUSTOMIZATIONS = {
+    # Skills migrated to agent-toolkit in v2.0.0:
+    "dependabot-fixer",   # agent-toolkit/skills/dependabot-fixer/
+    "ship-release",       # agent-toolkit/skills/ship-release/
+    # Agents added in agent-toolkit v0.6.0 (referenced from /review in v2.1.0):
+    "evaluator",          # agent-toolkit/agents/evaluator.md
+}
 
 
 def check_phase_spec_dispatches() -> None:
@@ -208,6 +216,10 @@ def check_phase_spec_dispatches() -> None:
         text = spec.read_text(encoding="utf-8")
         for m in DISPATCH_AGENT_RE.finditer(text):
             name = m.group(1)
+            if name in EXTERNAL_CUSTOMIZATIONS:
+                # Lives in agent-toolkit; phase spec references it as a
+                # graceful-skip suggestion. Don't assert harness/agents/<name>.md exists.
+                continue
             agent_spec = ROOT / f"harness/agents/{name}.md"
             if not agent_spec.is_file():
                 err(
@@ -216,9 +228,9 @@ def check_phase_spec_dispatches() -> None:
                 )
         for m in INVOKE_SKILL_RE.finditer(text):
             name = m.group(1)
-            if name in EXTERNAL_SKILLS:
-                # Migrated to agent-toolkit; phase spec references it as a
-                # graceful-skip suggestion. Don't assert it's harness-shipped.
+            if name in EXTERNAL_CUSTOMIZATIONS:
+                # Lives in agent-toolkit; phase spec references it as a
+                # graceful-skip suggestion. Don't assert harness/skills/<name>.md exists.
                 continue
             skill_spec = ROOT / f"harness/skills/{name}.md"
             if not skill_spec.is_file():

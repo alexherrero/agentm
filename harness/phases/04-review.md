@@ -91,6 +91,60 @@ Both sub-agents run in a fresh context — no parent conversation history.
 
 If only one reviewer ran (Stage A fell back), proceed as with a single-reviewer review. Note the fallback in the final report so the user knows the confidence is lower.
 
+### 3b. Optional: evaluator augmentation (agent-toolkit)
+
+If [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit) is installed alongside this harness in the project, the `evaluator` sub-agent provides a complementary grader with a different framing. Dispatch it when the `PLAN.md` task's Verification clause is precise enough to express as a rubric.
+
+**Complementary, not competing.** The adversarial reviewers (§3) ask *"the code contains bugs, find them"* and return failing tests, `file:line` defects, or `NO ISSUES FOUND`. The evaluator asks *"did this satisfy the rubric?"* and returns `PASS` or `NEEDS_WORK` with per-rubric-item reasoning. Both can run in the same `/review` session — their outputs combine into a richer finding set.
+
+| | `adversarial-reviewer` (§3) | `evaluator` (this section) |
+|---|---|---|
+| **Framing** | "the code contains bugs, find them" | "did this satisfy the rubric?" |
+| **Output** | failing test / `file:line` defect / `NO ISSUES FOUND` | `PASS` / `NEEDS_WORK` + per-rubric-item PASS/FAIL |
+| **Input** | the artifact + PLAN.md task | the artifact + an explicit rubric |
+| **Best when** | rubric is loose; you want defect surfacing | rubric is precise; you want binary judgment |
+
+**When to add evaluator dispatch:**
+
+- The PLAN.md task's Verification clause is a numbered list of falsifiable claims (the typical shape — see `harness/phases/02-plan.md`).
+- The rubric is precise enough that a fresh reader could check each item without builder context.
+
+**When to skip:**
+
+- Verification clause is vague: no precise rubric to grade against. Adversarial-reviewer alone covers the phase contract.
+- `agent-toolkit` not installed in the project (no `.claude/agents/evaluator.md` / `.agent/skills/evaluator/SKILL.md` / `.gemini/agents/evaluator.md`): graceful-skip silently. Install agent-toolkit alongside the harness to enable; otherwise the adversarial-reviewer-only flow continues to satisfy the phase contract.
+
+**Dispatch pattern.** Construct a prompt with `ARTIFACT:` and `RUBRIC:` labeled sections; the rubric is the PLAN.md Verification clause restated as numbered verifiable claims:
+
+```
+ARTIFACT:
+- <files under review>
+- <test output file, if rubric depends on tests>
+
+RUBRIC:
+1. <Verification item 1, phrased as a verifiable claim>
+2. <Verification item 2>
+3. ...
+```
+
+Dispatch the `evaluator` sub-agent with that prompt as the input.
+
+**Output.** The evaluator returns:
+
+```
+<PASS or NEEDS_WORK>
+
+Rubric:
+1. <item summary>: PASS|FAIL — <reasoning citing artifact>
+...
+
+Verdict: <PASS or NEEDS_WORK> — <one-sentence framing>
+```
+
+**Treat as a finding.** If `NEEDS_WORK`, the structured output is a valid `/review` exit artifact — the FAIL lines name specific rubric items and cite the artifact. Route them to `/work` (small fixes) or `/plan` (spec revision) per §7. If `PASS`, log alongside the adversarial reviewers' outcome — both clean is high confidence.
+
+**Full spec.** See `agent-toolkit/agents/evaluator.md` for the complete contract (input shape, output shape, tool allowlist [`Read, Glob, Grep` only], failure modes, two worked examples).
+
 ### 4. Validate the reviewer's output format
 
 The reviewer must return **one** of:
