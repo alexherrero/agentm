@@ -5,6 +5,57 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.0.0] — 2026-05-12 — `agent-toolkit` repo split: `dependabot-fixer` + `ship-release` moved out
+
+**BREAKING:** The `dependabot-fixer` and `ship-release` skills have moved out of this repo into the new sibling repo [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit). Anyone who relied on them being installed by `agentic-harness/install.sh` must additionally clone `agent-toolkit` as a sibling directory and run `bash ../agent-toolkit/install.sh <project>` to get those skills back. The harness itself still works on its own for the phase-gated workflow (setup / plan / work / review / release / bugfix); only the two migrated skills are affected.
+
+**Migration:**
+
+```bash
+# Clone agent-toolkit as a sibling of agentic-harness:
+gh repo clone alexherrero/agent-toolkit ../agent-toolkit
+
+# Refresh harness state (auto-cleans orphaned dependabot-fixer + ship-release paths
+# from the v1.x install via the true-sync --update mechanism shipped in v1.0.0):
+bash /path/to/agentic-harness/install.sh --update /path/to/your-project
+
+# Install the migrated skills into the same target:
+bash ../agent-toolkit/install.sh /path/to/your-project
+```
+
+`doctor` and `migrate-to-diataxis` remain in this repo — they are harness-setup-specific and harness-shaped, not personal customizations. The harness's `/release` and `/work` phase specs already reference `ship-release` with graceful-skip framing ("install agent-toolkit to enable; otherwise cut release manually with `gh release create`"), so a v2.0.0 install without the toolkit still functions — it just falls back to manual release cuts.
+
+Released alongside [`agent-toolkit v0.5.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.5.0). Decision rationale captured in two parallel ADRs: [agentic-harness ADR 0006 — agent-toolkit split](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0006-agent-toolkit-split.md) (this repo, parity-tax + harness-identity framing) and [agent-toolkit ADR 0001 — agent-toolkit purpose](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md) (toolkit side, sibling-repo purpose + scope).
+
+### Removed
+
+- **`dependabot-fixer` skill** — canonical spec (`harness/skills/dependabot-fixer.md`) + adapter copies (`adapters/claude-code/skills/dependabot-fixer/`, `adapters/antigravity/skills/dependabot-fixer/`). Now lives at [`agent-toolkit/skills/dependabot-fixer/`](https://github.com/alexherrero/agent-toolkit/tree/main/skills/dependabot-fixer).
+- **`ship-release` skill** — canonical spec (`harness/skills/ship-release.md`) + adapter copies (`adapters/claude-code/skills/ship-release/`, `adapters/antigravity/skills/ship-release/`). Now lives at [`agent-toolkit/skills/ship-release/`](https://github.com/alexherrero/agent-toolkit/tree/main/skills/ship-release).
+- Combined removal: 6 files. `scripts/check-parity.sh` `CANON_SKILLS`, `scripts/check-references.py` `SHARED_SKILLS`, and `scripts/validate-adapters.py` `SKILLS` all narrow from 4 entries (`dependabot-fixer`, `doctor`, `migrate-to-diataxis`, `ship-release`) to 2 (`doctor`, `migrate-to-diataxis`). `install.sh` + `install.ps1` shared-skills enumeration trims from 4 to 2. Cross-platform smoke-install + check-integrity scripts updated for the same narrowing.
+
+### Added
+
+- **[ADR 0006 — agent-toolkit split](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0006-agent-toolkit-split.md)** — captures Context (parity-tax scales linearly with personal customizations + harness identity at risk + 11-primitive scope is broader than skills), Decision (sibling repo + byte-identical `lib/install/` + skill-ownership table + public-with-PII-guardrails), Consequences (5 positive + 4 negative + load-bearing assumptions). Cross-references the toolkit's [ADR 0001](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md).
+- **`lib/install/` shared install plumbing.** Extracted ~80 lines of inline install primitives from `install.sh` + `install.ps1` into a new shared lib byte-identical with `agent-toolkit/lib/install/`. Files: `lib/install/bash/primitives.sh` (6 functions: `ensure_boundary_src`, `cp_user`, `cp_managed`, `cp_user_walk`, `cp_managed_dir`, `sync_managed_parents`), `lib/install/pwsh/primitives.ps1` (8 functions; pwsh equivalents + `Copy-AdapterFiles` / `Copy-AdapterDirs`), `lib/install/CONTRACT.md` (caller-contract docs + six behavior invariants), `lib/install/.checksums.txt` (SHA-256 manifest). Both repos consume the same code path; cross-repo edits flow through `scripts/sync-lib.sh` (canonical → sibling). `scripts/check-lib-parity.sh` asserts self-consistency in CI on every push.
+- **PII guardrails in CI.** Added `scripts/check-no-pii.sh` (regex scanner, byte-copied from agent-toolkit) and `.gitleaks.toml` to this repo. New `pii-guardrails` job in all three per-OS test workflows runs both `check-no-pii.sh` and the official `gitleaks/gitleaks-action@v2`. Defense in depth for personal-path / API-key / email leaks even in the harness repo, which has grown reference examples touching ADR 0006 + the toolkit cross-references.
+- **`lib-parity` CI gate.** New job in all three per-OS workflows runs `scripts/check-lib-parity.sh` to assert the committed SHA-256 manifest matches the actual `lib/install/` contents.
+- **Graceful-skip framing for migrated skills.** `harness/phases/05-release.md` (ship-release suggestion) and `harness/phases/03-work.md` (feature-flip suggestion) now note "install agent-toolkit to enable; otherwise cut release manually with `gh release create`". `harness/skills/doctor.md` probes 3 + 5 (ship-release + dependabot-fixer) gain explicit "skip if not installed" framing — structural skill check now expects only `doctor` + `migrate-to-diataxis`. `harness/telemetry.md` notes the dependabot-fixer signal lives in agent-toolkit as of v2.0.0.
+- **`check-references.py` `EXTERNAL_SKILLS` set** — `{"dependabot-fixer", "ship-release"}` exclusion lets phase specs reference the migrated skills as graceful-skip suggestions without asserting `harness/skills/<name>.md` exists.
+- **Cross-repo docs.** `README.md` Skills section restructured to clearly delineate the two harness-shipped skills (`doctor`, `migrate-to-diataxis`) from the two migrated skills with links to their new toolkit homes. `AGENTS.md` gains a "Personal customizations" section pointing at agent-toolkit with sibling-clones layout guidance. `wiki/Home.md`, `wiki/_Sidebar.md`, `wiki/reference/Repo-Layout.md` all gain agent-toolkit cross-references; Repo-Layout's Quick Reference table gains rows for the sibling repo and `lib/install/`.
+
+### Changed
+
+- **`install.sh` + `install.ps1`** consume the shared `lib/install/` primitives. Behavior is preserved exactly — same outputs, same idempotence, same `--update` true-sync semantics. The cross-platform debugging journey to make `lib/install/` byte-identity work on Mac + Linux + Windows surfaced four real cross-platform bugs (locale-dependent `sort` collation on Mac, `$host` collision in PowerShell, missing `shasum` in Git Bash on Windows, autocrlf + binary-mode SHA-256 difference) — all fixed before this release tag. Fixes also landed in `.gitattributes` (forces LF on every platform regardless of `core.autocrlf`).
+- **Shared-skill delivery narrows from 4 to 2.** `.agents/skills/` (read by Gemini per the Agent Skills standard) now ships only `doctor` and `migrate-to-diataxis` — the two skills that remain harness-owned. Anyone who needs `dependabot-fixer` or `ship-release` installs agent-toolkit on top.
+
+### Internal
+
+- **7-task plan (#1) completed.** Tracked in `.harness/PLAN.md`: task 1 (`agent-toolkit` repo scaffold + PII guardrails), task 2 (shared `lib/install/` extraction + byte-identity gate), task 3 (real toolkit installer + manifest validator + per-host paths), task 4 (toolkit CI matrix + PII gate in both repos), task 5 (migrate the two skills from harness to toolkit), task 6 (full Diátaxis wiki in toolkit + cross-repo ADRs), task 7 (this release pair). Each task closed with `PLAN.md` mark `[x]` + a `progress.md` append entry.
+- **End-to-end byte-identity flow exercised.** Nine commits between the two repos during the plan included parallel commits cross-referencing each other's SHA; the `sync-lib.sh` helper was used for every `lib/install/` edit; `check-lib-parity.sh` ran in CI on every push and gated the parity invariant successfully across all three OSes.
+- **CI green across all three per-OS workflows** on every commit in the v1.0.0..v2.0.0 range after the cross-platform fixes landed.
+
+[v2.0.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v2.0.0
+
 ## [v1.0.0] — 2026-05-11 — Three-adapter scope; Codex dropped; 1.0.0 commitment
 
 **BREAKING:** Codex adapter removed. Supported hosts narrow from four (Claude Code, Antigravity, Codex, Gemini CLI) to three (Claude Code, Antigravity, Gemini CLI). Anyone running agentic-harness through Codex must migrate to one of the three remaining adapters — the phase-gated workflow itself is host-agnostic, so migration is install + relearn the host-specific invocation surface.

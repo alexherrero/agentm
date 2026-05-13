@@ -8,9 +8,48 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-05-12 | [v2.0.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.0.0) — `agent-toolkit` repo split: `dependabot-fixer` + `ship-release` moved out | **BREAKING**: two skills migrated to [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit); new shared `lib/install/` byte-identical across repos; PII + lib-parity CI gates added | 9 commits (`v1.0.0..v2.0.0`); new [ADR 0006](0006-agent-toolkit-split); paired with [agent-toolkit v0.5.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.5.0); harness shared-skills narrow 4→2; cross-platform byte-identity work surfaced + fixed four real Mac/Windows bugs |
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentic-harness/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentic-harness/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-05-12 — v2.0.0: `agent-toolkit` repo split; `dependabot-fixer` + `ship-release` migrated
+
+**Commit range:** `v1.0.0..v2.0.0` (9 commits on `main`). Release notes: [v2.0.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.0.0). ADR: [0006 — agent-toolkit split](0006-agent-toolkit-split). Paired with [agent-toolkit v0.5.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.5.0).
+
+**What shipped:**
+
+- **Sibling repo split.** The new [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit) repo holds personal agent customizations (skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. — 11 primitive types) that ride on top of the harness's phase-gated workflow. `dependabot-fixer` and `ship-release` migrated from this repo to the toolkit (both were host-cross-cutting with no harness shape). `doctor` and `migrate-to-diataxis` stay in this repo — `doctor` is harness-setup-specific and `migrate-to-diataxis` is harness-shaped (encodes [ADR 0004](0004-diataxis-documentation-spec)).
+- **Shared `lib/install/` byte-identical across repos.** Extracted ~80 lines of inline install primitives from `install.sh` + `install.ps1` into a new shared lib with 6 bash + 8 pwsh functions plus a CONTRACT.md documenting the caller contract (`UPDATE_MODE`/`$Update` flag + `BOUNDARY_ROOTS`/`$BoundaryRoots` array + six behavior invariants). SHA-256 manifest committed in both repos. Cross-repo updates flow through `scripts/sync-lib.sh` (canonical → sibling); `scripts/check-lib-parity.sh` asserts self-consistency in CI on every push. Cross-platform byte-identity work surfaced four real Mac + Windows bugs (locale-dependent `sort` collation, `$host` collision in PowerShell, missing `shasum` in Git Bash, autocrlf + binary-mode SHA-256 differences) — all fixed before v2.0.0 tag.
+- **PII + lib-parity CI gates in this repo.** New `pii-guardrails` job in all three per-OS workflows runs `scripts/check-no-pii.sh` (regex scanner, byte-copied from the toolkit) and the official `gitleaks/gitleaks-action@v2`. New `lib-parity` job runs `scripts/check-lib-parity.sh`. Both repos now share the same PII detection surface, with the toolkit's pre-push hook layer + agent-facing `pii-scrubber` skill providing the additional remediation layers on that side.
+- **Graceful-skip framing for migrated skills.** `harness/phases/05-release.md`'s ship-release suggestion and `harness/phases/03-work.md`'s feature-flip suggestion both note "install agent-toolkit to enable; otherwise cut release manually with `gh release create`". `harness/skills/doctor.md` probes 3 + 5 skip cleanly if the skills aren't installed. The harness still works on its own for the full phase-gated workflow; only the two migrated skills require the sibling install.
+
+**Why it shipped this shape:**
+
+The triggering observation, captured in [ADR 0006](0006-agent-toolkit-split), was that the **parity tax scales linearly with personal customizations**: every skill we'd want to add (kill-switch, fresh-context evaluator, ContextVault, a design skill, `pii-scrubber`) would need a canonical spec under `harness/skills/` + adapter copies under each of three adapter trees + parity script updates + reference checks. Past two or three skills, the tax becomes the dominant work. The harness also has a clear identity (phase-gated workflow + on-disk state + adversarial review primitive + Diátaxis convention) — mixing personal-customization scope into that identity blurs both. Splitting the repo lets the harness stay tight (six phases + canonical sub-agents + setup-specific skills) while the toolkit takes the open-ended customization scope with its own conventions (manifest schema + per-host paths dispatch + 11-primitive scope).
+
+The byte-identical `lib/install/` is the load-bearing piece. Both repos need essentially the same install plumbing (boundary guard + per-file copy modes + true-sync wipe-and-recreate for `--update`); copying the code with drift would create silent divergence the moment one repo fixes a Windows bug the other doesn't. Byte-identity + CI gate makes drift impossible.
+
+The cross-platform debugging work was a nice forcing function. Three of the four bugs surfaced in the Mac + Windows CI workflows on the toolkit side before any user hit them — exactly the kind of friction the three-OS matrix is meant to catch early. Each fix landed in both repos with parallel commits cross-referencing the sibling's SHA.
+
+**What it doesn't do:**
+
+- Doesn't ship a CLI sugar layer to invoke both tools as `harness` and `agent-toolkit` on PATH. That requires `dev-machine-setup` changes and lands in a future plan.
+- Doesn't pre-install the toolkit alongside the harness. Users opt in by cloning `agent-toolkit` as a sibling directory and running its installer separately. Graceful-skip framing keeps the harness functional without it.
+- Doesn't migrate `doctor` or `migrate-to-diataxis`. Both are harness-shaped; moving them would be a category error.
+- Doesn't redesign `migrate-to-diataxis` into a general-purpose Diátaxis authoring skill. That's tracked as a separate roadmap item.
+
+**Tracked as:**
+
+- 7-task plan in `.harness/PLAN.md` (agent-toolkit-split) — all tasks `[x]`, Status `done`.
+- [v2.0.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.0.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentic-harness/blob/main/CHANGELOG.md)
+- Paired release: [agent-toolkit v0.5.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.5.0).
+
+**Related pages:**
+
+- [ADR 0006 — agent-toolkit split](0006-agent-toolkit-split)
+- [agent-toolkit ADR 0001 — agent-toolkit purpose](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md)
+- [Repo-Layout](Repo-Layout) — sibling repo + `lib/install/` rows in Quick Reference
 
 ## 2026-05-11 — v1.0.0: Three-adapter scope; Codex dropped; 1.0.0 commitment
 
