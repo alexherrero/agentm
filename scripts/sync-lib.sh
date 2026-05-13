@@ -58,10 +58,14 @@ fi
 
 compute_checksums() {
     local root="$1"
+    # sha256sum output formats:
+    #   text mode (Linux/Mac default): "<hash>  ./<file>"   (2 spaces)
+    #   binary mode (Win Git Bash default): "<hash> *./<file>"  (space-asterisk)
+    # Normalize both to "<hash>  <file>" (2 spaces, no leading ./)
     (cd "$root" && find . -type f -not -name '.checksums.txt' -print0 \
         | LC_ALL=C sort -z \
         | xargs -0 $_SHA_CMD \
-        | sed 's|  \./|  |')
+        | sed 's| [ *]\./|  |')
 }
 
 # ── sync mode: copy + regenerate ──────────────────────────────────────────

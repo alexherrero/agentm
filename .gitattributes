@@ -1,0 +1,22 @@
+# Force LF line endings for all text files on every platform.
+#
+# Why: lib/install/ files are checksummed for cross-repo byte-identity (see
+# scripts/check-lib-parity.sh + scripts/sync-lib.sh). Without this, Git on
+# Windows converts LF → CRLF on checkout (autocrlf=true default), changing
+# the bytes and breaking the SHA-256 match.
+#
+# Applies to everything; text files (detected by content) get LF, binary
+# files are left alone.
+* text=auto eol=lf
+
+# Explicit: scripts must be LF regardless of detection
+*.sh text eol=lf
+*.ps1 text eol=lf
+*.py text eol=lf
+
+# Markdown and config files must be LF
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.json text eol=lf

@@ -50,7 +50,7 @@ fi
 RECOMPUTED=$(cd "$LIB_DIR" && find . -type f -not -name '.checksums.txt' -print0 \
     | LC_ALL=C sort -z \
     | xargs -0 $SHA_CMD \
-    | sed 's|  \./|  |')
+    | sed 's| [ *]\./|  |')
 
 COMMITTED=$(cat "$CHECKSUMS")
 
