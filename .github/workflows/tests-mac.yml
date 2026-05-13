@@ -25,3 +25,7 @@ jobs:
       - name: AST-parse every .ps1
         shell: pwsh
         run: pwsh -NoProfile -File scripts/check-syntax.ps1
+      - name: Verify lib/install/ checksums
+        run: bash scripts/check-lib-parity.sh
+      - name: Run check-no-pii.sh
+        run: bash scripts/check-no-pii.sh --all

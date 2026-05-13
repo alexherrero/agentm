@@ -29,3 +29,9 @@ jobs:
         run: pwsh -NoProfile -File scripts/check-syntax.ps1
       # bash -n skipped on Windows (git-bash is present but path-mangling
       # makes find(1) unreliable; Linux + Mac cover .sh parse).
+      - name: Verify lib/install/ checksums
+        shell: bash
+        run: bash scripts/check-lib-parity.sh
+      - name: Run check-no-pii.sh
+        shell: bash
+        run: bash scripts/check-no-pii.sh --all

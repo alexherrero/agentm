@@ -1,0 +1,27 @@
+title = "agentic-harness gitleaks config"
+
+# Inherit gitleaks's default ruleset for common credential shapes
+# (AWS keys, GitHub tokens, generic API keys, JWT, etc.)
+[extend]
+useDefault = true
+
+# Allowlist patterns known-safe in agentic-harness
+[allowlist]
+description = "Patterns that are known-safe in agentic-harness (public repo, owned by alexherrero)"
+
+regexes = [
+    # The public GitHub handle appears in URLs, README, AGENTS.md
+    '''alexherrero''',
+    # RFC 2606 reserved domains for documentation examples
+    '''@example\.(com|org|net)''',
+    # NANP reserved phone-number prefix for documentation
+    '''555-01[0-9]{2}''',
+    # Common placeholder strings — not credentials
+    '''<API_KEY>''',
+    '''<TOKEN>''',
+]
+
+paths = [
+    # The gitleaks config itself
+    '''\.gitleaks\.toml''',
+]

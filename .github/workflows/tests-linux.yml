@@ -53,6 +53,28 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/check-syntax.ps1
 
+  lib-parity:
+    name: lib-parity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify lib/install/ matches committed checksums
+        run: bash scripts/check-lib-parity.sh
+
+  pii-guardrails:
+    name: pii-guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run check-no-pii.sh (regex scanner)
+        run: bash scripts/check-no-pii.sh --all
+      - name: Run gitleaks (industry-standard secret scanner)
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          config-path: .gitleaks.toml
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   dogfood-workflows:
     # Source-repo invariant: every workflow the harness ships as a template
     # must be active at the repo root, byte-identical to the template.
