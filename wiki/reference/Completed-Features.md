@@ -8,10 +8,46 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-05-13 | [v2.1.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.1.0) — `/review` augmentable with agent-toolkit's `evaluator` | Additive: `/review` phase spec gains §3b documenting evaluator dispatch alongside `adversarial-reviewer` (complementary, not competing); `check-references.py` `EXTERNAL_SKILLS` → `EXTERNAL_CUSTOMIZATIONS` rename to cover cross-repo agent references | 1 commit (`v2.0.0..v2.1.0`); paired with [agent-toolkit v0.6.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.6.0) which ships the evaluator; no new harness ADR (the decision lives in [agent-toolkit ADR 0002](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0002-evaluator-design.md)); harness still functions standalone — §3b graceful-skips when toolkit absent |
 | 2026-05-12 | [v2.0.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.0.0) — `agent-toolkit` repo split: `dependabot-fixer` + `ship-release` moved out | **BREAKING**: two skills migrated to [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit); new shared `lib/install/` byte-identical across repos; PII + lib-parity CI gates added | 9 commits (`v1.0.0..v2.0.0`); new [ADR 0006](0006-agent-toolkit-split); paired with [agent-toolkit v0.5.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.5.0); harness shared-skills narrow 4→2; cross-platform byte-identity work surfaced + fixed four real Mac/Windows bugs |
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentic-harness/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentic-harness/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-05-13 — v2.1.0: `/review` augmentable with agent-toolkit's `evaluator`
+
+**Commit range:** `v2.0.0..v2.1.0` (1 commit on `main`). Release notes: [v2.1.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.1.0). Paired with [agent-toolkit v0.6.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.6.0).
+
+**What shipped:**
+
+- **New §3b in `/review` phase spec** (`harness/phases/04-review.md`) — "Optional: evaluator augmentation (agent-toolkit)". Documents how to dispatch the [`evaluator`](https://github.com/alexherrero/agent-toolkit/blob/main/agents/evaluator.md) sub-agent alongside the existing `adversarial-reviewer` flow. Covers when to add evaluator dispatch (PLAN.md Verification clause is a numbered list of falsifiable claims), when to skip (vague rubric or toolkit not installed — graceful-skip), the `ARTIFACT:` + `RUBRIC:` dispatch prompt shape, the `PASS` / `NEEDS_WORK` output shape with per-rubric-item PASS/FAIL + final Verdict, treat-as-finding semantics (NEEDS_WORK counts as the executable exit artifact the phase requires), and a comparison table laying out the complementary framings.
+- **Cross-repo agent references resolve** (`scripts/check-references.py`). Renamed `EXTERNAL_SKILLS` → `EXTERNAL_CUSTOMIZATIONS`; added `evaluator` to the set; the exclusion now applies to both `DISPATCH_AGENT_RE` and `INVOKE_SKILL_RE` regexes. Inline comments name each entry's `agent-toolkit` home (`skills/dependabot-fixer/`, `skills/ship-release/`, `agents/evaluator.md`).
+- **No adapter edits.** All three review adapter wrappers (claude-code/commands, antigravity/workflows, gemini/commands) already reference `harness/phases/04-review.md` exactly once, so §3b inherits via the existing canonical-reference pattern without per-adapter changes.
+
+**Why it shipped this shape:**
+
+The adversarial-reviewer has framed `/review` since v0.8.0: "the code under review likely contains bugs, find them." That framing works well for defect surfacing but doesn't give a binary verdict against an explicit rubric. When the `PLAN.md` task's Verification clause is precise — a numbered list of falsifiable claims, which is the typical shape — the natural verification is "did the diff satisfy claims 1–5?" not "are there bugs?" The evaluator adds that binary-judgment surface without disturbing the existing flow: it coexists, not replaces. Consumers needing precise grading dispatch the evaluator; consumers needing defect surfacing dispatch the adversarial-reviewer; both useful at the same time.
+
+Splitting the evaluator into agent-toolkit (rather than adding `harness/agents/evaluator.md`) keeps the harness phase-shaped: the harness owns the phase workflow + canonical sub-agents needed by every adapter; agent-toolkit owns customizations that ride on top. Anyone (harness user or not) can dispatch the evaluator from any consumer context. The future design skill (#6), quality-gates bundle (#10), and ContextVault (#7) all consume the evaluator for per-step grading.
+
+**What it doesn't do:**
+
+- Doesn't replace `adversarial-reviewer`. Both shipped; `/review` documents the choice.
+- Doesn't auto-dispatch the evaluator from `/review`. Explicit dispatch stays the caller's call; the §3b section is a documented option, not a default flow change.
+- Doesn't require the toolkit. Without `agent-toolkit` installed, §3b graceful-skips silently and the adversarial-reviewer-only flow continues to satisfy the phase contract.
+- Doesn't add a new harness ADR. The design decision (read-only allowlist, caller-supplied inline rubric, coexist not replace, structured output) lives in [agent-toolkit ADR 0002](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0002-evaluator-design.md) since the customization itself lives there.
+
+**Tracked as:**
+
+- Task 3 of plan #3 (fresh-context evaluator) in `.harness/PLAN.md`. Plan #3 is a 5-task project spanning both repos: tasks 1, 2, 4 land in `agent-toolkit` (installer + body + docs); task 3 is the harness-side wiring (this release); task 5 is the coordinated release pair (this release + agent-toolkit v0.6.0).
+- [v2.1.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.1.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentic-harness/blob/main/CHANGELOG.md)
+- Paired release: [agent-toolkit v0.6.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.6.0).
+
+**Related pages:**
+
+- [agent-toolkit ADR 0002 — evaluator design](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0002-evaluator-design.md)
+- [agent-toolkit how-to: Use-The-Evaluator](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/how-to/Use-The-Evaluator.md)
+- [agent-toolkit agent spec: evaluator.md](https://github.com/alexherrero/agent-toolkit/blob/main/agents/evaluator.md)
 
 ## 2026-05-12 — v2.0.0: `agent-toolkit` repo split; `dependabot-fixer` + `ship-release` migrated
 

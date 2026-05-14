@@ -5,6 +5,46 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.1.0] — 2026-05-13 — `/review` augmentable with agent-toolkit's `evaluator` (additive)
+
+Additive minor — no breaking changes. The `/review` phase spec gains a new optional **§3b "Optional: evaluator augmentation (agent-toolkit)"** documenting how to dispatch the [`evaluator`](https://github.com/alexherrero/agent-toolkit/blob/main/agents/evaluator.md) sub-agent (shipped in [agent-toolkit v0.6.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.6.0)) alongside the existing `adversarial-reviewer` flow.
+
+The two reviewers are **complementary, not competing**:
+
+| | `adversarial-reviewer` (§3) | `evaluator` (§3b, agent-toolkit) |
+|---|---|---|
+| **Framing** | "the code contains bugs, find them" | "did this satisfy the rubric?" |
+| **Output** | failing test / `file:line` defect / `NO ISSUES FOUND` | `PASS` / `NEEDS_WORK` + per-rubric-item PASS/FAIL |
+| **Input** | the artifact + PLAN.md task | the artifact + an explicit rubric |
+| **Best when** | rubric is loose; you want defect surfacing | rubric is precise; you want binary judgment |
+
+Both can run in the same `/review` session — their outputs combine into a richer finding set. The harness still works standalone without the toolkit installed: §3b graceful-skips when `agent-toolkit` is absent (no `.claude/agents/evaluator.md` / `.agent/skills/evaluator/SKILL.md` / `.gemini/agents/evaluator.md` in the project), and the adversarial-reviewer-only flow continues to satisfy the phase contract.
+
+Paired with [`agent-toolkit v0.6.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.6.0). The decision rationale for the evaluator's design (read-only allowlist, caller-supplied inline rubric, coexist with adversarial-reviewer not replace) is captured in [agent-toolkit ADR 0002](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0002-evaluator-design.md). No new harness-side ADR — this release is the integration surface, not the design decision.
+
+### Added
+
+- **`/review` phase spec §3b — Optional: evaluator augmentation (agent-toolkit)** (`harness/phases/04-review.md`). 54-line section between §3a Reconcile and §4 Validate format. Documents:
+  - The complementary framing with a side-by-side comparison table vs. adversarial-reviewer.
+  - When to add evaluator dispatch (PLAN.md Verification clause is a numbered list of falsifiable claims).
+  - When to skip (vague rubric, or `agent-toolkit` not installed in the project — graceful-skip silently).
+  - The dispatch prompt shape (`ARTIFACT:` + `RUBRIC:` labeled sections drawn from the PLAN.md Verification clause).
+  - The output shape (PASS/NEEDS_WORK header + per-rubric-item PASS/FAIL line with citations + final Verdict line).
+  - Treat-as-finding semantics: if NEEDS_WORK, the structured output is the `/review` exit artifact (counts as the executable artifact the phase requires).
+  - Full-spec pointer to `agent-toolkit/agents/evaluator.md`.
+- **Cross-repo agent references resolve** (`scripts/check-references.py`). Renamed `EXTERNAL_SKILLS` → `EXTERNAL_CUSTOMIZATIONS` to cover the new agent kind alongside the existing migrated skills. The exclusion now applies to both `DISPATCH_AGENT_RE` and `INVOKE_SKILL_RE` regexes — previously only the skill regex had the exclusion. Inline comments name each entry's `agent-toolkit` home (`skills/dependabot-fixer/`, `skills/ship-release/`, `agents/evaluator.md`).
+
+### Changed
+
+- **Adapter wrappers** (`adapters/claude-code/commands/review.md`, `adapters/antigravity/workflows/review.md`, `adapters/gemini/commands/review.toml`) — untouched. All three already reference `harness/phases/04-review.md` exactly once, so §3b inherits via the existing canonical-reference pattern without per-adapter edits.
+
+### Internal
+
+- **Task 3 of plan #3** in `.harness/PLAN.md` (fresh-context evaluator). Plan #3 is a 5-task project spanning both repos: tasks 1, 2, 4 land in `agent-toolkit` (installer + body + docs); task 3 is the harness-side wiring (this release); task 5 is the coordinated release pair (this release + agent-toolkit v0.6.0).
+- **Negative test confirmed**: removing `evaluator` from `EXTERNAL_CUSTOMIZATIONS` immediately produces `FAIL: harness/phases/04-review.md: references` evaluator `sub-agent but harness/agents/evaluator.md is missing` — the exclusion is load-bearing.
+
+[v2.1.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v2.1.0
+
 ## [v2.0.0] — 2026-05-12 — `agent-toolkit` repo split: `dependabot-fixer` + `ship-release` moved out
 
 **BREAKING:** The `dependabot-fixer` and `ship-release` skills have moved out of this repo into the new sibling repo [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit). Anyone who relied on them being installed by `agentic-harness/install.sh` must additionally clone `agent-toolkit` as a sibling directory and run `bash ../agent-toolkit/install.sh <project>` to get those skills back. The harness itself still works on its own for the phase-gated workflow (setup / plan / work / review / release / bugfix); only the two migrated skills are affected.
