@@ -137,12 +137,23 @@ Preview-and-ask is non-negotiable per [`documentation.md §GitHub Projects + Iss
 
 If this task flipped a `features.json` entry's `passes` flag from `false` to `true` during `/review`, or the task finished the last feature in the plan, **suggest the `ship-release` skill** as the next step — do not auto-invoke it, the user may have more features queued. Phrase it: *"Feature `<id>` is now passing end-to-end. Consider invoking the `ship-release` skill (from agent-toolkit) to cut a tagged release."* If `agent-toolkit` isn't installed alongside, graceful-skip the suggestion — `ship-release` migrated to `agent-toolkit` in v2.0.0 (see ADR 0006).
 
-Return to the user with a ≤5-bullet summary:
+Return to the user with a summary. Minimum (≤5 bullets — adequate for a routine task close):
+
 - Task completed: task N, title
 - Files changed: count + the most notable path
 - Tests added: count, what they cover
 - Gates: all green (or: "N iterations needed, here's why")
 - Next: `/review` if the task is high-risk; otherwise `/work` for the next task, or `/release` if all tasks done, or `ship-release` if a feature just went green
+
+**Enhancements when `.harness/ROADMAP.md` exists** (signals a multi-plan project — apply by default in that case):
+
+- **Lead with roadmap context**: *"Currently building ROADMAP item #X — &lt;name&gt;. &lt;one-sentence framing&gt;."*
+- **Plan-status chart** with `✅` / `⬜` symbols per task in the active plan, so the user sees where this task lands in the larger plan.
+- **Link block** to `.harness/ROADMAP.md` / `.harness/PLAN.md` / `.harness/progress.md` (absolute paths; note `.harness/` is gitignored).
+- **Explicit handoff phrase**: *"Say 'let's do task N' to continue"* (or *"Ending loop"* if no follow-on action).
+- When relevant: commit SHA, CI status with per-OS times, key design calls or scope adjustments, manual verification scenarios, negative-test results.
+
+These enhancements are opt-in via the ROADMAP.md signal so a harness install without a roadmap stays minimal; multi-plan projects get the navigation aids that match their scale.
 
 ## When to invoke `/review` vs. going straight to the next `/work`
 
