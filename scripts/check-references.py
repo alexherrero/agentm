@@ -217,6 +217,14 @@ EXTERNAL_CUSTOMIZATIONS = {
     "kill-switch",        # agent-toolkit/hooks/kill-switch/
     "steer",              # agent-toolkit/hooks/steer/
     "commit-on-stop",     # agent-toolkit/hooks/commit-on-stop/
+    # Skill added in agent-toolkit v0.8.0 (referenced from /setup + /release
+    # in v2.3.0). Phase specs use slash-command phrasing "the `/design` skill"
+    # rather than bare "`design` skill", so the leading `/` keeps it from
+    # matching INVOKE_SKILL_RE (the regex character class is [A-Za-z0-9_-],
+    # no slashes). Listed here for forward-compatibility documentation; if
+    # phase spec phrasing ever shifts to bare "`design`" the exclusion
+    # becomes load-bearing.
+    "design",             # agent-toolkit/skills/design/
 }
 
 

@@ -104,6 +104,7 @@ Run `bash .harness/init.sh`. Confirm it exits 0. If it doesn't, fix it now — e
 - `design/Product-Intent.md` — from `README.md` + the interview
 - `architecture/Overview.md` — from top-level layout + entry points
 - `Home.md` and `_Sidebar.md` — initialized with the project name and four section headers
+- `wiki/explanation/designs/` — landing dir for design docs authored via [agent-toolkit's `/design` skill](https://github.com/alexherrero/agent-toolkit/blob/main/skills/design/SKILL.md). Initially empty (`.gitkeep` + a one-line README pointing at the how-to); fills in over time as the user authors published-visibility designs. Surfaces in `wiki/Home.md` + `_Sidebar.md` as the canonical "Why we built X" entry point per design Status lifecycle (the harness `/release` flow transitions `final → launched` per [`harness/phases/05-release.md` §1b](05-release.md)).
 
 The documenter returns a structured report of what it created. If it surfaces `OPEN QUESTIONS`, answer them before moving on — a broken `Product-Intent.md` on day one is drift that compounds.
 
