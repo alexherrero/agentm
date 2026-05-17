@@ -5,6 +5,28 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.4.0] — 2026-05-17 — Gemini-CLI host removal (paired with toolkit v0.9.0)
+
+Minor — host-scope reduction paired with [`agent-toolkit v0.9.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.9.0). **Drops standalone Gemini CLI as a supported host** across the personal-dev-env. Keeps Claude Code + Antigravity (Gemini-in-Antigravity is a different surface — IDE-level integration, not standalone CLI).
+
+Harness-side changes for this release pair are **doc-only**. The harness hasn't owned customizations since the v2.0.0 split (when `dependabot-fixer` + `ship-release` migrated to `agent-toolkit`); the customization sweep happens entirely on the toolkit side. The harness's role in plan #15 is acknowledging the host-scope reduction in its docs + framing the paired release.
+
+Triggered by [ROADMAP item #15](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) (added 2026-05-16 during plan #7a part 1 task 1 ship). Implemented as plan #15 (7 tasks; this release pair is task 7). Decision rationale lives in [toolkit-side ADR 0006](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0006-gemini-cli-host-removal.md) — no new harness-side ADR (the host-scope decision is a toolkit-side concern; harness inherits via its dependency on toolkit customizations).
+
+### Added
+
+- **`wiki/reference/Completed-Features.md`** v2.4.0 overview row + full narrative section (What shipped / Why this shape / Doesn't do / Tracked as / Related — mirrors v2.3.x format).
+
+### Changed
+
+- Adapter wrappers (`.claude/commands/*.md` + Antigravity adapter equivalents) untouched — canonical-reference inheritance: adapters point at `harness/phases/` specs which are themselves untouched in this release.
+- No changes to harness phase specs (no host-related conditionals to update — the harness phases don't reference specific hosts by name; host scope is decided by toolkit-side manifests).
+
+### Internal
+
+- **Paired-release-as-documentation pattern**: when the substantive change lives entirely on one side of the toolkit/harness split, the other side still ships a paired release with framing-only content. This keeps the two repos' version cadences readable for operators tracking changes — they don't have to wonder "why did toolkit ship a MINOR but harness didn't?". v2.4.0 is the documentation-acknowledgement counterpart to v0.9.0.
+- **First post-#15 install on harness side**: operators who run `bash agent-toolkit/install.sh` against an agentic-harness install will see the legacy-cleanup prompt fire if `.agents/skills/` exists from a prior install. The harness's `--update` path (separate from toolkit's `--update`) is unaffected — harness doesn't manage `.agents/`.
+
 ## [v2.3.1] — 2026-05-16 — `/plan` external-review-handoff option (paired with toolkit v0.8.1)
 
 Patch — additive only, no breaking changes. Adds an **external-review-handoff option** to the harness's `/plan` phase, mirroring the option added to `agent-toolkit`'s `/design` skill in [v0.8.1](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.8.1). Operators can now hand off a drafted `.harness/PLAN.md` to Antigravity IDE for inline-comment review + Gemini-applies-comments revision, then resume in Claude Code with a diff-on-resume pass against a pre-handoff snapshot.
