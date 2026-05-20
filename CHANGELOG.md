@@ -5,6 +5,33 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.5.0] — 2026-05-20 — Local-only embeddings (paired with toolkit v0.10.0)
+
+Minor — embedding-mode collapse paired with [`agent-toolkit v0.10.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.10.0). **Drops the Voyage/Anthropic API embedding mode from the toolkit's memory skill; local `sentence-transformers` is now the only production mode.** Default model upgraded `all-MiniLM-L6-v2` → `BAAI/bge-large-en-v1.5` (1024-d native; ~1.3GB on disk + ~1.5GB RAM at runtime; PyTorch MPS on Apple Silicon for acceleration).
+
+Harness-side changes for this release pair are **doc-only** per the paired-release-as-documentation pattern established in v2.4.0. The harness hasn't owned customizations since the v2.0.0 split (when `dependabot-fixer` + `ship-release` migrated to `agent-toolkit`); the embedding-mode refactor happens entirely on the toolkit side. The harness's role in plan #18 is acknowledging the v0.10.0 toolkit shape in its docs + framing the paired release.
+
+Triggered by [ROADMAP item #18](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) (added 2026-05-20 mid-flight of plan #7a part 5 / seed-pass; task 6 of seed-pass needed a worthwhile embedding model for sample-recall validation, which forced the embed-refactor work first). Implemented as plan #18 (7 tasks; this release pair is task 7). Decision rationale lives in [toolkit-side ADR 0001's 2026-05-20 amendment](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md#amendment-2026-05-20) — no new harness-side ADR (the embedding-mode decision is a toolkit-side concern; harness inherits via its dependency on toolkit customizations).
+
+**Why this matters for harness users**: the harness itself is unchanged. Operators who installed the memory skill via the toolkit see the embedding-mode change on next install (`bash agent-toolkit/install.sh ~/their-project` runs the new `install_python_deps()` step by default; `--no-python-deps` opts out). Existing 384-d vec-indexes invalidate due to the dim bump 384 → 1024 — the toolkit's new `vec_index.py rebuild` subcommand handles migration with a graceful-skip + clear stderr message on first invocation that detects the dim mismatch.
+
+After this release pair ships, plan #7a part 5 (seed-pass) resumes at task 6 (validate via sample recalls) using the new BGE-large model. Plan-#18-driven detour is complete; the MemoryVault Core roadmap (#7a) resumes its sequential execution.
+
+### Added
+
+- **`wiki/reference/Completed-Features.md`** v2.5.0 overview row + full narrative section (What shipped / Why this shape / Doesn't do / Tracked as / Related — mirrors v2.4.0 format).
+
+### Changed
+
+- Adapter wrappers (`.claude/commands/*.md` + Antigravity adapter equivalents) untouched — canonical-reference inheritance: adapters point at `harness/phases/` specs which are themselves untouched in this release.
+- No changes to harness phase specs (no embedding-related logic in the harness; embedding is wholly a toolkit-side concern via the memory skill).
+
+### Internal
+
+- **Paired-release-as-documentation pattern (continued from v2.4.0)**: this is the second consecutive paired release where the substantive change is toolkit-side and the harness ships doc-only. The pattern keeps version cadences readable for operators tracking changes across both repos — they don't have to wonder "why did toolkit ship a MINOR but harness didn't?"
+- **First post-#18 install on harness side**: operators who run `bash agent-toolkit/install.sh ~/their-project` after this release pair will see the new `==> python deps` install step. Operators can opt out via `--no-python-deps` if they manage Python deps via virtualenv / conda / system packages, or accept the install (sentence-transformers + transitive deps total ~1.5GB+ on first pull; BGE-large model downloads lazily ~1.3GB on first `/memory save` or `embed.py --mode local`).
+- **Plan #18 was inserted mid-flight of plan #7a part 5** (seed-pass) — first time a plan was inserted into the queue mid-execution rather than queued at the end. The mechanism: archive the active PLAN.md to `.harness/PLAN.paused.YYYYMMDD-<slug>.md`, write the new plan as the active PLAN.md, execute it, then restore the paused plan as the new active PLAN.md after the inserted plan completes. This pattern is captured in plan #18's "How to resume" section + this CHANGELOG entry as precedent for future mid-flight insertions.
+
 ## [v2.4.0] — 2026-05-17 — Gemini-CLI host removal (paired with toolkit v0.9.0)
 
 Minor — host-scope reduction paired with [`agent-toolkit v0.9.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.9.0). **Drops standalone Gemini CLI as a supported host** across the personal-dev-env. Keeps Claude Code + Antigravity (Gemini-in-Antigravity is a different surface — IDE-level integration, not standalone CLI).
