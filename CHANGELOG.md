@@ -49,7 +49,7 @@ Triggered by [ROADMAP item #8](https://github.com/alexherrero/agentic-harness/bl
 - **5 design calls locked at /plan time** (Q1–Q5 per ADR 0007): per-phase budget envs / vault_project 3-tier auto-detect / silent graceful-skip / self-modulating ask with confidence threshold / dual-trigger cursor-tracked promotion.
 - **Operator clarifications mid-plan**: Q4 revised from flat "ask" default to **self-modulating ask** (agent confidence threshold gates silent-vs-prompt); Q5 revised from "release-only trigger" to **dual-trigger middle ground** (plan-done AND release; shared cursor). Both revisions baked into dispatcher implementation + spec amendments + ADR 0007.
 - **ADR-number correction**: PLAN.md task 9 said ADR 0009 (conflated with toolkit numbering); harness ADRs go 0001–0006 so the new ADR landed as 0007. 11 inbound refs across the 6 amended spec files updated in task 9's docs commit.
-- **PII scanner false-positive caught mid-plan** (task 1 commit `9ccc020`): canonical `git@github.com` SSH form + `/home/alex/` file:// URL in test fixtures flagged as PII; scrubbed to `git@example.com` + `/srv/git/` placeholders in `34d21e9`.
+- **PII scanner false-positive caught mid-plan** (task 1 commit `9ccc020`): canonical SSH-form URL + a personal-path-shaped file:// URL in test fixtures flagged as PII; scrubbed to `example.com` + neutral `/srv/git/` placeholders in `34d21e9`. (Same pattern hit again on this release commit `76d17a6` when I described the scrub in this entry — fixed forward via the next commit.)
 
 ## [v2.4.3] — 2026-05-22 — diataxis-author skill (paired with toolkit v0.11.0)
 
