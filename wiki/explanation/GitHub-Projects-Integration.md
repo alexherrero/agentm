@@ -74,7 +74,7 @@ Canonical block per phase (the adapter copies reference these paths rather than 
 | Phase | File | Block |
 |---|---|---|
 | `/setup` | [`harness/phases/01-setup.md#L140-L191`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/01-setup.md#L140-L191) | §8 "Offer GitHub Project creation" — two-step create + link flow |
-| `/plan` | [`harness/phases/02-plan.md#L134-L157`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/02-plan.md#L134-L157) | §7 "Offer deferred items to the GitHub Project" |
+| `/plan` | [`harness/phases/02-plan.md#L254-L276`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/02-plan.md#L254-L276) | §7 "Offer deferred items to the GitHub Project" |
 | `/work` | [`harness/phases/03-work.md#L111-L134`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/03-work.md#L111-L134) | §10 "Offer deferred items to the GitHub Project" |
 | `/review` | [`harness/phases/04-review.md#L159-L177`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/04-review.md#L159-L177) | §8 "Offer deferred findings to the GitHub Project" |
 | `/release` | [`harness/phases/05-release.md#L101-L121`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/05-release.md#L101-L121) | §8 "Offer next-release themes to the GitHub Project" |

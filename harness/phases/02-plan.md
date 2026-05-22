@@ -30,6 +30,29 @@ A plan exists so that:
 - If it's complete (`Status: done`) or absent: proceed to a fresh plan.
 - Read `.harness/progress.md` — what's the last thing that happened in this project? Useful context.
 
+### 1b. Auto-recall MemoryVault context (graceful-skip if not installed)
+
+If MemoryVault is installed (`MEMORY_VAULT_PATH` env set + directory exists), load project-specific recall context before interview + decomposition. Conventions ground style decisions; prior decisions prevent re-litigating the same calls; open questions surface the unresolved.
+
+```bash
+SLUG=$(python3 scripts/vault_project.py read . 2>/dev/null || true)
+python3 scripts/harness_memory.py recall --phase plan --project "${SLUG:-}"
+```
+
+What this loads (per `_PHASE_PROJECT_DIRS["plan"]` in `harness_memory.py`):
+- `personal-private/_always-load/*.md` — operator-global conventions.
+- `personal-projects/<slug>/_index.md` — project anchor + current state.
+- `personal-projects/<slug>/decisions/*.md` — decisions logged from prior plans + releases (informs "have we already settled this?").
+- `personal-projects/<slug>/open-questions/*.md` — unresolved questions from prior plans (some may now be answerable).
+
+Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_PLAN` env); cap is 5 entries. Surface the recall output in the working context before §2 interview — if `decisions/` already settled the interview's question, skip asking.
+
+**Graceful-skip conditions** (silent — no error, no prompt):
+- `MEMORY_VAULT_PATH` env unset or directory missing.
+- `scripts/harness_memory.py available` exits 1.
+
+This step lands per plan #8 task 4 (auto-context-into-harness-phases). See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the design rationale + the locked Q1 budget defaults.
+
 ### 2. Interview, if the brief is ambiguous
 
 The single most valuable thing this phase does. Adapted from [Trail of Bits' "interview first, implement second"](https://github.com/trailofbits/claude-code-config).
@@ -158,6 +181,44 @@ After writing the draft `.harness/PLAN.md`, the operator has an alternative to i
 **Why this design**: leans on Antigravity-native primitives (inline-comment UI + Gemini-applies pattern) for the review-and-revise loop on long plans. Same mechanics as toolkit `/design` skill's external-review handoff — shared template, shared workflow shape, shared cleanup discipline. See [toolkit ADR 0004 amendment (2026-05-16)](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0004-design-skill.md) for the design rationale.
 
 **Cross-host scope**: shipped in v2.3.1 paired with toolkit v0.8.1. The handoff target (Antigravity-Gemini) is one of the two supported hosts post-ROADMAP-item-#15 (Gemini-CLI host removal); the other supported host (Claude Code) is where the inline alternative lives.
+
+### 4c. Offer-save open questions to MemoryVault (graceful-skip if not installed)
+
+If `harness_memory.py available` exits 0, scan the just-written PLAN.md's `## Risks / open questions` section. For each entry, offer to persist it to MemoryVault so future `/plan` and `/work` recall calls surface it:
+
+```bash
+# For each open question, write a short stub to a tmp file:
+cat > /tmp/oq-<slug>.md <<EOF
+# <one-line open question>
+
+**Plan:** $(realpath .harness/PLAN.md)
+**Logged:** <YYYY-MM-DD>
+
+<paragraph framing — what's unresolved, what we'd need to decide, what
+we'll do if we have to choose without resolution>
+EOF
+
+python3 scripts/harness_memory.py offer-save \
+    --phase plan --project "<slug>" \
+    --kind open-question --slug "<date>-<short-slug>" \
+    --content-file /tmp/oq-<slug>.md \
+    --confidence <0.0-1.0> \
+    --confidence-reason "<one-line rationale>"
+```
+
+**Confidence rubric** (per ADR 0009 — lands in plan #8 task 9):
+- **High (≥0.85)** when the operator explicitly named the question during interview (§2) and the plan's `## Risks / open questions` entry records that verbatim — high-signal save.
+- **Medium (0.7)** when the question was inferred during plan-write (§4) but not directly raised by the operator — useful save but lower confidence in framing.
+- **Low (0.5)** when the question is generic / could apply to many plans — operator should confirm before persisting.
+
+Per the self-modulating ask contract (Q4), `confidence ≥ HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD` (default 0.8) saves silently with a `[auto-saved high-confidence]` stderr notice; below threshold fires the preview-and-ask prompt. Non-TTY stdin defaults to skip.
+
+**Why this design**: open questions written into the plan are typically the *highest-signal* candidates for MemoryVault — they captured a moment of operator judgment where something wasn't settled. Persisting them means future `/plan` recall (§1b) can show "this question was raised before; here's what we decided / didn't decide" without the operator having to remember.
+
+**Graceful-skip conditions** (silent):
+- `harness_memory.py available` exits 1.
+- `HARNESS_AUTO_SAVE_MODE=off`.
+- Plan has no `## Risks / open questions` entries (nothing to offer).
 
 ### 5. Also update `features.json` if appropriate
 
