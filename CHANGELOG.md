@@ -5,6 +5,34 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.4.3] — 2026-05-22 — diataxis-author skill (paired with toolkit v0.11.0)
+
+Patch — paired-doc-only release pairing with [`agent-toolkit v0.11.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.11.0). Substantive change ships entirely on the toolkit side: new `diataxis-author` skill with 5 sub-commands (`/diataxis author` + `check` + `repair` + `migrate` + `classify`) covering the full Diátaxis-wiki lifecycle. Subsumes harness's `migrate-to-diataxis` predecessor (deprecated 2026-05-22 in commit `d4d4adf`; predecessor file removal in a follow-up harness PATCH after dogfood). **4th consecutive paired-release-as-documentation pair** (after v2.4.0/v2.4.1/v2.4.2).
+
+Harness-side changes for this release pair:
+
+1. **`harness/skills/migrate-to-diataxis.md`** gains NOTE-WARNING deprecation block (shipped in commit `d4d4adf` 2026-05-22 alongside toolkit Part 4 push). Predecessor file stays through v1 dogfood; full removal lands in a follow-up harness PATCH release.
+2. **No phase-spec or adapter changes** — the toolkit's `/diataxis` sub-commands are operator-invokable; harness `/release` documenter dispatch remains unchanged. Future harness PATCH could amend `/release` to call `/diataxis check` when the skill is installed (graceful-skip otherwise); deferred from v1 to keep change surface narrow.
+3. **CHANGELOG + Completed-Features.md row** documenting the paired release.
+
+Triggered by [ROADMAP item #13](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md). Implemented as plan #13 (5 parts: scaffold + author-classify + check-repair + migrate-subsume + AgentMemory-docs-release). Decision rationale + 4 locked design calls + 4 load-bearing assumptions in [toolkit-side ADR 0008](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0008-diataxis-author.md). Parent design at [diataxis-author](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/diataxis-author.md) (Status: launched as of this release).
+
+**Why this matters for harness users**: operators with the agent-toolkit installed gain five new `/diataxis` sub-commands on next install. Drift detection (`/diataxis check`) becomes a regular auditing tool alongside `check-wiki.py --strict`. The `migrate-to-diataxis` predecessor still works through v1 dogfood for operators with existing installs, but new migrations should use `/diataxis migrate` for the additional capabilities (per-repo `.diataxis-conventions.md` auto-seed + delegation to `/diataxis repair` for mode-mixed splits + AgentMemory convention sync).
+
+### Added
+
+- **CHANGELOG.md v2.4.3 entry** + **Completed-Features.md row** for the paired release.
+
+### Changed
+
+- **`harness/skills/migrate-to-diataxis.md`** — NOTE-WARNING deprecation block + redirect to `/diataxis migrate` (committed `d4d4adf` 2026-05-22).
+
+### Internal
+
+- **Plan #13 close-out**: 5/5 parts shipped across 8 toolkit commits + 1 harness commit. Plan archived to `.harness/PLAN.archive.20260522-diataxis-author-part-5.md` (sibling archives for parts 1-4). ROADMAP item #13 moves to Completed.
+- **Second real dogfood of `/design` skill** (after MemoryVault parent design closed 2026-05-20 + 2026-05-22). Parent design transitions `final → launched` automatically per `/design` lifecycle.
+- **3 Windows-specific CI failures caught + fixed mid-plan** per `[[wake-on-ci-pattern]]`: Start-Process multi-word arg split (Part 2 `caf3c5a`); `git mv` cwd dependence + cp1252 stdout encoding crash on `→` arrow (Part 4 `c5b32fd` + `79cf283`). Pattern locked: cross-platform Python scripts must defensively configure encoding + line endings + invocation patterns. Same family of bugs as Part 4 of plan #18 (CRLF line endings).
+
 ## [v2.4.2] — 2026-05-22 — MemoryVault Discovery + Mining (paired with toolkit v0.10.0)
 
 Patch — second MemoryVault roadmap item closes. Paired with [`agent-toolkit v0.10.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.10.0) which ships the substantive feature set: five new `/memory` sub-commands (`/memory index-skills` + `/memory reflect corpus` + `/memory discover-skills` + `/memory adapt-skills` + `/memory watchlist`) that turn the vault from a static curated store into a living surface.

@@ -8,6 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-05-22 | [v2.4.3](https://github.com/alexherrero/agentic-harness/releases/tag/v2.4.3) — diataxis-author skill (paired with toolkit v0.11.0) | **New second-major-skill `diataxis-author` shipped in toolkit** — one skill, five sub-commands (`/diataxis author` + `check` + `repair` + `migrate` + `classify`) covering the full Diátaxis-wiki lifecycle. Subsumes `migrate-to-diataxis` harness predecessor (deprecated). Harness-side is doc-only (Completed-Features + CHANGELOG + deprecation NOTE on predecessor); skill scripts + sub-agent + templates + how-to + ADR ship on toolkit side. | 1 harness commit (deprecation NOTE `d4d4adf`) + 1 release commit; paired with [agent-toolkit v0.11.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.11.0) which does the substantive 8-commit sweep across plan #13 parts 1-5 (scaffold + author-classify + check-repair + migrate-subsume + agentmemory-docs-release); decision rationale in toolkit-side [ADR 0008](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0008-diataxis-author.md); second real dogfood of plan #6's `/design` skill (after MemoryVault); 4th consecutive paired-release-as-documentation pair (v2.4.0/v2.4.1/v2.4.2/v2.4.3) |
 | 2026-05-22 | [v2.4.2](https://github.com/alexherrero/agentic-harness/releases/tag/v2.4.2) — MemoryVault Discovery + Mining (paired with toolkit v0.10.0) | **Discovery + mining additive layer**: five new `/memory` sub-commands (`index-skills` / `reflect corpus` / `discover-skills` / `adapt-skills` / `watchlist`) turn the vault from a static curated store into a living surface. Personal-skills auto-indexer; historical-transcript-backlog mining with dry-run-default; cadence-checked internet skill-discovery scan (operator's 4-source whitelist); adapt-don't-import workflow with 6-rule Python rubric + GitHub metadata + trustworthiness signals + LLM sub-agent judgment; promote/dismiss/defer review surface. **Adapt-don't-import is architecturally enforced** via sub-agent write allowlist. Harness-side is doc-only (Completed-Features + CHANGELOG + ROADMAP move + PLAN archive). | 1 commit (`v2.4.1..v2.4.2`); paired with [agent-toolkit v0.10.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.10.0) which does the 8-commit substantive sweep across plan #7b tasks 1-7; decision rationale + 7 locked design calls in toolkit-side [ADR 0007](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md); closes ROADMAP item #7b (MemoryVault parent design fully shipped — both #7a + #7b roadmap items now Completed); paired-release-as-documentation pattern (continues from v2.4.0 + v2.4.1) |
 | 2026-05-20 | [v2.4.1](https://github.com/alexherrero/agentic-harness/releases/tag/v2.4.1) — Local-only embeddings (paired with toolkit v0.9.2) | **Embedding-mode collapse**: Voyage/Anthropic API mode dropped from agent-toolkit's memory skill; local sentence-transformers is now the only production mode. Default model `BAAI/bge-large-en-v1.5` (1024-d native; 384-d → 1024-d dim bump). Harness-side is doc-only (Completed-Features + CHANGELOG); embed.py + vec_index.py + install scripts refactor happens on toolkit side. | 1 commit (`v2.4.0..v2.4.1`); paired with [agent-toolkit v0.9.2](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.9.2) which does the 8-commit substantive sweep across plan #18 tasks 1-7 (embed.py refactor + vec_index.py rebuild + smoke install split + install scripts pip-install + ADR amendment + docs rewrite + this paired release); decision rationale in toolkit-side [ADR 0001's 2026-05-20 amendment](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md#amendment-2026-05-20); plan #18 is the **first mid-flight plan insertion** in the personal-dev-env (inserted into the active queue during plan #7a part 5 execution; seed-pass resumes at task 6 after this release pair ships); paired-release-as-documentation pattern (continues from v2.4.0) |
 | 2026-05-17 | [v2.4.0](https://github.com/alexherrero/agentic-harness/releases/tag/v2.4.0) — Gemini-CLI host removal (paired with toolkit v0.9.0) | **Host-scope reduction**: standalone Gemini CLI dropped from supported hosts across the personal-dev-env. Keeps Claude Code + Antigravity. Harness-side is doc-only (Completed-Features + CHANGELOG); customization sweep happens on toolkit side. | 1 commit (`v2.3.1..v2.4.0`); paired with [agent-toolkit v0.9.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.9.0) which does the substantive customization + installer + wiki + ADR sweep across 5 commits (e1b477e + 5af1a59 + b216043 + 13109fa + 7a4162f); decision rationale in toolkit-side [ADR 0006](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0006-gemini-cli-host-removal.md); first host-scope reduction in personal-dev-env history; paired-release-as-documentation pattern (substantive change lives toolkit-side; harness still ships a paired MINOR for version-cadence readability) |
@@ -19,6 +20,59 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentic-harness/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentic-harness/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-05-22 — v2.4.3: diataxis-author skill (paired with toolkit v0.11.0)
+
+**Commit range:** `v2.4.2..v2.4.3` (2 commits on `main`: predecessor deprecation `d4d4adf` + this release commit). Release notes: [v2.4.3](https://github.com/alexherrero/agentic-harness/releases/tag/v2.4.3). Paired with [agent-toolkit v0.11.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.11.0) (8 toolkit commits across plan #13 parts 1-5).
+
+### What shipped
+
+agent-toolkit's second major skill after `memory`: **`diataxis-author`** — author + maintain a Diátaxis-style wiki for any repo. Five sub-commands:
+
+1. **`/diataxis author <slug>`** — live authoring guidance: mode classification + template selection + filename style; pre-fills `wiki/<mode-dir>/<filename>.md` skeleton.
+2. **`/diataxis classify <file>`** — single-page mode classification (Tier-1 deterministic heuristic + Tier-2 `diataxis-evaluator` sub-agent for ambiguous cases).
+3. **`/diataxis check [--strict]`** — drift detection (wraps `check-wiki.py` + adds 4 skill-side heuristics: mode-mixed, stale-cross-ref, template-shape-drift, convention-drift).
+4. **`/diataxis repair`** — interactive fix-application; preview-first per finding; dispatches `documenter` sub-agent for mode-mixed splits.
+5. **`/diataxis migrate`** — one-shot legacy → Diátaxis migration (subsumes harness's `migrate-to-diataxis` predecessor; same contract + `.diataxis-conventions.md` auto-seed + delegation to `/diataxis repair` for splits).
+
+Plus: `diataxis-evaluator` read-only sub-agent (zero filesystem write scope); 4 Diátaxis templates; AgentMemory integration with 3-tier convention fallback (per-repo `.diataxis-conventions.md` > vault `_always-load/diataxis-*.md` > ADR 0004 defaults).
+
+Substantive sweep happens entirely on toolkit side (8 toolkit commits + 1 harness commit). Harness side is doc-only this release pair: this Completed-Features row + narrative + paired CHANGELOG entry + the deprecation NOTE on `harness/skills/migrate-to-diataxis.md` (`d4d4adf`, shipped during plan part 4).
+
+### Why this shape
+
+The operator maintains three Diátaxis-shaped wikis (agentic-harness + agent-toolkit + dev-setup) plus the just-shipped MemoryVault parent design. Diátaxis discipline was previously supported only by:
+- `scripts/check-wiki.py` (strict validator; catches post-write)
+- `documenter` sub-agent (sweep at `/release` only)
+- `migrate-to-diataxis` predecessor (one-shot; never fires after migration)
+
+The gap was live authoring guidance + ongoing drift detection + repair. The new skill ships that gap + subsumes the predecessor + repurposes `documenter` as the skill's mechanical-write worker (same orchestration + sub-agent pattern as `/memory adapt-skills` + `adapt-evaluator` from #7b task 4).
+
+This is the **2nd real dogfood of plan #6's `/design` skill** (first was MemoryVault parent design closed 2026-05-20). Parent design lived through `/design author` → walk-sections → operator approval as final → `/design translate` (5 parts) → `/design sequence` (1 active + 4 queued PLAN.md files) → 5 parts executed in sequence → parent design transitions `final → launched` on this release.
+
+The **paired-release-as-documentation pattern** continues from v2.4.0 + v2.4.1 + v2.4.2: substantive change lives on one side (toolkit); the other side (harness) ships a paired PATCH for version-cadence readability. v2.4.3 is the documentation-acknowledgement counterpart to v0.11.0; **4th consecutive paired-doc-only pair** — the pattern is now firmly established convention.
+
+### Doesn't do
+
+- Doesn't change harness phase specs. Future PATCH could amend `/release` to call `/diataxis check` when skill installed (graceful-skip otherwise) — deferred to keep v1 surface narrow.
+- Doesn't remove `harness/skills/migrate-to-diataxis.md` — predecessor stays through v1 dogfood window. Removal in a follow-up harness PATCH after `/diataxis migrate` proves out.
+- Doesn't auto-fork into `agent-toolkit/skills/` from sub-agent. `diataxis-evaluator` sub-agent has **zero filesystem write scope** (stricter than `adapt-evaluator`'s scoped-write-to-`_skill-watchlist/`).
+- Doesn't ship hooks integration (SessionStart surface; UserPromptSubmit auto-dispatch). Deferred to a v2 task per parent design's §8 Hooks Integration.
+- Doesn't ship cross-skill integration with ROADMAP items #19-#23 — sibling work; ships independently.
+
+### Tracked as
+
+2 harness commits in this release cycle (deprecation NOTE + this release commit). No new feature entries in `features.json` — the new skill is wholly a toolkit-internal capability + the harness-side change is doc-only.
+
+### Related
+
+- [agent-toolkit v0.11.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.11.0) — paired release; 8 commits across plan #13 parts 1-5
+- [agent-toolkit ADR 0008 — diataxis-author skill](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0008-diataxis-author.md) — 4 locked design calls + 4 load-bearing assumptions with re-audit triggers
+- [agent-toolkit parent design — diataxis-author](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/diataxis-author.md) — full architectural context (Status: launched)
+- [agent-toolkit how-to — Use Diataxis Author](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/how-to/Use-Diataxis-Author.md) — 5 worked scenarios + AgentMemory walkthrough + troubleshooting
+- [agentic-harness ADR 0004 — Diátaxis Documentation Spec](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md) — canonical Diátaxis convention this skill enforces (upstream)
+- [predecessor `migrate-to-diataxis` (deprecated)](https://github.com/alexherrero/agentic-harness/blob/main/harness/skills/migrate-to-diataxis.md) — subsumed by `/diataxis migrate`
+- [v2.4.3](https://github.com/alexherrero/agentic-harness/releases/tag/v2.4.3) — release notes; [CHANGELOG.md](https://github.com/alexherrero/agentic-harness/blob/main/CHANGELOG.md)
 
 ## 2026-05-22 — v2.4.2: MemoryVault Discovery + Mining (paired with toolkit v0.10.0)
 
