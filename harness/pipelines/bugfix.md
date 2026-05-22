@@ -56,6 +56,29 @@ If root cause analysis reveals the bug is actually a symptom of a larger design 
 
 **Post Analysis to the tracking issue.** Propose a comment mirroring the `## Analysis` block (Reproduction / Root cause / Why it happened / Scope / Fix strategy). Preview to the user, then run `gh issue comment $N -b <body>` on confirmation. Skip silently if no issue was opened in Phase 1.
 
+### 2b. Auto-recall known-issues (graceful-skip if not installed)
+
+**Execution note:** invoke this **at the start of §2 Analyze, before reproduction**, even though it documents in §2b. The recall informs the "why" analysis chain — if a vault entry shows you've hit this pattern before, the third "why" comes faster.
+
+If MemoryVault is installed (`MEMORY_VAULT_PATH` env set + directory exists), load known-issues for this project. The "this is the third time we've hit this CRLF issue" pattern is the highest-signal use case — recurring root causes often share a single underlying fix.
+
+```bash
+SLUG=$(python3 scripts/vault_project.py read . 2>/dev/null || true)
+python3 scripts/harness_memory.py recall --phase bugfix --project "${SLUG:-}"
+```
+
+What this loads (per `_PHASE_PROJECT_DIRS["bugfix"]` in `harness_memory.py`):
+- `personal-private/_always-load/*.md` — operator-global conventions (debugging style, reproduction discipline).
+- `personal-projects/<slug>/known-issues/*.md` — prior gotchas + recurring root causes.
+
+Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_BUGFIX` env); cap is 5 entries. If a known-issue entry matches the current bug's surface area, factor it into the §2 Analysis: the prior fix path may apply directly, or the recurrence may signal a deeper design issue that warrants a `/plan` rather than another patch.
+
+**Graceful-skip conditions** (silent):
+- `MEMORY_VAULT_PATH` env unset or directory missing.
+- `scripts/harness_memory.py available` exits 1.
+
+See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the recall-budget rationale + the bugfix-specific surface mapping.
+
 ### 3. Fix
 
 Implement the fix under `/work` discipline (see [03-work.md](../phases/03-work.md)) with two bugfix-specific rules:
@@ -93,6 +116,47 @@ Append to `.harness/progress.md`:
 ```
 <YYYY-MM-DD HH:MM> /bugfix — fixed <one-line description> (tracking: #N, root cause: <summary>, regression test: <path>)
 ```
+
+### 4b. Offer-save gotcha to known-issues (graceful-skip if not installed)
+
+If `harness_memory.py available` exits 0 AND the bug had a **non-obvious root cause** (env-specific, platform-specific, surprising-interaction, recurring-pattern), offer to persist it to MemoryVault. This is the bug-equivalent of `/work`'s §7b — the difference is that bugfix gotchas tend to be higher-signal because the bug surfaced because the prior fix wasn't durable enough.
+
+```bash
+cat > /tmp/known-issue-<slug>.md <<EOF
+# <one-line title>
+
+**Surfaced:** <YYYY-MM-DD> as bug #<N>
+**Root cause:** <file:line, one-sentence>
+**Reproduction:** <steps that reliably trigger>
+**Fix:** <commit SHA + one-line description>
+
+**Why this is durable:** <paragraph — what makes this worth remembering, what
+future bug would benefit from this entry being recalled>
+EOF
+
+python3 scripts/harness_memory.py offer-save \
+    --phase bugfix --project "<slug>" \
+    --kind gotcha --slug "<date>-<short-slug>" \
+    --content-file /tmp/known-issue-<slug>.md \
+    --confidence <0.0-1.0> \
+    --confidence-reason "<one-line rationale>"
+```
+
+**Confidence rubric** (per ADR 0009):
+- **High (≥0.85)** when the root cause involves an environment/platform-specific issue with deterministic reproduction steps (e.g. "Windows cp1252 stdout encoding", "macOS APFS case-insensitive collision") — these recur and the entry's value compounds.
+- **Medium (0.7)** when the root cause is non-obvious but project-internal (e.g. "feature flag X interacts badly with cache layer Y") — useful in this project, less reusable elsewhere.
+- **Low (0.5)** when the root cause is narrow + unlikely to recur (e.g. typo, off-by-one) — operator should confirm before persisting; most narrow bugs don't merit a known-issues entry.
+
+Per the self-modulating ask contract (Q4), confidence ≥ `HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD` (default 0.8) saves silently; below threshold fires the preview-and-ask prompt. Non-TTY stdin defaults to skip.
+
+**ADR write is operator-controlled, not auto.** If the bug exposes a design-decision change (§4 already covered this — docsub flags it), the operator writes the ADR via `/design author` or directly; the harness does not auto-write ADRs. The known-issues entry is the cheap, durable artifact; the ADR is the expensive, intentional one.
+
+**Cap at 1 known-issue per `/bugfix`.** A single bug rarely produces more than one durable gotcha. If the analysis surfaced two distinct issues, that's a sign §2's "stop and ask if this needs `/plan` instead" rule should have fired.
+
+**Graceful-skip conditions** (silent):
+- `harness_memory.py available` exits 1.
+- `HARNESS_AUTO_SAVE_MODE=off`.
+- Bug had an obvious / narrow root cause — no durable gotcha to persist.
 
 ## Issue as posterity record
 
