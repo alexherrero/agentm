@@ -64,6 +64,27 @@ Steps:
 
 **Graceful-skip conditions** (silent, no message): no `parent_design_doc:` frontmatter in `.harness/PLAN.md` AND no `.harness/designs/<slug>/queued-plans/` directory referencing the plan. This means either agent-toolkit isn't installed, or the completed plan was hand-authored without going through the `/design` skill. Either way, §1b is a no-op.
 
+### 1c. Auto-recall MemoryVault decisions (graceful-skip if not installed)
+
+If MemoryVault is installed (`MEMORY_VAULT_PATH` env set + directory exists), load per-project decisions before the gate run + changelog draft. Decisions inform changelog framing — "we picked X over Y" recorded in a prior plan becomes a sentence in the "Why" section of the release notes.
+
+```bash
+SLUG=$(python3 scripts/vault_project.py read . 2>/dev/null || true)
+python3 scripts/harness_memory.py recall --phase release --project "${SLUG:-}"
+```
+
+What this loads (per `_PHASE_PROJECT_DIRS["release"]` in `harness_memory.py`):
+- `personal-private/_always-load/*.md` — operator-global conventions (commit style, framing tone, etc.).
+- `personal-projects/<slug>/decisions/*.md` — settled calls from prior plans + releases. The most recent N entries since the last release tag are the most useful for framing this release.
+
+Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_RELEASE` env); cap is 5 entries. Surface the recall output in the working context before §5 changelog draft so the framing can reference prior decisions without rediscovering them.
+
+**Graceful-skip conditions** (silent):
+- `MEMORY_VAULT_PATH` env unset or directory missing.
+- `scripts/harness_memory.py available` exits 1.
+
+See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the recall-budget rationale.
+
 ### 2. Re-run deterministic gates, full suite
 
 Not a subset. The full gate suite on the current branch:
@@ -103,6 +124,58 @@ If the project has a `CHANGELOG.md` / `RELEASES.md`, add an entry for this relea
 - Credit where applicable (issue numbers, PRs, contributors)
 
 If the project doesn't have a changelog, skip this step unless the user asks for one. Don't introduce new conventions in a release session.
+
+### 5b. Decisions offer-save to MemoryVault (graceful-skip if not installed)
+
+If `harness_memory.py available` exits 0, scan the just-drafted CHANGELOG entry for durable decisions worth promoting to MemoryVault. Release-cut is the natural "what shipped + why" reflection moment — the framing has settled, the work has landed, the rationale is captured.
+
+For each decision in the CHANGELOG entry, build a short stub + offer it:
+
+```bash
+cat > /tmp/release-decision-<slug>.md <<EOF
+# <one-line decision title>
+
+**Released:** <YYYY-MM-DD> in <version>
+**Why:** <paragraph framing — what choice was made, what alternatives were considered,
+what conditions made this the right call>
+
+**Reference:** <link to CHANGELOG entry / PR / commit>
+EOF
+
+python3 scripts/harness_memory.py offer-save \
+    --phase release --project "<slug>" \
+    --kind decision --slug "<date>-<short-slug>" \
+    --content-file /tmp/release-decision-<slug>.md \
+    --confidence <0.0-1.0> \
+    --confidence-reason "<one-line rationale>"
+```
+
+**Confidence rubric** (per ADR 0009):
+- **High (≥0.85)** when the CHANGELOG entry contains an explicit "we picked X over Y because Z" framing — direct, recorded, anchored to the release.
+- **Medium (0.7)** when the entry implies a decision (new behavior + rationale in passing) without naming the alternative.
+- **Low (0.5)** when the entry just describes the change without explanation — operator should confirm before persisting (this often means the decision wasn't actually durable, just a one-off implementation detail).
+
+Per the self-modulating ask contract (Q4), confidence ≥ `HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD` (default 0.8) saves silently with a `[auto-saved high-confidence]` stderr notice; below threshold fires the preview-and-ask prompt. Non-TTY stdin defaults to skip.
+
+**Cap at ~3 decisions per release.** Most releases ship one or two durable decisions plus several bug fixes — bug fixes don't merit `decision` entries (they belong to `/work`'s §7b `gotcha` kind instead). Over-firing here means scope-creep into the journal-dumping pattern.
+
+### 5c. Progress.md tail-scan via plan-done-promotion (graceful-skip if not installed)
+
+If `harness_memory.py available` exits 0, invoke the cursor-tracked tail-scan to surface durable items from `.harness/progress.md` since the last release tag:
+
+```bash
+python3 scripts/harness_memory.py plan-done-promotion --project-root .
+```
+
+Per the locked Q5 design call (dual-trigger middle ground): the dispatcher reads progress.md past the `.harness/.promoted-progress-cursor` byte offset + advances cursor. **Shares the cursor file with `/work`'s §7c trigger** — if a `/work` task already promoted at plan-done, this `/release` invocation is a no-op (cursor at end-of-file). If `/release` runs without an intervening plan-done (mid-plan release, or release on a single-task plan), this is the first trigger and runs the full tail-scan.
+
+The agent should then LLM-summarize the emitted tail into per-candidate offer-save calls — same machinery as §5b but with `--kind decision|gotcha|workflow` distributed across surfaced items.
+
+**Why two triggers and one cursor:** /work's plan-done covers the "plan finished but no release follows" case (internal refactors, doc-only plans); /release covers the "release without a plan-done flip" case (mid-plan release, single-task plan). The shared cursor means a plan that ships as a release on completion gets promoted exactly once — not double, not missed.
+
+**Graceful-skip conditions** (silent):
+- `harness_memory.py available` exits 1.
+- progress.md absent OR cursor already at end-of-file (idempotent no-op — `/work` already promoted).
 
 ### 6. Verify CI state (if applicable)
 

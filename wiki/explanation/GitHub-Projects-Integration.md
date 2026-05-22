@@ -77,7 +77,7 @@ Canonical block per phase (the adapter copies reference these paths rather than 
 | `/plan` | [`harness/phases/02-plan.md#L254-L276`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/02-plan.md#L254-L276) | §7 "Offer deferred items to the GitHub Project" |
 | `/work` | [`harness/phases/03-work.md#L194-L216`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/03-work.md#L194-L216) | §10 "Offer deferred items to the GitHub Project" |
 | `/review` | [`harness/phases/04-review.md#L234-L254`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/04-review.md#L234-L254) | §8 "Offer deferred findings to the GitHub Project" |
-| `/release` | [`harness/phases/05-release.md#L101-L121`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/05-release.md#L101-L121) | §8 "Offer next-release themes to the GitHub Project" |
+| `/release` | [`harness/phases/05-release.md#L213-L233`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/05-release.md#L213-L233) | §8 "Offer next-release themes to the GitHub Project" |
 
 Adapter parity (all three adapters carry the wiring for all five phases — 15 adapter files touched):
 
