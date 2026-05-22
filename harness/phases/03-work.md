@@ -49,7 +49,7 @@ Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_WORK` env); ca
 - `MEMORY_VAULT_PATH` env unset or directory missing.
 - `scripts/harness_memory.py available` exits 1.
 
-See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the design rationale.
+See [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) for the design rationale.
 
 ### 2. Confirm scope
 
@@ -133,7 +133,7 @@ python3 scripts/harness_memory.py offer-save \
     --confidence-reason "<one-line rationale>"
 ```
 
-**Confidence rubric** (per ADR 0009 — lands in plan #8 task 9):
+**Confidence rubric** (per ADR 0007 — lands in plan #8 task 9):
 - **High (≥0.85)** — direct decision/quote recorded *this session* AND matches an existing convention pattern in the vault (e.g. another `gotcha` entry confirms cross-platform Python flakiness, and the new one extends that pattern).
 - **Medium (0.7)** — direct quote/decision but first-of-its-kind in the vault (no existing pattern to anchor against).
 - **Low (0.5)** — inferred from session context (not explicitly stated by operator or in code) AND first-of-its-kind.

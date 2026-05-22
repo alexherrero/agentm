@@ -14,6 +14,7 @@ Dogfood documentation for the harness repo itself. Every page is written for a s
 - [How to install the harness into a project](Install-Into-Project) — add the scaffold to an existing repo.
 - [How to refresh an installed harness](Update-Installed-Harness) — pull a newer harness version into a project that already has one.
 - [How to cut a release](Cut-A-Release) — tag, changelog, GitHub release via the `ship-release` skill.
+- [How to use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) — tune MemoryVault recall budgets, save modes, and confidence thresholds for each phase.
 
 ## 📖 Looking up a detail?
 
@@ -36,6 +37,7 @@ Dogfood documentation for the harness repo itself. Every page is written for a s
 - [ADR 0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
 - [ADR 0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
 - [ADR 0006 — Split customizations into `agent-toolkit`](0006-agent-toolkit-split)
+- [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
 
 ## Conventions
 

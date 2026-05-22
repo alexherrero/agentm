@@ -7,6 +7,7 @@
 - [Install into a project](Install-Into-Project)
 - [Update an installed harness](Update-Installed-Harness)
 - [Cut a release](Cut-A-Release)
+- [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases)
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)
@@ -26,3 +27,4 @@
 - [0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
 - [0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
 - [0006 — Split customizations into agent-toolkit](0006-agent-toolkit-split)
+- [0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)

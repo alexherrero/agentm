@@ -77,7 +77,7 @@ Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_BUGFIX` env); 
 - `MEMORY_VAULT_PATH` env unset or directory missing.
 - `scripts/harness_memory.py available` exits 1.
 
-See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the recall-budget rationale + the bugfix-specific surface mapping.
+See [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) for the recall-budget rationale + the bugfix-specific surface mapping.
 
 ### 3. Fix
 
@@ -142,7 +142,7 @@ python3 scripts/harness_memory.py offer-save \
     --confidence-reason "<one-line rationale>"
 ```
 
-**Confidence rubric** (per ADR 0009):
+**Confidence rubric** (per ADR 0007):
 - **High (≥0.85)** when the root cause involves an environment/platform-specific issue with deterministic reproduction steps (e.g. "Windows cp1252 stdout encoding", "macOS APFS case-insensitive collision") — these recur and the entry's value compounds.
 - **Medium (0.7)** when the root cause is non-obvious but project-internal (e.g. "feature flag X interacts badly with cache layer Y") — useful in this project, less reusable elsewhere.
 - **Low (0.5)** when the root cause is narrow + unlikely to recur (e.g. typo, off-by-one) — operator should confirm before persisting; most narrow bugs don't merit a known-issues entry.

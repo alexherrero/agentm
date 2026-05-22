@@ -51,7 +51,7 @@ Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_PLAN` env); ca
 - `MEMORY_VAULT_PATH` env unset or directory missing.
 - `scripts/harness_memory.py available` exits 1.
 
-This step lands per plan #8 task 4 (auto-context-into-harness-phases). See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the design rationale + the locked Q1 budget defaults.
+This step lands per plan #8 task 4 (auto-context-into-harness-phases). See [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) for the design rationale + the locked Q1 budget defaults.
 
 ### 2. Interview, if the brief is ambiguous
 
@@ -206,7 +206,7 @@ python3 scripts/harness_memory.py offer-save \
     --confidence-reason "<one-line rationale>"
 ```
 
-**Confidence rubric** (per ADR 0009 — lands in plan #8 task 9):
+**Confidence rubric** (per ADR 0007 — lands in plan #8 task 9):
 - **High (≥0.85)** when the operator explicitly named the question during interview (§2) and the plan's `## Risks / open questions` entry records that verbatim — high-signal save.
 - **Medium (0.7)** when the question was inferred during plan-write (§4) but not directly raised by the operator — useful save but lower confidence in framing.
 - **Low (0.5)** when the question is generic / could apply to many plans — operator should confirm before persisting.

@@ -78,7 +78,7 @@ Budget defaults to 4k tokens (override via `HARNESS_RECALL_BUDGET_REVIEW` env). 
 - `MEMORY_VAULT_PATH` env unset or directory missing.
 - `scripts/harness_memory.py available` exits 1.
 
-See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the read-only-review rationale.
+See [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) for the read-only-review rationale.
 
 ### 3. Dispatch the reviewers
 

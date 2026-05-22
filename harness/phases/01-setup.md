@@ -51,7 +51,7 @@ The 3-tier fallback (explicit field > `github.repo` basename > git origin → st
 - `scripts/harness_memory.py available` exits 1.
 - The `agent-toolkit/skills/memory/` install is missing (toolkit-absent path): recall still returns empty; the rest of `/setup` continues unchanged.
 
-This step lands per plan #8 task 3 (auto-context-into-harness-phases). See [ROADMAP #8](../../.harness/ROADMAP.md) + [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) (the ADR lands in task 9 of the same plan).
+This step lands per plan #8 task 3 (auto-context-into-harness-phases). See [ROADMAP #8](../../.harness/ROADMAP.md) + [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) (the ADR lands in task 9 of the same plan).
 
 ### 2. Interview, briefly
 
@@ -220,7 +220,7 @@ python3 scripts/harness_memory.py offer-save \
     --confidence-reason "freshly-confirmed project metadata from setup interview"
 ```
 
-**Confidence rubric** (per ADR 0009 — lands in plan #8 task 9):
+**Confidence rubric** (per ADR 0007 — lands in plan #8 task 9):
 - **High (≥0.85)** when `vault_project` is an explicit field in `.harness/project.json` (operator deliberately set it).
 - **Medium (0.7)** when slug was derived from `github.repo` (operator linked the repo to GH Projects, signaling intent).
 - **Low (0.5)** when slug was auto-detected from git origin (no operator signal beyond having a remote).

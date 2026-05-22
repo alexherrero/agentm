@@ -83,7 +83,7 @@ Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_RELEASE` env);
 - `MEMORY_VAULT_PATH` env unset or directory missing.
 - `scripts/harness_memory.py available` exits 1.
 
-See [ADR 0009](../../wiki/explanation/decisions/0009-auto-context-into-harness-phases.md) for the recall-budget rationale.
+See [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) for the recall-budget rationale.
 
 ### 2. Re-run deterministic gates, full suite
 
@@ -150,7 +150,7 @@ python3 scripts/harness_memory.py offer-save \
     --confidence-reason "<one-line rationale>"
 ```
 
-**Confidence rubric** (per ADR 0009):
+**Confidence rubric** (per ADR 0007):
 - **High (≥0.85)** when the CHANGELOG entry contains an explicit "we picked X over Y because Z" framing — direct, recorded, anchored to the release.
 - **Medium (0.7)** when the entry implies a decision (new behavior + rationale in passing) without naming the alternative.
 - **Low (0.5)** when the entry just describes the change without explanation — operator should confirm before persisting (this often means the decision wasn't actually durable, just a one-off implementation detail).
