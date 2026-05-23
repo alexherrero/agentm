@@ -5,6 +5,34 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v2.6.0] — 2026-05-23 — Evidence-tracking for /work (paired with toolkit v0.12.0)
+
+Minor — second non-doc-only paired pair in the recent run (after v2.5.0). Harness ships the **`/work` §5b spec amendment** documenting the contract for the new `evidence-tracker` base hook in [`agent-toolkit v0.12.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.12.0). Default-FAIL evidence enforcement: every PLAN.md task starts with `evidence-met=false`; the agent must demonstrably READ relevant spec/test/evidence files before a `Write`/`Edit` that flips `[ ]` → `[x]` is allowed. Hook blocks otherwise.
+
+**What changes for operators**:
+- With `agent-toolkit` installed + the `evidence-tracker` hook in place: `/work` task closeouts gain a deterministic verification gate. Hook fires PreToolUse on `Read|Write|Edit`; records reads; blocks unmet-evidence flips with a helpful stderr message + 3 recovery paths.
+- Without those prerequisites: **zero behavior change**. Hook absent → no enforcement → `/work` runs as it always has.
+
+Triggered by [ROADMAP item #9](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md). Decision rationale + 3 locked design calls Q1-Q3 + 4 load-bearing assumptions in the toolkit-side [ADR 0009 — evidence-tracker hook](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0009-evidence-tracker-hook.md). Operator-facing how-to at [Use The Evidence-Tracker Hook](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/how-to/Use-The-Evidence-Tracker-Hook.md).
+
+### Added
+
+- **`harness/phases/03-work.md` §5b** "Evidence-tracking (graceful-skip if not installed)" inserted between §5 Run-deterministic-gates + §6 Iterate-on-failures (~75 lines). Documents: hook trigger table; 3 task-body conventions (default heuristic / `**Evidence:** <pattern>` override / `**Evidence:** none — <rationale>` opt-out); 3 recovery paths on block; 5 graceful-skip conditions.
+- **`templates/PLAN.md`** task-block template gains optional `**Evidence:**` field hint cross-referencing §5b. Operators creating new plans see the hook surface in the template.
+- **`wiki/reference/Completed-Features.md`** v2.6.0 row.
+
+### Changed
+
+- **4 wiki line-range anchors updated** in `wiki/explanation/GitHub-Projects-Integration.md` for the line-position shift from §5b insertion (`03-work.md#L194-L216 → #L241-L263`). Sub-letter pattern (§5b) preserves integer §-numbering — incoming wiki ref to §10 keeps citing "§10"; only line-range moves.
+
+### Internal
+
+- **1 commit on this side** (`2027bec`) + this v2.6.0 release commit. Toolkit-side ships substantive in 7 commits (`8c6419f` + `6e875d5` + `e6f4411` + `83fb3e7` + `a3100ab` + `4569c20` + `8793237` + `ecd8d6c` + `dfc802b`).
+- **3 design calls locked at /plan time** (Q1-Q3 per ADR 0009 toolkit-side): hybrid evidence resolver / per-task PLAN.md flip gate only / explicit opt-out.
+- **Sub-letter spec amendment pattern continues** — same §-numbering preservation as plan #8's §1b/§4c/§7b/§7c/§5b/§5c amendments. Wiki refs that cite "§N" stay valid across plan #9.
+- **Self-hosting note**: this harness repo doesn't itself have the evidence-tracker hook installed; the spec describes the contract for projects that DO install it. First real-world dogfood happens in the next `/work` session in a project with both repos installed.
+- **Paired-release ordering**: toolkit v0.12.0 tagged first; this release URL-links to it per `[[coordinated-release-order]]`.
+
 ## [v2.5.0] — 2026-05-22 — Auto-context into harness phases (paired with toolkit v0.11.1)
 
 Minor — **first non-doc-only paired pair** in the recent run (after v2.4.0/v2.4.1/v2.4.2/v2.4.3 all doc-only on this side). Harness ships real new phase behavior: every phase command (`/setup`, `/plan`, `/work`, `/review`, `/release`, `/bugfix`) now auto-invokes MemoryVault at predictable boundaries without the agent or operator having to remember to call `/memory search` or `/memory save`. Paired with [`agent-toolkit v0.11.1`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.11.1) which ships the toolkit-side companion documentation (`Cross-Repo-Memory-Protocol.md`).
