@@ -1,9 +1,54 @@
-# agentic-harness Wiki
+# Agent M — agentic-harness
 
-Dogfood documentation for the harness repo itself. Every page is written for a single reader intent — learning, doing, looking up, or understanding — per the Diátaxis convention ([ADR 0004](0004-diataxis-documentation-spec)).
+Agent M is an agentic memory implementation that combines a persistent knowledge layer with personally curated content (i.e. your own notes in markdown format) through a combination of skills, sidecars, and vectorized indexing. Imagine those workflows you saw in the movies. You're talking to your agent, *"Let's open a new file for project M"* and off you go. It remembers your projects and files together, can talk to you about them, and it learns and grows with you as you work. The context it builds is self-maintaining and it improves automatically as you go. No need to spend time maintaining your own knowledge graphs, and it can help you with your personal notes too, when **you** want it to.
+
+Agent M has grown over time across the paired releases of `agentic-harness` and `agent-toolkit`. The full V1→V4 evolution — what shipped, what's deferred, where the design is going — lives in [Agent Memory Evolution](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/agent-memory-evolution.md) on the toolkit side. This page is the entry point for the harness itself.
 
 > [!NOTE]
-> This wiki documents agentic-harness for contributors to the harness repo. It is **never** installed into target projects — target projects get [`templates/wiki/`](https://github.com/alexherrero/agentic-harness/tree/main/templates/wiki) instead. See [ADR 0002](0002-documentation-convention) for why.
+> This wiki documents the agentic-harness repo for contributors. Target projects get [`templates/wiki/`](https://github.com/alexherrero/agentic-harness/tree/main/templates/wiki) installed instead. See [ADR 0002](0002-documentation-convention) for why.
+
+## Get started
+
+Once both repos are cloned and the vault folder exists, Agent M is operational.
+
+**1. Install both repos as siblings**
+
+```bash
+git clone https://github.com/alexherrero/agentic-harness.git ~/Antigravity/agentic-harness
+git clone https://github.com/alexherrero/agent-toolkit.git    ~/Antigravity/agent-toolkit
+```
+
+**2. Point the vault at your existing Obsidian + sync setup**
+
+```bash
+mkdir -p "<sync-root>/AgentMemory/personal-private/_always-load"
+mkdir -p "<sync-root>/AgentMemory/personal-projects"
+mkdir -p "<sync-root>/AgentMemory/_meta"
+export MEMORY_VAULT_PATH="<sync-root>/AgentMemory"
+```
+
+Any sync layer works (Google Drive, Dropbox, syncthing).
+
+**3. Install the quality-gates bundle and the memory skill into your target project**
+
+```bash
+bash ~/Antigravity/agent-toolkit/install.sh <target-project> --bundle quality-gates
+bash ~/Antigravity/agent-toolkit/install.sh <target-project> --skill memory
+```
+
+The bundle lands the `evaluator` sub-agent + four base hooks (kill-switch, steer, commit-on-stop, evidence-tracker) in one operation.
+
+**4. Seed your always-load entries**
+
+Capture your locked conventions, coding-style rules, project invariants under `<vault>/personal-private/_always-load/`. One entry per concern. The first pass is co-created — you and the agent walk through it together; you approve each entry.
+
+**5. Verify**
+
+```bash
+python3 ~/Antigravity/agentic-harness/scripts/harness_memory.py recall --phase setup
+```
+
+Should print your always-load entries within the 4000-token budget. Empty = vault is reachable but un-seeded. Errored = `MEMORY_VAULT_PATH` is unset or unreadable.
 
 ## 📚 New here? Learn by doing.
 
@@ -25,6 +70,8 @@ Dogfood documentation for the harness repo itself. Every page is written for a s
 
 ## 💡 Want to know why?
 
+- [Agent Memory Evolution V1→V4](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/agent-memory-evolution.md) — the full HLD: where Agent M started, how it grew, where it's going. The architecture, the schema, the workflows, the V4 design space.
+- [V3 Retrospective](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/v3-retrospective.md) — what shipped across the V3 arc, what we learned, what's deferred.
 - [Product intent](Product-Intent) — what problem the harness solves and for whom.
 - [How the pieces fit](How-The-Pieces-Fit) — narrative of how phases, adapters, templates, and scripts interact.
 - [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
