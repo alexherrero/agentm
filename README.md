@@ -2,8 +2,6 @@
   <img src="assets/agent-m/banner-1600.png" alt="Agent M — The structural backend harness you wished you had">
 </p>
 
-<h1 align="center">Agent M</h1>
-
 <p align="center"><em>The agent harness that gives you the assistant you want — part Star Trek Computer, part J.A.R.V.I.S.</em></p>
 
 <!--
@@ -13,13 +11,15 @@
                  OR f4efe6 (paper) for state-less metadata (e.g. LICENSE)
     style      = for-the-badge (brutalist, ALL CAPS, sharp corners — matches banner motif)
     logo       = github (logoColor f4efe6) on CI + release badges
-  CI uses the aggregate `github/checks-status` endpoint to roll up all OS workflows
-  into one badge. Compatibility (hosts that run the harness) lives at wiki/reference/Compatibility.md.
+  CI badge points at the dedicated `ci-all.yml` aggregator workflow which waits
+  for the 3 per-OS workflows on the same commit and reports a combined status.
+  This insulates the badge from other apps' check suites (e.g. installed GitHub Apps
+  that queue but never complete checks). Compatibility lives at wiki/reference/Compatibility.md.
   Mirrored on the Crickets README via task 7. Documented in PLAN.md task 7.
 -->
 
 <p align="center">
-  <a href="https://github.com/alexherrero/agentic-harness/actions?query=branch%3Amain"><img src="https://img.shields.io/github/checks-status/alexherrero/agentic-harness/main?style=for-the-badge&label=CI&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="CI"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/ci-all.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentic-harness/ci-all.yml?branch=main&style=for-the-badge&label=CI&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="CI"></a>
   <a href="https://github.com/alexherrero/agentic-harness/releases/latest"><img src="https://img.shields.io/github/v/release/alexherrero/agentic-harness?label=LATEST&labelColor=0a0a0a&logo=github&logoColor=f4efe6&style=for-the-badge" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-f4efe6?labelColor=0a0a0a&style=for-the-badge" alt="License: MIT"></a>
 </p>

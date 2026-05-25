@@ -1,0 +1,88 @@
+name: "[T] CI All"
+
+# Aggregator workflow that waits for the 3 per-OS test workflows on the same
+# commit, then reports a combined success/failure. The README + wiki Home
+# badge points at this workflow only, so it's not affected by other apps'
+# check suites (e.g. a stuck-queued check from an installed GitHub App).
+#
+# Why this exists: shields.io's `github/checks-status` endpoint rolls up ALL
+# check suites on a ref, including ones from apps we don't control. Badging
+# this single workflow gives us a clean aggregate that we DO control.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  aggregate:
+    name: aggregate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25  # safety net; usually completes in ~3-8 min
+    permissions:
+      actions: read
+
+    steps:
+      - name: Wait for and verify the 3 OS workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -e
+          WORKFLOWS="tests-linux tests-mac tests-windows"
+
+          # Poll until all 3 reach 'completed' status, or timeout via job-level setting.
+          for attempt in $(seq 1 45); do
+            all_done=true
+            for wf in $WORKFLOWS; do
+              status=$(gh run list \
+                --repo "$REPO" \
+                --workflow "${wf}.yml" \
+                --commit "$SHA" \
+                --limit 1 \
+                --json status \
+                --jq '.[0].status // "missing"')
+              if [ "$status" != "completed" ]; then
+                all_done=false
+                echo "  $wf: $status"
+              else
+                echo "  $wf: completed"
+              fi
+            done
+            if $all_done; then
+              break
+            fi
+            echo "  ... waiting 30s (attempt $attempt / 45)"
+            sleep 30
+          done
+
+          if ! $all_done; then
+            echo ""
+            echo "FAIL: not all 3 OS workflows completed within timeout."
+            exit 1
+          fi
+
+          echo ""
+          echo "All 3 OS workflows completed — checking conclusions:"
+          fail=0
+          for wf in $WORKFLOWS; do
+            conclusion=$(gh run list \
+              --repo "$REPO" \
+              --workflow "${wf}.yml" \
+              --commit "$SHA" \
+              --limit 1 \
+              --json conclusion \
+              --jq '.[0].conclusion')
+            echo "  $wf: $conclusion"
+            [ "$conclusion" = "success" ] || fail=1
+          done
+
+          if [ $fail -ne 0 ]; then
+            echo ""
+            echo "FAIL: at least one OS workflow did not pass."
+            exit 1
+          fi
+
+          echo ""
+          echo "PASS: all 3 OS workflows succeeded on $SHA"
