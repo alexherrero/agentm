@@ -10,7 +10,7 @@
   <a href="https://github.com/alexherrero/agentic-harness/blob/main/LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-f4efe6?labelColor=0a0a0a&style=for-the-badge" alt="License: MIT"></a>
 </p>
 
-<p align="center"><sub>Works with Claude Code + Antigravity — <a href="Compatibility">see compatibility</a></sub></p>
+<p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentic-harness/wiki/Compatibility">see compatibility</a></sub></p>
 
 Agent M is an agentic memory implementation that combines a persistent knowledge layer with personally curated content (i.e. your own notes in markdown format) through a combination of skills, sidecars, and vectorized indexing. Imagine those workflows you saw in the movies. You're talking to your agent, *"Let's open a new file for project M"* and off you go. It remembers your projects and files together, can talk to you about them, and it learns and grows with you as you work. The context it builds is self-maintaining and it improves automatically as you go. No need to spend time maintaining your own knowledge graphs, and it can help you with your personal notes too, when **you** want it to.
 

@@ -24,7 +24,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-f4efe6?labelColor=0a0a0a&style=for-the-badge" alt="License: MIT"></a>
 </p>
 
-<p align="center"><sub>Works with Claude Code + Antigravity — <a href="wiki/reference/Compatibility.md">see compatibility</a></sub></p>
+<p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentic-harness/wiki/Compatibility">see compatibility</a></sub></p>
 
 Think of **Agent M** as the structural backend harness you wished you had—part Star Trek Computer, part J.A.R.V.I.S.-level contextual autonomy, engineered to manage your projects, memory, and persistent knowledge across any modern agent surface, gaining experience and self-improving as it goes.
 
