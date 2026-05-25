@@ -41,3 +41,20 @@ On Windows:
 pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1   # fresh install + integrity
 pwsh -NoProfile -File scripts/check-syntax.ps1          # AST-parse every .ps1
 ```
+
+## Release process — regenerate the brand banner
+
+The Agent M brand banner (`assets/agent-m/banner-1600.png` + `banner-3200.png`) carries the current version in its status panel and ships in the README hero + the wiki Home page. The banner is rendered from `assets/banner.html` via headless Chrome.
+
+**On every release, after bumping `CHANGELOG.md` with the new version, run:**
+
+```bash
+bash scripts/regenerate-banner.sh                    # auto-detects version from CHANGELOG.md
+bash scripts/regenerate-banner.sh v3.0.2             # or pass explicit version
+```
+
+The script substitutes the new version into `assets/banner.html` in place and re-renders both PNG sizes. **Commit the updated `banner.html` + both regenerated PNGs alongside the release.**
+
+Requirements: a Google Chrome install (macOS auto-detected; Linux `google-chrome`/`chromium` on `PATH`; Windows Chrome in default Program Files). If Chrome isn't found the script prints the install paths it checked.
+
+Why this is codified: the banner is a load-bearing brand surface seen on every visit to the README and wiki Home; a stale version reads as drift. Crickets has its own banner setup (`agent-toolkit/assets/crickets/banner-*.png`) — that side is currently designer-rendered, not script-driven; codifying its parallel regen is a future polish item.

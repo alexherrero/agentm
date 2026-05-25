@@ -1,4 +1,23 @@
-# Agent M — agentic-harness
+<p align="center">
+  <img src="https://raw.githubusercontent.com/alexherrero/agentic-harness/main/assets/agent-m/banner-1600.png" alt="Agent M — The structural backend harness you wished you had">
+</p>
+
+<h1 align="center">Agent M — agentic-harness</h1>
+
+<p align="center"><em>The structural backend harness you wished you had — part Star Trek Computer, part J.A.R.V.I.S.</em></p>
+
+<p align="center">
+  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-linux.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentic-harness/tests-linux.yml?branch=main&label=Linux&style=flat&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="Linux Tests"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-mac.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentic-harness/tests-mac.yml?branch=main&label=Mac&style=flat&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="Mac Tests"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-windows.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentic-harness/tests-windows.yml?branch=main&label=Windows&style=flat&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="Windows Tests"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/releases/latest"><img src="https://img.shields.io/github/v/release/alexherrero/agentic-harness?label=latest&labelColor=0a0a0a&logo=github&logoColor=f4efe6&style=flat" alt="Latest release"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-f4efe6?labelColor=0a0a0a&style=flat" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/alexherrero/agentic-harness/tree/main/adapters/claude-code"><img src="https://img.shields.io/badge/works%20with-Claude%20Code-D97706?labelColor=0a0a0a&style=flat" alt="Works with Claude Code"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/tree/main/adapters/antigravity"><img src="https://img.shields.io/badge/works%20with-Antigravity-7C3AED?labelColor=0a0a0a&style=flat" alt="Works with Antigravity"></a>
+</p>
 
 Agent M is an agentic memory implementation that combines a persistent knowledge layer with personally curated content (i.e. your own notes in markdown format) through a combination of skills, sidecars, and vectorized indexing. Imagine those workflows you saw in the movies. You're talking to your agent, *"Let's open a new file for project M"* and off you go. It remembers your projects and files together, can talk to you about them, and it learns and grows with you as you work. The context it builds is self-maintaining and it improves automatically as you go. No need to spend time maintaining your own knowledge graphs, and it can help you with your personal notes too, when **you** want it to.
 
