@@ -197,34 +197,34 @@ INVOKE_SKILL_RE = re.compile(
     r"`([A-Za-z0-9_-]+)`\s+skill", re.IGNORECASE
 )
 
-# Customizations that live in the sibling agent-toolkit repo, not in this
+# Customizations that live in the sibling crickets repo, not in this
 # harness. Phase specs reference them as graceful-skip suggestions; their
 # canonical specs aren't under harness/agents/ or harness/skills/. Renamed
 # from EXTERNAL_SKILLS in v2.1.0 when the evaluator agent landed — the set
 # now covers both kinds.
 EXTERNAL_CUSTOMIZATIONS = {
-    # Skills migrated to agent-toolkit in v2.0.0:
-    "dependabot-fixer",   # agent-toolkit/skills/dependabot-fixer/
-    "ship-release",       # agent-toolkit/skills/ship-release/
-    # Agents added in agent-toolkit v0.6.0 (referenced from /review in v2.1.0):
-    "evaluator",          # agent-toolkit/agents/evaluator.md
-    # Hooks added in agent-toolkit v0.7.0 (referenced from /work + /release in v2.2.0).
+    # Skills migrated to crickets in v2.0.0:
+    "dependabot-fixer",   # crickets/skills/dependabot-fixer/
+    "ship-release",       # crickets/skills/ship-release/
+    # Agents added in crickets v0.6.0 (referenced from /review in v2.1.0):
+    "evaluator",          # crickets/agents/evaluator.md
+    # Hooks added in crickets v0.7.0 (referenced from /work + /release in v2.2.0).
     # These don't trip the existing DISPATCH_AGENT_RE / INVOKE_SKILL_RE regexes
     # (phase-spec phrasing uses markdown links + "the <name> hook" prose, not
     # "<name> hook" as a dispatch pattern — hooks fire from the host, not via
     # agent dispatch). Listed here for forward-compatibility documentation:
     # future plans may add a hook-reference regex that uses this set.
-    "kill-switch",        # agent-toolkit/hooks/kill-switch/
-    "steer",              # agent-toolkit/hooks/steer/
-    "commit-on-stop",     # agent-toolkit/hooks/commit-on-stop/
-    # Skill added in agent-toolkit v0.8.0 (referenced from /setup + /release
+    "kill-switch",        # crickets/hooks/kill-switch/
+    "steer",              # crickets/hooks/steer/
+    "commit-on-stop",     # crickets/hooks/commit-on-stop/
+    # Skill added in crickets v0.8.0 (referenced from /setup + /release
     # in v2.3.0). Phase specs use slash-command phrasing "the `/design` skill"
     # rather than bare "`design` skill", so the leading `/` keeps it from
     # matching INVOKE_SKILL_RE (the regex character class is [A-Za-z0-9_-],
     # no slashes). Listed here for forward-compatibility documentation; if
     # phase spec phrasing ever shifts to bare "`design`" the exclusion
     # becomes load-bearing.
-    "design",             # agent-toolkit/skills/design/
+    "design",             # crickets/skills/design/
 }
 
 
@@ -234,7 +234,7 @@ def check_phase_spec_dispatches() -> None:
         for m in DISPATCH_AGENT_RE.finditer(text):
             name = m.group(1)
             if name in EXTERNAL_CUSTOMIZATIONS:
-                # Lives in agent-toolkit; phase spec references it as a
+                # Lives in crickets; phase spec references it as a
                 # graceful-skip suggestion. Don't assert harness/agents/<name>.md exists.
                 continue
             agent_spec = ROOT / f"harness/agents/{name}.md"
@@ -246,7 +246,7 @@ def check_phase_spec_dispatches() -> None:
         for m in INVOKE_SKILL_RE.finditer(text):
             name = m.group(1)
             if name in EXTERNAL_CUSTOMIZATIONS:
-                # Lives in agent-toolkit; phase spec references it as a
+                # Lives in crickets; phase spec references it as a
                 # graceful-skip suggestion. Don't assert harness/skills/<name>.md exists.
                 continue
             skill_spec = ROOT / f"harness/skills/{name}.md"

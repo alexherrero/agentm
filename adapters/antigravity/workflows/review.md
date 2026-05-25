@@ -4,7 +4,7 @@ description: Adversarial review — assume the code has bugs, find them. Executa
 
 # Review workflow
 
-Run the **review** phase of agentic-harness. Full spec: [`harness/phases/04-review.md`](../../../harness/phases/04-review.md). Read it and follow it.
+Run the **review** phase of agentm. Full spec: [`harness/phases/04-review.md`](../../../harness/phases/04-review.md). Read it and follow it.
 
 **Scope (optional):** commit range, branch name, or task number. If empty, review the most recently-completed task.
 

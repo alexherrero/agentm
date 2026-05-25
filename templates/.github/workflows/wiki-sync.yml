@@ -8,7 +8,7 @@ name: "[W] Update Wiki"
 #
 # Harness-authored; refreshed on install.sh --update. The full
 # convention spec lives at:
-# https://github.com/alexherrero/agentic-harness/blob/main/harness/documentation.md
+# https://github.com/alexherrero/agentm/blob/main/harness/documentation.md
 
 on:
   push:

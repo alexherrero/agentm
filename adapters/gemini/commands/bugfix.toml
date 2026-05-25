@@ -1,7 +1,7 @@
 description = "Bug triage pipeline — Report → Analyze → Fix → Verify. Use instead of /plan+/work for bugs."
 
 prompt = """
-You are running the **bugfix** pipeline of the agentic-harness workflow. The full spec is at `harness/pipelines/bugfix.md` in the harness repo (also copied to this project's `.harness/pipelines/bugfix.md` if present). Read that spec and follow it.
+You are running the **bugfix** pipeline of the agentm workflow. The full spec is at `harness/pipelines/bugfix.md` in the harness repo (also copied to this project's `.harness/pipelines/bugfix.md` if present). Read that spec and follow it.
 
 **Bug report:** {{args}}
 

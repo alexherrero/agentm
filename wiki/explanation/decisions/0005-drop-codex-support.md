@@ -6,7 +6,7 @@
 
 ## Context
 
-agentic-harness shipped with four adapters: Claude Code, Antigravity (Google's coding-agent IDE), Codex (OpenAI's coding CLI), and Gemini CLI. The four-adapter parity model — every phase command, sub-agent, and skill mirrored across all four hosts — was set up in v0.5.x and held through v0.9.0. [ADR 0001](0001-phase-gated-workflow) describes the phase-gated workflow without constraining the host list; the four hosts were a product choice, not an architectural constraint.
+agentm shipped with four adapters: Claude Code, Antigravity (Google's coding-agent IDE), Codex (OpenAI's coding CLI), and Gemini CLI. The four-adapter parity model — every phase command, sub-agent, and skill mirrored across all four hosts — was set up in v0.5.x and held through v0.9.0. [ADR 0001](0001-phase-gated-workflow) describes the phase-gated workflow without constraining the host list; the four hosts were a product choice, not an architectural constraint.
 
 In practice, maintaining the Codex adapter accrued real costs without much offsetting benefit:
 
@@ -38,16 +38,16 @@ Concretely:
 - **Shared-skill delivery is explicit.** The "Codex block delivers `.agents/skills/` for Gemini's reuse" indirection is gone. Now `install.sh` names the four shared skills and their source directly. Clearer to read; easier to add a fifth shared skill.
 - **`--update` semantics get a structural improvement.** Generalizing the codex cleanup into a `MANAGED_PARENTS`-wipe model means any future host or skill removal also cleans up automatically. Local trees stay in lockstep with GitHub source-of-truth without per-removal patches.
 - **Surface area shrinks.** ~80 lines of code + 1200 lines of adapter files / research notes removed. Adding a new skill is now a 3-place edit instead of 4.
-- **v1.0.0 commitment.** Future breaking changes (e.g. dropping Antigravity, or restructuring adapters) become explicit major-version events. Additive changes (new skills, new sub-agents, the `agent-toolkit` repo split planned next) become clear minor bumps under firm semver.
+- **v1.0.0 commitment.** Future breaking changes (e.g. dropping Antigravity, or restructuring adapters) become explicit major-version events. Additive changes (new skills, new sub-agents, the `crickets` repo split planned next) become clear minor bumps under firm semver.
 
 **Negative**
 
-- **Users on Codex must migrate.** Anyone running agentic-harness through Codex has no harness adapter post-v1.0.0. Migration path: use one of the three remaining adapters (Claude Code, Antigravity, or Gemini CLI). The harness's phase-gated workflow is host-agnostic, so the migration is install + relearn the Codex-specific invocation surface.
+- **Users on Codex must migrate.** Anyone running agentm through Codex has no harness adapter post-v1.0.0. Migration path: use one of the three remaining adapters (Claude Code, Antigravity, or Gemini CLI). The harness's phase-gated workflow is host-agnostic, so the migration is install + relearn the Codex-specific invocation surface.
 - **Codex's built-in `/plan` and `/review` will not be harness-aware.** A user invoking those in a Codex session against a harness-installed project will get Codex's native semantics, not the harness's. This is the same situation as any tool that hasn't been adapter-targeted; the user is responsible for knowing which host they're in.
 - **Wider Codex ecosystem decoupling.** If Codex evolves a feature that matters (e.g. better tool-call surface, improved subagent isolation), the harness will be slower to incorporate it. Decision accepts that cost in exchange for the parity-and-surface-area wins.
 - **One fewer cross-vendor review path.** `cross-review.sh` previously listed `codex` as an option for true cross-vendor review (shelling out from Gemini to Codex or Claude). Codex drops from that list; users wanting cross-vendor review can still edit the script to invoke `claude`.
 
-**Load-bearing assumptions** (re-check on every model bump, per [principle 6](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md))
+**Load-bearing assumptions** (re-check on every model bump, per [principle 6](https://github.com/alexherrero/agentm/blob/main/harness/principles.md))
 
 - Codex's native `/plan` and `/review` semantics remain incompatible with the harness's phase model (would need re-adding the `harness-` prefix to coexist).
 - The user's primary workflow stays in Claude Code, Antigravity, and Gemini CLI. If Codex re-enters the workflow, this ADR gets superseded by a "re-add codex adapter" decision, not a partial-restoration patch.

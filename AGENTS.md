@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Universal instructions for AI coding agents working in a project using `agentic-harness`. Antigravity, Gemini CLI, Cursor, and other tools that read `AGENTS.md` should use this as the entry point. Claude Code users should also read this file (it's linked from `CLAUDE.md`).
+Universal instructions for AI coding agents working in a project using `agentm`. Antigravity, Gemini CLI, Cursor, and other tools that read `AGENTS.md` should use this as the entry point. Claude Code users should also read this file (it's linked from `CLAUDE.md`).
 
 ## What this harness is
 
@@ -60,7 +60,7 @@ your-project/
 
 ## Personal customizations
 
-Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit) repo (since v2.0.0 / [ADR 0006](wiki/explanation/decisions/0006-agent-toolkit-split.md)). Install both repos as siblings (e.g. `~/Antigravity/agentic-harness/`, `~/Antigravity/agent-toolkit/`) to get the full set. The harness's `/release` and `/work` phases reference `ship-release` (from agent-toolkit) as a graceful-skip suggestion — present in toolkit, suggested by harness, neither requires the other to exist.
+Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo (since v2.0.0 / [ADR 0006](wiki/explanation/decisions/0006-crickets-split.md)). Install both repos as siblings (e.g. `~/Antigravity/agentm/`, `~/Antigravity/crickets/`) to get the full set. The harness's `/release` and `/work` phases reference `ship-release` (from crickets) as a graceful-skip suggestion — present in toolkit, suggested by harness, neither requires the other to exist.
 
 ## Core principles (why the harness looks like this)
 

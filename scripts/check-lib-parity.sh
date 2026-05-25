@@ -5,7 +5,7 @@
 # (excluding .checksums.txt itself) and asserts the result matches the
 # committed .checksums.txt. Fails non-zero on any drift.
 #
-# Cross-repo byte-identity verification (agentic-harness ↔ agent-toolkit) is
+# Cross-repo byte-identity verification (agentm ↔ crickets) is
 # `scripts/sync-lib.sh --verify`. This script only checks the local repo.
 #
 # Usage:

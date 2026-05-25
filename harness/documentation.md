@@ -244,7 +244,7 @@ Only populated if the user opts into project creation at `/setup`. Absent otherw
 - `templates/wiki/` → target's `wiki/` (user-owned, walked per-file so partial human-created wikis get missing scaffold files filled in without overwriting).
 - `templates/.github/workflows/wiki-sync.yml` → target's `.github/workflows/wiki-sync.yml` (managed; refreshed on `--update`).
 
-**Installer boundary:** `install.sh` copies from `$HARNESS_ROOT/templates/` only. This repo's own `wiki/` folder (documentation for agentic-harness itself) is never propagated to target projects.
+**Installer boundary:** `install.sh` copies from `$HARNESS_ROOT/templates/` only. This repo's own `wiki/` folder (documentation for agentm itself) is never propagated to target projects.
 
 ## Non-goals
 

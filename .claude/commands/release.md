@@ -2,7 +2,7 @@
 description: Pre-merge gate — verify plan done, gates green, CI passing. Does NOT push/merge/tag without explicit user approval.
 ---
 
-You are running the **release** phase of agentic-harness. The full spec is at `harness/phases/05-release.md`. Read it and follow it.
+You are running the **release** phase of agentm. The full spec is at `harness/phases/05-release.md`. Read it and follow it.
 
 **Non-negotiable constraints:**
 1. **Preconditions:** PLAN.md `Status: done`, all tasks `[x]`, `/review` resolved, working tree clean, branch ahead of base. If any fails, stop and report.

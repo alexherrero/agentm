@@ -32,7 +32,7 @@ gh project create --owner <@me-or-org> --title "<repo-name> backlog" --format js
 gh project link <number> --owner <literal-owner> --repo <owner>/<repo>
 ```
 
-The literal spec lives in [`harness/phases/01-setup.md` §8](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/01-setup.md#L140-L191). The `@me`-vs-literal gotcha is documented inline as a code comment in that spec.
+The literal spec lives in [`harness/phases/01-setup.md` §8](https://github.com/alexherrero/agentm/blob/main/harness/phases/01-setup.md#L140-L191). The `@me`-vs-literal gotcha is documented inline as a code comment in that spec.
 
 `.harness/project.json` gains a `repo` field alongside the existing `{owner, number, url}`:
 

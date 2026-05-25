@@ -1,6 +1,6 @@
 # lib/install/pwsh/primitives.ps1
 #
-# Shared install plumbing for the agentic-harness / agent-toolkit sibling repos.
+# Shared install plumbing for the agentm / crickets sibling repos.
 # This file is BYTE-IDENTICAL across both repos. Modifications go through
 # `scripts/sync-lib.sh` (or sync-lib.ps1 if added) to keep checksums aligned.
 # See CONTRACT.md for the invariants both repos depend on.

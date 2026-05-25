@@ -6,7 +6,7 @@ Wires MemoryVault read + write into each harness phase command
 invoke this CLI unconditionally; the dispatcher graceful-skips when
 MemoryVault is not installed (`MEMORY_VAULT_PATH` env unset or directory
 missing), so the harness runs the same on systems with or without the
-sibling `agent-toolkit` install.
+sibling `crickets` install.
 
 Four sub-commands:
 
@@ -39,7 +39,7 @@ Default recall budgets (tokens, approximate by chars/4):
 Per-phase recall query templates live in `_RECALL_QUERIES`. Per-phase
 permanence rules live in `_PERMANENT_ONLY_DIRS`.
 
-See agentic-harness ROADMAP #8 + ADR 0009 (lands in plan #8 task 9).
+See agentm ROADMAP #8 + ADR 0009 (lands in plan #8 task 9).
 """
 from __future__ import annotations
 
@@ -134,8 +134,8 @@ def toolkit_scripts_dir() -> Optional[Path]:
 
     Resolution order:
       1. HARNESS_MEMORY_TOOLKIT_PATH env (override, used by tests)
-      2. <harness_repo>/../agent-toolkit/skills/memory/scripts/  (sibling clone)
-      3. ~/Antigravity/agent-toolkit/skills/memory/scripts/      (canonical install)
+      2. <harness_repo>/../crickets/skills/memory/scripts/  (sibling clone)
+      3. ~/Antigravity/crickets/skills/memory/scripts/      (canonical install)
     """
     override = os.environ.get("HARNESS_MEMORY_TOOLKIT_PATH", "").strip()
     if override:
@@ -144,11 +144,11 @@ def toolkit_scripts_dir() -> Optional[Path]:
 
     # Sibling clone — _HERE is <harness>/scripts/
     harness_root = _HERE.parent
-    sibling = harness_root.parent / "agent-toolkit" / "skills" / "memory" / "scripts"
+    sibling = harness_root.parent / "crickets" / "skills" / "memory" / "scripts"
     if sibling.is_dir():
         return sibling
 
-    canonical = Path.home() / "Antigravity" / "agent-toolkit" / "skills" / "memory" / "scripts"
+    canonical = Path.home() / "Antigravity" / "crickets" / "skills" / "memory" / "scripts"
     if canonical.is_dir():
         return canonical
 

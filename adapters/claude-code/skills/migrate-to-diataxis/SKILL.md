@@ -3,7 +3,7 @@ name: migrate-to-diataxis
 description: One-shot migration of an already-installed project's wiki/ from the old audience-based layout (development/operational/design/architecture) to the Diátaxis four-mode layout (tutorials/how-to/reference/explanation). Trigger when the user says "migrate the wiki to Diátaxis", "migrate to diataxis", or invokes /migrate-to-diataxis. Preview-first, user-confirmed, non-destructive — classifies every page by heading shape, produces a diff, asks before any filesystem change, uses `git mv` so blame is preserved. Refuses if wiki/.diataxis already exists (already migrated) or if the working tree is dirty.
 ---
 
-You are running the `migrate-to-diataxis` skill. Full canonical spec: `harness/skills/migrate-to-diataxis.md` in the agentic-harness repo. The summary below is the operational version.
+You are running the `migrate-to-diataxis` skill. Full canonical spec: `harness/skills/migrate-to-diataxis.md` in the agentm repo. The summary below is the operational version.
 
 ## Preconditions (check first, abort if not met)
 
@@ -11,7 +11,7 @@ You are running the `migrate-to-diataxis` skill. Full canonical spec: `harness/s
 2. `wiki/` exists at the repo root.
 3. `wiki/.diataxis` does **not** exist — exit with "already migrated" otherwise.
 4. At least one of `wiki/development/`, `wiki/operational/`, `wiki/design/`, `wiki/architecture/` exists — exit with guidance otherwise.
-5. You are in the target project's root, not the agentic-harness repo itself.
+5. You are in the target project's root, not the agentm repo itself.
 
 ## Input handling
 

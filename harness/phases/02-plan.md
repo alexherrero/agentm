@@ -136,7 +136,7 @@ After writing the draft `.harness/PLAN.md`, the operator has an alternative to i
 
 1. **Write pre-handoff snapshot** at `.harness/PLAN.pre-handoff-<YYYYMMDDhhmmss>.md` — full copy of the drafted PLAN.md as it stands when the operator picks "Hand off". Used on resume to diff against the externally-revised version.
 
-2. **Generate transfer-context file** at `.harness/transfer/plan-<YYYYMMDDhhmmss>.md`. Uses the template at `agent-toolkit/skills/design/templates/transfer-context.md` (the toolkit-side template — shared across `/design` skill + harness `/plan` for handoff consistency). Fill placeholders:
+2. **Generate transfer-context file** at `.harness/transfer/plan-<YYYYMMDDhhmmss>.md`. Uses the template at `crickets/skills/design/templates/transfer-context.md` (the toolkit-side template — shared across `/design` skill + harness `/plan` for handoff consistency). Fill placeholders:
 
    - `DOC_TITLE` = PLAN.md's title
    - `DOC_TYPE` = `plan`
@@ -178,7 +178,7 @@ After writing the draft `.harness/PLAN.md`, the operator has an alternative to i
    - **Iterate**: regenerate transfer-context with updated "Recent decisions to honor" (including what was applied in the previous round); re-run handoff.
    - **Discard**: restore from pre-handoff snapshot; PLAN.md returns to its pre-handoff state; archive the failed handoff for audit; continue inline.
 
-**Why this design**: leans on Antigravity-native primitives (inline-comment UI + Gemini-applies pattern) for the review-and-revise loop on long plans. Same mechanics as toolkit `/design` skill's external-review handoff — shared template, shared workflow shape, shared cleanup discipline. See [toolkit ADR 0004 amendment (2026-05-16)](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0004-design-skill.md) for the design rationale.
+**Why this design**: leans on Antigravity-native primitives (inline-comment UI + Gemini-applies pattern) for the review-and-revise loop on long plans. Same mechanics as toolkit `/design` skill's external-review handoff — shared template, shared workflow shape, shared cleanup discipline. See [toolkit ADR 0004 amendment (2026-05-16)](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0004-design-skill.md) for the design rationale.
 
 **Cross-host scope**: shipped in v2.3.1 paired with toolkit v0.8.1. The handoff target (Antigravity-Gemini) is one of the two supported hosts post-ROADMAP-item-#15 (Gemini-CLI host removal); the other supported host (Claude Code) is where the inline alternative lives.
 

@@ -1,7 +1,7 @@
 description = "Implement exactly one task from .harness/PLAN.md. Stop after one."
 
 prompt = """
-You are running the **work** phase of the agentic-harness workflow. The full spec is at `harness/phases/03-work.md` in the harness repo (also copied to this project's `.harness/phases/03-work.md` if present). Read that spec and follow it.
+You are running the **work** phase of the agentm workflow. The full spec is at `harness/phases/03-work.md` in the harness repo (also copied to this project's `.harness/phases/03-work.md` if present). Read that spec and follow it.
 
 **Argument (if any — a specific task number like "task 3" to target instead of the next unchecked one):** {{args}}
 

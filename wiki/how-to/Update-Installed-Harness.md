@@ -11,19 +11,19 @@
 1. Pull the latest harness:
 
    ```bash
-   git -C /path/to/agentic-harness pull
+   git -C /path/to/agentm pull
    ```
 
 2. Run the installer against your project with `--update`:
 
    ```bash
-   /path/to/agentic-harness/install.sh --update /path/to/your-project
+   /path/to/agentm/install.sh --update /path/to/your-project
    ```
 
    Or on Windows:
 
    ```powershell
-   pwsh -NoProfile -File C:\path\to\agentic-harness\install.ps1 -Update C:\path\to\your-project
+   pwsh -NoProfile -File C:\path\to\agentm\install.ps1 -Update C:\path\to\your-project
    ```
 
 3. Confirm the recorded version matches:
@@ -63,6 +63,6 @@ This is what makes future host removals or skill rearrangements clean: local tre
 
 Running a second `--update` back-to-back should be a no-op — the installer is idempotent.
 
-**When in doubt about ownership**, see the `cp_managed` function and the `MANAGED_PARENTS` array in [`install.sh`](https://github.com/alexherrero/agentic-harness/blob/main/install.sh). Dirs listed in `MANAGED_PARENTS` are fully harness-authored and wiped-then-recreated on `--update`; anything outside that list is user-authored and preserved.
+**When in doubt about ownership**, see the `cp_managed` function and the `MANAGED_PARENTS` array in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh). Dirs listed in `MANAGED_PARENTS` are fully harness-authored and wiped-then-recreated on `--update`; anything outside that list is user-authored and preserved.
 
 See [Installer CLI reference](Installer-CLI) for all flags. See [ADR 0002](0002-documentation-convention) for why the boundary exists.

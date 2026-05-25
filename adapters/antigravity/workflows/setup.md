@@ -4,7 +4,7 @@ description: First-time project scaffold — populate init.sh, features.json, AG
 
 # Setup workflow
 
-Run the **setup** phase of agentic-harness. Full spec: [`harness/phases/01-setup.md`](../../../harness/phases/01-setup.md). Read it and follow it.
+Run the **setup** phase of agentm. Full spec: [`harness/phases/01-setup.md`](../../../harness/phases/01-setup.md). Read it and follow it.
 
 ## Non-negotiable constraints
 

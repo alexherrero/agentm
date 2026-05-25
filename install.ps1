@@ -1,7 +1,7 @@
-# install.ps1 — install or update agentic-harness in a target project.
+# install.ps1 — install or update agentm in a target project.
 #
 # Usage:
-#   pwsh -NoProfile -File /path/to/agentic-harness/install.ps1 [-Hooks] [-Update] <target-project-path>
+#   pwsh -NoProfile -File /path/to/agentm/install.ps1 [-Hooks] [-Update] <target-project-path>
 #
 # Options:
 #   -Hooks    Install the PostToolUse/PreCompact/SessionStart hooks into
@@ -65,14 +65,14 @@ if (Test-Path -LiteralPath $versionFile) {
 
 if ($Update) {
     if ($ExistingVersion -and $ExistingVersion -ne $HarnessVersion) {
-        Write-Host "==> updating agentic-harness in: $Target ($ExistingVersion -> $HarnessVersion)"
+        Write-Host "==> updating agentm in: $Target ($ExistingVersion -> $HarnessVersion)"
     } elseif ($ExistingVersion) {
-        Write-Host "==> updating agentic-harness in: $Target (already at $HarnessVersion; refreshing managed files)"
+        Write-Host "==> updating agentm in: $Target (already at $HarnessVersion; refreshing managed files)"
     } else {
-        Write-Host "==> updating agentic-harness in: $Target (no prior version recorded; treating as fresh refresh)"
+        Write-Host "==> updating agentm in: $Target (no prior version recorded; treating as fresh refresh)"
     }
 } else {
-    Write-Host "==> installing agentic-harness into: $Target (version $HarnessVersion)"
+    Write-Host "==> installing agentm into: $Target (version $HarnessVersion)"
     if ($ExistingVersion -and $ExistingVersion -ne $HarnessVersion) {
         Write-Host "    note: this project is on $ExistingVersion; harness is $HarnessVersion."
         Write-Host "          re-run with -Update to refresh harness-authored files."
@@ -84,7 +84,7 @@ if ($Update) {
 # Install primitives (Ensure-BoundarySrc, Copy-UserFile, Copy-ManagedFile,
 # Copy-UserWalk, Copy-ManagedDir, Copy-AdapterFiles, Copy-AdapterDirs,
 # Sync-ManagedParents) live in lib/install/pwsh/primitives.ps1 and are
-# byte-identical to agent-toolkit's copy. See lib/install/CONTRACT.md for
+# byte-identical to crickets's copy. See lib/install/CONTRACT.md for
 # the caller contract.
 #
 # Caller-set script-scope variables the lib reads:
@@ -107,7 +107,7 @@ $BoundaryRoots = @(
 # and the local tree drifts from the GitHub source-of-truth.
 #
 # Safe to wipe: these subdirs contain ONLY harness-authored content. User
-# customizations go in agent-toolkit (roadmap #1) or user-global ~/.claude/
+# customizations go in crickets (roadmap #1) or user-global ~/.claude/
 # paths. File-level user state at .harness/ root (PLAN.md, features.json,
 # progress.md, etc.) and settings.json files are not in the dirs below.
 $ManagedParents = @(

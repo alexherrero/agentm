@@ -2,7 +2,7 @@
 description: First-time project scaffold — populate init.sh, features.json, AGENTS.md with real commands. Run once per project.
 ---
 
-You are running the **setup** phase of agentic-harness. The full spec is at `harness/phases/01-setup.md`. Read it and follow it.
+You are running the **setup** phase of agentm. The full spec is at `harness/phases/01-setup.md`. Read it and follow it.
 
 **Non-negotiable constraints:**
 1. **Inventory before interviewing.** Read `README.md`, `package.json`/`go.mod`/etc., `.github/workflows/`, any existing `AGENTS.md` / `CLAUDE.md`. Ask only what the inventory can't answer.

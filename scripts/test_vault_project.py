@@ -105,37 +105,37 @@ class TestReadVaultProject(unittest.TestCase):
     # --- (b) tier-2 github.repo fallback --------------------------------------------
     def test_github_repo_fallback(self) -> None:
         _write_project_json(
-            self.root, {"github": {"repo": "alexherrero/agentic-harness"}}
+            self.root, {"github": {"repo": "alexherrero/agentm"}}
         )
-        self.assertEqual(vp.read_vault_project(self.root), "agentic-harness")
+        self.assertEqual(vp.read_vault_project(self.root), "agentm")
 
     def test_github_repo_bare_basename(self) -> None:
         """If only `<repo>` (no owner/) is recorded, take it as-is."""
-        _write_project_json(self.root, {"github": {"repo": "agentic-harness"}})
-        self.assertEqual(vp.read_vault_project(self.root), "agentic-harness")
+        _write_project_json(self.root, {"github": {"repo": "agentm"}})
+        self.assertEqual(vp.read_vault_project(self.root), "agentm")
 
     def test_github_repo_strips_git_suffix(self) -> None:
         _write_project_json(
-            self.root, {"github": {"repo": "alexherrero/agentic-harness.git"}}
+            self.root, {"github": {"repo": "alexherrero/agentm.git"}}
         )
-        self.assertEqual(vp.read_vault_project(self.root), "agentic-harness")
+        self.assertEqual(vp.read_vault_project(self.root), "agentm")
 
     # --- (c) tier-3 git origin fallback ---------------------------------------------
     def test_git_origin_fallback_https(self) -> None:
         # No project.json, no github.repo — should auto-detect from git origin.
-        _init_git_repo(self.root, "https://github.com/alexherrero/agentic-harness.git")
-        self.assertEqual(vp.read_vault_project(self.root), "agentic-harness")
+        _init_git_repo(self.root, "https://github.com/alexherrero/agentm.git")
+        self.assertEqual(vp.read_vault_project(self.root), "agentm")
 
     def test_git_origin_fallback_ssh(self) -> None:
-        _init_git_repo(self.root, "git@example.com:alexherrero/agentic-harness.git")
-        self.assertEqual(vp.read_vault_project(self.root), "agentic-harness")
+        _init_git_repo(self.root, "git@example.com:alexherrero/agentm.git")
+        self.assertEqual(vp.read_vault_project(self.root), "agentm")
 
     def test_git_origin_with_partial_project_json(self) -> None:
         """If project.json exists but neither vault_project nor github.repo is set,
         still fall through to git origin."""
         _write_project_json(self.root, {"unrelated_field": True})
-        _init_git_repo(self.root, "https://github.com/alexherrero/agentic-harness.git")
-        self.assertEqual(vp.read_vault_project(self.root), "agentic-harness")
+        _init_git_repo(self.root, "https://github.com/alexherrero/agentm.git")
+        self.assertEqual(vp.read_vault_project(self.root), "agentm")
 
     # --- (d) no-signal / not-a-git-repo ---------------------------------------------
     def test_no_signal_returns_none(self) -> None:
@@ -170,7 +170,7 @@ class TestWriteVaultProject(unittest.TestCase):
             "github": {
                 "owner": "alexherrero",
                 "number": 2,
-                "repo": "alexherrero/agentic-harness",
+                "repo": "alexherrero/agentm",
             },
             "env": {"MEMORY_VAULT_PATH": "/some/path"},
         }
@@ -182,7 +182,7 @@ class TestWriteVaultProject(unittest.TestCase):
         self.assertEqual(data["vault_project"], "my-slug")
         self.assertEqual(data["github"]["owner"], "alexherrero")
         self.assertEqual(data["github"]["number"], 2)
-        self.assertEqual(data["github"]["repo"], "alexherrero/agentic-harness")
+        self.assertEqual(data["github"]["repo"], "alexherrero/agentm")
         self.assertEqual(data["env"]["MEMORY_VAULT_PATH"], "/some/path")
 
     def test_creates_file_when_absent(self) -> None:
@@ -217,38 +217,38 @@ class TestSlugFromOriginUrl(unittest.TestCase):
 
     def test_https_with_git_suffix(self) -> None:
         self.assertEqual(
-            vp._slug_from_origin_url("https://github.com/alexherrero/agentic-harness.git"),
-            "agentic-harness",
+            vp._slug_from_origin_url("https://github.com/alexherrero/agentm.git"),
+            "agentm",
         )
 
     def test_https_no_git_suffix(self) -> None:
         self.assertEqual(
-            vp._slug_from_origin_url("https://github.com/alexherrero/agentic-harness"),
-            "agentic-harness",
+            vp._slug_from_origin_url("https://github.com/alexherrero/agentm"),
+            "agentm",
         )
 
     def test_https_trailing_slash(self) -> None:
         self.assertEqual(
-            vp._slug_from_origin_url("https://github.com/alexherrero/agentic-harness/"),
-            "agentic-harness",
+            vp._slug_from_origin_url("https://github.com/alexherrero/agentm/"),
+            "agentm",
         )
 
     def test_ssh_form(self) -> None:
         self.assertEqual(
-            vp._slug_from_origin_url("git@example.com:alexherrero/agentic-harness.git"),
-            "agentic-harness",
+            vp._slug_from_origin_url("git@example.com:alexherrero/agentm.git"),
+            "agentm",
         )
 
     def test_ssh_protocol_form(self) -> None:
         self.assertEqual(
-            vp._slug_from_origin_url("ssh://git@example.com/alexherrero/agentic-harness.git"),
-            "agentic-harness",
+            vp._slug_from_origin_url("ssh://git@example.com/alexherrero/agentm.git"),
+            "agentm",
         )
 
     def test_file_protocol(self) -> None:
         self.assertEqual(
-            vp._slug_from_origin_url("file:///srv/git/agentic-harness.git"),
-            "agentic-harness",
+            vp._slug_from_origin_url("file:///srv/git/agentm.git"),
+            "agentm",
         )
 
     def test_empty_returns_none(self) -> None:

@@ -3,7 +3,7 @@ description: Turn a brief into .harness/PLAN.md with per-task verification crite
 argument-hint: <brief — what to build or change>
 ---
 
-You are running the **plan** phase of the agentic-harness workflow. The full spec is at `harness/phases/02-plan.md` in the harness repo (also copied to this project's `.harness/phases/02-plan.md` if present). Read that spec and follow it.
+You are running the **plan** phase of the agentm workflow. The full spec is at `harness/phases/02-plan.md` in the harness repo (also copied to this project's `.harness/phases/02-plan.md` if present). Read that spec and follow it.
 
 **Brief from the user:** $ARGUMENTS
 

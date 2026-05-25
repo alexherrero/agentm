@@ -17,7 +17,7 @@ Canonical spec: [`harness/skills/migrate-to-diataxis.md`](../../../../harness/sk
 2. `wiki/` exists at repo root.
 3. `wiki/.diataxis` does **not** exist. If it does: exit with "already migrated" and show the current layout.
 4. At least one of `wiki/development/`, `wiki/operational/`, `wiki/design/`, `wiki/architecture/` exists. If none: exit with guidance.
-5. You are running from the target project's root, not the agentic-harness repo.
+5. You are running from the target project's root, not the agentm repo.
 
 ## Input handling
 

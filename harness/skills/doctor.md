@@ -1,6 +1,6 @@
 # Skill: doctor
 
-**Purpose:** verify an installed agentic-harness is actually wired up correctly in *this* host — that the expected sub-agents, skills, slash commands, and hooks are discoverable and runnable. Companion to `templates/scripts/telemetry.sh`: telemetry answers "is the harness being used well over time?"; `doctor` answers "is it installed correctly right now?".
+**Purpose:** verify an installed agentm is actually wired up correctly in *this* host — that the expected sub-agents, skills, slash commands, and hooks are discoverable and runnable. Companion to `templates/scripts/telemetry.sh`: telemetry answers "is the harness being used well over time?"; `doctor` answers "is it installed correctly right now?".
 
 **Not for:** ongoing health monitoring, CI gating, or replacing `/review`. Run it after a fresh install, after a harness update, or when something feels broken.
 
@@ -34,7 +34,7 @@ For each detected adapter, verify the expected name set is present and each file
 
 - **Phase commands**: `bugfix, plan, release, review, setup, work`.
 - **Sub-agents**: `adversarial-reviewer, adversarial-reviewer-cross, documenter, explorer`.
-- **Skills**: `doctor, migrate-to-diataxis` (harness-shipped; `dependabot-fixer` and `ship-release` migrated to `agent-toolkit` in v2.0.0 per ADR 0006).
+- **Skills**: `doctor, migrate-to-diataxis` (harness-shipped; `dependabot-fixer` and `ship-release` migrated to `crickets` in v2.0.0 per ADR 0006).
 
 For each expected item:
 1. The file exists at the adapter-specific path.
@@ -77,7 +77,7 @@ Dispatch with a deliberately-buggy snippet inline in the prompt:
 
 ### Probe 3: `ship-release --dry-run`
 
-**Graceful-skip if not installed.** `ship-release` migrated to `agent-toolkit` in v2.0.0. If the skill isn't present in any host's skill paths (check `.claude/skills/ship-release/`, `.agent/skills/ship-release/`, `.agents/skills/ship-release/`), report **skip** with reason: *"ship-release skill not found — install agent-toolkit to enable this probe."*
+**Graceful-skip if not installed.** `ship-release` migrated to `crickets` in v2.0.0. If the skill isn't present in any host's skill paths (check `.claude/skills/ship-release/`, `.agent/skills/ship-release/`, `.agents/skills/ship-release/`), report **skip** with reason: *"ship-release skill not found — install crickets to enable this probe."*
 
 If installed: invoke `ship-release --dry-run`. This should compute a proposed version and notes **without** tagging or pushing.
 
@@ -93,7 +93,7 @@ Invoke `migrate-to-diataxis` in preview mode against the current `wiki/`. If `wi
 
 ### Probe 5: `dependabot-fixer` "nothing matched" path
 
-**Graceful-skip if not installed.** `dependabot-fixer` migrated to `agent-toolkit` in v2.0.0. Report **skip** with reason if the skill isn't found.
+**Graceful-skip if not installed.** `dependabot-fixer` migrated to `crickets` in v2.0.0. Report **skip** with reason if the skill isn't found.
 
 If installed: invoke `dependabot-fixer` with no matching Dependabot PRs open. The skill should exit cleanly with "no matching PRs found", not crash or try to fix a non-existent PR.
 

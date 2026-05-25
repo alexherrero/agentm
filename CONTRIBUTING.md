@@ -56,4 +56,4 @@ The script renders both PNG sizes (1600×430 + 3200×860 retina) and writes them
 
 Requirements: a Google Chrome install (macOS auto-detected; Linux `google-chrome`/`chromium` on `PATH`; Windows Chrome in default Program Files). If Chrome isn't found the script prints the install paths it checked.
 
-The banner is a **static brand asset** — it does not carry release-version data (live version + CI status live in shields.io badges in the README), so regeneration is NOT tied to releases. Crickets has its own designer-rendered banner setup (`agent-toolkit/assets/crickets/banner-*.png`) which is not currently script-driven.
+The banner is a **static brand asset** — it does not carry release-version data (live version + CI status live in shields.io badges in the README), so regeneration is NOT tied to releases. Crickets has its own designer-rendered banner setup (`crickets/assets/crickets/banner-*.png`) which is not currently script-driven.

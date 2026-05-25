@@ -1,7 +1,7 @@
 description = "Pre-merge gate — verify plan done, gates green, CI passing, docs swept. Does NOT push/merge/tag without explicit user approval."
 
 prompt = """
-You are running the **release** phase of the agentic-harness workflow. The full spec is at `harness/phases/05-release.md` in the harness repo (also copied to this project's `.harness/phases/05-release.md` if present). Read that spec and follow it.
+You are running the **release** phase of the agentm workflow. The full spec is at `harness/phases/05-release.md` in the harness repo (also copied to this project's `.harness/phases/05-release.md` if present). Read that spec and follow it.
 
 **Non-negotiable constraints for this phase:**
 

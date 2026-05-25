@@ -1,4 +1,4 @@
-# SessionStart hook for agentic-harness — fires only on matcher: compact.
+# SessionStart hook for agentm — fires only on matcher: compact.
 # PowerShell twin of session-start-compact.sh.
 #
 # Compaction wipes the conversation context. Claude's compaction summary
@@ -11,7 +11,7 @@ $ErrorActionPreference = 'SilentlyContinue'
 if (-not (Test-Path -LiteralPath (Join-Path '.harness' 'PLAN.md'))) { exit 0 }
 
 @'
-[agentic-harness] The session was just compacted. Durable state lives on disk:
+[agentm] The session was just compacted. Durable state lives on disk:
 
 - .harness/PLAN.md       — current plan and verification criteria
 - .harness/progress.md   — append-only log; the most recent entries describe the in-flight task

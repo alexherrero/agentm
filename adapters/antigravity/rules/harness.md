@@ -2,9 +2,9 @@
 trigger: always_on
 ---
 
-# agentic-harness operating contract
+# agentm operating contract
 
-This project uses [agentic-harness](https://github.com/alexherrero/agentic-harness). The authoritative agent operating contract lives in [`AGENTS.md`](../../AGENTS.md) at the repo root — read it first, every session.
+This project uses [agentm](https://github.com/alexherrero/agentm). The authoritative agent operating contract lives in [`AGENTS.md`](../../AGENTS.md) at the repo root — read it first, every session.
 
 ## Invocation surface
 

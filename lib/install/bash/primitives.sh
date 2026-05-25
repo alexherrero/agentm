@@ -1,6 +1,6 @@
 # lib/install/bash/primitives.sh
 #
-# Shared install plumbing for the agentic-harness / agent-toolkit sibling repos.
+# Shared install plumbing for the agentm / crickets sibling repos.
 # This file is BYTE-IDENTICAL across both repos. Modifications go through
 # `scripts/sync-lib.sh` to keep checksums aligned. See `CONTRACT.md` for the
 # invariants both repos depend on.

@@ -1,4 +1,4 @@
-# PreCompact hook for agentic-harness (PowerShell twin of precompact.sh).
+# PreCompact hook for agentm (PowerShell twin of precompact.sh).
 #
 # Fires before Claude Code compacts the conversation (manual /compact or
 # auto). Appends a "compaction event" marker to .harness/progress.md so

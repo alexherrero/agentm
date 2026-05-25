@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# sync-lib.sh — keep agentic-harness and agent-toolkit's lib/install/ byte-identical.
+# sync-lib.sh — keep agentm and crickets's lib/install/ byte-identical.
 #
-# Treats agentic-harness as the canonical source. Copies lib/install/ verbatim
-# into ../agent-toolkit/lib/install/, regenerates .checksums.txt in both
+# Treats agentm as the canonical source. Copies lib/install/ verbatim
+# into ../crickets/lib/install/, regenerates .checksums.txt in both
 # repos, and leaves the changes staged for the user to commit.
 #
 # Usage:
@@ -16,7 +16,7 @@
 set -euo pipefail
 
 HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TOOLKIT_ROOT="$(cd "$HARNESS_ROOT/../agent-toolkit" 2>/dev/null && pwd || true)"
+TOOLKIT_ROOT="$(cd "$HARNESS_ROOT/../crickets" 2>/dev/null && pwd || true)"
 
 MODE="sync"
 if [[ "${1:-}" == "--verify" ]]; then
@@ -24,8 +24,8 @@ if [[ "${1:-}" == "--verify" ]]; then
 fi
 
 if [[ -z "$TOOLKIT_ROOT" ]]; then
-    echo "sync-lib: cannot locate ../agent-toolkit/ relative to $HARNESS_ROOT" >&2
-    echo "  Expected sibling layout: ../agent-toolkit/lib/install/" >&2
+    echo "sync-lib: cannot locate ../crickets/ relative to $HARNESS_ROOT" >&2
+    echo "  Expected sibling layout: ../crickets/lib/install/" >&2
     exit 1
 fi
 
@@ -70,7 +70,7 @@ compute_checksums() {
 
 # ── sync mode: copy + regenerate ──────────────────────────────────────────
 if [[ "$MODE" == "sync" ]]; then
-    echo "==> syncing lib/install/ from agentic-harness → agent-toolkit"
+    echo "==> syncing lib/install/ from agentm → crickets"
 
     # Ensure mirror dir exists; wipe its contents so deletions in canonical
     # propagate.
@@ -84,7 +84,7 @@ if [[ "$MODE" == "sync" ]]; then
     compute_checksums "$MIRROR"   > "$MIRROR/.checksums.txt"
     echo "    regenerated .checksums.txt in both repos"
 
-    # Stage changes in agent-toolkit for user review (agentic-harness changes
+    # Stage changes in crickets for user review (agentm changes
     # are already in the working tree, presumably staged by the user before
     # running this).
     (cd "$TOOLKIT_ROOT" && git add lib/install/)

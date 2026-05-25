@@ -3,7 +3,7 @@ description: Implement exactly one task from .harness/PLAN.md. Stop after one.
 argument-hint: [optional — "task N" to pick a specific task instead of the next unchecked one]
 ---
 
-You are running the **work** phase of agentic-harness. The full spec is at `harness/phases/03-work.md` in the harness repo (also copied to this project if the harness was installed into it). Read that spec and follow it.
+You are running the **work** phase of agentm. The full spec is at `harness/phases/03-work.md` in the harness repo (also copied to this project if the harness was installed into it). Read that spec and follow it.
 
 **Argument (if any):** $ARGUMENTS
 

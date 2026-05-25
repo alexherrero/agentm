@@ -1,6 +1,6 @@
 # Phase: setup
 
-First-time initialization of agentic-harness in a project. Run once per project (or after a major restructure). Produces the `.harness/` state artifacts populated with real, project-specific values — not templates.
+First-time initialization of agentm in a project. Run once per project (or after a major restructure). Produces the `.harness/` state artifacts populated with real, project-specific values — not templates.
 
 ## Purpose
 
@@ -49,7 +49,7 @@ The 3-tier fallback (explicit field > `github.repo` basename > git origin → st
 **Graceful-skip conditions** (silent — no error, no prompt):
 - `MEMORY_VAULT_PATH` env unset or directory missing.
 - `scripts/harness_memory.py available` exits 1.
-- The `agent-toolkit/skills/memory/` install is missing (toolkit-absent path): recall still returns empty; the rest of `/setup` continues unchanged.
+- The `crickets/skills/memory/` install is missing (toolkit-absent path): recall still returns empty; the rest of `/setup` continues unchanged.
 
 This step lands per plan #8 task 3 (auto-context-into-harness-phases). See [ROADMAP #8](../../.harness/ROADMAP.md) + [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) (the ADR lands in task 9 of the same plan).
 
@@ -133,7 +133,7 @@ Run `bash .harness/init.sh`. Confirm it exits 0. If it doesn't, fix it now — e
 - `design/Product-Intent.md` — from `README.md` + the interview
 - `architecture/Overview.md` — from top-level layout + entry points
 - `Home.md` and `_Sidebar.md` — initialized with the project name and four section headers
-- `wiki/explanation/designs/` — landing dir for design docs authored via [agent-toolkit's `/design` skill](https://github.com/alexherrero/agent-toolkit/blob/main/skills/design/SKILL.md). Initially empty (`.gitkeep` + a one-line README pointing at the how-to); fills in over time as the user authors published-visibility designs. Surfaces in `wiki/Home.md` + `_Sidebar.md` as the canonical "Why we built X" entry point per design Status lifecycle (the harness `/release` flow transitions `final → launched` per [`harness/phases/05-release.md` §1b](05-release.md)).
+- `wiki/explanation/designs/` — landing dir for design docs authored via [crickets's `/design` skill](https://github.com/alexherrero/crickets/blob/main/skills/design/SKILL.md). Initially empty (`.gitkeep` + a one-line README pointing at the how-to); fills in over time as the user authors published-visibility designs. Surfaces in `wiki/Home.md` + `_Sidebar.md` as the canonical "Why we built X" entry point per design Status lifecycle (the harness `/release` flow transitions `final → launched` per [`harness/phases/05-release.md` §1b](05-release.md)).
 
 The documenter returns a structured report of what it created. If it surfaces `OPEN QUESTIONS`, answer them before moving on — a broken `Product-Intent.md` on day one is drift that compounds.
 
@@ -144,7 +144,7 @@ GitHub Projects v2 are owned by a user or org (never a repo directly), but can b
 **Interview (batched)**:
 1. *"Create a GitHub Project for deferred-work tracking?"* — yes / no / later.
 2. If yes: *"Owner — your personal account (`@me`) or an org?"* Default: derive from `gh repo view --json owner` if the repo has a GitHub origin. Ask for the org name if org-owned.
-3. *"Project title?"* Default: `"<repo-name> backlog"` (e.g. `"agentic-harness backlog"`).
+3. *"Project title?"* Default: `"<repo-name> backlog"` (e.g. `"agentm backlog"`).
 
 **Run the two `gh` calls with preview**:
 

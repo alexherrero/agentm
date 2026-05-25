@@ -5,6 +5,37 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v3.1.0] — 2026-05-25 — Repo rename agentic-harness → agentm + cross-ref sweep
+
+Minor — **repo rename release**. The GitHub repo for this project is now `alexherrero/agentm` (was `alexherrero/agentic-harness`). Brand name (Agent M) was always the operator-facing label; the rename brings the URL slug + clone path in line with the brand. Paired with `alexherrero/crickets` v1.1.0 (the customization toolkit, was agent-toolkit) — see [crickets v1.1.0 release notes](https://github.com/alexherrero/crickets/releases/tag/v1.1.0).
+
+GitHub installs HTTP redirects from the old URLs to the new ones automatically — existing clones, links, and bookmarks keep working without action. New clones should use `https://github.com/alexherrero/agentm.git`.
+
+### Changed
+
+- **Repo URL** github.com/alexherrero/agentic-harness → github.com/alexherrero/agentm. Old URL 301-redirects to new permanently.
+- **Recommended local sibling-clone path** ~/Antigravity/agentic-harness/ → ~/Antigravity/agentm/. Operators with the old path can `mv` locally + `git remote set-url origin` to migrate.
+- **All cross-references** to the old names swept across the repo: README.md, wiki/ pages (including wiki/Home.md, wiki/reference/Compatibility.md, all ADRs + how-tos), AGENTS.md, CLAUDE.md, CONTRIBUTING.md, harness/ canonical phase specs + skills, adapters/ (including legacy gemini adapter dir), scripts/, lib/, templates/, .github/workflows/, CHANGELOG.md historical entries, extensionless files (templates/wiki/.diataxis, .gitleaks.toml). ~595+ occurrences across ~115 files; zero remaining post-sweep verification.
+- **One ADR file renamed**: 0006-agent-toolkit-split.md → 0006-crickets-split.md (via `git mv`).
+- **One .harness/ archive renamed**: PLAN.archive.20260512-agent-toolkit-split.md → PLAN.archive.20260512-crickets-split.md (operator-local).
+- **CI badge URLs** still resolve correctly (point at new URL + GitHub's auto-redirect handles the old).
+- **Sibling repo references** updated throughout to point at alexherrero/crickets instead of alexherrero/agent-toolkit.
+- **Phase-gated workflow** + **all behavior** unchanged. Pure rename + cross-reference sweep; no API surface or installer behavior changes.
+
+### Internal
+
+- Mass sed sweep `s/agentic-harness/agentm/g` + `s/agent-toolkit/crickets/g` across all text files in both repos (extensions + extensionless).
+- Local sibling-clone dir renamed from ~/Antigravity/agentic-harness/ → ~/Antigravity/agentm/; git remote updated.
+- Vault dirs renamed: personal-projects/agentic-harness/ → agentm/ and personal-projects/agent-toolkit/ → crickets/. All vault entries swept (~43 files, 157 occurrences).
+- Operator-local ~/.claude/CLAUDE.md (symlinked from dev-setup/configs/claude/CLAUDE.md) imports updated to @~/Antigravity/agentm/AGENTS.md + @~/Antigravity/crickets/AGENTS.md.
+- Sibling `dev-setup` repo also swept (~45 files).
+- `alexherrero/alexherrero` profile README updated to point at new repo URLs.
+
+### Cross-references
+
+- Paired sibling release: [crickets v1.1.0](https://github.com/alexherrero/crickets/releases/tag/v1.1.0) — the customization toolkit (was agent-toolkit)
+- Plan #15 task 11 — README refresh closing task (final task of the plan)
+
 ## [v3.0.1] — 2026-05-24 — Agent M logo hero + brand asset set (harness-only PATCH)
 
 Patch — **first visual brand iteration**. Adds the Agent M logo asset set and refreshes `README.md` with a centered logo hero, italic tagline, and reorganized badge layout per the new [[personal-comms-style]] public-surface conventions. Designed in Claude.ai Artifacts.
@@ -23,14 +54,14 @@ Patch — **first visual brand iteration**. Adds the Agent M logo asset set and 
 
 ### Internal
 
-- 1 commit on this side: [`da206d6`](https://github.com/alexherrero/agentic-harness/commit/da206d6) (assets + README) + this v3.0.1 release commit.
+- 1 commit on this side: [`da206d6`](https://github.com/alexherrero/agentm/commit/da206d6) (assets + README) + this v3.0.1 release commit.
 - **First visual asset commit since repo inception** — establishes `assets/` as the brand-asset convention going forward.
-- **Crickets has no corresponding change this round** — Crickets assets will land in a separate `agent-toolkit` PATCH when those are designed.
+- **Crickets has no corresponding change this round** — Crickets assets will land in a separate `crickets` PATCH when those are designed.
 - **Operator-review-gated** per [[docs-prose-style]] workflow; explicit approve-and-ship green-light received before push.
 
 ## [v3.0.0] — 2026-05-24 — Agent M V3 close-out (paired with toolkit v1.0.0 — Crickets 1.0)
 
-Major — **Agent M V3 ships**. The harness version now matches the memory implementation V-versioning: V3 is the merged-Obsidian-and-GDrive vault with auto-recall in every harness phase + controlled write under the permeable A3 boundary + the full `/memory` skill surface on the Crickets side. Paired with [`agent-toolkit v1.0.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v1.0.0) which ships **Crickets 1.0** — the toolkit's 1.0 commitment to a stable public API surface.
+Major — **Agent M V3 ships**. The harness version now matches the memory implementation V-versioning: V3 is the merged-Obsidian-and-GDrive vault with auto-recall in every harness phase + controlled write under the permeable A3 boundary + the full `/memory` skill surface on the Crickets side. Paired with [`crickets v1.0.0`](https://github.com/alexherrero/crickets/releases/tag/v1.0.0) which ships **Crickets 1.0** — the toolkit's 1.0 commitment to a stable public API surface.
 
 **What Agent M V3 is** (in operator-facing terms):
 
@@ -47,7 +78,7 @@ Major — **Agent M V3 ships**. The harness version now matches the memory imple
 - Vault-backed harness state (move `.harness/PLAN.md` + `progress.md` into the vault)
 - FRIDAY-style natural-extension surface
 
-V4 design space lives in `.harness/ROADMAP-AgentMemoryV4.md` (operator-local; `.harness/` is gitignored). Full V1→V4 evolution narrative in the new HLD on the Crickets side: [Agent Memory Evolution](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/agent-memory-evolution.md).
+V4 design space lives in `.harness/ROADMAP-AgentMemoryV4.md` (operator-local; `.harness/` is gitignored). Full V1→V4 evolution narrative in the new HLD on the Crickets side: [Agent Memory Evolution](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md).
 
 ### What shipped across the V3 arc (v1.0.0 → v3.0.0)
 
@@ -56,7 +87,7 @@ V4 design space lives in `.harness/ROADMAP-AgentMemoryV4.md` (operator-local; `.
 | Plan | Theme | Versions |
 |---|---|---|
 | #0 | Codex-removal sweep | v1.0.0 |
-| #1 + #2 | agent-toolkit repo split + install scope | v2.0.0 + toolkit v0.5.0 |
+| #1 + #2 | crickets repo split + install scope | v2.0.0 + toolkit v0.5.0 |
 | #3 | Fresh-context evaluator sub-agent | v2.1.0 + toolkit v0.6.0 |
 | #4 + #5 | Base hooks: kill-switch + steer + commit-on-stop | v2.2.0 + toolkit v0.7.0 |
 | #6 | Design skill v1 | v2.3.0 + toolkit v0.8.0 |
@@ -78,7 +109,7 @@ V4 design space lives in `.harness/ROADMAP-AgentMemoryV4.md` (operator-local; `.
 
 ### Changed
 
-- **Brand**: the system is now **Agent M** in operator-facing prose. The `agentic-harness` repo name + path literals (`AgentMemory/` vault folder, `harness_memory.py` script, `MEMORY_VAULT_PATH` env var) stay as code-side names. Per the locked branding convention.
+- **Brand**: the system is now **Agent M** in operator-facing prose. The `agentm` repo name + path literals (`AgentMemory/` vault folder, `harness_memory.py` script, `MEMORY_VAULT_PATH` env var) stay as code-side names. Per the locked branding convention.
 
 ### Internal
 
@@ -89,17 +120,17 @@ V4 design space lives in `.harness/ROADMAP-AgentMemoryV4.md` (operator-local; `.
 
 ## [v2.6.1] — 2026-05-23 — quality-gates bundle (paired with toolkit v0.13.0)
 
-Patch — **paired-doc-only**. Substantive change ships entirely on the toolkit side: new [`quality-gates` bundle](https://github.com/alexherrero/agent-toolkit/blob/main/bundles/quality-gates/bundle.md) one-command-installs the 4 base operator-control + verification primitives most agentic-harness `/work` sessions want (`evaluator` sub-agent + `kill-switch` / `steer` / `commit-on-stop` / `evidence-tracker` hooks). 7th consecutive paired-release pair.
+Patch — **paired-doc-only**. Substantive change ships entirely on the toolkit side: new [`quality-gates` bundle](https://github.com/alexherrero/crickets/blob/main/bundles/quality-gates/bundle.md) one-command-installs the 4 base operator-control + verification primitives most agentm `/work` sessions want (`evaluator` sub-agent + `kill-switch` / `steer` / `commit-on-stop` / `evidence-tracker` hooks). 7th consecutive paired-release pair.
 
 **What changes for harness users**: operators who already had the 4 primitives installed individually see no behavior change — bundle install is functionally identical to per-primitive install (same `.claude/` paths; same `settings.json` registrations). The new affordance is **one-command adoption**:
 
 ```bash
-bash agent-toolkit/install.sh <target-project> --bundle quality-gates
+bash crickets/install.sh <target-project> --bundle quality-gates
 ```
 
 instead of 5 separate `--hook <name>` / `--agent evaluator` invocations. Closes the "I forgot to install commit-on-stop and lost an hour" failure mode that surfaced repeatedly in real-world dogfood.
 
-Triggered by [ROADMAP item #10](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md). Decision rationale + 2 locked design calls Q1-Q2 + 4 load-bearing assumptions in toolkit-side [ADR 0010 — quality-gates bundle](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0010-quality-gates-bundle.md). Operator-facing how-to at [Use The Quality-Gates Bundle](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/how-to/Use-The-Quality-Gates-Bundle.md).
+Triggered by [ROADMAP item #10](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md). Decision rationale + 2 locked design calls Q1-Q2 + 4 load-bearing assumptions in toolkit-side [ADR 0010 — quality-gates bundle](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0010-quality-gates-bundle.md). Operator-facing how-to at [Use The Quality-Gates Bundle](https://github.com/alexherrero/crickets/blob/main/wiki/how-to/Use-The-Quality-Gates-Bundle.md).
 
 ### Added
 
@@ -117,13 +148,13 @@ Triggered by [ROADMAP item #10](https://github.com/alexherrero/agentic-harness/b
 
 ## [v2.6.0] — 2026-05-23 — Evidence-tracking for /work (paired with toolkit v0.12.0)
 
-Minor — second non-doc-only paired pair in the recent run (after v2.5.0). Harness ships the **`/work` §5b spec amendment** documenting the contract for the new `evidence-tracker` base hook in [`agent-toolkit v0.12.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.12.0). Default-FAIL evidence enforcement: every PLAN.md task starts with `evidence-met=false`; the agent must demonstrably READ relevant spec/test/evidence files before a `Write`/`Edit` that flips `[ ]` → `[x]` is allowed. Hook blocks otherwise.
+Minor — second non-doc-only paired pair in the recent run (after v2.5.0). Harness ships the **`/work` §5b spec amendment** documenting the contract for the new `evidence-tracker` base hook in [`crickets v0.12.0`](https://github.com/alexherrero/crickets/releases/tag/v0.12.0). Default-FAIL evidence enforcement: every PLAN.md task starts with `evidence-met=false`; the agent must demonstrably READ relevant spec/test/evidence files before a `Write`/`Edit` that flips `[ ]` → `[x]` is allowed. Hook blocks otherwise.
 
 **What changes for operators**:
-- With `agent-toolkit` installed + the `evidence-tracker` hook in place: `/work` task closeouts gain a deterministic verification gate. Hook fires PreToolUse on `Read|Write|Edit`; records reads; blocks unmet-evidence flips with a helpful stderr message + 3 recovery paths.
+- With `crickets` installed + the `evidence-tracker` hook in place: `/work` task closeouts gain a deterministic verification gate. Hook fires PreToolUse on `Read|Write|Edit`; records reads; blocks unmet-evidence flips with a helpful stderr message + 3 recovery paths.
 - Without those prerequisites: **zero behavior change**. Hook absent → no enforcement → `/work` runs as it always has.
 
-Triggered by [ROADMAP item #9](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md). Decision rationale + 3 locked design calls Q1-Q3 + 4 load-bearing assumptions in the toolkit-side [ADR 0009 — evidence-tracker hook](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0009-evidence-tracker-hook.md). Operator-facing how-to at [Use The Evidence-Tracker Hook](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/how-to/Use-The-Evidence-Tracker-Hook.md).
+Triggered by [ROADMAP item #9](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md). Decision rationale + 3 locked design calls Q1-Q3 + 4 load-bearing assumptions in the toolkit-side [ADR 0009 — evidence-tracker hook](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0009-evidence-tracker-hook.md). Operator-facing how-to at [Use The Evidence-Tracker Hook](https://github.com/alexherrero/crickets/blob/main/wiki/how-to/Use-The-Evidence-Tracker-Hook.md).
 
 ### Added
 
@@ -145,13 +176,13 @@ Triggered by [ROADMAP item #9](https://github.com/alexherrero/agentic-harness/bl
 
 ## [v2.5.0] — 2026-05-22 — Auto-context into harness phases (paired with toolkit v0.11.1)
 
-Minor — **first non-doc-only paired pair** in the recent run (after v2.4.0/v2.4.1/v2.4.2/v2.4.3 all doc-only on this side). Harness ships real new phase behavior: every phase command (`/setup`, `/plan`, `/work`, `/review`, `/release`, `/bugfix`) now auto-invokes MemoryVault at predictable boundaries without the agent or operator having to remember to call `/memory search` or `/memory save`. Paired with [`agent-toolkit v0.11.1`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.11.1) which ships the toolkit-side companion documentation (`Cross-Repo-Memory-Protocol.md`).
+Minor — **first non-doc-only paired pair** in the recent run (after v2.4.0/v2.4.1/v2.4.2/v2.4.3 all doc-only on this side). Harness ships real new phase behavior: every phase command (`/setup`, `/plan`, `/work`, `/review`, `/release`, `/bugfix`) now auto-invokes MemoryVault at predictable boundaries without the agent or operator having to remember to call `/memory search` or `/memory save`. Paired with [`crickets v0.11.1`](https://github.com/alexherrero/crickets/releases/tag/v0.11.1) which ships the toolkit-side companion documentation (`Cross-Repo-Memory-Protocol.md`).
 
 **What changes for operators**:
-- With `MEMORY_VAULT_PATH` set + `agent-toolkit/skills/memory/` sibling-cloned: every phase auto-loads operator conventions + project-specific decisions + open-questions / known-issues (per phase) at its start; phases that surface durable items offer to save them at the end (self-modulating ask — high-confidence saves silently with stderr notice; low-confidence prompts).
+- With `MEMORY_VAULT_PATH` set + `crickets/skills/memory/` sibling-cloned: every phase auto-loads operator conventions + project-specific decisions + open-questions / known-issues (per phase) at its start; phases that surface durable items offer to save them at the end (self-modulating ask — high-confidence saves silently with stderr notice; low-confidence prompts).
 - Without those prerequisites: **zero behavior change**. Every phase graceful-skips silently. Harness runs unchanged on systems where MemoryVault isn't adopted.
 
-Triggered by [ROADMAP item #8](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md). Decision rationale + 5 locked design calls (Q1–Q5) + 4 load-bearing assumptions in new [ADR 0007 — Auto-context into harness phases](wiki/explanation/decisions/0007-auto-context-into-harness-phases.md). Operator-facing how-to at [Use Auto-Context In Harness Phases](wiki/how-to/Use-Auto-Context-In-Harness-Phases.md).
+Triggered by [ROADMAP item #8](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md). Decision rationale + 5 locked design calls (Q1–Q5) + 4 load-bearing assumptions in new [ADR 0007 — Auto-context into harness phases](wiki/explanation/decisions/0007-auto-context-into-harness-phases.md). Operator-facing how-to at [Use Auto-Context In Harness Phases](wiki/how-to/Use-Auto-Context-In-Harness-Phases.md).
 
 ### Added
 
@@ -160,7 +191,7 @@ Triggered by [ROADMAP item #8](https://github.com/alexherrero/agentic-harness/bl
   - `offer-save --phase --project --kind --slug --content-file [--confidence] [--confidence-reason]` — self-modulating ask: `confidence ≥ HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD` (default 0.8) silent-saves with `[auto-saved high-confidence]` stderr; below threshold prompts. `HARNESS_AUTO_SAVE_MODE` (ask/silent/off) outer envelope.
   - `plan-done-promotion --project-root . [--dry-run]` — cursor-tracked progress.md tail-scan via `.harness/.promoted-progress-cursor`. Shared between `/work` plan-done + `/release` triggers — single fire per plan-window.
   - `available` — exit 0/1 short-circuit for phase specs.
-  - **3-tier toolkit discovery** (`HARNESS_MEMORY_TOOLKIT_PATH` env > sibling-clone > `~/Antigravity/agent-toolkit/`). Toolkit-absent path graceful-skips with stderr notice.
+  - **3-tier toolkit discovery** (`HARNESS_MEMORY_TOOLKIT_PATH` env > sibling-clone > `~/Antigravity/crickets/`). Toolkit-absent path graceful-skips with stderr notice.
 - **`scripts/vault_project.py`** (~200 lines, stdlib-only) — `read_vault_project()` with 3-tier fallback (explicit field > `github.repo` basename > git origin); `write_vault_project()` atomic merge-preserving. CLI wrapper.
 - **33 unit tests** for `harness_memory.py` (`scripts/test_harness_memory.py`) across 7 classes — `TestAvailable` / `TestRecall` / `TestOfferSaveDecision` (pure logic) / `TestOfferSaveBehavior` (end-to-end with toolkit stub) / `TestOfferSaveToolkitAbsent` / `TestPlanDonePromotion` / `TestCLI`.
 - **28 unit tests** for `vault_project.py` (`scripts/test_vault_project.py`) across 4 classes — read tier-1/2/3/none paths, atomic write merge-preserve + round-trip, URL-shape variety (https/ssh/file/no-.git), CLI exit codes.
@@ -191,7 +222,7 @@ Triggered by [ROADMAP item #8](https://github.com/alexherrero/agentic-harness/bl
 
 ## [v2.4.3] — 2026-05-22 — diataxis-author skill (paired with toolkit v0.11.0)
 
-Patch — paired-doc-only release pairing with [`agent-toolkit v0.11.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.11.0). Substantive change ships entirely on the toolkit side: new `diataxis-author` skill with 5 sub-commands (`/diataxis author` + `check` + `repair` + `migrate` + `classify`) covering the full Diátaxis-wiki lifecycle. Subsumes harness's `migrate-to-diataxis` predecessor (deprecated 2026-05-22 in commit `d4d4adf`; predecessor file removal in a follow-up harness PATCH after dogfood). **4th consecutive paired-release-as-documentation pair** (after v2.4.0/v2.4.1/v2.4.2).
+Patch — paired-doc-only release pairing with [`crickets v0.11.0`](https://github.com/alexherrero/crickets/releases/tag/v0.11.0). Substantive change ships entirely on the toolkit side: new `diataxis-author` skill with 5 sub-commands (`/diataxis author` + `check` + `repair` + `migrate` + `classify`) covering the full Diátaxis-wiki lifecycle. Subsumes harness's `migrate-to-diataxis` predecessor (deprecated 2026-05-22 in commit `d4d4adf`; predecessor file removal in a follow-up harness PATCH after dogfood). **4th consecutive paired-release-as-documentation pair** (after v2.4.0/v2.4.1/v2.4.2).
 
 Harness-side changes for this release pair:
 
@@ -199,9 +230,9 @@ Harness-side changes for this release pair:
 2. **No phase-spec or adapter changes** — the toolkit's `/diataxis` sub-commands are operator-invokable; harness `/release` documenter dispatch remains unchanged. Future harness PATCH could amend `/release` to call `/diataxis check` when the skill is installed (graceful-skip otherwise); deferred from v1 to keep change surface narrow.
 3. **CHANGELOG + Completed-Features.md row** documenting the paired release.
 
-Triggered by [ROADMAP item #13](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md). Implemented as plan #13 (5 parts: scaffold + author-classify + check-repair + migrate-subsume + AgentMemory-docs-release). Decision rationale + 4 locked design calls + 4 load-bearing assumptions in [toolkit-side ADR 0008](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0008-diataxis-author.md). Parent design at [diataxis-author](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/diataxis-author.md) (Status: launched as of this release).
+Triggered by [ROADMAP item #13](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md). Implemented as plan #13 (5 parts: scaffold + author-classify + check-repair + migrate-subsume + AgentMemory-docs-release). Decision rationale + 4 locked design calls + 4 load-bearing assumptions in [toolkit-side ADR 0008](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0008-diataxis-author.md). Parent design at [diataxis-author](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/diataxis-author.md) (Status: launched as of this release).
 
-**Why this matters for harness users**: operators with the agent-toolkit installed gain five new `/diataxis` sub-commands on next install. Drift detection (`/diataxis check`) becomes a regular auditing tool alongside `check-wiki.py --strict`. The `migrate-to-diataxis` predecessor still works through v1 dogfood for operators with existing installs, but new migrations should use `/diataxis migrate` for the additional capabilities (per-repo `.diataxis-conventions.md` auto-seed + delegation to `/diataxis repair` for mode-mixed splits + AgentMemory convention sync).
+**Why this matters for harness users**: operators with the crickets installed gain five new `/diataxis` sub-commands on next install. Drift detection (`/diataxis check`) becomes a regular auditing tool alongside `check-wiki.py --strict`. The `migrate-to-diataxis` predecessor still works through v1 dogfood for operators with existing installs, but new migrations should use `/diataxis migrate` for the additional capabilities (per-repo `.diataxis-conventions.md` auto-seed + delegation to `/diataxis repair` for mode-mixed splits + AgentMemory convention sync).
 
 ### Added
 
@@ -219,13 +250,13 @@ Triggered by [ROADMAP item #13](https://github.com/alexherrero/agentic-harness/b
 
 ## [v2.4.2] — 2026-05-22 — MemoryVault Discovery + Mining (paired with toolkit v0.10.0)
 
-Patch — second MemoryVault roadmap item closes. Paired with [`agent-toolkit v0.10.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.10.0) which ships the substantive feature set: five new `/memory` sub-commands (`/memory index-skills` + `/memory reflect corpus` + `/memory discover-skills` + `/memory adapt-skills` + `/memory watchlist`) that turn the vault from a static curated store into a living surface.
+Patch — second MemoryVault roadmap item closes. Paired with [`crickets v0.10.0`](https://github.com/alexherrero/crickets/releases/tag/v0.10.0) which ships the substantive feature set: five new `/memory` sub-commands (`/memory index-skills` + `/memory reflect corpus` + `/memory discover-skills` + `/memory adapt-skills` + `/memory watchlist`) that turn the vault from a static curated store into a living surface.
 
 Harness-side changes for this release pair are **doc-only** per the paired-release-as-documentation pattern established in v2.4.0 + v2.4.1. The harness hasn't owned customizations since the v2.0.0 split; discovery + mining lives entirely on the toolkit side. The harness's role in plan #7b is closing out the active plan + moving ROADMAP item #7b to Completed.
 
-Triggered by [ROADMAP item #7b](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) which had been queued from plan #7a's design-skill output (plan #6 dogfood). Implemented as plan #7b (7 tasks across 8 toolkit commits). Decision rationale + 7 locked design calls live in [toolkit-side ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) — no new harness-side ADR (discovery + mining is a toolkit-side concern; harness inherits via its toolkit-customization dependency).
+Triggered by [ROADMAP item #7b](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) which had been queued from plan #7a's design-skill output (plan #6 dogfood). Implemented as plan #7b (7 tasks across 8 toolkit commits). Decision rationale + 7 locked design calls live in [toolkit-side ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) — no new harness-side ADR (discovery + mining is a toolkit-side concern; harness inherits via its toolkit-customization dependency).
 
-**Why this matters for harness users**: the harness itself is unchanged. Operators who installed the memory skill via the toolkit gain five new `/memory` sub-commands on next install. The personal-skills indexer auto-runs from `bash agent-toolkit/install.sh ~/their-project` (against the toolkit's own `skills/` + sibling `agentic-harness/.claude/skills/`); the cadence-checked skill-discovery scan auto-fires from the existing `memory-reflect-idle` hook (no operator action required); the adapt-don't-import workflow + watchlist review are operator-invoked when ready. **Adapt-don't-import is architecturally enforced** — the `adapt-evaluator` sub-agent's write allowlist physically prevents auto-fork into `agent-toolkit/skills/`; the operator's manual authoring step is the only path to a real skill.
+**Why this matters for harness users**: the harness itself is unchanged. Operators who installed the memory skill via the toolkit gain five new `/memory` sub-commands on next install. The personal-skills indexer auto-runs from `bash crickets/install.sh ~/their-project` (against the toolkit's own `skills/` + sibling `agentm/.claude/skills/`); the cadence-checked skill-discovery scan auto-fires from the existing `memory-reflect-idle` hook (no operator action required); the adapt-don't-import workflow + watchlist review are operator-invoked when ready. **Adapt-don't-import is architecturally enforced** — the `adapt-evaluator` sub-agent's write allowlist physically prevents auto-fork into `crickets/skills/`; the operator's manual authoring step is the only path to a real skill.
 
 After this release pair ships, ROADMAP item #7b moves to Completed; the next ROADMAP item per the locked execution order is **#13 diataxis-author skill** (with smaller items #19-#22 queued in parallel: Ideas.md format redesign, transfer-context × AgentMemory integration, harness self-audit skill, cross-surface AgentMemory protocol).
 
@@ -246,13 +277,13 @@ After this release pair ships, ROADMAP item #7b moves to Completed; the next ROA
 
 ## [v2.4.1] — 2026-05-20 — Local-only embeddings (paired with toolkit v0.9.2)
 
-Patch — embedding-mode collapse paired with [`agent-toolkit v0.9.2`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.9.2). **Drops the Voyage/Anthropic API embedding mode from the toolkit's memory skill; local `sentence-transformers` is now the only production mode.** Default model upgraded `all-MiniLM-L6-v2` → `BAAI/bge-large-en-v1.5` (1024-d native; ~1.3GB on disk + ~1.5GB RAM at runtime; PyTorch MPS on Apple Silicon for acceleration).
+Patch — embedding-mode collapse paired with [`crickets v0.9.2`](https://github.com/alexherrero/crickets/releases/tag/v0.9.2). **Drops the Voyage/Anthropic API embedding mode from the toolkit's memory skill; local `sentence-transformers` is now the only production mode.** Default model upgraded `all-MiniLM-L6-v2` → `BAAI/bge-large-en-v1.5` (1024-d native; ~1.3GB on disk + ~1.5GB RAM at runtime; PyTorch MPS on Apple Silicon for acceleration).
 
-Harness-side changes for this release pair are **doc-only** per the paired-release-as-documentation pattern established in v2.4.0. The harness hasn't owned customizations since the v2.0.0 split (when `dependabot-fixer` + `ship-release` migrated to `agent-toolkit`); the embedding-mode refactor happens entirely on the toolkit side. The harness's role in plan #18 is acknowledging the v0.9.2 toolkit shape in its docs + framing the paired release.
+Harness-side changes for this release pair are **doc-only** per the paired-release-as-documentation pattern established in v2.4.0. The harness hasn't owned customizations since the v2.0.0 split (when `dependabot-fixer` + `ship-release` migrated to `crickets`); the embedding-mode refactor happens entirely on the toolkit side. The harness's role in plan #18 is acknowledging the v0.9.2 toolkit shape in its docs + framing the paired release.
 
-Triggered by [ROADMAP item #18](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) (added 2026-05-20 mid-flight of plan #7a part 5 / seed-pass; task 6 of seed-pass needed a worthwhile embedding model for sample-recall validation, which forced the embed-refactor work first). Implemented as plan #18 (7 tasks; this release pair is task 7). Decision rationale lives in [toolkit-side ADR 0001's 2026-05-20 amendment](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md#amendment-2026-05-20) — no new harness-side ADR (the embedding-mode decision is a toolkit-side concern; harness inherits via its dependency on toolkit customizations).
+Triggered by [ROADMAP item #18](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) (added 2026-05-20 mid-flight of plan #7a part 5 / seed-pass; task 6 of seed-pass needed a worthwhile embedding model for sample-recall validation, which forced the embed-refactor work first). Implemented as plan #18 (7 tasks; this release pair is task 7). Decision rationale lives in [toolkit-side ADR 0001's 2026-05-20 amendment](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0001-crickets-purpose.md#amendment-2026-05-20) — no new harness-side ADR (the embedding-mode decision is a toolkit-side concern; harness inherits via its dependency on toolkit customizations).
 
-**Why this matters for harness users**: the harness itself is unchanged. Operators who installed the memory skill via the toolkit see the embedding-mode change on next install (`bash agent-toolkit/install.sh ~/their-project` runs the new `install_python_deps()` step by default; `--no-python-deps` opts out). Existing 384-d vec-indexes invalidate due to the dim bump 384 → 1024 — the toolkit's new `vec_index.py rebuild` subcommand handles migration with a graceful-skip + clear stderr message on first invocation that detects the dim mismatch.
+**Why this matters for harness users**: the harness itself is unchanged. Operators who installed the memory skill via the toolkit see the embedding-mode change on next install (`bash crickets/install.sh ~/their-project` runs the new `install_python_deps()` step by default; `--no-python-deps` opts out). Existing 384-d vec-indexes invalidate due to the dim bump 384 → 1024 — the toolkit's new `vec_index.py rebuild` subcommand handles migration with a graceful-skip + clear stderr message on first invocation that detects the dim mismatch.
 
 After this release pair ships, plan #7a part 5 (seed-pass) resumes at task 6 (validate via sample recalls) using the new BGE-large model. Plan-#18-driven detour is complete; the MemoryVault Core roadmap (#7a) resumes its sequential execution.
 
@@ -268,16 +299,16 @@ After this release pair ships, plan #7a part 5 (seed-pass) resumes at task 6 (va
 ### Internal
 
 - **Paired-release-as-documentation pattern (continued from v2.4.0)**: this is the second consecutive paired release where the substantive change is toolkit-side and the harness ships doc-only. The pattern keeps version cadences readable for operators tracking changes across both repos — they don't have to wonder "why did toolkit ship a MINOR but harness didn't?"
-- **First post-#18 install on harness side**: operators who run `bash agent-toolkit/install.sh ~/their-project` after this release pair will see the new `==> python deps` install step. Operators can opt out via `--no-python-deps` if they manage Python deps via virtualenv / conda / system packages, or accept the install (sentence-transformers + transitive deps total ~1.5GB+ on first pull; BGE-large model downloads lazily ~1.3GB on first `/memory save` or `embed.py --mode local`).
+- **First post-#18 install on harness side**: operators who run `bash crickets/install.sh ~/their-project` after this release pair will see the new `==> python deps` install step. Operators can opt out via `--no-python-deps` if they manage Python deps via virtualenv / conda / system packages, or accept the install (sentence-transformers + transitive deps total ~1.5GB+ on first pull; BGE-large model downloads lazily ~1.3GB on first `/memory save` or `embed.py --mode local`).
 - **Plan #18 was inserted mid-flight of plan #7a part 5** (seed-pass) — first time a plan was inserted into the queue mid-execution rather than queued at the end. The mechanism: archive the active PLAN.md to `.harness/PLAN.paused.YYYYMMDD-<slug>.md`, write the new plan as the active PLAN.md, execute it, then restore the paused plan as the new active PLAN.md after the inserted plan completes. This pattern is captured in plan #18's "How to resume" section + this CHANGELOG entry as precedent for future mid-flight insertions.
 
 ## [v2.4.0] — 2026-05-17 — Gemini-CLI host removal (paired with toolkit v0.9.0)
 
-Minor — host-scope reduction paired with [`agent-toolkit v0.9.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.9.0). **Drops standalone Gemini CLI as a supported host** across the personal-dev-env. Keeps Claude Code + Antigravity (Gemini-in-Antigravity is a different surface — IDE-level integration, not standalone CLI).
+Minor — host-scope reduction paired with [`crickets v0.9.0`](https://github.com/alexherrero/crickets/releases/tag/v0.9.0). **Drops standalone Gemini CLI as a supported host** across the personal-dev-env. Keeps Claude Code + Antigravity (Gemini-in-Antigravity is a different surface — IDE-level integration, not standalone CLI).
 
-Harness-side changes for this release pair are **doc-only**. The harness hasn't owned customizations since the v2.0.0 split (when `dependabot-fixer` + `ship-release` migrated to `agent-toolkit`); the customization sweep happens entirely on the toolkit side. The harness's role in plan #15 is acknowledging the host-scope reduction in its docs + framing the paired release.
+Harness-side changes for this release pair are **doc-only**. The harness hasn't owned customizations since the v2.0.0 split (when `dependabot-fixer` + `ship-release` migrated to `crickets`); the customization sweep happens entirely on the toolkit side. The harness's role in plan #15 is acknowledging the host-scope reduction in its docs + framing the paired release.
 
-Triggered by [ROADMAP item #15](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) (added 2026-05-16 during plan #7a part 1 task 1 ship). Implemented as plan #15 (7 tasks; this release pair is task 7). Decision rationale lives in [toolkit-side ADR 0006](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0006-gemini-cli-host-removal.md) — no new harness-side ADR (the host-scope decision is a toolkit-side concern; harness inherits via its dependency on toolkit customizations).
+Triggered by [ROADMAP item #15](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) (added 2026-05-16 during plan #7a part 1 task 1 ship). Implemented as plan #15 (7 tasks; this release pair is task 7). Decision rationale lives in [toolkit-side ADR 0006](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0006-gemini-cli-host-removal.md) — no new harness-side ADR (the host-scope decision is a toolkit-side concern; harness inherits via its dependency on toolkit customizations).
 
 ### Added
 
@@ -291,15 +322,15 @@ Triggered by [ROADMAP item #15](https://github.com/alexherrero/agentic-harness/b
 ### Internal
 
 - **Paired-release-as-documentation pattern**: when the substantive change lives entirely on one side of the toolkit/harness split, the other side still ships a paired release with framing-only content. This keeps the two repos' version cadences readable for operators tracking changes — they don't have to wonder "why did toolkit ship a MINOR but harness didn't?". v2.4.0 is the documentation-acknowledgement counterpart to v0.9.0.
-- **First post-#15 install on harness side**: operators who run `bash agent-toolkit/install.sh` against an agentic-harness install will see the legacy-cleanup prompt fire if `.agents/skills/` exists from a prior install. The harness's `--update` path (separate from toolkit's `--update`) is unaffected — harness doesn't manage `.agents/`.
+- **First post-#15 install on harness side**: operators who run `bash crickets/install.sh` against an agentm install will see the legacy-cleanup prompt fire if `.agents/skills/` exists from a prior install. The harness's `--update` path (separate from toolkit's `--update`) is unaffected — harness doesn't manage `.agents/`.
 
 ## [v2.3.1] — 2026-05-16 — `/plan` external-review-handoff option (paired with toolkit v0.8.1)
 
-Patch — additive only, no breaking changes. Adds an **external-review-handoff option** to the harness's `/plan` phase, mirroring the option added to `agent-toolkit`'s `/design` skill in [v0.8.1](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.8.1). Operators can now hand off a drafted `.harness/PLAN.md` to Antigravity IDE for inline-comment review + Gemini-applies-comments revision, then resume in Claude Code with a diff-on-resume pass against a pre-handoff snapshot.
+Patch — additive only, no breaking changes. Adds an **external-review-handoff option** to the harness's `/plan` phase, mirroring the option added to `crickets`'s `/design` skill in [v0.8.1](https://github.com/alexherrero/crickets/releases/tag/v0.8.1). Operators can now hand off a drafted `.harness/PLAN.md` to Antigravity IDE for inline-comment review + Gemini-applies-comments revision, then resume in Claude Code with a diff-on-resume pass against a pre-handoff snapshot.
 
 Dogfood-driven amendment from plan #6's first real design exercise (MemoryVault): the inline block-by-block walk pattern works but tires fast on long content. Antigravity's native inline-comment UI + Gemini-applies-comments pattern is dramatically better for review-style work; the new option lets operators reach for that workflow on long plans without leaving the harness.
 
-Paired with [`agent-toolkit v0.8.1`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.8.1), which adds the same option to `/design author` Step 5 + Step 6 + `/design translate` Step 4. Shared template (`agent-toolkit/skills/design/templates/transfer-context.md`), shared workflow shape, shared cleanup discipline across both repos.
+Paired with [`crickets v0.8.1`](https://github.com/alexherrero/crickets/releases/tag/v0.8.1), which adds the same option to `/design author` Step 5 + Step 6 + `/design translate` Step 4. Shared template (`crickets/skills/design/templates/transfer-context.md`), shared workflow shape, shared cleanup discipline across both repos.
 
 ### Mechanics
 
@@ -321,28 +352,28 @@ When the operator picks "Hand off for external review" after the agent drafts `.
 ### Internal
 
 - First cross-repo dogfood-driven amendment shipped as a coordinated patch pair. Pattern: ship v1 of both repos, dogfood on a real exercise (MemoryVault `/design author`), surface gaps that apply to both surfaces (the `/design` skill on toolkit + the `/plan` phase on harness), ship paired patches with the amendment captured in the toolkit-side ADR (one ADR for both since the design is shared).
-- Implementation lives entirely in phase spec documentation. No script changes, no adapter changes, no template changes (the harness reuses the toolkit-side `transfer-context.md` template). Harness-side install validates toolkit presence; graceful-skip warning if toolkit is not installed (operator gets a message: "External-review handoff requires `agent-toolkit` v0.8.1+ installed alongside; toolkit not detected — inline review only").
+- Implementation lives entirely in phase spec documentation. No script changes, no adapter changes, no template changes (the harness reuses the toolkit-side `transfer-context.md` template). Harness-side install validates toolkit presence; graceful-skip warning if toolkit is not installed (operator gets a message: "External-review handoff requires `crickets` v0.8.1+ installed alongside; toolkit not detected — inline review only").
 - Re-audit triggers in the toolkit-side ADR 0004 amendment fire after the next 3-5 real external-review handoffs on either skill point — surfaces apply to both repos.
 
-## [v2.3.0] — 2026-05-15 — `/release` + `/setup` integration for agent-toolkit's `/design` skill (additive)
+## [v2.3.0] — 2026-05-15 — `/release` + `/setup` integration for crickets's `/design` skill (additive)
 
-Additive minor — no breaking changes. Two harness extensions that integrate with the new [`agent-toolkit v0.8.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.8.0) `/design` skill: a `/release` lifecycle hook that auto-promotes queued plans + transitions design Status `final → launched` + surfaces launched designs in the wiki; and a `/setup` scaffolding extension for the `wiki/explanation/designs/` landing dir. Plus a small `/work` Step 11 summary template enhancement that applies to any harness install with a ROADMAP-driven multi-plan project.
+Additive minor — no breaking changes. Two harness extensions that integrate with the new [`crickets v0.8.0`](https://github.com/alexherrero/crickets/releases/tag/v0.8.0) `/design` skill: a `/release` lifecycle hook that auto-promotes queued plans + transitions design Status `final → launched` + surfaces launched designs in the wiki; and a `/setup` scaffolding extension for the `wiki/explanation/designs/` landing dir. Plus a small `/work` Step 11 summary template enhancement that applies to any harness install with a ROADMAP-driven multi-plan project.
 
-Paired with [`agent-toolkit v0.8.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.8.0), which ships the `/design` skill itself with three sub-commands (`author` / `translate` / `sequence`). The harness extensions in this release light up the integration points the toolkit-side skill writes to:
+Paired with [`crickets v0.8.0`](https://github.com/alexherrero/crickets/releases/tag/v0.8.0), which ships the `/design` skill itself with three sub-commands (`author` / `translate` / `sequence`). The harness extensions in this release light up the integration points the toolkit-side skill writes to:
 
 - `/design sequence` writes a first PLAN.md to `<project>/.harness/PLAN.md` + queues subsequent parts at `<project>/.harness/designs/<doc-slug>/queued-plans/<part-slug>.PLAN.md`. **v2.3.0's `/release` §1b consumes that queue** — auto-promoting the next plan when the active completes, or transitioning the parent design Status when the last part ships.
 - `/design author --visibility published` routes design docs to `wiki/explanation/designs/<slug>.md`. **v2.3.0's `/setup` §7 extension scaffolds the `wiki/explanation/designs/` landing dir** so target projects have the destination ready before first design.
 
-Without `agent-toolkit` installed alongside, both extensions silent-skip — the harness still works standalone exactly as it did in v2.2.0.
+Without `crickets` installed alongside, both extensions silent-skip — the harness still works standalone exactly as it did in v2.2.0.
 
 ### Added
 
-- **`harness/phases/05-release.md` §1b "Design-doc lifecycle check (agent-toolkit)"** — new section between §1 (Verify plan completion) and §2 (Re-run gates). Three cases handled:
+- **`harness/phases/05-release.md` §1b "Design-doc lifecycle check (crickets)"** — new section between §1 (Verify plan completion) and §2 (Re-run gates). Three cases handled:
   - **Case A — not design-sourced**: silent no-op; existing `/release` flow continues unchanged.
   - **Case B — design-sourced, more queued plans exist**: archive completed plan to `.harness/PLAN.archive.YYYYMMDD-<part-slug>.md`; promote next queued plan (alphabetical order — same deterministic ordering `/design sequence` uses) to `.harness/PLAN.md`; append parent design's Document History with the promotion entry; **halt /release** with operator-facing next-step message. No release to prepare yet — just a plan promotion.
   - **Case C — design-sourced, LAST queued plan**: archive completed plan; transition parent design Status `final → launched`; append Document History with launched-state entry; **if `visibility: published`** update `wiki/Home.md` + `wiki/_Sidebar.md` to surface the design in a "Designs" section (idempotent — re-runs are no-op); continue with §2-§9 — this IS a real release.
-  - **Graceful-skip**: silent no-op when no design-doc origin signal present (`agent-toolkit` not installed, or plan was hand-authored).
-- **`harness/phases/01-setup.md` §7 (Populate the wiki scaffold) extended** with a new bullet for `wiki/explanation/designs/` landing dir. Cross-refs the `agent-toolkit` `/design` skill how-to + the §1b `/release` lifecycle that transitions designs to launched.
+  - **Graceful-skip**: silent no-op when no design-doc origin signal present (`crickets` not installed, or plan was hand-authored).
+- **`harness/phases/01-setup.md` §7 (Populate the wiki scaffold) extended** with a new bullet for `wiki/explanation/designs/` landing dir. Cross-refs the `crickets` `/design` skill how-to + the §1b `/release` lifecycle that transitions designs to launched.
 - **`templates/wiki/explanation/designs/`** — NEW scaffold dir installed by `install.sh`'s per-file walk into target projects. Contents: `.gitkeep` (keeps dir tracked in git) + `README.md` (one-paragraph explanation of visibility routing rules, the Status lifecycle, the wiki surfacing trigger, and the toolkit dependency).
 - **`scripts/check-references.py` `EXTERNAL_CUSTOMIZATIONS` extended** with `design` entry. Inline comment captures the current state honestly: phase specs use slash-command phrasing "the `/design` skill" with leading slash, which keeps it from matching `INVOKE_SKILL_RE` (regex char class `[A-Za-z0-9_-]` excludes `/`), so this exclusion is forward-compatibility documentation rather than currently load-bearing. If phase spec phrasing ever shifts to bare "`design`", the exclusion becomes load-bearing.
 - **`/work` Step 11 summary template enhanced for ROADMAP-driven projects** (`harness/phases/03-work.md`). Opt-in via the `.harness/ROADMAP.md` signal — single-plan installs keep the existing minimal `≤5-bullet summary`; multi-plan projects get the richer template (roadmap context lead-in, ✅/⬜ chart, link block to `.harness/` state files, explicit handoff phrase, optional commit SHA / CI status / design calls detail). Applies to any harness install with a roadmap; not specific to the design skill.
@@ -353,16 +384,16 @@ Without `agent-toolkit` installed alongside, both extensions silent-skip — the
 
 ### Internal
 
-- **Task 5 of plan #6** (design skill v1) — the only task in plan #6 that touches the harness. Tasks 1-4 + 6 land in `agent-toolkit`; task 7 is this paired release.
+- **Task 5 of plan #6** (design skill v1) — the only task in plan #6 that touches the harness. Tasks 1-4 + 6 land in `crickets`; task 7 is this paired release.
 - **Negative test on `EXTERNAL_CUSTOMIZATIONS`** during implementation confirmed the `design` entry is **not currently load-bearing** — phase spec phrasing uses `` `/design` `` (slash-command form) which doesn't match `INVOKE_SKILL_RE`'s char class. Updated the inline comment to reflect this honestly; entry stays as forward-compatibility documentation.
 - **`/work` Step 11 enhancement source**: came out of the dev-flow codification work (commit `ce86977`, 2026-05-14), separate from plan #6 but shipping in the same release window. Universal applicability — any harness install with a `ROADMAP.md` benefits.
 - **All 8 harness gates green** on every commit in the `v2.2.0..v2.3.0` range.
 
-[v2.3.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v2.3.0
+[v2.3.0]: https://github.com/alexherrero/agentm/releases/tag/v2.3.0
 
-## [v2.2.0] — 2026-05-14 — `/work` + `/release` augmentable with agent-toolkit's base hooks (additive)
+## [v2.2.0] — 2026-05-14 — `/work` + `/release` augmentable with crickets's base hooks (additive)
 
-Additive minor — no breaking changes. Two new optional sections in the harness phase specs document how to dispatch the three new base operator-control hooks (`kill-switch`, `steer`, `commit-on-stop`) shipped in [`agent-toolkit v0.7.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.7.0) alongside the existing phase workflow.
+Additive minor — no breaking changes. Two new optional sections in the harness phase specs document how to dispatch the three new base operator-control hooks (`kill-switch`, `steer`, `commit-on-stop`) shipped in [`crickets v0.7.0`](https://github.com/alexherrero/crickets/releases/tag/v0.7.0) alongside the existing phase workflow.
 
 The three hooks are lifted from the cwc-long-running-agents pattern and give the operator precise control over long-running Claude Code sessions:
 
@@ -372,14 +403,14 @@ The three hooks are lifted from the cwc-long-running-agents pattern and give the
 | `steer` | `PreToolUse` | Write `.harness/STEER.md` for mid-run redirect (contents → agent context; file → `STEER.consumed-<ts>.md`) |
 | `commit-on-stop` | `Stop` event | Dirty tree → `auto-save/<ts>` safety branch with commit; never modifies current branch; never pushes |
 
-`/work` is the primary beneficiary — long-running iteration loops, mid-task redirects, and crashed sessions all become recoverable motions. `/release` benefits less from kill-switch + steer (release flows are typically short) but the `commit-on-stop` backstop reduces the cost of an interrupted release prep. Both new sections graceful-skip when `agent-toolkit` is absent; the phase contracts don't require the hooks.
+`/work` is the primary beneficiary — long-running iteration loops, mid-task redirects, and crashed sessions all become recoverable motions. `/release` benefits less from kill-switch + steer (release flows are typically short) but the `commit-on-stop` backstop reduces the cost of an interrupted release prep. Both new sections graceful-skip when `crickets` is absent; the phase contracts don't require the hooks.
 
-Paired with [`agent-toolkit v0.7.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.7.0). The decision rationale for the hooks' design (per-repo file location, audit-trail rename for STEER, safety-branch not current-branch, Stop-event-only for v0.7.0, alphabetical-install-order hook ordering, claude-code-only host scope, Python helper for settings.json merge) lives in [agent-toolkit ADR 0003](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0003-base-operator-hooks.md). No new harness-side ADR — this release is the integration surface, not the design decision.
+Paired with [`crickets v0.7.0`](https://github.com/alexherrero/crickets/releases/tag/v0.7.0). The decision rationale for the hooks' design (per-repo file location, audit-trail rename for STEER, safety-branch not current-branch, Stop-event-only for v0.7.0, alphabetical-install-order hook ordering, claude-code-only host scope, Python helper for settings.json merge) lives in [crickets ADR 0003](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0003-base-operator-hooks.md). No new harness-side ADR — this release is the integration surface, not the design decision.
 
 ### Added
 
-- **`/work` phase spec — new section "Long-running `/work` — operator-control hooks (agent-toolkit)"** (`harness/phases/03-work.md`). 20-line section between "When to invoke /review" and "Failure modes to avoid". Reference table for all three hooks (event + trigger + effect); when-they-earn-their-keep framing (runaway loop / mid-task redirect / crashed session); the alphabetical-ordering invariant (kill-switch fires before steer in PreToolUse — a halt always takes precedence over a steer); graceful-skip framing.
-- **`/release` phase spec — new section "Optional: `commit-on-stop` safety net (agent-toolkit)"** (`harness/phases/05-release.md`). Shorter 4-line section between progress.md closeout and "Failure modes to avoid". Documents commit-on-stop as the safety net for interrupted release flows (mid-CHANGELOG-edit, mid-tag-prep); cross-references the `/work` section for the full hook lineup; notes kill-switch + steer provide less marginal value for typically-short release flows.
+- **`/work` phase spec — new section "Long-running `/work` — operator-control hooks (crickets)"** (`harness/phases/03-work.md`). 20-line section between "When to invoke /review" and "Failure modes to avoid". Reference table for all three hooks (event + trigger + effect); when-they-earn-their-keep framing (runaway loop / mid-task redirect / crashed session); the alphabetical-ordering invariant (kill-switch fires before steer in PreToolUse — a halt always takes precedence over a steer); graceful-skip framing.
+- **`/release` phase spec — new section "Optional: `commit-on-stop` safety net (crickets)"** (`harness/phases/05-release.md`). Shorter 4-line section between progress.md closeout and "Failure modes to avoid". Documents commit-on-stop as the safety net for interrupted release flows (mid-CHANGELOG-edit, mid-tag-prep); cross-references the `/work` section for the full hook lineup; notes kill-switch + steer provide less marginal value for typically-short release flows.
 - **`scripts/check-references.py`** — `EXTERNAL_CUSTOMIZATIONS` set extended with `kill-switch`, `steer`, `commit-on-stop`. Inline-commented as forward-compatibility documentation: the existing `DISPATCH_AGENT_RE` and `INVOKE_SKILL_RE` regexes don't currently match the hooks' phase-spec phrasing (hooks fire from the host, not via agent dispatch — phase specs use markdown links + "the X hook" prose rather than `<name>` hook dispatch patterns), so the set entries don't trigger today; they're listed for the possibility of a future hook-reference regex.
 
 ### Changed
@@ -388,40 +419,40 @@ Paired with [`agent-toolkit v0.7.0`](https://github.com/alexherrero/agent-toolki
 
 ### Internal
 
-- **Task 3 of plan #4** in `.harness/PLAN.md` (base operator-control hooks). Plan #4 is a 5-task project spanning both repos: tasks 1, 2, 4 land in `agent-toolkit` (installer + body + docs); task 3 is the harness-side wiring (this release); task 5 is the coordinated release pair (this release + agent-toolkit v0.7.0).
+- **Task 3 of plan #4** in `.harness/PLAN.md` (base operator-control hooks). Plan #4 is a 5-task project spanning both repos: tasks 1, 2, 4 land in `crickets` (installer + body + docs); task 3 is the harness-side wiring (this release); task 5 is the coordinated release pair (this release + crickets v0.7.0).
 - **Design call deviation from plan**: did NOT add a new `INVOKE_HOOK_RE` regex. Hooks fire from the host, not via agent dispatch — there's no "the agent invokes a hook" semantics like there is for sub-agents/skills. Phase-spec phrasing uses markdown links + "the X hook" prose, neither of which matches a `<name>` hook dispatch pattern. EXTERNAL_CUSTOMIZATIONS entries for the three hook names are forward-compatibility documentation; future plans may add a hook-reference regex if needed.
 - **Negative test confirmed** the exclusion isn't currently load-bearing: removing `kill-switch` from `EXTERNAL_CUSTOMIZATIONS` doesn't break `check-references` because no existing regex matches the phrasing. Acceptable shape; documented inline.
 
-[v2.2.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v2.2.0
+[v2.2.0]: https://github.com/alexherrero/agentm/releases/tag/v2.2.0
 
-## [v2.1.0] — 2026-05-13 — `/review` augmentable with agent-toolkit's `evaluator` (additive)
+## [v2.1.0] — 2026-05-13 — `/review` augmentable with crickets's `evaluator` (additive)
 
-Additive minor — no breaking changes. The `/review` phase spec gains a new optional **§3b "Optional: evaluator augmentation (agent-toolkit)"** documenting how to dispatch the [`evaluator`](https://github.com/alexherrero/agent-toolkit/blob/main/agents/evaluator.md) sub-agent (shipped in [agent-toolkit v0.6.0](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.6.0)) alongside the existing `adversarial-reviewer` flow.
+Additive minor — no breaking changes. The `/review` phase spec gains a new optional **§3b "Optional: evaluator augmentation (crickets)"** documenting how to dispatch the [`evaluator`](https://github.com/alexherrero/crickets/blob/main/agents/evaluator.md) sub-agent (shipped in [crickets v0.6.0](https://github.com/alexherrero/crickets/releases/tag/v0.6.0)) alongside the existing `adversarial-reviewer` flow.
 
 The two reviewers are **complementary, not competing**:
 
-| | `adversarial-reviewer` (§3) | `evaluator` (§3b, agent-toolkit) |
+| | `adversarial-reviewer` (§3) | `evaluator` (§3b, crickets) |
 |---|---|---|
 | **Framing** | "the code contains bugs, find them" | "did this satisfy the rubric?" |
 | **Output** | failing test / `file:line` defect / `NO ISSUES FOUND` | `PASS` / `NEEDS_WORK` + per-rubric-item PASS/FAIL |
 | **Input** | the artifact + PLAN.md task | the artifact + an explicit rubric |
 | **Best when** | rubric is loose; you want defect surfacing | rubric is precise; you want binary judgment |
 
-Both can run in the same `/review` session — their outputs combine into a richer finding set. The harness still works standalone without the toolkit installed: §3b graceful-skips when `agent-toolkit` is absent (no `.claude/agents/evaluator.md` / `.agent/skills/evaluator/SKILL.md` / `.gemini/agents/evaluator.md` in the project), and the adversarial-reviewer-only flow continues to satisfy the phase contract.
+Both can run in the same `/review` session — their outputs combine into a richer finding set. The harness still works standalone without the toolkit installed: §3b graceful-skips when `crickets` is absent (no `.claude/agents/evaluator.md` / `.agent/skills/evaluator/SKILL.md` / `.gemini/agents/evaluator.md` in the project), and the adversarial-reviewer-only flow continues to satisfy the phase contract.
 
-Paired with [`agent-toolkit v0.6.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.6.0). The decision rationale for the evaluator's design (read-only allowlist, caller-supplied inline rubric, coexist with adversarial-reviewer not replace) is captured in [agent-toolkit ADR 0002](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0002-evaluator-design.md). No new harness-side ADR — this release is the integration surface, not the design decision.
+Paired with [`crickets v0.6.0`](https://github.com/alexherrero/crickets/releases/tag/v0.6.0). The decision rationale for the evaluator's design (read-only allowlist, caller-supplied inline rubric, coexist with adversarial-reviewer not replace) is captured in [crickets ADR 0002](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0002-evaluator-design.md). No new harness-side ADR — this release is the integration surface, not the design decision.
 
 ### Added
 
-- **`/review` phase spec §3b — Optional: evaluator augmentation (agent-toolkit)** (`harness/phases/04-review.md`). 54-line section between §3a Reconcile and §4 Validate format. Documents:
+- **`/review` phase spec §3b — Optional: evaluator augmentation (crickets)** (`harness/phases/04-review.md`). 54-line section between §3a Reconcile and §4 Validate format. Documents:
   - The complementary framing with a side-by-side comparison table vs. adversarial-reviewer.
   - When to add evaluator dispatch (PLAN.md Verification clause is a numbered list of falsifiable claims).
-  - When to skip (vague rubric, or `agent-toolkit` not installed in the project — graceful-skip silently).
+  - When to skip (vague rubric, or `crickets` not installed in the project — graceful-skip silently).
   - The dispatch prompt shape (`ARTIFACT:` + `RUBRIC:` labeled sections drawn from the PLAN.md Verification clause).
   - The output shape (PASS/NEEDS_WORK header + per-rubric-item PASS/FAIL line with citations + final Verdict line).
   - Treat-as-finding semantics: if NEEDS_WORK, the structured output is the `/review` exit artifact (counts as the executable artifact the phase requires).
-  - Full-spec pointer to `agent-toolkit/agents/evaluator.md`.
-- **Cross-repo agent references resolve** (`scripts/check-references.py`). Renamed `EXTERNAL_SKILLS` → `EXTERNAL_CUSTOMIZATIONS` to cover the new agent kind alongside the existing migrated skills. The exclusion now applies to both `DISPATCH_AGENT_RE` and `INVOKE_SKILL_RE` regexes — previously only the skill regex had the exclusion. Inline comments name each entry's `agent-toolkit` home (`skills/dependabot-fixer/`, `skills/ship-release/`, `agents/evaluator.md`).
+  - Full-spec pointer to `crickets/agents/evaluator.md`.
+- **Cross-repo agent references resolve** (`scripts/check-references.py`). Renamed `EXTERNAL_SKILLS` → `EXTERNAL_CUSTOMIZATIONS` to cover the new agent kind alongside the existing migrated skills. The exclusion now applies to both `DISPATCH_AGENT_RE` and `INVOKE_SKILL_RE` regexes — previously only the skill regex had the exclusion. Inline comments name each entry's `crickets` home (`skills/dependabot-fixer/`, `skills/ship-release/`, `agents/evaluator.md`).
 
 ### Changed
 
@@ -429,67 +460,67 @@ Paired with [`agent-toolkit v0.6.0`](https://github.com/alexherrero/agent-toolki
 
 ### Internal
 
-- **Task 3 of plan #3** in `.harness/PLAN.md` (fresh-context evaluator). Plan #3 is a 5-task project spanning both repos: tasks 1, 2, 4 land in `agent-toolkit` (installer + body + docs); task 3 is the harness-side wiring (this release); task 5 is the coordinated release pair (this release + agent-toolkit v0.6.0).
+- **Task 3 of plan #3** in `.harness/PLAN.md` (fresh-context evaluator). Plan #3 is a 5-task project spanning both repos: tasks 1, 2, 4 land in `crickets` (installer + body + docs); task 3 is the harness-side wiring (this release); task 5 is the coordinated release pair (this release + crickets v0.6.0).
 - **Negative test confirmed**: removing `evaluator` from `EXTERNAL_CUSTOMIZATIONS` immediately produces `FAIL: harness/phases/04-review.md: references` evaluator `sub-agent but harness/agents/evaluator.md is missing` — the exclusion is load-bearing.
 
-[v2.1.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v2.1.0
+[v2.1.0]: https://github.com/alexherrero/agentm/releases/tag/v2.1.0
 
-## [v2.0.0] — 2026-05-12 — `agent-toolkit` repo split: `dependabot-fixer` + `ship-release` moved out
+## [v2.0.0] — 2026-05-12 — `crickets` repo split: `dependabot-fixer` + `ship-release` moved out
 
-**BREAKING:** The `dependabot-fixer` and `ship-release` skills have moved out of this repo into the new sibling repo [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit). Anyone who relied on them being installed by `agentic-harness/install.sh` must additionally clone `agent-toolkit` as a sibling directory and run `bash ../agent-toolkit/install.sh <project>` to get those skills back. The harness itself still works on its own for the phase-gated workflow (setup / plan / work / review / release / bugfix); only the two migrated skills are affected.
+**BREAKING:** The `dependabot-fixer` and `ship-release` skills have moved out of this repo into the new sibling repo [`crickets`](https://github.com/alexherrero/crickets). Anyone who relied on them being installed by `agentm/install.sh` must additionally clone `crickets` as a sibling directory and run `bash ../crickets/install.sh <project>` to get those skills back. The harness itself still works on its own for the phase-gated workflow (setup / plan / work / review / release / bugfix); only the two migrated skills are affected.
 
 **Migration:**
 
 ```bash
-# Clone agent-toolkit as a sibling of agentic-harness:
-gh repo clone alexherrero/agent-toolkit ../agent-toolkit
+# Clone crickets as a sibling of agentm:
+gh repo clone alexherrero/crickets ../crickets
 
 # Refresh harness state (auto-cleans orphaned dependabot-fixer + ship-release paths
 # from the v1.x install via the true-sync --update mechanism shipped in v1.0.0):
-bash /path/to/agentic-harness/install.sh --update /path/to/your-project
+bash /path/to/agentm/install.sh --update /path/to/your-project
 
 # Install the migrated skills into the same target:
-bash ../agent-toolkit/install.sh /path/to/your-project
+bash ../crickets/install.sh /path/to/your-project
 ```
 
-`doctor` and `migrate-to-diataxis` remain in this repo — they are harness-setup-specific and harness-shaped, not personal customizations. The harness's `/release` and `/work` phase specs already reference `ship-release` with graceful-skip framing ("install agent-toolkit to enable; otherwise cut release manually with `gh release create`"), so a v2.0.0 install without the toolkit still functions — it just falls back to manual release cuts.
+`doctor` and `migrate-to-diataxis` remain in this repo — they are harness-setup-specific and harness-shaped, not personal customizations. The harness's `/release` and `/work` phase specs already reference `ship-release` with graceful-skip framing ("install crickets to enable; otherwise cut release manually with `gh release create`"), so a v2.0.0 install without the toolkit still functions — it just falls back to manual release cuts.
 
-Released alongside [`agent-toolkit v0.5.0`](https://github.com/alexherrero/agent-toolkit/releases/tag/v0.5.0). Decision rationale captured in two parallel ADRs: [agentic-harness ADR 0006 — agent-toolkit split](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0006-agent-toolkit-split.md) (this repo, parity-tax + harness-identity framing) and [agent-toolkit ADR 0001 — agent-toolkit purpose](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md) (toolkit side, sibling-repo purpose + scope).
+Released alongside [`crickets v0.5.0`](https://github.com/alexherrero/crickets/releases/tag/v0.5.0). Decision rationale captured in two parallel ADRs: [agentm ADR 0006 — crickets split](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0006-crickets-split.md) (this repo, parity-tax + harness-identity framing) and [crickets ADR 0001 — crickets purpose](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0001-crickets-purpose.md) (toolkit side, sibling-repo purpose + scope).
 
 ### Removed
 
-- **`dependabot-fixer` skill** — canonical spec (`harness/skills/dependabot-fixer.md`) + adapter copies (`adapters/claude-code/skills/dependabot-fixer/`, `adapters/antigravity/skills/dependabot-fixer/`). Now lives at [`agent-toolkit/skills/dependabot-fixer/`](https://github.com/alexherrero/agent-toolkit/tree/main/skills/dependabot-fixer).
-- **`ship-release` skill** — canonical spec (`harness/skills/ship-release.md`) + adapter copies (`adapters/claude-code/skills/ship-release/`, `adapters/antigravity/skills/ship-release/`). Now lives at [`agent-toolkit/skills/ship-release/`](https://github.com/alexherrero/agent-toolkit/tree/main/skills/ship-release).
+- **`dependabot-fixer` skill** — canonical spec (`harness/skills/dependabot-fixer.md`) + adapter copies (`adapters/claude-code/skills/dependabot-fixer/`, `adapters/antigravity/skills/dependabot-fixer/`). Now lives at [`crickets/skills/dependabot-fixer/`](https://github.com/alexherrero/crickets/tree/main/skills/dependabot-fixer).
+- **`ship-release` skill** — canonical spec (`harness/skills/ship-release.md`) + adapter copies (`adapters/claude-code/skills/ship-release/`, `adapters/antigravity/skills/ship-release/`). Now lives at [`crickets/skills/ship-release/`](https://github.com/alexherrero/crickets/tree/main/skills/ship-release).
 - Combined removal: 6 files. `scripts/check-parity.sh` `CANON_SKILLS`, `scripts/check-references.py` `SHARED_SKILLS`, and `scripts/validate-adapters.py` `SKILLS` all narrow from 4 entries (`dependabot-fixer`, `doctor`, `migrate-to-diataxis`, `ship-release`) to 2 (`doctor`, `migrate-to-diataxis`). `install.sh` + `install.ps1` shared-skills enumeration trims from 4 to 2. Cross-platform smoke-install + check-integrity scripts updated for the same narrowing.
 
 ### Added
 
-- **[ADR 0006 — agent-toolkit split](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0006-agent-toolkit-split.md)** — captures Context (parity-tax scales linearly with personal customizations + harness identity at risk + 11-primitive scope is broader than skills), Decision (sibling repo + byte-identical `lib/install/` + skill-ownership table + public-with-PII-guardrails), Consequences (5 positive + 4 negative + load-bearing assumptions). Cross-references the toolkit's [ADR 0001](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md).
-- **`lib/install/` shared install plumbing.** Extracted ~80 lines of inline install primitives from `install.sh` + `install.ps1` into a new shared lib byte-identical with `agent-toolkit/lib/install/`. Files: `lib/install/bash/primitives.sh` (6 functions: `ensure_boundary_src`, `cp_user`, `cp_managed`, `cp_user_walk`, `cp_managed_dir`, `sync_managed_parents`), `lib/install/pwsh/primitives.ps1` (8 functions; pwsh equivalents + `Copy-AdapterFiles` / `Copy-AdapterDirs`), `lib/install/CONTRACT.md` (caller-contract docs + six behavior invariants), `lib/install/.checksums.txt` (SHA-256 manifest). Both repos consume the same code path; cross-repo edits flow through `scripts/sync-lib.sh` (canonical → sibling). `scripts/check-lib-parity.sh` asserts self-consistency in CI on every push.
-- **PII guardrails in CI.** Added `scripts/check-no-pii.sh` (regex scanner, byte-copied from agent-toolkit) and `.gitleaks.toml` to this repo. New `pii-guardrails` job in all three per-OS test workflows runs both `check-no-pii.sh` and the official `gitleaks/gitleaks-action@v2`. Defense in depth for personal-path / API-key / email leaks even in the harness repo, which has grown reference examples touching ADR 0006 + the toolkit cross-references.
+- **[ADR 0006 — crickets split](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0006-crickets-split.md)** — captures Context (parity-tax scales linearly with personal customizations + harness identity at risk + 11-primitive scope is broader than skills), Decision (sibling repo + byte-identical `lib/install/` + skill-ownership table + public-with-PII-guardrails), Consequences (5 positive + 4 negative + load-bearing assumptions). Cross-references the toolkit's [ADR 0001](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0001-crickets-purpose.md).
+- **`lib/install/` shared install plumbing.** Extracted ~80 lines of inline install primitives from `install.sh` + `install.ps1` into a new shared lib byte-identical with `crickets/lib/install/`. Files: `lib/install/bash/primitives.sh` (6 functions: `ensure_boundary_src`, `cp_user`, `cp_managed`, `cp_user_walk`, `cp_managed_dir`, `sync_managed_parents`), `lib/install/pwsh/primitives.ps1` (8 functions; pwsh equivalents + `Copy-AdapterFiles` / `Copy-AdapterDirs`), `lib/install/CONTRACT.md` (caller-contract docs + six behavior invariants), `lib/install/.checksums.txt` (SHA-256 manifest). Both repos consume the same code path; cross-repo edits flow through `scripts/sync-lib.sh` (canonical → sibling). `scripts/check-lib-parity.sh` asserts self-consistency in CI on every push.
+- **PII guardrails in CI.** Added `scripts/check-no-pii.sh` (regex scanner, byte-copied from crickets) and `.gitleaks.toml` to this repo. New `pii-guardrails` job in all three per-OS test workflows runs both `check-no-pii.sh` and the official `gitleaks/gitleaks-action@v2`. Defense in depth for personal-path / API-key / email leaks even in the harness repo, which has grown reference examples touching ADR 0006 + the toolkit cross-references.
 - **`lib-parity` CI gate.** New job in all three per-OS workflows runs `scripts/check-lib-parity.sh` to assert the committed SHA-256 manifest matches the actual `lib/install/` contents.
-- **Graceful-skip framing for migrated skills.** `harness/phases/05-release.md` (ship-release suggestion) and `harness/phases/03-work.md` (feature-flip suggestion) now note "install agent-toolkit to enable; otherwise cut release manually with `gh release create`". `harness/skills/doctor.md` probes 3 + 5 (ship-release + dependabot-fixer) gain explicit "skip if not installed" framing — structural skill check now expects only `doctor` + `migrate-to-diataxis`. `harness/telemetry.md` notes the dependabot-fixer signal lives in agent-toolkit as of v2.0.0.
+- **Graceful-skip framing for migrated skills.** `harness/phases/05-release.md` (ship-release suggestion) and `harness/phases/03-work.md` (feature-flip suggestion) now note "install crickets to enable; otherwise cut release manually with `gh release create`". `harness/skills/doctor.md` probes 3 + 5 (ship-release + dependabot-fixer) gain explicit "skip if not installed" framing — structural skill check now expects only `doctor` + `migrate-to-diataxis`. `harness/telemetry.md` notes the dependabot-fixer signal lives in crickets as of v2.0.0.
 - **`check-references.py` `EXTERNAL_SKILLS` set** — `{"dependabot-fixer", "ship-release"}` exclusion lets phase specs reference the migrated skills as graceful-skip suggestions without asserting `harness/skills/<name>.md` exists.
-- **Cross-repo docs.** `README.md` Skills section restructured to clearly delineate the two harness-shipped skills (`doctor`, `migrate-to-diataxis`) from the two migrated skills with links to their new toolkit homes. `AGENTS.md` gains a "Personal customizations" section pointing at agent-toolkit with sibling-clones layout guidance. `wiki/Home.md`, `wiki/_Sidebar.md`, `wiki/reference/Repo-Layout.md` all gain agent-toolkit cross-references; Repo-Layout's Quick Reference table gains rows for the sibling repo and `lib/install/`.
+- **Cross-repo docs.** `README.md` Skills section restructured to clearly delineate the two harness-shipped skills (`doctor`, `migrate-to-diataxis`) from the two migrated skills with links to their new toolkit homes. `AGENTS.md` gains a "Personal customizations" section pointing at crickets with sibling-clones layout guidance. `wiki/Home.md`, `wiki/_Sidebar.md`, `wiki/reference/Repo-Layout.md` all gain crickets cross-references; Repo-Layout's Quick Reference table gains rows for the sibling repo and `lib/install/`.
 
 ### Changed
 
 - **`install.sh` + `install.ps1`** consume the shared `lib/install/` primitives. Behavior is preserved exactly — same outputs, same idempotence, same `--update` true-sync semantics. The cross-platform debugging journey to make `lib/install/` byte-identity work on Mac + Linux + Windows surfaced four real cross-platform bugs (locale-dependent `sort` collation on Mac, `$host` collision in PowerShell, missing `shasum` in Git Bash on Windows, autocrlf + binary-mode SHA-256 difference) — all fixed before this release tag. Fixes also landed in `.gitattributes` (forces LF on every platform regardless of `core.autocrlf`).
-- **Shared-skill delivery narrows from 4 to 2.** `.agents/skills/` (read by Gemini per the Agent Skills standard) now ships only `doctor` and `migrate-to-diataxis` — the two skills that remain harness-owned. Anyone who needs `dependabot-fixer` or `ship-release` installs agent-toolkit on top.
+- **Shared-skill delivery narrows from 4 to 2.** `.agents/skills/` (read by Gemini per the Agent Skills standard) now ships only `doctor` and `migrate-to-diataxis` — the two skills that remain harness-owned. Anyone who needs `dependabot-fixer` or `ship-release` installs crickets on top.
 
 ### Internal
 
-- **7-task plan (#1) completed.** Tracked in `.harness/PLAN.md`: task 1 (`agent-toolkit` repo scaffold + PII guardrails), task 2 (shared `lib/install/` extraction + byte-identity gate), task 3 (real toolkit installer + manifest validator + per-host paths), task 4 (toolkit CI matrix + PII gate in both repos), task 5 (migrate the two skills from harness to toolkit), task 6 (full Diátaxis wiki in toolkit + cross-repo ADRs), task 7 (this release pair). Each task closed with `PLAN.md` mark `[x]` + a `progress.md` append entry.
+- **7-task plan (#1) completed.** Tracked in `.harness/PLAN.md`: task 1 (`crickets` repo scaffold + PII guardrails), task 2 (shared `lib/install/` extraction + byte-identity gate), task 3 (real toolkit installer + manifest validator + per-host paths), task 4 (toolkit CI matrix + PII gate in both repos), task 5 (migrate the two skills from harness to toolkit), task 6 (full Diátaxis wiki in toolkit + cross-repo ADRs), task 7 (this release pair). Each task closed with `PLAN.md` mark `[x]` + a `progress.md` append entry.
 - **End-to-end byte-identity flow exercised.** Nine commits between the two repos during the plan included parallel commits cross-referencing each other's SHA; the `sync-lib.sh` helper was used for every `lib/install/` edit; `check-lib-parity.sh` ran in CI on every push and gated the parity invariant successfully across all three OSes.
 - **CI green across all three per-OS workflows** on every commit in the v1.0.0..v2.0.0 range after the cross-platform fixes landed.
 
-[v2.0.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v2.0.0
+[v2.0.0]: https://github.com/alexherrero/agentm/releases/tag/v2.0.0
 
 ## [v1.0.0] — 2026-05-11 — Three-adapter scope; Codex dropped; 1.0.0 commitment
 
-**BREAKING:** Codex adapter removed. Supported hosts narrow from four (Claude Code, Antigravity, Codex, Gemini CLI) to three (Claude Code, Antigravity, Gemini CLI). Anyone running agentic-harness through Codex must migrate to one of the three remaining adapters — the phase-gated workflow itself is host-agnostic, so migration is install + relearn the host-specific invocation surface.
+**BREAKING:** Codex adapter removed. Supported hosts narrow from four (Claude Code, Antigravity, Codex, Gemini CLI) to three (Claude Code, Antigravity, Gemini CLI). Anyone running agentm through Codex must migrate to one of the three remaining adapters — the phase-gated workflow itself is host-agnostic, so migration is install + relearn the host-specific invocation surface.
 
-The version bump from 0.9.x to 1.0.0 reflects the breaking change *plus* a commitment: the harness has had enough churn (v0.1.0 → v0.9.0) to feel stable, and semver becomes firm going forward — major = breaking, minor = additive, patch = fixes. Future host removals, fundamental shape changes, or invariant inversions become explicit major-version events. Additive changes (new skills, the planned `agent-toolkit` repo split, ContextVault, design skill) become clear minor bumps. See [ADR 0005](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0005-drop-codex-support.md) for the full decision narrative.
+The version bump from 0.9.x to 1.0.0 reflects the breaking change *plus* a commitment: the harness has had enough churn (v0.1.0 → v0.9.0) to feel stable, and semver becomes firm going forward — major = breaking, minor = additive, patch = fixes. Future host removals, fundamental shape changes, or invariant inversions become explicit major-version events. Additive changes (new skills, the planned `crickets` repo split, ContextVault, design skill) become clear minor bumps. See [ADR 0005](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0005-drop-codex-support.md) for the full decision narrative.
 
 ### Removed
 
@@ -499,8 +530,8 @@ The version bump from 0.9.x to 1.0.0 reflects the breaking change *plus* a commi
 
 ### Added
 
-- **[ADR 0005 — Drop Codex support; three-adapter scope](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0005-drop-codex-support.md)**: documents Context (5 reasons codex was dropped), Decision (7 concrete actions including the v1.0.0 framing), Consequences (5 positive + 4 negative), and load-bearing re-audit assumptions.
-- **True-sync `--update` semantics.** `install.sh` and `install.ps1` now wipe twelve fully-harness-authored subdirs before recreating from source on `--update`. Orphan paths from previous versions (e.g. `.codex/` for users upgrading from v0.9.0) are automatically removed and reported as `removed legacy <path>/`. User state files at `.harness/` root, merged `settings.json` files, `wiki/**`, and root `AGENTS.md`/`CLAUDE.md` are deliberately preserved. The generalized mechanism means future host or skill removals also clean up automatically — codex is the first user, not a special case. Documented in [Update-Installed-Harness](https://github.com/alexherrero/agentic-harness/blob/main/wiki/how-to/Update-Installed-Harness.md).
+- **[ADR 0005 — Drop Codex support; three-adapter scope](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0005-drop-codex-support.md)**: documents Context (5 reasons codex was dropped), Decision (7 concrete actions including the v1.0.0 framing), Consequences (5 positive + 4 negative), and load-bearing re-audit assumptions.
+- **True-sync `--update` semantics.** `install.sh` and `install.ps1` now wipe twelve fully-harness-authored subdirs before recreating from source on `--update`. Orphan paths from previous versions (e.g. `.codex/` for users upgrading from v0.9.0) are automatically removed and reported as `removed legacy <path>/`. User state files at `.harness/` root, merged `settings.json` files, `wiki/**`, and root `AGENTS.md`/`CLAUDE.md` are deliberately preserved. The generalized mechanism means future host or skill removals also clean up automatically — codex is the first user, not a special case. Documented in [Update-Installed-Harness](https://github.com/alexherrero/agentm/blob/main/wiki/how-to/Update-Installed-Harness.md).
 - **`no-Co-Authored-By` convention** added to `AGENTS.md` + `CLAUDE.md`. Host-agnostic rule: agents do not append `Co-Authored-By:` trailers naming the model or host. Sole-author-of-intent framing.
 
 ### Changed
@@ -517,7 +548,7 @@ The version bump from 0.9.x to 1.0.0 reflects the breaking change *plus* a commi
 - **Stats**: 26 files changed task 1 (25 ins, 1204 del). 2 files changed task 2 (25 ins, 19 del). 2 files changed task 2 amendment (96 ins). 4 files changed task 3 (12 ins, 13 del). 12 files changed task 4 (99 ins, 27 del). Net: ~46 files touched, ~1300 lines removed.
 - **CI green across all three per-OS workflows** on every commit in the range. Smoke tests intentionally not run as a gate during task 1 (install.sh was inconsistent post-adapter-removal); reintroduced as a gate in task 2 where the installer fix landed.
 
-[v1.0.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v1.0.0
+[v1.0.0]: https://github.com/alexherrero/agentm/releases/tag/v1.0.0
 
 ## [v0.9.0] — 2026-04-23 — Diátaxis documentation spec + `/doctor` skill
 
@@ -525,18 +556,18 @@ Two substantial threads landed together. First, the 7-task Diátaxis rollout (AD
 
 ### Added
 
-- **`/doctor` skill** — verifies an installed harness is correctly wired up. Default mode runs structural discovery only: expected phase commands, sub-agents, skills, state files, and hooks present and parseable in the detected adapter (<5s, no tokens). `--live` adds six real probes: `explorer` dispatch on a trivial filesystem prompt, `adversarial-reviewer` dispatch requiring an executable artifact (not prose), `ship-release --dry-run`, `migrate-to-diataxis` preview on an already-migrated tree, `dependabot-fixer` no-match path, and a hook synthetic trigger. Probes stop at the first foundational failure and never mutate repo state. Canonical spec at [`harness/skills/doctor.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/skills/doctor.md); adapter wrappers for claude-code, antigravity, and codex (Gemini reuses the Codex delivery). `check-parity.sh` CANON_SKILLS and `check-references.py` SHARED_SKILLS extended. First dogfood run caught a spec bug (phase-command frontmatter doesn't carry a `name:` field) and shipped the fix in the same release.
+- **`/doctor` skill** — verifies an installed harness is correctly wired up. Default mode runs structural discovery only: expected phase commands, sub-agents, skills, state files, and hooks present and parseable in the detected adapter (<5s, no tokens). `--live` adds six real probes: `explorer` dispatch on a trivial filesystem prompt, `adversarial-reviewer` dispatch requiring an executable artifact (not prose), `ship-release --dry-run`, `migrate-to-diataxis` preview on an already-migrated tree, `dependabot-fixer` no-match path, and a hook synthetic trigger. Probes stop at the first foundational failure and never mutate repo state. Canonical spec at [`harness/skills/doctor.md`](https://github.com/alexherrero/agentm/blob/main/harness/skills/doctor.md); adapter wrappers for claude-code, antigravity, and codex (Gemini reuses the Codex delivery). `check-parity.sh` CANON_SKILLS and `check-references.py` SHARED_SKILLS extended. First dogfood run caught a spec bug (phase-command frontmatter doesn't carry a `name:` field) and shipped the fix in the same release.
 - **`migrate-to-diataxis` skill** — one-shot preview-first migration of an already-installed project's `wiki/` to the Diátaxis four-mode layout. Classifies each page (ADR, Status, How-to, Tutorial, Reference, Explanation, Mode-mixed), proposes a tree of `git mv`s to preserve blame, surfaces mode-mixed pages for manual split, and writes `wiki/.diataxis` to enable strict lint. Non-destructive; preview is always first.
 - **Diátaxis wiki scaffold in the template** — `templates/wiki/` reshaped to `tutorials/`, `how-to/`, `reference/`, `explanation/`, with `wiki/.diataxis` marker, updated `_Sidebar.md`, and Diátaxis-shaped starter content. New installs land directly in the four-mode layout.
 - **Mode-aware `documenter` writes** — the `documenter` sub-agent now dispatches with mode-specific write targets per phase. `/plan` → `wiki/explanation/` (feature pages) and `wiki/reference/` (subsystem pages), `/work` → `wiki/how-to/` (recipes), `/release` → `wiki/explanation/decisions/` (ADRs) and `wiki/reference/Completed-Features.md`, `/bugfix` → `wiki/reference/` (Known-Issues) and `wiki/explanation/decisions/`.
 - **`scripts/check-wiki.py`** — Diátaxis structural lint with 11 rules (a–k): mode purity, ADR append-only + `Status: accepted|superseded|rejected`, orphan-link detection, globally-unique filenames, no banned-headings-per-mode. Shipped as warn-only in the same release; flipped to `--strict` (blocks PRs) in `tests-linux.yml`. Negative-test fixtures at `scripts/fixtures/check-wiki/` exercise each rule.
-- **[ADR 0004](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md)** — Diátaxis documentation spec. Supersedes ADR 0002's audience-based layout (`wiki/{development,operational,design,architecture}/`) with the four Diátaxis modes. Rationale, consequences, migration path all captured.
+- **[ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md)** — Diátaxis documentation spec. Supersedes ADR 0002's audience-based layout (`wiki/{development,operational,design,architecture}/`) with the four Diátaxis modes. Rationale, consequences, migration path all captured.
 - **`CONTRIBUTING.md`** — newly extracted from the previous README's Contributing and Status sections. Documents the three-workflow per-OS CI matrix, the full "what CI verifies without an agent" bullet list, the installer-boundary invariant, and the local-gate command set (bash and pwsh).
 
 ### Changed
 
 - **Harness phase specs retargeted to Diátaxis mode dirs.** `harness/phases/02-plan.md`, `03-work.md`, `05-release.md`, and `harness/pipelines/bugfix.md` previously dispatched `documenter` at the old audience dirs (`wiki/development/`, `wiki/operational/`, `wiki/design/`, `wiki/architecture/`); they now point at the correct Diátaxis equivalents. `harness/documentation.md` gains a new "Migrating an existing install" section pointing at the `migrate-to-diataxis` skill, and the Non-goals list acquires a "five-mode extensions" bullet.
-- **Dogfood wiki reshaped to Diátaxis layout.** The agentic-harness repo's own `wiki/` migrated file-by-file with `git mv` to preserve blame. ADRs moved to `wiki/explanation/decisions/`, feature pages to `wiki/explanation/`, how-to recipes to `wiki/how-to/`, reference tables to `wiki/reference/`. `Completed-Features.md` consolidated to `wiki/reference/Completed-Features.md`.
+- **Dogfood wiki reshaped to Diátaxis layout.** The agentm repo's own `wiki/` migrated file-by-file with `git mv` to preserve blame. ADRs moved to `wiki/explanation/decisions/`, feature pages to `wiki/explanation/`, how-to recipes to `wiki/how-to/`, reference tables to `wiki/reference/`. `Completed-Features.md` consolidated to `wiki/reference/Completed-Features.md`.
 - **README simplified** — trimmed from 126 → 64 lines. Install section kept concise with a pointer to `wiki/how-to/Install-Into-Project.md`; the six-point Principles list collapsed to a one-sentence lead with a link to `harness/principles.md`; CI and contributing details extracted to the new `CONTRIBUTING.md`; Skills table gained `migrate-to-diataxis` and (later in the release) `doctor`.
 - **`check-parity.sh` and `check-references.py` extended** with the two new shared skills (`doctor`, `migrate-to-diataxis`). Each ships in claude-code, antigravity, and codex; Gemini reuses the `.agents/skills/` delivery.
 
@@ -551,7 +582,7 @@ Two substantial threads landed together. First, the 7-task Diátaxis rollout (AD
 - **First end-to-end exercise of `/doctor`.** Ran `/doctor` structurally against a scratch install (fresh `install.sh --hooks`) and the two highest-leverage `--live` probes (`explorer` + `adversarial-reviewer`) against the harness repo itself. The structural run surfaced the `name:` rubric bug; the live probes confirmed both sub-agents return within spec (explorer: 7.3s returning two absolute paths; adversarial: 10.8s returning a `file:line` pointer plus a failing pytest body, not prose).
 - **CI green across all three per-OS workflows** on every commit in the range. Linux validate job reports `check-wiki: 0 structural issue(s), 0 soft warning(s)` after the dogfood reshape. Installer-boundary invariant holds (scratch install under smoke test never receives test infra).
 
-[v0.9.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.9.0
+[v0.9.0]: https://github.com/alexherrero/agentm/releases/tag/v0.9.0
 
 
 ## [v0.8.7] — 2026-04-21 — GitHub Projects integration (the Issues-lifecycle's deferred-work half) + documenter end-to-end dogfood
@@ -560,11 +591,11 @@ Closes the symmetric gap opened by v0.8.2: where `/bugfix` maintains a public Gi
 
 ### Added
 
-- **`gh project item-create` offer wired into every phase.** `/plan` proposes from the plan's `## Out of scope` section; `/work` from out-of-task-scope findings noticed while implementing; `/review` from deferred-rather-than-blocked findings; `/release` from cross-session themes. Each phase batches its proposals into a single preview, preview-and-ask on every invocation, graceful-skip when `.harness/project.json` is absent or `gh` is unavailable. Canonical blocks in `harness/phases/{02-plan,03-work,04-review,05-release}.md` with adapter-parity across all four adapters (claude-code, antigravity, codex, gemini — 20 adapter files touched). See the new [`wiki/design/features/GitHub-Projects-Integration.md`](https://github.com/alexherrero/agentic-harness/blob/main/wiki/design/features/GitHub-Projects-Integration.md) for the feature page and [ADR 0003](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0003-ProjectsV2-Ownership-And-Linking.md) for the ownership-and-linking decision.
+- **`gh project item-create` offer wired into every phase.** `/plan` proposes from the plan's `## Out of scope` section; `/work` from out-of-task-scope findings noticed while implementing; `/review` from deferred-rather-than-blocked findings; `/release` from cross-session themes. Each phase batches its proposals into a single preview, preview-and-ask on every invocation, graceful-skip when `.harness/project.json` is absent or `gh` is unavailable. Canonical blocks in `harness/phases/{02-plan,03-work,04-review,05-release}.md` with adapter-parity across all four adapters (claude-code, antigravity, codex, gemini — 20 adapter files touched). See the new [`wiki/design/features/GitHub-Projects-Integration.md`](https://github.com/alexherrero/agentm/blob/main/wiki/design/features/GitHub-Projects-Integration.md) for the feature page and [ADR 0003](https://github.com/alexherrero/agentm/blob/main/wiki/architecture/decisions/0003-ProjectsV2-Ownership-And-Linking.md) for the ownership-and-linking decision.
 
 ### Fixed
 
-- **ProjectsV2 `/setup` flow now links the project to the repo.** The initial implementation created a user-scoped project that didn't appear under `github.com/<owner>/<repo>/projects`. ProjectsV2 has no repo-owned form — the fix is a two-step `gh project create` + `gh project link --repo <owner>/<repo>` flow at `/setup` step 8. `.harness/project.json` schema gains a `repo` field recording the linkage. Includes the `@me`-vs-literal-owner gh-CLI quirk as an inline code comment (passing `@me` to `gh project link --owner` sometimes fails with *"'<repo>' has different owner from '@me'"* even when they match). Rationale and consequences are in [ADR 0003](https://github.com/alexherrero/agentic-harness/blob/main/wiki/architecture/decisions/0003-ProjectsV2-Ownership-And-Linking.md).
+- **ProjectsV2 `/setup` flow now links the project to the repo.** The initial implementation created a user-scoped project that didn't appear under `github.com/<owner>/<repo>/projects`. ProjectsV2 has no repo-owned form — the fix is a two-step `gh project create` + `gh project link --repo <owner>/<repo>` flow at `/setup` step 8. `.harness/project.json` schema gains a `repo` field recording the linkage. Includes the `@me`-vs-literal-owner gh-CLI quirk as an inline code comment (passing `@me` to `gh project link --owner` sometimes fails with *"'<repo>' has different owner from '@me'"* even when they match). Rationale and consequences are in [ADR 0003](https://github.com/alexherrero/agentm/blob/main/wiki/architecture/decisions/0003-ProjectsV2-Ownership-And-Linking.md).
 - **Dropped the "at most 1 per session" cap on Project-item proposals.** Early drafts capped at one item; in practice a single `/work` or `/review` session can legitimately surface multiple deferred findings, and silent misses are worse than a user seeing a three-item batched preview. Replaced with a quality-bar-plus-batching rule: propose one item per distinct finding, batch into a single preview at phase end, per-phase soft caps as reminders rather than hard limits. Applied uniformly across all 20 canonical + adapter files.
 
 ### Internal
@@ -572,9 +603,9 @@ Closes the symmetric gap opened by v0.8.2: where `/bugfix` maintains a public Gi
 - **First end-to-end exercise of the `documenter` sub-agent.** Invoked per its `/release` contract (`harness/agents/documenter.md §/release`) with plan-to-HEAD diff + the current `wiki/` tree. Returned the canonical structured report (FILES CREATED / EDITED / OPEN QUESTIONS / NO-OP CATEGORIES). Outputs: new Feature page for GitHub-Projects-Integration (Template 2, Status: implemented), new ADR 0003 (Template 3, Status: accepted), new `wiki/development/Completed-Features.md` (Template 1 with overview table), Home.md + _Sidebar.md updated for the new pages. All three OPEN QUESTIONS resolved without further docsub edits. Flipped `feat-documenter-subagent.passes` and `feat-gh-projects-integration.passes` to `true` in `features.json`.
 - **README refreshed against v0.8.2 drift.** Stale "v0.1" Status block replaced with a CHANGELOG pointer; Skills table gained `ship-release` (which shipped in v0.8.0 but was never cross-linked); `/bugfix` Phases row expanded with the Issue-posterity lifecycle; `documenter` sub-agent named in the intro + Install "drops in" list; new bullet for the `wiki/` + `.github/workflows/wiki-sync.yml` pair. Install / Contributing / License untouched.
 - **ADR 0002 updated** with the runtime installer-boundary guard shipped in v0.8.2. Section 4 split into Runtime-guard vs. Test-time-assertions subsections, Consequences bullet rewritten for copy-time enforcement. Matches the `ensure_boundary_src` / `Ensure-BoundarySrc` implementation in `install.sh` / `install.ps1`.
-- **Windows boundary-guard test coverage.** Added `scripts/test-install.ps1` (PowerShell twin of `scripts/test-install.sh` with all 5 checks a–e). Wired into `.github/workflows/tests-windows.yml` install-smoke job. Ensures the installer-boundary regression class caught by Defect 2 of [#1](https://github.com/alexherrero/agentic-harness/issues/1) is guarded on both OSes.
+- **Windows boundary-guard test coverage.** Added `scripts/test-install.ps1` (PowerShell twin of `scripts/test-install.sh` with all 5 checks a–e). Wired into `.github/workflows/tests-windows.yml` install-smoke job. Ensures the installer-boundary regression class caught by Defect 2 of [#1](https://github.com/alexherrero/agentm/issues/1) is guarded on both OSes.
 
-[v0.8.7]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.7
+[v0.8.7]: https://github.com/alexherrero/agentm/releases/tag/v0.8.7
 
 ## [v0.8.2] — 2026-04-20 — First bugfix cycle + installer-boundary runtime guard
 
@@ -582,7 +613,7 @@ Three changes shipped together, themed around closing the loop on v0.8.0's docum
 
 ### Fixed
 
-- **`wiki/` not syncing to the GitHub Wiki** ([#1](https://github.com/alexherrero/agentic-harness/issues/1)). Root cause: `.github/workflows/wiki-sync.yml` was missing from the harness repo — v0.8.0 shipped the template at `templates/.github/workflows/` but no one activated it in this repo's own `.github/workflows/`. Every push since v0.8.0 had skipped the sync. Fix: copied the template byte-identical to `.github/workflows/wiki-sync.yml`, added `workflow_dispatch:` for backfill + manual re-sync, and a new `dogfood-workflows` job in `tests-linux.yml` that loops every `templates/.github/workflows/*.yml` and asserts a byte-identical counterpart exists at the repo root — so the class of bug can't recur.
+- **`wiki/` not syncing to the GitHub Wiki** ([#1](https://github.com/alexherrero/agentm/issues/1)). Root cause: `.github/workflows/wiki-sync.yml` was missing from the harness repo — v0.8.0 shipped the template at `templates/.github/workflows/` but no one activated it in this repo's own `.github/workflows/`. Every push since v0.8.0 had skipped the sync. Fix: copied the template byte-identical to `.github/workflows/wiki-sync.yml`, added `workflow_dispatch:` for backfill + manual re-sync, and a new `dogfood-workflows` job in `tests-linux.yml` that loops every `templates/.github/workflows/*.yml` and asserts a byte-identical counterpart exists at the repo root — so the class of bug can't recur.
 
 ### Changed
 
@@ -590,14 +621,14 @@ Three changes shipped together, themed around closing the loop on v0.8.0's docum
 
 ### Internal
 
-- **Installer-boundary runtime guard.** `install.sh` and `install.ps1` now call `ensure_boundary_src` / `Ensure-BoundarySrc` inside every copy helper (`cp_user`, `cp_managed`, `cp_managed_dir` and their pwsh twins). The guard rejects source paths outside `$HARNESS_ROOT/templates/` or `$HARNESS_ROOT/adapters/` with a loud boundary-violation message. `scripts/test-install.sh` gains check (e) that mutates `install.sh` in place via `sed` — rewriting the wiki-sync `cp_managed` source to the source-repo mirror — runs the mutated installer, and asserts the guard fires with non-zero exit. Addresses Defect 2 from the [#1](https://github.com/alexherrero/agentic-harness/issues/1) adversarial review: after `.github/workflows/wiki-sync.yml` became byte-identical to its template by design, a silent `install.sh` regression copying from the source-repo path would have been undetectable — the new guard makes it impossible.
+- **Installer-boundary runtime guard.** `install.sh` and `install.ps1` now call `ensure_boundary_src` / `Ensure-BoundarySrc` inside every copy helper (`cp_user`, `cp_managed`, `cp_managed_dir` and their pwsh twins). The guard rejects source paths outside `$HARNESS_ROOT/templates/` or `$HARNESS_ROOT/adapters/` with a loud boundary-violation message. `scripts/test-install.sh` gains check (e) that mutates `install.sh` in place via `sed` — rewriting the wiki-sync `cp_managed` source to the source-repo mirror — runs the mutated installer, and asserts the guard fires with non-zero exit. Addresses Defect 2 from the [#1](https://github.com/alexherrero/agentm/issues/1) adversarial review: after `.github/workflows/wiki-sync.yml` became byte-identical to its template by design, a silent `install.sh` regression copying from the source-repo path would have been undetectable — the new guard makes it impossible.
 - **`.gitignore`** — exclude `.claude/scheduled_tasks.lock` and `.claude/worktrees/` (local Claude Code artifacts).
 
-[v0.8.2]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.2
+[v0.8.2]: https://github.com/alexherrero/agentm/releases/tag/v0.8.2
 
 ## [v0.8.1] — 2026-04-20 — CI hardening + dogfood wiki
 
-Follow-up to v0.8.0. Tightens the cross-platform CI gate suite, ships the agentic-harness repo's own wiki as a worked example of the v0.8.0 documentation convention, and fixes a PowerShell parse regression in the verify.ps1 template.
+Follow-up to v0.8.0. Tightens the cross-platform CI gate suite, ships the agentm repo's own wiki as a worked example of the v0.8.0 documentation convention, and fixes a PowerShell parse regression in the verify.ps1 template.
 
 ### Fixed
 
@@ -609,7 +640,7 @@ Follow-up to v0.8.0. Tightens the cross-platform CI gate suite, ships the agenti
 - **Dogfood wiki** — `wiki/` at repo root now contains this project's own documentation under the v0.8.0 convention: Home, Sidebar, one page per subdir (Getting-Started / Runbook / Product-Intent / Overview), plus ADRs 0001 (phase-gated workflow) and 0002 (documentation convention). The installer boundary is preserved — `install.sh` still copies only from `templates/wiki/`, never from this repo's own `wiki/`.
 - **Dedicated installer-boundary test** — `scripts/test-install.sh` runs `diff -r templates/wiki/ <scratch>/wiki/` byte-for-byte plus a SHA-256 hash-based leak detector for each file under `$HARNESS_ROOT/wiki/`, wired into Linux CI. Proves the boundary on every PR.
 
-[v0.8.1]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.1
+[v0.8.1]: https://github.com/alexherrero/agentm/releases/tag/v0.8.1
 
 ## [v0.8.0] — 2026-04-19 — Documentation convention, three new full-parity adapters, Windows support, release automation
 
@@ -706,10 +737,10 @@ of tag cut going forward.
   reproducers verified: rogue file → parity fails, corrupt TOML → validate
   fails, renamed subagent → parity fails, broken `install.sh` → smoke fails.
 
-[v0.8.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.8.0
-[v0.5.1]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.5.1
-[v0.5.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.5.0
-[v0.4.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.4.0
-[v0.3.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.3.0
-[v0.2.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.2.0
-[v0.1.0]: https://github.com/alexherrero/agentic-harness/releases/tag/v0.1.0
+[v0.8.0]: https://github.com/alexherrero/agentm/releases/tag/v0.8.0
+[v0.5.1]: https://github.com/alexherrero/agentm/releases/tag/v0.5.1
+[v0.5.0]: https://github.com/alexherrero/agentm/releases/tag/v0.5.0
+[v0.4.0]: https://github.com/alexherrero/agentm/releases/tag/v0.4.0
+[v0.3.0]: https://github.com/alexherrero/agentm/releases/tag/v0.3.0
+[v0.2.0]: https://github.com/alexherrero/agentm/releases/tag/v0.2.0
+[v0.1.0]: https://github.com/alexherrero/agentm/releases/tag/v0.1.0

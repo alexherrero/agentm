@@ -19,21 +19,21 @@
 -->
 
 <p align="center">
-  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/ci-all.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentic-harness/ci-all.yml?branch=main&style=for-the-badge&label=CI&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="CI"></a>
-  <a href="https://github.com/alexherrero/agentic-harness/releases/latest"><img src="https://img.shields.io/github/v/release/alexherrero/agentic-harness?label=LATEST&labelColor=0a0a0a&logo=github&logoColor=f4efe6&style=for-the-badge" alt="Latest release"></a>
+  <a href="https://github.com/alexherrero/agentm/actions/workflows/ci-all.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentm/ci-all.yml?branch=main&style=for-the-badge&label=CI&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="CI"></a>
+  <a href="https://github.com/alexherrero/agentm/releases/latest"><img src="https://img.shields.io/github/v/release/alexherrero/agentm?label=LATEST&labelColor=0a0a0a&logo=github&logoColor=f4efe6&style=for-the-badge" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/LICENSE-MIT-f4efe6?labelColor=0a0a0a&style=for-the-badge" alt="License: MIT"></a>
 </p>
 
-<p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentic-harness/wiki/Compatibility">see compatibility</a></sub></p>
+<p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentm/wiki/Compatibility">see compatibility</a></sub></p>
 
 Think of **Agent M** as the structural backend harness you wished you had—part Star Trek Computer, part J.A.R.V.I.S.-level contextual autonomy, engineered to manage your projects, memory, and persistent knowledge across any modern agent surface, gaining experience and self-improving as it goes.
 
 Imagine those workflows you saw in the movies. You're talking to your agent, *"open a new project file for M"* and off you go. Agent M remembers your projects and files together, talks with you about them, and learns and grows with you as you work. The context is self-maintaining — no time spent curating your own knowledge graph, and it can help with your personal notes too when **you** want it to.
 
-This repo is the **harness** — the phase-gated workflow, auto-recall hooks, sub-agents, and on-disk state that make Agent M a system instead of a folder of files. It pairs with [**Crickets**](https://github.com/alexherrero/agent-toolkit) — a tactical suite of agent primitives (skills, hooks, sub-agents, bundles) that acts as the execution engine the harness installs into your target projects.
+This repo is the **harness** — the phase-gated workflow, auto-recall hooks, sub-agents, and on-disk state that make Agent M a system instead of a folder of files. It pairs with [**Crickets**](https://github.com/alexherrero/crickets) — a tactical suite of agent primitives (skills, hooks, sub-agents, bundles) that acts as the execution engine the harness installs into your target projects.
 
 > **Latest:** v3.0.1 (2026-05-24) — Agent M V3 close-out + brand pass.  
-> [Release notes](https://github.com/alexherrero/agentic-harness/releases/latest) · [Agent M Evolution HLD](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/agent-memory-evolution.md) · [CHANGELOG](CHANGELOG.md)
+> [Release notes](https://github.com/alexherrero/agentm/releases/latest) · [Agent M Evolution HLD](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md) · [CHANGELOG](CHANGELOG.md)
 
 ## What's where
 
@@ -41,7 +41,7 @@ This repo is the **harness** — the phase-gated workflow, auto-recall hooks, su
 |---|---|
 | **Agent M** | The system as a whole — this repo + Crickets + your AgentMemory vault folder, working together |
 | **Harness** (this repo) | Phase-gated workflow (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) + auto-recall + sub-agents + scripts |
-| **Crickets** ([`agent-toolkit`](https://github.com/alexherrero/agent-toolkit)) | Skills, hooks, sub-agents, bundles — the primitives you install into your projects |
+| **Crickets** ([`crickets`](https://github.com/alexherrero/crickets)) | Skills, hooks, sub-agents, bundles — the primitives you install into your projects |
 | **AgentMemory vault** | Your Obsidian markdown folder (synced via Google Drive / Dropbox / etc.) — agent reads at session start, writes under controlled conditions |
 
 Agent M is opinionated — small, not a 150-agent supermarket. It works with YOLO mode and other fully automated coding workflows, but it's designed for the ones that keep a human in the loop.
@@ -65,8 +65,8 @@ Once both repos are cloned and the vault folder exists, Agent M is operational.
 **1. Install both repos as siblings**
 
 ```bash
-git clone https://github.com/alexherrero/agentic-harness.git ~/Antigravity/agentic-harness
-git clone https://github.com/alexherrero/agent-toolkit.git    ~/Antigravity/agent-toolkit
+git clone https://github.com/alexherrero/agentm.git ~/Antigravity/agentm
+git clone https://github.com/alexherrero/crickets.git    ~/Antigravity/crickets
 ```
 
 **2. Point the vault at your existing Obsidian + sync setup**
@@ -84,13 +84,13 @@ Any sync layer works (Google Drive, Dropbox, syncthing).
 
 ```bash
 # Harness (this repo) — slash commands, sub-agents, .harness/ state, AGENTS.md / CLAUDE.md, wiki/ scaffold
-bash ~/Antigravity/agentic-harness/install.sh [--hooks] /path/to/your-project
+bash ~/Antigravity/agentm/install.sh [--hooks] /path/to/your-project
 
 # Crickets bundle — evaluator sub-agent + 4 base hooks (kill-switch, steer, commit-on-stop, evidence-tracker) in one operation
-bash ~/Antigravity/agent-toolkit/install.sh /path/to/your-project --bundle quality-gates
+bash ~/Antigravity/crickets/install.sh /path/to/your-project --bundle quality-gates
 
 # Memory skill — /memory save / evolve / reflect / search / etc.
-bash ~/Antigravity/agent-toolkit/install.sh /path/to/your-project --skill memory
+bash ~/Antigravity/crickets/install.sh /path/to/your-project --skill memory
 ```
 
 Installations are idempotent; `--hooks` is opt-in for verification hooks. Windows: use `install.ps1` with PowerShell 7+; same flag shape with `-Hooks` and `-Update`.
@@ -105,7 +105,7 @@ Capture your locked conventions, coding-style rules, project invariants under `<
 **5. Verify**
 
 ```bash
-python3 ~/Antigravity/agentic-harness/scripts/harness_memory.py recall --phase setup
+python3 ~/Antigravity/agentm/scripts/harness_memory.py recall --phase setup
 ```
 
 Should print your always-load entries within the 4000-token budget.
@@ -155,7 +155,7 @@ Every phase auto-recalls relevant entries from your AgentMemory vault at start, 
 | [`migrate-to-diataxis`](harness/skills/migrate-to-diataxis.md) | One-shot migration of an already-installed project's `wiki/` to the Diátaxis four-mode layout. Preview-first, `git mv` for blame, non-destructive. (Superseded by Crickets' `diataxis-author` skill for new work; kept for legacy migration.) |
 | [`doctor`](harness/skills/doctor.md) | User-invoked (`/doctor`). Verifies the install is correctly wired up in this host — structural by default, `--live` adds real sub-agent dispatches and skill dry-runs. |
 
-Personal customizations — skills, sub-agents, hooks, MCP servers, bundles — live in **Crickets**. See [ADR 0006](wiki/explanation/decisions/0006-agent-toolkit-split.md) for the split.
+Personal customizations — skills, sub-agents, hooks, MCP servers, bundles — live in **Crickets**. See [ADR 0006](wiki/explanation/decisions/0006-crickets-split.md) for the split.
 
 ## Telemetry
 
@@ -167,7 +167,7 @@ Personal customizations — skills, sub-agents, hooks, MCP servers, bundles — 
 <summary>Top-level layout</summary>
 
 ```text
-agentic-harness/
+agentm/
 ├── harness/          # canonical phase specs + harness-shipped skills (doctor, migrate-to-diataxis) + telemetry doc + principles
 ├── adapters/         # per-host wiring (claude-code/, antigravity/) — thin shims that point back at the canonical specs in harness/
 ├── wiki/             # Diátaxis-shaped docs (tutorials/ + how-to/ + reference/ + explanation/) — published as the GitHub Wiki
@@ -185,13 +185,13 @@ agentic-harness/
 
 ## Architecture history
 
-Agent M has grown over time across paired releases of `agentic-harness` and `agent-toolkit`. The full V1→V4 evolution — what shipped, what's deferred, where the design is going — lives in [Agent Memory Evolution](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/agent-memory-evolution.md) on the Crickets side. [V3 Retrospective](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/v3-retrospective.md) covers what shipped, what we learned, what's deferred.
+Agent M has grown over time across paired releases of `agentm` and `crickets`. The full V1→V4 evolution — what shipped, what's deferred, where the design is going — lives in [Agent Memory Evolution](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md) on the Crickets side. [V3 Retrospective](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/v3-retrospective.md) covers what shipped, what we learned, what's deferred.
 
 For the harness's design rationale, see [harness/principles.md](harness/principles.md) and the architecture decisions under [wiki/explanation/decisions/](wiki/explanation/decisions/).
 
 ## Status
 
-Currently shipping **v3.0.1** — see [CHANGELOG.md](CHANGELOG.md) and the [latest release](https://github.com/alexherrero/agentic-harness/releases/latest). Releases and release notes are the source of truth; the harness ships in lockstep with Crickets as paired releases.
+Currently shipping **v3.0.1** — see [CHANGELOG.md](CHANGELOG.md) and the [latest release](https://github.com/alexherrero/agentm/releases/latest). Releases and release notes are the source of truth; the harness ships in lockstep with Crickets as paired releases.
 
 ## Contributing
 

@@ -1,5 +1,5 @@
 This file marks that the project's wiki/ follows the Diátaxis four-mode
-convention from ADR 0004 of agentic-harness:
+convention from ADR 0004 of agentm:
 
   tutorials/   — learning-oriented, numbered-step walkthroughs
   how-to/      — task-oriented recipes
@@ -11,4 +11,4 @@ project. Do not remove unless you are migrating away from Diátaxis.
 
 See:
 - wiki/README.md — the convention as it applies here.
-- https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md
+- https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md

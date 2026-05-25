@@ -3,7 +3,7 @@ description: Bug triage pipeline — Report → Analyze → Fix → Verify. Use 
 argument-hint: <bug report, issue link, or reproduction steps>
 ---
 
-You are running the **bugfix** pipeline of agentic-harness. The full spec is at `harness/pipelines/bugfix.md`. Read it and follow it.
+You are running the **bugfix** pipeline of agentm. The full spec is at `harness/pipelines/bugfix.md`. Read it and follow it.
 
 **Bug report from user:** $ARGUMENTS
 

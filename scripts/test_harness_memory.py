@@ -162,9 +162,9 @@ class TestRecall(unittest.TestCase):
 
     def test_recall_loads_always_load_and_project_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(Path(tmp), project="agentic-harness")
+            vault = _make_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                out = hm.phase_recall("plan", "agentic-harness")
+                out = hm.phase_recall("plan", "agentm")
         self.assertIn("coding style", out)
         self.assertIn("pick stdlib", out)
         self.assertIn("budget tuning", out)
@@ -173,9 +173,9 @@ class TestRecall(unittest.TestCase):
 
     def test_recall_work_phase_includes_known_issues(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(Path(tmp), project="agentic-harness")
+            vault = _make_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                out = hm.phase_recall("work", "agentic-harness")
+                out = hm.phase_recall("work", "agentm")
         self.assertIn("CRLF on windows", out)
         self.assertIn("pick stdlib", out)
         # work doesn't include open-questions:
@@ -183,7 +183,7 @@ class TestRecall(unittest.TestCase):
 
     def test_recall_budget_env_caps_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(Path(tmp), project="agentic-harness")
+            vault = _make_vault(Path(tmp), project="agentm")
             with _ClearEnv(
                 set_vars={
                     "MEMORY_VAULT_PATH": str(vault),
@@ -191,7 +191,7 @@ class TestRecall(unittest.TestCase):
                     "HARNESS_RECALL_BUDGET_PLAN": "30",
                 }
             ):
-                out = hm.phase_recall("plan", "agentic-harness")
+                out = hm.phase_recall("plan", "agentm")
         # Output should be small. Approx budget=30 tokens = ~120 chars.
         # Allow for the header + at least one entry; the rest must be truncated.
         self.assertLess(len(out), 600)
@@ -204,9 +204,9 @@ class TestRecall(unittest.TestCase):
     def test_recall_review_phase_no_project_entries(self) -> None:
         """Review phase reads only always-load (no per-project, by spec)."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(Path(tmp), project="agentic-harness")
+            vault = _make_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                out = hm.phase_recall("review", "agentic-harness")
+                out = hm.phase_recall("review", "agentm")
         self.assertIn("coding style", out)
         self.assertNotIn("pick stdlib", out)
 
@@ -464,9 +464,9 @@ class TestCLI(unittest.TestCase):
 
     def test_cli_recall_with_vault_emits_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(Path(tmp), project="agentic-harness")
+            vault = _make_vault(Path(tmp), project="agentm")
             result = self._run(
-                "recall", "--phase", "plan", "--project", "agentic-harness",
+                "recall", "--phase", "plan", "--project", "agentm",
                 env_extra={"MEMORY_VAULT_PATH": str(vault)},
             )
         self.assertEqual(result.returncode, 0)

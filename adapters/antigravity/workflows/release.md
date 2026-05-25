@@ -4,7 +4,7 @@ description: Pre-merge gate — verify plan done, gates green, CI passing, docs 
 
 # Release workflow
 
-Run the **release** phase of agentic-harness. Full spec: [`harness/phases/05-release.md`](../../../harness/phases/05-release.md). Read it and follow it.
+Run the **release** phase of agentm. Full spec: [`harness/phases/05-release.md`](../../../harness/phases/05-release.md). Read it and follow it.
 
 ## Non-negotiable constraints
 

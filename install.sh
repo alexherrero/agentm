@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# install.sh — install or update agentic-harness in a target project.
+# install.sh — install or update agentm in a target project.
 #
 # Usage:
-#   /path/to/agentic-harness/install.sh [--hooks] [--update] <target-project-path>
+#   /path/to/agentm/install.sh [--hooks] [--update] <target-project-path>
 #
 # Options:
 #   --hooks    Install the PostToolUse/PreCompact/SessionStart hooks into
@@ -73,14 +73,14 @@ EXISTING_VERSION=""
 
 if [[ $UPDATE_MODE -eq 1 ]]; then
   if [[ -n "$EXISTING_VERSION" && "$EXISTING_VERSION" != "$HARNESS_VERSION" ]]; then
-    echo "==> updating agentic-harness in: $TARGET ($EXISTING_VERSION → $HARNESS_VERSION)"
+    echo "==> updating agentm in: $TARGET ($EXISTING_VERSION → $HARNESS_VERSION)"
   elif [[ -n "$EXISTING_VERSION" ]]; then
-    echo "==> updating agentic-harness in: $TARGET (already at $HARNESS_VERSION; refreshing managed files)"
+    echo "==> updating agentm in: $TARGET (already at $HARNESS_VERSION; refreshing managed files)"
   else
-    echo "==> updating agentic-harness in: $TARGET (no prior version recorded; treating as fresh refresh)"
+    echo "==> updating agentm in: $TARGET (no prior version recorded; treating as fresh refresh)"
   fi
 else
-  echo "==> installing agentic-harness into: $TARGET (version $HARNESS_VERSION)"
+  echo "==> installing agentm into: $TARGET (version $HARNESS_VERSION)"
   if [[ -n "$EXISTING_VERSION" && "$EXISTING_VERSION" != "$HARNESS_VERSION" ]]; then
     echo "    note: this project is on $EXISTING_VERSION; harness is $HARNESS_VERSION."
     echo "          re-run with --update to refresh harness-authored files."
@@ -91,7 +91,7 @@ fi
 #
 # Install primitives (ensure_boundary_src, cp_user, cp_managed, cp_user_walk,
 # cp_managed_dir, sync_managed_parents) live in lib/install/bash/primitives.sh
-# and are byte-identical to agent-toolkit's copy. See lib/install/CONTRACT.md
+# and are byte-identical to crickets's copy. See lib/install/CONTRACT.md
 # for the caller contract.
 #
 # Caller-set variables the lib reads:
@@ -115,7 +115,7 @@ BOUNDARY_ROOTS=(
 # adapter set, and the local tree drifts from the GitHub source-of-truth.
 #
 # What's safe to wipe: these subdirs contain ONLY harness-authored content.
-# User customizations go in agent-toolkit (roadmap #1) or in user-global
+# User customizations go in crickets (roadmap #1) or in user-global
 # ~/.claude/ paths. NEVER add a user-state path to this list — file-level
 # entries at .harness/ root (PLAN.md, features.json, progress.md, init.sh,
 # verify.sh, known-migrations.md) and settings.json files are file-level

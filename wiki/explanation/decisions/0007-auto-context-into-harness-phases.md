@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Status:** accepted
 > **Date:** 2026-05-22
-> **Related:** [ROADMAP item #8](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) · [agent-toolkit ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) · [agent-toolkit Cross-Repo Memory Protocol](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) · [Use Auto-Context how-to](../../how-to/Use-Auto-Context-In-Harness-Phases.md)
+> **Related:** [ROADMAP item #8](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) · [crickets ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) · [crickets Cross-Repo Memory Protocol](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) · [Use Auto-Context how-to](../../how-to/Use-Auto-Context-In-Harness-Phases.md)
 
 ## Context
 
@@ -22,7 +22,7 @@ The skill-side AgentMemory integration shipped in `diataxis-author` (toolkit ADR
 
 ## Decision
 
-**Ship phase-boundary auto-context via a single stdlib-only Python dispatcher** (`scripts/harness_memory.py`) that all 5 phases + the bugfix pipeline call at predictable boundaries. Toolkit dependency is **soft** — graceful-skip when `agent-toolkit/skills/memory/` isn't sibling-cloned or `MEMORY_VAULT_PATH` env is unset. Harness runs identically with or without the toolkit installed.
+**Ship phase-boundary auto-context via a single stdlib-only Python dispatcher** (`scripts/harness_memory.py`) that all 5 phases + the bugfix pipeline call at predictable boundaries. Toolkit dependency is **soft** — graceful-skip when `crickets/skills/memory/` isn't sibling-cloned or `MEMORY_VAULT_PATH` env is unset. Harness runs identically with or without the toolkit installed.
 
 Five locked design calls Q1–Q5 (resolved at plan time; operator confirmed Q4 + Q5 revisions inline):
 
@@ -49,7 +49,7 @@ New `vault_project` field in `.harness/project.json`. Read fallback chain in `sc
 
 Phase specs invoke `harness_memory.py` unconditionally; the dispatcher itself handles graceful-skip:
 - `MEMORY_VAULT_PATH` env unset or directory missing → `recall` exits 0 with empty payload; `offer-save` + `plan-done-promotion` no-op with exit 0; `available` exits 1.
-- Toolkit memory scripts not found via 3-tier discovery (`HARNESS_MEMORY_TOOLKIT_PATH` env > sibling-clone > `~/Antigravity/agent-toolkit/`) → save calls record intent only with a stderr notice; recall still returns empty.
+- Toolkit memory scripts not found via 3-tier discovery (`HARNESS_MEMORY_TOOLKIT_PATH` env > sibling-clone > `~/Antigravity/crickets/`) → save calls record intent only with a stderr notice; recall still returns empty.
 
 **Why this pattern**: matches existing `gh project` graceful-skip in `/release` § GitHub-Projects + `commit-on-stop` graceful-skip in `/work`. Operators upgrading harness without toolkit see zero behavior change.
 
@@ -89,7 +89,7 @@ Both triggers invoke the same `harness_memory.py plan-done-promotion` sub-comman
 - **Sub-letter section pattern** (`§1b` / `§4c` / `§7b` / `§7c` / `§5b` / `§5c`) preserves integer §-numbering — incoming wiki refs that cite "§N" stay valid; only line-range anchors need updating. 5 wiki anchors updated in this plan; zero §-number references broken.
 - **Confidence-modulated ask** sidesteps both the fatigue failure mode (flat `ask` trains reflex-confirm) and the noise failure mode (flat `silent` pollutes the vault before heuristic earns trust).
 - **Shared cursor between `/work` plan-done + `/release` tail-scan** means promotion fires exactly once per plan-window — never doubled, never missed.
-- **Stdlib-only Python + cross-platform smoke tests on 3 OS CI** continues the established quality bar (ADR 0001 D7 / agent-toolkit ADR 0007 D7).
+- **Stdlib-only Python + cross-platform smoke tests on 3 OS CI** continues the established quality bar (ADR 0001 D7 / crickets ADR 0007 D7).
 
 ### Negative
 
@@ -110,10 +110,10 @@ Both triggers invoke the same `harness_memory.py plan-done-promotion` sub-comman
 
 ## Related
 
-- [ROADMAP item #8](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) — the roadmap entry that triggered this work.
-- [agent-toolkit ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) — upstream for the vault layout (`personal-private/_always-load/`, `personal-projects/<slug>/decisions/`, etc.) this dispatcher reads + writes.
-- [agent-toolkit Cross-Repo Memory Protocol](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side companion documenting the harness↔toolkit-memory contract.
+- [ROADMAP item #8](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) — the roadmap entry that triggered this work.
+- [crickets ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) — upstream for the vault layout (`personal-private/_always-load/`, `personal-projects/<slug>/decisions/`, etc.) this dispatcher reads + writes.
+- [crickets Cross-Repo Memory Protocol](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side companion documenting the harness↔toolkit-memory contract.
 - [Use Auto-Context how-to](../../how-to/Use-Auto-Context-In-Harness-Phases.md) — operator-facing per-phase walkthrough + env-var matrix + troubleshooting.
-- [agent-toolkit ADR 0001 — agent-toolkit purpose](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0001-agent-toolkit-purpose.md) — stdlib-only / no-new-third-party-deps convention all dispatcher code follows.
-- [harness ADR 0006 — agent-toolkit split](0006-agent-toolkit-split) — original split decision; this ADR continues the soft-dependency pattern (toolkit absent → harness runs unchanged).
+- [crickets ADR 0001 — crickets purpose](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0001-crickets-purpose.md) — stdlib-only / no-new-third-party-deps convention all dispatcher code follows.
+- [harness ADR 0006 — crickets split](0006-crickets-split) — original split decision; this ADR continues the soft-dependency pattern (toolkit absent → harness runs unchanged).
 - Phase specs amended: [01-setup](../../../harness/phases/01-setup.md) §1b + §8b · [02-plan](../../../harness/phases/02-plan.md) §1b + §4c · [03-work](../../../harness/phases/03-work.md) §1b + §7b + §7c · [04-review](../../../harness/phases/04-review.md) §2b · [05-release](../../../harness/phases/05-release.md) §1c + §5b + §5c · [pipelines/bugfix](../../../harness/pipelines/bugfix.md) §2b + §4b.

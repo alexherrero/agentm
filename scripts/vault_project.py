@@ -12,7 +12,7 @@ Fallback chain for `read_vault_project()`:
     4. None (no signal — caller should graceful-skip)
 
 Stdlib-only. Cross-platform via pathlib + subprocess. No third-party deps
-(per agentic-harness ADR + agent-toolkit ADR 0007 D7).
+(per agentm ADR + crickets ADR 0007 D7).
 
 Usage from another module:
 

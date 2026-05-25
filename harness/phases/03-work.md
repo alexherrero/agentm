@@ -87,7 +87,7 @@ Commands come from `.harness/init.sh` / package scripts / Makefile — whatever 
 
 ### 5b. Evidence-tracking (graceful-skip if not installed)
 
-If [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit) is installed alongside the harness AND the `evidence-tracker` base hook is in place at `.claude/hooks/evidence-tracker.sh`, the harness enforces a **default-FAIL evidence contract** on every PLAN.md task: the agent must demonstrably *read* relevant spec/test/evidence files (via the `Read` tool) before a `Write`/`Edit` that flips the task's `[ ]` → `[x]` is allowed.
+If [`crickets`](https://github.com/alexherrero/crickets) is installed alongside the harness AND the `evidence-tracker` base hook is in place at `.claude/hooks/evidence-tracker.sh`, the harness enforces a **default-FAIL evidence contract** on every PLAN.md task: the agent must demonstrably *read* relevant spec/test/evidence files (via the `Read` tool) before a `Write`/`Edit` that flips the task's `[ ]` → `[x]` is allowed.
 
 The hook fires on `PreToolUse` for `Read|Write|Edit`:
 
@@ -123,14 +123,14 @@ The hook fires on `PreToolUse` for `Read|Write|Edit`:
    ```
 
 **Graceful-skip conditions** (silent — no error, no prompt):
-- `agent-toolkit` not installed (hook absent from `.claude/hooks/`).
+- `crickets` not installed (hook absent from `.claude/hooks/`).
 - Python 3 not available on PATH.
 - Project root has no `.harness/` directory.
 - Tool input JSON is malformed (fail-open per Claude Code's PreToolUse contract).
 
 In all skip cases, the `[ ]` → `[x]` flip proceeds without enforcement — the harness continues to work the same way it always has. Operators upgrading harness without the toolkit see zero behavior change.
 
-This step lands per plan #9 (Evidence-tracking for `/work`). See [agent-toolkit ADR 0009 — Evidence-tracker hook](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0009-evidence-tracker-hook.md) for the design rationale + 3 locked design calls Q1-Q3 (lands in plan #9 task 6).
+This step lands per plan #9 (Evidence-tracking for `/work`). See [crickets ADR 0009 — Evidence-tracker hook](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0009-evidence-tracker-hook.md) for the design rationale + 3 locked design calls Q1-Q3 (lands in plan #9 task 6).
 
 ### 6. Iterate on failures
 
@@ -265,7 +265,7 @@ Preview-and-ask is non-negotiable per [`documentation.md §GitHub Projects + Iss
 
 **Do not start the next task.** The next task gets its own session: either `/work` again (clean context) or `/review` first if the task warranted it.
 
-If this task flipped a `features.json` entry's `passes` flag from `false` to `true` during `/review`, or the task finished the last feature in the plan, **suggest the `ship-release` skill** as the next step — do not auto-invoke it, the user may have more features queued. Phrase it: *"Feature `<id>` is now passing end-to-end. Consider invoking the `ship-release` skill (from agent-toolkit) to cut a tagged release."* If `agent-toolkit` isn't installed alongside, graceful-skip the suggestion — `ship-release` migrated to `agent-toolkit` in v2.0.0 (see ADR 0006).
+If this task flipped a `features.json` entry's `passes` flag from `false` to `true` during `/review`, or the task finished the last feature in the plan, **suggest the `ship-release` skill** as the next step — do not auto-invoke it, the user may have more features queued. Phrase it: *"Feature `<id>` is now passing end-to-end. Consider invoking the `ship-release` skill (from crickets) to cut a tagged release."* If `crickets` isn't installed alongside, graceful-skip the suggestion — `ship-release` migrated to `crickets` in v2.0.0 (see ADR 0006).
 
 Return to the user with a summary. Minimum (≤5 bullets — adequate for a routine task close):
 
@@ -295,15 +295,15 @@ Not every task needs adversarial review. Review is expensive (fresh context, adv
 
 Skip `/review` for routine changes (new tests, pure refactors, docs, scaffolding). The harness will still run gates on the next `/work` session before it does anything, so routine changes are caught by the next iteration anyway.
 
-## Long-running `/work` — operator-control hooks (agent-toolkit)
+## Long-running `/work` — operator-control hooks (crickets)
 
-If [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit) is installed alongside the harness, three Claude-Code-only hooks land at `.claude/hooks/` and give the operator precise control over a long-running `/work` session without closing the session:
+If [`crickets`](https://github.com/alexherrero/crickets) is installed alongside the harness, three Claude-Code-only hooks land at `.claude/hooks/` and give the operator precise control over a long-running `/work` session without closing the session:
 
 | Hook | Trigger | What it does |
 |---|---|---|
-| [`kill-switch`](https://github.com/alexherrero/agent-toolkit/blob/main/hooks/kill-switch/hook.md) | `PreToolUse` (every tool call) | Touch `.harness/STOP` to halt; `rm` to resume. Exits 2 + halt message on stderr; Claude Code blocks the tool call. |
-| [`steer`](https://github.com/alexherrero/agent-toolkit/blob/main/hooks/steer/hook.md) | `PreToolUse` (every tool call) | Write `.harness/STEER.md` with a "do it this way instead" instruction; next tool call picks it up; file renamed to `STEER.consumed-<iso-ts>.md` for audit trail. |
-| [`commit-on-stop`](https://github.com/alexherrero/agent-toolkit/blob/main/hooks/commit-on-stop/hook.md) | `Stop` event (end of each turn) | If the working tree is dirty, creates `auto-save/<iso-ts>` branch and commits the work there. Returns HEAD to the original branch with a clean tree. Recovery: `git checkout auto-save/<ts>`. |
+| [`kill-switch`](https://github.com/alexherrero/crickets/blob/main/hooks/kill-switch/hook.md) | `PreToolUse` (every tool call) | Touch `.harness/STOP` to halt; `rm` to resume. Exits 2 + halt message on stderr; Claude Code blocks the tool call. |
+| [`steer`](https://github.com/alexherrero/crickets/blob/main/hooks/steer/hook.md) | `PreToolUse` (every tool call) | Write `.harness/STEER.md` with a "do it this way instead" instruction; next tool call picks it up; file renamed to `STEER.consumed-<iso-ts>.md` for audit trail. |
+| [`commit-on-stop`](https://github.com/alexherrero/crickets/blob/main/hooks/commit-on-stop/hook.md) | `Stop` event (end of each turn) | If the working tree is dirty, creates `auto-save/<iso-ts>` branch and commits the work there. Returns HEAD to the original branch with a clean tree. Recovery: `git checkout auto-save/<ts>`. |
 
 **Why these earn their keep in long-running `/work`.** A `/work` session that hits an unexpected loop, drifts off-spec, or crashes mid-task today loses information — the only kill-switch is closing the session, the only redirect is restart, and crash recovery is hoping the working tree wasn't important. These three hooks make each precise:
 
@@ -313,7 +313,7 @@ If [`agent-toolkit`](https://github.com/alexherrero/agent-toolkit) is installed 
 
 **Ordering invariant.** `kill-switch` and `steer` both fire on `PreToolUse`. Alphabetical install order means `kill-switch` runs first — if `.harness/STOP` is present, the tool call is blocked **before** `steer` reads `STEER.md`. Halt always takes precedence over a steer.
 
-**Graceful-skip.** Install `agent-toolkit` to enable; otherwise `/work` runs without the hooks. The phase contract doesn't require them — they're an operator-precision layer on top of the existing workflow. See [agent-toolkit's how-to](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/how-to/Use-The-Base-Hooks.md) for installation + worked scenarios.
+**Graceful-skip.** Install `crickets` to enable; otherwise `/work` runs without the hooks. The phase contract doesn't require them — they're an operator-precision layer on top of the existing workflow. See [crickets's how-to](https://github.com/alexherrero/crickets/blob/main/wiki/how-to/Use-The-Base-Hooks.md) for installation + worked scenarios.
 
 ## Failure modes to avoid
 

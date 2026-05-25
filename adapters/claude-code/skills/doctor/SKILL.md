@@ -1,9 +1,9 @@
 ---
 name: doctor
-description: Verify the agentic-harness install in this project is correctly wired up. Trigger when the user says "check my harness install", "is the harness working", "run doctor", or invokes /doctor. Default mode is structural only (no tokens, <5s) — checks that expected phase commands, sub-agents, skills, state files, and hooks are present and parseable. The --live flag adds real sub-agent dispatches and skill dry-runs to prove end-to-end wiring (~30–90s, moderate token cost). Never installs or mutates state; reports gaps and points at install.sh.
+description: Verify the agentm install in this project is correctly wired up. Trigger when the user says "check my harness install", "is the harness working", "run doctor", or invokes /doctor. Default mode is structural only (no tokens, <5s) — checks that expected phase commands, sub-agents, skills, state files, and hooks are present and parseable. The --live flag adds real sub-agent dispatches and skill dry-runs to prove end-to-end wiring (~30–90s, moderate token cost). Never installs or mutates state; reports gaps and points at install.sh.
 ---
 
-You are running the `doctor` skill. Full canonical spec: `harness/skills/doctor.md` in the agentic-harness repo. The summary below is the operational version.
+You are running the `doctor` skill. Full canonical spec: `harness/skills/doctor.md` in the agentm repo. The summary below is the operational version.
 
 ## Input handling
 

@@ -31,7 +31,7 @@ Concrete symptoms in this repo's current wiki:
 
 The audience model also doesn't match how humans actually look for docs. A contributor fixing a bug reads from *all four* current subdirs. A new user and an agent resuming work also read across all four. What they want differs by intent (learn / do / look up / understand), not by role.
 
-Separately, [ADR 0002](0002-documentation-convention)'s non-enforcement remains: the only structural check is basename collision. There is no lint that a tutorial stays a tutorial, that an ADR stays immutable after `accepted`, or that every implemented behavior has a reference entry. `/release`'s `documenter` pass is adversarial but LLM-judgment — [principle 4](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md) calls for deterministic structural checks first.
+Separately, [ADR 0002](0002-documentation-convention)'s non-enforcement remains: the only structural check is basename collision. There is no lint that a tutorial stays a tutorial, that an ADR stays immutable after `accepted`, or that every implemented behavior has a reference entry. `/release`'s `documenter` pass is adversarial but LLM-judgment — [principle 4](https://github.com/alexherrero/agentm/blob/main/harness/principles.md) calls for deterministic structural checks first.
 
 ## Decision
 
@@ -54,7 +54,7 @@ The four audience labels (development / operational / design / architecture) sur
 
 ### 2. Four templates, one per mode
 
-Three were in scope under [ADR 0002](0002-documentation-convention); one more is added for Tutorial because it has the most authoring discipline. All templates live in [`templates/wiki/`](https://github.com/alexherrero/agentic-harness/tree/main/templates/wiki) and are rendered as starter content at `/setup`.
+Three were in scope under [ADR 0002](0002-documentation-convention); one more is added for Tutorial because it has the most authoring discipline. All templates live in [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) and are rendered as starter content at `/setup`.
 
 | Mode | Template opens with | Body shape | What is BANNED |
 |---|---|---|---|
@@ -65,7 +65,7 @@ Three were in scope under [ADR 0002](0002-documentation-convention); one more is
 
 ### 3. Machine-enforceable authoring rules
 
-A new [`scripts/check-wiki.py`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/check-wiki.py) (sibling of the existing `check-references.py`) runs in CI and enforces:
+A new [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py) (sibling of the existing `check-references.py`) runs in CI and enforces:
 
 | Rule | Check |
 |---|---|
@@ -81,11 +81,11 @@ A new [`scripts/check-wiki.py`](https://github.com/alexherrero/agentic-harness/b
 | Home + Sidebar reference every non-index page exactly once | Graph walk |
 | Soft word-count ceilings (warning only): tutorial ≤ 1200, how-to ≤ 600, explanation ≤ 2000, reference unbounded | Line-count warning |
 
-Structural checks only — no LLM-as-judge. Consistent with [principle 4](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md).
+Structural checks only — no LLM-as-judge. Consistent with [principle 4](https://github.com/alexherrero/agentm/blob/main/harness/principles.md).
 
 ### 4. `documenter` sub-agent gets mode-aware write rules
 
-Update [`harness/agents/documenter.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/agents/documenter.md) so that at each phase boundary the agent writes to the correct mode dir and refuses to cross modes on a single page:
+Update [`harness/agents/documenter.md`](https://github.com/alexherrero/agentm/blob/main/harness/agents/documenter.md) so that at each phase boundary the agent writes to the correct mode dir and refuses to cross modes on a single page:
 
 | Phase | Writes to |
 |---|---|
@@ -124,7 +124,7 @@ Opt-in, per-project. The convention does not force a migration — existing proj
 
 ### 7. Installer scaffold changes
 
-[`templates/wiki/`](https://github.com/alexherrero/agentic-harness/tree/main/templates/wiki) is reshaped to the new four-dir layout with starter files: `tutorials/01-First-Run.md`, `how-to/README.md`, `reference/README.md`, `explanation/README.md`, `explanation/decisions/README.md`. The scaffold ships empty-body starters with the right mode block so a `/setup` run immediately produces lint-passing pages.
+[`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) is reshaped to the new four-dir layout with starter files: `tutorials/01-First-Run.md`, `how-to/README.md`, `reference/README.md`, `explanation/README.md`, `explanation/decisions/README.md`. The scaffold ships empty-body starters with the right mode block so a `/setup` run immediately produces lint-passing pages.
 
 ## Consequences
 

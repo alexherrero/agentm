@@ -13,7 +13,7 @@ Entry formats the telemetry script recognises:
 | `/review` (in-process) | `… /review — task <n>: NO ISSUES FOUND` or `… defect found (…)` / `… failing test written (…)` / `… findings (…)` |
 | `/review` (cross-model) | `… /review (cross-model) — task <n>: <outcome>` |
 | `/review` (fallback)   | `… /review (cross-model fallback) — task <n>: gemini unavailable` |
-| dependabot-fixer       | `dependabot-fixer: <pkg> v<old>→v<new> fixed in <n> iterations` or `… ABORTED — <reason>` (skill lives in `agent-toolkit` as of v2.0.0; signals only present if toolkit is installed) |
+| dependabot-fixer       | `dependabot-fixer: <pkg> v<old>→v<new> fixed in <n> iterations` or `… ABORTED — <reason>` (skill lives in `crickets` as of v2.0.0; signals only present if toolkit is installed) |
 | compaction (PreCompact)| `## compaction event — <ISO-8601>` (markdown header, emitted by the hook) |
 
 ## Signals

@@ -19,11 +19,11 @@ The canonical failure modes for durable knowledge in AI-assisted projects:
 4. **YAML front-matter for status.** Overhead that nobody updates.
 5. **Docs generated dynamically from code annotations.** Bias toward what the code currently says, not what the code should say — makes review useless.
 
-Additionally: **this repo ships a harness into other repos**. The harness repo has its own docs. Without a hard rule, `install.sh` would eventually grow a copy path that reads from `$HARNESS_ROOT/wiki/` and propagates this repo's "how agentic-harness works" docs into every target project — which is useless to the target project and confusing.
+Additionally: **this repo ships a harness into other repos**. The harness repo has its own docs. Without a hard rule, `install.sh` would eventually grow a copy path that reads from `$HARNESS_ROOT/wiki/` and propagates this repo's "how agentm works" docs into every target project — which is useless to the target project and confusing.
 
 ## Decision
 
-Four-part convention (full spec in [`harness/documentation.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/documentation.md)):
+Four-part convention (full spec in [`harness/documentation.md`](https://github.com/alexherrero/agentm/blob/main/harness/documentation.md)):
 
 ### 1. Narrative wiki, four sections
 
@@ -38,7 +38,7 @@ Templates: "Page" (default), "Status" (pending → implemented → deprecated), 
 
 ### 2. Phase-boundary updates, not inline
 
-A dedicated `documenter` sub-agent ([`harness/agents/documenter.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/agents/documenter.md)) owns writes to `wiki/**`. It runs **only** at phase boundaries (`/setup`, `/plan`, `/work`'s commit step, `/release`, `/bugfix`). **Never during `/work`'s implement step.**
+A dedicated `documenter` sub-agent ([`harness/agents/documenter.md`](https://github.com/alexherrero/agentm/blob/main/harness/agents/documenter.md)) owns writes to `wiki/**`. It runs **only** at phase boundaries (`/setup`, `/plan`, `/work`'s commit step, `/release`, `/bugfix`). **Never during `/work`'s implement step.**
 
 This is the hard rule that prevents "defensive documentation". The implementer writes the code; a separate pass writes the docs after gates are green.
 
@@ -54,18 +54,18 @@ A `.github/workflows/wiki-sync.yml` workflow mirrors `wiki/**` to `${REPO}.wiki.
 - `$HARNESS_ROOT/scripts/` — this repo's test infra
 - `$HARNESS_ROOT/.github/workflows/tests-*.yml` — this repo's CI
 
-Target projects get the *empty* scaffold from [`templates/wiki/`](https://github.com/alexherrero/agentic-harness/tree/main/templates/wiki). They never receive this repo's own documentation. The boundary is enforced in two layers — runtime and test — because post-hoc assertions alone can silently pass once an out-of-boundary source becomes byte-identical to a legitimate template (see [#1](https://github.com/alexherrero/agentic-harness/issues/1) Defect 2).
+Target projects get the *empty* scaffold from [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki). They never receive this repo's own documentation. The boundary is enforced in two layers — runtime and test — because post-hoc assertions alone can silently pass once an out-of-boundary source becomes byte-identical to a legitimate template (see [#1](https://github.com/alexherrero/agentm/issues/1) Defect 2).
 
 **Runtime guard (copy time):**
 
-- [`install.sh`](https://github.com/alexherrero/agentic-harness/blob/main/install.sh#L92-L113) defines `ensure_boundary_src`, called from `cp_user`, `cp_managed`, and `cp_managed_dir` (and transitively from `cp_user_walk`). Every copy operation asserts the source path starts with `$HARNESS_ROOT/templates/` or `$HARNESS_ROOT/adapters/`; anything else exits with a loud `installer-boundary violation` message before the copy happens.
-- [`install.ps1`](https://github.com/alexherrero/agentic-harness/blob/main/install.ps1#L84-L102) defines `Ensure-BoundarySrc`, called from `Copy-UserFile`, `Copy-ManagedFile`, and `Copy-ManagedDir`. Same semantics, using `Resolve-Path` + `DirectorySeparatorChar` for cross-platform path normalization.
+- [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh#L92-L113) defines `ensure_boundary_src`, called from `cp_user`, `cp_managed`, and `cp_managed_dir` (and transitively from `cp_user_walk`). Every copy operation asserts the source path starts with `$HARNESS_ROOT/templates/` or `$HARNESS_ROOT/adapters/`; anything else exits with a loud `installer-boundary violation` message before the copy happens.
+- [`install.ps1`](https://github.com/alexherrero/agentm/blob/main/install.ps1#L84-L102) defines `Ensure-BoundarySrc`, called from `Copy-UserFile`, `Copy-ManagedFile`, and `Copy-ManagedDir`. Same semantics, using `Resolve-Path` + `DirectorySeparatorChar` for cross-platform path normalization.
 
 **Test-time assertions:**
 
-- Documented in the top-of-file comment block of [`install.sh`](https://github.com/alexherrero/agentic-harness/blob/main/install.sh#L23-L28).
-- Asserted by [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/smoke-install-bash.sh) (and its pwsh twin): after `install.sh` runs, none of the files from `$HARNESS_ROOT/wiki/` or `$HARNESS_ROOT/scripts/` appear in the scratch install.
-- Tightened by [`scripts/test-install.sh`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/test-install.sh) and [`scripts/test-install.ps1`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/test-install.ps1): `diff -r templates/wiki/ <scratch>/wiki/` byte-for-byte, hash-based check that no content from `$HARNESS_ROOT/wiki/` appears in the scratch install, *plus* check (e) which mutates `install.sh` / `install.ps1` in place to rewrite the `wiki-sync.yml` copy source to the source-repo mirror and asserts the runtime guard fires with the boundary-violation message. Runs in Linux CI (bash) and Windows CI (pwsh) on every PR.
+- Documented in the top-of-file comment block of [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh#L23-L28).
+- Asserted by [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh) (and its pwsh twin): after `install.sh` runs, none of the files from `$HARNESS_ROOT/wiki/` or `$HARNESS_ROOT/scripts/` appear in the scratch install.
+- Tightened by [`scripts/test-install.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.sh) and [`scripts/test-install.ps1`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.ps1): `diff -r templates/wiki/ <scratch>/wiki/` byte-for-byte, hash-based check that no content from `$HARNESS_ROOT/wiki/` appears in the scratch install, *plus* check (e) which mutates `install.sh` / `install.ps1` in place to rewrite the `wiki-sync.yml` copy source to the source-repo mirror and asserts the runtime guard fires with the boundary-violation message. Runs in Linux CI (bash) and Windows CI (pwsh) on every PR.
 
 ## Consequences
 
@@ -80,9 +80,9 @@ Target projects get the *empty* scaffold from [`templates/wiki/`](https://github
 **Negative**
 
 - **Docs lag behind code.** Between the end of `/work` and the end of `/release`, the wiki does not describe the new behavior. Mitigation: `/work`'s commit step runs `documenter` to flip pending → implemented on the relevant Feature/Subsystem page. It's not zero-lag, but it's bounded.
-- **The `documenter` sub-agent adds adapter surface.** Every adapter must expose documenter at the same phase boundaries. Mitigated by [`scripts/check-parity.sh`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/check-parity.sh) enforcing the canonical sub-agent set.
+- **The `documenter` sub-agent adds adapter surface.** Every adapter must expose documenter at the same phase boundaries. Mitigated by [`scripts/check-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-parity.sh) enforcing the canonical sub-agent set.
 - **Dogfood freshness is manual.** This repo's `wiki/` references specific line ranges in `install.sh` and `scripts/`; those can drift. Mitigation: pre-release check in [Cut-A-Release](Cut-A-Release) "Dogfood-freshness check"; the installer-boundary smoke test ensures drift never leaks into target projects.
-- **No machine-checkable quality score.** `/release`'s documenter pass is adversarial-framed ("find what wasn't documented") but deliberately not an LLM-as-judge quality score — see [principle 4](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md#4-deterministic-verification-before-llm-judgment). Structural checks (cross-links resolve, required pages exist) run in CI; "is this page good" is a human call.
+- **No machine-checkable quality score.** `/release`'s documenter pass is adversarial-framed ("find what wasn't documented") but deliberately not an LLM-as-judge quality score — see [principle 4](https://github.com/alexherrero/agentm/blob/main/harness/principles.md#4-deterministic-verification-before-llm-judgment). Structural checks (cross-links resolve, required pages exist) run in CI; "is this page good" is a human call.
 
 **Load-bearing assumptions**
 

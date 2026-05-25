@@ -1,13 +1,13 @@
-title = "agentic-harness gitleaks config"
+title = "agentm gitleaks config"
 
 # Inherit gitleaks's default ruleset for common credential shapes
 # (AWS keys, GitHub tokens, generic API keys, JWT, etc.)
 [extend]
 useDefault = true
 
-# Allowlist patterns known-safe in agentic-harness
+# Allowlist patterns known-safe in agentm
 [allowlist]
-description = "Patterns that are known-safe in agentic-harness (public repo, owned by alexherrero)"
+description = "Patterns that are known-safe in agentm (public repo, owned by alexherrero)"
 
 regexes = [
     # The public GitHub handle appears in URLs, README, AGENTS.md

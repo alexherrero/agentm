@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-This project uses [agentic-harness](https://github.com/alexherrero/agentic-harness). The universal instructions live in [AGENTS.md](AGENTS.md) — read that first.
+This project uses [agentm](https://github.com/alexherrero/agentm). The universal instructions live in [AGENTS.md](AGENTS.md) — read that first.
 
 ## Claude Code specifics
 

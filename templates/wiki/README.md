@@ -2,7 +2,7 @@
 
 How this project documents itself. This `wiki/` folder is the source of truth for human-and-agent-readable documentation and is mirrored to the repo's GitHub Wiki on every push to the default branch.
 
-This scaffold follows the Diátaxis convention — four modes, one intent per page, never mixed. See [ADR 0004 in agentic-harness](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md) for the rationale.
+This scaffold follows the Diátaxis convention — four modes, one intent per page, never mixed. See [ADR 0004 in agentm](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md) for the rationale.
 
 ## Two readers, one surface
 
@@ -17,13 +17,13 @@ Every page is written for two audiences: a **human** who needs to understand the
 | 📖 `reference/` | Canonical lookup | "What are the flags / keys / codes?" | `CLI.md`, `Config.md`, `Exit-Codes.md` |
 | 💡 `explanation/` | Intent and rationale | "Why is it this way?" | `Product-Intent.md`, `How-The-Pieces-Fit.md`, `decisions/<NNNN>-<slug>.md` |
 
-Pages outside these four dirs are not part of the convention. File under an existing mode, or — if a genuinely new mode is needed — update ADR 0004 in agentic-harness first; don't invent a fifth here.
+Pages outside these four dirs are not part of the convention. File under an existing mode, or — if a genuinely new mode is needed — update ADR 0004 in agentm first; don't invent a fifth here.
 
 ## The single-mode rule
 
 Each page serves exactly one reader intent. A tutorial does not contain rationale; a how-to does not contain background narrative; a reference is not a walk-through. When content mixes modes, split the page — don't cram modes together under different headings.
 
-The `.diataxis` marker file in this folder enables structural-lint enforcement of this rule (in agentic-harness, via `scripts/check-wiki.py`).
+The `.diataxis` marker file in this folder enables structural-lint enforcement of this rule (in agentm, via `scripts/check-wiki.py`).
 
 ## Filename rules
 
@@ -163,4 +163,4 @@ ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subhead
 
 ## Full spec
 
-[agentic-harness/harness/documentation.md](https://github.com/alexherrero/agentic-harness/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md).
+[agentm/harness/documentation.md](https://github.com/alexherrero/agentm/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md).

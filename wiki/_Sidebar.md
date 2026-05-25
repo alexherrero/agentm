@@ -27,5 +27,5 @@
 - [0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking)
 - [0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
 - [0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
-- [0006 — Split customizations into agent-toolkit](0006-agent-toolkit-split)
+- [0006 — Split customizations into crickets](0006-crickets-split)
 - [0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)

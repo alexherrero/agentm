@@ -1,13 +1,13 @@
 # Skill: migrate-to-diataxis
 
 > [!WARNING]
-> **DEPRECATED 2026-05-22.** This skill has been subsumed by [`agent-toolkit`'s `diataxis-author` skill](https://github.com/alexherrero/agent-toolkit/blob/main/skills/diataxis-author/SKILL.md) — specifically the `/diataxis migrate` sub-command which ships the same one-shot legacy → Diátaxis migration contract (preview-first, deterministic classification, `git mv` for blame, mode-mixed flagged for human split) plus net-new capabilities: `.diataxis-conventions.md` auto-seed for per-repo overrides, delegation to `/diataxis repair` for mode-mixed splits, AgentMemory integration for convention sync across the operator's wikis (lands in plan #13 part 5).
+> **DEPRECATED 2026-05-22.** This skill has been subsumed by [`crickets`'s `diataxis-author` skill](https://github.com/alexherrero/crickets/blob/main/skills/diataxis-author/SKILL.md) — specifically the `/diataxis migrate` sub-command which ships the same one-shot legacy → Diátaxis migration contract (preview-first, deterministic classification, `git mv` for blame, mode-mixed flagged for human split) plus net-new capabilities: `.diataxis-conventions.md` auto-seed for per-repo overrides, delegation to `/diataxis repair` for mode-mixed splits, AgentMemory integration for convention sync across the operator's wikis (lands in plan #13 part 5).
 >
-> **Use this instead**: `python3 ~/Antigravity/agent-toolkit/skills/diataxis-author/scripts/migrate.py --preview` (or via the skill body when Claude Code/Antigravity is dispatching).
+> **Use this instead**: `python3 ~/Antigravity/crickets/skills/diataxis-author/scripts/migrate.py --preview` (or via the skill body when Claude Code/Antigravity is dispatching).
 >
 > This skill body stays in the harness through the v1 dogfood window for operators with mid-flight installs who already know its contract. A follow-up harness PATCH release will remove the file entirely once `diataxis-author/migrate` proves out in real use. **Do not extend this skill** — bug fixes + new functionality land in the toolkit-side `diataxis-author` skill.
 >
-> Tracked in: [agent-toolkit ROADMAP #13](https://github.com/alexherrero/agentic-harness/blob/main/.harness/ROADMAP.md) + [diataxis-author design doc Migrations §1](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/diataxis-author.md#migrations) + [ADR 0008](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/decisions/0008-diataxis-author.md) (the latter ships in plan #13 part 5).
+> Tracked in: [crickets ROADMAP #13](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) + [diataxis-author design doc Migrations §1](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/diataxis-author.md#migrations) + [ADR 0008](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0008-diataxis-author.md) (the latter ships in plan #13 part 5).
 
 **Purpose:** one-shot migration of an already-installed project's `wiki/` from the old audience-based layout (`development/`, `operational/`, `design/`, `architecture/`) to the Diátaxis four-mode layout (`tutorials/`, `how-to/`, `reference/`, `explanation/`). Preview-first, user-confirmed, non-destructive — classifies every page by heading shape, produces a diff, asks before any filesystem change, uses `git mv` so blame is preserved.
 
@@ -19,7 +19,7 @@
 2. A `wiki/` directory exists at the repo root.
 3. `wiki/.diataxis` does **not** exist. If it does, the migration has already run; exit with "already migrated" and show the current layout.
 4. At least one of `wiki/development/`, `wiki/operational/`, `wiki/design/`, `wiki/architecture/` exists. If none do, the project is already on a non-audience layout; exit with guidance ("nothing to migrate — are you sure this project came from an older harness version?").
-5. This skill is run from the target project's root, not from the agentic-harness repo itself.
+5. This skill is run from the target project's root, not from the agentm repo itself.
 
 ## Inputs
 

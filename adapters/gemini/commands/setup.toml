@@ -1,7 +1,7 @@
 description = "First-time project scaffold — populate init.sh, features.json, AGENTS.md with real commands, seed wiki/. Run once per project."
 
 prompt = """
-You are running the **setup** phase of the agentic-harness workflow. The full spec is at `harness/phases/01-setup.md` in the harness repo (also copied to this project's `.harness/phases/01-setup.md` if present). Read that spec and follow it.
+You are running the **setup** phase of the agentm workflow. The full spec is at `harness/phases/01-setup.md` in the harness repo (also copied to this project's `.harness/phases/01-setup.md` if present). Read that spec and follow it.
 
 **Non-negotiable constraints for this phase:**
 

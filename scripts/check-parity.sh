@@ -7,7 +7,7 @@
 #   sub-agents:     adversarial-reviewer, adversarial-reviewer-cross,
 #                   documenter, explorer
 #   skills:         doctor, migrate-to-diataxis
-#                   (dependabot-fixer + ship-release migrated to agent-toolkit
+#                   (dependabot-fixer + ship-release migrated to crickets
 #                    in v2.0.0 — see ADR 0006)
 #
 # Deliberate divergences (documented, not failures):

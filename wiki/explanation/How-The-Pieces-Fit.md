@@ -38,7 +38,7 @@ Narrative of how phases, adapters, templates, scripts, and this wiki interact. F
          └────────────────────────────────────────────┘
 ```
 
-**Key property:** the phase specs in `harness/` are authoritative. Every adapter file is expected to cite a `harness/<phases|agents|skills>/` path; [`scripts/check-references.py`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/check-references.py) fails CI if an adapter references a spec that doesn't exist. That's what keeps the three adapters in sync — they're all pointers at the same canonical text. Adding a new adapter is a matter of writing pointers, not re-writing the workflow.
+**Key property:** the phase specs in `harness/` are authoritative. Every adapter file is expected to cite a `harness/<phases|agents|skills>/` path; [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter references a spec that doesn't exist. That's what keeps the three adapters in sync — they're all pointers at the same canonical text. Adding a new adapter is a matter of writing pointers, not re-writing the workflow.
 
 ## 📁 The installer boundary
 
@@ -53,11 +53,11 @@ They **never** read from:
 - `$HARNESS_ROOT/scripts/` — test infra for the harness repo.
 - `$HARNESS_ROOT/.github/workflows/tests-*.yml` — CI for the harness repo.
 
-The boundary is enforced in three layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentic-harness/blob/main/install.sh#L23-L28); the runtime guard `ensure_boundary_src` in the `cp_managed` function; and the byte-for-byte assertions in [`scripts/test-install.sh`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/test-install.sh) and [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentic-harness/blob/main/scripts/smoke-install-bash.sh). See [ADR 0002](0002-documentation-convention) for the full rationale.
+The boundary is enforced in three layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh#L23-L28); the runtime guard `ensure_boundary_src` in the `cp_managed` function; and the byte-for-byte assertions in [`scripts/test-install.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.sh) and [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh). See [ADR 0002](0002-documentation-convention) for the full rationale.
 
 ## ⚙️ Verification infrastructure
 
-CI runs on Linux, macOS, and Windows in parallel. All gates are documented in [CI-Gates](CI-Gates). The gates are deterministic and blocking — they run before any agentic review — because of the principle that typecheckers and tests are the truth and LLM reviews augment. For the full list of why, see [`harness/principles.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md).
+CI runs on Linux, macOS, and Windows in parallel. All gates are documented in [CI-Gates](CI-Gates). The gates are deterministic and blocking — they run before any agentic review — because of the principle that typecheckers and tests are the truth and LLM reviews augment. For the full list of why, see [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md).
 
 ## Related
 

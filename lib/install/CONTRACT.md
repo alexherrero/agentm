@@ -1,10 +1,10 @@
 # `lib/install/` — shared install plumbing contract
 
-This directory holds install primitives shared **byte-identically** between `agentic-harness` and `agent-toolkit`. Both repos commit the same files here; CI in each repo verifies its local copies against `lib/install/.checksums.txt`. Cross-repo sync is performed by `scripts/sync-lib.sh`.
+This directory holds install primitives shared **byte-identically** between `agentm` and `crickets`. Both repos commit the same files here; CI in each repo verifies its local copies against `lib/install/.checksums.txt`. Cross-repo sync is performed by `scripts/sync-lib.sh`.
 
 ## Why a shared lib
 
-Both `agentic-harness` and `agent-toolkit` are installers — they read content from their own source tree and copy it into a target project under host-specific paths (`.claude/`, `.agent/`, `.gemini/`). The mechanics of "copy a managed file with update-mode overwrite semantics" or "wipe-and-recreate a managed directory on `--update`" are identical between the two. Duplicating that logic invites drift; sharing via copy-the-lib avoids it without coupling the two repos' release cadence.
+Both `agentm` and `crickets` are installers — they read content from their own source tree and copy it into a target project under host-specific paths (`.claude/`, `.agent/`, `.gemini/`). The mechanics of "copy a managed file with update-mode overwrite semantics" or "wipe-and-recreate a managed directory on `--update`" are identical between the two. Duplicating that logic invites drift; sharing via copy-the-lib avoids it without coupling the two repos' release cadence.
 
 ## Contents
 
@@ -64,8 +64,8 @@ These are the contracts both repos depend on. Changes here are breaking for any 
 
 Edits to anything under `lib/install/` are **lockstep changes across both repos**:
 
-1. Edit the canonical copy in `agentic-harness/lib/install/`.
-2. Run `bash scripts/sync-lib.sh` — copies into `../agent-toolkit/lib/install/` + regenerates `.checksums.txt` in both repos.
+1. Edit the canonical copy in `agentm/lib/install/`.
+2. Run `bash scripts/sync-lib.sh` — copies into `../crickets/lib/install/` + regenerates `.checksums.txt` in both repos.
 3. Verify: `bash scripts/check-lib-parity.sh` in both repos returns 0.
 4. Commit in both repos with parallel messages (recommended: cross-reference the other repo's commit SHA).
 5. Push both. CI in each verifies self-consistency.

@@ -1,6 +1,6 @@
 # Antigravity adapter
 
-Full-parity adapter for running agentic-harness in [Antigravity](https://antigravity.google.com/). Every phase command, sub-agent, and skill that Claude Code users get as slash commands and sub-agents is available here as Antigravity workflows and skills.
+Full-parity adapter for running agentm in [Antigravity](https://antigravity.google.com/). Every phase command, sub-agent, and skill that Claude Code users get as slash commands and sub-agents is available here as Antigravity workflows and skills.
 
 ## Why full parity (was: README-only)
 

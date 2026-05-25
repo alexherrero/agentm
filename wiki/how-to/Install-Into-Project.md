@@ -1,7 +1,7 @@
 # How to install the harness into a project
 
 > [!NOTE]
-> **Goal:** Install or refresh the agentic-harness scaffold in an existing project.
+> **Goal:** Install or refresh the agentm scaffold in an existing project.
 > **Prereqs:** `bash` 4+ (or `pwsh` 7+ on Windows), `git`, `python3`. For `--hooks` on POSIX, also `jq`.
 
 ## Steps
@@ -9,24 +9,24 @@
 1. Clone or update the harness repo somewhere on your machine:
 
    ```bash
-   git clone https://github.com/alexherrero/agentic-harness.git ~/agentic-harness
+   git clone https://github.com/alexherrero/agentm.git ~/agentm
    # or, if already cloned:
-   git -C ~/agentic-harness pull
+   git -C ~/agentm pull
    ```
 
 2. Run the installer against your project root:
 
    ```bash
-   ~/agentic-harness/install.sh /path/to/your-project
+   ~/agentm/install.sh /path/to/your-project
    ```
 
 3. Commit the installed scaffold on a branch:
 
    ```bash
    cd /path/to/your-project
-   git checkout -b add-agentic-harness
+   git checkout -b add-agentm
    git add .harness .claude .agent .agents .gemini AGENTS.md CLAUDE.md wiki .github
-   git commit -m "Install agentic-harness"
+   git commit -m "Install agentm"
    ```
 
 ## Variants
@@ -36,7 +36,7 @@
 Add `--hooks` to install PostToolUse, PreCompact, and SessionStart hooks into `.claude/settings.json`:
 
 ```bash
-~/agentic-harness/install.sh --hooks /path/to/your-project
+~/agentm/install.sh --hooks /path/to/your-project
 ```
 
 ### Refresh an existing install
@@ -44,13 +44,13 @@ Add `--hooks` to install PostToolUse, PreCompact, and SessionStart hooks into `.
 Overwrites harness-managed files with the current version, leaves state files untouched:
 
 ```bash
-~/agentic-harness/install.sh --update /path/to/your-project
+~/agentm/install.sh --update /path/to/your-project
 ```
 
 ### Windows / PowerShell 7+
 
 ```powershell
-pwsh -NoProfile -File C:\path\to\agentic-harness\install.ps1 [-Hooks] [-Update] C:\path\to\your-project
+pwsh -NoProfile -File C:\path\to\agentm\install.ps1 [-Hooks] [-Update] C:\path\to\your-project
 ```
 
 ## Verify

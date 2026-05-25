@@ -54,12 +54,12 @@ install.ps1 [-Hooks] [-Update] <target-project-path>
 
 | Command | Canonical spec |
 |---|---|
-| `/setup` | [`harness/phases/01-setup.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/01-setup.md) |
-| `/plan` | [`harness/phases/02-plan.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/02-plan.md) |
-| `/work` | [`harness/phases/03-work.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/03-work.md) |
-| `/review` | [`harness/phases/04-review.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/04-review.md) |
-| `/release` | [`harness/phases/05-release.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/phases/05-release.md) |
-| `/bugfix` | [`harness/pipelines/bugfix.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/pipelines/bugfix.md) |
+| `/setup` | [`harness/phases/01-setup.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/01-setup.md) |
+| `/plan` | [`harness/phases/02-plan.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/02-plan.md) |
+| `/work` | [`harness/phases/03-work.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/03-work.md) |
+| `/review` | [`harness/phases/04-review.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/04-review.md) |
+| `/release` | [`harness/phases/05-release.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/05-release.md) |
+| `/bugfix` | [`harness/pipelines/bugfix.md`](https://github.com/alexherrero/agentm/blob/main/harness/pipelines/bugfix.md) |
 
 ## Exit codes
 
@@ -73,10 +73,10 @@ install.ps1 [-Hooks] [-Update] <target-project-path>
 
 | Path | Purpose |
 |---|---|
-| [`install.sh`](https://github.com/alexherrero/agentic-harness/blob/main/install.sh) | POSIX installer |
-| [`install.ps1`](https://github.com/alexherrero/agentic-harness/blob/main/install.ps1) | Windows installer |
-| [`templates/`](https://github.com/alexherrero/agentic-harness/tree/main/templates) | Scaffold copied into every target |
-| [`adapters/`](https://github.com/alexherrero/agentic-harness/tree/main/adapters) | Per-tool command / agent / skill trees |
+| [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh) | POSIX installer |
+| [`install.ps1`](https://github.com/alexherrero/agentm/blob/main/install.ps1) | Windows installer |
+| [`templates/`](https://github.com/alexherrero/agentm/tree/main/templates) | Scaffold copied into every target |
+| [`adapters/`](https://github.com/alexherrero/agentm/tree/main/adapters) | Per-tool command / agent / skill trees |
 
 ## Related
 

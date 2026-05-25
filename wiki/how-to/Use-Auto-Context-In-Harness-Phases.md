@@ -2,17 +2,17 @@
 
 > [!NOTE]
 > **Goal:** Tune the harness's phase-boundary MemoryVault auto-context behavior (recall budgets, save mode, confidence threshold) for your project, and troubleshoot when it doesn't fire as expected.
-> **Prereqs:** [agent-toolkit](https://github.com/alexherrero/agent-toolkit) sibling-cloned next to agentic-harness; `MEMORY_VAULT_PATH` env set; harness ≥ v2.5.0 (when ADR 0007 shipped). See [Manifest Schema](../reference/GitHub-Projects-Integration.md) for `.harness/project.json` field references this page assumes.
+> **Prereqs:** [crickets](https://github.com/alexherrero/crickets) sibling-cloned next to agentm; `MEMORY_VAULT_PATH` env set; harness ≥ v2.5.0 (when ADR 0007 shipped). See [Manifest Schema](../reference/GitHub-Projects-Integration.md) for `.harness/project.json` field references this page assumes.
 
 Length justification: this how-to documents 6 phase boundaries + a 5-env-var matrix + 8 troubleshooting scenarios. The 725-word length is acceptable because operators read this end-to-end when tuning auto-context behavior — splitting into per-phase pages would force readers to chase cross-links to understand the shared dispatcher.
 
-Once [agent-toolkit](https://github.com/alexherrero/agent-toolkit) is sibling-cloned next to agentic-harness and `MEMORY_VAULT_PATH` is set, every harness phase auto-loads relevant MemoryVault context at its natural start, and offers to save durable items at its natural end — without you having to invoke `/memory search` or `/memory save` manually.
+Once [crickets](https://github.com/alexherrero/crickets) is sibling-cloned next to agentm and `MEMORY_VAULT_PATH` is set, every harness phase auto-loads relevant MemoryVault context at its natural start, and offers to save durable items at its natural end — without you having to invoke `/memory search` or `/memory save` manually.
 
 This page covers: what loads/saves at each phase boundary, the env vars that tune the behavior, and how to troubleshoot when something feels off.
 
 ## Prerequisites
 
-1. **MemoryVault installed** (sibling clone): `agent-toolkit/skills/memory/` exists next to your `agentic-harness/` checkout (or at `~/Antigravity/agent-toolkit/`).
+1. **MemoryVault installed** (sibling clone): `crickets/skills/memory/` exists next to your `agentm/` checkout (or at `~/Antigravity/crickets/`).
 2. **`MEMORY_VAULT_PATH` env set** to your vault root (e.g. `~/Library/CloudStorage/GoogleDrive-…/Obsidian/AgentMemory`).
 3. **`.harness/project.json` has a `vault_project` field** OR your repo has a `github.repo` field OR a git origin — auto-detect uses the 3-tier fallback (see [ADR 0007 §Q2](../explanation/decisions/0007-auto-context-into-harness-phases.md#q2--vault-project-slug-explicit-field--3-tier-auto-detect)).
 
@@ -106,7 +106,7 @@ Entry cap is a separate constraint (default 5 per phase) — if you need more en
 |---|---|---|
 | No recall output at all | `MEMORY_VAULT_PATH` env unset OR directory missing | `echo $MEMORY_VAULT_PATH` + verify dir exists |
 | Recall output but missing per-project entries | `vault_project` slug not resolving to a real `personal-projects/<slug>/` dir | `python3 scripts/vault_project.py read .` — check the returned slug matches a vault entry |
-| `[harness_memory] toolkit not installed` stderr notice | Toolkit memory scripts not found via 3-tier resolution | Verify `agent-toolkit/skills/memory/scripts/save.py` exists at sibling-clone path OR set `HARNESS_MEMORY_TOOLKIT_PATH` |
+| `[harness_memory] toolkit not installed` stderr notice | Toolkit memory scripts not found via 3-tier resolution | Verify `crickets/skills/memory/scripts/save.py` exists at sibling-clone path OR set `HARNESS_MEMORY_TOOLKIT_PATH` |
 | Save prompt fires even at high confidence | Threshold set above 0.8 OR `HARNESS_AUTO_SAVE_MODE=ask` with no `--confidence` passed | Check threshold env; if confidence is omitted by the agent, prompt is correct behavior (fallback to ask) |
 | Save proceeds silently when you wanted to review | `HARNESS_AUTO_SAVE_MODE=silent` OR confidence ≥ threshold | Switch mode back to `ask` (default); raise threshold if confidence is being over-estimated |
 | Cursor advances but no candidates surface | `progress.md` since last cursor was empty OR LLM summarizer found nothing durable | Expected when last plan was small/routine; re-check with `--dry-run` flag |
@@ -118,6 +118,6 @@ Entry cap is a separate constraint (default 5 per phase) — if you need more en
 - [Repo-Layout](Repo-Layout) — where `scripts/harness_memory.py` + `scripts/vault_project.py` live in the harness tree.
 - [CI-Gates](CI-Gates) — the unit tests that exercise the dispatcher cross-platform on Linux/Mac/Windows.
 - [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases) — 5 locked design calls + load-bearing assumptions.
-- [agent-toolkit Cross-Repo Memory Protocol](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side contract documentation.
-- [agent-toolkit `/memory` skill](https://github.com/alexherrero/agent-toolkit/blob/main/skills/memory/SKILL.md) — the underlying save/recall surface that `harness_memory.py` shells out to.
+- [crickets Cross-Repo Memory Protocol](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side contract documentation.
+- [crickets `/memory` skill](https://github.com/alexherrero/crickets/blob/main/skills/memory/SKILL.md) — the underlying save/recall surface that `harness_memory.py` shells out to.
 - Phase specs: [01-setup](../../harness/phases/01-setup.md) · [02-plan](../../harness/phases/02-plan.md) · [03-work](../../harness/phases/03-work.md) · [04-review](../../harness/phases/04-review.md) · [05-release](../../harness/phases/05-release.md) · [bugfix](../../harness/pipelines/bugfix.md).

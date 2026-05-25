@@ -1,6 +1,6 @@
 # Product Intent
 
-What agentic-harness is, who it's for, and the shape of the problem it's trying to solve. Written to answer "why does this repo exist" in under five minutes — deeper reasoning lives in [`harness/principles.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md) and the ADRs.
+What agentm is, who it's for, and the shape of the problem it's trying to solve. Written to answer "why does this repo exist" in under five minutes — deeper reasoning lives in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md) and the ADRs.
 
 ## ⚡ Quick Reference
 
@@ -10,7 +10,7 @@ What agentic-harness is, who it's for, and the shape of the problem it's trying 
 | Who's it for? | A developer who wants agents to do production-quality engineering, not a demo. |
 | How big is it? | Six phase commands, two sub-agents, one skill (`ship-release`). Small on purpose. |
 | How does it get into a project? | One command — `install.sh /path/to/project`. See [Install-Into-Project](Install-Into-Project). |
-| Why this shape? | See the six principles below, or [`harness/principles.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md). |
+| Why this shape? | See the six principles below, or [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md). |
 
 ## The problem
 
@@ -22,7 +22,7 @@ A modern coding agent can produce a working feature in a single long conversatio
 - Review its own work adversarially instead of rubber-stamping.
 - Keep the docs honest once the code ships.
 
-These are all scaffolding problems, not model problems. They don't get better with a bigger model; they get better with better scaffolding. agentic-harness is that scaffolding.
+These are all scaffolding problems, not model problems. They don't get better with a bigger model; they get better with better scaffolding. agentm is that scaffolding.
 
 ## The shape
 
@@ -37,7 +37,7 @@ Six phases with hard boundaries. Each phase has one job.
 | `/release` | Pre-merge gate: clean tree, full test suite, feature flags flipped truthfully. | Verified-ready state; no push. |
 | `/bugfix` | Report → Analyze → Fix → Verify pipeline for bugs (replaces `/plan` + `/work`). | Fix committed with regression test. |
 
-A separate skill, [`ship-release`](https://github.com/alexherrero/agentic-harness/blob/main/harness/skills/ship-release.md), cuts a tagged GitHub release *after* `/release` passes — semver sized from conventional-commit prefixes in the range since the last tag.
+A separate skill, [`ship-release`](https://github.com/alexherrero/agentm/blob/main/harness/skills/ship-release.md), cuts a tagged GitHub release *after* `/release` passes — semver sized from conventional-commit prefixes in the range since the last tag.
 
 ## Target user
 
@@ -50,7 +50,7 @@ Someone who:
 
 ## The six principles (short form)
 
-Full text: [`harness/principles.md`](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md).
+Full text: [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md).
 
 1. **Phase-gated workflow over free-form conversation.** Each session does one thing. Fresh context at boundaries beats compaction.
 2. **State lives on disk, not in context.** `.harness/PLAN.md`, `features.json`, `progress.md`. Next session starts by reading.

@@ -1,6 +1,6 @@
 # Project Wiki
 
-Welcome to this project's wiki — human-and-agent-readable documentation for this codebase. The four sections below follow the Diátaxis convention ([ADR 0004](https://github.com/alexherrero/agentic-harness/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md)): each page is written for a single reader intent — learning, doing, looking up, or understanding — and never mixes modes.
+Welcome to this project's wiki — human-and-agent-readable documentation for this codebase. The four sections below follow the Diátaxis convention ([ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md)): each page is written for a single reader intent — learning, doing, looking up, or understanding — and never mixes modes.
 
 > [!NOTE]
 > This page is maintained by the `documenter` sub-agent at phase boundaries. Humans may edit it directly; the sub-agent preserves human edits.

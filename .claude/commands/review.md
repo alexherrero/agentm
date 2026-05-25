@@ -3,7 +3,7 @@ description: Adversarial review — assume the code has bugs, find them. Executa
 argument-hint: [optional — commit range, branch name, or task number to scope the review]
 ---
 
-You are running the **review** phase of agentic-harness. The full spec is at `harness/phases/04-review.md`. Read it and follow it.
+You are running the **review** phase of agentm. The full spec is at `harness/phases/04-review.md`. Read it and follow it.
 
 **Scope (if any):** $ARGUMENTS — if empty, review the most recently-completed task.
 

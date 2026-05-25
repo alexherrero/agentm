@@ -13,10 +13,10 @@ Pick a directory you'd be happy throwing away. For this tutorial we'll use `~/ha
 
 ```bash
 mkdir -p ~/harness-playground && cd ~/harness-playground
-git clone https://github.com/alexherrero/agentic-harness.git
+git clone https://github.com/alexherrero/agentm.git
 ```
 
-You should see a new `agentic-harness/` subdirectory. `ls agentic-harness` should list `install.sh`, `install.ps1`, `harness/`, `adapters/`, `templates/`, and a few more.
+You should see a new `agentm/` subdirectory. `ls agentm` should list `install.sh`, `install.ps1`, `harness/`, `adapters/`, `templates/`, and a few more.
 
 ## Step 2 — Create a scratch project to install into
 
@@ -32,16 +32,16 @@ git init
 
 ## Step 3 — Run the installer
 
-From inside the scratch project, run the installer with `../agentic-harness` as the harness path.
+From inside the scratch project, run the installer with `../agentm` as the harness path.
 
 ```bash
-../agentic-harness/install.sh .
+../agentm/install.sh .
 ```
 
 You should see output ending in something like:
 
 ```
-Installed agentic-harness <version> into <path>
+Installed agentm <version> into <path>
 Run the /setup command in your agent to scaffold project-specific files.
 ```
 
@@ -86,7 +86,7 @@ You should see six files: `bugfix.md`, `plan.md`, `release.md`, `review.md`, `se
 The installer is idempotent. Re-running it should be a no-op.
 
 ```bash
-../agentic-harness/install.sh .
+../agentm/install.sh .
 ```
 
 No errors. The second run should only report files that were already present.
@@ -94,7 +94,7 @@ No errors. The second run should only report files that were already present.
 Now practice the refresh:
 
 ```bash
-../agentic-harness/install.sh --update .
+../agentm/install.sh --update .
 ```
 
 This overwrites harness-managed files (commands, agents, skills) with the current version, leaves your state files alone, and records the new version in `.harness/.version`.

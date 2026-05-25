@@ -1,6 +1,6 @@
 # Gemini CLI adapter
 
-Full-parity adapter for running agentic-harness in [Google Gemini CLI](https://geminicli.com/). Every phase command, sub-agent, and skill that Claude Code users get as slash commands and sub-agents is available here via Gemini CLI's native primitives.
+Full-parity adapter for running agentm in [Google Gemini CLI](https://geminicli.com/). Every phase command, sub-agent, and skill that Claude Code users get as slash commands and sub-agents is available here via Gemini CLI's native primitives.
 
 ## Why Gemini is the richest target surface
 

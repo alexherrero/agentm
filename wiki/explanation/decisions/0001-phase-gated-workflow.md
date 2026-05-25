@@ -19,7 +19,7 @@ The published prior art — Trail of Bits' config, Chachamaru127's harness, Anth
 
 Every session runs **exactly one** of six phases: `setup`, `plan`, `work`, `review`, `release`, `bugfix`. The boundaries are enforced by slash commands on Claude Code and by phase-specific entry prompts on the other adapters. Each phase:
 
-1. Reads its inputs from on-disk state ([`.harness/PLAN.md`](https://github.com/alexherrero/agentic-harness/blob/main/templates/PLAN.md), `features.json`, `progress.md`).
+1. Reads its inputs from on-disk state ([`.harness/PLAN.md`](https://github.com/alexherrero/agentm/blob/main/templates/PLAN.md), `features.json`, `progress.md`).
 2. Has one success criterion (not several).
 3. Ends by writing on-disk state so the next session can pick up.
 
@@ -42,7 +42,7 @@ Within `/work` specifically: **one task per session**, even if the next task loo
 - **Phase-boundary state must be kept consistent.** If `PLAN.md` and `progress.md` disagree, the next session is confused. Mitigation: every phase spec ends with an explicit on-disk update step.
 - **Enforcement is soft.** Nothing stops an agent from implementing two tasks in a `/work` session — it's a norm, not a lock. We rely on the spec being in the agent's context and the user calling it out.
 
-**Load-bearing assumptions** (re-check on every model bump, per [principle 6](https://github.com/alexherrero/agentic-harness/blob/main/harness/principles.md#6-re-audit-the-harness-on-every-model-bump))
+**Load-bearing assumptions** (re-check on every model bump, per [principle 6](https://github.com/alexherrero/agentm/blob/main/harness/principles.md#6-re-audit-the-harness-on-every-model-bump))
 
 - Models still benefit from fresh context over compacted long sessions.
 - Models still rubber-stamp when shown the implementer's reasoning.

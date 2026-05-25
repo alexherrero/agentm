@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreCompact hook for agentic-harness.
+# PreCompact hook for agentm.
 #
 # Fires before Claude Code compacts the conversation (manual /compact or
 # auto). Appends a "compaction event" marker to .harness/progress.md so
