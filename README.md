@@ -25,6 +25,9 @@ Imagine those workflows you saw in the movies. You're talking to your agent, *"o
 
 This repo is the **harness** — the phase-gated workflow, auto-recall hooks, sub-agents, and on-disk state that make Agent M a system instead of a folder of files. It pairs with [**Crickets**](https://github.com/alexherrero/agent-toolkit) — a tactical suite of agent primitives (skills, hooks, sub-agents, bundles) that acts as the execution engine the harness installs into your target projects.
 
+> **Latest:** v3.0.1 (2026-05-24) — Agent M V3 close-out + brand pass.  
+> [Release notes](https://github.com/alexherrero/agentic-harness/releases/latest) · [Agent M Evolution HLD](https://github.com/alexherrero/agent-toolkit/blob/main/wiki/explanation/designs/agent-memory-evolution.md) · [CHANGELOG](CHANGELOG.md)
+
 ## What's where
 
 | Piece | What it is |
@@ -85,6 +88,9 @@ bash ~/Antigravity/agent-toolkit/install.sh /path/to/your-project --skill memory
 
 Installations are idempotent; `--hooks` is opt-in for verification hooks. Windows: use `install.ps1` with PowerShell 7+; same flag shape with `-Hooks` and `-Update`.
 
+<details>
+<summary>More install detail — seed your always-load entries + verify</summary>
+
 **4. Seed your always-load entries**
 
 Capture your locked conventions, coding-style rules, project invariants under `<vault>/personal-private/_always-load/`. One entry per concern. The first pass is co-created — you and the agent walk through it together; you approve each entry.
@@ -96,6 +102,8 @@ python3 ~/Antigravity/agentic-harness/scripts/harness_memory.py recall --phase s
 ```
 
 Should print your always-load entries within the 4000-token budget.
+
+</details>
 
 Full install detail: [wiki/how-to/Install-Into-Project.md](wiki/how-to/Install-Into-Project.md).
 
