@@ -1,17 +1,27 @@
-# Agent M
+<p align="center">
+  <img src="assets/agent-m/agent-m-clean-transparent-512.png" alt="Agent M" width="256">
+</p>
 
-[![Linux Tests](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-linux.yml/badge.svg?branch=main)](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-linux.yml)
-[![Mac Tests](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-mac.yml/badge.svg?branch=main)](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-mac.yml)
-[![Windows Tests](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-windows.yml/badge.svg?branch=main)](https://github.com/alexherrero/agentic-harness/actions/workflows/tests-windows.yml)
-[![Latest release](https://img.shields.io/github/v/release/alexherrero/agentic-harness?label=latest&color=blue)](https://github.com/alexherrero/agentic-harness/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+<h1 align="center">Agent M</h1>
+
+<p align="center"><em>Persistent agentic memory + phase-gated engineering harness.</em></p>
+
+<p align="center">
+  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-linux.yml"><img src="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-linux.yml/badge.svg?branch=main" alt="Linux Tests"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-mac.yml"><img src="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-mac.yml/badge.svg?branch=main" alt="Mac Tests"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-windows.yml"><img src="https://github.com/alexherrero/agentic-harness/actions/workflows/tests-windows.yml/badge.svg?branch=main" alt="Windows Tests"></a>
+  <a href="https://github.com/alexherrero/agentic-harness/releases/latest"><img src="https://img.shields.io/github/v/release/alexherrero/agentic-harness?label=latest&color=blue" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <a href="adapters/claude-code/"><img src="https://img.shields.io/badge/works%20with-Claude%20Code-D97706?style=flat" alt="Works with Claude Code"></a>
+  <a href="adapters/antigravity/"><img src="https://img.shields.io/badge/works%20with-Antigravity-7C3AED?style=flat" alt="Works with Antigravity"></a>
+</p>
 
 **Agent M** is an agentic memory implementation that combines a persistent knowledge layer with personally curated content (i.e. your own notes in markdown format) through a combination of skills, sidecars, and vectorized indexing. Imagine those workflows you saw in the movies. You're talking to your agent, *"open a new project file for M"* and off you go. It remembers your projects and files together, talks to you about them, and learns and grows with you as you work. The context it builds is self-maintaining and improves automatically as you go. No need to spend time maintaining your own knowledge graphs, and it can help you with your personal notes too, when **you** want it to.
 
 This repo is the **harness** — the phase-gated workflow, auto-recall hooks, sub-agents, and on-disk state that make Agent M a system instead of a folder of files. Sibling repo [Cricket (`agent-toolkit`)](https://github.com/alexherrero/agent-toolkit) ships the small-but-powerful primitives (skills, hooks, sub-agents, bundles) that the harness installs into your target projects.
-
-[![Works with Claude Code](https://img.shields.io/badge/works%20with-Claude%20Code-D97706?style=flat)](adapters/claude-code/)
-[![Works with Antigravity](https://img.shields.io/badge/works%20with-Antigravity-7C3AED?style=flat)](adapters/antigravity/)
 
 ## What's where
 

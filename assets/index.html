@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agent M — Asset Set</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="agent-m/agent-m-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="agent-m/agent-m-16.png" />
+  <style>
+    :root {
+      --ink: #0a0a0a;
+      --paper: #f4efe6;
+      --line: #d9d2c4;
+      --mute: #6a6358;
+    }
+    html, body { margin: 0; background: var(--paper); color: var(--ink); font-family: 'Inter Tight', system-ui, sans-serif; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 48px 32px 80px; }
+    h1 { font-size: 32px; margin: 0 0 4px; letter-spacing: -0.02em; }
+    .sub { font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace; font-size: 12px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.08em; }
+    h2 { font-size: 20px; margin: 48px 0 4px; letter-spacing: -0.01em; }
+    h3 { font-size: 12px; margin: 20px 0 8px; font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mute); font-weight: 600; }
+    .row { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-end; padding: 16px 0; }
+    .row.dark { background: var(--ink); padding: 20px; border-radius: 8px; }
+    .row.checker {
+      background:
+        linear-gradient(45deg, #c4bcab 25%, transparent 25%),
+        linear-gradient(-45deg, #c4bcab 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #c4bcab 75%),
+        linear-gradient(-45deg, transparent 75%, #c4bcab 75%);
+      background-size: 16px 16px;
+      background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+      background-color: #ddd5c2;
+      padding: 20px; border-radius: 8px;
+    }
+    .cell { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+    .cell img { display: block; image-rendering: -webkit-optimize-contrast; }
+    .cell .lbl { font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace; font-size: 10px; color: var(--mute); letter-spacing: 0.06em; }
+    .row.dark .lbl { color: #999; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 12px;
+      margin-top: 8px;
+    }
+    .file {
+      padding: 10px 12px;
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-family: ui-monospace, 'JetBrains Mono', Menlo, monospace;
+      font-size: 10.5px;
+      color: var(--ink);
+      line-height: 1.5;
+    }
+    .file .size { color: var(--mute); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 2px; }
+    .intro {
+      padding: 16px 18px;
+      background: #ece6d8;
+      border-left: 3px solid var(--ink);
+      font-size: 14px;
+      line-height: 1.55;
+      margin: 16px 0 8px;
+    }
+    .intro p { margin: 6px 0; }
+    .intro code { background: #ddd5c2; padding: 1px 5px; border-radius: 3px; font-size: 12px; }
+    hr { border: none; border-top: 1px solid var(--line); margin: 56px 0; }
+    .usage { font-size: 13px; line-height: 1.65; color: #2a2620; }
+    .usage ul { padding-left: 18px; }
+    .usage li { margin: 4px 0; }
+    .usage strong { color: var(--ink); }
+    .repo-row { display: flex; gap: 12px; align-items: center; padding: 14px; background: white; border: 1px solid var(--line); border-radius: 8px; }
+    .repo-row img { width: 64px; height: 64px; border-radius: 8px; }
+    .repo-row .meta { display: flex; flex-direction: column; }
+    .repo-row .name { font-weight: 600; font-size: 14px; }
+    .repo-row .desc { font-size: 12px; color: var(--mute); }
+    .badge-context {
+      display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 14px;
+      background: white; border: 1px solid var(--line); border-radius: 999px;
+      font-size: 13px;
+    }
+    .badge-context img { width: 22px; height: 22px; border-radius: 999px; }
+    .variant-banner { font-size: 14px; font-weight: 700; padding: 8px 14px; background: var(--ink); color: white; border-radius: 6px; display: inline-block; margin-top: 18px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Agent M — Asset Set</h1>
+    <div class="sub">Two marks · ready to drop into the repo</div>
+
+    <div class="intro">
+      <p><strong>Primary mark — Agent M figure.</strong> Two versions: with the ring + “AGENT M” text (badge), and without (clean figure on a black square). Both produced from your final source image, just reformatted into the sizes you need.</p>
+      <p><strong>Secondary mark — M monogram.</strong> Cleanly redrawn in flat black & white SVG to remove the metallic / chrome treatment from the source. Same design language (two concentric rings + outlined M), now pure B&W and crisp at every size.</p>
+      <p>All sizes are square PNG, sRGB, 32-bit. Transparent variants have alpha cleanly zeroed outside the design. SVG masters included for both marks.</p>
+    </div>
+
+    <hr/>
+
+    <!-- ================= AGENT M — WITH RING ================ -->
+    <h2>Primary · Agent M figure</h2>
+
+    <span class="variant-banner">Version 1 — with ring &amp; “AGENT M” text</span>
+    <div class="sub" style="margin-top: 8px;">assets/agent-m/agent-m-*.png</div>
+
+    <div class="row">
+      <div class="cell"><img src="agent-m/agent-m-2048.png" width="220" height="220" alt=""/><div class="lbl">2048 · hero</div></div>
+      <div class="cell"><img src="agent-m/agent-m-512.png" width="180" height="180" alt=""/><div class="lbl">512 · repo / avatar</div></div>
+      <div class="cell"><img src="agent-m/agent-m-256.png" width="128" height="128" alt=""/><div class="lbl">256</div></div>
+      <div class="cell"><img src="agent-m/agent-m-128.png" width="96" height="96" alt=""/><div class="lbl">128</div></div>
+      <div class="cell"><img src="agent-m/agent-m-64.png" width="64" height="64" alt=""/><div class="lbl">64</div></div>
+      <div class="cell"><img src="agent-m/agent-m-48.png" width="48" height="48" alt=""/><div class="lbl">48</div></div>
+      <div class="cell"><img src="agent-m/agent-m-32.png" width="32" height="32" alt=""/><div class="lbl">32 · favicon</div></div>
+      <div class="cell"><img src="agent-m/agent-m-16.png" width="16" height="16" alt=""/><div class="lbl">16 · favicon</div></div>
+    </div>
+
+    <h3>Transparent variant</h3>
+    <div class="row checker">
+      <div class="cell"><img src="agent-m/agent-m-transparent-2048.png" width="180" height="180" alt=""/><div class="lbl">2048</div></div>
+      <div class="cell"><img src="agent-m/agent-m-transparent-1024.png" width="160" height="160" alt=""/><div class="lbl">1024</div></div>
+      <div class="cell"><img src="agent-m/agent-m-transparent-512.png" width="128" height="128" alt=""/><div class="lbl">512</div></div>
+      <div class="cell"><img src="agent-m/agent-m-transparent-256.png" width="96" height="96" alt=""/><div class="lbl">256</div></div>
+    </div>
+
+    <span class="variant-banner">Version 2 — clean figure (no ring, no text)</span>
+    <div class="sub" style="margin-top: 8px;">assets/agent-m/agent-m-clean-*.png</div>
+
+    <div class="row dark">
+      <div class="cell"><img src="agent-m/agent-m-clean-2048.png" width="220" height="220" alt=""/><div class="lbl">2048</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-512.png" width="180" height="180" alt=""/><div class="lbl">512</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-256.png" width="128" height="128" alt=""/><div class="lbl">256</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-128.png" width="96" height="96" alt=""/><div class="lbl">128</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-64.png" width="64" height="64" alt=""/><div class="lbl">64</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-48.png" width="48" height="48" alt=""/><div class="lbl">48</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-32.png" width="32" height="32" alt=""/><div class="lbl">32</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-16.png" width="16" height="16" alt=""/><div class="lbl">16</div></div>
+    </div>
+
+    <h3>Transparent variant — circular figure on transparent</h3>
+    <div class="row checker">
+      <div class="cell"><img src="agent-m/agent-m-clean-transparent-2048.png" width="180" height="180" alt=""/><div class="lbl">2048</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-transparent-1024.png" width="160" height="160" alt=""/><div class="lbl">1024</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-transparent-512.png" width="128" height="128" alt=""/><div class="lbl">512</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-transparent-256.png" width="96" height="96" alt=""/><div class="lbl">256</div></div>
+    </div>
+
+    <h3>Side-by-side comparison</h3>
+    <div class="row" style="background: white; border: 1px solid var(--line); border-radius: 8px; padding: 20px; gap: 40px; justify-content: center;">
+      <div class="cell"><img src="agent-m/agent-m-256.png" width="200" height="200" alt=""/><div class="lbl">with ring + text</div></div>
+      <div class="cell"><img src="agent-m/agent-m-clean-256.png" width="200" height="200" alt=""/><div class="lbl">clean (no ring)</div></div>
+    </div>
+
+    <h3>Context previews</h3>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 6px;">
+      <span class="badge-context">
+        <img src="agent-m/agent-m-128.png" alt=""/>
+        <span><strong>agent-m</strong> · with ring</span>
+      </span>
+      <span class="badge-context">
+        <img src="agent-m/agent-m-clean-128.png" alt=""/>
+        <span><strong>agent-m</strong> · clean</span>
+      </span>
+      <div class="repo-row">
+        <img src="agent-m/agent-m-256.png" alt=""/>
+        <div class="meta">
+          <span class="name">alexherrero/agentic-harness</span>
+          <span class="desc">Agent M — agentic memory harness</span>
+        </div>
+      </div>
+      <div class="repo-row">
+        <img src="agent-m/agent-m-clean-256.png" alt=""/>
+        <div class="meta">
+          <span class="name">alexherrero/agentic-harness</span>
+          <span class="desc">Agent M — agentic memory harness</span>
+        </div>
+      </div>
+    </div>
+
+    <hr/>
+
+    <!-- ================= M MONOGRAM ================ -->
+    <h2>Secondary · M monogram</h2>
+    <div class="sub">assets/m-monogram/ · clean B&amp;W redraw, no metallic</div>
+
+    <div class="row dark">
+      <div class="cell"><img src="m-monogram/m-monogram-2048.png" width="220" height="220" alt=""/><div class="lbl">2048 · hero</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-512.png" width="180" height="180" alt=""/><div class="lbl">512</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-256.png" width="128" height="128" alt=""/><div class="lbl">256</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-128.png" width="96" height="96" alt=""/><div class="lbl">128</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-64.png" width="64" height="64" alt=""/><div class="lbl">64</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-48.png" width="48" height="48" alt=""/><div class="lbl">48</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-32.png" width="32" height="32" alt=""/><div class="lbl">32</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-16.png" width="16" height="16" alt=""/><div class="lbl">16</div></div>
+    </div>
+
+    <h3>Transparent variant — outline-M on transparent</h3>
+    <div class="row checker">
+      <div class="cell"><img src="m-monogram/m-monogram-transparent-2048.png" width="180" height="180" alt=""/><div class="lbl">2048</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-transparent-1024.png" width="160" height="160" alt=""/><div class="lbl">1024</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-transparent-512.png" width="128" height="128" alt=""/><div class="lbl">512</div></div>
+      <div class="cell"><img src="m-monogram/m-monogram-transparent-256.png" width="96" height="96" alt=""/><div class="lbl">256</div></div>
+    </div>
+
+    <hr/>
+
+    <!-- ================= USAGE GUIDE ================ -->
+    <h2>Where to use what</h2>
+    <div class="usage">
+      <ul>
+        <li><strong>GitHub repo avatar / Claude repo icon:</strong> <code>agent-m/agent-m-512.png</code> (with ring) or <code>agent-m/agent-m-clean-512.png</code> (no ring). The badged version reads more clearly at small sizes thanks to the white ring; the clean version is more modern.</li>
+        <li><strong>Favicon:</strong> <code>agent-m/agent-m-32.png</code> + <code>agent-m-16.png</code> — the badged version has more visual anchor at 16px.</li>
+        <li><strong>Apple touch icon (180×180 target):</strong> use <code>agent-m-256.png</code>.</li>
+        <li><strong>README header / hero:</strong> <code>m-monogram/m-monogram-2048.png</code> for a graphic header, or <code>agent-m-2048.png</code> for direct identity.</li>
+        <li><strong>Dark UI / docs:</strong> <code>m-monogram/m-monogram-transparent-*.png</code> — the outline-M is designed to sit on any dark surface.</li>
+        <li><strong>Slide decks:</strong> use the <code>.svg</code> wrappers — they scale to any size without quality loss.</li>
+      </ul>
+
+      <h3>Favicon snippet for HTML head</h3>
+      <div class="file" style="white-space: pre; line-height: 1.5;">&lt;link rel="icon" type="image/png" sizes="32x32" href="/assets/agent-m/agent-m-32.png"&gt;
+&lt;link rel="icon" type="image/png" sizes="16x16" href="/assets/agent-m/agent-m-16.png"&gt;
+&lt;link rel="apple-touch-icon" sizes="256x256" href="/assets/agent-m/agent-m-256.png"&gt;</div>
+    </div>
+
+    <hr/>
+
+    <h2>File index</h2>
+    <h3>assets/agent-m/ — with ring</h3>
+    <div class="grid">
+      <div class="file"><span class="size">2048×2048 PNG</span>agent-m-2048.png</div>
+      <div class="file"><span class="size">1024 PNG</span>agent-m-1024.png</div>
+      <div class="file"><span class="size">512 PNG</span>agent-m-512.png</div>
+      <div class="file"><span class="size">256 PNG</span>agent-m-256.png</div>
+      <div class="file"><span class="size">128 PNG</span>agent-m-128.png</div>
+      <div class="file"><span class="size">64 PNG</span>agent-m-64.png</div>
+      <div class="file"><span class="size">48 PNG</span>agent-m-48.png</div>
+      <div class="file"><span class="size">32 PNG</span>agent-m-32.png</div>
+      <div class="file"><span class="size">16 PNG</span>agent-m-16.png</div>
+      <div class="file"><span class="size">2048 transparent</span>agent-m-transparent-2048.png</div>
+      <div class="file"><span class="size">1024 transparent</span>agent-m-transparent-1024.png</div>
+      <div class="file"><span class="size">512 transparent</span>agent-m-transparent-512.png</div>
+      <div class="file"><span class="size">256 transparent</span>agent-m-transparent-256.png</div>
+      <div class="file"><span class="size">SVG wrapper</span>agent-m.svg</div>
+      <div class="file"><span class="size">SVG wrapper</span>agent-m-transparent.svg</div>
+    </div>
+
+    <h3>assets/agent-m/ — clean (no ring)</h3>
+    <div class="grid">
+      <div class="file"><span class="size">2048 PNG</span>agent-m-clean-2048.png</div>
+      <div class="file"><span class="size">1024 PNG</span>agent-m-clean-1024.png</div>
+      <div class="file"><span class="size">512 PNG</span>agent-m-clean-512.png</div>
+      <div class="file"><span class="size">256 PNG</span>agent-m-clean-256.png</div>
+      <div class="file"><span class="size">128 PNG</span>agent-m-clean-128.png</div>
+      <div class="file"><span class="size">64 PNG</span>agent-m-clean-64.png</div>
+      <div class="file"><span class="size">48 PNG</span>agent-m-clean-48.png</div>
+      <div class="file"><span class="size">32 PNG</span>agent-m-clean-32.png</div>
+      <div class="file"><span class="size">16 PNG</span>agent-m-clean-16.png</div>
+      <div class="file"><span class="size">2048 transparent</span>agent-m-clean-transparent-2048.png</div>
+      <div class="file"><span class="size">1024 transparent</span>agent-m-clean-transparent-1024.png</div>
+      <div class="file"><span class="size">512 transparent</span>agent-m-clean-transparent-512.png</div>
+      <div class="file"><span class="size">256 transparent</span>agent-m-clean-transparent-256.png</div>
+    </div>
+
+    <h3>assets/m-monogram/ — clean B&amp;W</h3>
+    <div class="grid">
+      <div class="file"><span class="size">SVG master</span>m-monogram.svg</div>
+      <div class="file"><span class="size">2048 PNG</span>m-monogram-2048.png</div>
+      <div class="file"><span class="size">1024 PNG</span>m-monogram-1024.png</div>
+      <div class="file"><span class="size">512 PNG</span>m-monogram-512.png</div>
+      <div class="file"><span class="size">256 PNG</span>m-monogram-256.png</div>
+      <div class="file"><span class="size">128 PNG</span>m-monogram-128.png</div>
+      <div class="file"><span class="size">64 PNG</span>m-monogram-64.png</div>
+      <div class="file"><span class="size">48 PNG</span>m-monogram-48.png</div>
+      <div class="file"><span class="size">32 PNG</span>m-monogram-32.png</div>
+      <div class="file"><span class="size">16 PNG</span>m-monogram-16.png</div>
+      <div class="file"><span class="size">SVG transparent</span>m-monogram-transparent.svg</div>
+      <div class="file"><span class="size">2048 transparent</span>m-monogram-transparent-2048.png</div>
+      <div class="file"><span class="size">1024 transparent</span>m-monogram-transparent-1024.png</div>
+      <div class="file"><span class="size">512 transparent</span>m-monogram-transparent-512.png</div>
+      <div class="file"><span class="size">256 transparent</span>m-monogram-transparent-256.png</div>
+    </div>
+  </div>
+</body>
+</html>

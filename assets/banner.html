@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Agent M — README Banner</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+  <style>
+    /* Fixed-size banner. Target dimensions are 1600×640 (2.5:1) — common
+       README banner ratio that renders cleanly on GitHub at any column
+       width. Below we scale the banner to fit the viewport so it's
+       always centered and visible while editing. */
+    :root {
+      --bw: 1600;
+      --bh: 640;
+      --ink: #000;
+      --paper: #d9d2c4;     /* warm off-white plate */
+      --paper-2: #c4bcab;
+      --line: rgba(255,255,255,0.18);
+      --mono: #d4cfc1;
+    }
+    html, body { margin: 0; height: 100%; background: #1a1818; display: grid; place-items: center; font-family: 'Inter Tight', system-ui, sans-serif; }
+
+    .stage {
+      width: calc(var(--bw) * 1px);
+      height: calc(var(--bh) * 1px);
+      transform: scale(var(--scale, 1));
+      transform-origin: center;
+    }
+
+    .banner {
+      width: 100%; height: 100%;
+      background: var(--ink);
+      color: white;
+      display: grid;
+      grid-template-columns: 640px 1fr;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* ----- LEFT: figure ------------------------------------------------- */
+    .figure {
+      position: relative;
+      background: var(--ink);
+      display: flex; align-items: center; justify-content: center;
+    }
+    .figure img {
+      width: 100%; height: 100%;
+      object-fit: cover;
+      object-position: center;
+      display: block;
+    }
+    /* Thin divider rule between figure column and copy column */
+    .figure::after {
+      content: '';
+      position: absolute; right: 0; top: 0; bottom: 0;
+      width: 1px;
+      background: rgba(255,255,255,0.08);
+    }
+
+    /* ----- RIGHT: stacked panels --------------------------------------- */
+    .copy {
+      display: grid;
+      grid-template-rows: 1fr 1fr 1.05fr;
+      min-width: 0;
+    }
+
+    /* Top panel — wordmark band */
+    .band-wordmark {
+      background: var(--ink);
+      padding: 0 56px;
+      display: flex; align-items: center;
+      border-bottom: 1px solid var(--line);
+    }
+    .wordmark {
+      font-family: 'Inter Tight', system-ui, sans-serif;
+      font-weight: 900;
+      font-size: 68px;
+      line-height: 0.95;
+      letter-spacing: -0.025em;
+      white-space: nowrap;
+    }
+    .wordmark .slash {
+      opacity: 0.55;
+      font-weight: 800;
+      margin: 0 0.35em;
+    }
+    .wordmark .sub {
+      font-size: 56px;
+      letter-spacing: -0.015em;
+    }
+
+    /* Middle panel — tagline plate */
+    .band-tagline {
+      background: var(--paper);
+      color: var(--ink);
+      padding: 0 56px;
+      display: flex; align-items: center;
+    }
+    .tagline {
+      font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      font-weight: 500;
+      font-size: 34px;
+      line-height: 1.18;
+      letter-spacing: -0.01em;
+    }
+
+    /* Bottom panel — status badges */
+    .band-status {
+      background: var(--ink);
+      padding: 24px 56px 0;
+      display: flex; flex-direction: column; justify-content: center; gap: 4px;
+      border-top: 1px solid var(--line);
+    }
+    .status-line {
+      font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+      font-weight: 400;
+      font-size: 24px;
+      line-height: 1.5;
+      color: var(--mono);
+      letter-spacing: 0;
+    }
+    .status-line .sep {
+      color: rgba(255,255,255,0.35);
+      margin: 0 0.6em;
+    }
+    .status-rule {
+      display: block;
+      height: 1px;
+      background:
+        repeating-linear-gradient(
+          to right,
+          rgba(255,255,255,0.35) 0,
+          rgba(255,255,255,0.35) 6px,
+          transparent 6px,
+          transparent 10px
+        );
+      margin: 10px 0;
+    }
+    .status-rule.double {
+      height: 5px;
+      background:
+        linear-gradient(to bottom,
+          rgba(255,255,255,0.4) 0, rgba(255,255,255,0.4) 1px,
+          transparent 1px, transparent 4px,
+          rgba(255,255,255,0.4) 4px, rgba(255,255,255,0.4) 5px);
+    }
+    .status-line.ci {
+      color: white;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage" data-screen-label="Agent M Banner">
+    <div class="banner">
+      <!-- LEFT: figure column -->
+      <div class="figure">
+        <!-- Uses the clean (no-ring) variant so the figure floats on the
+             banner's own black background, with no competing border ring. -->
+        <img src="agent-m/agent-m-clean-1024.png" alt="Agent M" />
+      </div>
+
+      <!-- RIGHT: copy column -->
+      <div class="copy">
+        <div class="band-wordmark">
+          <div class="wordmark">
+            AGENT M <span class="slash">//</span><span class="sub">CLASSIFIED</span>
+          </div>
+        </div>
+        <div class="band-tagline">
+          <div class="tagline">[ CLASSIFIED AUTONOMOUS<br/>&nbsp;&nbsp;KNOWLEDGE SYSTEM ]</div>
+        </div>
+        <div class="band-status">
+          <div class="status-line ci">[ CI &nbsp;|&nbsp; PASSING ]</div>
+          <span class="status-rule double"></span>
+          <div class="status-line">[ Coverage <span class="sep">|</span> 98% ]</div>
+          <div class="status-line">[ Version &nbsp;<span class="sep">|</span> v1.0.0 ]</div>
+          <div class="status-line">[ License &nbsp;<span class="sep">|</span> MIT ]</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Scale banner to fit viewport while preserving aspect ratio.
+    const bw = 1600, bh = 640;
+    const fit = () => {
+      const pad = 32;
+      const sx = (window.innerWidth - pad * 2) / bw;
+      const sy = (window.innerHeight - pad * 2) / bh;
+      document.documentElement.style.setProperty('--scale', Math.min(sx, sy, 1));
+    };
+    window.addEventListener('resize', fit);
+    fit();
+  </script>
+</body>
+</html>

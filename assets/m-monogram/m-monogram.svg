@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <title>Agent M — Monogram</title>
+  
+  <rect width="200" height="200" fill="#000"></rect>
+
+  
+  <g fill="#fff">
+    <path d="M 100 8 a 92 92 0 1 0 0 184 a 92 92 0 1 0 0 -184 Z M 100 12 a 88 88 0 1 1 0 176 a 88 88 0 1 1 0 -176 Z" fill-rule="evenodd"></path>
+    
+    <path d="M 100 18 a 82 82 0 1 0 0 164 a 82 82 0 1 0 0 -164 Z M 100 21 a 79 79 0 1 1 0 158 a 79 79 0 1 1 0 -158 Z" fill-rule="evenodd"></path>
+  </g>
+
+  
+  <path fill="#fff" fill-rule="evenodd" d="&#xA;    M 42 158&#xA;    L 42 50&#xA;    L 60 50&#xA;    L 100 110&#xA;    L 140 50&#xA;    L 158 50&#xA;    L 158 158&#xA;    L 138 158&#xA;    L 138 80&#xA;    L 108 124&#xA;    L 92 124&#xA;    L 62 80&#xA;    L 62 158&#xA;    Z&#xA;    M 50 150&#xA;    L 56 150&#xA;    L 56 70&#xA;    L 92 122&#xA;    L 108 122&#xA;    L 144 70&#xA;    L 144 150&#xA;    L 150 150&#xA;    L 150 58&#xA;    L 144 58&#xA;    L 100 124&#xA;    L 56 58&#xA;    L 50 58&#xA;    Z&#xA;  "></path>
+</svg>
