@@ -1,6 +1,9 @@
 # Phase: work
 
-Implement exactly one task from `.harness/PLAN.md`. Stop when that task is done and its verification gates are green. Do not start the next task.
+Implement exactly one task from `PLAN.md`. Stop when that task is done and its verification gates are green. Do not start the next task.
+
+> [!NOTE]
+> **State-file resolution (V4 #26+).** Where this spec references state files by shortname (`PLAN.md`, `progress.md`, `features.json`, etc.), the actual on-disk location is resolved by `scripts/harness_memory.py`'s dispatcher chain: vault-backed `<vault>/projects/<slug>/_harness/<file>` (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` (fallback with one-warn-per-session-per-file). Writes go only to the vault path unless `.project-mode` reads `local`. The phase spec describes WHAT to read/write; the dispatcher decides WHERE.
 
 ## Purpose
 
@@ -40,8 +43,8 @@ python3 scripts/harness_memory.py recall --phase work --project "${SLUG:-}"
 
 What this loads (per `_PHASE_PROJECT_DIRS["work"]` in `harness_memory.py`):
 - `personal-private/_always-load/*.md` — operator-global conventions.
-- `personal-projects/<slug>/decisions/*.md` — settled calls relevant to this codebase.
-- `personal-projects/<slug>/known-issues/*.md` — gotchas + recurring root causes (the "I've fixed this CRLF issue three times" pattern).
+- `projects/<slug>/decisions/*.md` — settled calls relevant to this codebase.
+- `projects/<slug>/known-issues/*.md` — gotchas + recurring root causes (the "I've fixed this CRLF issue three times" pattern).
 
 Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_WORK` env); cap is 5 entries. Surface the recall output in the working context before §2 confirms scope. If a known-issue matches the task's domain, factor it into the confirmation prompt — operator may want to widen scope.
 

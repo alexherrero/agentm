@@ -22,7 +22,7 @@ If any prerequisite is absent, every phase still works — the dispatcher gracef
 
 | Phase | Recall (start) | Save (end) |
 |---|---|---|
-| `/setup` (§1b + §8b) | `_always-load/` conventions | Offer `personal-projects/<slug>/_index.md` stub |
+| `/setup` (§1b + §8b) | `_always-load/` conventions | Offer `projects/<slug>/_index.md` stub (legacy `personal-projects/` accepted pre-rename) |
 | `/plan` (§1b + §4c) | `_always-load/` + `_index.md` + decisions + open-questions | Offer per-entry save for plan's `## Risks / open questions` |
 | `/work` (§1b + §7b + §7c) | `_always-load/` + decisions + known-issues | Offer "remember-this" candidates + `plan-done-promotion` when final task flips PLAN.md to `done` |
 | `/review` (§2b) | `_always-load/` only (read-only — no save) | — |
@@ -105,7 +105,7 @@ Entry cap is a separate constraint (default 5 per phase) — if you need more en
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | No recall output at all | `MEMORY_VAULT_PATH` env unset OR directory missing | `echo $MEMORY_VAULT_PATH` + verify dir exists |
-| Recall output but missing per-project entries | `vault_project` slug not resolving to a real `personal-projects/<slug>/` dir | `python3 scripts/vault_project.py read .` — check the returned slug matches a vault entry |
+| Recall output but missing per-project entries | `vault_project` slug not resolving to a real `projects/<slug>/` dir (or legacy `personal-projects/<slug>/` pre-rename) | `python3 scripts/vault_project.py read .` — check the returned slug matches a vault entry |
 | `[harness_memory] toolkit not installed` stderr notice | Memory scripts not found via 3-tier resolution | Verify `agentm/harness/skills/memory/scripts/save.py` (v4.0.0+) OR legacy `crickets/skills/memory/scripts/save.py` (v3.x) exists; OR set `HARNESS_MEMORY_TOOLKIT_PATH` |
 | Save prompt fires even at high confidence | Threshold set above 0.8 OR `HARNESS_AUTO_SAVE_MODE=ask` with no `--confidence` passed | Check threshold env; if confidence is omitted by the agent, prompt is correct behavior (fallback to ask) |
 | Save proceeds silently when you wanted to review | `HARNESS_AUTO_SAVE_MODE=silent` OR confidence ≥ threshold | Switch mode back to `ask` (default); raise threshold if confidence is being over-estimated |

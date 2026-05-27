@@ -34,10 +34,12 @@ git clone https://github.com/alexherrero/crickets.git    ~/Antigravity/crickets
 
 ```bash
 mkdir -p "<sync-root>/AgentMemory/personal-private/_always-load"
-mkdir -p "<sync-root>/AgentMemory/personal-projects"
+mkdir -p "<sync-root>/AgentMemory/projects"
 mkdir -p "<sync-root>/AgentMemory/_meta"
 export MEMORY_VAULT_PATH="<sync-root>/AgentMemory"
 ```
+
+Pre-v4.1.0 vaults used `personal-projects/` (renamed to `projects/` in V4 #26). Existing operators run `bash agentm/scripts/rename-vault-personal-projects.sh` after upgrading. The resolver transparently handles both layouts.
 
 Any sync layer works (Google Drive, Dropbox, syncthing).
 

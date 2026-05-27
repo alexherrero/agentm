@@ -1,6 +1,9 @@
 # Phase: setup
 
-First-time initialization of agentm in a project. Run once per project (or after a major restructure). Produces the `.harness/` state artifacts populated with real, project-specific values — not templates.
+First-time initialization of agentm in a project. Run once per project (or after a major restructure). Produces the harness state artifacts populated with real, project-specific values — not templates.
+
+> [!NOTE]
+> **State-file resolution (V4 #26+).** Where this spec references state files by shortname (`PLAN.md`, `progress.md`, `features.json`, etc.), the actual on-disk location is resolved by `scripts/harness_memory.py`'s dispatcher chain: vault-backed `<vault>/projects/<slug>/_harness/<file>` (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` (fallback with one-warn-per-session-per-file). Writes go only to the vault path unless `<vault>/projects/<slug>/_harness/.project-mode` reads `local` (DC-3 opt-out). The phase spec describes WHAT to read/write; the dispatcher decides WHERE. Pre-migration projects continue working via the legacy path. Path references in this spec are short-form shorthand for the resolved location.
 
 ## Purpose
 
@@ -191,7 +194,7 @@ Default behavior: **skip entirely**. The file stays absent until the user opts i
 
 ### 8b. Auto-save project index stub to MemoryVault (graceful-skip if not installed)
 
-If `harness_memory.py available` exits 0, offer to write a `personal-projects/<slug>/_index.md` stub so later phases (`/plan`, `/work`, `/release`, `/bugfix`) have an anchor to read from.
+If `harness_memory.py available` exits 0, offer to write a `projects/<slug>/_index.md` stub so later phases (`/plan`, `/work`, `/release`, `/bugfix`) have an anchor to read from. (Pre-V4 #26 vaults that haven't run `rename-vault-personal-projects.sh` yet still work — the resolver's `_vault_projects_dir()` falls back to `personal-projects/` automatically.)
 
 Build a short stub locally (in `/tmp/` or any temp dir):
 

@@ -126,7 +126,7 @@ The two legacy crickets paths are kept in the resolver chain for operators on v3
 ## Related
 
 - [ROADMAP item #8](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) — the roadmap entry that triggered this work.
-- [crickets ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) — upstream for the vault layout (`personal-private/_always-load/`, `personal-projects/<slug>/decisions/`, etc.) this dispatcher reads + writes.
+- [crickets ADR 0007 — MemoryVault Discovery + Mining](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0007-memoryvault-discovery.md) — upstream for the vault layout (`personal-private/_always-load/`, `projects/<slug>/decisions/` — renamed from `personal-projects/<slug>/` in V4 #26, etc.) this dispatcher reads + writes.
 - [crickets Cross-Repo Memory Protocol](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side companion documenting the harness↔toolkit-memory contract.
 - [Use Auto-Context how-to](../../how-to/Use-Auto-Context-In-Harness-Phases.md) — operator-facing per-phase walkthrough + env-var matrix + troubleshooting.
 - [crickets ADR 0001 — crickets purpose](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0001-crickets-purpose.md) — stdlib-only / no-new-third-party-deps convention all dispatcher code follows.

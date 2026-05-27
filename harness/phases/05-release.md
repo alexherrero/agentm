@@ -2,6 +2,9 @@
 
 Pre-merge gate. The last checkpoint before work becomes shared, visible, or shipped. Enforces that the plan is actually done, gates are green on a clean base, and the human decides to pull the trigger — not the agent.
 
+> [!NOTE]
+> **State-file resolution (V4 #26+).** Where this spec references state files by shortname (`PLAN.md`, `progress.md`, `ROADMAP.md`, `PLAN.archive.*.md`, etc.), the actual on-disk location is resolved by `scripts/harness_memory.py`'s dispatcher chain: vault-backed `<vault>/projects/<slug>/_harness/<file>` (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` (fallback). CHANGELOG.md stays per-repo (it's publicly shipped, not state). Writes go only to the vault path unless `.project-mode` reads `local`.
+
 ## Purpose
 
 Release is where coherence meets blast radius. Everything up to this point has been local and reversible; a merge/tag/deploy is neither. The agent's job is to *verify* and *prepare*, not to push the button.
@@ -75,7 +78,7 @@ python3 scripts/harness_memory.py recall --phase release --project "${SLUG:-}"
 
 What this loads (per `_PHASE_PROJECT_DIRS["release"]` in `harness_memory.py`):
 - `personal-private/_always-load/*.md` — operator-global conventions (commit style, framing tone, etc.).
-- `personal-projects/<slug>/decisions/*.md` — settled calls from prior plans + releases. The most recent N entries since the last release tag are the most useful for framing this release.
+- `projects/<slug>/decisions/*.md` — settled calls from prior plans + releases. The most recent N entries since the last release tag are the most useful for framing this release.
 
 Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_RELEASE` env); cap is 5 entries. Surface the recall output in the working context before §5 changelog draft so the framing can reference prior decisions without rediscovering them.
 

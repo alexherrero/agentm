@@ -68,7 +68,7 @@ If wall-time depletes mid-pass-3, the sub-agent emits whatever fetches completed
 
 ## What it never does
 
-- **Never modifies entries outside `_idea-incubator/<slug>/`.** No save to `personal-private/preferences/`, no edit to `personal-projects/`.
+- **Never modifies entries outside `_idea-incubator/<slug>/`.** No save to `personal-private/preferences/`, no edit to `projects/` (or its legacy alias `personal-projects/`).
 - **Never writes to `~/Obsidian/` notes** (only reads them for the scan).
 - **Never invokes `/memory save` or `/memory evolve`.** Promotion is the operator's job via `/memory promote idea <slug>` (plan #7a part 4 task 4).
 - **Never exceeds the budget caps.** On overrun: emit partial + flag.

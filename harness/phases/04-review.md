@@ -2,6 +2,9 @@
 
 Adversarial critique of recent work. The framing is literal: **assume the code contains bugs, find them**. Neutral-prompted reviewers rubber-stamp; this phase is engineered to not do that.
 
+> [!NOTE]
+> **State-file resolution (V4 #26+).** Where this spec references state files by shortname (`PLAN.md`, `progress.md`, etc.), the actual on-disk location is resolved by `scripts/harness_memory.py`'s dispatcher chain: vault-backed `<vault>/projects/<slug>/_harness/<file>` (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` (fallback). Review is read-only on state files; no write semantics apply.
+
 ## Purpose
 
 From [principles.md §5](../principles.md): neutral-prompted reviewers rubber-stamp, and LLM judges degrade >50% when rebutted. The `/review` phase exists to engineer around those failure modes — adversarial priming, fresh context, required executable output.

@@ -1,6 +1,9 @@
 # Phase: plan
 
-Turn a brief into `.harness/PLAN.md` — a structured, executable plan with per-task verification criteria. No code is written in this phase.
+Turn a brief into `PLAN.md` — a structured, executable plan with per-task verification criteria. No code is written in this phase.
+
+> [!NOTE]
+> **State-file resolution (V4 #26+).** Where this spec references state files by shortname (`PLAN.md`, `progress.md`, `FOLLOWUPS.md`, etc.), the actual on-disk location is resolved by `scripts/harness_memory.py`'s dispatcher chain: vault-backed `<vault>/projects/<slug>/_harness/<file>` (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` (fallback with one-warn-per-session-per-file). Writes go only to the vault path unless `.project-mode` reads `local`.
 
 ## Purpose
 
@@ -41,9 +44,9 @@ python3 scripts/harness_memory.py recall --phase plan --project "${SLUG:-}"
 
 What this loads (per `_PHASE_PROJECT_DIRS["plan"]` in `harness_memory.py`):
 - `personal-private/_always-load/*.md` — operator-global conventions.
-- `personal-projects/<slug>/_index.md` — project anchor + current state.
-- `personal-projects/<slug>/decisions/*.md` — decisions logged from prior plans + releases (informs "have we already settled this?").
-- `personal-projects/<slug>/open-questions/*.md` — unresolved questions from prior plans (some may now be answerable).
+- `projects/<slug>/_index.md` — project anchor + current state.
+- `projects/<slug>/decisions/*.md` — decisions logged from prior plans + releases (informs "have we already settled this?").
+- `projects/<slug>/open-questions/*.md` — unresolved questions from prior plans (some may now be answerable).
 
 Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_PLAN` env); cap is 5 entries. Surface the recall output in the working context before §2 interview — if `decisions/` already settled the interview's question, skip asking.
 

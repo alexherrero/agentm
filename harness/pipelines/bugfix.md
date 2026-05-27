@@ -2,6 +2,9 @@
 
 Triage-first pipeline for bug reports. Replaces `/plan` + `/work` when the work is driven by a defect, not a new feature. Adapted from [Pimzino/claude-code-spec-workflow](https://github.com/Pimzino/claude-code-spec-workflow)'s bug-fix pipeline — one of the few harness patterns in OSS that formalizes defect handling instead of treating bugs as a special case of features.
 
+> [!NOTE]
+> **State-file resolution (V4 #26+).** Where this spec references state files by shortname (`PLAN.md`, `progress.md`, `features.json`, etc.), the actual on-disk location is resolved by `scripts/harness_memory.py`'s dispatcher chain: vault-backed `<vault>/projects/<slug>/_harness/<file>` (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` (fallback). Writes go only to the vault path unless `.project-mode` reads `local`.
+
 ## Why a separate pipeline
 
 Bugs have different failure modes than features:
@@ -69,7 +72,7 @@ python3 scripts/harness_memory.py recall --phase bugfix --project "${SLUG:-}"
 
 What this loads (per `_PHASE_PROJECT_DIRS["bugfix"]` in `harness_memory.py`):
 - `personal-private/_always-load/*.md` — operator-global conventions (debugging style, reproduction discipline).
-- `personal-projects/<slug>/known-issues/*.md` — prior gotchas + recurring root causes.
+- `projects/<slug>/known-issues/*.md` — prior gotchas + recurring root causes (resolver-aware: also reads from legacy `personal-projects/<slug>/known-issues/` if vault rename hasn't run yet).
 
 Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_BUGFIX` env); cap is 5 entries. If a known-issue entry matches the current bug's surface area, factor it into the §2 Analysis: the prior fix path may apply directly, or the recurrence may signal a deeper design issue that warrants a `/plan` rather than another patch.
 

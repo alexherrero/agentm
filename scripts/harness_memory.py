@@ -75,8 +75,9 @@ _DEFAULT_BUDGETS = {
     "bugfix": 6000,
 }
 
-# Phase-specific subdirectory mappings under `personal-projects/<slug>/`.
-# Used by recall to scope the per-project read.
+# Phase-specific subdirectory mappings under `projects/<slug>/` (or legacy
+# `personal-projects/<slug>/` pre-V4 #26 rename — resolved via
+# `_vault_projects_dir()`). Used by recall to scope the per-project read.
 _PHASE_PROJECT_DIRS = {
     "setup": ("_index.md",),  # bootstrap signal only
     "plan": ("_index.md", "decisions", "open-questions"),
