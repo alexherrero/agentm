@@ -875,10 +875,11 @@ class TestDetectConflictFiles(unittest.TestCase):
             result = hm.detect_conflict_files(Path(tmp))
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["conflict"], conflict)
-        # rel path computed against vault_root.
+        # rel path computed against vault_root. Compare via Path() to keep
+        # Windows + POSIX both happy (Path equality is platform-normalized).
         self.assertEqual(
-            str(result[0]["rel"]),
-            "projects/agentm/_harness/PLAN (conflicted copy 2026-05-27).md",
+            result[0]["rel"],
+            Path("projects/agentm/_harness/PLAN (conflicted copy 2026-05-27).md"),
         )
 
     def test_detects_multiple_conflicts(self) -> None:
