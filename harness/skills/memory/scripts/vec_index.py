@@ -315,6 +315,193 @@ def index_size(vault_path: Path | str) -> int | None:
         conn.close()
 
 
+# -----------------------------------------------------------------------------
+# V4 #37: drift detection primitives
+# -----------------------------------------------------------------------------
+
+# Tolerance window for mtime-vs-indexed_at comparison. Filesystem timestamp
+# granularity varies (HFS+ truncates to 1s; APFS is ns; GDrive's local cache
+# may further coarsen). 1-second slop avoids false-positive drift on
+# same-second writes (the common case when an upsert happens in the same
+# second as the source file was saved).
+_DRIFT_MTIME_TOLERANCE_SECONDS = 1.0
+
+
+def _vault_projects_dir(vault: Path) -> Path:
+    """Return <vault>/projects/ (post-V4 #26 canonical) if present, else
+    <vault>/personal-projects/ (legacy fallback). Mirrors the same helper
+    in harness_memory.py; duplicated here to avoid cross-script import
+    coupling within the memory skill scripts dir.
+    """
+    new = vault / "projects"
+    if new.is_dir():
+        return new
+    legacy = vault / "personal-projects"
+    if legacy.is_dir():
+        return legacy
+    return new  # neither exists; return new (preferred) for caller's mkdir
+
+
+def _resolve_entry_path(vault: Path, entry_relative: str) -> Path:
+    """Resolve `entry_relative` to an absolute path under the vault.
+
+    Entries are stored with paths relative to the vault root (e.g.
+    `personal-private/_always-load/coding-style.md` or
+    `projects/agentm/decisions/2026-03-01-key-decisions.md`). Just join.
+    """
+    return vault / entry_relative
+
+
+def is_entry_drifted(
+    vault_path: Path | str,
+    entry_relative: str,
+    db_path: Path | str | None = None,
+) -> bool:
+    """Return True if the entry's source `.md` file has drifted from its
+    indexed embedding.
+
+    Drift signals:
+      - source file's mtime > the row's `indexed_at + tolerance`
+      - row doesn't exist in entry_meta (effective drift = "not indexed")
+      - sqlite-vec unavailable → returns False (no signal; caller defaults
+        to "not drifted" since we can't know)
+
+    Pure read; no writes. Caller decides what to do with the drift signal
+    (enqueue for re-embed; surface to operator; skip vec-score; etc.).
+
+    Source-file resolution: `<vault>/<entry_relative>`. The entry_relative
+    is what's stored in entry_meta.path — the path that save.py writes at
+    embed time.
+
+    Tolerance: 1-second slop (filesystem granularity protection — see
+    _DRIFT_MTIME_TOLERANCE_SECONDS).
+
+    Per V4 #37 design / plan #21 task 3.
+    """
+    vault = Path(vault_path)
+    # Source file path under vault — entry_relative is relative-to-vault-root.
+    src = _resolve_entry_path(vault, entry_relative)
+    if not src.is_file():
+        # Entry's source file missing — treat as "drifted" so caller can
+        # decide (e.g. enqueue delete from index). Documented behavior.
+        return True
+    try:
+        src_mtime = src.stat().st_mtime
+    except OSError:
+        return True  # stat failed — defensive; treat as drift
+
+    # Open the vec-index to read indexed_at. _open_index returns None if
+    # sqlite-vec unavailable; in that case we can't tell, return False
+    # (matches the "graceful-skip silent" pattern: no signal = no action).
+    conn = _open_index(vault)
+    if conn is None:
+        return False
+    try:
+        cursor = conn.execute(
+            "SELECT indexed_at FROM entry_meta WHERE path = ?", (entry_relative,)
+        )
+        row = cursor.fetchone()
+        if row is None:
+            # Entry not yet indexed → "drifted" (no row to compare against;
+            # caller should enqueue for first-time embed).
+            return True
+        indexed_at = row[0]
+        return src_mtime > (indexed_at + _DRIFT_MTIME_TOLERANCE_SECONDS)
+    finally:
+        conn.close()
+
+
+def find_drifted_entries(vault_path: Path | str) -> dict:
+    """Walk the vault + return a categorized inventory of every entry's
+    drift status. Honors V4 #26 dual-path resolver (projects/ + personal-
+    projects/ fallback).
+
+    Returns dict with three lists of vault-relative entry paths:
+        {
+            "drifted":     [<rel_path>, ...],  # mtime > indexed_at + tolerance
+            "up_to_date":  [<rel_path>, ...],  # row exists + mtime <= indexed_at
+            "not_indexed": [<rel_path>, ...],  # no row in entry_meta
+        }
+
+    Walks:
+      - <vault>/personal-private/**/*.md
+      - <vault>/projects/<slug>/**/*.md (or legacy personal-projects/ fallback)
+      - <vault>/_idea-incubator/**/*.md
+
+    Excludes:
+      - <vault>/_meta/   (operator-curated narrative; not memory-skill content)
+      - **/_archive/    (historical; never indexed)
+      - PLAN.archive.*.md (post-V4 #26 archived plans; never indexed)
+
+    Performance target: <1ms per entry (one os.stat + one sqlite lookup).
+    Caller (full-sync subcommand) reports summary; --rebuild enqueues all
+    drifted + not_indexed entries for re-embed via embedding-queue.jsonl.
+
+    Graceful-skip: if sqlite-vec unavailable, returns
+    `{"drifted": [], "up_to_date": [], "not_indexed": <all walkable files>}` —
+    every entry appears "not indexed" because we can't query the index.
+    """
+    vault = Path(vault_path)
+    if not vault.is_dir():
+        return {"drifted": [], "up_to_date": [], "not_indexed": []}
+
+    # Collect walk targets.
+    walk_roots: list[Path] = []
+    private = vault / "personal-private"
+    if private.is_dir():
+        walk_roots.append(private)
+    projects = _vault_projects_dir(vault)
+    if projects.is_dir():
+        walk_roots.append(projects)
+    incubator = vault / "_idea-incubator"
+    if incubator.is_dir():
+        walk_roots.append(incubator)
+
+    # Try to open index. If unavailable, every entry appears not_indexed.
+    conn = _open_index(vault)
+    indexed_at_by_path: dict[str, int] = {}
+    if conn is not None:
+        try:
+            cursor = conn.execute("SELECT path, indexed_at FROM entry_meta")
+            indexed_at_by_path = {row[0]: row[1] for row in cursor.fetchall()}
+        finally:
+            conn.close()
+
+    drifted: list[str] = []
+    up_to_date: list[str] = []
+    not_indexed: list[str] = []
+
+    for root in walk_roots:
+        for md in sorted(root.rglob("*.md")):
+            # Excludes.
+            if any(p == "_archive" for p in md.parts):
+                continue
+            if md.name.startswith("PLAN.archive."):
+                continue
+            rel = md.relative_to(vault)
+            rel_str = str(rel).replace("\\", "/")  # POSIX-style path for sqlite key
+
+            try:
+                src_mtime = md.stat().st_mtime
+            except OSError:
+                drifted.append(rel_str)
+                continue
+
+            indexed_at = indexed_at_by_path.get(rel_str)
+            if indexed_at is None:
+                not_indexed.append(rel_str)
+            elif src_mtime > (indexed_at + _DRIFT_MTIME_TOLERANCE_SECONDS):
+                drifted.append(rel_str)
+            else:
+                up_to_date.append(rel_str)
+
+    return {
+        "drifted": drifted,
+        "up_to_date": up_to_date,
+        "not_indexed": not_indexed,
+    }
+
+
 def rebuild_index(vault_path: Path | str) -> dict:
     """Drop + recreate the vec-index virtual table at current EMBEDDING_DIM.
 

@@ -1050,5 +1050,268 @@ class TestVecIndexSchemaMigration(unittest.TestCase):
                 conn.close()
 
 
+# -----------------------------------------------------------------------------
+# Drift detection primitives (V4 #37 task 3)
+# -----------------------------------------------------------------------------
+
+def _seed_v37_index(db_path: Path, entries: dict[str, int]) -> None:
+    """Build a v37-shaped sqlite db with seeded entry_meta rows.
+
+    entries: {entry_relative_path: indexed_at_epoch}
+    No vec0 virtual table — just the metadata side, which is what drift-
+    detection reads.
+    """
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE entry_meta ("
+        "  rowid INTEGER PRIMARY KEY,"
+        "  path TEXT UNIQUE NOT NULL,"
+        "  updated_at TEXT NOT NULL,"
+        "  indexed_at INTEGER NOT NULL DEFAULT 0"
+        ")"
+    )
+    for i, (path, indexed_at) in enumerate(entries.items(), start=1):
+        conn.execute(
+            "INSERT INTO entry_meta(rowid, path, updated_at, indexed_at) VALUES (?, ?, '2026-05-27T18:00:00Z', ?)",
+            (i, path, indexed_at),
+        )
+    conn.commit()
+    conn.close()
+
+
+class _MockConn:
+    """Stand-in for sqlite_vec-loaded connection — exposes just the parts
+    the drift-detection code touches (execute returns a real cursor).
+    Used to bypass _open_index's sqlite-vec check + extension load."""
+
+    def __init__(self, db_path: Path) -> None:
+        self._conn = sqlite3.connect(db_path)
+
+    def execute(self, *args, **kwargs):
+        return self._conn.execute(*args, **kwargs)
+
+    def commit(self):
+        return self._conn.commit()
+
+    def close(self):
+        return self._conn.close()
+
+
+class TestIsEntryDrifted(unittest.TestCase):
+    """V4 #37 task 3: per-entry drift detection."""
+
+    def _patch_open_index(self, db_path: Path):
+        """Return a mock.patch context that makes _open_index return our test db."""
+        return mock.patch.object(
+            vec_index,
+            "_open_index",
+            return_value=_MockConn(db_path),
+        )
+
+    def test_returns_true_when_entry_not_indexed(self) -> None:
+        """Entry exists on disk but has no row in entry_meta → drifted (first-embed)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private" / "_always-load").mkdir(parents=True)
+            entry = vault / "personal-private" / "_always-load" / "new-rule.md"
+            entry.write_text("freshly authored", encoding="utf-8")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {})  # empty index
+            with self._patch_open_index(db):
+                self.assertTrue(
+                    vec_index.is_entry_drifted(vault, "personal-private/_always-load/new-rule.md")
+                )
+
+    def test_returns_false_when_indexed_and_unchanged(self) -> None:
+        """Entry indexed AT or AFTER current mtime → not drifted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private" / "_always-load").mkdir(parents=True)
+            entry = vault / "personal-private" / "_always-load" / "stable.md"
+            entry.write_text("indexed earlier", encoding="utf-8")
+            future = int(entry.stat().st_mtime) + 60  # indexed 60s after mtime
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {"personal-private/_always-load/stable.md": future})
+            with self._patch_open_index(db):
+                self.assertFalse(
+                    vec_index.is_entry_drifted(vault, "personal-private/_always-load/stable.md")
+                )
+
+    def test_returns_true_when_mtime_exceeds_indexed_at(self) -> None:
+        """Entry's source mtime > indexed_at + tolerance → drifted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private" / "_always-load").mkdir(parents=True)
+            entry = vault / "personal-private" / "_always-load" / "stale-row.md"
+            entry.write_text("freshly touched", encoding="utf-8")
+            past = int(entry.stat().st_mtime) - 1000  # indexed 1000s before mtime
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {"personal-private/_always-load/stale-row.md": past})
+            with self._patch_open_index(db):
+                self.assertTrue(
+                    vec_index.is_entry_drifted(vault, "personal-private/_always-load/stale-row.md")
+                )
+
+    def test_returns_true_when_source_file_missing(self) -> None:
+        """Entry's source file is gone → drifted (caller handles delete)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {"deleted-entry.md": 12345})
+            with self._patch_open_index(db):
+                self.assertTrue(vec_index.is_entry_drifted(vault, "deleted-entry.md"))
+
+    def test_returns_false_when_sqlite_vec_unavailable(self) -> None:
+        """Graceful-skip: when index can't open, no signal → not drifted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private" / "_always-load").mkdir(parents=True)
+            entry = vault / "personal-private" / "_always-load" / "any.md"
+            entry.write_text("x", encoding="utf-8")
+            with mock.patch.object(vec_index, "_open_index", return_value=None):
+                self.assertFalse(
+                    vec_index.is_entry_drifted(vault, "personal-private/_always-load/any.md")
+                )
+
+    def test_tolerance_window_avoids_false_positive(self) -> None:
+        """Sub-1-second mtime/indexed-at differences should NOT report drift."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private" / "_always-load").mkdir(parents=True)
+            entry = vault / "personal-private" / "_always-load" / "same-second.md"
+            entry.write_text("x", encoding="utf-8")
+            # indexed_at = mtime - 0.5 (within tolerance window)
+            mtime = entry.stat().st_mtime
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {"personal-private/_always-load/same-second.md": int(mtime)})
+            with self._patch_open_index(db):
+                # mtime == int(mtime) + (fractional); within 1s tolerance.
+                self.assertFalse(
+                    vec_index.is_entry_drifted(vault, "personal-private/_always-load/same-second.md")
+                )
+
+
+class TestFindDriftedEntries(unittest.TestCase):
+    """V4 #37 task 3: vault-walk drift inventory."""
+
+    def _patch_open_index(self, db_path: Path):
+        return mock.patch.object(
+            vec_index,
+            "_open_index",
+            return_value=_MockConn(db_path),
+        )
+
+    def test_returns_empty_for_nonexistent_vault(self) -> None:
+        result = vec_index.find_drifted_entries(Path("/nonexistent/path"))
+        self.assertEqual(result, {"drifted": [], "up_to_date": [], "not_indexed": []})
+
+    def test_classifies_mixed_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private" / "_always-load").mkdir(parents=True)
+            (vault / "projects" / "fixture").mkdir(parents=True)
+            # 3 entries: 1 indexed-fresh, 1 indexed-stale, 1 not-indexed
+            fresh = vault / "personal-private" / "_always-load" / "fresh.md"
+            stale = vault / "personal-private" / "_always-load" / "stale.md"
+            new_entry = vault / "projects" / "fixture" / "new.md"
+            for f in (fresh, stale, new_entry):
+                f.write_text("x", encoding="utf-8")
+            fresh_indexed = int(fresh.stat().st_mtime) + 60
+            stale_indexed = int(stale.stat().st_mtime) - 1000
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {
+                "personal-private/_always-load/fresh.md": fresh_indexed,
+                "personal-private/_always-load/stale.md": stale_indexed,
+            })
+            with self._patch_open_index(db):
+                result = vec_index.find_drifted_entries(vault)
+        self.assertEqual(result["up_to_date"], ["personal-private/_always-load/fresh.md"])
+        self.assertEqual(result["drifted"], ["personal-private/_always-load/stale.md"])
+        self.assertEqual(result["not_indexed"], ["projects/fixture/new.md"])
+
+    def test_excludes_archive_dirs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private" / "_archive").mkdir(parents=True)
+            (vault / "personal-private" / "_archive" / "old.md").write_text("x")
+            (vault / "personal-private" / "active.md").write_text("x")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {})
+            with self._patch_open_index(db):
+                result = vec_index.find_drifted_entries(vault)
+        self.assertEqual(result["not_indexed"], ["personal-private/active.md"])
+
+    def test_excludes_plan_archive_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "projects" / "agentm" / "_harness").mkdir(parents=True)
+            (vault / "projects" / "agentm" / "_harness" / "PLAN.archive.20260420.md").write_text("x")
+            (vault / "projects" / "agentm" / "_harness" / "PLAN.md").write_text("x")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {})
+            with self._patch_open_index(db):
+                result = vec_index.find_drifted_entries(vault)
+        self.assertEqual(result["not_indexed"], ["projects/agentm/_harness/PLAN.md"])
+
+    def test_excludes_meta_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "_meta").mkdir(parents=True)
+            (vault / "_meta" / "seed-manifest.md").write_text("x")
+            (vault / "personal-private").mkdir(parents=True)
+            (vault / "personal-private" / "active.md").write_text("x")
+            db = vault / "_meta" / "vec-index.db"
+            _seed_v37_index(db, {})
+            with self._patch_open_index(db):
+                result = vec_index.find_drifted_entries(vault)
+        self.assertEqual(result["not_indexed"], ["personal-private/active.md"])
+
+    def test_walks_idea_incubator(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "_idea-incubator" / "foo").mkdir(parents=True)
+            (vault / "_idea-incubator" / "foo" / "_index.md").write_text("x")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {})
+            with self._patch_open_index(db):
+                result = vec_index.find_drifted_entries(vault)
+        self.assertEqual(result["not_indexed"], ["_idea-incubator/foo/_index.md"])
+
+    def test_legacy_personal_projects_fallback(self) -> None:
+        """When projects/ absent but personal-projects/ present, walk legacy layout."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-projects" / "fixture").mkdir(parents=True)
+            (vault / "personal-projects" / "fixture" / "_index.md").write_text("x")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {})
+            with self._patch_open_index(db):
+                result = vec_index.find_drifted_entries(vault)
+        self.assertEqual(result["not_indexed"], ["personal-projects/fixture/_index.md"])
+
+    def test_returns_all_not_indexed_when_sqlite_vec_unavailable(self) -> None:
+        """Graceful-skip: no index → all walkable entries appear not_indexed."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private").mkdir(parents=True)
+            (vault / "personal-private" / "a.md").write_text("x")
+            (vault / "personal-private" / "b.md").write_text("x")
+            with mock.patch.object(vec_index, "_open_index", return_value=None):
+                result = vec_index.find_drifted_entries(vault)
+        self.assertEqual(sorted(result["not_indexed"]), ["personal-private/a.md", "personal-private/b.md"])
+        self.assertEqual(result["drifted"], [])
+        self.assertEqual(result["up_to_date"], [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
