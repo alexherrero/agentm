@@ -916,6 +916,9 @@ import sqlite3
 _VEC_INDEX_PATH = _HERE.parent / "harness" / "skills" / "memory" / "scripts" / "vec_index.py"
 _vec_spec = importlib.util.spec_from_file_location("vec_index", _VEC_INDEX_PATH)
 vec_index = importlib.util.module_from_spec(_vec_spec)
+# Register in sys.modules so lazy-importing modules (e.g. recall.py) resolve
+# to the SAME module instance the tests patch via mock.patch.object().
+sys.modules["vec_index"] = vec_index
 _vec_spec.loader.exec_module(vec_index)
 
 
@@ -1436,6 +1439,112 @@ class TestFullSync(unittest.TestCase):
             self.assertEqual(result["not_indexed_count"], 0)
             self.assertEqual(result["up_to_date_count"], 1)
             self.assertEqual(result["enqueued"], 0)
+
+
+# -----------------------------------------------------------------------------
+# recall.py drift-check integration (V4 #37 task 5)
+# -----------------------------------------------------------------------------
+
+_RECALL_PATH = _HERE.parent / "harness" / "skills" / "memory" / "scripts" / "recall.py"
+_recall_spec = importlib.util.spec_from_file_location("recall", _RECALL_PATH)
+recall = importlib.util.module_from_spec(_recall_spec)
+_recall_spec.loader.exec_module(recall)
+
+
+class TestDriftCheckVecHits(unittest.TestCase):
+    """V4 #37 task 5: per-hit drift check in the recall path."""
+
+    def _patch_open_index(self, db_path: Path):
+        return mock.patch.object(
+            vec_index,
+            "_open_index",
+            return_value=_MockConn(db_path),
+        )
+
+    def test_empty_vec_results_returns_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = recall._drift_check_vec_hits(Path(tmp), {})
+            self.assertEqual(result, {})
+
+    def test_un_drifted_hits_preserved(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private").mkdir(parents=True)
+            stable = vault / "personal-private" / "stable.md"
+            stable.write_text("x")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            # indexed AFTER mtime — not drifted
+            _seed_v37_index(db, {"personal-private/stable.md": int(stable.stat().st_mtime) + 60})
+            vec_results = {"personal-private/stable.md": 0.85}
+            with self._patch_open_index(db):
+                with io.StringIO() as buf:
+                    fresh = recall._drift_check_vec_hits(vault, vec_results, stderr=buf)
+                    self.assertEqual(fresh, vec_results)
+                    self.assertNotIn("flagged for re-embed", buf.getvalue())
+
+    def test_drifted_hits_dropped_and_enqueued(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private").mkdir(parents=True)
+            stale = vault / "personal-private" / "stale.md"
+            stale.write_text("---\nslug: stale\n---\nstale content", encoding="utf-8")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            # indexed BEFORE mtime — drifted
+            _seed_v37_index(db, {"personal-private/stale.md": int(stale.stat().st_mtime) - 1000})
+            vec_results = {"personal-private/stale.md": 0.85}
+            with self._patch_open_index(db):
+                with io.StringIO() as buf:
+                    fresh = recall._drift_check_vec_hits(vault, vec_results, stderr=buf)
+                    stderr_text = buf.getvalue()
+            # Drifted entry dropped from results.
+            self.assertNotIn("personal-private/stale.md", fresh)
+            self.assertEqual(fresh, {})
+            # Transparency line emitted.
+            self.assertIn("1 entries flagged for re-embed", stderr_text)
+            # Enqueued to queue file.
+            queue = vault / "_meta" / "embedding-queue.jsonl"
+            self.assertTrue(queue.exists())
+            line = queue.read_text(encoding="utf-8").strip().splitlines()[0]
+            rec = json.loads(line)
+            self.assertEqual(rec["op"], "upsert")
+            self.assertEqual(rec["path"], "personal-private/stale.md")
+            self.assertIn("stale", rec["text"])
+
+    def test_mixed_drifted_and_clean_hits(self) -> None:
+        """Drifted entries dropped; clean entries retained."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "personal-private").mkdir(parents=True)
+            stale = vault / "personal-private" / "stale.md"
+            stale.write_text("---\nslug: stale\n---\nx", encoding="utf-8")
+            clean = vault / "personal-private" / "clean.md"
+            clean.write_text("y")
+            db = vault / "_meta" / "vec-index.db"
+            db.parent.mkdir(parents=True)
+            _seed_v37_index(db, {
+                "personal-private/stale.md": int(stale.stat().st_mtime) - 1000,
+                "personal-private/clean.md": int(clean.stat().st_mtime) + 60,
+            })
+            vec_results = {
+                "personal-private/stale.md": 0.85,
+                "personal-private/clean.md": 0.72,
+            }
+            with self._patch_open_index(db):
+                with io.StringIO() as buf:
+                    fresh = recall._drift_check_vec_hits(vault, vec_results, stderr=buf)
+            self.assertNotIn("personal-private/stale.md", fresh)
+            self.assertEqual(fresh, {"personal-private/clean.md": 0.72})
+
+    def test_vec_index_import_failure_returns_unchanged(self) -> None:
+        """Defensive: if vec_index can't be imported, return input dict unchanged."""
+        vec_results = {"any.md": 0.5}
+        # Patch the lazy import by inserting a sentinel into sys.modules.
+        with mock.patch.dict("sys.modules", {"vec_index": None}):
+            # Importing None raises ImportError; the helper catches + returns unchanged.
+            result = recall._drift_check_vec_hits(Path("/tmp"), vec_results)
+        self.assertEqual(result, vec_results)
 
 
 if __name__ == "__main__":

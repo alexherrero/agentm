@@ -511,6 +511,89 @@ def _vec_search(
         conn.close()
 
 
+def _drift_check_vec_hits(
+    vault: Path,
+    vec_results: dict[str, float],
+    *,
+    deadline: float | None = None,
+    stderr=sys.stderr,
+) -> dict[str, float]:
+    """V4 #37 task 5: per-hit drift check + grep-only fallback.
+
+    For each path in `vec_results`, compares the source file's mtime against
+    the row's `indexed_at`. Drifted entries are:
+      - enqueued for re-embed via `vec_index.enqueue(..., op="upsert")`
+      - removed from `vec_results` (so the merge step uses keyword-only
+        score for that entry — the file's content is re-read at grep time
+        anyway, so the result remains useful)
+
+    A transparency stderr line is emitted iff any drift was detected.
+
+    Budget-aware: if `deadline` elapses mid-check, aborts the remaining
+    drift-checks + returns whatever state was reached. Drift-not-checked
+    entries stay in `vec_results` with their original vec score (better-
+    than-nothing fallback per locked design).
+
+    Graceful-skip: if vec_index can't be imported (sqlite-vec missing /
+    install-skipped), the input dict is returned unchanged.
+
+    Per V4 #37 plan #21 task 5.
+    """
+    if not vec_results:
+        return vec_results
+    try:
+        import vec_index  # type: ignore
+    except ImportError:
+        return vec_results
+
+    drifted_count = 0
+    aborted = False
+    fresh_results: dict[str, float] = {}
+
+    for path, sim in vec_results.items():
+        if deadline is not None and time.monotonic() >= deadline:
+            # Budget exhausted — return what we've computed + carry the rest
+            # through unchanged (better-than-nothing per the design call).
+            aborted = True
+            fresh_results[path] = sim
+            continue
+        try:
+            drifted = vec_index.is_entry_drifted(vault, path)
+        except Exception:  # noqa: BLE001 — defensive; never break recall on drift-check failure
+            # Treat as not-drifted on exception (drift-check is best-effort).
+            fresh_results[path] = sim
+            continue
+        if drifted:
+            drifted_count += 1
+            # Enqueue for re-embed via the existing async path. Extract
+            # embed-text matching save.py's `{slug} [tags]\n\n{first_para}`
+            # format so the re-embed produces a consistent vector shape.
+            try:
+                src = vault / path
+                embed_text = vec_index._extract_embed_text_from_file(src)
+                vec_index.enqueue(vault, path, "upsert", text=embed_text)
+            except Exception as exc:  # noqa: BLE001
+                print(
+                    f"[recall] drift-detect enqueue failed for {path}: {exc}",
+                    file=stderr,
+                )
+            # Drop from vec_results — current query falls back to grep-only.
+        else:
+            fresh_results[path] = sim
+
+    if drifted_count > 0:
+        notice = (
+            f"[recall] {drifted_count} entries flagged for re-embed "
+            f"(drift detected); falling back to grep-only for those hits"
+        )
+        if aborted:
+            remaining = len(vec_results) - len(fresh_results) - drifted_count
+            notice += f"; drift-check budget-aborted with {remaining} hits unchecked"
+        print(notice, file=stderr)
+
+    return fresh_results
+
+
 def query(
     *,
     vault: Path,
@@ -557,6 +640,17 @@ def query(
     vec_results = _vec_search(
         vault, query_text, k=max(k * 2, 10),
         deadline=deadline, mode=mode, stderr=stderr,
+    )
+
+    # V4 #37: per-hit drift check. Each vec result's source file mtime is
+    # compared against the row's indexed_at; drifted hits enqueue for
+    # re-embed + get dropped from vec_results (the current query falls
+    # back to grep-only for those entries — content still searched at
+    # query time, just not vec-scored against a stale embedding). Cheap:
+    # one os.stat per hit. Budget-aware: aborts remaining drift-checks
+    # if deadline elapsed (returns whatever drift-checks completed).
+    vec_results = _drift_check_vec_hits(
+        vault, vec_results, deadline=deadline, stderr=stderr,
     )
 
     # Grep search — independently scored. Fast (<50ms typical). Even if
