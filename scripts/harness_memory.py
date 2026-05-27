@@ -244,15 +244,184 @@ def vault_state_path(resolution: dict, filename: str) -> Optional[Path]:
     Returns None if resolution lacks vault_path (no slug, no vault, etc.).
 
     Pure path-construction; doesn't check existence. Callers that need to
-    read should use the task-3 `read_state_file()` dispatcher (checks vault
-    first, falls back to legacy <project_root>/.harness/<file>). Writes go
-    only to this path.
+    read should use `read_state_file()` below (checks vault first, falls
+    back to legacy <project_root>/.harness/<file>). Writes go only to this
+    path via `write_state_file()`.
 
     Per plan #18 task 5 — `05-state-migration.md` § "Per-file target mapping".
     """
     if not resolution.get("vault_path"):
         return None
     return resolution["vault_path"] / "_harness" / filename
+
+
+# -----------------------------------------------------------------------------
+# Backward-compat read/write dispatcher (V4 #26 task 3)
+# -----------------------------------------------------------------------------
+
+# Session-scoped set of (filename, source) tuples we've already warned about.
+# Resets when the Python process exits (the recall hooks are short-lived
+# subprocess invocations; this set lives for one invocation. Per-session
+# semantics from the operator perspective = per-invocation in practice).
+# Per locked design call DC-2: warn once per session per file.
+_warned_legacy_reads: set = set()
+
+
+def warn_once(filename: str, source: str = "legacy") -> None:
+    """Emit a deprecation-warn on stderr — only the first time per session per file.
+
+    `filename` is the state file shortname (e.g. "PLAN.md", "progress.md").
+    `source` describes the read origin (currently "legacy" is the only value;
+    leaves room for future "vault-stale" or similar markers).
+
+    Idempotent. Safe to call from any phase / hook.
+    """
+    key = (filename, source)
+    if key in _warned_legacy_reads:
+        return
+    _warned_legacy_reads.add(key)
+    if source == "legacy":
+        print(
+            f"[harness_memory] reading {filename} from legacy <project>/.harness/ "
+            f"— run `bash agentm/scripts/migrate-harness-to-vault.sh <project>` "
+            f"to move state to <vault>/projects/<slug>/_harness/. "
+            f"This warning will not repeat this session.",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"[harness_memory] {filename}: {source}",
+            file=sys.stderr,
+        )
+
+
+def _reset_warn_state() -> None:
+    """Test-only: clear the warned-set. Not part of the public API."""
+    _warned_legacy_reads.clear()
+
+
+def read_state_file(resolution: dict, filename: str) -> str:
+    """Read a project state file, preferring vault-backed location.
+
+    Resolution chain:
+      1. <vault>/projects/<slug>/_harness/<filename>  (V4 #26 canonical)
+      2. <project_root>/.harness/<filename>           (legacy fallback;
+                                                       emits warn-once)
+      3. ""                                           (neither exists; empty
+                                                       string for caller's
+                                                       missing-state semantic)
+
+    Per plan #18 task 5 + task 9 design specs. Per locked DC-2: warn once
+    per session per file. Warn-once state is module-level (session-scoped);
+    test helpers can reset via `_reset_warn_state()`.
+
+    Honors `<vault>/projects/<slug>/_harness/.project-mode` per locked DC-3:
+    if the marker file contents are "local" (lowercase-stripped), skip the
+    vault-side read and go straight to legacy — operator opted out of
+    vault-mode for this project.
+    """
+    # Vault path attempt — only when resolution has both slug + vault_path.
+    vault_p = resolution.get("vault_path")
+    project_root = resolution.get("project_root") or Path.cwd()
+
+    if vault_p:
+        # Check .project-mode flag — if "local", skip vault read entirely.
+        mode_file = vault_p / "_harness" / ".project-mode"
+        if mode_file.is_file():
+            try:
+                mode = mode_file.read_text(encoding="utf-8").strip().lower()
+                if mode == "local":
+                    # Operator opted out of vault-mode; go straight to legacy.
+                    return _read_legacy_state_file(project_root, filename)
+            except OSError:
+                pass  # Unreadable mode-file; fall through to default behavior.
+
+        # Default: try vault path.
+        target = vault_p / "_harness" / filename
+        if target.is_file():
+            try:
+                return target.read_text(encoding="utf-8")
+            except OSError as exc:
+                print(
+                    f"[harness_memory] failed to read {target}: {exc}",
+                    file=sys.stderr,
+                )
+                # Fall through to legacy as a last resort.
+
+    # Legacy fallback — <project_root>/.harness/<filename>.
+    return _read_legacy_state_file(project_root, filename)
+
+
+def _read_legacy_state_file(project_root: Path, filename: str) -> str:
+    legacy = project_root / ".harness" / filename
+    if legacy.is_file():
+        warn_once(filename, "legacy")
+        try:
+            return legacy.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(
+                f"[harness_memory] failed to read legacy {legacy}: {exc}",
+                file=sys.stderr,
+            )
+            return ""
+    return ""
+
+
+def write_state_file(resolution: dict, filename: str, content: str) -> Path:
+    """Write a project state file to the vault path.
+
+    Creates <vault>/projects/<slug>/_harness/ if absent. Atomic write via
+    `<path>.tmp` + `rename()`. Returns the absolute path written.
+
+    Raises ValueError if resolution lacks vault_path (caller should resolve
+    or fall back to legacy explicitly — writes never go to legacy after
+    V4 #26 ships).
+
+    Honors `.project-mode` flag per DC-3: if "local", writes go to
+    `<project_root>/.harness/<filename>` instead. This is the
+    operator-opt-out path.
+    """
+    vault_p = resolution.get("vault_path")
+    project_root = resolution.get("project_root") or Path.cwd()
+
+    # Check opt-out flag.
+    if vault_p:
+        mode_file = vault_p / "_harness" / ".project-mode"
+        if mode_file.is_file():
+            try:
+                mode = mode_file.read_text(encoding="utf-8").strip().lower()
+                if mode == "local":
+                    return _write_legacy_state_file(project_root, filename, content)
+            except OSError:
+                pass
+
+    if vault_p is None:
+        raise ValueError(
+            f"cannot write {filename}: resolution lacks vault_path "
+            f"(slug={resolution.get('slug')!r}, layout={resolution.get('layout')!r}). "
+            f"Resolve the project first or set MEMORY_VAULT_PATH."
+        )
+
+    target = vault_p / "_harness" / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(target)
+    return target
+
+
+def _write_legacy_state_file(project_root: Path, filename: str, content: str) -> Path:
+    """Operator-opt-out path: write to <project_root>/.harness/<filename>.
+
+    Used only when `.project-mode` = "local" (reversibility per DC-3).
+    Same atomic-write semantics as the vault path.
+    """
+    target = project_root / ".harness" / filename
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.replace(target)
+    return target
 
 
 def toolkit_scripts_dir() -> Optional[Path]:

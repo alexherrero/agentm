@@ -637,5 +637,143 @@ class TestVaultStatePath(unittest.TestCase):
         )
 
 
+# -----------------------------------------------------------------------------
+# read_state_file / write_state_file / warn_once  (V4 #26 task 3)
+# -----------------------------------------------------------------------------
+
+class TestReadStateFile(unittest.TestCase):
+    """Covers backward-compat read with vault-first, legacy-fallback semantics."""
+
+    def setUp(self) -> None:
+        hm._reset_warn_state()
+
+    def test_returns_empty_when_neither_path_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            resolution = {
+                "vault_path": Path(tmp) / "vault" / "projects" / "p",
+                "project_root": Path(tmp) / "project",
+            }
+            (Path(tmp) / "project").mkdir()
+            self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "")
+
+    def test_reads_from_vault_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
+            project = Path(tmp) / "project"
+            project.mkdir()
+            resolution = {"vault_path": vp, "project_root": project}
+            self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "vault content")
+
+    def test_falls_back_to_legacy_with_warn(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / "PLAN.md").write_text("legacy content", encoding="utf-8")
+            resolution = {
+                "vault_path": Path(tmp) / "vault" / "projects" / "p",  # doesn't exist
+                "project_root": project,
+            }
+            with io.StringIO() as buf:
+                # Capture stderr via mock
+                with mock.patch("sys.stderr", buf):
+                    result = hm.read_state_file(resolution, "PLAN.md")
+                self.assertEqual(result, "legacy content")
+                stderr = buf.getvalue()
+                self.assertIn("reading PLAN.md from legacy", stderr)
+                self.assertIn("migrate-harness-to-vault.sh", stderr)
+
+    def test_warn_only_once_per_session_per_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / "PLAN.md").write_text("legacy", encoding="utf-8")
+            resolution = {"vault_path": None, "project_root": project}
+            with io.StringIO() as buf:
+                with mock.patch("sys.stderr", buf):
+                    hm.read_state_file(resolution, "PLAN.md")
+                    hm.read_state_file(resolution, "PLAN.md")
+                    hm.read_state_file(resolution, "PLAN.md")
+                # Single warning despite 3 reads.
+                self.assertEqual(buf.getvalue().count("reading PLAN.md from legacy"), 1)
+
+    def test_warns_separately_for_different_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / "PLAN.md").write_text("a", encoding="utf-8")
+            (project / ".harness" / "progress.md").write_text("b", encoding="utf-8")
+            resolution = {"vault_path": None, "project_root": project}
+            with io.StringIO() as buf:
+                with mock.patch("sys.stderr", buf):
+                    hm.read_state_file(resolution, "PLAN.md")
+                    hm.read_state_file(resolution, "progress.md")
+                stderr = buf.getvalue()
+                self.assertEqual(stderr.count("reading PLAN.md from legacy"), 1)
+                self.assertEqual(stderr.count("reading progress.md from legacy"), 1)
+
+    def test_project_mode_local_bypasses_vault_read(self) -> None:
+        """DC-3: when .project-mode='local', read goes straight to legacy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            (vp / "_harness" / "PLAN.md").write_text("vault wins", encoding="utf-8")
+            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / "PLAN.md").write_text("legacy wins", encoding="utf-8")
+            resolution = {"vault_path": vp, "project_root": project}
+            with io.StringIO() as buf:
+                with mock.patch("sys.stderr", buf):
+                    # Despite vault content existing, .project-mode=local skips it.
+                    self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "legacy wins")
+
+
+class TestWriteStateFile(unittest.TestCase):
+    """Covers vault-only writes (with .project-mode=local override)."""
+
+    def test_writes_to_vault_creating_harness_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            resolution = {"vault_path": vp, "project_root": Path(tmp) / "project"}
+            target = hm.write_state_file(resolution, "PLAN.md", "new content")
+            self.assertEqual(target, vp / "_harness" / "PLAN.md")
+            self.assertEqual(target.read_text(encoding="utf-8"), "new content")
+            # _harness/ dir created.
+            self.assertTrue((vp / "_harness").is_dir())
+
+    def test_raises_when_no_vault_path(self) -> None:
+        resolution = {"vault_path": None, "project_root": Path("/tmp/project")}
+        with self.assertRaises(ValueError) as cm:
+            hm.write_state_file(resolution, "PLAN.md", "x")
+        self.assertIn("cannot write PLAN.md", str(cm.exception))
+
+    def test_atomic_write_no_tmp_remnant(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            resolution = {"vault_path": vp, "project_root": Path(tmp)}
+            hm.write_state_file(resolution, "PLAN.md", "content")
+            # No .tmp file left behind.
+            self.assertEqual(
+                list((vp / "_harness").glob("PLAN.md.*")), []
+            )
+
+    def test_project_mode_local_writes_to_legacy(self) -> None:
+        """DC-3: when .project-mode='local', write goes to legacy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
+            project = Path(tmp) / "project"
+            project.mkdir()
+            resolution = {"vault_path": vp, "project_root": project}
+            target = hm.write_state_file(resolution, "PLAN.md", "legacy write")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
+            self.assertEqual(target.read_text(encoding="utf-8"), "legacy write")
+            # Vault path NOT written.
+            self.assertFalse((vp / "_harness" / "PLAN.md").exists())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
