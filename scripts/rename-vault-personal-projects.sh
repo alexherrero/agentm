@@ -128,6 +128,11 @@ sweep_targets() {
     find "$VAULT_PATH/personal-private/_always-load" -type f -name '*.md' 2>/dev/null
     # personal-private/**/*.md (depth-walk) but not _archive/
     find "$VAULT_PATH/personal-private" -type f -name '*.md' -not -path '*/_archive/*' 2>/dev/null
+    # _idea-incubator/**/*.md — incubator entries often have wikilinks to
+    # `[[personal-projects/<slug>/...]]` and forward-looking promotion-
+    # destination prose like "moves to AgentMemory/personal-projects/<slug>/".
+    # Both forms need rewriting; otherwise the wikilinks break post-rename.
+    find "$VAULT_PATH/_idea-incubator" -type f -name '*.md' -not -path '*/_archive/*' 2>/dev/null
     # Project-tree depth-walk. In preview mode the mv hasn't happened yet, so
     # files live under $OLD_DIR; in live mode the mv ran above so they live
     # under $NEW_DIR. Pick the dir that exists.
@@ -138,6 +143,10 @@ sweep_targets() {
         project_root="$OLD_DIR"
     fi
     find "$project_root" -type f -name '*.md' -not -path '*/_archive/*' -not -name 'PLAN.archive.*.md' 2>/dev/null
+    # _meta/ entries are deliberately EXCLUDED — they hold historical
+    # narrative describing past vault state (seed-pass manifests, recall-
+    # validation reports). Rewriting them would falsify the historical
+    # record. Operators who want to update narrative refs can edit by hand.
 }
 
 # ── step 3: sweep each file ───────────────────────────────────────────────
