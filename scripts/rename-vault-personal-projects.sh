@@ -128,8 +128,16 @@ sweep_targets() {
     find "$VAULT_PATH/personal-private/_always-load" -type f -name '*.md' 2>/dev/null
     # personal-private/**/*.md (depth-walk) but not _archive/
     find "$VAULT_PATH/personal-private" -type f -name '*.md' -not -path '*/_archive/*' 2>/dev/null
-    # New projects/ tree _index.md + nested .md, but not _archive/ + not PLAN.archive
-    find "$NEW_DIR" -type f -name '*.md' -not -path '*/_archive/*' -not -name 'PLAN.archive.*.md' 2>/dev/null
+    # Project-tree depth-walk. In preview mode the mv hasn't happened yet, so
+    # files live under $OLD_DIR; in live mode the mv ran above so they live
+    # under $NEW_DIR. Pick the dir that exists.
+    local project_root
+    if [[ -d "$NEW_DIR" ]]; then
+        project_root="$NEW_DIR"
+    else
+        project_root="$OLD_DIR"
+    fi
+    find "$project_root" -type f -name '*.md' -not -path '*/_archive/*' -not -name 'PLAN.archive.*.md' 2>/dev/null
 }
 
 # ── step 3: sweep each file ───────────────────────────────────────────────

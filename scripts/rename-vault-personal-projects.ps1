@@ -85,7 +85,9 @@ if ($Preview) {
 function Get-SweepTargets {
     $alwaysLoad = Join-Path $VaultPath 'personal-private/_always-load'
     $privateRoot = Join-Path $VaultPath 'personal-private'
-    $newRoot = if ($Preview) { $oldDir } else { $newDir }
+    # In preview mode, the mv hasn't run; project files live under $oldDir.
+    # In live mode, the mv ran above so they live under $newDir.
+    $projectRoot = if (Test-Path -LiteralPath $newDir -PathType Container) { $newDir } else { $oldDir }
 
     $targets = @()
     if (Test-Path -LiteralPath $alwaysLoad) {
@@ -95,8 +97,8 @@ function Get-SweepTargets {
         $targets += Get-ChildItem -LiteralPath $privateRoot -Filter '*.md' -File -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -notmatch '[\\/]_archive[\\/]' }
     }
-    if (Test-Path -LiteralPath $newRoot) {
-        $targets += Get-ChildItem -LiteralPath $newRoot -Filter '*.md' -File -Recurse -ErrorAction SilentlyContinue |
+    if (Test-Path -LiteralPath $projectRoot) {
+        $targets += Get-ChildItem -LiteralPath $projectRoot -Filter '*.md' -File -Recurse -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -notmatch '[\\/]_archive[\\/]' -and $_.Name -notmatch '^PLAN\.archive\.' }
     }
     return $targets | Sort-Object -Property FullName -Unique
