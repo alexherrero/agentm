@@ -5,6 +5,78 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.2.0] — 2026-05-27 — Vec-index drift detection + workflow-uses-vault completion
+
+**MINOR.** ROADMAP-V4 item #37. Closes two coupled gaps surfaced by the 2026-05-27 adversarial review of the memory skill's `sqlite-vec` + markdown architecture and by plan #20 task 7's scope adjustment. **(A) Silent vec-index drift**: when an operator edited a `.md` file directly in Obsidian (not via `/memory save` or `/evolve`), the vec-index drifted silently — grep-side recall stayed current (re-reads files at query time) but vec-side returned stale semantic matches pointing at old content. This release adds opportunistic mtime-check at recall time, a `vec_index.py full-sync` operator-invoked drift sweep, and `memory-reflect-idle` hook integration so drift-detection rides the existing idle cooldown. **(B) Workflow-uses-vault gap**: plan #20 migrated state files to `<vault>/projects/<slug>/_harness/` but slash commands + phase specs still pointed at legacy `<project>/.harness/<file>` paths. This release exposes `harness_memory.py` dispatcher subcommands (`read-state` / `write-state` / `vault-state-path`) + rewrites all 6 phase specs to invoke them explicitly + cleans up legacy `.harness/` state files on operator-target repos. The pieces couple because (A) drift-detection only matters once (B) the workflow actually reads from the live vault. **Backward-compat preserved as a release gate**: pre-#37 indexes migrate transparently (ALTER TABLE ADD COLUMN; one-line stderr notice; idempotent); pre-#37 indexes work after migration without operator action. **Crickets unaffected** (stays at v2.0.0). Single-repo release. Cross-references the V5 design (V5-10 chunking + V5-11 SQL hybrid + V5-12 time-weighted retrieval) that this V4 mitigation complements — the V5 layer formalizes hybrid retrieval, this V4 drift detector keeps the index honest while V5 ships. See plan #20 task 7 scope-adjustment narrative for the workflow-uses-vault gap origin.
+
+### Added
+
+- **`vec_index.py` schema extension** — `entry_meta` companion table gains `indexed_at INTEGER NOT NULL DEFAULT 0` (Unix epoch seconds; populated at drain time via `int(time.time())` alongside the existing `updated_at` ISO TEXT). `_has_column()` PRAGMA helper + `_migrate_pre_v37()` ALTER TABLE migrator (idempotent; one-line stderr notice on first migration); `_open_index()` calls migration after CREATE TABLE IF NOT EXISTS. `rebuild_index()` CREATE TABLE also includes the column for full-rebuild consistency.
+
+- **`vec_index.py` drift primitives** — `is_entry_drifted(vault_path, entry_relative, db_path=None) -> bool` reads source mtime + sqlite indexed_at; returns True if mtime > indexed_at + 1s tolerance OR row missing OR source file missing OR sqlite stat-fail; False if matched OR sqlite-vec unavailable (graceful-skip). `find_drifted_entries(vault_path) -> dict` returns `{drifted, up_to_date, not_indexed}` lists; walks `personal-private/`, projects-dir (V4 #26 dual-path), `_idea-incubator/`; excludes `_archive/` dirs + `PLAN.archive.*.md` + `_meta/`. `_extract_embed_text_from_file()` inline-parses YAML frontmatter (slug + tags) + 500-char body — mirrors save.py's `{slug} [tags]\n\n{first_para}` format for re-embed consistency.
+
+- **`vec_index.py full-sync [--rebuild]` subcommand** — operator-invoked drift sweep. Default: reports summary JSON (drifted / up-to-date / not-indexed counts + lists). `--rebuild`: enqueues drifted + not-indexed entries to `embedding-queue.jsonl` (existing drain path consumes). Graceful-skip when sqlite-vec absent (everything appears not_indexed; enqueue still works since queue is JSONL append).
+
+- **`recall.py` per-hit drift-check** — `_drift_check_vec_hits()` helper between `_vec_search()` and merge step. For each vec-result path: lazy-imports vec_index; calls `is_entry_drifted()`; on drift → enqueues for re-embed + drops the entry from vec results so merge uses keyword-only (grep-only) score per locked DC-3. Budget-aware: aborts if deadline elapses mid-pass + emits transparency line. Single `[recall] N entries flagged for re-embed` stderr line if any drift detected. Defensive try/except never breaks recall on drift-check failure.
+
+- **`memory-reflect-idle` hook drift sweep** (bash + pwsh twins) — runs `vec_index.py full-sync` (read-only; no `--rebuild`) on the existing idle-pass cooldown. Captures JSON summary; emits stderr transparency line `[memory-reflect-idle] vec-index drift sweep: <N> drifted + <M> not-indexed (run vec_index.py full-sync --rebuild to enqueue for re-embed)` when drift is detected. Graceful-skip on missing `MEMORY_VAULT_PATH` / `vec_index.py` / sqlite-vec / JSON parse fail; never blocks the idle-pass.
+
+- **`scripts/harness_memory.py` CLI subcommands** — `read-state <filename>` (resolves project from cwd; reads via dispatcher with vault-first / legacy-fallback / one-warn semantics; emits to stdout; exit 0 always per graceful-silent contract); `write-state <filename> [--content-file -]` (reads stdin or file; resolves project; writes via dispatcher honoring `.project-mode=local` opt-out; emits written path); `vault-state-path <filename>` (resolves project; emits resolved path; exit 1 if no resolution; for shell-level path computation).
+
+- **6 phase specs strengthened** — all of `harness/phases/01-setup.md` through `05-release.md` + `harness/pipelines/bugfix.md` updated the `> [!NOTE]` resolver-callout (added in plan #20 task 7) with explicit dispatcher CLI invocations: `python3 scripts/harness_memory.py read-state PLAN.md` for reads, `echo "$CONTENT" | python3 scripts/harness_memory.py write-state PLAN.md` for writes, `python3 scripts/harness_memory.py vault-state-path PLAN.md` for path resolution. Each spec's callout tailored to its phase context.
+
+- **31 new unit tests** in `scripts/test_harness_memory.py` across 6 new classes — TestVecIndexSchemaMigration × 6 + TestIsEntryDrifted × 6 + TestFindDriftedEntries × 8 + TestExtractEmbedTextFromFile × 4 + TestFullSync × 3 + TestDriftCheckVecHits × 5 + 5 new TestCLI cases for the dispatcher subcommands. Uses `_MockConn` stand-in to bypass the sqlite-vec extension load for entry_meta-only tests (drift primitives only touch the companion table, not vec0). Total: 108 tests in 0.388s.
+
+### Changed
+
+- **`recall.py` query path** may surface fewer vec-derived hits when entries are detected as drifted — drifted entries drop their vec score + the grep-keyword score takes over for that hit. Net effect: stale-content matches replaced with current-content matches via grep-side re-read. Per-query overhead bounded by recall budget.
+
+- **`memory-reflect-idle` transparency line** gains drift-count surfacing. When the idle-pass sees drifted-or-not-indexed entries, an additional stderr line surfaces the count + the `--rebuild` recipe. Pre-#37 idle passes were silent on drift; post-#37 they have visibility.
+
+- **Cleanup of legacy `<repo>/.harness/<file>` paths** on operator's three target repos (agentm + sherwood + dev-setup). After byte-identical-or-sync confirmation against vault canonical, the legacy state files were removed; legacy `.harness/` directories retain only operator-preserved files (`designs/`, `hooks/`, `scripts/`, pre-V4 archives) + `.evidence-reads` per DC-1. Workflow-uses-vault verified operational end-to-end via `vault-state-path PLAN.md` from each repo. Belt-and-braces snapshot `~/Antigravity/agentm/.harness.pre-v4-26-20260527/` preserved as rollback option.
+
+### Internal
+
+- **Pre-#37 schema migration is transparent** — first read/write against a pre-#37 vec-index triggers `_migrate_pre_v37()` ALTER TABLE ADD COLUMN automatically; one-line stderr notice; idempotent on re-run. Operator sees it once per vault. Existing rows get `indexed_at=0` default → appear "drifted" until next drain refreshes via natural drift → enqueue → drain flow.
+
+- **DC-2 design call refined mid-implementation** — original plan locked "full rebuild" for pre-#37 migration; refined to ALTER TABLE ADD COLUMN as gentler path preserving embeddings. Same eventual outcome via natural drift → enqueue → drain.
+
+- **Phase-spec rewrite scope adjustment** — original plan called for mass-sed-replace of 82 bare-`Read .harness/<file>` references across specs; pragmatic call to strengthen the existing resolver-semantics callouts (from plan #20 task 7) with explicit CLI examples instead — avoids bloating docs while directing the agent to the dispatcher.
+
+- **Drift-check via lazy `import vec_index`** in `recall.py` required `sys.modules["vec_index"] = vec_index` registration in tests so mocks propagate to the helper's lookup.
+
+### Backward-compat
+
+- **Pre-#37 indexes auto-migrate transparently** — no operator action required. ALTER TABLE ADD COLUMN preserves existing embeddings + rowids; the `indexed_at=0` default makes existing rows appear drifted, which queues them for re-embed via the natural drift → drain flow. No tear-down + rebuild required.
+
+- **`recall.py` drift-check is best-effort + non-breaking** — defensive try/except wraps the helper; on any drift-check failure (sqlite-vec import error, stat-fail, queue-write error) the original vec results are served unmodified.
+
+- **`memory-reflect-idle` drift sweep is non-blocking + graceful-skip** — survives missing `MEMORY_VAULT_PATH`, missing `vec_index.py`, missing sqlite-vec, malformed JSON output. Idle-pass continues regardless of drift-sweep outcome.
+
+- **Workflow-uses-vault cleanup** preserves legacy `<repo>/.harness/.evidence-reads` per DC-1 + any operator-preserved subdirectories (`designs/`, `hooks/`, `scripts/`). Cleanup is opt-in via `--cleanup` flag with byte-identical-or-conflict-abort default.
+
+### Cross-references
+
+- **HLD § "V4 release milestones"** at `crickets/wiki/explanation/designs/agent-memory-evolution.md` — V4.3 entry covers state migration (foundation for #37); no V4.4 subsection per `[[hld-evolution-update-on-major-release]]` (small additive MINOR; not architecturally load-bearing enough to warrant a new subsection — workflow-uses-vault closes a known gap from plan #20 task 7, not a new architectural call).
+
+- **V5 design** (V5-10 chunking + V5-11 SQL hybrid + V5-12 time-weighted retrieval) that this V4 mitigation complements — V5 ships hybrid retrieval as a formalized layer; this V4 drift detector keeps the per-entry vector grain honest while V5 ships.
+
+- **Plan #20 task 7 scope-adjustment narrative** — the workflow-uses-vault gap origin; plan #21 closes it by exposing the dispatcher via CLI + rewriting the phase specs.
+
+- **2026-05-27 adversarial review** — surfaced the silent-drift gap; ROADMAP-V4 #37 added post-review.
+
+### Deferred
+
+- **Real-time file watcher** (`watchdog` / `pyinotify` / `fswatch`) — mtime-on-recall + idle-pass sweep is sufficient + cheaper. ADR 0001 stdlib-only Python constraint preserved. Real watcher deferred until measurable insufficiency.
+
+- **Cross-device sync conflict resolution** — V4 #26 ships detection + the conflict-merger SessionStart hook; resolution stays operator-judgment per locked plan #20 scope.
+
+- **Metadata-only frontmatter changes** that don't shift embeddings meaningfully — re-embed unconditionally on mtime drift; cost negligible at current vault size. Optimization deferred until measurable need.
+
+- **V5-10 chunking + V5-11 SQL hybrid + V5-12 time-weighted retrieval** — V5 work.
+
+- **V4 #30 global install** — next per V4 execution order: #37 ✅ → **#30** → #35 → #32 → #33 → #34 → #25 → #16.
+
 ## [v4.1.0] — 2026-05-27 — Vault-backed harness state + folder rename `personal-projects/` → `projects/`
 
 **MINOR.** ROADMAP-V4 item #26. The first BUILD on top of the V4.0.0 reorganization. Per-project harness state — `PLAN.md`, `progress.md`, the four `ROADMAP*.md` files (slim + V4 + V5 + V6), `FOLLOWUPS.md`, `features.json`, `init.sh`, `known-migrations.md`, `verify.{sh,ps1}`, `.promoted-progress-cursor`, archived plans (`PLAN.archive.YYYYMMDD-*.md`), `designs/` subtree, and the deprecated `project.json` — all relocate from `<project>/.harness/` to `<vault>/projects/<slug>/_harness/`. The vault top-level folder `personal-projects/` renames to `projects/` in the same release. Backward-compat preserved as a release gate: legacy `<project>/.harness/<file>` reads still work via the resolver chain's tier-2 fallback with a one-warn-per-session-per-file deprecation notice; writes go only to vault unless `<vault>/projects/<slug>/_harness/.project-mode` reads `local` (the operator-opt-out escape hatch for reversibility). The reorg is *additive* — no breaking changes for v4.0.0 operators. **Crickets unaffected** (stays at v2.0.0). Single-repo release. See [HLD V4.3 subsections](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) for the architectural arc.
