@@ -903,5 +903,152 @@ class TestDetectConflictFiles(unittest.TestCase):
             self.assertEqual(hm.detect_conflict_files(Path(tmp)), [])
 
 
+# -----------------------------------------------------------------------------
+# vec-index drift-detection schema migration (V4 #37 task 2)
+# -----------------------------------------------------------------------------
+
+# Load vec_index directly via importlib so we can test the schema-migration
+# logic without needing sqlite-vec installed in the test env (the migration
+# operates on the regular `entry_meta` sqlite table — vec0 virtual table
+# not required for these test paths).
+import importlib.util
+import sqlite3
+_VEC_INDEX_PATH = _HERE.parent / "harness" / "skills" / "memory" / "scripts" / "vec_index.py"
+_vec_spec = importlib.util.spec_from_file_location("vec_index", _VEC_INDEX_PATH)
+vec_index = importlib.util.module_from_spec(_vec_spec)
+_vec_spec.loader.exec_module(vec_index)
+
+
+def _make_pre_v37_entry_meta(db_path: Path) -> sqlite3.Connection:
+    """Build a pre-#37-shaped sqlite db with `entry_meta` lacking `indexed_at`."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE entry_meta ("
+        "  rowid INTEGER PRIMARY KEY,"
+        "  path TEXT UNIQUE NOT NULL,"
+        "  updated_at TEXT NOT NULL"
+        ")"
+    )
+    conn.execute(
+        "INSERT INTO entry_meta(rowid, path, updated_at) VALUES (1, 'preferences/old-entry.md', '2026-04-01T12:00:00Z')"
+    )
+    conn.commit()
+    return conn
+
+
+def _make_post_v37_entry_meta(db_path: Path) -> sqlite3.Connection:
+    """Build a post-#37-shaped sqlite db with `indexed_at` already present."""
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "CREATE TABLE entry_meta ("
+        "  rowid INTEGER PRIMARY KEY,"
+        "  path TEXT UNIQUE NOT NULL,"
+        "  updated_at TEXT NOT NULL,"
+        "  indexed_at INTEGER NOT NULL DEFAULT 0"
+        ")"
+    )
+    conn.execute(
+        "INSERT INTO entry_meta(rowid, path, updated_at, indexed_at) VALUES (1, 'preferences/new-entry.md', '2026-05-27T18:00:00Z', 1748376000)"
+    )
+    conn.commit()
+    return conn
+
+
+class TestVecIndexSchemaMigration(unittest.TestCase):
+    """V4 #37 task 2: pre-#37 → v37 schema migration via ALTER TABLE ADD COLUMN."""
+
+    def test_has_column_detects_present_column(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "test.db"
+            conn = _make_post_v37_entry_meta(db)
+            try:
+                self.assertTrue(vec_index._has_column(conn, "entry_meta", "indexed_at"))
+                self.assertTrue(vec_index._has_column(conn, "entry_meta", "path"))
+                self.assertFalse(vec_index._has_column(conn, "entry_meta", "nonexistent_column"))
+            finally:
+                conn.close()
+
+    def test_has_column_detects_absent_column(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "test.db"
+            conn = _make_pre_v37_entry_meta(db)
+            try:
+                self.assertFalse(vec_index._has_column(conn, "entry_meta", "indexed_at"))
+            finally:
+                conn.close()
+
+    def test_migrate_pre_v37_adds_column(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "test.db"
+            conn = _make_pre_v37_entry_meta(db)
+            try:
+                # Pre-migration: column absent.
+                self.assertFalse(vec_index._has_column(conn, "entry_meta", "indexed_at"))
+                # Run migration.
+                with mock.patch("sys.stderr"):
+                    migrated = vec_index._migrate_pre_v37(conn)
+                conn.commit()
+                self.assertTrue(migrated, "migration should have run")
+                # Post-migration: column present.
+                self.assertTrue(vec_index._has_column(conn, "entry_meta", "indexed_at"))
+            finally:
+                conn.close()
+
+    def test_migrate_pre_v37_preserves_existing_rows(self) -> None:
+        """ALTER TABLE preserves rows; existing entries get indexed_at=0 (default)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "test.db"
+            conn = _make_pre_v37_entry_meta(db)
+            try:
+                with mock.patch("sys.stderr"):
+                    vec_index._migrate_pre_v37(conn)
+                conn.commit()
+                cursor = conn.execute(
+                    "SELECT path, updated_at, indexed_at FROM entry_meta WHERE rowid = 1"
+                )
+                row = cursor.fetchone()
+                self.assertEqual(row[0], "preferences/old-entry.md")
+                self.assertEqual(row[1], "2026-04-01T12:00:00Z")
+                self.assertEqual(row[2], 0, "default value should be 0 (pre-#37 rows appear drifted)")
+            finally:
+                conn.close()
+
+    def test_migrate_pre_v37_idempotent(self) -> None:
+        """Re-running migration on already-migrated table is a no-op."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "test.db"
+            conn = _make_post_v37_entry_meta(db)
+            try:
+                with mock.patch("sys.stderr"):
+                    migrated = vec_index._migrate_pre_v37(conn)
+                conn.commit()
+                self.assertFalse(migrated, "should be no-op on already-migrated schema")
+                # Row data unchanged.
+                cursor = conn.execute("SELECT indexed_at FROM entry_meta WHERE rowid = 1")
+                self.assertEqual(cursor.fetchone()[0], 1748376000)
+            finally:
+                conn.close()
+
+    def test_migrate_pre_v37_emits_one_line_stderr_notice(self) -> None:
+        """First migration emits a clear one-line stderr notice; re-runs do not."""
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "test.db"
+            conn = _make_pre_v37_entry_meta(db)
+            try:
+                with io.StringIO() as buf:
+                    with mock.patch("sys.stderr", buf):
+                        vec_index._migrate_pre_v37(conn)
+                    stderr = buf.getvalue()
+                self.assertIn("migrated pre-v4.2 entry_meta schema to v37", stderr)
+                self.assertIn("drift-detection enabled", stderr)
+                # Re-run: no additional notice (already migrated).
+                with io.StringIO() as buf:
+                    with mock.patch("sys.stderr", buf):
+                        vec_index._migrate_pre_v37(conn)
+                    self.assertEqual(buf.getvalue(), "")
+            finally:
+                conn.close()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -48,6 +48,7 @@ import os
 import re
 import sqlite3
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -183,11 +184,50 @@ def _open_index(vault: Path) -> sqlite3.Connection | None:
         "CREATE TABLE IF NOT EXISTS entry_meta ("
         "  rowid INTEGER PRIMARY KEY,"
         "  path TEXT UNIQUE NOT NULL,"
-        "  updated_at TEXT NOT NULL"
+        "  updated_at TEXT NOT NULL,"
+        "  indexed_at INTEGER NOT NULL DEFAULT 0"
         ")"
     )
+    _migrate_pre_v37(conn)
     conn.commit()
     return conn
+
+
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """Return True if `column` exists in `table` per PRAGMA table_info."""
+    cursor = conn.execute(f"PRAGMA table_info({table})")
+    for row in cursor.fetchall():
+        # PRAGMA table_info returns rows of (cid, name, type, notnull, default, pk)
+        if row[1] == column:
+            return True
+    return False
+
+
+def _migrate_pre_v37(conn: sqlite3.Connection) -> bool:
+    """V4 #37 schema migration: add `indexed_at INTEGER NOT NULL DEFAULT 0` to
+    entry_meta if absent.
+
+    Pre-#37 indexes have entry_meta without the column. ALTER TABLE is gentler
+    than rebuild — preserves embeddings until they're refreshed via the
+    natural drift → enqueue → drain flow. Existing rows get indexed_at=0,
+    which makes them appear "drifted" against any source file (mtime > 0)
+    until re-embed completes.
+
+    Idempotent: detects via PRAGMA table_info; no-op if column already present.
+
+    Returns True if migration ran; False if no-op (already migrated).
+
+    Caller is responsible for `conn.commit()` after this returns.
+    """
+    if _has_column(conn, "entry_meta", "indexed_at"):
+        return False
+    conn.execute("ALTER TABLE entry_meta ADD COLUMN indexed_at INTEGER NOT NULL DEFAULT 0")
+    print(
+        "[vec_index] migrated pre-v4.2 entry_meta schema to v37 (drift-detection enabled). "
+        "Existing rows have indexed_at=0; they'll re-embed on next drain via natural drift signal.",
+        file=sys.stderr,
+    )
+    return True
 
 
 def upsert_entry(vault_path: Path | str, entry_relative: str, embedding: list[float]) -> bool:
@@ -210,7 +250,8 @@ def upsert_entry(vault_path: Path | str, entry_relative: str, embedding: list[fl
         )
         row = cursor.fetchone()
         emb_blob = json.dumps(embedding)
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_epoch = int(time.time())  # V4 #37: cheap integer for drift-comparison
         if row:
             rowid = row[0]
             conn.execute(
@@ -218,8 +259,8 @@ def upsert_entry(vault_path: Path | str, entry_relative: str, embedding: list[fl
                 (emb_blob, rowid),
             )
             conn.execute(
-                "UPDATE entry_meta SET updated_at = ? WHERE rowid = ?",
-                (now, rowid),
+                "UPDATE entry_meta SET updated_at = ?, indexed_at = ? WHERE rowid = ?",
+                (now_iso, now_epoch, rowid),
             )
         else:
             cursor = conn.execute(
@@ -227,8 +268,8 @@ def upsert_entry(vault_path: Path | str, entry_relative: str, embedding: list[fl
             )
             rowid = cursor.lastrowid
             conn.execute(
-                "INSERT INTO entry_meta(rowid, path, updated_at) VALUES (?, ?, ?)",
-                (rowid, entry_relative, now),
+                "INSERT INTO entry_meta(rowid, path, updated_at, indexed_at) VALUES (?, ?, ?, ?)",
+                (rowid, entry_relative, now_iso, now_epoch),
             )
         conn.commit()
         return True
@@ -346,7 +387,8 @@ def rebuild_index(vault_path: Path | str) -> dict:
         "CREATE TABLE entry_meta ("
         "  rowid INTEGER PRIMARY KEY,"
         "  path TEXT UNIQUE NOT NULL,"
-        "  updated_at TEXT NOT NULL"
+        "  updated_at TEXT NOT NULL,"
+        "  indexed_at INTEGER NOT NULL DEFAULT 0"
         ")"
     )
     conn.commit()
