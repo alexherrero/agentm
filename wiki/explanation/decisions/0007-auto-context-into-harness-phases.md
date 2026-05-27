@@ -108,7 +108,7 @@ Both triggers invoke the same `harness_memory.py plan-done-promotion` sub-comman
 
 4. **Cursor-file model survives append-only progress.md convention.** Re-audit if progress.md format evolves to allow mid-file edits (e.g. inline corrections, retroactive annotations) OR if multi-process write contention becomes a concern.
 
-## Amendment — 2026-05-27 — V4 #36 reorganization
+## Amendment 2026-05-27 — V4 #36 reorganization
 
 The "Toolkit dependency is soft — graceful-skip when `crickets/skills/memory/` isn't sibling-cloned" framing reflects the v3.x reality where the memory skill lived in Crickets. **As of agentm v4.0.0 (V4 #36 reorg) the memory skill moved to Agent M itself at `harness/skills/memory/`** per [ADR 0012 (device-wide-by-default)](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0012-device-wide-by-default.md).
 
