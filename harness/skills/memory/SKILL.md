@@ -48,7 +48,7 @@ Synchronously writes a markdown entry to MemoryVault. File write returns immedia
 |---|---|---|---|
 | `<kind>` | yes | — | Entry kind (preference / workflow / fix / domain-reference / idea / etc.). Subdir name under the chosen group. |
 | `<slug>` | yes | — | Kebab-case identifier; filename stem. Validated as `^[a-z0-9-]+$`. |
-| `--group <group>` | no | `personal-private` | Memory group: `personal-private` / `personal-skills` / `personal-projects/<project-slug>`. |
+| `--group <group>` | no | `personal-private` | Memory group: `personal-private` / `personal-skills` / `projects/<project-slug>`. |
 | `--always-load` | no | false | Routes to `MemoryVault/personal-private/_always-load/<slug>.md` and sets `always_load: true` frontmatter — entry gets injected at SessionStart per the recall-loop part. Overrides `--group` (always lands in `_always-load`). |
 | `--vault-path <path>` | no | from config | Absolute path to the MemoryVault folder. Resolution order: `--vault-path` arg > `MEMORY_VAULT_PATH` env var > `~/.config/crickets/memory.yml` `vault_path:` key > error. |
 | `--tags <tag1,tag2>` | no | empty list | Comma-separated tags; written to `tags:` frontmatter list. |
@@ -60,7 +60,7 @@ The entry body (free-form markdown after the YAML frontmatter) comes from stdin 
 
 **Step 1 — Resolve vault path.** Walk the resolution order: `--vault-path` arg → `MEMORY_VAULT_PATH` env var → `~/.config/crickets/memory.yml` (`vault_path:` key). If none found, halt with `"No vault path resolved. Set --vault-path, MEMORY_VAULT_PATH, or ~/.config/crickets/memory.yml vault_path: <path>."`. Verify the resolved path exists and is a directory; halt otherwise with a clear error.
 
-**Step 2 — Validate inputs.** `<kind>` and `<slug>` must match `^[a-z0-9-]+$` (kebab-case). `--group` (if provided) must match `^[a-z0-9-]+(/[a-z0-9-]+)?$` (kebab-case; one optional `/<project-slug>` segment for `personal-projects/<slug>`). Tags (if provided) each must match `^[a-z0-9-]+$`. Halt on any validation failure with a clear error pointing at the offending arg.
+**Step 2 — Validate inputs.** `<kind>` and `<slug>` must match `^[a-z0-9-]+$` (kebab-case). `--group` (if provided) must match `^[a-z0-9-]+(/[a-z0-9-]+)?$` (kebab-case; one optional `/<project-slug>` segment for `projects/<slug>`). Tags (if provided) each must match `^[a-z0-9-]+$`. Halt on any validation failure with a clear error pointing at the offending arg.
 
 **Step 3 — Compute target path.** Two cases:
 
@@ -587,7 +587,7 @@ Output: one JSON record per line (`{"pass": "memory", "category": ..., "confiden
 
 ### `/memory promote`
 
-Graduates an `_idea-incubator/<slug>/` entry to a real project at `personal-projects/<slug>/` + annotates the corresponding `Ideas.md` section + recalculates vec-index entries. Plan #7a part 4 ships this body + the canonical Python implementation at `skills/memory/scripts/ideas_promote.py`.
+Graduates an `_idea-incubator/<slug>/` entry to a real project at `projects/<slug>/` + annotates the corresponding `Ideas.md` section + recalculates vec-index entries. Plan #7a part 4 ships this body + the canonical Python implementation at `skills/memory/scripts/ideas_promote.py`.
 
 #### Invocation shape
 
@@ -605,18 +605,18 @@ Graduates an `_idea-incubator/<slug>/` entry to a real project at `personal-proj
 
 **Step 1 — Resolve vault path** via the chain `--vault-path` arg → `MEMORY_VAULT_PATH` env. Halt with clear next-step on failure.
 
-**Step 2 — Verify incubator entry exists** at `<vault>/personal-private/_idea-incubator/<slug>/`. If missing, halt with `"incubator entry not found: <path> (check slug; list with ls _idea-incubator/)"`. If a `personal-projects/<slug>/` already exists, halt to avoid clobber — operator picks a new slug or removes the existing.
+**Step 2 — Verify incubator entry exists** at `<vault>/personal-private/_idea-incubator/<slug>/`. If missing, halt with `"incubator entry not found: <path> (check slug; list with ls _idea-incubator/)"`. If a `projects/<slug>/` already exists, halt to avoid clobber — operator picks a new slug or removes the existing.
 
-**Step 3 — Move the directory.** `shutil.move(_idea-incubator/<slug>, personal-projects/<slug>)`. Cross-filesystem-safe (uses copy + delete fallback). Atomic at the OS level for same-FS moves.
+**Step 3 — Move the directory.** `shutil.move(_idea-incubator/<slug>, projects/<slug>)`. Cross-filesystem-safe (uses copy + delete fallback). Atomic at the OS level for same-FS moves.
 
-**Step 4 — Recalculate vec-index entries.** For each `.md` file under the new `personal-projects/<slug>/` location: enqueue `op: delete` for the old path (`personal-private/_idea-incubator/<slug>/...`) + `op: upsert` for the new path with re-embedded text. Operator runs `python3 vec_index.py drain --vault-path <vault>` (or future idle-hook drain) to actually process. Graceful-skip if `vec_index` module missing.
+**Step 4 — Recalculate vec-index entries.** For each `.md` file under the new `projects/<slug>/` location: enqueue `op: delete` for the old path (`personal-private/_idea-incubator/<slug>/...`) + `op: upsert` for the new path with re-embedded text. Operator runs `python3 vec_index.py drain --vault-path <vault>` (or future idle-hook drain) to actually process. Graceful-skip if `vec_index` module missing.
 
-**Step 5 — Annotate Ideas.md section.** Find the section whose wikilink references `_idea-incubator/<slug>/_index.md`; append `→ promoted YYYY-MM-DD to personal-private/personal-projects/<slug>/` annotation right after the wikilink line. **Permeable-boundary check fires here** (Ideas.md is outside MemoryVault — the A3 helper `confirm_write_outside_memoryvault()` confirms via `--mode` resolution). If denied, the move + vec-index recalc already happened — the operator can manually annotate; the return value indicates "ideas_annotation: denied".
+**Step 5 — Annotate Ideas.md section.** Find the section whose wikilink references `_idea-incubator/<slug>/_index.md`; append `→ promoted YYYY-MM-DD to personal-private/projects/<slug>/` annotation right after the wikilink line. **Permeable-boundary check fires here** (Ideas.md is outside MemoryVault — the A3 helper `confirm_write_outside_memoryvault()` confirms via `--mode` resolution). If denied, the move + vec-index recalc already happened — the operator can manually annotate; the return value indicates "ideas_annotation: denied".
 
 **Step 6 — Return confirmation.** Display:
 
 ```
-Promoted <slug> to personal-private/personal-projects/<slug>/
+Promoted <slug> to personal-private/projects/<slug>/
   incubator_dir → moved
   vec_index: <stats>
   ideas_annotation: written | denied | section_not_found
@@ -650,7 +650,7 @@ Action: [k]eep (defer) / [a]rchive / [d]elete (default: k):
 #### Failure modes (graceful)
 
 - **Slug not found** → halt step 2 with the actual path that was checked.
-- **Target collision** (`personal-projects/<slug>/` exists) → halt with operator next-step.
+- **Target collision** (`projects/<slug>/` exists) → halt with operator next-step.
 - **Cross-filesystem move** → falls back to copy+delete via shutil.move; slow but correct.
 - **vec-index unavailable** → recalc step is no-op + returns `{"skipped": -1}` stat; operator runs reindex later.
 - **Ideas.md missing** → ideas_annotation = "no_ideas_file"; promotion otherwise succeeds.
@@ -658,7 +658,7 @@ Action: [k]eep (defer) / [a]rchive / [d]elete (default: k):
 
 #### Anti-patterns
 
-- **Don't pick the same slug as an existing personal-projects/<slug>/.** Pre-check would help here but the operator typed the slug; we halt rather than guess.
+- **Don't pick the same slug as an existing projects/<slug>/.** Pre-check would help here but the operator typed the slug; we halt rather than guess.
 - **Don't run GC in batch / non-interactive contexts without `--mode silent`.** Default GC behavior defaults every prompt to Keep when stdin isn't a TTY, which is correct (never silent deletion), but means non-TTY runs do nothing. For batch GC with explicit pre-approval, the operator runs the gc subcommand interactively.
 
 ### `/memory index-skills`
@@ -895,7 +895,7 @@ Output: one JSON per candidate at `<vault>/_meta/skill-discovery-cache/adapt-sta
 Caller dispatches `adapt-evaluator` (see [`agents/adapt-evaluator.md`](../../agents/adapt-evaluator.md)). The sub-agent:
 
 1. **Reads** each enriched candidate JSON.
-2. **Cross-references** the operator's vault (`personal-skills/` / `personal-private/_always-load/` / `personal-projects/<repo>/conventions.md`) for fit.
+2. **Cross-references** the operator's vault (`personal-skills/` / `personal-private/_always-load/` / `projects/<repo>/conventions.md`) for fit.
 3. **Classifies** with semantic judgment (HIGH / MEDIUM / LOW) — overrides Pass 1's rubric verdict when context warrants.
 4. **Writes** the watchlist entry to `<vault>/personal-private/_skill-watchlist/<source-slug>/<pattern-slug>.md` (HIGH + MEDIUM only; LOW dropped silently).
 

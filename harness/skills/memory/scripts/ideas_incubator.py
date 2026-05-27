@@ -165,7 +165,7 @@ def _build_index_md(
         f"## Promotion + GC\n"
         f"\n"
         f"- **Promote** to a real project: `/memory promote idea {slug}` "
-        f"moves this dir to `personal-projects/{slug}/` + appends "
+        f"moves this dir to `projects/{slug}/` + appends "
         f"`→ promoted YYYY-MM-DD` annotation to the corresponding "
         f"`Ideas.md` section.\n"
         f"- **GC**: this entry is eligible for GC review at 6 months "

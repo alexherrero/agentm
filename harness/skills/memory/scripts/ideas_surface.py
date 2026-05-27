@@ -189,7 +189,7 @@ def append_idea_to_surface(
             "\n"
             "Append-only — sections accumulate over time, sorted by surfaced "
             "date. Promotion graduates an idea to "
-            "`MemoryVault/personal-projects/<slug>/` via "
+            "`MemoryVault/projects/<slug>/` via "
             "`/memory promote idea <slug>` (annotation appended to the "
             "section). GC at 6 months without engagement (confirmed; never "
             "silent deletion).\n"

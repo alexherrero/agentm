@@ -5,14 +5,14 @@
 #
 #   1. promote_idea(slug):
 #      - Moves <vault>/personal-private/_idea-incubator/<slug>/
-#             → <vault>/personal-private/personal-projects/<slug>/
+#             → <vault>/personal-private/projects/<slug>/
 #        (project-personal dir mirrors save.py's group/kind hierarchy;
-#        the spec called for personal-projects/<slug>/ — slug becomes a
+#        the spec called for projects/<slug>/ — slug becomes a
 #        project dir at the canonical location).
 #      - Recalculates vec-index entries for the moved files (paths
 #        changed, so old keys are stale + new keys need upsert).
 #      - Annotates the corresponding ~/Obsidian/Ideas.md section with
-#        `→ promoted YYYY-MM-DD to personal-projects/<slug>/` (requires
+#        `→ promoted YYYY-MM-DD to projects/<slug>/` (requires
 #        A3 permeable-boundary confirmation; reuses the same helper).
 #
 #   2. gc_idea_incubator():
@@ -236,7 +236,7 @@ def promote_idea(
     stdin=None,
     stdout=None,
 ) -> dict:
-    """Promote an idea from _idea-incubator to personal-projects.
+    """Promote an idea from _idea-incubator to projects.
 
     Returns stats dict:
         {
@@ -249,7 +249,7 @@ def promote_idea(
 
     Raises:
         FileNotFoundError: vault path missing, incubator entry missing.
-        FileExistsError: a personal-projects/<slug>/ dir already exists
+        FileExistsError: a projects/<slug>/ dir already exists
             (would clobber; operator picks new slug or removes existing).
     """
     vault = _resolve_vault_path(str(vault_path) if vault_path else None)
@@ -264,10 +264,10 @@ def promote_idea(
             f"`ls {vault}/personal-private/_idea-incubator/`)"
         )
 
-    project_dir = vault / "personal-private" / "personal-projects" / slug
+    project_dir = vault / "personal-private" / "projects" / slug
     if project_dir.exists():
         raise FileExistsError(
-            f"personal-projects/{slug}/ already exists at {project_dir}; "
+            f"projects/{slug}/ already exists at {project_dir}; "
             f"pick a different slug or remove the existing dir first"
         )
 
@@ -277,7 +277,7 @@ def promote_idea(
 
     # Recalculate vec-index entries.
     old_prefix = f"personal-private/_idea-incubator/{slug}/"
-    new_prefix = f"personal-private/personal-projects/{slug}/"
+    new_prefix = f"personal-private/projects/{slug}/"
     vec_stats = _vec_index_reflect_move(vault, old_prefix, new_prefix)
 
     # Annotate Ideas.md section.
@@ -418,14 +418,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         prog="memory-ideas-promote",
         description=(
             "/memory promote idea <slug> + incubator GC. Promotes "
-            "_idea-incubator/<slug>/ → personal-projects/<slug>/ with "
+            "_idea-incubator/<slug>/ → projects/<slug>/ with "
             "Ideas.md annotation (A3 boundary check) + vec-index recalc. "
             "GC subcommand prompts for Keep/Archive/Delete on entries "
             "older than 6 months. Plan #7a part 4 task 4."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
-    p_promote = sub.add_parser("promote", help="promote idea slug to personal-projects/")
+    p_promote = sub.add_parser("promote", help="promote idea slug to projects/")
     p_promote.add_argument("slug", help="incubator slug to promote")
     p_promote.add_argument("--vault-path", default=None, help="MemoryVault root")
     p_promote.add_argument("--ideas-path", default=None,

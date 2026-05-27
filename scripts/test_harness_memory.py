@@ -484,5 +484,158 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.stdout, "")
 
 
+# -----------------------------------------------------------------------------
+# resolve_project / vault_state_path / _vault_projects_dir  (V4 #26)
+# -----------------------------------------------------------------------------
+
+def _make_vault_new_layout(root: Path, *, project: str = "fixture-project") -> Path:
+    """Build a vault using the post-V4 #26 `projects/` layout (no legacy dir)."""
+    vault = root / "vault"
+    (vault / "personal-private" / "_always-load").mkdir(parents=True)
+    (vault / "projects" / project / "decisions").mkdir(parents=True)
+    (vault / "projects" / project / "_index.md").write_text(
+        f"# {project} index\nv4.1.0+ layout\n",
+        encoding="utf-8",
+    )
+    return vault
+
+
+class TestVaultProjectsDir(unittest.TestCase):
+    """Covers the dual-path helper that prefers `projects/` over `personal-projects/`."""
+
+    def test_prefers_new_projects_dir_when_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            (vault / "projects").mkdir(parents=True)
+            result = hm._vault_projects_dir(vault)
+            self.assertEqual(result, vault / "projects")
+
+    def test_falls_back_to_legacy_personal_projects(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            (vault / "personal-projects").mkdir(parents=True)
+            result = hm._vault_projects_dir(vault)
+            self.assertEqual(result, vault / "personal-projects")
+
+    def test_prefers_new_when_both_present(self) -> None:
+        """Locked semantics: if both dirs exist, new layout wins (legacy is stale)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            (vault / "projects").mkdir(parents=True)
+            (vault / "personal-projects").mkdir(parents=True)
+            result = hm._vault_projects_dir(vault)
+            self.assertEqual(result, vault / "projects")
+
+    def test_returns_new_path_when_neither_present(self) -> None:
+        """Empty vault: return the new path (so write callers target post-V4 layout)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            result = hm._vault_projects_dir(vault)
+            self.assertEqual(result, vault / "projects")
+
+
+class TestResolveProject(unittest.TestCase):
+    """Covers resolve_project() → {slug, vault_path, project_root, layout}."""
+
+    def test_no_slug_returns_none_fields(self) -> None:
+        """No git origin + no project.json = no slug → layout='none'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            resolution = hm.resolve_project({"cwd": Path(tmp)})
+        self.assertIsNone(resolution["slug"])
+        self.assertIsNone(resolution["vault_path"])
+        self.assertEqual(resolution["layout"], "none")
+
+    def test_slug_present_but_vault_unset(self) -> None:
+        """Slug from .harness/project.json, but MEMORY_VAULT_PATH unset → vault_path=None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp)
+            (project_root / ".harness").mkdir()
+            (project_root / ".harness" / "project.json").write_text(
+                '{"vault_project": "my-project"}', encoding="utf-8"
+            )
+            with _ClearEnv(unset_keys=["MEMORY_VAULT_PATH"]):
+                resolution = hm.resolve_project({"cwd": project_root})
+        self.assertEqual(resolution["slug"], "my-project")
+        self.assertIsNone(resolution["vault_path"])
+        self.assertEqual(resolution["layout"], "none")
+
+    def test_resolves_new_layout(self) -> None:
+        """Vault has projects/<slug>/ → layout='new'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "project"
+            project_root.mkdir()
+            (project_root / ".harness").mkdir()
+            (project_root / ".harness" / "project.json").write_text(
+                '{"vault_project": "fixture"}', encoding="utf-8"
+            )
+            vault = _make_vault_new_layout(Path(tmp), project="fixture")
+            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
+                resolution = hm.resolve_project({"cwd": project_root})
+        self.assertEqual(resolution["slug"], "fixture")
+        self.assertEqual(resolution["vault_path"], vault / "projects" / "fixture")
+        self.assertEqual(resolution["layout"], "new")
+
+    def test_resolves_legacy_layout(self) -> None:
+        """Vault has personal-projects/<slug>/ (no projects/) → layout='legacy'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "project"
+            project_root.mkdir()
+            (project_root / ".harness").mkdir()
+            (project_root / ".harness" / "project.json").write_text(
+                '{"vault_project": "fixture"}', encoding="utf-8"
+            )
+            vault = _make_vault(Path(tmp), project="fixture")  # legacy layout
+            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
+                resolution = hm.resolve_project({"cwd": project_root})
+        self.assertEqual(resolution["slug"], "fixture")
+        self.assertEqual(
+            resolution["vault_path"], vault / "personal-projects" / "fixture"
+        )
+        self.assertEqual(resolution["layout"], "legacy")
+
+    def test_returns_new_path_when_neither_layout_has_project(self) -> None:
+        """Slug + vault present but no project dir → layout='new', path=projects/<slug>."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "project"
+            project_root.mkdir()
+            (project_root / ".harness").mkdir()
+            (project_root / ".harness" / "project.json").write_text(
+                '{"vault_project": "new-project"}', encoding="utf-8"
+            )
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
+                resolution = hm.resolve_project({"cwd": project_root})
+        self.assertEqual(resolution["slug"], "new-project")
+        self.assertEqual(resolution["vault_path"], vault / "projects" / "new-project")
+        self.assertEqual(resolution["layout"], "new")
+
+
+class TestVaultStatePath(unittest.TestCase):
+    """Covers vault_state_path(resolution, filename) — path construction only."""
+
+    def test_returns_none_when_no_vault_path(self) -> None:
+        result = hm.vault_state_path({"vault_path": None}, "PLAN.md")
+        self.assertIsNone(result)
+
+    def test_returns_none_when_missing_field(self) -> None:
+        result = hm.vault_state_path({}, "PLAN.md")
+        self.assertIsNone(result)
+
+    def test_returns_harness_subpath(self) -> None:
+        resolution = {"vault_path": Path("/tmp/vault/projects/agentm")}
+        result = hm.vault_state_path(resolution, "PLAN.md")
+        self.assertEqual(result, Path("/tmp/vault/projects/agentm/_harness/PLAN.md"))
+
+    def test_handles_nested_filenames(self) -> None:
+        resolution = {"vault_path": Path("/tmp/vault/projects/agentm")}
+        result = hm.vault_state_path(resolution, "designs/v4-26/01-pre-flight.md")
+        self.assertEqual(
+            result,
+            Path("/tmp/vault/projects/agentm/_harness/designs/v4-26/01-pre-flight.md"),
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

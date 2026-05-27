@@ -2,7 +2,10 @@
 """vault_project — read/write the MemoryVault project slug for this harness install.
 
 Used by the harness's auto-context dispatcher (`scripts/harness_memory.py`) to
-know which `personal-projects/<slug>/` directory to recall from + save into.
+know which `projects/<slug>/` directory to recall from + save into. (Legacy
+v4.0.x and earlier wrote to `personal-projects/<slug>/`; V4 #26 / v4.1.0+
+renames the vault folder. The dispatcher transparently handles both paths
+during the transition window.)
 
 Fallback chain for `read_vault_project()`:
 

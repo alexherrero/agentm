@@ -129,6 +129,132 @@ def is_available() -> bool:
     return vault_path() is not None
 
 
+# -----------------------------------------------------------------------------
+# Project resolution (V4 #26 — vault-backed state)
+# -----------------------------------------------------------------------------
+
+# Canonical project-tree subdir under <vault>. V4 #26 renames
+# `personal-projects/` → `projects/`. During the transition window (operators
+# who haven't yet run rename-vault-personal-projects.sh), the legacy name
+# remains as a fallback — see `_vault_projects_dir()` below.
+_VAULT_PROJECTS_REL_NEW = "projects"
+_VAULT_PROJECTS_REL_LEGACY = "personal-projects"
+
+
+def _vault_projects_dir(vault: Path) -> Path:
+    """Return <vault>/projects/ if present, else <vault>/personal-projects/.
+
+    Prefers the new (post-V4 #26) name. Falls back to the legacy name if
+    the operator hasn't run the vault rename yet. Returns the new path even
+    if neither exists — callers that need to write should target the new
+    layout.
+
+    No warning emitted here — that's task 3's `warn_once()` job, which wraps
+    this helper from the dispatcher path.
+    """
+    new = vault / _VAULT_PROJECTS_REL_NEW
+    if new.is_dir():
+        return new
+    legacy = vault / _VAULT_PROJECTS_REL_LEGACY
+    if legacy.is_dir():
+        return legacy
+    # Neither exists — return new (preferred) for caller to mkdir as needed.
+    return new
+
+
+def resolve_project(context: Optional[dict] = None) -> dict:
+    """Return a resolution dict: {slug, vault_path, project_root, layout}.
+
+    Resolution chain (per plan #18 task 4 — `04-project-resolution.md`):
+      1. Read the project slug via `vault_project.read_vault_project(cwd)`.
+      2. Resolve `<vault>/projects/<slug>/` (new) or `<vault>/personal-projects/<slug>/`
+         (legacy fallback). Prefer new layout.
+      3. Build the resolution dict.
+
+    Returns dict fields:
+      - `slug`: project slug string, or None if unresolvable.
+      - `vault_path`: Path to `<vault>/projects/<slug>/` (or legacy fallback),
+                      or None if vault unavailable / slug unresolvable.
+      - `project_root`: Path to the cwd / context-provided project root.
+      - `layout`: "new" | "legacy" | "none" — which vault layout the resolution
+                  used. Useful for the dispatcher's warn-once decision in task 3.
+
+    For state lookups, use the companion `vault_state_path(resolution, filename)`
+    which appends `_harness/<filename>` to `vault_path`.
+
+    Pure function; no side effects. Safe to call from any phase / hook.
+    """
+    if context is None:
+        context = {}
+    project_root = Path(context.get("cwd", Path.cwd()))
+
+    # Defer vault_project import to here to avoid circular imports if any.
+    sys.path.insert(0, str(_HERE)) if str(_HERE) not in sys.path else None
+    import vault_project  # noqa: E402
+
+    slug = vault_project.read_vault_project(project_root)
+    if slug is None:
+        return {
+            "slug": None,
+            "vault_path": None,
+            "project_root": project_root,
+            "layout": "none",
+        }
+
+    v = vault_path()
+    if v is None:
+        return {
+            "slug": slug,
+            "vault_path": None,
+            "project_root": project_root,
+            "layout": "none",
+        }
+
+    new = v / _VAULT_PROJECTS_REL_NEW / slug
+    if new.is_dir():
+        return {
+            "slug": slug,
+            "vault_path": new,
+            "project_root": project_root,
+            "layout": "new",
+        }
+
+    legacy = v / _VAULT_PROJECTS_REL_LEGACY / slug
+    if legacy.is_dir():
+        return {
+            "slug": slug,
+            "vault_path": legacy,
+            "project_root": project_root,
+            "layout": "legacy",
+        }
+
+    # Project not yet present in vault — return new path so writes target
+    # the post-rename layout. Callers that need to mkdir do so explicitly.
+    return {
+        "slug": slug,
+        "vault_path": new,
+        "project_root": project_root,
+        "layout": "new",
+    }
+
+
+def vault_state_path(resolution: dict, filename: str) -> Optional[Path]:
+    """Return <vault_path>/_harness/<filename> for a project state file.
+
+    Returns None if resolution lacks vault_path (no slug, no vault, etc.).
+
+    Pure path-construction; doesn't check existence. Callers that need to
+    read should use the task-3 `read_state_file()` dispatcher (checks vault
+    first, falls back to legacy <project_root>/.harness/<file>). Writes go
+    only to this path.
+
+    Per plan #18 task 5 — `05-state-migration.md` § "Per-file target mapping".
+    """
+    if not resolution.get("vault_path"):
+        return None
+    return resolution["vault_path"] / "_harness" / filename
+
+
 def toolkit_scripts_dir() -> Optional[Path]:
     """Locate the memory skill scripts dir, or None if not installed.
 
@@ -236,8 +362,13 @@ def _load_project_entries(
     phase: str,
     permanent_only: bool,
 ) -> list[str]:
-    """Return per-project entries scoped to the phase."""
-    base = vault / "personal-projects" / project
+    """Return per-project entries scoped to the phase.
+
+    Prefers the new V4 #26 `<vault>/projects/<slug>/` layout; falls back to
+    the legacy `<vault>/personal-projects/<slug>/` if the operator hasn't
+    run the vault rename yet.
+    """
+    base = _vault_projects_dir(vault) / project
     if not base.is_dir():
         return []
 
@@ -377,7 +508,10 @@ def _invoke_toolkit_save(
     save_py = tk / "save.py"
     if not save_py.is_file():
         return 127
-    group = f"personal-projects/{project}"
+    # Resolve which projects-dir segment to use (post-V4 #26 "projects" preferred;
+    # falls back to legacy "personal-projects" if rename not yet run).
+    projects_segment = _vault_projects_dir(vault).name
+    group = f"{projects_segment}/{project}"
     cmd = [
         sys.executable,
         str(save_py),
@@ -437,8 +571,9 @@ def offer_save(
     if should_prompt(confidence, mode=mode):
         # Preview + prompt
         thr = confidence_threshold()
+        projects_segment = _vault_projects_dir(v).name
         preview_lines = [
-            f"--- offer-save preview ({phase} → personal-projects/{project}) ---",
+            f"--- offer-save preview ({phase} → {projects_segment}/{project}) ---",
             f"kind: {kind}",
             f"slug: {slug}",
         ]
