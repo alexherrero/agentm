@@ -17,6 +17,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -2219,12 +2220,13 @@ class TestSymlinkCustomizations(unittest.TestCase):
                 {"crickets": str(crickets)}, prefix,
             )
             self.assertIn("agents/evaluator.md", result["repointed"])
-            # Verify the symlink now points at the crickets source
+            # Verify the symlink now points at the crickets source. Use
+            # os.path.samefile to handle Windows UNC-prefix normalization
+            # (//?/C:/... vs C:/... refer to the same file but Path.resolve()
+            # returns different forms).
             link = prefix / "agents" / "evaluator.md"
-            self.assertEqual(
-                Path(os.readlink(link)).resolve(),
-                (crickets / "agents" / "evaluator.md").resolve(),
-            )
+            expected = crickets / "agents" / "evaluator.md"
+            self.assertTrue(os.path.samefile(link, expected))
 
     def test_repoints_broken_symlink(self) -> None:
         """Broken symlink (target gone) is treated as needing repoint."""
@@ -2491,6 +2493,8 @@ class TestInstallStateInstallerSourceField(unittest.TestCase):
             self.assertNotIn("installed_shas", data)
 
 
+@unittest.skipIf(platform.system() == "Windows",
+                 "bash-only launcher; Windows uses the .ps1 twin (separate tests)")
 class TestAgentmUpdateLauncher(unittest.TestCase):
     """V4 #30 task 5: agentm-update bash launcher behavior."""
 
@@ -2698,6 +2702,8 @@ class TestInstallStateSyncCLI(unittest.TestCase):
             self.assertIn("checked", data)
 
 
+@unittest.skipIf(platform.system() == "Windows",
+                 "bash-only hook; Windows uses the .ps1 twin (separate tests)")
 class TestInstallStateSyncBashHook(unittest.TestCase):
     """V4 #30 task 6: bash hook script behavior."""
 
