@@ -133,6 +133,8 @@ def persist_install_state(
     harness_version: str,
     *,
     installed_at: Optional[str] = None,
+    installer_source: Optional[str] = None,
+    installed_shas: Optional[dict[str, str]] = None,
 ) -> Path:
     """Write `<install-prefix>/.agentm-install-state.json` atomically.
 
@@ -140,8 +142,16 @@ def persist_install_state(
 
     Returns the written path.
 
-    `installed_at` defaults to the current UTC ISO8601 timestamp.
-    `mode` must be 'source' or 'release'.
+    Fields:
+      - `mode` must be 'source' or 'release'.
+      - `installed_at` defaults to current UTC ISO8601 timestamp.
+      - `installer_source` (optional): absolute path to the install.sh that
+        bootstrapped this install. Used by `agentm-update` launcher to
+        invoke `--update` against the correct installer. If unset, the
+        launcher surfaces an actionable error.
+      - `installed_shas` (optional): {rel_path: sha256, ...} map of
+        customizations as last installed. Used by `install_copy.py` for
+        divergence detection on subsequent updates.
     """
     if mode not in ("source", "release"):
         raise ValueError(f"mode must be 'source' or 'release', got: {mode!r}")
@@ -149,13 +159,17 @@ def persist_install_state(
     prefix.mkdir(parents=True, exist_ok=True)
     if installed_at is None:
         installed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    data = {
+    data: dict = {
         "version": _SCHEMA_VERSION,
         "mode": mode,
         "source_clones": source_clones,
         "installed_at": installed_at,
         "harness_version": harness_version,
     }
+    if installer_source is not None:
+        data["installer_source"] = installer_source
+    if installed_shas is not None:
+        data["installed_shas"] = installed_shas
     path = state_path(prefix)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
@@ -206,6 +220,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_persist.add_argument("--harness-version", required=True, help="harness version string (e.g. v4.3.0)")
     p_persist.add_argument("--agentm-path", default=None, help="override canonical agentm clone path")
     p_persist.add_argument("--crickets-path", default=None, help="override canonical crickets clone path")
+    p_persist.add_argument("--installer-source", default=None, help="absolute path to install.sh used to bootstrap (recorded for agentm-update launcher)")
 
     p_read = sub.add_parser(
         "read", help="emit current install state JSON, or empty if absent",
@@ -235,7 +250,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         try:
             mode, clones = detect_install_mode(args.agentm_path, args.crickets_path)
             prefix = Path(os.path.expanduser(args.install_prefix))
-            path = persist_install_state(prefix, mode, clones, args.harness_version)
+            path = persist_install_state(
+                prefix, mode, clones, args.harness_version,
+                installer_source=args.installer_source,
+            )
         except (ValueError, OSError) as exc:
             print(f"[install_state] {exc}", file=sys.stderr)
             return 2

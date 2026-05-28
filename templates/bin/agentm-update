@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# agentm-update — global PATH launcher for refreshing the user-scope agentm install.
+#
+# Per V4 #30 plan #22 task 5: this thin wrapper lets release-install operators
+# refresh their `~/.claude/` customizations with one command, without needing
+# to remember the path to install.sh.
+#
+# Source-mode operators (with `~/Antigravity/agentm/` clone) get live updates
+# via symlinks; this launcher invokes `--update` against the recorded installer
+# source for completeness (e.g. when a new skill is added to the clone but the
+# installer's manifest also changed).
+#
+# Reads <install-prefix>/.agentm-install-state.json to find the installer
+# source path recorded at install time, then invokes:
+#     bash <installer_source> --update --scope user
+#
+# Falls back to a documented error if state file missing or installer source
+# unreachable.
+
+set -euo pipefail
+
+# Resolve install prefix. Honor AGENTM_INSTALL_PREFIX env if set; else ~/.claude
+INSTALL_PREFIX="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}"
+STATE_FILE="$INSTALL_PREFIX/.agentm-install-state.json"
+
+if [[ ! -f "$STATE_FILE" ]]; then
+    echo "agentm-update: no install state at $STATE_FILE" >&2
+    echo "  Run install.sh first to bootstrap the user-scope install." >&2
+    exit 1
+fi
+
+# Parse the recorded installer source via python (stdlib; portable).
+INSTALLER_SOURCE="$(
+    python3 -c "
+import json, sys
+try:
+    d = json.load(open(\"$STATE_FILE\"))
+    src = d.get('installer_source')
+    if src:
+        print(src)
+except Exception as e:
+    print(f'parse-error: {e}', file=sys.stderr)
+" 2>/dev/null
+)"
+
+if [[ -z "$INSTALLER_SOURCE" ]]; then
+    echo "agentm-update: install-state has no 'installer_source' field" >&2
+    echo "  Re-run install.sh from your agentm clone (or a release tarball) to refresh." >&2
+    exit 1
+fi
+
+if [[ ! -f "$INSTALLER_SOURCE" ]]; then
+    echo "agentm-update: recorded installer source not found at: $INSTALLER_SOURCE" >&2
+    echo "  Did the source clone move? Re-run install.sh from its current location." >&2
+    exit 1
+fi
+
+# Pass through remaining args (e.g. --force-version-check, --rollback).
+exec bash "$INSTALLER_SOURCE" --update --scope user "$@"

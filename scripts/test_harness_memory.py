@@ -2315,5 +2315,214 @@ class TestInstallSymlinksCLI(unittest.TestCase):
             self.assertEqual(len(data["created"]), 3)
 
 
+# -----------------------------------------------------------------------------
+# V4 #30 plan #22 task 5 — install_copy (release-mode copy primitive)
+# -----------------------------------------------------------------------------
+
+_INSTALL_COPY_PATH = _HERE / "install_copy.py"
+_spec_ic = _ilu.spec_from_file_location("install_copy", _INSTALL_COPY_PATH)
+assert _spec_ic is not None and _spec_ic.loader is not None
+install_copy = _ilu.module_from_spec(_spec_ic)
+sys.modules["install_copy"] = install_copy
+_spec_ic.loader.exec_module(install_copy)
+
+
+def _seed_source_release(root: Path) -> Path:
+    """Build a fake release-extract tree with a few customizations."""
+    src = root / "release"
+    (src / "skills" / "foo").mkdir(parents=True)
+    (src / "skills" / "foo" / "SKILL.md").write_text("v1 foo skill", encoding="utf-8")
+    (src / "agents").mkdir(parents=True)
+    (src / "agents" / "bar.md").write_text("v1 bar agent", encoding="utf-8")
+    (src / "commands").mkdir(parents=True)
+    (src / "commands" / "baz.md").write_text("v1 baz command", encoding="utf-8")
+    return src
+
+
+class TestCopyCustomizations(unittest.TestCase):
+    """V4 #30 task 5: copy_customizations primitive (SHA256-aware)."""
+
+    def test_fresh_install_creates_all_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = _seed_source_release(base)
+            prefix = base / "claude"
+            result = install_copy.copy_customizations(src, prefix)
+            self.assertEqual(len(result["created"]), 3)
+            self.assertEqual(result["updated"], [])
+            self.assertEqual(result["skipped"], [])
+            self.assertEqual(result["conflicts"], [])
+            self.assertEqual(len(result["installed_shas"]), 3)
+            self.assertTrue((prefix / "skills" / "foo" / "SKILL.md").is_file())
+
+    def test_update_with_no_source_changes_skips_all(self) -> None:
+        """Second install with unchanged source = all skipped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = _seed_source_release(base)
+            prefix = base / "claude"
+            first = install_copy.copy_customizations(src, prefix)
+            # Re-run with the prior state
+            prior_state = {"installed_shas": first["installed_shas"]}
+            second = install_copy.copy_customizations(src, prefix, install_state=prior_state)
+            self.assertEqual(second["created"], [])
+            self.assertEqual(second["updated"], [])
+            self.assertEqual(len(second["skipped"]), 3)
+            self.assertEqual(second["conflicts"], [])
+
+    def test_update_with_source_changes_updates_target(self) -> None:
+        """Source file changes, target unchanged since last install = update."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = _seed_source_release(base)
+            prefix = base / "claude"
+            first = install_copy.copy_customizations(src, prefix)
+            prior_state = {"installed_shas": first["installed_shas"]}
+            # Modify the source
+            (src / "agents" / "bar.md").write_text("v2 bar agent", encoding="utf-8")
+            second = install_copy.copy_customizations(src, prefix, install_state=prior_state)
+            self.assertEqual(second["created"], [])
+            self.assertIn(str(Path("agents/bar.md")), second["updated"])
+            self.assertEqual(second["conflicts"], [])
+            # Target file now has the new content
+            self.assertEqual(
+                (prefix / "agents" / "bar.md").read_text(encoding="utf-8"),
+                "v2 bar agent",
+            )
+
+    def test_local_divergence_skipped_without_force(self) -> None:
+        """Target edited locally + source also changed = conflict, skip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = _seed_source_release(base)
+            prefix = base / "claude"
+            first = install_copy.copy_customizations(src, prefix)
+            prior_state = {"installed_shas": first["installed_shas"]}
+            # Operator edits the target locally
+            (prefix / "agents" / "bar.md").write_text("local-edited bar", encoding="utf-8")
+            # Source also changed (new release)
+            (src / "agents" / "bar.md").write_text("v2 bar agent", encoding="utf-8")
+            result = install_copy.copy_customizations(src, prefix, install_state=prior_state)
+            self.assertIn(str(Path("agents/bar.md")), result["conflicts"])
+            # Local edit is preserved
+            self.assertEqual(
+                (prefix / "agents" / "bar.md").read_text(encoding="utf-8"),
+                "local-edited bar",
+            )
+
+    def test_local_divergence_replaced_with_force(self) -> None:
+        """--force overwrites operator-local edits."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = _seed_source_release(base)
+            prefix = base / "claude"
+            first = install_copy.copy_customizations(src, prefix)
+            prior_state = {"installed_shas": first["installed_shas"]}
+            (prefix / "agents" / "bar.md").write_text("local-edited bar", encoding="utf-8")
+            (src / "agents" / "bar.md").write_text("v2 bar agent", encoding="utf-8")
+            result = install_copy.copy_customizations(
+                src, prefix, install_state=prior_state, force=True,
+            )
+            self.assertIn(str(Path("agents/bar.md")), result["updated"])
+            self.assertEqual(
+                (prefix / "agents" / "bar.md").read_text(encoding="utf-8"),
+                "v2 bar agent",
+            )
+
+    def test_no_prior_state_first_install_unconditional(self) -> None:
+        """Without prior state, target is always created/overwritten on first install."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = _seed_source_release(base)
+            prefix = base / "claude"
+            # Operator has pre-existing file at install target
+            (prefix / "agents").mkdir(parents=True)
+            (prefix / "agents" / "bar.md").write_text("pre-existing", encoding="utf-8")
+            result = install_copy.copy_customizations(src, prefix)
+            # No prior state → target is treated as divergent (conflict)
+            # because we can't tell if the operator-edited file was previously
+            # installed by us or pre-existed.
+            self.assertIn(str(Path("agents/bar.md")), result["conflicts"])
+
+
+class TestInstallCopyCLI(unittest.TestCase):
+    """V4 #30 task 5: install_copy CLI smoke."""
+
+    def _run(self, *argv: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(_INSTALL_COPY_PATH), *argv],
+            capture_output=True, text=True,
+        )
+
+    def test_fresh_install_via_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            src = _seed_source_release(base)
+            prefix = base / "claude"
+            res = self._run(str(src), str(prefix))
+            self.assertEqual(res.returncode, 0, res.stderr)
+            data = json.loads(res.stdout)
+            self.assertEqual(len(data["created"]), 3)
+
+
+class TestInstallStateInstallerSourceField(unittest.TestCase):
+    """V4 #30 task 5: install_state.persist now supports installer_source + installed_shas."""
+
+    def test_persist_with_installer_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            install_state.persist_install_state(
+                prefix, "release", {}, "v4.3.0",
+                installer_source="/path/to/install.sh",
+                installed_shas={"agents/bar.md": "abc123"},
+            )
+            data = install_state.read_install_state(prefix)
+            self.assertEqual(data["installer_source"], "/path/to/install.sh")
+            self.assertEqual(data["installed_shas"], {"agents/bar.md": "abc123"})
+
+    def test_persist_without_optional_fields(self) -> None:
+        """Backward compat: omitted optional fields don't appear in JSON."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            install_state.persist_install_state(prefix, "release", {}, "v4.3.0")
+            data = install_state.read_install_state(prefix)
+            self.assertNotIn("installer_source", data)
+            self.assertNotIn("installed_shas", data)
+
+
+class TestAgentmUpdateLauncher(unittest.TestCase):
+    """V4 #30 task 5: agentm-update bash launcher behavior."""
+
+    _LAUNCHER = Path(__file__).resolve().parent.parent / "templates" / "bin" / "agentm-update"
+
+    def test_launcher_exists_and_executable(self) -> None:
+        self.assertTrue(self._LAUNCHER.is_file(), f"launcher missing at {self._LAUNCHER}")
+        self.assertTrue(os.access(self._LAUNCHER, os.X_OK), "launcher not executable")
+
+    def test_launcher_fails_when_no_install_state(self) -> None:
+        """No install state at install-prefix → exit 1 with actionable message."""
+        with tempfile.TemporaryDirectory() as tmp:
+            res = subprocess.run(
+                ["bash", str(self._LAUNCHER)],
+                capture_output=True, text=True,
+                env={**os.environ, "AGENTM_INSTALL_PREFIX": tmp, "HOME": tmp},
+            )
+            self.assertEqual(res.returncode, 1)
+            self.assertIn("no install state", res.stderr.lower())
+
+    def test_launcher_fails_when_installer_source_missing_field(self) -> None:
+        """Install state present but no installer_source field → exit 1."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            install_state.persist_install_state(prefix, "release", {}, "v4.3.0")
+            res = subprocess.run(
+                ["bash", str(self._LAUNCHER)],
+                capture_output=True, text=True,
+                env={**os.environ, "AGENTM_INSTALL_PREFIX": str(prefix), "HOME": tmp},
+            )
+            self.assertEqual(res.returncode, 1)
+            self.assertIn("installer_source", res.stderr.lower())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
