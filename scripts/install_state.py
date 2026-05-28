@@ -135,6 +135,7 @@ def persist_install_state(
     installed_at: Optional[str] = None,
     installer_source: Optional[str] = None,
     installed_shas: Optional[dict[str, str]] = None,
+    fragments: Optional[list[dict]] = None,
 ) -> Path:
     """Write `<install-prefix>/.agentm-install-state.json` atomically.
 
@@ -152,6 +153,11 @@ def persist_install_state(
       - `installed_shas` (optional): {rel_path: sha256, ...} map of
         customizations as last installed. Used by `install_copy.py` for
         divergence detection on subsequent updates.
+      - `fragments` (optional): list of `{path, sha256}` records describing
+        the settings.json fragments that were merged at install time. Used
+        by `install_state_sync.py` SessionStart hook for digest-aware
+        re-merge when fragments drift (operator edits source clone in
+        source mode; --update refreshes copy in release mode).
     """
     if mode not in ("source", "release"):
         raise ValueError(f"mode must be 'source' or 'release', got: {mode!r}")
@@ -170,6 +176,8 @@ def persist_install_state(
         data["installer_source"] = installer_source
     if installed_shas is not None:
         data["installed_shas"] = installed_shas
+    if fragments is not None:
+        data["fragments"] = fragments
     path = state_path(prefix)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")

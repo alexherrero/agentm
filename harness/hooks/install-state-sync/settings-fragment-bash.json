@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/install-state-sync/install-state-sync.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -File .claude/hooks/install-state-sync/install-state-sync.ps1",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

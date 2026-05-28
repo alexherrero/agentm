@@ -2524,5 +2524,198 @@ class TestAgentmUpdateLauncher(unittest.TestCase):
             self.assertIn("installer_source", res.stderr.lower())
 
 
+# -----------------------------------------------------------------------------
+# V4 #30 plan #22 task 6 — install_state_sync (SessionStart fragment re-merge)
+# -----------------------------------------------------------------------------
+
+_INSTALL_STATE_SYNC_PATH = _HERE / "install_state_sync.py"
+_spec_iss = _ilu.spec_from_file_location("install_state_sync", _INSTALL_STATE_SYNC_PATH)
+assert _spec_iss is not None and _spec_iss.loader is not None
+install_state_sync = _ilu.module_from_spec(_spec_iss)
+sys.modules["install_state_sync"] = install_state_sync
+_spec_iss.loader.exec_module(install_state_sync)
+
+
+def _seed_fragment_and_state(
+    prefix: Path,
+    fragment_path: Path,
+    fragment_content: str,
+    *,
+    recorded_sha: Optional[str] = None,
+) -> None:
+    """Write a fragment + an install-state.json that records it."""
+    fragment_path.parent.mkdir(parents=True, exist_ok=True)
+    fragment_path.write_text(fragment_content, encoding="utf-8")
+    import hashlib
+    actual_sha = hashlib.sha256(fragment_content.encode("utf-8")).hexdigest()
+    sha_to_record = recorded_sha if recorded_sha is not None else actual_sha
+    state = {
+        "version": 1,
+        "mode": "source",
+        "source_clones": {},
+        "installed_at": "2026-05-27T18:00:00Z",
+        "harness_version": "v4.3.0",
+        "fragments": [
+            {"path": str(fragment_path), "sha256": sha_to_record},
+        ],
+    }
+    prefix.mkdir(parents=True, exist_ok=True)
+    (prefix / ".agentm-install-state.json").write_text(
+        json.dumps(state, indent=2), encoding="utf-8",
+    )
+
+
+_VALID_FRAGMENT = json.dumps({
+    "hooks": {
+        "SessionStart": [
+            {"matcher": ".*", "hooks": [
+                {"type": "command", "command": "echo hi", "timeout": 5},
+            ]},
+        ],
+    },
+})
+
+
+class TestInstallStateSync(unittest.TestCase):
+    """V4 #30 task 6: SessionStart fragment re-merge."""
+
+    def test_graceful_skip_when_no_state(self) -> None:
+        """Missing install-state.json → graceful-skip (empty result)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = install_state_sync.sync_fragments(Path(tmp))
+            self.assertEqual(result, {"checked": [], "no_change": [], "re_merged": [], "errors": []})
+
+    def test_graceful_skip_when_no_fragments_field(self) -> None:
+        """install-state.json exists but has no `fragments` field → graceful-skip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            (prefix / ".agentm-install-state.json").write_text(
+                json.dumps({"version": 1, "mode": "release", "harness_version": "v4.3.0"}),
+                encoding="utf-8",
+            )
+            result = install_state_sync.sync_fragments(prefix)
+            self.assertEqual(result["checked"], [])
+
+    def test_matching_sha_is_no_op(self) -> None:
+        """Fragment unchanged since install → no_change; settings.json untouched."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prefix = base / "prefix"
+            fragment_path = base / "src" / "settings-fragment-bash.json"
+            _seed_fragment_and_state(prefix, fragment_path, _VALID_FRAGMENT)
+            settings_path = prefix / "settings.json"
+            settings_path.write_text("{}", encoding="utf-8")
+            result = install_state_sync.sync_fragments(prefix)
+            self.assertEqual(len(result["no_change"]), 1)
+            self.assertEqual(result["re_merged"], [])
+
+    def test_divergent_sha_triggers_re_merge(self) -> None:
+        """Fragment changes after install → re-merge + update recorded SHA."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prefix = base / "prefix"
+            fragment_path = base / "src" / "settings-fragment-bash.json"
+            # Seed with a SHA that doesn't match current content (simulates drift)
+            _seed_fragment_and_state(
+                prefix, fragment_path, _VALID_FRAGMENT,
+                recorded_sha="0" * 64,  # Wrong SHA → forces re-merge
+            )
+            (prefix / "settings.json").write_text("{}", encoding="utf-8")
+            result = install_state_sync.sync_fragments(prefix)
+            self.assertEqual(len(result["re_merged"]), 1)
+            # Verify recorded SHA was updated in install-state
+            state = json.loads(
+                (prefix / ".agentm-install-state.json").read_text(encoding="utf-8")
+            )
+            new_sha = state["fragments"][0]["sha256"]
+            self.assertNotEqual(new_sha, "0" * 64)
+            self.assertEqual(len(new_sha), 64)
+            # settings.json now has the merged hook entry
+            settings = json.loads((prefix / "settings.json").read_text(encoding="utf-8"))
+            self.assertIn("hooks", settings)
+            self.assertIn("SessionStart", settings["hooks"])
+
+    def test_missing_fragment_recorded_as_error(self) -> None:
+        """Fragment path recorded in state but file is gone → error (not crash)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prefix = base / "prefix"
+            ghost_path = base / "src" / "ghost-fragment.json"
+            prefix.mkdir(parents=True)
+            state = {
+                "version": 1,
+                "fragments": [{"path": str(ghost_path), "sha256": "abc"}],
+            }
+            (prefix / ".agentm-install-state.json").write_text(
+                json.dumps(state), encoding="utf-8",
+            )
+            result = install_state_sync.sync_fragments(prefix)
+            self.assertEqual(len(result["errors"]), 1)
+            self.assertIn(str(ghost_path), result["errors"])
+
+    def test_idempotent_on_re_run(self) -> None:
+        """Re-running after a successful re-merge → all no_change."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prefix = base / "prefix"
+            fragment_path = base / "src" / "settings-fragment-bash.json"
+            _seed_fragment_and_state(
+                prefix, fragment_path, _VALID_FRAGMENT,
+                recorded_sha="0" * 64,
+            )
+            (prefix / "settings.json").write_text("{}", encoding="utf-8")
+            install_state_sync.sync_fragments(prefix)
+            # Second run should be a no-op now that SHA is correct
+            result = install_state_sync.sync_fragments(prefix)
+            self.assertEqual(result["re_merged"], [])
+            self.assertEqual(len(result["no_change"]), 1)
+
+
+class TestInstallStateSyncCLI(unittest.TestCase):
+    """V4 #30 task 6: CLI smoke."""
+
+    def _run(self, *argv: str, env_overrides: Optional[dict] = None) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        if env_overrides:
+            env.update(env_overrides)
+        return subprocess.run(
+            [sys.executable, str(_INSTALL_STATE_SYNC_PATH), *argv],
+            capture_output=True, text=True, env=env,
+        )
+
+    def test_quiet_mode_suppresses_stdout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            res = self._run("--install-prefix", tmp, "--quiet")
+            self.assertEqual(res.returncode, 0)
+            self.assertEqual(res.stdout.strip(), "")
+
+    def test_nonquiet_emits_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            res = self._run("--install-prefix", tmp)
+            self.assertEqual(res.returncode, 0)
+            data = json.loads(res.stdout)
+            self.assertIn("checked", data)
+
+
+class TestInstallStateSyncBashHook(unittest.TestCase):
+    """V4 #30 task 6: bash hook script behavior."""
+
+    _HOOK = Path(__file__).resolve().parent.parent / "harness" / "hooks" / "install-state-sync" / "install-state-sync.sh"
+
+    def test_hook_exists_and_executable(self) -> None:
+        self.assertTrue(self._HOOK.is_file(), f"hook missing at {self._HOOK}")
+        self.assertTrue(os.access(self._HOOK, os.X_OK), "hook not executable")
+
+    def test_hook_exits_0_when_no_install_state(self) -> None:
+        """Non-blocking contract: hook exits 0 even with no install state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            res = subprocess.run(
+                ["bash", str(self._HOOK)],
+                capture_output=True, text=True,
+                env={**os.environ, "AGENTM_INSTALL_PREFIX": tmp, "HOME": tmp},
+            )
+            self.assertEqual(res.returncode, 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
