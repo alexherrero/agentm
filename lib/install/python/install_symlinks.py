@@ -103,6 +103,24 @@ def _symlink_targets_for_clone(
             for child in sorted(harness_agents.iterdir()):
                 if child.is_file() and child.suffix == ".md":
                     out.append((child, f"agents/{child.name}", False))
+        # agentm/harness/skills/  — mixed dir-bundles + single-file .md skills
+        #   <name>/   → skills/<name>/   (dir symlinks)
+        #   <name>.md → skills/<name>.md (file symlinks)
+        harness_skills = clone_root / "harness" / "skills"
+        if harness_skills.is_dir():
+            for child in sorted(harness_skills.iterdir()):
+                if child.name.startswith("."):
+                    continue
+                if child.is_dir():
+                    out.append((child, f"skills/{child.name}", True))
+                elif child.is_file() and child.suffix == ".md":
+                    out.append((child, f"skills/{child.name}", False))
+        # agentm/harness/hooks/<name>/ → hooks/<name>/ (dir bundles only)
+        harness_hooks = clone_root / "harness" / "hooks"
+        if harness_hooks.is_dir():
+            for child in sorted(harness_hooks.iterdir()):
+                if child.is_dir() and not child.name.startswith("."):
+                    out.append((child, f"hooks/{child.name}", True))
         # agentm/adapters/claude-code/{skills,agents,commands}/
         ac_root = clone_root / "adapters" / "claude-code"
         for subdir, is_dir_kind in (("skills", True), ("agents", False), ("commands", False)):
