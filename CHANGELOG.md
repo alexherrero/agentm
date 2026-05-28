@@ -5,6 +5,63 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.5.1] — 2026-05-28 — On-device agentm config + first-run vault detection (V4 #30 follow-up)
+
+**PATCH.** Single-repo release; crickets ships a paired byte-identical [`fe37a96`](https://github.com/alexherrero/crickets/commit/fe37a96) for `lib/install/python/install_state.py` propagation but stays at v2.1.0 (no crickets release tag — lib parity sync only). Closes the V4 #30 promised-but-not-shipped "first-run vault detection" gap surfaced during the v4.5.0 dogfood: `MEMORY_VAULT_PATH` had no source-of-truth file backing it on disk, so every vault-aware script silently graceful-skipped when the env var wasn't exported in a given shell. After v4.5.1, `vault_path` lives in `~/.claude/.agentm-config.json` (the renamed install-state file, schema v2) and the resolver consults it as a fallback when the env is unset. Backward-compat preserved: `$MEMORY_VAULT_PATH` env still wins as override; pre-v4.5.1 installs auto-migrate the legacy `.agentm-install-state.json` filename on first interaction (read-side via the SessionStart hook OR write-side via the next `install.sh` run).
+
+### Fixed
+
+- **Vault path now resolves from on-device config when env is unset** — closes the V4 #30 promised behavior. `harness_memory.py::vault_path()` resolution order: `$MEMORY_VAULT_PATH` env (override) → `<install-prefix>/.agentm-config.json::vault_path` (new — on-device source of truth) → `None` (graceful-skip). Env still wins even when set to a broken path, matching documented "env wins" contract per locked DC-2.
+- **6 vault-aware shell scripts** now consult the config-file fallback (previously env-only, refusing to run if `MEMORY_VAULT_PATH` wasn't exported in the current shell): `list-plans.{sh,ps1}`, `rename-vault-personal-projects.{sh,ps1}`, `migrate-harness-to-vault.sh`, `recent-wiki-changes.{sh,ps1}`. Each gained a one-line `agentm_config.py --get vault_path` fallback between the env-check and the error-emit. `repo_registry.py` auto-inherited via `_vault_or_none() → hm.vault_path()`.
+
+### Added
+
+- **`scripts/agentm_config.py`** — new stdlib-only CLI (~190 LOC) for reading/writing fields in `~/.claude/.agentm-config.json` without re-running the full installer. Four mutually-exclusive operations: `--vault-path PATH` (writes after validating target is an existing dir; rc=2 + stderr error on refusal; idempotent silent no-op on same value); `--get FIELD` (prints value to stdout; rc=0 if present, rc=1 silent if absent); `--list` (dumps full JSON); `--unset FIELD` (clears field; refuses `schema_version` as structural). Honors `--install-prefix` CLI → `$AGENTM_INSTALL_PREFIX` env → `~/.claude`. Atomic writes via tmp+`os.replace()`.
+- **`install.sh` first-run vault detection** — new `_agentm_vault_first_run_prompt` function invoked after `persist_install_state` succeeds in the `--scope user` path. macOS-only auto-detect via bounded `find -L ~/Library/CloudStorage -maxdepth 5` looking for `*/_meta/repos.json` (V4 #30 plan 1's repo_registry marker) or `*/.obsidian` markers; `.shortcut-targets-by-id` left reachable so Google Drive shortcut-linked vaults resolve. 10s hard timeout via gtimeout/timeout (graceful no-op if neither installed). Prune list: `.Trash*`, `.tmp`, `.fseventsd`, `.Spotlight-V100`. Presents numbered candidate list + manual-entry + skip; reads from `/dev/tty` for pipe compatibility. Hands off to `agentm_config.py --vault-path` for validation + atomic write. Skip conditions (each with one-line stderr notice): `CI=true` env, non-Darwin host, `vault_path` already set without `--force-vault-prompt`.
+- **`install.ps1` first-run vault detection skeleton** — new `-ForceVaultPrompt` param + idempotency check via `agentm_config.py --get vault_path`. CI skip parity. Auto-detect deferred for pwsh hosts (Windows + macOS-pwsh): operators see the manual `agentm_config.py --vault-path` instruction.
+- **`--force-vault-prompt` / `-ForceVaultPrompt` flag** added to both installers' arg parsing. Re-fires the prompt when `vault_path` is already set; useful after moving the vault to a new mount path.
+
+### Changed
+
+- **Config file renamed `.agentm-install-state.json` → `.agentm-config.json`** + schema v1 → v2. Hard cutover per locked DC-1 (single-operator setup; no breadcrumb stub). Migration is automatic + idempotent:
+  - **Read-side** (`scripts/install_state_sync.py::_read_state()` from task 1 / commit [`1f31e62`](https://github.com/alexherrero/agentm/commit/1f31e62)): atomic `os.replace()` of legacy → new on first read.
+  - **Write-side** (`lib/install/python/install_state.py::persist_install_state()` from task 4 / commit [`96e566d`](https://github.com/alexherrero/agentm/commit/96e566d)): reads pre-existing `vault_path` from new OR legacy file + preserves across re-install; removes legacy file on persist; writes `schema_version: 2` (replaces `version: 1`) + always-present `vault_path` field (null when unset).
+  - Both `agentm-update` launchers (bash + pwsh) + `migrate-to-user-scope.{sh,ps1}` read new filename first, fall back to legacy on pre-v4.5.1 installs.
+- **Doctor skill ([`adapters/claude-code/skills/doctor/SKILL.md`](adapters/claude-code/skills/doctor/SKILL.md) + canonical spec)** taught V4 #26 vault-state + V4 #30 user-scope reality (commit [`506007a`](https://github.com/alexherrero/agentm/commit/506007a)). Install-scope detection (project / user / mixed); state-file resolution via `harness_memory.py vault-state-path` ladder; expected sets include `recent-wiki-changes` + `wiki-author`; harness compound skills + crickets primitives become graceful-skip. Output contract gains `scope:` + `state mode:` rows.
+
+### Internal
+
+- **CI auto-discover** — all three OS workflow YAMLs ([`tests-{linux,mac,windows}.yml`](.github/workflows/)) switched from hardcoded `python3 scripts/test_{vault_project,harness_memory}.py` to `(cd scripts && python3 -m unittest discover -p 'test_*.py')`. Closes pre-v4.5.1 CI gap where `test_install_migrate.py` (26 tests from V4 #30 plan 3) and the new `test_install_state_sync.py` + `test_agentm_config.py` were invisible to the OS matrix. **Coverage delta**: 214 → 275 tests run per OS workflow.
+- **Test sandbox** — `scripts/test_harness_memory.py` gains module-level `setUpModule` / `tearDownModule` setting `AGENTM_INSTALL_PREFIX` to a tmp dir. Otherwise tests that assert "MEMORY_VAULT_PATH unset → vault_path() == None" would fail on operators whose real `~/.claude/.agentm-config.json` has `vault_path` set (the post-task-4 dogfood state). Hermetic without re-architecting every test.
+- **Probe-filter iterations from operator smoke** — task 4's interactive vault prompt got two follow-up patches based on real-vault dogfood. Commit [`eed4f6c`](https://github.com/alexherrero/agentm/commit/eed4f6c) added prune predicates for `.Trash*` / `.tmp` / `.fseventsd` / `.Spotlight-V100` to suppress false-positive candidates. Commit [`7c57085`](https://github.com/alexherrero/agentm/commit/7c57085) walked back the `.shortcut-targets-by-id` prune (it's where Google Drive serves shortcut targets — pruning it made shortcut-linked vaults invisible) and added `-L` to `find` for general symlink following.
+- **PII guardrail saves** — pre-push hooks caught two operator-path leaks before they landed on remote: commit [`8546e7a`](https://github.com/alexherrero/agentm/commit/8546e7a) scrubbed an operator-home test-fixture path (replaced with `/srv/test-vault`); a `/Users/<name>/Obsidian/MyVault`-shaped docstring example in `install_state.py` got genericized to `/path/to/Obsidian/MyVault` mid-task-4.
+- **Windows tilde-expansion test skipped** ([commit `758aa01`](https://github.com/alexherrero/agentm/commit/758aa01)) — `os.path.expanduser` uses `USERPROFILE` on Windows, not `HOME`, so the env-override pattern two bonus tests used (in `test_agentm_config.py` + `test_harness_memory.py`) is POSIX-only. Production code is unaffected — the resolver delegates to `os.path.expanduser()` which handles the platform difference internally; the gap is only in test setup. Skipped via `@unittest.skipIf(os.name == "nt", ...)`.
+- **lib parity propagation** — `bash scripts/sync-lib.sh` after `install_state.py` v2 update; crickets received the byte-identical copy via [`fe37a96`](https://github.com/alexherrero/crickets/commit/fe37a96).
+
+### Backward-compat
+
+- **`$MEMORY_VAULT_PATH` env still wins** as override — operators who already export the var upstream of their sessions see ZERO behavior change.
+- **Legacy filename auto-migrates** on first interaction. No operator action required for pre-v4.5.1 installs.
+- **`read_install_state()`** reads new path first + falls back to legacy without migration on disk (the migration happens on the next `persist_install_state()` call or via the SessionStart hook).
+- **`agentm-update` launchers** (bash + pwsh) read new path, legacy fallback. Pre-v4.5.1 installs continue to update cleanly until their next `install.sh` run migrates them.
+- **Hard cutover, no breadcrumb** per locked DC-1: when the new filename is created, the legacy filename is unconditionally removed. No `.deprecated-renamed-to-config-json.txt` stub left at the old path. Single-operator setup; no contributor onboarding case to coddle.
+
+### Cross-references
+
+- [crickets `fe37a96`](https://github.com/alexherrero/crickets/commit/fe37a96) — paired byte-identical `lib/install/python/install_state.py` sync
+- [agentm v4.5.0](https://github.com/alexherrero/agentm/releases/tag/v4.5.0) — V4 #30 plan 3 close-out; this patch closes the trio's promised-but-not-shipped first-run vault detection
+- [agentm v4.3.0](https://github.com/alexherrero/agentm/releases/tag/v4.3.0) — V4 #30 plan 1 introduced the install-state file this patch renames + extends
+- ADR 0001 (stdlib-only Python preserved)
+- ADR 0012 § 6 (dev-setup invisibility policy preserved)
+
+### Deferred (out of scope for this patch)
+
+- **Env-var consolidation for other AGENTM_* / HARNESS_* knobs** (`AGENTM_INSTALL_PREFIX`, `AGENTM_WIKI_RECENT_DAYS`, `HARNESS_RECALL_BUDGET_*`, `HARNESS_AUTO_SAVE_CONFIDENCE_THRESHOLD`) — they all degrade gracefully with their defaults; the vault path was the only load-bearing env that lacked an on-device source of truth.
+- **Windows + Linux auto-detect** for the installer first-run prompt — macOS-only per locked DC-7. Non-macOS operators get the manual `agentm_config.py --vault-path` instruction.
+- **Slash-command wrapper** around `agentm_config.py` (e.g. `/config vault-path <path>`) — deferred to v4.6.x if operator usage shows the script-only path is friction.
+- **Auto-promote `$MEMORY_VAULT_PATH` env into config file on first-seen** — adds state-mutation surface; defer until a real need appears. Operators can run `agentm_config.py --vault-path "$MEMORY_VAULT_PATH"` once if they want to migrate from env-only to config.
+- **HLD subsection** — per `[[hld-evolution-update-on-major-release]]`, PATCH releases don't earn HLD updates. v4.6.x HLD subsections will fold v4.5.1's existence into their narrative naturally.
+
 ## [v4.5.0] — 2026-05-27 — Migration tooling + opt-out documentation (V4 #30 plan 3 of 3 — closing)
 
 **MINOR.** ROADMAP-V4 item #30 (plan 3 of 3 — **CLOSING**). Single-repo release; crickets unaffected at v2.1.0 (lib/install propagates byte-identical via `sync-lib.sh` but no crickets release this plan). **Closes the V4 #30 trio**: plan 1 ([v4.3.0](https://github.com/alexherrero/agentm/releases/tag/v4.3.0) paired with [crickets v2.1.0](https://github.com/alexherrero/crickets/releases/tag/v2.1.0)) shipped `--scope user` install + `repo_registry` vault-backed primitive + auto-stay-in-sync; plan 2 ([v4.4.0](https://github.com/alexherrero/agentm/releases/tag/v4.4.0)) shipped wiki I/O codification + cross-repo views; **plan 3 (this release)** ships the automated + reversible migration tooling for non-operator users + opt-out documentation for the legitimate `--scope project` cases. See [HLD V4.6 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) for the architectural arc + trio close-out narrative.
