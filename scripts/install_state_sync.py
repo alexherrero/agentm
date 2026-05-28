@@ -73,6 +73,33 @@ def _write_state(install_prefix: Path, state: dict) -> None:
     tmp.replace(state_path)
 
 
+def _maybe_run_version_check(install_prefix: Path) -> None:
+    """Optionally invoke upstream_version_check if available + applicable.
+
+    Best-effort import; defensive try/except. Only runs in release mode.
+    Never crashes the hook on failure.
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import upstream_version_check as uvc
+    except Exception:
+        return
+    state = _read_state(install_prefix)
+    if not state:
+        return
+    if state.get("mode") != "release":
+        # Source mode operators get updates via symlinks; no upstream check.
+        return
+    installed_version = state.get("harness_version")
+    if not installed_version:
+        return
+    installed = {"alexherrero/agentm": installed_version}
+    try:
+        uvc.check_and_notify(install_prefix, installed=installed)
+    except Exception:
+        pass  # non-blocking
+
+
 def sync_fragments(
     install_prefix: Path | str,
     *,
@@ -201,6 +228,9 @@ def main(argv: Optional[list[str]] = None) -> int:
         merge_script=args.merge_script,
         settings_path=args.settings_path,
     )
+
+    # Also run upstream-version-check (best-effort; release-mode-only).
+    _maybe_run_version_check(prefix)
 
     if not args.quiet:
         sys.stdout.write(json.dumps(result, indent=2) + "\n")

@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import time
 import unittest
 from pathlib import Path
 from typing import Optional
@@ -2715,6 +2716,211 @@ class TestInstallStateSyncBashHook(unittest.TestCase):
                 env={**os.environ, "AGENTM_INSTALL_PREFIX": tmp, "HOME": tmp},
             )
             self.assertEqual(res.returncode, 0)
+
+
+# -----------------------------------------------------------------------------
+# V4 #30 plan #22 task 7 — upstream_version_check (release-mode update notice)
+# -----------------------------------------------------------------------------
+
+_UVC_PATH = _HERE / "upstream_version_check.py"
+_spec_uvc = _ilu.spec_from_file_location("upstream_version_check", _UVC_PATH)
+assert _spec_uvc is not None and _spec_uvc.loader is not None
+upstream_version_check = _ilu.module_from_spec(_spec_uvc)
+sys.modules["upstream_version_check"] = upstream_version_check
+_spec_uvc.loader.exec_module(upstream_version_check)
+
+
+class TestVersionTuple(unittest.TestCase):
+    def test_strips_v_prefix(self) -> None:
+        self.assertEqual(upstream_version_check._version_tuple("v4.2.0"), (4, 2, 0))
+        self.assertEqual(upstream_version_check._version_tuple("4.2.0"), (4, 2, 0))
+
+    def test_strips_prerelease_suffix(self) -> None:
+        self.assertEqual(upstream_version_check._version_tuple("v4.2.0-rc1"), (4, 2, 0))
+
+    def test_orders_correctly(self) -> None:
+        v1 = upstream_version_check._version_tuple("v4.2.0")
+        v2 = upstream_version_check._version_tuple("v4.3.0")
+        self.assertGreater(v2, v1)
+
+
+class TestCacheFreshness(unittest.TestCase):
+    def test_fresh_cache_within_ttl(self) -> None:
+        cache = {"fetched_at": upstream_version_check._iso_utc_now()}
+        self.assertTrue(upstream_version_check.is_cache_fresh(cache, ttl_seconds=3600))
+
+    def test_stale_cache_past_ttl(self) -> None:
+        # 25h ago
+        past = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 25 * 3600))
+        cache = {"fetched_at": past}
+        self.assertFalse(upstream_version_check.is_cache_fresh(cache, ttl_seconds=24 * 3600))
+
+    def test_missing_fetched_at(self) -> None:
+        self.assertFalse(upstream_version_check.is_cache_fresh({}))
+
+
+class TestRefreshCache(unittest.TestCase):
+    def test_refresh_writes_cache_with_fetched_tags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            fake_tags = {
+                "alexherrero/agentm": "v4.3.0",
+                "alexherrero/crickets": "v2.1.0",
+            }
+            data = upstream_version_check.refresh_cache(
+                prefix,
+                fetcher=lambda repo: fake_tags[repo],
+            )
+            self.assertEqual(data["alexherrero/agentm"], "v4.3.0")
+            self.assertEqual(data["alexherrero/crickets"], "v2.1.0")
+            self.assertIn("fetched_at", data)
+            # Cache persisted to disk
+            written = json.loads(
+                (prefix / ".upstream-version-check-cache.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(written["alexherrero/agentm"], "v4.3.0")
+
+    def test_refresh_preserves_prior_on_fetch_failure(self) -> None:
+        """Network failure for one repo → keep prior cached value."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            # Seed prior cache
+            upstream_version_check.write_cache(prefix, {
+                "fetched_at": "2026-05-26T00:00:00Z",
+                "alexherrero/agentm": "v4.2.0",
+                "alexherrero/crickets": "v2.0.0",
+            })
+
+            def fetcher(repo: str) -> Optional[str]:
+                # Fail for one repo
+                return "v4.3.0" if "agentm" in repo else None
+
+            data = upstream_version_check.refresh_cache(prefix, fetcher=fetcher)
+            self.assertEqual(data["alexherrero/agentm"], "v4.3.0")  # refreshed
+            self.assertEqual(data["alexherrero/crickets"], "v2.0.0")  # preserved
+
+
+class TestFindNewerVersions(unittest.TestCase):
+    def test_finds_newer_versions(self) -> None:
+        cache = {"alexherrero/agentm": "v4.3.0", "alexherrero/crickets": "v2.1.0"}
+        installed = {"alexherrero/agentm": "v4.2.0", "alexherrero/crickets": "v2.1.0"}
+        notices = upstream_version_check.find_newer_versions(cache, installed=installed)
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0], ("alexherrero/agentm", "v4.2.0", "v4.3.0"))
+
+    def test_same_version_returns_empty(self) -> None:
+        cache = {"alexherrero/agentm": "v4.3.0"}
+        installed = {"alexherrero/agentm": "v4.3.0"}
+        self.assertEqual(upstream_version_check.find_newer_versions(cache, installed=installed), [])
+
+    def test_installed_newer_than_cache_returns_empty(self) -> None:
+        """Defensive: if installed > cached (manual install), no notice."""
+        cache = {"alexherrero/agentm": "v4.2.0"}
+        installed = {"alexherrero/agentm": "v4.3.0"}
+        self.assertEqual(upstream_version_check.find_newer_versions(cache, installed=installed), [])
+
+
+class TestCheckAndNotify(unittest.TestCase):
+    def test_emits_stderr_notice_for_newer_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            from io import StringIO
+            old_stderr = sys.stderr
+            sys.stderr = StringIO()
+            try:
+                upstream_version_check.check_and_notify(
+                    prefix,
+                    installed={"alexherrero/agentm": "v4.0.0"},
+                    fetcher=lambda repo: "v4.3.0",
+                )
+                stderr_output = sys.stderr.getvalue()
+            finally:
+                sys.stderr = old_stderr
+            self.assertIn("v4.3.0", stderr_output)
+            self.assertIn("agentm", stderr_output)
+            self.assertIn("agentm-update", stderr_output)
+
+    def test_no_notice_when_same_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            from io import StringIO
+            old_stderr = sys.stderr
+            sys.stderr = StringIO()
+            try:
+                upstream_version_check.check_and_notify(
+                    prefix,
+                    installed={"alexherrero/agentm": "v4.3.0"},
+                    fetcher=lambda repo: "v4.3.0",
+                )
+                stderr_output = sys.stderr.getvalue()
+            finally:
+                sys.stderr = old_stderr
+            self.assertEqual(stderr_output.strip(), "")
+
+    def test_uses_cache_when_fresh(self) -> None:
+        """Fresh cache → no fetcher call."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            upstream_version_check.write_cache(prefix, {
+                "fetched_at": upstream_version_check._iso_utc_now(),
+                "alexherrero/agentm": "v4.3.0",
+            })
+            fetcher_called: list[str] = []
+            def tracker(repo: str) -> str:
+                fetcher_called.append(repo)
+                return "v9.9.9"
+            upstream_version_check.check_and_notify(
+                prefix,
+                installed={"alexherrero/agentm": "v4.3.0"},
+                fetcher=tracker,
+            )
+            self.assertEqual(fetcher_called, [])  # Used cache; no fetch
+
+    def test_force_refresh_bypasses_cache(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            upstream_version_check.write_cache(prefix, {
+                "fetched_at": upstream_version_check._iso_utc_now(),
+                "alexherrero/agentm": "v4.2.0",
+            })
+            upstream_version_check.check_and_notify(
+                prefix,
+                installed={"alexherrero/agentm": "v4.0.0"},
+                fetcher=lambda repo: "v9.9.9",
+                force_refresh=True,
+            )
+            cache = upstream_version_check.read_cache(prefix)
+            self.assertEqual(cache["alexherrero/agentm"], "v9.9.9")
+
+
+class TestUpstreamVersionCheckCLI(unittest.TestCase):
+    """V4 #30 task 7: CLI smoke."""
+
+    def _run(self, *argv: str, env_overrides: Optional[dict] = None) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        if env_overrides:
+            env.update(env_overrides)
+        return subprocess.run(
+            [sys.executable, str(_UVC_PATH), *argv],
+            capture_output=True, text=True, env=env,
+        )
+
+    def test_cli_emits_json_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            upstream_version_check.write_cache(prefix, {
+                "fetched_at": upstream_version_check._iso_utc_now(),
+                "alexherrero/agentm": "v4.3.0",
+            })
+            # Pass --installed to trigger comparison
+            res = self._run(
+                "--install-prefix", str(prefix),
+                "--installed", '{"alexherrero/agentm": "v4.3.0"}',
+            )
+            self.assertEqual(res.returncode, 0)
+            data = json.loads(res.stdout)
+            self.assertIn("cache", data)
+            self.assertIn("notices", data)
 
 
 if __name__ == "__main__":
