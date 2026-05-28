@@ -8,9 +8,11 @@
 - [Update an installed harness](Update-Installed-Harness)
 - [Cut a release](Cut-A-Release)
 - [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases)
+- [Use per-project install](Use-Per-Project-Install)
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)
+- [Migration tool](Migration-Tool)
 - [CI gates](CI-Gates)
 - [Repo layout](Repo-Layout)
 - [Compatibility](Compatibility)

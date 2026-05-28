@@ -74,10 +74,12 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [How to refresh an installed harness](Update-Installed-Harness) — pull a newer harness version into a project that already has one.
 - [How to cut a release](Cut-A-Release) — tag, changelog, GitHub release via the `ship-release` skill.
 - [How to use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) — tune MemoryVault recall budgets, save modes, and confidence thresholds for each phase.
+- [How to use per-project install](Use-Per-Project-Install) — when to deliberately keep `--scope project` instead of migrating to user scope (CI runners; shared dev hosts; multi-developer dotfiles).
 
 ## 📖 Looking up a detail?
 
 - [Installer CLI reference](Installer-CLI) — flags, prerequisites, ownership table for `install.sh` / `install.ps1`.
+- [Migration tool reference](Migration-Tool) — flag-by-flag for `migrate-to-user-scope.{sh,ps1}` + the 4-state matrix + `.agentm-migrate-record.json` schema.
 - [CI gates reference](CI-Gates) — what each CI workflow proves and the script behind it.
 - [Repo layout reference](Repo-Layout) — top-level directory map and four-adapter parity table.
 - [Compatibility](Compatibility) — supported hosts (Claude Code, Antigravity) + OS matrix + adapter contract.

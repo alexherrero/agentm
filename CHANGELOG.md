@@ -5,6 +5,70 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.5.0] — 2026-05-27 — Migration tooling + opt-out documentation (V4 #30 plan 3 of 3 — closing)
+
+**MINOR.** ROADMAP-V4 item #30 (plan 3 of 3 — **CLOSING**). Single-repo release; crickets unaffected at v2.1.0 (lib/install propagates byte-identical via `sync-lib.sh` but no crickets release this plan). **Closes the V4 #30 trio**: plan 1 ([v4.3.0](https://github.com/alexherrero/agentm/releases/tag/v4.3.0) paired with [crickets v2.1.0](https://github.com/alexherrero/crickets/releases/tag/v2.1.0)) shipped `--scope user` install + `repo_registry` vault-backed primitive + auto-stay-in-sync; plan 2 ([v4.4.0](https://github.com/alexherrero/agentm/releases/tag/v4.4.0)) shipped wiki I/O codification + cross-repo views; **plan 3 (this release)** ships the automated + reversible migration tooling for non-operator users + opt-out documentation for the legitimate `--scope project` cases. See [HLD V4.6 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) for the architectural arc + trio close-out narrative.
+
+### Added
+
+- **`lib/install/python/install_migrate.py`** — new stdlib-only primitive (~530 LOC) that powers the migration tool. Pairs with `install_symlinks.py` (forward direction; from plan 1) to provide the REVERSE direction: detect what's under `<target>/.claude/{skills,hooks,agents,commands}/` + classify each entry against source-clone canonical paths via SHA256 compare. Four classifications (DC-4): `safe_to_migrate` (byte-identical → safe to remove from per-project); `already_symlinked` (target is symlink → no-op); `operator_edited` (SHA differs from source → conflict; skip-with-warn by default, `--force` migrates with backup); `unrecognized` (no source mapping → operator content, leave alone). Five public functions: `classify()` · `apply()` · `rollback()` · `cleanup()` · `inverse_mapping_for_clones()`. Dir bundles (skill bundles, hook bundles) hashed via sorted `(rel_path, file_sha256)` line concatenation with **dotfile-skip policy** (mandatory for macOS parity — Finder `.DS_Store` would otherwise leak into bundle hash + force every macOS user into false `operator_edited` classifications). `.agentm-migrate-record.json` schema v1 at `<target>/` (NOT under `.claude/` — survives cleanup); three action kinds (`safe_to_migrate`, `force_migrated` with `backup_path` under `.agentm-migrate-backup/`, `operator_edited_skipped` with optional `backup_collision: true` flag); atomic JSON write via tmp+replace; merge-on-rerun keyed by `(rel_path, kind)` tuple.
+
+- **`scripts/migrate-to-user-scope.sh`** + **`scripts/migrate-to-user-scope.ps1`** — operator-facing CLI (bash ~265 LOC + pwsh twin ~280 LOC). Preview-by-default; full flag surface: positional `<target>` (default cwd) · `--apply` / `--rollback` / `--cleanup` (mutually exclusive) · `--force` · `--no-register` · `--registry-slug NAME` · `--agentm PATH` / `--crickets PATH` · `--yes` / `-y` · `--ci-override` · `--help`. Apply chain: classify → confirm (unless `--yes`) → `install_migrate apply` → `bash install.sh --scope user` (idempotent `~/.claude/` populate) → `repo_registry register <slug>` (unless `--no-register`; slug inferred from `<target>/.harness/project.json` `vault_project` / `slug` field, falls back to `basename`). **CI guard**: refuses when `$CI=true` env detected unless `--ci-override` passed — CI runners use per-project installs by design per locked DC-10. **4-state detection** inside both CLI scripts: `no-claude` / `pre-v4.3` / `explicit-project` / `already-user`; state 1+4 early-exit bypassed when `--rollback` or `--cleanup` is set.
+
+- **`scripts/test_migrate_fixture.sh`** — end-to-end smoke runner (~200 LOC bash). `mktemp -d` fixture auto-cleaned via trap; populated from real source clones with 2 agents + 2 commands + 2 skill bundles + 1 hook bundle + 1 deliberately operator-edited file + 1 operator-only file. **Exercises 8 lifecycle steps**: preview · apply (skip operator_edited + unrecognized) · idempotent re-apply · rollback · `--apply --force` migrates with backup · rollback restores backup preserving operator-edit marker · fresh apply for cleanup setup · `--cleanup` removes empty install subdirs after shape-agnostic verification. All 8 steps pass locally. **Fixture-only per locked DC-8** — operator's 3 repos already migrated in plan 1 task 11; no mid-build operator-machine dogfood this plan.
+
+- **`scripts/test_install_migrate.py`** — 26 unit tests covering classify (×6) · apply (×6) · rollback (×6) · cleanup (×4) · inverse-mapping round-trip (×2) · dotfile-noise SHA stability (×1) · backup-collision rerun semantics (×1). Brings project total to **212 unit tests** (186 baseline + 26 new).
+
+- **`wiki/how-to/Use-Per-Project-Install.md`** — new Diátaxis how-to (NOTE block with Goal + Prereqs; numbered Steps). Documents when to deliberately stay on `--scope project`: CI runners (ephemeral environments); shared dev environments (multi-user host); multi-developer dotfiles patterns (per-repo `.claude/` checked into git). Step-by-step: invoke `bash install.sh --scope project <target>` explicitly; verify install-state.json shows `mode=project`; document the choice in project AGENTS.md to prevent future-operator reflex-migration.
+
+- **`wiki/reference/Migration-Tool.md`** — new Diátaxis reference (Quick Reference table; tables-first). Full flag-by-flag for `migrate-to-user-scope.{sh,ps1}` · 4-state matrix · classification matrix with apply / apply-force behavior columns · `.agentm-migrate-record.json` schema v1 with field reference + action-kind table · exit code table.
+
+- **`wiki/Home.md` + `wiki/_Sidebar.md`** updated with surface entries for both new pages.
+
+### Changed
+
+- **`lib/install/python/install_symlinks.py`** — `_symlink_targets_for_clone` renamed to public `symlink_targets_for_clone` (drop leading underscore + extended docstring). Single source of truth for the install-prefix ↔ source-clone mapping consumed by BOTH `install_symlinks.symlink_customizations` (forward direction) AND `install_migrate.inverse_mapping_for_clones` (inverse direction; computed at call time — no parallel table, two directions can never drift). Pure refactor; behavior identical.
+
+- **`lib/install/.checksums.txt`** bumped 6 → 7 entries to include the new `python/install_migrate.py`. `bash scripts/sync-lib.sh` propagated byte-identical to crickets sibling (crickets stays at v2.1.0; lib parity preserved).
+
+### Internal
+
+- **4 defects caught + fixed pre-commit via 2 adversarial-reviewer passes** on `install_migrate.py`:
+  1. **`cleanup()` walker shape-bias** (HIGH severity) — the per-classification walker `_walk_target()` only emits files matching known shapes (`.md` extension for agents/commands; dirs + `.md` for skills/hooks); cleanup inherited the blindness + silently `rmtree`'d operator-dropped `.py` / `.txt` / no-extension files. FIX: cleanup uses a shape-agnostic walk under each install subdir; ANY non-symlink, non-dotfile child refuses cleanup.
+  2. **`_sha256_dir` polluted by macOS `.DS_Store`** (MEDIUM) — Finder sprinkles `.DS_Store` into visited directories; without filtering, every macOS user would see false `operator_edited` on dir bundles. FIX: dotfile-component skip on rel-path split.
+  3. **`--apply --force` rerun silently overwrote backup + kept stale `target_sha_before`** (MEDIUM) — re-running force on the same `rel_path` overwrote `.agentm-migrate-backup/<rel>` with newer content while merge-dedup kept the original `target_sha_before`. Record became a lie + original unrecoverable. FIX: detect `backup_path.exists()` collision → record `operator_edited_skipped` with `backup_collision: true`; change dedup key to `(rel_path, kind)` tuple so distinct-kind re-attempts survive merge.
+  4. **`rollback()` file-branch missing `dest.exists()` guard** (MEDIUM) — dir-branch refused to overwrite when dest existed; file-branch did not, silently clobbering operator content the user re-staged between apply + rollback. FIX: symmetric refusal across `safe_to_migrate` + `force_migrated` file-and-dir branches.
+
+- **`HLD V4.6 subsection`** added to both crickets HLDs (`agent-memory-evolution.md` + `device-wide-architecture.md` v0.6 update history entry) — closes the V4 #30 trio narrative.
+
+- **CHANGELOG cross-link convention preserved** — v4.5.0 references v4.4.0 (plan 2 of 3) + the v4.3.0 + crickets v2.1.0 pair (plan 1 of 3). V4.6 HLD subsection cross-references back to v4.5.0.
+
+### Backward-compat
+
+- **`--scope user` default does NOT flip this release** per locked DC-1. Operator default in `install.sh` stays `--scope project` after v4.5.0; the default-flip is queued for a separate v4.5.x or v4.6.x release. Smaller blast radius per release; operators who want plan 3's tooling can run `migrate-to-user-scope.sh` without surprise default change.
+- **`--scope project` mode preserved as legitimate first-class install path** per locked DC-10 (carried forward from plan #22). The new `wiki/how-to/Use-Per-Project-Install.md` documents WHEN to deliberately keep this mode (CI runners; shared dev hosts; multi-developer dotfiles).
+- **Migration tool is opt-in** — never auto-runs. Operators must explicitly invoke `bash scripts/migrate-to-user-scope.sh <target>` (preview by default; `--apply` to execute).
+- **Reversibility is a release gate** per locked DC-2 — `--rollback` reverses every apply step from `.agentm-migrate-record.json`; mirrors V4 #26's `migrate-harness-to-vault.sh` pattern.
+
+### Cross-references
+
+- [Use-Per-Project-Install how-to](wiki/how-to/Use-Per-Project-Install.md) — when to deliberately keep `--scope project`
+- [Migration-Tool reference](wiki/reference/Migration-Tool.md) — full CLI + schema documentation
+- [HLD V4.6 — Migration tooling + opt-out docs](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) — architectural arc + trio close-out
+- [agentm v4.4.0](https://github.com/alexherrero/agentm/releases/tag/v4.4.0) — V4 #30 plan 2 of 3 (wiki I/O foundation; supports the new how-to + reference docs)
+- [agentm v4.3.0](https://github.com/alexherrero/agentm/releases/tag/v4.3.0) + [crickets v2.1.0](https://github.com/alexherrero/crickets/releases/tag/v2.1.0) — V4 #30 plan 1 of 3 (foundation primitives reused via DC-7: `install_state` + `install_symlinks` + `install_copy` + `repo_registry`)
+- ADR 0001 (stdlib-only Python preserved)
+- ADR 0012 § 6 (dev-setup invisibility policy preserved)
+
+### Deferred (out of scope for this plan)
+
+- **`--scope user` default-flip in installer** (DC-1 lock) — separate v4.5.x or v4.6.x release. Smaller blast radius per release; can ship the tooling here + the flip when operator real-use validates.
+- **Removing `--scope project` mode entirely** — DC-10 preservation; per-project mode stays as a legitimate first-class install path.
+- **V4 #38 wiki bundle** — first sub-item of opinionated capability bundles meta; lands after V4 #30 trio close (this release). Pickup signal: *"let's build the wiki bundle"*.
+- **Auto-migration on first session** — operator must run the migration tool explicitly. SessionStart auto-surface for "you have a pre-V4.3 install; run migrate-to-user-scope" deferred (could land as follow-up if operators surface real need).
+- **Migration of pre-V4.0 installs** — those need `bash install.sh --update` to reach v4.x baseline first; migration tool assumes v4.x-shaped per-project install at start.
+- **CI runner integration for `test_migrate_fixture.sh`** — fixture smoke is runnable as standalone CI step but not wired into `.github/workflows/` yet; can be added in a future plan if CI surface needs an explicit migrate-tool gate.
+
 ## [v4.4.0] — 2026-05-27 — Wiki I/O codification + cross-repo views
 
 **MINOR.** ROADMAP-V4 item #30 (plan 2 of 3). Single-repo release; crickets unaffected at v2.1.0. Builds on plan 1's `repo_registry` vault-backed primitive to ship the wiki I/O foundation that V4 #38 wiki bundle (first sub-item of opinionated capability bundles meta) will later build on. Codifies what the agent reads/writes under `<repo>/wiki/` on top of the existing Diátaxis spec from ADR 0004; ships an operator-facing `wiki-author` skill that auto-triggers on imperative phrases ("update the wiki", "document this in the wiki", "update <slug>'s wiki" for cross-repo) + dispatches the existing `documenter` sub-agent under the new cross-repo write contract; ships `/recent-wiki-changes` slash command for cross-repo wiki visibility. See [HLD V4.5 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) for the architectural arc.
