@@ -5,6 +5,63 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.4.0] — 2026-05-27 — Wiki I/O codification + cross-repo views
+
+**MINOR.** ROADMAP-V4 item #30 (plan 2 of 3). Single-repo release; crickets unaffected at v2.1.0. Builds on plan 1's `repo_registry` vault-backed primitive to ship the wiki I/O foundation that V4 #38 wiki bundle (first sub-item of opinionated capability bundles meta) will later build on. Codifies what the agent reads/writes under `<repo>/wiki/` on top of the existing Diátaxis spec from ADR 0004; ships an operator-facing `wiki-author` skill that auto-triggers on imperative phrases ("update the wiki", "document this in the wiki", "update <slug>'s wiki" for cross-repo) + dispatches the existing `documenter` sub-agent under the new cross-repo write contract; ships `/recent-wiki-changes` slash command for cross-repo wiki visibility. See [HLD V4.5 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) for the architectural arc.
+
+### Added
+
+- **`harness/skills/wiki-author/SKILL.md`** — new operator-facing dispatcher skill (v0.1.0; claude-code-only). Auto-fires on imperative wiki-write phrases; resolves cwd vs cross-repo via `repo_registry.list_repos()` from V4 #30 plan 1; loads per-repo `.diataxis-conventions.md` override if present; determines Diátaxis mode (preserve for existing pages; derive or ask for new pages); emits unified diff preview; dispatches the `documenter` sub-agent for the actual write under its hard-boundary scope. Pure SKILL.md instructions (no Python helper); matches lightweight `pii-scrubber` pattern. **5 trigger phrases**: "update the wiki" / "document this in the wiki" / "add a wiki page about X" / "update <slug>'s wiki" (cross-repo) / "create a how-to/reference/etc in the wiki for X" (mode hint). **5 non-triggers** explicitly documented in SKILL body: "the wiki page mentions" (descriptive) / "I saw it on Wikipedia" (unrelated) / "walk the wiki/ tree" (path reference) / "wiki articles vs documentation" (meta-discussion) / "docs in wiki/explanation" (observational). Trigger/non-trigger matrix lives in SKILL body for future-operator reviewability.
+
+- **`scripts/recent-wiki-changes.{sh,ps1}`** — cross-repo "show me all my recent wiki changes" surface. Bash + pwsh twins; walks `repo_registry.list_repos()` for each registered repo's `<root>/wiki/`; finds files modified within `AGENTM_WIKI_RECENT_DAYS` (default 7 days; CLI overrides). Emits SLUG/MODE/PAGE/MODIFIED aligned table sorted by mtime desc. Mode classification via first path segment under wiki/ (tutorials/how-to/reference/explanation; "—" for top-level Home.md/_Sidebar.md). CLI flags: `--repo <slug>` filter, `--days N` override, `--limit N` (default 50), `--vault-path` override. Graceful-skip JSON marker when `MEMORY_VAULT_PATH` unset.
+
+- **`/recent-wiki-changes` slash command** at `adapters/claude-code/commands/recent-wiki-changes.md` — Claude-code-only slash command surface for the script. Frontmatter description + body with usage examples + output format + graceful-skip cases + companion-surface cross-refs.
+
+- **`scripts/check-parity.sh` extended** with `CANON_UTIL_COMMANDS=(recent-wiki-changes)` array. Utility slash commands are claude-code-only (not cross-host parity-enforced); Antigravity + Gemini operators invoke the underlying script directly. Pattern leaves room for future utility commands (e.g. list-plans may follow) without disturbing cross-host parity.
+
+- **ADR 0004 Amendment 2026-05-27** — `wiki/explanation/decisions/0004-diataxis-documentation-spec.md` gains an Amendment section codifying 3 wiki I/O conventions on top of the original spec: (a) preview-before-write mandatory for ALL writes (per-repo + cross-repo; per-write gate, not per-batch); (b) per-repo `.diataxis-conventions.md` override honored; (c) cross-repo write target resolved via `repo_registry.list_repos()` from V4 #30 plan 1.
+
+### Changed
+
+- **`harness/agents/documenter.md`** extended with "Cross-repo write contract (V4 #30 plan 2 — 2026-05-27)" subsection under the existing "Write scope (hard boundary)" block. Three locked constraints when documenter writes to wiki/ in another registered repo: (1) target repo must be in `repo_registry.list_repos()`; (2) target wiki path = `<registered_root>/wiki/`; honors per-repo `.diataxis-conventions.md` override; (3) preview-before-write is mandatory PER cross-repo write (every edit gates on operator approval; not per-batch).
+
+- **Plan #22 dogfood cleanup** (1 small commit ahead of v4.3.0): `git rm` of 8 tracked files in `.claude/{agents,commands}` that were rm'd from disk during the V4 #30 plan 1 task 11 mid-build dogfood but never committed. The customizations remain at their source (harness/agents/ + adapters/claude-code/) + symlinked into `~/.claude/` by the v4.3.0 `--scope user` installer.
+
+### Internal
+
+- **No crickets-side change** this release — wiki I/O contract + skill + cross-repo views all live in agentm post-V4 #36 reorg. Crickets stays at v2.1.0; lib/install/.checksums.txt unchanged (no new shared Python helpers).
+- **No new unit tests** — `wiki-author` skill is pure SKILL.md instructions (no script to test); `recent-wiki-changes.{sh,ps1}` is end-to-end-smoke-validated against operator's real vault (no fixture-based unit tests needed for shell + walk-and-format logic).
+- **CHANGELOG cross-link convention preserved** — v4.4.0 references v4.3.0's release page; the V4.5 HLD subsection references back to v4.4.0.
+
+### Backward-compat
+
+- **`wiki-author` skill is additive** — auto-trigger fires only on its 5 documented phrase patterns; existing operator workflows unaffected. Skill is `install_scope: user`; lands in `~/.claude/skills/` via v4.3.0's `--scope user` installer (or per-repo via legacy `--scope project`).
+- **`/recent-wiki-changes` slash command is additive** — new surface; no existing slash command behavior changed.
+- **documenter spec extension is additive** — original write-scope hard boundary (wiki/** + Home.md/_Sidebar.md/README.md/.diataxis + .harness/project.json at /setup) preserved; the new cross-repo subsection extends; doesn't replace.
+- **ADR 0004 amendment is additive** — original spec preserved; the Amendment adds 3 conventions on top.
+- **Existing documenter dispatches** (single-repo, no `wiki-author` skill involvement) unchanged.
+
+### Cross-references
+
+- [HLD V4.5 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) — architectural arc.
+- [device-wide-architecture v0.5](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/device-wide-architecture.md#lifecycle) — update history entry.
+- [ADR 0004 Amendment 2026-05-27](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md#amendment-2026-05-27) — codified conventions.
+- [`documenter` sub-agent cross-repo write contract](https://github.com/alexherrero/agentm/blob/main/harness/agents/documenter.md) — write-scope hard boundary extension.
+- [V4 #30 plan 1 (v4.3.0)](https://github.com/alexherrero/agentm/releases/tag/v4.3.0) — `repo_registry` primitive that this plan's cross-repo views walk.
+- ROADMAP-V4 #38 — opinionated capability bundles meta-item; the wiki bundle (first sub-item) builds on this plan's I/O foundation; lands after plan 2 closes.
+- ADR 0001 (stdlib-only Python — preserved; no third-party deps).
+- ADR 0006 (crickets/agentm split — unchanged).
+
+### Deferred
+
+- **V4 #30 plan 3 of 3** — migration tooling for non-operator users + opt-out documentation (next per V4 execution order).
+- **V4 #38 wiki bundle** — first sub-item of opinionated capability bundles meta; pickup signal: *"let's build the wiki bundle"*.
+- **SessionStart auto-surface** for cross-repo wiki views — locked DC-2 on-demand-only this plan; defer if real-use signals real demand.
+- **Real-time wiki file watcher** — mtime-on-walk + `/recent-wiki-changes` slash command is sufficient; ADR 0001 stdlib-only preserved (no `watchdog` / `inotify`).
+- **`wiki-author` skill antigravity support** — v0.1.0 ships claude-code only; Antigravity skill-triggering semantics need to stabilize before extending `supported_hosts`.
+- **Pwsh launcher + hook test coverage** — bash + Python primitives have full coverage; pwsh twin recently shipped + validated end-to-end but lacks dedicated unit tests.
+- **Per-repo `.diataxis-conventions.md` operator-paced authoring** — file format documented in ADR 0004 amendment; operator writes per-repo as conventions surface real divergence between projects.
+
 ## [v4.3.0] — 2026-05-27 — Global install + `--scope user` (paired with crickets v2.1.0)
 
 **MINOR.** ROADMAP-V4 item #30 (plan 1 of 3). Paired pair #12 with [crickets v2.1.0](https://github.com/alexherrero/crickets/releases/tag/v2.1.0). The first install-model overhaul: the per-project `<project>/.claude/{skills,hooks,agents,commands}/` footprint becomes optional (legacy `--scope project` mode); the new `--scope user` flag installs once to `~/.claude/` and every operator-repo on the device draws customizations from that shared location. Default scope stays `project` for v4.3.0 + v2.1.0 backward compat; flips to `user` in a future release once dogfood (this plan's task 11) validates the new path. The operator-stated insight from 2026-05-24: "the only thing repos need is to be aware of them and how to interact/write/read plans from them" — anything else (skills, hooks, agents, commands) can live globally. **Crickets paired** (toolkit-first ordering — crickets v2.1.0 ships first, agentm v4.3.0 references its release URL). See [HLD V4.4 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) for the architectural arc.
