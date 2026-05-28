@@ -2104,5 +2104,216 @@ class TestInstallStateCLI(unittest.TestCase):
             self.assertEqual(json.loads(res.stdout), {})
 
 
+# -----------------------------------------------------------------------------
+# V4 #30 plan #22 task 4 — install_symlinks (source-mode symlink primitive)
+# -----------------------------------------------------------------------------
+
+_INSTALL_SYMLINKS_PATH = _HERE / "install_symlinks.py"
+_spec_isy = _ilu.spec_from_file_location("install_symlinks", _INSTALL_SYMLINKS_PATH)
+assert _spec_isy is not None and _spec_isy.loader is not None
+install_symlinks = _ilu.module_from_spec(_spec_isy)
+sys.modules["install_symlinks"] = install_symlinks
+_spec_isy.loader.exec_module(install_symlinks)
+
+
+def _fake_crickets_layout(root: Path) -> Path:
+    """Build a crickets-shaped fixture with sample customizations."""
+    cr = root / "crickets"
+    cr.mkdir(parents=True)
+    (cr / ".git").mkdir()
+    # skills bundle (dir)
+    (cr / "skills" / "pii-scrubber").mkdir(parents=True)
+    (cr / "skills" / "pii-scrubber" / "SKILL.md").write_text("# pii-scrubber", encoding="utf-8")
+    # hook bundle (dir)
+    (cr / "hooks" / "kill-switch").mkdir(parents=True)
+    (cr / "hooks" / "kill-switch" / "hook.md").write_text("# kill-switch", encoding="utf-8")
+    # agent file
+    (cr / "agents").mkdir()
+    (cr / "agents" / "evaluator.md").write_text("# evaluator", encoding="utf-8")
+    return cr
+
+
+def _fake_agentm_layout(root: Path) -> Path:
+    """Build an agentm-shaped fixture with sample customizations."""
+    ag = root / "agentm"
+    ag.mkdir(parents=True)
+    (ag / ".git").mkdir()
+    (ag / "harness" / "agents").mkdir(parents=True)
+    (ag / "harness" / "agents" / "explorer.md").write_text("# explorer", encoding="utf-8")
+    (ag / "adapters" / "claude-code" / "commands").mkdir(parents=True)
+    (ag / "adapters" / "claude-code" / "commands" / "plan.md").write_text("# plan", encoding="utf-8")
+    return ag
+
+
+class TestSymlinkCustomizations(unittest.TestCase):
+    """V4 #30 task 4: symlink_customizations primitive."""
+
+    def test_creates_symlinks_from_crickets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            prefix = base / "claude"
+            result = install_symlinks.symlink_customizations(
+                {"crickets": str(crickets)}, prefix,
+            )
+            # Expected: 1 skill + 1 hook + 1 agent = 3 created
+            self.assertEqual(len(result["created"]), 3)
+            self.assertIn("skills/pii-scrubber", result["created"])
+            self.assertIn("hooks/kill-switch", result["created"])
+            self.assertIn("agents/evaluator.md", result["created"])
+            # Verify they're real symlinks pointing at the source clones
+            self.assertTrue((prefix / "skills" / "pii-scrubber").is_symlink())
+            self.assertTrue((prefix / "agents" / "evaluator.md").is_symlink())
+
+    def test_creates_symlinks_from_agentm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            agentm = _fake_agentm_layout(base)
+            prefix = base / "claude"
+            result = install_symlinks.symlink_customizations(
+                {"agentm": str(agentm)}, prefix,
+            )
+            # 1 harness/agents/*.md + 1 adapters/claude-code/commands/*.md
+            self.assertEqual(len(result["created"]), 2)
+            self.assertIn("agents/explorer.md", result["created"])
+            self.assertIn("commands/plan.md", result["created"])
+
+    def test_both_clones_merged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            agentm = _fake_agentm_layout(base)
+            prefix = base / "claude"
+            result = install_symlinks.symlink_customizations(
+                {"agentm": str(agentm), "crickets": str(crickets)}, prefix,
+            )
+            # 3 from crickets + 2 from agentm = 5
+            self.assertEqual(len(result["created"]), 5)
+
+    def test_idempotent_on_already_symlinked(self) -> None:
+        """Re-running on already-symlinked target classifies as 'skipped'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            prefix = base / "claude"
+            install_symlinks.symlink_customizations({"crickets": str(crickets)}, prefix)
+            # Second run
+            result = install_symlinks.symlink_customizations({"crickets": str(crickets)}, prefix)
+            self.assertEqual(len(result["created"]), 0)
+            self.assertEqual(len(result["skipped"]), 3)
+
+    def test_repoints_when_symlink_target_differs(self) -> None:
+        """Existing symlink pointing elsewhere → repointed to expected source."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            prefix = base / "claude"
+            # Pre-existing symlink to a different source
+            (prefix / "agents").mkdir(parents=True)
+            wrong_target = base / "wrong-target.md"
+            wrong_target.write_text("wrong", encoding="utf-8")
+            os.symlink(wrong_target, prefix / "agents" / "evaluator.md")
+
+            result = install_symlinks.symlink_customizations(
+                {"crickets": str(crickets)}, prefix,
+            )
+            self.assertIn("agents/evaluator.md", result["repointed"])
+            # Verify the symlink now points at the crickets source
+            link = prefix / "agents" / "evaluator.md"
+            self.assertEqual(
+                Path(os.readlink(link)).resolve(),
+                (crickets / "agents" / "evaluator.md").resolve(),
+            )
+
+    def test_repoints_broken_symlink(self) -> None:
+        """Broken symlink (target gone) is treated as needing repoint."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            prefix = base / "claude"
+            (prefix / "agents").mkdir(parents=True)
+            os.symlink(base / "ghost.md", prefix / "agents" / "evaluator.md")
+
+            result = install_symlinks.symlink_customizations(
+                {"crickets": str(crickets)}, prefix,
+            )
+            self.assertIn("agents/evaluator.md", result["repointed"])
+
+    def test_real_file_conflict_skipped_without_force(self) -> None:
+        """Real file (not a symlink) at target path → conflict + skip."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            prefix = base / "claude"
+            (prefix / "agents").mkdir(parents=True)
+            (prefix / "agents" / "evaluator.md").write_text("real file", encoding="utf-8")
+
+            result = install_symlinks.symlink_customizations(
+                {"crickets": str(crickets)}, prefix,
+            )
+            self.assertIn("agents/evaluator.md", result["conflicts"])
+            # File still in place — never clobbered
+            self.assertEqual(
+                (prefix / "agents" / "evaluator.md").read_text(),
+                "real file",
+            )
+
+    def test_real_file_conflict_replaced_with_force(self) -> None:
+        """With --force, real file is replaced by the symlink."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            prefix = base / "claude"
+            (prefix / "agents").mkdir(parents=True)
+            (prefix / "agents" / "evaluator.md").write_text("real file", encoding="utf-8")
+
+            result = install_symlinks.symlink_customizations(
+                {"crickets": str(crickets)}, prefix, force=True,
+            )
+            self.assertIn("agents/evaluator.md", result["repointed"])
+            self.assertTrue((prefix / "agents" / "evaluator.md").is_symlink())
+
+    def test_no_source_clones_returns_empty(self) -> None:
+        """Empty source_clones dict → no symlinks; clean result."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = install_symlinks.symlink_customizations({}, Path(tmp) / "claude")
+            self.assertEqual(result, {"created": [], "repointed": [], "skipped": [], "conflicts": []})
+
+    def test_missing_clone_dir_is_skipped(self) -> None:
+        """source_clones with non-existent path → quietly skipped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result = install_symlinks.symlink_customizations(
+                {"crickets": str(Path(tmp) / "no-such-clone")},
+                Path(tmp) / "claude",
+            )
+            self.assertEqual(result["created"], [])
+
+
+class TestInstallSymlinksCLI(unittest.TestCase):
+    """V4 #30 task 4: CLI smoke."""
+
+    def _run(self, *argv: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(_INSTALL_SYMLINKS_PATH), *argv],
+            capture_output=True, text=True,
+        )
+
+    def test_no_clones_exits_1(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            res = self._run(tmp)
+            self.assertEqual(res.returncode, 1)
+            self.assertIn("no source clones", res.stderr)
+
+    def test_install_crickets_via_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_layout(base)
+            prefix = base / "claude"
+            res = self._run(str(prefix), "--crickets", str(crickets))
+            self.assertEqual(res.returncode, 0, res.stderr)
+            data = json.loads(res.stdout)
+            self.assertEqual(len(data["created"]), 3)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

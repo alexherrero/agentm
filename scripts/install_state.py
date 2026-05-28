@@ -27,8 +27,8 @@ Schema (v1) — written to `<install-prefix>/.agentm-install-state.json`:
       "version": 1,
       "mode": "source" | "release",
       "source_clones": {
-        "agentm":  "/Users/alex/Antigravity/agentm"  // present iff detected
-        "crickets": "/Users/alex/Antigravity/crickets"
+        "agentm":  "/srv/projects/agentm"  // present iff detected
+        "crickets": "/srv/projects/crickets"
       },
       "installed_at": "2026-05-27T18:00:00Z",
       "harness_version": "v4.2.0"                    // semver string
