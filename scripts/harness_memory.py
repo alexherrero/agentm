@@ -9,13 +9,19 @@ MemoryVault is not installed (`$MEMORY_VAULT_PATH` env unset AND no
 missing), so the harness runs the same on systems with or without the
 sibling `crickets` install.
 
-Four sub-commands:
+Sub-commands:
 
     recall              — phase-specific context-load for the agent's prompt
     offer-save          — preview + ask + dispatch to /memory save (self-modulating
                           by --confidence: ≥ threshold auto-saves silently)
     plan-done-promotion — dumps progress.md tail past a byte cursor; advances cursor
     available           — exit 0 if vault accessible, 1 otherwise
+    read-state          — read a project state file via the resolver (vault-first)
+    write-state         — write a project state file via the resolver (vault-only)
+    vault-state-path    — emit the resolved on-disk path for a state file
+    documenter-context  — V4 #35: doc-write-time recall bundle (operator conventions
+                          + project decisions + wiki-style) for the documenter
+                          sub-agent + wiki-author/diataxis-author skills
 
 Stdlib-only. Cross-platform via pathlib + subprocess. No third-party deps.
 
@@ -30,12 +36,13 @@ Env vars consulted:
 
 Default recall budgets (tokens, approximate by chars/4):
 
-    setup   = 4000
-    plan    = 6000
-    work    = 6000
-    review  = 4000
-    release = 6000
-    bugfix  = 6000
+    setup      = 4000
+    plan       = 6000
+    work       = 6000
+    review     = 4000
+    release    = 6000
+    bugfix     = 6000
+    documenter = 4000   (V4 #35; HARNESS_RECALL_BUDGET_DOCUMENTER override)
 
 Per-phase recall query templates live in `_RECALL_QUERIES`. Per-phase
 permanence rules live in `_PERMANENT_ONLY_DIRS`.
@@ -65,7 +72,16 @@ import vault_project as vp  # noqa: E402
 # Constants
 # -----------------------------------------------------------------------------
 
-_VALID_PHASES = ("setup", "plan", "work", "review", "release", "bugfix")
+# The six lifecycle phases plus `documenter` — a recall-context pseudo-phase
+# (V4 #35). `documenter` is NOT a lifecycle phase the operator invokes; it's the
+# context-load surface the documenter sub-agent + wiki-author/diataxis-author
+# skills consume at doc-write time so they don't re-litigate settled style calls.
+# It rides the same recall machinery (budget env, project-dir scope) as the real
+# phases, which is why it lives in this tuple — `phase_recall("documenter", ...)`
+# must validate.
+_VALID_PHASES = (
+    "setup", "plan", "work", "review", "release", "bugfix", "documenter",
+)
 
 _DEFAULT_BUDGETS = {
     "setup": 4000,
@@ -74,6 +90,10 @@ _DEFAULT_BUDGETS = {
     "review": 4000,
     "release": 6000,
     "bugfix": 6000,
+    # V4 #35: documenter dispatches are short; a big bundle crowds out the
+    # actual doc-edit reasoning. Cap at 4k, overrideable via
+    # HARNESS_RECALL_BUDGET_DOCUMENTER per locked design call #3.
+    "documenter": 4000,
 }
 
 # Phase-specific subdirectory mappings under `projects/<slug>/` (or legacy
@@ -86,6 +106,13 @@ _PHASE_PROJECT_DIRS = {
     "review": (),  # review reads global conventions, not per-project
     "release": ("decisions",),
     "bugfix": ("known-issues",),
+    # V4 #35: documenter-time context. `_index.md` anchors the project; settled
+    # `decisions/` keep the documenter from re-litigating ADR-recorded calls;
+    # `wiki-style/` (optional — graceful-skip if absent) carries per-project doc
+    # conventions (heading shape, page-length norms, mode preferences). Operator
+    # globals from `_always-load/` load unconditionally via `_load_always_load`,
+    # so they're not listed here.
+    "documenter": ("_index.md", "decisions", "wiki-style"),
 }
 
 # Per-phase recall query templates. Used for the toolkit-side `recall.py query`
@@ -97,6 +124,7 @@ _RECALL_QUERIES = {
     "review": "conventions code review patterns",
     "release": "decisions changelog what-shipped",
     "bugfix": "known-issues gotchas recurring root-cause",
+    "documenter": "documentation conventions decisions wiki style mode",
 }
 
 # Always-load conventions live at personal-private/_always-load/.
@@ -788,6 +816,118 @@ def phase_recall(
 
 
 # -----------------------------------------------------------------------------
+# documenter-context (V4 #35)
+# -----------------------------------------------------------------------------
+
+def _load_md_dir(directory: Path) -> list[dict]:
+    """Return `[{"name": <stem>, "body": <text>}]` for every readable `*.md`
+    under `directory`, sorted by name. Empty list if the dir is absent.
+    Unreadable files are skipped silently (graceful — never raises)."""
+    out: list[dict] = []
+    if not directory.is_dir():
+        return out
+    for path in sorted(directory.glob("*.md")):
+        try:
+            body = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        out.append({"name": path.stem, "body": body})
+    return out
+
+
+def resolve_documenter_context(slug: str) -> Optional[dict]:
+    """Structured documenter-time recall bundle for `slug` (V4 #35).
+
+    The structured counterpart to ``phase_recall("documenter", ...)``: where
+    `phase_recall` returns a flat markdown blob, this returns a typed dict so
+    programmatic callers (the `documenter-context --format json` path, future
+    primitives) can address each context source independently.
+
+    Returned shape::
+
+        {
+            "slug":                 <slug>,
+            "registered":           bool,   # projects/<slug>/ dir exists in vault
+            "operator_conventions": [{"name": str, "body": str}, ...],  # _always-load/
+            "project_decisions":    [{"name": str, "body": str}, ...],  # decisions/
+            "project_anchor":       Optional[str],   # abs path to projects/<slug>/_index.md
+            "wiki_style":           [{"name": str, "body": str}, ...],  # wiki-style/ (optional)
+        }
+
+    Graceful-skip contract:
+
+    - **Vault unavailable** (``vault_path()`` is None) → returns ``None``. The
+      caller detects this via ``is None`` and falls back to repo-local context.
+    - **Slug not registered** (``projects/<slug>/`` dir absent) → returns the
+      dict with ``registered=False``, empty ``project_decisions``/``wiki_style``,
+      and ``project_anchor=None``. ``operator_conventions`` still loads, since
+      ``_always-load/`` conventions apply globally regardless of project.
+
+    Never raises on I/O errors — unreadable files are skipped.
+    """
+    v = vault_path()
+    if v is None:
+        return None
+
+    bundle: dict = {
+        "slug": slug,
+        "registered": False,
+        "operator_conventions": [],
+        "project_decisions": [],
+        "project_anchor": None,
+        "wiki_style": [],
+    }
+
+    # Operator-global conventions — always loaded (apply across every project).
+    bundle["operator_conventions"] = _load_md_dir(
+        v / _ALWAYS_LOAD_REL[0] / _ALWAYS_LOAD_REL[1]
+    )
+
+    base = _vault_projects_dir(v) / slug
+    if not base.is_dir():
+        # Slug not registered — project-specific bundle stays empty.
+        return bundle
+
+    bundle["registered"] = True
+
+    anchor = base / "_index.md"
+    if anchor.is_file():
+        bundle["project_anchor"] = str(anchor)
+
+    bundle["project_decisions"] = _load_md_dir(base / "decisions")
+    bundle["wiki_style"] = _load_md_dir(base / "wiki-style")
+    return bundle
+
+
+def documenter_context(slug: str, *, budget: Optional[int] = None, fmt: str = "text") -> tuple[str, int]:
+    """Render the documenter-context bundle for `slug`; return `(output, exit_code)`.
+
+    Exit-code contract (per V4 #35 plan task 2):
+
+    - ``1`` — vault unavailable. Output is empty.
+    - ``2`` — vault reachable but `slug` not registered. Output still carries any
+      operator-global conventions (text via `phase_recall`, or the JSON bundle);
+      the non-zero code tells the caller the *project-specific* context was absent
+      so it can layer repo-local fallback on top.
+    - ``0`` — success; bundle rendered.
+
+    `fmt="text"` reuses `phase_recall("documenter", ...)` for the flat markdown
+    rendering (so the documenter sub-agent gets the same shape every other phase
+    emits). `fmt="json"` emits `resolve_documenter_context()`'s structured dict.
+    """
+    bundle = resolve_documenter_context(slug)
+    if bundle is None:
+        return "", 1
+
+    if fmt == "json":
+        output = json.dumps(bundle, indent=2, ensure_ascii=False) + "\n"
+    else:
+        output = phase_recall("documenter", slug, budget=budget)
+
+    return output, (0 if bundle["registered"] else 2)
+
+
+# -----------------------------------------------------------------------------
 # offer-save
 # -----------------------------------------------------------------------------
 
@@ -1131,6 +1271,23 @@ def _build_parser() -> argparse.ArgumentParser:
         help="path to project root (default: cwd)",
     )
 
+    # documenter-context (V4 #35): doc-write-time recall bundle for the
+    # documenter sub-agent + wiki-author/diataxis-author skills. Composes
+    # `recall` under the hood with phase=documenter; one subcommand for all
+    # three primitives (locked design call #2 — not three separate verbs).
+    p_dc = sub.add_parser(
+        "documenter-context",
+        help="emit doc-write-time recall bundle (operator conventions + project decisions)",
+    )
+    p_dc.add_argument("--slug", required=True,
+                      help="project slug whose context to load")
+    p_dc.add_argument("--budget", type=int, default=None,
+                      help="recall budget in tokens (default: "
+                           "HARNESS_RECALL_BUDGET_DOCUMENTER env or 4000)")
+    p_dc.add_argument("--format", dest="fmt", choices=("text", "json"), default="text",
+                      help="output format: flat markdown (text, default) or "
+                           "structured JSON for programmatic callers")
+
     return parser
 
 
@@ -1218,6 +1375,13 @@ def main(argv: Optional[list[str]] = None) -> int:
             return 1
         print(str(path))
         return 0
+
+    if args.cmd == "documenter-context":
+        # V4 #35: rc 0 = bundle; rc 1 = vault unavailable; rc 2 = slug not registered.
+        output, rc = documenter_context(args.slug, budget=args.budget, fmt=args.fmt)
+        if output:
+            sys.stdout.write(output)
+        return rc
 
     # argparse should prevent this branch.
     return 2
