@@ -75,8 +75,8 @@ Lives at `<target>/.agentm-migrate-record.json` (NOT under `.claude/` — surviv
   "target_root": "/path/to/project",
   "migrated_at": "2026-05-27T18:00:00Z",
   "source_clones_used": {
-    "agentm":  "/Users/alex/Antigravity/agentm",
-    "crickets": "/Users/alex/Antigravity/crickets"
+    "agentm":  "~/Antigravity/agentm",
+    "crickets": "~/Antigravity/crickets"
   },
   "registered_slug": "myproject",
   "actions": [
