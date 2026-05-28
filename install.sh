@@ -529,6 +529,19 @@ if [[ $INSTALL_HOOKS -eq 1 ]]; then
   echo "    Edit .harness/verify.sh to enable checks for your stack."
 fi
 
+# ── probe + persist install state (V4 #30 task 3) ──────────────────────────
+# Detect whether the operator has source-clone canonical paths for agentm +
+# crickets; persist the decision to <install-prefix>/.agentm-install-state.json.
+# Silent — no stdout (the helper emits the persist target, captured to /dev/null
+# here so the existing install logs aren't disturbed). Decision drives the
+# source-vs-release dispatch in tasks 4-5.
+
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$HARNESS_ROOT/scripts/install_state.py" persist \
+    .claude \
+    --harness-version "$HARNESS_VERSION" >/dev/null 2>&1 || true
+fi
+
 # ── record version ──────────────────────────────────────────────────────────
 
 echo "$HARNESS_VERSION" > .harness/.version

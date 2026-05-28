@@ -1860,5 +1860,249 @@ class TestRepoRegistryCLI(unittest.TestCase):
             self.assertEqual(data["repos"], [])
 
 
+# -----------------------------------------------------------------------------
+# V4 #30 plan #22 task 3 — install_state probe + persist
+# -----------------------------------------------------------------------------
+
+_INSTALL_STATE_PATH = _HERE / "install_state.py"
+_spec_is = _ilu.spec_from_file_location("install_state", _INSTALL_STATE_PATH)
+assert _spec_is is not None and _spec_is.loader is not None
+install_state = _ilu.module_from_spec(_spec_is)
+sys.modules["install_state"] = install_state
+_spec_is.loader.exec_module(install_state)
+
+
+def _fake_agentm_clone(root: Path) -> Path:
+    """Build a fixture directory shaped like an agentm source clone."""
+    p = root / "agentm"
+    p.mkdir(parents=True)
+    (p / ".git").mkdir()
+    (p / "harness").mkdir()
+    return p
+
+
+def _fake_crickets_clone(root: Path) -> Path:
+    """Build a fixture directory shaped like a crickets source clone."""
+    p = root / "crickets"
+    p.mkdir(parents=True)
+    (p / ".git").mkdir()
+    (p / "skills").mkdir()
+    return p
+
+
+class TestDetectSourceClones(unittest.TestCase):
+    """V4 #30 task 3: detect_source_clones probe."""
+
+    def test_neither_clone_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            clones = install_state.detect_source_clones(
+                agentm_path=base / "agentm",
+                crickets_path=base / "crickets",
+            )
+            self.assertEqual(clones, {})
+
+    def test_agentm_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            agentm = _fake_agentm_clone(base)
+            clones = install_state.detect_source_clones(
+                agentm_path=agentm,
+                crickets_path=base / "crickets",
+            )
+            self.assertEqual(list(clones.keys()), ["agentm"])
+            self.assertEqual(clones["agentm"], str(agentm))
+
+    def test_crickets_only(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            crickets = _fake_crickets_clone(base)
+            clones = install_state.detect_source_clones(
+                agentm_path=base / "agentm",
+                crickets_path=crickets,
+            )
+            self.assertEqual(list(clones.keys()), ["crickets"])
+
+    def test_both_clones_present(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            agentm = _fake_agentm_clone(base)
+            crickets = _fake_crickets_clone(base)
+            clones = install_state.detect_source_clones(
+                agentm_path=agentm,
+                crickets_path=crickets,
+            )
+            self.assertEqual(set(clones.keys()), {"agentm", "crickets"})
+
+    def test_clone_without_required_subdirs_not_detected(self) -> None:
+        """Dir with .git but missing harness/ is NOT an agentm clone."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            fake = base / "agentm"
+            fake.mkdir()
+            (fake / ".git").mkdir()
+            # Missing harness/ — should not be detected
+            clones = install_state.detect_source_clones(
+                agentm_path=fake,
+                crickets_path=base / "crickets",
+            )
+            self.assertEqual(clones, {})
+
+
+class TestDetectInstallMode(unittest.TestCase):
+    """V4 #30 task 3: install-mode decision (source vs release)."""
+
+    def test_neither_clone_yields_release_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            mode, clones = install_state.detect_install_mode(
+                agentm_path=base / "agentm",
+                crickets_path=base / "crickets",
+            )
+            self.assertEqual(mode, "release")
+            self.assertEqual(clones, {})
+
+    def test_at_least_one_clone_yields_source_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _fake_agentm_clone(base)
+            mode, clones = install_state.detect_install_mode(
+                agentm_path=base / "agentm",
+                crickets_path=base / "crickets",
+            )
+            self.assertEqual(mode, "source")
+            self.assertEqual(list(clones.keys()), ["agentm"])
+
+
+class TestPersistInstallState(unittest.TestCase):
+    """V4 #30 task 3: persist + read primitives."""
+
+    def test_persist_writes_expected_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            path = install_state.persist_install_state(
+                prefix, "release", {}, "v4.3.0",
+                installed_at="2026-05-27T18:00:00Z",
+            )
+            self.assertTrue(path.exists())
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["version"], 1)
+            self.assertEqual(data["mode"], "release")
+            self.assertEqual(data["source_clones"], {})
+            self.assertEqual(data["installed_at"], "2026-05-27T18:00:00Z")
+            self.assertEqual(data["harness_version"], "v4.3.0")
+
+    def test_persist_creates_missing_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            deep_prefix = Path(tmp) / "a" / "b" / "c"
+            install_state.persist_install_state(deep_prefix, "source", {"agentm": "/x"}, "v4.3.0")
+            self.assertTrue(deep_prefix.is_dir())
+
+    def test_persist_rejects_invalid_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            with self.assertRaises(ValueError):
+                install_state.persist_install_state(prefix, "invalid-mode", {}, "v4.3.0")
+
+    def test_read_returns_none_when_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(install_state.read_install_state(Path(tmp)))
+
+    def test_read_returns_none_on_malformed_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp)
+            install_state.state_path(prefix).write_text("not-json", encoding="utf-8")
+            self.assertIsNone(install_state.read_install_state(prefix))
+
+    def test_persist_then_read_roundtrip(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "p"
+            install_state.persist_install_state(
+                prefix, "source", {"agentm": "/x", "crickets": "/y"}, "v4.3.0",
+            )
+            data = install_state.read_install_state(prefix)
+            self.assertIsNotNone(data)
+            self.assertEqual(data["mode"], "source")
+            self.assertEqual(data["source_clones"], {"agentm": "/x", "crickets": "/y"})
+
+    def test_re_probe_flips_mode_when_clone_appears(self) -> None:
+        """Smoke: install in release mode, then clone appears, re-probe flips to source."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prefix = base / "prefix"
+
+            # First run: no clones → release mode
+            mode1, clones1 = install_state.detect_install_mode(
+                agentm_path=base / "agentm",
+                crickets_path=base / "crickets",
+            )
+            install_state.persist_install_state(prefix, mode1, clones1, "v4.3.0")
+            d1 = install_state.read_install_state(prefix)
+            self.assertEqual(d1["mode"], "release")
+
+            # Clone appears
+            _fake_agentm_clone(base)
+
+            # Re-probe + persist → source mode
+            mode2, clones2 = install_state.detect_install_mode(
+                agentm_path=base / "agentm",
+                crickets_path=base / "crickets",
+            )
+            install_state.persist_install_state(prefix, mode2, clones2, "v4.3.0")
+            d2 = install_state.read_install_state(prefix)
+            self.assertEqual(d2["mode"], "source")
+            self.assertIn("agentm", d2["source_clones"])
+
+
+class TestInstallStateCLI(unittest.TestCase):
+    """V4 #30 task 3: install_state CLI subcommands."""
+
+    def _run(self, *argv: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(_INSTALL_STATE_PATH), *argv],
+            capture_output=True, text=True,
+        )
+
+    def test_detect_neither_clone_emits_release_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            res = self._run(
+                "detect",
+                "--agentm-path", str(base / "no-agentm"),
+                "--crickets-path", str(base / "no-crickets"),
+            )
+            self.assertEqual(res.returncode, 0, res.stderr)
+            data = json.loads(res.stdout)
+            self.assertEqual(data["mode"], "release")
+            self.assertEqual(data["source_clones"], {})
+
+    def test_persist_then_read_via_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            prefix = base / "prefix"
+            _fake_agentm_clone(base)
+
+            persist = self._run(
+                "persist", str(prefix),
+                "--harness-version", "v4.3.0",
+                "--agentm-path", str(base / "agentm"),
+                "--crickets-path", str(base / "no-crickets"),
+            )
+            self.assertEqual(persist.returncode, 0, persist.stderr)
+            self.assertTrue(persist.stdout.strip().endswith(".agentm-install-state.json"))
+
+            read = self._run("read", str(prefix))
+            self.assertEqual(read.returncode, 0, read.stderr)
+            data = json.loads(read.stdout)
+            self.assertEqual(data["mode"], "source")
+            self.assertIn("agentm", data["source_clones"])
+
+    def test_read_emits_empty_object_when_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            res = self._run("read", tmp)
+            self.assertEqual(res.returncode, 0)
+            self.assertEqual(json.loads(res.stdout), {})
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -13,18 +13,18 @@ Schema (v1):
       "repos": [
         {
           "slug": "agentm",
-          "root_path": "/Users/alex/Antigravity/agentm",
-          "wiki_path": "/Users/alex/Antigravity/agentm/wiki",      // optional
+          "root_path": "/srv/projects/agentm",
+          "wiki_path": "/srv/projects/agentm/wiki",           // optional
           "harness_state_mode": "vault"                            // optional
         },
         ...
       ]
     }
 
-Per-host root paths differ across operator's machines (e.g. `/Users/alex/...`
-on macOS vs `C:\\Users\\alex\\...` on Windows). For v1, the registry stores the
-path as-recorded; a later plan (V4 #30 plan 2 or 3) may introduce per-host
-overrides if real-use surfaces the need.
+Per-host root paths differ across operator machines (e.g. Unix-style
+absolute paths on macOS/Linux vs Windows-style paths on Windows). For v1,
+the registry stores the path as-recorded; a later plan (V4 #30 plan 2 or 3)
+may introduce per-host overrides if real-use surfaces the need.
 
 Three CLI subcommands:
 
@@ -171,9 +171,8 @@ def register_repo(
     Returns the updated registry dict (after write).
 
     Path normalization: `root_path` is stored as a string (str(Path(value)))
-    to preserve operator's home-relative paths verbatim (e.g.
-    `/Users/alex/Antigravity/agentm` on macOS). Cross-platform: caller
-    decides whether to pass absolute or symlink-resolved paths.
+    to preserve operator's home-relative paths verbatim. Cross-platform:
+    caller decides whether to pass absolute or symlink-resolved paths.
     """
     if not slug:
         raise ValueError("slug must be non-empty")

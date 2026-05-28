@@ -452,6 +452,23 @@ if ($Hooks) {
     Write-Host '    Edit .harness/verify.ps1 to enable checks for your stack.'
 }
 
+# ── probe + persist install state (V4 #30 task 3) ──────────────────────────
+# Detect whether the operator has source-clone canonical paths for agentm +
+# crickets; persist the decision to <install-prefix>/.agentm-install-state.json.
+# Silent — no stdout (helper output redirected). Decision drives the source-
+# vs-release dispatch in tasks 4-5.
+
+$pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
+if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+if ($pythonCmd) {
+    try {
+        & $pythonCmd.Source (Join-Path $HarnessRoot 'scripts/install_state.py') 'persist' `
+            '.claude' '--harness-version' $HarnessVersion *>$null
+    } catch {
+        # Silent failure — install proceeds; install-state.json is best-effort
+    }
+}
+
 # ── record version ──────────────────────────────────────────────────────────
 
 Set-Content -LiteralPath (Join-Path '.harness' '.version') -Value $HarnessVersion
