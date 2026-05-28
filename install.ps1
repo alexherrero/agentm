@@ -54,6 +54,36 @@ if ($Scope -eq 'project' -and -not $Target) {
     exit 1
 }
 
+# ── crickets-sibling auto-detect (V4 #30 task 9) ────────────────────────────
+$cricketsClone = Join-Path $HOME 'Antigravity/crickets/install.ps1'
+$globalSkill = Join-Path $HOME '.claude/skills/pii-scrubber'
+$noBootstrap = $env:AGENTM_NO_CRICKETS_BOOTSTRAP -eq '1'
+if (-not (Test-Path $cricketsClone) -and -not (Test-Path $globalSkill) -and -not $noBootstrap) {
+    Write-Host '==> crickets-sibling auto-detect: not found locally; cloning...'
+    $gitCmd = Get-Command git -ErrorAction SilentlyContinue
+    if ($gitCmd) {
+        New-Item -ItemType Directory -Path (Join-Path $HOME 'Antigravity') -Force | Out-Null
+        $cricketsDir = Join-Path $HOME 'Antigravity/crickets'
+        try {
+            & $gitCmd.Source 'clone' '--quiet' '--depth' '1' 'https://github.com/alexherrero/crickets.git' $cricketsDir 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "    cloned to $cricketsDir"
+                if ($Scope -eq 'user') {
+                    & pwsh -NoProfile -File (Join-Path $cricketsDir 'install.ps1') -Scope user *>$null
+                } elseif ($Target) {
+                    & pwsh -NoProfile -File (Join-Path $cricketsDir 'install.ps1') $Target *>$null
+                }
+            } else {
+                Write-Warning 'git clone failed; continuing without crickets'
+            }
+        } catch {
+            Write-Warning "crickets bootstrap error: $_ (continuing)"
+        }
+    } else {
+        Write-Warning 'git not on PATH; skipping crickets auto-clone'
+    }
+}
+
 # ── -Scope user dispatch (V4 #30 task 8) ────────────────────────────────────
 if ($Scope -eq 'user') {
     $UserInstallPrefix = if ($env:AGENTM_INSTALL_PREFIX) {
