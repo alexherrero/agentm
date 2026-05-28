@@ -110,19 +110,67 @@ _PROGRESS_REL = (".harness", "progress.md")
 # Vault + toolkit discovery
 # -----------------------------------------------------------------------------
 
-def vault_path() -> Optional[Path]:
-    """Return the MemoryVault root if accessible, else None.
+def _agentm_install_prefix() -> Path:
+    """Resolve install prefix per established convention: $AGENTM_INSTALL_PREFIX → ~/.claude."""
+    raw = os.environ.get("AGENTM_INSTALL_PREFIX", "").strip()
+    if raw:
+        return Path(os.path.expanduser(raw))
+    return Path.home() / ".claude"
 
-    Resolution order: MEMORY_VAULT_PATH env > None.
-    The directory must exist for the path to be returned.
+
+def _read_config_vault_path(install_prefix: Optional[Path] = None) -> Optional[Path]:
+    """Read `vault_path` from `<install-prefix>/.agentm-config.json`.
+
+    Returns the parsed Path if the field is set + the directory exists.
+    Graceful-skips silently on any I/O or parse error — never raises.
+
+    v4.5.1 task 2: introduced as the on-device source-of-truth for the
+    vault root. Env `$MEMORY_VAULT_PATH` still wins as an override.
     """
-    raw = os.environ.get("MEMORY_VAULT_PATH", "").strip()
-    if not raw:
+    if install_prefix is None:
+        install_prefix = _agentm_install_prefix()
+    config_path = install_prefix / ".agentm-config.json"
+    if not config_path.is_file():
         return None
-    p = Path(raw).expanduser()
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("vault_path")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    p = Path(os.path.expanduser(raw.strip()))
     if not p.is_dir():
         return None
     return p
+
+
+def vault_path() -> Optional[Path]:
+    """Return the MemoryVault root if accessible, else None.
+
+    Resolution order (first hit wins):
+      1. `$MEMORY_VAULT_PATH` env — preserved as override for CI / debugging /
+         per-session use. Even when set to a non-existent path, env takes
+         precedence: this branch returns None rather than falling through,
+         so operators can detect + fix a broken export. (v4.5.1 locked DC-2.)
+      2. `<install-prefix>/.agentm-config.json::vault_path` — the on-device
+         source of truth written by `agentm_config.py --vault-path <path>` or
+         the installer's first-run prompt. Install prefix honors
+         `$AGENTM_INSTALL_PREFIX` for non-default setups.
+      3. `None` — graceful-skip; same semantics as pre-v4.5.1 but now fires
+         only when BOTH paths are empty.
+
+    The directory must exist for the path to be returned.
+    """
+    raw = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    if raw:
+        p = Path(os.path.expanduser(raw))
+        if not p.is_dir():
+            return None
+        return p
+    return _read_config_vault_path()
 
 
 def is_available() -> bool:

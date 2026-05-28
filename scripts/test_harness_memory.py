@@ -154,6 +154,130 @@ class TestAvailable(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------------
+# v4.5.1 task 2: vault_path() resolution order — env → config → None
+# -----------------------------------------------------------------------------
+
+class TestVaultPathResolutionOrder(unittest.TestCase):
+    """Resolution ladder added in v4.5.1: MEMORY_VAULT_PATH env first, then
+    on-device .agentm-config.json, then None. Env always wins — even when
+    set to a broken path — per v4.5.1 locked DC-2."""
+
+    def _write_config(self, prefix: Path, vault_path: Optional[str]) -> None:
+        prefix.mkdir(parents=True, exist_ok=True)
+        payload = {"schema_version": 2, "mode": "source"}
+        if vault_path is not None:
+            payload["vault_path"] = vault_path
+        (prefix / ".agentm-config.json").write_text(
+            json.dumps(payload), encoding="utf-8",
+        )
+
+    # (a) env set + valid → env wins
+    def test_a_env_set_valid_returns_env(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(Path(tmp))
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, str(vault))  # config also points here
+            with _ClearEnv(set_vars={
+                "MEMORY_VAULT_PATH": str(vault),
+                "AGENTM_INSTALL_PREFIX": str(prefix),
+            }):
+                self.assertEqual(hm.vault_path(), vault)
+
+    # (b) env unset + config valid → config wins
+    def test_b_env_unset_config_valid_returns_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(Path(tmp))
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, str(vault))
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertEqual(hm.vault_path(), vault)
+
+    # (c) env set BUT broken + config valid → returns None (env wins, even broken)
+    def test_c_env_set_broken_returns_none_even_if_config_valid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(Path(tmp))
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, str(vault))
+            with _ClearEnv(set_vars={
+                "MEMORY_VAULT_PATH": "/definitely/not/a/real/path",
+                "AGENTM_INSTALL_PREFIX": str(prefix),
+            }):
+                self.assertIsNone(hm.vault_path())
+
+    # (d) env unset + config missing → None
+    def test_d_env_unset_config_missing_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "empty-prefix"
+            prefix.mkdir()
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+
+    # (e) env unset + config present but no vault_path field → None
+    def test_e_env_unset_config_lacks_vault_path_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, vault_path=None)  # no field
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+
+    # (f) env unset + config has vault_path but directory missing → None
+    def test_f_env_unset_config_vault_path_dir_missing_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, "/no/such/dir/at/all")
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+
+    # Bonus: malformed config JSON → graceful-skip returns None
+    def test_g_env_unset_config_malformed_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_text(
+                "{not valid json", encoding="utf-8",
+            )
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+
+    # Bonus: vault_path with ~/ expansion works
+    def test_h_vault_path_tilde_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(Path(tmp))
+            prefix = Path(tmp) / "prefix"
+            # Set HOME so ~ expands into tmp
+            self._write_config(prefix, "~/v4-test-vault-shadow")
+            # We didn't actually create the shadow path; should return None
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix), "HOME": tmp},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+            # Now create it + retest
+            shadow = Path(tmp) / "v4-test-vault-shadow"
+            shadow.mkdir()
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix), "HOME": tmp},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertEqual(hm.vault_path(), shadow)
+
+
+# -----------------------------------------------------------------------------
 # recall
 # -----------------------------------------------------------------------------
 
