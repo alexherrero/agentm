@@ -2565,7 +2565,8 @@ def _seed_fragment_and_state(
         ],
     }
     prefix.mkdir(parents=True, exist_ok=True)
-    (prefix / ".agentm-install-state.json").write_text(
+    # v4.5.1: write directly to the post-migration filename
+    (prefix / ".agentm-config.json").write_text(
         json.dumps(state, indent=2), encoding="utf-8",
     )
 
@@ -2594,8 +2595,8 @@ class TestInstallStateSync(unittest.TestCase):
         """install-state.json exists but has no `fragments` field → graceful-skip."""
         with tempfile.TemporaryDirectory() as tmp:
             prefix = Path(tmp)
-            (prefix / ".agentm-install-state.json").write_text(
-                json.dumps({"version": 1, "mode": "release", "harness_version": "v4.3.0"}),
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"schema_version": 2, "mode": "release", "harness_version": "v4.3.0"}),
                 encoding="utf-8",
             )
             result = install_state_sync.sync_fragments(prefix)
@@ -2630,7 +2631,7 @@ class TestInstallStateSync(unittest.TestCase):
             self.assertEqual(len(result["re_merged"]), 1)
             # Verify recorded SHA was updated in install-state
             state = json.loads(
-                (prefix / ".agentm-install-state.json").read_text(encoding="utf-8")
+                (prefix / ".agentm-config.json").read_text(encoding="utf-8")
             )
             new_sha = state["fragments"][0]["sha256"]
             self.assertNotEqual(new_sha, "0" * 64)
@@ -2648,10 +2649,10 @@ class TestInstallStateSync(unittest.TestCase):
             ghost_path = base / "src" / "ghost-fragment.json"
             prefix.mkdir(parents=True)
             state = {
-                "version": 1,
+                "schema_version": 2,
                 "fragments": [{"path": str(ghost_path), "sha256": "abc"}],
             }
-            (prefix / ".agentm-install-state.json").write_text(
+            (prefix / ".agentm-config.json").write_text(
                 json.dumps(state), encoding="utf-8",
             )
             result = install_state_sync.sync_fragments(prefix)

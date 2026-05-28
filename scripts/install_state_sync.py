@@ -2,7 +2,7 @@
 """install_state_sync — SessionStart re-merge of settings.json fragments.
 
 Per V4 #30 plan #22 task 6: detect drift between the recorded fragments in
-`<install-prefix>/.agentm-install-state.json` and the current source SHA;
+`<install-prefix>/.agentm-config.json` and the current source SHA;
 re-merge divergent fragments into `<install-prefix>/settings.json`.
 
 Single hook handles both install modes:
@@ -15,17 +15,27 @@ Single hook handles both install modes:
 Idempotent + non-blocking:
   - On every SessionStart, for each tracked fragment:
     - Compute current SHA at recorded `path`.
-    - If matches recorded SHA in install-state → no-op.
+    - If matches recorded SHA → no-op.
     - If differs → re-merge via `merge-settings-fragment.py` + update SHA.
   - Hook surfaces a one-line stderr notice on re-merge; silent otherwise.
   - Failure (missing fragment, malformed JSON, merge error) emits one-line
     stderr + continues (never freezes session start).
 
 Graceful-skip:
-  - Missing install-state.json (pre-V4 #30 install) → exit 0, silent.
+  - Missing config file (pre-V4 #30 install) → exit 0, silent.
   - No `fragments` field in state → exit 0, silent.
 
-Stdlib-only (ADR 0001). Per V4 #30 plan #22 task 6.
+Schema v2 (v4.5.1+):
+  - Config file renamed `.agentm-install-state.json` → `.agentm-config.json`.
+    Hard cutover: `_read_state()` atomically renames legacy → new on first
+    read (single-shot per install). No breadcrumb left at the old path.
+  - `schema_version: 2` written on every write (replaces legacy `version: 1`).
+  - `vault_path` field added at top level; persisted as `null` when unset.
+    Read by `harness_memory.py::vault_path()` as the on-device source of
+    truth for the MemoryVault location (env `$MEMORY_VAULT_PATH` still wins
+    as an override).
+
+Stdlib-only (ADR 0001). Per V4 #30 plan #22 task 6 + v4.5.1 task 1.
 """
 from __future__ import annotations
 
@@ -40,6 +50,11 @@ from typing import Optional
 
 
 _BUF_SIZE = 65536
+
+# v4.5.1 task 1 — config file rename + schema v2.
+_CONFIG_FILENAME = ".agentm-config.json"
+_LEGACY_FILENAME = ".agentm-install-state.json"
+_SCHEMA_VERSION = 2
 
 
 def _sha256(path: Path) -> str:
@@ -57,20 +72,51 @@ def _sha256(path: Path) -> str:
 
 
 def _read_state(install_prefix: Path) -> Optional[dict]:
-    state_path = install_prefix / ".agentm-install-state.json"
-    if not state_path.is_file():
-        return None
+    """Read the agentm config file; auto-migrate legacy filename on first read.
+
+    Resolution:
+      1. If `.agentm-config.json` exists → read it directly.
+      2. Else if legacy `.agentm-install-state.json` exists → atomically
+         rename to `.agentm-config.json` (one-shot migration) + read.
+         No breadcrumb left at the old path per v4.5.1 locked DC-1.
+      3. Else → return None (graceful-skip; same semantics as pre-v4.5.1).
+
+    Reads return the dict AS-IS from disk. Callers handle schema-version
+    differences via `state.get("schema_version", 1)` — legacy files lack the
+    field; force-write to v2 happens in `_write_state()`.
+    """
+    config_path = install_prefix / _CONFIG_FILENAME
+    if not config_path.is_file():
+        legacy_path = install_prefix / _LEGACY_FILENAME
+        if not legacy_path.is_file():
+            return None
+        # One-shot migration. os.replace() is atomic on POSIX + Windows.
+        try:
+            os.replace(str(legacy_path), str(config_path))
+        except OSError:
+            return None
     try:
-        return json.loads(state_path.read_text(encoding="utf-8"))
+        return json.loads(config_path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return None
 
 
 def _write_state(install_prefix: Path, state: dict) -> None:
-    state_path = install_prefix / ".agentm-install-state.json"
-    tmp = state_path.with_suffix(state_path.suffix + ".tmp")
+    """Write the agentm config file atomically; force schema v2.
+
+    Always writes to `.agentm-config.json`. Forces `schema_version: 2` on
+    every write + ensures `vault_path` field is present (None when unset).
+    Drops the legacy `version` field if present (superseded by
+    `schema_version`).
+    """
+    config_path = install_prefix / _CONFIG_FILENAME
+    state = dict(state)  # don't mutate caller's dict
+    state["schema_version"] = _SCHEMA_VERSION
+    state.setdefault("vault_path", None)
+    state.pop("version", None)  # legacy schema-version field, superseded
+    tmp = config_path.with_suffix(config_path.suffix + ".tmp")
     tmp.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-    tmp.replace(state_path)
+    tmp.replace(config_path)
 
 
 def _maybe_run_version_check(install_prefix: Path) -> None:
