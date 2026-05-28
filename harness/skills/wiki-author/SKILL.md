@@ -60,12 +60,17 @@ If operator's phrasing is ambiguous (e.g. *"add this somewhere"*), do NOT fire �
 After resolution, this skill ALWAYS:
 
 1. **Loads the per-repo `.diataxis-conventions.md` override** if present in the target repo root. Operator-locked conventions take precedence over global defaults.
-2. **Determines Diátaxis mode** for the write target:
+2. **Loads the doc-write-time context bundle (V4 #35)** for the resolved target repo:
+   ```bash
+   python3 scripts/harness_memory.py documenter-context --slug "<resolved-target-slug>" --format text
+   ```
+   `<resolved-target-slug>` is the cwd project's slug in cwd mode (`python3 scripts/vault_project.py read .`) or the explicitly-named slug in cross-repo mode. The bundle carries *operator conventions to honor + project decisions to respect + locked design calls to NOT re-litigate*. **Graceful-skip:** on **rc 1** (vault unreachable) emit `[wiki-author] vault unreachable; proceeding without vault context` and continue with pre-v4.6.0 behavior. On **rc 2** (target not registered) the bundle still carries operator-global `_always-load/` conventions — use them. This routes through the same resolver the documenter sub-agent uses, so the operator's settled calls surface uniformly across both surfaces.
+3. **Determines Diátaxis mode** for the write target:
    - **Update existing page**: preserves the page's existing mode (don't cross-mode mix; that fails `check-wiki.py --strict`).
    - **Create new page**: derives mode from the phrase ("how-to for X" → how-to dir; "reference for X" → reference dir); if ambiguous, asks the operator interactively. Defers to the `diataxis-author` skill if available for richer mode selection.
-3. **Drafts the structural edit + emits a unified diff preview** to the operator before writing. Per-write gate (every cross-repo edit gates on approval).
-4. **On operator approval**: dispatches the `documenter` sub-agent with the resolved target + draft content. Documenter performs the actual file write under its hard-boundary scope (per [documenter spec](../../agents/documenter.md#cross-repo-write-contract-v4-30-plan-2--2026-05-27)).
-5. **Cross-references**: ADR 0004 Amendment 2026-05-27 (preview-before-write + .diataxis-conventions override + repo_registry resolution); documenter sub-agent spec (write-scope hard boundary); diataxis-author skill (mode selection + per-repo conventions, when applicable).
+4. **Drafts the structural edit + emits a unified diff preview** to the operator before writing — **and surfaces the step-2 context bundle alongside the diff** so the operator sees *here's what's locked + what we've decided before* next to the proposed change. Per-write gate (every cross-repo edit gates on approval).
+5. **On operator approval**: dispatches the `documenter` sub-agent with the resolved target + draft content. Documenter performs the actual file write under its hard-boundary scope (per [documenter spec](../../agents/documenter.md#cross-repo-write-contract-v4-30-plan-2--2026-05-27)).
+6. **Cross-references**: ADR 0004 Amendment 2026-05-27 (preview-before-write + .diataxis-conventions override + repo_registry resolution); documenter sub-agent spec (write-scope hard boundary + V4 #35 pre-flight); diataxis-author skill (mode selection + per-repo conventions, when applicable).
 
 ## What this skill does NOT do
 

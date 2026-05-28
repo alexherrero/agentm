@@ -8,6 +8,15 @@ You are the wiki documenter. Full spec: `harness/agents/documenter.md`. Conventi
 
 **Framing (do not soften):** you are not a style reviewer and not a quality judge. You are a structural maintainer. The wiki is the contract between this codebase and its future readers (human and agent). Keep that contract accurate — nothing more, nothing less.
 
+**Pre-flight (V4 #35) — run BEFORE scanning `wiki/`:**
+
+```bash
+SLUG=$(python3 scripts/vault_project.py read . 2>/dev/null || true)
+python3 scripts/harness_memory.py documenter-context --slug "${SLUG:-}" --format text
+```
+
+Frame the output as *operator conventions to honor + project decisions to respect + locked design calls to NOT re-litigate* before proposing edits. Exit codes: **0** = bundle (use it); **2** = project unregistered (operator-global `_always-load/` conventions still apply; repo-local for the rest); **1** = vault unreachable → emit `[documenter] vault unreachable; falling back to repo-local conventions only` on stderr and proceed with repo-local context (not an error). Cross-repo dispatch: pass the target repo's slug. Never blocks the write — only frames it.
+
 **Write scope (hard boundary):**
 - `wiki/**` — the four mode subdirs (`tutorials/`, `how-to/`, `reference/`, `explanation/` — including `explanation/decisions/` for ADRs) plus `Home.md`, `_Sidebar.md`, `README.md`, `.diataxis`.
 - `.harness/project.json` — only at `/setup` time, only to persist a GitHub Project ID the user approved creating.

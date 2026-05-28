@@ -17,6 +17,21 @@ The second major skill in `crickets` (after `memory`). Encodes the operator's Di
 
 **Position vs. predecessor `migrate-to-diataxis` (harness-side)**: subsumed (plan #13 part 4). v1 ships the predecessor with a deprecation notice; follow-up harness release removes the file entirely after dogfood confirms diataxis-author is the better surface.
 
+## Operator convention read path (V4 #35)
+
+The global Diátaxis conventions this skill honors (`_always-load/diataxis-*.md` — filename style, mode-classification thresholds, page-length norms) are read through the **shared `documenter-context` resolver**, NOT by globbing the vault directly:
+
+```bash
+python3 scripts/harness_memory.py documenter-context --slug "<slug>" --format json
+# → parse `.operator_conventions[]` for the diataxis-* entries
+```
+
+This keeps the read pattern uniform across all three doc-touching primitives (this skill, `wiki-author`, and the `documenter` sub-agent): one resolver is the single source of truth, so a future move to per-project conventions (`projects/<slug>/wiki-style/*.md`, already surfaced by the resolver) needs no skill-side change.
+
+**Graceful-skip (same contract as the other two primitives):** on **rc 1** (vault unreachable) proceed with the built-in defaults + per-repo `wiki/.diataxis-conventions.md` only — emit `[diataxis-author] vault unreachable; using built-in + per-repo conventions` on stderr; never hard-fail. On **rc 2** (slug unregistered) the operator-global `_always-load/` conventions still resolve.
+
+The full read-side wiring lands with part 5 (`agentmemory-docs-release`); this section locks the *path* (through the resolver) so part 5 doesn't reintroduce a direct vault glob.
+
 ## When to reach for which sub-command
 
 | You want to... | Reach for |
@@ -131,7 +146,7 @@ Drift detection — wraps `scripts/check-wiki.py` (harness-side) as a subprocess
 - `diataxis/mode-mixed` — calls `classify.py`; flags when `mode_mixed: true` OR `needs_subagent: true` (latter catches the penalty-masked case where how-to score drops below 0.5 due to rationale-section penalty but the page is still mode-mixed semantically).
 - `diataxis/stale-xref` — extracts wiki-style markdown links; resolves target stem; flags when no matching page exists.
 - `diataxis/template-drift` — page lives in mode-dir X but classify.py says it's mode Y with confidence ≥0.7. Suggested fix: move file or rewrite body.
-- `diataxis/convention-drift` — v1 stub (always None); part 5 wires AgentMemory read-side to compare against operator-defined conventions.
+- `diataxis/convention-drift` — v1 stub (always None); part 5 wires AgentMemory read-side to compare against operator-defined conventions (via the `documenter-context` resolver per the *Operator convention read path (V4 #35)* section above — not a direct vault glob).
 
 **Step 5 — Aggregate + emit report.** Findings grouped by rule with counts. JSON output to stdout; non-zero exit on findings.
 
