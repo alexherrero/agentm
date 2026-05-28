@@ -5,6 +5,82 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.3.0] — 2026-05-27 — Global install + `--scope user` (paired with crickets v2.1.0)
+
+**MINOR.** ROADMAP-V4 item #30 (plan 1 of 3). Paired pair #12 with [crickets v2.1.0](https://github.com/alexherrero/crickets/releases/tag/v2.1.0). The first install-model overhaul: the per-project `<project>/.claude/{skills,hooks,agents,commands}/` footprint becomes optional (legacy `--scope project` mode); the new `--scope user` flag installs once to `~/.claude/` and every operator-repo on the device draws customizations from that shared location. Default scope stays `project` for v4.3.0 + v2.1.0 backward compat; flips to `user` in a future release once dogfood (this plan's task 11) validates the new path. The operator-stated insight from 2026-05-24: "the only thing repos need is to be aware of them and how to interact/write/read plans from them" — anything else (skills, hooks, agents, commands) can live globally. **Crickets paired** (toolkit-first ordering — crickets v2.1.0 ships first, agentm v4.3.0 references its release URL). See [HLD V4.4 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) for the architectural arc.
+
+### Added
+
+- **`lib/install/python/` subdir** — 3 new cross-repo Python helpers byte-identical between agentm + crickets (sync via `scripts/sync-lib.sh`; parity enforced via `lib/install/.checksums.txt`):
+  - `install_state.py` — probe canonical source-clone paths (`~/Antigravity/agentm` + `~/Antigravity/crickets` via `.git/`+`harness/` or `.git/`+`skills/` heuristic); persist `{version, mode, source_clones, installed_at, harness_version, installer_source?, installed_shas?, fragments?}` to `<install-prefix>/.agentm-install-state.json`. Atomic tmp+rename writes. CLI: `detect`/`persist`/`read`.
+  - `install_symlinks.py` — source-mode primitive. Symlinks the customizations subset per locked DC-7: skill dirs (crickets/skills/, agentm/harness/skills/ + adapters/claude-code/skills/) + agent .md (crickets/agents/, agentm/harness/agents/ + adapters/claude-code/agents/) + command .md (agentm/adapters/claude-code/commands/) + hook bundles (crickets/hooks/ + agentm/harness/hooks/). Settings.json fragments + pre-push template stay as copies per DC-8. 5-state classification (absent / symlink-correct / symlink-wrong / symlink-broken / real-conflict); idempotent; `--force` for conflict replacement. Cross-platform: `os.symlink` first; Windows junction fallback via `cmd /c mklink /J` when symlink permission fails for directories.
+  - `install_copy.py` — release-mode primitive. SHA256-aware copy with conservative divergence detection: byte-identical = skip; source-changed + target-matches-prior-install-sha = update; source-changed + target-also-diverged = conflict (skip with warn unless `--force`). Never silently overwrites operator-edited files.
+
+- **`install.sh` + `install.ps1` `--scope user|project` dispatch** — when `--scope user`, install prefix = `$AGENTM_INSTALL_PREFIX` or `$HOME/.claude`; probes mode; source mode → `install_symlinks.py` with detected agentm + crickets clones; release mode → `install_copy.py` from this harness's own source tree; persists install-state with `installer_source` recorded; copies `templates/bin/agentm-update` launcher to `~/.local/bin/`; skips per-project install entirely. Backward-compat: `--scope project` (default) → existing per-project install unchanged.
+
+- **`scripts/repo_registry.py`** — vault-backed registry primitive at `<vault>/_meta/repos.json`. Tracks operator's known agent-aware repos: `{slug, root_path, wiki_path?, harness_state_mode?}`. Cross-device-portable via POSIX path normalization (`Path(x).as_posix()`). Uses V4 #26 `safe_write_replace_style()` for atomic write + mtime-check concurrency. CLI subcommands: `list`/`register`/`unregister`. Graceful-skip when `MEMORY_VAULT_PATH` unset (exit 1 with skip-JSON; primitives raise `FileNotFoundError`).
+
+- **`scripts/install_state_sync.py` + `harness/hooks/install-state-sync/` hook bundle** — SessionStart hook (claude-code, non-blocking). SHA256-digest-aware re-merge of settings.json fragments per `install-state.json`'s `fragments` field. Also runs release-mode upstream-version-check (release mode only — source operators get live updates via symlinks). Single hook covers both modes per locked DC-8 + auto-stay-in-sync semantics. Graceful-skip on missing state; exit 0 always (non-blocking contract).
+
+- **`scripts/upstream_version_check.py`** — fetches latest GitHub release tags for `alexherrero/agentm` + `alexherrero/crickets` via stdlib `urllib.request` (no `requests` dep per ADR 0001). 24h cache at `<install-prefix>/.upstream-version-check-cache.json`. SemVer comparison + one-line stderr notice when newer version available. Never auto-applies per locked DC-3 — operator runs `agentm-update` explicitly. Uses `calendar.timegm()` for canonical UTC-parse (DST-safe).
+
+- **`templates/bin/agentm-update` (+ .ps1 twin)** — global PATH launcher. Reads recorded `installer_source` from install-state.json; invokes installer with `--update --scope user`; pass-through args (`--force-version-check`, `--rollback`). Installed to `~/.local/bin/agentm-update` by `--scope user` installer.
+
+- **crickets-sibling auto-detect in `install.sh` + `install.ps1`** (FOLLOWUPS-bundled; ~50 LOC): probes for `~/Antigravity/crickets/install.{sh,ps1}` + `~/.claude/skills/pii-scrubber/`; clones + dispatches crickets installer with matching `--scope` flag if neither found. `AGENTM_NO_CRICKETS_BOOTSTRAP=1` opt-out. Idempotent.
+
+- **+78 new unit tests** in `scripts/test_harness_memory.py` across 12 new test classes (108 baseline → 186 total).
+
+- **`feat-global-install-default` feature** in `features.json` (passes: false until `/release` flips it).
+
+### Changed
+
+- **`install.sh` + `install.ps1`** invoke `lib/install/python/install_state.py persist` at end-of-install (post version-record block). Silent best-effort; records install-state.json with `installer_source` for the `agentm-update` launcher to find later.
+
+- **`scripts/check-no-pii.sh`** SELF_SKIP_PATHS includes `lib/install/.checksums.txt` (generated SHA256 file; hex substrings false-positive on phone-us regex).
+
+- **Wiki sweep — dev-setup mentions** — agentm/README.md "Latest" callout + Status paragraph rephrased from "operator's three target repos (agentm + sherwood + dev-setup)" → "operator's target repos". ADR 0006 + Completed-Features.md historical entries preserved per FOLLOWUPS exemption.
+
+### Internal
+
+- **Helpers relocated to `lib/install/python/`** via `git mv` (was `scripts/`): `install_state.py`, `install_symlinks.py`, `install_copy.py`. `install_state_sync.py` + `upstream_version_check.py` stay in `scripts/` (agentm-side hook helpers; not used by crickets).
+
+- **Cross-repo lib parity** — `scripts/sync-lib.sh` now propagates `lib/install/python/` byte-identically to crickets. `scripts/check-lib-parity.sh` verifies 6 files (was 3).
+
+- **Mid-build dogfood findings from task 11** (operator-machine `--scope user` migration):
+  1. `install_symlinks` mapping for agentm slug missed `harness/skills/` (4 dir bundles + 2 file skills) + `harness/hooks/` (7 dir bundles) — caught at real-vault smoke when `~/.claude/hooks/` had only 3 of 10 expected. Unit tests didn't catch because fixture vaults didn't include those paths (test-coverage gap deferred).
+  2. Windows path-separator bug in `repo_registry.register_repo()` (`str(Path(...))` used native sep) — broke cross-device vault portability; switched to `Path(value).as_posix()`.
+  3. Windows UNC-prefix bug in `install_symlinks._classify_existing()` — `Path.resolve()` returns `//?/C:/...` form on Windows symlinks; switched to `os.path.samefile()`.
+  4. Bash-launcher + bash-hook unit tests failed on Windows CI (Git Bash) — marked `@unittest.skipIf(platform.system() == "Windows")`; pwsh twins exist but lack dedicated tests (follow-up).
+
+- **Snapshot pattern transferred from V4 #26** — belt-and-braces `~/.claude.pre-v4-30-snapshot-<ts>` taken pre-migration on operator's machine (recovery never invoked but reduced risk-cost).
+
+### Backward-compat
+
+- **Default scope = `project`** for v4.3.0. Existing per-project install paths unchanged; existing operators see zero behavior change unless they explicitly run `--scope user`. The default flip is queued for a future release once real-use validates.
+
+- **`install_state.persist_install_state()` schema** is additive — `installer_source`, `installed_shas`, `fragments` are all optional; absence preserves backward compat with pre-v4.3 install-state.json files.
+
+- **Per-repo cleanup** during operator dogfood preserved `.claude/settings.json` + `.claude/settings.local.json` + `.harness/hooks/`. Only `.claude/{skills,agents,commands}` removed (these are file-discovery surfaces that fall back to user-scope `~/.claude/`).
+
+### Cross-references
+
+- Paired with [crickets v2.1.0](https://github.com/alexherrero/crickets/releases/tag/v2.1.0) (toolkit-first ordering — crickets shipped first).
+- [HLD V4.4 subsection](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md#v4-release-milestones) covers the architectural arc.
+- [device-wide-architecture v0.4](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/device-wide-architecture.md#lifecycle) updates the device-wide HLD.
+- ADR 0001 (stdlib-only Python — preserved; no third-party deps).
+- ADR 0012 § 6 (dev-setup invisibility — preserved; the policy ADR + historical entries are exempt from the sweep).
+- FOLLOWUPS 2026-05-27 — auto-stay-in-sync default-on (no `--dev` flag); background primitives reserved but unused this plan.
+
+### Deferred
+
+- **Full `--scope user` default flip** — v4.4.x or later, after real-use validates the new path.
+- **Pwsh `-Scope user` dispatch in `crickets/install.ps1`** — minimal scaffold only this release. Full pwsh dispatch in follow-up if needed.
+- **Settings.json hook-registration migration** to user-scope — per-repo `.harness/hooks/` references intact so safe to defer.
+- **Pwsh launcher + hook test coverage** — bash twins have full coverage; pwsh ones lack dedicated tests.
+- **Bundle-walk unit test fixture** — `install_symlinks` mapping gap surfaced only at real-vault smoke; unit-test fixture vaults missing `harness/skills/` + `harness/hooks/` paths.
+- **Plan 2 of 3 (V4 #30)** — wiki I/O codification + cross-repo views.
+- **Plan 3 of 3 (V4 #30)** — migration tooling for non-operator users.
+
 ## [v4.2.0] — 2026-05-27 — Vec-index drift detection + workflow-uses-vault completion
 
 **MINOR.** ROADMAP-V4 item #37. Closes two coupled gaps surfaced by the 2026-05-27 adversarial review of the memory skill's `sqlite-vec` + markdown architecture and by plan #20 task 7's scope adjustment. **(A) Silent vec-index drift**: when an operator edited a `.md` file directly in Obsidian (not via `/memory save` or `/evolve`), the vec-index drifted silently — grep-side recall stayed current (re-reads files at query time) but vec-side returned stale semantic matches pointing at old content. This release adds opportunistic mtime-check at recall time, a `vec_index.py full-sync` operator-invoked drift sweep, and `memory-reflect-idle` hook integration so drift-detection rides the existing idle cooldown. **(B) Workflow-uses-vault gap**: plan #20 migrated state files to `<vault>/projects/<slug>/_harness/` but slash commands + phase specs still pointed at legacy `<project>/.harness/<file>` paths. This release exposes `harness_memory.py` dispatcher subcommands (`read-state` / `write-state` / `vault-state-path`) + rewrites all 6 phase specs to invoke them explicitly + cleans up legacy `.harness/` state files on operator-target repos. The pieces couple because (A) drift-detection only matters once (B) the workflow actually reads from the live vault. **Backward-compat preserved as a release gate**: pre-#37 indexes migrate transparently (ALTER TABLE ADD COLUMN; one-line stderr notice; idempotent); pre-#37 indexes work after migration without operator action. **Crickets unaffected** (stays at v2.0.0). Single-repo release. Cross-references the V5 design (V5-10 chunking + V5-11 SQL hybrid + V5-12 time-weighted retrieval) that this V4 mitigation complements — the V5 layer formalizes hybrid retrieval, this V4 drift detector keeps the index honest while V5 ships. See plan #20 task 7 scope-adjustment narrative for the workflow-uses-vault gap origin.
