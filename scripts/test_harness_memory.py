@@ -23,6 +23,7 @@ import tempfile
 import textwrap
 import unittest
 from pathlib import Path
+from typing import Optional
 from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
@@ -1648,6 +1649,215 @@ class TestDriftCheckVecHits(unittest.TestCase):
             # Importing None raises ImportError; the helper catches + returns unchanged.
             result = recall._drift_check_vec_hits(Path("/tmp"), vec_results)
         self.assertEqual(result, vec_results)
+
+
+# -----------------------------------------------------------------------------
+# V4 #30 plan #22 task 2 — repo_registry primitive
+# -----------------------------------------------------------------------------
+
+# importlib-load repo_registry from scripts/ dir without touching test PYTHONPATH
+import importlib.util as _ilu
+
+_REPO_REGISTRY_PATH = _HERE / "repo_registry.py"
+_spec_rr = _ilu.spec_from_file_location("repo_registry", _REPO_REGISTRY_PATH)
+assert _spec_rr is not None and _spec_rr.loader is not None
+repo_registry = _ilu.module_from_spec(_spec_rr)
+sys.modules["repo_registry"] = repo_registry
+_spec_rr.loader.exec_module(repo_registry)
+
+
+class TestRepoRegistry(unittest.TestCase):
+    """V4 #30 task 2: vault-backed registry primitives."""
+
+    def test_read_empty_returns_default_schema(self) -> None:
+        """First-write semantics: missing registry file returns {version:1, repos:[]}."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            data = repo_registry.read_registry(vault)
+            self.assertEqual(data, {"version": 1, "repos": []})
+            # Read does NOT create the file (write_registry is responsible).
+            self.assertFalse((vault / "_meta" / "repos.json").exists())
+
+    def test_register_creates_file_and_entry(self) -> None:
+        """First register_repo populates <vault>/_meta/repos.json."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            repo_registry.register_repo(
+                vault, "agentm", "/tmp/fixture-agentm",
+                wiki_path="/tmp/fixture-agentm/wiki",
+                harness_state_mode="vault",
+            )
+            path = vault / "_meta" / "repos.json"
+            self.assertTrue(path.exists())
+            data = json.loads(path.read_text(encoding="utf-8"))
+            self.assertEqual(data["version"], 1)
+            self.assertEqual(len(data["repos"]), 1)
+            entry = data["repos"][0]
+            self.assertEqual(entry["slug"], "agentm")
+            self.assertEqual(entry["root_path"], "/tmp/fixture-agentm")
+            self.assertEqual(entry["wiki_path"], "/tmp/fixture-agentm/wiki")
+            self.assertEqual(entry["harness_state_mode"], "vault")
+
+    def test_register_upserts_existing_slug(self) -> None:
+        """Re-registering the same slug updates the entry in-place (not appended)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            repo_registry.register_repo(vault, "agentm", "/old/path")
+            repo_registry.register_repo(
+                vault, "agentm", "/new/path", wiki_path="/wiki",
+            )
+            repos = repo_registry.list_repos(vault)
+            self.assertEqual(len(repos), 1)
+            self.assertEqual(repos[0]["root_path"], "/new/path")
+            self.assertEqual(repos[0]["wiki_path"], "/wiki")
+
+    def test_unregister_removes_existing(self) -> None:
+        """unregister_repo removes the matching slug; idempotent on absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            repo_registry.register_repo(vault, "agentm", "/a")
+            repo_registry.register_repo(vault, "sherwood", "/s")
+            removed = repo_registry.unregister_repo(vault, "agentm")
+            self.assertTrue(removed)
+            repos = repo_registry.list_repos(vault)
+            self.assertEqual(len(repos), 1)
+            self.assertEqual(repos[0]["slug"], "sherwood")
+            # Idempotent: unregister of already-absent slug returns False, no-op.
+            removed_again = repo_registry.unregister_repo(vault, "agentm")
+            self.assertFalse(removed_again)
+
+    def test_list_preserves_insertion_order(self) -> None:
+        """list_repos returns entries in the order they were first registered."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            for slug in ("agentm", "sherwood", "dev-setup"):
+                repo_registry.register_repo(vault, slug, f"/path/{slug}")
+            repos = repo_registry.list_repos(vault)
+            self.assertEqual(
+                [r["slug"] for r in repos],
+                ["agentm", "sherwood", "dev-setup"],
+            )
+
+    def test_concurrent_modification_raises(self) -> None:
+        """write_registry with expected_mtime mismatch raises ConcurrentModificationError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            repo_registry.register_repo(vault, "agentm", "/a")
+            path = repo_registry.registry_path(vault)
+            stale_mtime = path.stat().st_mtime
+            # Simulate another writer by mutating the file (which bumps mtime).
+            import time as _time
+            _time.sleep(0.01)  # ensure mtime tick
+            path.write_text(path.read_text() + " ", encoding="utf-8")
+            data = repo_registry.read_registry(vault)
+            with self.assertRaises(hm.ConcurrentModificationError):
+                repo_registry.write_registry(vault, data, expected_mtime=stale_mtime)
+
+    def test_atomic_write_no_tmp_remnant(self) -> None:
+        """After successful write, no <path>.tmp lingers."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            repo_registry.register_repo(vault, "agentm", "/a")
+            meta_dir = vault / "_meta"
+            tmp_files = list(meta_dir.glob("*.tmp"))
+            self.assertEqual(tmp_files, [])
+
+    def test_vault_missing_raises(self) -> None:
+        """Operating against a non-existent vault directory raises FileNotFoundError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "no-such-vault"
+            with self.assertRaises(FileNotFoundError):
+                repo_registry.read_registry(missing)
+            with self.assertRaises(FileNotFoundError):
+                repo_registry.register_repo(missing, "agentm", "/a")
+
+
+class TestRepoRegistryCLI(unittest.TestCase):
+    """V4 #30 task 2: CLI subcommands (list / register / unregister)."""
+
+    def _run(self, *argv: str, env: Optional[dict] = None) -> subprocess.CompletedProcess:
+        e = os.environ.copy()
+        if env is not None:
+            e.update(env)
+            # Allow caller to delete by passing empty string sentinel.
+            for k, v in list(env.items()):
+                if v == "":
+                    e.pop(k, None)
+        return subprocess.run(
+            [sys.executable, str(_REPO_REGISTRY_PATH), *argv],
+            capture_output=True, text=True, env=e,
+        )
+
+    def test_list_skipped_when_no_vault(self) -> None:
+        """MEMORY_VAULT_PATH unset → CLI exits 1 with skip JSON."""
+        res = self._run("list", env={"MEMORY_VAULT_PATH": ""})
+        self.assertEqual(res.returncode, 1)
+        out = json.loads(res.stdout)
+        self.assertTrue(out["skipped"])
+        self.assertIn("MEMORY_VAULT_PATH", out["reason"])
+
+    def test_register_then_list_via_cli(self) -> None:
+        """Register two repos via CLI; list returns both with correct fields."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            env = {"MEMORY_VAULT_PATH": str(vault)}
+
+            reg1 = self._run(
+                "register", "agentm",
+                "--root", "/tmp/fixture-agentm",
+                "--wiki", "/tmp/fixture-agentm/wiki",
+                "--state-mode", "vault",
+                env=env,
+            )
+            self.assertEqual(reg1.returncode, 0, reg1.stderr)
+            self.assertEqual(reg1.stdout.strip(), "agentm")
+
+            reg2 = self._run(
+                "register", "sherwood",
+                "--root", "/tmp/fixture-sherwood",
+                env=env,
+            )
+            self.assertEqual(reg2.returncode, 0, reg2.stderr)
+
+            ls = self._run("list", env=env)
+            self.assertEqual(ls.returncode, 0, ls.stderr)
+            data = json.loads(ls.stdout)
+            self.assertEqual(len(data["repos"]), 2)
+            slugs = [r["slug"] for r in data["repos"]]
+            self.assertEqual(slugs, ["agentm", "sherwood"])
+            # First repo carries all fields; second carries only required ones.
+            self.assertEqual(data["repos"][0]["wiki_path"], "/tmp/fixture-agentm/wiki")
+            self.assertEqual(data["repos"][0]["harness_state_mode"], "vault")
+            self.assertNotIn("wiki_path", data["repos"][1])
+
+    def test_unregister_via_cli(self) -> None:
+        """Unregister an existing repo via CLI; re-running is a no-op."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            env = {"MEMORY_VAULT_PATH": str(vault)}
+
+            self._run("register", "agentm", "--root", "/a", env=env)
+            res = self._run("unregister", "agentm", env=env)
+            self.assertEqual(res.returncode, 0)
+            self.assertEqual(res.stdout.strip(), "removed")
+
+            # Idempotent: second unregister is a no-op.
+            res2 = self._run("unregister", "agentm", env=env)
+            self.assertEqual(res2.returncode, 0)
+            self.assertEqual(res2.stdout.strip(), "noop")
+
+            ls = self._run("list", env=env)
+            data = json.loads(ls.stdout)
+            self.assertEqual(data["repos"], [])
 
 
 if __name__ == "__main__":
