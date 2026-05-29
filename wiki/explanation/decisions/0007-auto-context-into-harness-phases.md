@@ -123,6 +123,24 @@ The soft-dependency contract from this ADR survives: the harness still runs iden
 
 The two legacy crickets paths are kept in the resolver chain for operators on v3.x catalogs who haven't upgraded yet. Once V4 #26 (state migration) lands and v3.x is fully sunsetted, the legacy paths can be dropped.
 
+## Amendment 2026-05-28
+
+**V4 #35 — documenter vault-context resolution.** This ADR established the phase-boundary dispatcher (`scripts/harness_memory.py`) with the per-phase recall budgets of Q1 and the "five phase specs share one dispatcher; adding a phase is one `_PHASE_PROJECT_DIRS` entry" consequence. **As of agentm v4.6.0 (V4 #35) the same dispatcher now serves doc-writing time** — the documenter and the doc-touching skills read their conventions and decisions from the vault instead of re-deriving them from the repo.
+
+A new `documenter` recall phase joins `_VALID_PHASES`, `_DEFAULT_BUDGETS`, `_RECALL_QUERIES`, and `_PHASE_PROJECT_DIRS["documenter"] = ("_index.md", "decisions", "wiki-style")`. It is **not** one of the six lifecycle phases you invoke — it's a recall-context pseudo-phase consumed by doc-touching customizations. Adding it cost exactly one `_PHASE_PROJECT_DIRS` entry, which is the cheap-extension consequence this ADR predicted.
+
+What V4 #35 wired up:
+
+- **`resolve_documenter_context(slug)`** — a structured-bundle helper returning `{slug, registered, operator_conventions, project_decisions, project_anchor, wiki_style}`. Returns `None` when the vault is unavailable.
+- **`documenter-context` CLI subcommand** — `--slug`, `--budget`, `--format text|json`. Exit codes: `0` = bundle rendered; `1` = vault unavailable; `2` = vault reachable but slug not registered.
+- **Three doc-touching primitives now consume the bundle**: the `documenter` sub-agent runs the pre-flight before scanning `wiki/`; the `wiki-author` skill surfaces the bundle in its preview-before-write step; and the `diataxis-author` skill routes its operator-convention read through the same resolver. This closes the documenter side of the V4 #26 state-migration loop — project state moved to `<vault>/projects/<slug>/`, and now the doc tooling reads its conventions and decisions from there too.
+
+The **graceful-skip contract** carries over from Q3: on rc `1` (vault unreachable) all three primitives emit a one-line stderr notice and fall back to pre-v4.6.0 repo-local behavior. A missing vault is never a hard failure — the same soft-dependency framing this ADR locked for the six lifecycle phases.
+
+One **budget revision supersedes a sliver of Q1's defaults table for this phase**: the documenter budget shipped at 4k, but the dogfood showed 4k truncated away the project decisions (31 always-load conventions total roughly 27k tokens). It was raised to 10k, and the documenter recall now emits project context (decisions / `_index`) *before* the always-load conventions via `phase_recall(project_first=True)`, so project decisions survive truncation. Override with `HARNESS_RECALL_BUDGET_DOCUMENTER`.
+
+Commits: `da63046` (resolver + CLI), `fbb5b89` (primitive wiring), `6090fc4` (budget + project-first tuning). This amendment was itself authored by the documenter sub-agent through the new resolver — a dogfood of the feature it documents.
+
 ## Related
 
 - [ROADMAP item #8](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) — the roadmap entry that triggered this work.
