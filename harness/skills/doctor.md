@@ -48,10 +48,15 @@ Then:
    - Report which mode resolved (e.g. `state files [OK] vault-resident — <vault>/projects/<slug>/_harness/` or `state files [OK] legacy .harness/`).
    - FAIL only if neither resolution path produces all three files. A `.harness/` empty of state files alongside a healthy vault resolution is the EXPECTED V4 #26+ shape — not a fail.
 5. **Host wiring file**: `AGENTS.md` exists at repo root. Adapter-specific overlay file exists (`CLAUDE.md` for Claude Code, `.gemini/settings.json` for Gemini pointing at `AGENTS.md`).
-6. **Hooks** (Claude Code only, if `.claude/settings.json` contains a `hooks` block):
-   - Every command string in `hooks[*][*].hooks[*].command` resolves to a file that exists.
-   - The shell prefix matches the installer variant: bash installer produces `bash -c '...'`-style or direct shell invocations; pwsh installer produces `pwsh -File '...'` invocations. Mismatch is a fail.
-   - Absent hooks block is OK (not a fail) — `install.sh --hooks` is opt-in.
+6. **Hook wiring** (Claude Code; V4 #39 — a real check, not "absent block is fine"). Hooks install at user scope (`<prefix>/hooks/<name>/`, prefix = `$AGENTM_INSTALL_PREFIX` → `~/.claude`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Apply this truth table to `<prefix>/hooks/` + `<prefix>/settings.json` (and a populated legacy project-scope `<project>/.claude/` likewise):
+   - `hooks/` empty + no `hooks` block → `[OK] no hooks installed (clean)`.
+   - `hooks/` populated + `hooks` block + **every** registered `command` resolves to an existing file + **every** installed hook dir has a registered fragment → `[OK] N hooks wired (<list>)`.
+   - `hooks/` populated + **no `hooks` block** → **`[FAIL] N hooks installed on disk but not wired in settings.json — install.sh fragment merge did not run. Re-run install.sh.`** (the V4 #39 regression).
+   - `hooks/` populated + `hooks` block + some `command` paths missing → `[FAIL] X of N registered hook commands point at missing scripts: <list>`.
+   - `hooks/` populated + `hooks` block + some installed hook dirs unregistered → `[WARN] <list> installed but not registered — partial merge`.
+   - `.agentm-config.json` missing while primitives present → `[WARN] partial install — install-state file missing`; `.agentm-config.json.fragments` absent/empty while hooks installed → `[WARN] fragments tracking absent — install-state-sync won't propagate source-clone edits`.
+   - Shell prefix must match the installer variant (bash → bash command; pwsh → `pwsh -File`). The pre-V4 #39 "absent block is opt-in, OK" rule was a **false-clean** that masked exactly the hook-dirs-installed-but-unregistered regression.
+   - `--live` adds a **synthetic SessionStart probe** (best-effort, DC-3): feed `{"session_id":"doctor-probe","cwd":"<agentm clone>"}` to each registered SessionStart hook on stdin; confirm `harness-context-session-start` emits a non-empty `[agentm] Project state…` block; skip gracefully if a hook can't run standalone.
 
 ## `--live` probes
 
@@ -169,7 +174,9 @@ doctor: <adapter> — <PASS|FAIL>
                             4 optional harness-shipped + 2 crickets present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     host wiring       [OK]  AGENTS.md + CLAUDE.md
-    hooks             [OK]  no hooks block (install.sh --hooks opt-in)
+    hooks             [OK]  10 hooks wired (memory-recall-session-start, install-state-sync, …)
+                            # FAIL example (V4 #39): "10 hooks installed on disk but not
+                            # wired in settings.json — install.sh fragment merge did not run"
 
   live probes (--live):
     explorer          [OK]   2.1s  — returned 2 paths

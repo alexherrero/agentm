@@ -45,7 +45,19 @@ Then:
    - **Legacy `.harness/`** — if the resolver returns nothing or the vault is unavailable, check `<project>/.harness/PLAN.md` + `<project>/.harness/progress.md` + `<project>/.harness/scripts/telemetry.sh`. Report `state files [OK] legacy .harness/` if all three present.
    - FAIL only if neither path yields all three. An empty `.harness/` alongside a healthy vault resolution is the EXPECTED post-V4 #26 shape — not a fail.
 5. `AGENTS.md` + `CLAUDE.md` exist at repo root.
-6. If `.claude/settings.json` has a `hooks` block: every `command` string resolves to a file that exists; bash installer produced bash-shell commands (not pwsh). Absent hooks block is OK — `install.sh --hooks` is opt-in.
+6. **Hook wiring (V4 #39 — a real check, not "absent block is fine").** Hooks install at user scope (`~/.claude/hooks/<name>/`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Resolve the prefix (`$AGENTM_INSTALL_PREFIX` → `~/.claude`) and apply this truth table against `<prefix>/hooks/` + `<prefix>/settings.json` (apply the same logic to a populated legacy project-scope `<project>/.claude/`):
+
+   | Disk state | Report |
+   |---|---|
+   | `hooks/` empty + no `hooks` block in settings.json | `[OK] no hooks installed (clean)` |
+   | `hooks/` populated + `hooks` block present + **every** registered `command` path resolves to an existing file + **every** installed hook dir has a registered fragment | `[OK] N hooks wired (<comma-list>)` |
+   | `hooks/` populated + **no `hooks` block** | **`[FAIL] N hooks installed on disk but not wired in settings.json — install.sh fragment merge did not run. Re-run install.sh.`** ← the V4 #39 bug |
+   | `hooks/` populated + `hooks` block + some `command` paths point at missing files | `[FAIL] X of N registered hook commands point at missing scripts: <list>` |
+   | `hooks/` populated + `hooks` block + some installed hook dirs not registered | `[WARN] <list> installed but not registered — partial merge` |
+   | `<prefix>/.agentm-config.json` missing while user-scope primitives present | `[WARN] partial install — install-state file missing` |
+   | `.agentm-config.json` lacks a `fragments` field (or it's empty) while hooks ARE installed | `[WARN] fragments tracking absent — install-state-sync won't propagate source-clone edits` |
+
+   Also confirm bash-installed commands are bash-shell (not pwsh). The pre-V4 #39 behavior — treating an absent `hooks` block as "opt-in, OK" — was a **false-clean**: it masked the exact regression where hook dirs were installed but never registered.
 
 Report a pass/fail table. Exit here unless `--live` was passed.
 
@@ -99,6 +111,12 @@ Only if `.claude/settings.json` has hooks. Exercise the project's `verify.sh` ag
 
 Pass: verify command exits 0 on the empty file.
 
+### 7. Synthetic SessionStart probe (V4 #39; best-effort per DC-3)
+
+Send a synthetic SessionStart event JSON (`{"session_id":"doctor-probe","cwd":"<agentm clone>"}`) on stdin to each registered SessionStart hook script and capture stdout. Confirm at least `harness-context-session-start` returns a non-empty context block — agentm is a harness cwd, so it should emit the `[agentm] Project state…` header + at least one resolved path. **Best-effort:** skip gracefully (report **skip**, not fail) if a hook script can't be exercised standalone. The load-bearing gate is the structural hook-wiring check (#6 above); this probe is confirmation that a wired SessionStart hook actually fires.
+
+Pass: `harness-context-session-start` emits a 2-path block matching the expected shape (header line + ≥1 `PLAN.md:`/`progress.md:` path).
+
 ## Output contract
 
 ```
@@ -113,7 +131,7 @@ doctor: claude-code — <PASS|FAIL>
     skills            [OK]  3/3 required, 6 optional present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     host wiring       [OK]  AGENTS.md + CLAUDE.md
-    hooks             [OK]  no hooks block (install.sh --hooks opt-in)
+    hooks             [OK]  10 hooks wired (memory-recall-session-start, install-state-sync, …)
 
   live probes (--live):
     explorer          [OK]   2.1s
@@ -121,9 +139,15 @@ doctor: claude-code — <PASS|FAIL>
     ship-release      [OK]   1.8s  — proposed v0.9.0, no tag written
     migrate-diataxis  [OK]   0.9s  — no-op (marker present)
     dependabot-fixer  [OK]   1.2s
-    hooks             [SKIP] ruff not installed
+    verify.sh         [SKIP] ruff not installed
+    sessionstart      [OK]   0.3s  — harness-context-session-start injected vault paths
 
-summary: 10 OK, 0 FAIL, 1 SKIP
+summary: 11 OK, 0 FAIL, 1 SKIP
+
+# Example of the V4 #39 regression the new hook-wiring check now catches:
+#     hooks             [FAIL] 10 hooks installed on disk but not wired in
+#                              settings.json — install.sh fragment merge did not
+#                              run. Re-run install.sh.
 ```
 
 On any `FAIL`, print the specific reason under the failing row, exit non-zero, do not auto-repair.
