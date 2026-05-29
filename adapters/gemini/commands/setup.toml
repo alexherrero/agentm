@@ -5,6 +5,7 @@ You are running the **setup** phase of the agentm workflow. The full spec is at 
 
 **Non-negotiable constraints for this phase:**
 
+0. **Auto-detect + propose config first (V4 #32).** In an unconfigured repo — or when invoked as `/setup --detect`, or via the SessionStart configure-nudge — run `python3 scripts/detect_project.py . --format text` and present the default-all-enabled proposal with the **(a) all-enabled / (b) custom / (c) skip** choice before inventory. On (a)/(b) call `python3 scripts/project_config.py register . [--disable <name> …]` to write the enablement block to `project.json` (NOT `features.json`) + register the repo; create the vault `_index.md`; offer a `vault_slug:` line in `AGENTS.md`. On (c) `touch .agentm-no-register`. A `bypass` verdict (harness source) skips detection. See spec §0.
 1. **Inventory before interviewing.** Read `README.md`, `package.json` / `go.mod` / etc., `.github/workflows/`, any existing `AGENTS.md` / `CLAUDE.md`. Ask only what the inventory can't answer.
 2. **Populate `init.sh` with real commands, not guesses.** If unsure, ask. A broken `init.sh` breaks every later phase.
 3. **Verify `init.sh` boots cleanly** — run it and confirm exit 0 before finishing.

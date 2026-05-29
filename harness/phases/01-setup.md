@@ -31,6 +31,34 @@ First-time initialization of agentm in a project. Run once per project (or after
 
 ## Process
 
+### 0. Auto-detect + propose config (V4 #32 — first thing in an unconfigured repo)
+
+When `/setup` runs in a repo the harness hasn't configured (or the operator explicitly runs `/setup --detect`, or accepts the SessionStart nudge from `harness-context-session-start`), run detection **before** the inventory + interview. This replaces the never-shipped `setup-project.sh` — detection is the front of `/setup`, not a separate script.
+
+```bash
+# Structured proposal (drives the agent's logic):
+python3 scripts/detect_project.py . --format json
+# Operator-facing block (render this verbatim for the approval prompt):
+python3 scripts/detect_project.py . --format text
+```
+
+**Branch on the verdict:**
+
+- **`bypass`** (this IS the harness source repo — `harness/phases/` present): skip detection. If the JSON reports `legacy_harness_present: true`, offer to migrate (`bash scripts/migrate-harness-to-vault.sh .`). Continue to §1.
+- **`propose`**: render the `--format text` block (default-all-enabled with a per-skill/per-hook rationale) and present the **a/b/c** choice:
+  - **(a) all-enabled** — `python3 scripts/project_config.py register .`
+  - **(b) custom selection** — ask per-skill/per-hook (default enable; just press Enter), collect the declines, then `python3 scripts/project_config.py register . --disable <name> --disable <name> …`. Each `--disable` records an `operator_overrides` entry so a future re-detect won't re-suggest it.
+  - **(c) skip** — write the `.agentm-no-register` marker (`touch .agentm-no-register`) and stop. One-time scratch session; the SessionStart nudge stays silent until the operator removes the marker.
+
+**On (a) or (b), after `register` writes the enablement block to `project.json` + registers the repo in the vault `repo_registry`:**
+
+1. **Create the vault `_index.md`** at `<vault>/projects/<slug>/_index.md` if absent (anchor page for the project; the memory skill's templates apply when that skill is installed). `register` resolves the slug; `python3 scripts/harness_memory.py vault-state-path PLAN.md` confirms the project dir.
+2. **Offer** to add a `vault_slug: <slug>` line to the repo's `AGENTS.md` (operator-confirmed — A3 permeable boundary; never silent).
+
+Then continue to §1 (inventory) for the rest of setup. **Default-all-enabled is a locked operator preference (DC-7): detection surfaces *why* each skill/hook is relevant; it never gates which are present.** The approval is operator-driven because hooks are non-interactive (DC-3) — the SessionStart hook only nudges toward this flow.
+
+**Graceful-skip / degraded:** if the vault is unavailable (`harness_memory.py available` exits 1), detection still renders but `register` can't persist to the vault — fall back to surfacing the proposal for the operator + skip the write (note it explicitly). If `scripts/detect_project.py` is absent (pre-v4.8.0 install), skip §0 entirely and proceed to §1 the legacy way.
+
 ### 1. Inventory what's there
 
 Read:
