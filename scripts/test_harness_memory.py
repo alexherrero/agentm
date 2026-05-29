@@ -2429,10 +2429,17 @@ class TestSymlinkCustomizations(unittest.TestCase):
             self.assertTrue((prefix / "agents" / "evaluator.md").is_symlink())
 
     def test_no_source_clones_returns_empty(self) -> None:
-        """Empty source_clones dict → no symlinks; clean result."""
+        """Empty source_clones dict → no symlinks; clean result (all categories empty)."""
         with tempfile.TemporaryDirectory() as tmp:
             result = install_symlinks.symlink_customizations({}, Path(tmp) / "claude")
-            self.assertEqual(result, {"created": [], "repointed": [], "skipped": [], "conflicts": []})
+            # Semantic intent: every result category is empty when there are no source
+            # clones — nothing to create, repoint, skip, conflict, OR reap. Tracks the
+            # `reaped` field added in 8c5af42 (orphan-symlink reaping) while preserving
+            # the "all-empty" check the test name encodes.
+            self.assertEqual(
+                result,
+                {"created": [], "repointed": [], "skipped": [], "conflicts": [], "reaped": []},
+            )
 
     def test_missing_clone_dir_is_skipped(self) -> None:
         """source_clones with non-existent path → quietly skipped."""

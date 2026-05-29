@@ -23,7 +23,7 @@ Each phase has a canonical spec in [`harness/phases/`](harness/phases/). Tool-sp
 2. **Single task per `/work` session.** Do not implement multiple tasks "while you're in there." The plan exists to sequence work; respect the sequence.
 3. **Verification must be executable.** LLM-judge "looks good to me" is not verification. Deterministic checks (typecheck, lint, tests, build) come first; LLM review augments, never replaces.
 4. **State is on disk, not in this conversation.** Write progress to `.harness/progress.md` at the end of every phase. The next session won't have your context.
-5. **Do not delete or edit tests to make them pass.** If a test is wrong, surface it and stop for human input.
+5. **Tests check real behavior. Don't dumb them down, disable them, or convert them into change-detectors.** A failing test is information — read it, understand the behavior it asserts, and fix the implementation. The forbidden moves are: weakening an assertion so it tolerates the broken output ("dumbing down"); slapping `@skip` / `xfail` on a real failure ("disabling"); or rewriting an assertion to match whatever the code now produces without preserving what's being checked ("change-detector"). When an accepted code change genuinely extends or alters the contract a test exercises, **updating the test is required** — not optional, not "stop for input" — to keep it checking the same semantic intent against the new contract. The distinction is *why* you're editing: to keep verifying the same behavior under a changed shape (allowed), or to make a real failure go away (forbidden).
 6. **Sub-agents are for read-only fan-out**, not parallel implementation. Dispatch them to gather context; never to edit code.
 
 ## Conventions
