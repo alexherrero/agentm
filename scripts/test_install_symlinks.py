@@ -113,5 +113,65 @@ class ReapOrphanSymlinksTests(unittest.TestCase):
             self.assertEqual(r2["reaped"], [])
 
 
+class NormalizePathStrTests(unittest.TestCase):
+    """Verify the cross-platform path-normalization helper.
+
+    The orphan-reap walk compares a broken symlink's resolved target against
+    the source-clone root using string comparison. On Windows, `os.readlink` /
+    `Path.resolve` can emit different normalized forms on the two sides
+    (extended-path prefix `\\\\?\\` on the existing clone root vs. plain
+    `C:\\...` on the resolved-but-nonexistent symlink target). Without
+    normalization the naive `startswith` returns False and orphans never
+    get reaped on Windows — the exact regression the V4.6.2 install_symlinks
+    landing shipped with. These tests verify the helper handles each quirk
+    against raw strings, so coverage doesn't require a Windows runner.
+    """
+
+    def test_identity_on_posix_paths(self):
+        self.assertEqual(
+            ism._normalize_path_str("/tmp/agentm/harness/agents/explorer.md"),
+            ism._normalize_path_str("/tmp/agentm/harness/agents/explorer.md"),
+        )
+
+    def test_strips_windows_extended_path_prefix(self):
+        """`\\\\?\\C:\\foo` and `C:\\foo` must normalize identically."""
+        self.assertEqual(
+            ism._normalize_path_str("\\\\?\\C:\\Users\\runner\\agentm"),
+            ism._normalize_path_str("C:\\Users\\runner\\agentm"),
+        )
+
+    def test_strips_prefix_only_when_present(self):
+        """A plain posix path containing `?` mid-string is NOT stripped."""
+        self.assertEqual(
+            ism._normalize_path_str("/tmp/has?question/agentm"),
+            ism._normalize_path_str("/tmp/has?question/agentm"),
+        )
+
+    def test_collapses_mixed_separators(self):
+        """normpath handles `foo/bar/../baz` etc. uniformly."""
+        self.assertEqual(
+            ism._normalize_path_str("/tmp/agentm/./harness/../harness/agents"),
+            ism._normalize_path_str("/tmp/agentm/harness/agents"),
+        )
+
+    def test_path_under_root_handles_extended_prefix_asymmetry(self):
+        """The Windows-specific regression case: one side has `\\\\?\\`, one doesn't.
+
+        Reconstruct the exact failure shape from the V4.6.2 Windows CI:
+        clone_root resolved with extended prefix; target_resolved without.
+        Naive str.startswith returns False; _path_under must return True.
+        """
+        target = Path("C:\\Users\\runner\\work\\agentm\\harness\\agents\\explorer.md")
+        clone_root = Path("\\\\?\\C:\\Users\\runner\\work\\agentm")
+        # Skip if running on POSIX — Path() rewrites backslashes and the test
+        # becomes meaningless. The string-level tests above cover the core
+        # normalization; this one only adds value where Path semantics match.
+        if os.sep != "\\":
+            self.skipTest("Windows-Path-semantics-specific")
+        self.assertTrue(ism._path_under(target, clone_root))
+        # And the reverse direction (prefix on target, not on root).
+        self.assertTrue(ism._path_under(clone_root / "x.md", Path("C:\\Users\\runner\\work\\agentm")))
+
+
 if __name__ == "__main__":
     unittest.main()

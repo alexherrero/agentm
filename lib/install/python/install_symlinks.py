@@ -240,6 +240,44 @@ def _classify_existing(link: Path, expected_source: Path) -> str:
 _MANAGED_SUBDIRS = ("agents", "commands", "skills", "hooks", "scripts")
 
 
+def _normalize_path_str(s: str) -> str:
+    """Normalize a path string for cross-platform parent/child comparison.
+
+    Handles three Windows-specific quirks that break naive `startswith`:
+
+    1. Extended-path prefix asymmetry — `os.readlink` and `Path.resolve` may
+       emit `\\\\?\\C:\\...` on one side and `C:\\...` on the other (typically
+       `resolve()` adds the prefix for paths that exist; `resolve(strict=False)`
+       doesn't for paths that don't). Strip it so both sides compare equal.
+    2. Case-insensitive filesystems (Windows, macOS HFS+ in default config) —
+       `os.path.normcase` lowercases on Windows, no-op on POSIX.
+    3. Separator normalization (mixed `\\` and `/`) — `os.path.normpath`
+       collapses to the platform-native form.
+
+    No-op on POSIX (no `\\\\?\\` prefix in real paths; normcase is identity).
+    Test coverage in `scripts/test_install_symlinks.py::NormalizePathStrTests`
+    exercises both platform shapes against raw strings (doesn't require
+    Windows to verify).
+    """
+    if s.startswith("\\\\?\\"):
+        s = s[4:]
+    return os.path.normcase(os.path.normpath(s))
+
+
+def _path_under(child: Path, root: Path) -> bool:
+    """True if `child` is at or under `root`, robust to Windows path quirks.
+
+    Used by `_reap_orphan_symlinks` to decide whether a broken-symlink target
+    points into one of the source clones (and is thus our responsibility to
+    reap) vs. an operator-placed symlink (which must be left alone).
+    """
+    c = _normalize_path_str(os.fspath(child))
+    r = _normalize_path_str(os.fspath(root))
+    if c == r:
+        return True
+    return c.startswith(r + os.sep)
+
+
 def _reap_orphan_symlinks(
     install_prefix: Path,
     source_clones: dict[str, str],
@@ -289,14 +327,18 @@ def _reap_orphan_symlinks(
             if not target.is_absolute():
                 target = (child.parent / target)
             # Only reap symlinks pointing into one of the source clones.
+            # Uses _path_under (NOT naive str.startswith) so the comparison
+            # survives Windows path quirks: extended-path prefix asymmetry
+            # (`\\?\C:\…` vs `C:\…`), case-insensitivity, and separator mixing.
+            # Pre-fix the naive comparison silently no-op'd on Windows because
+            # `clone_root.resolve()` added the `\\?\` prefix (clone exists) while
+            # `target.resolve(strict=False)` did not (symlink target deleted) —
+            # so startswith returned False and no orphan was ever reaped.
             try:
                 target_resolved = target.resolve(strict=False)
             except (OSError, RuntimeError):
                 continue
-            in_clone = any(
-                str(target_resolved).startswith(str(r) + os.sep) or target_resolved == r
-                for r in clone_roots
-            )
+            in_clone = any(_path_under(target_resolved, r) for r in clone_roots)
             if not in_clone:
                 continue
             # Only reap if the target is genuinely absent (broken link).
