@@ -5,6 +5,31 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.8.0] — 2026-05-29 — Auto-detect + auto-configure on first session (V4 #32)
+
+**MINOR.** The capstone of the global-install arc (#30 → #35 → #39): the first conversation in a repo the harness hasn't seen now configures itself instead of needing a manual setup script. A quiet SessionStart nudge offers to configure an unconfigured project; on request a deterministic engine scans the repo against 10 rules and proposes a **default-all-enabled** config with a per-skill/per-hook *rationale* (why each is relevant to THIS repo); on approval the enablement block is written to `project.json` — **not** `features.json`, which stays the governed verification ledger (locked DC-1). Detection never gates which skills/hooks are present; it surfaces why each is on so the operator can make an informed opt-out. Single-repo release; crickets unaffected.
+
+### Added
+
+- **`scripts/detect_project.py` — deterministic auto-detect engine.** 10 side-effect-free rule functions `(cwd) -> Optional[RuleMatch]` over a default-all-enabled baseline: `R-wiki`→diataxis-author, `R-changelog` (CHANGELOG + a language manifest)→ship-release, `R-dependabot`→dependabot-fixer, `R-pii` (`.env*`)→pii-scrubber, `R-tests`→evidence-tracker, `R-harness` (`harness/phases/`)→**bypass verdict**, `R-pkg-scripts`→kill-switch+steer, `R-vault-content`→memory + memory hooks, `R-design`→design, `R-non-coding`→V5 stub. CLI `--format json|text` (text renders the operator-facing a/b/c propose-config block).
+- **`/setup` detect → propose → approve → write flow.** New §0 of the setup phase spec (`harness/phases/01-setup.md`) runs detection first; on approval writes the enablement block to `project.json` + registers the repo + creates the vault `_index.md` + offers an `AGENTS.md` `vault_slug:` line; on skip writes `.agentm-no-register`. Mirrored as constraint 0 across all three setup adapters (claude-code / antigravity / gemini).
+- **SessionStart configure-nudge.** `harness-context-session-start.{sh,ps1}` gains an else-branch nudge: when vault state doesn't resolve and the cwd is an unconfigured git repo (gated by `project_config.py should-nudge`), it emits a one-line "New project — run /setup --detect" prompt instead of staying silent. Fires until the repo is registered or `.agentm-no-register` is dropped.
+
+### Changed
+
+- **`project.json` gains an additive enablement block** (`type`/`skills`/`hooks`/`registered_at`/`registered_via`/`operator_overrides`/`last_redetect_at`). The merge-writer preserves the pre-existing `vault_project`/`github`/`env` keys and routes through the `.project-mode`-aware `write_state_file` so it never clobbers vault state on local-mode projects. `features.json` is untouched — it stays the verification ledger flipped only at `/release` (DC-1).
+
+### Internal
+
+- **`scripts/project_config.py`** — pure functions (`build_enablement_block`, `merge_enablement`, `apply_override`, `is_registered`) + I/O (`load_project_json`, `write_config`, `register`) + CLIs (`is-registered`, `should-nudge`, `register`). `should-nudge` encapsulates the whole nudge gate in testable Python; the hook only emits.
+- **Adversarial-review fix (pre-release).** `write_config` originally wrote unconditionally to the vault path while `load_project_json` reads through the `.project-mode`-aware path — a data-loss bug that dropped `github`/`env` on local-mode projects. Routed the write through `write_state_file` so read and write share one target; `should-nudge` also now accepts a `.git` **file** (git worktree/submodule), not just a dir.
+- **+40 tests** (340 → 380): `test_detect_project.py` (23), `test_project_config.py` (13 incl. 2 regression), `test_harness_context_hook.py` (+4 nudge cases).
+
+### Cross-references
+
+- [agentm v4.7.0](https://github.com/alexherrero/agentm/releases/tag/v4.7.0) — prior release; v4.8.0 builds the auto-detect capability on top of the hardened user-scope install.
+- ROADMAP-V4 item #32; design-prep `07b-auto-detect-rules.md`; HLD [device-wide-architecture.md](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/device-wide-architecture.md) § "Auto-detect bootstrap on first session".
+
 ## [v4.7.0] — 2026-05-29 — Installer + hooks robustness batch (orphan-symlink reaping, cross-scope path resolution)
 
 **MINOR.** Bundles the eight installer/hooks-hardening commits accumulated since v4.6.1, surfaced and closed during a `crickets` dogfood `/doctor` audit. The marquee change is **orphan-symlink reaping** on user-scope source-mode installs (a `feat:`, hence the minor bump); the rest are robustness fixes — cross-install-scope memory-skill path resolution (the V4.7 silent-broken `memory-recall` shape), Windows path-normalization for the reaper, user-scope `telemetry.sh` seeding, and a fix so the installer stops symlinking loose canonical specs under `harness/skills/` as inert skills. Ships alongside the companion [crickets v2.1.2](https://github.com/alexherrero/crickets/releases/tag/v2.1.2) (gitignores `.harness/` so the session-marker can't leak into that public repo).
