@@ -66,6 +66,27 @@ if ($planPath -and $progressPath -and (Test-Path -LiteralPath $planPath) -and (T
     $slug = Split-Path (Split-Path (Split-Path $planPath -Parent) -Parent) -Leaf
     [Console]::Error.WriteLine("[harness-context] injected vault paths for slug=$slug")
 } else {
-    [Console]::Error.WriteLine("[harness-context] non-harness cwd or vault paths unresolved — skipped")
+    # Unconfigured project? Delegate the nudge decision to project_config.py
+    # should-nudge (.git + not registered + no .agentm-no-register + not a
+    # harness-source bypass). All logic in testable Python; the hook only emits. V4 #32.
+    $pc = Join-Path (Split-Path $resolver -Parent) "project_config.py"
+    $nudge = $false
+    if (Test-Path -LiteralPath $pc) {
+        try {
+            Push-Location -LiteralPath $eventCwd
+            & $py $pc should-nudge . 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { $nudge = $true }
+        } catch {
+            $nudge = $false
+        } finally {
+            Pop-Location -ErrorAction SilentlyContinue
+        }
+    }
+    if ($nudge) {
+        Write-Output "[agentm] New project — I haven't configured this repo. Say 'configure this project' or run /setup --detect."
+        [Console]::Error.WriteLine("[harness-context] configure-nudge emitted for $eventCwd")
+    } else {
+        [Console]::Error.WriteLine("[harness-context] non-harness cwd or vault paths unresolved — skipped")
+    }
 }
 exit 0

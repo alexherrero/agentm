@@ -117,6 +117,55 @@ class TestHarnessContextHook(unittest.TestCase):
         self.assertEqual(r.stdout.strip(), "")
         self.assertIn("resolver unavailable", r.stderr)
 
+    # ── V4 #32 nudge branch ────────────────────────────────────────────────
+
+    def _init_git(self, path: Path) -> None:
+        subprocess.run(["git", "init", "-q"], cwd=str(path), check=True, capture_output=True)
+
+    def test_nudge_emitted_for_unconfigured_git_repo(self) -> None:
+        # .git present, not registered, no marker, not a harness-source bypass
+        # → the configure-nudge fires (vault PLAN/progress don't resolve).
+        repo = self.root / "freshrepo"
+        repo.mkdir()
+        self._init_git(repo)
+        r = self._run_hook(str(repo), self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("[agentm] Project state", r.stdout)
+        self.assertIn("[agentm] New project", r.stdout)
+        self.assertIn("configure-nudge emitted", r.stderr)
+
+    def test_silent_when_no_register_marker(self) -> None:
+        repo = self.root / "optedoutrepo"
+        repo.mkdir()
+        self._init_git(repo)
+        (repo / ".agentm-no-register").write_text("", encoding="utf-8")
+        r = self._run_hook(str(repo), self._env())
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("[agentm] New project", r.stdout)
+        self.assertIn("skipped", r.stderr)
+
+    def test_silent_when_registered_via_skills_block(self) -> None:
+        # Configured (project.json carries a skills block) but no PLAN yet → no nudge.
+        repo = self.root / "configuredrepo"
+        (repo / ".harness").mkdir(parents=True)
+        self._init_git(repo)
+        (repo / ".harness" / "project.json").write_text(
+            json.dumps({"vault_project": "configuredrepo", "skills": {"memory": {"enabled": True}}}),
+            encoding="utf-8",
+        )
+        r = self._run_hook(str(repo), self._env())
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("[agentm] New project", r.stdout)
+        self.assertIn("skipped", r.stderr)
+
+    def test_silent_for_non_git_dir(self) -> None:
+        plaindir = self.root / "notarepo"
+        plaindir.mkdir()
+        r = self._run_hook(str(plaindir), self._env())
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn("[agentm] New project", r.stdout)
+        self.assertIn("skipped", r.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

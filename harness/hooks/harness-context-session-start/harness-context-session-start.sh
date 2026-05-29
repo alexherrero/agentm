@@ -82,7 +82,18 @@ EOF
     SLUG="$(basename "$(dirname "$(dirname "$PLAN_PATH")")" 2>/dev/null || echo '?')"
     echo "[harness-context] injected vault paths for slug=$SLUG" >&2
 else
-    echo "[harness-context] non-harness cwd or vault paths unresolved — skipped" >&2
+    # No vault PLAN/progress resolved. This may be an UNCONFIGURED project that
+    # should be offered auto-detect (V4 #32). Delegate the decision to
+    # project_config.py should-nudge — it gates on: cwd has .git AND not already
+    # registered AND no .agentm-no-register marker AND not a harness-source
+    # bypass. All nudge logic lives in testable Python; the hook only emits.
+    PC="$(dirname "$RESOLVER")/project_config.py"
+    if [[ -f "$PC" ]] && ( cd "$EVENT_CWD" 2>/dev/null && $TIMEOUT_CMD python3 "$PC" should-nudge . >/dev/null 2>&1 ); then
+        echo "[agentm] New project — I haven't configured this repo. Say 'configure this project' or run /setup --detect."
+        echo "[harness-context] configure-nudge emitted for $EVENT_CWD" >&2
+    else
+        echo "[harness-context] non-harness cwd or vault paths unresolved — skipped" >&2
+    fi
 fi
 
 exit 0
