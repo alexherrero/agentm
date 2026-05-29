@@ -5,6 +5,34 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.6.1] — 2026-05-28 — Installer hook-wiring repair + harness-context hook + doctor wiring probe (V4 #39)
+
+**PATCH.** Single-repo release; crickets stays at v2.1.0 (it received a byte-identical `lib/install/python/install_state.py` sync via [`ebf92fa`](https://github.com/alexherrero/crickets/commit/ebf92fa) but **no release tag** — lib-parity only). Fixes a v4.5.1/v4.6.0 **installer regression**: `install.sh --scope user` dropped hook dirs into `~/.claude/hooks/<name>/` but never merged their `settings-fragment-bash.json` into `~/.claude/settings.json`, so `settings.json` had no `hooks` block and **none of the 10 installed hooks fired on any device**. (Surfaced when the agent missed a vault-resident `PLAN.md` because no SessionStart hook was wired to surface it.) The semver bump is PATCH — the regression fix is the load-bearing change; the new hook + doctor probe ride along as bundled improvements.
+
+### Added
+
+- **`harness-context-session-start` hook** ([`db5e6e0`](https://github.com/alexherrero/agentm/commit/db5e6e0)) — new user-scope SessionStart hook. Reads the event's `cwd`, resolves the active project's vault `PLAN.md` + `progress.md` via `harness_memory.py vault-state-path`, and injects a 4-line context block at session boot — **only when both files exist** (silent no-op otherwise; 500ms budget; `set -uo pipefail`, never blocks boot). Surfaces "this project's plan lives at `<vault path>`" automatically in every project, closing the gap that motivated the release. pwsh twin included.
+
+### Changed
+
+- **`install.sh --scope user` now merges hook fragments + absolutizes paths** ([`0baf142`](https://github.com/alexherrero/agentm/commit/0baf142)) — the user-scope install walks the installed `<prefix>/hooks/*/` dirs and merges each `settings-fragment-bash.json` into `<prefix>/settings.json`, rewriting the command to the absolute user-scope dir layout `bash <prefix>/hooks/<name>/<name>.sh`. `scripts/merge-settings-fragment.py` gained a `--command` override for the absolutization (idempotent re-merge by the rewritten command).
+- **`/doctor` hook-wiring check** ([`110fe9d`](https://github.com/alexherrero/agentm/commit/110fe9d)) — replaced the false-clean "absent hooks block is OK — `--hooks` opt-in" with a 7-row truth table: hook dirs on disk + no `hooks` block now reports **`[FAIL] N hooks installed but not wired — re-run install.sh`** (the regression), plus broken-command-path / partial-merge / missing-config / missing-fragments cases. Adds a `--live` synthetic SessionStart probe. Mirrored in the canonical `harness/skills/doctor.md`.
+
+### Internal
+
+- **`.agentm-config.json` gains an additive `fragments: [{path, sha256}]` field** ([`0baf142`](https://github.com/alexherrero/agentm/commit/0baf142)) — records each merged settings fragment for `install-state-sync` drift detection. No `schema_version` bump (schema v2 stays valid; field optional). `lib/install/python/install_state.py` `persist` exposed via a new `--fragments-file` CLI flag (synced byte-identical to crickets).
+- **+18 unit tests** (312 → 330 per OS workflow): `test_merge_settings_fragment.py` (8), `test_install_state_fragments.py` (6), `test_harness_context_hook.py` (4).
+
+### Backward-compat
+
+- Existing `.agentm-config.json` files without `fragments` keep working; `install.sh` adds the field on the next (re-)install.
+- **Operators must re-run `bash install.sh --scope user`** to pick up the fix — the regression left `settings.json` without a `hooks` block, so hooks stay dormant until the installer re-runs (then they fire on the next session restart).
+
+### Cross-references
+
+- [crickets `ebf92fa`](https://github.com/alexherrero/crickets/commit/ebf92fa) — byte-identical `install_state.py` lib-sync (no crickets release).
+- [agentm v4.6.0](https://github.com/alexherrero/agentm/releases/tag/v4.6.0) — the release this patches.
+
 ## [v4.6.0] — 2026-05-28 — Documenter vault-context resolution (V4 #35)
 
 **MINOR.** Single-repo release; crickets ships the paired HLD update [`5c49095`](https://github.com/alexherrero/crickets/commit/5c49095) (the one crickets-side touchpoint) but stays at v2.1.0 (no crickets release tag). ROADMAP-V4 item **#35** — the documenter-side closure of the V4 #26 state migration. Post-V4 #26 the harness's per-project state lives at `<vault>/projects/<slug>/_harness/`, but the doc-touching customizations still re-derived operator conventions + project decisions from the repo on every invocation. v4.6.0 teaches them to read that context from the vault instead: a new `documenter` recall phase + the `documenter-context` CLI feed a recall bundle (operator conventions + project decisions + locked design calls) to the `documenter` sub-agent and the `wiki-author` / `diataxis-author` skills before they write — so wiki authoring respects the operator's `_always-load/` conventions + the project's `decisions/` without the operator repeating themselves at each doc edit. **This release also folds in v4.5.2** — an installer-probe bugfix surfaced during the task-5 dogfood (see below); no separate v4.5.2 tag was cut.
