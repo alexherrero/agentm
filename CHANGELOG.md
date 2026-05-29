@@ -5,6 +5,39 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.6.0] — 2026-05-28 — Documenter vault-context resolution (V4 #35)
+
+**MINOR.** Single-repo release; crickets ships the paired HLD update [`5c49095`](https://github.com/alexherrero/crickets/commit/5c49095) (the one crickets-side touchpoint) but stays at v2.1.0 (no crickets release tag). ROADMAP-V4 item **#35** — the documenter-side closure of the V4 #26 state migration. Post-V4 #26 the harness's per-project state lives at `<vault>/projects/<slug>/_harness/`, but the doc-touching customizations still re-derived operator conventions + project decisions from the repo on every invocation. v4.6.0 teaches them to read that context from the vault instead: a new `documenter` recall phase + the `documenter-context` CLI feed a recall bundle (operator conventions + project decisions + locked design calls) to the `documenter` sub-agent and the `wiki-author` / `diataxis-author` skills before they write — so wiki authoring respects the operator's `_always-load/` conventions + the project's `decisions/` without the operator repeating themselves at each doc edit. **This release also folds in v4.5.2** — an installer-probe bugfix surfaced during the task-5 dogfood (see below); no separate v4.5.2 tag was cut.
+
+### Added
+
+- **`documenter` recall phase + `resolve_documenter_context(slug)` + `documenter-context` CLI** ([`da63046`](https://github.com/alexherrero/agentm/commit/da63046)) — `harness_memory.py` gains a `documenter` recall pseudo-phase (`_PHASE_PROJECT_DIRS["documenter"] = ("_index.md", "decisions", "wiki-style")`, added to `_VALID_PHASES` / `_DEFAULT_BUDGETS` / `_RECALL_QUERIES`). `resolve_documenter_context(slug)` returns a structured bundle `{slug, registered, operator_conventions, project_decisions, project_anchor, wiki_style}` (`None` when the vault is unavailable). The `documenter-context` subcommand renders it — `--slug`, `--budget`, `--format text|json`; exit codes `0` (bundle) / `1` (vault unavailable) / `2` (slug not registered).
+- **`scripts/vault_probe.py`** ([`158e02b`](https://github.com/alexherrero/agentm/commit/158e02b)) — installer vault-detection ranking + refinement (the v4.5.2-folded fix). `rank_candidates()` ranks `_meta/repos.json` markers above `.obsidian` and suppresses `.obsidian` roots that wrap a repos root; `find_nested_vault()` descends a candidate one level into a nested MemoryVault. Stdlib-only.
+
+### Changed
+
+- **Three doc-touching primitives consume the bundle** ([`fbb5b89`](https://github.com/alexherrero/agentm/commit/fbb5b89)) — the `documenter` sub-agent (canonical `harness/agents/documenter.md` + `adapters/claude-code/agents/documenter.md`) runs a `documenter-context` pre-flight before scanning `wiki/`; the `wiki-author` skill surfaces the bundle in its preview-before-write step; the `diataxis-author` skill routes its operator-convention read through the resolver. All three graceful-skip on rc 1 (vault unreachable) with a one-warn stderr notice + repo-local fallback.
+- **Installer first-run vault detection fixed (v4.5.2-folded)** ([`158e02b`](https://github.com/alexherrero/agentm/commit/158e02b) + [`2aac617`](https://github.com/alexherrero/agentm/commit/2aac617)) — `install.sh`'s `_agentm_vault_first_run_prompt` previously used a flat `find -maxdepth 5` that treated the `_meta/repos.json` and `.obsidian` markers equally; on a Google-Drive-shortcut vault the repos.json marker sits below the depth cap while the parent Obsidian app-vault's `.obsidian` matched, so the wrapper was selected — splitting harness state across two roots. The probe now pipes its find output through `vault_probe.py` (rank + refine), keeping the find shallow while recovering a vault nested inside an Obsidian app-vault.
+- **Documenter recall budget 4k → 10k + project-first ordering** ([`6090fc4`](https://github.com/alexherrero/agentm/commit/6090fc4)) — the task-5 dogfood showed the 4k budget truncated away the project decisions (31 always-load conventions ~27k tokens). Raised to 10k (overrideable via `HARNESS_RECALL_BUDGET_DOCUMENTER`); the documenter recall now emits project context before always-load via a new `phase_recall(project_first=True)` flag so project decisions survive truncation.
+- **ADR 0007 amended** ([`2dccf31`](https://github.com/alexherrero/agentm/commit/2dccf31)) — a `## Amendment 2026-05-28` block documents the documenter phase. It was authored BY the `documenter` sub-agent through the new resolver — a dogfood of the feature it documents.
+
+### Internal
+
+- **+37 unit tests** (275 → 312 per OS workflow): `scripts/test_harness_memory_documenter.py` (19 — resolver + CLI + project-first ordering) + `scripts/test_vault_probe.py` (18 — marker ranking + nested-vault refinement, including the operator's exact bug scenario).
+- **Operator-machine vault-root reconciliation** — the dogfood revealed the operator's `vault_path` had been mis-set by the v4.5.1 probe (the parent Obsidian dir vs the nested `AgentMemory/` MemoryVault), which had split harness state across two roots + blinded recall. Corrected on-device (`vault_path` fixed via `agentm_config.py`; split state reconciled into the canonical `_harness/`). The shipped probe bugfix prevents recurrence for fresh installs.
+- **HLD updates** — crickets [`5c49095`](https://github.com/alexherrero/crickets/commit/5c49095) adds the V4.7 milestone subsection (`agent-memory-evolution.md`) + the v0.7 Lifecycle entry (`device-wide-architecture.md`), tying the probe fix back to the device-wide doc's "First-run vault detection" design.
+
+### Backward-compat
+
+- **Graceful-skip on vault-unreachable** — all three primitives fall back to pre-v4.6.0 repo-local behavior + a one-warn-per-session stderr notice when the vault isn't mounted (CI, fresh devices). No hard failure.
+- **`documenter-context` budget overrideable** via `HARNESS_RECALL_BUDGET_DOCUMENTER`.
+
+### Cross-references
+
+- [crickets `5c49095`](https://github.com/alexherrero/crickets/commit/5c49095) — paired HLD update (V4.7 / v0.7).
+- [ADR 0007](wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) + its Amendment 2026-05-28 — the auto-context dispatcher this extends (Q1 budgets + Q3 graceful-skip).
+- [agentm v4.1.0](https://github.com/alexherrero/agentm/releases/tag/v4.1.0) — V4 #26 state migration, whose documenter side this closes.
+
 ## [v4.5.1] — 2026-05-28 — On-device agentm config + first-run vault detection (V4 #30 follow-up)
 
 **PATCH.** Single-repo release; crickets ships a paired byte-identical [`fe37a96`](https://github.com/alexherrero/crickets/commit/fe37a96) for `lib/install/python/install_state.py` propagation but stays at v2.1.0 (no crickets release tag — lib parity sync only). Closes the V4 #30 promised-but-not-shipped "first-run vault detection" gap surfaced during the v4.5.0 dogfood: `MEMORY_VAULT_PATH` had no source-of-truth file backing it on disk, so every vault-aware script silently graceful-skipped when the env var wasn't exported in a given shell. After v4.5.1, `vault_path` lives in `~/.claude/.agentm-config.json` (the renamed install-state file, schema v2) and the resolver consults it as a fallback when the env is unset. Backward-compat preserved: `$MEMORY_VAULT_PATH` env still wins as override; pre-v4.5.1 installs auto-migrate the legacy `.agentm-install-state.json` filename on first interaction (read-side via the SessionStart hook OR write-side via the next `install.sh` run).
