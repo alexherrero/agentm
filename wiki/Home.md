@@ -71,6 +71,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 ## 🔧 Trying to do something specific?
 
 - [How to install the harness into a project](Install-Into-Project) — add the scaffold to an existing repo.
+- [How to configure a new project on first session](Configure-A-New-Project) — detect → propose → approve → persist the per-project enablement config.
 - [How to refresh an installed harness](Update-Installed-Harness) — pull a newer harness version into a project that already has one.
 - [How to cut a release](Cut-A-Release) — tag, changelog, GitHub release via the `ship-release` skill.
 - [How to use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) — tune MemoryVault recall budgets, save modes, and confidence thresholds for each phase.
@@ -79,6 +80,8 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 ## 📖 Looking up a detail?
 
 - [Installer CLI reference](Installer-CLI) — flags, prerequisites, ownership table for `install.sh` / `install.ps1`.
+- [Detection rules reference](Detection-Rules) — the 10 built-in rules and what each attaches a rationale to.
+- [Project config reference](Project-Config) — the `project.json` enablement-block schema.
 - [Migration tool reference](Migration-Tool) — flag-by-flag for `migrate-to-user-scope.{sh,ps1}` + the 4-state matrix + `.agentm-migrate-record.json` schema.
 - [CI gates reference](CI-Gates) — what each CI workflow proves and the script behind it.
 - [Repo layout reference](Repo-Layout) — top-level directory map and four-adapter parity table.
@@ -90,6 +93,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [Agent Memory Evolution V1→V4](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md) — the full HLD: where Agent M started, how it grew, where it's going. The architecture, the schema, the workflows, the V4 design space.
 - [V3 Retrospective](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/v3-retrospective.md) — what shipped across the V3 arc, what we learned, what's deferred.
 - [Product intent](Product-Intent) — what problem the harness solves and for whom.
+- [Auto-detect + auto-configure](Auto-Detect-Configure) — why first-session config proposes-then-approves and why it lives in `project.json`.
 - [How the pieces fit](How-The-Pieces-Fit) — narrative of how phases, adapters, templates, and scripts interact.
 - [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
 

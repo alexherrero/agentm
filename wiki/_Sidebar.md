@@ -5,6 +5,7 @@
 
 ### 🔧 How-to
 - [Install into a project](Install-Into-Project)
+- [Configure a new project](Configure-A-New-Project)
 - [Update an installed harness](Update-Installed-Harness)
 - [Cut a release](Cut-A-Release)
 - [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases)
@@ -12,6 +13,8 @@
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)
+- [Detection rules](Detection-Rules)
+- [Project config](Project-Config)
 - [Migration tool](Migration-Tool)
 - [CI gates](CI-Gates)
 - [Repo layout](Repo-Layout)
@@ -20,6 +23,7 @@
 
 ### 💡 Explanation
 - [Product intent](Product-Intent)
+- [Auto-detect + auto-configure](Auto-Detect-Configure)
 - [How the pieces fit](How-The-Pieces-Fit)
 - [GitHub Projects integration](GitHub-Projects-Integration)
 
