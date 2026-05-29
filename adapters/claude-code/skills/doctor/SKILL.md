@@ -117,7 +117,13 @@ Pass: verify command exits 0 on the empty file.
 
 Send a synthetic SessionStart event JSON (`{"session_id":"doctor-probe","cwd":"<agentm clone>"}`) on stdin to each registered SessionStart hook script and capture stdout. Confirm at least `harness-context-session-start` returns a non-empty context block — agentm is a harness cwd, so it should emit the `[agentm] Project state…` header + at least one resolved path. **Best-effort:** skip gracefully (report **skip**, not fail) if a hook script can't be exercised standalone. The load-bearing gate is the structural hook-wiring check (#6 above); this probe is confirmation that a wired SessionStart hook actually fires.
 
-Pass: `harness-context-session-start` emits a 2-path block matching the expected shape (header line + ≥1 `PLAN.md:`/`progress.md:` path).
+**Additionally** assert `memory-recall-session-start` emits **non-empty stdout** when the configured vault has any `<vault>/personal-private/_always-load/*.md` entries:
+
+- Count always-load entries: `find "$vault_path/personal-private/_always-load" -maxdepth 1 -name '*.md' | wc -l`.
+- If count > 0 AND the probe's stdout is empty → **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`**. This is the silent-broken shape (V4.7 / agentm-hooks regression): pre-fix, the hook hardcoded a project-scope relative path to `recall.py` and assumed `MEMORY_VAULT_PATH` was injected by Claude Code into the hook env — neither held on user-scope installs.
+- If count == 0 → empty stdout is correctly OK.
+
+Pass: `harness-context-session-start` emits a 2-path block matching the expected shape AND, when vault has always-load entries, `memory-recall-session-start` emits a `# MemoryVault — always-load entries` header followed by entry bodies.
 
 ## Output contract
 

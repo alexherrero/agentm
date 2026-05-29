@@ -60,6 +60,7 @@ Then:
    - `.agentm-config.json` missing while primitives present → `[WARN] partial install — install-state file missing`; `.agentm-config.json.fragments` absent/empty while hooks installed → `[WARN] fragments tracking absent — install-state-sync won't propagate source-clone edits`.
    - Shell prefix must match the installer variant (bash → bash command; pwsh → `pwsh -File`). The pre-V4 #39 "absent block is opt-in, OK" rule was a **false-clean** that masked exactly the hook-dirs-installed-but-unregistered regression.
    - `--live` adds a **synthetic SessionStart probe** (best-effort, DC-3): feed `{"session_id":"doctor-probe","cwd":"<agentm clone>"}` to each registered SessionStart hook on stdin; confirm `harness-context-session-start` emits a non-empty `[agentm] Project state…` block; skip gracefully if a hook can't run standalone.
+   - **The probe also asserts `memory-recall-session-start` emits non-empty stdout WHEN the configured vault has any `<vault>/personal-private/_always-load/*.md` entries.** Exit 0 with empty stdout in that condition is **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`** — the silent-broken shape (V4.7 / agentm-hooks regression). If the vault has zero always-load entries, empty stdout is correctly OK.
 
 ## `--live` probes
 

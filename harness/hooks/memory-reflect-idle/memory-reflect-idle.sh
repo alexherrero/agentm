@@ -14,13 +14,71 @@
 
 set -uo pipefail  # NOTE: no -e — graceful-skip pattern; hook must never block session start.
 
-REFLECT_PY=".claude/skills/memory/scripts/reflect.py"
-if [[ ! -f "$REFLECT_PY" ]]; then
+# Resolve memory-skill scripts across install scopes (project → user → source-clone).
+# See memory-recall-session-start.sh for the rationale + bug history. This hook
+# uses three scripts: reflect.py (orphan-recovery), discover_skills.py (V4 #37),
+# and vec_index.py (V4 #37). All three resolve through the same helper.
+_resolve_memory_script() {  # $1 = script basename
+    local script="$1"
+    local prefix="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}"
+    if [[ -f ".claude/skills/memory/scripts/$script" ]]; then
+        printf '%s\n' ".claude/skills/memory/scripts/$script"; return 0
+    fi
+    if [[ -f "$prefix/skills/memory/scripts/$script" ]]; then
+        printf '%s\n' "$prefix/skills/memory/scripts/$script"; return 0
+    fi
+    local cfg="$prefix/.agentm-config.json"
+    if [[ -f "$cfg" ]] && command -v python3 >/dev/null 2>&1; then
+        local clone
+        clone="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print((d.get("source_clones") or {}).get("crickets") or "")
+' "$cfg" 2>/dev/null || true)"
+        if [[ -n "$clone" && -f "$clone/skills/memory/scripts/$script" ]]; then
+            printf '%s\n' "$clone/skills/memory/scripts/$script"; return 0
+        fi
+    fi
+    return 1
+}
+
+REFLECT_PY="$(_resolve_memory_script reflect.py 2>/dev/null)" || REFLECT_PY=""
+if [[ -z "$REFLECT_PY" ]]; then
     exit 0
 fi
 if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
+
+# Resolve MEMORY_VAULT_PATH from .agentm-config.json if not in env. See
+# memory-recall-session-start.sh for rationale + bug history.
+_resolve_vault_path() {
+    if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
+        printf '%s\n' "$MEMORY_VAULT_PATH"; return 0
+    fi
+    local cfg="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}/.agentm-config.json"
+    if [[ -f "$cfg" ]] && command -v python3 >/dev/null 2>&1; then
+        local v
+        v="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print(d.get("vault_path") or "")
+' "$cfg" 2>/dev/null || true)"
+        if [[ -n "$v" ]]; then printf '%s\n' "$v"; return 0; fi
+    fi
+    return 1
+}
+_resolved_vault="$(_resolve_vault_path 2>/dev/null)" || _resolved_vault=""
+if [[ -n "$_resolved_vault" ]]; then
+    export MEMORY_VAULT_PATH="$_resolved_vault"
+fi
+unset _resolved_vault
 
 # Idle threshold: 1 hour (3600s) per locked design call B2.ii. Override via env.
 IDLE_THRESHOLD_SEC="${MEMORY_IDLE_THRESHOLD_SEC:-3600}"
@@ -119,8 +177,8 @@ fi
 # if unset / discover_skills.py absent / Python deps unavailable. Output
 # routes to stderr so the hook's overall stdout stays clean for any
 # downstream parsing.
-DISCOVER_PY=".claude/skills/memory/scripts/discover_skills.py"
-if [[ -f "$DISCOVER_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
+DISCOVER_PY="$(_resolve_memory_script discover_skills.py 2>/dev/null)" || DISCOVER_PY=""
+if [[ -n "$DISCOVER_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
     python3 "$DISCOVER_PY" --vault-path "$MEMORY_VAULT_PATH" --cadence-check >&2 2>&1 || true
 fi
 
@@ -133,8 +191,8 @@ fi
 # bulk sqlite query). Non-blocking — surfaces drift count to stderr per
 # the existing idle-pass transparency convention. Operators with drift
 # accumulation run `vec_index.py full-sync --rebuild` to enqueue.
-VEC_INDEX_PY=".claude/skills/memory/scripts/vec_index.py"
-if [[ -f "$VEC_INDEX_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
+VEC_INDEX_PY="$(_resolve_memory_script vec_index.py 2>/dev/null)" || VEC_INDEX_PY=""
+if [[ -n "$VEC_INDEX_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
     drift_json=$(python3 "$VEC_INDEX_PY" --vault-path "$MEMORY_VAULT_PATH" full-sync 2>/dev/null || echo '{}')
     if [[ -n "$drift_json" ]]; then
         drift_summary=$(python3 -c "
