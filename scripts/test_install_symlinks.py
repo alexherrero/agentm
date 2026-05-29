@@ -135,9 +135,11 @@ class NormalizePathStrTests(unittest.TestCase):
 
     def test_strips_windows_extended_path_prefix(self):
         """`\\\\?\\C:\\foo` and `C:\\foo` must normalize identically."""
+        # Neutral fixture path; the check-no-pii guard flags real-looking
+        # Windows personal paths (`C:\Users\<name>`) so we avoid that shape.
         self.assertEqual(
-            ism._normalize_path_str("\\\\?\\C:\\Users\\runner\\agentm"),
-            ism._normalize_path_str("C:\\Users\\runner\\agentm"),
+            ism._normalize_path_str("\\\\?\\C:\\fixture\\agentm"),
+            ism._normalize_path_str("C:\\fixture\\agentm"),
         )
 
     def test_strips_prefix_only_when_present(self):
@@ -161,8 +163,11 @@ class NormalizePathStrTests(unittest.TestCase):
         clone_root resolved with extended prefix; target_resolved without.
         Naive str.startswith returns False; _path_under must return True.
         """
-        target = Path("C:\\Users\\runner\\work\\agentm\\harness\\agents\\explorer.md")
-        clone_root = Path("\\\\?\\C:\\Users\\runner\\work\\agentm")
+        # Neutral fixture path (avoid `C:\Users\<name>` shape — check-no-pii
+        # flags it). The normalization helper is path-content-agnostic; the
+        # asymmetric prefix shape is what matters.
+        target = Path("C:\\fixture\\agentm\\harness\\agents\\explorer.md")
+        clone_root = Path("\\\\?\\C:\\fixture\\agentm")
         # Skip if running on POSIX — Path() rewrites backslashes and the test
         # becomes meaningless. The string-level tests above cover the core
         # normalization; this one only adds value where Path semantics match.
@@ -170,7 +175,7 @@ class NormalizePathStrTests(unittest.TestCase):
             self.skipTest("Windows-Path-semantics-specific")
         self.assertTrue(ism._path_under(target, clone_root))
         # And the reverse direction (prefix on target, not on root).
-        self.assertTrue(ism._path_under(clone_root / "x.md", Path("C:\\Users\\runner\\work\\agentm")))
+        self.assertTrue(ism._path_under(clone_root / "x.md", Path("C:\\fixture\\agentm")))
 
 
 if __name__ == "__main__":
