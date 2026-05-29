@@ -204,22 +204,34 @@ _agentm_vault_first_run_prompt() {
             -o \
             \( -path '*/_meta/repos.json' -o -path '*/.obsidian' \) \
             -print 2>/dev/null | head -20 || true)"
-        local marker
-        while IFS= read -r marker; do
-            [[ -z "$marker" ]] && continue
-            local vault_root="$(dirname "$marker")"
-            # Step up once more for _meta (marker is /vault/_meta/repos.json → vault is dirname twice)
-            if [[ "$marker" == *"_meta/repos.json" ]]; then
-                vault_root="$(dirname "$vault_root")"
-            fi
+        # v4.5.2 fix: rank + refine the markers via scripts/vault_probe.py
+        # (stdlib, unit-tested) instead of inline dirname math. This keeps the
+        # find SHALLOW (no deeper `-L` traversal, which risks symlink-loop hangs
+        # when no `timeout` binary is installed) while still recovering a
+        # MemoryVault nested inside an Obsidian app-vault:
+        #   - --rank: repos.json roots win over .obsidian; an .obsidian root that
+        #     is an ANCESTOR of a repos root is suppressed (it's the wrapper).
+        #   - --refine: descend a candidate one level — if the root lacks the
+        #     vault shape but exactly one child has it (e.g. .../Obsidian/AgentMemory),
+        #     use that child. Recovers the deep-nested vault via its parent's
+        #     shallow `.obsidian` hit.
+        # Pre-v4.5.2 this picked the parent Obsidian app-vault over the nested
+        # AgentMemory subfolder, splitting harness state across two roots.
+        local ranked
+        ranked="$(printf '%s\n' "$found" | python3 "$HARNESS_ROOT/scripts/vault_probe.py" --rank 2>/dev/null || true)"
+        local cand_root refined
+        while IFS= read -r cand_root; do
+            [[ -z "$cand_root" ]] && continue
+            refined="$(python3 "$HARNESS_ROOT/scripts/vault_probe.py" --refine "$cand_root" 2>/dev/null || echo "$cand_root")"
+            [[ -z "$refined" ]] && refined="$cand_root"
             # De-dup
             local already=0
             local existing_c
             for existing_c in "${candidates[@]+"${candidates[@]}"}"; do
-                [[ "$existing_c" == "$vault_root" ]] && already=1 && break
+                [[ "$existing_c" == "$refined" ]] && already=1 && break
             done
-            [[ $already -eq 0 ]] && candidates+=("$vault_root")
-        done <<< "$found"
+            [[ $already -eq 0 ]] && candidates+=("$refined")
+        done <<< "$ranked"
     fi
 
     if [[ ${#candidates[@]} -eq 0 ]]; then
