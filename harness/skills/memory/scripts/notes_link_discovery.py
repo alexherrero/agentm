@@ -31,10 +31,12 @@ CLI:
     python3 notes_link_discovery.py [--vault PATH] [--format json|text]
                                     [--top N] [--min-score X]
     python3 notes_link_discovery.py --report [--out PATH]   # operator-review md
+    python3 notes_link_discovery.py --embeddings [--report] # + semantic signal
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -60,6 +62,12 @@ _EXCLUDE_DIRS = frozenset({"AgentMemory", ".obsidian", ".trash", ".git"})
 # Defaults — tuned against the live 397-note dogfood (task 2).
 _DEFAULT_MIN_SCORE = 0.18
 _DEFAULT_TOP = 40
+# Embedding signal (task 3). BGE-large cosine runs hot (~0.3-0.5 even for
+# unrelated prose), so the semantic threshold sits well above the TF-IDF one.
+_DEFAULT_EMBED_MIN_SCORE = 0.70
+# Cap embed input length — BGE truncates at ~512 tokens (~2k chars) anyway, and
+# title + lede is the most topical signal. Keeps embedding fast + representative.
+_EMBED_CHAR_CAP = 2000
 # A term must appear in at least this many notes to be indexed at all (drops
 # per-note typos/unique noise) but fewer than this fraction of the corpus (drops
 # ubiquitous boilerplate the IDF would already down-weight — a hard cap keeps the
@@ -157,8 +165,9 @@ class Suggestion:
     a_folder: str
     b_folder: str
     score: float
-    shared_terms: list      # top distinctive shared terms, by contribution
+    shared_terms: list      # top distinctive shared terms, by contribution (tfidf)
     same_folder: bool
+    signal: str = "tfidf"   # "tfidf" (lexical overlap) | "embedding" (semantic)
 
     def to_dict(self) -> dict:
         return {
@@ -171,7 +180,7 @@ class Suggestion:
             "score": round(self.score, 4),
             "shared_terms": self.shared_terms,
             "same_folder": self.same_folder,
-            "signal": "tfidf",
+            "signal": self.signal,
         }
 
 
@@ -423,7 +432,191 @@ def discover(vault: Path, *, min_score: float = _DEFAULT_MIN_SCORE,
 
 
 # -----------------------------------------------------------------------------
-# Report (task 2) — operator-review markdown of related-but-unlinked pairs
+# Embedding signal (task 3) — semantic relatedness the lexical TF-IDF misses
+# -----------------------------------------------------------------------------
+#
+# A SECOND, independent relatedness signal: embed each personal note (title +
+# lede) with the memory skill's local BGE model (embed.py) and cosine-score the
+# pairs. This catches notes about the same topic/person/event that DON'T share
+# surface vocabulary — the connections a no-tags/no-links corpus needs most and
+# that TF-IDF structurally can't see.
+#
+# Domain separation (DC-2): the personal-notes embeddings live in their OWN
+# cache under <vault>/_meta/notes-embeddings.json — never the AgentMemory
+# sqlite-vec index (vec_index.py). The cache is a derived artifact keyed by
+# content hash, so re-runs only re-embed changed notes; it is NEVER a write to a
+# personal note.
+#
+# Graceful-skip (DC: matches recall.py): if sentence-transformers isn't
+# installed AND a note needs embedding, the whole signal is skipped and the
+# report falls back to TF-IDF-only — never a crash.
+
+
+def default_embed_index_path(vault: Path) -> Path:
+    """`<vault>/_meta/notes-embeddings.json` — the personal-notes embedding cache,
+    deliberately separate from AgentMemory's `vec-index.db` (DC-2)."""
+    return Path(vault) / "_meta" / "notes-embeddings.json"
+
+
+def _embed_input(note: "Note") -> str:
+    """The text fed to the embedder: title + markup-stripped body, capped. Title
+    leads (most topical); markup is stripped so clip-HTML doesn't skew vectors."""
+    text = note.title + "\n" + _strip_markup(note.body)
+    return text[:_EMBED_CHAR_CAP]
+
+
+def _content_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _normalize(vec: list) -> list:
+    norm = math.sqrt(sum(x * x for x in vec))
+    if norm == 0:
+        return vec
+    return [x / norm for x in vec]
+
+
+def _cosine_unit(a: list, b: list) -> float:
+    """Dot product of two already-unit-normalized vectors (== cosine). Returns 0
+    for a dimension mismatch — `zip` would otherwise silently truncate to the
+    shorter vector and report a garbage score (belt-and-suspenders; embed_corpus
+    already guarantees a uniform dimension)."""
+    if len(a) != len(b):
+        return 0.0
+    return sum(x * y for x, y in zip(a, b))
+
+
+def _load_embed_cache(cache_path: Optional[Path]) -> dict:
+    if not cache_path:
+        return {}
+    try:
+        data = json.loads(Path(cache_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _save_embed_cache(cache_path: Path, cache: dict) -> None:
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache), encoding="utf-8")
+
+
+def embed_corpus(notes: list, *, mode: Optional[str] = None,
+                 cache_path: Optional[Path] = None) -> Optional[dict]:
+    """Return {rel: unit-normalized embedding} for the corpus, or None if the
+    embedding signal is unavailable (sentence-transformers missing AND a note
+    needs a fresh embed). Caches raw vectors by content hash at `cache_path`
+    (under _meta/) so re-runs only re-embed changed notes.
+
+    Dimension safety: the cache key is content-only, so a cache written under a
+    different embedding model/dimension (the documented EMBEDDING_DIM 384->1024
+    upgrade, or an AGENT_TOOLKIT_EMBEDDING_MODEL swap) would mix stale-dim cache
+    hits with fresh-dim embeds — and `_cosine_unit`'s zip would truncate the
+    mismatch into garbage scores. So fresh embeds define the authoritative dim
+    this run; any reused cache entry whose dim differs is re-embedded (mirrors
+    vec_index.py's dim-mismatch rebuild). The returned dict is always uniform."""
+    import embed  # same skill dir; lazy so TF-IDF-only paths never import torch
+
+    cache = _load_embed_cache(cache_path)
+    by_rel = {n.rel: n for n in notes}
+    hashes: dict = {}
+    raws: dict = {}            # rel -> raw vec (final)
+    pending: list = []         # rels needing a fresh embed
+    fresh_dim: Optional[int] = None
+
+    def _embed(rel: str) -> Optional[list]:
+        nonlocal fresh_dim
+        try:
+            raw = embed.embed_text(_embed_input(by_rel[rel]), mode=mode)
+        except embed.EmbeddingUnavailable:
+            return None
+        fresh_dim = len(raw)
+        return raw
+
+    # Pass 1: take cache hits (hash match), queue misses.
+    for note in notes:
+        h = _content_hash(_embed_input(note))
+        hashes[note.rel] = h
+        cached = cache.get(note.rel)
+        if isinstance(cached, dict) and cached.get("hash") == h and cached.get("vec"):
+            raws[note.rel] = list(cached["vec"])
+        else:
+            pending.append(note.rel)
+
+    # Pass 2: fresh-embed the misses (learns the current model's dim).
+    for rel in pending:
+        raw = _embed(rel)
+        if raw is None:
+            return None  # graceful-skip the entire signal
+        raws[rel] = raw
+
+    # Pass 3: enforce a uniform dimension. Reused cache entries that don't match
+    # the fresh dim are stale (model/dim changed) — re-embed them.
+    dims = {len(v) for v in raws.values()}
+    if len(dims) > 1:
+        if fresh_dim is None:
+            return None  # all-cache-hit but internally mixed (corrupt) — skip
+        for rel in list(raws):
+            if len(raws[rel]) != fresh_dim:
+                raw = _embed(rel)
+                if raw is None:
+                    return None
+                raws[rel] = raw
+
+    if cache_path is not None:
+        _save_embed_cache(Path(cache_path),
+                          {rel: {"hash": hashes[rel], "vec": raws[rel]} for rel in raws})
+    return {rel: _normalize(vec) for rel, vec in raws.items()}
+
+
+def score_embedding_pairs(notes: list, vectors: dict, *,
+                          min_score: float = _DEFAULT_EMBED_MIN_SCORE,
+                          top: int = _DEFAULT_TOP) -> list:
+    """Full pairwise cosine over the embedding vectors (O(n^2); n≈400 is fine).
+    Drops already-linked + below-threshold pairs. Returns Suggestions with
+    `signal='embedding'` and no shared_terms (the signal is semantic, not
+    lexical)."""
+    by_rel = {n.rel: n for n in notes}
+    rels = [n.rel for n in notes if n.rel in vectors]
+    out = []
+    for x in range(len(rels)):
+        a = by_rel[rels[x]]
+        va = vectors[rels[x]]
+        for y in range(x + 1, len(rels)):
+            b = by_rel[rels[y]]
+            sim = _cosine_unit(va, vectors[rels[y]])
+            if sim < min_score:
+                continue
+            if _already_linked(a, b):
+                continue
+            out.append(Suggestion(
+                a_rel=a.rel, b_rel=b.rel,
+                a_title=a.title, b_title=b.title,
+                a_folder=a.folder, b_folder=b.folder,
+                score=sim, shared_terms=[],
+                same_folder=(a.folder == b.folder and a.folder != ""),
+                signal="embedding",
+            ))
+    out.sort(key=lambda s: (-s.score, s.a_rel, s.b_rel))
+    if top and top > 0:
+        out = out[:top]
+    return out
+
+
+def discover_embeddings(notes: list, *, mode: Optional[str] = None,
+                        cache_path: Optional[Path] = None,
+                        min_score: float = _DEFAULT_EMBED_MIN_SCORE,
+                        top: int = _DEFAULT_TOP) -> Optional[list]:
+    """Embed the corpus + score pairs. Returns the embedding Suggestions, or None
+    when the signal is unavailable (graceful-skip → caller uses TF-IDF only)."""
+    vectors = embed_corpus(notes, mode=mode, cache_path=cache_path)
+    if vectors is None:
+        return None
+    return score_embedding_pairs(notes, vectors, min_score=min_score, top=top)
+
+
+# -----------------------------------------------------------------------------
+# Report (task 2; task 3 adds the embedding section) — operator-review markdown
 # -----------------------------------------------------------------------------
 
 def _stem(rel: str) -> str:
@@ -449,54 +642,104 @@ def _paste_link(target_rel: str, *, ambiguous_stems: set) -> str:
     return f"[[{target}]]"
 
 
-def build_report(notes: list, suggestions: list, *, today: str) -> str:
-    """Render an operator-review markdown report: a ranked list of related-but-
-    unlinked pairs, each with the shared distinctive terms (the *why*) and a
-    paste-ready `[[wikilink]]` for both directions. Advisory only — nothing is
-    applied, and no personal note is touched."""
+def _pair_key(s: "Suggestion") -> frozenset:
+    return frozenset((s.a_rel, s.b_rel))
+
+
+def _render_pair_block(out: list, i: int, s: "Suggestion", *, ambiguous: set,
+                       reason: str, also_semantic: bool = False) -> None:
+    rel_note = ("same folder" if s.same_folder
+                else f"{s.a_folder or '(root)'} ⇄ {s.b_folder or '(root)'}")
+    confirm = "  ·  ✓ also semantically related" if also_semantic else ""
+    a_link = _paste_link(s.a_rel, ambiguous_stems=ambiguous)
+    b_link = _paste_link(s.b_rel, ambiguous_stems=ambiguous)
+    out.append(f"### {i}. score {s.score:.3f} — {rel_note}{confirm}")
+    out.append(f"- `{s.a_rel}` — **{s.a_title}**")
+    out.append(f"- `{s.b_rel}` — **{s.b_title}**")
+    out.append(f"- {reason}")
+    out.append(f"- paste into **{s.a_title}**: {b_link}  ·  "
+               f"paste into **{s.b_title}**: {a_link}")
+    out.append("")
+
+
+def build_report(notes: list, suggestions: list, *, today: str,
+                 embed_suggestions: Optional[list] = None,
+                 embed_unavailable: bool = False) -> str:
+    """Render an operator-review markdown report. The TF-IDF section lists pairs
+    that share distinctive terms; when the embedding signal ran, a second section
+    lists *semantically* related pairs TF-IDF missed (low surface overlap), and
+    TF-IDF pairs the embeddings also confirm are flagged. Advisory only — nothing
+    is applied, no personal note is touched."""
     # Stems shared by >1 note → those paste-links must use the full path.
     stem_counts = defaultdict(int)
     for note in notes:
         stem_counts[note.path.stem] += 1
     ambiguous = {s for s, c in stem_counts.items() if c > 1}
 
+    tfidf_keys = {_pair_key(s) for s in suggestions}
+    embed_suggestions = embed_suggestions or []
+    embed_keys = {_pair_key(s) for s in embed_suggestions}
+    # Embedding-only = the new coverage (semantically related, not lexically).
+    embed_only = [s for s in embed_suggestions if _pair_key(s) not in tfidf_keys]
+
     involved = set()
     for s in suggestions:
         involved.add(s.a_rel)
         involved.add(s.b_rel)
+    for s in embed_only:
+        involved.add(s.a_rel)
+        involved.add(s.b_rel)
+
+    total = len(suggestions) + len(embed_only)
+    if embed_unavailable:
+        signal_note = ("> Signal: **TF-IDF only** — the embedding (semantic) signal "
+                       "was skipped (sentence-transformers not installed).")
+    elif embed_suggestions:
+        signal_note = ("> Signals: **TF-IDF** (shared distinctive terms) + "
+                       "**embedding** (semantic similarity). Pairs both agree on are "
+                       "flagged `✓ also semantically related`.")
+    else:
+        signal_note = "> Signal: **TF-IDF** (shared distinctive terms)."
 
     out = [
         f"# Personal-notes link suggestions — {today}",
         "",
-        f"**{len(suggestions)} suggestion(s) across {len(notes)} personal notes** — "
+        f"**{total} suggestion(s) across {len(notes)} personal notes** — "
         f"{len(involved)} note(s) appear in at least one suggestion below; the rest "
         f"had no strong related-but-unlinked match.",
         "",
         "> Read-only audit (V4 #43). Each pair is a *suggestion*: these notes look "
-        "related (they share the distinctive terms shown) but aren't `[[linked]]`. "
-        "Open this in Obsidian and add the links you agree with **by hand** — "
-        "nothing here was changed automatically and no personal note was modified. "
-        "Suggestions are personal↔personal only; never a link into `AgentMemory/`.",
+        "related but aren't `[[linked]]`. Open this in Obsidian and add the links "
+        "you agree with **by hand** — nothing here was changed automatically and no "
+        "personal note was modified. Suggestions are personal↔personal only; never "
+        "a link into `AgentMemory/`.",
+        signal_note,
         "",
     ]
-    if not suggestions:
+    if total == 0:
         out.append("No related-but-unlinked pairs above the threshold. 🎉")
         return "\n".join(out) + "\n"
 
-    out.append("## Suggested links (ranked by relatedness)")
-    out.append("")
-    for i, s in enumerate(suggestions, 1):
-        rel_note = ("same folder" if s.same_folder
-                    else f"{s.a_folder or '(root)'} ⇄ {s.b_folder or '(root)'}")
-        a_link = _paste_link(s.a_rel, ambiguous_stems=ambiguous)
-        b_link = _paste_link(s.b_rel, ambiguous_stems=ambiguous)
-        out.append(f"### {i}. score {s.score:.3f} — {rel_note}")
-        out.append(f"- `{s.a_rel}` — **{s.a_title}**")
-        out.append(f"- `{s.b_rel}` — **{s.b_title}**")
-        out.append(f"- shared terms: {', '.join(s.shared_terms)}")
-        out.append(f"- paste into **{s.a_title}**: {b_link}  ·  "
-                   f"paste into **{s.b_title}**: {a_link}")
+    if suggestions:
+        out.append("## Shared-vocabulary links (TF-IDF)")
         out.append("")
+        for i, s in enumerate(suggestions, 1):
+            _render_pair_block(
+                out, i, s, ambiguous=ambiguous,
+                reason=f"shared terms: {', '.join(s.shared_terms)}",
+                also_semantic=_pair_key(s) in embed_keys)
+
+    if embed_only:
+        out.append("## Semantically related (embedding signal — TF-IDF missed these)")
+        out.append("")
+        out.append("> Same topic/person/event without shared surface wording — the "
+                   "connections a no-tags/no-links corpus most needs. Skim these "
+                   "extra-carefully; semantic matches are higher-recall, lower-precision.")
+        out.append("")
+        for i, s in enumerate(embed_only, 1):
+            _render_pair_block(
+                out, i, s, ambiguous=ambiguous,
+                reason=f"semantically related (cosine {s.score:.3f}); no strong shared vocabulary")
     return "\n".join(out) + "\n"
 
 
@@ -561,6 +804,13 @@ def main(argv: Optional[list] = None) -> int:
                    help="write an operator-review markdown report "
                         "(to --out or <vault>/_meta/notes-links-<date>.md)")
     p.add_argument("--out", default=None, help="report output path (with --report)")
+    p.add_argument("--embeddings", action="store_true",
+                   help="add the embedding (semantic) signal alongside TF-IDF "
+                        "(loads the local BGE model; graceful-skip if unavailable)")
+    p.add_argument("--mode", choices=("local", "stub"), default=None,
+                   help="embedding mode (with --embeddings): local (default) or stub")
+    p.add_argument("--embed-min-score", type=float, default=_DEFAULT_EMBED_MIN_SCORE,
+                   help="cosine threshold for the embedding signal")
     args = p.parse_args(argv)
     try:
         vault = vault_lint._resolve_vault(args.vault)
@@ -573,9 +823,23 @@ def main(argv: Optional[list] = None) -> int:
 
     notes, suggestions = discover(vault, min_score=args.min_score, top=args.top)
 
+    embed_suggestions = None
+    embed_unavailable = False
+    if args.embeddings:
+        embed_suggestions = discover_embeddings(
+            notes, mode=args.mode, cache_path=default_embed_index_path(vault),
+            min_score=args.embed_min_score, top=args.top)
+        if embed_suggestions is None:
+            embed_unavailable = True
+            print("notes_link_discovery: embedding signal unavailable "
+                  "(sentence-transformers not installed) — TF-IDF only.",
+                  file=sys.stderr)
+
     if args.report:
         today = date.today().isoformat()
-        report = build_report(notes, suggestions, today=today)
+        report = build_report(notes, suggestions, today=today,
+                              embed_suggestions=embed_suggestions,
+                              embed_unavailable=embed_unavailable)
         out_path = Path(args.out).expanduser() if args.out else default_report_path(vault, today)
         note_paths = {n.path.resolve() for n in notes}
         if not is_safe_report_path(out_path, vault, note_paths):
@@ -585,15 +849,25 @@ def main(argv: Optional[list] = None) -> int:
             return 2
         out_path.parent.mkdir(parents=True, exist_ok=True)
         out_path.write_text(report, encoding="utf-8")
-        print(f"notes-link-discovery report: {len(suggestions)} suggestion(s) "
-              f"across {len(notes)} notes -> {out_path}")
+        n_embed_only = 0
+        if embed_suggestions:
+            tf_keys = {_pair_key(s) for s in suggestions}
+            n_embed_only = sum(1 for s in embed_suggestions if _pair_key(s) not in tf_keys)
+        print(f"notes-link-discovery report: {len(suggestions)} TF-IDF + "
+              f"{n_embed_only} embedding-only suggestion(s) across {len(notes)} "
+              f"notes -> {out_path}")
         return 0
 
     if args.format == "json":
-        print(json.dumps({
+        payload = {
             "notes": len(notes),
             "suggestions": [s.to_dict() for s in suggestions],
-        }, indent=2, ensure_ascii=False))
+        }
+        if embed_suggestions is not None:
+            payload["embedding_suggestions"] = [s.to_dict() for s in embed_suggestions]
+        if embed_unavailable:
+            payload["embedding_unavailable"] = True
+        print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         print(_render_text(notes, suggestions), end="")
     return 0

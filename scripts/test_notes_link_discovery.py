@@ -269,7 +269,7 @@ class TestReport(unittest.TestCase):
             report = nld.build_report(notes, sugg, today="2026-05-29")
             self.assertIn("# Personal-notes link suggestions — 2026-05-29", report)
             self.assertIn("suggestion(s) across", report)
-            self.assertIn("## Suggested links", report)
+            self.assertIn("## Shared-vocabulary links (TF-IDF)", report)
             self.assertIn("shared terms:", report)
             # Paste-ready bidirectional links present.
             self.assertIn("[[confirmation]]", report)
@@ -283,7 +283,7 @@ class TestReport(unittest.TestCase):
             notes, sugg = nld.discover(v, min_score=0.9, top=40)
             report = nld.build_report(notes, sugg, today="2026-05-29")
             self.assertIn("No related-but-unlinked pairs", report)
-            self.assertNotIn("## Suggested links", report)
+            self.assertNotIn("## Shared-vocabulary links", report)
 
     def test_report_ambiguous_stem_uses_full_path(self):
         # Two distinct notes share a stem -> paste-link must use the full rel path.
@@ -383,6 +383,179 @@ class TestReport(unittest.TestCase):
             # No stray files outside _meta/ and the two fixtures.
             md_files = sorted(q.relative_to(v).as_posix() for q in v.rglob("*.md"))
             self.assertIn("_meta/" + report_path.name, md_files)
+
+
+class TestEmbeddingSignal(unittest.TestCase):
+    def _note(self, rel, title="", body="", links=None):
+        folder = rel.split("/")[0] if "/" in rel else ""
+        return nld.Note(path=Path(rel + ".md"), rel=rel, title=title or rel,
+                        folder=folder, created="", updated="", body=body,
+                        links=set(links or ()))
+
+    def test_score_embedding_pairs_threshold(self):
+        # Parallel unit vectors -> cosine 1.0 (surfaced); orthogonal -> 0 (not).
+        notes = [self._note("A/one"), self._note("B/two"), self._note("C/three")]
+        vectors = {
+            "A/one":   nld._normalize([1.0, 0.0, 0.0]),
+            "B/two":   nld._normalize([0.96, 0.28, 0.0]),   # ~cos 0.96 with one
+            "C/three": nld._normalize([0.0, 0.0, 1.0]),     # orthogonal to both
+        }
+        sugg = nld.score_embedding_pairs(notes, vectors, min_score=0.7, top=40)
+        keys = {frozenset((s.a_rel, s.b_rel)) for s in sugg}
+        self.assertIn(frozenset(("A/one", "B/two")), keys)
+        self.assertNotIn(frozenset(("A/one", "C/three")), keys)
+        self.assertTrue(all(s.signal == "embedding" for s in sugg))
+        self.assertTrue(all(s.shared_terms == [] for s in sugg))
+
+    def test_embedding_surfaces_pair_tfidf_misses(self):
+        # Two notes that are SEMANTICALLY related but share no distinctive terms:
+        # TF-IDF finds nothing; injected near-parallel vectors -> embedding finds
+        # them. Proves the embedding layer adds coverage.
+        with _Vault() as v:
+            _write(v, "Home/car.md", "Sold the sedan to a dealership downtown today.")
+            _write(v, "Home/auto.md", "Traded my vehicle at the lot this afternoon.")
+            _write(v, "Tech/python.md", "Asyncio coroutines event loop scheduling tasks.")
+            notes = nld.build_corpus(v)
+            # TF-IDF: the two car notes share no distinctive terms.
+            _n, tfidf = nld.discover(v, min_score=0.18, top=40)
+            tf_keys = {frozenset((s.a_rel, s.b_rel)) for s in tfidf}
+            self.assertNotIn(frozenset(("Home/car", "Home/auto")), tf_keys)
+            # Embedding: inject near-parallel vectors for the two car notes.
+            vectors = {n.rel: nld._normalize([1.0, 0.0]) for n in notes}
+            vectors["Home/auto"] = nld._normalize([0.99, 0.14])
+            vectors["Tech/python"] = nld._normalize([0.0, 1.0])
+            emb = nld.score_embedding_pairs(notes, vectors, min_score=0.7, top=40)
+            emb_keys = {frozenset((s.a_rel, s.b_rel)) for s in emb}
+            self.assertIn(frozenset(("Home/car", "Home/auto")), emb_keys)
+
+    def test_embed_corpus_graceful_skip(self):
+        # When embed_text raises EmbeddingUnavailable, the whole signal is None.
+        import embed as embed_mod
+        notes = [self._note("A/one", body="x"), self._note("B/two", body="y")]
+        orig = embed_mod.embed_text
+        try:
+            def boom(text, mode=None):
+                raise embed_mod.EmbeddingUnavailable("no model")
+            embed_mod.embed_text = boom
+            self.assertIsNone(nld.embed_corpus(notes, mode="local", cache_path=None))
+            self.assertIsNone(nld.discover_embeddings(notes, mode="local"))
+        finally:
+            embed_mod.embed_text = orig
+
+    def test_embed_corpus_caches_by_hash(self):
+        # Stub mode is deterministic; the 2nd run must hit the cache (0 embeds).
+        import embed as embed_mod
+        with _Vault() as v:
+            _write(v, "Home/a.md", "Apricot marmalade canning jars.")
+            _write(v, "Home/b.md", "Bicycle derailleur cassette tuning.")
+            notes = nld.build_corpus(v)
+            cache = v / "_meta" / "notes-embeddings.json"
+            calls = {"n": 0}
+            orig = embed_mod.embed_text
+            try:
+                def counting(text, mode=None):
+                    calls["n"] += 1
+                    return orig(text, mode="stub")
+                embed_mod.embed_text = counting
+                nld.embed_corpus(notes, mode="stub", cache_path=cache)
+                first = calls["n"]
+                self.assertEqual(first, len(notes))
+                self.assertTrue(cache.exists())
+                nld.embed_corpus(notes, mode="stub", cache_path=cache)
+                self.assertEqual(calls["n"], first, "2nd run re-embedded despite cache")
+            finally:
+                embed_mod.embed_text = orig
+
+    def test_embed_corpus_rejects_stale_dimension_cache(self):
+        # Adversarial review: the content-hash cache key omits the embedding
+        # model identity, so a cache written under an OLD model dimension (the
+        # documented EMBEDDING_DIM 384->1024 upgrade path) is silently reused for
+        # unchanged notes while changed/new notes re-embed at the NEW dimension.
+        # `_cosine_unit` zips the two and truncates to the shorter length, so a
+        # mismatched-dim pair scores 1.0 and surfaces as a bogus high-confidence
+        # suggestion. embed_corpus must NOT return mixed-dimension vectors;
+        # vec_index.py guards exactly this (it rejects dim mismatches) -- this
+        # cache must too (invalidate stale-dim entries, never reuse them).
+        import embed as embed_mod
+        with _Vault() as v:
+            _write(v, "Home/a.md", "alpha content one")
+            _write(v, "Home/b.md", "beta content two")
+            notes = nld.build_corpus(v)
+            cache = v / "_meta" / "notes-embeddings.json"
+            orig = embed_mod.embed_text
+            try:
+                # Run 1: OLD model emits 3-d vectors -> cache holds 3-d.
+                embed_mod.embed_text = lambda t, mode=None: [1.0, 0.0, 0.0]
+                nld.embed_corpus(notes, mode="stub", cache_path=cache)
+                # One note changes; operator has upgraded to a NEW (wider) model.
+                _write(v, "Home/b.md", "beta content two CHANGED")
+                notes2 = nld.build_corpus(v)
+                embed_mod.embed_text = lambda t, mode=None: [1.0, 0.0, 0.0] + [0.0] * 5
+                vectors = nld.embed_corpus(notes2, mode="stub", cache_path=cache)
+            finally:
+                embed_mod.embed_text = orig
+            dims = {len(vec) for vec in vectors.values()}
+            self.assertEqual(
+                len(dims), 1,
+                f"embed_corpus returned mixed-dimension vectors {sorted(dims)}: "
+                f"a stale-dim cache entry was reused after a model/dim change; "
+                f"score_embedding_pairs then cosines mismatched-length vectors "
+                f"via zip() truncation -> garbage/false-positive scores")
+
+    def test_embed_index_path_is_separate_from_vec_index(self):
+        p = nld.default_embed_index_path(Path("/tmp/AgentMemory"))
+        self.assertEqual(p, Path("/tmp/AgentMemory/_meta/notes-embeddings.json"))
+        self.assertNotEqual(p.name, "vec-index.db")
+
+    def test_report_dual_signal_sections(self):
+        notes = [self._note("Home/car", title="Car sale"),
+                 self._note("Home/auto", title="Auto trade"),
+                 self._note("Church/baptism", title="Baptism",
+                            body="covenant ordinance sacrament"),
+                 self._note("Church/confirmation", title="Confirmation",
+                            body="covenant ordinance sacrament")]
+        tfidf = [nld.Suggestion(
+            a_rel="Church/baptism", b_rel="Church/confirmation",
+            a_title="Baptism", b_title="Confirmation",
+            a_folder="Church", b_folder="Church", score=0.5,
+            shared_terms=["covenant", "ordinance"], same_folder=True)]
+        emb = [nld.Suggestion(
+            a_rel="Home/car", b_rel="Home/auto", a_title="Car sale",
+            b_title="Auto trade", a_folder="Home", b_folder="Home",
+            score=0.82, shared_terms=[], same_folder=True, signal="embedding")]
+        report = nld.build_report(notes, tfidf, today="2026-05-30",
+                                  embed_suggestions=emb)
+        self.assertIn("## Shared-vocabulary links (TF-IDF)", report)
+        self.assertIn("## Semantically related (embedding signal", report)
+        self.assertIn("semantically related (cosine 0.820)", report)
+        self.assertIn("Signals: **TF-IDF**", report)
+
+    def test_report_embed_unavailable_note(self):
+        notes = [self._note("Church/baptism", title="Baptism", body="covenant"),
+                 self._note("Church/confirmation", title="Confirmation", body="covenant")]
+        tfidf = [nld.Suggestion(
+            a_rel="Church/baptism", b_rel="Church/confirmation",
+            a_title="Baptism", b_title="Confirmation",
+            a_folder="Church", b_folder="Church", score=0.5,
+            shared_terms=["covenant"], same_folder=True)]
+        report = nld.build_report(notes, tfidf, today="2026-05-30",
+                                  embed_suggestions=None, embed_unavailable=True)
+        self.assertIn("TF-IDF only", report)
+        self.assertNotIn("## Semantically related", report)
+
+    def test_report_confirmed_pair_flagged(self):
+        # A pair found by BOTH signals shows the "also semantically related" flag
+        # in the TF-IDF section and is NOT duplicated in the embedding section.
+        notes = [self._note("Church/baptism", title="Baptism", body="covenant"),
+                 self._note("Church/confirmation", title="Confirmation", body="covenant")]
+        pair = dict(a_rel="Church/baptism", b_rel="Church/confirmation",
+                    a_title="Baptism", b_title="Confirmation",
+                    a_folder="Church", b_folder="Church", same_folder=True)
+        tfidf = [nld.Suggestion(score=0.5, shared_terms=["covenant"], **pair)]
+        emb = [nld.Suggestion(score=0.88, shared_terms=[], signal="embedding", **pair)]
+        report = nld.build_report(notes, tfidf, today="2026-05-30", embed_suggestions=emb)
+        self.assertIn("also semantically related", report)
+        self.assertNotIn("## Semantically related (embedding signal", report)
 
 
 class TestUnitHelpers(unittest.TestCase):
