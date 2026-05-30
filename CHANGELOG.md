@@ -5,6 +5,29 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.9.0] — 2026-05-29 — Agent Memory vault cleanup audit (V4 #33)
+
+**MINOR.** A read-only lint over the MemoryVault + a one-time audit pass. As the vault grew across the V4 arc (~150 agent entries), entries drift off-spec — broken `[[wikilinks]]`, malformed frontmatter, dangling supersede references, unsanctioned keys. `vault_lint.py` surfaces all of it with a suggested fix per finding, and **never touches the vault** — it reports; the operator applies (A3, locked DC-1). Auto-repair stays deferred to V5-5. Single-repo release; crickets untouched.
+
+### Added
+
+- **`harness/skills/memory/scripts/vault_lint.py` — read-only vault lint.** A registry of 9 checks over *agent-shaped* entries (those carrying the `kind`+`status`+`created` frontmatter trio; the operator's intermixed free-form notes are skipped): `required-field`, `kebab-case`, `field-order`, `slug-filename`, `date-format`, `placeholder-value` (an unfilled `a | b | c` option-list left in frontmatter), `schema-drift` (unknown keys), `wikilink-resolution`, `supersede-integrity`. Wikilinks resolve against the **whole Obsidian vault root** (the dir with `.obsidian/`), not just `AgentMemory/`, so cross-vault references (e.g. `[[Ideas]]`) don't false-positive. CLI: `--format json|text`, `--scope`.
+- **`--audit` report mode.** Runs all checks and writes a grouped operator-review report (to `--out` or `<vault>/_meta/vault-lint-<date>.md`) — findings collapse by severity → check → identical message, so a key like `domain` across 8 entries is one line + an entry list, not 8 repeats. The report file is the *only* write the lint ever makes; it never mutates an entry.
+
+### Changed
+
+- **`save.py` is the lint's schema source of truth (DC-2).** Added `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` constants the lint reuses (a test pins `_build_frontmatter` to the order), and **widened the `group` regex** from a single optional sub-segment to any depth (`^[a-z0-9-]+(/[a-z0-9-]+)*$`) — the live vault had outgrown it with deep groups like `projects/<slug>/decisions`. Backward-compatible.
+
+### Internal
+
+- **Live-dogfood calibration.** Running the lint against the real vault drove three fixes that took findings from 131 → 39 (no false-positive floods): Obsidian-root wikilink resolution, normalizing markdown-escaped `\]]` brackets, and exempting `_index`/`_summary` anchor slugs from the kebab check. An adversarial review then caught a contained false-negative (the supersede "still active" warn not resolving a stem reference) — fixed + regression-tested.
+- **+26 tests** (`scripts/test_vault_lint.py`; the lint lives in the skill dir but its tests live in `scripts/` so CI's `unittest discover` runs them). 380 → 406.
+
+### Cross-references
+
+- [agentm v4.8.0](https://github.com/alexherrero/agentm/releases/tag/v4.8.0) — prior release.
+- ROADMAP-V4 item #33. Deferred follow-ups: auto-fix / self-healing (→ V5-5); idea-incubator `_summary.md` + `Ideas.md` bespoke-shape lint; scheduled/unattended runs (→ V6); and a personal-notes link-discovery audit (→ V4 #43).
+
 ## [v4.8.0] — 2026-05-29 — Auto-detect + auto-configure on first session (V4 #32)
 
 **MINOR.** The capstone of the global-install arc (#30 → #35 → #39): the first conversation in a repo the harness hasn't seen now configures itself instead of needing a manual setup script. A quiet SessionStart nudge offers to configure an unconfigured project; on request a deterministic engine scans the repo against 10 rules and proposes a **default-all-enabled** config with a per-skill/per-hook *rationale* (why each is relevant to THIS repo); on approval the enablement block is written to `project.json` — **not** `features.json`, which stays the governed verification ledger (locked DC-1). Detection never gates which skills/hooks are present; it surfaces why each is on so the operator can make an informed opt-out. Single-repo release; crickets unaffected.
