@@ -12,6 +12,9 @@
 - [Use per-project install](Use-Per-Project-Install)
 - [Audit the vault](Audit-The-Vault)
 - [Find missing note links](Find-Missing-Note-Links)
+- [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)
+- [Use AgentMemory in Claude.ai](Use-AgentMemory-In-Claude-Ai)
+- [Use AgentMemory in Gemini](Use-AgentMemory-In-Gemini)
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)
@@ -22,6 +25,7 @@
 - [Repo layout](Repo-Layout)
 - [Vault lint checks](Vault-Lint-Checks)
 - [Note relatedness signals](Note-Relatedness-Signals)
+- [AgentMemory context payload](AgentMemory-Context-Payload)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 
