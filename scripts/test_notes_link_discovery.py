@@ -660,6 +660,33 @@ class TestApplyMode(unittest.TestCase):
         self.assertEqual(existing, set())
         self.assertEqual(preserved, "My note.\n\nLots of content.")
 
+    def test_apply_does_not_delete_prose_when_marker_in_text(self):
+        # Adversarial review: the marker phrase appearing in PROSE (or a human
+        # `## Related`) must not trigger the agent-block split — no data loss.
+        with _Vault() as v:
+            victim = _write(v, "Church/baptism.md",
+                'The feature "Suggested by Agent M link-discovery" audits notes.\n\n'
+                'covenant ordinance sacrament baptism confirmation priesthood.\n\n'
+                '## Related\n\n- [[my-handpicked-essay]]\n')
+            _write(v, "Church/confirmation.md",
+                   "Confirmation covenant ordinance conferring the sacrament gift "
+                   "priesthood baptism.")
+            _write(v, "Tech/python.md", "Asyncio coroutines event loop scheduling.")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                nld.main(["--vault", str(v), "--apply", "--min-score", "0.05"])
+            after = victim.read_text(encoding="utf-8")
+            self.assertIn("covenant ordinance sacrament baptism confirmation priesthood.",
+                          after, "--apply DELETED an operator prose paragraph")
+            self.assertIn("[[my-handpicked-essay]]", after,
+                          "--apply clobbered the human-authored Related link")
+
+    def test_split_related_ignores_marker_in_prose(self):
+        body = 'I read about the Suggested by Agent M link-discovery tool today.\n'
+        preserved, existing = nld._split_related(body)
+        self.assertEqual(existing, set())
+        self.assertEqual(preserved, body.rstrip("\n"))
+
 
 class TestUnitHelpers(unittest.TestCase):
     def test_tokenize_drops_stopwords_and_short(self):

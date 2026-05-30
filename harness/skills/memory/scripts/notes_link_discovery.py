@@ -279,7 +279,7 @@ def build_corpus(vault: Path) -> list:
             # Otherwise injected `[[link]]` text would feed back into the TF-IDF /
             # embedding signal and make linked notes look ever-more-similar — a
             # loop that breaks `--apply` idempotency on clustered series.
-            scoring_body = _split_related(body)[0] if _APPLY_MARKER in body else body
+            scoring_body = _split_related(body)[0]
             note = Note(
                 path=p,
                 rel=rel,
@@ -789,20 +789,27 @@ def is_safe_report_path(out_path: Path, vault: Path, note_paths: set) -> bool:
 _RELATED_HEADING = "## Related"
 _APPLY_MARKER = "Suggested by Agent M link-discovery"
 _RELATED_LINK_RE = re.compile(r"^- (\[\[[^\]]+\]\])\s*$", re.MULTILINE)
+# The agent block is anchored to its actual `%% … %%` comment LINE — never a bare
+# substring of the marker. Otherwise a note that merely *mentions* the tool in
+# prose (or carries a human-authored `## Related`) would be mis-split and its
+# content destroyed. Must match an Obsidian-comment line whose text is the marker.
+_AGENT_COMMENT_RE = re.compile(
+    r"^%%\s*" + re.escape(_APPLY_MARKER) + r".*?%%\s*$", re.MULTILINE)
 
 
 def _split_related(body: str) -> tuple:
     """Split a note body into (preserved_body, existing_agent_links). The agent's
-    Related section is marked + lives at EOF; everything from the `## Related`
-    heading that introduces the first marker to EOF is the agent block. A note
-    with no agent block returns (body, empty-set) so a human-authored `## Related`
-    elsewhere is never disturbed."""
-    mi = body.find(_APPLY_MARKER)
-    if mi == -1:
+    Related section is marked by its `%% … %%` comment line + lives at EOF;
+    everything from the `## Related` heading that introduces that comment to EOF is
+    the agent block. A note with no agent comment line returns (body, empty-set),
+    so prose mentioning the tool — or a human-authored `## Related` — is never
+    disturbed (the new section is appended below, not merged into)."""
+    m = _AGENT_COMMENT_RE.search(body)
+    if m is None:
         return body.rstrip("\n"), set()
-    cut = body.rfind(_RELATED_HEADING, 0, mi)
+    cut = body.rfind(_RELATED_HEADING, 0, m.start())
     if cut == -1:
-        cut = mi
+        cut = m.start()
     preserved = body[:cut].rstrip("\n")
     existing = set(_RELATED_LINK_RE.findall(body[cut:]))
     return preserved, existing
