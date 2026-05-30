@@ -78,9 +78,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [How to use per-project install](Use-Per-Project-Install) — when to deliberately keep `--scope project` instead of migrating to user scope (CI runners; shared dev hosts; multi-developer dotfiles).
 - [How to audit the MemoryVault](Audit-The-Vault) — run the read-only vault lint, read the report under `_meta/`, and apply suggested fixes by hand.
 - [How to find missing note links](Find-Missing-Note-Links) — run the read-only personal-notes link-discovery audit and add the suggested `[[wikilinks]]` by hand.
-- [How to use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — configure any agent surface to read the vault natively (read-only); the umbrella recipe.
-- [How to use AgentMemory in Claude.ai](Use-AgentMemory-In-Claude-Ai) — enable the Google Drive connector, pin the vault, paste the context payload.
-- [How to use AgentMemory in Gemini](Use-AgentMemory-In-Gemini) — create a custom Gem carrying the context payload via native Drive access.
+- [How to use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — configure any surface (Claude.ai · Gemini · ChatGPT · Antigravity) to read the vault natively (read-only) by pasting the one context payload.
 
 ## 📖 Looking up a detail?
 

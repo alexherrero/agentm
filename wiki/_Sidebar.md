@@ -13,8 +13,6 @@
 - [Audit the vault](Audit-The-Vault)
 - [Find missing note links](Find-Missing-Note-Links)
 - [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)
-- [Use AgentMemory in Claude.ai](Use-AgentMemory-In-Claude-Ai)
-- [Use AgentMemory in Gemini](Use-AgentMemory-In-Gemini)
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)

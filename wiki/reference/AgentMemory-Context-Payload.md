@@ -33,6 +33,4 @@ The required sections of the payload, in order, as they appear in [`templates/ag
 
 ## Related
 
-- [Use AgentMemory in any agent surface](../how-to/Use-AgentMemory-In-Any-Agent) — the umbrella setup recipe.
-- [Use AgentMemory in Claude.ai](../how-to/Use-AgentMemory-In-Claude-Ai) — Google Drive connector setup.
-- [Use AgentMemory in Gemini](../how-to/Use-AgentMemory-In-Gemini) — custom Gem setup.
+- [Use AgentMemory in any agent](../how-to/Use-AgentMemory-In-Any-Agent) — the setup recipe for every surface (Claude.ai · Gemini · ChatGPT · Antigravity).
