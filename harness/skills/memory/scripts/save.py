@@ -25,7 +25,23 @@ from pathlib import Path
 
 # Validation regexes (must match the skill body's documented contracts).
 _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
-_GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)?$")
+# Group is a vault subdirectory path: one or more kebab segments joined by `/`.
+# (Widened V4 #33: the live vault uses deep groups like
+# `projects/<slug>/decisions` — the prior single-sub-segment regex was behind
+# reality. Backward-compatible: 1- and 2-segment groups still match.)
+_GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
+
+# Locked frontmatter field order — the schema source of truth shared with
+# `vault_lint.py` (V4 #33 DC-2: the lint reuses this so the two can't drift).
+# `_build_frontmatter` below emits fields in this exact order; a test pins them.
+FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
+    "kind", "status", "created", "updated", "tags", "group", "slug",
+    "always_load", "supersedes",
+)
+# Required fields = every field except the optional `supersedes`.
+REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
+    f for f in FRONTMATTER_FIELD_ORDER if f != "supersedes"
+)
 
 
 def _today_iso() -> str:
