@@ -61,8 +61,8 @@ def _validate_group(value: str) -> None:
     """Raise ValueError if `value` is not a valid group path."""
     if not _GROUP_SEGMENT.match(value):
         raise ValueError(
-            f"group {value!r}: must be kebab-case with at most one /<sub-slug> "
-            f"segment (^[a-z0-9-]+(/[a-z0-9-]+)?$)"
+            f"group {value!r}: must be one or more kebab-case segments joined "
+            f"by / (^[a-z0-9-]+(/[a-z0-9-]+)*$)"
         )
 
 

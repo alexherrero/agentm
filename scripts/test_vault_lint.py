@@ -214,6 +214,21 @@ class TestChecks(unittest.TestCase):
             self.assertTrue(any(
                 f.check_id == "supersede-integrity" and f.severity == "warn" for f in findings))
 
+    def test_supersede_by_stem_when_slug_differs(self):
+        # Regression (adversarial review 2026-05-29): target referenced by FILE
+        # STEM while its frontmatter slug differs. The dangling check uses the
+        # stem+slug union; the "still active" warn must resolve by stem too.
+        with _Vault() as v:
+            fm_target = _clean("real-old")  # slug=real-old, status active
+            _write(v, "personal-private/_always-load/oldfile.md", fm_target)  # stem=oldfile != slug
+            fm = _clean("newer3") + ["supersedes: oldfile"]  # references by stem
+            _write(v, "personal-private/_always-load/newer3.md", fm)
+            _, findings = _lint(v)
+            sup = [f for f in findings if f.check_id == "supersede-integrity"]
+            # NOT flagged dangling (stem resolves) AND the still-active warn fires.
+            self.assertTrue(any(f.severity == "warn" for f in sup), [f.message for f in sup])
+            self.assertFalse(any(f.severity == "error" for f in sup), [f.message for f in sup])
+
 
 class TestCalibration(unittest.TestCase):
     """Real-world calibrations surfaced by the live-vault dogfood."""

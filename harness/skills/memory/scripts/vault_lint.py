@@ -237,7 +237,10 @@ def build_model(vault: Path, scope: str = "all") -> VaultModel:
         slug = fm.get("slug", "").strip() or path.stem
         model.slugs.add(slug)
         model.slugs.add(path.stem)  # also resolve by filename stem
+        # Index by_slug by BOTH slug and stem — must match `slugs`'s key-space so
+        # check_supersede's "still active" lookup resolves a stem reference too.
         model.by_slug.setdefault(slug, entry)
+        model.by_slug.setdefault(path.stem, entry)
     return model
 
 
@@ -275,8 +278,8 @@ def check_kebab_case(entry: Entry, model: VaultModel) -> list:
     if grp and not save._GROUP_SEGMENT.match(grp):
         out.append(Finding(
             "kebab-case", "error", entry.rel,
-            f"`group: {grp}` is not a valid group path (^[a-z0-9-]+(/[a-z0-9-]+)?$)",
-            "use kebab-case with at most one /<sub-slug> segment",
+            f"`group: {grp}` is not a valid group path (^[a-z0-9-]+(/[a-z0-9-]+)*$)",
+            "use one or more kebab-case segments joined by /",
         ))
     # tags: `[a, b, c]` → each kebab.
     tags_raw = fm.get("tags", "")
