@@ -10,6 +10,7 @@
 - [Cut a release](Cut-A-Release)
 - [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases)
 - [Use per-project install](Use-Per-Project-Install)
+- [Audit the vault](Audit-The-Vault)
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)
@@ -18,6 +19,7 @@
 - [Migration tool](Migration-Tool)
 - [CI gates](CI-Gates)
 - [Repo layout](Repo-Layout)
+- [Vault lint checks](Vault-Lint-Checks)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 

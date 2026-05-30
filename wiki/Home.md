@@ -76,6 +76,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [How to cut a release](Cut-A-Release) — tag, changelog, GitHub release via the `ship-release` skill.
 - [How to use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) — tune MemoryVault recall budgets, save modes, and confidence thresholds for each phase.
 - [How to use per-project install](Use-Per-Project-Install) — when to deliberately keep `--scope project` instead of migrating to user scope (CI runners; shared dev hosts; multi-developer dotfiles).
+- [How to audit the MemoryVault](Audit-The-Vault) — run the read-only vault lint, read the report under `_meta/`, and apply suggested fixes by hand.
 
 ## 📖 Looking up a detail?
 
@@ -85,6 +86,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [Migration tool reference](Migration-Tool) — flag-by-flag for `migrate-to-user-scope.{sh,ps1}` + the 4-state matrix + `.agentm-migrate-record.json` schema.
 - [CI gates reference](CI-Gates) — what each CI workflow proves and the script behind it.
 - [Repo layout reference](Repo-Layout) — top-level directory map and four-adapter parity table.
+- [Vault lint checks reference](Vault-Lint-Checks) — the 9 read-only `vault_lint.py` checks: id / severity / what each checks / suggested-fix shape.
 - [Compatibility](Compatibility) — supported hosts (Claude Code, Antigravity) + OS matrix + adapter contract.
 - [Completed features](Completed-Features) — reverse-chronological log of shipped work.
 
