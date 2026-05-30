@@ -21,6 +21,7 @@ import sys
 import tempfile
 import unittest
 from contextlib import redirect_stdout
+from datetime import date
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -256,6 +257,134 @@ class TestJsonAndCli(unittest.TestCase):
                                  f"engine modified a personal note: {p}")
 
 
+class TestReport(unittest.TestCase):
+    def test_report_has_summary_sections_and_paste_links(self):
+        with _Vault() as v:
+            _write(v, "Church/baptism.md",
+                   "Baptism covenant ordinance renewed by the sacrament weekly.")
+            _write(v, "Church/confirmation.md",
+                   "Confirmation covenant ordinance conferring the sacrament gift.")
+            _write(v, "Tech/python.md", "Asyncio coroutines event loop scheduling.")
+            notes, sugg = nld.discover(v, min_score=0.05, top=40)
+            report = nld.build_report(notes, sugg, today="2026-05-29")
+            self.assertIn("# Personal-notes link suggestions — 2026-05-29", report)
+            self.assertIn("suggestion(s) across", report)
+            self.assertIn("## Suggested links", report)
+            self.assertIn("shared terms:", report)
+            # Paste-ready bidirectional links present.
+            self.assertIn("[[confirmation]]", report)
+            self.assertIn("[[baptism]]", report)
+            self.assertIn("paste into", report)
+
+    def test_report_empty_suggestions(self):
+        with _Vault() as v:
+            _write(v, "Tech/python.md", "Asyncio coroutines event loop scheduling.")
+            _write(v, "Home/recipe.md", "Roast vegetables olive oil garlic rosemary.")
+            notes, sugg = nld.discover(v, min_score=0.9, top=40)
+            report = nld.build_report(notes, sugg, today="2026-05-29")
+            self.assertIn("No related-but-unlinked pairs", report)
+            self.assertNotIn("## Suggested links", report)
+
+    def test_report_ambiguous_stem_uses_full_path(self):
+        # Two distinct notes share a stem -> paste-link must use the full rel path.
+        with _Vault() as v:
+            _write(v, "Work/daily.md", "Standup blockers velocity sprint backlog burndown.")
+            _write(v, "Journal/daily.md", "Standup blockers velocity sprint backlog burndown.")
+            _write(v, "Tech/python.md", "Asyncio coroutines event loop scheduling.")
+            notes, sugg = nld.discover(v, min_score=0.05, top=40)
+            report = nld.build_report(notes, sugg, today="2026-05-29")
+            # The ambiguous stem must be disambiguated by path, not bare.
+            self.assertIn("[[Work/daily]]", report)
+            self.assertIn("[[Journal/daily]]", report)
+            self.assertNotIn("[[daily]]", report)
+
+    def test_report_bracketed_name_not_a_broken_wikilink(self):
+        # Note names with [] can't be a valid [[wikilink]] target — the report
+        # must flag them, not emit a broken `[[… - [date]]]`.
+        with _Vault() as v:
+            _write(v, "Church/Leadership Meeting - [28 Feb 2016].md",
+                   "Branch presidency assignments baptism confirmations welfare visits.")
+            _write(v, "Church/Leadership Meeting - [21 Feb 2016].md",
+                   "Branch presidency assignments baptism confirmations welfare visits.")
+            _write(v, "Tech/python.md", "Asyncio coroutines event loop scheduling.")
+            notes, sugg = nld.discover(v, min_score=0.05, top=40)
+            report = nld.build_report(notes, sugg, today="2026-05-29")
+            self.assertNotIn("[28 Feb 2016]]]", report)
+            self.assertNotIn("[21 Feb 2016]]]", report)
+            self.assertIn("link via Obsidian's `[[` picker", report)
+
+    def test_default_report_path_is_meta(self):
+        p = nld.default_report_path(Path("/tmp/AgentMemory"), "2026-05-29")
+        self.assertEqual(p, Path("/tmp/AgentMemory/_meta/notes-links-2026-05-29.md"))
+
+    def test_report_out_refuses_personal_note(self):
+        # Adversarial review: `--out <personal note>` must be REFUSED, never
+        # overwrite the operator's note (hard DC-1 guarantee).
+        with _Vault() as v:
+            victim = _write(v, "Church/baptism.md",
+                            "Baptism covenant ordinance renewed by the sacrament.")
+            _write(v, "Church/confirmation.md",
+                   "Confirmation covenant ordinance conferring the sacrament.")
+            before = victim.read_bytes()
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = nld.main(["--vault", str(v), "--report", "--min-score", "0.05",
+                               "--out", str(victim)])
+            self.assertEqual(rc, 2)
+            self.assertEqual(victim.read_bytes(), before,
+                             "--out clobbered a personal note")
+
+    def test_report_out_refuses_outside_vault(self):
+        with _Vault() as v:
+            _write(v, "Church/baptism.md",
+                   "Baptism covenant ordinance renewed by the sacrament.")
+            _write(v, "Church/confirmation.md",
+                   "Confirmation covenant ordinance conferring the sacrament.")
+            with tempfile.TemporaryDirectory() as other:
+                target = Path(other) / "escape.md"
+                buf = io.StringIO()
+                with redirect_stdout(buf):
+                    rc = nld.main(["--vault", str(v), "--report",
+                                   "--min-score", "0.05", "--out", str(target)])
+                self.assertEqual(rc, 2)
+                self.assertFalse(target.exists(), "report escaped the vault")
+
+    def test_is_safe_report_path_unit(self):
+        vault = Path("/tmp/AgentMemory")
+        ok = vault / "_meta" / "notes-links-2026-05-29.md"
+        self.assertTrue(nld.is_safe_report_path(ok, vault, set()))
+        outside = Path("/tmp/Obsidian/Church/note.md")
+        self.assertFalse(nld.is_safe_report_path(outside, vault, set()))
+        # A corpus member inside the vault is still refused.
+        note = vault / "personal" / "note.md"
+        self.assertFalse(nld.is_safe_report_path(note, vault, {note.resolve()}))
+
+    def test_report_cli_writes_only_to_meta(self):
+        # The --report run writes exactly one file under _meta/ and leaves every
+        # personal note byte-identical (read-only guarantee, the one write).
+        with _Vault() as v:
+            paths = [
+                _write(v, "Church/baptism.md",
+                       "Baptism covenant ordinance renewed by the sacrament."),
+                _write(v, "Church/confirmation.md",
+                       "Confirmation covenant ordinance conferring the sacrament."),
+            ]
+            before = {p: p.read_bytes() for p in paths}
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = nld.main(["--vault", str(v), "--report", "--min-score", "0.05"])
+            self.assertEqual(rc, 0)
+            report_path = v / "_meta" / f"notes-links-{date.today().isoformat()}.md"
+            self.assertTrue(report_path.exists(), "report not written to _meta/")
+            self.assertIn(str(report_path), buf.getvalue())
+            for p in paths:
+                self.assertEqual(p.read_bytes(), before[p],
+                                 f"--report modified a personal note: {p}")
+            # No stray files outside _meta/ and the two fixtures.
+            md_files = sorted(q.relative_to(v).as_posix() for q in v.rglob("*.md"))
+            self.assertIn("_meta/" + report_path.name, md_files)
+
+
 class TestUnitHelpers(unittest.TestCase):
     def test_tokenize_drops_stopwords_and_short(self):
         toks = nld._tokenize("The cat sat on a comfortable mat by the window")
@@ -263,6 +392,54 @@ class TestUnitHelpers(unittest.TestCase):
         self.assertNotIn("on", toks)       # 2-char, below min length
         self.assertIn("comfortable", toks)
         self.assertIn("window", toks)
+
+    def test_strip_markup_removes_html_css_hex_urls(self):
+        raw = ('<style>.x { font-family: serif; color: #fffaa5; }</style>'
+               'Real prose here. <span style="width:100%">visible</span> '
+               '#f497d ![[embed.png]] https://example.com/page apricot')
+        cleaned = nld._strip_markup(raw)
+        self.assertNotIn("font-family", cleaned)
+        self.assertNotIn("#fffaa5", cleaned)
+        self.assertNotIn("#f497d", cleaned)
+        self.assertNotIn("example.com", cleaned)
+        self.assertNotIn("embed.png", cleaned)
+        self.assertIn("Real prose here", cleaned)
+        self.assertIn("visible", cleaned)
+        self.assertIn("apricot", cleaned)
+
+    def test_noise_token_filter(self):
+        self.assertTrue(nld._is_noise_token("f497d"))      # hex with digit
+        self.assertTrue(nld._is_noise_token("image1"))     # enumerated media
+        self.assertTrue(nld._is_noise_token("img12"))
+        self.assertTrue(nld._is_noise_token("serif"))      # CSS keyword stopword
+        self.assertFalse(nld._is_noise_token("decade"))    # all-alpha hex-chars, real word
+        self.assertFalse(nld._is_noise_token("facade"))
+        self.assertFalse(nld._is_noise_token("covenant"))
+        self.assertFalse(nld._is_noise_token("family"))    # NOT a stopword (corpus vocab)
+
+    def test_spanish_stopwords_dropped_but_content_kept(self):
+        toks = nld._tokenize("que los antepasados eran para sellar la familia")
+        self.assertNotIn("que", toks)
+        self.assertNotIn("los", toks)
+        self.assertNotIn("eran", toks)
+        self.assertNotIn("para", toks)
+        self.assertIn("antepasados", toks)
+        self.assertIn("sellar", toks)
+        self.assertIn("familia", toks)
+
+    def test_html_boilerplate_does_not_connect_notes(self):
+        # Two notes whose ONLY overlap is clipped HTML/CSS boilerplate must not
+        # be surfaced as related (regression for the live-dogfood finding).
+        css = ('<div style="font-family: serif; width: 100%; color: #fffaa5">'
+               '</div> <style>.a { color: #f497d; }</style>')
+        with _Vault() as v:
+            # No shared PROSE — only the clipped CSS overlaps, and it's stripped.
+            _write(v, "Home/a.md", css + " Apricot marmalade canning jars pectin.")
+            _write(v, "Home/b.md", css + " Bicycle derailleur cassette tuning chain.")
+            _write(v, "Home/c.md", css + " Ceramic kiln glaze firing cone earthenware.")
+            _notes, sugg = nld.discover(v, min_score=0.18, top=40)
+            self.assertEqual(_pairset(sugg), set(),
+                             f"HTML boilerplate connected notes: {_pairset(sugg)}")
 
     def test_resolve_link_variants(self):
         self.assertEqual(nld._resolve_link("foo"), ("foo", None))

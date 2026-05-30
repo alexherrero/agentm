@@ -30,6 +30,7 @@ Stdlib-only (no sklearn — hand-rolled TF-IDF), cross-platform.
 CLI:
     python3 notes_link_discovery.py [--vault PATH] [--format json|text]
                                     [--top N] [--min-score X]
+    python3 notes_link_discovery.py --report [--out PATH]   # operator-review md
 """
 from __future__ import annotations
 
@@ -41,6 +42,7 @@ import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -69,9 +71,31 @@ _MAX_DF_RATIO = 0.5
 # only noise like years bleak less). Apostrophes are split (don't -> don, t-drop).
 _TOKEN_RE = re.compile(r"[a-z][a-z0-9]{2,}")
 
-# A compact English stopword set + Markdown/Obsidian boilerplate. Hand-rolled
-# (stdlib-only, no nltk). IDF already down-weights common terms; this just keeps
-# the inverted index from being dominated by function words.
+# Many personal notes are clipped/pasted web content, so the raw text carries
+# HTML tags, inline CSS, image embeds, and URLs whose tokens (hex colors, font
+# names, `image1`) otherwise dominate the TF-IDF signal — the live #43 dogfood
+# showed `fffaa5`/`serif`/`image1` crowding out real shared terms. Strip that
+# markup before tokenizing so relatedness reflects prose, not clip boilerplate.
+_MD_IMG_RE = re.compile(r"!\[\[[^\]]*\]\]|!\[[^\]]*\]\([^)]*\)")
+_TAG_RE = re.compile(r"<[^>]+>")
+_STYLE_BLOCK_RE = re.compile(r"<style[^>]*>.*?</style>|<script[^>]*>.*?</script>",
+                             re.DOTALL | re.IGNORECASE)
+_CSS_BRACE_RE = re.compile(r"\{[^{}]*\}")
+_URL_RE = re.compile(r"https?://\S+|www\.\S+")
+_ENTITY_RE = re.compile(r"&[a-z#0-9]+;", re.IGNORECASE)
+# `#`-prefixed hex colors (#fefbbf, #fff, #f497d). Stripped contextually so
+# all-alpha hex like `fefbbf` is dropped without false-dropping prose words
+# (`decade`, `facade`) that the bare-token hex filter must keep.
+_HEX_COLOR_RE = re.compile(r"#[0-9a-fA-F]{3,8}\b")
+# A hex token (color/id like `fffaa5`, `f497d`) — all hex chars AND at least one
+# digit (so real words made only of [a-f] like "decade"/"facade" are kept).
+_HEX_TOKEN_RE = re.compile(r"^[0-9a-f]+$")
+# Generic enumerated media refs: image1, img2, figure3, screenshot1, …
+_MEDIA_TOKEN_RE = re.compile(r"^(?:image|img|figure|fig|photo|screenshot|icon|logo)\d+$")
+
+# A compact English stopword set + Markdown/Obsidian + web-clip/CSS boilerplate.
+# Hand-rolled (stdlib-only, no nltk). IDF already down-weights common terms; this
+# just keeps the inverted index from being dominated by function words / markup.
 _STOPWORDS = frozenset("""
 the and that have for not with you this but his from they she will would there
 their what about which when make can like time just him know take people into
@@ -82,6 +106,27 @@ get got going one let going lets per via vs etc eg ie aka onto upon within
 without across among around before behind below beneath beside between beyond
 during except inside near since toward under until upon while https http www com
 org net html md png jpg jpeg gif note notes link links page see also ref
+serif sans monospace helvetica verdana tahoma calibri arial roboto cellpadding
+cellspacing colspan rowspan valign nbsp rgba tbody thead
+""".split())
+# NB: only tokens that are ~never English/Spanish prose go above. `_strip_markup`
+# already removes <style>/<script> blocks, inline `style=…`, `{…}` CSS rules, and
+# `#hex` colors — so common words that double as CSS keywords (font, family,
+# width, color, text, block, auto, times, …) are NOT stopwords; dropping them
+# would blind a family-history corpus to its own vocabulary.
+
+# The operator's corpus is bilingual (English + Spanish church/family notes), so
+# Spanish function words leak in as "distinctive" terms. A compact Spanish
+# stopword set, deliberately EXCLUDING tokens that are also meaningful English
+# words (`son`, `sin`, `ante`, `como`-no) so we don't blind the English side.
+_STOPWORDS_ES = frozenset("""
+que los las una unos unas del con por para pero sus les ese esa eso eran ellos
+ellas esto esta este estos estas fue fueron han hay muy sobre tambien hasta desde
+cuando todo todos toda todas nos porque donde quien cual cuales entre hace asi
+aqui alli cada otro otra otros otras mismo misma tan tanto tiene tienen puede
+pueden debe deben hacer dice dijo dijeron segun aunque mientras ademas nuestra
+nuestro nuestros nuestras ustedes nosotros vosotros aquel aquella aquello cuyo
+cuya hacia tras durante mediante respecto solo solamente tambien siempre nunca
 """.split())
 
 
@@ -134,8 +179,35 @@ class Suggestion:
 # Corpus build
 # -----------------------------------------------------------------------------
 
+def _strip_markup(text: str) -> str:
+    """Remove HTML/CSS/markdown-embed/URL markup so its tokens don't pollute the
+    TF-IDF signal. Order matters: drop whole <style>/<script> blocks before the
+    generic tag strip, then leftover CSS `{…}` rules, image embeds, URLs,
+    entities."""
+    text = _STYLE_BLOCK_RE.sub(" ", text)
+    text = _MD_IMG_RE.sub(" ", text)
+    text = _TAG_RE.sub(" ", text)
+    text = _CSS_BRACE_RE.sub(" ", text)
+    text = _HEX_COLOR_RE.sub(" ", text)
+    text = _URL_RE.sub(" ", text)
+    text = _ENTITY_RE.sub(" ", text)
+    return text
+
+
+def _is_noise_token(t: str) -> bool:
+    if t in _STOPWORDS or t in _STOPWORDS_ES:
+        return True
+    if _MEDIA_TOKEN_RE.match(t):
+        return True
+    # Hex color/id: all hex chars with at least one digit (keeps all-alpha words).
+    if any(c.isdigit() for c in t) and _HEX_TOKEN_RE.match(t):
+        return True
+    return False
+
+
 def _tokenize(text: str) -> list:
-    return [t for t in _TOKEN_RE.findall(text.lower()) if t not in _STOPWORDS]
+    return [t for t in _TOKEN_RE.findall(_strip_markup(text).lower())
+            if not _is_noise_token(t)]
 
 
 def _title_from(path: Path, fm: Optional[dict]) -> str:
@@ -351,6 +423,106 @@ def discover(vault: Path, *, min_score: float = _DEFAULT_MIN_SCORE,
 
 
 # -----------------------------------------------------------------------------
+# Report (task 2) — operator-review markdown of related-but-unlinked pairs
+# -----------------------------------------------------------------------------
+
+def _stem(rel: str) -> str:
+    """Filename stem from a POSIX rel path ('Church/Baptism' -> 'Baptism')."""
+    return rel.rsplit("/", 1)[-1]
+
+
+# Characters that break Obsidian `[[wikilink]]` targets: brackets (delimiters),
+# pipe (alias), hash (heading anchor), caret (block ref).
+_WIKILINK_UNSAFE = ("[", "]", "|", "#", "^")
+
+
+def _paste_link(target_rel: str, *, ambiguous_stems: set) -> str:
+    """A paste-ready Obsidian wikilink to `target_rel`. Uses the bare stem (how
+    Obsidian autocompletes) unless that stem is shared by >1 note, in which case
+    the full path disambiguates. If the chosen target contains wikilink-breaking
+    characters (e.g. the bracketed-date meeting notes), don't emit a broken
+    `[[…]]` — flag it so the operator links via Obsidian's picker instead."""
+    stem = _stem(target_rel)
+    target = target_rel if stem in ambiguous_stems else stem
+    if any(ch in target for ch in _WIKILINK_UNSAFE):
+        return f"`{target}` — link via Obsidian's `[[` picker (name has `[]`/`|`/`#`)"
+    return f"[[{target}]]"
+
+
+def build_report(notes: list, suggestions: list, *, today: str) -> str:
+    """Render an operator-review markdown report: a ranked list of related-but-
+    unlinked pairs, each with the shared distinctive terms (the *why*) and a
+    paste-ready `[[wikilink]]` for both directions. Advisory only — nothing is
+    applied, and no personal note is touched."""
+    # Stems shared by >1 note → those paste-links must use the full path.
+    stem_counts = defaultdict(int)
+    for note in notes:
+        stem_counts[note.path.stem] += 1
+    ambiguous = {s for s, c in stem_counts.items() if c > 1}
+
+    involved = set()
+    for s in suggestions:
+        involved.add(s.a_rel)
+        involved.add(s.b_rel)
+
+    out = [
+        f"# Personal-notes link suggestions — {today}",
+        "",
+        f"**{len(suggestions)} suggestion(s) across {len(notes)} personal notes** — "
+        f"{len(involved)} note(s) appear in at least one suggestion below; the rest "
+        f"had no strong related-but-unlinked match.",
+        "",
+        "> Read-only audit (V4 #43). Each pair is a *suggestion*: these notes look "
+        "related (they share the distinctive terms shown) but aren't `[[linked]]`. "
+        "Open this in Obsidian and add the links you agree with **by hand** — "
+        "nothing here was changed automatically and no personal note was modified. "
+        "Suggestions are personal↔personal only; never a link into `AgentMemory/`.",
+        "",
+    ]
+    if not suggestions:
+        out.append("No related-but-unlinked pairs above the threshold. 🎉")
+        return "\n".join(out) + "\n"
+
+    out.append("## Suggested links (ranked by relatedness)")
+    out.append("")
+    for i, s in enumerate(suggestions, 1):
+        rel_note = ("same folder" if s.same_folder
+                    else f"{s.a_folder or '(root)'} ⇄ {s.b_folder or '(root)'}")
+        a_link = _paste_link(s.a_rel, ambiguous_stems=ambiguous)
+        b_link = _paste_link(s.b_rel, ambiguous_stems=ambiguous)
+        out.append(f"### {i}. score {s.score:.3f} — {rel_note}")
+        out.append(f"- `{s.a_rel}` — **{s.a_title}**")
+        out.append(f"- `{s.b_rel}` — **{s.b_title}**")
+        out.append(f"- shared terms: {', '.join(s.shared_terms)}")
+        out.append(f"- paste into **{s.a_title}**: {b_link}  ·  "
+                   f"paste into **{s.b_title}**: {a_link}")
+        out.append("")
+    return "\n".join(out) + "\n"
+
+
+def default_report_path(vault: Path, today: str) -> Path:
+    """`<vault>/_meta/notes-links-<date>.md` — agent-controlled output, mirroring
+    vault_lint's `vault-lint-<date>.md`. `vault` is the AgentMemory root
+    (MEMORY_VAULT_PATH); the personal-notes corpus is the Obsidian parent, but the
+    report lands inside the agent's own vault, never beside a personal note."""
+    return Path(vault) / "_meta" / f"notes-links-{today}.md"
+
+
+def is_safe_report_path(out_path: Path, vault: Path, note_paths: set) -> bool:
+    """Guard for `--out` (DC-1): a report may ONLY be written inside the agent-
+    controlled vault and must NEVER be (or overwrite) a personal note. In
+    production personal notes live OUTSIDE the AgentMemory vault, so the
+    `inside_vault` check alone suffices; the `note_paths` membership check is the
+    belt-and-suspenders that also holds when a caller points `--vault` at the
+    Obsidian root itself (the corpus we just walked is the authoritative set of
+    personal notes). Without this, `--out <a personal note>` would clobber it."""
+    out_r = out_path.expanduser().resolve()
+    vault_r = Path(vault).expanduser().resolve()
+    inside_vault = out_r == vault_r or vault_r in out_r.parents
+    return inside_vault and out_r not in note_paths
+
+
+# -----------------------------------------------------------------------------
 # CLI
 # -----------------------------------------------------------------------------
 
@@ -385,6 +557,10 @@ def main(argv: Optional[list] = None) -> int:
     p.add_argument("--top", type=int, default=_DEFAULT_TOP, help="max suggestions (0 = all)")
     p.add_argument("--min-score", type=float, default=_DEFAULT_MIN_SCORE,
                    help="cosine-similarity threshold")
+    p.add_argument("--report", action="store_true",
+                   help="write an operator-review markdown report "
+                        "(to --out or <vault>/_meta/notes-links-<date>.md)")
+    p.add_argument("--out", default=None, help="report output path (with --report)")
     args = p.parse_args(argv)
     try:
         vault = vault_lint._resolve_vault(args.vault)
@@ -396,6 +572,22 @@ def main(argv: Optional[list] = None) -> int:
         return 2
 
     notes, suggestions = discover(vault, min_score=args.min_score, top=args.top)
+
+    if args.report:
+        today = date.today().isoformat()
+        report = build_report(notes, suggestions, today=today)
+        out_path = Path(args.out).expanduser() if args.out else default_report_path(vault, today)
+        note_paths = {n.path.resolve() for n in notes}
+        if not is_safe_report_path(out_path, vault, note_paths):
+            print(f"notes_link_discovery: refusing to write the report outside the "
+                  f"agent-controlled vault or onto a personal note: {out_path}",
+                  file=sys.stderr)
+            return 2
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(report, encoding="utf-8")
+        print(f"notes-link-discovery report: {len(suggestions)} suggestion(s) "
+              f"across {len(notes)} notes -> {out_path}")
+        return 0
 
     if args.format == "json":
         print(json.dumps({
