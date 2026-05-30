@@ -1,0 +1,54 @@
+<!--
+  agentmemory-context — the canonical "how to use my Agent Memory" payload (V4 #22).
+
+  Paste the body BELOW the marker into each agent surface's instruction slot:
+    - Claude.ai:  Settings → Custom instructions, or a Claude Project's instructions
+    - Gemini:     a custom Gem's "Instructions"
+    - ChatGPT:    Custom instructions / a Project's instructions   (v1.x)
+    - Antigravity: installed as an `agentmemory-context` rule (the installer does this)
+  Claude Code already gets this via SessionStart/UserPromptSubmit hooks — it doesn't
+  need the paste.
+
+  This file is the SOURCE OF TRUTH. A copy lives at <vault>/_meta/how-to-use-agentmemory.md
+  so an agent that reaches the vault finds its own usage instructions. If the vault
+  structure changes, update THIS file and re-paste.
+
+  Read-only v1: surfaces READ the vault; they never write to it. Write-tier is a v2 plan.
+-->
+
+# Using my Agent Memory (the AgentMemory vault)
+
+You have access to my durable memory: a Google-Drive-synced Obsidian vault named **`AgentMemory/`**. It holds my conventions, projects, decisions, and recent context. **Before you answer from your own memory, read the relevant parts of this vault** — it's the authoritative source for how I work and what I'm working on. Treat it as **read-only**: never write to it; if you want to capture something, *suggest* an entry I can paste into Obsidian myself.
+
+## Where the vault is, on your surface
+
+- **Claude.ai / ChatGPT** — the `AgentMemory/` folder in my Google Drive (enable the Google Drive connector and pin/select that folder).
+- **Gemini** — `AgentMemory/` in my Google Drive (you already have Workspace/Drive access).
+- **Antigravity** — the vault path the agentm/crickets installer configured.
+- **Claude Code / local agents** — the filesystem path in `MEMORY_VAULT_PATH`.
+
+## Folder map — what's where
+
+- **`personal-private/_always-load/`** — my global conventions + preferences (dev-flow rules, commit conventions, ADR/changelog shapes, voice/brand). **Read these first, every time.**
+- **`projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate these), `open-questions/` (unresolved), `_harness/` (the project's roadmap / plan / progress).
+- **`_idea-incubator/<slug>/`** — research-backed exploration of ideas I'm developing.
+- **`_inbox/`** — unsorted captures (staging; low-signal).
+- **`_meta/`** — machine files + audit reports (readable, not curated prose).
+
+## How to read it (priority order)
+
+1. **Always-load first** — load everything in `personal-private/_always-load/`; those are my durable rules and apply to every answer.
+2. **Project context** — if the question concerns a project, read that project's `projects/<slug>/_index.md` + `decisions/` before answering.
+3. **Query by topic** — search the vault for the subject of my question *before* falling back to your own general knowledge. If the vault says something, it wins.
+
+## Reading entries correctly
+
+- Entries are markdown with YAML frontmatter; the core trio is `kind` + `status` + `created`. Slugs and tags are kebab-case.
+- `status: active` = current; `status: superseded` = historical (don't follow it).
+- `[[wikilinks]]` cross-reference related entries — follow them when relevant.
+
+## Your boundary — READ-ONLY
+
+- **Read and query freely. Do NOT write to the vault.**
+- If you'd capture something durable (a decision, a preference, a fix, an idea), **suggest it as a ready-to-paste entry** and tell me where it belongs (`personal-private/_always-load/` for a global rule, `projects/<slug>/` for project context). I'll add it in Obsidian.
+- The vault is Google-Drive-synced, so you see the **last-synced** state — very recent local edits may not have propagated yet. If something seems missing, say so rather than guessing.
