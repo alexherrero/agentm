@@ -1,0 +1,23 @@
+# Issue template config — controls the "New Issue" picker UX.
+#
+# blank_issues_enabled: false forces users through one of the structured templates above
+# so every new Issue lands with the right label (bug | roadmap) and the agentm Project
+# Track filters / Issues tab label filters work cleanly out of the box.
+#
+# If you need to file something that doesn't fit either template, use one of the
+# contact_links below or open the Project board directly.
+
+blank_issues_enabled: false
+
+contact_links:
+  - name: 🗺️ View the agentm Project (roadmap + plans + tasks)
+    url: https://github.com/users/alexherrero/projects/2
+    about: Roadmap-tracked work lives on the Project. For roadmap items, use the Roadmap Item template above.
+
+  - name: 📖 Read ROADMAP-MASTER (governance + bucket order)
+    url: https://github.com/alexherrero/agentm/blob/main/wiki/Home.md
+    about: Master roadmap narrative lives in the vault (`<vault>/projects/agentm/_harness/ROADMAP-MASTER.md`). The wiki Home points at the published-side docs.
+
+  - name: 💬 General questions — open a Discussion
+    url: https://github.com/alexherrero/agentm/discussions
+    about: Open-ended questions, design conversations, and "is this even the right shape?" go here, not Issues.

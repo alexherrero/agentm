@@ -1,0 +1,93 @@
+name: 🗺️ Roadmap Item
+description: A new roadmap entry, plan, task, backlog item, or idea. Will be enrolled in the agentm Project.
+title: "<short noun phrase describing the work>"
+labels: ["roadmap"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template auto-applies the `roadmap` label so the Issues tab filter `label:roadmap` surfaces it (separated from `label:bug` defect reports).
+
+        After filing, set the project fields (Track / Type / Priority / Start / Target / Status) on the agentm Project: https://github.com/users/alexherrero/projects/2
+
+        The body shape below mirrors the per-item shape used across `ROADMAP-AgentMemoryV*.md` in the vault — making this Issue render cleanly when the future `github-projects` crickets bundle (V4 #41 / Crickets v3.x #27) starts auto-synthesizing Project entries from the vault.
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Type
+      description: Which project Type fits this item? (Sets the project's Type field after the agent enrolls the issue.)
+      options:
+        - Roadmap-entry (scoped work within a Version)
+        - Plan (concrete plan within a Roadmap-entry)
+        - Task (sub-task within a Plan)
+        - Backlog-item (queued, not yet scheduled)
+        - Idea (unscheduled idea)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: track
+    attributes:
+      label: Track (Version)
+      description: Which line does this belong to?
+      options:
+        - V4 — Recall, everywhere
+        - V5 — Memory that maintains itself
+        - V6 — Memory that works while you sleep
+        - FRIDAY — Natural extension
+        - V7 — Multi-agent collective
+        - Hardening I
+        - Hardening II
+        - Operator-personal
+        - Backlog
+        - Ideas
+    validations:
+      required: true
+
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What does this item ship? Concrete deliverables — files, primitives, behaviors.
+      placeholder: |
+        - Builds: ...
+        - Surfaces: ...
+        - Out of scope (v1): ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why now (or why this matters)
+      description: The operator-facing pain or strategic motivation. What changes for the operator when this lands?
+    validations:
+      required: false
+
+  - type: textarea
+    id: cross-impacts
+    attributes:
+      label: Cross-impacts
+      description: Other roadmap items this affects or depends on. Use issue references where applicable.
+      placeholder: |
+        - Depends on: #<n> (...)
+        - Unlocks: #<n> (...)
+        - Cross-impact: #<n> may need rework after this
+    validations:
+      required: false
+
+  - type: textarea
+    id: pickup-signal
+    attributes:
+      label: Pickup signal
+      description: What operator phrase triggers picking this up next?
+      placeholder: '"let''s start <X>" / "build the <Y> primitive" / etc.'
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **After filing:** the agent enrolls this in the agentm Project, sets Track + Type + Status (Todo) + Start/Target dates if known, and nests under the appropriate Version parent issue via sub-issue. The vault `ROADMAP-AgentMemoryV*.md` entry is the canonical source — this Issue is the human-readable Project mirror per V4 #41 DC-4.

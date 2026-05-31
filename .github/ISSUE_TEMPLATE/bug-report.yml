@@ -1,0 +1,66 @@
+name: 🐛 Bug Report
+description: A defect in the harness / memory engine / installer / phase pipeline / sub-agents / hooks.
+title: "<short summary — what's broken>"
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template auto-applies the `bug` label so the Issues tab filter `label:bug` surfaces it cleanly (separated from roadmap-tracked work via `label:roadmap`).
+
+        Mirrors the `/bugfix` pipeline's Report stage — Report → Analyze → Fix → Verify. Fill what you have; the agent can fill the rest at `/bugfix` time.
+
+  - type: textarea
+    id: report
+    attributes:
+      label: Report (operator's voice)
+      description: Verbatim observation. What you saw, in your words. Don't pre-diagnose.
+      placeholder: |
+        e.g. "When I ran /work on a vault-resident PLAN.md, the SessionStart hook never fired and the agent missed the project context entirely."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Exact steps. Include commands, file paths, env vars where relevant.
+      placeholder: |
+        1. ...
+        2. ...
+        3. Observe: ...
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected-vs-actual
+    attributes:
+      label: Expected vs actual behavior
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: false
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: agentm version + OS + Claude Code version + install mode (--scope project | user)
+      placeholder: "agentm v4.10.0 · macOS 14.6 · Claude Code 1.x · --scope user"
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround (if any)
+      description: Anything you tried that mitigates or doesn't.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: |
+        ---
+        **Next step:** the operator runs `/bugfix <this issue url>` and the harness drives Analyze → Fix → Verify against this Report. The Issue stays open as bug-posterity through the lifecycle; closeout commit references this issue.
