@@ -17,8 +17,34 @@ if [[ "$MODE" == "off" ]]; then
     exit 0
 fi
 
-# Graceful-skip if no vault.
-if [[ -z "${MEMORY_VAULT_PATH:-}" ]]; then
+# Resolve MEMORY_VAULT_PATH: env → .agentm-config.json vault_path → none.
+# Claude Code does NOT inject MEMORY_VAULT_PATH into the hook env on user-scope
+# installs, so an env-only check silently skipped on every real session boot and
+# never ran detect_conflict_files(). Mirrors memory-recall-session-start.sh's
+# _resolve_vault_path() so vault resolution is consistent across SessionStart hooks.
+_resolve_vault_path() {
+    if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
+        printf '%s\n' "$MEMORY_VAULT_PATH"; return 0
+    fi
+    local cfg="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}/.agentm-config.json"
+    if [[ -f "$cfg" ]] && command -v python3 >/dev/null 2>&1; then
+        local v
+        v="$(python3 -c '
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print(d.get("vault_path") or "")
+' "$cfg" 2>/dev/null || true)"
+        if [[ -n "$v" ]]; then printf '%s\n' "$v"; return 0; fi
+    fi
+    return 1
+}
+MEMORY_VAULT_PATH="$(_resolve_vault_path 2>/dev/null)" || MEMORY_VAULT_PATH=""
+
+# Graceful-skip if no vault resolved or it doesn't exist on disk.
+if [[ -z "$MEMORY_VAULT_PATH" ]]; then
     exit 0
 fi
 if [[ ! -d "$MEMORY_VAULT_PATH" ]]; then

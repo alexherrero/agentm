@@ -9,8 +9,29 @@ $ErrorActionPreference = 'Continue'  # never block session boot on hook failure
 $mode = if ($env:HARNESS_CONFLICT_MERGER_MODE) { $env:HARNESS_CONFLICT_MERGER_MODE } else { 'interactive' }
 if ($mode -eq 'off') { exit 0 }
 
-if (-not $env:MEMORY_VAULT_PATH) { exit 0 }
-if (-not (Test-Path -LiteralPath $env:MEMORY_VAULT_PATH -PathType Container)) { exit 0 }
+# Resolve the vault path: env -> .agentm-config.json vault_path -> none.
+# Claude Code does not inject MEMORY_VAULT_PATH into the hook env on user-scope
+# installs, so an env-only check silently skipped on every real session boot.
+# Mirrors the bash twin's _resolve_vault_path().
+$vaultPath = $env:MEMORY_VAULT_PATH
+if (-not $vaultPath) {
+    $prefix = if ($env:AGENTM_INSTALL_PREFIX) { $env:AGENTM_INSTALL_PREFIX } else { (Join-Path $HOME '.claude') }
+    $cfg = Join-Path $prefix '.agentm-config.json'
+    if ((Test-Path -LiteralPath $cfg -PathType Leaf) -and (Get-Command python3 -ErrorAction SilentlyContinue)) {
+        $resolveDriver = @"
+import json, sys
+try:
+    d = json.load(open(sys.argv[1]))
+except Exception:
+    sys.exit(0)
+print(d.get('vault_path') or '')
+"@
+        $v = (& python3 -c $resolveDriver $cfg 2>$null | Out-String).Trim()
+        if ($v) { $vaultPath = $v }
+    }
+}
+if (-not $vaultPath) { exit 0 }
+if (-not (Test-Path -LiteralPath $vaultPath -PathType Container)) { exit 0 }
 
 # Resolve harness_memory.py path.
 $candidates = @(
@@ -53,6 +74,6 @@ if mode == 'interactive':
 "@
 
 # stderr is intentionally not redirected — the Python writes findings there.
-& python3 -c $pythonScript $hmPy $env:MEMORY_VAULT_PATH
+& python3 -c $pythonScript $hmPy $vaultPath
 
 exit 0
