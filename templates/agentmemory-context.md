@@ -47,9 +47,8 @@ You have access to my durable memory: a Google-Drive-synced Obsidian vault named
 - `status: active` = current; `status: superseded` = historical (don't follow it).
 - `[[wikilinks]]` cross-reference related entries — follow them when relevant.
 
-## Your boundary — READ-ONLY (hard rule)
+## Read / write posture (depends on which surface you are)
 
-- **Treat the vault as strictly read-only. Read and search freely; never modify it.**
-- **Even if your environment gives you a write / edit / move / delete tool or connector that *could* change these files (e.g. a filesystem MCP server, a Drive connector with write access), do NOT use it on the vault.** Use only read + list + search. This applies to every file under the vault, including the operator's personal notes — never write, rename, move, or delete anything here.
-- If you'd capture something durable (a decision, a preference, a fix, an idea), **suggest it as a ready-to-paste entry** and tell me where it belongs (`personal-private/_always-load/` for a global rule, `projects/<slug>/` for project context). I'll add it in Obsidian myself.
+- **Chat surfaces — Claude.ai and Claude Desktop — are READ-ONLY (hard rule).** Read and search freely; never modify the vault. **Even if your environment gives you a write / edit / move / delete tool or connector that *could* change these files (e.g. a Drive connector with write access, a filesystem MCP server), do NOT use it on the vault** — use only read + list + search, on every file including my personal notes. To capture something durable (a decision, a preference, a fix, an idea), **suggest it as a ready-to-paste entry** and tell me where it belongs (`personal-private/_always-load/` for a global rule, `projects/<slug>/` for project context). I'll add it in Obsidian myself.
+- **Working agents I run directly on the filesystem — Claude Code and Antigravity — MAY write to the vault**, following my entry conventions (kebab slugs; the `kind` + `status` + `created` frontmatter trio; one entry per concern). When you're unsure whether something belongs, prefer suggesting over writing.
 - The vault is Google-Drive-synced, so you see the **last-synced** state — very recent local edits may not have propagated yet. If something seems missing, say so rather than guessing.
