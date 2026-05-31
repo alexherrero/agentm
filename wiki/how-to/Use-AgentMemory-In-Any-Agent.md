@@ -17,7 +17,7 @@ Prereq for the Google-Drive surfaces: the vault is synced to Google Drive, and y
 | Claude Code | ✅ built-in | local filesystem + SessionStart hooks — no paste needed |
 | Claude.ai | ✅ validated | Google Drive connector (*search*) + **the context payload** |
 | Claude Desktop | ✅ validated | local **filesystem MCP server** → full navigation (or the Drive connector) + **the context payload** |
-| Antigravity | ⬜ (DC-7) | local filesystem → installed `agentmemory-context` rule |
+| Antigravity | 🔧 rule shipped | local filesystem → installed `agentmemory-context` rule |
 | Gemini · ChatGPT · Codex | deferred → post-FRIDAY | no live file/search access to the vault yet |
 
 **v1 criterion:** a surface only qualifies if it has **live file-or-search access** to the vault — a filesystem agent (Claude Code, Claude Desktop via a filesystem MCP server, Antigravity) or the Drive-search connector (Claude.ai). Chat-only bots that can't reach the vault are deferred.
@@ -40,9 +40,9 @@ Best path: give Claude Desktop a **local filesystem MCP server** pointed at the 
 
 *Alternative:* skip the MCP server and use the **Google Drive connector** exactly like Claude.ai above (search-based; same payload).
 
-## Antigravity *(in v1 — DC-7)*
+## Antigravity
 
-Antigravity is a local filesystem agent; it loads **the context payload** as an installed `agentmemory-context` rule (no manual paste). The installer wiring + the rule's repo home are a later task in this plan.
+Antigravity is a local filesystem agent; it loads [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19) as the installed `agentmemory-context` rule in `.agent/rules/` — no manual paste. The installer dispatches it automatically (`install.sh` / `install.ps1` ship it on `--update`, refreshing alongside the other rules). Unlike the read-only chat surfaces above, Antigravity is a **read-write working agent**: it may read *and* write the vault, following your entry conventions, exactly like Claude Code. Dynamic session-start *recall* (vs. this static rule) is a future enhancement.
 
 ## Deferred surfaces *(post-FRIDAY — #28)*
 

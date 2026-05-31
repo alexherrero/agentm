@@ -83,8 +83,8 @@ assert_set "antigravity/workflows"          adapters/antigravity/workflows   md 
 # skills/ = sub-agents + dependabot-fixer
 expected_antigravity_skills=("${CANON_AGENTS[@]}" "${CANON_SKILLS[@]}")
 assert_set "antigravity/skills"             adapters/antigravity/skills      ""  "${expected_antigravity_skills[@]}"
-# exactly one always-on rules file
-assert_set "antigravity/rules"              adapters/antigravity/rules       md  harness
+# the always-on rules files: operating contract + AgentMemory vault context (V4 #22)
+assert_set "antigravity/rules"              adapters/antigravity/rules       md  harness agentmemory-context
 
 echo "== gemini =="
 # Gemini has native slash commands + markdown sub-agents. No skills/ dir:

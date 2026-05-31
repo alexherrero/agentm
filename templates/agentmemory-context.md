@@ -13,16 +13,18 @@
   so an agent that reaches the vault finds its own usage instructions. If the vault
   structure changes, update THIS file and re-paste.
 
-  Read-only v1: surfaces READ the vault; they never write to it. Write-tier is a v2 plan.
+  Read/write is surface-scoped (DC-2): chat surfaces (Claude.ai, Claude Desktop)
+  READ only; the filesystem working agents the operator runs (Claude Code,
+  Antigravity) may write. Connector write-back for chat surfaces is a v2 plan.
 -->
 
 # Using my Agent Memory (the AgentMemory vault)
 
-You have access to my durable memory: a Google-Drive-synced Obsidian vault named **`AgentMemory/`**. It holds my conventions, projects, decisions, and recent context. **Before you answer from your own memory, read the relevant parts of this vault** — it's the authoritative source for how I work and what I'm working on. Treat it as **read-only**: never write to it; if you want to capture something, *suggest* an entry I can paste into Obsidian myself.
+You have access to my durable memory: a Google-Drive-synced Obsidian vault named **`AgentMemory/`**. It holds my conventions, projects, decisions, and recent context. **Before you answer from your own memory, read the relevant parts of this vault** — it's the authoritative source for how I work and what I'm working on. **Your read/write posture depends on which surface you are — see the "Read / write posture" section below.**
 
 ## Where the vault is, on your surface
 
-- **Claude.ai / ChatGPT** — the `AgentMemory/` folder in my Google Drive (enable the Google Drive connector and pin/select that folder).
+- **Claude.ai / ChatGPT** — in my Google Drive via the Google Drive connector (it grants whole-Drive *search* — there's no folder to pin; this payload is what scopes you to `AgentMemory/`).
 - **Gemini** — `AgentMemory/` in my Google Drive (you already have Workspace/Drive access).
 - **Antigravity** — the vault path the agentm/crickets installer configured.
 - **Claude Code / local agents** — the filesystem path in `MEMORY_VAULT_PATH`.

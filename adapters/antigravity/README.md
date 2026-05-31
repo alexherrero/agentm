@@ -27,7 +27,8 @@ The **trade-off:** Antigravity has no native distinction between "sub-agent" and
 adapters/antigravity/
 ├── README.md                             (this file)
 ├── rules/
-│   └── harness.md                        (trigger: always_on — operating contract)
+│   ├── harness.md                        (trigger: always_on — operating contract)
+│   └── agentmemory-context.md            (trigger: always_on — AgentMemory vault context)
 ├── workflows/                            (6 phase entrypoints)
 │   ├── setup.md
 │   ├── plan.md
