@@ -5,6 +5,23 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.11.1] — 2026-05-31 — Fix: conflict-merger hook inert on user-scope installs
+
+**PATCH.** The `conflict-merger-session-start` SessionStart hook — the operator-facing half of V4 #26's cross-agent / cross-device conflict detection — was structurally installed and wired but **functionally inert** on the canonical user-scope install. It read the vault location only from the `MEMORY_VAULT_PATH` env var, which Claude Code does not inject into the hook environment on user-scope installs (and which isn't exported by shell profiles or `settings.json`), so the hook silently exited 0 on every real session boot and never ran `detect_conflict_files()`. Surfaced by a targeted `/doctor` probe during operator dogfood. Single-repo release; crickets untouched. Isolated hotfix — cherry-picked off v4.11.0, independent of the in-flight V4 #22 work on `main`.
+
+### Fixed
+
+- **`conflict-merger-session-start` now resolves the vault via `env → .agentm-config.json::vault_path → none`** (bash hook + pwsh twin), porting the `_resolve_vault_path()` fallback already used by `memory-recall-session-start`. With the env var unset, the hook now reads `vault_path` from the on-device install-state config and detects Google Drive `(conflicted copy …)` files at session boot as designed. This is the second hook to hit the env-injection gap; the resolution order is now a standing convention for vault-aware SessionStart hooks (recorded as an ADR 0007 amendment on `main`).
+
+### Internal
+
+- **Regression test `scripts/test_conflict_merger_hook.py`** drives the bash hook as a subprocess with `MEMORY_VAULT_PATH` unset + a fixture `.agentm-config.json` carrying `vault_path`; it fails against the pre-fix hook (silent exit 0, empty stderr) and passes with the fallback. Companion cases cover env-wins, no-vault-anywhere graceful-skip, clean-vault no-notice, and `HARNESS_CONFLICT_MERGER_MODE=off`. Adversarial `/review`: NO ISSUES FOUND. 435 → 440 tests.
+
+### Cross-references
+
+- [agentm v4.11.0](https://github.com/alexherrero/agentm/releases/tag/v4.11.0) — the release this hotfix branches from.
+- ROADMAP-V4 item #26 — the cross-agent conflict-detection feature this restores to working order.
+
 ## [v4.11.0] — 2026-05-30 — Opt-in `--apply` for personal-notes link-discovery (V4 #43 follow-up)
 
 **MINOR.** v4.10.0's link-discovery audit was strictly read-only — it surfaced suggestions and left the operator to paste `[[wikilinks]]` by hand. This adds an explicit, opt-in `--apply` mode that writes the safe suggestions in for you, used to dogfood the operator's own ~390-note vault (143 links across 64 notes, plus a one-time rename of 25 bracketed-date filenames so those pairs became linkable). The tool stays read-only by default; `--apply` is the operator-directed escape hatch (A3 is satisfied because the operator asks for it). Single-repo release; crickets untouched.
