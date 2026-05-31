@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Status:** implemented
 > **Plan:** PLAN.md (V4 #22) — cross-surface vault access, read-only v1.
-> **Goal:** Make any agent surface (Claude.ai, Gemini, ChatGPT, Antigravity) read your GDrive-synced AgentMemory vault natively — so it already knows your conventions, projects, and decisions without you re-explaining. **Read-only:** surfaces read + query the vault; they never write to it (they suggest entries for you to paste in by hand).
+> **Goal:** Make any agent surface (Claude.ai, Gemini, ChatGPT, Antigravity) read your GDrive-synced AgentMemory vault natively — so it already knows your conventions, projects, and decisions without you re-explaining. **Surface-scoped access:** chat surfaces (Claude.ai, Claude Desktop) read + query the vault and *suggest* entries for you to paste in by hand — they never write; the filesystem working agents you run directly (Claude Code, Antigravity) may write to the vault, following your entry conventions.
 > **Prereqs:** the AgentMemory vault synced to Google Drive (signed into the account that owns it); the context payload (`templates/agentmemory-context.md`, shipped in #22); and operator access to each surface's connector / Gem settings (the agent can't log into your accounts — connector setup is an operator action).
 
 ## Before you start (all surfaces)
@@ -16,7 +16,7 @@ Prereq for the Google-Drive surfaces: the vault is synced to Google Drive, and y
 |---|---|---|
 | Claude Code | ✅ built-in | local filesystem + SessionStart hooks — no paste needed |
 | Claude.ai | ✅ validated | Google Drive connector (*search*) + **the context payload** |
-| Claude Desktop | ⬜ next | local **filesystem MCP server** → full navigation (or the Drive connector) + **the context payload** |
+| Claude Desktop | ✅ validated | local **filesystem MCP server** → full navigation (or the Drive connector) + **the context payload** |
 | Antigravity | ⬜ (DC-7) | local filesystem → installed `agentmemory-context` rule |
 | Gemini · ChatGPT · Codex | deferred → post-FRIDAY | no live file/search access to the vault yet |
 
