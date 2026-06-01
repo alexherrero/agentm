@@ -37,6 +37,15 @@ def _watchlist_entry(vault: Path, source: str, slug: str, classification: str, s
     )
 
 
+def _promoted_entry(vault: Path, source: str, slug: str, promoted_at: str) -> None:
+    d = vault / "personal-private" / "_skill-watchlist" / source
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{slug}.md").write_text(
+        f"---\nkind: skill-watchlist\nstatus: promoted\npromoted_at: {promoted_at}\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+
 def _inbox_entry(vault: Path, name: str) -> None:
     d = vault / "_inbox"
     d.mkdir(parents=True, exist_ok=True)
@@ -109,6 +118,60 @@ class TestCounters(unittest.TestCase):
         finally:
             del os.environ["IDEAS_SURFACE_PATH"]
 
+    def test_promote_suggest_counts_recurring_titles(self) -> None:
+        ideas = self.vault / "Ideas.md"
+        ideas.write_text(
+            "# Ideas\n\n"
+            "## 2026-01-01: Build an orchestration mode\nbody\n\n"
+            "## 2026-02-01: Build an orchestration mode\nbody\n\n"   # same title x3
+            "## 2026-03-01: build an ORCHESTRATION mode\nbody\n\n"   # case-insensitive
+            "## 2026-01-05: One-off idea\nbody\n\n"                  # x1
+            "## 2026-02-05: Twice idea\nbody\n\n"
+            "## 2026-03-05: Twice idea\nbody\n",                     # x2
+            encoding="utf-8",
+        )
+        os.environ["IDEAS_SURFACE_PATH"] = str(ideas)
+        try:
+            self.assertEqual(ob.count_promote_suggest(3), 1)   # only the x3 title
+            self.assertEqual(ob.count_promote_suggest(2), 2)   # x3 + x2
+        finally:
+            del os.environ["IDEAS_SURFACE_PATH"]
+
+    def test_promote_suggest_absent_surface_is_zero(self) -> None:
+        os.environ["IDEAS_SURFACE_PATH"] = str(self.vault / "nope.md")
+        try:
+            self.assertEqual(ob.count_promote_suggest(3), 0)
+        finally:
+            del os.environ["IDEAS_SURFACE_PATH"]
+
+    def test_stale_promoted_counts_only_old_promoted(self) -> None:
+        _promoted_entry(self.vault, "src", "p1", (_NOW - timedelta(days=45)).isoformat())  # stale → counts
+        _promoted_entry(self.vault, "src", "p2", (_NOW - timedelta(days=5)).isoformat())   # recent → not
+        _watchlist_entry(self.vault, "src", "p3", "HIGH", "pending-review")                # not promoted
+        _promoted_entry(self.vault, "_archive", "p4", (_NOW - timedelta(days=99)).isoformat())  # archived → excluded
+        self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 1)
+
+    def test_stale_promoted_offset_timestamp_as_produced(self) -> None:
+        # The exact format watchlist_review._utcnow_iso() writes: +00:00 offset.
+        _promoted_entry(self.vault, "src", "p1", "2026-01-01T00:00:00+00:00")  # ~5mo before _NOW
+        self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 1)
+
+    def test_stale_promoted_z_suffix_timestamp(self) -> None:
+        # A trailing-Z variant (other tools / hand-edits) must also parse.
+        _promoted_entry(self.vault, "src", "p1", "2026-01-01T00:00:00Z")  # ~5mo before _NOW
+        self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 1)
+
+    def test_stale_promoted_future_date_not_stale(self) -> None:
+        # A future promoted_at (clock skew) must NOT count as stale (negative age).
+        _promoted_entry(self.vault, "src", "p1", (_NOW + timedelta(days=10)).isoformat())
+        self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 0)
+
+    def test_stale_promoted_missing_date_does_not_count(self) -> None:
+        d = self.vault / "personal-private" / "_skill-watchlist" / "src"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "p1.md").write_text("---\nstatus: promoted\n---\nbody\n", encoding="utf-8")  # no promoted_at
+        self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 0)
+
     def test_counters_never_raise_on_garbage(self) -> None:
         # malformed watchlist frontmatter must not raise
         d = self.vault / "personal-private" / "_skill-watchlist" / "src"
@@ -136,6 +199,22 @@ class TestRender(unittest.TestCase):
         self.assertIn("/memory watchlist", out)
         self.assertIn("1 idea-ledger entry", out)
         self.assertNotIn("incubator", out)  # below threshold (0)
+
+    def test_renders_nudges(self) -> None:
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0,
+                   "promote_suggest": 2, "stale_promoted": 1}
+        out = ob.build_briefing(signals, self._cfg())
+        self.assertIn("2 ideas surfaced", out)
+        self.assertIn("/memory promote", out)
+        self.assertIn("1 skill-watchlist pattern promoted >30d ago", out)
+        self.assertIn("author or dismiss", out)
+
+    def test_nudge_singular(self) -> None:
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0,
+                   "promote_suggest": 1, "stale_promoted": 1}
+        out = ob.build_briefing(signals, self._cfg())
+        self.assertIn("1 idea surfaced", out)
+        self.assertIn("1 skill-watchlist pattern promoted", out)
 
     def test_inbox_below_threshold_suppressed(self) -> None:
         signals = {"inbox": 5, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0}
@@ -213,6 +292,34 @@ class TestEmit(unittest.TestCase):
         _watchlist_entry(self.vault, "src", "p2", "HIGH", "pending-review")  # changed
         soon = _NOW + timedelta(hours=2)  # within 8h cooldown
         self.assertEqual(ob.emit_briefing(self.vault, soon), "")
+
+    def test_stale_promoted_nudge_rides_briefing(self) -> None:
+        # setUp seeds a HIGH pending entry; add a stale promoted one → both ride
+        # the same briefing block + shifted-state guard.
+        _promoted_entry(self.vault, "src", "old", (_NOW - timedelta(days=60)).isoformat())
+        out = ob.emit_briefing(self.vault, _NOW)
+        self.assertIn("promoted >30d ago", out)
+        self.assertIn("HIGH skill-watchlist", out)  # consolidated, one block
+        st = ao.load_state(self.vault)
+        self.assertEqual(st["last_shown"], {"watchlist_high": 1, "stale_promoted": 1})
+
+    def test_promote_suggest_toggle_off_suppresses(self) -> None:
+        ideas = self.vault / "Ideas.md"
+        ideas.write_text(
+            "## 2026-01-01: Recurring\nb\n## 2026-02-01: Recurring\nb\n## 2026-03-01: Recurring\nb\n",
+            encoding="utf-8",
+        )
+        os.environ["IDEAS_SURFACE_PATH"] = str(ideas)
+        ao.seed_config(self.vault)
+        p = ao.config_path(self.vault)
+        p.write_text(p.read_text(encoding="utf-8").replace(
+            "enable_promote_suggest = true", "enable_promote_suggest = false"), encoding="utf-8")
+        try:
+            cfg = ao.load_config(self.vault)
+            sig = ob.gather_signals(self.vault, cfg, _NOW)
+            self.assertEqual(sig["promote_suggest"], 0)  # toggled off → 0, no parse
+        finally:
+            del os.environ["IDEAS_SURFACE_PATH"]
 
     def test_disabled_is_silent(self) -> None:
         ao.seed_config(self.vault)
