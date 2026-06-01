@@ -548,11 +548,18 @@ def adapt_skills(
     only_source: str | None = None,
     skip_network: bool = False,
     dry_run: bool = False,
+    limit: int | None = None,
 ) -> dict:
     """Run Pass 1 over cached diff files; emit enriched candidate JSONs.
 
     Returns summary: {evaluated_count, written_count, skipped_count,
     high_count, medium_count, low_count, errors}.
+
+    `limit`, when set (>0), caps the number of *newly-evaluated* candidates
+    per run — the GitHub-enrichment cost lives in this loop, so the
+    auto-orchestration idle chain passes a small limit to bound each pass.
+    Already-evaluated candidates (skipped via the idempotency set) don't
+    count against the limit.
     """
     if not vault.exists() or not vault.is_dir():
         raise FileNotFoundError(
@@ -581,11 +588,16 @@ def adapt_skills(
         "errors": 0,
         "dry_run": dry_run,
         "skip_network": skip_network,
+        "limit": limit,
+        "limit_reached": False,
         "candidates": [],
     }
 
     if not diff_files:
         return summary
+
+    # Normalize the limit: None or <=0 means "no cap".
+    cap = limit if (isinstance(limit, int) and limit > 0) else None
 
     # Pre-read all diff texts once (for cross-citation count).
     all_diff_texts: dict[str, str] = {}
@@ -608,6 +620,12 @@ def adapt_skills(
             if key in evaluated_set:
                 summary["skipped_count"] += 1
                 continue
+            # Bound per-run work (idle-chain cost control): stop after `cap`
+            # newly-evaluated candidates. Already-evaluated ones (skipped above)
+            # don't consume the budget, so a re-run resumes on fresh candidates.
+            if cap is not None and summary["evaluated_count"] >= cap:
+                summary["limit_reached"] = True
+                break
             cand["source_slug"] = source_slug
             cand["source_diff"] = diff_file.name
             cand["discovered_at"] = _utcnow_iso()
@@ -661,6 +679,10 @@ def adapt_skills(
                     "rules_fired": cand["rubric_rules_fired"],
                 })
 
+        # Cap reached inside the inner loop — stop walking further diff files.
+        if summary["limit_reached"]:
+            break
+
     if not dry_run:
         state["evaluated"] = sorted(evaluated_set)
         state["last_run"] = _utcnow_iso()
@@ -697,6 +719,12 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         "--dry-run", action="store_true",
         help="evaluate candidates without writing JSON files or updating state",
     )
+    parser.add_argument(
+        "--limit", type=int, default=None,
+        help="cap newly-evaluated candidates per run (bounds GitHub-enrichment "
+             "cost; the idle orchestration chain passes a small limit). "
+             "Already-evaluated candidates don't count. Default: no cap.",
+    )
     return parser.parse_args(argv)
 
 
@@ -718,6 +746,7 @@ def main(argv: list[str] | None = None) -> int:
         only_source=args.source,
         skip_network=args.skip_network,
         dry_run=args.dry_run,
+        limit=args.limit,
     )
     print(json.dumps(summary, indent=2))
     return 0 if summary["errors"] == 0 else 2

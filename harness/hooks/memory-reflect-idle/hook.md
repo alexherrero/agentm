@@ -35,6 +35,29 @@ This is honest about Claude Code's limitations. A future v2 with a real idle-eve
   - **stderr** — one transparency line if any orphans found: `[memory-reflect-idle] Scanned N markers; processed M orphans (idle threshold: <sec>s)`. Silent if no orphans + no markers.
 - **Exit 0 always** — graceful-skip across missing reflect.py / no markers / unreadable marker / transcript missing / reflection error.
 
+## Idle orchestration chain (V4 #23 task 4)
+
+After the orphan sweep + GC, the hook launches the **idle orchestration chain** —
+`orchestration_idle.py`, a cooldown-gated driver that turns idle time into a
+small, bounded push of memory work:
+
+1. **reflect-corpus** — `reflect.py corpus --execute --batch-size 5 --max-batches 1`: proactively mine ≤5 unseen session transcripts per pass.
+2. **discover-skills** — `discover_skills.py --cadence-check`: refresh discovery sources, self-throttled to the cadence (default 7d).
+3. **adapt-pass1** — `adapt_skills.py --limit 3`: stage ≤3 enriched candidate JSONs for the `adapt-evaluator` (Pass-2, agent-side) to judge.
+
+The whole chain is gated by the `auto_orchestration.py` state (chain `idle_chain`,
+default cooldown 24h) and the `enable_idle_chain` config toggle, so most boots are
+a fast no-op. When it DOES fire, the work (corpus mining + GitHub enrichment) can
+exceed this hook's 30s SessionStart timeout, so the driver is launched **detached**
+(backgrounded, reparented away from the hook) and the hook returns immediately.
+The chain's results surface on the **next** session via the `memory-recall-session-start`
+briefing (it reads vault state, not the driver's stdout). Pass-2 is intentionally
+NOT run here — a hook can't dispatch a sub-agent; the staged-candidate count is
+handed off to a phase-dispatch / nudge where dispatch is operator-gated (DC-1).
+
+The hook also runs a read-only **vec-index drift sweep** (`vec_index.py full-sync`,
+V4 #37) after launching the chain — surfaces embedding drift to stderr, never blocks.
+
 ## Implementation status (task 4 of plan #7a part 3)
 
 This task ships the hook **scaffold + orphan-sweep logic**. The markers themselves are written by task 6 (SessionStart extension to write `.start`, Stop extension to rename to `.reflected`). Task 5 wires the tri-modal routing — until then, the idle sweep emits reflection output but doesn't save candidates. Task 6 closes the marker-lifecycle loop.

@@ -171,15 +171,21 @@ if (( ${#markers[@]} > 0 || gc_count > 0 )); then
     echo "[memory-reflect-idle] Scanned ${#markers[@]} .start + ${#reflected_markers[@]} .reflected markers; processed $processed_count orphans, GC'd $gc_count old markers (idle threshold: ${IDLE_THRESHOLD_SEC}s)" >&2
 fi
 
-# ── Skill-discovery cadence-checked scan (plan #7b task 3) ─────────────────
-# Fire discover_skills.py with --cadence-check so it self-throttles to the
-# configured cadence (default 7d). Requires MEMORY_VAULT_PATH; graceful-skip
-# if unset / discover_skills.py absent / Python deps unavailable. Output
-# routes to stderr so the hook's overall stdout stays clean for any
-# downstream parsing.
-DISCOVER_PY="$(_resolve_memory_script discover_skills.py 2>/dev/null)" || DISCOVER_PY=""
-if [[ -n "$DISCOVER_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
-    python3 "$DISCOVER_PY" --vault-path "$MEMORY_VAULT_PATH" --cadence-check >&2 2>&1 || true
+# ── Idle orchestration chain (V4 #23 task 4) ──────────────────────────────
+# Fire the cooldown-gated chain driver: reflect-corpus (≤5 unseen sessions) →
+# discover-skills (cadence-checked) → adapt_skills Pass-1 (≤3 candidates
+# staged for the adapt-evaluator). The driver self-gates on the idle_chain
+# cooldown (default 24h) + the enable_idle_chain toggle, so most invocations
+# are a fast no-op; when it DOES fire it can take longer than this hook's 30s
+# SessionStart timeout (corpus mining + GitHub enrichment), so we run it
+# DETACHED — a subshell background job, reparented away from the hook — and
+# return immediately. Killing the hook at 30s would otherwise leave the chain
+# never recording its fire, re-running every session. The chain's results
+# surface on the NEXT session via the task-3 briefing. Requires
+# MEMORY_VAULT_PATH; graceful-skip if unset / driver absent.
+ORCH_IDLE_PY="$(_resolve_memory_script orchestration_idle.py 2>/dev/null)" || ORCH_IDLE_PY=""
+if [[ -n "$ORCH_IDLE_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
+    ( python3 "$ORCH_IDLE_PY" --vault-path "$MEMORY_VAULT_PATH" >/dev/null 2>&1 & ) 2>/dev/null || true
 fi
 
 # ── Vec-index drift sweep (V4 #37 task 6) ─────────────────────────────────

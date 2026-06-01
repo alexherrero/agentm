@@ -84,17 +84,22 @@ if ($markers.Count -gt 0 -or $gcCount -gt 0) {
     [Console]::Error.WriteLine("[memory-reflect-idle] Scanned $($markers.Count) .start + $($reflectedMarkers.Count) .reflected markers; processed $processedCount orphans, GC'd $gcCount old markers (idle threshold: ${IdleThresholdSec}s)")
 }
 
-# ── Skill-discovery cadence-checked scan (plan #7b task 3) ─────────────────
-# Fire discover_skills.py with --cadence-check (self-throttles to configured
-# cadence, default 7d). Graceful-skip if MEMORY_VAULT_PATH unset / script
-# absent. Output → stderr so the hook's stdout stays clean.
-$DiscoverPy = ".claude/skills/memory/scripts/discover_skills.py"
+# ── Idle orchestration chain (V4 #23 task 4) ──────────────────────────────
+# Fire the cooldown-gated chain driver: reflect-corpus (≤5 unseen sessions) →
+# discover-skills (cadence-checked) → adapt_skills Pass-1 (≤3 candidates
+# staged). The driver self-gates on the idle_chain cooldown (default 24h) +
+# the enable_idle_chain toggle, so most invocations are a fast no-op; when it
+# DOES fire it can exceed this hook's 30s SessionStart timeout, so we launch
+# it DETACHED (hidden, no -Wait) and return immediately. Results surface on the
+# NEXT session via the task-3 briefing. Graceful-skip if MEMORY_VAULT_PATH
+# unset / driver absent.
+$OrchIdlePy = ".claude/skills/memory/scripts/orchestration_idle.py"
 $VaultEnv = $env:MEMORY_VAULT_PATH
-if ((Test-Path $DiscoverPy) -and $VaultEnv) {
+if ((Test-Path $OrchIdlePy) -and $VaultEnv) {
     try {
-        & $Py $DiscoverPy "--vault-path" $VaultEnv "--cadence-check" 2>&1 | ForEach-Object { [Console]::Error.WriteLine($_) }
+        Start-Process -FilePath $Py -ArgumentList @($OrchIdlePy, "--vault-path", $VaultEnv) -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
     } catch {
-        # Non-fatal — the hook never blocks on discover-skills failure.
+        # Non-fatal — the hook never blocks on the idle-chain launch.
     }
 }
 
