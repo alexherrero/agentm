@@ -64,5 +64,24 @@ if (-not (Test-Path $RecallPy)) {
     exit 0
 }
 
+# Recall is no longer the terminal step — the pending-state briefing appends
+# after the always-load recall (V4 #23 task 3, DC-3: non-blocking).
 & $Py $RecallPy session-start
-exit $LASTEXITCODE
+
+# ── Pending-state briefing pass (V4 #23 task 3) ────────────────────────────
+# Best-effort, non-blocking: scans the vault for over-threshold pending signals
+# and appends a tight briefing block — but ONLY when something shifted since
+# last shown AND the cooldown allows. The generator swallows any error → empty
+# output, so this never blocks session boot. orchestration_briefing.py is a
+# sibling of recall.py in the same memory scripts dir.
+$BriefingPy = ".claude/skills/memory/scripts/orchestration_briefing.py"
+if (Test-Path $BriefingPy) {
+    try {
+        if ($env:MEMORY_VAULT_PATH) {
+            & $Py $BriefingPy --vault-path $env:MEMORY_VAULT_PATH 2>$null
+        } else {
+            & $Py $BriefingPy 2>$null
+        }
+    } catch {}
+}
+exit 0

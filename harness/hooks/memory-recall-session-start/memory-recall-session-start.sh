@@ -133,6 +133,28 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
-# Invoke. recall.py handles MEMORY_VAULT_PATH resolution, glob, frontmatter
-# parse, filter, output, and the 500ms time budget internally.
-exec python3 "$RECALL_PY" session-start
+# Invoke recall. recall.py handles MEMORY_VAULT_PATH resolution, glob,
+# frontmatter parse, filter, output, and the 500ms time budget internally.
+# We no longer `exec` it — the SessionStart pending-state briefing
+# (orchestration_briefing.py) appends after the always-load recall
+# (V4 #23 task 3, DC-3: agentm-native, non-blocking).
+python3 "$RECALL_PY" session-start || true
+
+# ── Pending-state briefing pass (V4 #23 task 3) ────────────────────────────
+# Best-effort, non-blocking: scans the vault for over-threshold pending signals
+# (inbox / HIGH skill-watchlist / incubator / stale idea-ledger) and appends a
+# tight briefing block — but ONLY when something shifted since last shown AND
+# the cooldown allows (anti-fatigue guard in auto_orchestration.py). The
+# generator swallows any error → empty output, so this never blocks session
+# boot. orchestration_briefing.py is a sibling of recall.py in the same memory
+# scripts dir, so the same resolver finds it across install scopes.
+BRIEFING_PY="$(_resolve_memory_script orchestration_briefing.py 2>/dev/null)" || BRIEFING_PY=""
+if [[ -n "$BRIEFING_PY" ]]; then
+    if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
+        python3 "$BRIEFING_PY" --vault-path "$MEMORY_VAULT_PATH" 2>/dev/null || true
+    else
+        python3 "$BRIEFING_PY" 2>/dev/null || true
+    fi
+fi
+
+exit 0
