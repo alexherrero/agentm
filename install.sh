@@ -92,46 +92,12 @@ if [[ "$SCOPE" == "project" && -z "$TARGET" ]]; then
   exit 1
 fi
 
-# ── crickets-sibling auto-detect (V4 #30 task 9) ────────────────────────────
-# Probe for crickets clone presence + global install. If neither found, clone
-# + invoke crickets install.sh so the operator gets both repos installed in
-# one command. Idempotent — re-running with crickets already present is a
-# no-op. Skipped if --no-crickets-bootstrap env set (advanced operator use).
-
-_agentm_should_bootstrap_crickets() {
-    local home_clone="$HOME/Antigravity/crickets/install.sh"
-    local global_skill="$HOME/.claude/skills/pii-scrubber"
-    # Already have either? Skip.
-    [[ -f "$home_clone" ]] && return 1
-    [[ -d "$global_skill" ]] && return 1
-    # Operator opt-out?
-    [[ "${AGENTM_NO_CRICKETS_BOOTSTRAP:-0}" == "1" ]] && return 1
-    return 0
-}
-
-if _agentm_should_bootstrap_crickets; then
-    echo "==> crickets-sibling auto-detect: not found locally; cloning..."
-    if command -v git >/dev/null 2>&1; then
-        mkdir -p "$HOME/Antigravity"
-        if git clone --quiet --depth 1 https://github.com/alexherrero/crickets.git "$HOME/Antigravity/crickets" 2>/dev/null; then
-            echo "    cloned to $HOME/Antigravity/crickets"
-            # Dispatch to crickets install with the same scope. For --scope user,
-            # this is independent + parallel. For --scope project, this installs
-            # crickets's customizations into the target project too.
-            if [[ "$SCOPE" == "user" ]]; then
-                bash "$HOME/Antigravity/crickets/install.sh" --scope user >/dev/null 2>&1 || \
-                    echo "    WARN: crickets --scope user install reported errors (continuing)" >&2
-            elif [[ -n "$TARGET" ]]; then
-                bash "$HOME/Antigravity/crickets/install.sh" "$TARGET" >/dev/null 2>&1 || \
-                    echo "    WARN: crickets --scope project install reported errors (continuing)" >&2
-            fi
-        else
-            echo "    WARN: git clone failed; continuing without crickets" >&2
-        fi
-    else
-        echo "    WARN: git not on PATH; skipping crickets auto-clone" >&2
-    fi
-fi
+# ── crickets-sibling bootstrap: REMOVED (crickets v3.0 #40 part 5) ──────────
+# agentm's installer no longer auto-clones + invokes crickets's install.sh —
+# crickets dropped its bespoke per-host installer in favor of NATIVE plugins
+# (Claude Code / Antigravity marketplaces). Operators install crickets via its
+# one-line bootstrap (`bash ~/Antigravity/crickets/bootstrap.sh`) or the host's
+# native `plugin install`. The two repos are now decoupled at install time.
 
 # ── first-run vault detection (v4.5.1 task 4) ───────────────────────────────
 # Probe likely Obsidian-vault locations under Google Drive, present numbered

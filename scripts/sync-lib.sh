@@ -1,52 +1,41 @@
 #!/usr/bin/env bash
-# sync-lib.sh — keep agentm and crickets's lib/install/ byte-identical.
+# sync-lib.sh — regenerate agentm's lib/install/.checksums.txt.
 #
-# Treats agentm as the canonical source. Copies lib/install/ verbatim
-# into ../crickets/lib/install/, regenerates .checksums.txt in both
-# repos, and leaves the changes staged for the user to commit.
+# Since the crickets clean break (crickets v3.0 #40 part 5), agentm and
+# crickets no longer share lib/install/: crickets ships NATIVE plugins and
+# keeps no install primitives. This script is now LOCAL-ONLY — it regenerates
+# agentm's own lib/install/.checksums.txt (the manifest that
+# check-lib-parity.sh verifies on every push). It no longer copies into
+# ../crickets/ (the cross-repo byte-sync coupling is gone).
 #
 # Usage:
-#   bash scripts/sync-lib.sh             # canonical → sibling
-#   bash scripts/sync-lib.sh --verify    # only check; no copy
+#   bash scripts/sync-lib.sh             # regenerate .checksums.txt
+#   bash scripts/sync-lib.sh --verify    # check only; no write (exit 1 on drift)
 #
 # Exit:
-#   0  in-sync (or sync succeeded)
-#   1  drift detected (in --verify) or sync failed
+#   0  in-sync (or regeneration succeeded)
+#   1  drift detected (in --verify)
+#   2  no SHA-256 tool
 
 set -euo pipefail
 
 HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TOOLKIT_ROOT="$(cd "$HARNESS_ROOT/../crickets" 2>/dev/null && pwd || true)"
 
-MODE="sync"
+MODE="regen"
 if [[ "${1:-}" == "--verify" ]]; then
     MODE="verify"
 fi
 
-if [[ -z "$TOOLKIT_ROOT" ]]; then
-    echo "sync-lib: cannot locate ../crickets/ relative to $HARNESS_ROOT" >&2
-    echo "  Expected sibling layout: ../crickets/lib/install/" >&2
-    exit 1
-fi
-
 CANONICAL="$HARNESS_ROOT/lib/install"
-MIRROR="$TOOLKIT_ROOT/lib/install"
 
 if [[ ! -d "$CANONICAL" ]]; then
-    echo "sync-lib: canonical $CANONICAL does not exist" >&2
+    echo "sync-lib: $CANONICAL does not exist" >&2
     exit 1
 fi
 
-# ── compute checksums (excludes .checksums.txt itself) ────────────────────
-# Sorted output for deterministic diffs across machines.
-# LC_ALL=C forces byte-order sort (case-sensitive); without it, macOS Mac's
-# default locale uses case-insensitive collation, producing different line
-# order than Linux (which often defaults to C locale in CI). Same fix in
-# check-lib-parity.sh.
-#
-# SHA-256 tool: `shasum -a 256` on macOS/BSD; `sha256sum` on Linux/coreutils
-# (and Git Bash on Windows, which doesn't ship shasum). Detect and use
-# whichever is present.
+# ── SHA-256 tool detection ────────────────────────────────────────────────
+# `sha256sum` on Linux/coreutils (and Git Bash on Windows); `shasum -a 256`
+# on macOS/BSD. Detect whichever is present.
 if command -v sha256sum >/dev/null 2>&1; then
     _SHA_CMD="sha256sum"
 elif command -v shasum >/dev/null 2>&1; then
@@ -56,56 +45,36 @@ else
     exit 2
 fi
 
+# Sorted, LC_ALL=C byte-order output for deterministic cross-machine diffs.
+# LC_ALL=C forces case-sensitive byte ordering; without it macOS's default
+# locale collates case-insensitively, producing different line order than
+# Linux/CI. Same normalization as check-lib-parity.sh.
+#
+# sha256sum output formats:
+#   text mode (Linux/Mac default): "<hash>  ./<file>"   (2 spaces)
+#   binary mode (Win Git Bash):    "<hash> *./<file>"   (space-asterisk)
+# Normalize both to "<hash>  <file>" (2 spaces, no leading ./).
 compute_checksums() {
     local root="$1"
-    # sha256sum output formats:
-    #   text mode (Linux/Mac default): "<hash>  ./<file>"   (2 spaces)
-    #   binary mode (Win Git Bash default): "<hash> *./<file>"  (space-asterisk)
-    # Normalize both to "<hash>  <file>" (2 spaces, no leading ./)
     (cd "$root" && find . -type f -not -name '.checksums.txt' -print0 \
         | LC_ALL=C sort -z \
         | xargs -0 $_SHA_CMD \
         | sed 's| [ *]\./|  |')
 }
 
-# ── sync mode: copy + regenerate ──────────────────────────────────────────
-if [[ "$MODE" == "sync" ]]; then
-    echo "==> syncing lib/install/ from agentm → crickets"
-
-    # Ensure mirror dir exists; wipe its contents so deletions in canonical
-    # propagate.
-    mkdir -p "$MIRROR"
-    rm -rf "$MIRROR"/*
-    cp -R "$CANONICAL"/* "$MIRROR/"
-    echo "    copied $(find "$CANONICAL" -type f -not -name '.checksums.txt' | wc -l | tr -d ' ') files"
-
-    # Regenerate checksums in both
-    compute_checksums "$CANONICAL" > "$CANONICAL/.checksums.txt"
-    compute_checksums "$MIRROR"   > "$MIRROR/.checksums.txt"
-    echo "    regenerated .checksums.txt in both repos"
-
-    # Stage changes in crickets for user review (agentm changes
-    # are already in the working tree, presumably staged by the user before
-    # running this).
-    (cd "$TOOLKIT_ROOT" && git add lib/install/)
-    echo ""
-    echo "sync-lib: complete."
-    echo "  Review staged changes in both repos and commit with parallel"
-    echo "  messages cross-referencing the other repo's commit SHA."
-    exit 0
-fi
-
-# ── verify mode: byte-compare without copying ─────────────────────────────
 if [[ "$MODE" == "verify" ]]; then
-    echo "==> verifying lib/install/ byte-identity"
-
-    if ! diff -qr "$CANONICAL" "$MIRROR" >/dev/null 2>&1; then
-        echo "sync-lib: DRIFT detected between $CANONICAL and $MIRROR" >&2
-        diff -qr "$CANONICAL" "$MIRROR" >&2 || true
-        echo "" >&2
-        echo "  Run 'bash scripts/sync-lib.sh' to re-sync." >&2
+    echo "==> verifying lib/install/.checksums.txt is current"
+    if ! diff -q <(compute_checksums "$CANONICAL") "$CANONICAL/.checksums.txt" >/dev/null 2>&1; then
+        echo "sync-lib: DRIFT — lib/install/ no longer matches .checksums.txt" >&2
+        echo "  Run 'bash scripts/sync-lib.sh' to regenerate." >&2
         exit 1
     fi
-    echo "sync-lib: in-sync (verified by diff -qr)"
+    echo "sync-lib: in-sync"
     exit 0
 fi
+
+# ── regen mode ────────────────────────────────────────────────────────────
+compute_checksums "$CANONICAL" > "$CANONICAL/.checksums.txt"
+echo "sync-lib: regenerated $CANONICAL/.checksums.txt"
+echo "  Review the staged change and commit."
+exit 0

@@ -5,8 +5,9 @@
 # (excluding .checksums.txt itself) and asserts the result matches the
 # committed .checksums.txt. Fails non-zero on any drift.
 #
-# Cross-repo byte-identity verification (agentm ↔ crickets) is
-# `scripts/sync-lib.sh --verify`. This script only checks the local repo.
+# agentm owns lib/install/ outright since the crickets clean break
+# (crickets v3.0 #40 part 5) — there is no longer a sibling copy to byte-match
+# against. This script verifies agentm's local tree against its own checksums.
 #
 # Usage:
 #   bash scripts/check-lib-parity.sh
@@ -68,5 +69,5 @@ echo "" >&2
 echo "--- recomputed ---" >&2
 echo "$RECOMPUTED" >&2
 echo "" >&2
-echo "  Run 'bash scripts/sync-lib.sh' to regenerate checksums (and propagate to the sibling repo)." >&2
+echo "  Run 'bash scripts/sync-lib.sh' to regenerate checksums." >&2
 exit 1
