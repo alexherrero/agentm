@@ -34,3 +34,7 @@ jobs:
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where
         # test_install_migrate.py + test_install_state_sync.py were invisible.
         run: (cd scripts && python3 -m unittest discover -p 'test_*.py')
+      - name: V4 push-surface integration check (verify-v4.sh)
+        # End-to-end check of the auto-orchestration surface against a throwaway
+        # scratch vault (bash-native; Windows skips, like the other .sh gates).
+        run: bash scripts/verify-v4.sh

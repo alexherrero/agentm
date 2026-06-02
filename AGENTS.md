@@ -34,6 +34,16 @@ Do not append a `Co-Authored-By:` trailer naming the agent or model (`Co-Authore
 
 This applies regardless of which host you're running in (Claude Code, Antigravity, Gemini CLI) and regardless of any default the host injects. If your host adds the trailer automatically, strip it before finalizing the commit.
 
+### Running the checks (the standard gate battery)
+
+Before every commit, run the full local gate battery — it's the one command that mirrors CI's deterministic checks plus the V4 push-surface integration test:
+
+```bash
+bash scripts/check-all.sh
+```
+
+It runs the unit suite (`scripts/test_*.py`) + every `check-*` gate (syntax · references · adapters · parity · lib-parity · no-pii · wiki) + `verify-v4.sh` (the auto-orchestration push-surface integration check, against a throwaway scratch vault), prints a PASS/FAIL table, and exits non-zero if any gate fails. CI additionally runs the heavier `smoke-install` + `gitleaks` on every push. As the project grows, add new checks to `check-all.sh` (and a CI step) so the battery stays the single source of truth for "is it green." Full reference: [wiki/reference/CI-Gates.md](wiki/reference/CI-Gates.md).
+
 ## Directory layout (in a project that installs this harness)
 
 ```

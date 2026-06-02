@@ -48,6 +48,11 @@ jobs:
         # Subshell `cd` because scripts/ lacks __init__.py (regular package
         # required for discover from a non-cwd start dir).
         run: (cd scripts && python3 -m unittest discover -p 'test_*.py')
+      - name: V4 push-surface integration check (verify-v4.sh)
+        # End-to-end check of the auto-orchestration surface (briefing · idle ·
+        # phase-dispatch · nudges · config/state) against a throwaway scratch
+        # vault. Complements the unit suite; grows with the push surface.
+        run: bash scripts/verify-v4.sh
 
   syntax:
     name: syntax
