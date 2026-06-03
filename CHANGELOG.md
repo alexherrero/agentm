@@ -5,6 +5,25 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.14.0] — 2026-06-02 — Decouple from crickets: agentm stands alone
+
+**MINOR.** agentm and crickets are now fully decoupled at install time. crickets v3.0 retired its bespoke per-host installer (`install.sh`/`.ps1` + `lib/install/`) in favor of **native Claude Code / Antigravity plugins**; this is agentm's side of that clean break. The harness is now a self-contained standalone install — it no longer clones or bootstraps crickets, and owns its install library outright. crickets remains the optional toolkit, installed separately via its native plugin path. Single-repo release. Also folds in the V4 verification battery (internal tooling).
+
+### Changed
+
+- **The installer no longer bootstraps crickets.** `install.sh` / `install.ps1` dropped the crickets-sibling auto-detect + clone + invoke-`crickets/install.sh` block (that installer no longer exists). Operators install crickets separately — its one-line `bootstrap.sh` or `claude plugin install`. The two repos are decoupled at install time.
+- **`sync-lib.sh` is now local-only.** It was the cross-repo byte-sync that kept `agentm/lib/install/` and `crickets/lib/install/` byte-identical; crickets no longer ships `lib/install/`, so the script now just regenerates agentm's own `lib/install/.checksums.txt` (+ a `--verify` mode), with no `../crickets/` targeting. `check-lib-parity` de-staled to match — **agentm owns `lib/install/` outright**. Closes ADR 0006's lib-sync re-audit trigger.
+- **Docs point crickets install at native plugins.** The README "install Crickets" step uses crickets's native one-line installer; `/release`'s `ship-release` graceful-skip message points at `crickets/bootstrap.sh` / `claude plugin marketplace add` instead of the deleted `crickets/install.sh`.
+
+### Internal
+
+- **V4 verification battery.** New `scripts/verify-v4.sh` — a one-shot scratch-vault integration check for the #23 auto-orchestration push surface (29 checks; hermetic; self-cleaning; never touches a real vault). New `scripts/check-all.sh` — the standard local gate battery (unit suite + every `check-*` gate + verify-v4 in one command, with a PASS/FAIL table). verify-v4 wired into the Linux + Mac CI workflows; `wiki/reference/CI-Gates.md` + `AGENTS.md` document the battery + how to grow it.
+
+### Cross-references
+
+- **crickets v3.0 #40** (native-plugins consolidation) — the cross-repo effort this is agentm's half of; paired with crickets's clean break (deleting its bespoke install machinery in favor of native plugins).
+- [agentm v4.13.1](https://github.com/alexherrero/agentm/releases/tag/v4.13.1) — the prior release (auto-orchestration fast-follows).
+
 ## [v4.13.1] — 2026-06-01 — Auto-orchestration fast-follows: concurrency + the adapt loop
 
 **PATCH.** Three fast-follows on the v4.13.0 push-surface, found in a post-release sweep before moving on.
