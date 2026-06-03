@@ -10,13 +10,14 @@ Command-line reference for `install.sh` (POSIX) and `install.ps1` (Windows / Pow
 | Install with verification hooks | `install.sh --hooks <target>` |
 | Refresh managed files | `install.sh --update <target>` |
 | Refresh + hook update | `install.sh --update --hooks <target>` |
+| Install in single-repo (vault-less) mode | `install.sh --local-state <target>` _(pending — lands in Hardening I plan task 3)_ |
 | Print help | `install.sh --help` |
 
 ## Synopsis
 
 ```
-install.sh [--hooks] [--update] [--scope user|project] <target-project-path>
-install.ps1 [-Hooks] [-Update] [-Scope user|project] <target-project-path>
+install.sh [--hooks] [--update] [--scope user|project] [--local-state] <target-project-path>
+install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-project-path>
 ```
 
 ## Flags
@@ -26,6 +27,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] <target-project-path>
 | `--hooks` | `-Hooks` | Copy hook scripts into `.harness/hooks/` and merge PostToolUse / PreCompact / SessionStart entries into `.claude/settings.json`. Requires `jq` on POSIX; pwsh uses native JSON cmdlets. |
 | `--update` | `-Update` | **True sync** (v1.0.0+): wipe the harness-authored dirs (`.claude/{commands,agents,skills}`, `.agents/{rules,workflows,skills}`, `.gemini/{commands,agents}`, `.harness/{scripts,hooks}`) and recreate from source. Orphan paths from older versions (e.g. the legacy `.agent/` tree, or `.codex/`) are auto-removed. Leaves user-owned files (`.harness/PLAN.md`, `progress.md`, `verify.sh`, `init.sh`, `known-migrations.md`, `AGENTS.md`, `CLAUDE.md`, `wiki/**`) alone. Writes `.harness/.version`. |
 | `--scope user\|project` | `-Scope user\|project` | Install scope (default `project`). `--scope user` installs customizations to `~/.claude/` (target path not required) and also merges the AgentMemory payload into `~/.gemini/GEMINI.md` when `~/.gemini/` exists — the Antigravity global channel, so the vault rule applies across every workspace. `--scope project` installs into `<target>/.claude/` as usual. |
+| `--local-state` | `-LocalState` | _Pending — lands in Hardening I plan task 3._ Opt the target repo into single-repo (vault-less) state: writes a repo-local `.project-mode=local` marker at `<target>/.harness/.project-mode` and skips vault wiring, so every phase write lands under `<target>/.harness/` with no vault required. See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
 | `-h`, `--help` | `-Help` | Print the header comment block from the installer and exit. |
 
 ## Prerequisites

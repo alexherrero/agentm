@@ -14,6 +14,7 @@
 - [Find missing note links](Find-Missing-Note-Links)
 - [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)
 - [Tune auto-orchestration](Tune-Auto-Orchestration)
+- [Run without a vault](Run-Without-A-Vault) _(pending — Hardening I)_
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)
@@ -35,6 +36,7 @@
 - [How the pieces fit](How-The-Pieces-Fit)
 - [GitHub Projects integration](GitHub-Projects-Integration)
 - [Auto-orchestration](Auto-Orchestration)
+- [Single-repo state mode](Single-Repo-State-Mode) _(pending — Hardening I)_
 
 **Decisions**
 - [0001 — Phase-gated workflow](0001-phase-gated-workflow)
