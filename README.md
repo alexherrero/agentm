@@ -84,17 +84,15 @@ export MEMORY_VAULT_PATH="<sync-root>/AgentMemory"
 
 Any sync layer works (Google Drive, Dropbox, syncthing).
 
-**3. Install the harness + Crickets bundle into your target project**
+**3. Install the harness + Crickets plugins**
 
 ```bash
 # Harness (this repo) — slash commands, sub-agents, .harness/ state, AGENTS.md / CLAUDE.md, wiki/ scaffold
 bash ~/Antigravity/agentm/install.sh [--hooks] /path/to/your-project
 
-# Crickets bundle — evaluator sub-agent + 4 base hooks (kill-switch, steer, commit-on-stop, evidence-tracker) in one operation
-bash ~/Antigravity/crickets/install.sh /path/to/your-project --bundle quality-gates
-
-# Memory skill — /memory save / evolve / reflect / search / etc.
-bash ~/Antigravity/crickets/install.sh /path/to/your-project --skill memory
+# Crickets — native host plugins (developer base: evaluator + kill-switch / steer /
+# commit-on-stop, plus github-ci / pii / wiki). Installs onto Claude Code + Antigravity.
+curl -fsSL https://raw.githubusercontent.com/alexherrero/crickets/main/bootstrap.sh | bash
 ```
 
 Installations are idempotent; `--hooks` is opt-in for verification hooks. Windows: use `install.ps1` with PowerShell 7+; same flag shape with `-Hooks` and `-Update`.
