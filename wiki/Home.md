@@ -115,6 +115,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [ADR 0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
 - [ADR 0006 — Split customizations into `crickets`](0006-crickets-split)
 - [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
+- [ADR 0008 — Project surface split](0008-project-surface-split)
 
 ## Conventions
 

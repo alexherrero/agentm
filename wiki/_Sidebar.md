@@ -44,3 +44,4 @@
 - [0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
 - [0006 — Split customizations into crickets](0006-crickets-split)
 - [0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
+- [0008 — Project surface split](0008-project-surface-split)
