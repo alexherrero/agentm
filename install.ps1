@@ -27,6 +27,7 @@ param(
     [switch]$Hooks,
     [switch]$Update,
     [switch]$ForceVaultPrompt,   # v4.5.1 task 4: re-fire first-run vault prompt
+    [switch]$LocalState,         # Hardening I #44 task 4: repo-local (vault-less) state
     [ValidateSet('user', 'project')]
     [string]$Scope = 'project',
     [Parameter(Position = 0)]
@@ -49,11 +50,18 @@ try {
 } catch { }
 
 if ($Scope -eq 'project' -and -not $Target) {
-    Write-Error 'Usage: install.ps1 [-Hooks] [-Update] [-Scope user|project] <target-project-path>
+    Write-Error 'Usage: install.ps1 [-Hooks] [-Update] [-LocalState] [-Scope user|project] <target-project-path>
   -Scope user: install customizations to ~/.claude/ (target not required)
   -Scope project (default): install to <target>/.claude/'
     exit 1
 }
+
+# Hardening I #44 task 4: -LocalState threads `--state-mode local` into the
+# install-state persist call (both -Scope user and -Scope project) so
+# .agentm-config.json becomes the on-host source of truth for repo-local,
+# vault-less harness state (DC-8). Empty array splats to nothing when not set.
+$PersistStateModeArgs = @()
+if ($LocalState) { $PersistStateModeArgs = @('--state-mode', 'local') }
 
 # ── crickets-sibling bootstrap: REMOVED (crickets v3.0 #40 part 5) ──────────
 # agentm's installer no longer auto-clones + invokes crickets's install.ps1 —
@@ -112,7 +120,8 @@ if ($Scope -eq 'user') {
     & $pythonCmd.Source $installStatePy 'persist' `
         $UserInstallPrefix `
         '--harness-version' $HarnessVersion `
-        '--installer-source' (Join-Path $HarnessRoot 'install.ps1') | Out-Null
+        '--installer-source' (Join-Path $HarnessRoot 'install.ps1') `
+        @PersistStateModeArgs | Out-Null
 
     # Install agentm-update launcher
     $userBin = Join-Path $HOME '.local/bin'
@@ -127,7 +136,9 @@ if ($Scope -eq 'user') {
     # CI runners + non-Darwin hosts auto-skip (Windows operators currently use
     # manual `agentm_config.py --vault-path <path>`; macOS auto-detect on
     # PowerShell is deferred — no operator running PowerShell on macOS today).
-    if ($env:CI -eq 'true') {
+    if ($LocalState) {
+        Write-Host "    state_mode: local (repo-local, vault-less); skipping vault detection"
+    } elseif ($env:CI -eq 'true') {
         Write-Host "    vault prompt: CI detected; skipping (set via agentm_config.py --vault-path if needed)"
     } else {
         $configCli = Join-Path $HarnessRoot 'scripts/agentm_config.py'
@@ -594,7 +605,8 @@ if ($pythonCmd) {
     try {
         & $pythonCmd.Source (Join-Path $HarnessRoot 'lib/install/python/install_state.py') 'persist' `
             '.claude' '--harness-version' $HarnessVersion `
-            '--installer-source' (Join-Path $HarnessRoot 'install.ps1') *>$null
+            '--installer-source' (Join-Path $HarnessRoot 'install.ps1') `
+            @PersistStateModeArgs *>$null
     } catch {
         # Silent failure — install proceeds; install-state.json is best-effort
     }

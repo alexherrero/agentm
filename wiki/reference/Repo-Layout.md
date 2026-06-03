@@ -13,7 +13,7 @@ Top-level layout of agentm on disk. For the *why* of this shape, see [How the pi
 | Where does this wiki get copied from on install? | Nowhere. Target projects get `templates/wiki/` (empty scaffold), not this one. See [ADR 0002](0002-documentation-convention). |
 | Where do personal customizations live? | [`crickets`](https://github.com/alexherrero/crickets) — sibling repo (since v2.0.0 / ADR 0006). Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. |
 | Where does the shared install plumbing live? | [`lib/install/`](https://github.com/alexherrero/agentm/tree/main/lib/install) — byte-identical to `crickets/lib/install/`. Sync via `scripts/sync-lib.sh`; CI gates parity. |
-| Where does the single-repo (vault-less) marker live? | `<repo>/.harness/.project-mode` — reads `local` to route phase state to `<repo>/.harness/` with no vault. _Pending — lands in Hardening I plan tasks 2–3._ See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
+| Where does the single-repo (vault-less) mode signal live? | Two on-host layers: the device-level `state_mode` in `<install-prefix>/.agentm-config.json` (set by `install.sh --local-state` or `agentm_config.py --state-mode local`), and the higher-precedence per-repo marker `<repo>/.harness/.project-mode` — either reading `local` routes phase state to `<repo>/.harness/` with no vault. See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
 
 ## 📁 Top-level layout
 

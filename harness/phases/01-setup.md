@@ -57,7 +57,9 @@ python3 scripts/detect_project.py . --format text
 
 Then continue to §1 (inventory) for the rest of setup. **Default-all-enabled is a locked operator preference (DC-7): detection surfaces *why* each skill/hook is relevant; it never gates which are present.** The approval is operator-driven because hooks are non-interactive (DC-3) — the SessionStart hook only nudges toward this flow.
 
-**Graceful-skip / degraded:** if the vault is unavailable (`harness_memory.py available` exits 1), detection still renders but `register` can't persist to the vault — fall back to surfacing the proposal for the operator + skip the write (note it explicitly). If `scripts/detect_project.py` is absent (pre-v4.8.0 install), skip §0 entirely and proceed to §1 the legacy way.
+**Running without a vault (first-class local state mode).** A single-repo adopter who doesn't use a MemoryVault opts in **on-host** (DC-8): `bash install.sh --local-state <project>` at install time, or `python3 scripts/agentm_config.py --state-mode local` afterward, writes `"state_mode": "local"` to `.agentm-config.json` (the single on-host config file; the vault holds data, never configuration). State then lives in `<repo>/.harness/` and `register` persists the enablement block there — **no vault required**. A per-repo `<repo>/.harness/.project-mode` marker is the higher-precedence override when one repo should differ from the device default. The mode is always an explicit on-host setting — **never inferred from a missing vault** (DC-3 split-brain guard: an absent `vault_path` is ambiguous between never-configured and transiently-unreachable).
+
+**Graceful-skip / degraded:** in *vault* mode with the vault transiently unavailable (`harness_memory.py available` exits 1 — e.g. Google Drive not mounted yet), detection still renders but `register` can't persist — fall back to surfacing the proposal for the operator + skip the write (note it explicitly); do **not** silently flip to local mode. If `scripts/detect_project.py` is absent (pre-v4.8.0 install), skip §0 entirely and proceed to §1 the legacy way.
 
 ### 1. Inventory what's there
 

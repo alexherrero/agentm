@@ -2,7 +2,7 @@
 # install.sh — install or update agentm in a target project.
 #
 # Usage:
-#   /path/to/agentm/install.sh [--hooks] [--update] <target-project-path>
+#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] <target-project-path>
 #
 # Options:
 #   --hooks    Install the PostToolUse/PreCompact/SessionStart hooks into
@@ -14,6 +14,10 @@
 #              init.sh, known-migrations.md, AGENTS.md, CLAUDE.md).
 #              Writes .harness/.version so future --update runs can show
 #              the version delta.
+#   --local-state  Opt this machine into repo-local (vault-less) harness state:
+#              writes "state_mode": "local" to .agentm-config.json (the on-host
+#              config; DC-8) and skips vault auto-detection. State then lives in
+#              <repo>/.harness/ instead of a MemoryVault.
 #
 # Without --update: existing files are preserved (skip-if-exists).
 # With --update:    harness-authored files are overwritten; user files stay.
@@ -32,6 +36,7 @@ HARNESS_VERSION="$(git -C "$HARNESS_ROOT" describe --tags --abbrev=0 2>/dev/null
 INSTALL_HOOKS=0
 UPDATE_MODE=0
 FORCE_VAULT_PROMPT=0   # v4.5.1 task 4: re-fire first-run vault prompt
+LOCAL_STATE=0          # Hardening I #44 task 4: --local-state → repo-local (vault-less) state
 TARGET=""
 SCOPE="project"  # V4 #30 task 8: --scope user|project. Default 'project' for
                  # v4.3.0 backward compat; default flips to 'user' in a future
@@ -44,6 +49,7 @@ while [[ $# -gt 0 ]]; do
     --hooks) INSTALL_HOOKS=1; shift ;;
     --update) UPDATE_MODE=1; shift ;;
     --force-vault-prompt) FORCE_VAULT_PROMPT=1; shift ;;
+    --local-state) LOCAL_STATE=1; shift ;;
     --scope)
       if [[ -z "${2:-}" ]]; then
         echo "Error: --scope requires a value (user|project)" >&2
@@ -65,7 +71,7 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     -h|--help)
-      sed -n 's/^# \{0,1\}//p' "$0" | head -22
+      sed -n 's/^# \{0,1\}//p' "$0" | head -23
       exit 0
       ;;
     -*)
@@ -86,10 +92,21 @@ done
 # --scope user doesn't require a positional TARGET (install prefix is ~/.claude/);
 # --scope project requires one.
 if [[ "$SCOPE" == "project" && -z "$TARGET" ]]; then
-  echo "Usage: $0 [--hooks] [--update] [--scope user|project] <target-project-path>" >&2
+  echo "Usage: $0 [--hooks] [--update] [--local-state] [--scope user|project] <target-project-path>" >&2
   echo "  --scope user: install customizations to ~/.claude/ (target not required)" >&2
   echo "  --scope project (default): install to <target>/.claude/" >&2
   exit 1
+fi
+
+# Hardening I #44 task 4: --local-state threads `--state-mode local` into the
+# install-state persist call (both --scope user and --scope project) so
+# .agentm-config.json becomes the on-host source of truth for repo-local,
+# vault-less harness state (DC-8). Empty array when not set; every expansion
+# below uses the `+` guard so `set -u` + bash 3.2 (macOS) don't trip on an
+# empty-array expansion.
+PERSIST_STATE_MODE_ARGS=()
+if [[ $LOCAL_STATE -eq 1 ]]; then
+  PERSIST_STATE_MODE_ARGS=(--state-mode local)
 fi
 
 # ── crickets-sibling bootstrap: REMOVED (crickets v3.0 #40 part 5) ──────────
@@ -388,7 +405,8 @@ if [[ "$SCOPE" == "user" ]]; then
     "$USER_INSTALL_PREFIX" \
     --harness-version "$HARNESS_VERSION" \
     --installer-source "$HARNESS_ROOT/install.sh" \
-    --fragments-file "$_AGENTM_FRAG_RECORDS" > /dev/null
+    --fragments-file "$_AGENTM_FRAG_RECORDS" \
+    "${PERSIST_STATE_MODE_ARGS[@]+"${PERSIST_STATE_MODE_ARGS[@]}"}" > /dev/null
   rm -f "$_AGENTM_FRAG_RECORDS"
 
   # Install agentm-update launcher to ~/.local/bin (if writable)
@@ -402,7 +420,12 @@ if [[ "$SCOPE" == "user" ]]; then
 
   # v4.5.1 task 4 — first-run vault detection (idempotent; --force-vault-prompt
   # re-fires when set; CI + non-Darwin auto-skip with one-line notice).
-  _agentm_vault_first_run_prompt "$USER_INSTALL_PREFIX"
+  # --local-state opts out of the vault entirely (Hardening I #44 task 4).
+  if [[ $LOCAL_STATE -eq 1 ]]; then
+    echo "    state_mode: local (repo-local, vault-less); skipping vault detection"
+  else
+    _agentm_vault_first_run_prompt "$USER_INSTALL_PREFIX"
+  fi
 
   # Antigravity GLOBAL rules (V4 #22 Task 4b) — the user-scope Antigravity channel,
   # parity with ~/.claude/ for Claude Code. Merge the AgentMemory vault-usage
@@ -925,7 +948,8 @@ if command -v python3 >/dev/null 2>&1; then
   python3 "$HARNESS_ROOT/lib/install/python/install_state.py" persist \
     .claude \
     --harness-version "$HARNESS_VERSION" \
-    --installer-source "$HARNESS_ROOT/install.sh" >/dev/null 2>&1 || true
+    --installer-source "$HARNESS_ROOT/install.sh" \
+    "${PERSIST_STATE_MODE_ARGS[@]+"${PERSIST_STATE_MODE_ARGS[@]}"}" >/dev/null 2>&1 || true
 fi
 
 # ── record version ──────────────────────────────────────────────────────────

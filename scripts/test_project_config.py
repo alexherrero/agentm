@@ -209,6 +209,75 @@ class TestRegisterIntegration(unittest.TestCase):
             self.assertEqual(legacy_data["vault_project"], "demo")
 
 
+class TestRegisterNoVault(unittest.TestCase):
+    """Hardening I #44 task 4: register() must complete with NO vault when the
+    repo is in local state mode — the `--local-state` first-class entry point.
+    The enablement block lands repo-local; the vault repo_registry step skips
+    silently (no `ValueError`). Two local-mode signals, both on-host (DC-2/DC-8):
+    the per-repo `.project-mode` marker and the device `state_mode` config."""
+
+    def _make_repo(self, root: Path, slug: str) -> Path:
+        repo = root / "repo"
+        (repo / ".harness").mkdir(parents=True)
+        (repo / ".harness" / "project.json").write_text(
+            json.dumps({"vault_project": slug}), encoding="utf-8"
+        )
+        return repo
+
+    def test_register_completes_with_repo_local_marker_no_vault(self) -> None:
+        import harness_memory as hm
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = self._make_repo(root, "novault-marker")
+            # Per-repo override marker signals local mode (DC-2) — no vault needed.
+            (repo / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
+            old_env = os.environ.get("MEMORY_VAULT_PATH")
+            os.environ.pop("MEMORY_VAULT_PATH", None)
+            hm._reset_warn_state()
+            try:
+                config = pc.register(repo, registered_via="auto-detect")
+            finally:
+                if old_env is not None:
+                    os.environ["MEMORY_VAULT_PATH"] = old_env
+            # Enablement block landed in the repo-local project.json (no ValueError).
+            legacy = json.loads((repo / ".harness" / "project.json").read_text(encoding="utf-8"))
+            self.assertIn("skills", legacy)
+            self.assertEqual(legacy["vault_project"], "novault-marker")
+            self.assertEqual(config["vault_project"], "novault-marker")
+
+    def test_register_completes_with_device_state_mode_no_vault(self) -> None:
+        # The actual `install.sh --local-state` flow: device-level state_mode in
+        # .agentm-config.json (no per-repo marker), no vault → register succeeds.
+        import harness_memory as hm
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            repo = self._make_repo(root, "novault-device")
+            prefix = root / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"schema_version": 2, "mode": "release", "state_mode": "local"}),
+                encoding="utf-8",
+            )
+            old_vault = os.environ.get("MEMORY_VAULT_PATH")
+            old_prefix = os.environ.get("AGENTM_INSTALL_PREFIX")
+            os.environ.pop("MEMORY_VAULT_PATH", None)
+            os.environ["AGENTM_INSTALL_PREFIX"] = str(prefix)
+            hm._reset_warn_state()
+            try:
+                config = pc.register(repo, registered_via="auto-detect")
+            finally:
+                if old_vault is not None:
+                    os.environ["MEMORY_VAULT_PATH"] = old_vault
+                if old_prefix is None:
+                    os.environ.pop("AGENTM_INSTALL_PREFIX", None)
+                else:
+                    os.environ["AGENTM_INSTALL_PREFIX"] = old_prefix
+            legacy = json.loads((repo / ".harness" / "project.json").read_text(encoding="utf-8"))
+            self.assertIn("skills", legacy)
+            self.assertEqual(legacy["vault_project"], "novault-device")
+            self.assertEqual(config["vault_project"], "novault-device")
+
+
 class TestShouldNudgeGit(unittest.TestCase):
     def test_dotgit_file_worktree_counts_as_git(self):
         # A git worktree/submodule has `.git` as a FILE (`gitdir: …`), not a dir.

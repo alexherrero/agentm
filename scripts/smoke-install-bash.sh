@@ -152,4 +152,39 @@ fi
 echo "==> post-install integrity"
 bash "$HARNESS_ROOT/scripts/check-integrity-bash.sh" "$SCRATCH"
 
+# ── --local-state: first-class repo-local (vault-less) mode (Hardening I #44 task 4) ──
+# Proves the entry point end-to-end: the flag writes state_mode:local to
+# .agentm-config.json (the on-host config; DC-8), and a subsequent state write
+# lands repo-local with NO vault configured.
+echo "==> --local-state writes state_mode:local + state lands repo-local"
+LOCAL_SCRATCH="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH" "$LOCAL_SCRATCH"' EXIT   # extend cleanup to the new scratch
+bash "$HARNESS_ROOT/install.sh" --local-state "$LOCAL_SCRATCH" > "$LOCAL_SCRATCH/.install.log"
+
+# 1. .agentm-config.json carries state_mode:local
+python3 - "$LOCAL_SCRATCH/.claude/.agentm-config.json" <<'PY' || exit 1
+import json, sys
+c = json.load(open(sys.argv[1]))
+assert c.get("state_mode") == "local", f"state_mode not 'local': {c.get('state_mode')!r}"
+print("    state_mode:local OK")
+PY
+
+# 2. a subsequent write-state lands repo-local (no MEMORY_VAULT_PATH), reads back
+printf '{"vault_project": "smokedemo"}\n' > "$LOCAL_SCRATCH/.harness/project.json"
+echo "# smoke PLAN" | env -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_SCRATCH/.claude" \
+  python3 "$HARNESS_ROOT/scripts/harness_memory.py" write-state \
+  --project-root "$LOCAL_SCRATCH" PLAN.md > /dev/null
+if [[ ! -f "$LOCAL_SCRATCH/.harness/PLAN.md" ]]; then
+  echo "FAIL: --local-state write-state did not land repo-local at .harness/PLAN.md" >&2
+  exit 1
+fi
+GOT="$(env -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$LOCAL_SCRATCH/.claude" \
+  python3 "$HARNESS_ROOT/scripts/harness_memory.py" read-state \
+  --project-root "$LOCAL_SCRATCH" PLAN.md)"
+if [[ "$GOT" != "# smoke PLAN" ]]; then
+  echo "FAIL: --local-state read-state round-trip mismatch: got '$GOT'" >&2
+  exit 1
+fi
+echo "    repo-local write/read round-trip OK"
+
 echo "==> smoke-install-bash: OK"

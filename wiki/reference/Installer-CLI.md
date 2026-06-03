@@ -10,7 +10,8 @@ Command-line reference for `install.sh` (POSIX) and `install.ps1` (Windows / Pow
 | Install with verification hooks | `install.sh --hooks <target>` |
 | Refresh managed files | `install.sh --update <target>` |
 | Refresh + hook update | `install.sh --update --hooks <target>` |
-| Install in single-repo (vault-less) mode | `install.sh --local-state <target>` _(pending — lands in Hardening I plan task 3)_ |
+| Install in single-repo (vault-less) mode | `install.sh --local-state <target>` |
+| Flip an existing install to vault-less mode | `agentm_config.py --state-mode local` |
 | Print help | `install.sh --help` |
 
 ## Synopsis
@@ -27,8 +28,20 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | `--hooks` | `-Hooks` | Copy hook scripts into `.harness/hooks/` and merge PostToolUse / PreCompact / SessionStart entries into `.claude/settings.json`. Requires `jq` on POSIX; pwsh uses native JSON cmdlets. |
 | `--update` | `-Update` | **True sync** (v1.0.0+): wipe the harness-authored dirs (`.claude/{commands,agents,skills}`, `.agents/{rules,workflows,skills}`, `.gemini/{commands,agents}`, `.harness/{scripts,hooks}`) and recreate from source. Orphan paths from older versions (e.g. the legacy `.agent/` tree, or `.codex/`) are auto-removed. Leaves user-owned files (`.harness/PLAN.md`, `progress.md`, `verify.sh`, `init.sh`, `known-migrations.md`, `AGENTS.md`, `CLAUDE.md`, `wiki/**`) alone. Writes `.harness/.version`. |
 | `--scope user\|project` | `-Scope user\|project` | Install scope (default `project`). `--scope user` installs customizations to `~/.claude/` (target path not required) and also merges the AgentMemory payload into `~/.gemini/GEMINI.md` when `~/.gemini/` exists — the Antigravity global channel, so the vault rule applies across every workspace. `--scope project` installs into `<target>/.claude/` as usual. |
-| `--local-state` | `-LocalState` | _Pending — lands in Hardening I plan task 3._ Opt the target repo into single-repo (vault-less) state: writes a repo-local `.project-mode=local` marker at `<target>/.harness/.project-mode` and skips vault wiring, so every phase write lands under `<target>/.harness/` with no vault required. See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
+| `--local-state` | `-LocalState` | Opt this machine into single-repo (vault-less) state: writes `"state_mode": "local"` to the on-host `.agentm-config.json` and skips vault auto-detection, so every phase write lands under `<repo>/.harness/` with no vault required. Flip an existing install with `agentm_config.py --state-mode` (below). See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
 | `-h`, `--help` | `-Help` | Print the header comment block from the installer and exit. |
+
+## Config CLI — `agentm_config.py`
+
+`scripts/agentm_config.py` is the operator-facing way to read and set fields on the on-host `.agentm-config.json` (the single config file — the vault holds data, config is on-host only) without re-running the installer. Resolves the install prefix from `AGENTM_INSTALL_PREFIX`, else `~/.claude/`.
+
+| Operation | Effect |
+|---|---|
+| `--vault-path <path>` | Set `vault_path` (validates the dir exists). Backs `harness_memory.py::vault_path()` when `$MEMORY_VAULT_PATH` is unset. |
+| `--state-mode <local\|vault>` | Set `state_mode` — the device-level run mode. `local` opts a vault-less machine into repo-local state; `vault` switches back. Idempotent; mutually exclusive with `--vault-path`. See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
+| `--get <field>` | Read a single field to stdout; `rc=0` if present, `rc=1` (silent) if absent. |
+| `--list` | Dump the full config as JSON. |
+| `--unset <field>` | Clear a single field. |
 
 ## Prerequisites
 

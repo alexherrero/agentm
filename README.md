@@ -97,6 +97,14 @@ curl -fsSL https://raw.githubusercontent.com/alexherrero/crickets/main/bootstrap
 
 Installations are idempotent; `--hooks` is opt-in for verification hooks. Windows: use `install.ps1` with PowerShell 7+; same flag shape with `-Hooks` and `-Update`.
 
+**Running without a vault (single-repo mode).** agentm defaults to vault-resident state (your AgentMemory MemoryVault). To run a repo with **zero vault / Obsidian / Google Drive dependency**, install with `--local-state`:
+
+```bash
+bash ~/Antigravity/agentm/install.sh --local-state /path/to/your-project
+```
+
+This writes `"state_mode": "local"` to the on-host `.agentm-config.json` (the single config file — the vault holds data, config is on-host only) and skips vault wiring. Harness state (`PLAN.md`, `progress.md`, `features.json`, …) then lives in `<repo>/.harness/`. Flip an existing install with `python3 ~/Antigravity/agentm/scripts/agentm_config.py --state-mode local`; a per-repo `<repo>/.harness/.project-mode` marker overrides the device default for a single repo. Windows: `install.ps1 -LocalState`.
+
 <details>
 <summary>More install detail — seed your always-load entries + verify</summary>
 

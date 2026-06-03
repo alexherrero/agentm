@@ -290,5 +290,85 @@ class TestAgentmConfig(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class TestStateMode(unittest.TestCase):
+    """Hardening I #44 task 4: the `--state-mode` setter — the post-install /
+    `/setup` way to opt a machine into repo-local (vault-less) harness state, or
+    back to vault-resident, without re-running the installer (DC-8)."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-config-statemode-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.env = _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(self.prefix)})
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, *argv: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = ac.main(list(argv))
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_set_state_mode_local_writes_field_rc0(self) -> None:
+        rc, out, err = self._run("--state-mode", "local")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config["state_mode"], "local")
+        self.assertEqual(config["schema_version"], 2)
+        self.assertEqual(out.strip(), "state_mode = local")
+
+    def test_set_state_mode_vault_writes_field_rc0(self) -> None:
+        rc, out, err = self._run("--state-mode", "vault")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config["state_mode"], "vault")
+
+    def test_set_state_mode_rejects_invalid(self) -> None:
+        # argparse `choices` rejects at parse time → SystemExit(2), no write.
+        with self.assertRaises(SystemExit) as ctx:
+            with redirect_stderr(io.StringIO()):
+                ac.main(["--state-mode", "bogus"])
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertFalse((self.prefix / ".agentm-config.json").is_file())
+
+    def test_set_state_mode_idempotent_on_same_value(self) -> None:
+        rc1, _, _ = self._run("--state-mode", "local")
+        mtime1 = (self.prefix / ".agentm-config.json").stat().st_mtime_ns
+        rc2, _, _ = self._run("--state-mode", "local")
+        mtime2 = (self.prefix / ".agentm-config.json").stat().st_mtime_ns
+        self.assertEqual(rc1, 0)
+        self.assertEqual(rc2, 0)
+        self.assertEqual(mtime1, mtime2)
+
+    def test_set_state_mode_preserves_vault_path(self) -> None:
+        # Setting state_mode must not clobber a pre-existing vault_path.
+        vault = Path(self.tmp) / "coexist-vault"
+        vault.mkdir()
+        self._run("--vault-path", str(vault))
+        rc, _, err = self._run("--state-mode", "local")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config["vault_path"], str(vault.resolve()))
+        self.assertEqual(config["state_mode"], "local")
+
+    def test_state_mode_round_trips_via_get(self) -> None:
+        self._run("--state-mode", "local")
+        rc, out, _ = self._run("--get", "state_mode")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "local")
+
+    def test_state_mode_mutually_exclusive_with_vault_path(self) -> None:
+        vault = Path(self.tmp) / "v"
+        vault.mkdir()
+        with self.assertRaises(SystemExit) as ctx:
+            with redirect_stderr(io.StringIO()):
+                ac.main(["--state-mode", "local", "--vault-path", str(vault)])
+        self.assertEqual(ctx.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

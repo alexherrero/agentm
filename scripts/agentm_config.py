@@ -3,12 +3,16 @@
 
 The on-device source of truth for the agentm install. Schema v2 added
 `vault_path` as the top-level field that backs `harness_memory.py::vault_path()`
-when `$MEMORY_VAULT_PATH` env is unset. This CLI is the operator-facing way to
-set / read / unset that field without re-running the full installer.
+when `$MEMORY_VAULT_PATH` env is unset. Hardening I #44 added `state_mode`
+(local|vault) — the on-host run mode (DC-8): `.agentm-config.json` is the single
+config file, the vault holds data only. This CLI is the operator-facing way to
+set / read / unset those fields without re-running the full installer.
 
 Operations:
 
     agentm_config.py --vault-path <path>   # write vault_path (validates dir exists)
+    agentm_config.py --state-mode local    # write state_mode (local|vault); opt a
+                                            #   vault-less machine into repo-local state
     agentm_config.py --get vault_path      # read single field; rc=0 if present, rc=1 if absent
     agentm_config.py --list                # dump full config as JSON
     agentm_config.py --unset vault_path    # clear a single field
@@ -42,6 +46,7 @@ from typing import Optional
 
 _CONFIG_FILENAME = ".agentm-config.json"
 _SCHEMA_VERSION = 2
+_STATE_MODES = ("local", "vault")
 
 
 def _resolve_install_prefix(cli_arg: Optional[str] = None) -> Path:
@@ -109,6 +114,32 @@ def cmd_set_vault_path(prefix: Path, raw_path: str) -> int:
     return 0
 
 
+def cmd_set_state_mode(prefix: Path, mode: str) -> int:
+    """Set the device-level `state_mode` field (the on-host run mode; DC-8).
+
+    Accepts 'local' or 'vault' only. This is the post-install / `/setup` way to
+    opt a machine into repo-local (vault-less) harness state — or back to
+    vault-resident — without re-running the full installer. Idempotent: a silent
+    no-op when the value is already set. The repo-local `<repo>/.harness/.project-mode`
+    marker stays the higher-precedence per-repo override (DC-2).
+    """
+    if mode not in _STATE_MODES:
+        print(
+            f"[agentm_config] refusing to set state_mode: {mode!r} is not 'local' or 'vault'",
+            file=sys.stderr,
+        )
+        return 2
+    config = _read_config(prefix) or {}
+    if config.get("state_mode") == mode:
+        # Idempotent — silent no-op when value unchanged.
+        return 0
+    config["state_mode"] = mode
+    written = _write_config(prefix, config)
+    print(f"state_mode = {mode}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_get(prefix: Path, field: str) -> int:
     """Read a single field; rc=0 if present, rc=1 silent if absent."""
     config = _read_config(prefix)
@@ -167,6 +198,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     op = parser.add_mutually_exclusive_group(required=True)
     op.add_argument("--vault-path", metavar="PATH", help="set vault_path field")
+    op.add_argument("--state-mode", metavar="MODE", choices=_STATE_MODES,
+                    help="set state_mode field (how harness state is stored: local|vault)")
     op.add_argument("--get", metavar="FIELD", help="read single field to stdout")
     op.add_argument("--list", action="store_true", help="dump full config as JSON")
     op.add_argument("--unset", metavar="FIELD", help="clear a field")
@@ -180,6 +213,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.vault_path is not None:
         return cmd_set_vault_path(prefix, args.vault_path)
+    if args.state_mode is not None:
+        return cmd_set_state_mode(prefix, args.state_mode)
     if args.get is not None:
         return cmd_get(prefix, args.get)
     if args.list:
