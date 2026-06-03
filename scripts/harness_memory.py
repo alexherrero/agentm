@@ -385,6 +385,72 @@ def _reset_warn_state() -> None:
     _warned_legacy_reads.clear()
 
 
+def _read_mode_marker(path: Path) -> Optional[str]:
+    """Return the stripped-lowercase contents of a `.project-mode` marker file,
+    or None when the file is absent / unreadable / empty.
+
+    An empty (whitespace-only) marker is treated as absent so a stray blank
+    file doesn't accidentally override a meaningful marker elsewhere.
+    """
+    if path.is_file():
+        try:
+            text = path.read_text(encoding="utf-8").strip().lower()
+        except OSError:
+            return None
+        return text or None
+    return None
+
+
+def _read_project_mode(resolution: dict) -> Optional[str]:
+    """Resolve the effective `.project-mode` for this project.
+
+    Returns the marker value (e.g. "local") or None when no marker resolves
+    (the default, vault-backed mode).
+
+    Precedence (locked DC-2): an explicit **repo-local** marker at
+    ``<project_root>/.harness/.project-mode`` wins over the in-vault marker at
+    ``<vault>/_harness/.project-mode``. The repo-local marker is the only
+    vault-independent signal — it is reachable on a machine with no vault, which
+    is the whole point of single-repo mode — so it is consulted first. The
+    in-vault marker (the original DC-3 opt-out location) is the fallback and is
+    only readable when a vault is configured.
+    """
+    project_root = resolution.get("project_root") or Path.cwd()
+    vault_p = resolution.get("vault_path")
+
+    # 1. Repo-local marker — vault-independent, authoritative when present.
+    repo_local = _read_mode_marker(Path(project_root) / ".harness" / ".project-mode")
+    if repo_local is not None:
+        return repo_local
+
+    # 2. In-vault marker — only reachable when a vault exists.
+    if vault_p:
+        return _read_mode_marker(Path(vault_p) / "_harness" / ".project-mode")
+
+    return None
+
+
+def _read_repo_local_state_file(project_root: Path, filename: str) -> str:
+    """Read ``<project_root>/.harness/<filename>`` as the *configured* local-mode
+    home — without the legacy-migration warning.
+
+    Distinct from ``_read_legacy_state_file``: that path is a *fallback* (a vault
+    is expected but the file happens to live in the repo, so it nags the operator
+    to migrate). Local mode is a deliberate opt-in, so the repo-local ``.harness/``
+    is the canonical home and reading it is not a deprecation event.
+    """
+    local = Path(project_root) / ".harness" / filename
+    if local.is_file():
+        try:
+            return local.read_text(encoding="utf-8")
+        except OSError as exc:
+            print(
+                f"[harness_memory] failed to read {local}: {exc}",
+                file=sys.stderr,
+            )
+    return ""
+
+
 def read_state_file(resolution: dict, filename: str) -> str:
     """Read a project state file, preferring vault-backed location.
 
@@ -400,28 +466,24 @@ def read_state_file(resolution: dict, filename: str) -> str:
     per session per file. Warn-once state is module-level (session-scoped);
     test helpers can reset via `_reset_warn_state()`.
 
-    Honors `<vault>/projects/<slug>/_harness/.project-mode` per locked DC-3:
-    if the marker file contents are "local" (lowercase-stripped), skip the
-    vault-side read and go straight to legacy — operator opted out of
-    vault-mode for this project.
+    Honors the `.project-mode` marker (per locked DC-3, extended in Hardening I
+    task 2): if the effective mode is "local", the read targets
+    `<project_root>/.harness/<filename>` directly — local mode is the configured
+    home, not a legacy fallback, so it does *not* emit the migrate-to-vault warn.
+    The marker is resolved via `_read_project_mode()` so a vault-independent
+    repo-local marker is honored even when no vault is configured (DC-2 precedence:
+    repo-local wins over the in-vault marker).
     """
-    # Vault path attempt — only when resolution has both slug + vault_path.
     vault_p = resolution.get("vault_path")
     project_root = resolution.get("project_root") or Path.cwd()
 
-    if vault_p:
-        # Check .project-mode flag — if "local", skip vault read entirely.
-        mode_file = vault_p / "_harness" / ".project-mode"
-        if mode_file.is_file():
-            try:
-                mode = mode_file.read_text(encoding="utf-8").strip().lower()
-                if mode == "local":
-                    # Operator opted out of vault-mode; go straight to legacy.
-                    return _read_legacy_state_file(project_root, filename)
-            except OSError:
-                pass  # Unreadable mode-file; fall through to default behavior.
+    # Local mode (DC-2/DC-3): the repo-local `.harness/` is the canonical home.
+    # Read it directly — vault-independent, no deprecation warning.
+    if _read_project_mode(resolution) == "local":
+        return _read_repo_local_state_file(project_root, filename)
 
-        # Default: try vault path.
+    if vault_p:
+        # Default: try the vault path.
         target = vault_p / "_harness" / filename
         if target.is_file():
             try:
@@ -433,7 +495,7 @@ def read_state_file(resolution: dict, filename: str) -> str:
                 )
                 # Fall through to legacy as a last resort.
 
-    # Legacy fallback — <project_root>/.harness/<filename>.
+    # Legacy fallback — <project_root>/.harness/<filename> (emits warn-once).
     return _read_legacy_state_file(project_root, filename)
 
 
@@ -453,38 +515,37 @@ def _read_legacy_state_file(project_root: Path, filename: str) -> str:
 
 
 def write_state_file(resolution: dict, filename: str, content: str) -> Path:
-    """Write a project state file to the vault path.
+    """Write a project state file, vault-backed by default, repo-local in local mode.
 
     Creates <vault>/projects/<slug>/_harness/ if absent. Atomic write via
     `<path>.tmp` + `rename()`. Returns the absolute path written.
 
-    Raises ValueError if resolution lacks vault_path (caller should resolve
-    or fall back to legacy explicitly — writes never go to legacy after
-    V4 #26 ships).
+    Mode resolution (per locked DC-2/DC-3, extended in Hardening I task 2):
+    `_read_project_mode()` honors a vault-independent repo-local marker at
+    `<project_root>/.harness/.project-mode` (which wins over the in-vault marker).
+    When the effective mode is "local", the write targets
+    `<project_root>/.harness/<filename>` — this is the first-class single-repo
+    write path and it succeeds **with no vault configured**.
 
-    Honors `.project-mode` flag per DC-3: if "local", writes go to
-    `<project_root>/.harness/<filename>` instead. This is the
-    operator-opt-out path.
+    Raises ValueError only when the mode is *not* local **and** the resolution
+    lacks a vault_path — i.e. a vault-mode project with no reachable vault. The
+    error names the local-mode opt-in so the caller knows the escape hatch.
     """
     vault_p = resolution.get("vault_path")
     project_root = resolution.get("project_root") or Path.cwd()
 
-    # Check opt-out flag.
-    if vault_p:
-        mode_file = vault_p / "_harness" / ".project-mode"
-        if mode_file.is_file():
-            try:
-                mode = mode_file.read_text(encoding="utf-8").strip().lower()
-                if mode == "local":
-                    return _write_legacy_state_file(project_root, filename, content)
-            except OSError:
-                pass
+    # Local mode (DC-2/DC-3): route to the repo-local home. Vault-independent —
+    # this is what makes single-repo mode writable without a vault.
+    if _read_project_mode(resolution) == "local":
+        return _write_repo_local_state_file(project_root, filename, content)
 
     if vault_p is None:
         raise ValueError(
             f"cannot write {filename}: resolution lacks vault_path "
             f"(slug={resolution.get('slug')!r}, layout={resolution.get('layout')!r}). "
-            f"Resolve the project first or set MEMORY_VAULT_PATH."
+            f"Resolve the project first, set MEMORY_VAULT_PATH, or opt into "
+            f"single-repo mode with a <repo>/.harness/.project-mode file "
+            f"containing 'local'."
         )
 
     target = vault_p / "_harness" / filename
@@ -495,13 +556,13 @@ def write_state_file(resolution: dict, filename: str, content: str) -> Path:
     return target
 
 
-def _write_legacy_state_file(project_root: Path, filename: str, content: str) -> Path:
-    """Operator-opt-out path: write to <project_root>/.harness/<filename>.
+def _write_repo_local_state_file(project_root: Path, filename: str, content: str) -> Path:
+    """Local-mode write path: write to <project_root>/.harness/<filename>.
 
-    Used only when `.project-mode` = "local" (reversibility per DC-3).
-    Same atomic-write semantics as the vault path.
+    Used when the effective `.project-mode` = "local" (DC-2/DC-3). Same
+    atomic-write semantics as the vault path. Works with no vault configured.
     """
-    target = project_root / ".harness" / filename
+    target = Path(project_root) / ".harness" / filename
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
     tmp.write_text(content, encoding="utf-8")

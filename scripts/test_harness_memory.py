@@ -728,6 +728,42 @@ class TestCLI(unittest.TestCase):
             self.assertEqual(result.stdout.strip(), str(target))
             self.assertEqual(target.read_text(encoding="utf-8"), "new vault content\n")
 
+    def test_cli_write_then_read_state_local_mode_no_vault(self) -> None:
+        """Hardening I task 2: with NO vault configured + a repo-local
+        .project-mode=local marker, the write-state/read-state CLIs round-trip
+        through <repo>/.harness/ (the first-class single-repo path)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "project"
+            (project_root / ".harness").mkdir(parents=True)
+            (project_root / ".harness" / "project.json").write_text(
+                '{"vault_project": "fixture"}', encoding="utf-8"
+            )
+            (project_root / ".harness" / ".project-mode").write_text(
+                "local", encoding="utf-8"
+            )
+            content_file = Path(tmp) / "input.md"
+            content_file.write_text("local CLI content\n", encoding="utf-8")
+            # No MEMORY_VAULT_PATH → no vault; _run pops it + the module sandboxes
+            # AGENTM_INSTALL_PREFIX so vault_path() resolves to None.
+            wr = self._run(
+                "write-state", "PLAN.md",
+                "--project-root", str(project_root),
+                "--content-file", str(content_file),
+            )
+            self.assertEqual(wr.returncode, 0, wr.stderr)
+            target = project_root / ".harness" / "PLAN.md"
+            self.assertEqual(wr.stdout.strip(), str(target))
+            self.assertEqual(target.read_text(encoding="utf-8"), "local CLI content\n")
+
+            rd = self._run(
+                "read-state", "PLAN.md",
+                "--project-root", str(project_root),
+            )
+            self.assertEqual(rd.returncode, 0, rd.stderr)
+            self.assertEqual(rd.stdout, "local CLI content\n")
+            # Local mode is the configured home — no migrate-to-vault nag.
+            self.assertNotIn("migrate-harness-to-vault.sh", rd.stderr)
+
 
 # -----------------------------------------------------------------------------
 # resolve_project / vault_state_path / _vault_projects_dir  (V4 #26)
@@ -974,6 +1010,49 @@ class TestReadStateFile(unittest.TestCase):
                     # Despite vault content existing, .project-mode=local skips it.
                     self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "legacy wins")
 
+    # Hardening I task 2: vault-less read path + repo-local marker (DC-2).
+
+    def test_repo_local_marker_local_no_vault_reads_repo(self) -> None:
+        """#44 core: no vault + repo-local .project-mode=local → read comes from
+        <repo>/.harness/ (round-trips the local write path)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
+            (project / ".harness" / "PLAN.md").write_text("local content", encoding="utf-8")
+            resolution = {"vault_path": None, "project_root": project}
+            self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "local content")
+
+    def test_local_mode_read_emits_no_migrate_warning(self) -> None:
+        """Local mode is the configured home, not a legacy fallback — reading it
+        must NOT print the migrate-to-vault deprecation warning."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
+            (project / ".harness" / "PLAN.md").write_text("local content", encoding="utf-8")
+            resolution = {"vault_path": None, "project_root": project}
+            with io.StringIO() as buf:
+                with mock.patch("sys.stderr", buf):
+                    self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "local content")
+                stderr = buf.getvalue()
+            self.assertNotIn("migrate-harness-to-vault.sh", stderr)
+            self.assertNotIn("from legacy", stderr)
+
+    def test_repo_local_marker_honored_with_vault_present_on_read(self) -> None:
+        """DC-2: with a vault present and vault content, a repo-local marker still
+        routes the read to <repo>/.harness/."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
+            (project / ".harness" / "PLAN.md").write_text("repo content", encoding="utf-8")
+            resolution = {"vault_path": vp, "project_root": project}
+            self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "repo content")
+
 
 class TestWriteStateFile(unittest.TestCase):
     """Covers vault-only writes (with .project-mode=local override)."""
@@ -1018,6 +1097,95 @@ class TestWriteStateFile(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "legacy write")
             # Vault path NOT written.
             self.assertFalse((vp / "_harness" / "PLAN.md").exists())
+
+    # Hardening I task 2: vault-less write path + repo-local marker (DC-2).
+
+    def test_repo_local_marker_local_no_vault_writes_to_repo(self) -> None:
+        """#44 core: no vault + repo-local .project-mode=local → write lands in
+        <repo>/.harness/ and does NOT raise ValueError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
+            resolution = {"vault_path": None, "project_root": project}
+            target = hm.write_state_file(resolution, "PLAN.md", "local content")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
+            self.assertEqual(target.read_text(encoding="utf-8"), "local content")
+
+    def test_repo_local_marker_local_honored_with_vault_present(self) -> None:
+        """DC-2: a repo-local marker is authoritative even when a vault exists —
+        the write goes repo-local, the vault is untouched."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
+            resolution = {"vault_path": vp, "project_root": project}
+            target = hm.write_state_file(resolution, "PLAN.md", "repo wins")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
+            self.assertEqual(target.read_text(encoding="utf-8"), "repo wins")
+            self.assertFalse((vp / "_harness" / "PLAN.md").exists())
+
+    def test_repo_local_marker_wins_over_in_vault_marker(self) -> None:
+        """DC-2 precedence: when the two markers disagree, the repo-local marker
+        wins. repo-local='vault' (non-local) overrides in-vault='local', so the
+        write targets the vault."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("vault", encoding="utf-8")
+            resolution = {"vault_path": vp, "project_root": project}
+            target = hm.write_state_file(resolution, "PLAN.md", "vault wins")
+            self.assertEqual(target, vp / "_harness" / "PLAN.md")
+            self.assertEqual(target.read_text(encoding="utf-8"), "vault wins")
+            self.assertFalse((project / ".harness" / "PLAN.md").exists())
+
+    def test_no_vault_and_no_local_marker_still_raises(self) -> None:
+        """Contract preserved: no vault + no (or non-local) repo-local marker is a
+        vault-mode project with no reachable vault → ValueError (NOT a silent
+        local write). Guards against auto-detecting 'no vault ⇒ local' (DC-3)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            resolution = {"vault_path": None, "project_root": project}
+            with self.assertRaises(ValueError):
+                hm.write_state_file(resolution, "PLAN.md", "x")
+            # An explicit non-local repo-local marker is still vault-mode → raises.
+            (project / ".harness" / ".project-mode").write_text("vault", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                hm.write_state_file(resolution, "PLAN.md", "x")
+
+    def test_local_write_tolerates_str_project_root(self) -> None:
+        """read/write symmetry: the local read path wraps `project_root` in Path,
+        so the write path must too — a str project_root must not crash."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "p"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
+            resolution = {"vault_path": None, "project_root": str(project)}  # str, not Path
+            target = hm.write_state_file(resolution, "PLAN.md", "str-root content")
+            self.assertEqual(Path(target), project / ".harness" / "PLAN.md")
+            # Symmetric read with the same str input round-trips.
+            self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "str-root content")
+
+    def test_empty_repo_local_marker_falls_through_to_in_vault(self) -> None:
+        """A whitespace-only repo-local marker is treated as absent, so the
+        in-vault marker decides the mode."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text("   \n", encoding="utf-8")
+            resolution = {"vault_path": vp, "project_root": project}
+            target = hm.write_state_file(resolution, "PLAN.md", "in-vault decides")
+            # in-vault marker=local → write goes repo-local home.
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
 
 
 # -----------------------------------------------------------------------------
