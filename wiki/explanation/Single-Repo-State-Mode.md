@@ -1,8 +1,8 @@
 # Feature: single-repo (vault-less) state mode
 
 > [!NOTE]
-> **Status:** pending
-> **Plan:** `.harness/PLAN.md` tasks 2 (vault-less write path + repo-local marker) + 3 (`--local-state` entry point + register-in-local-mode).
+> **Status:** implemented (Hardening I, v4.15.0)
+> **Decision:** [ADR 0009 — On-host state-mode config](decisions/0009-on-host-state-mode-config).
 
 Run the harness on a single repo with no Obsidian / GDrive / vault dependency. You opt in explicitly — `install.sh --local-state` at install time, `scripts/agentm_config.py --state-mode local` afterward, or a `/setup` prompt — and from then on every phase write lands in `<repo>/.harness/` instead of routing through a memory vault. This page is the *why* and the resolution model; for the steps, see [Run the harness without a vault](Run-Without-A-Vault).
 
@@ -31,9 +31,8 @@ It makes local mode *reachable and writable* without a vault — it does not mig
 
 ## Related
 
+- [ADR 0009 — On-host state-mode config](decisions/0009-on-host-state-mode-config) — why the mode is configured on-host only, never in the vault, and never inferred from a missing `vault_path`.
 - [Run the harness without a vault](Run-Without-A-Vault) — the operator recipe for enabling single-repo local state.
 - [Installer CLI reference](Installer-CLI) — the `--local-state` flag and the `agentm_config.py --state-mode` setter.
 - [Project config reference](Project-Config) — how `project_config.py register()` degrades when no vault is present.
 - [Repo layout reference](Repo-Layout) — where `<repo>/.harness/.project-mode` sits on disk.
-
-<!-- DC-2 (repo-local marker precedence), DC-3 (explicit opt-in; never infer mode from a missing vault), and DC-8 (configuration is on-host only — device-level `state_mode` + per-repo marker; the in-vault marker layer was removed) are locked in the Hardening I plan (`.harness/PLAN.md`). Cross-link to an ADR here once one lands; none exists yet. -->

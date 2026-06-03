@@ -13,7 +13,10 @@ jobs:
       - uses: actions/checkout@v4
       # macos-latest ships jq, python3, and pwsh 7+ preinstalled.
       - name: Install Python deps (for validate script)
-        run: python3 -m pip install --break-system-packages pyyaml
+        # sqlite-vec lets verify-memory-roundtrip.sh exercise the vec-index
+        # nearest-neighbor read-back; the e2e self-skips it if the runner's
+        # Python can't load extensions. Enhancement, never a hard dep.
+        run: python3 -m pip install --break-system-packages pyyaml sqlite-vec
       - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
       - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
@@ -38,3 +41,7 @@ jobs:
         # End-to-end check of the auto-orchestration surface against a throwaway
         # scratch vault (bash-native; Windows skips, like the other .sh gates).
         run: bash scripts/verify-v4.sh
+      - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
+        run: bash scripts/verify-phases.sh
+      - name: Memory-engine round-trip e2e (verify-memory-roundtrip.sh)
+        run: bash scripts/verify-memory-roundtrip.sh

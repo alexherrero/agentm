@@ -1,10 +1,9 @@
 # How to run the harness without a vault (single-repo local state)
 
 > [!NOTE]
-> **Status:** pending
-> **Plan:** `.harness/PLAN.md` tasks 2 (vault-less write path + repo-local marker) + 3 (vault-less `register()`) + 4 (`--local-state` / `--state-mode` entry point).
+> **Status:** implemented (Hardening I, v4.15.0)
 > **Goal:** Opt a machine into vault-less state so every phase write lands in `<repo>/.harness/` — no Obsidian / GDrive / mounted vault required.
-> **Prereqs:** agentm version that ships `--local-state` (Hardening I), `python3` on `PATH`, a `.git` dir in the target repo.
+> **Prereqs:** agentm v4.15.0+ (ships `--local-state`), `python3` on `PATH`, a `.git` dir in the target repo.
 
 Single-repo mode lets you drive the full phase workflow on a machine with no memory vault. You opt in explicitly — `install.sh --local-state` writes `"state_mode": "local"` to the on-host `.agentm-config.json` and skips vault wiring. From then on `harness_memory.py` reads and writes state under `<repo>/.harness/` instead of routing through a vault. For the model behind it (and the higher-precedence per-repo `.project-mode` marker), see [Single-repo state mode](Single-Repo-State-Mode).
 

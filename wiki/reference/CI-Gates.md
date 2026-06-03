@@ -10,8 +10,8 @@ bash scripts/check-all.sh
 
 | Workflow | Runs on | Jobs |
 |---|---|---|
-| [`[T] Linux Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) | `ubuntu-latest` | install-smoke + adapter-parity + validate + check-references + check-wiki + unit tests + **verify-v4** + syntax + dogfood-workflows |
-| [`[T] Mac Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-mac.yml) | `macos-latest` | install-smoke + validate + unit tests + **verify-v4** + syntax (both shells) |
+| [`[T] Linux Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) | `ubuntu-latest` | install-smoke + adapter-parity + validate + check-references + check-wiki + unit tests + **verify-v4** + **verify-phases** + **verify-memory-roundtrip** + syntax + dogfood-workflows |
+| [`[T] Mac Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-mac.yml) | `macos-latest` | install-smoke + validate + unit tests + **verify-v4** + **verify-phases** + **verify-memory-roundtrip** + syntax (both shells) |
 | [`[T] Windows Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-windows.yml) | `windows-latest` | install-smoke (pwsh) + validate + pwsh syntax |
 
 ## What each gate proves
@@ -29,8 +29,8 @@ bash scripts/check-all.sh
 | check-lib-parity | `lib/install/` matches the committed checksums (byte-identical across agentm + crickets). | [`scripts/check-lib-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-lib-parity.sh) |
 | check-no-pii | The regex PII scanner finds no personal info across the tree (this is a public repo). | [`scripts/check-no-pii.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-no-pii.sh) |
 | verify-v4 | The V4 #23 auto-orchestration push surface works end-to-end (briefing · idle · phase-dispatch · nudges · config/state) against a throwaway scratch vault — see below. Linux/Mac only. | [`scripts/verify-v4.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-v4.sh) |
-| verify-phases _(pending — script exists; not yet wired into CI)_ | A full phase lifecycle (`/setup → /plan → /work → /release`) drives its deterministic seams — state read/write, `progress.md` appends, `features.json` updates, post-phase dispatch plumbing — end-to-end on a throwaway fixture project, run twice: once vault-resident, once repo-local. Linux/Mac only. | `scripts/verify-phases.sh` |
-| verify-memory-roundtrip _(pending — script exists; not yet wired into CI)_ | The memory engine round-trips on a throwaway fixture vault: stub-mode `embed` (deterministic hash vector, no network/model) → `save` → `recall query` surfaces it by content → `reflect` a synthetic transcript → `vec_index` full-sync/drain builds the index → nearest-neighbor read-back → `vault_lint` clean. 12 checks; a `VERIFY_MEMORY_FAULT=drop-save` injection drives the negative path. The nearest-neighbor sub-check is conditional on the backend — asserted when the Python `sqlite3` supports `enable_load_extension`, logged as SKIPPED (never silently dropped) when it falls back to keyword recall by design. Hermetic, Linux/Mac only. | `scripts/verify-memory-roundtrip.sh` |
+| verify-phases | A full phase lifecycle (`/setup → /plan → /work → /release`) drives its deterministic seams — state read/write, `progress.md` appends, `features.json` updates, post-phase dispatch plumbing — end-to-end on a throwaway fixture project, run twice: once vault-resident, once repo-local. Linux/Mac only. | [`scripts/verify-phases.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-phases.sh) |
+| verify-memory-roundtrip | The memory engine round-trips on a throwaway fixture vault: stub-mode `embed` (deterministic hash vector, no network/model) → `save` → `recall query` surfaces it by content → `reflect` a synthetic transcript → `vec_index` full-sync/drain builds the index → nearest-neighbor read-back → `vault_lint` clean. 12 checks; a `VERIFY_MEMORY_FAULT=drop-save` injection drives the negative path. The nearest-neighbor sub-check is conditional on the backend — asserted when the Python `sqlite3` supports `enable_load_extension` (Mac/Linux CI `pip install sqlite-vec` to exercise it), logged as SKIPPED (never silently dropped) when it falls back to keyword recall by design. Hermetic, Linux/Mac only. | [`scripts/verify-memory-roundtrip.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-memory-roundtrip.sh) |
 | dogfood-workflows | Every workflow the harness ships as a template under `templates/.github/workflows/` is active at the repo root, byte-identical to the template. | Inline job in [`tests-linux.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) |
 
 ## `verify-v4.sh` — the push-surface integration check
@@ -58,7 +58,7 @@ Red-on-Windows but green-on-POSIX almost always indicates a path-separator or pw
 
 ## Running the gate set locally
 
-One command runs the deterministic battery (unit tests + every `check-*` gate + `verify-v4`), prints a PASS/FAIL table, and exits non-zero on any failure:
+One command runs the deterministic battery — 11 gates: unit tests + every `check-*` gate + the three integration checks (`verify-v4`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
 
 ```bash
 bash scripts/check-all.sh

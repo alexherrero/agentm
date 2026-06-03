@@ -49,6 +49,8 @@ gate "check-lib-parity (lib/install checksums)" bash scripts/check-lib-parity.sh
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
 gate "verify-v4 (push-surface integration)"    bash scripts/verify-v4.sh
+gate "verify-phases (lifecycle e2e · both modes)" bash scripts/verify-phases.sh
+gate "verify-memory-roundtrip (engine e2e)"    bash scripts/verify-memory-roundtrip.sh
 
 echo
 if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi

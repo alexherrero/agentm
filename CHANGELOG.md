@@ -5,6 +5,28 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v4.15.0] — 2026-06-03 — Hardening I: single-repo first-class + e2e breadth
+
+**MINOR.** The harness now runs on a **single repo with zero Obsidian / Google Drive / vault dependency** — opt in explicitly with `install.sh --local-state` (or `agentm_config.py --state-mode local`), and harness state lives in `<repo>/.harness/` instead of a MemoryVault. This is the first front of **Hardening I** ("know when we break things"): single-repo mode is now a *tested, first-class* path, the cross-repo (crickets) install residue that produced the "3 fragments skipped" boot error is gone, and a first substantial batch of end-to-end tests exercises whole phases, every memory hook, and the memory engine round-trip in **both** state modes — so a regression in any of these surfaces before release. Single-repo release.
+
+### Added
+
+- **First-class repo-local (vault-less) state — `install.sh --local-state` / `install.ps1 -LocalState`.** Writes `"state_mode": "local"` to the on-host `.agentm-config.json` and skips vault wiring; every phase write then lands in `<repo>/.harness/` with no `ValueError`. A single-repo adopter needs no MemoryVault at all. A per-repo `<repo>/.harness/.project-mode` marker overrides the device default for one repo.
+- **`agentm_config.py --state-mode {local,vault}`.** The post-install / `/setup` way to flip the device-level run mode without re-running the installer (mirrors `--vault-path`: idempotent, validated, preserves other config fields).
+
+### Changed
+
+- **State-mode configuration is on-host only (DC-8).** `.agentm-config.json` is the single source of truth for *how agentm runs* (a new `"state_mode"` key, preserved across re-persist like `vault_path`); the vault holds *data*, never configuration. Resolution is two on-host layers — repo-local `.project-mode` marker → device `state_mode` — and the mode is **never** inferred from a missing `vault_path` (an absent vault is ambiguous between never-configured and transiently-unreachable; inferring would split-brain state). Removed the former in-vault `.project-mode` marker and a dead `harness_state_mode` field from the vault repo-registry; `migrate-harness-to-vault.sh`/`.ps1` now write the repo-local marker.
+- **Retired the `install-state-sync` SessionStart hook.** In standalone agentm its only unique job — re-merging changed `settings.json` hook registrations — is redundant (symlinked customizations + clone-resolved scripts auto-track a `git pull`; `agentm-update` covers registration refresh), couldn't unregister removed hooks, and was the live source of the *"N fragment(s) skipped"* boot error (3 dead crickets control hooks). Retiring it also ripped out the biggest remaining chunk of crickets install coupling (`--crickets` detection across `install.sh`/`.ps1` + `install_state.py` + `install_symlinks.py`; the 4 memory hooks' source-mode fallback repointed crickets→agentm).
+
+### Internal
+
+- **End-to-end test breadth (the regression net).** Three new hermetic e2e scripts mirroring the `verify-v4.sh` PASS/FAIL skeleton: `verify-phases.sh` drives the deterministic seams of `/setup→/plan→/work→/release` against a fixture project **twice — vault-resident and repo-local**; `verify-memory-roundtrip.sh` round-trips the memory engine (embed→save→recall→reflect→vec-index→lint) on a fixture vault. Plus three subprocess **hook-firing** tests (`memory-recall-session-start`, `memory-reflect-stop`, `memory-reflect-idle`) proving each hook actually fires on a synthetic event + graceful-skips when inputs are absent + never blocks (the V4 #39 "lands but silently no-ops" class of bug). All wired into `scripts/check-all.sh` (now 11 gates) + the Linux/Mac CI workflows (Windows skips bash-native, per convention).
+
+### Cross-references
+
+- [agentm v4.14.0](https://github.com/alexherrero/agentm/releases/tag/v4.14.0) — the prior release (decouple from crickets), whose single-repo *decouple* + `verify-v4.sh`/`check-all.sh` down-payment this builds the *first-class tested mode* + broader e2e on top of.
+
 ## [v4.14.0] — 2026-06-02 — Decouple from crickets: agentm stands alone
 
 **MINOR.** agentm and crickets are now fully decoupled at install time. crickets v3.0 retired its bespoke per-host installer (`install.sh`/`.ps1` + `lib/install/`) in favor of **native Claude Code / Antigravity plugins**; this is agentm's side of that clean break. The harness is now a self-contained standalone install — it no longer clones or bootstraps crickets, and owns its install library outright. crickets remains the optional toolkit, installed separately via its native plugin path. Single-repo release. Also folds in the V4 verification battery (internal tooling).

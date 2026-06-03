@@ -80,7 +80,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [How to find missing note links](Find-Missing-Note-Links) — run the read-only personal-notes link-discovery audit and add the suggested `[[wikilinks]]` by hand.
 - [How to use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — configure any surface (Claude.ai · Gemini · ChatGPT · Antigravity) to read the vault natively (read-only) by pasting the one context payload.
 - [How to tune auto-orchestration](Tune-Auto-Orchestration) — edit the toggles, thresholds, and cooldowns that drive the SessionStart briefing and the idle-time memory chain.
-- [How to run without a vault](Run-Without-A-Vault) — operate the harness with no MemoryVault configured. _(pending — Hardening I)_
+- [How to run without a vault](Run-Without-A-Vault) — operate the harness with no MemoryVault configured.
 
 ## 📖 Looking up a detail?
 
@@ -106,7 +106,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [How the pieces fit](How-The-Pieces-Fit) — narrative of how phases, adapters, templates, and scripts interact.
 - [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
 - [Auto-orchestration](Auto-Orchestration) — why the memory skills became a push surface, and how the briefing + idle chain + phase dispatch never nag.
-- [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable. _(pending — Hardening I)_
+- [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable.
 
 ### Architecture decisions
 
@@ -118,6 +118,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [ADR 0006 — Split customizations into `crickets`](0006-crickets-split)
 - [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
 - [ADR 0008 — Project surface split](0008-project-surface-split)
+- [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config)
 
 ## Conventions
 

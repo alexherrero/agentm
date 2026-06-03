@@ -14,7 +14,7 @@
 - [Find missing note links](Find-Missing-Note-Links)
 - [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)
 - [Tune auto-orchestration](Tune-Auto-Orchestration)
-- [Run without a vault](Run-Without-A-Vault) _(pending — Hardening I)_
+- [Run without a vault](Run-Without-A-Vault)
 
 ### 📖 Reference
 - [Installer CLI](Installer-CLI)
@@ -36,7 +36,7 @@
 - [How the pieces fit](How-The-Pieces-Fit)
 - [GitHub Projects integration](GitHub-Projects-Integration)
 - [Auto-orchestration](Auto-Orchestration)
-- [Single-repo state mode](Single-Repo-State-Mode) _(pending — Hardening I)_
+- [Single-repo state mode](Single-Repo-State-Mode)
 
 **Decisions**
 - [0001 — Phase-gated workflow](0001-phase-gated-workflow)
@@ -47,3 +47,4 @@
 - [0006 — Split customizations into crickets](0006-crickets-split)
 - [0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
 - [0008 — Project surface split](0008-project-surface-split)
+- [0009 — On-host state-mode config](0009-on-host-state-mode-config)
