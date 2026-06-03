@@ -26,7 +26,7 @@ Exit codes:
     2   user error (invalid path for --vault-path, missing required arg)
 
 Atomic writes via tmp+os.replace() per the established convention from
-install_state_sync.py + V4 #26's safe_write_replace_style().
+install_state.py + V4 #26's safe_write_replace_style().
 
 Stdlib-only per ADR 0001. Per v4.5.1 task 3.
 """

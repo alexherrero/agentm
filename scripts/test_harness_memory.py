@@ -2029,58 +2029,22 @@ def _fake_agentm_clone(root: Path) -> Path:
     return p
 
 
-def _fake_crickets_clone(root: Path) -> Path:
-    """Build a fixture directory shaped like a crickets source clone."""
-    p = root / "crickets"
-    p.mkdir(parents=True)
-    (p / ".git").mkdir()
-    (p / "skills").mkdir()
-    return p
-
-
 class TestDetectSourceClones(unittest.TestCase):
-    """V4 #30 task 3: detect_source_clones probe."""
+    """V4 #30 task 3: detect_source_clones probe (agentm-only since the crickets decouple)."""
 
     def test_neither_clone_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            clones = install_state.detect_source_clones(
-                agentm_path=base / "agentm",
-                crickets_path=base / "crickets",
-            )
+            clones = install_state.detect_source_clones(agentm_path=base / "agentm")
             self.assertEqual(clones, {})
 
     def test_agentm_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             agentm = _fake_agentm_clone(base)
-            clones = install_state.detect_source_clones(
-                agentm_path=agentm,
-                crickets_path=base / "crickets",
-            )
+            clones = install_state.detect_source_clones(agentm_path=agentm)
             self.assertEqual(list(clones.keys()), ["agentm"])
             self.assertEqual(clones["agentm"], str(agentm))
-
-    def test_crickets_only(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            crickets = _fake_crickets_clone(base)
-            clones = install_state.detect_source_clones(
-                agentm_path=base / "agentm",
-                crickets_path=crickets,
-            )
-            self.assertEqual(list(clones.keys()), ["crickets"])
-
-    def test_both_clones_present(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            agentm = _fake_agentm_clone(base)
-            crickets = _fake_crickets_clone(base)
-            clones = install_state.detect_source_clones(
-                agentm_path=agentm,
-                crickets_path=crickets,
-            )
-            self.assertEqual(set(clones.keys()), {"agentm", "crickets"})
 
     def test_clone_without_required_subdirs_not_detected(self) -> None:
         """Dir with .git but missing harness/ is NOT an agentm clone."""
@@ -2090,10 +2054,7 @@ class TestDetectSourceClones(unittest.TestCase):
             fake.mkdir()
             (fake / ".git").mkdir()
             # Missing harness/ — should not be detected
-            clones = install_state.detect_source_clones(
-                agentm_path=fake,
-                crickets_path=base / "crickets",
-            )
+            clones = install_state.detect_source_clones(agentm_path=fake)
             self.assertEqual(clones, {})
 
 
@@ -2103,21 +2064,15 @@ class TestDetectInstallMode(unittest.TestCase):
     def test_neither_clone_yields_release_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            mode, clones = install_state.detect_install_mode(
-                agentm_path=base / "agentm",
-                crickets_path=base / "crickets",
-            )
+            mode, clones = install_state.detect_install_mode(agentm_path=base / "agentm")
             self.assertEqual(mode, "release")
             self.assertEqual(clones, {})
 
-    def test_at_least_one_clone_yields_source_mode(self) -> None:
+    def test_agentm_clone_yields_source_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _fake_agentm_clone(base)
-            mode, clones = install_state.detect_install_mode(
-                agentm_path=base / "agentm",
-                crickets_path=base / "crickets",
-            )
+            mode, clones = install_state.detect_install_mode(agentm_path=base / "agentm")
             self.assertEqual(mode, "source")
             self.assertEqual(list(clones.keys()), ["agentm"])
 
@@ -2172,12 +2127,12 @@ class TestPersistInstallState(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             prefix = Path(tmp) / "p"
             install_state.persist_install_state(
-                prefix, "source", {"agentm": "/x", "crickets": "/y"}, "v4.3.0",
+                prefix, "source", {"agentm": "/x"}, "v4.3.0",
             )
             data = install_state.read_install_state(prefix)
             self.assertIsNotNone(data)
             self.assertEqual(data["mode"], "source")
-            self.assertEqual(data["source_clones"], {"agentm": "/x", "crickets": "/y"})
+            self.assertEqual(data["source_clones"], {"agentm": "/x"})
 
     def test_re_probe_flips_mode_when_clone_appears(self) -> None:
         """Smoke: install in release mode, then clone appears, re-probe flips to source."""
@@ -2186,10 +2141,7 @@ class TestPersistInstallState(unittest.TestCase):
             prefix = base / "prefix"
 
             # First run: no clones → release mode
-            mode1, clones1 = install_state.detect_install_mode(
-                agentm_path=base / "agentm",
-                crickets_path=base / "crickets",
-            )
+            mode1, clones1 = install_state.detect_install_mode(agentm_path=base / "agentm")
             install_state.persist_install_state(prefix, mode1, clones1, "v4.3.0")
             d1 = install_state.read_install_state(prefix)
             self.assertEqual(d1["mode"], "release")
@@ -2198,10 +2150,7 @@ class TestPersistInstallState(unittest.TestCase):
             _fake_agentm_clone(base)
 
             # Re-probe + persist → source mode
-            mode2, clones2 = install_state.detect_install_mode(
-                agentm_path=base / "agentm",
-                crickets_path=base / "crickets",
-            )
+            mode2, clones2 = install_state.detect_install_mode(agentm_path=base / "agentm")
             install_state.persist_install_state(prefix, mode2, clones2, "v4.3.0")
             d2 = install_state.read_install_state(prefix)
             self.assertEqual(d2["mode"], "source")
@@ -2223,7 +2172,6 @@ class TestInstallStateCLI(unittest.TestCase):
             res = self._run(
                 "detect",
                 "--agentm-path", str(base / "no-agentm"),
-                "--crickets-path", str(base / "no-crickets"),
             )
             self.assertEqual(res.returncode, 0, res.stderr)
             data = json.loads(res.stdout)
@@ -2240,7 +2188,6 @@ class TestInstallStateCLI(unittest.TestCase):
                 "persist", str(prefix),
                 "--harness-version", "v4.3.0",
                 "--agentm-path", str(base / "agentm"),
-                "--crickets-path", str(base / "no-crickets"),
             )
             self.assertEqual(persist.returncode, 0, persist.stderr)
             self.assertTrue(persist.stdout.strip().endswith(".agentm-config.json"))
@@ -2270,54 +2217,28 @@ sys.modules["install_symlinks"] = install_symlinks
 _spec_isy.loader.exec_module(install_symlinks)
 
 
-def _fake_crickets_layout(root: Path) -> Path:
-    """Build a crickets-shaped fixture with sample customizations."""
-    cr = root / "crickets"
-    cr.mkdir(parents=True)
-    (cr / ".git").mkdir()
-    # skills bundle (dir)
-    (cr / "skills" / "pii-scrubber").mkdir(parents=True)
-    (cr / "skills" / "pii-scrubber" / "SKILL.md").write_text("# pii-scrubber", encoding="utf-8")
-    # hook bundle (dir)
-    (cr / "hooks" / "kill-switch").mkdir(parents=True)
-    (cr / "hooks" / "kill-switch" / "hook.md").write_text("# kill-switch", encoding="utf-8")
-    # agent file
-    (cr / "agents").mkdir()
-    (cr / "agents" / "evaluator.md").write_text("# evaluator", encoding="utf-8")
-    return cr
-
-
 def _fake_agentm_layout(root: Path) -> Path:
     """Build an agentm-shaped fixture with sample customizations."""
     ag = root / "agentm"
     ag.mkdir(parents=True)
     (ag / ".git").mkdir()
+    # skill bundle (dir)
+    (ag / "harness" / "skills" / "memory").mkdir(parents=True)
+    (ag / "harness" / "skills" / "memory" / "SKILL.md").write_text("# memory", encoding="utf-8")
+    # hook bundle (dir)
+    (ag / "harness" / "hooks" / "harness-context-session-start").mkdir(parents=True)
+    (ag / "harness" / "hooks" / "harness-context-session-start" / "hook.md").write_text("# hook", encoding="utf-8")
+    # agent file
     (ag / "harness" / "agents").mkdir(parents=True)
     (ag / "harness" / "agents" / "explorer.md").write_text("# explorer", encoding="utf-8")
+    # command file
     (ag / "adapters" / "claude-code" / "commands").mkdir(parents=True)
     (ag / "adapters" / "claude-code" / "commands" / "plan.md").write_text("# plan", encoding="utf-8")
     return ag
 
 
 class TestSymlinkCustomizations(unittest.TestCase):
-    """V4 #30 task 4: symlink_customizations primitive."""
-
-    def test_creates_symlinks_from_crickets(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
-            prefix = base / "claude"
-            result = install_symlinks.symlink_customizations(
-                {"crickets": str(crickets)}, prefix,
-            )
-            # Expected: 1 skill + 1 hook + 1 agent = 3 created
-            self.assertEqual(len(result["created"]), 3)
-            self.assertIn("skills/pii-scrubber", result["created"])
-            self.assertIn("hooks/kill-switch", result["created"])
-            self.assertIn("agents/evaluator.md", result["created"])
-            # Verify they're real symlinks pointing at the source clones
-            self.assertTrue((prefix / "skills" / "pii-scrubber").is_symlink())
-            self.assertTrue((prefix / "agents" / "evaluator.md").is_symlink())
+    """V4 #30 task 4: symlink_customizations primitive (agentm-only since the crickets decouple)."""
 
     def test_creates_symlinks_from_agentm(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -2327,89 +2248,82 @@ class TestSymlinkCustomizations(unittest.TestCase):
             result = install_symlinks.symlink_customizations(
                 {"agentm": str(agentm)}, prefix,
             )
-            # 1 harness/agents/*.md + 1 adapters/claude-code/commands/*.md
-            self.assertEqual(len(result["created"]), 2)
+            # 1 skill + 1 hook + 1 agent + 1 command = 4 created
+            self.assertEqual(len(result["created"]), 4)
+            self.assertIn("skills/memory", result["created"])
+            self.assertIn("hooks/harness-context-session-start", result["created"])
             self.assertIn("agents/explorer.md", result["created"])
             self.assertIn("commands/plan.md", result["created"])
-
-    def test_both_clones_merged(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
-            agentm = _fake_agentm_layout(base)
-            prefix = base / "claude"
-            result = install_symlinks.symlink_customizations(
-                {"agentm": str(agentm), "crickets": str(crickets)}, prefix,
-            )
-            # 3 from crickets + 2 from agentm = 5
-            self.assertEqual(len(result["created"]), 5)
+            # Verify they're real symlinks pointing at the source clone
+            self.assertTrue((prefix / "skills" / "memory").is_symlink())
+            self.assertTrue((prefix / "agents" / "explorer.md").is_symlink())
 
     def test_idempotent_on_already_symlinked(self) -> None:
         """Re-running on already-symlinked target classifies as 'skipped'."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
+            agentm = _fake_agentm_layout(base)
             prefix = base / "claude"
-            install_symlinks.symlink_customizations({"crickets": str(crickets)}, prefix)
+            install_symlinks.symlink_customizations({"agentm": str(agentm)}, prefix)
             # Second run
-            result = install_symlinks.symlink_customizations({"crickets": str(crickets)}, prefix)
+            result = install_symlinks.symlink_customizations({"agentm": str(agentm)}, prefix)
             self.assertEqual(len(result["created"]), 0)
-            self.assertEqual(len(result["skipped"]), 3)
+            self.assertEqual(len(result["skipped"]), 4)
 
     def test_repoints_when_symlink_target_differs(self) -> None:
         """Existing symlink pointing elsewhere → repointed to expected source."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
+            agentm = _fake_agentm_layout(base)
             prefix = base / "claude"
             # Pre-existing symlink to a different source
             (prefix / "agents").mkdir(parents=True)
             wrong_target = base / "wrong-target.md"
             wrong_target.write_text("wrong", encoding="utf-8")
-            os.symlink(wrong_target, prefix / "agents" / "evaluator.md")
+            os.symlink(wrong_target, prefix / "agents" / "explorer.md")
 
             result = install_symlinks.symlink_customizations(
-                {"crickets": str(crickets)}, prefix,
+                {"agentm": str(agentm)}, prefix,
             )
-            self.assertIn("agents/evaluator.md", result["repointed"])
-            # Verify the symlink now points at the crickets source. Use
+            self.assertIn("agents/explorer.md", result["repointed"])
+            # Verify the symlink now points at the agentm source. Use
             # os.path.samefile to handle Windows UNC-prefix normalization
             # (//?/C:/... vs C:/... refer to the same file but Path.resolve()
             # returns different forms).
-            link = prefix / "agents" / "evaluator.md"
-            expected = crickets / "agents" / "evaluator.md"
+            link = prefix / "agents" / "explorer.md"
+            expected = agentm / "harness" / "agents" / "explorer.md"
             self.assertTrue(os.path.samefile(link, expected))
 
     def test_repoints_broken_symlink(self) -> None:
         """Broken symlink (target gone) is treated as needing repoint."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
+            agentm = _fake_agentm_layout(base)
             prefix = base / "claude"
             (prefix / "agents").mkdir(parents=True)
-            os.symlink(base / "ghost.md", prefix / "agents" / "evaluator.md")
+            os.symlink(base / "ghost.md", prefix / "agents" / "explorer.md")
 
             result = install_symlinks.symlink_customizations(
-                {"crickets": str(crickets)}, prefix,
+                {"agentm": str(agentm)}, prefix,
             )
-            self.assertIn("agents/evaluator.md", result["repointed"])
+            self.assertIn("agents/explorer.md", result["repointed"])
 
     def test_real_file_conflict_skipped_without_force(self) -> None:
         """Real file (not a symlink) at target path → conflict + skip."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
+            agentm = _fake_agentm_layout(base)
             prefix = base / "claude"
             (prefix / "agents").mkdir(parents=True)
-            (prefix / "agents" / "evaluator.md").write_text("real file", encoding="utf-8")
+            (prefix / "agents" / "explorer.md").write_text("real file", encoding="utf-8")
 
             result = install_symlinks.symlink_customizations(
-                {"crickets": str(crickets)}, prefix,
+                {"agentm": str(agentm)}, prefix,
             )
-            self.assertIn("agents/evaluator.md", result["conflicts"])
+            self.assertIn("agents/explorer.md", result["conflicts"])
             # File still in place — never clobbered
             self.assertEqual(
-                (prefix / "agents" / "evaluator.md").read_text(),
+                (prefix / "agents" / "explorer.md").read_text(),
                 "real file",
             )
 
@@ -2417,16 +2331,16 @@ class TestSymlinkCustomizations(unittest.TestCase):
         """With --force, real file is replaced by the symlink."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
+            agentm = _fake_agentm_layout(base)
             prefix = base / "claude"
             (prefix / "agents").mkdir(parents=True)
-            (prefix / "agents" / "evaluator.md").write_text("real file", encoding="utf-8")
+            (prefix / "agents" / "explorer.md").write_text("real file", encoding="utf-8")
 
             result = install_symlinks.symlink_customizations(
-                {"crickets": str(crickets)}, prefix, force=True,
+                {"agentm": str(agentm)}, prefix, force=True,
             )
-            self.assertIn("agents/evaluator.md", result["repointed"])
-            self.assertTrue((prefix / "agents" / "evaluator.md").is_symlink())
+            self.assertIn("agents/explorer.md", result["repointed"])
+            self.assertTrue((prefix / "agents" / "explorer.md").is_symlink())
 
     def test_no_source_clones_returns_empty(self) -> None:
         """Empty source_clones dict → no symlinks; clean result (all categories empty)."""
@@ -2445,7 +2359,7 @@ class TestSymlinkCustomizations(unittest.TestCase):
         """source_clones with non-existent path → quietly skipped."""
         with tempfile.TemporaryDirectory() as tmp:
             result = install_symlinks.symlink_customizations(
-                {"crickets": str(Path(tmp) / "no-such-clone")},
+                {"agentm": str(Path(tmp) / "no-such-clone")},
                 Path(tmp) / "claude",
             )
             self.assertEqual(result["created"], [])
@@ -2466,15 +2380,15 @@ class TestInstallSymlinksCLI(unittest.TestCase):
             self.assertEqual(res.returncode, 1)
             self.assertIn("no source clones", res.stderr)
 
-    def test_install_crickets_via_cli(self) -> None:
+    def test_install_agentm_via_cli(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            crickets = _fake_crickets_layout(base)
+            agentm = _fake_agentm_layout(base)
             prefix = base / "claude"
-            res = self._run(str(prefix), "--crickets", str(crickets))
+            res = self._run(str(prefix), "--agentm", str(agentm))
             self.assertEqual(res.returncode, 0, res.stderr)
             data = json.loads(res.stdout)
-            self.assertEqual(len(data["created"]), 3)
+            self.assertEqual(len(data["created"]), 4)
 
 
 # -----------------------------------------------------------------------------
@@ -2686,407 +2600,6 @@ class TestAgentmUpdateLauncher(unittest.TestCase):
             )
             self.assertEqual(res.returncode, 1)
             self.assertIn("installer_source", res.stderr.lower())
-
-
-# -----------------------------------------------------------------------------
-# V4 #30 plan #22 task 6 — install_state_sync (SessionStart fragment re-merge)
-# -----------------------------------------------------------------------------
-
-_INSTALL_STATE_SYNC_PATH = _HERE / "install_state_sync.py"
-_spec_iss = _ilu.spec_from_file_location("install_state_sync", _INSTALL_STATE_SYNC_PATH)
-assert _spec_iss is not None and _spec_iss.loader is not None
-install_state_sync = _ilu.module_from_spec(_spec_iss)
-sys.modules["install_state_sync"] = install_state_sync
-_spec_iss.loader.exec_module(install_state_sync)
-
-
-def _seed_fragment_and_state(
-    prefix: Path,
-    fragment_path: Path,
-    fragment_content: str,
-    *,
-    recorded_sha: Optional[str] = None,
-) -> None:
-    """Write a fragment + an install-state.json that records it."""
-    fragment_path.parent.mkdir(parents=True, exist_ok=True)
-    fragment_path.write_text(fragment_content, encoding="utf-8")
-    import hashlib
-    actual_sha = hashlib.sha256(fragment_content.encode("utf-8")).hexdigest()
-    sha_to_record = recorded_sha if recorded_sha is not None else actual_sha
-    state = {
-        "version": 1,
-        "mode": "source",
-        "source_clones": {},
-        "installed_at": "2026-05-27T18:00:00Z",
-        "harness_version": "v4.3.0",
-        "fragments": [
-            {"path": str(fragment_path), "sha256": sha_to_record},
-        ],
-    }
-    prefix.mkdir(parents=True, exist_ok=True)
-    # v4.5.1: write directly to the post-migration filename
-    (prefix / ".agentm-config.json").write_text(
-        json.dumps(state, indent=2), encoding="utf-8",
-    )
-
-
-_VALID_FRAGMENT = json.dumps({
-    "hooks": {
-        "SessionStart": [
-            {"matcher": ".*", "hooks": [
-                {"type": "command", "command": "echo hi", "timeout": 5},
-            ]},
-        ],
-    },
-})
-
-
-class TestInstallStateSync(unittest.TestCase):
-    """V4 #30 task 6: SessionStart fragment re-merge."""
-
-    def test_graceful_skip_when_no_state(self) -> None:
-        """Missing install-state.json → graceful-skip (empty result)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            result = install_state_sync.sync_fragments(Path(tmp))
-            self.assertEqual(result, {"checked": [], "no_change": [], "re_merged": [], "errors": []})
-
-    def test_graceful_skip_when_no_fragments_field(self) -> None:
-        """install-state.json exists but has no `fragments` field → graceful-skip."""
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            (prefix / ".agentm-config.json").write_text(
-                json.dumps({"schema_version": 2, "mode": "release", "harness_version": "v4.3.0"}),
-                encoding="utf-8",
-            )
-            result = install_state_sync.sync_fragments(prefix)
-            self.assertEqual(result["checked"], [])
-
-    def test_matching_sha_is_no_op(self) -> None:
-        """Fragment unchanged since install → no_change; settings.json untouched."""
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            prefix = base / "prefix"
-            fragment_path = base / "src" / "settings-fragment-bash.json"
-            _seed_fragment_and_state(prefix, fragment_path, _VALID_FRAGMENT)
-            settings_path = prefix / "settings.json"
-            settings_path.write_text("{}", encoding="utf-8")
-            result = install_state_sync.sync_fragments(prefix)
-            self.assertEqual(len(result["no_change"]), 1)
-            self.assertEqual(result["re_merged"], [])
-
-    def test_divergent_sha_triggers_re_merge(self) -> None:
-        """Fragment changes after install → re-merge + update recorded SHA."""
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            prefix = base / "prefix"
-            fragment_path = base / "src" / "settings-fragment-bash.json"
-            # Seed with a SHA that doesn't match current content (simulates drift)
-            _seed_fragment_and_state(
-                prefix, fragment_path, _VALID_FRAGMENT,
-                recorded_sha="0" * 64,  # Wrong SHA → forces re-merge
-            )
-            (prefix / "settings.json").write_text("{}", encoding="utf-8")
-            result = install_state_sync.sync_fragments(prefix)
-            self.assertEqual(len(result["re_merged"]), 1)
-            # Verify recorded SHA was updated in install-state
-            state = json.loads(
-                (prefix / ".agentm-config.json").read_text(encoding="utf-8")
-            )
-            new_sha = state["fragments"][0]["sha256"]
-            self.assertNotEqual(new_sha, "0" * 64)
-            self.assertEqual(len(new_sha), 64)
-            # settings.json now has the merged hook entry
-            settings = json.loads((prefix / "settings.json").read_text(encoding="utf-8"))
-            self.assertIn("hooks", settings)
-            self.assertIn("SessionStart", settings["hooks"])
-
-    def test_missing_fragment_recorded_as_error(self) -> None:
-        """Fragment path recorded in state but file is gone → error (not crash)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            prefix = base / "prefix"
-            ghost_path = base / "src" / "ghost-fragment.json"
-            prefix.mkdir(parents=True)
-            state = {
-                "schema_version": 2,
-                "fragments": [{"path": str(ghost_path), "sha256": "abc"}],
-            }
-            (prefix / ".agentm-config.json").write_text(
-                json.dumps(state), encoding="utf-8",
-            )
-            result = install_state_sync.sync_fragments(prefix)
-            self.assertEqual(len(result["errors"]), 1)
-            self.assertIn(str(ghost_path), result["errors"])
-
-    def test_idempotent_on_re_run(self) -> None:
-        """Re-running after a successful re-merge → all no_change."""
-        with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
-            prefix = base / "prefix"
-            fragment_path = base / "src" / "settings-fragment-bash.json"
-            _seed_fragment_and_state(
-                prefix, fragment_path, _VALID_FRAGMENT,
-                recorded_sha="0" * 64,
-            )
-            (prefix / "settings.json").write_text("{}", encoding="utf-8")
-            install_state_sync.sync_fragments(prefix)
-            # Second run should be a no-op now that SHA is correct
-            result = install_state_sync.sync_fragments(prefix)
-            self.assertEqual(result["re_merged"], [])
-            self.assertEqual(len(result["no_change"]), 1)
-
-
-class TestInstallStateSyncCLI(unittest.TestCase):
-    """V4 #30 task 6: CLI smoke."""
-
-    def _run(self, *argv: str, env_overrides: Optional[dict] = None) -> subprocess.CompletedProcess:
-        env = os.environ.copy()
-        if env_overrides:
-            env.update(env_overrides)
-        return subprocess.run(
-            [sys.executable, str(_INSTALL_STATE_SYNC_PATH), *argv],
-            capture_output=True, text=True, env=env,
-        )
-
-    def test_quiet_mode_suppresses_stdout(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            res = self._run("--install-prefix", tmp, "--quiet")
-            self.assertEqual(res.returncode, 0)
-            self.assertEqual(res.stdout.strip(), "")
-
-    def test_nonquiet_emits_json(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            res = self._run("--install-prefix", tmp)
-            self.assertEqual(res.returncode, 0)
-            data = json.loads(res.stdout)
-            self.assertIn("checked", data)
-
-
-@unittest.skipIf(platform.system() == "Windows",
-                 "bash-only hook; Windows uses the .ps1 twin (separate tests)")
-class TestInstallStateSyncBashHook(unittest.TestCase):
-    """V4 #30 task 6: bash hook script behavior."""
-
-    _HOOK = Path(__file__).resolve().parent.parent / "harness" / "hooks" / "install-state-sync" / "install-state-sync.sh"
-
-    def test_hook_exists_and_executable(self) -> None:
-        self.assertTrue(self._HOOK.is_file(), f"hook missing at {self._HOOK}")
-        self.assertTrue(os.access(self._HOOK, os.X_OK), "hook not executable")
-
-    def test_hook_exits_0_when_no_install_state(self) -> None:
-        """Non-blocking contract: hook exits 0 even with no install state."""
-        with tempfile.TemporaryDirectory() as tmp:
-            res = subprocess.run(
-                ["bash", str(self._HOOK)],
-                capture_output=True, text=True,
-                env={**os.environ, "AGENTM_INSTALL_PREFIX": tmp, "HOME": tmp},
-            )
-            self.assertEqual(res.returncode, 0)
-
-
-# -----------------------------------------------------------------------------
-# V4 #30 plan #22 task 7 — upstream_version_check (release-mode update notice)
-# -----------------------------------------------------------------------------
-
-_UVC_PATH = _HERE / "upstream_version_check.py"
-_spec_uvc = _ilu.spec_from_file_location("upstream_version_check", _UVC_PATH)
-assert _spec_uvc is not None and _spec_uvc.loader is not None
-upstream_version_check = _ilu.module_from_spec(_spec_uvc)
-sys.modules["upstream_version_check"] = upstream_version_check
-_spec_uvc.loader.exec_module(upstream_version_check)
-
-
-class TestVersionTuple(unittest.TestCase):
-    def test_strips_v_prefix(self) -> None:
-        self.assertEqual(upstream_version_check._version_tuple("v4.2.0"), (4, 2, 0))
-        self.assertEqual(upstream_version_check._version_tuple("4.2.0"), (4, 2, 0))
-
-    def test_strips_prerelease_suffix(self) -> None:
-        self.assertEqual(upstream_version_check._version_tuple("v4.2.0-rc1"), (4, 2, 0))
-
-    def test_orders_correctly(self) -> None:
-        v1 = upstream_version_check._version_tuple("v4.2.0")
-        v2 = upstream_version_check._version_tuple("v4.3.0")
-        self.assertGreater(v2, v1)
-
-
-class TestCacheFreshness(unittest.TestCase):
-    def test_fresh_cache_within_ttl(self) -> None:
-        cache = {"fetched_at": upstream_version_check._iso_utc_now()}
-        self.assertTrue(upstream_version_check.is_cache_fresh(cache, ttl_seconds=3600))
-
-    def test_stale_cache_past_ttl(self) -> None:
-        # 25h ago
-        past = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() - 25 * 3600))
-        cache = {"fetched_at": past}
-        self.assertFalse(upstream_version_check.is_cache_fresh(cache, ttl_seconds=24 * 3600))
-
-    def test_missing_fetched_at(self) -> None:
-        self.assertFalse(upstream_version_check.is_cache_fresh({}))
-
-
-class TestRefreshCache(unittest.TestCase):
-    def test_refresh_writes_cache_with_fetched_tags(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            fake_tags = {
-                "alexherrero/agentm": "v4.3.0",
-                "alexherrero/crickets": "v2.1.0",
-            }
-            data = upstream_version_check.refresh_cache(
-                prefix,
-                fetcher=lambda repo: fake_tags[repo],
-            )
-            self.assertEqual(data["alexherrero/agentm"], "v4.3.0")
-            self.assertEqual(data["alexherrero/crickets"], "v2.1.0")
-            self.assertIn("fetched_at", data)
-            # Cache persisted to disk
-            written = json.loads(
-                (prefix / ".upstream-version-check-cache.json").read_text(encoding="utf-8")
-            )
-            self.assertEqual(written["alexherrero/agentm"], "v4.3.0")
-
-    def test_refresh_preserves_prior_on_fetch_failure(self) -> None:
-        """Network failure for one repo → keep prior cached value."""
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            # Seed prior cache
-            upstream_version_check.write_cache(prefix, {
-                "fetched_at": "2026-05-26T00:00:00Z",
-                "alexherrero/agentm": "v4.2.0",
-                "alexherrero/crickets": "v2.0.0",
-            })
-
-            def fetcher(repo: str) -> Optional[str]:
-                # Fail for one repo
-                return "v4.3.0" if "agentm" in repo else None
-
-            data = upstream_version_check.refresh_cache(prefix, fetcher=fetcher)
-            self.assertEqual(data["alexherrero/agentm"], "v4.3.0")  # refreshed
-            self.assertEqual(data["alexherrero/crickets"], "v2.0.0")  # preserved
-
-
-class TestFindNewerVersions(unittest.TestCase):
-    def test_finds_newer_versions(self) -> None:
-        cache = {"alexherrero/agentm": "v4.3.0", "alexherrero/crickets": "v2.1.0"}
-        installed = {"alexherrero/agentm": "v4.2.0", "alexherrero/crickets": "v2.1.0"}
-        notices = upstream_version_check.find_newer_versions(cache, installed=installed)
-        self.assertEqual(len(notices), 1)
-        self.assertEqual(notices[0], ("alexherrero/agentm", "v4.2.0", "v4.3.0"))
-
-    def test_same_version_returns_empty(self) -> None:
-        cache = {"alexherrero/agentm": "v4.3.0"}
-        installed = {"alexherrero/agentm": "v4.3.0"}
-        self.assertEqual(upstream_version_check.find_newer_versions(cache, installed=installed), [])
-
-    def test_installed_newer_than_cache_returns_empty(self) -> None:
-        """Defensive: if installed > cached (manual install), no notice."""
-        cache = {"alexherrero/agentm": "v4.2.0"}
-        installed = {"alexherrero/agentm": "v4.3.0"}
-        self.assertEqual(upstream_version_check.find_newer_versions(cache, installed=installed), [])
-
-
-class TestCheckAndNotify(unittest.TestCase):
-    def test_emits_stderr_notice_for_newer_version(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            from io import StringIO
-            old_stderr = sys.stderr
-            sys.stderr = StringIO()
-            try:
-                upstream_version_check.check_and_notify(
-                    prefix,
-                    installed={"alexherrero/agentm": "v4.0.0"},
-                    fetcher=lambda repo: "v4.3.0",
-                )
-                stderr_output = sys.stderr.getvalue()
-            finally:
-                sys.stderr = old_stderr
-            self.assertIn("v4.3.0", stderr_output)
-            self.assertIn("agentm", stderr_output)
-            self.assertIn("agentm-update", stderr_output)
-
-    def test_no_notice_when_same_version(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            from io import StringIO
-            old_stderr = sys.stderr
-            sys.stderr = StringIO()
-            try:
-                upstream_version_check.check_and_notify(
-                    prefix,
-                    installed={"alexherrero/agentm": "v4.3.0"},
-                    fetcher=lambda repo: "v4.3.0",
-                )
-                stderr_output = sys.stderr.getvalue()
-            finally:
-                sys.stderr = old_stderr
-            self.assertEqual(stderr_output.strip(), "")
-
-    def test_uses_cache_when_fresh(self) -> None:
-        """Fresh cache → no fetcher call."""
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            upstream_version_check.write_cache(prefix, {
-                "fetched_at": upstream_version_check._iso_utc_now(),
-                "alexherrero/agentm": "v4.3.0",
-            })
-            fetcher_called: list[str] = []
-            def tracker(repo: str) -> str:
-                fetcher_called.append(repo)
-                return "v9.9.9"
-            upstream_version_check.check_and_notify(
-                prefix,
-                installed={"alexherrero/agentm": "v4.3.0"},
-                fetcher=tracker,
-            )
-            self.assertEqual(fetcher_called, [])  # Used cache; no fetch
-
-    def test_force_refresh_bypasses_cache(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            upstream_version_check.write_cache(prefix, {
-                "fetched_at": upstream_version_check._iso_utc_now(),
-                "alexherrero/agentm": "v4.2.0",
-            })
-            upstream_version_check.check_and_notify(
-                prefix,
-                installed={"alexherrero/agentm": "v4.0.0"},
-                fetcher=lambda repo: "v9.9.9",
-                force_refresh=True,
-            )
-            cache = upstream_version_check.read_cache(prefix)
-            self.assertEqual(cache["alexherrero/agentm"], "v9.9.9")
-
-
-class TestUpstreamVersionCheckCLI(unittest.TestCase):
-    """V4 #30 task 7: CLI smoke."""
-
-    def _run(self, *argv: str, env_overrides: Optional[dict] = None) -> subprocess.CompletedProcess:
-        env = os.environ.copy()
-        if env_overrides:
-            env.update(env_overrides)
-        return subprocess.run(
-            [sys.executable, str(_UVC_PATH), *argv],
-            capture_output=True, text=True, env=env,
-        )
-
-    def test_cli_emits_json_summary(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            prefix = Path(tmp)
-            upstream_version_check.write_cache(prefix, {
-                "fetched_at": upstream_version_check._iso_utc_now(),
-                "alexherrero/agentm": "v4.3.0",
-            })
-            # Pass --installed to trigger comparison
-            res = self._run(
-                "--install-prefix", str(prefix),
-                "--installed", '{"alexherrero/agentm": "v4.3.0"}',
-            )
-            self.assertEqual(res.returncode, 0)
-            data = json.loads(res.stdout)
-            self.assertIn("cache", data)
-            self.assertIn("notices", data)
 
 
 if __name__ == "__main__":

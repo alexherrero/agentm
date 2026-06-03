@@ -4,11 +4,11 @@ lib/install/python/install_state.py's `persist` subcommand.
 
 The function `persist_install_state()` already accepted a `fragments` param;
 v4.6.1 exposes it via the CLI so install.sh can record the {path, sha256} of
-each merged settings fragment (for install_state_sync drift detection).
+each merged settings fragment (install-time metadata).
 
-Driven as a subprocess to exercise the real CLI. `--agentm-path` /
-`--crickets-path` are pointed at empty temp dirs to force deterministic
-release-mode detection (independent of the test host's real clones).
+Driven as a subprocess to exercise the real CLI. `--agentm-path` is pointed
+at an empty temp dir to force deterministic release-mode detection
+(independent of the test host's real clone).
 
 Run: python3 scripts/test_install_state_fragments.py
 """
@@ -32,11 +32,9 @@ class TestPersistFragments(unittest.TestCase):
         self.root = Path(self.tmp.name)
         self.prefix = self.root / "prefix"
         self.prefix.mkdir()
-        # Empty dirs → not source clones → deterministic release mode.
+        # Empty dir → not a source clone → deterministic release mode.
         self.fake_agentm = self.root / "no-agentm"
-        self.fake_crickets = self.root / "no-crickets"
         self.fake_agentm.mkdir()
-        self.fake_crickets.mkdir()
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -46,7 +44,6 @@ class TestPersistFragments(unittest.TestCase):
             [sys.executable, str(_INSTALL_STATE), "persist", str(self.prefix),
              "--harness-version", "v4.6.1",
              "--agentm-path", str(self.fake_agentm),
-             "--crickets-path", str(self.fake_crickets),
              *extra],
             capture_output=True, text=True,
         )

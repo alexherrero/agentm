@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """install_symlinks — symlink customizations from source clones into install prefix.
 
-Source mode of V4 #30 plan #22 task 4. When the operator has source-clone
-canonical paths for agentm + crickets, install symlinks the customizations
+Source mode of V4 #30 plan #22 task 4. When the operator has the agentm
+source clone at its canonical path, install symlinks the customizations
 subset (per locked DC-7) so edits to the clone propagate live without
 re-running the installer.
 
-Symlinkable subset (DC-7):
-- Skill dirs       (crickets/skills/<name>/  + agentm/adapters/claude-code/skills/<name>/)
-- Agent .md files  (crickets/agents/<name>.md + agentm/harness/agents/<name>.md +
+Symlinkable subset (DC-7), all from the agentm clone:
+- Skill dirs       (agentm/harness/skills/<name>/ + agentm/adapters/claude-code/skills/<name>/)
+- Agent .md files  (agentm/harness/agents/<name>.md +
                     agentm/adapters/claude-code/agents/<name>.md)
 - Command .md files (agentm/adapters/claude-code/commands/<name>.md)
-- Hook bundles     (crickets/hooks/<name>/ — each hook is a dir bundle)
+- Hook bundles     (agentm/harness/hooks/<name>/ — each hook is a dir bundle)
 - User-scope helper scripts (agentm/templates/scripts/telemetry.sh →
                     <prefix>/scripts/telemetry.sh). telemetry roots across
                     multiple projects (`--all` walks ~/Antigravity etc.) so
@@ -87,33 +87,7 @@ def symlink_targets_for_clone(
     """
     out: list[tuple[Path, str, bool]] = []
 
-    if clone_slug == "crickets":
-        # crickets/skills/<name>/  → skills/<name>
-        skills_dir = clone_root / "skills"
-        if skills_dir.is_dir():
-            for child in sorted(skills_dir.iterdir()):
-                if child.is_dir() and not child.name.startswith("."):
-                    out.append((child, f"skills/{child.name}", True))
-        # crickets/hooks/<name>/   → hooks/<name>
-        hooks_dir = clone_root / "hooks"
-        if hooks_dir.is_dir():
-            for child in sorted(hooks_dir.iterdir()):
-                if child.is_dir() and not child.name.startswith("."):
-                    out.append((child, f"hooks/{child.name}", True))
-        # crickets/agents/<name>.md → agents/<name>.md
-        agents_dir = clone_root / "agents"
-        if agents_dir.is_dir():
-            for child in sorted(agents_dir.iterdir()):
-                if child.is_file() and child.suffix == ".md":
-                    out.append((child, f"agents/{child.name}", False))
-        # crickets/commands/<name>.md → commands/<name>.md
-        commands_dir = clone_root / "commands"
-        if commands_dir.is_dir():
-            for child in sorted(commands_dir.iterdir()):
-                if child.is_file() and child.suffix == ".md":
-                    out.append((child, f"commands/{child.name}", False))
-
-    elif clone_slug == "agentm":
+    if clone_slug == "agentm":
         # agentm/harness/agents/<name>.md → agents/<name>.md
         harness_agents = clone_root / "harness" / "agents"
         if harness_agents.is_dir():
@@ -433,10 +407,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="path to agentm source clone (omit if not present)",
     )
     parser.add_argument(
-        "--crickets", default=None,
-        help="path to crickets source clone (omit if not present)",
-    )
-    parser.add_argument(
         "--force", action="store_true",
         help="replace real files/dirs at target paths (default: skip with warn)",
     )
@@ -450,8 +420,6 @@ def main(argv: Optional[list[str]] = None) -> int:
     source_clones: dict[str, str] = {}
     if args.agentm:
         source_clones["agentm"] = str(Path(os.path.expanduser(args.agentm)))
-    if args.crickets:
-        source_clones["crickets"] = str(Path(os.path.expanduser(args.crickets)))
 
     if not source_clones:
         print(

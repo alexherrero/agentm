@@ -65,7 +65,6 @@ Then:
    | `hooks/` populated + `hooks` block + some `command` paths point at missing files | `[FAIL] X of N registered hook commands point at missing scripts: <list>` |
    | `hooks/` populated + `hooks` block + some installed hook dirs not registered | `[WARN] <list> installed but not registered — partial merge` |
    | `<prefix>/.agentm-config.json` missing while user-scope primitives present | `[WARN] partial install — install-state file missing` |
-   | `.agentm-config.json` lacks a `fragments` field (or it's empty) while hooks ARE installed | `[WARN] fragments tracking absent — install-state-sync won't propagate source-clone edits` |
 
    Also confirm bash-installed commands are bash-shell (not pwsh). The pre-V4 #39 behavior — treating an absent `hooks` block as "opt-in, OK" — was a **false-clean**: it masked the exact regression where hook dirs were installed but never registered.
 
@@ -148,7 +147,7 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
     skills            [OK]  3/3 required, 6 optional present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     host wiring       [OK]  AGENTS.md + CLAUDE.md
-    hooks             [OK]  10 hooks wired (memory-recall-session-start, install-state-sync, …)
+    hooks             [OK]  7 hooks wired (memory-recall-session-start, harness-context-session-start, …)
 
   live probes (--live):
     explorer          [OK]   2.1s

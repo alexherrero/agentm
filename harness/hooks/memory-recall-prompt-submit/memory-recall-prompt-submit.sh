@@ -32,10 +32,10 @@ try:
     d = json.load(open(sys.argv[1]))
 except Exception:
     sys.exit(0)
-print((d.get("source_clones") or {}).get("crickets") or "")
+print((d.get("source_clones") or {}).get("agentm") or "")
 ' "$cfg" 2>/dev/null || true)"
-        if [[ -n "$clone" && -f "$clone/skills/memory/scripts/$script" ]]; then
-            printf '%s\n' "$clone/skills/memory/scripts/$script"; return 0
+        if [[ -n "$clone" && -f "$clone/harness/skills/memory/scripts/$script" ]]; then
+            printf '%s\n' "$clone/harness/skills/memory/scripts/$script"; return 0
         fi
     fi
     return 1

@@ -44,7 +44,7 @@ jobs:
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where
-        # test_install_migrate.py + test_install_state_sync.py were invisible.
+        # test_install_migrate.py was invisible.
         # Subshell `cd` because scripts/ lacks __init__.py (regular package
         # required for discover from a non-cwd start dir).
         run: (cd scripts && python3 -m unittest discover -p 'test_*.py')

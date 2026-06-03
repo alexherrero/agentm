@@ -32,7 +32,7 @@ jobs:
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where
-        # test_install_migrate.py + test_install_state_sync.py were invisible.
+        # test_install_migrate.py was invisible.
         run: (cd scripts && python3 -m unittest discover -p 'test_*.py')
       - name: V4 push-surface integration check (verify-v4.sh)
         # End-to-end check of the auto-orchestration surface against a throwaway

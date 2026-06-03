@@ -60,12 +60,13 @@ MARKER_EOF
 fi
 
 # ── Recall pass ────────────────────────────────────────────────────────────
-# Resolve recall.py across install scopes. Memory skill ships in crickets;
-# install can be project-scope (<cwd>/.claude/skills/memory/...), user-scope
-# (~/.claude/skills/memory/..., default since agentm v4.3.0), or source-mode
-# (skill lives in the crickets clone; path recorded in .agentm-config.json's
-# source_clones.crickets). Pre-fix, this hook hardcoded the project-scope
-# relative path and silently no-op'd on user-scope installs.
+# Resolve recall.py across install scopes. Memory skill is agentm-native
+# (harness/skills/memory/). Install can be project-scope
+# (<cwd>/.claude/skills/memory/...), user-scope (~/.claude/skills/memory/...,
+# default since agentm v4.3.0 — a symlink into the agentm clone under source
+# mode), or a source-mode clone fallback (path recorded in .agentm-config.json's
+# source_clones.agentm → <clone>/harness/skills/memory/). Pre-fix, this hook
+# hardcoded the project-scope relative path and silently no-op'd on user-scope.
 _resolve_memory_script() {  # $1 = script basename (e.g. recall.py)
     local script="$1"
     local prefix="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}"
@@ -84,10 +85,10 @@ try:
     d = json.load(open(sys.argv[1]))
 except Exception:
     sys.exit(0)
-print((d.get("source_clones") or {}).get("crickets") or "")
+print((d.get("source_clones") or {}).get("agentm") or "")
 ' "$cfg" 2>/dev/null || true)"
-        if [[ -n "$clone" && -f "$clone/skills/memory/scripts/$script" ]]; then
-            printf '%s\n' "$clone/skills/memory/scripts/$script"; return 0
+        if [[ -n "$clone" && -f "$clone/harness/skills/memory/scripts/$script" ]]; then
+            printf '%s\n' "$clone/harness/skills/memory/scripts/$script"; return 0
         fi
     fi
     return 1

@@ -35,7 +35,7 @@ Written to `<target>/.agentm-migrate-record.json` on apply; read on rollback.
   "version": 1,
   "target_root": "/path/to/project",
   "migrated_at": "2026-05-27T18:00:00Z",
-  "source_clones_used": {"agentm": "...", "crickets": "..."},
+  "source_clones_used": {"agentm": "..."},
   "registered_slug": "myproject",   // null if --no-register or registry skipped
   "actions": [
     {"kind": "safe_to_migrate",
@@ -167,12 +167,12 @@ def inverse_mapping_for_clones(
     `install_state.detect_source_clones()`), invert the forward mapping
     returned by `install_symlinks.symlink_targets_for_clone()` so that for
     any `<install_rel>` (e.g. `agents/foo.md`) we can recover:
-      - which source clone provides it (`agentm` or `crickets`)
+      - which source clone provides it (`agentm`)
       - the canonical source path under that clone
       - whether it's a dir bundle (`is_dir=True`) or single file
 
-    If two clones both map the same install_rel (e.g. both agentm + crickets
-    own `agents/explorer.md` by some accident), the FIRST clone iterated wins.
+    If two clones both map the same install_rel (by some accident), the
+    FIRST clone iterated wins.
     In practice the symlinkable subset partitions cleanly across clones; the
     overlap path is defensive only.
 
@@ -707,20 +707,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--agentm", default=None,
         help="path to agentm source clone (default: ~/Antigravity/agentm)",
     )
-    parser.add_argument(
-        "--crickets", default=None,
-        help="path to crickets source clone (default: ~/Antigravity/crickets)",
-    )
     return parser
 
 
 def _resolve_source_clones(args) -> dict[str, str]:
-    """Resolve --agentm / --crickets args via install_state.detect_source_clones."""
+    """Resolve the --agentm arg via install_state.detect_source_clones."""
     try:
         from install_state import detect_source_clones
     except ImportError:  # pragma: no cover
         from .install_state import detect_source_clones  # type: ignore
-    return detect_source_clones(args.agentm, args.crickets)
+    return detect_source_clones(args.agentm)
 
 
 def main(argv: Optional[list[str]] = None) -> int:

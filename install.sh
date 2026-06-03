@@ -264,12 +264,12 @@ _agentm_vault_first_run_prompt() {
 # <prefix>/hooks/<name>/ but, pre-v4.6.1, never merged their
 # settings-fragment-bash.json into <prefix>/settings.json — so no SessionStart
 # (or other) hook actually fired. This function walks the INSTALLED hook dirs
-# (covers both agentm harness/hooks/ and crickets hooks/, whichever landed),
+# (agentm harness/hooks/, landed under <prefix>/hooks/),
 # merges each bash fragment, and ABSOLUTIZES the command to the user-scope dir
 # layout `bash <prefix>/hooks/<name>/<name>.sh` (source fragments stay
 # project-relative on disk; we rewrite per scope — locked DC-1). Writes a JSON
 # array of {path, sha256} fragment records to $2 for the install-state
-# `fragments` field (install_state_sync drift detection). Idempotent: re-running
+# `fragments` field (install-time metadata). Idempotent: re-running
 # merges nothing new (dedup by absolutized command) + recomputes identical records.
 _agentm_merge_user_hook_fragments() {
     local prefix="$1" out="$2"
@@ -343,7 +343,6 @@ if [[ "$SCOPE" == "user" ]]; then
     # Source-mode: symlink customizations subset from source clones
     SOURCE_FLAGS=()
     [[ -d "$HOME/Antigravity/agentm" ]] && SOURCE_FLAGS+=(--agentm "$HOME/Antigravity/agentm")
-    [[ -d "$HOME/Antigravity/crickets" ]] && SOURCE_FLAGS+=(--crickets "$HOME/Antigravity/crickets")
     if [[ ${#SOURCE_FLAGS[@]} -gt 0 ]]; then
       _SYM_OUT="$(python3 "$HARNESS_ROOT/lib/install/python/install_symlinks.py" \
         "$USER_INSTALL_PREFIX" "${SOURCE_FLAGS[@]}" 2>/dev/null || echo '{}')"

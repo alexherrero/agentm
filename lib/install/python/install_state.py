@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
 """install_state — probe + persist install mode (source vs release).
 
-Used by `install.sh` + `install.ps1` to detect whether the operator has
-source-clone canonical paths for agentm + crickets. The decision drives
-tasks 4-5 in V4 #30 plan #22:
+Used by `install.sh` + `install.ps1` to detect whether the operator has a
+source-clone canonical path for agentm. The decision drives the install
+dispatch (V4 #30 plan #22 tasks 4-5):
 
-  - Source mode  → symlink the customizations subset from source clones
-                   into the install prefix (skill dirs, agent .md, command
-                   .md, hook scripts, hook .py helpers — per locked DC-7).
-  - Release mode → copy customizations from release tarballs into the
-                   install prefix; SessionStart hook surfaces upstream-
-                   version-check notices (per locked DC-3).
+  - Source mode  → symlink the customizations subset from the agentm source
+                   clone into the install prefix (skill dirs, agent .md,
+                   command .md, hook scripts, hook .py helpers — per DC-7).
+  - Release mode → copy customizations from the release tree into the
+                   install prefix.
 
-Canonical clone paths checked:
+Canonical clone path checked:
 
   ~/Antigravity/agentm/    + has .git/  + has harness/  → agentm source present
-  ~/Antigravity/crickets/  + has .git/  + has skills/   → crickets source present
 
 The probe is **silent** — emits nothing to stdout except the JSON persist
 target. Operator sees no prompt; the install dispatches based on the
@@ -28,7 +26,6 @@ Schema (v2; v4.5.1+) — written to `<install-prefix>/.agentm-config.json`:
       "mode": "source" | "release",
       "source_clones": {
         "agentm":  "/srv/projects/agentm"  // present iff detected
-        "crickets": "/srv/projects/crickets"
       },
       "installed_at": "2026-05-27T18:00:00Z",
       "harness_version": "v4.5.1",                   // semver string
@@ -43,8 +40,7 @@ Pre-v4.5.1 installs may have a legacy `.agentm-install-state.json` file with
 schema v1 (`"version": 1`, no `vault_path` field). `persist_install_state()`
 auto-migrates: reads the legacy file (if new file absent), preserves any
 `vault_path` field found, removes the legacy file, and writes schema v2 under
-the new name. Matches the read-side migration in
-`scripts/install_state_sync.py::_read_state()`.
+the new name. The read side is `read_install_state()` below.
 
 Stdlib-only (ADR 0001). Cross-platform via pathlib + os.path.expanduser.
 
@@ -64,16 +60,15 @@ from typing import Optional
 # `_LEGACY_FILENAME` is read at persist-time to migrate pre-v4.5.1 installs:
 # if the legacy file exists at the install prefix and the new file doesn't,
 # we read the legacy contents + persist them under the new name + remove the
-# legacy. Atomic via `os.replace()`. Matches the read-side migration logic in
-# `scripts/install_state_sync.py::_read_state()` (task 1).
+# legacy. Atomic via `os.replace()`. The read side is `read_install_state()`
+# below (resolves new → legacy filename without rewriting on disk).
 _SCHEMA_VERSION = 2
 _STATE_FILENAME = ".agentm-config.json"
 _LEGACY_FILENAME = ".agentm-install-state.json"
 
-# Default canonical clone paths — operator's documented dev-setup convention.
-# Overridable via CLI flags for tests + non-default setups.
+# Default canonical clone path — operator's documented dev-setup convention.
+# Overridable via CLI flag for tests + non-default setups.
 _DEFAULT_AGENTM_CLONE = "~/Antigravity/agentm"
-_DEFAULT_CRICKETS_CLONE = "~/Antigravity/crickets"
 
 
 # -----------------------------------------------------------------------------
@@ -85,53 +80,37 @@ def _is_agentm_source_clone(path: Path) -> bool:
     return path.is_dir() and (path / ".git").exists() and (path / "harness").is_dir()
 
 
-def _is_crickets_source_clone(path: Path) -> bool:
-    """Heuristic: path is a crickets source clone if it has .git/ + skills/."""
-    return path.is_dir() and (path / ".git").exists() and (path / "skills").is_dir()
-
-
 def detect_source_clones(
     agentm_path: Path | str | None = None,
-    crickets_path: Path | str | None = None,
 ) -> dict[str, str]:
-    """Probe canonical paths; return `{agentm?, crickets?}` of detected clones.
+    """Probe the canonical path; return `{agentm?}` of the detected clone.
 
-    Returns a dict containing only the keys whose paths were verified as
-    source clones. Missing keys mean "not detected".
+    Returns a dict containing the `agentm` key iff the path was verified as
+    an agentm source clone. Missing key means "not detected".
 
-    Both args default to the operator-canonical paths (`~/Antigravity/<repo>`);
-    pass explicit paths for tests or non-default setups.
+    The arg defaults to the operator-canonical path (`~/Antigravity/agentm`);
+    pass an explicit path for tests or non-default setups.
 
     Pure read; no writes. Cross-platform via pathlib.
     """
     if agentm_path is None:
         agentm_path = _DEFAULT_AGENTM_CLONE
-    if crickets_path is None:
-        crickets_path = _DEFAULT_CRICKETS_CLONE
     out: dict[str, str] = {}
     agentm = Path(os.path.expanduser(str(agentm_path)))
-    crickets = Path(os.path.expanduser(str(crickets_path)))
     if _is_agentm_source_clone(agentm):
         out["agentm"] = str(agentm)
-    if _is_crickets_source_clone(crickets):
-        out["crickets"] = str(crickets)
     return out
 
 
 def detect_install_mode(
     agentm_path: Path | str | None = None,
-    crickets_path: Path | str | None = None,
 ) -> tuple[str, dict[str, str]]:
-    """Return `(mode, source_clones)` based on detected clones.
+    """Return `(mode, source_clones)` based on the detected agentm clone.
 
-    - At least one clone detected → mode='source'
-    - Neither clone detected      → mode='release'
-
-    Source mode wins even with partial detection (e.g. only agentm cloned;
-    crickets installed via release). The mixed case is handled by the
-    install dispatch logic — symlink what's cloned, copy what isn't.
+    - agentm clone detected → mode='source' (symlink customizations from it)
+    - not detected          → mode='release' (copy customizations from tarball)
     """
-    clones = detect_source_clones(agentm_path, crickets_path)
+    clones = detect_source_clones(agentm_path)
     mode = "source" if clones else "release"
     return mode, clones
 
@@ -173,10 +152,9 @@ def persist_install_state(
         customizations as last installed. Used by `install_copy.py` for
         divergence detection on subsequent updates.
       - `fragments` (optional): list of `{path, sha256}` records describing
-        the settings.json fragments that were merged at install time. Used
-        by `install_state_sync.py` SessionStart hook for digest-aware
-        re-merge when fragments drift (operator edits source clone in
-        source mode; --update refreshes copy in release mode).
+        the settings.json fragments that were merged at install time.
+        Retained as install-time metadata (records which hook fragments were
+        merged + their SHA at install).
     """
     if mode not in ("source", "release"):
         raise ValueError(f"mode must be 'source' or 'release', got: {mode!r}")
@@ -187,8 +165,8 @@ def persist_install_state(
 
     # v4.5.1: preserve pre-existing vault_path field across re-install + handle
     # the legacy filename. Resolution: read new file → fall back to legacy
-    # filename if present (and remove legacy after harvest; matches the
-    # read-side migration in scripts/install_state_sync.py).
+    # filename if present (and remove legacy after harvest; mirrors the
+    # read side in read_install_state()).
     new_path = prefix / _STATE_FILENAME
     legacy_path = prefix / _LEGACY_FILENAME
     preserved: dict = {}
@@ -244,8 +222,7 @@ def read_install_state(install_prefix: Path | str) -> Optional[dict]:
     Resolution: prefer `.agentm-config.json` (v4.5.1+ canonical); fall back
     to legacy `.agentm-install-state.json` if only the legacy file exists.
     This is a READ — does not migrate the file on disk. Migration happens
-    on the next `persist_install_state()` call OR via the SessionStart hook
-    in scripts/install_state_sync.py.
+    on the next `persist_install_state()` call.
 
     None semantics: caller treats no-state as "first install / pre-#30
     install"; the next persist will create the file.
@@ -281,7 +258,6 @@ def _build_parser() -> argparse.ArgumentParser:
         "detect", help="emit detected install mode + source clones as JSON",
     )
     p_detect.add_argument("--agentm-path", default=None, help="override canonical agentm clone path")
-    p_detect.add_argument("--crickets-path", default=None, help="override canonical crickets clone path")
 
     p_persist = sub.add_parser(
         "persist",
@@ -290,9 +266,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_persist.add_argument("install_prefix", help="install destination (e.g. ~/.claude or <target>/.claude)")
     p_persist.add_argument("--harness-version", required=True, help="harness version string (e.g. v4.3.0)")
     p_persist.add_argument("--agentm-path", default=None, help="override canonical agentm clone path")
-    p_persist.add_argument("--crickets-path", default=None, help="override canonical crickets clone path")
     p_persist.add_argument("--installer-source", default=None, help="absolute path to install.sh used to bootstrap (recorded for agentm-update launcher)")
-    p_persist.add_argument("--fragments-file", default=None, help="path to a JSON file containing a list of {path, sha256} records for settings.json fragments merged at install time (written to the .fragments field for install_state_sync drift detection)")
+    p_persist.add_argument("--fragments-file", default=None, help="path to a JSON file containing a list of {path, sha256} records for settings.json fragments merged at install time (written to the .fragments install-time metadata field)")
 
     p_read = sub.add_parser(
         "read", help="emit current install state JSON, or empty if absent",
@@ -311,7 +286,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     if args.cmd == "detect":
-        mode, clones = detect_install_mode(args.agentm_path, args.crickets_path)
+        mode, clones = detect_install_mode(args.agentm_path)
         sys.stdout.write(json.dumps({
             "mode": mode,
             "source_clones": clones,
@@ -320,7 +295,7 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.cmd == "persist":
         try:
-            mode, clones = detect_install_mode(args.agentm_path, args.crickets_path)
+            mode, clones = detect_install_mode(args.agentm_path)
             prefix = Path(os.path.expanduser(args.install_prefix))
             fragments = None
             if args.fragments_file is not None:

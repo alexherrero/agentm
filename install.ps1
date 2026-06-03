@@ -94,9 +94,7 @@ if ($Scope -eq 'user') {
     if ($mode -eq 'source') {
         $args = @($UserInstallPrefix)
         $agentmClone = Join-Path $HOME 'Antigravity/agentm'
-        $cricketsClone = Join-Path $HOME 'Antigravity/crickets'
         if (Test-Path $agentmClone) { $args += '--agentm'; $args += $agentmClone }
-        if (Test-Path $cricketsClone) { $args += '--crickets'; $args += $cricketsClone }
         & $pythonCmd.Source $installSymlinksPy @args | Out-Null
         Write-Host '    symlinks: created'
     } else {

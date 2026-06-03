@@ -45,9 +45,10 @@ from install_symlinks import symlink_targets_for_clone  # noqa: E402
 # -----------------------------------------------------------------------------
 
 def _make_source_clones(root: Path) -> dict[str, str]:
-    """Build a fake source-clones tree under `root` shaped like agentm+crickets.
+    """Build a fake source-clones tree under `root` shaped like the agentm clone.
 
-    Returns the source_clones dict {agentm, crickets} as paths.
+    Returns the source_clones dict {agentm} as paths (agentm-only since the
+    crickets decouple — crickets self-manages as native plugins).
 
     Layout (matches symlink_targets_for_clone():
 
@@ -58,17 +59,9 @@ def _make_source_clones(root: Path) -> dict[str, str]:
       <root>/agentm/adapters/claude-code/agents/adversarial.md
       <root>/agentm/adapters/claude-code/commands/work.md
       <root>/agentm/adapters/claude-code/skills/diataxis/SKILL.md
-
-      <root>/crickets/.git/
-      <root>/crickets/skills/pii-scrubber/SKILL.md
-      <root>/crickets/hooks/pre-push/hook.sh
-      <root>/crickets/agents/code-reviewer.md
-      <root>/crickets/commands/release.md
     """
     agentm = root / "agentm"
-    crickets = root / "crickets"
     (agentm / ".git").mkdir(parents=True)
-    (crickets / ".git").mkdir(parents=True)
 
     # agentm/harness/
     (agentm / "harness" / "agents").mkdir(parents=True)
@@ -86,23 +79,13 @@ def _make_source_clones(root: Path) -> dict[str, str]:
     (agentm / "adapters" / "claude-code" / "skills" / "diataxis").mkdir(parents=True)
     (agentm / "adapters" / "claude-code" / "skills" / "diataxis" / "SKILL.md").write_text("diataxis skill\n")
 
-    # crickets/
-    (crickets / "skills" / "pii-scrubber").mkdir(parents=True)
-    (crickets / "skills" / "pii-scrubber" / "SKILL.md").write_text("pii skill\n")
-    (crickets / "hooks" / "pre-push").mkdir(parents=True)
-    (crickets / "hooks" / "pre-push" / "hook.sh").write_text("#!/bin/sh\n")
-    (crickets / "agents").mkdir(parents=True)
-    (crickets / "agents" / "code-reviewer.md").write_text("code-reviewer agent\n")
-    (crickets / "commands").mkdir(parents=True)
-    (crickets / "commands" / "release.md").write_text("release command\n")
-
-    return {"agentm": str(agentm), "crickets": str(crickets)}
+    return {"agentm": str(agentm)}
 
 
 def _copy_from_source(source_clones: dict[str, str], target: Path, rels: list[str]) -> None:
     """Copy SOURCE-canonical files into `<target>/.claude/<rel>` to simulate
     a pre-V4.3 per-project install. `rels` are install-rel paths
-    (e.g. "agents/explorer.md", "skills/pii-scrubber")."""
+    (e.g. "agents/explorer.md", "skills/wiki-author")."""
     inverse = im.inverse_mapping_for_clones(source_clones)
     for rel in rels:
         slug, src, is_dir = inverse[rel]
@@ -172,13 +155,13 @@ class ClassifyTests(unittest.TestCase):
 
     def test_classify_safe_to_migrate_dir_bundle(self):
         """A byte-identical skill dir bundle → SAFE_TO_MIGRATE."""
-        _copy_from_source(self.clones, self.target, ["skills/pii-scrubber"])
+        _copy_from_source(self.clones, self.target, ["skills/wiki-author"])
         result = im.classify(self.target, self.clones)
         self.assertEqual(len(result), 1)
         e = result[0]
-        self.assertEqual(e["rel_path"], "skills/pii-scrubber")
+        self.assertEqual(e["rel_path"], "skills/wiki-author")
         self.assertEqual(e["classification"], im.SAFE_TO_MIGRATE)
-        self.assertEqual(e["source_clone"], "crickets")
+        self.assertEqual(e["source_clone"], "agentm")
         self.assertTrue(e["is_dir"])
 
     def test_classify_already_symlinked(self):
@@ -243,12 +226,12 @@ class ApplyTests(unittest.TestCase):
         """dry_run=False removes SAFE files + writes .agentm-migrate-record.json."""
         _copy_from_source(self.clones, self.target, [
             "agents/explorer.md",
-            "skills/pii-scrubber",
+            "skills/wiki-author",
         ])
         result = im.apply(self.target, source_clones=self.clones, dry_run=False)
         # Files gone
         self.assertFalse((self.target / ".claude" / "agents" / "explorer.md").exists())
-        self.assertFalse((self.target / ".claude" / "skills" / "pii-scrubber").exists())
+        self.assertFalse((self.target / ".claude" / "skills" / "wiki-author").exists())
         # Record written
         rp = self.target / im._RECORD_FILENAME
         self.assertTrue(rp.exists())
@@ -256,7 +239,7 @@ class ApplyTests(unittest.TestCase):
             record = json.load(f)
         self.assertEqual(record["version"], 1)
         rels = sorted(a["rel_path"] for a in record["actions"])
-        self.assertEqual(rels, ["agents/explorer.md", "skills/pii-scrubber"])
+        self.assertEqual(rels, ["agents/explorer.md", "skills/wiki-author"])
         for a in record["actions"]:
             self.assertEqual(a["kind"], "safe_to_migrate")
 
@@ -295,13 +278,13 @@ class ApplyTests(unittest.TestCase):
         _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
         im.apply(self.target, source_clones=self.clones, dry_run=False)
         # Now add another safe file + re-run
-        _copy_from_source(self.clones, self.target, ["commands/release.md"])
+        _copy_from_source(self.clones, self.target, ["commands/work.md"])
         im.apply(self.target, source_clones=self.clones, dry_run=False)
         # Both in record
         with (self.target / im._RECORD_FILENAME).open() as f:
             record = json.load(f)
         rels = sorted(a["rel_path"] for a in record["actions"])
-        self.assertEqual(rels, ["agents/explorer.md", "commands/release.md"])
+        self.assertEqual(rels, ["agents/explorer.md", "commands/work.md"])
 
     def test_apply_records_registry_slug(self):
         """registry_slug arg is recorded in the .migrate-record.json."""
@@ -401,12 +384,12 @@ class RollbackTests(unittest.TestCase):
 
     def test_rollback_dir_bundle_safe(self):
         """rollback() restores a SAFE dir bundle (skill dir) from source."""
-        _copy_from_source(self.clones, self.target, ["skills/pii-scrubber"])
+        _copy_from_source(self.clones, self.target, ["skills/wiki-author"])
         im.apply(self.target, source_clones=self.clones, dry_run=False)
-        dest = self.target / ".claude" / "skills" / "pii-scrubber"
+        dest = self.target / ".claude" / "skills" / "wiki-author"
         self.assertFalse(dest.exists())
         result = im.rollback(self.target)
-        self.assertIn("skills/pii-scrubber", result["restored"])
+        self.assertIn("skills/wiki-author", result["restored"])
         self.assertTrue(dest.is_dir())
         self.assertTrue((dest / "SKILL.md").exists())
 
@@ -457,7 +440,7 @@ class CleanupTests(unittest.TestCase):
         dropped non-`.md` files under `.claude/{...}/`. The walker filters by
         known shapes for `classify()`; cleanup's verification must be
         shape-agnostic so operator content is sacred even if it doesn't
-        match agentm/crickets file extensions."""
+        match agentm file extensions."""
         skills_dir = self.target / ".claude" / "skills"
         skills_dir.mkdir(parents=True)
         operator_notes = skills_dir / "my-notes.txt"

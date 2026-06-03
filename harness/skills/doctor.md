@@ -57,7 +57,7 @@ Then:
    - `hooks/` populated + **no `hooks` block** → **`[FAIL] N hooks installed on disk but not wired in settings.json — install.sh fragment merge did not run. Re-run install.sh.`** (the V4 #39 regression).
    - `hooks/` populated + `hooks` block + some `command` paths missing → `[FAIL] X of N registered hook commands point at missing scripts: <list>`.
    - `hooks/` populated + `hooks` block + some installed hook dirs unregistered → `[WARN] <list> installed but not registered — partial merge`.
-   - `.agentm-config.json` missing while primitives present → `[WARN] partial install — install-state file missing`; `.agentm-config.json.fragments` absent/empty while hooks installed → `[WARN] fragments tracking absent — install-state-sync won't propagate source-clone edits`.
+   - `.agentm-config.json` missing while primitives present → `[WARN] partial install — install-state file missing`.
    - Shell prefix must match the installer variant (bash → bash command; pwsh → `pwsh -File`). The pre-V4 #39 "absent block is opt-in, OK" rule was a **false-clean** that masked exactly the hook-dirs-installed-but-unregistered regression.
    - `--live` adds a **synthetic SessionStart probe** (best-effort, DC-3): feed `{"session_id":"doctor-probe","cwd":"<agentm clone>"}` to each registered SessionStart hook on stdin; confirm `harness-context-session-start` emits a non-empty `[agentm] Project state…` block; skip gracefully if a hook can't run standalone.
    - **The probe also asserts `memory-recall-session-start` emits non-empty stdout WHEN the configured vault has any `<vault>/personal-private/_always-load/*.md` entries.** Exit 0 with empty stdout in that condition is **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`** — the silent-broken shape (V4.7 / agentm-hooks regression). If the vault has zero always-load entries, empty stdout is correctly OK.
@@ -178,8 +178,8 @@ doctor: <adapter> — <PASS|FAIL>
                             4 optional harness-shipped + 2 crickets present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     host wiring       [OK]  AGENTS.md + CLAUDE.md
-    hooks             [OK]  10 hooks wired (memory-recall-session-start, install-state-sync, …)
-                            # FAIL example (V4 #39): "10 hooks installed on disk but not
+    hooks             [OK]  7 hooks wired (memory-recall-session-start, harness-context-session-start, …)
+                            # FAIL example (V4 #39): "7 hooks installed on disk but not
                             # wired in settings.json — install.sh fragment merge did not run"
 
   live probes (--live):
