@@ -995,20 +995,44 @@ class TestReadStateFile(unittest.TestCase):
                 self.assertEqual(stderr.count("reading progress.md from legacy"), 1)
 
     def test_project_mode_local_bypasses_vault_read(self) -> None:
-        """DC-3: when .project-mode='local', read goes straight to legacy."""
+        """DC-8: device-level state_mode=local routes the read to the repo-local
+        <repo>/.harness/, even with a vault present and vault content.
+
+        (Hardening I task 3 — replaces the removed in-vault-marker mechanism;
+        see test_in_vault_marker_ignored_on_read for the removal regression.)"""
         with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"state_mode": "local"}), encoding="utf-8")
             vp = Path(tmp) / "vault" / "projects" / "p"
             (vp / "_harness").mkdir(parents=True)
-            (vp / "_harness" / "PLAN.md").write_text("vault wins", encoding="utf-8")
+            (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / "PLAN.md").write_text("repo content", encoding="utf-8")
+            resolution = {"vault_path": vp, "project_root": project}
+            with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
+                self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "repo content")
+
+    def test_in_vault_marker_ignored_on_read(self) -> None:
+        """Hardening I task 3: the in-vault `.project-mode` marker is removed —
+        config never lives in the vault. With only an in-vault marker present
+        (no repo marker, no device state_mode), the read comes from the vault
+        as normal — the marker is ignored."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()  # empty config dir → no device state_mode
+            vp = Path(tmp) / "vault" / "projects" / "p"
+            (vp / "_harness").mkdir(parents=True)
+            (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
             (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
-            (project / ".harness" / "PLAN.md").write_text("legacy wins", encoding="utf-8")
+            (project / ".harness" / "PLAN.md").write_text("repo content", encoding="utf-8")
             resolution = {"vault_path": vp, "project_root": project}
-            with io.StringIO() as buf:
-                with mock.patch("sys.stderr", buf):
-                    # Despite vault content existing, .project-mode=local skips it.
-                    self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "legacy wins")
+            with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
+                self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "vault content")
 
     # Hardening I task 2: vault-less read path + repo-local marker (DC-2).
 
@@ -1083,18 +1107,24 @@ class TestWriteStateFile(unittest.TestCase):
                 list((vp / "_harness").glob("PLAN.md.*")), []
             )
 
-    def test_project_mode_local_writes_to_legacy(self) -> None:
-        """DC-3: when .project-mode='local', write goes to legacy."""
+    def test_device_state_mode_local_writes_to_repo(self) -> None:
+        """DC-8: device-level state_mode=local routes the write to <repo>/.harness/,
+        leaving the vault untouched. (Hardening I task 3 — replaces the removed
+        in-vault-marker mechanism.)"""
         with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"state_mode": "local"}), encoding="utf-8")
             vp = Path(tmp) / "vault" / "projects" / "p"
             (vp / "_harness").mkdir(parents=True)
-            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
             project = Path(tmp) / "project"
             project.mkdir()
             resolution = {"vault_path": vp, "project_root": project}
-            target = hm.write_state_file(resolution, "PLAN.md", "legacy write")
+            with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
+                target = hm.write_state_file(resolution, "PLAN.md", "device local write")
             self.assertEqual(target, project / ".harness" / "PLAN.md")
-            self.assertEqual(target.read_text(encoding="utf-8"), "legacy write")
+            self.assertEqual(target.read_text(encoding="utf-8"), "device local write")
             # Vault path NOT written.
             self.assertFalse((vp / "_harness" / "PLAN.md").exists())
 
@@ -1127,19 +1157,23 @@ class TestWriteStateFile(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "repo wins")
             self.assertFalse((vp / "_harness" / "PLAN.md").exists())
 
-    def test_repo_local_marker_wins_over_in_vault_marker(self) -> None:
-        """DC-2 precedence: when the two markers disagree, the repo-local marker
-        wins. repo-local='vault' (non-local) overrides in-vault='local', so the
+    def test_repo_local_marker_wins_over_device_state_mode(self) -> None:
+        """DC-2 precedence: a per-repo marker overrides the device-level default.
+        repo-local='vault' (non-local) overrides device state_mode='local', so the
         write targets the vault."""
         with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"state_mode": "local"}), encoding="utf-8")
             vp = Path(tmp) / "vault" / "projects" / "p"
             (vp / "_harness").mkdir(parents=True)
-            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
             (project / ".harness" / ".project-mode").write_text("vault", encoding="utf-8")
             resolution = {"vault_path": vp, "project_root": project}
-            target = hm.write_state_file(resolution, "PLAN.md", "vault wins")
+            with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
+                target = hm.write_state_file(resolution, "PLAN.md", "vault wins")
             self.assertEqual(target, vp / "_harness" / "PLAN.md")
             self.assertEqual(target.read_text(encoding="utf-8"), "vault wins")
             self.assertFalse((project / ".harness" / "PLAN.md").exists())
@@ -1172,20 +1206,66 @@ class TestWriteStateFile(unittest.TestCase):
             # Symmetric read with the same str input round-trips.
             self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "str-root content")
 
-    def test_empty_repo_local_marker_falls_through_to_in_vault(self) -> None:
+    def test_empty_repo_local_marker_falls_through_to_device(self) -> None:
         """A whitespace-only repo-local marker is treated as absent, so the
-        in-vault marker decides the mode."""
+        device-level state_mode decides the mode."""
         with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"state_mode": "local"}), encoding="utf-8")
             vp = Path(tmp) / "vault" / "projects" / "p"
             (vp / "_harness").mkdir(parents=True)
-            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
             (project / ".harness" / ".project-mode").write_text("   \n", encoding="utf-8")
             resolution = {"vault_path": vp, "project_root": project}
-            target = hm.write_state_file(resolution, "PLAN.md", "in-vault decides")
-            # in-vault marker=local → write goes repo-local home.
+            with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
+                target = hm.write_state_file(resolution, "PLAN.md", "device decides")
+            # empty repo marker → device state_mode=local → repo-local home.
             self.assertEqual(target, project / ".harness" / "PLAN.md")
+
+
+class TestReadConfigStateMode(unittest.TestCase):
+    """Covers _read_config_state_mode — the device-level on-host state_mode read
+    (Hardening I task 3 / DC-8). Read vault-free from .agentm-config.json."""
+
+    def _write_config(self, prefix: Path, payload) -> None:
+        (prefix / ".agentm-config.json").write_text(payload, encoding="utf-8")
+
+    def test_reads_local(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_config(Path(tmp), json.dumps({"state_mode": "local"}))
+            self.assertEqual(hm._read_config_state_mode(Path(tmp)), "local")
+
+    def test_reads_vault(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_config(Path(tmp), json.dumps({"state_mode": "vault"}))
+            self.assertEqual(hm._read_config_state_mode(Path(tmp)), "vault")
+
+    def test_absent_field_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_config(Path(tmp), json.dumps({"vault_path": "/v"}))
+            self.assertIsNone(hm._read_config_state_mode(Path(tmp)))
+
+    def test_no_config_file_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertIsNone(hm._read_config_state_mode(Path(tmp)))
+
+    def test_normalizes_case_and_whitespace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_config(Path(tmp), json.dumps({"state_mode": " LOCAL \n"}))
+            self.assertEqual(hm._read_config_state_mode(Path(tmp)), "local")
+
+    def test_malformed_json_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_config(Path(tmp), "{not json")
+            self.assertIsNone(hm._read_config_state_mode(Path(tmp)))
+
+    def test_non_string_value_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_config(Path(tmp), json.dumps({"state_mode": 1}))
+            self.assertIsNone(hm._read_config_state_mode(Path(tmp)))
 
 
 # -----------------------------------------------------------------------------
@@ -2003,7 +2083,6 @@ class TestRepoRegistry(unittest.TestCase):
             repo_registry.register_repo(
                 vault, "agentm", "/tmp/fixture-agentm",
                 wiki_path="/tmp/fixture-agentm/wiki",
-                harness_state_mode="vault",
             )
             path = vault / "_meta" / "repos.json"
             self.assertTrue(path.exists())
@@ -2014,7 +2093,9 @@ class TestRepoRegistry(unittest.TestCase):
             self.assertEqual(entry["slug"], "agentm")
             self.assertEqual(entry["root_path"], "/tmp/fixture-agentm")
             self.assertEqual(entry["wiki_path"], "/tmp/fixture-agentm/wiki")
-            self.assertEqual(entry["harness_state_mode"], "vault")
+            # Hardening I task 3 (DC-8): the registry is a pure index — it carries
+            # NO run-mode config. harness_state_mode was dead (write-only) + removed.
+            self.assertNotIn("harness_state_mode", entry)
 
     def test_register_upserts_existing_slug(self) -> None:
         """Re-registering the same slug updates the entry in-place (not appended)."""
@@ -2130,7 +2211,6 @@ class TestRepoRegistryCLI(unittest.TestCase):
                 "register", "agentm",
                 "--root", "/tmp/fixture-agentm",
                 "--wiki", "/tmp/fixture-agentm/wiki",
-                "--state-mode", "vault",
                 env=env,
             )
             self.assertEqual(reg1.returncode, 0, reg1.stderr)
@@ -2151,7 +2231,7 @@ class TestRepoRegistryCLI(unittest.TestCase):
             self.assertEqual(slugs, ["agentm", "sherwood"])
             # First repo carries all fields; second carries only required ones.
             self.assertEqual(data["repos"][0]["wiki_path"], "/tmp/fixture-agentm/wiki")
-            self.assertEqual(data["repos"][0]["harness_state_mode"], "vault")
+            self.assertNotIn("harness_state_mode", data["repos"][0])
             self.assertNotIn("wiki_path", data["repos"][1])
 
     def test_unregister_via_cli(self) -> None:

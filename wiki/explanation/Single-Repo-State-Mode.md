@@ -14,12 +14,12 @@ Single-repo mode removes the vault as a hard dependency. It is strictly **additi
 
 ## The state-resolution model
 
-Two signals decide where a phase write lands:
+Where a phase write lands is decided by **two on-host configuration layers** — no vault is ever consulted to resolve the mode (locked DC-8: configuration is on-host only; the vault holds data, never config):
 
-- **The repo-local marker** — `<repo>/.harness/.project-mode`. When it reads `local`, state I/O routes to `<repo>/.harness/<file>` and never raises for a missing vault. This marker is vault-independent by design (the older in-vault marker at `<vault>/projects/<slug>/_harness/.project-mode` is unreachable on a vault-less machine).
-- **The vault** — when present and the repo is not in local mode, the existing vault-resident path is used unchanged.
+- **The repo-local marker** — `<repo>/.harness/.project-mode`. The optional **per-repo override**. When it reads `local`, state I/O routes to `<repo>/.harness/<file>` and never raises for a missing vault. It lives in the repo so it is reachable on a vault-less machine. Wins when present.
+- **The device-level default** — `state_mode` (`"local"` | `"vault"`) in `<install-prefix>/.agentm-config.json`. This is "how agentm runs on this machine," read vault-free. Consulted when no repo-local marker is set. Absent ⇒ vault default.
 
-Marker precedence is deterministic: an explicit repo-local `.project-mode=local` marker wins over the in-vault marker (the operator opted in locally). This is a locked design call (see Related, DC-2); document it so a vault user is not surprised when a repo-local marker overrides their vault.
+Precedence is deterministic: an explicit repo-local `.project-mode=local` marker wins over the device-level `state_mode`. There is **no in-vault marker layer** — the earlier design that read a `.project-mode` marker from `<vault>/_harness/` was removed; configuration never lives in the vault. The mode is also never inferred from a missing `vault_path` (a transiently-unreachable vault must not split-brain the mode). These are locked design calls (see Related, DC-2 / DC-8).
 
 ## Why explicit opt-in, not auto-detect
 
@@ -36,4 +36,4 @@ It makes local mode *reachable and writable* without a vault — it does not mig
 - [Project config reference](Project-Config) — how `project_config.py register()` degrades when no vault is present.
 - [Repo layout reference](Repo-Layout) — where `<repo>/.harness/.project-mode` sits on disk.
 
-<!-- DC-2 (repo-local marker precedence) and DC-3 (explicit `--local-state` opt-in) are locked in the Hardening I plan (`.harness/PLAN.md`). Cross-link to an ADR here once one lands; none exists yet. -->
+<!-- DC-2 (repo-local marker precedence), DC-3 (explicit opt-in; never infer mode from a missing vault), and DC-8 (configuration is on-host only — device-level `state_mode` + per-repo marker; the in-vault marker layer was removed) are locked in the Hardening I plan (`.harness/PLAN.md`). Cross-link to an ADR here once one lands; none exists yet. -->

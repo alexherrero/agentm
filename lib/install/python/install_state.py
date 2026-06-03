@@ -29,11 +29,18 @@ Schema (v2; v4.5.1+) — written to `<install-prefix>/.agentm-config.json`:
       },
       "installed_at": "2026-05-27T18:00:00Z",
       "harness_version": "v4.5.1",                   // semver string
-      "vault_path": "/path/to/Obsidian/MyVault"      // null when unset; the
+      "vault_path": "/path/to/Obsidian/MyVault",     // null when unset; the
                                                       // on-device source of truth
                                                       // for the MemoryVault root
                                                       // (env MEMORY_VAULT_PATH wins
                                                       // as override per locked DC-2)
+      "state_mode": "local" | "vault"                // optional (Hardening I #44);
+                                                      // how the harness runs / where
+                                                      // state lives. Device-level run
+                                                      // config; on-host only. Omitted
+                                                      // ⇒ vault default. A repo-local
+                                                      // .harness/.project-mode marker
+                                                      // overrides per-repo.
     }
 
 Pre-v4.5.1 installs may have a legacy `.agentm-install-state.json` file with
@@ -134,6 +141,7 @@ def persist_install_state(
     installer_source: Optional[str] = None,
     installed_shas: Optional[dict[str, str]] = None,
     fragments: Optional[list[dict]] = None,
+    state_mode: Optional[str] = None,
 ) -> Path:
     """Write `<install-prefix>/.agentm-install-state.json` atomically.
 
@@ -155,9 +163,17 @@ def persist_install_state(
         the settings.json fragments that were merged at install time.
         Retained as install-time metadata (records which hook fragments were
         merged + their SHA at install).
+      - `state_mode` (optional): 'local' | 'vault' — how the harness runs, i.e.
+        where project state lives (Hardening I #44). On-host run config; the
+        single device-level source of truth for vault-vs-local mode (a repo-local
+        `.harness/.project-mode` marker can still override per-repo). Preserved
+        across re-persist like `vault_path`; omitted when unset (absent ⇒ vault
+        default). NOT the same axis as `mode` (install: source vs release).
     """
     if mode not in ("source", "release"):
         raise ValueError(f"mode must be 'source' or 'release', got: {mode!r}")
+    if state_mode is not None and state_mode not in ("local", "vault"):
+        raise ValueError(f"state_mode must be 'local' or 'vault', got: {state_mode!r}")
     prefix = Path(install_prefix)
     prefix.mkdir(parents=True, exist_ok=True)
     if installed_at is None:
@@ -180,6 +196,11 @@ def persist_install_state(
             prior = json.loads(source_for_preserve.read_text(encoding="utf-8"))
             if isinstance(prior, dict) and "vault_path" in prior:
                 preserved["vault_path"] = prior["vault_path"]
+            # Only carry forward a VALID prior state_mode — a hand-corrupted /
+            # unknown value is dropped (self-heals to the omitted ⇒ vault default
+            # on this re-persist, rather than propagating garbage forward).
+            if isinstance(prior, dict) and prior.get("state_mode") in ("local", "vault"):
+                preserved["state_mode"] = prior["state_mode"]
         except (json.JSONDecodeError, OSError):
             pass
     # Drop the legacy file if it exists — the persist below writes the new
@@ -203,6 +224,11 @@ def persist_install_state(
     else:
         # Field is always present in schema v2; null when unset.
         data["vault_path"] = None
+    # state_mode: explicit arg wins; else preserve prior; else omit (absent ⇒
+    # vault default — keeps pre-#44 configs untouched until the operator opts in).
+    effective_state_mode = state_mode if state_mode is not None else preserved.get("state_mode")
+    if effective_state_mode is not None:
+        data["state_mode"] = effective_state_mode
     if installer_source is not None:
         data["installer_source"] = installer_source
     if installed_shas is not None:
@@ -268,6 +294,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_persist.add_argument("--agentm-path", default=None, help="override canonical agentm clone path")
     p_persist.add_argument("--installer-source", default=None, help="absolute path to install.sh used to bootstrap (recorded for agentm-update launcher)")
     p_persist.add_argument("--fragments-file", default=None, help="path to a JSON file containing a list of {path, sha256} records for settings.json fragments merged at install time (written to the .fragments install-time metadata field)")
+    p_persist.add_argument("--state-mode", default=None, choices=("local", "vault"), help="how the harness runs: where project state lives (local = <repo>/.harness/, vault = MemoryVault). Written to .agentm-config.json state_mode; preserved across re-persist. Omitted when unset (absent ⇒ vault default).")
 
     p_read = sub.add_parser(
         "read", help="emit current install state JSON, or empty if absent",
@@ -308,6 +335,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 prefix, mode, clones, args.harness_version,
                 installer_source=args.installer_source,
                 fragments=fragments,
+                state_mode=args.state_mode,
             )
         except (ValueError, OSError, json.JSONDecodeError) as exc:
             print(f"[install_state] {exc}", file=sys.stderr)

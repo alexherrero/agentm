@@ -183,6 +183,35 @@ def _read_config_vault_path(install_prefix: Optional[Path] = None) -> Optional[P
     return p
 
 
+def _read_config_state_mode(install_prefix: Optional[Path] = None) -> Optional[str]:
+    """Read `state_mode` from `<install-prefix>/.agentm-config.json`.
+
+    Returns the stripped-lowercase value ("local" / "vault") or None when the
+    field is absent / empty / unreadable. This is the **device-level** run-mode
+    config — read **vault-free** (mirrors `_read_config_vault_path`), so it works
+    on a machine with no vault. Honors `$AGENTM_INSTALL_PREFIX`.
+
+    Per Hardening I #44 task 3 / locked DC-8: config is on-host only; the vault
+    holds data, never configuration. This is the second resolution layer in
+    `_read_project_mode()` (under the per-repo `.harness/.project-mode` marker).
+    """
+    if install_prefix is None:
+        install_prefix = _agentm_install_prefix()
+    config_path = install_prefix / ".agentm-config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("state_mode")
+    if not isinstance(raw, str):
+        return None
+    return raw.strip().lower() or None
+
+
 def vault_path() -> Optional[Path]:
     """Return the MemoryVault root if accessible, else None.
 
@@ -402,32 +431,34 @@ def _read_mode_marker(path: Path) -> Optional[str]:
 
 
 def _read_project_mode(resolution: dict) -> Optional[str]:
-    """Resolve the effective `.project-mode` for this project.
+    """Resolve the effective state mode for this project.
 
-    Returns the marker value (e.g. "local") or None when no marker resolves
+    Returns the mode value (e.g. "local") or None when nothing resolves
     (the default, vault-backed mode).
 
-    Precedence (locked DC-2): an explicit **repo-local** marker at
-    ``<project_root>/.harness/.project-mode`` wins over the in-vault marker at
-    ``<vault>/_harness/.project-mode``. The repo-local marker is the only
-    vault-independent signal — it is reachable on a machine with no vault, which
-    is the whole point of single-repo mode — so it is consulted first. The
-    in-vault marker (the original DC-3 opt-out location) is the fallback and is
-    only readable when a vault is configured.
+    Resolution — **two on-host layers, no vault involved** (locked DC-2/DC-8;
+    config is on-host only, the vault holds data not configuration):
+
+      1. Repo-local marker ``<project_root>/.harness/.project-mode`` — the
+         optional **per-repo override**, in the repo so it is reachable with no
+         vault. Wins when present.
+      2. ``state_mode`` in ``<install-prefix>/.agentm-config.json`` — the
+         **device-level default** ("how agentm runs on this machine"), read
+         vault-free via ``_read_config_state_mode``.
+
+    There is **no in-vault marker layer** — configuration never lives in the
+    vault. The mode is never inferred from a missing ``vault_path`` (DC-3:
+    that is ambiguous and would split-brain a transiently-unreachable vault).
     """
     project_root = resolution.get("project_root") or Path.cwd()
-    vault_p = resolution.get("vault_path")
 
-    # 1. Repo-local marker — vault-independent, authoritative when present.
+    # 1. Repo-local marker — per-repo override, on-host, vault-independent.
     repo_local = _read_mode_marker(Path(project_root) / ".harness" / ".project-mode")
     if repo_local is not None:
         return repo_local
 
-    # 2. In-vault marker — only reachable when a vault exists.
-    if vault_p:
-        return _read_mode_marker(Path(vault_p) / "_harness" / ".project-mode")
-
-    return None
+    # 2. Device-level default — state_mode in .agentm-config.json (on-host).
+    return _read_config_state_mode()
 
 
 def _read_repo_local_state_file(project_root: Path, filename: str) -> str:
@@ -466,13 +497,12 @@ def read_state_file(resolution: dict, filename: str) -> str:
     per session per file. Warn-once state is module-level (session-scoped);
     test helpers can reset via `_reset_warn_state()`.
 
-    Honors the `.project-mode` marker (per locked DC-3, extended in Hardening I
-    task 2): if the effective mode is "local", the read targets
-    `<project_root>/.harness/<filename>` directly — local mode is the configured
-    home, not a legacy fallback, so it does *not* emit the migrate-to-vault warn.
-    The marker is resolved via `_read_project_mode()` so a vault-independent
-    repo-local marker is honored even when no vault is configured (DC-2 precedence:
-    repo-local wins over the in-vault marker).
+    Honors the effective state mode (per locked DC-2/DC-8): if mode is "local",
+    the read targets `<project_root>/.harness/<filename>` directly — local mode
+    is the configured home, not a legacy fallback, so it does *not* emit the
+    migrate-to-vault warn. The mode is resolved via `_read_project_mode()` from
+    two on-host layers (repo-local `.harness/.project-mode` marker → device-level
+    `state_mode` in `.agentm-config.json`), so it is honored with no vault.
     """
     vault_p = resolution.get("vault_path")
     project_root = resolution.get("project_root") or Path.cwd()
@@ -520,12 +550,11 @@ def write_state_file(resolution: dict, filename: str, content: str) -> Path:
     Creates <vault>/projects/<slug>/_harness/ if absent. Atomic write via
     `<path>.tmp` + `rename()`. Returns the absolute path written.
 
-    Mode resolution (per locked DC-2/DC-3, extended in Hardening I task 2):
-    `_read_project_mode()` honors a vault-independent repo-local marker at
-    `<project_root>/.harness/.project-mode` (which wins over the in-vault marker).
-    When the effective mode is "local", the write targets
-    `<project_root>/.harness/<filename>` — this is the first-class single-repo
-    write path and it succeeds **with no vault configured**.
+    Mode resolution (per locked DC-2/DC-8): `_read_project_mode()` honors two
+    on-host layers — a per-repo `<project_root>/.harness/.project-mode` marker,
+    then the device-level `state_mode` in `.agentm-config.json`. When the
+    effective mode is "local", the write targets `<project_root>/.harness/<filename>`
+    — the first-class single-repo write path, which succeeds **with no vault**.
 
     Raises ValueError only when the mode is *not* local **and** the resolution
     lacks a vault_path — i.e. a vault-mode project with no reachable vault. The

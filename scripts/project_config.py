@@ -233,7 +233,7 @@ def register(
     slug = resolution.get("slug")
     if v is not None and slug:
         try:
-            repo_registry.register_repo(v, slug, cwd, harness_state_mode="vault")
+            repo_registry.register_repo(v, slug, cwd)
         except Exception:
             pass
     return config

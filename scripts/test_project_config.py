@@ -180,14 +180,14 @@ class TestRegisterIntegration(unittest.TestCase):
                 }),
                 encoding="utf-8",
             )
-            (vault / "projects" / "demo" / "_harness" / ".project-mode").write_text(
-                "local", encoding="utf-8"
-            )
             repo = root / "repo"
             (repo / ".harness").mkdir(parents=True)
             (repo / ".harness" / "project.json").write_text(
                 json.dumps({"vault_project": "demo"}), encoding="utf-8"
             )
+            # Signal local mode via the per-repo override marker (DC-2/DC-8 — the
+            # in-vault `.project-mode` marker was removed in Hardening I task 3).
+            (repo / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
             old_env = os.environ.get("MEMORY_VAULT_PATH")
             os.environ["MEMORY_VAULT_PATH"] = str(vault)
             hm._reset_warn_state()

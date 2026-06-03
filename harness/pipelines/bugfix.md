@@ -11,7 +11,7 @@ Triage-first pipeline for bug reports. Replaces `/plan` + `/work` when the work 
 > python3 scripts/harness_memory.py vault-state-path PLAN.md  # resolve path
 > ```
 >
-> Dispatcher resolves vault path → legacy `<project>/.harness/<file>` fallback. Writes go only to vault unless `.project-mode=local` (operator opt-out).
+> Dispatcher resolves vault path → legacy `<project>/.harness/<file>` fallback. Writes go to vault unless local state mode is configured **on-host** (a repo-local `.project-mode` marker, or `state_mode` in `.agentm-config.json`; DC-8).
 
 ## Why a separate pipeline
 

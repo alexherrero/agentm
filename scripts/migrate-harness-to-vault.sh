@@ -3,9 +3,10 @@
 #
 # Copies <target>/.harness/<file> → <vault>/projects/<slug>/_harness/<file>
 # for the locked file set. Idempotent (safe to re-run) + reversible
-# (--rollback sets .project-mode to "local" so dispatcher reads from
-# legacy path again). Leaves legacy files in place by default; --cleanup
-# removes them after byte-identical verification.
+# (--rollback writes the repo-local .project-mode=local marker so the dispatcher
+# reads from the legacy path again). The mode marker is always repo-local
+# (on-host) — config never lives in the vault (DC-8). Leaves legacy files in
+# place by default; --cleanup removes them after byte-identical verification.
 #
 # Usage:
 #   bash agentm/scripts/migrate-harness-to-vault.sh [OPTIONS] [TARGET]
@@ -18,7 +19,8 @@
 #                         .evidence-reads per DC-1 — runtime ephemeral).
 #                         Asks for operator confirmation per file unless
 #                         --yes is also passed.
-#   --rollback            Set .project-mode=local on the vault side so dispatcher
+#   --rollback            Write the repo-local .project-mode=local marker
+#                         (<target>/.harness/.project-mode) so the dispatcher
 #                         reads from legacy <target>/.harness/ again. Reversible
 #                         escape hatch if vault-mode misbehaves.
 #   --yes                 Skip confirmation prompts (use with --cleanup).
@@ -129,8 +131,11 @@ else
 fi
 HARNESS_DIR="$PROJECT_DIR/_harness"
 MARKER="$HARNESS_DIR/.migrated-from-pre-v4.1"
-MODE_FILE="$HARNESS_DIR/.project-mode"
 LEGACY_HARNESS="$TARGET/.harness"
+# The .project-mode marker is always repo-local (on-host) — config never lives
+# in the vault (DC-8). Both rollback (→local) and forward-migrate (→vault) write
+# here so the dispatcher's repo-local resolution layer sees it without a vault.
+MODE_FILE="$LEGACY_HARNESS/.project-mode"
 
 # ── handle --rollback first (mutually exclusive with migrate) ─────────────
 if [[ $ROLLBACK -eq 1 ]]; then
@@ -146,8 +151,9 @@ if [[ $ROLLBACK -eq 1 ]]; then
         echo "  WOULD: echo 'local' > $MODE_FILE"
         exit 0
     fi
+    mkdir -p "$LEGACY_HARNESS"
     echo "local" > "$MODE_FILE"
-    echo "  set .project-mode=local. Dispatcher will now read from $LEGACY_HARNESS/"
+    echo "  set repo-local .project-mode=local. Dispatcher will now read from $LEGACY_HARNESS/"
     echo "  Re-run without --rollback to flip back to vault mode."
     exit 0
 fi
@@ -313,7 +319,9 @@ if [[ $PREVIEW -eq 0 ]]; then
         echo "files_in_conflict: $conflict_count"
         echo "v4_26_plan: agentm v4.1.0"
     } > "$MARKER"
-    # Set .project-mode=vault (DC-3) — explicit opt-in to vault canonical reads.
+    # Write the repo-local .project-mode=vault marker (DC-8) — an explicit
+    # per-repo override pinning this migrated repo to vault canonical reads,
+    # even on a machine whose device default is local.
     echo "vault" > "$MODE_FILE"
 fi
 

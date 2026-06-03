@@ -11,7 +11,7 @@
 #   -VaultPath <path>   Override vault root. Default: $env:MEMORY_VAULT_PATH.
 #   -Preview            Dry-run.
 #   -Cleanup            Remove legacy files after byte-identical verification.
-#   -Rollback           Set .project-mode=local (reversibility per DC-3).
+#   -Rollback           Write the repo-local .project-mode=local marker (DC-8).
 #   -Yes                Skip confirmation prompts.
 #   -Help               Print this help.
 #
@@ -83,8 +83,11 @@ if (Test-Path -LiteralPath $projectsNew -PathType Container) {
 }
 $HarnessDir = Join-Path $ProjectDir '_harness'
 $Marker = Join-Path $HarnessDir '.migrated-from-pre-v4.1'
-$ModeFile = Join-Path $HarnessDir '.project-mode'
 $LegacyHarness = Join-Path $Target '.harness'
+# The .project-mode marker is always repo-local (on-host) — config never lives
+# in the vault (DC-8); both directions write here so the dispatcher's repo-local
+# resolution layer sees it without a vault.
+$ModeFile = Join-Path $LegacyHarness '.project-mode'
 
 # ── rollback (mutually exclusive with migrate) ────────────────────────────
 if ($Rollback) {
@@ -99,8 +102,9 @@ if ($Rollback) {
         Write-Host "  WOULD: Set-Content $ModeFile 'local'"
         exit 0
     }
+    New-Item -ItemType Directory -Force -Path $LegacyHarness | Out-Null
     Set-Content -LiteralPath $ModeFile -Value 'local' -Encoding utf8 -NoNewline
-    Write-Host "  set .project-mode=local. Dispatcher will now read from $LegacyHarness/"
+    Write-Host "  set repo-local .project-mode=local. Dispatcher will now read from $LegacyHarness/"
     exit 0
 }
 
@@ -230,6 +234,8 @@ files_in_conflict: $conflicts
 v4_26_plan: agentm v4.1.0
 "@
     Set-Content -LiteralPath $Marker -Value $markerBody -Encoding utf8
+    # Repo-local .project-mode=vault marker (DC-8) — per-repo override pinning
+    # this migrated repo to vault reads even if the device default is local.
     Set-Content -LiteralPath $ModeFile -Value 'vault' -Encoding utf8 -NoNewline
 }
 

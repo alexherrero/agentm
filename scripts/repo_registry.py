@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """repo_registry — vault-backed registry of agent-aware repos.
 
-The registry lives at `<vault>/_meta/repos.json` and tracks operator's known
-agent-aware repos: their slug, root filesystem path, wiki path (if applicable),
-and harness-state mode. Cross-device naturally — the vault is GDrive-synced, so
+The registry lives at `<vault>/_meta/repos.json` and is a cross-device **index**
+of the operator's known agent-aware repos: their slug, root filesystem path, and
+wiki path (if applicable). Cross-device naturally — the vault is GDrive-synced, so
 all machines that share the vault see the same registry.
+
+It holds **no run configuration** — how the harness runs (vault vs local state
+mode) is on-host config in `.agentm-config.json` + the per-repo `.project-mode`
+marker (locked DC-8), never in this vault-resident index.
 
 Schema (v1):
 
@@ -14,8 +18,7 @@ Schema (v1):
         {
           "slug": "agentm",
           "root_path": "/srv/projects/agentm",
-          "wiki_path": "/srv/projects/agentm/wiki",           // optional
-          "harness_state_mode": "vault"                            // optional
+          "wiki_path": "/srv/projects/agentm/wiki"            // optional
         },
         ...
       ]
@@ -29,7 +32,7 @@ may introduce per-host overrides if real-use surfaces the need.
 Three CLI subcommands:
 
     list                — emit JSON listing of all registered repos
-    register <slug>     — upsert a repo (root + wiki + state-mode kwargs)
+    register <slug>     — upsert a repo (root + wiki kwargs)
     unregister <slug>   — remove a repo (idempotent)
 
 Graceful-skip:
@@ -163,7 +166,6 @@ def register_repo(
     root_path: str | Path,
     *,
     wiki_path: Optional[str | Path] = None,
-    harness_state_mode: Optional[str] = None,
 ) -> dict:
     """Upsert a repo entry into the registry.
 
@@ -191,8 +193,6 @@ def register_repo(
     new_entry: dict[str, Any] = {"slug": slug, "root_path": Path(root_path).as_posix()}
     if wiki_path is not None:
         new_entry["wiki_path"] = Path(wiki_path).as_posix()
-    if harness_state_mode is not None:
-        new_entry["harness_state_mode"] = harness_state_mode
 
     # Upsert: replace existing entry by slug, or append new.
     found = False
@@ -276,12 +276,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_reg.add_argument("slug", help="project slug (e.g. agentm)")
     p_reg.add_argument("--root", required=True, help="root filesystem path")
     p_reg.add_argument("--wiki", default=None, help="wiki path (optional)")
-    p_reg.add_argument(
-        "--state-mode",
-        default=None,
-        choices=("vault", "local"),
-        help="harness state mode (optional; vault or local)",
-    )
 
     p_unreg = sub.add_parser("unregister", help="remove a repo by slug")
     p_unreg.add_argument("slug", help="project slug")
@@ -313,7 +307,6 @@ def main(argv: Optional[list[str]] = None) -> int:
                 args.slug,
                 args.root,
                 wiki_path=args.wiki,
-                harness_state_mode=args.state_mode,
             )
         except ValueError as exc:
             print(f"[repo_registry] {exc}", file=sys.stderr)

@@ -11,7 +11,7 @@ Implement exactly one task from `PLAN.md`. Stop when that task is done and its v
 > python3 scripts/harness_memory.py vault-state-path PLAN.md  # resolve path (e.g. for evidence-tracker hook)
 > ```
 >
-> Dispatcher resolves vault path → legacy `<project>/.harness/<file>` fallback with one-warn-per-session-per-file. Writes go only to vault unless `.project-mode=local` (operator opt-out). Inline `.harness/<file>` refs in prose are shorthand for the dispatcher-resolved path. **The evidence-tracker hook (§5b) operates on the resolved vault path post-migration; its `**Evidence:**` matching honors the dispatcher chain transparently.**
+> Dispatcher resolves vault path → legacy `<project>/.harness/<file>` fallback with one-warn-per-session-per-file. Writes go to vault unless local state mode is configured **on-host** (a repo-local `.project-mode` marker, or `state_mode` in `.agentm-config.json`; DC-8). Inline `.harness/<file>` refs in prose are shorthand for the dispatcher-resolved path. **The evidence-tracker hook (§5b) operates on the resolved vault path post-migration; its `**Evidence:**` matching honors the dispatcher chain transparently.**
 
 ## Purpose
 

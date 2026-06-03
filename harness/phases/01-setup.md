@@ -16,7 +16,7 @@ First-time initialization of agentm in a project. Run once per project (or after
 > python3 scripts/harness_memory.py vault-state-path PLAN.md
 > ```
 >
-> The dispatcher transparently resolves vault path (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` fallback with one-warn-per-session-per-file. Writes go only to vault unless `.project-mode=local` (operator opt-out per DC-3). Inline `.harness/<file>` references in this spec's prose are operator-recognizable shorthand for the dispatcher-resolved path.
+> The dispatcher transparently resolves vault path (V4.1.0+ canonical) → legacy `<project>/.harness/<file>` fallback with one-warn-per-session-per-file. Writes go to vault unless local state mode is configured **on-host** (a repo-local `.project-mode` marker, or `state_mode` in `.agentm-config.json`); config never lives in the vault (DC-8). Inline `.harness/<file>` references in this spec's prose are operator-recognizable shorthand for the dispatcher-resolved path.
 
 ## Purpose
 

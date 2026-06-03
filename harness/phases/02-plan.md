@@ -11,7 +11,7 @@ Turn a brief into `PLAN.md` — a structured, executable plan with per-task veri
 > python3 scripts/harness_memory.py vault-state-path PLAN.md  # resolve path
 > ```
 >
-> Dispatcher resolves vault path → legacy `<project>/.harness/<file>` fallback with one-warn-per-session-per-file. Writes go only to vault unless `.project-mode=local` (operator opt-out). Inline `.harness/<file>` refs in prose are shorthand for the dispatcher-resolved path.
+> Dispatcher resolves vault path → legacy `<project>/.harness/<file>` fallback with one-warn-per-session-per-file. Writes go to vault unless local state mode is configured **on-host** (a repo-local `.project-mode` marker, or `state_mode` in `.agentm-config.json`; DC-8). Inline `.harness/<file>` refs in prose are shorthand for the dispatcher-resolved path.
 
 ## Purpose
 
