@@ -10,7 +10,7 @@ body:
 
         After filing, set the project fields (Track / Type / Priority / Start / Target / Status) on the agentm Project: https://github.com/users/alexherrero/projects/2
 
-        The body shape below mirrors the per-item shape used across `ROADMAP-AgentMemoryV*.md` in the vault — making this Issue render cleanly when the future `github-projects` crickets bundle (V4 #41 / Crickets v3.x #27) starts auto-synthesizing Project entries from the vault.
+        The body shape below mirrors the per-item shape used across `ROADMAP-AgentMemoryV*.md` in the vault — making this Issue render cleanly when the future `github-projects` crickets bundle (V4 #41 / [crickets v3.x #13](https://github.com/alexherrero/crickets/issues/13)) starts auto-synthesizing Project entries from the vault.
 
   - type: dropdown
     id: type
