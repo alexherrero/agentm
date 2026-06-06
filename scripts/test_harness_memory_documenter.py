@@ -107,6 +107,15 @@ def _make_documenter_vault(root: Path, *, project: str = "agentm") -> Path:
         "# page length\nhow-to soft ceiling 600 words; keep worked scenarios.\n",
         encoding="utf-8",
     )
+
+    # Global on-demand wiki conventions — the reserved `_global` pseudo-project
+    # (the relocation target; read slug-independently, like _always-load).
+    gws = vault / "projects" / "_global" / "wiki-style"
+    gws.mkdir(parents=True)
+    (gws / "house-voice.md").write_text(
+        "---\ntrigger: house-voice\n---\nsecond person; cut peacock words.\n",
+        encoding="utf-8",
+    )
     return vault
 
 
@@ -212,7 +221,7 @@ class TestResolveDocumenterContext(unittest.TestCase):
         # Expected key shape.
         self.assertEqual(
             set(bundle.keys()),
-            {"slug", "registered", "operator_conventions",
+            {"slug", "registered", "operator_conventions", "global_wiki_style",
              "project_decisions", "project_anchor", "wiki_style"},
         )
         self.assertEqual(bundle["slug"], "agentm")
@@ -222,6 +231,12 @@ class TestResolveDocumenterContext(unittest.TestCase):
         conv_names = [c["name"] for c in bundle["operator_conventions"]]
         self.assertEqual(conv_names, ["diataxis-conventions", "writing-style"])
         self.assertIn("never mix", bundle["operator_conventions"][0]["body"])
+
+        # global on-demand wiki conventions from projects/_global/wiki-style/ —
+        # the relocation target the documenter resolver now reads (part 3 task 4).
+        gws_names = [w["name"] for w in bundle["global_wiki_style"]]
+        self.assertEqual(gws_names, ["house-voice"])
+        self.assertIn("cut peacock words", bundle["global_wiki_style"][0]["body"])
 
         # project decisions from decisions/.
         dec_names = [d["name"] for d in bundle["project_decisions"]]
@@ -251,6 +266,8 @@ class TestResolveDocumenterContext(unittest.TestCase):
         self.assertEqual(bundle["wiki_style"], [])
         # Operator-global conventions still present.
         self.assertEqual(len(bundle["operator_conventions"]), 2)
+        # Global `_global` wiki conventions are slug-independent — still loaded.
+        self.assertEqual([w["name"] for w in bundle["global_wiki_style"]], ["house-voice"])
 
     def test_d_vault_unavailable_returns_none(self) -> None:
         # (d) MEMORY_VAULT_PATH unset + sandboxed (empty) config prefix → None.
@@ -325,7 +342,7 @@ class TestDocumenterContextCLI(unittest.TestCase):
         parsed = json.loads(out)
         self.assertEqual(
             set(parsed.keys()),
-            {"slug", "registered", "operator_conventions",
+            {"slug", "registered", "operator_conventions", "global_wiki_style",
              "project_decisions", "project_anchor", "wiki_style"},
         )
         self.assertTrue(parsed["registered"])

@@ -959,6 +959,7 @@ def resolve_documenter_context(slug: str) -> Optional[dict]:
             "slug":                 <slug>,
             "registered":           bool,   # projects/<slug>/ dir exists in vault
             "operator_conventions": [{"name": str, "body": str}, ...],  # _always-load/
+            "global_wiki_style":    [{"name": str, "body": str}, ...],  # projects/_global/wiki-style/
             "project_decisions":    [{"name": str, "body": str}, ...],  # decisions/
             "project_anchor":       Optional[str],   # abs path to projects/<slug>/_index.md
             "wiki_style":           [{"name": str, "body": str}, ...],  # wiki-style/ (optional)
@@ -983,6 +984,7 @@ def resolve_documenter_context(slug: str) -> Optional[dict]:
         "slug": slug,
         "registered": False,
         "operator_conventions": [],
+        "global_wiki_style": [],
         "project_decisions": [],
         "project_anchor": None,
         "wiki_style": [],
@@ -991,6 +993,18 @@ def resolve_documenter_context(slug: str) -> Optional[dict]:
     # Operator-global conventions — always loaded (apply across every project).
     bundle["operator_conventions"] = _load_md_dir(
         v / _ALWAYS_LOAD_REL[0] / _ALWAYS_LOAD_REL[1]
+    )
+
+    # Global ON-DEMAND wiki conventions — the reserved `_global` pseudo-project
+    # under the top-level `projects/` root (NOT under personal-private/). Read
+    # here so the relocation of global wiki conventions OUT of _always-load into
+    # `_global` (crickets wiki-maintenance part 3) keeps surfacing to documenter-
+    # time callers. Additive: the `_always-load` read above remains the transition
+    # fallback for any un-relocated entries. Like `operator_conventions`, this is
+    # slug-independent, so it loads even when the slug is unregistered. See ADR
+    # 0010 (vault internal taxonomy) for why `_global` lives under `projects/`.
+    bundle["global_wiki_style"] = _load_md_dir(
+        _vault_projects_dir(v) / "_global" / "wiki-style"
     )
 
     base = _vault_projects_dir(v) / slug

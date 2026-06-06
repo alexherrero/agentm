@@ -48,3 +48,4 @@
 - [0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
 - [0008 — Project surface split](0008-project-surface-split)
 - [0009 — On-host state-mode config](0009-on-host-state-mode-config)
+- [0010 — Vault internal taxonomy](0010-vault-internal-taxonomy)
