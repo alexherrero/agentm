@@ -38,6 +38,13 @@
 - [Auto-orchestration](Auto-Orchestration)
 - [Single-repo state mode](Single-Repo-State-Mode)
 
+**Designs (Agent M)**
+- [MemoryVault](memoryvault)
+  - [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining)
+- [Agent Memory Evolution V1→V4](agent-memory-evolution)
+- [Device-Wide Architecture](device-wide-architecture)
+- [Memory-OS Architecture (V5)](memory-os-architecture)
+
 **Decisions**
 - [0001 — Phase-gated workflow](0001-phase-gated-workflow)
 - [0002 — Documentation convention](0002-documentation-convention)

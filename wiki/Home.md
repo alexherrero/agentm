@@ -14,7 +14,7 @@
 
 Agent M is an agentic memory implementation that combines a persistent knowledge layer with personally curated content (i.e. your own notes in markdown format) through a combination of skills, sidecars, and vectorized indexing. Imagine those workflows you saw in the movies. You're talking to your agent, *"Let's open a new file for project M"* and off you go. It remembers your projects and files together, can talk to you about them, and it learns and grows with you as you work. The context it builds is self-maintaining and it improves automatically as you go. No need to spend time maintaining your own knowledge graphs, and it can help you with your personal notes too, when **you** want it to.
 
-Agent M has grown over time across the paired releases of `agentm` and `crickets`. The full V1→V4 evolution — what shipped, what's deferred, where the design is going — lives in [Agent Memory Evolution](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md) on the toolkit side. This page is the entry point for the harness itself.
+Agent M has grown over time across the paired releases of `agentm` and `crickets`. The full V1→V4 evolution — what shipped, what's deferred, where the design is going — lives in [Agent Memory Evolution](agent-memory-evolution). This page is the entry point for the harness itself.
 
 > [!NOTE]
 > This wiki documents the agentm repo for contributors. Target projects get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) installed instead. See [ADR 0002](0002-documentation-convention) for why.
@@ -99,7 +99,7 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 
 ## 💡 Want to know why?
 
-- [Agent Memory Evolution V1→V4](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md) — the full HLD: where Agent M started, how it grew, where it's going. The architecture, the schema, the workflows, the V4 design space.
+- [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going. The architecture, the schema, the workflows, the V4 design space.
 - [V3 Retrospective](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/v3-retrospective.md) — what shipped across the V3 arc, what we learned, what's deferred.
 - [Product intent](Product-Intent) — what problem the harness solves and for whom.
 - [Auto-detect + auto-configure](Auto-Detect-Configure) — why first-session config proposes-then-approves and why it lives in `project.json`.
@@ -107,6 +107,12 @@ Should print your always-load entries within the 4000-token budget. Empty = vaul
 - [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
 - [Auto-orchestration](Auto-Orchestration) — why the memory skills became a push surface, and how the briefing + idle chain + phase dispatch never nag.
 - [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable.
+
+### Architecture (Agent M) designs
+
+- [MemoryVault](memoryvault) — permanent agent memory: [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining).
+- [Device-Wide Architecture](device-wide-architecture) — the device-wide design Agent M targets.
+- [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 memory-OS HLD.
 
 ### Architecture decisions
 
