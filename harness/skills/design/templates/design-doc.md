@@ -47,23 +47,32 @@ project: <GitHub Project URL or leave empty>
 
 ### Objective
 
-*What problem does this solve, and why now? One short paragraph.*
+*What problem does this solve, and why now? 3–4 plain sentences, max.*
 
 <!--
   The "why" of the doc. Reader-grabbing — anyone landing on this design
   via wiki/Home.md should know in 30 seconds whether this is relevant
   to them.
 
+  Operator convention (2026-06-09): hard cap 3–4 sentences. Plain
+  language, no jargon — readable by someone outside the project.
+  If it needs more room, the extra belongs in Background.
+
   N/A is NOT appropriate here. Every design needs an objective.
 -->
 
 ### Background
 
-*Context the reader needs to understand the rest of the doc. History, related work, current state.*
+*Context the reader needs to understand the rest of the doc. History, related work, current state. Max 3 paragraphs.*
 
 <!--
   What led to this design? What existing systems / decisions / pain
   points motivated it? Link to ADRs, prior designs, or external refs.
+
+  Operator convention (2026-06-09): max 3 coherent paragraphs, not a
+  bullet pile. Cover: (1) why this is needed; (2) the environment /
+  constraints that drive the decisions (where it runs, what it must
+  coexist with); (3) the cost/effort realities that shape scope.
 
   N/A acceptable if the design is fully greenfield with no prior work
   to reference; explicitly say "N/A: fully greenfield project."
@@ -80,6 +89,11 @@ project: <GitHub Project URL or leave empty>
   this is the "here's what we're building" section. Save details for
   Detailed Design.
 
+  Operator convention (2026-06-09): human-readable, plain language, the
+  operator's voice. A reader who doesn't know the codebase should get
+  the shape from this section alone — no internal slugs/jargon without
+  a one-phrase gloss.
+
   No N/A — every design needs an overview.
 -->
 
@@ -88,6 +102,12 @@ project: <GitHub Project URL or leave empty>
 *The runtime / deployment / dependency shape — what runs where.*
 
 <!--
+  Operator convention (2026-06-09): platform-first ordering —
+  (1) name the platform/framework it runs on; (2) a chart of the
+  jobs/components (names + what runs in each); (3) a chart of when
+  things run (triggers: push, PR, schedule, local); (4) the guarantees
+  each piece provides. Deep mechanics belong in Detailed Design.
+
   What new infrastructure is needed? What existing infra is reused?
   Diagrams (ASCII or images) welcome.
 
@@ -159,16 +179,21 @@ project: <GitHub Project URL or leave empty>
 
 ## Quality Attributes
 
-*Per-attribute analysis. Each sub-section below is **mandatory**: either describe the concern or explicitly mark N/A with a one-sentence justification.*
+*Per-attribute analysis. Walk all 11 attributes consciously; **include only the ones that are real** for this design.*
 
 <!--
-  The `/design author` skill prompts for each of the 11 sub-attrs and
-  forces an N/A-with-rationale if the design doesn't have concerns in
-  that dimension. Forcing conscious decisions catches ops blind spots
-  early.
+  The `/design author` skill prompts for each of the 11 sub-attrs —
+  the WALK is mandatory (forcing conscious decisions catches ops blind
+  spots early), but the DOC isn't a form.
 
-  Convention: under each sub-section, either describe the concern OR
-  write a single line beginning "N/A: <rationale>".
+  Operator convention (2026-06-09): attributes that are N/A or
+  low-relevance are OMITTED from the final doc entirely — don't ship
+  a list of "N/A: not applicable" stubs. Keep a sub-section only when
+  there's something real to say. (Pre-2026-06-09 docs carry the old
+  all-11-with-N/A shape; leave them unless revised for other reasons.)
+
+  For anything CI/automation-touching, check supply-chain hardening
+  under Security (e.g. pin third-party actions by SHA, not tag).
 -->
 
 ### Security
@@ -217,13 +242,20 @@ project: <GitHub Project URL or leave empty>
 
 ## Project management
 
+<!--
+  Operator convention (2026-06-09): for a SHIPPED system (a codification
+  design, or any design revised after launch), Work estimates is omitted —
+  keep only Documentation Plan + Launch Plans in their slimmed forms below.
+-->
+
 ### Work estimates
 
 *Rough sizing per major piece. The `/design sequence` skill uses this to weight per-part PLAN.md tasks.*
 
 <!--
   Per-component or per-phase estimates. S/M/L sizing is fine; calendar
-  estimates if you have them.
+  estimates if you have them. Omit this sub-section entirely for
+  shipped/codified systems.
 -->
 
 ### Documentation Plan
@@ -233,6 +265,9 @@ project: <GitHub Project URL or leave empty>
 <!--
   Coordinates with the harness `documenter` sub-agent. List the pages
   that will get created/updated under `wiki/`.
+
+  Operator convention (2026-06-09): list ALL wiki pages that document
+  the system — not just the new ones this design ships.
 -->
 
 ### Launch Plans
@@ -242,17 +277,28 @@ project: <GitHub Project URL or leave empty>
 <!--
   How does this go live? All-at-once is acceptable for small changes;
   larger changes typically phased.
+
+  Operator convention (2026-06-09): if the launch date has already
+  passed, this section is just the date(s) it launched — no plan prose.
 -->
 
 ## Operations
+
+<!--
+  Operator convention (2026-06-09): same rule as Quality Attributes —
+  walk all four sub-sections, but OMIT any that are N/A or low-relevance
+  from the final doc. Where behavior depends on CI/automation inputs or
+  outputs, say explicitly that it's the agent (LLM) doing the watching /
+  reading / reacting.
+-->
 
 ### SLAs
 
 *Service-level expectations. Uptime, response time, error budgets.*
 
 <!--
-  N/A appropriate for internal tooling with no SLA exposure; explicitly
-  mark "N/A: internal tooling, no external SLA."
+  N/A appropriate for internal tooling with no SLA exposure — omit the
+  sub-section in that case.
 -->
 
 ### Monitoring and Alerting
@@ -283,7 +329,7 @@ project: <GitHub Project URL or leave empty>
 
 ## Document History
 
-*Major revisions only. Git history covers per-commit changes.*
+*Major revisions only. Git history covers per-commit changes. **One row per day**, max.*
 
 <!--
   Entries chronological. Format:
@@ -292,6 +338,11 @@ project: <GitHub Project URL or leave empty>
   Initial draft entry auto-populated by `/design author` on creation.
   Mid-execution design changes append entries here — that's how the
   skill knows which parts to re-translate.
+
+  Operator convention (2026-06-09): multiple entries on the same day are
+  CONSOLIDATED into a single row telling that day's whole story (the row's
+  Status = the day's end state). Append freely while working; consolidate
+  before the doc is presented/committed.
 -->
 
 | Date | Change | Status |

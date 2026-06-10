@@ -727,6 +727,23 @@ Deterministic — re-running sequence produces identical ordering.
 - **Auto-promote queued plans.** That's task 5's harness `/release` extension. Sequence only writes; promotion lands elsewhere.
 - **Generate non-draft PLAN.md Status.** All generated plans start `Status: draft` so the human runs `/plan` to refine before `/work`. The skill produces a starting point, not the final task list.
 
+## Authoring conventions (operator-locked, 2026-06-09)
+
+Learned from a full operator review cycle (the crickets `continuous-integration` design — two review rounds + a hardening arc). The per-section detail lives in the template's HTML comments; the narrative + before/after examples live in the operator's vault overlay (`<vault>/projects/_global/wiki-style/2026-06-09-design-doc-prose.md`). **Read both at authoring time.** The short version:
+
+1. **Structure is sacred.** Never change a design doc's 10-section structure without asking the operator first. "Update to current reality" = content-only.
+2. **Titles are plain:** "<Topic> Design" — no em-dash headline subtitles.
+3. **Objective: 3–4 plain sentences, hard cap.** No jargon; overflow belongs in Background.
+4. **Background: max 3 paragraphs** — why it's needed · the environment/constraints that drive the decisions · the cost/effort realities.
+5. **Overview reads cold:** a reader who doesn't know the codebase gets the shape; gloss internal names on first use.
+6. **Infrastructure is platform-first + charts:** the platform/framework → a jobs/components table → a triggers table → the guarantees. Deep mechanics go to Detailed Design.
+7. **Classify honestly:** deployment is not CI; a job goes in the design that owns its concern (cross-link, don't co-document).
+8. **Name the LLM as the actor** wherever behavior rides automation inputs/outputs (polling CI, reading logs, closing out on green).
+9. **Quality Attributes / Operations:** walk every sub-section, but the doc keeps only the real ones — omit N/A stubs. CI/automation designs check supply-chain pinning under Security.
+10. **Project management for shipped systems:** no work estimates; Launch Plans = just the dates when passed; Documentation Plan lists **all** wiki pages documenting the system.
+11. **Risks carry re-audit triggers; paid-down risks come out** of the list (a one-line lead note records the paydown + date). A live incident that proves a section's claim is recorded **in that section** as its proof point.
+12. **Document History: one row per day** — consolidate same-day entries into a single row telling that day's story (Status = the day's end state).
+
 ## Tool allowlist
 
 **`Read, Write, Edit, Glob, Grep` only.** No `Bash`, no `NotebookEdit`. The skill's job is file authorship + structured edits — not shell invocation. Bash invocation, if needed downstream, comes from the harness `/work` phase during stage 5 (per-part execution).
