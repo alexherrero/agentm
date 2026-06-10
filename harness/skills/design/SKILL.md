@@ -13,6 +13,12 @@ A skill that runs the **front** of a project: the design phase a human cares abo
 
 **Position vs. the harness's `/plan`:** `/plan` expects a brief and emits tasks — good for "I know what I want, give me a task breakdown." This skill starts *earlier*: it walks you through assembling a real design doc in a specific structured shape, then uses that same shape to drive the breakdown. Reach for `/design` when the problem is ambiguous, has multiple stakeholders, or needs Quality Attributes / Operations thinking before code starts. Reach for `/plan` when the design is already settled.
 
+## Design artifacts live with the design (mockups, handoffs, validators)
+
+A design doc is rarely the only artifact. Visual mockups (HTML/images), design handoff docs, prototype validators, and reference screenshots — **including ones produced by an external visual pass (Antigravity / Gemini), which write to scratch dirs by default** — must be saved **alongside the design doc** under `.harness/designs/` the moment they exist (e.g. mockups in `.harness/designs/mockups/`, with a `designs/README.md` naming the **canonical** mockup + any intentional divergences). Never leave them in a scratch dir.
+
+Then **check the built UI against the canonical mockup** at design/build time and again at `/release`: the deterministic build gate verifies structure + contrast, **not** visual fidelity, so a human-or-screenshot comparison against the mock is a separate, required check. *(Why this is a rule: on one project the external mockups + handoffs sat in a scratch dir, were never saved, and the build silently drifted from the mock — a hero panel ended up stacked under the title instead of beside it — until the operator eyeballed the live site days later.)*
+
 ## Sub-commands
 
 The skill exposes three sub-commands, dispatched by the host's slash-command surface:
