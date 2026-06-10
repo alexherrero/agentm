@@ -32,7 +32,7 @@ Six phases with hard boundaries. Each phase has one job.
 |---|---|---|
 | `/setup` | First-time scaffold, feature list, `init.sh`. | Directory layout + `.harness/PLAN.md` stub. |
 | `/plan` | Turn a brief into tasks with verification criteria. No code. | `.harness/PLAN.md` with tasks. |
-| `/work` | Implement exactly one task; run gates; commit. | One task `[x]`; `progress.md` line appended. |
+| `/work` | Work the plan's task list autonomously — safety-gate each task, gates green + commit per task; stop to ask only on a failed check or needed clarification. | Tasks `[x]`; `progress.md` lines appended. |
 | `/review` | Adversarial critique — must produce a failing test or line-number defect. | Executable artifact, not prose. |
 | `/release` | Pre-merge gate: clean tree, full test suite, feature flags flipped truthfully. | Verified-ready state; no push. |
 | `/bugfix` | Report → Analyze → Fix → Verify pipeline for bugs (replaces `/plan` + `/work`). | Fix committed with regression test. |

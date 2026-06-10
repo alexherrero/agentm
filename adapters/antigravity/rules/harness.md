@@ -21,7 +21,7 @@ Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief
 ## Non-negotiables (from [`harness/principles.md`](../../harness/principles.md))
 
 1. **Phase-gated workflow.** Plan → Work → Review → Release. Do not skip phases or merge them.
-2. **One task per `/work` session.** No "while I'm in here" scope expansion.
+2. **Full task list per `/work` session, autonomously.** Safety-gate each task before starting it; stop to ask only on a failed check (hard-to-reverse / ambiguous / scope-drifting / unverifiable) or a needed clarification. No scope expansion beyond the plan; single-threaded always.
 3. **Gates before commit.** Typecheck, lint, tests must be green before a task is marked `[x]`.
 4. **Never edit or delete a failing test to make it pass.** If a test is wrong, surface it and stop.
 5. **Adversarial review framing is literal.** The code contains bugs; find them. Rubber-stamp reviews are a failure of rigor.

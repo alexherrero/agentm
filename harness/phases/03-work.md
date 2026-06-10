@@ -1,6 +1,6 @@
 # Phase: work
 
-Implement exactly one task from `PLAN.md`. Stop when that task is done and its verification gates are green. Do not start the next task.
+Work through `PLAN.md`'s task list autonomously — one task at a time, in sequence — assuming the **full list** by default. Before each task, run a safety pre-check; **stop and ask the operator only when a task fails that check or an important clarification is needed to continue.** Otherwise run to the end of the plan, with verification gates green before each task is marked `[x]`.
 
 > [!NOTE]
 > **State-file resolution (V4 #26 + #37).** State files live at `<vault>/projects/<slug>/_harness/<file>` post-migration. **Invoke the dispatcher CLI — don't bare-`Read .harness/<file>` or `Edit .harness/<file>`:**
@@ -15,9 +15,9 @@ Implement exactly one task from `PLAN.md`. Stop when that task is done and its v
 
 ## Purpose
 
-The `/work` phase exists to keep implementation single-threaded and coherent. From [principles.md §3](../principles.md): parallel implementers produce mutually-inconsistent decisions; single-task sessions let the implementer hold the full context of what they're changing and why.
+The `/work` phase exists to keep implementation **single-threaded and coherent**. From [principles.md §3](../principles.md): parallel implementers produce mutually-inconsistent decisions; a single agent working tasks in sequence holds the full context of what it's changing and why.
 
-"One task per session" is not a suggestion. It's the load-bearing constraint that makes everything else in the harness work.
+A session works the **whole task list autonomously** — the unit is the plan, not a single task. What keeps that safe is the **per-task safety pre-check**: before starting each task the agent decides whether it can proceed safely and autonomously, and stops to ask the operator if it can't (or if an important clarification is needed). Single-threaded execution is the load-bearing constraint — never fan out parallel implementers. The autonomy boundary is the safety check, not the task count.
 
 ## Preconditions
 
@@ -62,13 +62,22 @@ Budget defaults to 6k tokens (override via `HARNESS_RECALL_BUDGET_WORK` env); ca
 
 See [ADR 0007](../../wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) for the design rationale.
 
-### 2. Confirm scope
+### 2. Safety pre-check (before each task)
 
-Before writing any code, state the task to the user in one sentence and confirm:
+The session assumes the **full task list** — it does not ask permission per task. Instead, before starting each task, run a go/no-go safety pre-check. **Proceed autonomously if the task is safe; stop and ask the operator only when it isn't, or when an important clarification is needed to continue.**
 
-> About to work on **task N: <title>**. Verification: <one-line criterion>. OK?
+Stop-and-ask triggers — the task:
+- is **hard to reverse** or touches something destructive / external / published / security-sensitive;
+- needs a **decision that isn't locked** (an ambiguity, a design fork the plan didn't settle);
+- turns out **bigger or different than the plan said** (scope drift — see step 4);
+- has a **verification that can't be made executable**, or a prerequisite that isn't actually satisfied;
+- surfaces a **failing test that invalidates its premise**.
 
-Skip this confirmation only if the user explicitly said "just work on the next task." The confirmation is cheap and catches plan/intent drift.
+When a trigger fires, state it plainly and wait — even if it lands in the middle of an otherwise-approved run:
+
+> Stopping before **task N: <title>** — <which trigger + the specific concern>. Options: <…>. Your call.
+
+Otherwise proceed to step 3. This per-task gate is the autonomy boundary that *replaces* per-task approval: full-task-list momentum is the default; the safety check is what keeps it safe.
 
 ### 3. Gather context (optional)
 
@@ -288,19 +297,24 @@ reading `number` and `owner` from `.harness/project.json`.
 
 Preview-and-ask is non-negotiable per [`documentation.md §GitHub Projects + Issues`](../documentation.md). If the user declines, record nothing. If accepted, reference the project item URL in the ≤5-bullet summary.
 
-### 11. Stop
+### 11. Loop or stop
 
-**Do not start the next task.** The next task gets its own session: either `/work` again (clean context) or `/review` first if the task warranted it.
+After the commit lands, **loop back to step 2** for the next unchecked task — same session, same context — and keep going through the plan autonomously. The session stops only when:
+
+- **the plan is done** — no unchecked `[ ]` tasks remain; or
+- **a safety pre-check fires** (step 2), or an important clarification is needed — stop mid-plan and ask.
+
+Single-threaded still holds: tasks run in sequence, one at a time, never fanned out. When a just-finished task warrants `/review` (see [When to invoke `/review`](#when-to-invoke-review-vs-going-straight-to-the-next-work)), run it inline before moving to the next task rather than deferring to a separate session.
 
 If this task flipped a `features.json` entry's `passes` flag from `false` to `true` during `/review`, or the task finished the last feature in the plan, **suggest the `ship-release` skill** as the next step — do not auto-invoke it, the user may have more features queued. Phrase it: *"Feature `<id>` is now passing end-to-end. Consider invoking the `ship-release` skill (from crickets) to cut a tagged release."* If `crickets` isn't installed alongside, graceful-skip the suggestion — `ship-release` migrated to `crickets` in v2.0.0 (see ADR 0006).
 
-Return to the user with a summary. Minimum (≤5 bullets — adequate for a routine task close):
+Return to the user with a summary. Minimum (≤5 bullets — adequate for a routine close):
 
-- Task completed: task N, title
+- Tasks completed this session: task N (–M), titles
+- Why it stopped: plan done, or the safety-stop / clarification that interrupted the run
 - Files changed: count + the most notable path
-- Tests added: count, what they cover
-- Gates: all green (or: "N iterations needed, here's why")
-- Next: `/review` if the task is high-risk; otherwise `/work` for the next task, or `/release` if all tasks done, or `ship-release` if a feature just went green
+- Gates: all green per task (or: "task N needed K iterations, here's why")
+- Next: the operator's call on the stop, `/release` if the plan is done, or `ship-release` if a feature just went green
 
 **Enhancements when `.harness/ROADMAP.md` exists** (signals a multi-plan project — apply by default in that case):
 
@@ -344,7 +358,7 @@ If [`crickets`](https://github.com/alexherrero/crickets) is installed alongside 
 
 ## Failure modes to avoid
 
-- **Starting the next task "while you're in there."** The single most common way `/work` breaks coherence. Stop after one.
+- **Pushing past a failed safety pre-check.** Being inside an approved run is not a license. If a task is hard to reverse, ambiguous, scope-drifting, or needs a clarification, **stop and ask — even mid-plan**. Barrelling on "because the run was approved" is the single most common way the autonomous model breaks.
 - **Editing tests to make them pass.** Banned. If a test is wrong, say so and stop.
 - **Skipping failed gates** ("I'll fix this next session"). Gates must be green before the task is marked `[x]`.
 - **Silently expanding scope.** If the task is bigger than planned, surface it — don't quietly do more than the plan says.
@@ -357,11 +371,11 @@ If [`crickets`](https://github.com/alexherrero/crickets) is installed alongside 
 
 Example:
 
-> Completed task 2: "Core line-counting with file inputs" in `~/lc/`
-> - 3 files changed (`src/cli.js`, `src/count.js`, `test/count.test.js`)
-> - 4 tests added (fixture-based line counts, error on unreadable file)
-> - Gates: typecheck N/A, lint clean, all tests pass, no build step
-> - Committed as `feat: implement file-mode line counting`
-> - Next: `/work` for task 3 (stdin support), or `/review` if you want a critic pass first
+> Worked tasks 2–4 of the line-counter plan in `~/lc/`
+> - Tasks: 2 (file inputs), 3 (stdin support), 4 (error handling) — each gated + committed separately
+> - 6 files changed (`src/cli.js`, `src/count.js`, +4 tests)
+> - Gates: all green per task (task 3 needed 2 iterations — stdin EOF edge case)
+> - Stopped before task 5 (publish to npm): safety pre-check — that's an external, irreversible publish, so it's your call before I proceed
+> - Next: confirm task 5, or `/review` first
 
 Tight. No essay.

@@ -3,6 +3,7 @@
 > [!NOTE]
 > **Status:** accepted
 > **Date:** 2026-03-01
+> **Refined:** 2026-06-10 — the within-`/work` rule changed from *one task per session* to *the full task list, autonomously, gated by a per-task safety pre-check*. The phase-gated decision itself stands; only the `/work` task-granularity rule moved (as line 51 below anticipated it would).
 
 ## Context
 
@@ -23,7 +24,7 @@ Every session runs **exactly one** of six phases: `setup`, `plan`, `work`, `revi
 2. Has one success criterion (not several).
 3. Ends by writing on-disk state so the next session can pick up.
 
-Within `/work` specifically: **one task per session**, even if the next task looks easy. Scope creep across task boundaries is the single failure mode this rule is designed to prevent.
+Within `/work` specifically (refined 2026-06-10): a session works the **full task list autonomously**, one task at a time in sequence, gated by a **per-task safety pre-check** — it proceeds without per-task approval and stops to ask only when a task can't be done safely/autonomously (hard-to-reverse, ambiguous, scope-drifting, unverifiable) or needs a clarification. The single failure mode the phase guards against is no longer "starting the next task" (that is now the default) but **scope creep beyond the plan** and loss of coherence from fanning out; single-threaded sequential execution is preserved.
 
 ## Consequences
 
@@ -40,7 +41,7 @@ Within `/work` specifically: **one task per session**, even if the next task loo
 - **Users who want a one-shot "build this for me" experience will be frustrated.** The harness refuses to do it. This is intentional (see [Product-Intent](Product-Intent) "Non-goals") but it is a real cost.
 - **Starting a new session costs wall time.** The harness accepts this; fresh context is worth the 10-20 seconds.
 - **Phase-boundary state must be kept consistent.** If `PLAN.md` and `progress.md` disagree, the next session is confused. Mitigation: every phase spec ends with an explicit on-disk update step.
-- **Enforcement is soft.** Nothing stops an agent from implementing two tasks in a `/work` session — it's a norm, not a lock. We rely on the spec being in the agent's context and the user calling it out.
+- **Enforcement is soft.** Nothing forces the agent to stop on an unsafe task — the per-task safety pre-check is a norm, not a lock. We rely on the spec being in the agent's context and the operator calling it out. (Pre-2026-06-10 this concern was about implementing *two* tasks in a session; that is now the default, so the soft-enforcement risk re-points to the safety pre-check.)
 
 **Load-bearing assumptions** (re-check on every model bump, per [principle 6](https://github.com/alexherrero/agentm/blob/main/harness/principles.md#6-re-audit-the-harness-on-every-model-bump))
 
@@ -48,4 +49,4 @@ Within `/work` specifically: **one task per session**, even if the next task loo
 - Models still rubber-stamp when shown the implementer's reasoning.
 - On-disk state files are still cheaper to re-read than conversation history is to compact.
 
-If a future model can genuinely hold 10 phases of context coherently, some of this scaffolding stops being load-bearing. The phase boundaries themselves are likely to survive longer than the one-task-per-session rule.
+If a future model can genuinely hold 10 phases of context coherently, some of this scaffolding stops being load-bearing. The phase boundaries themselves have already outlived the one-task-per-session rule, which was refined to full-task-list autonomy on 2026-06-10 — exactly as anticipated.
