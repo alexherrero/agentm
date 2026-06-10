@@ -33,6 +33,7 @@ You have access to my durable memory: a Google-Drive-synced Obsidian vault named
 
 - **`personal-private/_always-load/`** — my global conventions + preferences (dev-flow rules, commit conventions, ADR/changelog shapes, voice/brand). **Read these first, every time.**
 - **`projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate these), `open-questions/` (unresolved), `_harness/` (the project's roadmap / plan / progress).
+- **`external/<slug>/`** — third-party projects I'm **reviewing or mentoring, not building** (e.g. a relative's app). Same internal shape as `projects/` (`_index.md` + `decisions/` + `_harness/`), but deliberately kept **out of `projects/`** because I don't own this work — the `_index.md` "Relationship" block says whose it is and why it's here.
 - **`_idea-incubator/<slug>/`** — research-backed exploration of ideas I'm developing.
 - **`_inbox/`** — unsorted captures (staging; low-signal).
 - **`_meta/`** — machine files + audit reports (readable, not curated prose).
