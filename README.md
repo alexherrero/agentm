@@ -164,7 +164,7 @@ Legacy single-file canonical skills (delivered via the per-host `adapters/` pipe
 
 | Skill | What it does |
 |---|---|
-| [`migrate-to-diataxis`](harness/skills/migrate-to-diataxis.md) | One-shot migration of an already-installed project's `wiki/` to the Diátaxis four-mode layout. Preview-first, `git mv` for blame, non-destructive. (Superseded by `diataxis-author` for new work; kept for legacy migration.) |
+| [`migrate-to-diataxis`](harness/skills/migrate-to-diataxis.md) | One-shot migration of an already-installed project's `wiki/` to the Diátaxis four-mode layout. Preview-first, `git mv` for blame, non-destructive. (Superseded by crickets' `wiki-maintenance` plugin for new work; kept for legacy migration.) |
 | [`doctor`](harness/skills/doctor.md) | User-invoked (`/doctor`). Verifies the install is correctly wired up in this host — structural by default, `--live` adds real sub-agent dispatches and skill dry-runs. |
 
 Compound skills imported from Crickets in v4.0.0 (V4 #36) — delivered via the manifest-walking dispatcher in `install.sh` / `install.ps1`:
@@ -173,8 +173,9 @@ Compound skills imported from Crickets in v4.0.0 (V4 #36) — delivered via the 
 |---|---|
 | [`memory`](harness/skills/memory/SKILL.md) | The Agent M memory skill itself. `/memory save` / `evolve` / `reflect` / `search` / `index-skills` / `discover-skills` / `adapt-skills` / `watchlist` / `promote`. Permeable A3 write boundary; collision-checked; supersession-not-deletion. Powers the recall + reflect hook loop. |
 | [`design`](harness/skills/design/SKILL.md) | Human-facing design pipeline → agent execution handoff. `/design author` walks a 10-section template; `/design translate` splits the approved design into structural parts; `/design sequence` generates a `PLAN.md` per part for `/work` + `/release` flow. |
-| [`diataxis-author`](harness/skills/diataxis-author/SKILL.md) | Author + maintain a Diátaxis-style wiki for any repo. `/diataxis author` / `check` / `repair` / `migrate` / `classify`. Subsumes the harness's `migrate-to-diataxis` predecessor. |
 | [`ship-release`](harness/skills/ship-release/SKILL.md) | Cut a tagged GitHub release with semver-driven version bumps from conventional commits. Writes CHANGELOG, tags, pushes, creates the release. |
+
+> **Wiki authoring lives in crickets now.** The `diataxis-author` skill was retired from agentm in the seven-section convergence ([ADR 0004 Amendment 2026-06-11](wiki/decisions/0004-diataxis-documentation-spec.md)) — it is canonical in [crickets' `wiki-maintenance` plugin](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance). The harness defers to it with the [ADR 0006](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0006-crickets-split.md) graceful-skip (suggest-then-skip when crickets is not installed); the surviving seven-folder `scripts/check-wiki.py` is agentm's wiki gate.
 
 Hooks (claude-code only per [ADR 0009](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0009-evidence-tracker-hook.md)):
 

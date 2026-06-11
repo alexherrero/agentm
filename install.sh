@@ -660,7 +660,7 @@ cp_user_walk "$HARNESS_ROOT/templates/wiki" "wiki"
 # harness/agents/<file>.md, dispatching each based on its supported_hosts
 # field. These compound customizations are agentm-native (in harness/) —
 # originally imported from crickets in v4.0.0 (plan #18 DC #28) and since
-# owned by agentm: the memory / design / diataxis-author / ship-release
+# owned by agentm: the memory / design / ship-release
 # skills, the memory hooks (memory-recall-*, memory-reflect-*), the
 # evidence-tracker hook, and the memory-idea-researcher + adapt-evaluator
 # sub-agents.

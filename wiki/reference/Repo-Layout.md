@@ -76,7 +76,7 @@ A third directory, `adapters/gemini/`, remains in the tree but is **not a suppor
 
 **Canonical sub-agents** (`harness/agents/`): `explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`, `documenter`, `adapt-evaluator`, `memory-idea-researcher`.
 
-**Canonical skills** (`harness/skills/`): `design`, `diataxis-author`, `doctor`, `memory`, `migrate-to-diataxis`, `ship-release`, `wiki-author`.
+**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `migrate-to-diataxis`, `ship-release`, `wiki-author`. Wiki authoring's `diataxis-author` is no longer harness-shipped — it's provided by crickets' `wiki-maintenance` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`.
 
 ## Related
 

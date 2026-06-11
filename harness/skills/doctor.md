@@ -34,7 +34,7 @@ For each detected adapter, verify the expected name set is present and each file
 
 - **Phase commands** (required): `bugfix, plan, release, review, setup, work`. Plus `recent-wiki-changes` (V4 #30 plan 2, v4.4.0+) — graceful-skip if absent on a pre-v4.4.0 install.
 - **Sub-agents** (required): `adversarial-reviewer, adversarial-reviewer-cross, documenter, explorer`. Optional extras shipped by harness in V3+: `memory-idea-researcher, adapt-evaluator`. Optional extras shipped by crickets: `diataxis-evaluator, evaluator` (graceful-skip if crickets not paired).
-- **Skills** (required, harness-shipped): `doctor, migrate-to-diataxis, wiki-author` (wiki-author landed in V4 #30 plan 2 / v4.4.0). Optional harness-shipped compound skills: `design, diataxis-author, memory, ship-release` — graceful-skip if absent (they may be deferred via `install.sh --no-compound-skills` or similar). Optional crickets-shipped skills: `dependabot-fixer, pii-scrubber` — graceful-skip if crickets is not paired.
+- **Skills** (required, harness-shipped): `doctor, migrate-to-diataxis, wiki-author` (wiki-author landed in V4 #30 plan 2 / v4.4.0). Optional harness-shipped compound skills: `design, memory, ship-release` — graceful-skip if absent (they may be deferred via `install.sh --no-compound-skills` or similar). Optional crickets-shipped skills: `dependabot-fixer, diataxis-author, pii-scrubber` — graceful-skip if crickets is not paired (`diataxis-author` retired from agentm in the seven-section convergence; canonical in crickets' `wiki-maintenance` plugin).
 
 For each expected item:
 1. The file exists at the adapter-specific path (project scope or user scope, whichever the install resolved to).

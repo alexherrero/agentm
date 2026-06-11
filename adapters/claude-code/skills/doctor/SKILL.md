@@ -36,7 +36,7 @@ Expected name sets:
 |---|---|---|
 | `$ROOT/commands/*.md` | `bugfix, plan, release, review, setup, work` | `recent-wiki-changes` (V4 #30 plan 2 / v4.4.0+) |
 | `$ROOT/agents/*.md` | `adversarial-reviewer, adversarial-reviewer-cross, documenter, explorer` | `memory-idea-researcher, adapt-evaluator` (harness); `diataxis-evaluator, evaluator` (crickets) |
-| `$ROOT/skills/*/` | `doctor, migrate-to-diataxis, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, diataxis-author, memory, ship-release` (harness compound); `dependabot-fixer, pii-scrubber` (crickets) |
+| `$ROOT/skills/*/` | `doctor, migrate-to-diataxis, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, memory, ship-release` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber` (crickets) |
 
 The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — phase commands → `.agents/workflows/*.md`, and sub-agents *and* skills both → `.agents/skills/*/` (the same Required name sets apply); on **Gemini** → `.gemini/commands/*.toml` + `.gemini/agents/*.md` + shared `.agents/skills/*/`.
 

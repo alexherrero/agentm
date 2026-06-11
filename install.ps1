@@ -324,7 +324,7 @@ Copy-UserWalk (Join-Path $HarnessRoot 'templates/wiki') 'wiki'
 # Walks harness/skills/<dir>/SKILL.md, harness/hooks/<dir>/hook.md, and
 # harness/agents/<file>.md, dispatching each based on its supported_hosts
 # field. Imported from crickets in v4.0.0 per design call #28 of plan #18:
-# compound skills (memory, design, diataxis-author, ship-release), memory
+# compound skills (memory, design, ship-release), memory
 # hooks (memory-recall-*, memory-reflect-*), the evidence-tracker hook,
 # and the memory-idea-researcher sub-agent.
 #
