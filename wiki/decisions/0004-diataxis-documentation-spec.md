@@ -140,6 +140,34 @@ The `wiki-author` skill (operator-facing dispatcher; added V4 #30 plan 2) wraps 
 
 Cross-references: [`documenter` sub-agent spec](https://github.com/alexherrero/agentm/blob/main/harness/agents/documenter.md) (write-scope section) + [`wiki-author` skill](https://github.com/alexherrero/agentm/blob/main/harness/skills/wiki-author/SKILL.md) (ergonomics + trigger phrases) + V4 #30 plan 2 PLAN narrative.
 
+## Amendment 2026-06-11
+
+**Seven-section taxonomy convergence — supersedes §1 and §2.** Unlike the 2026-05-27 amendment (which only *extended* this ADR), this amendment **supersedes** the four-mode decision: §1 ("Four top-level subdirs = four modes") and §2 ("Four templates, one per mode") are replaced by the **seven-section frame** that crickets standardized (crickets ADR 0020 + its `wiki-section-taxonomy` design) and that agentm's own wiki + `scripts/check-wiki.py` gate already follow. The original four-mode body above is retained unchanged for the record; this amendment is the operative spec. The full four-surface convergence (this ADR · `harness/documentation.md` · the `diataxis-author` retire · `templates/wiki/`) is the [Seven-Section Wiki Convergence design](seven-section-convergence).
+
+**The taxonomy.** Seven ordered top-level sections replace the four mode-dirs:
+
+| # | Section | Presence | Replaces / note |
+|---|---|---|---|
+| 1 | `how-to/` | always | How-to mode; **Tutorials fold in here** — no separate `tutorials/` |
+| 2 | `reference/` | always | Reference mode |
+| 3 | `architecture/` | **conditional** — only when a per-repo `wiki/architecture.yml` manifest is declared | pillar overviews; new section |
+| 4 | `designs/` | always | HLDs / design docs; new top-level section |
+| 5 | `explanation/` | always | Explanation mode |
+| 6 | `decisions/` | always | ADRs, now top-level (was nested `explanation/decisions/`); still append-only once `Status: accepted` |
+| 7 | `operational/` | **conditional** — only on non-public visibility | runbooks / ops; omitted from public wikis |
+
+The five always-present sections (how-to · reference · designs · explanation · decisions) appear in every wiki; **Architecture** is gated on the `wiki/architecture.yml` manifest and **Operational** on non-public visibility.
+
+**What this retires:**
+
+- The separate **Tutorial** mode and `tutorials/` dir — tutorials become onboarding-shaped, numbered how-to pages under `how-to/`. (The §2 Tutorial template and the §3 tutorial-specific lint rules fold into How-to.)
+- The four **audience-tag remnants** (development / operational / design / architecture as front-line tags + Home groupings) that §1 preserved.
+- The fixed **four-template** count of §2 — section templates follow crickets' canonical set rather than a hardcoded four.
+
+**Tooling and gate.** The seven-section authoring tooling is crickets' canonical `wiki-maintenance` plugin (the upstream `wiki-section-taxonomy` work); agentm's duplicate four-mode `diataxis-author` copy is retired toward it with the [ADR 0006](0006-crickets-split) graceful-skip pattern (tracked by the convergence design's later parts). agentm's deterministic gate stays [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py), already seven-folder — so the gate side needs no change; this amendment brings the *spec* into line with it.
+
+Cross-references: crickets ADR 0020 (seven-section taxonomy) + crickets' `wiki-section-taxonomy` design (the upstream source) + the [Seven-Section Wiki Convergence design](seven-section-convergence) (this convergence's HLD) + [ADR 0006](0006-crickets-split) (the single-source / graceful-skip precedent the `diataxis-author` retire follows).
+
 ## Consequences
 
 **Positive**
