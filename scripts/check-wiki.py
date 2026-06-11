@@ -7,9 +7,10 @@ wiki/explanation/decisions/0004-diataxis-documentation-spec.md.
 
 Rules (hard = blocking under --strict; soft = always warn-only):
 
-  (a) Every content .md lives under tutorials/, how-to/, reference/,
-      or explanation/. Structural pages (Home.md, _Sidebar.md,
-      _Footer.md, README.md) are exempt.                      [hard]
+  (a) Every content .md lives under one of the taxonomy folders
+      (how-to/, reference/, architecture/, designs/, explanation/,
+      decisions/, operational/). Structural pages (Home.md,
+      _Sidebar.md, _Footer.md, README.md) are exempt.         [hard]
   (b) Tutorials and how-tos have a `> [!NOTE]` mode-declaration block
       in the first 25 lines with the required fields:
         tutorial: Goal, Time, Prereqs
@@ -31,13 +32,20 @@ Rules (hard = blocking under --strict; soft = always warn-only):
   (i) Orphan check: tutorials link to ≥1 reference or how-to;
       how-tos link to ≥1 reference; reference pages are linked from
       ≥1 other page (structural pages count).                 [hard]
-  (j) Home.md and _Sidebar.md each reference every non-structural
-      content page at least once.                             [hard]
+  (j) _Sidebar.md references every non-structural content page — it is the
+      complete sitemap (and, being present on every wiki page, the orphan
+      guarantee). Home.md is CURATED: it is NOT required to list every page;
+      completeness lives in the sidebar.                      [hard]
   (k) Word-count ceilings:
         tutorial ≤ 1200 words
         how-to   ≤ 600 words
         explanation ≤ 2000 words
         reference: unbounded                                  [soft]
+  (l) The repo-root README.md, governed as a wiki-adjacent page when
+      include_readme is on (the default): every relative-path markdown
+      link resolves to an existing file under the repo root. Opt out
+      with --no-readme or {"include_readme": false} in
+      <repo-root>/.diataxis.json.                             [hard]
 
 Usage:
   python3 scripts/check-wiki.py               # warn, exit 0
@@ -47,16 +55,27 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parent
-DEFAULT_WIKI = REPO_ROOT / "wiki"
+# cwd-relative default: this gate is bundled in the wiki-maintenance plugin and
+# runs from an arbitrary repo's root, so its own file location says nothing about
+# the repo under check. --root overrides; repo_root (for rule l) is wiki_root.parent.
+DEFAULT_WIKI = Path("wiki")
 
-MODE_DIRS = ("tutorials", "how-to", "reference", "explanation")
+_FOLDER_MODE = {
+    "how-to": "how-to",
+    "reference": "reference",
+    "architecture": "index",
+    "designs": "explanation",
+    "explanation": "explanation",
+    "decisions": "explanation",
+    "operational": "how-to",
+}
+MODE_DIRS = tuple(_FOLDER_MODE)
 STRUCTURAL_BASENAMES = {"Home", "_Sidebar", "_Footer", "README"}
 WORD_CAPS = {"tutorial": 1200, "how-to": 600, "explanation": 2000}
 BANNED_HOWTO_HEADINGS = {"rationale", "why", "background", "context"}
@@ -71,6 +90,7 @@ NUMBERED_STEP_TITLE_RE = re.compile(r"^(Step\s+\d+|\d+\.)", re.IGNORECASE)
 WHAT_LEARNED_RE = re.compile(r"^what\s+you('ve)?\s*learned", re.IGNORECASE)
 AMENDMENT_DATE_RE = re.compile(r"^Amendment\s+(\d{4}-\d{2}-\d{2})\s*$", re.IGNORECASE)
 STATUS_RE = re.compile(r"\*\*Status:\*\*\s*(\w+)", re.IGNORECASE)
+MODE_HINT_RE = re.compile(r"<!--\s*mode:\s*(tutorial|how-to|reference|explanation|index)\s*-->", re.IGNORECASE)
 
 
 @dataclass
@@ -103,16 +123,21 @@ def mode_for(path: Path, wiki_root: Path) -> str | None:
         return None
     if not rel.parts:
         return None
-    top = rel.parts[0]
-    if top == "tutorials":
-        return "tutorial"
-    if top == "how-to":
-        return "how-to"
-    if top == "reference":
-        return "reference"
-    if top == "explanation":
-        return "explanation"
-    return None
+    return _FOLDER_MODE.get(rel.parts[0])
+
+
+def resolve_mode(path: Path, wiki_root: Path) -> str | None:
+    """Page mode: an explicit `<!-- mode: X -->` hint wins (for a page whose folder
+    default doesn't fit — a tutorial in how-to/, a reference table in explanation/);
+    otherwise the folder default (mode_for)."""
+    if is_structural(path):
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return mode_for(path, wiki_root)
+    m = MODE_HINT_RE.search(text)
+    return m.group(1).lower() if m else mode_for(path, wiki_root)
 
 
 # ── parsing helpers ────────────────────────────────────────────────────────
@@ -296,13 +321,14 @@ def rule_g_unique(all_paths: list[Path], wiki_root: Path,
     for p in all_paths:
         if is_structural(p):
             continue
-        stems.setdefault(p.stem, []).append(p)
+        stems.setdefault(p.stem.lower(), []).append(p)
     for stem, paths in stems.items():
         if len(paths) > 1:
             others = [p.relative_to(wiki_root).as_posix() for p in paths]
             for p in paths:
                 emit(issues, p, 1, "g",
-                     f"basename `{stem}` not unique; collides with {others}")
+                     f"basename `{stem}` not unique (case-insensitive — GitHub Wiki "
+                     f"resolves links by basename and collides on case); collides with {others}")
 
 
 def rule_h_links_resolve(p: Path, text: str, known_stems: set[str],
@@ -342,29 +368,30 @@ def rule_i_orphan(modes: dict[Path, str | None],
 
 def rule_j_home_sidebar(wiki_root: Path, modes: dict[Path, str | None],
                         issues: list[Issue]) -> None:
+    """Home.md and the root _Sidebar.md must exist. Every content page must be
+    reachable within **2 levels** of the sitemap: listed in the root _Sidebar.md OR
+    in a per-folder _Sidebar.md (GH Wiki renders the nearest one, so a section's own
+    sidebar is the second level). The union of all _Sidebar.md refs is the no-orphan
+    guarantee. `Home` is **curated** — free to surface only what a reader acts on."""
     home = wiki_root / "Home.md"
     sidebar = wiki_root / "_Sidebar.md"
     for p in (home, sidebar):
         if not p.is_file():
             emit(issues, p, 1, "j", f"{p.name} is missing")
-    if not (home.is_file() and sidebar.is_file()):
+    if not sidebar.is_file():
         return
 
-    def referenced_stems(path: Path) -> set[str]:
-        text = path.read_text(encoding="utf-8", errors="replace")
-        return {page for _, _, page in extract_wiki_links(text)}
-
-    home_refs = referenced_stems(home)
-    sidebar_refs = referenced_stems(sidebar)
+    all_refs: set[str] = set()
+    for sb in wiki_root.rglob("_Sidebar.md"):
+        all_refs |= {page for _, _, page in
+                     extract_wiki_links(sb.read_text(encoding="utf-8", errors="replace"))}
     for p, mode in modes.items():
         if mode is None:
             continue
-        if p.stem not in home_refs:
-            emit(issues, home, 1, "j",
-                 f"Home.md does not reference `{p.stem}` (mode: {mode})")
-        if p.stem not in sidebar_refs:
+        if p.stem not in all_refs:
             emit(issues, sidebar, 1, "j",
-                 f"_Sidebar.md does not reference `{p.stem}` (mode: {mode})")
+                 f"`{p.stem}` (mode: {mode}) is referenced by no _Sidebar.md (root or "
+                 f"per-folder); every page must be reachable within 2 levels of the sitemap")
 
 
 def rule_k_word_count(p: Path, mode: str | None, text: str,
@@ -379,12 +406,72 @@ def rule_k_word_count(p: Path, mode: str | None, text: str,
              soft=True)
 
 
+# ── repo-root doc governance (rule l) ───────────────────────────────────────
+
+EXTERNAL_LINK_PREFIXES = ("http://", "https://", "mailto:", "tel:", "#")
+
+
+def extract_relative_links(text: str) -> list[tuple[int, str, str]]:
+    """Yield (lineno, label, path) for markdown links that are relative
+    filesystem paths — not external URLs (http/https/mailto/tel) and not
+    pure in-page anchors. A trailing #anchor is stripped from the path."""
+    out: list[tuple[int, str, str]] = []
+    for m in LINK_RE.finditer(text):
+        href = m.group(2).strip()
+        if not href or href.startswith(EXTERNAL_LINK_PREFIXES):
+            continue
+        path_part = href.split("#", 1)[0]
+        if not path_part:
+            continue
+        line_no = text[:m.start()].count("\n") + 1
+        out.append((line_no, m.group(1), path_part))
+    return out
+
+
+def rule_l_root_doc_links(doc_path: Path, repo_root: Path,
+                          issues: list[Issue]) -> None:
+    """Every relative-path markdown link in a governed root doc must resolve
+    to an existing file relative to the repo root (rule l)."""
+    text = doc_path.read_text(encoding="utf-8", errors="replace")
+    for line_no, _label, rel in extract_relative_links(text):
+        if not (repo_root / rel).exists():
+            emit(issues, doc_path, line_no, "l",
+                 f"relative link `{rel}` does not resolve to a file under the repo root")
+
+
+def collect_root_doc_issues(repo_root: Path) -> list[Issue]:
+    """Run the governed-root-doc rules (today: the README, rule l).
+    A missing README is a silent no-op."""
+    issues: list[Issue] = []
+    readme = repo_root / "README.md"
+    if readme.is_file():
+        rule_l_root_doc_links(readme, repo_root, issues)
+    return issues
+
+
+def resolve_include_readme(repo_root: Path, cli_include: bool) -> bool:
+    """Whether to govern the repo-root README. Defaults to True; a CLI
+    --no-readme (cli_include=False) or {"include_readme": false} in
+    <repo-root>/.diataxis.json opts out. A malformed config is ignored."""
+    if not cli_include:
+        return False
+    cfg = repo_root / ".diataxis.json"
+    if cfg.is_file():
+        try:
+            data = json.loads(cfg.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            return True
+        if isinstance(data, dict) and data.get("include_readme") is False:
+            return False
+    return True
+
+
 # ── driver ─────────────────────────────────────────────────────────────────
 
 def collect_issues(wiki_root: Path) -> list[Issue]:
     issues: list[Issue] = []
     all_paths = sorted(wiki_root.rglob("*.md"))
-    modes: dict[Path, str | None] = {p: mode_for(p, wiki_root) for p in all_paths}
+    modes: dict[Path, str | None] = {p: resolve_mode(p, wiki_root) for p in all_paths}
     stem_to_mode: dict[str, str] = {
         p.stem: m for p, m in modes.items() if m is not None
     }
@@ -432,7 +519,11 @@ def main() -> int:
     ap.add_argument("--strict", action="store_true",
                     help="Exit 1 if any hard issue is found. Default exits 0 with warnings.")
     ap.add_argument("--root", type=Path, default=DEFAULT_WIKI,
-                    help=f"Wiki root to check (default: {DEFAULT_WIKI.relative_to(REPO_ROOT)}).")
+                    help=f"Wiki root to check (default: {DEFAULT_WIKI}).")
+    ap.add_argument("--no-readme", dest="include_readme", action="store_false",
+                    default=True,
+                    help="Skip governing the repo-root README.md (default: governed; "
+                         "rule l checks its relative links resolve).")
     args = ap.parse_args()
 
     if not args.root.is_dir():
@@ -441,6 +532,8 @@ def main() -> int:
 
     wiki_root = args.root.resolve()
     issues = collect_issues(wiki_root)
+    if resolve_include_readme(wiki_root.parent, args.include_readme):
+        issues += collect_root_doc_issues(wiki_root.parent)
 
     hard = [i for i in issues if i.severity == "hard"]
     soft = [i for i in issues if i.severity == "soft"]
@@ -452,7 +545,7 @@ def main() -> int:
 
     summary = (
         f"\ncheck-wiki: {len(hard)} structural issue(s), "
-        f"{len(soft)} soft warning(s) under {wiki_root.relative_to(REPO_ROOT) if wiki_root.is_relative_to(REPO_ROOT) else wiki_root}."
+        f"{len(soft)} soft warning(s) under {wiki_root}."
     )
     print(summary, file=sys.stderr)
 
