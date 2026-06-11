@@ -28,7 +28,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | `--hooks` | `-Hooks` | Copy hook scripts into `.harness/hooks/` and merge PostToolUse / PreCompact / SessionStart entries into `.claude/settings.json`. Requires `jq` on POSIX; pwsh uses native JSON cmdlets. |
 | `--update` | `-Update` | **True sync** (v1.0.0+): wipe the harness-authored dirs (`.claude/{commands,agents,skills}`, `.agents/{rules,workflows,skills}`, `.gemini/{commands,agents}`, `.harness/{scripts,hooks}`) and recreate from source. Orphan paths from older versions (e.g. the legacy `.agent/` tree, or `.codex/`) are auto-removed. Leaves user-owned files (`.harness/PLAN.md`, `progress.md`, `verify.sh`, `init.sh`, `known-migrations.md`, `AGENTS.md`, `CLAUDE.md`, `wiki/**`) alone. Writes `.harness/.version`. |
 | `--scope user\|project` | `-Scope user\|project` | Install scope (default `project`). `--scope user` installs customizations to `~/.claude/` (target path not required) and also merges the AgentMemory payload into `~/.gemini/GEMINI.md` when `~/.gemini/` exists — the Antigravity global channel, so the vault rule applies across every workspace. `--scope project` installs into `<target>/.claude/` as usual. |
-| `--local-state` | `-LocalState` | Opt this machine into single-repo (vault-less) state: writes `"state_mode": "local"` to the on-host `.agentm-config.json` and skips vault auto-detection, so every phase write lands under `<repo>/.harness/` with no vault required. Flip an existing install with `agentm_config.py --state-mode` (below). See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
+| `--local-state` | `-LocalState` | Opt this machine into single-repo (vault-less) state: writes `"state_mode": "local"` to the on-host `.agentm-config.json` and skips vault auto-detection, so every phase write lands under `<repo>/.harness/` with no vault required. Flip an existing install with `agentm_config.py --state-mode` (below). See [Single-repo state mode](Single-Repo-State-Mode). |
 | `-h`, `--help` | `-Help` | Print the header comment block from the installer and exit. |
 
 ## Config CLI — `agentm_config.py`
@@ -38,7 +38,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | Operation | Effect |
 |---|---|
 | `--vault-path <path>` | Set `vault_path` (validates the dir exists). Backs `harness_memory.py::vault_path()` when `$MEMORY_VAULT_PATH` is unset. |
-| `--state-mode <local\|vault>` | Set `state_mode` — the device-level run mode. `local` opts a vault-less machine into repo-local state; `vault` switches back. Idempotent; mutually exclusive with `--vault-path`. See [Single-repo state mode](../explanation/Single-Repo-State-Mode.md). |
+| `--state-mode <local\|vault>` | Set `state_mode` — the device-level run mode. `local` opts a vault-less machine into repo-local state; `vault` switches back. Idempotent; mutually exclusive with `--vault-path`. See [Single-repo state mode](Single-Repo-State-Mode). |
 | `--get <field>` | Read a single field to stdout; `rc=0` if present, `rc=1` (silent) if absent. |
 | `--list` | Dump the full config as JSON. |
 | `--unset <field>` | Clear a single field. |
@@ -61,7 +61,8 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | `.harness/scripts/` (telemetry, cross-review) | Harness | Overwritten |
 | `.harness/hooks/` | Harness | Overwritten (only with `--hooks`) |
 | `.claude/commands/`, `.claude/agents/`, `.claude/skills/` | Harness | Overwritten |
-| `.agents/`, `.gemini/` (adapter trees) | Harness | Overwritten on `--update` (wipe-and-recreate from source — see Update-Installed-Harness) |
+| `.agents/` (Antigravity adapter tree) | Harness | Overwritten on `--update` (wipe-and-recreate from source — see Update-Installed-Harness) |
+| `.gemini/` (vestigial dropped-host adapter — Gemini CLI, dropped v2.4.0; still emitted pending reconciliation, see [Compatibility](Compatibility)) | Harness | Overwritten on `--update` |
 | `AGENTS.md`, `CLAUDE.md` | User (skip-if-exists) | Left alone |
 | `wiki/` scaffold | User | Per-file walk; missing files filled in, existing left alone |
 | `.github/workflows/wiki-sync.yml` | Harness | Overwritten |
@@ -99,4 +100,4 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 - [Tutorial 1: Your first harness install](01-First-Install) — end-to-end walkthrough.
 - [How to install into an existing project](Install-Into-Project) — recipe for production use.
 - [ADR 0002: Documentation convention](0002-documentation-convention) — why the installer boundary exists.
-- [ADR 0009: On-host state-mode config](../explanation/decisions/0009-on-host-state-mode-config) — why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.
+- [ADR 0009: On-host state-mode config](0009-on-host-state-mode-config) — why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.

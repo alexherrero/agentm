@@ -1,9 +1,7 @@
 **[Home](Home)**
 
-### 📚 Tutorials
-- [1 — Your first install](01-First-Install)
-
-### 🔧 How-to
+### 🔧 [How-to](How-To)
+- [Your first install](01-First-Install)
 - [Install into a project](Install-Into-Project)
 - [Configure a new project](Configure-A-New-Project)
 - [Update an installed harness](Update-Installed-Harness)
@@ -15,8 +13,7 @@
 - [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)
 - [Tune auto-orchestration](Tune-Auto-Orchestration)
 - [Run without a vault](Run-Without-A-Vault)
-
-### 📖 Reference
+### 📖 [Reference](Reference)
 - [Installer CLI](Installer-CLI)
 - [Detection rules](Detection-Rules)
 - [Project config](Project-Config)
@@ -29,28 +26,32 @@
 - [Auto-orchestration config](Auto-Orchestration-Config)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
-
-### 💡 Explanation
+### 🏛️ [Architecture](Architecture)
+- [AgentMemory](AgentMemory)
+- [Device-Wide Substrate](Device-Wide-Substrate)
+- [Phases](Phases)
+- [Orchestration and Auto-Detection](Orchestration-And-Auto-Detection)
+- [Host adapters](Host-Adapters)
+- [Toolkit interface ↔ crickets](Toolkit-Interface)
+### 🧩 [Designs](Designs)
+- [MemoryVault](memoryvault)
+  - [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining)
+- [Agent Memory Evolution V1→V4](agent-memory-evolution)
+- [Device-Wide Architecture](device-wide-architecture)
+- [Memory-OS Architecture (V5)](memory-os-architecture)
+### 💡 [Explanation](Explanation)
 - [Product intent](Product-Intent)
 - [Auto-detect + auto-configure](Auto-Detect-Configure)
 - [How the pieces fit](How-The-Pieces-Fit)
 - [GitHub Projects integration](GitHub-Projects-Integration)
 - [Auto-orchestration](Auto-Orchestration)
 - [Single-repo state mode](Single-Repo-State-Mode)
-
-**Designs (Agent M)**
-- [MemoryVault](memoryvault)
-  - [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining)
-- [Agent Memory Evolution V1→V4](agent-memory-evolution)
-- [Device-Wide Architecture](device-wide-architecture)
-- [Memory-OS Architecture (V5)](memory-os-architecture)
-
-**Decisions**
+### 📐 [Decisions](Decisions)
 - [0001 — Phase-gated workflow](0001-phase-gated-workflow)
 - [0002 — Documentation convention](0002-documentation-convention)
 - [0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking)
 - [0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
-- [0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
+- [0005 — Drop Codex support](0005-drop-codex-support)
 - [0006 — Split customizations into crickets](0006-crickets-split)
 - [0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
 - [0008 — Project surface split](0008-project-surface-split)

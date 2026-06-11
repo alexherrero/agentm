@@ -1,10 +1,5 @@
 # AgentMemory context payload reference
 
-> [!NOTE]
-> **Status:** implemented
-> **Plan:** PLAN.md (V4 #22) task 1 — canonical context payload + self-describing vault copy.
-> **Source of truth:** [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md) — pasteable body starts at [line 19](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19) (`# Using my Agent Memory`); the lines above are operator instructions, not part of the paste.
-
 The canonical "how-to-use-AgentMemory" payload at `templates/agentmemory-context.md` — the single source of truth the operator pastes into each agent surface (Claude.ai custom instructions, a Gemini Gem's system instructions, the Antigravity rule). A self-describing copy lives at `<vault>/_meta/how-to-use-agentmemory.md` so an agent that reaches the vault finds its own usage instructions. Read-only (v1): agents read + query the vault; they never write — capture = suggest an entry for the operator to paste into Obsidian by hand.
 
 ## ⚡ Quick Reference
@@ -13,7 +8,7 @@ The canonical "how-to-use-AgentMemory" payload at `templates/agentmemory-context
 |---|---|
 | Where is the canonical payload? | [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md) (agentm) — the source of truth (DC-5). |
 | Where is the self-describing copy? | `<vault>/_meta/how-to-use-agentmemory.md` (written outside the repo, not in git). |
-| Which surfaces consume it? | Claude.ai / ChatGPT, Gemini, Antigravity — see [Use AgentMemory in any agent surface](../how-to/Use-AgentMemory-In-Any-Agent). Claude Code instead receives it via SessionStart/UserPromptSubmit hooks (no paste needed). |
+| Which surfaces consume it? | Claude.ai / ChatGPT, Gemini, Antigravity — see [Use AgentMemory in any agent surface](Use-AgentMemory-In-Any-Agent). Claude Code instead receives it via SessionStart/UserPromptSubmit hooks (no paste needed). |
 | Is it host-specific? | No — host-agnostic; no Claude-Code-specific assumptions. |
 | Read or write? | Read-only (v1, DC-2): surfaces read + query; never write. Capture = suggest a paste-ready entry. |
 | What do I actually paste? | The body from [line 19 onward](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19) (`# Using my Agent Memory`); the leading HTML comment is operator-only instructions. |
@@ -33,4 +28,4 @@ The required sections of the payload, in order, as they appear in [`templates/ag
 
 ## Related
 
-- [Use AgentMemory in any agent](../how-to/Use-AgentMemory-In-Any-Agent) — the setup recipe for every surface (Claude.ai · Gemini · ChatGPT · Antigravity).
+- [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — the setup recipe for every surface (Claude.ai · Gemini · ChatGPT · Antigravity).

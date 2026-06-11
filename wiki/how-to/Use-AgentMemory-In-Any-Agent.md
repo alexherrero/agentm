@@ -1,8 +1,6 @@
 # How to use AgentMemory in any agent
 
 > [!NOTE]
-> **Status:** implemented
-> **Plan:** PLAN.md (V4 #22) — cross-surface vault access, read-only v1.
 > **Goal:** Make any agent surface (Claude.ai, Gemini, ChatGPT, Antigravity) read your GDrive-synced AgentMemory vault natively — so it already knows your conventions, projects, and decisions without you re-explaining. **Surface-scoped access:** chat surfaces (Claude.ai, Claude Desktop) read + query the vault and *suggest* entries for you to paste in by hand — they never write; the filesystem working agents you run directly (Claude Code, Antigravity) may write to the vault, following your entry conventions.
 > **Prereqs:** the AgentMemory vault synced to Google Drive (signed into the account that owns it); the context payload (`templates/agentmemory-context.md`, shipped in #22); and operator access to each surface's connector / Gem settings (the agent can't log into your accounts — connector setup is an operator action).
 

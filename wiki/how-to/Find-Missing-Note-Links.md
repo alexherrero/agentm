@@ -1,7 +1,6 @@
 # How to find missing links among your personal notes
 
 > [!NOTE]
-> **Status:** implemented
 > **Goal:** Run the read-only personal-notes link-discovery audit, read the ranked "these two notes look related but aren't linked" report it writes under `_meta/`, and add the suggested `[[wikilinks]]` by hand in Obsidian — the audit never edits a personal note.
 > **Prereqs:** agentm v4.10.0+ (ships V4 #43), `python3` on `PATH`, and a reachable Obsidian vault (`MEMORY_VAULT_PATH` set, or pass `--vault PATH`). The embedding signal additionally needs the `sentence-transformers` package; without it the audit runs TF-IDF-only.
 

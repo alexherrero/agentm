@@ -1,9 +1,5 @@
 # Vault lint checks reference
 
-> [!NOTE]
-> **Status:** implemented
-> **Plan:** `.harness/PLAN.md` task 1 (read-only `vault_lint.py` checks engine — the check registry).
-
 The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVault entries. Each check is `(entry) -> list[Finding]` where a `Finding` carries `check_id`, `severity` (`error` / `warn` / `info`), `entry_path`, `message`, and a `suggestion`. The lint never mutates the vault — it surfaces candidate fixes for operator review (A3). It targets only entries carrying the core frontmatter trio (`kind` + `status` + `created`); the operator's free-form personal notes are skipped.
 
 ## ⚡ Quick Reference
@@ -15,8 +11,8 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | Which entries get linted? | Only agent-shaped entries (core frontmatter trio `kind`+`status`+`created`); free-form personal notes are skipped (DC-3). |
 | Does the lint ever edit the vault? | No. Read-only / surface-only (DC-1). It reports + suggests; the operator applies. Auto-fix is deferred to V5-5. |
 | Where does the schema come from? | `save.py` — the lint imports its validators + `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` so the two can't drift (DC-2). |
-| How do I run a full audit report? | See [Audit the vault](../how-to/Audit-The-Vault.md). |
-| Related pages | [Audit the vault](../how-to/Audit-The-Vault.md) |
+| How do I run a full audit report? | See [Audit the vault](Audit-The-Vault). |
+| Related pages | [Audit the vault](Audit-The-Vault) |
 
 ## Checks
 
@@ -38,4 +34,4 @@ Anchor files (`_index`, `_summary`) are exempt from the kebab `slug` check. Besp
 
 ## Related
 
-- [Audit the vault](../how-to/Audit-The-Vault.md) — the operator recipe that runs these checks and reads the report.
+- [Audit the vault](Audit-The-Vault) — the operator recipe that runs these checks and reads the report.

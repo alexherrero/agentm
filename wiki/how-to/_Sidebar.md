@@ -1,3 +1,20 @@
-### How-to
+**[Home](Home)**
 
-- [How-to](How-To)
+### 🔧 [How-to](How-To)
+- [Your first install](01-First-Install)
+- [Install into a project](Install-Into-Project)
+- [Configure a new project](Configure-A-New-Project)
+- [Update an installed harness](Update-Installed-Harness)
+- [Cut a release](Cut-A-Release)
+- [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases)
+- [Use per-project install](Use-Per-Project-Install)
+- [Audit the vault](Audit-The-Vault)
+- [Find missing note links](Find-Missing-Note-Links)
+- [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent)
+- [Tune auto-orchestration](Tune-Auto-Orchestration)
+- [Run without a vault](Run-Without-A-Vault)
+### 📖 [Reference](Reference)
+### 🏛️ [Architecture](Architecture)
+### 🧩 [Designs](Designs)
+### 💡 [Explanation](Explanation)
+### 📐 [Decisions](Decisions)

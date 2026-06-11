@@ -25,7 +25,7 @@
    ```bash
    cd /path/to/your-project
    git checkout -b add-agentm
-   git add .harness .claude .agent .agents .gemini AGENTS.md CLAUDE.md wiki .github
+   git add .harness .claude .agents AGENTS.md CLAUDE.md wiki .github
    git commit -m "Install agentm"
    ```
 

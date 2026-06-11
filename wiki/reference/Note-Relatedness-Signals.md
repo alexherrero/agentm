@@ -1,8 +1,5 @@
 # Note relatedness signals reference
 
-> [!NOTE]
-> **Status:** implemented
-
 The signals `notes_link_discovery.py` scores when it looks for related-but-unlinked pairs among your **personal** notes (the corpus outside `AgentMemory/` + `.obsidian/`). The audit never mutates a personal note — it surfaces candidate links for operator review (A3). Suggestions are strictly personal↔personal; an `AgentMemory/` entry is never a source or a target (DC-2).
 
 ## ⚡ Quick Reference
@@ -15,8 +12,8 @@ The signals `notes_link_discovery.py` scores when it looks for related-but-unlin
 | What are the two signals? | **TF-IDF** content overlap (lexical) + **embedding** cosine (semantic, opt-in via `--embeddings`). Folder + date proximity are weak context. |
 | Does the audit ever edit a note? | Not by default — read-only / surface-only (DC-1). The opt-in `--apply` flag is the one exception: it writes the safe suggestions into a marked `## Related` section, backup-first + idempotent (you directed it; A3 satisfied). |
 | Where do outputs live? | Report → `<vault>/_meta/notes-links-<date>.md`; embedding cache → `<vault>/_meta/notes-embeddings.json`. Both under the agent-controlled vault, never beside a personal note, never the AgentMemory `vec-index.db`. |
-| How do I run the report? | See [Find missing note links](../how-to/Find-Missing-Note-Links.md). |
-| Related pages | [Find missing note links](../how-to/Find-Missing-Note-Links.md) |
+| How do I run the report? | See [Find missing note links](Find-Missing-Note-Links). |
+| Related pages | [Find missing note links](Find-Missing-Note-Links) |
 
 ## Signals
 
@@ -44,4 +41,4 @@ The corpus is ~390 notes (≈76k candidate pairs); the TF-IDF inverted index com
 
 ## Related
 
-- [Find missing note links](../how-to/Find-Missing-Note-Links.md) — the operator recipe that runs the audit and reads the report.
+- [Find missing note links](Find-Missing-Note-Links) — the operator recipe that runs the audit and reads the report.

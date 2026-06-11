@@ -1,8 +1,6 @@
 # How to configure a new project on first session
 
 > [!NOTE]
-> **Status:** implemented
-> **Plan:** `.harness/PLAN.md` tasks 3 (setup detect → propose → approve → write flow) + 4 (SessionStart nudge).
 > **Goal:** Open a repo the harness hasn't seen, run the detection flow, and persist an approved enablement config so every later phase resolves this repo's `{slug, type, enabled skills/hooks}`.
 > **Prereqs:** agentm v4.8.0+ (ships V4 #32), `python3` on `PATH`, and a repo with a `.git` dir. A reachable vault (`MEMORY_VAULT_PATH`) to persist the config — without one the proposal still renders but the write is skipped.
 
@@ -40,5 +38,5 @@ When you open an unconfigured code project, the SessionStart hook emits a one-li
 
 - [Detection rules reference](Detection-Rules) — the 10 built-in rules and what each detects.
 - [Project config reference](Project-Config) — the `project.json` enablement-block schema this flow writes.
-- [Auto-detect + auto-configure](../explanation/Auto-Detect-Configure.md) — why the flow proposes-then-approves and why config lives in `project.json`.
+- [Auto-detect + auto-configure](Auto-Detect-Configure) — why the flow proposes-then-approves and why config lives in `project.json`.
 - [Install into project](Install-Into-Project) — the install step that precedes first-session configuration.

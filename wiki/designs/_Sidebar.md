@@ -1,3 +1,18 @@
-### Designs
+**[Home](Home)**
 
-- [Designs](Designs)
+### 🔧 [How-to](How-To)
+### 📖 [Reference](Reference)
+### 🏛️ [Architecture](Architecture)
+### 🧩 [Designs](Designs)
+- [MemoryVault](memoryvault)
+  - [write-primitives](write-primitives)
+  - [recall-loop](recall-loop)
+  - [reflection-and-recovery](reflection-and-recovery)
+  - [idea-ledger](idea-ledger)
+  - [seed-pass](seed-pass)
+  - [discovery-mining](discovery-mining)
+- [Agent Memory Evolution V1→V4](agent-memory-evolution)
+- [Device-Wide Architecture](device-wide-architecture)
+- [Memory-OS Architecture (V5)](memory-os-architecture)
+### 💡 [Explanation](Explanation)
+### 📐 [Decisions](Decisions)

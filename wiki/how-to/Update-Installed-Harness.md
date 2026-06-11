@@ -40,7 +40,8 @@
 | `AGENTS.md`, `CLAUDE.md` | User | No |
 | `wiki/` scaffold | User | Per-file walk — missing files filled in, existing files preserved |
 | `.harness/scripts/`, `.harness/hooks/` | Harness | Yes (wiped + recreated from source) |
-| `.claude/`, `.agents/`, `.gemini/` | Harness | Yes (wiped + recreated from source) |
+| `.claude/`, `.agents/` (the supported adapters) | Harness | Yes (wiped + recreated from source) |
+| `.gemini/` (vestigial dropped-host adapter — still emitted pending reconciliation, see [Compatibility](Compatibility)) | Harness | Yes (wiped + recreated from source) |
 | `.github/workflows/wiki-sync.yml` | Harness | Yes (overwritten) |
 | `.harness/.version` | Harness | Written after a successful update (so future runs can show a delta) |
 

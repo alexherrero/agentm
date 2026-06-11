@@ -43,7 +43,7 @@ Reference: locked DC-10 from plan #22 (V4 #30 plan 1 of 3) — `--scope project`
    ```bash
    cd /path/to/your-project
    git checkout -b add-agentm-project-scope
-   git add .claude .agent .agents .gemini AGENTS.md CLAUDE.md .harness wiki .github
+   git add .claude .agents AGENTS.md CLAUDE.md .harness wiki .github
    git commit -m "Install agentm (per-project scope; CI / shared-dev / dotfiles use case)"
    ```
 

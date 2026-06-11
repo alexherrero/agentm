@@ -26,7 +26,6 @@ Releases are cut by the [`ship-release` skill](https://github.com/alexherrero/ag
    |---|---|
    | Claude Code | `/ship-release [size-or-version]` or phrase like "ship a release" |
    | Antigravity | "Run the ship-release skill" (optionally with a size) |
-   | Gemini | Reads from `.agents/skills/ship-release/SKILL.md` |
 
 2. Size arguments: `patch` / `minor` / `major` override the auto-sized bump. A literal version like `0.8.0` pins the tag exactly (used when the commit range's auto-size undershoots — see the [v0.8.0 entry in `CHANGELOG.md`](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md) for a worked example).
 

@@ -1,9 +1,5 @@
 # Detection rules reference
 
-> [!NOTE]
-> **Status:** implemented
-> **Plan:** `.harness/PLAN.md` task 1 (detection engine — `scripts/detect_project.py` + 10 built-in rules).
-
 The 10 built-in rules the detection engine scans an unconfigured repo against. Each rule is a deterministic, side-effect-free check that, when matched, attaches a *rationale* to a skill or hook in the proposed config. Rules do not gate which skills/hooks are present — the proposed config is default-all-enabled; rules only surface why each is relevant to this repo. Run via `python3 scripts/detect_project.py <cwd> --format json|text`.
 
 ## ⚡ Quick Reference
@@ -15,7 +11,7 @@ The 10 built-in rules the detection engine scans an unconfigured repo against. E
 | What's the machine-readable form? | `python3 scripts/detect_project.py <cwd> --format json` |
 | What happens in a harness repo? | `R-harness` match → `bypass` verdict (skip detection; offer legacy `.harness/` migration if present). |
 | Do rules gate which skills/hooks are present? | No. The proposal is default-all-enabled; rules only overlay a per-target rationale (DC-7). |
-| Related pages | [Configure a new project](../how-to/Configure-A-New-Project.md), [Project config](Project-Config), [Auto-detect + auto-configure](../explanation/Auto-Detect-Configure.md) |
+| Related pages | [Configure a new project](Configure-A-New-Project), [Project config](Project-Config), [Auto-detect + auto-configure](Auto-Detect-Configure) |
 
 ## The 10 rules
 
@@ -36,6 +32,6 @@ Evaluated in registry order. `R-harness` runs first so a bypass short-circuits b
 
 ## Related
 
-- [Configure a new project](../how-to/Configure-A-New-Project.md) — the operator recipe that consumes these rules.
+- [Configure a new project](Configure-A-New-Project) — the operator recipe that consumes these rules.
 - [Project config](Project-Config) — where matched rationale is persisted (the `project.json` enablement block).
-- [Auto-detect + auto-configure](../explanation/Auto-Detect-Configure.md) — why detection proposes rather than gates.
+- [Auto-detect + auto-configure](Auto-Detect-Configure) — why detection proposes rather than gates.

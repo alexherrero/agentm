@@ -1,9 +1,6 @@
 # Auto-orchestration config reference
 
-> [!NOTE]
-> **Status:** implemented
-
-The two files that drive the memory push-surface: the operator-tunable config at `<vault>/personal-private/auto-orchestration-config.md` (toggles, thresholds, cooldowns — auto-seeded with defaults, re-seed never clobbers operator edits) and the runtime state at `<vault>/_meta/auto-orchestration-state.json` (last-fire-per-chain timestamps plus the last-shown snapshot for the shifted-since-last-shown check). All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). For the why, see [Auto-orchestration](../explanation/Auto-Orchestration.md); to edit the config, see [Tune auto-orchestration](../how-to/Tune-Auto-Orchestration.md).
+The two files that drive the memory push-surface: the operator-tunable config at `<vault>/personal-private/auto-orchestration-config.md` (toggles, thresholds, cooldowns — auto-seeded with defaults, re-seed never clobbers operator edits) and the runtime state at `<vault>/_meta/auto-orchestration-state.json` (last-fire-per-chain timestamps plus the last-shown snapshot for the shifted-since-last-shown check). All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). For the why, see [Auto-orchestration](Auto-Orchestration); to edit the config, see [Tune auto-orchestration](Tune-Auto-Orchestration).
 
 ## ⚡ Quick Reference
 

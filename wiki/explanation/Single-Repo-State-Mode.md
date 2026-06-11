@@ -1,29 +1,25 @@
-# Feature: single-repo (vault-less) state mode
+# Single-repo (vault-less) state mode
 
-> [!NOTE]
-> **Status:** implemented (Hardening I, v4.15.0)
-> **Decision:** [ADR 0009 — On-host state-mode config](decisions/0009-on-host-state-mode-config).
-
-Run the harness on a single repo with no Obsidian / GDrive / vault dependency. You opt in explicitly — `install.sh --local-state` at install time, `scripts/agentm_config.py --state-mode local` afterward, or a `/setup` prompt — and from then on every phase write lands in `<repo>/.harness/` instead of routing through a memory vault. This page is the *why* and the resolution model; for the steps, see [Run the harness without a vault](Run-Without-A-Vault).
+Why the harness can run on one repo with no Obsidian / Google Drive / vault dependency — and the resolution model that decides where a phase write lands. The call is recorded in [ADR 0009](0009-on-host-state-mode-config); for the operator steps, see [Run without a vault](Run-Without-A-Vault).
 
 ## Why this mode exists
 
-Before this work, harness state was vault-resident: `read_state_file` / `write_state_file` resolved `PLAN.md`, `progress.md`, and friends under `<vault>/projects/<slug>/_harness/`, and a write with no vault configured hard-raised `ValueError`. That made the harness unusable on a machine without a mounted vault — you could neither signal which mode a repo wanted nor write any phase state.
+Before this work, harness state was vault-resident: `read_state_file` / `write_state_file` resolved `PLAN.md`, `progress.md`, and friends under `<vault>/projects/<slug>/_harness/`, and a write with no vault configured hard-raised. That made the harness unusable on a machine without a mounted vault — you could neither signal which mode a repo wanted nor write any phase state.
 
-Single-repo mode removes the vault as a hard dependency. It is strictly **additive and gated**: when a vault is present and the repo is not in local mode, the vault write path behaves byte-for-byte as before. Local mode only changes behavior for repos that opt into it.
+Single-repo mode removes the vault as a hard dependency. It is strictly **additive and gated**: when a vault is present and the repo is not in local mode, the vault write path behaves byte-for-byte as before. Local mode only changes behaviour for repos that opt into it.
 
 ## The state-resolution model
 
-Where a phase write lands is decided by **two on-host configuration layers** — no vault is ever consulted to resolve the mode (locked DC-8: configuration is on-host only; the vault holds data, never config):
+Where a phase write lands is decided by **two on-host configuration layers** — no vault is ever consulted to resolve the mode, because configuration is on-host only; the vault holds data, never config:
 
-- **The repo-local marker** — `<repo>/.harness/.project-mode`. The optional **per-repo override**. When it reads `local`, state I/O routes to `<repo>/.harness/<file>` and never raises for a missing vault. It lives in the repo so it is reachable on a vault-less machine. Wins when present.
-- **The device-level default** — `state_mode` (`"local"` | `"vault"`) in `<install-prefix>/.agentm-config.json`. This is "how agentm runs on this machine," read vault-free. `install.sh --local-state` writes it at install time; `scripts/agentm_config.py --state-mode local` flips it afterward without re-running the installer. Consulted when no repo-local marker is set. Absent ⇒ vault default.
+- **The repo-local marker** — `<repo>/.harness/.project-mode`. The optional per-repo override. When it reads `local`, state I/O routes to `<repo>/.harness/<file>` and never raises for a missing vault. It lives in the repo so it is reachable on a vault-less machine, and it **wins when present**.
+- **The device-level default** — `state_mode` (`"local"` | `"vault"`) in `<install-prefix>/.agentm-config.json`. This is "how agentm runs on this machine," read vault-free. `install.sh --local-state` writes it at install time; `scripts/agentm_config.py --state-mode local` flips it afterwards without re-running the installer. It is consulted when no repo-local marker is set; absent, the default is vault.
 
-Precedence is deterministic: an explicit repo-local `.project-mode=local` marker wins over the device-level `state_mode`. There is **no in-vault marker layer** — the earlier design that read a `.project-mode` marker from `<vault>/_harness/` was removed; configuration never lives in the vault. The mode is also never inferred from a missing `vault_path` (a transiently-unreachable vault must not split-brain the mode). These are locked design calls (see Related, DC-2 / DC-8).
+Precedence is deterministic: an explicit repo-local `.project-mode=local` marker wins over the device-level `state_mode`. There is **no in-vault marker layer** — an earlier design that read a marker from `<vault>/_harness/` was removed, because configuration never lives in the vault. The mode is also never *inferred* from a missing `vault_path`: a transiently-unreachable vault must not split-brain the mode.
 
 ## Why explicit opt-in, not auto-detect
 
-The entry point is an explicit `--local-state` flag (plus the `--state-mode` setter and a `/setup` prompt), not an automatic "no vault ⇒ local" inference. A transiently-unreachable vault — GDrive not mounted yet at session start — must not silently flip a vault-backed repo into local mode, because that splits state across two stores. Explicit opt-in is the safe signal; the read path still degrades gracefully for reads.
+The entry point is an explicit `--local-state` flag (plus the `--state-mode` setter and a `/setup` prompt), not an automatic "no vault ⇒ local" inference. A transiently-unreachable vault — Google Drive not mounted yet at session start — must not silently flip a vault-backed repo into local mode, because that splits state across two stores. Explicit opt-in is the safe signal; the read path still degrades gracefully for reads.
 
 ## What this mode does not do
 
@@ -31,8 +27,7 @@ It makes local mode *reachable and writable* without a vault — it does not mig
 
 ## Related
 
-- [ADR 0009 — On-host state-mode config](decisions/0009-on-host-state-mode-config) — why the mode is configured on-host only, never in the vault, and never inferred from a missing `vault_path`.
-- [Run the harness without a vault](Run-Without-A-Vault) — the operator recipe for enabling single-repo local state.
-- [Installer CLI reference](Installer-CLI) — the `--local-state` flag and the `agentm_config.py --state-mode` setter.
-- [Project config reference](Project-Config) — how `project_config.py register()` degrades when no vault is present.
-- [Repo layout reference](Repo-Layout) — where `<repo>/.harness/.project-mode` sits on disk.
+- [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config) — why the mode is configured on-host only, never in the vault, and never inferred from a missing `vault_path`.
+- [Run without a vault](Run-Without-A-Vault) — the operator recipe for enabling single-repo local state.
+- [Installer CLI](Installer-CLI) — the `--local-state` flag and the `agentm_config.py --state-mode` setter.
+- [Project config](Project-Config) — how `register()` degrades when no vault is present.

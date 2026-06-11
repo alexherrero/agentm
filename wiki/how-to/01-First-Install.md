@@ -57,7 +57,7 @@ You should see these new entries:
 
 - `.harness/` — state files (`PLAN.md`, `progress.md`, `features.json`, `init.sh`, `verify.sh`, `known-migrations.md`).
 - `.claude/` — Claude Code commands, agents, and skills.
-- `.agents/`, `.gemini/` — adapter trees for the other supported tools.
+- `.agents/` — the Antigravity adapter tree. (`.gemini/` is also emitted: the vestigial Gemini CLI adapter, a dropped host — see [Compatibility](Compatibility).)
 - `AGENTS.md` — universal agent entry point.
 - `CLAUDE.md` — Claude-Code-specific entry (points back at `AGENTS.md`).
 - `wiki/` — empty documentation scaffold.
@@ -108,7 +108,7 @@ You should see the current harness version string (e.g. `v0.8.7`).
 ## What you learned
 
 - **The installer is a one-shot copy** — no daemon, no background process, no config parsing. It reads from the harness repo's `templates/` and `adapters/` trees and writes into your project.
-- **State vs. managed files are separated.** `.harness/` and `wiki/` are yours; `.claude/`, `.agents/`, `.gemini/` are managed and refreshed on `--update`.
+- **State vs. managed files are separated.** `.harness/` and `wiki/` are yours; `.claude/` and `.agents/` are managed and refreshed on `--update`.
 - **Idempotent re-runs are safe.** Run `install.sh` against the same project twice — it won't clobber your work.
 - **A clean install produces a specific tree.** If any of the expected files are missing after Step 4, the install is broken — don't try to work around it.
 

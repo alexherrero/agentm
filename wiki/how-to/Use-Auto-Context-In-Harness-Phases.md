@@ -2,9 +2,7 @@
 
 > [!NOTE]
 > **Goal:** Tune the harness's phase-boundary MemoryVault auto-context behavior (recall budgets, save mode, confidence threshold) for your project, and troubleshoot when it doesn't fire as expected.
-> **Prereqs:** [crickets](https://github.com/alexherrero/crickets) sibling-cloned next to agentm; `MEMORY_VAULT_PATH` env set; harness ≥ v2.5.0 (when ADR 0007 shipped). See [Manifest Schema](../reference/GitHub-Projects-Integration.md) for `.harness/project.json` field references this page assumes.
-
-Length justification: this how-to documents 6 phase boundaries + a 5-env-var matrix + 8 troubleshooting scenarios. The 725-word length is acceptable because operators read this end-to-end when tuning auto-context behavior — splitting into per-phase pages would force readers to chase cross-links to understand the shared dispatcher.
+> **Prereqs:** [crickets](https://github.com/alexherrero/crickets) sibling-cloned next to agentm; `MEMORY_VAULT_PATH` env set; harness ≥ v2.5.0 (when ADR 0007 shipped). See [Project config](Project-Config) for the `.harness/project.json` field references this page assumes.
 
 Once [crickets](https://github.com/alexherrero/crickets) is sibling-cloned next to agentm and `MEMORY_VAULT_PATH` is set, every harness phase auto-loads relevant MemoryVault context at its natural start, and offers to save durable items at its natural end — without you having to invoke `/memory search` or `/memory save` manually.
 
@@ -14,7 +12,7 @@ This page covers: what loads/saves at each phase boundary, the env vars that tun
 
 1. **MemoryVault installed** (v4.0.0+: shipped with agentm at `harness/skills/memory/`; in v3.x and earlier it lived at `crickets/skills/memory/` and the harness loaded it via sibling-clone resolution). For v3.x compatibility, the harness's 3-tier resolver checks `agentm/harness/skills/memory/scripts/save.py` first, then falls back to the legacy `crickets/skills/memory/scripts/save.py` sibling path, then to `HARNESS_MEMORY_TOOLKIT_PATH` env override.
 2. **`MEMORY_VAULT_PATH` env set** to your vault root (e.g. `~/Library/CloudStorage/GoogleDrive-…/Obsidian/AgentMemory`).
-3. **`.harness/project.json` has a `vault_project` field** OR your repo has a `github.repo` field OR a git origin — auto-detect uses the 3-tier fallback (see [ADR 0007 §Q2](../explanation/decisions/0007-auto-context-into-harness-phases.md#q2--vault-project-slug-explicit-field--3-tier-auto-detect)).
+3. **`.harness/project.json` has a `vault_project` field** OR your repo has a `github.repo` field OR a git origin — auto-detect uses the 3-tier fallback (see [ADR 0007](0007-auto-context-into-harness-phases) §Q2).
 
 If any prerequisite is absent, every phase still works — the dispatcher graceful-skips silently (see Troubleshooting below).
 
@@ -120,4 +118,4 @@ Entry cap is a separate constraint (default 5 per phase) — if you need more en
 - [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases) — 5 locked design calls + load-bearing assumptions.
 - [crickets Cross-Repo Memory Protocol](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side contract documentation.
 - [crickets `/memory` skill](https://github.com/alexherrero/crickets/blob/main/skills/memory/SKILL.md) — the underlying save/recall surface that `harness_memory.py` shells out to.
-- Phase specs: [01-setup](../../harness/phases/01-setup.md) · [02-plan](../../harness/phases/02-plan.md) · [03-work](../../harness/phases/03-work.md) · [04-review](../../harness/phases/04-review.md) · [05-release](../../harness/phases/05-release.md) · [bugfix](../../harness/pipelines/bugfix.md).
+- Phase specs: [01-setup](https://github.com/alexherrero/agentm/blob/main/harness/phases/01-setup.md) · [02-plan](https://github.com/alexherrero/agentm/blob/main/harness/phases/02-plan.md) · [03-work](https://github.com/alexherrero/agentm/blob/main/harness/phases/03-work.md) · [04-review](https://github.com/alexherrero/agentm/blob/main/harness/phases/04-review.md) · [05-release](https://github.com/alexherrero/agentm/blob/main/harness/phases/05-release.md) · [bugfix](https://github.com/alexherrero/agentm/blob/main/harness/pipelines/bugfix.md).

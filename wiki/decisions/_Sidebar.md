@@ -1,3 +1,18 @@
-### Decisions
+**[Home](Home)**
 
-- [Decisions](Decisions)
+### 🔧 [How-to](How-To)
+### 📖 [Reference](Reference)
+### 🏛️ [Architecture](Architecture)
+### 🧩 [Designs](Designs)
+### 💡 [Explanation](Explanation)
+### 📐 [Decisions](Decisions)
+- [0001 — Phase-gated workflow](0001-phase-gated-workflow)
+- [0002 — Documentation convention](0002-documentation-convention)
+- [0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking)
+- [0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
+- [0005 — Drop Codex support](0005-drop-codex-support)
+- [0006 — Split customizations into crickets](0006-crickets-split)
+- [0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
+- [0008 — Project surface split](0008-project-surface-split)
+- [0009 — On-host state-mode config](0009-on-host-state-mode-config)
+- [0010 — Vault internal taxonomy](0010-vault-internal-taxonomy)

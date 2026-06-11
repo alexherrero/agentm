@@ -1,8 +1,6 @@
 # How to audit the MemoryVault for off-spec entries
 
 > [!NOTE]
-> **Status:** implemented
-> **Plan:** `.harness/PLAN.md` tasks 1 (read-only `vault_lint.py` checks engine) + 2 (`--audit` mode → operator-review report).
 > **Goal:** Run the read-only vault lint, read the categorized report it writes under `_meta/`, and apply the suggested fixes by hand — the lint never edits the vault.
 > **Prereqs:** agentm v4.9.0+ (ships V4 #33), `python3` on `PATH`, and a reachable vault (`MEMORY_VAULT_PATH` set, or pass `--vault PATH`). The lint reads only; it surfaces candidate fixes for you to review and apply.
 

@@ -1,3 +1,20 @@
-### Reference
+**[Home](Home)**
 
-- [Reference](Reference)
+### 🔧 [How-to](How-To)
+### 📖 [Reference](Reference)
+- [Installer CLI](Installer-CLI)
+- [Detection rules](Detection-Rules)
+- [Project config](Project-Config)
+- [Migration tool](Migration-Tool)
+- [CI gates](CI-Gates)
+- [Repo layout](Repo-Layout)
+- [Vault lint checks](Vault-Lint-Checks)
+- [Note relatedness signals](Note-Relatedness-Signals)
+- [AgentMemory context payload](AgentMemory-Context-Payload)
+- [Auto-orchestration config](Auto-Orchestration-Config)
+- [Compatibility](Compatibility)
+- [Completed features](Completed-Features)
+### 🏛️ [Architecture](Architecture)
+### 🧩 [Designs](Designs)
+### 💡 [Explanation](Explanation)
+### 📐 [Decisions](Decisions)

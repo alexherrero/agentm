@@ -12,121 +12,71 @@
 
 <p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentm/wiki/Compatibility">see compatibility</a></sub></p>
 
-Agent M is an agentic memory implementation that combines a persistent knowledge layer with personally curated content (i.e. your own notes in markdown format) through a combination of skills, sidecars, and vectorized indexing. Imagine those workflows you saw in the movies. You're talking to your agent, *"Let's open a new file for project M"* and off you go. It remembers your projects and files together, can talk to you about them, and it learns and grows with you as you work. The context it builds is self-maintaining and it improves automatically as you go. No need to spend time maintaining your own knowledge graphs, and it can help you with your personal notes too, when **you** want it to.
-
-Agent M has grown over time across the paired releases of `agentm` and `crickets`. The full V1→V4 evolution — what shipped, what's deferred, where the design is going — lives in [Agent Memory Evolution](agent-memory-evolution). This page is the entry point for the harness itself.
+**Agent M** is a phase-gated agent harness with a persistent memory layer. The harness gives the dev loop hard boundaries — Setup · Plan · Work · Review · Release · Bugfix — so an agent executes one phase at a time against on-disk state instead of freestyling the whole lifecycle. The MemoryVault gives it a durable, file-based memory that carries your preferences, project state, and learned lessons across sessions and across projects. Imagine the workflows you saw in the movies: you talk to your agent, it remembers your projects and your notes, and it improves automatically as you work — no knowledge graph to hand-maintain. Agent M has grown across the paired releases of `agentm` (this harness) and [`crickets`](https://github.com/alexherrero/crickets) (the toolkit of skills, hooks, and sub-agents that ride on top).
 
 > [!NOTE]
-> This wiki documents the agentm repo for contributors. Target projects get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) installed instead. See [ADR 0002](0002-documentation-convention) for why.
+> This wiki documents the `agentm` repo for contributors. Projects that *install* the harness get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) scaffolded into them instead — see [ADR 0002](0002-documentation-convention) for why the two are kept separate.
 
-## Get started
+## 📚 Get started
 
-Once both repos are cloned and the vault folder exists, Agent M is operational.
+Agent M is two sibling repos plus a vault folder. Clone both, point the vault at your sync setup, and the harness is operational.
 
-**1. Install both repos as siblings**
+- [Tutorial — your first harness install](01-First-Install) — fresh clone to a healthy installed scratch project in ~5 minutes.
+- [Install the harness into a project](Install-Into-Project) — add the scaffold to an existing repo.
+- [Run without a vault](Run-Without-A-Vault) — operate the harness with no MemoryVault configured (repo-local state).
 
-```bash
-git clone https://github.com/alexherrero/agentm.git ~/Antigravity/agentm
-git clone https://github.com/alexherrero/crickets.git    ~/Antigravity/crickets
-```
+## 🔧 What do you want to do?
 
-**2. Point the vault at your existing Obsidian + sync setup**
+| What | How-to |
+|---|---|
+| 🧱 **Stand up a project** — detect → propose → approve → persist the per-project config | [Configure a new project](Configure-A-New-Project) |
+| ⬆️ **Pull a newer harness** into a project that already has one | [Update an installed harness](Update-Installed-Harness) |
+| 🚀 **Cut a release** — tag, changelog, GitHub release | [Cut a release](Cut-A-Release) |
+| 🧠 **Tune the memory** — recall budgets, save modes, confidence thresholds per phase | [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases) · [Tune auto-orchestration](Tune-Auto-Orchestration) |
+| 🩺 **Keep the vault healthy** — lint it, find missing note links | [Audit the vault](Audit-The-Vault) · [Find missing note links](Find-Missing-Note-Links) |
+| 🌐 **Read the vault from any agent** — Claude.ai · Gemini · ChatGPT · Antigravity | [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) |
+| 🖥️ **Keep state per-repo** — when to stay `--scope project` | [Use per-project install](Use-Per-Project-Install) |
 
-```bash
-mkdir -p "<sync-root>/AgentMemory/personal-private/_always-load"
-mkdir -p "<sync-root>/AgentMemory/projects"
-mkdir -p "<sync-root>/AgentMemory/_meta"
-export MEMORY_VAULT_PATH="<sync-root>/AgentMemory"
-```
+## 📖 Look up a detail
 
-Pre-v4.1.0 vaults used `personal-projects/` (renamed to `projects/` in V4 #26). Existing operators run `bash agentm/scripts/rename-vault-personal-projects.sh` after upgrading. The resolver transparently handles both layouts.
+For contributors running the harness:
 
-Any sync layer works (Google Drive, Dropbox, syncthing).
+- [Compatibility](Compatibility) — supported hosts (Claude Code · Antigravity) + OS matrix + the adapter contract.
+- [Installer CLI](Installer-CLI) — flags, prerequisites, and the ownership table for `install.sh` / `install.ps1`.
+- [CI gates](CI-Gates) — what each CI workflow proves and the script behind it.
+- [Completed features](Completed-Features) — the reverse-chronological log of shipped work.
 
-**3. Install the quality-gates bundle and the memory skill into your target project**
+→ Full field-level detail lives under **Reference** in the sidebar.
 
-```bash
-bash ~/Antigravity/crickets/install.sh <target-project> --bundle quality-gates
-bash ~/Antigravity/crickets/install.sh <target-project> --skill memory
-```
+## 🏛️ How it's built
 
-The bundle lands the `evaluator` sub-agent + four base hooks (kill-switch, steer, commit-on-stop, evidence-tracker) in one operation.
+The structural component map — six components, each a folder under **Architecture** in the sidebar. → **[Browse the architecture](Architecture)**
 
-**4. Seed your always-load entries**
+- [AgentMemory](AgentMemory) — the MemoryVault substrate: durable, file-based memory across sessions and projects.
+- [Device-Wide Substrate](Device-Wide-Substrate) — how the harness and its memory span every project on the machine.
+- [Phases](Phases) — the phase-gated workflow with hard boundaries and on-disk state.
+- [Orchestration and Auto-Detection](Orchestration-And-Auto-Detection) — auto-wiring the right phase + context by detecting a project's shape.
+- [Host adapters](Host-Adapters) — adapting to each host (Claude Code · Antigravity 2.0 · Antigravity CLI).
+- [Toolkit interface ↔ crickets](Toolkit-Interface) — the seam with the sibling toolkit: what each owns, how they compose.
 
-Capture your locked conventions, coding-style rules, project invariants under `<vault>/personal-private/_always-load/`. One entry per concern. The first pass is co-created — you and the agent walk through it together; you approve each entry.
+## 🧩 Major designs
 
-**5. Verify**
-
-```bash
-python3 ~/Antigravity/agentm/scripts/harness_memory.py recall --phase setup
-```
-
-Should print your always-load entries within the 4000-token budget. Empty = vault is reachable but un-seeded. Errored = `MEMORY_VAULT_PATH` is unset or unreadable.
-
-## 📚 New here? Learn by doing.
-
-- [Tutorial 1 — Your first harness install](01-First-Install) — fresh clone to a healthy installed scratch project in ~5 minutes.
-
-## 🔧 Trying to do something specific?
-
-- [How to install the harness into a project](Install-Into-Project) — add the scaffold to an existing repo.
-- [How to configure a new project on first session](Configure-A-New-Project) — detect → propose → approve → persist the per-project enablement config.
-- [How to refresh an installed harness](Update-Installed-Harness) — pull a newer harness version into a project that already has one.
-- [How to cut a release](Cut-A-Release) — tag, changelog, GitHub release via the `ship-release` skill.
-- [How to use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) — tune MemoryVault recall budgets, save modes, and confidence thresholds for each phase.
-- [How to use per-project install](Use-Per-Project-Install) — when to deliberately keep `--scope project` instead of migrating to user scope (CI runners; shared dev hosts; multi-developer dotfiles).
-- [How to audit the MemoryVault](Audit-The-Vault) — run the read-only vault lint, read the report under `_meta/`, and apply suggested fixes by hand.
-- [How to find missing note links](Find-Missing-Note-Links) — run the read-only personal-notes link-discovery audit and add the suggested `[[wikilinks]]` by hand.
-- [How to use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — configure any surface (Claude.ai · Gemini · ChatGPT · Antigravity) to read the vault natively (read-only) by pasting the one context payload.
-- [How to tune auto-orchestration](Tune-Auto-Orchestration) — edit the toggles, thresholds, and cooldowns that drive the SessionStart briefing and the idle-time memory chain.
-- [How to run without a vault](Run-Without-A-Vault) — operate the harness with no MemoryVault configured.
-
-## 📖 Looking up a detail?
-
-- [Installer CLI reference](Installer-CLI) — flags, prerequisites, ownership table for `install.sh` / `install.ps1`.
-- [Detection rules reference](Detection-Rules) — the 10 built-in rules and what each attaches a rationale to.
-- [Project config reference](Project-Config) — the `project.json` enablement-block schema.
-- [Migration tool reference](Migration-Tool) — flag-by-flag for `migrate-to-user-scope.{sh,ps1}` + the 4-state matrix + `.agentm-migrate-record.json` schema.
-- [CI gates reference](CI-Gates) — what each CI workflow proves and the script behind it.
-- [Repo layout reference](Repo-Layout) — top-level directory map and four-adapter parity table.
-- [Vault lint checks reference](Vault-Lint-Checks) — the 9 read-only `vault_lint.py` checks: id / severity / what each checks / suggested-fix shape.
-- [Note relatedness signals reference](Note-Relatedness-Signals) — the two signals (TF-IDF + embedding) + thresholds `notes_link_discovery.py` scores on.
-- [AgentMemory context payload reference](AgentMemory-Context-Payload) — the canonical paste-anywhere payload's sections (path resolution / folder map / read priority / conventions / read-only boundary).
-- [Auto-orchestration config reference](Auto-Orchestration-Config) — every config key + default (toggles / thresholds / cooldowns) and the `auto-orchestration-state.json` shape.
-- [Compatibility](Compatibility) — supported hosts (Claude Code, Antigravity) + OS matrix + adapter contract.
-- [Completed features](Completed-Features) — reverse-chronological log of shipped work.
-
-## 💡 Want to know why?
-
-- [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going. The architecture, the schema, the workflows, the V4 design space.
-- [V3 Retrospective](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/v3-retrospective.md) — what shipped across the V3 arc, what we learned, what's deferred.
-- [Product intent](Product-Intent) — what problem the harness solves and for whom.
-- [Auto-detect + auto-configure](Auto-Detect-Configure) — why first-session config proposes-then-approves and why it lives in `project.json`.
-- [How the pieces fit](How-The-Pieces-Fit) — narrative of how phases, adapters, templates, and scripts interact.
-- [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
-- [Auto-orchestration](Auto-Orchestration) — why the memory skills became a push surface, and how the briefing + idle chain + phase dispatch never nag.
-- [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable.
-
-### Architecture (Agent M) designs
+The high-level designs behind Agent M's memory layer — the full HLDs, where the design started and where it's going. → **[Browse all designs](Designs)**
 
 - [MemoryVault](memoryvault) — permanent agent memory: [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining).
+- [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going.
 - [Device-Wide Architecture](device-wide-architecture) — the device-wide design Agent M targets.
 - [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 memory-OS HLD.
 
-### Architecture decisions
+## 💡 Why it works the way it does
 
-- [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow)
-- [ADR 0002 — Documentation convention](0002-documentation-convention)
-- [ADR 0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking)
-- [ADR 0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
-- [ADR 0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
-- [ADR 0006 — Split customizations into `crickets`](0006-crickets-split)
-- [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
-- [ADR 0008 — Project surface split](0008-project-surface-split)
-- [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config)
-- [ADR 0010 — Vault internal taxonomy](0010-vault-internal-taxonomy)
+- [Product intent](Product-Intent) — what problem the harness solves and for whom.
+- [Auto-detect + auto-configure](Auto-Detect-Configure) — why first-session config proposes-then-approves and lives in `project.json`.
+- [How the pieces fit](How-The-Pieces-Fit) — the narrative of how phases, adapters, templates, and scripts interact.
+- [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
+- [Auto-orchestration](Auto-Orchestration) — why the memory skills became a push surface that never nags.
+- [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable.
 
-## Conventions
+## 📐 Architecture decisions
 
-Page templates, filename rules, and the Diátaxis four-mode split are described in [`templates/wiki/README.md`](https://github.com/alexherrero/agentm/blob/main/templates/wiki/README.md) — the same conventions this wiki follows.
+Every load-bearing call is recorded as an ADR — the "why X, and why not Y" trail, with re-audit triggers. → **[Browse all decisions](Decisions)**

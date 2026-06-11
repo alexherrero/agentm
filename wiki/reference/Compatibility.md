@@ -23,13 +23,13 @@ The single aggregate `CI` badge in the README + wiki Home rolls up all three OS 
 
 ## Sibling repo
 
-Agent M pairs with **[Crickets (`crickets`)](https://github.com/alexherrero/crickets)** — the customization surface (skills, hooks, sub-agents, bundles, MCP servers, slash commands). Crickets is tested on the same OS matrix; both repos ship paired releases per [ADR 0006](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0006-crickets-split.md).
+Agent M pairs with **[Crickets (`crickets`)](https://github.com/alexherrero/crickets)** — the customization surface (skills, hooks, sub-agents, bundles, MCP servers, slash commands). Crickets is tested on the same OS matrix; both repos ship paired releases per [ADR 0006](0006-crickets-split).
 
 ## Out-of-scope hosts
 
 Hosts that previously had adapters but were dropped:
 
-- **Codex** — dropped in v1.0.0 (2026-05-11) per [ADR 0005](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0005-drop-codex-support.md). Surface diverged enough from `AGENTS.md`-aware tooling that maintaining parity wasn't earning its keep.
+- **Codex** — dropped in v1.0.0 (2026-05-11) per [ADR 0005](0005-drop-codex-support). Surface diverged enough from `AGENTS.md`-aware tooling that maintaining parity wasn't earning its keep.
 - **Gemini CLI** — dropped in v2.4.0 (2026-05-17). Google replaced Gemini CLI with the new Antigravity CLI; we follow the upstream consolidation. Antigravity CLI adapter work is roadmap item #17.
 
 ## When a host stops working
@@ -41,4 +41,4 @@ If a host's CI starts failing or a host's adapter goes stale:
 3. Run `bash scripts/smoke-install-bash.sh` locally; if it fails on the affected host, you've reproduced
 4. Patch the adapter shim OR the canonical spec it points at, whichever resolves the surface change at the right layer
 
-For new hosts, see [ADR 0006](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0006-crickets-split.md) for the adapter contract.
+For new hosts, see [ADR 0006](0006-crickets-split) for the adapter contract.

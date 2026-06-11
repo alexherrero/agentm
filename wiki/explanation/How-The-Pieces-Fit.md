@@ -1,8 +1,10 @@
 # How the pieces fit
 
-Narrative of how phases, adapters, templates, scripts, and this wiki interact. For the on-disk map, see [Repo-Layout](Repo-Layout); for the *why* of phase gates and the doc convention, see [ADR 0001](0001-phase-gated-workflow) and [ADR 0002](0002-documentation-convention).
+How the phases, adapters, templates, scripts, and this wiki interact — the narrative behind the on-disk map. For the map itself see [Repo layout](Repo-Layout); for *why* the phase gates and the doc convention exist, see [ADR 0001](0001-phase-gated-workflow) and [ADR 0002](0002-documentation-convention).
 
-## 🏗 Phases → adapters → templates → target project
+## Canonical specs → adapters → target project
+
+The phase specs in `harness/` are the single source of truth. Each adapter is a thin shim that *points* at a canonical spec rather than restating it.
 
 ```
          ┌──────────────────────────────────────────┐
@@ -10,14 +12,12 @@ Narrative of how phases, adapters, templates, scripts, and this wiki interact. F
          │   harness/agents/*.md                     │
          │   harness/skills/*.md                     │
          └────────┬─────────────────────────┬────────┘
-                  │                         │
                   │ referenced-by            │ referenced-by
-                  ▼                         ▼
+                  ▼                          ▼
          ┌──────────────────┐      ┌──────────────────┐
          │  adapters/       │      │  wiki/           │
          │  claude-code/    │      │  (THIS repo's    │
          │  antigravity/    │      │   own docs only) │
-         │  gemini/         │      │                  │
          └────────┬─────────┘      └──────────────────┘
                   │ copied-by
                   ▼
@@ -31,38 +31,33 @@ Narrative of how phases, adapters, templates, scripts, and this wiki interact. F
          ┌───────────────────────────────────────────┐
          │  target-project/                           │
          │    .harness/  .claude/  .agents/           │
-         │    .gemini/                                │
          │    AGENTS.md  CLAUDE.md                    │
          │    wiki/  (empty scaffold from templates/) │
-         │    .github/workflows/wiki-sync.yml          │
-         └────────────────────────────────────────────┘
+         │    .github/workflows/wiki-sync.yml         │
+         └───────────────────────────────────────────┘
 ```
 
-**Key property:** the phase specs in `harness/` are authoritative. Every adapter file is expected to cite a `harness/<phases|agents|skills>/` path; [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter references a spec that doesn't exist. That's what keeps the three adapters in sync — they're all pointers at the same canonical text. Adding a new adapter is a matter of writing pointers, not re-writing the workflow.
+**Why it holds together:** every adapter file is expected to cite a `harness/<phases|agents|skills>/` path, and [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter points at a spec that doesn't exist. That's what keeps the two supported adapters — [Claude Code and Antigravity](Compatibility) — in lockstep: they are pointers at the same canonical text, not parallel rewrites. Adding a host is a matter of writing pointers, not re-authoring the workflow.
 
-## 📁 The installer boundary
+## The installer boundary
 
-`install.sh` and `install.ps1` read **only** from two roots:
+`install.sh` and `install.ps1` read from **only** two roots:
 
-1. `$HARNESS_ROOT/templates/` — the scaffold every project gets (state files, hooks, wiki scaffold, wiki-sync workflow).
-2. `$HARNESS_ROOT/adapters/` — tool-specific commands / agents / skills.
+1. `$HARNESS_ROOT/templates/` — the scaffold every project gets (state files, hooks, wiki scaffold, the wiki-sync workflow).
+2. `$HARNESS_ROOT/adapters/` — the per-host commands, agents, and skills.
 
-They **never** read from:
+They **never** read from `wiki/` (the dogfood docs for *this* repo), `scripts/` (this repo's test infra), or `.github/workflows/tests-*.yml` (this repo's CI). That boundary is what keeps the harness's own documentation from leaking into every project it installs into.
 
-- `$HARNESS_ROOT/wiki/` — dogfood docs for the harness repo (this one).
-- `$HARNESS_ROOT/scripts/` — test infra for the harness repo.
-- `$HARNESS_ROOT/.github/workflows/tests-*.yml` — CI for the harness repo.
+The boundary is enforced in three layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh), the runtime `ensure_boundary_src` guard inside `cp_managed`, and the byte-for-byte assertions in [`scripts/test-install.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.sh) and [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh). The full rationale is in [ADR 0002](0002-documentation-convention).
 
-The boundary is enforced in three layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh#L23-L28); the runtime guard `ensure_boundary_src` in the `cp_managed` function; and the byte-for-byte assertions in [`scripts/test-install.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.sh) and [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh). See [ADR 0002](0002-documentation-convention) for the full rationale.
+## Verification runs before any agent
 
-## ⚙️ Verification infrastructure
-
-CI runs on Linux, macOS, and Windows in parallel. All gates are documented in [CI-Gates](CI-Gates). The gates are deterministic and blocking — they run before any agentic review — because of the principle that typecheckers and tests are the truth and LLM reviews augment. For the full list of why, see [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md).
+CI runs on Linux, macOS, and Windows in parallel, and every gate is deterministic and blocking — they run *before* any agentic review, because the harness treats typecheckers and tests as the truth and LLM reviews as augmentation. The full list is in [CI gates](CI-Gates).
 
 ## Related
 
-- [Product-Intent](Product-Intent) — what problem the harness solves.
-- [Repo-Layout](Repo-Layout) — the on-disk map this narrative describes.
-- [CI-Gates](CI-Gates) — what each CI workflow proves.
-- [ADR 0001](0001-phase-gated-workflow) — why phase gates.
-- [ADR 0002](0002-documentation-convention) — why this wiki is never installed into target projects.
+- [Product intent](Product-Intent) — the problem the harness solves.
+- [Repo layout](Repo-Layout) — the on-disk map this narrative describes.
+- [CI gates](CI-Gates) — what each CI workflow proves.
+- [Host adapters](Host-Adapters) — how a single canonical spec reaches each host.
+- [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow) · [ADR 0002 — Documentation convention](0002-documentation-convention).

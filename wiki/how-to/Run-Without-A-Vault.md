@@ -1,7 +1,6 @@
 # How to run the harness without a vault (single-repo local state)
 
 > [!NOTE]
-> **Status:** implemented (Hardening I, v4.15.0)
 > **Goal:** Opt a machine into vault-less state so every phase write lands in `<repo>/.harness/` — no Obsidian / GDrive / mounted vault required.
 > **Prereqs:** agentm v4.15.0+ (ships `--local-state`), `python3` on `PATH`, a `.git` dir in the target repo.
 
