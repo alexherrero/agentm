@@ -1,0 +1,39 @@
+# agentm's Architecture manifest — the six structural components of the harness,
+# in locked order. Read by `wiki-init` (crickets' wiki-maintenance plugin) to
+# scaffold and render the Architecture section of this wiki.
+#
+# All six are free-formed under `components:` with NO `pillars:` toggles — on
+# purpose, exactly as crickets does it. Pillars expand FIRST (in declared order)
+# ahead of free-form components, so toggling `host-adapters` (a known pillar
+# template) would hoist it to position 0 and break the declared order.
+# Free-forming every component keeps the declared sequence verbatim. `host-adapters`
+# and `toolkit-interface` match recurring pillar shapes by concept (host-adapters /
+# sibling-interface) but are free-formed here to hold their slots and to carry
+# agentm-specific wording. See crickets wiki/designs/wiki-section-taxonomy.md
+# (part: agentm-dogfood).
+architecture:
+  components:
+    - slug: agentmemory
+      title: AgentMemory
+      summary: The MemoryVault substrate — durable, file-based agent memory that persists preferences, project state, and learned lessons across sessions and projects.
+      overview: AgentMemory
+    - slug: device-wide-substrate
+      title: Device-Wide Substrate
+      summary: The device-wide layer — how the harness and its memory span every project on the machine, not just the current repo.
+      overview: Device-Wide-Substrate
+    - slug: phases
+      title: Phases
+      summary: The phase-gated workflow — Setup · Plan · Work · Review · Release · Bugfix — with hard boundaries and on-disk state carried between sessions.
+      overview: Phases
+    - slug: auto-detect-orchestrate
+      title: Orchestration and Auto-Detection
+      summary: How the harness auto-orchestrates the right phase wiring + context injection by detecting a project's shape — no manual configuration.
+      overview: Orchestration-And-Auto-Detection
+    - slug: host-adapters
+      title: Host adapters
+      summary: How agentm adapts to each supported agent host (Claude Code · Antigravity 2.0 · Antigravity CLI) and where each phase entrypoint lands per host.
+      overview: Host-Adapters
+    - slug: toolkit-interface
+      title: Toolkit interface ↔ crickets
+      summary: The seam with the sibling crickets toolkit — what the harness owns (phases · state) vs. what crickets owns (skills · agents · hooks), and how they compose without depending on each other.
+      overview: Toolkit-Interface
