@@ -1,7 +1,7 @@
 <!-- mode: index -->
 # Designs
 
-The high-level design docs behind Agent M's memory layer — the full HLDs for what shipped and what's in flight, where the design started and where it's going. The [Architecture](Architecture) pillar overviews link *down* into these for the deep detail.
+The high-level design docs behind Agent M — its memory layer and the harness tooling around it — the full HLDs for what shipped and what's in flight, where the design started and where it's going. The [Architecture](Architecture) pillar overviews link *down* into these for the deep detail.
 
 ## MemoryVault
 
@@ -20,6 +20,10 @@ The permanent agent-memory store and its six implementation parts.
 - [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going.
 - [Device-Wide Architecture](device-wide-architecture) — the device-wide design Agent M targets.
 - [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 memory-OS HLD.
+
+## Documentation & tooling
+
+- [Seven-Section Wiki Convergence](seven-section-convergence) — converging agentm's documentation spec + tooling onto the seven-section wiki taxonomy crickets standardized (amend ADR 0004 · retire the duplicate `diataxis-author` copy toward crickets · reshape `templates/wiki/`).
 
 ## See also
 
