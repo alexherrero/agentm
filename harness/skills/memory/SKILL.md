@@ -1001,6 +1001,16 @@ Calls the same recall engine the UserPromptSubmit hook uses: sqlite-vec primary 
 
 Default behavior: query against all groups; exclude `_inbox/`; return top-5 results.
 
+## Concurrent-write safety (operator guidance)
+
+Every `/memory save` + `/memory evolve` write goes through the **vault-write protocol** (V5-0 / [ADR 0012](../../wiki/decisions/0012-vault-write-protocol.md)) so N≥2 agent sessions on one machine can write the shared Drive-synced vault without lost updates or torn files. You don't invoke it — it sits beneath the writes — but three habits keep it effective:
+
+1. **Pin the vault "Available offline."** A dataless read (Drive streaming a not-yet-materialized file) can stall an agent, in the worst case an `EDEADLK` hang. Mark the vault root *Available offline* in Drive/Finder so files are always local.
+2. **Don't leave an agent-owned file open and dirty in Obsidian.** Obsidian's auto-merge / "changed on disk" popup is an out-of-band writer the mutex can't see — close `PLAN.md` / `progress.md` before a `/work` run, or let the agent own them while it works.
+3. **Name cross-cutting `_inbox/` captures uniquely** as `<timestamp>-<pid>-<slug>.md`, so two sessions writing the inbox at once land disjoint files instead of racing one name (ownership-partitioning — different writers touch different files, so real contention stays ≈0).
+
+Mechanics, for reference: the advisory mutex is a `mkdir` lockdir at `~/.cache/agentm/locks/<sha256(realpath vault)>/lock` — **outside** the synced vault (a lock inside Drive would itself sync/conflict); replace-style shared files re-check a **content hash (sha256) CAS** inside the lock and abort-and-retry on a concurrent edit (including your own Obsidian hand-edits); writes land via temp→`fsync`→rename. Full table + the conflict-janitor's four marker families: [Vault write protocol](../../wiki/reference/Vault-Write-Protocol.md).
+
 ## Tool allowlist
 
 **`Read, Write, Edit, Glob, Grep`** — no Bash. Same restriction as `/design` skill. The skill body never invokes shell commands directly; Python scripts under `skills/memory/scripts/` (added in tasks 2-4) handle the heavy lifting (file ops via Python's `os` / `pathlib`; embedding API calls via Python `requests` or vendor SDK; sqlite-vec via the `sqlite-vec` Python wheel).

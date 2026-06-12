@@ -18,6 +18,7 @@ This page is the index. The homepage links here once instead of listing every AD
 - [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config)
 - [ADR 0010 — Vault internal taxonomy](0010-vault-internal-taxonomy)
 - [ADR 0011 — V5 unbundling: slim the dev loop + migrate-to-diataxis](0011-v5-unbundling-dev-loop)
+- [ADR 0012 — The vault-write protocol (R4 Phase-0 concurrency floor)](0012-vault-write-protocol)
 
 ## See also
 

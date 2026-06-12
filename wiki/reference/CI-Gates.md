@@ -27,6 +27,7 @@ bash scripts/check-all.sh
 | syntax | `bash -n` on every `.sh`; PowerShell AST parse on every `.ps1` across repo root + `scripts/` + `templates/` + `adapters/`. | [`scripts/check-syntax.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-syntax.sh), [`scripts/check-syntax.ps1`](https://github.com/alexherrero/agentm/blob/main/scripts/check-syntax.ps1) |
 | unit tests | Every `scripts/test_*.py` (auto-discovered) passes — the memory-script logic in isolation. | `(cd scripts && python3 -m unittest discover -p 'test_*.py')` |
 | check-lib-parity | `lib/install/` matches the committed checksums (byte-identical across agentm + crickets). | [`scripts/check-lib-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-lib-parity.sh) |
+| check-vault-lock-parity | The two copies of the vault-write protocol — `scripts/vault_lock.py` and its vendored twin `harness/skills/memory/scripts/vault_lock.py` — are sha256-identical, so the memory skill and the harness core share one canonical lock implementation. | [`scripts/check-vault-lock-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-vault-lock-parity.sh) |
 | check-no-pii | The regex PII scanner finds no personal info across the tree (this is a public repo). | [`scripts/check-no-pii.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-no-pii.sh) |
 | verify-v4 | The V4 #23 auto-orchestration push surface works end-to-end (briefing · idle · phase-dispatch · nudges · config/state) against a throwaway scratch vault — see below. Linux/Mac only. | [`scripts/verify-v4.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-v4.sh) |
 | verify-phases | A full phase lifecycle (`/setup → /plan → /work → /release`) drives its deterministic seams — state read/write, `progress.md` appends, `features.json` updates, post-phase dispatch plumbing — end-to-end on a throwaway fixture project, run twice: once vault-resident, once repo-local. Linux/Mac only. | [`scripts/verify-phases.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-phases.sh) |
@@ -58,7 +59,7 @@ Red-on-Windows but green-on-POSIX almost always indicates a path-separator or pw
 
 ## Running the gate set locally
 
-One command runs the deterministic battery — 11 gates: unit tests + every `check-*` gate + the three integration checks (`verify-v4`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
+One command runs the deterministic battery — 12 gates: unit tests + every `check-*` gate + the three integration checks (`verify-v4`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
 
 ```bash
 bash scripts/check-all.sh
@@ -70,4 +71,5 @@ It deliberately omits the heavier `smoke-install` + `gitleaks` (slow / external 
 
 - [How to cut a release](Cut-A-Release) — CI must be green before invoking `ship-release`.
 - [How to refresh an installed harness](Update-Installed-Harness) — what `--update` touches vs. leaves alone.
+- [Vault write protocol](Vault-Write-Protocol) — the protocol the `check-vault-lock-parity` gate keeps byte-identical across its two copies.
 - [ADR 0002](0002-documentation-convention) — the installer-boundary rule the gates enforce.

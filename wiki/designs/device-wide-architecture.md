@@ -275,13 +275,16 @@ The harness has evolved into the operator's agentic environment. Compound skills
 
 The vault syncs across devices via Obsidian + GDrive. Two sessions on different devices may write the same project's state concurrently.
 
+> [!NOTE]
+> **Amended 2026-06-12 (V5-0 — the vault-write protocol).** The concrete write mechanics below were the V4 #26 design; V5-0 ("R4 Phase-0") shipped a canonical protocol that **strengthens** them, locked in [ADR 0012 — The vault-write protocol](../decisions/0012-vault-write-protocol.md) (operator reference: [Vault write protocol](../reference/Vault-Write-Protocol.md)). Three changes supersede the wording in this section: (1) replace-style writes now compare-and-swap on a **content hash**, not last-modified — Drive re-downloads rewrite mtimes, so the mtime check is kept working-but-deprecated and the sha256 CAS is preferred (`safe_write_replace_style(..., expected_hash=…)`, [`scripts/harness_memory.py:626`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py#L626)); (2) shared-vault writes now serialize on a **real, enforced per-vault mutex** — a `mkdir`/`O_EXCL` lockdir *outside* the synced vault, with an mtime heartbeat and stale-takeover ([`scripts/vault_lock.py`](https://github.com/alexherrero/agentm/blob/main/scripts/vault_lock.py)) — superseding the "advisory `.session-lock`, informational, not enforced" line; (3) the conflict sweep broadened from the single `(conflicted copy …)` substring to **four Drive marker families** plus the DriveFS `lost_and_found/` dump. The file-class taxonomy below still holds; only its enforcement strength changed.
+
 **File classes by write pattern:**
 
-- **Append-only** (progress.md, _inbox/, archives) — natural merge via timestamps. GDrive sync handles concurrent appends. A SessionStart hook scans for `(conflicted copy ...)` files + surfaces resolution UX.
-- **Replace-style** (PLAN.md, _index.md, features.json) — cursor + last-modified pre-write check. If file changed between read + write, agent surfaces conflict: (a) re-read + re-apply, (b) force-write, (c) save as `.local` for manual merge.
-- **Cursor-tracked** (`.promoted-progress-cursor`) — existing V4 #8 primitive, generalized for ROADMAP + FOLLOWUPS promotion.
+- **Append-only** (progress.md, _inbox/, archives) — natural merge via timestamps. GDrive sync handles concurrent appends. A SessionStart hook scans for conflict-named files + surfaces resolution UX (V5-0 broadened the scan to four marker families — `(conflicted copy …)`, `[Conflict]`, `Copy of …`, `… (N).ext` numbered duplicates — plus the DriveFS `lost_and_found/` dump).
+- **Replace-style** (PLAN.md, _index.md, features.json) — content-hash compare-and-swap pre-write check (V5-0; mtime kept deprecated). If the content changed between read + write, the writer raises `ConcurrentModificationError` and the caller re-reads + retries.
+- **Cursor-tracked** (`.promoted-progress-cursor`) — existing V4 #8 primitive, generalized for ROADMAP + FOLLOWUPS promotion. Repo-local; takes the atomic writer but no mutex (partitioned by construction).
 - **Per-cwd runtime** (`.evidence-reads`) — stays in `<project>/.harness/`; not synced; per-cwd cache.
-- **Advisory locks** (`.session-lock`) — long-running phases announce themselves; informational, not enforced.
+- **Shared-vault mutex** (V5-0) — every shared-vault write (replace-style state, the repo registry, `/memory save` / `/memory evolve`) acquires the one per-vault lockdir before its atomic write. Enforced, local-only by design (cross-device exclusion is impossible on Drive). Supersedes the earlier advisory `.session-lock` framing.
 
 Multi-device concurrent operation is supported with graceful degradation. Hard-merge conflicts surface to operator with clear UX paths.
 

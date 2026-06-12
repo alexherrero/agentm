@@ -31,3 +31,4 @@ It makes local mode *reachable and writable* without a vault — it does not mig
 - [Run without a vault](Run-Without-A-Vault) — the operator recipe for enabling single-repo local state.
 - [Installer CLI](Installer-CLI) — the `--local-state` flag and the `agentm_config.py --state-mode` setter.
 - [Project config](Project-Config) — how `register()` degrades when no vault is present.
+- [Vault write protocol](Vault-Write-Protocol) — the per-vault mutex that guards *vault*-mode writes; repo-local writes are partitioned by construction and take the atomic writer with no mutex.

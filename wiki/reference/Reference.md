@@ -21,6 +21,7 @@ Lookup-oriented technical detail for the Agent M harness — CLI flags, config s
 - **[AgentMemory context payload](AgentMemory-Context-Payload)** — the canonical paste-anywhere payload's sections.
 - **[Vault lint checks](Vault-Lint-Checks)** — the read-only `vault_lint.py` checks: id · severity · what each checks · suggested-fix shape.
 - **[Note relatedness signals](Note-Relatedness-Signals)** — the signals + thresholds `notes_link_discovery.py` scores on.
+- **[Vault write protocol](Vault-Write-Protocol)** — the lock path, content-hash CAS, atomic-writer, and the pin-offline / partitioning operator habits for N≥2 concurrent writers.
 
 ## CI & shipped work
 
