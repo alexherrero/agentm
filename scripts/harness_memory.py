@@ -615,6 +615,158 @@ def _write_repo_local_state_file(project_root: Path, filename: str, content: str
 
 
 # -----------------------------------------------------------------------------
+# Active-plan resolution (V5-10 part 1: named multi-plan state)
+# -----------------------------------------------------------------------------
+
+# A worker session works exactly one plan. With named plans (`PLAN-<name>.md` /
+# `progress-<name>.md`, flat in the shared vault `_harness/`), *which* plan a
+# session owns is resolved here: explicit arg → a sticky worktree-local marker →
+# the legacy singleton. The marker is WRITTEN by the worktree-spawn helper (V5-10
+# component 2, a later slice); this is the READER plus its loud-error contract.
+
+_PLAN_PREFIX = "PLAN-"
+_PROGRESS_PREFIX = "progress-"
+_SINGLETON_PLAN = ("PLAN.md", "progress.md")
+
+
+class ActivePlanError(RuntimeError):
+    """The `.harness/active-plan` marker exists but does not resolve to a present,
+    non-empty `PLAN-<name>.md`.
+
+    Raised instead of silently falling back to the singleton `PLAN.md`. A worktree
+    bound to plan "foo" whose plan file vanished must NOT quietly run whatever
+    `PLAN.md` happens to be in `_harness/` — that is exactly the worker→plan
+    mis-binding the V5-10 design calls out (Risk #7). Fail loud so the operator
+    fixes the binding rather than letting two workers stomp one plan.
+    """
+
+
+def _read_active_plan_marker(project_root: Path) -> tuple[bool, Optional[str]]:
+    """Read `<project_root>/.harness/active-plan`.
+
+    Returns `(present, raw)`:
+      - `(False, None)` — the marker file is absent (→ singleton default).
+      - `(True, "<text>")` — the file exists; `raw` is its stripped contents
+        ("" if blank). **Case-preserving** (unlike `_read_mode_marker`, which
+        lowercases for `.project-mode`) — plan slugs may be case-sensitive.
+
+    The present-vs-absent distinction is load-bearing: an *absent* marker is the
+    back-compat singleton path, but a *present-but-blank* marker is a dangling
+    binding the caller must treat as an error, not as "no marker".
+    """
+    path = Path(project_root) / ".harness" / "active-plan"
+    if not path.is_file():
+        return (False, None)
+    try:
+        return (True, path.read_text(encoding="utf-8").strip())
+    except OSError as exc:
+        raise ActivePlanError(
+            f"cannot read {path}: {exc}. Refusing to fall back to the singleton "
+            f"PLAN.md while an active-plan marker is present."
+        ) from exc
+
+
+def _normalize_plan_name(raw: str) -> Optional[str]:
+    """Reduce a plan reference to its bare slug.
+
+    Accepts the slug ("foo"), the filename ("PLAN-foo.md"), or the stem
+    ("PLAN-foo") — all yield "foo". Returns None for an empty string or an
+    explicit singleton reference ("PLAN" / "PLAN.md"), signalling "no named plan"
+    so the caller falls through to the unnamed default.
+    """
+    s = (raw or "").strip()
+    if s.endswith(".md"):
+        s = s[: -len(".md")]
+    if s.startswith(_PLAN_PREFIX):
+        s = s[len(_PLAN_PREFIX):]
+    if not s or s == "PLAN":
+        return None
+    return s
+
+
+def _is_safe_plan_slug(slug: str) -> bool:
+    """A plan slug must be a single path component so it can't escape `_harness/`
+    when interpolated into `PLAN-<slug>.md`. Rejects separators and parent refs."""
+    return (
+        slug not in (".", "..")
+        and "/" not in slug
+        and "\\" not in slug
+        and "\x00" not in slug
+    )
+
+
+def _plan_pair(slug: Optional[str]) -> tuple[str, str]:
+    """Map a normalized slug to its `(plan_filename, progress_filename)` pair.
+    `None` → the singleton; "foo" → ("PLAN-foo.md", "progress-foo.md")."""
+    if slug is None:
+        return _SINGLETON_PLAN
+    return (f"{_PLAN_PREFIX}{slug}.md", f"{_PROGRESS_PREFIX}{slug}.md")
+
+
+def resolve_active_plan(
+    resolution: dict, *, plan_arg: Optional[str] = None
+) -> tuple[str, str]:
+    """Resolve which `(plan_filename, progress_filename)` pair this session owns.
+
+    Precedence — first hit wins:
+
+      1. **explicit `plan_arg`** — the caller named a plan (e.g. `/work foo`).
+         Normalized, so "foo" / "PLAN-foo.md" / "PLAN-foo" all map to the same
+         pair; an arg that normalizes to the singleton ("PLAN" / "PLAN.md" / "")
+         yields the unnamed pair. No existence check — naming a plan explicitly
+         is the caller's deliberate choice. Raises ``ValueError`` on a slug that
+         is not a single path component (traversal guard).
+      2. **worktree-local `<project_root>/.harness/active-plan`** — the sticky
+         binding written by the worktree-spawn helper (V5-10 component 2). If the
+         file is **present**, it MUST resolve to a present, non-empty
+         `PLAN-<name>.md` in the resolved `_harness/`; otherwise ``ActivePlanError``.
+         A present-but-blank, malformed, or dangling marker never degrades to the
+         singleton (Risk #7).
+      3. **legacy singleton** — no arg, no marker file → ``("PLAN.md", "progress.md")``.
+
+    Reader only: never writes the marker (component 2 owns the writer). Returns a
+    `(plan, progress)` tuple of bare filenames — resolve to a path with
+    ``vault_state_path(resolution, plan)`` or read with ``read_state_file``.
+    """
+    # 1. Explicit arg — highest precedence, the caller's deliberate choice.
+    if plan_arg is not None:
+        slug = _normalize_plan_name(plan_arg)
+        if slug is not None and not _is_safe_plan_slug(slug):
+            raise ValueError(
+                f"unsafe plan name {plan_arg!r}: a plan slug must be a single "
+                f"path component (no '/', '\\', or '..')."
+            )
+        return _plan_pair(slug)
+
+    # 2. Worktree-local sticky binding. Present ⇒ must resolve, else raise loud.
+    project_root = Path(resolution.get("project_root") or Path.cwd())
+    present, raw = _read_active_plan_marker(project_root)
+    if present:
+        slug = _normalize_plan_name(raw or "")
+        if slug is None or not _is_safe_plan_slug(slug):
+            raise ActivePlanError(
+                f".harness/active-plan exists in {project_root} but is blank or "
+                f"names no usable plan (raw={raw!r}). A present-but-dangling "
+                f"binding must not silently fall back to the singleton PLAN.md "
+                f"(V5-10 Risk #7). Write a plan name into the marker, or remove "
+                f"it to use PLAN.md."
+            )
+        plan_name, progress_name = _plan_pair(slug)
+        if not read_state_file(resolution, plan_name).strip():
+            raise ActivePlanError(
+                f".harness/active-plan binds this session to {plan_name!r}, but "
+                f"that plan is absent or empty in the resolved _harness/ "
+                f"(slug={resolution.get('slug')!r}). Refusing to fall back to the "
+                f"singleton PLAN.md — that would mis-bind this worker to another "
+                f"plan. Restore {plan_name!r} or fix the marker."
+            )
+        return (plan_name, progress_name)
+
+    # 3. Legacy singleton default — no arg, no marker.
+    return _SINGLETON_PLAN
+
+
+# -----------------------------------------------------------------------------
 # Concurrency primitives (V4 #26 task 4; V5-0 content-hash CAS + atomic_write)
 # -----------------------------------------------------------------------------
 

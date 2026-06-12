@@ -37,13 +37,13 @@ What the substrate work *adds* is not new resolution logic but two guards that l
 - a `check-multi-plan-naming` gate (CI gate #13) that asserts the resolver still exposes the named-plan entry point and that no harness doc silently re-asserts a singleton.
 
 > [!NOTE]
-> **Contract lock landed; feature still pending.** The round-trip half above is test-locked as of "V5-10 part 1" task 1. The rest of this substrate — `resolve_active_plan`, the `check-multi-plan-naming` gate, named-plan-aware hooks, and the crickets behavioral half — is **not** shipped; this page stays **pending** until it does.
+> **Contract lock landed; feature still pending.** The round-trip half above is test-locked as of "V5-10 part 1" task 1, and `resolve_active_plan` (the session→plan binder, [below](#binding-a-session-to-its-plan--resolve_active_plan)) is test-locked as of task 2. The rest of this substrate — the `.harness/active-plan` marker *writer*, the `check-multi-plan-naming` gate, named-plan-aware hooks, and the crickets behavioral half — is **not** shipped; this page stays **pending** until it does.
 
 If any of that work surfaces a *caller* somewhere that hard-codes `"PLAN.md"` (the resolver itself is clean; a caller might not be), the fix is to close it minimally — not to expand scope.
 
 ## Binding a session to its plan — `resolve_active_plan`
 
-A worker must end up bound to **exactly one** plan, and a mis-binding (a worker silently working the wrong plan) is the foot-gun this design most wants to prevent. The `resolve_active_plan` helper makes the binding explicit with a strict precedence:
+A worker must end up bound to **exactly one** plan, and a mis-binding (a worker silently working the wrong plan) is the foot-gun this design most wants to prevent. The [`resolve_active_plan`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py) helper makes the binding explicit with a strict precedence:
 
 ```
 explicit argument
@@ -54,6 +54,9 @@ explicit argument
 It returns the resolved plan filename and its matching progress filename. The marker pattern mirrors the existing `.project-mode` repo-local marker (reachable on disk without consulting the vault).
 
 The load-bearing rule: **it errors loudly, it never silently falls back to the singleton.** When `.harness/active-plan` exists but names a plan whose `PLAN-<name>.md` is absent, empty, or ambiguous, `resolve_active_plan` raises rather than quietly degrading to `PLAN.md`. A silent fallback there is precisely how a worker would end up editing the wrong plan; raising turns a mis-binding into an immediate, observable failure. Only the *unset* case — no argument and no marker — resolves to the legacy singleton, which is the intended back-compat path.
+
+> [!NOTE]
+> **This helper is now real (substrate-only).** `resolve_active_plan` and its four helpers (`_read_active_plan_marker`, `_normalize_plan_name`, `_is_safe_plan_slug`, `_plan_pair`) plus a dedicated `ActivePlanError` ship in [`scripts/harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py) as of "V5-10 part 1" task 2, locked by [`scripts/test_resolve_active_plan.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_resolve_active_plan.py) (13 tests across all three precedence branches + the loud-error edges). What is locked: the **precedence order** above, an explicit-arg traversal guard (`ValueError` on a slug that is not a single path component), and `ActivePlanError` on every present-but-unresolvable marker (blank, malformed, traversal, or naming an absent/empty plan). The page stays **pending** because this is the *reader* only — the marker *writer* (worktree-spawn helper), the `check-multi-plan-naming` gate, the named-plan-aware hooks, and the crickets behavioral half are still unbuilt.
 
 `resolve_active_plan` is a **reader** of the marker. The marker is *written* by component (2)'s worktree-spawn helper, which is a later V5-10 plan — so the substrate ships the reader of a file whose writer does not exist yet. That is by design (the seam is structural, below); the reader's tests create the marker by hand.
 
