@@ -11,6 +11,7 @@
 - [Vault lint checks](Vault-Lint-Checks)
 - [Note relatedness signals](Note-Relatedness-Signals)
 - [Vault write protocol](Vault-Write-Protocol)
+- [Queue status lite](Queue-Status-Lite)
 - [AgentMemory context payload](AgentMemory-Context-Payload)
 - [Auto-orchestration config](Auto-Orchestration-Config)
 - [Compatibility](Compatibility)

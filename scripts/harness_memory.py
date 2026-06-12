@@ -380,6 +380,25 @@ def vault_state_path(resolution: dict, filename: str) -> Optional[Path]:
     return resolution["vault_path"] / "_harness" / filename
 
 
+def harness_state_dir(resolution: dict) -> Optional[Path]:
+    """Return the `_harness/` directory to enumerate for this project, honoring
+    state mode — the directory companion to `vault_state_path` (which returns a
+    single file path).
+
+    - **local mode** (`.project-mode` = "local") → `<project_root>/.harness/`.
+    - **vault mode** (default) → `<vault_path>/_harness/`.
+    - returns None when neither resolves (a vault-mode project with no vault_path).
+
+    Used by `queue_status_lite` and named-plan-aware session-start discovery to
+    glob every `PLAN*.md`. Pure path-construction; does not check existence.
+    """
+    if _read_project_mode(resolution) == "local":
+        root = resolution.get("project_root") or Path.cwd()
+        return Path(root) / ".harness"
+    vault_p = resolution.get("vault_path")
+    return Path(vault_p) / "_harness" if vault_p else None
+
+
 # -----------------------------------------------------------------------------
 # Backward-compat read/write dispatcher (V4 #26 task 3)
 # -----------------------------------------------------------------------------
