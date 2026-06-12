@@ -11,4 +11,5 @@
 - [GitHub Projects integration](GitHub-Projects-Integration)
 - [Auto-orchestration](Auto-Orchestration)
 - [Single-repo state mode](Single-Repo-State-Mode)
+- [Named plans](Named-Plans) ⏳
 ### 📐 [Decisions](Decisions)
