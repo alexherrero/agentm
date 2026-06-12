@@ -1711,6 +1711,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="path to project root (default: cwd)",
     )
 
+    # resolve-active-plan (V5-10 part 1): emit the active (PLAN, progress) path
+    # pair so the crickets developer-workflows phase specs can target named
+    # plans without reimplementing resolution — they shell to this verb (the
+    # function `resolve_active_plan` itself is not otherwise reachable from a
+    # bash spec). Precedence is owned here: explicit --plan → worktree
+    # active-plan marker → singleton.
+    p_rap = sub.add_parser(
+        "resolve-active-plan",
+        help="emit the active (PLAN, progress) on-disk path pair for a named "
+             "or singleton plan (V5-10 part 1)",
+    )
+    p_rap.add_argument(
+        "--plan", default=None,
+        help="explicit plan name/slug ('foo', 'PLAN-foo', 'PLAN-foo.md'); omit "
+             "to resolve via the .harness/active-plan marker, else the singleton",
+    )
+    p_rap.add_argument(
+        "--project-root", default=None,
+        help="path to project root (default: cwd)",
+    )
+
     # documenter-context (V4 #35): doc-write-time recall bundle for the
     # documenter sub-agent + wiki-author/diataxis-author skills. Composes
     # `recall` under the hood with phase=documenter; one subcommand for all
@@ -1858,6 +1879,32 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("", end="")
             return 1
         print(str(path))
+        return 0
+
+    if args.cmd == "resolve-active-plan":
+        # V5-10 part 1: emit the active (plan, progress) on-disk path pair as a
+        # single tab-separated line — "<plan_path>\t<progress_path>". Honors the
+        # effective state mode (vault vs local) via harness_state_dir, the same
+        # dir read_state_file / write_state_file target. Exit codes:
+        #   0 — resolved; pair printed.
+        #   1 — no resolvable _harness/ dir (vault-mode project, no vault):
+        #       graceful-skip signal, same convention as vault-state-path.
+        #   2 — LOUD error: a dangling .harness/active-plan marker (Risk #7) or
+        #       an unsafe plan slug. Never a silent singleton fallback.
+        root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
+        resolution = resolve_project({"cwd": root})
+        try:
+            plan_name, progress_name = resolve_active_plan(
+                resolution, plan_arg=args.plan
+            )
+        except (ActivePlanError, ValueError) as exc:
+            print(f"[harness_memory] {exc}", file=sys.stderr)
+            return 2
+        state_dir = harness_state_dir(resolution)
+        if state_dir is None:
+            print("", end="")
+            return 1
+        print(f"{state_dir / plan_name}\t{state_dir / progress_name}")
         return 0
 
     if args.cmd == "documenter-context":

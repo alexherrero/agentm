@@ -13,6 +13,8 @@ Run directly:
 """
 from __future__ import annotations
 
+import contextlib
+import io
 import os
 import shutil
 import sys
@@ -155,6 +157,104 @@ class ResolveActivePlanPrecedence(unittest.TestCase):
         # Reader only — resolving the singleton must not create the marker file.
         hm.resolve_active_plan(self.resolution)
         self.assertFalse((self.proj / ".harness" / "active-plan").exists())
+
+
+class ResolveActivePlanCLI(unittest.TestCase):
+    """The `resolve-active-plan` CLI verb (V5-10 part 1) — the bash-reachable
+    wrapper the crickets developer-workflows bridge shells to so phase specs can
+    target named plans without reimplementing resolution.
+
+    Hermetic via **local mode** (`.harness/.project-mode = local`): resolution
+    never touches a real vault, and `harness_state_dir` returns the repo-local
+    `.harness/`, so the emitted paths are deterministic. The vault-mode dir
+    branch is `harness_state_dir`'s own contract (covered in test_harness_memory).
+    """
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.mkdtemp(prefix="agentm-rap-cli-")
+        self.proj = Path(self._tmp) / "repo"
+        self.harness = self.proj / ".harness"
+        self.harness.mkdir(parents=True)
+        # Local mode: the repo-local .harness/ is the canonical state home, so
+        # resolution is vault-free + hermetic (DC-2). harness_state_dir → here.
+        (self.harness / ".project-mode").write_text("local\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        shutil.rmtree(self._tmp, ignore_errors=True)
+
+    def _run(self, *cli_args: str, root: Path | None = None) -> tuple[int, str, str]:
+        """Invoke `main()` for the verb with stdout/stderr captured."""
+        out, err = io.StringIO(), io.StringIO()
+        argv = [
+            "resolve-active-plan",
+            "--project-root", str(root or self.proj),
+            *cli_args,
+        ]
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = hm.main(argv)
+        return rc, out.getvalue(), err.getvalue()
+
+    def _pair(self, *names: str) -> str:
+        return "\t".join(str(self.harness / n) for n in names)
+
+    # --- happy paths: the tab-separated pair (LC-3) ---
+
+    def test_bare_emits_singleton_pair(self) -> None:
+        rc, out, _ = self._run()
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), self._pair("PLAN.md", "progress.md"))
+
+    def test_named_emits_named_pair(self) -> None:
+        rc, out, _ = self._run("--plan", "foo")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), self._pair("PLAN-foo.md", "progress-foo.md"))
+
+    def test_named_accepts_filename_form(self) -> None:
+        rc, out, _ = self._run("--plan", "PLAN-foo.md")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), self._pair("PLAN-foo.md", "progress-foo.md"))
+
+    def test_valid_marker_emits_named_pair(self) -> None:
+        # No --plan → the worktree active-plan marker binds the pair.
+        (self.harness / "PLAN-foo.md").write_text(
+            "Status: in-progress\n", encoding="utf-8"
+        )
+        (self.harness / "active-plan").write_text("foo\n", encoding="utf-8")
+        rc, out, _ = self._run()
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), self._pair("PLAN-foo.md", "progress-foo.md"))
+
+    # --- loud errors: exit 2, never a silent singleton fallback (Risk #7) ---
+
+    def test_dangling_marker_exits_loud_no_singleton_fallback(self) -> None:
+        # Marker binds to foo but PLAN-foo.md is absent → must NOT run PLAN.md.
+        (self.harness / "active-plan").write_text("foo\n", encoding="utf-8")
+        rc, out, err = self._run()
+        self.assertEqual(rc, 2)
+        self.assertEqual(out.strip(), "")          # emits no pair at all
+        self.assertNotIn("PLAN.md", out)           # never the singleton
+        self.assertIn("active-plan", err)
+
+    def test_unsafe_plan_slug_exits_loud(self) -> None:
+        rc, out, err = self._run("--plan", "../etc")
+        self.assertEqual(rc, 2)
+        self.assertEqual(out.strip(), "")
+        self.assertIn("unsafe plan name", err)
+
+    # --- graceful-skip: no resolvable _harness/ (vault-mode, no vault) → exit 1 ---
+
+    def test_no_resolvable_harness_dir_exits_one(self) -> None:
+        bare = Path(self._tmp) / "bare"
+        (bare / ".harness").mkdir(parents=True)  # no .project-mode → vault mode
+        rc, out, _ = self._run(root=bare)
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
+
+    # --- reader only ---
+
+    def test_resolve_is_read_only(self) -> None:
+        self._run("--plan", "foo")
+        self.assertFalse((self.harness / "active-plan").exists())
 
 
 if __name__ == "__main__":
