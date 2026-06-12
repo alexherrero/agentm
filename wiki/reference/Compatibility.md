@@ -9,7 +9,7 @@ Hosts and surfaces Agent M is verified to run with.
 | **Claude Code** (Anthropic CLI / IDE extension) | [`adapters/claude-code/`](https://github.com/alexherrero/agentm/tree/main/adapters/claude-code) | `/setup` `/plan` `/work` `/review` `/release` `/bugfix` | ✅ first-class — primary development surface, CI-verified on every push |
 | **Antigravity** (Google IDE + Antigravity CLI) | [`adapters/antigravity/`](https://github.com/alexherrero/agentm/tree/main/adapters/antigravity) | Equivalent entrypoints invoked via `AGENTS.md`-aware prompts | ✅ first-class — CI-verified on every push |
 
-Both adapters are thin shims that point back at the canonical phase specs in [`harness/phases/`](https://github.com/alexherrero/agentm/tree/main/harness/phases). Adding a host = adding an adapter dir + verifying the canonical specs still apply; no harness rewrite needed.
+Both adapters are thin shims for agentm's own surfaces — its always-on rules and utility skills. The phase loop those commands invoke ships in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)); agentm no longer vendors the phase specs. Adding a host = adding an adapter dir + verifying the canonical specs still apply; no harness rewrite needed.
 
 ## Supported operating systems
 

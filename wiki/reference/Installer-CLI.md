@@ -67,16 +67,9 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | `wiki/` scaffold | User | Per-file walk; missing files filled in, existing left alone |
 | `.github/workflows/wiki-sync.yml` | Harness | Overwritten |
 
-## Phase commands the installer ships
+## Phase commands
 
-| Command | Canonical spec |
-|---|---|
-| `/setup` | [`harness/phases/01-setup.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/01-setup.md) |
-| `/plan` | [`harness/phases/02-plan.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/02-plan.md) |
-| `/work` | [`harness/phases/03-work.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/03-work.md) |
-| `/review` | [`harness/phases/04-review.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/04-review.md) |
-| `/release` | [`harness/phases/05-release.md`](https://github.com/alexherrero/agentm/blob/main/harness/phases/05-release.md) |
-| `/bugfix` | [`harness/pipelines/bugfix.md`](https://github.com/alexherrero/agentm/blob/main/harness/pipelines/bugfix.md) |
+The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **not** shipped by the agentm installer — it lives in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)). agentm no longer vendors the phase specs; the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`) those phases run against.
 
 ## Exit codes
 

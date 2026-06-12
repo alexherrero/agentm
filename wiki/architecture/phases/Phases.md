@@ -18,7 +18,7 @@ The six phases, in order, with Bugfix as a parallel track for defects:
 | **Release** | pre-merge gate: clean tree, checks pass | the changelog is updated + green |
 | **Bugfix** | Report → Analyze → Fix → Verify | the fix is verified |
 
-The canonical spec for each lives in `harness/phases/`; the host adapters point back to those specs rather than restating them. Verification is **executable first** — typecheck, lint, tests, build come before any LLM judgement, which augments but never replaces them.
+The canonical spec for each lives in the crickets **developer-workflows** plugin, not in agentm — the phase loop was unbundled in V5 ([ADR 0011](0011-v5-unbundling-dev-loop)); agentm provides the durable state substrate and memory engine the phases run on. The host adapters point back to those specs rather than restating them. Verification is **executable first** — typecheck, lint, tests, build come before any LLM judgement, which augments but never replaces them.
 
 ## How it fits
 

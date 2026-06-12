@@ -7,7 +7,7 @@ The top-level layout of agentm on disk. For *why* this shape, see [How the piece
 
 | Question | Answer |
 |---|---|
-| Where does a phase spec live? | [`harness/phases/`](https://github.com/alexherrero/agentm/tree/main/harness/phases) — one canonical `.md` per phase; the bugfix *pipeline* is in `harness/pipelines/`. |
+| Where does a phase spec live? | Not in agentm — the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) ships in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)). agentm owns the durable state substrate the phases run on, not the specs. |
 | Where does an adapter live? | [`adapters/<host>/`](https://github.com/alexherrero/agentm/tree/main/adapters) — `claude-code`, `antigravity` (the two supported hosts). |
 | Where does the install scaffold live? | [`templates/`](https://github.com/alexherrero/agentm/tree/main/templates) — state files, hooks, wiki scaffold. |
 | Where does the test infra live? | [`scripts/`](https://github.com/alexherrero/agentm/tree/main/scripts) — **never propagated to target projects**. |
@@ -28,8 +28,6 @@ agentm/
 ├── CHANGELOG.md               # Keep-a-Changelog format; written by ship-release
 ├── LICENSE                    # MIT
 ├── harness/                   # canonical specs (source of truth)
-│   ├── phases/                # 01-setup .. 05-release (the five phases)
-│   ├── pipelines/             # bugfix.md — the Report→Analyze→Fix→Verify pipeline
 │   ├── agents/                # canonical sub-agent specs (see roster below)
 │   ├── skills/                # canonical skill specs (see roster below)
 │   ├── principles.md          # the design calls behind the harness
@@ -65,18 +63,18 @@ agentm/
 
 ## The supported adapters
 
-Both supported adapters ship the same canonical set of phase commands, sub-agents, and skills *as installed* — the names and jobs match; only the per-host *shape* differs. [`scripts/check-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-parity.sh) asserts that parity.
+Since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)) each adapter ships only agentm's *own* surfaces — the phase-gated dev loop and the review sub-agents moved to the crickets developer-workflows / code-review plugins, so there is nothing to parity-check there (their absence is pinned by `scripts/test_devloop_slim_retired.py`). [`scripts/check-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-parity.sh) asserts what remains matches across hosts.
 
-| Adapter | Phase commands | Sub-agents | Skills |
-|---|---|---|---|
-| `adapters/claude-code/` | `.claude/commands/*.md` | `.claude/agents/*.md` | `.claude/skills/*/SKILL.md` |
-| `adapters/antigravity/` | `.agents/workflows/*.md` | `.agents/skills/*/SKILL.md` (no separate sub-agent primitive) | shared skills delivered to `.agents/skills/` by `install.sh`, not duplicated in the adapter |
+| Adapter | Ships (agentm's own surfaces) |
+|---|---|
+| `adapters/claude-code/` | the `recent-wiki-changes` utility command (`.claude/commands/`) · the `doctor` skill (`.claude/skills/doctor/`) |
+| `adapters/antigravity/` | the always-on rules — operating contract + vault context (`.agents/rules/{harness,agentmemory-context}.md`); the `workflows/` + `skills/` dirs were removed in the slim |
 
 A third directory, `adapters/gemini/`, remains in the tree but is **not a supported host** — Gemini CLI was dropped in v2.4.0 ([Compatibility](Compatibility)). Its removal is pending reconciliation.
 
-**Canonical sub-agents** (`harness/agents/`): `explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`, `documenter`, `adapt-evaluator`, `memory-idea-researcher`.
+**Canonical sub-agents** (`harness/agents/`): `adapt-evaluator`, `memory-idea-researcher` — the memory-engine pair. The review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter` are crickets-provided (code-review / developer-workflows / wiki-maintenance plugins) since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)).
 
-**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `migrate-to-diataxis`, `ship-release`, `wiki-author`. Wiki authoring's `diataxis-author` is no longer harness-shipped — it's provided by crickets' `wiki-maintenance` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`.
+**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `ship-release`, `wiki-author`. Wiki authoring's `diataxis-author` is provided by crickets' `wiki-maintenance` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`.
 
 ## Related
 

@@ -3,7 +3,7 @@
 
 _One harness, three hosts — the same phases reach Claude Code, Antigravity 2.0, and the Antigravity CLI through host-shaped entrypoints, and where a host can't follow, the gap is named._
 
-The phase workflow is host-agnostic, but each host invokes it differently. An adapter per host maps the six phases onto that host's native surface — slash commands on Claude Code, prompted entrypoints on Antigravity — while the canonical phase specs stay in one place (`harness/phases/`). Supported hosts are **Claude Code · Antigravity 2.0 · Antigravity CLI**.
+The phase workflow is host-agnostic, but each host invokes it differently. An adapter per host maps the six phases onto that host's native surface — slash commands on Claude Code, prompted entrypoints on Antigravity — while the canonical phase specs stay in one place: the crickets **developer-workflows** plugin, since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)). Supported hosts are **Claude Code · Antigravity 2.0 · Antigravity CLI**.
 
 ## How it works
 

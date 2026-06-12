@@ -30,7 +30,7 @@ Think of **Agent M** as the structural backend harness you wished you had—part
 
 Imagine those workflows you saw in the movies. You're talking to your agent, *"open a new project file for M"* and off you go. Agent M remembers your projects and files together, talks with you about them, and learns and grows with you as you work. The context is self-maintaining — no time spent curating your own knowledge graph, and it can help with your personal notes too when **you** want it to.
 
-This repo is the **harness** — the phase-gated workflow, auto-recall hooks, sub-agents, and on-disk state that make Agent M a system instead of a folder of files. It pairs with [**Crickets**](https://github.com/alexherrero/crickets) — a tactical suite of agent primitives (skills, hooks, sub-agents, bundles) that acts as the execution engine the harness installs into your target projects.
+This repo is the **harness** — the memory engine, auto-recall hooks, and on-disk state that make Agent M a system instead of a folder of files. It pairs with [**Crickets**](https://github.com/alexherrero/crickets) — a tactical suite of agent primitives (skills, hooks, sub-agents, bundles, and the phase-gated dev loop) that acts as the execution engine the harness installs into your target projects.
 
 > **Latest:** v4.15.0 (2026-06-03) — **Hardening I: single-repo first-class + e2e breadth** (single-repo MINOR). The harness now runs on a **single repo with zero vault / Obsidian / Google Drive dependency** — opt in with `install.sh --local-state` (or `agentm_config.py --state-mode local`) and harness state lives in `<repo>/.harness/`. State-mode config is now **on-host only** (`state_mode` in `.agentm-config.json`; the vault holds data, never config — DC-8). Retired the redundant `install-state-sync` hook (the live "N fragment(s) skipped" boot-error source) + the last of the crickets install coupling. Backed by a first **end-to-end test batch** — whole-phase lifecycle (both state modes), every memory hook's firing/graceful-skip, and the memory-engine round-trip — wired into `check-all.sh` (11 gates) + CI.  
 > **Prior:** v4.14.0 (2026-06-02) — **Decouple from crickets: agentm stands alone** (single-repo MINOR). crickets v3.0 retired its bespoke per-host installer in favor of native Claude Code / Antigravity plugins; this is agentm's side of the clean break — `install.sh`/`install.ps1` no longer clone or bootstrap crickets, and agentm owns its `lib/install/` outright. Also folded in the **V4 verification battery** (`verify-v4.sh` + `check-all.sh`).  
@@ -41,8 +41,8 @@ This repo is the **harness** — the phase-gated workflow, auto-recall hooks, su
 | Piece | What it is |
 |---|---|
 | **Agent M** | The system as a whole — this repo + Crickets + your AgentMemory vault folder, working together |
-| **Harness** (this repo) | Phase-gated workflow (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) + auto-recall + sub-agents + scripts |
-| **Crickets** ([`crickets`](https://github.com/alexherrero/crickets)) | Skills, hooks, sub-agents, bundles — the primitives you install into your projects |
+| **Harness** (this repo) | Memory engine — auto-recall hooks + vault-backed on-disk state + the memory/doctor/design skills + scripts |
+| **Crickets** ([`crickets`](https://github.com/alexherrero/crickets)) | Skills, hooks, sub-agents, bundles, and the phase-gated dev loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) — the primitives you install into your projects |
 | **AgentMemory vault** | Your Obsidian markdown folder (synced via Google Drive / Dropbox / etc.) — agent reads at session start, writes under controlled conditions |
 
 Agent M is opinionated — small, not a 150-agent supermarket. It works with YOLO mode and other fully automated coding workflows, but it's designed for the ones that keep a human in the loop.
@@ -147,6 +147,8 @@ flowchart LR
 
 ## Phases
 
+These phases ship in the companion [Crickets](https://github.com/alexherrero/crickets) **developer-workflows** plugin (since the [V5 unbundling](wiki/decisions/0011-v5-unbundling-dev-loop.md)); the harness contributes the memory engine that auto-recalls phase-scoped entries as each one runs.
+
 | Command | Purpose |
 |---|---|
 | `/setup` | First-time project init — scaffold, `init.sh`, feature list, vault recall |
@@ -184,7 +186,7 @@ Hooks (claude-code only per [ADR 0009](https://github.com/alexherrero/crickets/b
 | [`memory-recall-prompt-submit`](harness/hooks/memory-recall-prompt-submit/hook.md) | UserPromptSubmit event → keyword + vector-search recall of relevant entries based on the current prompt (~300ms budget; never blocks the prompt). |
 | [`memory-reflect-stop`](harness/hooks/memory-reflect-stop/hook.md) | Stop event → mines the session transcript for durable-knowledge candidates (preferences, workflows, fixes, ideas); HIGH-confidence auto-saves to canonical paths, MEDIUM/LOW + ideas land in `_inbox/`. |
 | [`memory-reflect-idle`](harness/hooks/memory-reflect-idle/hook.md) | SessionStart event → recovers orphan reflection markers from crashed sessions, processes deferred reflection candidates. |
-Sub-agents (imported in v4.0.0; existing 4 legacy agents at `harness/agents/`):
+Sub-agents (the memory-engine agents at `harness/agents/`):
 
 | Sub-agent | What it does |
 |---|---|

@@ -4,7 +4,7 @@ Universal instructions for AI coding agents working in a project using `agentm`.
 
 ## What this harness is
 
-A phase-gated workflow with on-disk state. You are expected to execute exactly one phase per session, not freestyle across the full development lifecycle in one go.
+A phase-gated workflow with on-disk state — single-threaded, one phase per session, with context carried between sessions on disk rather than in the conversation. Since the V5 unbundling ([ADR 0011](wiki/decisions/0011-v5-unbundling-dev-loop.md)) the phase loop itself (Setup · Plan · Work · Review · Release · Bugfix) is provided by the companion crickets **developer-workflows** / **code-review** plugins; `agentm` owns the durable state substrate and the memory engine those phases run on. The plugins are optional — a bare `agentm` is the memory engine alone.
 
 ## Phases (hard boundaries)
 
@@ -15,7 +15,7 @@ A phase-gated workflow with on-disk state. You are expected to execute exactly o
 5. **Release** — pre-merge gate. Clean tree, all verification passes, changelog updated.
 6. **Bugfix** — a different pipeline: Report → Analyze → Fix → Verify. Used instead of Plan+Work for bugs.
 
-Each phase has a canonical spec in [`harness/phases/`](harness/phases/). Tool-specific adapters (slash commands for Claude Code, equivalent entrypoints for Antigravity) point back to those canonical specs.
+Each phase's canonical spec ships in the crickets **developer-workflows** plugin (Claude Code slash commands, Antigravity entrypoints) — `agentm` no longer vendors them, having retired the byte-duplicated copies in the V5 unbundling.
 
 ## Non-negotiable rules
 
@@ -58,19 +58,21 @@ your-project/
 ├── AGENTS.md               # this file (or a pointer to it)
 ├── CLAUDE.md               # Claude Code entry point — points back here
 └── .claude/
-    ├── commands/           # slash commands (Claude Code)
-    ├── agents/             # sub-agents (Claude Code) — adversarial-reviewer, adversarial-reviewer-cross, explorer
-    └── skills/             # auto-triggered skills (Claude Code) — e.g. dependabot-fixer
+    ├── commands/           # slash commands (Claude Code) — phase commands come from crickets developer-workflows
+    ├── agents/             # sub-agents (Claude Code) — memory-engine: adapt-evaluator, memory-idea-researcher (review agents come from crickets)
+    └── skills/             # auto-triggered skills (Claude Code) — e.g. doctor (dev/docs skills come from crickets)
 ```
 
 ## How to invoke phases
 
+These entrypoints are provided by the crickets **developer-workflows** plugin — a bare `agentm` does not ship them:
+
 - **Claude Code:** `/plan <brief>`, `/work`, `/review`, `/release`, `/bugfix <report>`.
-- **Antigravity / tools without slash commands:** prompt the agent with "Run the plan phase per AGENTS.md" (or work / review / etc.). The agent should read [`harness/phases/`](harness/phases/) and follow the spec.
+- **Antigravity / tools without slash commands:** prompt the agent with "Run the plan phase" (or work / review / etc.); the agent reads the plugin's phase spec and follows it.
 
 ## Personal customizations
 
-Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo (since v2.0.0 / [ADR 0006](wiki/explanation/decisions/0006-crickets-split.md)). Install both repos as siblings (e.g. `~/Antigravity/agentm/`, `~/Antigravity/crickets/`) to get the full set. The harness's `/release` and `/work` phases reference `ship-release` (from crickets) as a graceful-skip suggestion — present in toolkit, suggested by harness, neither requires the other to exist.
+Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo (since v2.0.0 / [ADR 0006](wiki/decisions/0006-crickets-split.md)); since the V5 unbundling ([ADR 0011](wiki/decisions/0011-v5-unbundling-dev-loop.md)) the phase loop lives there too. Install both repos as siblings (e.g. `~/Antigravity/agentm/`, `~/Antigravity/crickets/`) to get the full set. The developer-workflows `/release` and `/work` phases reference `ship-release` (also from crickets) as a graceful-skip suggestion — neither requires the other to exist.
 
 ## Core principles (why the harness looks like this)
 

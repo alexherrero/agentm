@@ -16,3 +16,4 @@
 - [0008 — Project surface split](0008-project-surface-split)
 - [0009 — On-host state-mode config](0009-on-host-state-mode-config)
 - [0010 — Vault internal taxonomy](0010-vault-internal-taxonomy)
+- [0011 — V5 unbundling: slim the dev loop](0011-v5-unbundling-dev-loop)

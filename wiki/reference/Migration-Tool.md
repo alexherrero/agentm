@@ -82,9 +82,9 @@ Lives at `<target>/.agentm-migrate-record.json` (NOT under `.claude/` — surviv
   "actions": [
     {
       "kind": "safe_to_migrate",
-      "rel_path": "agents/explorer.md",
+      "rel_path": "agents/memory-idea-researcher.md",
       "source_clone": "agentm",
-      "source_path": "/path/to/agentm/harness/agents/explorer.md",
+      "source_path": "/path/to/agentm/harness/agents/memory-idea-researcher.md",
       "sha256": "..."
     },
     {

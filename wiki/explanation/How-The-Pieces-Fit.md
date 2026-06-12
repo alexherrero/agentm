@@ -8,9 +8,10 @@ The phase specs in `harness/` are the single source of truth. Each adapter is a 
 
 ```
          ┌──────────────────────────────────────────┐
-         │   harness/phases/*.md   (source of truth) │
-         │   harness/agents/*.md                     │
-         │   harness/skills/*.md                     │
+         │   crickets developer-workflows plugin    │
+         │     (phase specs — source of truth)      │
+         │   harness/agents/*.md                    │
+         │   harness/skills/*.md                    │
          └────────┬─────────────────────────┬────────┘
                   │ referenced-by            │ referenced-by
                   ▼                          ▼

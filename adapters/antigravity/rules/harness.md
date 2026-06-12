@@ -8,15 +8,16 @@ This project uses [agentm](https://github.com/alexherrero/agentm). The authorita
 
 ## Invocation surface
 
-Antigravity's native surface maps as follows:
+Antigravity's native surface maps as follows. Since the V5 unbundling ([ADR 0011](../../wiki/decisions/0011-v5-unbundling-dev-loop.md)) the phase loop and the review sub-agents come from the companion crickets plugins, which install their own Antigravity surface; `agentm` itself ships the always-on operating contract plus the utility skills.
 
-| Harness surface | Antigravity primitive | Location |
+| Surface | Antigravity primitive | Provided by |
 |---|---|---|
-| Phase commands (setup/plan/work/review/release/bugfix) | Workflows | `.agents/workflows/*.md` |
-| Sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | `.agents/skills/<name>/SKILL.md` |
-| Skills (dependabot-fixer) | Skills | `.agents/skills/<name>/SKILL.md` |
+| Always-on operating contract | Rules (`.agents/rules/*.md`) | `agentm` |
+| Utility skills (doctor, memory, design, wiki-author) | Skills (`.agents/skills/<name>/SKILL.md`) | `agentm` |
+| Phase loop (setup/plan/work/review/release/bugfix) | Workflows | crickets **developer-workflows** |
+| Review sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | crickets **code-review** / **developer-workflows** |
 
-Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief: …"*). Invoke a skill when its trigger conditions match, or explicitly (*"use the explorer skill to find …"*).
+Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief: …"*, when the crickets developer-workflows plugin is installed). Invoke a skill when its trigger conditions match, or explicitly (*"use the doctor skill to check the install"*).
 
 ## Non-negotiables (from [`harness/principles.md`](../../harness/principles.md))
 
