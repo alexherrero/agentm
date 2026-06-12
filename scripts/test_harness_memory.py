@@ -22,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -2889,6 +2890,94 @@ class TestAgentmUpdateLauncher(unittest.TestCase):
             )
             self.assertEqual(res.returncode, 1)
             self.assertIn("installer_source", res.stderr.lower())
+
+
+class TestEngineConcurrencyProof(unittest.TestCase):
+    """V5-0 Task 3: executable proof that N>=2 concurrent writers to ONE shared
+    vault file serialize through `vault_mutex` + `atomic_write` — no lost
+    update, no torn file, no `.tmp` remnant; the final content is exactly one
+    writer's complete payload.
+
+    This is the answer to "is the vault safe at N>=2 single-machine writers."
+    Eight threads race `write_state_file` against the SAME vault target. Without
+    the per-vault mutex the writers collide on the shared `<target>.tmp` path
+    and a half-written temp can be renamed into place (a torn file). With it,
+    each writer owns the temp exclusively, so the final file is always exactly
+    one writer's payload — never a byte-level mix of two.
+    """
+
+    def test_concurrent_writers_to_one_vault_file_never_tear(self) -> None:
+        n_writers = 8
+        iterations = 5
+        payload_len = 120_000  # large enough that an unserialized overwrite tears
+
+        prev_xdg = os.environ.get("XDG_CACHE_HOME")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Redirect the lock root off the real ~/.cache (plan constraint:
+            # tests never touch the operator's cache). vault_mutex's default
+            # lock_root honors XDG_CACHE_HOME.
+            os.environ["XDG_CACHE_HOME"] = str(tmp_path / "cache")
+            try:
+                vault = tmp_path / "vault" / "projects" / "probe"
+                vault.mkdir(parents=True, exist_ok=True)
+                repo = tmp_path / "repo"  # no .project-mode marker => vault mode
+                repo.mkdir(parents=True, exist_ok=True)
+                resolution = {"vault_path": vault, "project_root": repo}
+                filename = "concurrency-probe.md"
+
+                # Distinct single-char payloads, all the same length: a torn mix
+                # of two writers shows up as either a wrong length or more than
+                # one distinct byte value in the final file.
+                chars = "0123456789abcdefghij"[:n_writers]
+                payloads = {c: (c * payload_len) for c in chars}
+
+                errors: list[BaseException] = []
+                barrier = threading.Barrier(n_writers)
+
+                def writer(ch: str) -> None:
+                    try:
+                        barrier.wait()  # release all writers together: max race
+                        for _ in range(iterations):
+                            hm.write_state_file(resolution, filename, payloads[ch])
+                    except BaseException as exc:  # noqa: BLE001 - surface any
+                        errors.append(exc)
+
+                threads = [threading.Thread(target=writer, args=(c,)) for c in chars]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join(timeout=60)
+
+                self.assertEqual(
+                    [t for t in threads if t.is_alive()], [],
+                    "a writer thread hung (possible deadlock in vault_mutex)",
+                )
+                self.assertEqual(errors, [], f"writers raised: {errors!r}")
+
+                target = vault / "_harness" / filename
+                self.assertTrue(target.is_file(), "final vault file missing")
+                data = target.read_text(encoding="utf-8")
+
+                # 1. No torn write: every byte is the SAME char (one writer's).
+                distinct = set(data)
+                self.assertEqual(
+                    len(distinct), 1,
+                    f"torn write: final file mixes {len(distinct)} distinct byte value(s)",
+                )
+                # 2. Exactly one writer's full payload (right length + known char).
+                self.assertEqual(len(data), payload_len, "final file truncated/concatenated")
+                self.assertIn(data[0], chars, "final content is not any writer's payload")
+                self.assertEqual(data, payloads[data[0]], "final != exactly one writer's payload")
+
+                # 3. No `.tmp` remnant left behind in the vault _harness dir.
+                leftovers = list((vault / "_harness").glob("*.tmp"))
+                self.assertEqual(leftovers, [], f".tmp remnant(s) left behind: {leftovers}")
+            finally:
+                if prev_xdg is None:
+                    os.environ.pop("XDG_CACHE_HOME", None)
+                else:
+                    os.environ["XDG_CACHE_HOME"] = prev_xdg
 
 
 if __name__ == "__main__":

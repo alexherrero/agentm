@@ -77,6 +77,7 @@ from vault_lock import (  # noqa: E402
     ConcurrentModificationError,
     atomic_write,
     content_hash,
+    vault_mutex,
 )
 
 
@@ -588,9 +589,12 @@ def write_state_file(resolution: dict, filename: str, content: str) -> Path:
 
     target = vault_p / "_harness" / filename
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    tmp.replace(target)
+    # V5-0: shared-vault write — acquire the one per-vault advisory mutex, then
+    # land atomically (temp→fsync→rename) via the canonical writer. The mutex
+    # serializes concurrent writers so two atomic_write calls to the same target
+    # never collide on the shared `<target>.tmp` path (R4 rule 2 + DC-2).
+    with vault_mutex(vault_p):
+        atomic_write(target, content)
     return target
 
 
@@ -602,10 +606,11 @@ def _write_repo_local_state_file(project_root: Path, filename: str, content: str
     """
     target = Path(project_root) / ".harness" / filename
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
-    tmp.replace(target)
-    return target
+    # V5-0: repo-local path (not the shared GDrive vault) — partitioned by
+    # construction (each checkout owns its own .harness/), so NO vault mutex.
+    # Still route through atomic_write to gain the fsync + bytes-mode LF the
+    # bare write_text lacked (DC-2: torn-write safety without needless locking).
+    return atomic_write(target, content)
 
 
 # -----------------------------------------------------------------------------
@@ -1293,7 +1298,11 @@ def read_cursor(project_root: Path) -> int:
 def write_cursor(project_root: Path, offset: int) -> None:
     cp = _cursor_path(project_root)
     cp.parent.mkdir(parents=True, exist_ok=True)
-    cp.write_bytes((str(int(offset)) + "\n").encode("utf-8"))
+    # V5-0: the promotion cursor is repo-local (<project_root>/.harness/), never
+    # in the shared GDrive vault — partitioned by construction, so NO vault
+    # mutex (mirrors _write_repo_local_state_file; DC-2). atomic_write gives the
+    # fsync + atomic rename a bare write_bytes lacked.
+    atomic_write(cp, str(int(offset)) + "\n")
 
 
 def plan_done_promotion(
