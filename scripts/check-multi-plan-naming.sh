@@ -86,12 +86,33 @@ for rel in "${CURATED[@]}"; do
   fi
 done
 
+# --- assertion 3: session-start hooks still glob PLAN-*.md (named-plan discovery) -
+# Task 5 made harness-context-session-start enumerate PLAN-<name>.md alongside the
+# singleton. A refactor that drops the glob silently loses named-plan surfacing at
+# session boot — assert BOTH the bash hook and its pwsh twin keep a PLAN-*.md glob
+# so the twins can't drift apart on this.
+HOOK_DIR="harness/hooks/harness-context-session-start"
+for hook in \
+  "$HOOK_DIR/harness-context-session-start.sh" \
+  "$HOOK_DIR/harness-context-session-start.ps1"; do
+  hp="$ROOT/$hook"
+  if [ ! -f "$hp" ]; then
+    echo "check-multi-plan-naming: missing session-start hook: $hp" >&2
+    exit 2
+  fi
+  if ! grep -qE "PLAN-\*\.md|PLAN\*\.md" "$hp"; then
+    echo "check-multi-plan-naming: $hook no longer globs PLAN-*.md — named-plan discovery lost" >&2
+    fail=1
+  fi
+done
+
 if [ "$fail" -ne 0 ]; then
   echo "" >&2
   echo "  Rewrite 'the PLAN.md' / \"PLAN.md's\" to acknowledge named plans, e.g." >&2
   echo "  'a plan file (\`PLAN.md\` or \`PLAN-<name>.md\`)'. See wiki/explanation/Named-Plans.md." >&2
+  echo "  (Or: restore the PLAN-*.md glob in harness-context-session-start.{sh,ps1}.)" >&2
   exit 1
 fi
 
-echo "check-multi-plan-naming: clean — resolver surface present; no singleton assertion across ${#CURATED[@]} curated docs."
+echo "check-multi-plan-naming: clean — resolver surface present; no singleton assertion across ${#CURATED[@]} curated docs; both session-start hooks glob PLAN-*.md."
 exit 0

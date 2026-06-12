@@ -2,7 +2,7 @@
 # Named plans (multi-plan state)
 
 > [!NOTE]
-> **Status:** pending — declared by [`.harness/PLAN.md`](https://github.com/alexherrero/agentm/blob/main/.harness/PLAN.md) "V5-10 part 1 — Multi-plan state (agentm substrate slice)". The substrate has **partially shipped** — the round-trip lock, `resolve_active_plan`, and the `check-multi-plan-naming` gate are in `main`; the page stays **pending** until the marker writer, named-plan-aware hooks, and the crickets behavioral half land, when it flips to **implemented** with a full implementation trace.
+> **Status:** pending — declared by [`.harness/PLAN.md`](https://github.com/alexherrero/agentm/blob/main/.harness/PLAN.md) "V5-10 part 1 — Multi-plan state (agentm substrate slice)". The substrate has **partially shipped** — the round-trip lock, `resolve_active_plan`, the `check-multi-plan-naming` gate, **and the named-plan-aware session-start hooks + `doctor`** are in `main`; the page stays **pending** until the `.harness/active-plan` marker **writer** and the crickets behavioral half land, when it flips to **implemented** with a full implementation trace.
 
 Why the harness can hold *more than one active plan* in a single shared vault — `PLAN-<name>.md` / `progress-<name>.md` alongside the unnamed singleton — and the resolution model that binds a session to exactly the plan it owns. This is the keystone of V5-10 (the coordinator-directed worker team): it is the substrate that lets N workers each own a distinct plan without colliding on harness state.
 
@@ -37,7 +37,7 @@ What the substrate work *adds* is not new resolution logic but two guards that l
 - a `check-multi-plan-naming` gate (CI gate #13) that asserts the resolver still exposes the named-plan entry point (`resolve_active_plan` + `harness_state_dir`) and that no curated harness doc silently re-asserts a singleton. This gate shipped in "V5-10 part 1" task 4 — [`scripts/check-multi-plan-naming.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-multi-plan-naming.sh), locked by [`scripts/test_check_multi_plan_naming.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_check_multi_plan_naming.py) (8 tests, including the mandatory negative tests that fail on a re-introduced singleton assertion and on a missing resolver surface).
 
 > [!NOTE]
-> **Contract lock landed; feature still pending.** The round-trip half above is test-locked as of "V5-10 part 1" task 1, `resolve_active_plan` (the session→plan binder, [below](#binding-a-session-to-its-plan--resolve_active_plan)) is test-locked as of task 2, and the `check-multi-plan-naming` gate shipped as of task 4. The rest of this substrate — the `.harness/active-plan` marker *writer*, named-plan-aware hooks, and the crickets behavioral half — is **not** shipped; this page stays **pending** until it does.
+> **Contract lock landed; feature still pending.** The round-trip half above is test-locked as of "V5-10 part 1" task 1, `resolve_active_plan` (the session→plan binder, [below](#binding-a-session-to-its-plan--resolve_active_plan)) is test-locked as of task 2, the `check-multi-plan-naming` gate shipped as of task 4, and the **named-plan-aware session-start hooks + `doctor`** shipped as of task 5 ([trace below](#what-has-shipped-so-far)). The rest of this substrate — the `.harness/active-plan` marker *writer* (component (2)'s worktree-spawn helper) and the crickets behavioral half — is **not** shipped; this page stays **pending** until it does.
 
 If any of that work surfaces a *caller* somewhere that hard-codes `"PLAN.md"` (the resolver itself is clean; a caller might not be), the fix is to close it minimally — not to expand scope.
 
@@ -70,9 +70,29 @@ The split between this substrate and its behavioral half is **structural, not st
 | `resolve_active_plan` (reads `.harness/active-plan`) | the `progress-<name>.md` append writer |
 | the `queue_status_lite` read logic | the `/queue-status-lite` command surface |
 | the `check-multi-plan-naming` gate | `/plan` + `/design sequence` emitting `PLAN-<name>.md` |
-| named-plan-aware session-start hooks + `doctor` | the two-tier staging → activation UX |
+| named-plan-aware session-start hooks + `doctor` ✅ (shipped, task 5) | the two-tier staging → activation UX |
 
 The seam point: this plan's `resolve_active_plan` **reads** `.harness/active-plan`; component (2)'s worktree-spawn helper **writes** it. Because a single `/work` session is single-repo and reads only its own repo's `_harness/`, the split is forced by the architecture — the substrate can be built and verified independently, but an end-to-end "a worker runs `/work foo`" demo needs the crickets sibling plan to exist.
+
+## What has shipped so far
+
+This substrate is landing task-by-task under "V5-10 part 1". What is in `main` today:
+
+| Surface | Task | Where it lives |
+|---|---|---|
+| Filename-agnostic round-trip lock (`PLAN-<name>.md` reads/writes back through the same CAS) | 1 | [`scripts/test_harness_memory_named_plans.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_harness_memory_named_plans.py) (9 tests, no production-code change) |
+| `resolve_active_plan` — the session→plan binder (reader of `.harness/active-plan`) | 2 | [`scripts/harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py), locked by [`scripts/test_resolve_active_plan.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_resolve_active_plan.py) (13 tests) |
+| `check-multi-plan-naming` gate (CI gate #13) | 4 | [`scripts/check-multi-plan-naming.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-multi-plan-naming.sh), locked by [`scripts/test_check_multi_plan_naming.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_check_multi_plan_naming.py) |
+| **Named-plan-aware session-start hooks + `doctor`** | **5** | see below |
+
+**Task 5 — named-plan-aware discovery (readers only).** Session boot and `doctor` now *see* named plans, while remaining strict **readers** of the (still-unwritten) `.harness/active-plan` marker:
+
+- **Session-start hooks (both twins).** Before the locked DC-7 singleton check, each hook enumerates `PLAN-*.md` in the resolved `_harness/` dir (the parent of the `vault-state-path PLAN.md` result — pure path construction, so it resolves even when the unnamed `PLAN.md` is absent), skipping GDrive `*(conflicted copy*` copies. When ≥1 named plan exists it emits a **named-plan block** listing every `PLAN*.md` and the `.harness/active-plan` binding; when zero exist it falls through to the **byte-identical** locked singleton block (back-compat — a solo repo is unchanged). A present marker naming an absent `PLAN-<name>.md` is surfaced as `DANGLING`, never fatal. Bash: [`harness-context-session-start.sh#L73`](https://github.com/alexherrero/agentm/blob/main/harness/hooks/harness-context-session-start/harness-context-session-start.sh#L73) (glob) + [`#L94`](https://github.com/alexherrero/agentm/blob/main/harness/hooks/harness-context-session-start/harness-context-session-start.sh#L94) (named-plan branch); PowerShell twin: [`harness-context-session-start.ps1#L61`](https://github.com/alexherrero/agentm/blob/main/harness/hooks/harness-context-session-start/harness-context-session-start.ps1#L61) + [`#L78`](https://github.com/alexherrero/agentm/blob/main/harness/hooks/harness-context-session-start/harness-context-session-start.ps1#L78). Covered by 5 named-plan methods in [`scripts/test_harness_context_hook.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_harness_context_hook.py).
+- **`doctor` item 4.** Reports the full named-plan set (e.g. `2 named plans: PLAN-foo.md, PLAN-bar.md`), treats a named-only repo (named plans present, unnamed singleton absent) as healthy, and flags a dangling `.harness/active-plan` as **`[WARN]`** — never FAIL, mirroring the hook's non-fatal surfacing. [`harness/skills/doctor.md#L50`](https://github.com/alexherrero/agentm/blob/main/harness/skills/doctor.md#L50).
+- **Gate assertion 3.** `check-multi-plan-naming` now also asserts **both** hook twins keep the `PLAN-*.md` glob, so the twins cannot drift apart and silently lose named-plan discovery. [`scripts/check-multi-plan-naming.sh#L89`](https://github.com/alexherrero/agentm/blob/main/scripts/check-multi-plan-naming.sh#L89), with 3 assertion-3 methods in [`scripts/test_check_multi_plan_naming.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_check_multi_plan_naming.py).
+- **Conflict-merger operator message.** The GDrive conflict-janitor's notice now names `PLAN-<name>.md` / `progress-<name>.md` alongside the singletons. [`conflict-merger-session-start.sh#L111`](https://github.com/alexherrero/agentm/blob/main/harness/hooks/conflict-merger-session-start/conflict-merger-session-start.sh#L111).
+
+Still **pending** (why the page is not yet `implemented`): the `.harness/active-plan` marker **writer** (component (2)'s worktree-spawn helper — these readers surface a marker nothing writes yet) and the crickets behavioral half (`/work <named-plan>`, the `progress-<name>.md` append writer). See [The agentm/crickets seam](#the-agentmcrickets-seam).
 
 ## What this slice does not do
 

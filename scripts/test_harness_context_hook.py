@@ -100,6 +100,79 @@ class TestHarnessContextHook(unittest.TestCase):
         self.assertNotIn("[agentm] Project state", r.stdout)
         self.assertIn("skipped", r.stderr)
 
+    # ── Named plans (V5-10 part 1, task 5) ─────────────────────────────────────
+
+    def _harness_dir(self, env: dict) -> Path:
+        """The resolved _harness/ dir = parent of the constructed PLAN.md path."""
+        hdir = Path(self._resolve("PLAN.md", env)).parent
+        hdir.mkdir(parents=True, exist_ok=True)
+        return hdir
+
+    def test_named_plans_surfaced(self) -> None:
+        # Two named plans, no unnamed PLAN.md → both surfaced in named-plan mode.
+        env = self._env()
+        hdir = self._harness_dir(env)
+        (hdir / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (hdir / "PLAN-bar.md").write_text("# bar\n", encoding="utf-8")
+        r = self._run_hook(str(self.proj), env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("[agentm] Project state", r.stdout)  # doctor --live probe anchor
+        self.assertIn("Named-plan mode", r.stdout)
+        self.assertIn("PLAN-foo.md", r.stdout)
+        self.assertIn("PLAN-bar.md", r.stdout)
+        self.assertIn("named plan(s)", r.stderr)
+
+    def test_named_plans_list_unnamed_singleton_too(self) -> None:
+        # Unnamed PLAN.md alongside a named one → BOTH listed (surface them all).
+        env = self._env()
+        plan = self._resolve("PLAN.md", env)
+        prog = self._resolve("progress.md", env)
+        Path(plan).parent.mkdir(parents=True, exist_ok=True)
+        Path(plan).write_text("# unnamed\n", encoding="utf-8")
+        Path(prog).write_text("# progress\n", encoding="utf-8")
+        (Path(plan).parent / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        r = self._run_hook(str(self.proj), env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Named-plan mode", r.stdout)
+        self.assertIn("PLAN.md", r.stdout)
+        self.assertIn("PLAN-foo.md", r.stdout)
+        self.assertIn(plan, r.stdout)
+
+    def test_named_plan_active_marker_highlighted(self) -> None:
+        env = self._env()
+        hdir = self._harness_dir(env)
+        (hdir / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (hdir / "PLAN-bar.md").write_text("# bar\n", encoding="utf-8")
+        (self.proj / ".harness" / "active-plan").write_text("foo\n", encoding="utf-8")
+        r = self._run_hook(str(self.proj), env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("Active plan (.harness/active-plan", r.stdout)
+        self.assertIn("foo", r.stdout)
+        self.assertNotIn("DANGLING", r.stdout)
+
+    def test_named_plan_dangling_marker_flagged(self) -> None:
+        # active-plan names a plan with no PLAN-<name>.md → flagged, never fatal.
+        env = self._env()
+        hdir = self._harness_dir(env)
+        (hdir / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (self.proj / ".harness" / "active-plan").write_text("ghost\n", encoding="utf-8")
+        r = self._run_hook(str(self.proj), env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("DANGLING", r.stdout)
+        self.assertIn("PLAN-ghost.md not found", r.stdout)
+
+    def test_named_plan_excludes_conflict_copy(self) -> None:
+        env = self._env()
+        hdir = self._harness_dir(env)
+        (hdir / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (hdir / "PLAN-foo (conflicted copy 2026-06-12) - Mac.md").write_text(
+            "# dup\n", encoding="utf-8"
+        )
+        r = self._run_hook(str(self.proj), env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("PLAN-foo.md", r.stdout)
+        self.assertNotIn("conflicted copy", r.stdout)
+
     def test_skips_when_event_cwd_missing(self) -> None:
         r = self._run_hook(str(self.root / "does-not-exist"), self._env())
         self.assertEqual(r.returncode, 0)

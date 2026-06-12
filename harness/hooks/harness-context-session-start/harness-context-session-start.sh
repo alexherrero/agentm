@@ -70,8 +70,59 @@ _resolve_state() {  # $1 = state filename (PLAN.md | progress.md)
 PLAN_PATH="$(_resolve_state PLAN.md || true)"
 PROGRESS_PATH="$(_resolve_state progress.md || true)"
 
-# ── Inject only when BOTH resolve AND exist on disk ────────────────────────────
-if [[ -n "$PLAN_PATH" && -n "$PROGRESS_PATH" && -f "$PLAN_PATH" && -f "$PROGRESS_PATH" ]]; then
+# ── Named plans (V5-10): enumerate PLAN-<name>.md alongside the singleton ──────
+# The _harness/ dir is the parent of the resolved (vault) PLAN.md path — pure
+# path-construction, so it resolves even when the unnamed PLAN.md doesn't exist
+# on disk. Glob PLAN-*.md there, skipping GDrive conflict copies. Back-compat: a
+# vault holding only the unnamed PLAN.md finds zero named plans and falls through
+# to the LOCKED singleton block below, byte-identical.
+NAMED_PLANS=()
+HARNESS_DIR=""
+[[ -n "$PLAN_PATH" ]] && HARNESS_DIR="$(dirname "$PLAN_PATH")"
+if [[ -n "$HARNESS_DIR" && -d "$HARNESS_DIR" ]]; then
+    shopt -s nullglob
+    for _pf in "$HARNESS_DIR"/PLAN-*.md; do
+        case "$(basename "$_pf")" in
+            *"(conflicted copy"*) continue ;;   # GDrive conflict copy - not a plan
+        esac
+        NAMED_PLANS+=("$_pf")
+    done
+    shopt -u nullglob
+fi
+
+# ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ────────────
+if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
+    # Named-plan mode: surface every PLAN*.md + the .harness/active-plan binding.
+    {
+        echo "[agentm] Project state for this repo lives in the vault, not in .harness/:"
+        echo "Named-plan mode - this repo has more than one active plan:"
+        # Unnamed singleton first (only if it exists), then named alphabetically
+        # (the glob expands sorted). Each plan's progress is its progress-<name>.md.
+        [[ -n "$PLAN_PATH" && -f "$PLAN_PATH" ]] && printf '  %-22s %s\n' "PLAN.md" "$PLAN_PATH"
+        for _pf in "${NAMED_PLANS[@]}"; do
+            printf '  %-22s %s\n' "$(basename "$_pf")" "$_pf"
+        done
+        # Active-plan binding — the worktree-local .harness/active-plan marker
+        # (read here, written by component (2)'s worktree-spawn helper). A present
+        # marker naming an absent PLAN-<name>.md is dangling — surfaced, not fatal.
+        MARKER="$EVENT_CWD/.harness/active-plan"
+        if [[ -f "$MARKER" ]]; then
+            BIND="$(head -n1 "$MARKER" 2>/dev/null | tr -d '[:space:]')"
+            if [[ -n "$BIND" ]]; then
+                if [[ -f "$HARNESS_DIR/PLAN-$BIND.md" ]]; then
+                    echo "Active plan (.harness/active-plan -> $BIND): $HARNESS_DIR/PLAN-$BIND.md"
+                else
+                    echo "Active plan (.harness/active-plan -> $BIND): DANGLING - PLAN-$BIND.md not found; run doctor."
+                fi
+            fi
+        fi
+        echo "Read the plan you own (or the .harness/active-plan one) before /work, /review, /release."
+    }
+    SLUG="$(basename "$(dirname "$HARNESS_DIR")" 2>/dev/null || echo '?')"
+    echo "[harness-context] injected ${#NAMED_PLANS[@]} named plan(s) for slug=$SLUG" >&2
+
+elif [[ -n "$PLAN_PATH" && -n "$PROGRESS_PATH" && -f "$PLAN_PATH" && -f "$PROGRESS_PATH" ]]; then
+    # Singleton path — LOCKED DC-7 4-line block, byte-identical (back-compat).
     cat <<EOF
 [agentm] Project state for this repo lives in the vault, not in .harness/:
   PLAN.md:     $PLAN_PATH

@@ -1,19 +1,22 @@
 #!/usr/bin/env python3
-"""Positive + negative tests for scripts/check-multi-plan-naming.sh (V5-10 part 1, task 4).
+"""Positive + negative tests for scripts/check-multi-plan-naming.sh (V5-10 part 1, tasks 4-5).
 
-The gate locks two halves of the named-plan naming contract:
+The gate locks three halves of the named-plan naming contract:
 
   1. scripts/harness_memory.py exposes the resolver surface (`resolve_active_plan`,
      `harness_state_dir`);
   2. no curated `harness/*.md` doc hard-asserts a singleton plan ("the `PLAN.md`" /
      "`PLAN.md`'s"), while still PERMITTING legitimate `PLAN-<name>.md` / `PLAN*.md`
-     / CLI-example mentions.
+     / CLI-example mentions;
+  3. both session-start hook twins (`harness-context-session-start.{sh,ps1}`) keep a
+     `PLAN-*.md` glob so named-plan discovery at session boot can't silently regress
+     (added task 5).
 
 These tests drive the real gate via subprocess: it passes against the live repo,
 **fails** on a re-introduced singleton assertion (the mandatory negative test),
-fails when the resolver surface goes missing, and still passes when a curated doc
-mentions a named plan. The `--root` flag points the gate at a throwaway fixture
-tree so the negative cases never touch the repo.
+fails when the resolver surface goes missing, fails when a hook loses its glob, and
+still passes when a curated doc mentions a named plan. The `--root` flag points the
+gate at a throwaway fixture tree so the negative cases never touch the repo.
 
 Run directly:
 
@@ -55,6 +58,12 @@ _HM_WITHOUT_SURFACE = "def something_else():\n    return None\n"
 
 _CLEAN_DOC = "# placeholder\n\nNo singleton assertion here.\n"
 
+# Session-start hook dir + stubs for assertion 3. The gate only greps for the
+# glob token, so the stub bodies are minimal — one carries `PLAN-*.md`, one omits it.
+_HOOK_DIR = "harness/hooks/harness-context-session-start"
+_HOOK_WITH_GLOB = '#!/usr/bin/env bash\n# stub\nfor f in "$D"/PLAN-*.md; do :; done\n'
+_HOOK_WITHOUT_GLOB = "#!/usr/bin/env bash\n# stub — singleton-only, no named-plan glob\necho hi\n"
+
 
 def _run_gate(root: Path | None = None) -> subprocess.CompletedProcess:
     cmd = ["bash", str(_GATE)]
@@ -77,6 +86,12 @@ class _FixtureRoot:
             p = self.root / rel
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(_CLEAN_DOC, encoding="utf-8")
+        # Both session-start hook twins, each carrying the PLAN-*.md glob so
+        # assertion 3 passes for the clean fixture (and only the mutated branch fails).
+        hook_dir = self.root / _HOOK_DIR
+        hook_dir.mkdir(parents=True, exist_ok=True)
+        for fn in ("harness-context-session-start.sh", "harness-context-session-start.ps1"):
+            (hook_dir / fn).write_text(_HOOK_WITH_GLOB, encoding="utf-8")
 
     def write(self, rel: str, body: str) -> None:
         (self.root / rel).write_text(body, encoding="utf-8")
@@ -152,12 +167,41 @@ class CheckMultiPlanNaming(unittest.TestCase):
         proc = _run_gate(self.fx.root)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    # --- negative: a session-start hook lost its PLAN-*.md glob (assertion 3) ---
+
+    def test_bash_hook_without_glob_fails(self) -> None:
+        self.fx.write(
+            f"{_HOOK_DIR}/harness-context-session-start.sh", _HOOK_WITHOUT_GLOB
+        )
+        proc = _run_gate(self.fx.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("harness-context-session-start.sh", proc.stderr)
+        self.assertIn("named-plan discovery lost", proc.stderr)
+
+    def test_ps1_hook_without_glob_fails(self) -> None:
+        # The pwsh twin is held to the same contract — a drift between the twins
+        # (bash globs, pwsh doesn't) must fail just as loudly.
+        self.fx.write(
+            f"{_HOOK_DIR}/harness-context-session-start.ps1", _HOOK_WITHOUT_GLOB
+        )
+        proc = _run_gate(self.fx.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("harness-context-session-start.ps1", proc.stderr)
+
     # --- setup error: a curated file is missing → exit 2 (distinct from 1) ---
 
     def test_missing_curated_file_is_setup_error(self) -> None:
         (self.fx.root / "harness" / "principles.md").unlink()
         proc = _run_gate(self.fx.root)
         self.assertEqual(proc.returncode, 2, proc.stdout)
+
+    def test_missing_hook_is_setup_error(self) -> None:
+        # A vanished session-start hook is a setup error (exit 2), distinct from a
+        # present-but-glob-less hook (exit 1).
+        (self.fx.root / _HOOK_DIR / "harness-context-session-start.ps1").unlink()
+        proc = _run_gate(self.fx.root)
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertIn("missing session-start hook", proc.stderr)
 
 
 if __name__ == "__main__":
