@@ -263,7 +263,7 @@ project: <GitHub Project URL or leave empty>
 *What docs will ship with this design? User-facing, ops, ADRs.*
 
 <!--
-  Coordinates with the harness `documenter` sub-agent. List the pages
+  Coordinates with crickets' `wiki-maintenance:documenter` sub-agent. List the pages
   that will get created/updated under `wiki/`.
 
   Operator convention (2026-06-09): list ALL wiki pages that document

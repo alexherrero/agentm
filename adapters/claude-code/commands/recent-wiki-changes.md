@@ -52,7 +52,7 @@ sherwood reference    reference/CI-Conventions.md              2026-05-27 14:00
 
 - `wiki-author` skill (V4 #30 plan 2 task 3) — operator-facing dispatcher for wiki WRITES (this command is the READ surface).
 - `list-plans.{sh,ps1}` — same cross-repo pattern but for `PLAN.md` files (from V4 #26).
-- `documenter` sub-agent — the actual write-executor; this command does not invoke it.
+- crickets' `wiki-maintenance:documenter` sub-agent — the actual write-executor; this command does not invoke it.
 
 ## Per ROADMAP-V4 #30 plan 2 of 3
 

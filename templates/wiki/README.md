@@ -158,7 +158,7 @@ ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subhead
 ## Who maintains what
 
 - **Humans** may edit any wiki file anytime.
-- **The `documenter` sub-agent** updates pages at phase boundaries only — never during `/work`'s implement step:
+- **Crickets' `wiki-maintenance:documenter` sub-agent** (when crickets is installed; graceful-skip otherwise) updates pages at phase boundaries only — never during `/work`'s implement step:
   - `/setup` — populates a seed onboarding walkthrough + reference + explanation from the codebase.
   - `/plan` — creates pending how-to pages and reference rows for the plan's tasks.
   - `/work` (post-gates) — flips pending how-tos to implemented, fills reference tables.

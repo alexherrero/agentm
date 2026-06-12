@@ -17,7 +17,7 @@ Run the **work** phase of agentm. Full spec: [`harness/phases/03-work.md`](../..
 5. **Cap iterations at 5 per gate.** If not green after 5, stop and report.
 6. **Do not silently expand task scope.** If it turns out bigger than planned, stop and ask.
 7. **Do not touch `wiki/` during implementation.** Documentation updates are phase-boundary-only.
-8. **After gates are green (before committing), dispatch the `documenter` skill** with the task spec + the diff. It flips matching `pending → implemented` pages and adds operational pages if the task introduced one. Resolve `OPEN QUESTIONS` before committing.
+8. **After gates are green (before committing), dispatch crickets' `wiki-maintenance:documenter` sub-agent** (graceful-skip if crickets' `wiki-maintenance` plugin is absent) with the task spec + the diff. It flips matching `pending → implemented` pages and adds operational pages if the task introduced one. Resolve `OPEN QUESTIONS` before committing.
 9. **End by updating `PLAN.md` (mark `[x]`), `progress.md` (append line), and committing.**
 10. **Offer deferred items to the GitHub Project** (optional, per canonical spec §10). If this session surfaced anything *out of task scope* (adjacent bug, refactor opportunity, stale doc elsewhere — not follow-ups to the current task), propose one item per distinct deferred finding via `gh project item-create`, batched into a single preview (title + body per item) at phase end. Silent-skip if `.harness/project.json` absent or `gh` unavailable. **No `gh` invocation without user confirmation.** Then stop.
 

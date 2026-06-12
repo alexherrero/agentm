@@ -3,7 +3,7 @@
 Welcome to this project's wiki — human-and-agent-readable documentation for this codebase. The sections below follow the seven-section taxonomy ([ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md)): each page is written for a single reader intent — doing, looking up, understanding, or recording a decision — and never mixes intents.
 
 > [!NOTE]
-> This page is maintained by the `documenter` sub-agent at phase boundaries. Humans may edit it directly; the sub-agent preserves human edits. `Home` is curated — it surfaces the pages a reader acts on, not every page; the [sidebar](_Sidebar) is the complete sitemap.
+> This page is maintained by crickets' `wiki-maintenance:documenter` sub-agent (when crickets is installed) at phase boundaries. Humans may edit it directly; the sub-agent preserves human edits. `Home` is curated — it surfaces the pages a reader acts on, not every page; the [sidebar](_Sidebar) is the complete sitemap.
 
 ## 🔧 Trying to do something?
 

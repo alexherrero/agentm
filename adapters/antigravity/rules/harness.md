@@ -13,7 +13,7 @@ Antigravity's native surface maps as follows:
 | Harness surface | Antigravity primitive | Location |
 |---|---|---|
 | Phase commands (setup/plan/work/review/release/bugfix) | Workflows | `.agents/workflows/*.md` |
-| Sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross, documenter) | Skills | `.agents/skills/<name>/SKILL.md` |
+| Sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | `.agents/skills/<name>/SKILL.md` |
 | Skills (dependabot-fixer) | Skills | `.agents/skills/<name>/SKILL.md` |
 
 Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief: …"*). Invoke a skill when its trigger conditions match, or explicitly (*"use the explorer skill to find …"*).
@@ -25,7 +25,7 @@ Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief
 3. **Gates before commit.** Typecheck, lint, tests must be green before a task is marked `[x]`.
 4. **Never edit or delete a failing test to make it pass.** If a test is wrong, surface it and stop.
 5. **Adversarial review framing is literal.** The code contains bugs; find them. Rubber-stamp reviews are a failure of rigor.
-6. **`/work` does not touch `wiki/`.** Documentation updates are phase-boundary-only — the `documenter` skill runs post-gates in `/work`, full-pass in `/release`.
+6. **`/work` does not touch `wiki/`.** Documentation updates are phase-boundary-only — crickets' `wiki-maintenance:documenter` (graceful-skip if the `wiki-maintenance` plugin is absent) runs post-gates in `/work`, full-pass in `/release`.
 
 ## State files
 

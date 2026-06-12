@@ -4,7 +4,7 @@ One file per decision, numbered sequentially as `<NNNN>-<slug>.md` (e.g. `0001-p
 
 ADRs document the *why* behind architectural choices that aren't obvious from the code. They use the ADR template from the [wiki README](https://github.com/alexherrero/agentm/blob/main/templates/wiki/README.md): a short Context / Decision / Consequences triple. Once a decision is accepted, its body is append-only — supersede it by recording a new ADR that references the old one, not by editing the original.
 
-The `documenter` sub-agent proposes new ADRs during `/release` when a non-obvious decision surfaced during the cycle. Humans may write ADRs at any time.
+Crickets' `wiki-maintenance:documenter` sub-agent (when crickets is installed) proposes new ADRs during `/release` when a non-obvious decision surfaced during the cycle. Humans may write ADRs at any time.
 
 ## Convention
 

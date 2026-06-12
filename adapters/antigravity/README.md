@@ -15,7 +15,7 @@ Full parity fixes all three. Antigravity's native surface maps 1:1 to the Claude
 | Claude Code | Antigravity | Purpose |
 |---|---|---|
 | `.claude/commands/*.md` | `.agents/workflows/*.md` | Phase entrypoints (setup/plan/work/review/release/bugfix) |
-| `.claude/agents/*.md` | `.agents/skills/<name>/SKILL.md` | Dispatchable capabilities (explorer, adversarial-reviewer, adversarial-reviewer-cross, documenter) |
+| `.claude/agents/*.md` | `.agents/skills/<name>/SKILL.md` | Dispatchable capabilities (explorer, adversarial-reviewer, adversarial-reviewer-cross) |
 | `.claude/skills/*/SKILL.md` | `.agents/skills/<name>/SKILL.md` | Project skills (dependabot-fixer) |
 | `CLAUDE.md` pointer | `.agents/rules/harness.md` (`trigger: always_on`) | Always-on operating contract |
 
@@ -36,15 +36,16 @@ adapters/antigravity/
 │   ├── review.md
 │   ├── release.md
 │   └── bugfix.md
-└── skills/                               (5 dispatchable skills)
+└── skills/                               (4 dispatchable skills)
     ├── explorer/SKILL.md
     ├── adversarial-reviewer/SKILL.md
     ├── adversarial-reviewer-cross/SKILL.md
-    ├── documenter/SKILL.md
     └── dependabot-fixer/SKILL.md
 ```
 
 `install.sh` (POSIX) or `install.ps1` (Windows/PowerShell 7+) copies this tree to the target's `.agents/` directory with the same `cp_managed` semantics as the Claude Code adapter: refreshed on `--update` / `-Update`, preserved on fresh install if already present.
+
+> **`documenter` is no longer vendored here.** It was retired toward crickets' canonical `wiki-maintenance:documenter` (single-source per [ADR 0006](../../wiki/decisions/0006-crickets-split.md)). The phase workflows still dispatch it by name — with an ADR 0006 graceful-skip when crickets' `wiki-maintenance` plugin is absent (suggest-then-skip, never hard-fail).
 
 ## Invocation
 

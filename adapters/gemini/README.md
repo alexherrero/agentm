@@ -18,7 +18,7 @@ This means the adapter is a near-straight port from Claude Code with format tran
 | Claude Code | Gemini CLI | Purpose |
 |---|---|---|
 | `.claude/commands/*.md` | `.gemini/commands/*.toml` | Phase entrypoints (setup/plan/work/review/release/bugfix) |
-| `.claude/agents/*.md` | `.gemini/agents/*.md` | Sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross, documenter) |
+| `.claude/agents/*.md` | `.gemini/agents/*.md` | Sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) |
 | `.claude/skills/dependabot-fixer/` | `.agents/skills/dependabot-fixer/` | Project skill (shared convention — delivered by `install.sh` per Agent Skills standard) |
 | `CLAUDE.md` pointer | `.gemini/settings.json` + repo-root `AGENTS.md` | Operating contract (Gemini loads via `context.fileName`) |
 
@@ -37,8 +37,7 @@ adapters/gemini/
 ├── agents/                                     (→ target's .gemini/agents/)
 │   ├── explorer.md
 │   ├── adversarial-reviewer.md
-│   ├── adversarial-reviewer-cross.md
-│   └── documenter.md
+│   └── adversarial-reviewer-cross.md
 └── settings.json                               (→ target's .gemini/settings.json)
 ```
 
@@ -59,7 +58,7 @@ Sub-agents dispatch automatically via the main agent's judgment, or explicitly w
 
 - `@explorer Find where the auth middleware is registered.`
 - `@adversarial-reviewer` (invoked by the `/review` command, but you can call directly)
-- `@documenter` (invoked by phase commands at their boundaries)
+- `@documenter` — crickets' `wiki-maintenance:documenter`, invoked by phase commands at their boundaries (graceful-skip if crickets' `wiki-maintenance` plugin is absent; agentm no longer vendors it)
 
 Hot-reload commands after editing: `/commands reload`.
 

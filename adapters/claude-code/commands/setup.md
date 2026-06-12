@@ -12,7 +12,7 @@ You are running the **setup** phase of agentm. The full spec is at `harness/phas
 4. **Do not invent features** for `features.json`. Empty is fine.
 5. **Merge, don't overwrite** existing `AGENTS.md` / `CLAUDE.md`. They may contain project-specific content.
 6. **No planning.** `/setup` is pure scaffolding. Planning is `/plan`.
-7. **Dispatch the `documenter` sub-agent** after boot verification to populate the `wiki/` seed pages (`Getting-Started`, `Runbook`, `Product-Intent`, `Overview`, `Home`, `_Sidebar`) from the inventory and interview. Resolve any `OPEN QUESTIONS` before finishing.
+7. **Dispatch crickets' `wiki-maintenance:documenter` sub-agent** (graceful-skip if crickets' `wiki-maintenance` plugin is absent) after boot verification to populate the `wiki/` seed pages (`Getting-Started`, `Runbook`, `Product-Intent`, `Overview`, `Home`, `_Sidebar`) from the inventory and interview. Resolve any `OPEN QUESTIONS` before finishing.
 8. **Offer GitHub Project creation** (user-scoped, `gh project create --owner @me`) — ask first. If accepted, write `.harness/project.json`.
 
 Start by reading what's in the project now, then interview briefly on anything the inventory didn't settle.
