@@ -23,6 +23,18 @@ import sys
 from datetime import date
 from pathlib import Path
 
+# vault_lock.py is a byte-identical vendored sibling in THIS scripts/ dir
+# (DC-9): top-level scripts/vault_lock.py is NOT on sys.path in a real install,
+# so the memory skill carries its own copy; scripts/check-vault-lock-parity.sh
+# enforces byte-identity between the two. Inject this dir so the sibling import
+# resolves however save.py is invoked (subprocess or imported-by-hook). Mirrors
+# recall.py's vec_index/embed sys.path injection.
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+from vault_lock import atomic_write, vault_mutex  # noqa: E402
+
 # Validation regexes (must match the skill body's documented contracts).
 _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
 # Group is a vault subdirectory path: one or more kebab segments joined by `/`.
@@ -170,14 +182,17 @@ def save_entry(
     body_stripped = body.rstrip("\n")
     content = fm + "\n" + body_stripped + "\n"
 
-    # Write in bytes mode to guarantee LF-only line endings on all platforms.
-    # MemoryVault entries are markdown files synced across Mac / Linux /
-    # Windows via the user's Obsidian vault — LF-only is the portable
-    # convention. Python's text-mode write translates '\n' to '\r\n' on
-    # Windows by default; bytes mode bypasses translation entirely.
-    # (Path.write_text's newline parameter would work too but requires
-    # Python 3.10+; bytes mode works on 3.9+.)
-    target.write_bytes(content.encode("utf-8"))
+    # V5-0: route the per-slug entry write through the one per-vault advisory
+    # mutex + the canonical atomic writer. The mutex gives torn-write safety
+    # when two writers race the same target's <name>.tmp path; atomic_write
+    # lands the bytes via temp(same dir)→fsync→rename. Bytes-mode (str encoded
+    # utf-8, no newline translation) keeps LF-only line endings byte-exact
+    # across Mac/Linux/Windows — the V4 Windows-CI fix the bare write_bytes
+    # here used to own, now owned by atomic_write. This is a per-slug CREATE
+    # (the FileExistsError guard above forbids overwrite), so mutex-only — no
+    # CAS (DC-2: per-slug entry files are partitioned by ownership).
+    with vault_mutex(vault):
+        atomic_write(target, content)
 
     # Enqueue async embedding + vec-index upsert (task 4).
     # File write is complete; queueing is fast + synchronous + never raises

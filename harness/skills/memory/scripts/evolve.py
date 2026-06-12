@@ -28,6 +28,18 @@ import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+# vault_lock.py is a byte-identical vendored sibling in THIS scripts/ dir
+# (DC-9): top-level scripts/vault_lock.py is NOT on sys.path in a real install,
+# so the memory skill carries its own copy; scripts/check-vault-lock-parity.sh
+# enforces byte-identity between the two. Inject this dir so the sibling import
+# resolves however evolve.py is invoked (subprocess or imported-by-hook).
+# Mirrors recall.py's vec_index/embed sys.path injection.
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+from vault_lock import atomic_write, vault_mutex  # noqa: E402
+
 try:
     import yaml  # PyYAML is already a toolkit dep via validate-manifests.py
 except ImportError:  # pragma: no cover
@@ -250,17 +262,24 @@ def evolve_entry(
     }
     new_content = _compose_entry(new_fm, new_body)
 
-    # Write sequence: archive first (additive), then new entry.
-    archive_path.parent.mkdir(parents=True, exist_ok=True)
-    archive_path.write_bytes(archive_content.encode("utf-8"))
-
-    # In-place: overwrite old path. Renamed: write new path, then delete old.
-    if new_path == old:
-        new_path.write_bytes(new_content.encode("utf-8"))
-    else:
-        new_path.parent.mkdir(parents=True, exist_ok=True)
-        new_path.write_bytes(new_content.encode("utf-8"))
-        old.unlink()
+    # V5-0: serialize the WHOLE archive→new-entry(→unlink) sequence under ONE
+    # per-vault advisory mutex so a concurrent writer can't interleave between
+    # the archive write and the new-entry write (a single acquisition, not two).
+    # Every target is per-slug / create-style — the archive path is collision-
+    # unique (see _compute_archive_path) and the entry is this slug's own file —
+    # so mutex-only, NO CAS (DC-2: per-slug entry files are partitioned by
+    # ownership). atomic_write creates parent dirs + lands each file via
+    # temp(same dir)→fsync→rename; bytes-mode keeps LF byte-exact.
+    with vault_mutex(vault):
+        # Archive first (additive), then the new entry.
+        atomic_write(archive_path, archive_content)
+        if new_path == old:
+            # In-place: overwrite the old path with the new entry.
+            atomic_write(new_path, new_content)
+        else:
+            # Renamed: write the new path, then delete the old.
+            atomic_write(new_path, new_content)
+            old.unlink()
 
     # Enqueue async vec-index ops (task 4):
     #   - delete old entry's index row (if path changed; or upsert if in-place)
