@@ -8,9 +8,9 @@ Adapter for running agentm in [Antigravity](https://antigravity.google.com/). Si
 |---|---|---|
 | `CLAUDE.md` pointer | `.agents/rules/harness.md` (`trigger: always_on`) | Always-on operating contract |
 | — | `.agents/rules/agentmemory-context.md` (`trigger: always_on`) | AgentMemory vault context |
-| `.claude/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | Shared utility skills (doctor, migrate-to-diataxis) |
+| `.claude/skills/<name>/SKILL.md` | `.agents/skills/<name>/SKILL.md` | Shared utility skill (doctor) |
 
-The shared skills are delivered to `.agents/skills/` by `install.sh` / `install.ps1` (sourced from `adapters/claude-code/skills/`, the parity-enforced single copy). Antigravity reads that path natively per the Agent Skills standard.
+The shared skill is delivered to `.agents/skills/` by `install.sh` / `install.ps1` (sourced from `adapters/claude-code/skills/`, the parity-enforced single copy). Antigravity reads that path natively per the Agent Skills standard.
 
 ## Why the dev loop isn't here (V5 unbundling)
 

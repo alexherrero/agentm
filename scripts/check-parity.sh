@@ -2,10 +2,12 @@
 # check-parity.sh — assert each adapter ships the canonical set of skills and
 # utility commands. Documents deliberate divergences.
 #
-# Canonical sets (post-V5 dev-loop slim — see ADR on the V5 unbundling):
-#   skills:         doctor, migrate-to-diataxis
+# Canonical sets (post-V5 slim — see ADR on the V5 unbundling):
+#   skills:         doctor
 #                   (dependabot-fixer + ship-release migrated to crickets
-#                    in v2.0.0 — see ADR 0006)
+#                    in v2.0.0 — see ADR 0006; the four-mode diataxis-migration
+#                    skill retired to crickets' wiki-maintenance in the V5
+#                    docs slim)
 #   util-commands:  recent-wiki-changes  (claude-code only)
 #
 # The phase-gated dev loop (setup/plan/work/review/release/bugfix) and the
@@ -17,10 +19,9 @@
 # scripts/test_devloop_slim_retired.py, not by this parity check.
 #
 # Deliberate divergences (documented, not failures):
-#   - gemini has no skills/ dir; shared skills (doctor,
-#     migrate-to-diataxis) are delivered to `.agents/skills/` by
-#     install.sh and Gemini reads that path natively per the Agent
-#     Skills standard.
+#   - gemini has no skills/ dir; the shared skill (doctor) is delivered
+#     to `.agents/skills/` by install.sh and Gemini reads that path
+#     natively per the Agent Skills standard.
 #
 # Each failure mode below documents how to reproduce by hand.
 #
@@ -31,7 +32,7 @@ set -euo pipefail
 HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$HARNESS_ROOT"
 
-CANON_SKILLS=(doctor migrate-to-diataxis)
+CANON_SKILLS=(doctor)
 
 # Utility slash commands (V4 #30 plan 2 task 7+) — claude-code only.
 # Live in adapters/claude-code/commands/. Antigravity + Gemini operators
@@ -82,10 +83,10 @@ echo "== antigravity =="
 assert_set "antigravity/rules"              adapters/antigravity/rules       md  harness agentmemory-context
 
 echo "== gemini =="
-# Gemini has no skills/ dir: shared skills (doctor, migrate-to-diataxis) are
-# delivered to `.agents/skills/` by install.sh and Gemini reads that path
-# natively per the Agent Skills standard. The commands/ + agents/ dirs were
-# removed in the V5 dev-loop slim.
+# Gemini has no skills/ dir: the shared skill (doctor) is delivered to
+# `.agents/skills/` by install.sh and Gemini reads that path natively per
+# the Agent Skills standard. The commands/ + agents/ dirs were removed in
+# the V5 dev-loop slim.
 if [[ -d adapters/gemini/skills ]]; then
   echo "FAIL [gemini]: adapters/gemini/skills exists — shared skills should be reused from .agents/skills/, not duplicated here" >&2
   fail=1

@@ -81,7 +81,9 @@ NAME_FROM_COMMAND_FILE_RE = re.compile(
 )
 
 # Shared skills that live under skills/ but map to harness/skills/<name>.md
-SHARED_SKILLS = {"doctor", "migrate-to-diataxis"}
+# (the four-mode diataxis-migration skill retired to crickets in the V5 slim;
+# only doctor remains as a legacy single-file canonical skill).
+SHARED_SKILLS = {"doctor"}
 
 
 def expected_canonical_for(adapter_file: Path) -> str | None:
@@ -95,7 +97,7 @@ def expected_canonical_for(adapter_file: Path) -> str | None:
     m = NAME_FROM_SKILL_DIR_RE.search(rel)
     if m:
         skill_name = m.group(1)
-        # Shared skills (doctor, migrate-to-diataxis)
+        # Shared skills (doctor)
         if skill_name in SHARED_SKILLS:
             return f"harness/skills/{skill_name}.md"
         return None

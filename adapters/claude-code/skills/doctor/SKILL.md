@@ -36,7 +36,7 @@ Expected name sets:
 |---|---|---|
 | `$ROOT/commands/*.md` | — (`recent-wiki-changes` optional, V4 #30 plan 2 / v4.4.0+) | `bugfix, plan, release, review, setup, work` (crickets developer-workflows — moved out of agentm in the V5 dev-loop slim) |
 | `$ROOT/agents/*.md` | `adapt-evaluator, memory-idea-researcher` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / developer-workflows); `diataxis-evaluator, documenter, evaluator` (crickets wiki-maintenance) |
-| `$ROOT/skills/*/` | `doctor, migrate-to-diataxis, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, memory, ship-release` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber` (crickets) |
+| `$ROOT/skills/*/` | `doctor, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, memory, ship-release` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber` (crickets — `diataxis-author` absorbs the retired four-mode `migrate-to-diataxis` migration) |
 
 The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — sub-agents *and* skills both live under `.agents/skills/*/` (the same Required name sets apply); on **Gemini** the required skills come from the shared `.agents/skills/*/` delivery. The dev-loop surfaces (phase commands + review agents) are crickets-provided on every host — `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, never FAIL.
 
@@ -106,11 +106,11 @@ Invoke the `ship-release` skill with `--dry-run`.
 
 Pass: prints a proposed `vX.Y.Z` and notes; `git tag --list` unchanged; `git status` still clean.
 
-### 4. `migrate-to-diataxis` preview
+### 4. diataxis migration preview (crickets-provided — graceful-skip)
 
-Invoke `migrate-to-diataxis` in preview mode. If `wiki/.diataxis` is present, expect a no-op.
+agentm no longer ships a migration skill (the four-mode `migrate-to-diataxis` retired to crickets' `wiki-maintenance` in the V5 docs slim). **Skip** if absent — `[SKIP] not installed`, never FAIL. If crickets is paired, `/diataxis migrate --preview` against `wiki/` with the `.diataxis` marker present should no-op.
 
-Pass: detects the marker, prints the no-op line, proposes no moves.
+Pass: skipped on a bare agentm; or the paired crickets preview detects the marker and proposes no moves.
 
 ### 5. `dependabot-fixer` no-match path
 

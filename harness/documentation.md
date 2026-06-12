@@ -271,7 +271,7 @@ Only populated if the user opts into project creation at `/setup`. Absent otherw
 
 ## Migrating an existing install
 
-Projects installed from an earlier harness version have the old four-mode subdir layout (`tutorials/` · `how-to/` · `reference/` · `explanation/`), and older ones the pre-[ADR 0004](../wiki/decisions/0004-diataxis-documentation-spec.md) audience-based layout. Migration to the seven-section frame is a one-shot, preview-first, non-destructive conversion provided by crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin — `/diataxis migrate` (**graceful-skip**: when crickets is not installed the harness suggests installing it rather than hard-failing). agentm's own four-mode `migrate-to-diataxis` skill is retired toward it (see [`harness/skills/migrate-to-diataxis.md`](skills/migrate-to-diataxis.md), kept as a deprecated pointer on its own timeline).
+Projects installed from an earlier harness version have the old four-mode subdir layout (`tutorials/` · `how-to/` · `reference/` · `explanation/`), and older ones the pre-[ADR 0004](../wiki/decisions/0004-diataxis-documentation-spec.md) audience-based layout. Migration to the seven-section frame is a one-shot, preview-first, non-destructive conversion provided by crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin — `/diataxis migrate` (**graceful-skip**: when crickets is not installed there is no migration command — agentm no longer ships its own four-mode migration skill, fully retired in the V5 docs slim toward crickets' canonical converter).
 
 The migration:
 

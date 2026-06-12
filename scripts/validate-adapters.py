@@ -115,11 +115,13 @@ def check_json(rel: str, required_keys: list[str] | None = None) -> dict:
 
 
 # ── canonical spec backing check ────────────────────────────────────────────
-# Each remaining skill (doctor, migrate-to-diataxis) must map to a canonical
-# spec at harness/skills/<name>.md. The phase commands + review sub-agents were
-# slimmed out in the V5 unbundling (moved to crickets), so there is no longer a
-# canonical harness/phases/ or harness/agents/ backing to check for them.
-SKILLS = {"doctor", "migrate-to-diataxis"}
+# Each remaining single-file skill (doctor) must map to a canonical spec at
+# harness/skills/<name>.md. The phase commands + review sub-agents were slimmed
+# out in the V5 unbundling (moved to crickets), so there is no longer a
+# canonical harness/phases/ or harness/agents/ backing to check for them; the
+# four-mode diataxis-migration skill likewise retired to crickets' wiki-
+# maintenance in the V5 docs slim.
+SKILLS = {"doctor"}
 
 
 def check_canonical_backing() -> None:

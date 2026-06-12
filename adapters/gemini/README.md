@@ -7,9 +7,9 @@ Adapter for running agentm in [Google Gemini CLI](https://geminicli.com/). Since
 | Claude Code | Gemini CLI | Purpose |
 |---|---|---|
 | `CLAUDE.md` pointer | `.gemini/settings.json` + repo-root `AGENTS.md` | Operating contract (Gemini loads via `context.fileName`) |
-| `.claude/skills/<name>/` | `.agents/skills/<name>/` | Shared utility skills (doctor, migrate-to-diataxis) — delivered by `install.sh` per the Agent Skills standard |
+| `.claude/skills/<name>/` | `.agents/skills/<name>/` | Shared utility skill (doctor) — delivered by `install.sh` per the Agent Skills standard |
 
-Shared skills are delivered to `.agents/skills/` by `install.sh` / `install.ps1` (sourced from `adapters/claude-code/skills/`, the parity-enforced single copy), and Gemini reads that path natively — no duplication in a `.gemini/` skills dir.
+The shared skill is delivered to `.agents/skills/` by `install.sh` / `install.ps1` (sourced from `adapters/claude-code/skills/`, the parity-enforced single copy), and Gemini reads that path natively — no duplication in a `.gemini/` skills dir.
 
 ## Why the dev loop isn't here (V5 unbundling)
 

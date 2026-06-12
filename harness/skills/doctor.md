@@ -36,7 +36,7 @@ For each detected adapter, verify the expected name set is present and each file
 
 - **Phase commands** (harness-vendored): `recent-wiki-changes` (V4 #30 plan 2, v4.4.0+) is the only phase/utility command agentm still vendors — graceful-skip if absent on a pre-v4.4.0 install. The six phase-gated dev-loop commands (`bugfix, plan, release, review, setup, work`) moved to the crickets **developer-workflows** plugin in the V5 dev-loop slim — report `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, **never FAIL**. A bare agentm install has no dev-loop commands and that is the expected, healthy shape (DC-2: agentm is unaware of the dev loop, no pointer, no requirement).
 - **Sub-agents** (required, harness-shipped): `adapt-evaluator, memory-idea-researcher` — the memory-engine sub-agents agentm keeps. Crickets-provided (graceful-skip if crickets is not paired, **never FAIL**): `adversarial-reviewer, adversarial-reviewer-cross, explorer` (code-review / developer-workflows — moved out of agentm in the V5 dev-loop slim) and `diataxis-evaluator, documenter, evaluator` (wiki-maintenance — `documenter` retired from agentm in the seven-section convergence, canonical in crickets' `wiki-maintenance` plugin).
-- **Skills** (required, harness-shipped): `doctor, migrate-to-diataxis, wiki-author` (wiki-author landed in V4 #30 plan 2 / v4.4.0). Optional harness-shipped compound skills: `design, memory, ship-release` — graceful-skip if absent (they may be deferred via `install.sh --no-compound-skills` or similar). Optional crickets-shipped skills: `dependabot-fixer, diataxis-author, pii-scrubber` — graceful-skip if crickets is not paired (`diataxis-author` retired from agentm in the seven-section convergence; canonical in crickets' `wiki-maintenance` plugin).
+- **Skills** (required, harness-shipped): `doctor, wiki-author` (wiki-author landed in V4 #30 plan 2 / v4.4.0). Optional harness-shipped compound skills: `design, memory, ship-release` — graceful-skip if absent (they may be deferred via `install.sh --no-compound-skills` or similar). Optional crickets-shipped skills: `dependabot-fixer, diataxis-author, pii-scrubber` — graceful-skip if crickets is not paired (`diataxis-author` retired from agentm in the seven-section convergence and absorbs the old four-mode `migrate-to-diataxis` migration via `/diataxis migrate`; canonical in crickets' `wiki-maintenance` plugin).
 
 For each expected item:
 1. The file exists at the adapter-specific path (project scope or user scope, whichever the install resolved to).
@@ -106,12 +106,12 @@ If installed: invoke `ship-release --dry-run`. This should compute a proposed ve
 **Pass criteria:** skill prints a proposed `vX.Y.Z`, classifies the commit range, and exits cleanly without side effects. `git tag --list` is unchanged. `git status` still clean.
 **Fail signals:** skill actually creates a tag (guardrail broken), skill crashes on the preconditions check, `gh auth status` failure surfaces without being caught.
 
-### Probe 4: `migrate-to-diataxis` preview on already-migrated tree
+### Probe 4: diataxis migration preview (crickets-provided — graceful-skip)
 
-Invoke `migrate-to-diataxis` in preview mode against the current `wiki/`. If `wiki/.diataxis` marker is present, the skill should no-op cleanly with "already migrated".
+agentm no longer ships a migration skill — the four-mode `migrate-to-diataxis` retired to crickets' `wiki-maintenance` (`/diataxis migrate`) in the V5 docs slim. If that skill is absent (a bare agentm install), **skip** this probe — report `[SKIP] not installed`, never FAIL. If crickets is paired, optionally invoke `/diataxis migrate --preview` against the current `wiki/`; with the `wiki/.diataxis` marker present it should no-op cleanly with "already migrated".
 
-**Pass criteria:** skill detects the marker, prints the no-op message, exits without proposing moves.
-**Fail signals:** skill proposes re-classifications of already-placed files (classification logic broken), or crashes reading the marker.
+**Pass criteria:** the probe is skipped on a bare agentm; or, when crickets is paired, the migration preview detects the marker and proposes no moves.
+**Fail signals:** doctor hard-FAILs because the migration skill is absent (it must graceful-skip), or a paired crickets migration proposes re-classifications of already-placed files.
 
 ### Probe 5: `dependabot-fixer` "nothing matched" path
 
@@ -180,7 +180,7 @@ doctor: <adapter> — <PASS|FAIL>
   structural:
     phase-commands    [OK]  recent-wiki-changes present; 6 dev-loop commands crickets-provided ([SKIP] if unpaired)
     sub-agents        [OK]  2/2 required (adapt-evaluator, memory-idea-researcher); review agents crickets-provided
-    skills            [OK]  3/3 required (doctor, migrate-to-diataxis, wiki-author);
+    skills            [OK]  2/2 required (doctor, wiki-author);
                             3 optional harness-shipped + crickets present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     host wiring       [OK]  AGENTS.md + CLAUDE.md

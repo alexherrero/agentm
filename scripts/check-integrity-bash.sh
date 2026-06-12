@@ -96,16 +96,15 @@ echo "    $sh_count installed .sh files parse"
 # sub-agents were slimmed out in the V5 unbundling (now provided by the crickets
 # developer-workflows / code-review plugins), so they no longer install. The
 # surviving harness-vendored surface is: the recent-wiki-changes utility
-# command, the memory-engine sub-agents, the shared skills (doctor,
-# migrate-to-diataxis), and the Antigravity rules + Gemini settings.json.
+# command, the memory-engine sub-agents, the shared skill (doctor), and the
+# Antigravity rules + Gemini settings.json. (The four-mode diataxis-migration
+# skill retired to crickets' wiki-maintenance in the V5 docs slim.)
 required_non_empty=(
   .claude/commands/recent-wiki-changes.md
   .claude/agents/adapt-evaluator.md
   .claude/skills/doctor/SKILL.md
-  .claude/skills/migrate-to-diataxis/SKILL.md
   .agents/rules/harness.md
   .agents/skills/doctor/SKILL.md
-  .agents/skills/migrate-to-diataxis/SKILL.md
   .gemini/settings.json
 )
 for p in "${required_non_empty[@]}"; do

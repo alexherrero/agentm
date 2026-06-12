@@ -50,8 +50,8 @@ from typing import Callable, Optional
 # -----------------------------------------------------------------------------
 
 # Skills subject to per-project enablement. Harness-utility skills (doctor,
-# migrate-to-diataxis, wiki-author) are always-on tooling and intentionally not
-# listed — they aren't gated per project.
+# wiki-author) are always-on tooling and intentionally not listed — they aren't
+# gated per project.
 ENABLEABLE_SKILLS: tuple[str, ...] = (
     "memory",
     "design",

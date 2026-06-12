@@ -193,7 +193,9 @@ class HarnessSkillsMappingTests(unittest.TestCase):
             (skills / "doctor" / "SKILL.md").write_text("doctor skill\n")
             # Loose spec sibling sharing the dir-skill's name.
             (skills / "doctor.md").write_text("doctor canonical spec\n")
-            # Loose spec with no matching dir at all (deprecated migrate spec).
+            # Loose spec with no matching dir at all — models a stale copy of
+            # the migration skill the V5 docs slim retired: if a pre-slim install
+            # left it behind, the installer must NOT map it into the prefix.
             (skills / "migrate-to-diataxis.md").write_text("deprecated spec\n")
 
             mapping = ism.symlink_targets_for_clone("agentm", root / "agentm")

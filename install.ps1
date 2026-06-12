@@ -297,7 +297,7 @@ Copy-AdapterDirs  (Join-Path $HarnessRoot 'adapters/claude-code/skills')        
 # rules ship here now — the phase-gated dev-loop workflows + review sub-agents
 # (formerly adapters/antigravity/{workflows,skills}) were slimmed out in the V5
 # unbundling; that surface is provided by the crickets developer-workflows /
-# code-review plugins. Shared skills (doctor, migrate-to-diataxis) still land in
+# code-review plugins. The shared skill (doctor) still lands in
 # .agents/skills/ via the dedicated delivery loop below.
 Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/antigravity/rules')     '*.md' '.agents/rules'
 
@@ -306,7 +306,7 @@ Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/antigravity/rules')     '*.m
 # enforces identical content; cleanest source — antigravity/skills/
 # mixes sub-agents-as-skills with shared skills).
 New-Item -ItemType Directory -Path '.agents/skills' -Force | Out-Null
-foreach ($name in @('doctor', 'migrate-to-diataxis')) {
+foreach ($name in @('doctor')) {
     $src = Join-Path $HarnessRoot "adapters/claude-code/skills/$name"
     if (Test-Path -LiteralPath $src -PathType Container) {
         Copy-ManagedDir $src (Join-Path '.agents/skills' $name)
@@ -335,9 +335,9 @@ Copy-UserWalk (Join-Path $HarnessRoot 'templates/wiki') 'wiki'
 # adapt-evaluator sub-agents.
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +
-# supported_hosts: <list>). Legacy agentm single-file skills (doctor.md,
-# migrate-to-diataxis.md) at harness/skills/*.md without frontmatter flow
-# through the adapters/ pipeline above and are skipped here.
+# supported_hosts: <list>). The legacy agentm single-file skill (doctor.md)
+# at harness/skills/*.md without frontmatter flows through the adapters/
+# pipeline above and is skipped here.
 
 function Get-AmManifestField([string]$File, [string]$Field) {
     # Cheap YAML field extractor — independent of pyyaml.

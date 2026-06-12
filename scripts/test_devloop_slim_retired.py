@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Retire-invariant guard for the V5 dev-loop slim.
+"""Retire-invariant guard for the V5 dev-loop slim (+ docs-slim residue).
 
 agentm used to vendor the full phase-gated dev loop — the six phase commands
 (`setup/plan/work/review/release/bugfix`), the three review sub-agents
@@ -12,6 +12,15 @@ graceful-skip-with-pointer: agentm ships no invocation surface for the dev loop
 and says nothing about it — if crickets is absent, a bare agentm simply has no
 `/plan /work /review`. It mirrors the `documenter` / `diataxis-author` retires
 (see test_documenter_retired.py).
+
+The same unbundling retired the **docs-slim residue** — agentm's four-mode
+`migrate-to-diataxis` skill (`harness/skills/migrate-to-diataxis.md` + its
+Claude Code adapter copy). Its one-shot wiki conversion is now provided by
+crickets' `wiki-maintenance` / `diataxis-author` (`/diataxis migrate`). Unlike
+the dev-loop clean-delete, the *bare name* `migrate-to-diataxis` legitimately
+survives in `doctor`'s graceful crickets-provider prose (telling an operator
+who had it pre-V5 where the capability went) — only the deleted FILE paths are
+pinned absent here (DC-3).
 
 These tests pin that invariant so a later change can't silently re-introduce a
 local copy or a dangling path dependency on one:
@@ -54,6 +63,10 @@ _PHASE_SPECS = ("01-setup", "02-plan", "03-work", "04-review", "05-release")
 _PHASE_CMDS = ("setup", "plan", "work", "review", "release", "bugfix")
 _REVIEW_AGENTS = ("adversarial-reviewer", "adversarial-reviewer-cross", "explorer")
 _EVIDENCE = ("hook.md", "evidence-tracker.sh", "evidence-tracker.ps1", "evidence_tracker.py")
+# Docs-slim residue (DC-3): the four-mode diataxis-migration skill. Assembled
+# from parts so the full deleted PATH never appears literally in this file (the
+# bare name token is harmless — only the path needles drive the dangling scan).
+_MIGRATE = "migrate-" + "to-" + "diataxis"
 
 RETIRED_PATHS = tuple(
     [f"harness/phases/{p}.md" for p in _PHASE_SPECS]
@@ -66,6 +79,9 @@ RETIRED_PATHS = tuple(
     + [f"adapters/antigravity/skills/{a}/SKILL.md" for a in _REVIEW_AGENTS]
     + [f"adapters/gemini/commands/{c}.toml" for c in _PHASE_CMDS]
     + [f"adapters/gemini/agents/{a}.md" for a in _REVIEW_AGENTS]
+    # docs-slim residue — the retired migration skill's two vendored copies
+    + [f"harness/skills/{_MIGRATE}.md"]
+    + [f"adapters/claude-code/skills/{_MIGRATE}/SKILL.md"]
 )
 
 # ── memory-engine KEEP boundary (must survive the slim, byte-untouched) ──────
@@ -187,6 +203,34 @@ class TestDevloopSlimRetired(unittest.TestCase):
                 text,
                 f"{rel}: phase commands must not be framed as harness-required "
                 "after the V5 dev-loop slim.",
+            )
+
+    def test_migrate_to_diataxis_doctor_reframe(self):
+        """migrate-to-diataxis left the required-skills set (docs slim, DC-3).
+
+        The skill is deleted; doctor's harness-required skills are now `doctor,
+        wiki-author`. The bare name may survive only as crickets-provider
+        graceful prose (where the capability went) — both surfaces phrase that
+        via crickets' `diataxis-author`, which absorbed the migration.
+        """
+        required_skills = "doctor, wiki-author"
+        for rel in (
+            "harness/skills/doctor.md",
+            "adapters/claude-code/skills/doctor/SKILL.md",
+        ):
+            text = (ROOT / rel).read_text(encoding="utf-8")
+            self.assertIn(
+                required_skills,
+                text,
+                f"{rel}: after the docs slim the harness-required skills must be "
+                f"`{required_skills}` (the four-mode migration skill retired to "
+                "crickets).",
+            )
+            self.assertIn(
+                "diataxis-author",
+                text,
+                f"{rel}: doctor must name crickets' diataxis-author as the "
+                "provider that absorbed the retired migration skill.",
             )
 
     def test_keep_memory_engine(self):

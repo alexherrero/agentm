@@ -621,7 +621,7 @@ done
 # gemini at runtime). The antigravity + gemini adapters deliberately do NOT
 # duplicate these (deduped — see check-parity), so they're delivered once here.
 mkdir -p .agents/skills
-for name in doctor migrate-to-diataxis; do
+for name in doctor; do
   src="$HARNESS_ROOT/adapters/claude-code/skills/$name"
   [[ -d "$src" ]] || continue
   cp_managed_dir "$src" ".agents/skills/$name"
@@ -655,9 +655,9 @@ cp_user_walk "$HARNESS_ROOT/templates/wiki" "wiki"
 # adapt-evaluator sub-agents.
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +
-# supported_hosts: <list>). Legacy agentm single-file skills (doctor.md,
-# migrate-to-diataxis.md) at harness/skills/*.md without frontmatter flow
-# through the adapters/ pipeline above and are skipped here.
+# supported_hosts: <list>). The legacy agentm single-file skill (doctor.md)
+# at harness/skills/*.md without frontmatter flows through the adapters/
+# pipeline above and is skipped here.
 
 _am_get_field() {
     # Cheap YAML field extractor — keeps dispatch independent of pyyaml.

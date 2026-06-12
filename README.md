@@ -164,7 +164,6 @@ Legacy single-file canonical skills (delivered via the per-host `adapters/` pipe
 
 | Skill | What it does |
 |---|---|
-| [`migrate-to-diataxis`](harness/skills/migrate-to-diataxis.md) | One-shot migration of an already-installed project's `wiki/` to the Diátaxis four-mode layout. Preview-first, `git mv` for blame, non-destructive. (Superseded by crickets' `wiki-maintenance` plugin for new work; kept for legacy migration.) |
 | [`doctor`](harness/skills/doctor.md) | User-invoked (`/doctor`). Verifies the install is correctly wired up in this host — structural by default, `--live` adds real sub-agent dispatches and skill dry-runs. |
 
 Compound skills imported from Crickets in v4.0.0 (V4 #36) — delivered via the manifest-walking dispatcher in `install.sh` / `install.ps1`:
@@ -210,7 +209,7 @@ Base primitives + the 2 evaluator sub-agents (`evaluator`, `diataxis-evaluator`)
 
 ```text
 agentm/
-├── harness/          # canonical phase specs + harness-shipped skills (doctor, migrate-to-diataxis) + telemetry doc + principles
+├── harness/          # memory-engine spec tree + harness-shipped skills (doctor, wiki-author, memory, design, ship-release) + telemetry doc + principles
 ├── adapters/         # per-host wiring (claude-code/, antigravity/) — thin shims that point back at the canonical specs in harness/
 ├── wiki/             # Diátaxis-shaped docs (tutorials/ + how-to/ + reference/ + explanation/) — published as the GitHub Wiki
 ├── scripts/          # install helpers + smoke tests + harness_memory.py + manifest validators
