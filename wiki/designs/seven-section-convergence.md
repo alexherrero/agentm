@@ -1,6 +1,6 @@
 ---
 title: Seven-Section Wiki Convergence Design
-status: final
+status: launched
 visibility: published
 author: Alex Herrero
 contributors: []
@@ -157,3 +157,4 @@ TBD — not yet sequenced. Lands via agentm's `/work` after this design finalize
 | 2026-06-11 | Approved as final via `/design author` (direct review → final — summary reviewed, the one open fork already resolved to (b)). Unblocks `/design translate`. | final |
 | 2026-06-11 | Translated to 4 parts via `/design translate`: `amend-adr-0004` · `retire-diataxis-author` · `harness-documentation` · `templates-wiki`. Parts written to the vault (`projects/agentm/_harness/designs/seven-section-convergence/parts/`) per the vault-redirect convention, not the skill's default `wiki/designs/parts/` (which would pollute the published wiki + trip `check-wiki`); `parent_design` points back to the repo path. | final |
 | 2026-06-11 | Sequenced into 4 plans via `/design sequence` (topo order `amend-adr-0004` → `retire-diataxis-author` → `harness-documentation` → `templates-wiki`); first plan active at the **vault** `_harness/PLAN.md` (`amend-adr-0004`), 3 queued at `_harness/designs/seven-section-convergence/queued-plans/` — vault-redirected, not repo `.harness/`. Next: `/work` task 1. | final |
+| 2026-06-11 | **Launched** — all 4 parts shipped: `amend-adr-0004` (`51f77a9`+`deb6ef4`), `retire-diataxis-author` (`07f7ddc`), `harness-documentation` (`9e5322c`), `templates-wiki` (final part). Every surface that asserted four modes — ADR 0004, `harness/documentation.md`, the retired `diataxis-author` copy, the `templates/wiki/` scaffold — now agrees with the seven-section frame the gate (`check-wiki.py`) already enforced. Formal version-tagged release deferred per the Launch Plans (sequencing TBD); the release notes will cross-link crickets' `wiki-section-taxonomy` launch (the upstream this converges to). Note: converging the **documenter** sub-agent's own prose (still four-mode in both repos) + retiring agentm's duplicate copy toward crickets' canonical `wiki-maintenance:documenter` is a **separate** effort, not one of this design's four parts. | launched |
