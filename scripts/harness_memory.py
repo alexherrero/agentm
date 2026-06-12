@@ -70,6 +70,15 @@ if str(_HERE) not in sys.path:
 
 import vault_project as vp  # noqa: E402
 
+# V5-0: the vault-write protocol lives in vault_lock (the Phase-0 concurrency
+# floor). harness_memory routes its writes through it and re-exports the error
+# vocabulary so the codebase keeps ONE ConcurrentModificationError.
+from vault_lock import (  # noqa: E402
+    ConcurrentModificationError,
+    atomic_write,
+    content_hash,
+)
+
 
 # -----------------------------------------------------------------------------
 # Constants
@@ -600,66 +609,78 @@ def _write_repo_local_state_file(project_root: Path, filename: str, content: str
 
 
 # -----------------------------------------------------------------------------
-# Concurrency primitives (V4 #26 task 4)
+# Concurrency primitives (V4 #26 task 4; V5-0 content-hash CAS + atomic_write)
 # -----------------------------------------------------------------------------
 
-class ConcurrentModificationError(RuntimeError):
-    """Raised by safe_write_replace_style when a file's mtime changed between
-    read and write — indicates another agent / device modified the file.
-
-    Caller is expected to re-read + re-apply changes + retry. Per plan #18
-    task 8 (`08-concurrency.md` § "Replace-style files — cursor + last-modified
-    check").
-    """
+# `ConcurrentModificationError` is imported from vault_lock (above) — the
+# canonical home since V5-0. Re-exported here so existing callers that catch
+# `harness_memory.ConcurrentModificationError` keep working unchanged.
 
 
 def safe_write_replace_style(
     path: Path,
     new_content: str,
     *,
+    expected_hash: Optional[str] = None,
     expected_mtime: Optional[float] = None,
 ) -> Path:
-    """Write `new_content` to `path` atomically with optional mtime-check.
+    """Write `new_content` to `path` atomically with an optional CAS check.
 
-    Modes:
-      - `expected_mtime is None` (default): plain atomic write — no
-        concurrent-modification check. Caller didn't observe prior mtime.
-      - `expected_mtime is not None`: pre-write check — re-stat `path`; if
-        its current mtime differs from expected, raise
-        ConcurrentModificationError without writing.
+    Compare-and-swap modes (mutually exclusive — `expected_hash` wins if both
+    are given):
+      - `expected_hash is not None` (V5-0, preferred): pre-write check — re-read
+        `path`, sha256 it, and raise ConcurrentModificationError if it differs
+        from `expected_hash` (or if the file vanished since read). This is the
+        R4 rule-4 currency: content hash does not lie, whereas mtime is weak on
+        a GDrive-synced vault (re-downloads rewrite mtimes). Caller pattern:
 
-    The mtime-check guards against device-A vs device-B concurrent edits
-    when both have GDrive-synced views of the same vault file. Caller
-    pattern:
+            current_hash = content_hash(path.read_bytes()) if path.exists() else None
+            # ... compute new_content ...
+            safe_write_replace_style(path, new_content, expected_hash=current_hash)
 
-        current_mtime = path.stat().st_mtime if path.exists() else None
-        # ... compute new_content ...
-        safe_write_replace_style(path, new_content, expected_mtime=current_mtime)
+      - `expected_mtime is not None` (DEPRECATED, retained for back-compat):
+        pre-write check — re-stat `path`; raise if its mtime differs from
+        expected. Superseded by `expected_hash`; kept working so any
+        out-of-tree caller has a deprecation path.
+      - neither set (default): plain atomic write, no concurrent-mod check.
 
-    Atomic via `<path>.tmp` + os.replace. Creates parent dir if absent.
-    Returns the written path.
+    The write itself goes through `vault_lock.atomic_write` — bytes-mode
+    temp→fsync→rename (LF preserved; gains the fsync the V4 inline writer
+    lacked). Creates parent dir if absent. Returns the written path.
 
-    Race window: between the mtime re-stat and the rename, another process
-    could write. Documented limitation per plan #18 task 8 — bounded by
-    cursor-tracked promotion + the size of the rename-window (sub-ms).
+    Race window: between the CAS re-read and the rename another process could
+    write. In V5-0 the per-vault `vault_mutex` closes that window for callers
+    that hold it; standalone, the window is the rename interval (sub-ms).
     Suitable for replace-style files (PLAN.md, _index.md, features.json,
-    FOLLOWUPS.md); NOT suitable for append-only files (progress.md) — those
-    use natural-merge via GDrive's append-handling.
+    FOLLOWUPS.md); NOT for append-only files (progress.md) — those use
+    natural-merge via GDrive's append-handling.
     """
     path = Path(path)
-    if expected_mtime is not None and path.exists():
-        actual = path.stat().st_mtime
-        if abs(actual - expected_mtime) > 1e-6:  # float-tolerance
+    if expected_hash is not None:
+        if path.exists():
+            actual = content_hash(path.read_bytes())
+            if actual != expected_hash:
+                raise ConcurrentModificationError(
+                    f"{path} was modified since read (expected hash={expected_hash[:12]}…, "
+                    f"actual={actual[:12]}…). Another agent or device wrote to it. "
+                    f"Re-read and re-apply changes."
+                )
+        else:
+            # We held a content hash (file existed at read) but it's gone now —
+            # a concurrent deletion is itself a conflict.
+            raise ConcurrentModificationError(
+                f"{path} was deleted since read (expected hash={expected_hash[:12]}…). "
+                f"Another agent or device removed it. Re-read and re-apply changes."
+            )
+    elif expected_mtime is not None and path.exists():
+        actual_mtime = path.stat().st_mtime
+        if abs(actual_mtime - expected_mtime) > 1e-6:  # float-tolerance
             raise ConcurrentModificationError(
                 f"{path} was modified since read (expected mtime={expected_mtime}, "
-                f"actual={actual}). Another agent or device wrote to it. "
+                f"actual={actual_mtime}). Another agent or device wrote to it. "
                 f"Re-read and re-apply changes."
             )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(new_content, encoding="utf-8")
-    tmp.replace(path)
-    return path
+    return atomic_write(path, new_content)
 
 
 # GDrive's conflict-file naming: "<basename> (conflicted copy YYYY-MM-DD) - <device>.<ext>"

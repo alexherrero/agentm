@@ -1324,6 +1324,47 @@ class TestSafeWriteReplaceStyle(unittest.TestCase):
             hm.safe_write_replace_style(path, "x", expected_mtime=12345.0)
             self.assertEqual(path.read_text(), "x")
 
+    # V5-0: content-hash CAS is the preferred currency (R4 rule 4). The
+    # mtime tests above stay as back-compat proof that the deprecated arg still
+    # works; these prove the new path.
+    def test_hash_check_passes_when_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "PLAN.md"
+            path.write_bytes(b"initial")
+            h = hm.content_hash(path.read_bytes())
+            hm.safe_write_replace_style(path, "updated", expected_hash=h)
+            self.assertEqual(path.read_text(), "updated")
+
+    def test_hash_check_raises_when_modified(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "PLAN.md"
+            path.write_bytes(b"initial")
+            stale_hash = hm.content_hash(b"content the file no longer has")
+            with self.assertRaises(hm.ConcurrentModificationError) as cm:
+                hm.safe_write_replace_style(path, "x", expected_hash=stale_hash)
+            self.assertIn("modified since read", str(cm.exception))
+            self.assertEqual(path.read_text(), "initial")  # untouched
+
+    def test_hash_check_raises_when_deleted(self) -> None:
+        """Held a hash (file existed at read) but it vanished — concurrent
+        deletion is itself a conflict."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "PLAN.md"
+            stale_hash = hm.content_hash(b"once existed")
+            with self.assertRaises(hm.ConcurrentModificationError) as cm:
+                hm.safe_write_replace_style(path, "x", expected_hash=stale_hash)
+            self.assertIn("deleted since read", str(cm.exception))
+
+    def test_hash_takes_precedence_over_mtime(self) -> None:
+        """Both args given: expected_hash is authoritative — a matching hash
+        writes even with a deliberately stale mtime arg."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "PLAN.md"
+            path.write_bytes(b"initial")
+            h = hm.content_hash(path.read_bytes())
+            hm.safe_write_replace_style(path, "updated", expected_hash=h, expected_mtime=1.0)
+            self.assertEqual(path.read_text(), "updated")
+
     def test_atomic_no_tmp_remnant(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "PLAN.md"
@@ -2141,20 +2182,20 @@ class TestRepoRegistry(unittest.TestCase):
             )
 
     def test_concurrent_modification_raises(self) -> None:
-        """write_registry with expected_mtime mismatch raises ConcurrentModificationError."""
+        """write_registry with an expected_hash mismatch raises ConcurrentModificationError."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
             vault.mkdir()
             repo_registry.register_repo(vault, "agentm", "/a")
             path = repo_registry.registry_path(vault)
-            stale_mtime = path.stat().st_mtime
-            # Simulate another writer by mutating the file (which bumps mtime).
-            import time as _time
-            _time.sleep(0.01)  # ensure mtime tick
+            stale_hash = hm.content_hash(path.read_bytes())
+            # Simulate another writer mutating the file — content changes, so the
+            # hash no longer matches. No mtime-tick sleep needed: content-hash CAS
+            # is immune to filesystem mtime granularity (a V5-0 win over mtime).
             path.write_text(path.read_text() + " ", encoding="utf-8")
             data = repo_registry.read_registry(vault)
             with self.assertRaises(hm.ConcurrentModificationError):
-                repo_registry.write_registry(vault, data, expected_mtime=stale_mtime)
+                repo_registry.write_registry(vault, data, expected_hash=stale_hash)
 
     def test_atomic_write_no_tmp_remnant(self) -> None:
         """After successful write, no <path>.tmp lingers."""

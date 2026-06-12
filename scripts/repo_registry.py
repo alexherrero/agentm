@@ -125,20 +125,21 @@ def write_registry(
     vault_path: Path | str,
     data: dict,
     *,
-    expected_mtime: Optional[float] = None,
+    expected_hash: Optional[str] = None,
 ) -> Path:
     """Write the registry atomically.
 
-    Uses `harness_memory.safe_write_replace_style` for atomic tmp+rename +
-    optional concurrent-modification check via `expected_mtime`.
+    Uses `harness_memory.safe_write_replace_style` for atomic temp→fsync→rename
+    + an optional content-hash compare-and-swap via `expected_hash` (V5-0; the
+    R4 rule-4 currency that replaces the weaker mtime check).
 
     Pattern for race-protected upsert:
 
         path = registry_path(vault)
-        current_mtime = path.stat().st_mtime if path.exists() else None
+        current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
         data = read_registry(vault)
         # mutate data ...
-        write_registry(vault, data, expected_mtime=current_mtime)
+        write_registry(vault, data, expected_hash=current_hash)
 
     Raises ConcurrentModificationError (re-exported from harness_memory) if
     another process wrote between read + write. Caller retries.
@@ -153,7 +154,7 @@ def write_registry(
     data.setdefault("repos", [])
     path = registry_path(vault)
     content = json.dumps(data, indent=2, sort_keys=False) + "\n"
-    return hm.safe_write_replace_style(path, content, expected_mtime=expected_mtime)
+    return hm.safe_write_replace_style(path, content, expected_hash=expected_hash)
 
 
 # -----------------------------------------------------------------------------
@@ -182,7 +183,7 @@ def register_repo(
     if not slug:
         raise ValueError("slug must be non-empty")
     path = registry_path(vault_path)
-    current_mtime = path.stat().st_mtime if path.exists() else None
+    current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
     data = read_registry(vault_path)
     repos = data.get("repos", [])
 
@@ -208,7 +209,7 @@ def register_repo(
         repos.append(new_entry)
 
     data["repos"] = repos
-    write_registry(vault_path, data, expected_mtime=current_mtime)
+    write_registry(vault_path, data, expected_hash=current_hash)
     return data
 
 
@@ -216,12 +217,12 @@ def unregister_repo(vault_path: Path | str, slug: str) -> bool:
     """Remove a repo entry by slug. Idempotent — returns True if removed,
     False if no matching slug existed.
 
-    Re-reads + writes with mtime-check for concurrent-write protection.
+    Re-reads + writes with a content-hash CAS for concurrent-write protection.
     """
     if not slug:
         raise ValueError("slug must be non-empty")
     path = registry_path(vault_path)
-    current_mtime = path.stat().st_mtime if path.exists() else None
+    current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
     data = read_registry(vault_path)
     repos = data.get("repos", [])
 
@@ -232,7 +233,7 @@ def unregister_repo(vault_path: Path | str, slug: str) -> bool:
         return False
 
     data["repos"] = new_repos
-    write_registry(vault_path, data, expected_mtime=current_mtime)
+    write_registry(vault_path, data, expected_hash=current_hash)
     return True
 
 
