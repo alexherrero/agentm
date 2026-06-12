@@ -18,12 +18,16 @@ fails when the resolver surface goes missing, fails when a hook loses its glob, 
 still passes when a curated doc mentions a named plan. The `--root` flag points the
 gate at a throwaway fixture tree so the negative cases never touch the repo.
 
+Skipped on non-POSIX (the gate is a bash script; Windows has no POSIX bash),
+matching the other bash-driving test suites in this directory.
+
 Run directly:
 
     python3 scripts/test_check_multi_plan_naming.py
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -97,6 +101,7 @@ class _FixtureRoot:
         (self.root / rel).write_text(body, encoding="utf-8")
 
 
+@unittest.skipIf(os.name == "nt", "bash gate — POSIX only")
 class CheckMultiPlanNaming(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp(prefix="agentm-multi-plan-gate-")

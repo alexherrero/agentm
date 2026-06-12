@@ -140,7 +140,10 @@ class LockdirResolutionTests(unittest.TestCase):
         fake_xdg = "/tmp/xdg-cache-test-vault-lock"
         with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": fake_xdg}):
             lockdir = vl._lockdir_for(vault, None)
-        self.assertTrue(str(lockdir).startswith(fake_xdg))
+        # Path-aware ancestor check: str.startswith breaks on Windows back-slash
+        # separators, but the lockdir is rooted under XDG_CACHE_HOME on every
+        # platform. Mirrors test_default_root_is_dot_cache_agentm_locks above.
+        self.assertEqual(Path(os.path.commonpath([lockdir, Path(fake_xdg)])), Path(fake_xdg))
 
     def test_symlink_aliases_collide_on_same_lock(self) -> None:
         # Two paths pointing at the same physical vault must hash to one lock.
