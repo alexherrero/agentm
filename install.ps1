@@ -256,8 +256,8 @@ $BoundaryRoots = @(
 # progress.md, etc.) and settings.json files are not in the dirs below.
 $ManagedParents = @(
     '.claude/commands', '.claude/agents', '.claude/skills',
-    # V4 #36: compound hooks (memory-*, evidence-tracker) imported from
-    # crickets land at .claude/hooks/ via the manifest dispatcher.
+    # V4 #36: compound hooks (memory-*, harness-context-session-start)
+    # imported from crickets land at .claude/hooks/ via the manifest dispatcher.
     '.claude/hooks',
     # legacy (pre-V4 #22) — wiped on -Update; migrated to .agents/
     '.agent/rules', '.agent/workflows', '.agent/skills',
@@ -293,11 +293,13 @@ Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/claude-code/agents')   '*.md
 Copy-AdapterDirs  (Join-Path $HarnessRoot 'adapters/claude-code/skills')          '.claude/skills'
 
 # .agents/ — Antigravity adapter (V4 #22: migrated .agent/ → .agents/, the
-# Antigravity 2.0 default; legacy .agent/ wiped on -Update. .agents/rules is
-# doc-confirmed; .agents/workflows is inferred from the dir-wide rename.)
+# Antigravity 2.0 default; legacy .agent/ wiped on -Update). Only the always-on
+# rules ship here now — the phase-gated dev-loop workflows + review sub-agents
+# (formerly adapters/antigravity/{workflows,skills}) were slimmed out in the V5
+# unbundling; that surface is provided by the crickets developer-workflows /
+# code-review plugins. Shared skills (doctor, migrate-to-diataxis) still land in
+# .agents/skills/ via the dedicated delivery loop below.
 Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/antigravity/rules')     '*.md' '.agents/rules'
-Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/antigravity/workflows') '*.md' '.agents/workflows'
-Copy-AdapterDirs  (Join-Path $HarnessRoot 'adapters/antigravity/skills')           '.agents/skills'
 
 # .agents/skills/ — shared skills delivery (read by Gemini CLI per the
 # Agent Skills standard). Source: adapters/claude-code/skills/ (parity
@@ -311,9 +313,12 @@ foreach ($name in @('doctor', 'migrate-to-diataxis')) {
     }
 }
 
-# .gemini/ — Gemini CLI adapter. Reads shared skills from .agents/skills/ (delivered above).
-Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/gemini/commands') '*.toml' '.gemini/commands'
-Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/gemini/agents')   '*.md'   '.gemini/agents'
+# .gemini/ — Gemini CLI adapter. Reads shared skills from .agents/skills/
+# (delivered above) and the AGENTS.md context wiring from settings.json. The
+# phase-command + sub-agent surfaces (formerly adapters/gemini/{commands,agents})
+# were slimmed out in the V5 unbundling — that dev loop is provided by the
+# crickets developer-workflows / code-review plugins, not vendored here.
+New-Item -ItemType Directory -Path '.gemini' -Force | Out-Null
 Copy-UserFile     (Join-Path $HarnessRoot 'adapters/gemini/settings.json') '.gemini/settings.json'
 
 # ── wiki/ scaffold (per-file walk, skip-if-exists) ──────────────────────────
@@ -325,14 +330,14 @@ Copy-UserWalk (Join-Path $HarnessRoot 'templates/wiki') 'wiki'
 # harness/agents/<file>.md, dispatching each based on its supported_hosts
 # field. Imported from crickets in v4.0.0 per design call #28 of plan #18:
 # compound skills (memory, design, ship-release), memory
-# hooks (memory-recall-*, memory-reflect-*), the evidence-tracker hook,
-# and the memory-idea-researcher sub-agent.
+# hooks (memory-recall-*, memory-reflect-*, conflict-merger-session-start,
+# harness-context-session-start), and the memory-idea-researcher +
+# adapt-evaluator sub-agents.
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +
 # supported_hosts: <list>). Legacy agentm single-file skills (doctor.md,
-# migrate-to-diataxis.md) and legacy sub-agents (adversarial-reviewer.md
-# etc.) at harness/skills/*.md and harness/agents/*.md without frontmatter
-# flow through the adapters/ pipeline above and are skipped here.
+# migrate-to-diataxis.md) at harness/skills/*.md without frontmatter flow
+# through the adapters/ pipeline above and are skipped here.
 
 function Get-AmManifestField([string]$File, [string]$Field) {
     # Cheap YAML field extractor — independent of pyyaml.
@@ -388,7 +393,7 @@ function Invoke-AmDispatchHook([string]$HookDir, [string]$Name, [string]$Hosts) 
                     continue
                 }
                 Copy-ManagedFile $scriptSrc (Join-Path '.claude/hooks' "$Name.ps1")
-                # Copy sibling .py helpers (evidence-tracker pattern).
+                # Copy sibling .py helpers (memory-recall/reflect pattern).
                 Get-ChildItem -Path $HookDir -Filter '*.py' -File -ErrorAction SilentlyContinue | ForEach-Object {
                     Copy-ManagedFile $_.FullName (Join-Path '.claude/hooks' $_.Name)
                 }
@@ -626,10 +631,8 @@ if ($Update) {
     Write-Host '  1. Edit .harness/init.sh so it actually boots this project'
     if ($Hooks) {
         Write-Host '  2. Edit .harness/verify.ps1 — uncomment the extension case for your stack'
-        Write-Host '  3. Run /setup (Claude Code) or prompt ''run the setup phase'' (Antigravity)'
-        Write-Host '  4. Then /plan <your first brief>'
+        Write-Host '  3. Run /doctor (Claude Code) to verify the install'
     } else {
-        Write-Host '  2. Run /setup (Claude Code) or prompt ''run the setup phase'' (Antigravity)'
-        Write-Host '  3. Then /plan <your first brief>'
+        Write-Host '  2. Run /doctor (Claude Code) to verify the install'
     }
 }

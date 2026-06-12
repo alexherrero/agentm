@@ -21,7 +21,7 @@ Entry formats the telemetry script recognises:
 1. **`/review` rejection rate** — `NO ISSUES FOUND` / total reviews.
    - Band: **30%–70%**.
    - Below 30% → reviewer may be too paranoid, or deterministic gates are missing things they should catch.
-   - Above 70% → reviewer is likely rubber-stamping. Audit `harness/agents/adversarial-reviewer.md` framing; consider re-auditing after a model bump.
+   - Above 70% → reviewer is likely rubber-stamping. Audit the `adversarial-reviewer` framing; consider re-auditing after a model bump.
 2. **Cross-model availability** — non-fallback cross-model runs / total cross-model attempts. A high fallback rate (>50%) means Gemini isn't actually running — check CLI auth.
 3. **Cross-model contribution** — how often cross-model found issues. Ideally non-zero but not dominant; both reviewers catching different things is the point.
 4. **dependabot-fixer success rate** — fixed vs. aborted. Aborts are not failures; they're the honest-abort design doing its job. A 100% fix rate is suspicious (budget too loose? verifying too weakly?).

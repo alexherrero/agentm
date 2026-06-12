@@ -62,11 +62,15 @@ ENABLEABLE_SKILLS: tuple[str, ...] = (
 )
 
 # Hooks subject to per-project enablement.
+#
+# evidence-tracker was removed in the V5 dev-loop slim — it backed the /work
+# task-closeout gate, which now lives in the crickets developer-safety /
+# code-review plugins, not in agentm. The rule that justified it (R-tests) is
+# gone with it.
 ENABLEABLE_HOOKS: tuple[str, ...] = (
     "kill-switch",
     "steer",
     "commit-on-stop",
-    "evidence-tracker",
     "memory-recall-session-start",
     "memory-recall-prompt-submit",
     "memory-reflect-idle",
@@ -220,28 +224,22 @@ def rule_pii(cwd: Path) -> Optional[RuleMatch]:
     return None
 
 
-_TEST_GLOBS: tuple[str, ...] = ("*_test.py", "test_*.py", "*.test.*", "*.spec.*")
-
-
-def rule_tests(cwd: Path) -> Optional[RuleMatch]:
-    if (cwd / "tests").is_dir() or (cwd / "spec").is_dir() or _has_any_glob(cwd, _TEST_GLOBS):
-        return RuleMatch(
-            rule_id="R-tests",
-            rationale="Found tests -> evidence-tracker enforces test-reading before /work task closeout.",
-            hooks=("evidence-tracker",),
-        )
-    return None
-
-
 def rule_harness(cwd: Path) -> Optional[RuleMatch]:
-    # The harness SOURCE repo (agentm itself) carries harness/phases/. Detection
-    # is meaningless there — bypass. A project that merely USES the harness is
-    # handled upstream by is_registered() gating the nudge; if /setup --detect is
-    # run there explicitly, the legacy .harness/ dir is surfaced for migration.
-    if (cwd / "harness" / "phases").is_dir():
+    # The harness SOURCE repo (agentm itself) carries the harness/ spec tree +
+    # scripts/harness_memory.py. Detection is meaningless there — bypass. A
+    # project that merely USES the harness has a .harness/ STATE dir but no
+    # harness/ SOURCE tree; that case is handled upstream by is_registered()
+    # gating the nudge. If /setup --detect is run in the source repo explicitly,
+    # the legacy .harness/ dir (if any) is surfaced for migration.
+    #
+    # Pre-V5 this keyed on harness/phases/ — that dir was removed in the dev-loop
+    # slim, so the marker moved to the durable memory-engine pair: the harness/
+    # spec tree + the scripts/harness_memory.py state resolver, neither of which
+    # a harness-using project vendors.
+    if (cwd / "harness").is_dir() and (cwd / "scripts" / "harness_memory.py").is_file():
         return RuleMatch(
             rule_id="R-harness",
-            rationale="This IS the harness source repo (harness/phases/ present) -> skipping detection.",
+            rationale="This IS the harness source repo (harness/ + scripts/harness_memory.py present) -> skipping detection.",
             bypass=True,
             legacy_harness_present=(cwd / ".harness").is_dir(),
         )
@@ -305,7 +303,6 @@ RULES: tuple[Callable[[Path], Optional[RuleMatch]], ...] = (
     rule_changelog,
     rule_dependabot,
     rule_pii,
-    rule_tests,
     rule_pkg_scripts,
     rule_vault_content,
     rule_design,

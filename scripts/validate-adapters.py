@@ -2,16 +2,19 @@
 """Validate adapter files parse and have required keys.
 
 Checks:
-  - TOML (gemini/commands/*.toml) parses; has description, prompt.
-  - Markdown YAML frontmatter (claude-code/agents, claude-code/commands,
-    antigravity/workflows, antigravity/skills, gemini/agents) parses; has
-    name and description.
-  - SKILL.md files (claude-code/skills, antigravity/skills) have name +
-    description frontmatter.
+  - Markdown YAML frontmatter (claude-code/commands, antigravity/rules)
+    parses; has the required keys.
+  - SKILL.md files (claude-code/skills) have name + description frontmatter.
   - JSON (templates/features.json, adapters/gemini/settings.json,
     templates/hooks/settings-fragment-*.json) parses.
-  - Every adapter name has a matching canonical spec under harness/phases/,
-    harness/pipelines/, or harness/agents/ (allow-listed exceptions).
+  - Every remaining skill maps to a canonical spec under harness/skills/.
+
+The phase-gated dev loop + the review sub-agents were slimmed out of agentm in
+the V5 unbundling (moved to the crickets developer-workflows / code-review
+plugins). Their adapter surfaces (gemini/commands, claude-code/agents,
+gemini/agents, antigravity/workflows, antigravity/skills) no longer exist, so
+they are not validated here; their absence is pinned by
+scripts/test_devloop_slim_retired.py.
 
 Exits non-zero on first failure; prints what and where.
 """
@@ -21,11 +24,6 @@ import json
 import re
 import sys
 from pathlib import Path
-
-try:
-    import tomllib  # Python 3.11+
-except ModuleNotFoundError:
-    import tomli as tomllib  # type: ignore
 
 try:
     import yaml
@@ -68,24 +66,6 @@ def require_keys(path: Path, fm: dict, *keys: str) -> None:
         v = fm.get(k)
         if v is None or (isinstance(v, str) and not v.strip()):
             err(f"{path.relative_to(ROOT)}: frontmatter missing '{k}'")
-
-
-# ── TOML validation ─────────────────────────────────────────────────────────
-def check_toml(path: Path, required: list[str]) -> dict:
-    try:
-        data = tomllib.loads(path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as e:
-        err(f"{path.relative_to(ROOT)}: TOML parse error: {e}")
-        return {}
-    for k in required:
-        if k not in data or not data[k]:
-            err(f"{path.relative_to(ROOT)}: TOML missing '{k}'")
-    return data
-
-
-def validate_gemini_commands() -> None:
-    for p in sorted((ROOT / "adapters/gemini/commands").glob("*.toml")):
-        check_toml(p, ["description", "prompt"])
 
 
 # ── markdown w/ YAML frontmatter validation ─────────────────────────────────
@@ -135,37 +115,14 @@ def check_json(rel: str, required_keys: list[str] | None = None) -> dict:
 
 
 # ── canonical spec backing check ────────────────────────────────────────────
-# Every adapter phase-command must map to a canonical spec at
-# harness/phases/NN-<name>.md or harness/pipelines/<name>.md. Sub-agents
-# must map to harness/agents/<name>.md. Each remaining skill (doctor,
-# migrate-to-diataxis)
-# must map to harness/skills/<name>.md.
-PHASE_COMMANDS = {"bugfix", "plan", "release", "review", "setup", "work"}
-SUBAGENTS = {
-    "adversarial-reviewer",
-    "adversarial-reviewer-cross",
-    "explorer",
-}
+# Each remaining skill (doctor, migrate-to-diataxis) must map to a canonical
+# spec at harness/skills/<name>.md. The phase commands + review sub-agents were
+# slimmed out in the V5 unbundling (moved to crickets), so there is no longer a
+# canonical harness/phases/ or harness/agents/ backing to check for them.
 SKILLS = {"doctor", "migrate-to-diataxis"}
 
 
-def canonical_phase_exists(name: str) -> bool:
-    # setup/plan/work/review/release → harness/phases/NN-<name>.md
-    if list((ROOT / "harness/phases").glob(f"*-{name}.md")):
-        return True
-    # bugfix → harness/pipelines/bugfix.md
-    if (ROOT / f"harness/pipelines/{name}.md").is_file():
-        return True
-    return False
-
-
 def check_canonical_backing() -> None:
-    for name in PHASE_COMMANDS:
-        if not canonical_phase_exists(name):
-            err(f"phase-command '{name}' has no canonical spec under harness/phases/ or harness/pipelines/")
-    for name in SUBAGENTS:
-        if not (ROOT / f"harness/agents/{name}.md").is_file():
-            err(f"sub-agent '{name}' has no canonical spec at harness/agents/{name}.md")
     for name in SKILLS:
         if not (ROOT / f"harness/skills/{name}.md").is_file():
             err(f"skill '{name}' has no canonical spec at harness/skills/{name}.md")
@@ -173,23 +130,14 @@ def check_canonical_backing() -> None:
 
 # ── main ────────────────────────────────────────────────────────────────────
 def main() -> int:
-    # TOML
-    validate_gemini_commands()
-
     # Markdown + frontmatter — required keys differ by surface:
-    # - sub-agents (Claude Code, Gemini): name + description
     # - Claude Code slash commands: description (filename IS the name)
-    # - Antigravity workflows: description (filename IS the name)
     # - Antigravity rules: trigger (the "always_on" signal)
-    validate_md_frontmatter("adapters/claude-code/agents",   "name", "description")
     validate_md_frontmatter("adapters/claude-code/commands", "description")
-    validate_md_frontmatter("adapters/gemini/agents",        "name", "description")
-    validate_md_frontmatter("adapters/antigravity/workflows", "description")
     validate_md_frontmatter("adapters/antigravity/rules",    "trigger")
 
     # Skills (SKILL.md)
     validate_skill_dirs("adapters/claude-code/skills")
-    validate_skill_dirs("adapters/antigravity/skills")
 
     # JSON
     check_json("templates/features.json", required_keys=["features"])

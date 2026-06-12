@@ -48,20 +48,19 @@ CRICKETS="$(cd "$CRICKETS" && pwd)"
 # ── populate fixture from source clones (byte-identical copies) ───────────
 echo "==> building fixture under $FAKE_TARGET"
 
-# Pick 2 agentm agents + 2 commands + 1 skill bundle.
-# IMPORTANT: agents must be sourced from harness/agents/ (the FIRST inverse-
-# mapping match in install_symlinks.symlink_targets_for_clone — see DC-4
-# tie-break "first clone iterated wins"). harness/agents/<name>.md and
-# adapters/claude-code/agents/<name>.md can differ; the migration tool
-# resolves to harness/ first. Sourcing from adapters/ would yield false
-# OPERATOR_EDITED classifications.
+# Pick 2 agentm agents + 1 command + 1 skill bundle. The agents are the
+# surviving memory-engine agents (adapt-evaluator / memory-idea-researcher) —
+# the V5 dev-loop slim removed the review agents, so harness/agents/ now holds
+# only the memory-engine pair, which is the stable fixture source here.
+# IMPORTANT: agents are sourced from harness/agents/ (the FIRST inverse-mapping
+# match in install_symlinks.symlink_targets_for_clone — see DC-4 tie-break
+# "first clone iterated wins").
 AGENT_FILES=(
-    "$AGENTM/harness/agents/explorer.md"
-    "$AGENTM/harness/agents/adversarial-reviewer.md"
+    "$AGENTM/harness/agents/memory-idea-researcher.md"
+    "$AGENTM/harness/agents/adapt-evaluator.md"
 )
 COMMAND_FILES=(
-    "$AGENTM/adapters/claude-code/commands/work.md"
-    "$AGENTM/adapters/claude-code/commands/plan.md"
+    "$AGENTM/adapters/claude-code/commands/recent-wiki-changes.md"
 )
 SKILL_DIRS=(
     # Pick one whose source is in agentm; one from crickets.
@@ -91,7 +90,7 @@ if [[ -n "$crickets_hook" && -d "$crickets_hook" ]]; then
 fi
 
 # Add one deliberately-edited file (NEW; SHA differs from source).
-edited_target="$FAKE_TARGET/.claude/agents/explorer.md"
+edited_target="$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"
 if [[ -f "$edited_target" ]]; then
     echo "" >> "$edited_target"
     echo "<!-- operator-edited line for fixture-test -->" >> "$edited_target"
@@ -151,7 +150,7 @@ if ! echo "$preview_out" | grep -q "unrecognized"; then
     echo "  FAIL: preview should report unrecognized entries" >&2
     exit 2
 fi
-assert_exists "explorer.md (still present in preview)" "$FAKE_TARGET/.claude/agents/explorer.md"
+assert_exists "memory-idea-researcher.md (still present in preview)" "$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"
 assert_absent "migrate-record (preview shouldn't write it)" "$FAKE_TARGET/.agentm-migrate-record.json"
 echo "  PASS: step 1"
 
@@ -161,9 +160,9 @@ echo "==> step 2: apply"
 apply_out=$(run_script --apply 2>&1)
 echo "$apply_out" | tail -8
 # Safe-to-migrate files should be gone
-assert_absent "adversarial-reviewer.md (was safe_to_migrate)" "$FAKE_TARGET/.claude/agents/adversarial-reviewer.md"
+assert_absent "adapt-evaluator.md (was safe_to_migrate)" "$FAKE_TARGET/.claude/agents/adapt-evaluator.md"
 # Operator-edited should still be there (skipped without --force)
-assert_exists "explorer.md (operator-edited; skipped)" "$FAKE_TARGET/.claude/agents/explorer.md"
+assert_exists "memory-idea-researcher.md (operator-edited; skipped)" "$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"
 # Unrecognized should still be there
 assert_exists "my-custom-agent.md (unrecognized; left alone)" "$FAKE_TARGET/.claude/agents/my-custom-agent.md"
 # Record file written
@@ -191,11 +190,11 @@ echo ""
 echo "==> step 4: rollback"
 run_script --rollback > /dev/null 2>&1
 # Safe-to-migrate files restored
-assert_exists "adversarial-reviewer.md (restored)" "$FAKE_TARGET/.claude/agents/adversarial-reviewer.md"
+assert_exists "adapt-evaluator.md (restored)" "$FAKE_TARGET/.claude/agents/adapt-evaluator.md"
 # Record gone
 assert_absent "migrate record (gone post-rollback)" "$FAKE_TARGET/.agentm-migrate-record.json"
 # Operator content still there (was never moved)
-assert_exists "explorer.md (still operator-edited)" "$FAKE_TARGET/.claude/agents/explorer.md"
+assert_exists "memory-idea-researcher.md (still operator-edited)" "$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"
 assert_exists "my-custom-agent.md (still operator's own)" "$FAKE_TARGET/.claude/agents/my-custom-agent.md"
 echo "  PASS: step 4"
 
@@ -205,19 +204,19 @@ echo "==> step 5: apply --force (migrates operator-edited too)"
 force_out=$(run_script --apply --force 2>&1)
 echo "$force_out" | tail -6
 # Operator-edited file should now be gone (migrated with backup)
-assert_absent "explorer.md (force-migrated)" "$FAKE_TARGET/.claude/agents/explorer.md"
+assert_absent "memory-idea-researcher.md (force-migrated)" "$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"
 # Backup exists
-assert_exists "backup of explorer.md" "$FAKE_TARGET/.agentm-migrate-backup/agents/explorer.md"
+assert_exists "backup of memory-idea-researcher.md" "$FAKE_TARGET/.agentm-migrate-backup/agents/memory-idea-researcher.md"
 echo "  PASS: step 5"
 
 # ── step 6: rollback (restores from backup) ──────────────────────────────
 echo ""
 echo "==> step 6: rollback (restores from backup)"
 run_script --rollback > /dev/null 2>&1
-assert_exists "explorer.md (restored from backup with operator edits)" "$FAKE_TARGET/.claude/agents/explorer.md"
+assert_exists "memory-idea-researcher.md (restored from backup with operator edits)" "$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"
 # Verify content has the operator-edited line
-if ! grep -q "operator-edited line for fixture-test" "$FAKE_TARGET/.claude/agents/explorer.md"; then
-    echo "  FAIL: restored explorer.md missing the operator-edit marker" >&2
+if ! grep -q "operator-edited line for fixture-test" "$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"; then
+    echo "  FAIL: restored memory-idea-researcher.md missing the operator-edit marker" >&2
     exit 2
 fi
 assert_absent "backup dir (gone after full rollback)" "$FAKE_TARGET/.agentm-migrate-backup"
@@ -227,7 +226,7 @@ echo "  PASS: step 6"
 echo ""
 echo "==> step 7: fresh apply (without --force) for cleanup test"
 # Remove operator-edited + unrecognized files so cleanup verification passes.
-rm "$FAKE_TARGET/.claude/agents/explorer.md"
+rm "$FAKE_TARGET/.claude/agents/memory-idea-researcher.md"
 rm "$FAKE_TARGET/.claude/agents/my-custom-agent.md"
 run_script --apply > /dev/null 2>&1
 assert_exists "migrate record" "$FAKE_TARGET/.agentm-migrate-record.json"

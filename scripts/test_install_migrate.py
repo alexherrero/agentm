@@ -53,11 +53,11 @@ def _make_source_clones(root: Path) -> dict[str, str]:
     Layout (matches symlink_targets_for_clone():
 
       <root>/agentm/.git/
-      <root>/agentm/harness/agents/explorer.md
+      <root>/agentm/harness/agents/adapt-evaluator.md
       <root>/agentm/harness/skills/wiki-author/SKILL.md
       <root>/agentm/harness/hooks/post-tool-use/hook.sh
       <root>/agentm/adapters/claude-code/agents/adversarial.md
-      <root>/agentm/adapters/claude-code/commands/work.md
+      <root>/agentm/adapters/claude-code/commands/recent-wiki-changes.md
       <root>/agentm/adapters/claude-code/skills/diataxis/SKILL.md
     """
     agentm = root / "agentm"
@@ -65,7 +65,7 @@ def _make_source_clones(root: Path) -> dict[str, str]:
 
     # agentm/harness/
     (agentm / "harness" / "agents").mkdir(parents=True)
-    (agentm / "harness" / "agents" / "explorer.md").write_text("explorer agent\n")
+    (agentm / "harness" / "agents" / "adapt-evaluator.md").write_text("adapt-evaluator agent\n")
     (agentm / "harness" / "skills" / "wiki-author").mkdir(parents=True)
     (agentm / "harness" / "skills" / "wiki-author" / "SKILL.md").write_text("wiki-author skill\n")
     (agentm / "harness" / "hooks" / "post-tool-use").mkdir(parents=True)
@@ -75,7 +75,7 @@ def _make_source_clones(root: Path) -> dict[str, str]:
     (agentm / "adapters" / "claude-code" / "agents").mkdir(parents=True)
     (agentm / "adapters" / "claude-code" / "agents" / "adversarial.md").write_text("adversarial reviewer\n")
     (agentm / "adapters" / "claude-code" / "commands").mkdir(parents=True)
-    (agentm / "adapters" / "claude-code" / "commands" / "work.md").write_text("work slash command\n")
+    (agentm / "adapters" / "claude-code" / "commands" / "recent-wiki-changes.md").write_text("recent-wiki-changes slash command\n")
     (agentm / "adapters" / "claude-code" / "skills" / "diataxis").mkdir(parents=True)
     (agentm / "adapters" / "claude-code" / "skills" / "diataxis" / "SKILL.md").write_text("diataxis skill\n")
 
@@ -85,7 +85,7 @@ def _make_source_clones(root: Path) -> dict[str, str]:
 def _copy_from_source(source_clones: dict[str, str], target: Path, rels: list[str]) -> None:
     """Copy SOURCE-canonical files into `<target>/.claude/<rel>` to simulate
     a pre-V4.3 per-project install. `rels` are install-rel paths
-    (e.g. "agents/explorer.md", "skills/wiki-author")."""
+    (e.g. "agents/adapt-evaluator.md", "skills/wiki-author")."""
     inverse = im.inverse_mapping_for_clones(source_clones)
     for rel in rels:
         slug, src, is_dir = inverse[rel]
@@ -144,11 +144,11 @@ class ClassifyTests(unittest.TestCase):
 
     def test_classify_safe_to_migrate_file(self):
         """A byte-identical agent .md file → SAFE_TO_MIGRATE."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
         result = im.classify(self.target, self.clones)
         self.assertEqual(len(result), 1)
         e = result[0]
-        self.assertEqual(e["rel_path"], "agents/explorer.md")
+        self.assertEqual(e["rel_path"], "agents/adapt-evaluator.md")
         self.assertEqual(e["classification"], im.SAFE_TO_MIGRATE)
         self.assertEqual(e["source_clone"], "agentm")
         self.assertEqual(e["target_sha"], e["source_sha"])
@@ -169,17 +169,17 @@ class ClassifyTests(unittest.TestCase):
         # Build path under .claude/agents/foo.md as a symlink
         link_dir = self.target / ".claude" / "agents"
         link_dir.mkdir(parents=True)
-        src = Path(self.clones["agentm"]) / "harness" / "agents" / "explorer.md"
-        os.symlink(src, link_dir / "explorer.md")
+        src = Path(self.clones["agentm"]) / "harness" / "agents" / "adapt-evaluator.md"
+        os.symlink(src, link_dir / "adapt-evaluator.md")
         result = im.classify(self.target, self.clones)
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["classification"], im.ALREADY_SYMLINKED)
 
     def test_classify_operator_edited(self):
         """File present in source mapping but SHA differs → OPERATOR_EDITED."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
         # Mutate target content
-        target_file = self.target / ".claude" / "agents" / "explorer.md"
+        target_file = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         target_file.write_text("EDITED by operator\n")
         result = im.classify(self.target, self.clones)
         self.assertEqual(result[0]["classification"], im.OPERATOR_EDITED)
@@ -209,12 +209,12 @@ class ApplyTests(unittest.TestCase):
 
     def test_apply_dry_run_preserves_target(self):
         """dry_run=True must not mutate filesystem or write record."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
-        before_exists = (self.target / ".claude" / "agents" / "explorer.md").exists()
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
+        before_exists = (self.target / ".claude" / "agents" / "adapt-evaluator.md").exists()
         result = im.apply(self.target, source_clones=self.clones, dry_run=True)
         self.assertTrue(before_exists)
         # Still present
-        self.assertTrue((self.target / ".claude" / "agents" / "explorer.md").exists())
+        self.assertTrue((self.target / ".claude" / "agents" / "adapt-evaluator.md").exists())
         # No record
         self.assertFalse((self.target / im._RECORD_FILENAME).exists())
         self.assertTrue(result["dry_run"])
@@ -225,12 +225,12 @@ class ApplyTests(unittest.TestCase):
     def test_apply_removes_safe_to_migrate_and_writes_record(self):
         """dry_run=False removes SAFE files + writes .agentm-migrate-record.json."""
         _copy_from_source(self.clones, self.target, [
-            "agents/explorer.md",
+            "agents/adapt-evaluator.md",
             "skills/wiki-author",
         ])
         result = im.apply(self.target, source_clones=self.clones, dry_run=False)
         # Files gone
-        self.assertFalse((self.target / ".claude" / "agents" / "explorer.md").exists())
+        self.assertFalse((self.target / ".claude" / "agents" / "adapt-evaluator.md").exists())
         self.assertFalse((self.target / ".claude" / "skills" / "wiki-author").exists())
         # Record written
         rp = self.target / im._RECORD_FILENAME
@@ -239,14 +239,14 @@ class ApplyTests(unittest.TestCase):
             record = json.load(f)
         self.assertEqual(record["version"], 1)
         rels = sorted(a["rel_path"] for a in record["actions"])
-        self.assertEqual(rels, ["agents/explorer.md", "skills/wiki-author"])
+        self.assertEqual(rels, ["agents/adapt-evaluator.md", "skills/wiki-author"])
         for a in record["actions"]:
             self.assertEqual(a["kind"], "safe_to_migrate")
 
     def test_apply_skips_operator_edited_without_force(self):
         """OPERATOR_EDITED + force=False → skip-with-warn, file remains."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
-        target_file = self.target / ".claude" / "agents" / "explorer.md"
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
+        target_file = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         target_file.write_text("EDITED\n")
         result = im.apply(self.target, source_clones=self.clones, dry_run=False, force=False)
         # File still present
@@ -259,14 +259,14 @@ class ApplyTests(unittest.TestCase):
 
     def test_apply_force_migrates_with_backup(self):
         """OPERATOR_EDITED + force=True → backs up to .agentm-migrate-backup, removes target."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
-        target_file = self.target / ".claude" / "agents" / "explorer.md"
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
+        target_file = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         target_file.write_text("EDITED\n")
         result = im.apply(self.target, source_clones=self.clones, dry_run=False, force=True)
         # Original gone
         self.assertFalse(target_file.exists())
         # Backup exists
-        backup_path = self.target / im._BACKUP_DIRNAME / "agents" / "explorer.md"
+        backup_path = self.target / im._BACKUP_DIRNAME / "agents" / "adapt-evaluator.md"
         self.assertTrue(backup_path.exists())
         self.assertEqual(backup_path.read_text(), "EDITED\n")
         # Action recorded
@@ -275,20 +275,20 @@ class ApplyTests(unittest.TestCase):
 
     def test_apply_record_merges_on_rerun(self):
         """Partial migration + second apply on new file → record merges actions."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
         im.apply(self.target, source_clones=self.clones, dry_run=False)
         # Now add another safe file + re-run
-        _copy_from_source(self.clones, self.target, ["commands/work.md"])
+        _copy_from_source(self.clones, self.target, ["commands/recent-wiki-changes.md"])
         im.apply(self.target, source_clones=self.clones, dry_run=False)
         # Both in record
         with (self.target / im._RECORD_FILENAME).open() as f:
             record = json.load(f)
         rels = sorted(a["rel_path"] for a in record["actions"])
-        self.assertEqual(rels, ["agents/explorer.md", "commands/work.md"])
+        self.assertEqual(rels, ["agents/adapt-evaluator.md", "commands/recent-wiki-changes.md"])
 
     def test_apply_records_registry_slug(self):
         """registry_slug arg is recorded in the .migrate-record.json."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
         im.apply(self.target, source_clones=self.clones, dry_run=False,
                  registry_slug="myproject")
         with (self.target / im._RECORD_FILENAME).open() as f:
@@ -309,14 +309,14 @@ class RollbackTests(unittest.TestCase):
 
     def test_rollback_restores_safe_to_migrate(self):
         """rollback() restores byte-identical SAFE files from source clone."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
         im.apply(self.target, source_clones=self.clones, dry_run=False)
         # File gone
-        target_file = self.target / ".claude" / "agents" / "explorer.md"
+        target_file = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         self.assertFalse(target_file.exists())
         # Rollback
         result = im.rollback(self.target)
-        self.assertIn("agents/explorer.md", result["restored"])
+        self.assertIn("agents/adapt-evaluator.md", result["restored"])
         self.assertEqual(result["skipped"], [])
         # File back
         self.assertTrue(target_file.exists())
@@ -325,13 +325,13 @@ class RollbackTests(unittest.TestCase):
 
     def test_rollback_restores_force_migrated_from_backup(self):
         """rollback() restores OPERATOR_EDITED files from .agentm-migrate-backup."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
-        target_file = self.target / ".claude" / "agents" / "explorer.md"
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
+        target_file = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         target_file.write_text("EDITED\n")
         im.apply(self.target, source_clones=self.clones, dry_run=False, force=True)
         self.assertFalse(target_file.exists())
         result = im.rollback(self.target)
-        self.assertIn("agents/explorer.md", result["restored"])
+        self.assertIn("agents/adapt-evaluator.md", result["restored"])
         self.assertTrue(target_file.exists())
         # Restored content matches operator-edited version (not source)
         self.assertEqual(target_file.read_text(), "EDITED\n")
@@ -348,8 +348,8 @@ class RollbackTests(unittest.TestCase):
         overwrite a file the operator re-staged at the dest between apply()
         and rollback(). The dir-branch refuses with `target dest exists;
         not overwriting` — file-branch must do the same."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
-        f = self.target / ".claude" / "agents" / "explorer.md"
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
+        f = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         im.apply(self.target, source_clones=self.clones, dry_run=False)
         self.assertFalse(f.exists())
         # Operator re-stages a different file at the same path before rollback
@@ -357,7 +357,7 @@ class RollbackTests(unittest.TestCase):
         f.write_text("OPERATOR RE-STAGED\n")
         result = im.rollback(self.target)
         # rollback must SKIP, not clobber
-        self.assertIn("agents/explorer.md", [r for r, _ in result["skipped"]],
+        self.assertIn("agents/adapt-evaluator.md", [r for r, _ in result["skipped"]],
             "rollback should refuse to overwrite operator's re-staged file")
         # File content preserved
         self.assertEqual(f.read_text(), "OPERATOR RE-STAGED\n")
@@ -367,8 +367,8 @@ class RollbackTests(unittest.TestCase):
         after a backup_collision skip leaves the record+backup with a stale
         force_migrated action, rollback iterates that action and must not
         silently overwrite whatever file the operator now has at the dest."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
-        f = self.target / ".claude" / "agents" / "explorer.md"
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
+        f = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         f.write_text("EDIT A\n")
         im.apply(self.target, source_clones=self.clones, dry_run=False, force=True)
         self.assertFalse(f.exists())
@@ -377,7 +377,7 @@ class RollbackTests(unittest.TestCase):
         f.write_text("EDIT B AFTER MIGRATION\n")
         result = im.rollback(self.target)
         # rollback must SKIP, not clobber
-        self.assertIn("agents/explorer.md", [r for r, _ in result["skipped"]],
+        self.assertIn("agents/adapt-evaluator.md", [r for r, _ in result["skipped"]],
             "rollback should refuse to overwrite operator's re-staged file")
         # File content preserved
         self.assertEqual(f.read_text(), "EDIT B AFTER MIGRATION\n")
@@ -506,16 +506,16 @@ class ApplyForceCollisionTests(unittest.TestCase):
         """Second force-apply with backup file already present at the same
         rel_path: record an `operator_edited_skipped` with
         `backup_collision: true`; do NOT overwrite the prior backup."""
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
-        f = self.target / ".claude" / "agents" / "explorer.md"
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
+        f = self.target / ".claude" / "agents" / "adapt-evaluator.md"
         # First edit + force-apply
         f.write_text("EDIT A\n")
         im.apply(self.target, source_clones=self.clones, dry_run=False, force=True)
-        backup = self.target / im._BACKUP_DIRNAME / "agents" / "explorer.md"
+        backup = self.target / im._BACKUP_DIRNAME / "agents" / "adapt-evaluator.md"
         self.assertTrue(backup.exists())
         self.assertEqual(backup.read_text(), "EDIT A\n")
         # Second edit + force-apply — should refuse the collision
-        _copy_from_source(self.clones, self.target, ["agents/explorer.md"])
+        _copy_from_source(self.clones, self.target, ["agents/adapt-evaluator.md"])
         f.write_text("EDIT B\n")
         result = im.apply(self.target, source_clones=self.clones, dry_run=False, force=True)
         # Backup A is preserved (NOT overwritten with B)

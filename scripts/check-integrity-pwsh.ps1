@@ -94,22 +94,23 @@ foreach ($f in $ps1Files) {
 }
 Write-Host "    $ps1Count installed .ps1 files parse"
 
-# ── 4. Required phase-command / agent / skill files non-empty ────────────
-Write-Host '  [integrity] phase + agent + skill files non-empty'
+# ── 4. Required utility-command / agent / skill files non-empty ──────────
+# The phase-gated dev loop (plan/work/review/release/bugfix) + the review
+# sub-agents were slimmed out in the V5 unbundling (now provided by the crickets
+# developer-workflows / code-review plugins), so they no longer install. The
+# surviving harness-vendored surface is: the recent-wiki-changes utility
+# command, the memory-engine sub-agents, the shared skills (doctor,
+# migrate-to-diataxis), and the Antigravity rules + Gemini settings.json.
+Write-Host '  [integrity] utility + agent + skill files non-empty'
 $requiredNonEmpty = @(
-    '.claude/commands/plan.md',
-    '.claude/commands/work.md',
-    '.claude/commands/review.md',
-    '.claude/commands/release.md',
-    '.claude/agents/explorer.md',
+    '.claude/commands/recent-wiki-changes.md',
+    '.claude/agents/adapt-evaluator.md',
     '.claude/skills/doctor/SKILL.md',
     '.claude/skills/migrate-to-diataxis/SKILL.md',
-    '.agents/workflows/plan.md',
     '.agents/rules/harness.md',
     '.agents/skills/doctor/SKILL.md',
     '.agents/skills/migrate-to-diataxis/SKILL.md',
-    '.gemini/commands/plan.toml',
-    '.gemini/agents/explorer.md'
+    '.gemini/settings.json'
 )
 foreach ($p in $requiredNonEmpty) {
     $full = Join-Path $Scratch $p

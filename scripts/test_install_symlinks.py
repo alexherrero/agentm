@@ -32,7 +32,7 @@ def _minimal_clone(root: Path) -> dict[str, str]:
     agentm = root / "agentm"
     (agentm / ".git").mkdir(parents=True)
     (agentm / "harness" / "agents").mkdir(parents=True)
-    (agentm / "harness" / "agents" / "explorer.md").write_text("explorer\n")
+    (agentm / "harness" / "agents" / "adapt-evaluator.md").write_text("explorer\n")
     (agentm / "harness" / "skills" / "wiki-author").mkdir(parents=True)
     (agentm / "harness" / "skills" / "wiki-author" / "SKILL.md").write_text("wiki\n")
     return {"agentm": str(agentm)}
@@ -47,19 +47,19 @@ class ReapOrphanSymlinksTests(unittest.TestCase):
 
             # Initial install: creates explorer + wiki-author symlinks.
             r = ism.symlink_customizations(clones, prefix)
-            self.assertIn("agents/explorer.md", r["created"])
+            self.assertIn("agents/adapt-evaluator.md", r["created"])
             self.assertEqual(r["reaped"], [])
 
-            # Delete the source file. Symlink at prefix/agents/explorer.md now
+            # Delete the source file. Symlink at prefix/agents/adapt-evaluator.md now
             # dangles.
-            (root / "agentm" / "harness" / "agents" / "explorer.md").unlink()
-            self.assertTrue((prefix / "agents" / "explorer.md").is_symlink())
-            self.assertFalse((prefix / "agents" / "explorer.md").exists())
+            (root / "agentm" / "harness" / "agents" / "adapt-evaluator.md").unlink()
+            self.assertTrue((prefix / "agents" / "adapt-evaluator.md").is_symlink())
+            self.assertFalse((prefix / "agents" / "adapt-evaluator.md").exists())
 
             # Re-run install: orphan should be reaped.
             r2 = ism.symlink_customizations(clones, prefix)
-            self.assertIn("agents/explorer.md", r2["reaped"])
-            self.assertFalse((prefix / "agents" / "explorer.md").is_symlink())
+            self.assertIn("agents/adapt-evaluator.md", r2["reaped"])
+            self.assertFalse((prefix / "agents" / "adapt-evaluator.md").is_symlink())
             # Other live symlinks untouched.
             self.assertTrue((prefix / "skills" / "wiki-author").is_symlink())
 
@@ -129,8 +129,8 @@ class NormalizePathStrTests(unittest.TestCase):
 
     def test_identity_on_posix_paths(self):
         self.assertEqual(
-            ism._normalize_path_str("/tmp/agentm/harness/agents/explorer.md"),
-            ism._normalize_path_str("/tmp/agentm/harness/agents/explorer.md"),
+            ism._normalize_path_str("/tmp/agentm/harness/agents/adapt-evaluator.md"),
+            ism._normalize_path_str("/tmp/agentm/harness/agents/adapt-evaluator.md"),
         )
 
     def test_strips_windows_extended_path_prefix(self):
@@ -166,7 +166,7 @@ class NormalizePathStrTests(unittest.TestCase):
         # Neutral fixture path (avoid `C:\Users\<name>` shape — check-no-pii
         # flags it). The normalization helper is path-content-agnostic; the
         # asymmetric prefix shape is what matters.
-        target = Path("C:\\fixture\\agentm\\harness\\agents\\explorer.md")
+        target = Path("C:\\fixture\\agentm\\harness\\agents\\adapt-evaluator.md")
         clone_root = Path("\\\\?\\C:\\fixture\\agentm")
         # Skip if running on POSIX — Path() rewrites backslashes and the test
         # becomes meaningless. The string-level tests above cover the core

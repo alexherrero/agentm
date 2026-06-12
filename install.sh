@@ -525,7 +525,7 @@ MANAGED_PARENTS=(
   .claude/commands
   .claude/agents
   .claude/skills
-  .claude/hooks      # compound hooks (memory-*, evidence-tracker) — agentm-native
+  .claude/hooks      # compound hooks (memory-*, session-start) — agentm-native
                      # in harness/hooks/, dispatched here via the manifest
                      # dispatcher.
   .agent/rules       # legacy (pre-V4 #22) — wiped on --update; migrated to .agents/
@@ -585,9 +585,11 @@ done
 # .claude/ — Claude Code config
 mkdir -p .claude/commands .claude/agents .claude/skills
 for f in "$HARNESS_ROOT"/adapters/claude-code/commands/*.md; do
+  [[ -e "$f" ]] || continue
   cp_managed "$f" ".claude/commands/$(basename "$f")"
 done
 for f in "$HARNESS_ROOT"/adapters/claude-code/agents/*.md; do
+  [[ -e "$f" ]] || continue
   cp_managed "$f" ".claude/agents/$(basename "$f")"
 done
 for d in "$HARNESS_ROOT"/adapters/claude-code/skills/*/; do
@@ -595,27 +597,20 @@ for d in "$HARNESS_ROOT"/adapters/claude-code/skills/*/; do
   cp_managed_dir "$d" ".claude/skills/$(basename "$d")"
 done
 
-# .agents/ — Antigravity config (full-parity adapter). Copies workflows,
-# skills, and the always-on rules file into the target's .agents/ tree.
+# .agents/ — Antigravity config (full-parity adapter). Copies the always-on
+# rules files into the target's .agents/ tree; the shared skills land in
+# .agents/skills/ via the compound dispatcher + shared-skills delivery below.
 # V4 #22: migrated .agent/ (singular) → .agents/ (plural) — the Antigravity 2.0
 # default per the official rules-workflows docs ("Antigravity now defaults to
 # .agents/rules"). Legacy .agent/ is wiped on --update (see MANAGED_PARENTS +
-# EMPTY_PARENT_CANDIDATES above). NOTE: .agents/rules is doc-confirmed and
-# .agents/skills matches the Agent Skills standard (already used below); the
-# .agents/workflows path is inferred from the dir-wide rename (docs omit the
-# workflows folder) — re-verify if Antigravity formalizes a different path.
-mkdir -p .agents/rules .agents/workflows .agents/skills
+# EMPTY_PARENT_CANDIDATES above). Post-V5 dev-loop slim, agentm ships no
+# Antigravity workflows (the dev loop moved to crickets); .agents/workflows
+# stays in MANAGED_PARENTS so a pre-slim install's stale workflows are wiped on
+# --update.
+mkdir -p .agents/rules .agents/skills
 for f in "$HARNESS_ROOT"/adapters/antigravity/rules/*.md; do
   [[ -e "$f" ]] || continue
   cp_managed "$f" ".agents/rules/$(basename "$f")"
-done
-for f in "$HARNESS_ROOT"/adapters/antigravity/workflows/*.md; do
-  [[ -e "$f" ]] || continue
-  cp_managed "$f" ".agents/workflows/$(basename "$f")"
-done
-for d in "$HARNESS_ROOT"/adapters/antigravity/skills/*/; do
-  [[ -d "$d" ]] || continue
-  cp_managed_dir "$d" ".agents/skills/$(basename "$d")"
 done
 
 # .agents/skills/ — shared skills delivery (read by BOTH Gemini CLI and
@@ -632,21 +627,15 @@ for name in doctor migrate-to-diataxis; do
   cp_managed_dir "$src" ".agents/skills/$name"
 done
 
-# .gemini/ — Gemini CLI config (full-parity adapter). Commands are TOML,
-# subagents are markdown w/ YAML frontmatter. settings.json uses cp_user
-# semantics (never clobber existing user config — README documents the
-# AGENTS.md fileName merge if they already have a settings.json).
-# Note: Gemini reads shared skills from .agents/skills/ (delivered above)
-# per the Agent Skills standard.
-mkdir -p .gemini/commands .gemini/agents
-for f in "$HARNESS_ROOT"/adapters/gemini/commands/*.toml; do
-  [[ -e "$f" ]] || continue
-  cp_managed "$f" ".gemini/commands/$(basename "$f")"
-done
-for f in "$HARNESS_ROOT"/adapters/gemini/agents/*.md; do
-  [[ -e "$f" ]] || continue
-  cp_managed "$f" ".gemini/agents/$(basename "$f")"
-done
+# .gemini/ — Gemini CLI config. Post-V5 dev-loop slim, agentm ships no Gemini
+# phase commands or sub-agents (the dev loop moved to crickets). Gemini's
+# surface is just settings.json (AGENTS.md context.fileName wiring) plus the
+# shared skills delivered to .agents/skills/ above (read natively per the Agent
+# Skills standard). settings.json uses cp_user semantics (never clobber existing
+# user config — README documents the AGENTS.md fileName merge if they already
+# have a settings.json). The .gemini/commands + .gemini/agents dirs stay in
+# MANAGED_PARENTS so a pre-slim install's stale dev-loop files are wiped on --update.
+mkdir -p .gemini
 cp_user "$HARNESS_ROOT/adapters/gemini/settings.json" ".gemini/settings.json"
 
 # ── wiki/ — documentation scaffold (per-file walk, skip-if-exists) ──────────
@@ -660,16 +649,15 @@ cp_user_walk "$HARNESS_ROOT/templates/wiki" "wiki"
 # harness/agents/<file>.md, dispatching each based on its supported_hosts
 # field. These compound customizations are agentm-native (in harness/) —
 # originally imported from crickets in v4.0.0 (plan #18 DC #28) and since
-# owned by agentm: the memory / design / ship-release
-# skills, the memory hooks (memory-recall-*, memory-reflect-*), the
-# evidence-tracker hook, and the memory-idea-researcher + adapt-evaluator
-# sub-agents.
+# owned by agentm: the memory / design / ship-release skills, the memory +
+# session hooks (memory-recall-*, memory-reflect-*, conflict-merger-session-start,
+# harness-context-session-start), and the memory-idea-researcher +
+# adapt-evaluator sub-agents.
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +
 # supported_hosts: <list>). Legacy agentm single-file skills (doctor.md,
-# migrate-to-diataxis.md) and legacy sub-agents (adversarial-reviewer.md
-# etc.) at harness/skills/*.md and harness/agents/*.md without frontmatter
-# flow through the adapters/ pipeline above and are skipped here.
+# migrate-to-diataxis.md) at harness/skills/*.md without frontmatter flow
+# through the adapters/ pipeline above and are skipped here.
 
 _am_get_field() {
     # Cheap YAML field extractor — keeps dispatch independent of pyyaml.
@@ -733,8 +721,8 @@ _am_dispatch_hook() {
                 fi
                 cp_managed "$script_src" ".claude/hooks/$name.sh"
                 chmod +x ".claude/hooks/$name.sh"
-                # Copy sibling .py helpers (evidence-tracker ships
-                # evidence_tracker.py alongside its .sh).
+                # Copy sibling .py helpers (a hook may ship a .py
+                # alongside its .sh).
                 local py
                 for py in "$hook_dir"/*.py; do
                     [[ -e "$py" ]] || continue
@@ -968,10 +956,8 @@ else
   echo "  1. Edit .harness/init.sh so it actually boots this project"
   if [[ $INSTALL_HOOKS -eq 1 ]]; then
     echo "  2. Edit .harness/verify.sh — uncomment the language case for your stack"
-    echo "  3. Run /setup (Claude Code) or prompt 'run the setup phase' (Antigravity)"
-    echo "  4. Then /plan <your first brief>"
+    echo "  3. Run /doctor (Claude Code) to verify the install"
   else
-    echo "  2. Run /setup (Claude Code) or prompt 'run the setup phase' (Antigravity)"
-    echo "  3. Then /plan <your first brief>"
+    echo "  2. Run /doctor (Claude Code) to verify the install"
   fi
 fi

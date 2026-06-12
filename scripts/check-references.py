@@ -83,14 +83,6 @@ NAME_FROM_COMMAND_FILE_RE = re.compile(
 # Shared skills that live under skills/ but map to harness/skills/<name>.md
 SHARED_SKILLS = {"doctor", "migrate-to-diataxis"}
 
-# Antigravity puts sub-agents under skills/ (no separate sub-agent primitive).
-# These skill names map to harness/agents/<name>.md, not harness/skills/<name>.md.
-ANTIGRAVITY_AGENT_LIKE_SKILLS = {
-    "adversarial-reviewer",
-    "adversarial-reviewer-cross",
-    "explorer",
-}
-
 
 def expected_canonical_for(adapter_file: Path) -> str | None:
     """Return the canonical path each adapter file should link to, or None.
@@ -103,9 +95,6 @@ def expected_canonical_for(adapter_file: Path) -> str | None:
     m = NAME_FROM_SKILL_DIR_RE.search(rel)
     if m:
         skill_name = m.group(1)
-        # Antigravity sub-agents-as-skills
-        if "antigravity" in rel and skill_name in ANTIGRAVITY_AGENT_LIKE_SKILLS:
-            return f"harness/agents/{skill_name}.md"
         # Shared skills (doctor, migrate-to-diataxis)
         if skill_name in SHARED_SKILLS:
             return f"harness/skills/{skill_name}.md"
@@ -119,8 +108,6 @@ def expected_canonical_for(adapter_file: Path) -> str | None:
     m = NAME_FROM_COMMAND_FILE_RE.search(rel)
     if m:
         name = m.group(2)
-        if name == "bugfix":
-            return "harness/pipelines/bugfix.md"
         for p in (ROOT / "harness/phases").glob(f"*-{name}.md"):
             return p.relative_to(ROOT).as_posix()
         return None

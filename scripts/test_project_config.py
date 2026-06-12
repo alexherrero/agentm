@@ -44,8 +44,18 @@ class TestBuildAndMerge(unittest.TestCase):
 
     def test_build_block_rejects_bypass(self):
         with tempfile.TemporaryDirectory() as td:
-            (Path(td) / "harness" / "phases").mkdir(parents=True)
+            # The agentm SOURCE-repo self-marker (post V5 dev-loop slim) is the
+            # durable memory-engine pair: the harness/ spec tree + the
+            # scripts/harness_memory.py state resolver. Pre-V5 this keyed on
+            # harness/phases/, which the slim removed — see
+            # detect_project.rule_harness.
+            (Path(td) / "harness").mkdir(parents=True)
+            (Path(td) / "scripts").mkdir(parents=True)
+            (Path(td) / "scripts" / "harness_memory.py").write_text("# resolver\n")
             bypass = dp.detect(Path(td))
+            # Detection must short-circuit to bypass on the self-marker…
+            self.assertEqual(bypass.verdict, "bypass")
+            # …and build must refuse to write config for a bypass proposal.
             with self.assertRaises(ValueError):
                 pc.build_enablement_block(bypass)
 

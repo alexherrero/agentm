@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# check-parity.sh — assert each adapter ships the canonical set of phase
-# commands, sub-agents, and skills. Documents deliberate divergences.
+# check-parity.sh — assert each adapter ships the canonical set of skills and
+# utility commands. Documents deliberate divergences.
 #
-# Canonical sets (derived from harness/phases/ + harness/agents/ + skills):
-#   phase-commands: bugfix, plan, release, review, setup, work
-#   sub-agents:     adversarial-reviewer, adversarial-reviewer-cross, explorer
-#                   (documenter retired to crickets' wiki-maintenance plugin
-#                    in the seven-section convergence — see ADR 0006)
+# Canonical sets (post-V5 dev-loop slim — see ADR on the V5 unbundling):
 #   skills:         doctor, migrate-to-diataxis
 #                   (dependabot-fixer + ship-release migrated to crickets
 #                    in v2.0.0 — see ADR 0006)
+#   util-commands:  recent-wiki-changes  (claude-code only)
+#
+# The phase-gated dev loop (setup/plan/work/review/release/bugfix) and the
+# three review sub-agents (adversarial-reviewer / -cross / explorer) are NO
+# LONGER vendored by agentm — they moved to the crickets developer-workflows /
+# code-review plugins in the V5 slim. agentm is unaware of them (DC-2): there
+# is nothing to parity-check here. The adapters/{gemini,antigravity} command /
+# workflow / agent dirs are intentionally gone; their absence is pinned by
+# scripts/test_devloop_slim_retired.py, not by this parity check.
 #
 # Deliberate divergences (documented, not failures):
-#   - antigravity puts sub-agents under skills/ (Antigravity has no
-#     separate sub-agent primitive).
 #   - gemini has no skills/ dir; shared skills (doctor,
 #     migrate-to-diataxis) are delivered to `.agents/skills/` by
 #     install.sh and Gemini reads that path natively per the Agent
@@ -28,14 +31,11 @@ set -euo pipefail
 HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$HARNESS_ROOT"
 
-CANON_COMMANDS=(bugfix plan release review setup work)
-CANON_AGENTS=(adversarial-reviewer adversarial-reviewer-cross explorer)
 CANON_SKILLS=(doctor migrate-to-diataxis)
 
 # Utility slash commands (V4 #30 plan 2 task 7+) — claude-code only.
-# Not cross-host parity-enforced; live alongside CANON_COMMANDS in
-# adapters/claude-code/commands/. Antigravity + Gemini operators invoke
-# the underlying scripts directly.
+# Live in adapters/claude-code/commands/. Antigravity + Gemini operators
+# invoke the underlying scripts directly.
 CANON_UTIL_COMMANDS=(recent-wiki-changes)
 
 fail=0
@@ -71,34 +71,21 @@ assert_set() {
 }
 
 echo "== claude-code =="
-# Claude-code commands = phase-commands + utility commands (latter claude-code-only)
-all_cc_commands=("${CANON_COMMANDS[@]}" "${CANON_UTIL_COMMANDS[@]}")
-assert_set "claude-code/commands" adapters/claude-code/commands md "${all_cc_commands[@]}"
-assert_set "claude-code/agents"   adapters/claude-code/agents   md "${CANON_AGENTS[@]}"
+# Claude-code commands = the utility commands only (the phase commands were
+# slimmed out in V5; recent-wiki-changes is claude-code-only).
+assert_set "claude-code/commands" adapters/claude-code/commands md "${CANON_UTIL_COMMANDS[@]}"
 assert_set "claude-code/skills"   adapters/claude-code/skills   ""  "${CANON_SKILLS[@]}"
 
 echo "== antigravity =="
-# Antigravity maps phase-commands to workflows/, and puts sub-agents under
-# skills/ (no separate sub-agent primitive in Antigravity's surface).
-assert_set "antigravity/workflows"          adapters/antigravity/workflows   md "${CANON_COMMANDS[@]}"
-# skills/ = the sub-agents only (Antigravity has no separate sub-agent primitive,
-# so sub-agents are delivered as skills). Shared skills (doctor, migrate-to-diataxis)
-# are NOT duplicated here — install.sh delivers them to `.agents/skills/` and
-# Antigravity reads that path natively, same as Gemini. (V4 #22 unified the adapter
-# onto `.agents/` (was `.agent/`, singular); since the shared `.agents/skills/`
-# delivery and the adapter now share that path, duplicating the shared skills would
-# collide — they're reused, not duplicated, and the canonical `doctor` is host-aware.)
-assert_set "antigravity/skills"             adapters/antigravity/skills      ""  "${CANON_AGENTS[@]}"
-# the always-on rules files: operating contract + AgentMemory vault context (V4 #22)
+# The always-on rules files: operating contract + AgentMemory vault context
+# (V4 #22). The workflows/ + skills/ dirs were removed in the V5 dev-loop slim.
 assert_set "antigravity/rules"              adapters/antigravity/rules       md  harness agentmemory-context
 
 echo "== gemini =="
-# Gemini has native slash commands + markdown sub-agents. No skills/ dir:
-# shared skills (doctor, migrate-to-diataxis) are delivered to
-# `.agents/skills/` by install.sh and
-# Gemini reads that path natively per the Agent Skills standard.
-assert_set "gemini/commands"                adapters/gemini/commands         toml "${CANON_COMMANDS[@]}"
-assert_set "gemini/agents"                  adapters/gemini/agents           md   "${CANON_AGENTS[@]}"
+# Gemini has no skills/ dir: shared skills (doctor, migrate-to-diataxis) are
+# delivered to `.agents/skills/` by install.sh and Gemini reads that path
+# natively per the Agent Skills standard. The commands/ + agents/ dirs were
+# removed in the V5 dev-loop slim.
 if [[ -d adapters/gemini/skills ]]; then
   echo "FAIL [gemini]: adapters/gemini/skills exists — shared skills should be reused from .agents/skills/, not duplicated here" >&2
   fail=1

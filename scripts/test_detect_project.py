@@ -39,6 +39,15 @@ class _TmpRepo:
         self._td.cleanup()
 
 
+def _make_harness_source(root: Path) -> None:
+    """Plant the agentm-source-repo marker R-harness keys on post-V5: the
+    harness/ spec tree + scripts/harness_memory.py. (Pre-V5 this was
+    harness/phases/, removed in the dev-loop slim.)"""
+    (root / "harness").mkdir(parents=True, exist_ok=True)
+    (root / "scripts").mkdir(parents=True, exist_ok=True)
+    (root / "scripts" / "harness_memory.py").write_text("# resolver\n", encoding="utf-8")
+
+
 class TestSingleRules(unittest.TestCase):
     def test_wiki_enables_diataxis(self):
         with _TmpRepo() as root:
@@ -88,19 +97,19 @@ class TestSingleRules(unittest.TestCase):
             p = dp.detect(root)
             self.assertIn("R-pii", p.matched_rules)
 
-    def test_tests_dir(self):
+    def test_tests_dir_no_longer_matches(self):
+        # R-tests + the evidence-tracker hook it justified were removed in the
+        # V5 dev-loop slim (the task-closeout gate now lives in the crickets
+        # developer-safety / code-review plugins). A tests/ dir must produce no
+        # R-tests match and evidence-tracker must not be an enableable target.
         with _TmpRepo() as root:
             (root / "tests").mkdir()
-            p = dp.detect(root)
-            self.assertIn("R-tests", p.matched_rules)
-            self.assertTrue(p.hooks["evidence-tracker"].auto_detected)
-
-    def test_tests_glob(self):
-        with _TmpRepo() as root:
             (root / "foo_test.py").write_text("# test\n", encoding="utf-8")
             p = dp.detect(root)
-            self.assertIn("R-tests", p.matched_rules)
-            self.assertTrue(p.hooks["evidence-tracker"].auto_detected)
+            self.assertEqual(p.verdict, "propose")
+            self.assertNotIn("R-tests", p.matched_rules)
+            self.assertNotIn("evidence-tracker", dp.ENABLEABLE_HOOKS)
+            self.assertNotIn("evidence-tracker", p.hooks)
 
     def test_pkg_scripts_via_package_json(self):
         with _TmpRepo() as root:
@@ -149,21 +158,30 @@ class TestSingleRules(unittest.TestCase):
 class TestBypass(unittest.TestCase):
     def test_harness_source_bypasses(self):
         with _TmpRepo() as root:
-            (root / "harness" / "phases").mkdir(parents=True)
+            _make_harness_source(root)
             p = dp.detect(root)
             self.assertEqual(p.verdict, "bypass")
             self.assertFalse(p.legacy_harness_present)
 
     def test_harness_with_legacy_state(self):
         with _TmpRepo() as root:
-            (root / "harness" / "phases").mkdir(parents=True)
+            _make_harness_source(root)
             (root / ".harness").mkdir()
             p = dp.detect(root)
             self.assertEqual(p.verdict, "bypass")
             self.assertTrue(p.legacy_harness_present)
 
+    def test_harness_dir_without_resolver_no_bypass(self):
+        # harness/ alone (without scripts/harness_memory.py) is NOT the source
+        # repo — a project could conceivably have a harness/ dir for other
+        # reasons. The marker is the PAIR.
+        with _TmpRepo() as root:
+            (root / "harness").mkdir()
+            p = dp.detect(root)
+            self.assertEqual(p.verdict, "propose")
+
     def test_real_agentm_repo_bypasses(self):
-        # The agentm repo root carries harness/phases/ -> bypass.
+        # The agentm repo root carries harness/ + scripts/harness_memory.py -> bypass.
         agentm_root = _HERE.parent
         p = dp.detect(agentm_root)
         self.assertEqual(p.verdict, "bypass")
@@ -186,16 +204,16 @@ class TestComposition(unittest.TestCase):
     def test_multi_rule_overlay(self):
         with _TmpRepo() as root:
             (root / "wiki").mkdir()
-            (root / "tests").mkdir()
             (root / "CHANGELOG.md").write_text("# c\n", encoding="utf-8")
             (root / "go.mod").write_text("module x\n", encoding="utf-8")
+            (root / "Makefile").write_text("test:\n\techo hi\n", encoding="utf-8")
             p = dp.detect(root)
             self.assertEqual(p.verdict, "propose")
-            for rid in ("R-wiki", "R-tests", "R-changelog"):
+            for rid in ("R-wiki", "R-pkg-scripts", "R-changelog"):
                 self.assertIn(rid, p.matched_rules)
             self.assertTrue(p.skills["diataxis-author"].auto_detected)
             self.assertTrue(p.skills["ship-release"].auto_detected)
-            self.assertTrue(p.hooks["evidence-tracker"].auto_detected)
+            self.assertTrue(p.hooks["kill-switch"].auto_detected)
             # Untouched targets keep their default rationale.
             self.assertFalse(p.skills["dependabot-fixer"].auto_detected)
 
@@ -213,7 +231,7 @@ class TestRendering(unittest.TestCase):
 
     def test_text_bypass_block(self):
         with _TmpRepo() as root:
-            (root / "harness" / "phases").mkdir(parents=True)
+            _make_harness_source(root)
             p = dp.detect(root)
             txt = dp.render_text(p, repo_name="agentm", slug="agentm")
             self.assertIn("harness project", txt)
@@ -231,7 +249,7 @@ class TestRendering(unittest.TestCase):
 
     def test_json_bypass_shape(self):
         with _TmpRepo() as root:
-            (root / "harness" / "phases").mkdir(parents=True)
+            _make_harness_source(root)
             d = dp.detect(root).to_dict()
             self.assertEqual(d["verdict"], "bypass")
             self.assertIn("reason", d)

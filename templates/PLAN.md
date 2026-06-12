@@ -25,7 +25,7 @@
     Default behavior is heuristic match against `tests/` + `spec/` + `*.spec.*` /
     `*.test.*` / `*_test.py` + paths named in `**Verification:**`. Use this field to
     override (e.g. `**Evidence:** custom/path/*.md`) or to opt-out for docs-only
-    tasks (`**Evidence:** none — pure ADR write`). See `harness/phases/03-work.md` §5b.>
+    tasks (`**Evidence:** none — pure ADR write`).>
 - **Status:** [ ]
 
 ### 2. <Task title>

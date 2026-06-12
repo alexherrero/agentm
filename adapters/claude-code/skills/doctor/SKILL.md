@@ -17,9 +17,9 @@ You are running the `doctor` skill. Full canonical spec: `harness/skills/doctor.
 
 | Host | Detect (disk marker) | Phase commands | Sub-agents | Skills | Hooks |
 |---|---|---|---|---|---|
-| **Claude Code** | `.claude/commands/` present | `$ROOT/commands/*.md` | `$ROOT/agents/*.md` | `$ROOT/skills/*/` | `$ROOT/hooks/` + `settings.json` |
-| **Antigravity** | `.agents/workflows/` present, no `.claude/` | `.agents/workflows/*.md` | `.agents/skills/*/` (no separate sub-agent primitive) | `.agents/skills/*/` | none — skip |
-| **Gemini CLI** | `.gemini/commands/` present, no `.claude/` | `.gemini/commands/*.toml` | `.gemini/agents/*.md` | `.agents/skills/*/` (shared delivery) | none — skip |
+| **Claude Code** | `.claude/agents/` or `.claude/skills/` present | `$ROOT/commands/*.md` (only `recent-wiki-changes`; dev-loop commands crickets-provided) | `$ROOT/agents/*.md` (memory agents; review agents crickets-provided) | `$ROOT/skills/*/` | `$ROOT/hooks/` + `settings.json` |
+| **Antigravity** | `.agents/rules/` present, no `.claude/` | crickets-provided (`.agents/workflows/*.md` if paired) | `.agents/skills/*/` (memory agents; review agents crickets-provided) | `.agents/skills/*/` | none — skip |
+| **Gemini CLI** | `.gemini/settings.json` present, no `.claude/` | crickets-provided (`.gemini/commands/*.toml` if paired) | crickets-provided (`.gemini/agents/*.md` if paired) | `.agents/skills/*/` (shared delivery) | none — skip |
 
 - **Claude Code only — resolve install scope** before checking: project (`<project>/.claude/` populated), **user** (`~/.claude/` populated — default since v4.3.0), or mixed; use whichever holds the primitives as `$ROOT` and report it (`scope: user|project|mixed`).
 - **Antigravity** reads `.agents/` (the 2.0 default; `.agent/` singular is the pre-V4 #22 legacy path, migrated on `--update`). Its sub-agents *and* skills both live under `.agents/skills/`. Always-on rules: `.agents/rules/harness.md` + `.agents/rules/agentmemory-context.md`.
@@ -32,13 +32,13 @@ Report the detected `host:` on the output, and use the detected host's primitive
 
 Expected name sets:
 
-| Surface | Required | Optional (graceful-skip if absent) |
+| Surface | Required (harness-shipped) | Crickets-provided / optional (graceful-skip if absent — never FAIL) |
 |---|---|---|
-| `$ROOT/commands/*.md` | `bugfix, plan, release, review, setup, work` | `recent-wiki-changes` (V4 #30 plan 2 / v4.4.0+) |
-| `$ROOT/agents/*.md` | `adversarial-reviewer, adversarial-reviewer-cross, explorer` | `memory-idea-researcher, adapt-evaluator` (harness); `diataxis-evaluator, documenter, evaluator` (crickets) |
+| `$ROOT/commands/*.md` | — (`recent-wiki-changes` optional, V4 #30 plan 2 / v4.4.0+) | `bugfix, plan, release, review, setup, work` (crickets developer-workflows — moved out of agentm in the V5 dev-loop slim) |
+| `$ROOT/agents/*.md` | `adapt-evaluator, memory-idea-researcher` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / developer-workflows); `diataxis-evaluator, documenter, evaluator` (crickets wiki-maintenance) |
 | `$ROOT/skills/*/` | `doctor, migrate-to-diataxis, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, memory, ship-release` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber` (crickets) |
 
-The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — phase commands → `.agents/workflows/*.md`, and sub-agents *and* skills both → `.agents/skills/*/` (the same Required name sets apply); on **Gemini** → `.gemini/commands/*.toml` + `.gemini/agents/*.md` + shared `.agents/skills/*/`.
+The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — sub-agents *and* skills both live under `.agents/skills/*/` (the same Required name sets apply); on **Gemini** the required skills come from the shared `.agents/skills/*/` delivery. The dev-loop surfaces (phase commands + review agents) are crickets-provided on every host — `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, never FAIL.
 
 "Required" must be present and parse cleanly — missing or broken is FAIL. "Optional" is reported as `[OK] N present` or `[SKIP] not installed` — never FAIL. Extras outside both lists are reported as a soft `note:` row, not a failure.
 
@@ -76,7 +76,9 @@ Run in order. Stop at first foundational failure — structural breakage makes l
 
 ### 1. `explorer` dispatch
 
-Dispatch `explorer` with:
+**Graceful-skip if not installed.** `explorer` moved to the crickets developer-workflows plugin in the V5 dev-loop slim. If the sub-agent isn't present, report **skip** (*"explorer not found — install crickets developer-workflows to enable this probe"*), never FAIL — a bare agentm install legitimately has no `explorer` (DC-2).
+
+If installed, dispatch `explorer` with:
 > *Return the absolute path of `README.md` and `AGENTS.md` at the repo root. One sentence each, no commentary.*
 
 Pass: returns both absolute paths within 60s.
@@ -85,7 +87,9 @@ Pass: returns both absolute paths within 60s.
 
 ### 2. `adversarial-reviewer` dispatch
 
-Dispatch with this inline prompt:
+**Graceful-skip if not installed.** `adversarial-reviewer` moved to the crickets code-review plugin in the V5 dev-loop slim. If the sub-agent isn't present, report **skip** (*"adversarial-reviewer not found — install crickets code-review to enable this probe"*), never FAIL (DC-2).
+
+If installed, dispatch with this inline prompt:
 
 > *Review this function for bugs. Report the single most important defect as a failing test or a specific file:line. Prose-only critiques are rejected.*
 >
@@ -142,23 +146,23 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
   state mode:         vault-resident   (or: legacy .harness/)
 
   structural:
-    phase-commands    [OK]  6/6 required + 1 optional (recent-wiki-changes) present
-    sub-agents        [OK]  4/4 required, 5 optional present
-    skills            [OK]  3/3 required, 6 optional present
+    phase-commands    [OK]  recent-wiki-changes present; 6 dev-loop commands crickets-provided ([SKIP] if unpaired)
+    sub-agents        [OK]  2/2 required (adapt-evaluator, memory-idea-researcher); review agents crickets-provided
+    skills            [OK]  3/3 required, optional present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     host wiring       [OK]  AGENTS.md + CLAUDE.md
-    hooks             [OK]  7 hooks wired (memory-recall-session-start, harness-context-session-start, …)
+    hooks             [OK]  6 hooks wired (memory-recall-session-start, harness-context-session-start, …)
 
   live probes (--live):
-    explorer          [OK]   2.1s
-    adversarial       [OK]   3.4s
+    explorer          [SKIP] crickets developer-workflows not installed
+    adversarial       [SKIP] crickets code-review not installed
     ship-release      [OK]   1.8s  — proposed v0.9.0, no tag written
     migrate-diataxis  [OK]   0.9s  — no-op (marker present)
     dependabot-fixer  [OK]   1.2s
     verify.sh         [SKIP] ruff not installed
     sessionstart      [OK]   0.3s  — harness-context-session-start injected vault paths
 
-summary: 11 OK, 0 FAIL, 1 SKIP
+summary: 7 OK, 0 FAIL, 4 SKIP
 
 # Example of the V4 #39 regression the new hook-wiring check now catches:
 #     hooks             [FAIL] 10 hooks installed on disk but not wired in

@@ -109,4 +109,4 @@ On abort, one line: what failed and what the user should do next.
 
 ## Migration history
 
-Originally shipped in `agentm v0.8.0` as a harness-bundled skill, referenced from `harness/phases/05-release.md` as the suggested post-merge follow-up. Migrated to `crickets v0.1.0` (paired with `agentm v2.0.0`) because the skill is broadly useful — every git/GitHub project benefits from clean semver-driven releases, not just harness-installed projects. The harness's `/release` phase still suggests this skill as the post-merge follow-up, with a graceful-skip line if `crickets` isn't installed.
+Originally shipped in `agentm v0.8.0` as a harness-bundled skill, suggested by the `/release` phase as the post-merge follow-up. Migrated to `crickets v0.1.0` (paired with `agentm v2.0.0`) because the skill is broadly useful — every git/GitHub project benefits from clean semver-driven releases, not just harness-installed projects. The `/release` phase still suggests this skill as the post-merge follow-up, with a graceful-skip line if `crickets` isn't installed.

@@ -33,16 +33,12 @@ expected=(
   .harness/hooks/precompact.ps1
   .harness/hooks/session-start-compact.sh
   .harness/hooks/session-start-compact.ps1
-  .claude/commands/plan.md
-  .claude/commands/work.md
-  .claude/agents/explorer.md
+  .claude/commands/recent-wiki-changes.md
+  .claude/agents/adapt-evaluator.md
   .claude/skills/doctor/SKILL.md
   .claude/settings.json
   .agents/rules/harness.md
-  .agents/workflows/plan.md
   .agents/skills/doctor/SKILL.md
-  .gemini/commands/plan.toml
-  .gemini/agents/explorer.md
   .gemini/settings.json
   wiki/Home.md
   wiki/README.md
@@ -89,6 +85,32 @@ for p in "${leaks[@]}"; do
   fi
 done
 
+# ── V5 dev-loop slim: the phase commands + review sub-agents must NOT install ─
+# These moved to the crickets developer-workflows / code-review plugins. A fresh
+# agentm install vendors none of them on any host.
+slimmed=(
+  .claude/commands/plan.md
+  .claude/commands/work.md
+  .claude/commands/review.md
+  .claude/commands/release.md
+  .claude/commands/setup.md
+  .claude/commands/bugfix.md
+  .claude/agents/explorer.md
+  .claude/agents/adversarial-reviewer.md
+  .claude/agents/adversarial-reviewer-cross.md
+  .claude/hooks/evidence-tracker.sh
+  .agents/workflows/plan.md
+  .agents/skills/explorer/SKILL.md
+  .gemini/commands/plan.toml
+  .gemini/agents/explorer.md
+)
+for p in "${slimmed[@]}"; do
+  if [[ -e "$SCRATCH/$p" ]]; then
+    echo "SLIM-LEAK: $p should NOT install after the V5 dev-loop slim" >&2
+    fail=1
+  fi
+done
+
 # ── settings.json: valid JSON, all hook events stored as arrays ─────────────
 python3 - "$SCRATCH/.claude/settings.json" <<'PY' || fail=1
 import json, sys
@@ -115,7 +137,7 @@ if grep -q "created .claude/settings.json with harness hooks" "$SCRATCH/.rerun.l
   echo "FAIL: re-run recreated settings.json (should be idempotent)" >&2
   exit 1
 fi
-if grep -q "created .claude/commands/plan.md" "$SCRATCH/.rerun.log"; then
+if grep -q "created .claude/commands/recent-wiki-changes.md" "$SCRATCH/.rerun.log"; then
   echo "FAIL: re-run recreated managed file (should be kept)" >&2
   exit 1
 fi

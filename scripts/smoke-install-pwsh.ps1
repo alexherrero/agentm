@@ -31,16 +31,12 @@ try {
         '.harness/hooks/precompact.ps1',
         '.harness/hooks/session-start-compact.sh',
         '.harness/hooks/session-start-compact.ps1',
-        '.claude/commands/plan.md',
-        '.claude/commands/work.md',
-        '.claude/agents/explorer.md',
+        '.claude/commands/recent-wiki-changes.md',
+        '.claude/agents/adapt-evaluator.md',
         '.claude/skills/doctor/SKILL.md',
         '.claude/settings.json',
         '.agents/rules/harness.md',
-        '.agents/workflows/plan.md',
         '.agents/skills/doctor/SKILL.md',
-        '.gemini/commands/plan.toml',
-        '.gemini/agents/explorer.md',
         '.gemini/settings.json',
         'wiki/Home.md',
         'wiki/README.md',
@@ -85,6 +81,32 @@ try {
         $full = Join-Path $scratch $p
         if (Test-Path -LiteralPath $full) {
             Write-Host "LEAK: $p should not be in scratch install (installer boundary)" -ErrorAction Continue
+            $fail = $true
+        }
+    }
+
+    # V5 dev-loop slim: the phase commands + review sub-agents must NOT install.
+    # They moved to the crickets developer-workflows / code-review plugins.
+    $slimmed = @(
+        '.claude/commands/plan.md',
+        '.claude/commands/work.md',
+        '.claude/commands/review.md',
+        '.claude/commands/release.md',
+        '.claude/commands/setup.md',
+        '.claude/commands/bugfix.md',
+        '.claude/agents/explorer.md',
+        '.claude/agents/adversarial-reviewer.md',
+        '.claude/agents/adversarial-reviewer-cross.md',
+        '.claude/hooks/evidence-tracker.ps1',
+        '.agents/workflows/plan.md',
+        '.agents/skills/explorer/SKILL.md',
+        '.gemini/commands/plan.toml',
+        '.gemini/agents/explorer.md'
+    )
+    foreach ($p in $slimmed) {
+        $full = Join-Path $scratch $p
+        if (Test-Path -LiteralPath $full) {
+            Write-Host "SLIM-LEAK: $p should NOT install after the V5 dev-loop slim" -ErrorAction Continue
             $fail = $true
         }
     }
