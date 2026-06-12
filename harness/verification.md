@@ -19,7 +19,7 @@ These commands are defined per project in `.harness/init.sh` so every phase uses
 The adversarial reviewer is invoked once deterministic gates are green. See [agents/adversarial-reviewer.md](agents/adversarial-reviewer.md) for the spec.
 
 The reviewer looks for:
-- Spec adherence — does the change actually satisfy `PLAN.md`'s task criteria?
+- Spec adherence — does the change actually satisfy the active plan's task criteria (`PLAN.md` or `PLAN-<name>.md`)?
 - API design — public interfaces, naming, error types.
 - Dead code or accidental duplication.
 - Security concerns that don't have a lint rule.

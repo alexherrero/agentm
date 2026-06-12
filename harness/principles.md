@@ -16,7 +16,7 @@ A single session should do exactly one of: scaffold, plan, implement, review, re
 
 Context is ephemeral. Files are durable, diffable, resumable. The harness mandates four on-disk artifacts per project:
 
-- `.harness/PLAN.md` — the current goal and its task decomposition with verification criteria.
+- `.harness/PLAN.md` (or a named `PLAN-<name>.md`) — an active goal and its task decomposition with verification criteria. A solo session uses the unnamed `PLAN.md`; concurrent workers each own a distinct named plan.
 - `.harness/features.json` — structured feature list with `{ description, steps, passes: bool }` per feature. JSON because Anthropic found models are less likely to inappropriately edit JSON than Markdown.
 - `.harness/progress.md` — append-only log of completed work. Starts every new session by reading this.
 - `.harness/init.sh` — pre-written script to boot the dev environment. Saves context on every session start.

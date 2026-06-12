@@ -23,7 +23,7 @@ Compaction (manual `/compact` or automatic) wipes most of the conversation. The 
 
 ## SessionStart (matcher: `compact`) — re-anchor Claude on the state files
 
-Fires once when a session resumes after compaction. Outputs a reminder that points Claude at `.harness/PLAN.md` and `.harness/progress.md`. Claude Code injects the stdout into the post-compaction context.
+Fires once when a session resumes after compaction. Outputs a reminder that points Claude at the active plan file (`.harness/PLAN.md`, or a named `PLAN-<name>.md`) and `.harness/progress.md`. Claude Code injects the stdout into the post-compaction context.
 
 - Script: `.harness/hooks/session-start-compact.sh`
 - Matcher: `compact` (does not fire on normal session start)

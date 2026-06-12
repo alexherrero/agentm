@@ -22,7 +22,7 @@ Four surfaces, each with a defined job:
 | GitHub Projects | Future ideas, deferred feature work | GitHub |
 | GitHub Issues | Bugs + their fixes | GitHub |
 
-`.harness/PLAN.md`, `features.json`, and `progress.md` continue to own *current-work state*. Wiki owns *durable knowledge*.
+`.harness/PLAN.md` (or a named `PLAN-<name>.md`), `features.json`, and `progress.md` continue to own *current-work state*. Wiki owns *durable knowledge*.
 
 ## The `wiki/` folder
 

@@ -47,6 +47,7 @@ gate "validate-adapters"                       "$PY" scripts/validate-adapters.p
 gate "check-parity (adapter sets)"             bash scripts/check-parity.sh
 gate "check-lib-parity (lib/install checksums)" bash scripts/check-lib-parity.sh
 gate "check-vault-lock-parity (vendored vault_lock)" bash scripts/check-vault-lock-parity.sh
+gate "check-multi-plan-naming (named-plan contract)" bash scripts/check-multi-plan-naming.sh
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
 gate "verify-v4 (push-surface integration)"    bash scripts/verify-v4.sh

@@ -172,7 +172,7 @@ always_load: true
 <frontmatter>
 ---
 
-Status:[x] task closeouts in `.harness/PLAN.md` must be paragraph-long narratives,
+Status:[x] task closeouts in the active plan file (`.harness/PLAN.md` or `PLAN-<name>.md`) must be paragraph-long narratives,
 not just checkmarks. The next session's context is whatever the closeout captures —
 so capture everything that matters: files changed, design calls, scope adjustments,
 CI per-OS times, manual verification scenarios, negative-test results when relevant.

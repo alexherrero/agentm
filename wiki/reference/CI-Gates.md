@@ -28,6 +28,7 @@ bash scripts/check-all.sh
 | unit tests | Every `scripts/test_*.py` (auto-discovered) passes — the memory-script logic in isolation. | `(cd scripts && python3 -m unittest discover -p 'test_*.py')` |
 | check-lib-parity | `lib/install/` matches the committed checksums (byte-identical across agentm + crickets). | [`scripts/check-lib-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-lib-parity.sh) |
 | check-vault-lock-parity | The two copies of the vault-write protocol — `scripts/vault_lock.py` and its vendored twin `harness/skills/memory/scripts/vault_lock.py` — are sha256-identical, so the memory skill and the harness core share one canonical lock implementation. | [`scripts/check-vault-lock-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-vault-lock-parity.sh) |
+| check-multi-plan-naming | Locks the named-plan naming contract two ways: (1) `scripts/harness_memory.py` still exposes the named-plan resolver surface — both `resolve_active_plan` (the session→plan binder) and `harness_state_dir` (the state-dir enumerator); (2) no curated `harness/*.md` doc hard-asserts a singleton via the narrow deny-pattern — definite-article `the PLAN.md` + possessive `PLAN.md's` — which still permits every legitimate mention (a named `PLAN-<name>.md`, a `PLAN*.md` glob, a `<slug>.PLAN.md` queued file, the `vault-state-path PLAN.md` CLI example, and `PLAN.archive.*`). Scans 7 curated docs; `design/SKILL.md` is included as a regression guard. The 13th local gate. See [Named plans](Named-Plans). | [`scripts/check-multi-plan-naming.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-multi-plan-naming.sh) |
 | check-no-pii | The regex PII scanner finds no personal info across the tree (this is a public repo). | [`scripts/check-no-pii.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-no-pii.sh) |
 | verify-v4 | The V4 #23 auto-orchestration push surface works end-to-end (briefing · idle · phase-dispatch · nudges · config/state) against a throwaway scratch vault — see below. Linux/Mac only. | [`scripts/verify-v4.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-v4.sh) |
 | verify-phases | A full phase lifecycle (`/setup → /plan → /work → /release`) drives its deterministic seams — state read/write, `progress.md` appends, `features.json` updates, post-phase dispatch plumbing — end-to-end on a throwaway fixture project, run twice: once vault-resident, once repo-local. Linux/Mac only. | [`scripts/verify-phases.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-phases.sh) |
@@ -59,7 +60,7 @@ Red-on-Windows but green-on-POSIX almost always indicates a path-separator or pw
 
 ## Running the gate set locally
 
-One command runs the deterministic battery — 12 gates: unit tests + every `check-*` gate + the three integration checks (`verify-v4`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
+One command runs the deterministic battery — 13 gates: unit tests + every `check-*` gate + the three integration checks (`verify-v4`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
 
 ```bash
 bash scripts/check-all.sh
