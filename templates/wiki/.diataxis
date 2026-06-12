@@ -1,14 +1,23 @@
-This file marks that the project's wiki/ follows the Diátaxis four-mode
-convention from ADR 0004 of agentm:
+This file marks that the project's wiki/ follows the seven-section
+documentation taxonomy from ADR 0004 of agentm (amended 2026-06-11 to
+converge on crickets' frame). Five sections are always present; two are
+conditional:
 
-  tutorials/   — learning-oriented, numbered-step walkthroughs
-  how-to/      — task-oriented recipes
+  how-to/      — task-oriented recipes (onboarding walkthroughs live here,
+                 numerically prefixed, carrying a `<!-- mode: tutorial -->`
+                 hint so the gate holds them to tutorial discipline)
   reference/   — canonical lookup tables, flags, APIs
-  explanation/ — narrative rationale, intent, ADRs
+  designs/     — "Why we built X" design docs (crickets' /design skill)
+  explanation/ — narrative rationale, intent, trade-offs
+  decisions/   — Architecture Decision Records (ADRs)
+
+  architecture/ — added only when a per-repo wiki/architecture.yml manifest
+                  declares it
+  operational/  — added only when the repo's visibility is non-public
 
 Presence of this marker enables strict-mode `check-wiki.py` for this
-project. Do not remove unless you are migrating away from Diátaxis.
+project. Do not remove unless you are migrating away from the taxonomy.
 
 See:
 - wiki/README.md — the convention as it applies here.
-- https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md
+- https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md

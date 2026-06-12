@@ -2,46 +2,56 @@
 
 How this project documents itself. This `wiki/` folder is the source of truth for human-and-agent-readable documentation and is mirrored to the repo's GitHub Wiki on every push to the default branch.
 
-This scaffold follows the Diátaxis convention — four modes, one intent per page, never mixed. See [ADR 0004 in agentm](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md) for the rationale.
+This scaffold follows the seven-section documentation taxonomy — one reader intent per page, never mixed. See [ADR 0004 in agentm](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md) for the rationale (it converges the older four-mode Diátaxis layout onto crickets' frame).
+
+> [!NOTE]
+> **Authoring tooling lives in crickets.** Page authoring + the structural lint are owned by [`crickets`](https://github.com/alexherrero/crickets)' `wiki-maintenance` plugin (ADR 0006 single-source). If crickets is paired, use its `/wiki-init` to scaffold the two conditional sections (architecture/operational) and provision wiki-sync CI; if it isn't, the harness degrades gracefully (graceful-skip) and this native scaffold stands on its own. The lint gate is `scripts/check-wiki.py`.
 
 ## Two readers, one surface
 
 Every page is written for two audiences: a **human** who needs to understand the system without reading every file, and an **agent** who needs to resume work in a future session without the original context. Tables, diagrams, cross-links, and `file:line` references serve both.
 
-## Four modes
+## Seven sections
 
-| Mode | Purpose | Reader's question | Typical pages |
+Five sections are always present; two are conditional, added only when the repo earns them.
+
+| Section | Purpose | Reader's question | Typical pages |
 |---|---|---|---|
-| 📚 `tutorials/` | Learning by doing | "I'm new — walk me through an outcome." | `01-Getting-Started.md`, `02-First-Feature.md` |
-| 🔧 `how-to/` | Task-focused recipes | "How do I X?" | `Run-The-Tests.md`, `Deploy.md`, `Rollback.md` |
+| 🔧 `how-to/` | Task-focused recipes | "How do I X?" | `Run-The-Tests.md`, `Deploy.md`, `01-Getting-Started.md` |
 | 📖 `reference/` | Canonical lookup | "What are the flags / keys / codes?" | `CLI.md`, `Config.md`, `Exit-Codes.md` |
-| 💡 `explanation/` | Intent and rationale | "Why is it this way?" | `Product-Intent.md`, `How-The-Pieces-Fit.md`, `decisions/<NNNN>-<slug>.md` |
+| 📐 `designs/` | "Why we built X" | "What was the plan, and why this shape?" | `<slug>.md` (via crickets' `/design`) |
+| 💡 `explanation/` | Intent and rationale | "Why is it this way?" | `Product-Intent.md`, `How-The-Pieces-Fit.md` |
+| 🧭 `decisions/` | Decision records | "What did we decide, and why not the alternative?" | `<NNNN>-<slug>.md` (ADRs) |
+| 🏛️ `architecture/` *(conditional)* | Component map | "How do the pieces fit at the system level?" | added when a `wiki/architecture.yml` manifest declares it |
+| ⚙️ `operational/` *(conditional)* | Run-the-system | "How do I operate / recover this in prod?" | added when the repo's visibility is non-public |
 
-Pages outside these four dirs are not part of the convention. File under an existing mode, or — if a genuinely new mode is needed — update ADR 0004 in agentm first; don't invent a fifth here.
+Onboarding walkthroughs (the learning-by-doing pages the old layout called "tutorials") live under `how-to/`, numerically prefixed (`01-`, `02-`), carrying a `<!-- mode: tutorial -->` hint so the lint gate holds them to tutorial discipline. Pages outside these sections are not part of the convention. File under an existing section, or — if a genuinely new section is needed — update ADR 0004 in agentm first; don't invent one here.
 
-## The single-mode rule
+## The single-section rule
 
-Each page serves exactly one reader intent. A tutorial does not contain rationale; a how-to does not contain background narrative; a reference is not a walk-through. When content mixes modes, split the page — don't cram modes together under different headings.
+Each page serves exactly one reader intent. An onboarding walkthrough does not contain rationale; a how-to does not contain background narrative; a reference is not a walk-through; a decision record is not a design doc. When content mixes intents, split the page — don't cram intents together under different headings.
 
 The `.diataxis` marker file in this folder enables structural-lint enforcement of this rule (in agentm, via `scripts/check-wiki.py`).
 
 ## Filename rules
 
 - `CamelCase-With-Dashes.md` (matches GitHub Wiki URL convention).
-- **Globally unique across mode dirs** — basename collisions fail the sync workflow loudly.
-- Tutorials sort numerically: `01-`, `02-`, etc.
+- **Globally unique across sections** — basename collisions fail the sync workflow loudly.
+- Onboarding walkthroughs sort numerically: `01-`, `02-`, etc.
 - ADRs sort numerically: `0001-`, `0002-`, etc.
 
 ## Templates
 
-Four shapes — one per mode. Every page starts with `# H1 — <Title>` and a one-paragraph summary. **No YAML front-matter.**
+Every page starts with `# H1 — <Title>` and a one-paragraph summary. **No YAML front-matter.** crickets' `wiki-maintenance` plugin ships the canonical, evolving set; the shapes below are the load-bearing ones a fresh scaffold needs.
 
-### Template 1 — Tutorial
+### Onboarding walkthrough (how-to/, tutorial-shaped)
 
-Used for `tutorials/<NN>-<slug>.md`. Goal-driven walk-through with numbered steps.
+Used for `how-to/<NN>-<slug>.md` with a `<!-- mode: tutorial -->` hint. Goal-driven walk-through with numbered steps.
 
 ```markdown
 # Tutorial N — <Title>
+
+<!-- mode: tutorial -->
 
 > [!NOTE]
 > **Goal:** <what the reader will have achieved at the end.>
@@ -63,7 +73,7 @@ Used for `tutorials/<NN>-<slug>.md`. Goal-driven walk-through with numbered step
 - <pointer to a how-to or reference for the reader to go deeper.>
 ```
 
-### Template 2 — How-to
+### How-to
 
 Used for `how-to/<Task>.md`. Task-focused recipe, no rationale, no background.
 
@@ -95,7 +105,7 @@ Used for `how-to/<Task>.md`. Task-focused recipe, no rationale, no background.
 | ... | ... |
 ```
 
-### Template 3 — Reference
+### Reference
 
 Used for `reference/<Surface>.md`. Tables-first, no narrative.
 
@@ -116,14 +126,12 @@ Used for `reference/<Surface>.md`. Tables-first, no narrative.
 
 ## Related
 
-- <cross-links to tutorials, how-tos, or other references.>
+- <cross-links to how-tos or other references.>
 ```
 
-### Template 4 — Explanation / ADR
+### Explanation / Design / ADR
 
-Used for `explanation/<Topic>.md` and `explanation/decisions/<NNNN>-<slug>.md`.
-
-Explanation pages are narrative and may use any section structure that serves the argument. ADRs use the canonical Nygard shape:
+Explanation pages (`explanation/<Topic>.md`) are narrative and may use any section structure that serves the argument. Design docs (`designs/<slug>.md`) are authored via crickets' `/design` skill. ADRs (`decisions/<NNNN>-<slug>.md`) use the canonical Nygard shape:
 
 ```markdown
 # ADR <NNNN>: <Title>
@@ -144,17 +152,17 @@ ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subhead
 - **Tables over bullet lists** for comparative information.
 - **Diagrams** — ASCII in fenced code blocks or Mermaid. Use one whenever a relationship is clearer drawn than described.
 - **GitHub alerts** for load-bearing callouts: `> [!NOTE]`, `> [!IMPORTANT]`, `> [!WARNING]`.
-- **Emoji mode markers**, consistent: 📚 Tutorials · 🔧 How-to · 📖 Reference · 💡 Explanation · ⚡ Quick Reference · 📁 File Layout · 🤝 Integration.
+- **Emoji section markers**, consistent: 🔧 How-to · 📖 Reference · 📐 Designs · 💡 Explanation · 🧭 Decisions · 🏛️ Architecture · ⚙️ Operational · ⚡ Quick Reference · 📁 File Layout · 🤝 Integration.
 - **Cross-links**: wiki pages by basename (`Home`, `01-Getting-Started`, etc.), full GitHub URLs with `#L<line>` for code references.
 
 ## Who maintains what
 
 - **Humans** may edit any wiki file anytime.
 - **The `documenter` sub-agent** updates pages at phase boundaries only — never during `/work`'s implement step:
-  - `/setup` — populates seed tutorial + reference + explanation from the codebase.
+  - `/setup` — populates a seed onboarding walkthrough + reference + explanation from the codebase.
   - `/plan` — creates pending how-to pages and reference rows for the plan's tasks.
   - `/work` (post-gates) — flips pending how-tos to implemented, fills reference tables.
-  - `/release` — adversarial sweep across all four modes; may promote stable how-tos to tutorials and may add new ADRs under `explanation/decisions/`.
+  - `/release` — adversarial sweep across all sections; may add new ADRs under `decisions/`.
 - `Home.md` and `_Sidebar.md` are maintained by the sub-agent — not generated by sync.
 
 ## GitHub Wiki sync
@@ -163,4 +171,4 @@ ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subhead
 
 ## Full spec
 
-[agentm/harness/documentation.md](https://github.com/alexherrero/agentm/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0004-diataxis-documentation-spec.md).
+[agentm/harness/documentation.md](https://github.com/alexherrero/agentm/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md).

@@ -1,5 +1,12 @@
 # Tutorial 1 — Getting started
 
+<!-- mode: tutorial -->
+<!-- Onboarding walkthroughs are numerically prefixed and live under how-to/ in
+     the seven-section frame (tutorials fold into How-to; ADR 0004 Amendment
+     2026-06-11). The mode hint above keeps this page tutorial-shaped — the lint
+     gate enforces the tutorial discipline (Goal/Time/Prereqs, numbered steps,
+     "What you learned") even though it sits in how-to/. -->
+
 > [!NOTE]
 > **Goal:** Go from a fresh clone of this project to a working local environment, with the tests green.
 > **Time:** ~10 minutes (varies by project).
