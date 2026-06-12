@@ -254,7 +254,7 @@ If the plan introduces net-new user-visible features (as opposed to internal ref
 
 ### 6. Declare future state in the wiki
 
-Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the newly-written `PLAN.md` and the current `wiki/how-to/` + `wiki/reference/` + `wiki/explanation/` trees. For each task that affects user-visible behavior or architecture, docsub creates or updates pending pages in the right mode dir:
+Dispatch crickets' `wiki-maintenance:documenter` sub-agent (canonical spec: [`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md); **graceful-skip** if crickets' `wiki-maintenance` plugin is absent — never hard-fail) with the newly-written `PLAN.md` and the current `wiki/how-to/` + `wiki/reference/` + `wiki/explanation/` trees. For each task that affects user-visible behavior or architecture, docsub creates or updates pending pages in the right mode dir:
 
 - `wiki/explanation/<slug>.md` — Template 2 ("Status"), `Status: pending`, `Plan: .harness/PLAN.md#task-N`, for Feature/Subsystem pages that track pending→implemented
 - `wiki/how-to/<Verb-Object>.md` — Template 4, skeleton `## Steps` to be filled from the diff at `/work`, if the task introduces a user-facing recipe

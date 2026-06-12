@@ -117,7 +117,7 @@ This is the one place `passes: true` gets set. Do not set it speculatively.
 
 ### 4. Wiki full-pass sweep
 
-Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the complete diff since `/plan` started (`git diff <plan-start-sha>..HEAD`) and the entire `wiki/` tree. Docsub's release-time responsibilities:
+Dispatch crickets' `wiki-maintenance:documenter` sub-agent (canonical spec: [`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md); **graceful-skip** if crickets' `wiki-maintenance` plugin is absent — never hard-fail) with the complete diff since `/plan` started (`git diff <plan-start-sha>..HEAD`) and the entire `wiki/` tree. Docsub's release-time responsibilities:
 
 1. Every completed task has reached `Status: implemented` on the right page. Fix any that got missed during `/work`.
 2. Any new subsystem / feature / decision that surfaced during implementation but wasn't documented — create the page now.

@@ -1,6 +1,6 @@
 ---
 name: wiki-author
-description: "Update or create a Diátaxis wiki page for the current repo (or another registered repo). Triggers when the operator says 'update the wiki', 'document this in the wiki', 'add this to the wiki', 'create a wiki page for X', or 'update <repo>'s wiki'. Resolves target repo via cwd (default) or explicit repo name (cross-repo via repo_registry from V4 #30 plan 1). Dispatches the documenter sub-agent for the structural edit with preview-before-write. Defers to crickets' wiki-maintenance diataxis-author skill for mode selection when available (graceful-skip if crickets is not installed). Honors per-repo .diataxis-conventions.md override. Does NOT auto-generate content — agent gathers context from the conversation; the skill handles dispatch + write contract."
+description: "Update or create a Diátaxis wiki page for the current repo (or another registered repo). Triggers when the operator says 'update the wiki', 'document this in the wiki', 'add this to the wiki', 'create a wiki page for X', or 'update <repo>'s wiki'. Resolves target repo via cwd (default) or explicit repo name (cross-repo via repo_registry from V4 #30 plan 1). Dispatches crickets' wiki-maintenance:documenter sub-agent for the structural edit with preview-before-write, and defers to crickets' wiki-maintenance diataxis-author skill for mode selection — both graceful-skip if crickets' wiki-maintenance plugin is absent. Honors per-repo .diataxis-conventions.md override. Does NOT auto-generate content — agent gathers context from the conversation; the skill handles dispatch + write contract."
 kind: skill
 supported_hosts: [claude-code]
 version: 0.1.0
@@ -9,7 +9,7 @@ install_scope: user
 
 # wiki-author — operator-facing dispatcher for wiki edits
 
-Auto-fires on operator phrases like *"update the wiki with what we just shipped"* or *"add this to the wiki"*. Resolves which Diátaxis mode page to update or create, then dispatches the **`documenter` sub-agent** (the write-executor, hard-boundary-scoped to `wiki/**` per [ADR 0004 Amendment 2026-05-27](../../../wiki/explanation/decisions/0004-diataxis-documentation-spec.md#amendment-2026-05-27)). Operator confirms every write via preview-before-write gate.
+Auto-fires on operator phrases like *"update the wiki with what we just shipped"* or *"add this to the wiki"*. Resolves which Diátaxis mode page to update or create, then dispatches **crickets' `wiki-maintenance:documenter` sub-agent** (the write-executor, hard-boundary-scoped to `wiki/**` per [ADR 0004 Amendment 2026-05-27](../../../wiki/explanation/decisions/0004-diataxis-documentation-spec.md#amendment-2026-05-27)) — **graceful-skip if crickets' `wiki-maintenance` plugin is absent** (this skill still resolves the target + builds the context bundle; only the write step is suggested-then-skipped, never hard-failed). Operator confirms every write via preview-before-write gate.
 
 ## Triggers and non-triggers
 
@@ -69,8 +69,8 @@ After resolution, this skill ALWAYS:
    - **Update existing page**: preserves the page's existing mode (don't cross-mode mix; that fails `check-wiki.py --strict`).
    - **Create new page**: derives mode from the phrase ("how-to for X" → how-to dir; "reference for X" → reference dir); if ambiguous, asks the operator interactively. Defers to crickets' `wiki-maintenance` `diataxis-author` skill if available for richer mode selection (graceful-skip when crickets is not installed).
 4. **Drafts the structural edit + emits a unified diff preview** to the operator before writing — **and surfaces the step-2 context bundle alongside the diff** so the operator sees *here's what's locked + what we've decided before* next to the proposed change. Per-write gate (every cross-repo edit gates on approval).
-5. **On operator approval**: dispatches the `documenter` sub-agent with the resolved target + draft content. Documenter performs the actual file write under its hard-boundary scope (per [documenter spec](../../agents/documenter.md#cross-repo-write-contract-v4-30-plan-2--2026-05-27)).
-6. **Cross-references**: ADR 0004 Amendment 2026-05-27 (preview-before-write + .diataxis-conventions override + repo_registry resolution); documenter sub-agent spec (write-scope hard boundary + V4 #35 pre-flight); crickets' `wiki-maintenance` `diataxis-author` skill (mode selection + per-repo conventions, when crickets is installed).
+5. **On operator approval**: dispatches crickets' `wiki-maintenance:documenter` sub-agent with the resolved target + draft content. The documenter performs the actual file write under its hard-boundary scope (per the [crickets `wiki-maintenance:documenter` spec](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md)) — **graceful-skip if crickets' `wiki-maintenance` plugin is absent**: the resolve + bundle steps still run, but the write is suggested-then-skipped rather than hard-failed.
+6. **Cross-references**: ADR 0004 Amendment 2026-05-27 (preview-before-write + .diataxis-conventions override + repo_registry resolution); crickets' `wiki-maintenance:documenter` sub-agent spec (write-scope hard boundary + V4 #35 pre-flight; canonical since the seven-section convergence retired agentm's copy); crickets' `wiki-maintenance` `diataxis-author` skill (mode selection + per-repo conventions, when crickets is installed).
 
 ## What this skill does NOT do
 

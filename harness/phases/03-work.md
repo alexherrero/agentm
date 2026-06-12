@@ -233,7 +233,7 @@ Per the locked Q5 design call (dual-trigger middle ground): the dispatcher reads
 
 ### 8. Update the wiki (post-gates)
 
-Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with: the task's title + What + Verification from `PLAN.md`, the diff (`git diff` scoped to the task's commits or staged changes), and the matching pending wiki entries. Docsub's job:
+Dispatch crickets' `wiki-maintenance:documenter` sub-agent (canonical spec: [`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md); **graceful-skip** if crickets' `wiki-maintenance` plugin is absent — never hard-fail) with: the task's title + What + Verification from `PLAN.md`, the diff (`git diff` scoped to the task's commits or staged changes), and the matching pending wiki entries. Docsub's job:
 
 - Flip `Status: pending → implemented` on the matching Feature/Subsystem page(s) **only if the diff proves it** — speculative flips are a worse failure than missed ones.
 - Fill `## Implementation` with real `file:line` references (GitHub URLs if a remote is set).

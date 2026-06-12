@@ -113,7 +113,7 @@ Additionally confirm:
 - The regression test *actually exercises the root cause*, not just the symptom
 - The original reproduction steps from `## Report` now produce the expected behavior
 
-Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md)) with the bug report and the fix diff. Bugfix is a **lightweight pass** — docsub does nothing for run-of-the-mill bugs (typo fix, null check, off-by-one). It updates only when the fix reveals a gotcha worth persisting:
+Dispatch crickets' `wiki-maintenance:documenter` sub-agent (canonical spec: [`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md); **graceful-skip** if crickets' `wiki-maintenance` plugin is absent — never hard-fail) with the bug report and the fix diff. Bugfix is a **lightweight pass** — docsub does nothing for run-of-the-mill bugs (typo fix, null check, off-by-one). It updates only when the fix reveals a gotcha worth persisting:
 
 - **`wiki/reference/Known-Issues.md`** — append only if the bug exposes a non-obvious reproduction condition, an environmental dependency, or a surprising interaction between features that a future reader would benefit from seeing listed.
 - **`wiki/explanation/decisions/<NNNN>-<slug>.md`** — add an ADR only if the fix implies a design-decision change that wasn't previously recorded.

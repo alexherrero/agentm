@@ -172,7 +172,7 @@ Run `bash .harness/init.sh`. Confirm it exits 0. If it doesn't, fix it now — e
 
 ### 7. Populate the wiki scaffold
 
-`install.sh` dropped an empty `wiki/` scaffold (four subdirs + seed pages). Dispatch the `documenter` sub-agent (full spec: [`harness/agents/documenter.md`](../agents/documenter.md), convention: [`harness/documentation.md`](../documentation.md)) to fill the seed pages from the codebase scan:
+`install.sh` dropped an empty `wiki/` scaffold (four subdirs + seed pages). Dispatch crickets' `wiki-maintenance:documenter` sub-agent (canonical spec: [`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md); convention: [`harness/documentation.md`](../documentation.md); **graceful-skip** if crickets' `wiki-maintenance` plugin is absent — never hard-fail) to fill the seed pages from the codebase scan:
 
 - `development/Getting-Started.md` — from `init.sh` + manifests
 - `operational/Runbook.md` — from CI configs + deploy hints
