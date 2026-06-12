@@ -74,27 +74,42 @@ fi
 # findings there. Python-level errors (import / runtime) also surface — that's
 # acceptable; the hook still exits 0 (never blocks session boot).
 python3 - "$HM_PY" "$MEMORY_VAULT_PATH" <<'PY' || true
-import importlib.util, sys
+import importlib.util, os, sys
 from pathlib import Path
 hm_path, vault_root = sys.argv[1], sys.argv[2]
 spec = importlib.util.spec_from_file_location("harness_memory", hm_path)
 hm = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(hm)
-conflicts = hm.detect_conflict_files(Path(vault_root))
+# V5-0 task 4: sweep the broadened marker set (vault) + the DriveFS
+# lost_and_found/ dump (macOS; resolves to None elsewhere → no extra scan).
+laf = hm.default_lost_and_found_root()
+conflicts = hm.detect_conflict_files(Path(vault_root), lost_and_found_root=laf)
 if not conflicts:
     sys.exit(0)
-import os
 mode = os.environ.get("HARNESS_CONFLICT_MERGER_MODE", "interactive")
-sys.stderr.write(f"\n[conflict-merger] {len(conflicts)} GDrive conflict file(s) detected in vault:\n")
+n_vault = sum(1 for e in conflicts if e.get("source") != "lost_and_found")
+n_laf = len(conflicts) - n_vault
+sys.stderr.write(
+    f"\n[conflict-merger] {len(conflicts)} conflict/duplicate file(s) detected "
+    f"({n_vault} in vault, {n_laf} in DriveFS lost_and_found):\n"
+)
 for entry in conflicts:
-    sys.stderr.write(f"    conflict: {entry['rel']}\n")
-    sys.stderr.write(f"    base:     {entry['base'].relative_to(Path(vault_root))}\n")
+    tag = "lost+found" if entry.get("source") == "lost_and_found" else "vault"
+    sys.stderr.write(f"    [{tag}] conflict: {entry['rel']}\n")
+    base = entry.get("base")
+    if base is not None:
+        try:
+            base_disp = base.relative_to(Path(vault_root))
+        except ValueError:
+            base_disp = base.name  # lost_and_found base lives outside the vault
+        sys.stderr.write(f"              base:     {base_disp}\n")
 if mode == "interactive":
     sys.stderr.write(
         "\n    To merge interactively: review each pair in Obsidian or via\n"
         "    `diff <base> <conflict>` and merge by hand. Run `/work` from the\n"
         "    affected repo if the conflict is in a vault-backed harness file\n"
-        "    (PLAN.md / progress.md / etc.).\n\n"
+        "    (PLAN.md / progress.md / etc.). lost+found entries are orphans\n"
+        "    DriveFS could not re-home — triage them by hand.\n\n"
         "    To suppress this notice for the current session, set\n"
         "    HARNESS_CONFLICT_MERGER_MODE=silent in the environment.\n\n"
     )

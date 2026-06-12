@@ -57,6 +57,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -688,72 +689,170 @@ def safe_write_replace_style(
     return atomic_write(path, new_content)
 
 
-# GDrive's conflict-file naming: "<basename> (conflicted copy YYYY-MM-DD) - <device>.<ext>"
-# Heuristic substring match — robust to GDrive's variations (with/without
-# trailing device name; with/without date hyphens; "from <device>" variants).
-_CONFLICT_MARKER = "(conflicted copy"
+# Conflict / duplicate file naming families (V4 #26 → broadened V5-0 task 4).
+#
+# GDrive + DriveFS produce several distinct "this file collided" naming styles.
+# The janitor sweep surfaces every one for operator triage — it never auto-
+# deletes, so over-detection is cheap (the operator ignores a false hit) and
+# under-detection is the costly failure (a real conflict goes unseen). The four
+# families we recognize (all case-insensitive, tolerant of extra spaces):
+#
+#   1. "(conflicted copy …)" — GDrive's classic cross-device conflict marker,
+#                              with/without a trailing "- <device>" / "from
+#                              <device>" segment.
+#         e.g.  PLAN (conflicted copy 2026-05-27) - Mac.md
+#   2. "[Conflict]" / "[Conflict N]" — bracketed conflict marker.
+#         e.g.  PLAN [Conflict].md , PLAN [Conflict 2].md
+#   3. "Copy of <name>"      — GDrive "make a copy" / duplicate-on-collision.
+#         e.g.  Copy of PLAN.md
+#   4. "<name> (N).<ext>"    — numbered duplicate (DriveFS appends (1),(2),… when
+#                              a same-named file already exists). Guarded against
+#                              year-like false-positives ("budget (2026).xlsx")
+#                              by only flagging when the de-numbered base co-exists
+#                              in the same directory — exactly the signal DriveFS
+#                              creates a "(1)" for.
+#         e.g.  PLAN (1).md   (only when PLAN.md is present alongside)
+#
+# Plus an opt-in scan of the DriveFS `lost_and_found/` dump (orphaned files Drive
+# could not re-home — it never notifies). Opt-in (the caller passes the root) so
+# the function stays hermetic for unit tests and callers that only care about the
+# in-vault sweep.
+_CONFLICT_MARKER = "(conflicted copy"  # retained: the family-1 substring
 
 
-def detect_conflict_files(vault_root: Path) -> list[dict]:
-    """Walk `vault_root` for GDrive-induced conflict files.
-
-    Returns a list of dicts:
-        [{"conflict": <conflict-file-path>,
-          "base": <inferred-base-file-path>,
-          "rel": <relative-to-vault-root>}, ...]
-
-    The `base` field is the operator-canonical filename the conflict pairs
-    with — stripping the GDrive marker. Example:
-        conflict = ".../PLAN (conflicted copy 2026-05-27) - Mac.md"
-        base     = ".../PLAN.md"
-
-    The dispatcher hook (task-4 conflict-merger-session-start) walks this
-    list at SessionStart and surfaces an operator-confirm dialog per pair.
-
-    Heuristic: matches `(conflicted copy` substring (case-insensitive).
-    Limitations: GDrive may change the format without notice — re-audit if
-    detection ratio drops. Detection is best-effort; false-negatives are
-    acceptable (operator finds the conflict file in Obsidian).
-    """
-    vault_root = Path(vault_root)
-    if not vault_root.is_dir():
-        return []
-
-    out: list[dict] = []
-    # rglob is recursive; uses depth-first. Safe for vault sizes <10k files.
-    for conflict in vault_root.rglob("*"):
-        if not conflict.is_file():
-            continue
-        name_lower = conflict.name.lower()
-        if _CONFLICT_MARKER.lower() not in name_lower:
-            continue
-        base = _infer_conflict_base_path(conflict)
-        out.append({
-            "conflict": conflict,
-            "base": base,
-            "rel": conflict.relative_to(vault_root),
-        })
-    return out
+def _conflict_family(name: str) -> Optional[str]:
+    """Classify `name` into one of the four conflict/duplicate marker families,
+    or None for a clean (non-colliding) name. Name-only — the co-existence guard
+    for the numbered family is applied by the caller (it needs the directory)."""
+    low = name.lower()
+    if _CONFLICT_MARKER in low:
+        return "conflicted-copy"
+    if "[conflict" in low:
+        return "bracket-conflict"
+    if low.startswith("copy of "):
+        return "copy-of"
+    if re.search(r"\s+\(\d+\)(\.[^.]+)?$", name):
+        return "numbered"
+    return None
 
 
 def _infer_conflict_base_path(conflict: Path) -> Path:
-    """Strip GDrive conflict markers from a filename to derive the base path.
+    """Strip whichever conflict/duplicate marker(s) a filename carries to derive
+    the operator-canonical base path (same parent, cleaned basename).
 
     Examples:
-        "PLAN (conflicted copy 2026-05-27).md"          → "PLAN.md"
-        "PLAN (conflicted copy 2026-05-27) - Mac.md"    → "PLAN.md"
+        "PLAN (conflicted copy 2026-05-27).md"           → "PLAN.md"
+        "PLAN (conflicted copy 2026-05-27) - Mac.md"     → "PLAN.md"
         "PLAN (conflicted copy 2026-05-27 from iPad).md" → "PLAN.md"
+        "PLAN [Conflict].md"                             → "PLAN.md"
+        "PLAN [Conflict 2].md"                           → "PLAN.md"
+        "Copy of PLAN.md"                                → "PLAN.md"
+        "PLAN (1).md"                                    → "PLAN.md"
 
-    Heuristic: regex-strip ` (conflicted copy ...).<ext>` segment.
-    Returns Path with the same parent + stripped basename.
+    Each strip is a no-op when its marker is absent, so the rules compose:
+    "Copy of PLAN (1).md" reduces to "PLAN.md". Best-effort — a name carrying no
+    recognizable marker returns unchanged.
     """
-    import re
-    pattern = re.compile(
-        r"\s*\(conflicted copy[^)]*\)(\s*-\s*[^.]+)?",
-        re.IGNORECASE,
+    name = conflict.name
+    # 1. GDrive "(conflicted copy …)" + optional "- <device>" tail.
+    name = re.sub(
+        r"\s*\(conflicted copy[^)]*\)(\s*-\s*[^.]+)?", "", name, flags=re.IGNORECASE,
     )
-    cleaned = pattern.sub("", conflict.name)
-    return conflict.parent / cleaned
+    # 2. Bracketed "[Conflict]" / "[Conflict N]" marker.
+    name = re.sub(r"\s*\[conflict[^\]]*\]", "", name, flags=re.IGNORECASE)
+    # 3. Trailing " (N)" numbered-duplicate, immediately before the extension.
+    name = re.sub(r"\s+\(\d+\)(?=(\.[^.]+)?$)", "", name)
+    # 4. Leading "Copy of ".
+    name = re.sub(r"^copy of\s+", "", name, flags=re.IGNORECASE)
+    return conflict.parent / name
+
+
+def default_lost_and_found_root() -> Optional[Path]:
+    """The platform DriveFS `lost_and_found/` directory, or None if absent.
+
+    DriveFS dumps files it could not re-home into
+    `~/Library/Application Support/Google/DriveFS/lost_and_found/` on macOS and
+    raises no notification. Returns the path only when it exists, so a machine
+    without DriveFS (or off-macOS) simply gets no lost_and_found sweep. Resolves
+    via `Path.home()` (honors `$HOME`), so a redirected-HOME hook test stays
+    hermetic against the real machine.
+    """
+    p = (
+        Path.home()
+        / "Library" / "Application Support" / "Google" / "DriveFS" / "lost_and_found"
+    )
+    return p if p.is_dir() else None
+
+
+def detect_conflict_files(
+    vault_root: Path, *, lost_and_found_root: Optional[Path] = None,
+) -> list[dict]:
+    """Walk `vault_root` (and optionally a DriveFS `lost_and_found/` root) for
+    conflict/duplicate files across all four marker families.
+
+    Returns a list of dicts:
+        [{"conflict": <conflict-file-path>,
+          "base":     <inferred-base-file-path>,   # best-effort
+          "rel":      <path relative to its own scan root>,
+          "source":   "vault" | "lost_and_found"}, ...]
+
+    The `base` field is the operator-canonical filename the conflict pairs with
+    (marker stripped). For `lost_and_found` entries base inference is best-effort
+    (the file is already orphaned out of its home directory).
+
+    `lost_and_found_root` is opt-in: pass `default_lost_and_found_root()` (the
+    hook does) to include the DriveFS dump, or leave it None to sweep only the
+    vault. Keeping it opt-in keeps unit tests hermetic — they never touch the
+    real `~/Library/.../lost_and_found`.
+
+    The dispatcher hook (conflict-merger-session-start) walks this list at
+    SessionStart and surfaces an operator-facing notice per entry.
+
+    Detection is best-effort by design: GDrive may change a format without
+    notice, so false-negatives are acceptable (the operator still finds the file
+    in Obsidian). The numbered "(N)" family is guarded against year-like false-
+    positives by requiring the de-numbered base to co-exist.
+    """
+    out: list[dict] = []
+
+    vault_root = Path(vault_root)
+    if vault_root.is_dir():
+        # rglob is recursive, depth-first. Safe for vault sizes <10k files.
+        for conflict in vault_root.rglob("*"):
+            if not conflict.is_file():
+                continue
+            family = _conflict_family(conflict.name)
+            if family is None:
+                continue
+            base = _infer_conflict_base_path(conflict)
+            # Numbered "(N)" duplicates are real collisions only when the de-
+            # numbered base co-exists — otherwise "report (2026).md" would be
+            # flagged as a phantom conflict.
+            if family == "numbered" and not base.exists():
+                continue
+            out.append({
+                "conflict": conflict,
+                "base": base,
+                "rel": conflict.relative_to(vault_root),
+                "source": "vault",
+            })
+
+    if lost_and_found_root is not None:
+        laf = Path(lost_and_found_root)
+        if laf.is_dir():
+            for orphan in laf.rglob("*"):
+                if not orphan.is_file():
+                    continue
+                # Every file DriveFS dumps here is orphaned — surface them all
+                # for triage (no marker filter). Base inference is best-effort.
+                out.append({
+                    "conflict": orphan,
+                    "base": _infer_conflict_base_path(orphan),
+                    "rel": orphan.relative_to(laf),
+                    "source": "lost_and_found",
+                })
+
+    return out
 
 
 def toolkit_scripts_dir() -> Optional[Path]:

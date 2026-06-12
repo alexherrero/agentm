@@ -1437,6 +1437,133 @@ class TestDetectConflictFiles(unittest.TestCase):
             (Path(tmp) / "ROADMAP-V4.md").write_text("clean")
             self.assertEqual(hm.detect_conflict_files(Path(tmp)), [])
 
+    # ── V5-0 task 4: broadened marker families ─────────────────────────────
+    def test_vault_entries_carry_source_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "PLAN (conflicted copy 2026-05-27).md").write_text("x")
+            result = hm.detect_conflict_files(Path(tmp))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["source"], "vault")
+
+    def test_detects_bracket_conflict_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            conflict = Path(tmp) / "PLAN [Conflict].md"
+            conflict.write_text("x")
+            result = hm.detect_conflict_files(Path(tmp))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["conflict"], conflict)
+        self.assertEqual(result[0]["base"], Path(tmp) / "PLAN.md")
+
+    def test_detects_bracket_conflict_marker_numbered(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "PLAN [Conflict 2].md").write_text("x")
+            result = hm.detect_conflict_files(Path(tmp))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["base"], Path(tmp) / "PLAN.md")
+
+    def test_detects_copy_of_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            conflict = Path(tmp) / "Copy of PLAN.md"
+            conflict.write_text("x")
+            result = hm.detect_conflict_files(Path(tmp))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["conflict"], conflict)
+        self.assertEqual(result[0]["base"], Path(tmp) / "PLAN.md")
+
+    def test_detects_numbered_duplicate_when_base_coexists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "PLAN.md").write_text("base")  # the de-numbered base
+            conflict = Path(tmp) / "PLAN (1).md"
+            conflict.write_text("dup")
+            result = hm.detect_conflict_files(Path(tmp))
+        # Only the "(1)" duplicate is flagged — the clean base is not a conflict.
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["conflict"], conflict)
+        self.assertEqual(result[0]["base"], Path(tmp) / "PLAN.md")
+
+    def test_numbered_duplicate_ignored_without_base(self) -> None:
+        """The year-like false-positive guard: "report (2026).md" with no
+        de-numbered "report.md" alongside is NOT a Drive duplicate."""
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "report (2026).md").write_text("a standalone file")
+            self.assertEqual(hm.detect_conflict_files(Path(tmp)), [])
+
+    def test_copy_of_takes_precedence_and_composes_with_number(self) -> None:
+        """"Copy of PLAN (1).md" is flagged via the copy-of family (no co-exist
+        guard) and base-inference strips BOTH markers down to "PLAN.md"."""
+        with tempfile.TemporaryDirectory() as tmp:
+            conflict = Path(tmp) / "Copy of PLAN (1).md"
+            conflict.write_text("x")
+            result = hm.detect_conflict_files(Path(tmp))
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["base"], Path(tmp) / "PLAN.md")
+
+    def test_case_insensitive_new_families(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "PLAN [CONFLICT].md").write_text("x")
+            (Path(tmp) / "COPY OF NOTES.md").write_text("y")
+            result = hm.detect_conflict_files(Path(tmp))
+        self.assertEqual(len(result), 2)
+
+    # ── V5-0 task 4: DriveFS lost_and_found/ scan (opt-in, injectable) ──────
+    def test_lost_and_found_not_scanned_by_default(self) -> None:
+        """Opt-in: with no lost_and_found_root passed, only the vault is swept —
+        this is what keeps every other test hermetic against the real ~/Library."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            laf = Path(tmp) / "lost_and_found"
+            vault.mkdir()
+            laf.mkdir()
+            (laf / "orphan.md").write_text("orphaned by DriveFS")
+            self.assertEqual(hm.detect_conflict_files(vault), [])
+
+    def test_lost_and_found_scanned_when_root_injected(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            laf = Path(tmp) / "lost_and_found"
+            vault.mkdir()
+            laf.mkdir()
+            orphan = laf / "orphan.md"
+            orphan.write_text("orphaned by DriveFS")
+            result = hm.detect_conflict_files(vault, lost_and_found_root=laf)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["source"], "lost_and_found")
+        self.assertEqual(result[0]["conflict"], orphan)
+        self.assertEqual(result[0]["rel"], Path("orphan.md"))
+
+    def test_lost_and_found_every_file_surfaced_no_marker_needed(self) -> None:
+        """Unlike the vault sweep, the L&F dump surfaces ALL files (DriveFS only
+        dumps orphans there) — even a clean, marker-less name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            laf = Path(tmp) / "lost_and_found"
+            vault.mkdir()
+            laf.mkdir()
+            (laf / "PLAN.md").write_text("a clean name, but orphaned")
+            result = hm.detect_conflict_files(vault, lost_and_found_root=laf)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["source"], "lost_and_found")
+
+    def test_lost_and_found_root_absent_is_safe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            missing = Path(tmp) / "does-not-exist"
+            self.assertEqual(
+                hm.detect_conflict_files(vault, lost_and_found_root=missing), [],
+            )
+
+    @unittest.skipIf(os.name == "nt", "POSIX $HOME redirection")
+    def test_default_lost_and_found_root_resolution(self) -> None:
+        import unittest.mock as _mock
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            laf = home / "Library" / "Application Support" / "Google" / "DriveFS" / "lost_and_found"
+            with _mock.patch.dict(os.environ, {"HOME": str(home)}):
+                self.assertIsNone(hm.default_lost_and_found_root())  # absent → None
+                laf.mkdir(parents=True)
+                self.assertEqual(hm.default_lost_and_found_root(), laf)  # present → path
+
 
 # -----------------------------------------------------------------------------
 # vec-index drift-detection schema migration (V4 #37 task 2)

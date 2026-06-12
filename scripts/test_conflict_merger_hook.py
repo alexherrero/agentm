@@ -136,6 +136,50 @@ class TestConflictMergerHook(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertNotIn("[conflict-merger]", r.stderr)
 
+    # ── V5-0 task 4: the broadened sweep surfaces through the hook ──────────
+    # These prove the single-place `detect_conflict_files` broadening reaches the
+    # operator end-to-end via the bash hook (not just at the function level).
+    def _harness_dir(self) -> Path:
+        return self.vault / "projects" / "demo" / "_harness"
+
+    def test_detects_bracket_conflict_family(self) -> None:
+        name = "FOLLOWUPS [Conflict].md"
+        (self._harness_dir() / name).write_text("x", encoding="utf-8")
+        r = self._run(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("[conflict-merger]", r.stderr)
+        self.assertIn(name, r.stderr)
+
+    def test_detects_copy_of_family(self) -> None:
+        name = "Copy of FOLLOWUPS.md"
+        (self._harness_dir() / name).write_text("x", encoding="utf-8")
+        r = self._run(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(name, r.stderr)
+        # base-inferred: the "Copy of " prefix is stripped to the canonical name.
+        self.assertIn("FOLLOWUPS.md", r.stderr)
+
+    def test_detects_numbered_duplicate_family(self) -> None:
+        d = self._harness_dir()
+        (d / "FOLLOWUPS.md").write_text("base", encoding="utf-8")  # base co-exists
+        (d / "FOLLOWUPS (1).md").write_text("dup", encoding="utf-8")
+        r = self._run(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("FOLLOWUPS (1).md", r.stderr)
+
+    def test_detects_lost_and_found_orphan(self) -> None:
+        """The DriveFS lost_and_found/ dump — resolved via the fake HOME, so the
+        scan is hermetic against the real machine — is swept and labeled."""
+        laf = (self.fake_home / "Library" / "Application Support"
+               / "Google" / "DriveFS" / "lost_and_found")
+        laf.mkdir(parents=True)
+        (laf / "orphaned-note.md").write_text("orphan", encoding="utf-8")
+        r = self._run(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("[conflict-merger]", r.stderr)
+        self.assertIn("orphaned-note.md", r.stderr)
+        self.assertIn("lost", r.stderr.lower())  # labeled lost+found / lost_and_found
+
 
 if __name__ == "__main__":
     unittest.main()
