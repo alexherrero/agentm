@@ -144,7 +144,6 @@ PHASE_COMMANDS = {"bugfix", "plan", "release", "review", "setup", "work"}
 SUBAGENTS = {
     "adversarial-reviewer",
     "adversarial-reviewer-cross",
-    "documenter",
     "explorer",
 }
 SKILLS = {"doctor", "migrate-to-diataxis"}

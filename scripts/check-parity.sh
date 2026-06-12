@@ -4,8 +4,9 @@
 #
 # Canonical sets (derived from harness/phases/ + harness/agents/ + skills):
 #   phase-commands: bugfix, plan, release, review, setup, work
-#   sub-agents:     adversarial-reviewer, adversarial-reviewer-cross,
-#                   documenter, explorer
+#   sub-agents:     adversarial-reviewer, adversarial-reviewer-cross, explorer
+#                   (documenter retired to crickets' wiki-maintenance plugin
+#                    in the seven-section convergence — see ADR 0006)
 #   skills:         doctor, migrate-to-diataxis
 #                   (dependabot-fixer + ship-release migrated to crickets
 #                    in v2.0.0 — see ADR 0006)
@@ -28,7 +29,7 @@ HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$HARNESS_ROOT"
 
 CANON_COMMANDS=(bugfix plan release review setup work)
-CANON_AGENTS=(adversarial-reviewer adversarial-reviewer-cross documenter explorer)
+CANON_AGENTS=(adversarial-reviewer adversarial-reviewer-cross explorer)
 CANON_SKILLS=(doctor migrate-to-diataxis)
 
 # Utility slash commands (V4 #30 plan 2 task 7+) — claude-code only.

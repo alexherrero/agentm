@@ -88,7 +88,6 @@ SHARED_SKILLS = {"doctor", "migrate-to-diataxis"}
 ANTIGRAVITY_AGENT_LIKE_SKILLS = {
     "adversarial-reviewer",
     "adversarial-reviewer-cross",
-    "documenter",
     "explorer",
 }
 
@@ -208,6 +207,10 @@ EXTERNAL_CUSTOMIZATIONS = {
     "ship-release",       # crickets/skills/ship-release/
     # Agents added in crickets v0.6.0 (referenced from /review in v2.1.0):
     "evaluator",          # crickets/agents/evaluator.md
+    # documenter retired from agentm in the seven-section convergence;
+    # canonical in crickets' wiki-maintenance plugin (ADR 0006 single-source).
+    # Phase specs still dispatch it by name as a graceful-skip suggestion.
+    "documenter",         # crickets/src/wiki-maintenance/agents/documenter.md
     # Hooks added in crickets v0.7.0 (referenced from /work + /release in v2.2.0).
     # These don't trip the existing DISPATCH_AGENT_RE / INVOKE_SKILL_RE regexes
     # (phase-spec phrasing uses markdown links + "the <name> hook" prose, not
