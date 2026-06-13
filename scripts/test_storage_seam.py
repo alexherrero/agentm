@@ -32,6 +32,7 @@ Run directly:
 """
 from __future__ import annotations
 
+import ast
 import subprocess
 import sys
 import tempfile
@@ -365,6 +366,119 @@ class BackendRegistryContract(unittest.TestCase):
         # The process-wide default the real backends (parts 2/4) register into;
         # asserted without mutating it, so the contract suite stays hermetic.
         self.assertIsInstance(ss.registry, ss.BackendRegistry)
+
+
+class ThreeTierContract(unittest.TestCase):
+    """The source/derived tier taxonomy — three tiers, the local index never-sync."""
+
+    def test_exactly_three_tiers_named(self) -> None:
+        self.assertEqual(
+            {t.value for t in ss.Tier},
+            {"source", "shared-abstracts", "local-index"},
+        )
+
+    def test_local_index_is_the_only_never_sync_tier(self) -> None:
+        # The one hard line: the local index never syncs; the other two may.
+        self.assertFalse(ss.Tier.LOCAL_INDEX.syncs)
+        self.assertTrue(ss.Tier.SOURCE.syncs)
+        self.assertTrue(ss.Tier.SHARED_ABSTRACTS.syncs)
+
+    def test_source_is_authoritative_the_others_derived(self) -> None:
+        # SOURCE is the truth reindex rebuilds from; both other tiers are derived.
+        self.assertFalse(ss.Tier.SOURCE.derived)
+        self.assertTrue(ss.Tier.SHARED_ABSTRACTS.derived)
+        self.assertTrue(ss.Tier.LOCAL_INDEX.derived)
+
+    def test_layout_roots_are_distinct(self) -> None:
+        layout = ss.TierLayout()
+        keys = {layout.source.key, layout.shared_abstracts.key, layout.local_index.key}
+        self.assertEqual(len(keys), 3)
+
+    def test_layout_rejects_colliding_roots(self) -> None:
+        # source + shared-abstracts placement must stay distinct from local-index —
+        # else a derived tier could overwrite the source it rebuilds from.
+        with self.assertRaises(ValueError):
+            ss.TierLayout(source=ss.Locator("x"), local_index=ss.Locator("x"))
+
+    def test_never_sync_root_is_the_local_index(self) -> None:
+        layout = ss.TierLayout()
+        self.assertEqual(layout.never_sync_root, layout.local_index)
+
+    def test_root_for_maps_each_tier(self) -> None:
+        layout = ss.TierLayout()
+        self.assertEqual(layout.root_for(ss.Tier.SOURCE), layout.source)
+        self.assertEqual(layout.root_for(ss.Tier.SHARED_ABSTRACTS), layout.shared_abstracts)
+        self.assertEqual(layout.root_for(ss.Tier.LOCAL_INDEX), layout.local_index)
+
+    def test_reindex_and_changed_since_are_named(self) -> None:
+        # The two derived-tier ops are reserved on the contract — named for V6.
+        self.assertTrue(hasattr(ss.DerivedMaintenance, "reindex"))
+        self.assertTrue(hasattr(ss.DerivedMaintenance, "changed_since"))
+
+
+class NoIndexBuilt(unittest.TestCase):
+    """Scope guard: this part *names* reindex/changed-since but builds no index.
+
+    Two structural assertions: the derived-maintenance ops are abstract (so the
+    contract ships no implementation — "named, not built" is enforced, not just
+    documented), and the contract module imports no database / index / framework
+    library (the "import neither fsspec nor any DB" constraint, made executable).
+    The import check is AST-based on purpose: the module's own docstrings mention
+    "SQLite" and "vector index", so a substring scan would false-positive — only
+    a real ``import`` statement counts.
+    """
+
+    # DB / index / framework modules the contract must not import — the floor is
+    # bare markdown (no fsspec, no SQL engine, no vector store).
+    _FORBIDDEN_IMPORTS = frozenset(
+        {
+            "fsspec",
+            "sqlite3",
+            "pysqlite3",
+            "sqlalchemy",
+            "duckdb",
+            "chromadb",
+            "lancedb",
+            "faiss",
+            "annoy",
+            "hnswlib",
+            "numpy",
+            "pandas",
+        }
+    )
+
+    def test_derived_maintenance_is_abstract(self) -> None:
+        # Cannot instantiate — the structural proof that no implementation ships.
+        with self.assertRaises(TypeError):
+            ss.DerivedMaintenance()
+
+    def test_reindex_and_changed_since_are_abstractmethods(self) -> None:
+        self.assertEqual(
+            ss.DerivedMaintenance.__abstractmethods__,
+            frozenset({"reindex", "changed_since"}),
+        )
+
+    def test_contract_module_ships_no_concrete_derived_maintenance(self) -> None:
+        # No reindex/changed-since implementation in the contract module itself.
+        concrete = [
+            v
+            for v in vars(ss).values()
+            if isinstance(v, type)
+            and issubclass(v, ss.DerivedMaintenance)
+            and v is not ss.DerivedMaintenance
+        ]
+        self.assertEqual(concrete, [], f"unexpected concrete subclass(es): {concrete}")
+
+    def test_contract_module_imports_no_db_or_index_library(self) -> None:
+        src = Path(ss.__file__).read_text(encoding="utf-8")
+        imported: set[str] = set()
+        for node in ast.walk(ast.parse(src)):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        leaked = imported & self._FORBIDDEN_IMPORTS
+        self.assertEqual(leaked, set(), f"contract module imports forbidden lib(s): {leaked}")
 
 
 # -----------------------------------------------------------------------------

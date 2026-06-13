@@ -21,7 +21,13 @@ Scope of *this* part — **contract only**:
     backends register a protocol name with (``device-local``, ``vault``) and
     selection looks up — a miss reports *absent*, never raises (part 5 decides
     whether absence is fatal). This mirrors the seam's absent-vs-corrupt split:
-    the registry reports absence; the caller fails loud on it.
+    the registry reports absence; the caller fails loud on it;
+  - the three-tier source/derived taxonomy (``Tier`` + ``TierLayout``): source
+    (synced, authoritative) · shared-abstracts (derived, may sync) · local-index
+    (derived, **never syncs**), and the two derived-tier ops ``reindex`` /
+    ``changed_since`` (``DerivedMaintenance``) — **named here, built in V6**.
+    This part designates the tiers and reserves the op names; it builds no index
+    and promotes no abstract (the scope guard asserts as much).
 
 Locked design calls this module encodes (see the parent design, ``Status:
 final``):
@@ -35,6 +41,12 @@ final``):
     through ``vault_lock`` (``atomic_write`` + content-hash CAS + ``vault_mutex``)
     and never reinvents write-safety. The abstract contract here only declares
     the shape; the composition lands with the concrete backends (parts 2 / 4).
+  - **Three tiers, one hard line.** source (synced, authoritative) · shared
+    abstracts (derived, may sync) · local index (derived, **never syncs** — a
+    replicated SQLite/vector index is a corruption pattern). All derived tiers
+    are rebuildable from source; ``reindex``/``changed_since`` are *named now,
+    built in V6*, so the V6 vector index lands on an affordance that already
+    exists.
   - **The public API stays frozen (DC-7).** ``recall``/``reflect``/``save``/
     ``evolve`` and the five memory hooks are byte-unchanged; this seam sits
     strictly *below* that surface and never widens it.
@@ -47,6 +59,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 
 __all__ = [
     "InvalidLocatorError",
@@ -58,6 +71,9 @@ __all__ = [
     "ProtocolError",
     "BackendRegistry",
     "registry",
+    "Tier",
+    "TierLayout",
+    "DerivedMaintenance",
 ]
 
 
@@ -310,3 +326,114 @@ class BackendRegistry:
 #: The process-wide default registry the real backends register into (parts 2/4).
 #: Contract tests use fresh ``BackendRegistry()`` instances to stay hermetic.
 registry = BackendRegistry()
+
+
+class Tier(Enum):
+    """The three storage tiers — one hard line: the local index **never** syncs.
+
+    The memory state splits across three tiers, distinguished by who owns the
+    truth and whether an external sync layer may replicate the tree:
+
+      - ``SOURCE`` — the synced, *authoritative* tier: the markdown the engine
+        persists. Synced; never derived (it is the truth everything rebuilds from).
+      - ``SHARED_ABSTRACTS`` — *derived* and portable: summaries/abstractions
+        rebuilt from source that *may* sync between devices (they're useful
+        everywhere, and rebuildable if a sync drops them).
+      - ``LOCAL_INDEX`` — *derived* and **device-local**: the V6 vector/SQLite
+        index. It must **never** sync — a replicated database file is a
+        corruption pattern (see :class:`Capabilities` ``sync``), which is why it
+        is pinned device-local here, before any index exists to mis-place.
+
+    This taxonomy is *reserved* in this part: it designates the tiers and their
+    sync policy so the V6 index lands on a contract that already exists. No
+    index is built and no abstract is promoted here.
+    """
+
+    SOURCE = "source"
+    SHARED_ABSTRACTS = "shared-abstracts"
+    LOCAL_INDEX = "local-index"
+
+    @property
+    def syncs(self) -> bool:
+        """Whether an external sync layer may replicate this tier's tree.
+
+        ``True`` for ``SOURCE`` (the synced authority) and ``SHARED_ABSTRACTS``
+        (derived but portable); **``False`` only for** ``LOCAL_INDEX`` — the one
+        hard line. The never-sync property is what makes a device-local SQLite
+        index safe.
+        """
+        return self is not Tier.LOCAL_INDEX
+
+    @property
+    def derived(self) -> bool:
+        """Whether this tier is rebuildable from ``SOURCE`` (so it is never authoritative).
+
+        ``True`` for both derived tiers; ``False`` only for ``SOURCE``, which is
+        the truth ``reindex`` rebuilds the others from.
+        """
+        return self is not Tier.SOURCE
+
+
+@dataclass(frozen=True)
+class TierLayout:
+    """Where each tier's root lives — three **distinct** roots, the local index pinned never-sync.
+
+    Designates a root locator per tier; the defaults are tier-named placeholders
+    a concrete backend (parts 2 / 4) overrides with its real roots — typically a
+    synced-vault root for ``source``/``shared_abstracts`` and a device-local
+    cache root for ``local_index``. The one invariant enforced here: the three
+    roots are distinct (``source`` + ``shared_abstracts`` placement is separate
+    from the ``local_index`` placement), so a derived tier can never overwrite
+    the source it rebuilds from. No tree is created — this is placement, not I/O.
+    """
+
+    source: Locator = Locator("source")
+    shared_abstracts: Locator = Locator("shared-abstracts")
+    local_index: Locator = Locator("local-index")
+
+    def __post_init__(self) -> None:
+        roots = (self.source, self.shared_abstracts, self.local_index)
+        if len({r.key for r in roots}) != len(roots):
+            raise ValueError(
+                "tier roots must be distinct (source/shared-abstracts/local-index): "
+                + ", ".join(repr(str(r)) for r in roots)
+            )
+
+    @property
+    def never_sync_root(self) -> Locator:
+        """The local-index root — the one tree that must never be replicated by sync."""
+        return self.local_index
+
+    def root_for(self, tier: Tier) -> Locator:
+        """The root locator designated for ``tier``."""
+        return {
+            Tier.SOURCE: self.source,
+            Tier.SHARED_ABSTRACTS: self.shared_abstracts,
+            Tier.LOCAL_INDEX: self.local_index,
+        }[tier]
+
+
+class DerivedMaintenance(ABC):
+    """The two derived-tier operations — **named here, built in V6**.
+
+    Maintaining a derived tier (``SHARED_ABSTRACTS`` or ``LOCAL_INDEX``) from
+    ``SOURCE`` needs two ops; this part *reserves their names and shapes* so the
+    V6 index plugs into a contract that already exists, but ships **no
+    implementation** — there is deliberately no concrete subclass in this module
+    (the scope guard asserts it). Both are abstract, so this class cannot be
+    instantiated: the "named, not built" property is structural, not a comment.
+
+      - ``reindex`` — rebuild a derived tier from ``SOURCE`` (the full rebuild).
+      - ``changed_since`` — the *incremental feed*: the source locators changed
+        after a watermark, keyed on :attr:`Info.mtime` (the lean v1 granularity
+        locked in over a content-hash log), so an incremental reindex touches
+        only what moved.
+    """
+
+    @abstractmethod
+    def reindex(self, tier: Tier) -> None:
+        """Rebuild ``tier`` (a derived tier) from ``SOURCE``. Built in V6."""
+
+    @abstractmethod
+    def changed_since(self, mtime: float) -> list[Locator]:
+        """Source locators whose ``mtime`` is newer than ``mtime``. Built in V6."""

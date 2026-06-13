@@ -1,9 +1,9 @@
 # Storage seam reference
 
-The memory↔storage contract ([`scripts/storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py)) — the small interface of *verbs* the memory engine calls instead of touching the filesystem directly. A backend implements the verbs; the engine consumes the seam's own `Locator` type and so learns no filesystem assumption. This page documents the **abstract contract that ships today** (V5-1 part 1 of 5): the seven verbs as an abstract `StorageBackend`, the three value types, the named-backend registry, and the no-`Path`-leak gate. For *why* the seam is shaped this way, see [Memory↔storage seam](Memory-Storage-Seam).
+The memory↔storage contract ([`scripts/storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py)) — the small interface of *verbs* the memory engine calls instead of touching the filesystem directly. A backend implements the verbs; the engine consumes the seam's own `Locator` type and so learns no filesystem assumption. This page documents the **abstract contract that ships today** (V5-1 part 1 of 5): the seven verbs as an abstract `StorageBackend`, the three value types, the named-backend registry, the three-tier source/derived taxonomy, and the no-`Path`-leak gate. For *why* the seam is shaped this way, see [Memory↔storage seam](Memory-Storage-Seam).
 
 > [!NOTE]
-> **Contract only — no concrete backend ships here.** The abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, and the [`BackendRegistry`](#the-backendregistry) all ship now; **no concrete backend does.** The device-local backend (part 2), the conformance suite (part 3), the vault wrap (part 4), and selection + fail-loud (part 5) are forthcoming. The `StorageBackend` below is abstract; the `_MemoryBackend` used in tests is a fixture, not a shipped backend. The registry holds backend *classes* but ships with none registered into the default `registry` — the two real backends register under their protocol names in parts 2 / 4. Anything this page marks *(part N)* is a forward reference, not current behavior.
+> **Contract only — no concrete backend ships here.** The abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, the [`BackendRegistry`](#the-backendregistry), and the [three-tier taxonomy](#the-tier-taxonomy) (`Tier` / `TierLayout` / `DerivedMaintenance`) all ship now; **no concrete backend does, and no index or abstract-promotion does.** The device-local backend (part 2), the conformance suite (part 3), the vault wrap (part 4), and selection + fail-loud (part 5) are forthcoming; the actual derived index + abstract promotion land in V6. The `StorageBackend` below is abstract; the `_MemoryBackend` used in tests is a fixture, not a shipped backend. The registry holds backend *classes* but ships with none registered into the default `registry` — the two real backends register under their protocol names in parts 2 / 4. `DerivedMaintenance` is an abstract class with **no concrete subclass** — `reindex`/`changed_since` are *reserved names*, not working operations. Anything this page marks *(part N)* or *(V6)* is a forward reference, not current behavior.
 
 ## ⚡ Quick Reference
 
@@ -55,7 +55,7 @@ Metadata about a locator — the `info` verb's return, a frozen `dataclass`.
 | `locator` | `Locator` | The locator described. |
 | `is_dir` | `bool` | Whether it's a directory. |
 | `size` | `int` | Bytes (`0` for a directory). |
-| `mtime` | `float` | Modification time, epoch seconds. **The `changed-since` granularity** (the incremental feed named in part 3) — the *lean* v1 choice over a content-hash log. |
+| `mtime` | `float` | Modification time, epoch seconds. **The `changed_since` granularity** — the [incremental-feed op](#derivedmaintenance) reserved here keys on it, the *lean* v1 choice over a content-hash log. |
 
 ## The `Capabilities` type
 
@@ -66,7 +66,7 @@ What a backend can promise — the per-backend descriptor a backend declares, a 
 | `concurrent_writers` | `False` | Safe under more than one writer process. |
 | `conflict_files` | `False` | The backend may surface conflict copies (e.g. a sync layer's "(conflicted copy)" files) the engine must tolerate. |
 | `encryption` | `False` | Content is encrypted at rest by the backend. |
-| `sync` | `False` | The backend's tree is replicated by an external sync layer — the property that makes a SQLite index *on* it a corruption pattern (why the local index is designated never-sync in part 3). |
+| `sync` | `False` | The backend's tree is replicated by an external sync layer — the property that makes a SQLite index *on* it a corruption pattern. This is the flag the [`Tier.syncs`](#the-tier-taxonomy) policy ties to: the local-index tier is pinned never-sync precisely because a replicated database file corrupts. |
 
 ## The `StorageBackend` ABC
 
@@ -108,7 +108,7 @@ Whether anything (file *or* directory) is present at `locator`.
 
 ### `info(locator) -> Info`
 
-Return `Info` for `locator` (raises if absent). Carries `mtime` — the granularity `changed-since` reads (part 3).
+Return `Info` for `locator` (raises if absent). Carries `mtime` — the granularity [`changed_since`](#derivedmaintenance) reads.
 
 ### `mkdir(locator) -> Locator`
 
@@ -148,9 +148,59 @@ A process-wide default `BackendRegistry` instance ([`scripts/storage_seam.py#L31
 
 A `ValueError` subclass ([`scripts/storage_seam.py#L237`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L237)) raised by `BackendRegistry.register` on an empty or duplicate protocol name. Registering badly is a *programming* error, surfaced loudly — kept deliberately distinct from a registry *miss*, which is not an error at all (`get` → `None`).
 
+## The Tier taxonomy
+
+The memory state splits across three tiers, distinguished by *who owns the truth* (`source` vs `derived`) and *whether an external sync layer may replicate the tree* (`syncs`). The taxonomy is **reserved in this part**: it designates the tiers and their sync/derived policy so the V6 vector/SQLite index lands on a contract that already exists. No index is built and no abstract is promoted here. For *why* the local index is pinned never-sync, see [Memory↔storage seam § The three tiers](Memory-Storage-Seam#the-three-tiers-and-why-the-index-never-syncs).
+
+### `Tier`
+
+The three-tier enum ([`scripts/storage_seam.py#L331`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L331)). Two properties carry the policy; the one hard line is that **only `LOCAL_INDEX` is never-sync**.
+
+| Member | Value | `.syncs` | `.derived` | What it holds |
+|---|---|---|---|---|
+| `SOURCE` | `"source"` | `True` | `False` | The synced, *authoritative* markdown the engine persists — the truth the others rebuild from. |
+| `SHARED_ABSTRACTS` | `"shared-abstracts"` | `True` | `True` | Derived-but-portable summaries/abstractions; *may* sync (useful everywhere, rebuildable if a sync drops them). |
+| `LOCAL_INDEX` | `"local-index"` | **`False`** | `True` | The V6 vector/SQLite index — device-local, **never** synced (a replicated database file is a corruption pattern). |
+
+| Property | Returns | Detail |
+|---|---|---|
+| `.syncs` | `bool` | Whether an external sync layer may replicate this tier's tree. `True` for `SOURCE` and `SHARED_ABSTRACTS`; **`False` only for `LOCAL_INDEX`** — ties to [`Capabilities.sync`](#the-capabilities-type). |
+| `.derived` | `bool` | Whether the tier is rebuildable from `SOURCE` (so never authoritative). `True` for both derived tiers; `False` only for `SOURCE`. |
+
+### `TierLayout`
+
+A frozen `dataclass` ([`scripts/storage_seam.py#L377`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L377)) designating a root [`Locator`](#the-locator-type) per tier. The defaults are tier-named placeholders a concrete backend (parts 2 / 4) overrides with its real roots — typically a synced-vault root for `source`/`shared_abstracts` and a device-local cache root for `local_index`. No tree is created — this is placement, not I/O.
+
+| Member | Type | Detail |
+|---|---|---|
+| `source` | `Locator` | Root for the `SOURCE` tier. Default `Locator("source")`. |
+| `shared_abstracts` | `Locator` | Root for the `SHARED_ABSTRACTS` tier. Default `Locator("shared-abstracts")`. |
+| `local_index` | `Locator` | Root for the `LOCAL_INDEX` tier. Default `Locator("local-index")`. |
+| `never_sync_root` | `property → Locator` | Returns the `local_index` root — the one tree that must never be replicated by sync. |
+| `root_for(tier)` | `→ Locator` | The root locator designated for a given [`Tier`](#tier). |
+
+> [!IMPORTANT]
+> **The three roots must be distinct.** `__post_init__` raises `ValueError` if any two tier roots collide — so a derived tier can never overwrite the source it rebuilds from. The `source`/`shared_abstracts` placement is structurally separate from the `local_index` placement.
+
+### `DerivedMaintenance`
+
+An abstract base ([`scripts/storage_seam.py#L416`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L416)) naming the two derived-tier operations.
+
+> [!NOTE]
+> **Named / reserved — built in V6.** Both methods are abstract, so the class cannot be instantiated and **no implementation ships**: there is deliberately no concrete subclass in the module (a [scope guard](#the-scope-guard) asserts it). `reindex`/`changed_since` are *reserved names*, not working operations.
+
+| Method | Signature | Detail |
+|---|---|---|
+| `reindex` | `reindex(tier: Tier) -> None` | Full rebuild of a derived `tier` from `SOURCE`. |
+| `changed_since` | `changed_since(mtime: float) -> list[Locator]` | The *incremental feed* — source locators whose [`Info.mtime`](#the-info-type) is newer than `mtime`, so an incremental reindex touches only what moved. |
+
+### The scope guard
+
+The contract-only stance is enforced executably, not just by convention, in [`scripts/test_storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_storage_seam.py): `DerivedMaintenance` cannot be instantiated (its `__abstractmethods__` are `{reindex, changed_since}`), the module exports **no concrete `DerivedMaintenance` subclass**, and the module imports **no DB / index / vector-framework library**. Together these are the structural proof that the index is *named*, not *built*, in this part.
+
 ## Module exports
 
-`storage_seam.__all__` is the public surface: `InvalidLocatorError`, `normalize_key`, `Locator`, `Info`, `Capabilities`, `StorageBackend`, `ProtocolError`, `BackendRegistry`, `registry`. No concrete backend, and no `python -m` entrypoint — unlike the [process seam](Process-Seam), this module is consumed *in-process* by the engine, so it ships as an importable contract only.
+`storage_seam.__all__` is the public surface: `InvalidLocatorError`, `normalize_key`, `Locator`, `Info`, `Capabilities`, `StorageBackend`, `ProtocolError`, `BackendRegistry`, `registry`, `Tier`, `TierLayout`, `DerivedMaintenance`. No concrete backend, no `DerivedMaintenance` implementation, and no `python -m` entrypoint — unlike the [process seam](Process-Seam), this module is consumed *in-process* by the engine, so it ships as an importable contract only.
 
 ## Related
 

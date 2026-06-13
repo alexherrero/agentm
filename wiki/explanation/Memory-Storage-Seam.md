@@ -3,7 +3,7 @@
 Why the memory engine reads and writes its state through a small interface of *verbs* — `resolve`, `read`, `write`, `list`, `exists` (+ `info`, `mkdir`) — instead of touching the filesystem directly, and why those verbs hand back the seam's own opaque locator type rather than a `pathlib.Path`. The seam is the second of the two introduced in the V5 unbundling: the [memory↔process seam](Memory-Process-Seam) faces *up* (a process calls the engine); this one faces *down* (the engine calls its storage). This note explains the shape the contract took. For the verb-by-verb contract, see [Storage seam](Storage-Seam).
 
 > [!NOTE]
-> **Contract only — part 1 of 5.** What ships today is the *abstract* contract: the verbs as an abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, the named-backend registry, and the gate that keeps a `Path` from crossing it. **No concrete backend ships yet.** The device-local backend (part 2), the conformance suite (part 3), the vault wrap (part 4), and backend selection + fail-loud (part 5) are forthcoming on the same plan. Everything below about *concrete backends*, *selection*, and the *engine cutover* describes the contract those parts will conform to — not behavior that exists in `main`.
+> **Contract only — part 1 of 5, now complete.** What ships today is the *abstract* contract: the verbs as an abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, the named-backend registry, the three-tier source/derived taxonomy, and the gate that keeps a `Path` from crossing it. **No concrete backend ships yet, and no index or abstract promotion does.** The device-local backend (part 2), the conformance suite (part 3), the vault wrap (part 4), and backend selection + fail-loud (part 5) are forthcoming on the same plan; the actual derived index lands in V6. Everything below about *concrete backends*, *selection*, the *index*, and the *engine cutover* describes the contract those parts will conform to — not behavior that exists in `main`.
 
 ## What the seam is for
 
@@ -52,12 +52,34 @@ The scan is scoped to `scripts/storage_*.py` — the seam contract module today,
 Three small types travel with the verbs, and each is deliberately lean:
 
 - **`Locator`** is normalized at construction and **root-confined**: a leading slash is silently relativized (a locator is *always* backend-relative), and a `..` segment is rejected outright with `InvalidLocatorError`. The seam has no upward-traversal semantics — that is the safety property that keeps a key from ever escaping the backend root. The root locator is the empty string.
-- **`Info`** carries `mtime` (epoch seconds) as its load-bearing field. That is a *deliberate* granularity choice: the `changed-since` incremental feed (part 3) reads mtime rather than maintaining a content-hash log — the lean v1 floor over a heavier mechanism.
+- **`Info`** carries `mtime` (epoch seconds) as its load-bearing field. That is a *deliberate* granularity choice: the `changed_since` incremental feed (named in [the three-tier contract](#the-three-tiers-and-why-the-index-never-syncs), built in V6) reads mtime rather than maintaining a content-hash log — the lean v1 floor over a heavier mechanism.
 - **`Capabilities`** is four booleans, all defaulting to the conservative `False`: `concurrent_writers`, `conflict_files`, `encryption`, `sync`. A backend *declares* what it can promise; selection and fail-loud (part 5) will *read* these. It is a dataclass precisely so the set can grow without breaking callers.
 
 And the v1 currency is **text** — `read` returns `str`, `write` takes `str` — because the engine's state is markdown. A bytes channel is a named future extension, not a v1 obligation. This keeps the contract small enough to be obviously correct, which matters disproportionately for a module four more parts will build against.
 
 One more property the contract only *declares*, deferring the work: a filesystem backend's `write` is specified to compose the existing [vault write protocol](Vault-Write-Protocol) (the V5-0 `atomic_write` + content-hash CAS + `vault_mutex`) rather than reinventing write-safety. The abstract contract here states the shape — "the write is durable and atomic, and the returned locator round-trips through `read`" — but the actual composition lands with the concrete backends in parts 2 and 4, not in this abstract ABC.
+
+## The three tiers, and why the index never syncs
+
+The seam's state is not one undifferentiated tree. It splits across three tiers, and the split exists to answer a single sharp question the V6 work will otherwise stumble on: *what is allowed to sync?* The taxonomy (`Tier`, `TierLayout`, `DerivedMaintenance` — the verb-level surface is in [Storage seam § The Tier taxonomy](Storage-Seam#the-tier-taxonomy)) is **reserved here**, before any index exists, precisely so the answer is settled in the contract rather than improvised when the index lands.
+
+The three tiers fall along two axes — *who owns the truth* and *what may replicate*:
+
+| Tier | Authority | Syncs? | Why |
+|---|---|---|---|
+| **source** | authoritative | yes | The markdown the engine persists. It is the truth; it syncs so every device has it. |
+| **shared-abstracts** | derived | yes | Summaries rebuilt *from* source. Useful on every device and cheap to regenerate, so they may ride the sync layer — but they are never authoritative. |
+| **local-index** | derived | **never** | The V6 vector/SQLite index. Device-local, full stop. |
+
+**The one hard line is that the local index never syncs**, and it is worth being explicit about why, because it is the entire reason the tier exists as a distinct category. A vector or SQLite index is a single binary file mutated in place. An external sync layer (Dropbox, iCloud, Syncthing — the kind the [vault backend](Vault-Write-Protocol) sits behind) replicates such a file by copying bytes and resolving divergence with "last writer wins" or a "(conflicted copy)" duplicate. Neither is safe for a live database: a half-replicated index is a *corrupt* index, not a stale one. So the index is pinned device-local in the contract — each device rebuilds its own from the synced source. This is the same property the [`Capabilities.sync`](Storage-Seam#the-capabilities-type) flag describes from the backend's side; the tier taxonomy is where the engine's *own* layout commits to honoring it. The structural guard against getting it wrong is in `TierLayout`: the three roots must be distinct, so a derived tier can never be placed on top of the source it rebuilds from.
+
+The source/derived distinction is the other half. Source is the one tier that is never `derived`; everything else is rebuildable from it. That is what makes the never-sync stance *affordable*: losing a device-local index costs nothing but CPU, because the source — which does sync — is sufficient to regenerate it. Derived data is disposable by construction; only the source is precious.
+
+### Why name the maintenance ops now, before building them
+
+`DerivedMaintenance` reserves two operation *names* — `reindex` (rebuild a derived tier from source) and `changed_since` (the incremental feed of source locators newer than a watermark) — but ships no implementation. The class is abstract; there is deliberately no concrete subclass, and a scope guard test asserts both that fact and that the module imports no database or index library. The index itself is V6.
+
+Reserving the names without the bodies is a deliberate sequencing call, not an unfinished one. The V6 index is a large piece of work, and the riskier failure mode is not "we lack a reindex function" — it is "the index lands and *then* we discover the engine has no shaped place to call it from, so it bolts on awkwardly." Naming `reindex`/`changed_since` here means V6 plugs into an affordance the contract already anticipated: an incremental feed keyed on `mtime` (the lean granularity locked in over a content-hash log), a full rebuild that reads from source. The shape is decided while it is cheap to decide — in an abstract class with no callers — rather than under the pressure of a half-built index. The "named, not built" property is made *structural* (an un-instantiable abstract class) rather than left as a comment, so the boundary cannot quietly erode.
 
 ## Why a miss is absence, not an error
 
