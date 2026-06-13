@@ -151,6 +151,21 @@ class LocatorType(unittest.TestCase):
         with self.assertRaises(ss.InvalidLocatorError):
             ss.Locator("a").child("..")
 
+    def test_backslash_and_nul_keys_are_rejected(self) -> None:
+        # Windows path-traversal vector: '/' is the seam's only separator, but a
+        # backend joins parts with pathlib, where '\' separates on Windows. A key
+        # like '..\..\Windows' would otherwise survive as one opaque segment and
+        # walk out of the root. Rejected on every platform — the guard is a strict
+        # superset of harness_memory._is_safe_plan_slug.
+        for bad in ("..\\..\\Windows", "a\\b", "\\escape", "a\x00b"):
+            with self.assertRaises(ss.InvalidLocatorError):
+                ss.normalize_key(bad)
+            with self.assertRaises(ss.InvalidLocatorError):
+                ss.Locator(bad)
+        # child() funnels through the same guard.
+        with self.assertRaises(ss.InvalidLocatorError):
+            ss.Locator("a").child("..\\b")
+
     def test_invalid_locator_error_is_a_valueerror(self) -> None:
         # A caller bug — kept in the ValueError family, distinct from absent-data.
         self.assertTrue(issubclass(ss.InvalidLocatorError, ValueError))

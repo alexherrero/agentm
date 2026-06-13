@@ -162,6 +162,15 @@ class DeviceLocalSeamVerbs(unittest.TestCase):
         with self.assertRaises(ss.InvalidLocatorError):
             ss.Locator("../escape")
 
+    def test_backslash_key_is_rejected(self) -> None:
+        # The Windows backslash-traversal vector reaches _path via resolve/Locator,
+        # which joins parts under the root with pathlib ('\' separates on Windows).
+        # The guard rejects the key before it can reach that join — every platform.
+        with self.assertRaises(ss.InvalidLocatorError):
+            self.b.resolve("..\\..\\Windows", "System32")
+        with self.assertRaises(ss.InvalidLocatorError):
+            ss.Locator("..\\escape")
+
     def test_no_verb_returns_a_path(self) -> None:
         # Behavioral mirror of the no-path-leak gate, on the concrete backend.
         loc = self.b.resolve("d", "a.md")
