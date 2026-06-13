@@ -321,5 +321,101 @@ class TestCapabilitiesRead(unittest.TestCase):
             self.assertFalse(value)
 
 
+class TestStoragePreview(unittest.TestCase):
+    """Part-5 task 4: the `doctor` storage preview — read-only, never mutates, never drifts.
+
+    `storage_preview` mirrors `select_backend`'s resolution but *reports* instead
+    of instantiating. The load-bearing assertions: it reuses
+    `_install_plugin_message` (so doctor's preview is byte-identical to the
+    runtime guard, mirroring the `check-worktree-slug` probe/gate shared-resolver
+    pattern) and it NEVER constructs a backend (the device-local root stays
+    uncreated — doctor must not mutate the operator's home).
+    """
+
+    SENTINEL = "never-registered-sentinel-backend"
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-storage-preview-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.device_root = Path(self.tmp) / "device-local-root"
+        self.lock_root = Path(self.tmp) / "locks"
+        self.env = _Env(self.prefix)
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_fresh_install_previews_device_local_ok(self) -> None:
+        prev = bs.storage_preview(device_local_root=self.device_root)
+        self.assertEqual(prev.status, "ok")
+        self.assertEqual(prev.protocol, storage_device_local.PROTOCOL)
+        self.assertIn("[OK]", prev.line)
+        self.assertIn("device-local", prev.line)
+        # Read-only: the preview probed writability WITHOUT creating the root.
+        self.assertFalse(
+            self.device_root.exists(),
+            "doctor preview mutated the operator's home (constructed a backend)",
+        )
+
+    def test_vault_path_previews_vault_ok(self) -> None:
+        vault = Path(self.tmp) / "vault"
+        vault.mkdir()
+        self.assertEqual(ac.main(["--vault-path", str(vault)]), 0)
+        prev = bs.storage_preview()
+        self.assertEqual(prev.status, "ok")
+        self.assertEqual(prev.protocol, storage_vault.PROTOCOL)
+        self.assertIn("[OK]", prev.line)
+        self.assertIn("vault", prev.line)
+
+    def test_unregistered_backend_previews_install_message_verbatim(self) -> None:
+        # The byte-identical-to-the-guard assertion: the preview embeds the EXACT
+        # _install_plugin_message the task-3 guard raises, so doctor's preview and
+        # the runtime refusal can never drift.
+        self.assertEqual(ac.main(["--storage-backend", self.SENTINEL]), 0)
+        prev = bs.storage_preview(device_local_root=self.device_root)
+        self.assertEqual(prev.status, "fail")
+        self.assertEqual(prev.protocol, self.SENTINEL)
+        self.assertIn(bs._install_plugin_message(self.SENTINEL), prev.line)
+        # Still read-only: no device-local backend was constructed on the fail path.
+        self.assertFalse(self.device_root.exists())
+
+    def test_corrupt_config_previews_fail_not_crash(self) -> None:
+        # The task-3 hardening surfaces a corrupt config as a fail-loud raise; the
+        # preview must CATCH that and report a fail row, never propagate / crash.
+        config_path = ac._config_path(self.prefix)
+        config_path.write_text('{ "storage.backend": "x", }', encoding="utf-8")  # invalid JSON
+        prev = bs.storage_preview(device_local_root=self.device_root)
+        self.assertEqual(prev.status, "fail")
+        self.assertIsNone(prev.protocol)
+        self.assertIn("[FAIL]", prev.line)
+        self.assertFalse(self.device_root.exists())
+
+    def test_device_local_non_writable_root_previews_warn(self) -> None:
+        ro = Path(self.tmp) / "ro"
+        ro.mkdir()
+        os.chmod(ro, 0o555)
+        try:
+            if os.access(ro, os.W_OK):
+                self.skipTest("cannot make a dir read-only (running as root?)")
+            prev = bs.storage_preview(device_local_root=ro / "memory")
+            self.assertEqual(prev.status, "warn")
+            self.assertIn("[WARN]", prev.line)
+            self.assertIn("not writable", prev.line)
+        finally:
+            os.chmod(ro, 0o755)  # restore so tearDown's rmtree can clean up
+
+    def test_doctor_main_exit_code_fail_on_unregistered(self) -> None:
+        # The CLI maps a fail row → exit 1 (the engine will refuse at runtime).
+        self.assertEqual(ac.main(["--storage-backend", self.SENTINEL]), 0)
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = bs._doctor_main(["--doctor"])
+        self.assertEqual(rc, 1)
+
+
 if __name__ == "__main__":
     unittest.main()

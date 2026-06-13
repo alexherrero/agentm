@@ -54,6 +54,7 @@ Then:
    - FAIL only if neither path yields both files. An empty `.harness/` alongside a healthy vault resolution is the EXPECTED post-V4 #26 shape — not a fail.
    - Note: `scripts/telemetry.sh` is no longer a vault-resident state file (v4.6.2+). It's a user-scope helper — see check 4b below.
 4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. Report `[OK] telemetry.sh installed` if present. Report `[WARN] telemetry.sh not installed — re-run install.sh` if absent (graceful, never FAIL). The script roots across multiple projects (`--all` scans `~/Antigravity`, `~/Claude`, `~/Projects`), so it lives at user scope, not per-project.
+4c. **Storage-backend preview (V5-1).** Shell out to `python3 <agentm-repo>/scripts/backend_selection.py --doctor` — the same resolver the memory engine selects through, reusing the identical install-the-plugin message the fail-loud guard raises. It resolves the selected backend (explicit `storage.backend` → existing `vault_path` → fresh `device-local`), confirms that protocol's plugin is registered, and (for `device-local`) that its root is writable — read-only, never constructing a backend. Print its single status line and map: `[OK]` (exit 0) ready; `[WARN]` (exit 0) `device-local` root not writable — preventive, never FAIL; `[FAIL]` (exit 1) unregistered plugin (prints the verbatim install-the-plugin message), `vault` with no `vault_path`, or a corrupt / non-string config. **The one structural check that legitimately FAILs** — it's the fail-loud preview shown *before* the engine refuses.
 5. `AGENTS.md` + `CLAUDE.md` exist at repo root.
 6. **Hook wiring (V4 #39 — a real check, not "absent block is fine"). _Claude Code only — on Antigravity/Gemini report `[SKIP] no hook surface` and move on._** Hooks install at user scope (`~/.claude/hooks/<name>/`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Resolve the prefix (`$AGENTM_INSTALL_PREFIX` → `~/.claude`) and apply this truth table against `<prefix>/hooks/` + `<prefix>/settings.json` (apply the same logic to a populated legacy project-scope `<project>/.claude/`):
 
@@ -150,6 +151,7 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
     sub-agents        [OK]  2/2 required (adapt-evaluator, memory-idea-researcher); review agents crickets-provided
     skills            [OK]  3/3 required, optional present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
+    storage           [OK]  selected backend 'vault' (existing vault_path) — registered; seeded from <vault>
     host wiring       [OK]  AGENTS.md + CLAUDE.md
     hooks             [OK]  6 hooks wired (memory-recall-session-start, harness-context-session-start, …)
 

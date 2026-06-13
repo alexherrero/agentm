@@ -59,6 +59,10 @@ Then:
    - `1` → `[WARN] slug '<resolved>' != origin basename '<origin>' — a worker in a git worktree would resolve to '<origin>' and write under the wrong projects/<slug>/. Align the slug with the origin basename, or adopt the crickets worktree-spawn fallback that reproduces a divergent vault_project into the worktree.` **Never FAIL here:** exactly like the dangling active-plan marker above, `doctor` is the reporter and the `check-worktree-slug` gate (in `scripts/check-all.sh` / CI) is the loud, build-blocking enforcer.
    - `3` → `[OK] no origin remote — worktree slug-safety not applicable` (a worktree would resolve to no slug and graceful-skip; not a foot-gun).
    Most informative run from inside a worktree, but meaningful in any checkout — a divergence seen in the main checkout is the latent warning that a worktree of this project *would* misroute its writes.
+4d. **Storage-backend preview (V5-1).** Run `python3 <agentm>/scripts/backend_selection.py --doctor` — the same `backend_selection` resolver the memory engine selects through, reusing the identical `_install_plugin_message` the task-3 fail-loud guard raises, so the preview and the live refusal can't drift. It resolves the selected backend (explicit `storage.backend` → existing `vault_path` → fresh-install `device-local` default), checks whether that protocol's plugin is registered (`registry.get` resolves), and — for `device-local` — whether the root is writable, all **without constructing a backend** (construction would `mkdir` the root). Map the single status line + exit code:
+   - status `ok`, exit `0` → `[OK]` — selected backend is registered and ready (`vault` seeded from the resolved `vault_path`, a writable `device-local` root, or a registered third-party protocol).
+   - status `warn`, exit `0` → `[WARN]` — `device-local` selected but its root is not writable. The engine will still try, but the write will fail loudly; surfacing it here is preventive, never build-blocking.
+   - status `fail`, exit `1` → `[FAIL]` — the selected backend has no registered plugin (prints the verbatim install-the-plugin message the task-3 guard raises), or `vault` is selected with no resolvable `vault_path`, or the config file exists but is unparseable / names a non-string `storage.backend`. **This is the one structural check that legitimately FAILs** (unlike the worktree-slug reporter above): it is the fail-loud preview shown *before* the engine itself refuses — doctor previewing exactly what selection will do, not second-guessing a separate enforcer.
 5. **Host wiring file**: `AGENTS.md` exists at repo root. Adapter-specific overlay file exists (`CLAUDE.md` for Claude Code, `.gemini/settings.json` for Gemini pointing at `AGENTS.md`).
 6. **Hook wiring** (Claude Code; V4 #39 — a real check, not "absent block is fine"). Hooks install at user scope (`<prefix>/hooks/<name>/`, prefix = `$AGENTM_INSTALL_PREFIX` → `~/.claude`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Apply this truth table to `<prefix>/hooks/` + `<prefix>/settings.json` (and a populated legacy project-scope `<project>/.claude/` likewise):
    - `hooks/` empty + no `hooks` block → `[OK] no hooks installed (clean)`.
@@ -191,6 +195,11 @@ doctor: <adapter> — <PASS|FAIL>
                             3 optional harness-shipped + crickets present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     worktree-slug     [OK]  slug 'agentm' == origin basename — worktree-safe
+    storage           [OK]  selected backend 'vault' (existing vault_path) — registered; seeded from <vault>
+                            # FAIL example (V5-1): "storage [FAIL] storage backend 'foo' is
+                            # configured (storage.backend) but no installed plugin registers it.
+                            # Install the plugin that provides the 'foo' backend, or set
+                            # storage.backend to an installed backend (currently registered: …)."
     host wiring       [OK]  AGENTS.md + CLAUDE.md
     hooks             [OK]  6 hooks wired (memory-recall-session-start, harness-context-session-start, …)
                             # FAIL example (V4 #39): "6 hooks installed on disk but not

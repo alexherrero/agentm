@@ -35,8 +35,9 @@ Stdlib-only per ADR 0001.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import agentm_config
 import harness_memory
@@ -48,7 +49,13 @@ import storage_device_local
 import storage_vault
 from storage_seam import StorageBackend, registry
 
-__all__ = ["select_backend", "choose_protocol", "StorageSelectionError"]
+__all__ = [
+    "select_backend",
+    "choose_protocol",
+    "StorageSelectionError",
+    "storage_preview",
+    "StoragePreview",
+]
 
 _DEVICE_LOCAL = storage_device_local.PROTOCOL  # "device-local"
 _VAULT = storage_vault.PROTOCOL  # "vault"
@@ -206,3 +213,154 @@ def select_backend(
     # contract is a no-arg constructor (the backend owns its own defaults).
     # Rich per-plugin construction config is V5-7.
     return backend_cls()
+
+
+# --- doctor preview (part-5 task 4) -----------------------------------------
+#
+# The `doctor` skill's storage check invokes this module as a script
+# (`python3 scripts/backend_selection.py --doctor`) and maps the printed
+# `[OK]`/`[WARN]`/`[FAIL]` row. Like the `check-worktree-slug` probe, it shares
+# the resolver's own code path — `_install_plugin_message` + the resolution chain
+# — so the preview and the runtime fail-loud refusal can never drift.
+
+
+class StoragePreview(NamedTuple):
+    """A read-only `doctor` snapshot of the selected storage backend — no mutation, no raise.
+
+    `status` is one of `"ok"` / `"warn"` / `"fail"`; `line` is the doctor-format
+    summary printed verbatim; `protocol` is the resolved backend name, or `None`
+    when the config could not even be read.
+    """
+
+    status: str
+    protocol: Optional[str]
+    line: str
+
+
+def _root_is_writable(root: Path) -> bool:
+    """True if `root` (or its nearest existing ancestor) is writable — never creates it.
+
+    The preview must not mutate: `DeviceLocalBackend` mkdirs its root on
+    construction, so writability is probed by walking up to the nearest existing
+    ancestor and testing `os.W_OK`, never by constructing the backend.
+    """
+    probe = root
+    while not probe.exists():
+        if probe.parent == probe:  # reached the filesystem root without finding one
+            return False
+        probe = probe.parent
+    return os.access(probe, os.W_OK)
+
+
+def storage_preview(
+    *,
+    install_prefix: Optional[Path] = None,
+    device_local_root: Optional[Path | str] = None,
+) -> StoragePreview:
+    """Preview the selected storage backend for `doctor` — read-only, never raises, never mutates.
+
+    Mirrors `select_backend`'s resolution but produces a *report* instead of an
+    instance: it never constructs a backend (construction would mkdir / touch the
+    operator's home) and it converts the fail-loud `StorageSelectionError` cases
+    into a `"fail"` row carrying the **same** message the guard would raise (via
+    the shared `_install_plugin_message`), so the preview and the runtime refusal
+    can never drift. The `doctor` skill prints `.line` and maps `.status`.
+
+    Status rows:
+      - `"fail"` — config unreadable / non-string selection, the configured
+        backend's plugin is not installed, or `vault` is selected with no
+        `vault_path` (the engine will refuse at runtime — this previews it).
+      - `"warn"` — `device-local` is selected but its root is not writable.
+      - `"ok"`   — the selected backend is registered (+ device-local root writable).
+    """
+    # The explicit selection read can itself fail loud (corrupt config / non-string
+    # value, part-5 task-3 hardening); surface it as a fail row rather than raising.
+    try:
+        explicit = _configured_backend(install_prefix)
+    except StorageSelectionError as exc:
+        return StoragePreview("fail", None, f"storage [FAIL] {exc}")
+
+    vault_root = harness_memory.vault_path()
+    if explicit:
+        protocol, origin = explicit, "configured (storage.backend)"
+    elif vault_root is not None:
+        protocol, origin = _VAULT, "existing vault_path"
+    else:
+        protocol, origin = _DEVICE_LOCAL, "fresh-install default"
+
+    if registry.get(protocol) is None:
+        return StoragePreview(
+            "fail", protocol, f"storage [FAIL] {_install_plugin_message(protocol)}"
+        )
+
+    if protocol == _VAULT:
+        if vault_root is None:
+            return StoragePreview(
+                "fail",
+                protocol,
+                "storage [FAIL] storage backend 'vault' is selected but no "
+                "vault_path is configured to seed it — set vault_path "
+                "(agentm_config --vault-path <dir>) or change storage.backend.",
+            )
+        return StoragePreview(
+            "ok",
+            protocol,
+            f"storage [OK] selected backend 'vault' ({origin}) — registered; "
+            f"seeded from {vault_root}",
+        )
+
+    if protocol == _DEVICE_LOCAL:
+        root = (
+            Path(device_local_root)
+            if device_local_root is not None
+            else storage_device_local._default_root()
+        )
+        if not _root_is_writable(root):
+            return StoragePreview(
+                "warn",
+                protocol,
+                f"storage [WARN] selected backend 'device-local' ({origin}) — "
+                f"registered, but root {root} is not writable",
+            )
+        return StoragePreview(
+            "ok",
+            protocol,
+            f"storage [OK] selected backend 'device-local' ({origin}) — "
+            f"registered; root {root} writable",
+        )
+
+    # A registered third-party backend (explicit, non-built-in): "registered" is
+    # all the V5-1 preview asserts; rich per-plugin readiness is V5-7.
+    return StoragePreview(
+        "ok",
+        protocol,
+        f"storage [OK] selected backend {protocol!r} ({origin}) — registered",
+    )
+
+
+def _doctor_main(argv: Optional[list[str]] = None) -> int:
+    """CLI entry for the `doctor` storage check: print the preview row, map status → exit code.
+
+    Exit 1 only on a `"fail"` row (the engine will refuse at runtime); `"ok"` and
+    `"warn"` exit 0 (a WARN is never a hard install failure). `doctor` reads the
+    `[OK]`/`[WARN]`/`[FAIL]` token from the printed line for the per-row status.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="backend_selection.py",
+        description="Read-only storage-backend preview for the doctor skill.",
+    )
+    parser.add_argument(
+        "--doctor",
+        action="store_true",
+        help="print the selected-backend preview (doctor structural check)",
+    )
+    parser.parse_args(argv)  # `--doctor` is the only (default) mode
+    preview = storage_preview()
+    print(preview.line)
+    return 1 if preview.status == "fail" else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_doctor_main())
