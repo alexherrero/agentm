@@ -95,6 +95,16 @@ def normalize_key(key: object) -> str:
     (``InvalidLocatorError``): the seam has no upward-traversal semantics, which
     is the safety property that keeps a key from escaping the backend root. The
     root locator is the empty string.
+
+    A backslash or NUL anywhere in the key is **also rejected**. The key grammar
+    is POSIX-style — ``/`` is the only separator — but a backend joins the parts
+    under a real directory with ``pathlib``, and on Windows ``\\`` *is* a path
+    separator. Without this guard a key like ``..\\..\\Windows`` would survive as
+    one opaque segment (it is not ``== ".."``) and then walk out of the root at
+    the filesystem join. Rejecting ``\\`` (and the NUL injection vector) closes
+    that hole and mirrors ``harness_memory._is_safe_plan_slug``, the sibling guard
+    that already refuses both. It bites hardest at V5-9, where keys arrive from
+    untrusted MCP clients.
     """
     out: list[str] = []
     for seg in str(key).split("/"):
@@ -103,6 +113,11 @@ def normalize_key(key: object) -> str:
         if seg == "..":
             raise InvalidLocatorError(
                 f"'..' is not allowed in a storage locator: {key!r}"
+            )
+        if "\\" in seg or "\x00" in seg:
+            raise InvalidLocatorError(
+                f"backslash and NUL are not allowed in a storage locator "
+                f"(backslash is a path separator on Windows): {key!r}"
             )
         out.append(seg)
     return "/".join(out)
