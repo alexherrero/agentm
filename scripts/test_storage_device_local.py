@@ -206,5 +206,55 @@ class DeviceLocalRegistration(unittest.TestCase):
         self.assertIs(ss.registry.get("device-local"), sdl.DeviceLocalBackend)
 
 
+class DeviceLocalCrashSafety(unittest.TestCase):
+    """write composes V5-0 atomic_write — crash-safe, never an open-and-truncate."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.b = sdl.DeviceLocalBackend(root=Path(self._tmp.name) / "m")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_write_composes_atomic_write(self) -> None:
+        # The composition proof: write delegates to vault_lock.atomic_write
+        # (temp + fsync + rename), so it never open-and-truncates the target.
+        loc = self.b.resolve("notes", "a.md")
+        with mock.patch("storage_device_local.atomic_write") as aw:
+            returned = self.b.write(loc, "body")
+        aw.assert_called_once()
+        called_path, called_content = aw.call_args.args[0], aw.call_args.args[1]
+        self.assertEqual(Path(called_path), self.b.root / "notes" / "a.md")
+        self.assertEqual(called_content, "body")
+        self.assertEqual(returned, loc)  # still returns the locator written
+
+    def test_torn_write_leaves_prior_bytes_intact(self) -> None:
+        # Crash between temp-stage and rename: the target keeps its PRIOR bytes,
+        # never a truncated/partial file. Inject the failure at os.replace (the
+        # rename step) — atomic_write writes the temp, then the rename raises.
+        loc = self.b.resolve("a.md")
+        self.b.write(loc, "v1-good")
+        with mock.patch("vault_lock.os.replace", side_effect=OSError("crash before rename")):
+            with self.assertRaises(OSError):
+                self.b.write(loc, "v2-torn")
+        # The target was never touched in place — prior bytes survive intact.
+        self.assertEqual(self.b.read(loc), "v1-good")
+
+    def test_successful_overwrite_replaces_atomically(self) -> None:
+        loc = self.b.resolve("a.md")
+        self.b.write(loc, "v1")
+        self.b.write(loc, "v2-longer-content")
+        self.assertEqual(self.b.read(loc), "v2-longer-content")
+
+    def test_write_creates_absent_parent_dirs(self) -> None:
+        # atomic_write mkdirs the parent — a write into a not-yet-existing
+        # subtree just works (no explicit mkdir needed first).
+        loc = self.b.resolve("deep", "nested", "leaf.md")
+        self.assertFalse((self.b.root / "deep").exists())
+        self.b.write(loc, "content")
+        self.assertEqual(self.b.read(loc), "content")
+        self.assertTrue(self.b.info(self.b.resolve("deep", "nested")).is_dir)
+
+
 if __name__ == "__main__":
     unittest.main()
