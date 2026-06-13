@@ -76,6 +76,7 @@ The high-level designs behind Agent M's memory layer — the full HLDs, where th
 - [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
 - [Auto-orchestration](Auto-Orchestration) — why the memory skills became a push surface that never nags.
 - [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable.
+- [Memory↔process seam](Memory-Process-Seam) — why a process reads memory through a one-way, read-only client instead of reaching into the engine.
 
 ## 📐 Architecture decisions
 

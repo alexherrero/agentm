@@ -11,5 +11,6 @@
 - [GitHub Projects integration](GitHub-Projects-Integration)
 - [Auto-orchestration](Auto-Orchestration)
 - [Single-repo state mode](Single-Repo-State-Mode)
+- [Memory↔process seam](Memory-Process-Seam)
 - [Named plans](Named-Plans) ⏳
 ### 📐 [Decisions](Decisions)

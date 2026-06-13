@@ -13,6 +13,7 @@
 - [Vault write protocol](Vault-Write-Protocol)
 - [Queue status lite](Queue-Status-Lite)
 - [AgentMemory context payload](AgentMemory-Context-Payload)
+- [Process seam](Process-Seam)
 - [Auto-orchestration config](Auto-Orchestration-Config)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
