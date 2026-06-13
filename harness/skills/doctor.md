@@ -54,6 +54,11 @@ Then:
    - `telemetry.sh` (pre-v4.6.2 also checked here) moved to user scope in v4.6.2 — see "Helper scripts" below. Per-project vault copies of `scripts/telemetry.sh` are no longer expected.
 
 4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. PASS if present. WARN (graceful-skip, never FAIL) if absent — older installs predate the move. Reason for the move: `telemetry.sh` roots across multiple projects (its `--all` flag scans `~/Antigravity`, `~/Claude`, `~/Projects`), so a single user-scope copy is the right shape; per-project vault copies create N stale duplicates when the script changes.
+4c. **Worktree slug-safety (V5-10).** Run `python3 <agentm>/scripts/vault_project.py check-worktree-slug <project>` — the same shared resolver the `check-worktree-slug` gate calls, so the probe and the gate can't drift. It compares the full-chain vault slug against the Tier-3 origin basename — the slug a fresh `git worktree` resolves to, since a worktree shares the parent's remotes but not the gitignored `.harness/` where a Tier-1/2 override would live. Map the exit code:
+   - `0` → `[OK] worktree slug-safe — slug '<slug>' == origin basename`.
+   - `1` → `[WARN] slug '<resolved>' != origin basename '<origin>' — a worker in a git worktree would resolve to '<origin>' and write under the wrong projects/<slug>/. Align the slug with the origin basename, or adopt the crickets worktree-spawn fallback that reproduces a divergent vault_project into the worktree.` **Never FAIL here:** exactly like the dangling active-plan marker above, `doctor` is the reporter and the `check-worktree-slug` gate (in `scripts/check-all.sh` / CI) is the loud, build-blocking enforcer.
+   - `3` → `[OK] no origin remote — worktree slug-safety not applicable` (a worktree would resolve to no slug and graceful-skip; not a foot-gun).
+   Most informative run from inside a worktree, but meaningful in any checkout — a divergence seen in the main checkout is the latent warning that a worktree of this project *would* misroute its writes.
 5. **Host wiring file**: `AGENTS.md` exists at repo root. Adapter-specific overlay file exists (`CLAUDE.md` for Claude Code, `.gemini/settings.json` for Gemini pointing at `AGENTS.md`).
 6. **Hook wiring** (Claude Code; V4 #39 — a real check, not "absent block is fine"). Hooks install at user scope (`<prefix>/hooks/<name>/`, prefix = `$AGENTM_INSTALL_PREFIX` → `~/.claude`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Apply this truth table to `<prefix>/hooks/` + `<prefix>/settings.json` (and a populated legacy project-scope `<project>/.claude/` likewise):
    - `hooks/` empty + no `hooks` block → `[OK] no hooks installed (clean)`.
@@ -185,6 +190,7 @@ doctor: <adapter> — <PASS|FAIL>
     skills            [OK]  2/2 required (doctor, wiki-author);
                             3 optional harness-shipped + crickets present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
+    worktree-slug     [OK]  slug 'agentm' == origin basename — worktree-safe
     host wiring       [OK]  AGENTS.md + CLAUDE.md
     hooks             [OK]  6 hooks wired (memory-recall-session-start, harness-context-session-start, …)
                             # FAIL example (V4 #39): "6 hooks installed on disk but not
