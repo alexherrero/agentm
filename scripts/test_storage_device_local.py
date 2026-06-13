@@ -24,6 +24,7 @@ Run directly:
 """
 from __future__ import annotations
 
+import ast
 import sys
 import tempfile
 import unittest
@@ -254,6 +255,94 @@ class DeviceLocalCrashSafety(unittest.TestCase):
         self.b.write(loc, "content")
         self.assertEqual(self.b.read(loc), "content")
         self.assertTrue(self.b.info(self.b.resolve("deep", "nested")).is_dir)
+
+
+class DeviceLocalConflictStrategyAndScope(unittest.TestCase):
+    """Device-local inherits the ``"none"`` strategy and ships no index/merger code."""
+
+    # DB / index / vector / dataframe libs the bare-markdown backend must never
+    # import (mirrors test_storage_seam's NoIndexBuilt forbidden set). A database
+    # on a synced path is a known corruption pattern — it is a plugin's to offer,
+    # never the kernel default's.
+    _FORBIDDEN_LIBS = frozenset(
+        {
+            "fsspec",
+            "sqlite3",
+            "pysqlite3",
+            "sqlalchemy",
+            "duckdb",
+            "chromadb",
+            "lancedb",
+            "faiss",
+            "annoy",
+            "hnswlib",
+            "numpy",
+            "pandas",
+        }
+    )
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.b = sdl.DeviceLocalBackend(root=Path(self._tmp.name) / "m")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_conflict_strategy_is_none(self) -> None:
+        # Single machine → nothing to reconcile → the seam's inherited "none"
+        # floor. Device-local does not override it (part 4's vault is what does).
+        self.assertEqual(self.b.conflict_strategy, "none")
+
+    def test_ships_no_index_or_merger_machinery(self) -> None:
+        # Scope guard: device-local has no conflicts by construction, so it ships
+        # no DB/index library, no merger/reindex logic, and no derived-index
+        # (`_index`) handling. AST-based, not a raw substring scan — the module's
+        # own docstring names "derived-index"/"conflict-merger" precisely to say
+        # it ships *neither*, so a substring scan would false-trip on its prose.
+        src = Path(sdl.__file__).read_text(encoding="utf-8")
+        tree = ast.parse(src)
+
+        # (1) No DB / index / vector / dataframe library — the bare-markdown floor.
+        imported: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(a.name.split(".")[0] for a in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+        leaked = imported & self._FORBIDDEN_LIBS
+        self.assertEqual(leaked, set(), f"device-local imports forbidden lib(s): {leaked}")
+
+        # (2) No conflict-merger / reindex / promotion logic — no def or class
+        # named for it (the docstring's hyphenated prose is not an identifier).
+        banned = ("merge", "reconcile", "reindex", "promote")
+        named = sorted(
+            n.name
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and any(b in n.name.lower() for b in banned)
+        )
+        self.assertEqual(named, [], f"unexpected merger/index def(s): {named}")
+
+        # (3) No derived-index (`_index`) handling in *code* — string literals and
+        # identifiers, with docstrings excluded (they discuss the concept to
+        # disclaim it). A `_index.md` promotion would surface as a constant or name.
+        docstrings = {
+            ast.get_docstring(n, clean=False)
+            for n in ast.walk(tree)
+            if isinstance(n, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            and ast.get_docstring(n, clean=False) is not None
+        }
+        code_tokens: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if node.value not in docstrings:
+                    code_tokens.append(node.value)
+            elif isinstance(node, ast.Name):
+                code_tokens.append(node.id)
+            elif isinstance(node, ast.Attribute):
+                code_tokens.append(node.attr)
+        offenders = sorted({t for t in code_tokens if "_index" in t})
+        self.assertEqual(offenders, [], f"unexpected _index handling in code: {offenders}")
 
 
 if __name__ == "__main__":

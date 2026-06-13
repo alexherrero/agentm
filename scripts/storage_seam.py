@@ -199,6 +199,25 @@ class StorageBackend(ABC):
     def capabilities(self) -> Capabilities:
         """What this backend promises — see :class:`Capabilities`."""
 
+    @property
+    def conflict_strategy(self) -> str:
+        """How this backend reconciles divergent concurrent writes — a *named* strategy.
+
+        A **concrete** property (unlike ``capabilities``, which every backend must
+        declare) defaulting to the conservative floor ``"none"`` — last write
+        wins, because there is nothing to reconcile — mirroring how the
+        :class:`Capabilities` booleans default to the safe floor. Distinct from
+        those booleans: they describe *what the backend can promise*; this *names
+        the policy* selection (part 5) reads to decide how to treat a conflict.
+
+        The device-local backend (part 2) inherits ``"none"`` (single machine);
+        the synced vault backend (part 4) overrides it to ``"whole-file"``; the
+        slot is reserved for an iCloud numbered-suffix or a CRDT line-level
+        strategy later (design §6). A trivial backend that does not override it
+        inherits the floor, so the slot is always present and always answerable.
+        """
+        return "none"
+
     @abstractmethod
     def resolve(self, *parts: str) -> Locator:
         """Make a backend-relative locator from path ``parts``.

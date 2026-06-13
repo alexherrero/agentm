@@ -291,6 +291,47 @@ class Descriptors(unittest.TestCase):
         self.assertEqual(info.mtime, 12.0)
 
 
+class _WholeFileBackend(_MemoryBackend):
+    """A backend that overrides the conflict strategy — proves the slot is real
+    policy, not a frozen constant. Mirrors what part 4's vault backend declares."""
+
+    @property
+    def conflict_strategy(self) -> str:
+        return "whole-file"
+
+
+class ConflictStrategySlot(unittest.TestCase):
+    """The named per-backend conflict-strategy slot (design §6), added in part 2.
+
+    A *concrete* property on the contract — unlike the abstract `capabilities`,
+    so a backend that predates the slot still answers it — defaulting to the
+    conservative floor `"none"` (last write wins; on one machine there is nothing
+    to reconcile). Distinct from the four `Capabilities` booleans: those say what
+    a backend *can promise*; this *names the reconcile policy* part 5's selection
+    reads. Part 4's vault overrides it to `"whole-file"`.
+    """
+
+    def test_slot_exists_on_the_contract(self) -> None:
+        # On the base class itself — every backend answers it, including ones
+        # written before the slot existed (it is not an abstractmethod).
+        self.assertTrue(hasattr(ss.StorageBackend, "conflict_strategy"))
+        self.assertNotIn("conflict_strategy", ss.StorageBackend.__abstractmethods__)
+
+    def test_default_is_the_none_floor(self) -> None:
+        # A backend that does not override the slot inherits "none".
+        self.assertEqual(_MemoryBackend().conflict_strategy, "none")
+
+    def test_strategy_is_a_str(self) -> None:
+        # A name, not a bool or a path — a str the selection layer switches on.
+        self.assertIsInstance(_MemoryBackend().conflict_strategy, str)
+
+    def test_override_is_observable(self) -> None:
+        # The slot is real policy: a subclass overrides it (as the vault will),
+        # and the override — not the floor — is what a caller sees.
+        self.assertEqual(_WholeFileBackend().conflict_strategy, "whole-file")
+        self.assertEqual(_MemoryBackend().conflict_strategy, "none")  # base unaffected
+
+
 class _BackendA(_MemoryBackend):
     """A distinct concrete backend — the registry resolves a protocol to *this* class."""
 
