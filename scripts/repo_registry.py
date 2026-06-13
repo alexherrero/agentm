@@ -54,7 +54,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 # Allow direct import of harness_memory (same scripts/ dir) for atomic-write
 # primitives. Mirrors the pattern harness_memory itself uses for vault_project.
@@ -142,7 +142,9 @@ def write_registry(
         write_registry(vault, data, expected_hash=current_hash)
 
     Raises ConcurrentModificationError (re-exported from harness_memory) if
-    another process wrote between read + write. Caller retries.
+    another process wrote between read + write. The read-mutate-CAS callers
+    (`register_repo` / `unregister_repo`) drive the retry via `_mutate_registry`
+    — they re-read, re-apply, and re-attempt rather than dropping the change.
 
     Creates parent dir (`<vault>/_meta/`) if absent. Returns the written path.
     """
@@ -161,6 +163,57 @@ def write_registry(
 # High-level operations (upsert / list / unregister)
 # -----------------------------------------------------------------------------
 
+# A read-mutate-CAS upsert can lose its race: another writer lands between our
+# read and our compare-and-swap, so write_registry raises
+# ConcurrentModificationError. Five attempts is ample headroom — the vault_mutex
+# already serializes same-machine writers, so a CAS miss only happens against a
+# *cross-machine* peer on the synced vault (R4 gives no cross-device mutual
+# exclusion), which is rare and self-clearing on re-read.
+_MAX_REGISTRY_RETRIES = 5
+
+# A mutate-fn returns this sentinel to mean "nothing changed — skip the write."
+# Lets an idempotent no-op (unregistering an absent slug) avoid churning the
+# registry mtime, which the storage seam reads as its `changed_since` basis.
+_SKIP_WRITE: Any = object()
+
+
+def _mutate_registry(
+    vault_path: Path | str,
+    mutate: Callable[[dict], Any],
+) -> Any:
+    """Read-mutate-CAS the registry under the per-vault mutex, retrying on a CAS
+    miss so a concurrent writer can't silently drop the change.
+
+    `mutate(data)` edits the freshly-read registry `data` in place and returns
+    the caller's result — or the `_SKIP_WRITE` sentinel to skip the write
+    entirely. The `vault_mutex` serializes same-machine writers (the vault
+    floor's stack); the bounded retry recovers from the one race it can't
+    prevent — a cross-machine peer on the synced vault — by re-reading and
+    re-applying. After `_MAX_REGISTRY_RETRIES` consecutive collisions it raises
+    rather than drop the write, honoring write_registry's retry contract instead
+    of leaving it fiction.
+    """
+    vault = Path(vault_path)
+    path = registry_path(vault)
+    last_exc: Optional[BaseException] = None
+    with hm.vault_mutex(vault):
+        for _ in range(_MAX_REGISTRY_RETRIES):
+            current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
+            data = read_registry(vault)
+            result = mutate(data)
+            if result is _SKIP_WRITE:
+                return result
+            try:
+                write_registry(vault, data, expected_hash=current_hash)
+                return result
+            except hm.ConcurrentModificationError as exc:
+                last_exc = exc
+    raise hm.ConcurrentModificationError(
+        f"registry CAS lost {_MAX_REGISTRY_RETRIES} consecutive times on {path} "
+        f"— a cross-machine writer keeps winning the race"
+    ) from last_exc
+
+
 def register_repo(
     vault_path: Path | str,
     slug: str,
@@ -176,16 +229,16 @@ def register_repo(
 
     Returns the updated registry dict (after write).
 
+    Concurrency: the read-mutate-CAS runs under `_mutate_registry`, which holds
+    the per-vault mutex and retries on a CAS miss — a concurrent registration on
+    another machine can no longer silently drop this one.
+
     Path normalization: `root_path` is stored as a string (str(Path(value)))
     to preserve operator's home-relative paths verbatim. Cross-platform:
     caller decides whether to pass absolute or symlink-resolved paths.
     """
     if not slug:
         raise ValueError("slug must be non-empty")
-    path = registry_path(vault_path)
-    current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
-    data = read_registry(vault_path)
-    repos = data.get("repos", [])
 
     # Build the entry — only include fields that have values (avoid writing nulls).
     # Use POSIX-style paths (forward slashes) for vault portability: the registry
@@ -195,46 +248,44 @@ def register_repo(
     if wiki_path is not None:
         new_entry["wiki_path"] = Path(wiki_path).as_posix()
 
-    # Upsert: replace existing entry by slug, or append new.
-    found = False
-    for i, entry in enumerate(repos):
-        if entry.get("slug") == slug:
-            # Merge: existing fields preserved unless explicitly overwritten.
-            merged = dict(entry)
-            merged.update(new_entry)
-            repos[i] = merged
-            found = True
-            break
-    if not found:
-        repos.append(new_entry)
+    def _apply(data: dict) -> dict:
+        repos = data.get("repos", [])
+        # Upsert: replace existing entry by slug, or append new.
+        for i, entry in enumerate(repos):
+            if entry.get("slug") == slug:
+                # Merge: existing fields preserved unless explicitly overwritten.
+                merged = dict(entry)
+                merged.update(new_entry)
+                repos[i] = merged
+                break
+        else:
+            repos.append(new_entry)
+        data["repos"] = repos
+        return data
 
-    data["repos"] = repos
-    write_registry(vault_path, data, expected_hash=current_hash)
-    return data
+    return _mutate_registry(vault_path, _apply)
 
 
 def unregister_repo(vault_path: Path | str, slug: str) -> bool:
     """Remove a repo entry by slug. Idempotent — returns True if removed,
     False if no matching slug existed.
 
-    Re-reads + writes with a content-hash CAS for concurrent-write protection.
+    Re-reads + writes under `_mutate_registry`: per-vault mutex + content-hash
+    CAS + bounded retry, so a concurrent writer can't drop the removal.
     """
     if not slug:
         raise ValueError("slug must be non-empty")
-    path = registry_path(vault_path)
-    current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
-    data = read_registry(vault_path)
-    repos = data.get("repos", [])
 
-    new_repos = [r for r in repos if r.get("slug") != slug]
-    removed = len(new_repos) < len(repos)
-    if not removed:
-        # No change — skip write entirely (preserves mtime; no churn).
-        return False
+    def _apply(data: dict) -> Any:
+        repos = data.get("repos", [])
+        new_repos = [r for r in repos if r.get("slug") != slug]
+        if len(new_repos) == len(repos):
+            # No change — skip write entirely (preserves mtime; no churn).
+            return _SKIP_WRITE
+        data["repos"] = new_repos
+        return True
 
-    data["repos"] = new_repos
-    write_registry(vault_path, data, expected_hash=current_hash)
-    return True
+    return _mutate_registry(vault_path, _apply) is True
 
 
 def list_repos(vault_path: Path | str) -> list[dict]:
