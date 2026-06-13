@@ -140,5 +140,72 @@ class TestSelectBackend(unittest.TestCase):
         )
 
 
+class TestCapabilitiesRead(unittest.TestCase):
+    """Part-5 task 2: the kernel reads the (already-shipped) capability descriptor.
+
+    The descriptor *shape* (`storage_seam.Capabilities`) shipped in part 1 and
+    both built-ins declared their values in parts 2/4. This task is the **read
+    side**: the task-1 resolver returns the selected backend, whose `.capabilities`
+    exposes all four booleans. Capability-request *matching* stays V5-7 — this is
+    read-and-surface, not match-and-decide.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-capabilities-read-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.device_root = Path(self.tmp) / "device-local-root"
+        self.lock_root = Path(self.tmp) / "locks"
+        self.env = _Env(self.prefix)
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_device_local_capabilities_read_all_false(self) -> None:
+        # Fresh → device-local; read all four booleans through the selection surface.
+        caps = bs.select_backend(device_local_root=self.device_root).capabilities
+        self.assertFalse(caps.concurrent_writers)
+        self.assertFalse(caps.conflict_files)
+        self.assertFalse(caps.encryption)
+        self.assertFalse(caps.sync)
+
+    def test_vault_capabilities_read_synced_multiwriter(self) -> None:
+        vault = Path(self.tmp) / "vault"
+        vault.mkdir()
+        self.assertEqual(ac.main(["--vault-path", str(vault)]), 0)
+        caps = bs.select_backend(vault_lock_root=self.lock_root).capabilities
+        # The synced vault: multi-writer-safe (mutex), GDrive replicates the tree
+        # (sync) + surfaces conflict copies (conflict_files); not encrypted at rest.
+        self.assertTrue(caps.concurrent_writers)
+        self.assertTrue(caps.conflict_files)
+        self.assertTrue(caps.sync)
+        self.assertFalse(caps.encryption)
+
+    def test_capabilities_shape_is_additive_only(self) -> None:
+        # Pin the four V5-7-target keys as present + boolean. A *reshape* (rename
+        # or remove an existing key) breaks this; additive growth (a brand-new
+        # capability key) is allowed by design — so this is a superset check, not
+        # an exact-equality one.
+        import dataclasses
+
+        from storage_seam import Capabilities
+
+        names = {f.name for f in dataclasses.fields(Capabilities)}
+        expected = {"concurrent_writers", "conflict_files", "encryption", "sync"}
+        self.assertTrue(
+            expected <= names,
+            f"capability shape reshaped — missing {expected - names}",
+        )
+        # Each defaults to the conservative floor (False) and is a real bool.
+        floor = Capabilities()
+        for name in expected:
+            value = getattr(floor, name)
+            self.assertIsInstance(value, bool)
+            self.assertFalse(value)
+
+
 if __name__ == "__main__":
     unittest.main()
