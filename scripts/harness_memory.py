@@ -941,18 +941,36 @@ def _infer_conflict_base_path(conflict: Path) -> Path:
 def default_lost_and_found_root() -> Optional[Path]:
     """The platform DriveFS `lost_and_found/` directory, or None if absent.
 
-    DriveFS dumps files it could not re-home into
-    `~/Library/Application Support/Google/DriveFS/lost_and_found/` on macOS and
-    raises no notification. Returns the path only when it exists, so a machine
-    without DriveFS (or off-macOS) simply gets no lost_and_found sweep. Resolves
-    via `Path.home()` (honors `$HOME`), so a redirected-HOME hook test stays
-    hermetic against the real machine.
+    DriveFS dumps files it could not re-home into a `lost_and_found/` folder and
+    raises no notification. The folder lives under the platform's app-data root:
+
+        macOS    ~/Library/Application Support/Google/DriveFS/lost_and_found/
+        Windows  %LOCALAPPDATA%\\Google\\DriveFS\\lost_and_found\\
+
+    Both candidates are probed (they are mutually exclusive on a real machine)
+    and the first that exists is returned, so the operator's dual macOS+Windows
+    setup gets the sweep on *either* OS rather than macOS only (audit ML1). A
+    machine with no DriveFS folder — Linux, or DriveFS not installed — gets None
+    and simply no lost_and_found sweep. macOS resolves via `Path.home()` (honors
+    `$HOME`) and Windows via `%LOCALAPPDATA%` (falling back to `~/AppData/Local`),
+    so a redirected-env hook test stays hermetic against the real machine.
     """
-    p = (
-        Path.home()
-        / "Library" / "Application Support" / "Google" / "DriveFS" / "lost_and_found"
-    )
-    return p if p.is_dir() else None
+    home = Path.home()
+    candidates = [
+        # macOS app-support tree.
+        home / "Library" / "Application Support" / "Google" / "DriveFS" / "lost_and_found",
+    ]
+    # Windows: DriveFS lives under %LOCALAPPDATA% (normally USERPROFILE\AppData\
+    # Local). Honor the env var for hermeticity; fall back to the conventional
+    # location when it is unset.
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    win_base = Path(local_appdata) if local_appdata else home / "AppData" / "Local"
+    candidates.append(win_base / "Google" / "DriveFS" / "lost_and_found")
+
+    for candidate in candidates:
+        if candidate.is_dir():
+            return candidate
+    return None
 
 
 def detect_conflict_files(

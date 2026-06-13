@@ -1564,6 +1564,25 @@ class TestDetectConflictFiles(unittest.TestCase):
                 laf.mkdir(parents=True)
                 self.assertEqual(hm.default_lost_and_found_root(), laf)  # present → path
 
+    @unittest.skipIf(os.name == "nt", "POSIX env redirection for the test setup")
+    def test_default_lost_and_found_root_windows_candidate(self) -> None:
+        """The Windows DriveFS lost_and_found under %LOCALAPPDATA% resolves too,
+        so the operator's Windows machine no longer silently gets no sweep (ML1).
+        Pre-fix only the macOS path was probed, so this returned None on Windows."""
+        import unittest.mock as _mock
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp) / "home"
+            home.mkdir()
+            local_appdata = Path(tmp) / "AppData" / "Local"
+            laf = local_appdata / "Google" / "DriveFS" / "lost_and_found"
+            # Redirect HOME (so the macOS candidate is absent) and LOCALAPPDATA.
+            with _mock.patch.dict(
+                os.environ, {"HOME": str(home), "LOCALAPPDATA": str(local_appdata)},
+            ):
+                self.assertIsNone(hm.default_lost_and_found_root())  # absent → None
+                laf.mkdir(parents=True)
+                self.assertEqual(hm.default_lost_and_found_root(), laf)  # present → path
+
 
 # -----------------------------------------------------------------------------
 # vec-index drift-detection schema migration (V4 #37 task 2)
