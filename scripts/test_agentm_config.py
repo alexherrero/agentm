@@ -370,5 +370,90 @@ class TestStateMode(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestStorageBackend(unittest.TestCase):
+    """V5-1 part 5 task 1: the `--storage-backend` setter — writes the literal flat
+    `storage.backend` key the selection resolver reads. Validates non-empty only
+    (NOT against the registry): fail-loud philosophy requires being able to
+    configure an as-yet-uninstalled backend."""
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-config-storage-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.env = _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(self.prefix)})
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, *argv: str) -> tuple[int, str, str]:
+        out, err = io.StringIO(), io.StringIO()
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = ac.main(list(argv))
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_set_storage_backend_writes_flat_key_rc0(self) -> None:
+        rc, out, err = self._run("--storage-backend", "device-local")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        # Literal flat key, dot in the name — NOT a nested object.
+        self.assertEqual(config["storage.backend"], "device-local")
+        self.assertEqual(config["schema_version"], 2)
+        self.assertEqual(out.strip(), "storage.backend = device-local")
+
+    def test_set_storage_backend_accepts_uninstalled_name(self) -> None:
+        # No registry validation — an as-yet-uninstalled backend is configurable.
+        rc, _, err = self._run("--storage-backend", "some-future-plugin")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config["storage.backend"], "some-future-plugin")
+
+    def test_set_storage_backend_refuses_empty(self) -> None:
+        rc, _, err = self._run("--storage-backend", "   ")
+        self.assertEqual(rc, 2)
+        self.assertIn("non-empty", err)
+        self.assertFalse((self.prefix / ".agentm-config.json").is_file())
+
+    def test_set_storage_backend_idempotent_on_same_value(self) -> None:
+        rc1, _, _ = self._run("--storage-backend", "vault")
+        mtime1 = (self.prefix / ".agentm-config.json").stat().st_mtime_ns
+        rc2, _, _ = self._run("--storage-backend", "vault")
+        mtime2 = (self.prefix / ".agentm-config.json").stat().st_mtime_ns
+        self.assertEqual(rc1, 0)
+        self.assertEqual(rc2, 0)
+        self.assertEqual(mtime1, mtime2)
+
+    def test_set_storage_backend_preserves_vault_path(self) -> None:
+        vault = Path(self.tmp) / "coexist-vault"
+        vault.mkdir()
+        self._run("--vault-path", str(vault))
+        rc, _, err = self._run("--storage-backend", "vault")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config["vault_path"], str(vault.resolve()))
+        self.assertEqual(config["storage.backend"], "vault")
+
+    def test_storage_backend_round_trips_via_get(self) -> None:
+        self._run("--storage-backend", "device-local")
+        rc, out, _ = self._run("--get", "storage.backend")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "device-local")
+
+    def test_storage_backend_unset_clears_field(self) -> None:
+        self._run("--storage-backend", "device-local")
+        rc, _, _ = self._run("--unset", "storage.backend")
+        self.assertEqual(rc, 0)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertNotIn("storage.backend", config)
+
+    def test_storage_backend_mutually_exclusive_with_get(self) -> None:
+        with self.assertRaises(SystemExit) as ctx:
+            with redirect_stderr(io.StringIO()):
+                ac.main(["--storage-backend", "vault", "--get", "vault_path"])
+        self.assertEqual(ctx.exception.code, 2)
+
+
 if __name__ == "__main__":
     unittest.main()

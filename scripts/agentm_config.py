@@ -13,6 +13,8 @@ Operations:
     agentm_config.py --vault-path <path>   # write vault_path (validates dir exists)
     agentm_config.py --state-mode local    # write state_mode (local|vault); opt a
                                             #   vault-less machine into repo-local state
+    agentm_config.py --storage-backend <name>  # write storage.backend (the selected
+                                            #   storage backend protocol name; V5-1 part 5)
     agentm_config.py --get vault_path      # read single field; rc=0 if present, rc=1 if absent
     agentm_config.py --list                # dump full config as JSON
     agentm_config.py --unset vault_path    # clear a single field
@@ -47,6 +49,12 @@ from typing import Optional
 _CONFIG_FILENAME = ".agentm-config.json"
 _SCHEMA_VERSION = 2
 _STATE_MODES = ("local", "vault")
+
+#: The literal flat key for the selected storage backend protocol name (V5-1
+#: part 5). Flat (with a dot in the name, not a nested object) so it round-trips
+#: through the existing `--get`/`--unset` field lookup, and named to match the
+#: V5-7 config-model target so there is no later rename.
+_STORAGE_BACKEND_KEY = "storage.backend"
 
 
 def _resolve_install_prefix(cli_arg: Optional[str] = None) -> Path:
@@ -140,6 +148,36 @@ def cmd_set_state_mode(prefix: Path, mode: str) -> int:
     return 0
 
 
+def cmd_set_storage_backend(prefix: Path, name: str) -> int:
+    """Set the device-level `storage.backend` field — the selected backend protocol name (V5-1 part 5).
+
+    Validates a **non-empty** string only — deliberately NOT against the backend
+    registry. The fail-loud philosophy of the selection resolver
+    (`backend_selection.py`) requires being able to *configure* a backend whose
+    plugin is not yet installed: the loud refusal happens at selection time (the
+    resolver raises an install-the-plugin error), never here, and never as a
+    silent demotion. Stored under the literal flat key `"storage.backend"` so it
+    round-trips through `--get`/`--unset`. Idempotent: a silent no-op when the
+    value is already set.
+    """
+    backend = name.strip()
+    if not backend:
+        print(
+            "[agentm_config] refusing to set storage.backend: name must be a non-empty string",
+            file=sys.stderr,
+        )
+        return 2
+    config = _read_config(prefix) or {}
+    if config.get(_STORAGE_BACKEND_KEY) == backend:
+        # Idempotent — silent no-op when value unchanged.
+        return 0
+    config[_STORAGE_BACKEND_KEY] = backend
+    written = _write_config(prefix, config)
+    print(f"storage.backend = {backend}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_get(prefix: Path, field: str) -> int:
     """Read a single field; rc=0 if present, rc=1 silent if absent."""
     config = _read_config(prefix)
@@ -200,6 +238,8 @@ def _build_parser() -> argparse.ArgumentParser:
     op.add_argument("--vault-path", metavar="PATH", help="set vault_path field")
     op.add_argument("--state-mode", metavar="MODE", choices=_STATE_MODES,
                     help="set state_mode field (how harness state is stored: local|vault)")
+    op.add_argument("--storage-backend", metavar="NAME",
+                    help="set storage.backend field (the selected storage backend protocol name)")
     op.add_argument("--get", metavar="FIELD", help="read single field to stdout")
     op.add_argument("--list", action="store_true", help="dump full config as JSON")
     op.add_argument("--unset", metavar="FIELD", help="clear a field")
@@ -215,6 +255,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_vault_path(prefix, args.vault_path)
     if args.state_mode is not None:
         return cmd_set_state_mode(prefix, args.state_mode)
+    if args.storage_backend is not None:
+        return cmd_set_storage_backend(prefix, args.storage_backend)
     if args.get is not None:
         return cmd_get(prefix, args.get)
     if args.list:

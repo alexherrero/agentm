@@ -18,6 +18,7 @@ Task-focused recipes for running the Agent M harness — from a first install th
 - **[Update an installed harness](Update-Installed-Harness)** — pull a newer harness version into a project that already has one.
 - **[Use per-project install](Use-Per-Project-Install)** — when to keep `--scope project` instead of migrating to user scope.
 - **[Run without a vault](Run-Without-A-Vault)** — operate the harness with no MemoryVault configured.
+- **[Choose a storage backend](Choose-A-Storage-Backend)** — _(forthcoming, V5-1 part 5)_ select the memory engine's storage backend and confirm its plugin is installed.
 
 **Run the loop**
 

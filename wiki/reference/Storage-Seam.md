@@ -3,7 +3,7 @@
 The memory↔storage contract ([`scripts/storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py)) — the small interface of *verbs* the memory engine calls instead of touching the filesystem directly. A backend implements the verbs; the engine consumes the seam's own `Locator` type and so learns no filesystem assumption. This page documents the **abstract contract plus its two concrete backends** (V5-1 parts 1–4 of 5): the seven verbs as an abstract `StorageBackend`, the three value types, the `conflict_strategy` slot, the named-backend registry, the three-tier source/derived taxonomy, the no-`Path`-leak gate, the [`DeviceLocalBackend`](#the-devicelocalbackend) that implements all of it over plain markdown (since part 2), the backend-agnostic conformance suite that holds both backends to one objective contract (since part 3), and — since part 4 — the [`VaultBackend`](#the-vaultbackend) that wraps the synced vault write path behind the same seam. For *why* the seam is shaped this way, see [Memory↔storage seam](Memory-Storage-Seam).
 
 > [!NOTE]
-> **Parts 1–4 shipped: the contract, two concrete backends, and the conformance gate.** The abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, the `conflict_strategy` slot, the [`BackendRegistry`](#the-backendregistry), and the [three-tier taxonomy](#the-tier-taxonomy) (`Tier` / `TierLayout` / `DerivedMaintenance`) shipped in part 1; the [`DeviceLocalBackend`](#the-devicelocalbackend) — the fresh-install default, plain markdown under `~/.agentm/memory/` — ships in part 2 and registers under `device-local` in the default [`registry`](#registry-module-default); the backend-agnostic conformance suite ships in part 3 and runs both backends against the shared contract — it is **not** a new `check-*` gate, it rides the existing cross-OS `[T]` unit-test step; the [`VaultBackend`](#the-vaultbackend) ships in part 4, wrapping the synced vault write path (the full V5-0 `vault_mutex` + content-hash CAS + `atomic_write` stack) behind the seam and registering under `vault`. Still forthcoming: backend selection + fail-loud (part 5) — reading [`Capabilities`](#the-capabilities-type) + [`conflict_strategy`](#conflict_strategy---str-property) + the registry's resolve-as-absent to choose a backend and fail loud on a configured-but-uninstalled one. **No index or abstract-promotion ships** — `DerivedMaintenance` remains an abstract class with **no concrete subclass** (`reindex`/`changed_since` are *reserved names*), and the actual derived index lands in V6. **The engine is not yet wired to the seam** — `recall`/`reflect`/`save`/`evolve` and the five hooks are byte-unchanged; routing the engine's public API through a chosen backend is part 5. The `_MemoryBackend` used in the contract tests is a fixture, not a shipped backend. Anything this page marks *(part 5)* or *(V6)* is a forward reference, not current behavior.
+> **Parts 1–4 shipped: the contract, two concrete backends, and the conformance gate.** The abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, the `conflict_strategy` slot, the [`BackendRegistry`](#the-backendregistry), and the [three-tier taxonomy](#the-tier-taxonomy) (`Tier` / `TierLayout` / `DerivedMaintenance`) shipped in part 1; the [`DeviceLocalBackend`](#the-devicelocalbackend) — the fresh-install default, plain markdown under `~/.agentm/memory/` — ships in part 2 and registers under `device-local` in the default [`registry`](#registry-module-default); the backend-agnostic conformance suite ships in part 3 and runs both backends against the shared contract — it is **not** a new `check-*` gate, it rides the existing cross-OS `[T]` unit-test step; the [`VaultBackend`](#the-vaultbackend) ships in part 4, wrapping the synced vault write path (the full V5-0 `vault_mutex` + content-hash CAS + `atomic_write` stack) behind the seam and registering under `vault`. **Part 5 — backend selection — is now landing task-by-task.** Task 1 (shipped) adds the [`storage.backend` config key](#the-storagebackend-config-key) plus the [resolver](#the-selection-resolver) ([`scripts/backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py)) that maps config → a registered backend instance via [`registry.get`](#the-backendregistry). Still forthcoming in later part-5 tasks: the [`Capabilities`](#the-capabilities-type)-read (task 2), the polished [**fail-loud guard**](#the-fail-loud-guard) that refuses with a named install-the-plugin error (task 3 — the shipped resolver currently raises only a bare placeholder `RuntimeError` on an unregistered backend), and the `doctor` storage preview (task 4). **Part 5 does *not* include the engine cutover.** Routing the engine's public `recall`/`reflect`/`save`/`evolve` through the selected backend is a **separate, later step beyond V5-1** — part 5 ships the selection + guard (+ capabilities-read + doctor preview) only, so a chosen backend can be resolved and a misconfiguration refused before the cutover ever lands. **No index or abstract-promotion ships** — `DerivedMaintenance` remains an abstract class with **no concrete subclass** (`reindex`/`changed_since` are *reserved names*), and the actual derived index lands in V6. **The engine is not yet wired to the seam** — `recall`/`reflect`/`save`/`evolve` and the five hooks are byte-unchanged. The `_MemoryBackend` used in the contract tests is a fixture, not a shipped backend. Anything this page marks *(part 5)*, *(later step)*, or *(V6)* is a forward reference, not current behavior.
 
 ## ⚡ Quick Reference
 
@@ -59,7 +59,7 @@ Metadata about a locator — the `info` verb's return, a frozen `dataclass`.
 
 ## The `Capabilities` type
 
-What a backend can promise — the per-backend descriptor a backend declares, a frozen `dataclass`. Four booleans, all defaulting to the conservative floor (`False`). Selection and fail-loud (part 5) *read* these; the contract only *defines* them. A dataclass so the set can grow.
+What a backend can promise — the per-backend descriptor a backend declares, a frozen `dataclass`. Four booleans, all defaulting to the conservative floor (`False`). The contract (part 1) only *defines* them and both built-ins already declare their values — device-local all-`False`, vault `concurrent_writers`/`sync`/`conflict_files` `True`. Part 5 adds the **read side**: the [resolver](#the-selection-resolver) exposes the selected backend's `.capabilities` so the kernel can read what it can promise (the kernel capabilities-read is **part-5 task 2**, not yet shipped). (Capability-request *matching* — a consumer declaring what it *needs* and selection honoring it — is **V5-7**, not part 5.) A dataclass so the set can grow.
 
 | Field | Default | Meaning |
 |---|---|---|
@@ -159,6 +159,58 @@ A process-wide default `BackendRegistry` instance ([`scripts/storage_seam.py#L34
 | `device-local` | [`DeviceLocalBackend`](#the-devicelocalbackend) | part 2 |
 | `vault` | [`VaultBackend`](#the-vaultbackend) | part 4 (now) |
 
+## Backend selection (part 5)
+
+> [!NOTE]
+> **Landing task-by-task.** This section describes the **selection + fail-loud** part of V5-1. **Task 1 (shipped):** the `storage.backend` config field, [`choose_protocol`](#the-selection-resolver), and [`select_backend`](#the-selection-resolver) in [`scripts/backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py). **Still forthcoming:** the capabilities-read (task 2), the polished [fail-loud guard](#the-fail-loud-guard) (task 3), and the `doctor` storage preview (task 4). **The engine cutover is *not* part 5 at all** — selection resolves *which* backend to use and refuses a misconfigured one; routing the engine's public API through the resolved backend is a separate, later step beyond V5-1.
+
+Part 5 adds the **read side** of the seam: a config key naming the chosen backend and a resolver that turns that name into a registered backend instance via [`registry.get`](#the-backendregistry). The resolver module is deliberately *not* named `storage_*.py` and uses no seam-verb name (`choose_protocol` / `select_backend`, never `resolve`/`read`/`write`/…), so the [`check-storage-seam-no-path-leak`](CI-Gates) gate (scoped to `scripts/storage_*.py`) does not scan it even though it handles `Path`.
+
+### The `storage.backend` config key
+
+A new operator-facing field on the on-host `.agentm-config.json`, set via the [config CLI](Installer-CLI#config-cli--agentm_configpy) — see the [forthcoming row](Installer-CLI#config-cli--agentm_configpy) there and the how-to [Choose a storage backend](Choose-A-Storage-Backend).
+
+| Aspect | Detail |
+|---|---|
+| Field | `storage.backend` on `.agentm-config.json` (the same on-host config that holds `vault_path` / `state_mode` — the vault holds data; config is on-host only). |
+| Value | A registered [protocol name](#registry-module-default) — `device-local`, `vault`, or a plugin-provided name. |
+| Default | _Unset._ Absent → the resolver picks a backend from the existing config (see the resolution chain). |
+| Who reads it | The selection resolver (below), via `_configured_backend` ([`backend_selection.py#L54`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L54)) — which reuses `agentm_config`'s own prefix-resolution + reader, so the read is the same file the `--storage-backend` setter writes. The config CLI only stores it; it does **not** validate that the named backend is registered ([`agentm_config.py#L151`](https://github.com/alexherrero/agentm/blob/main/scripts/agentm_config.py#L151) validates non-empty only) — that is the [fail-loud guard](#the-fail-loud-guard)'s job at resolve time. |
+
+### The selection resolver
+
+The resolver ([`scripts/backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py)) maps config → a registered backend instance. It sits **above** the seam (DC-7): it imports `agentm_config`, `harness_memory`, the two concrete backend modules (so they self-register at import), and `storage_seam.registry` — but the seam itself never imports it.
+
+| Aspect | Detail |
+|---|---|
+| Module | `scripts/backend_selection.py` — deliberately not `storage_*.py` (keeps it out of the [no-`Path`-leak gate](CI-Gates)'s glob, even though the resolver handles `Path`). |
+| `choose_protocol(*, install_prefix=None, vault_root=None) -> str` | Resolves the protocol *name* per the chain below, no instantiation ([`#L71`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L71)). `vault_root` is the already-resolved `harness_memory.vault_path()`, passed in so the chain stays pure / testable. |
+| `select_backend(*, install_prefix=None, device_local_root=None, vault_lock_root=None) -> StorageBackend` | Resolves the protocol, then instantiates via `registry.get` ([`#L90`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L90)). The `*_root` args are injection points so tests never touch the operator's real home / cache / vault. |
+| How it instantiates | `storage_seam.registry.get(<protocol>)` → the registered class → instantiate ([`#L111`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L111)). `vault` is constructed with `vault_root` as its seed (`backend_cls(vault_root, lock_root=…)`); `device-local` with its optional root; an explicitly-configured third-party backend with the V5-1 minimal no-arg constructor. |
+
+The resolution chain (config → backend), first hit wins:
+
+| Precedence | Condition | Resolved backend |
+|---|---|---|
+| 1 (wins) | `storage.backend` is set | The named backend (via `registry.get`); the [fail-loud guard](#the-fail-loud-guard) fires if it isn't registered. |
+| 2 | An existing `vault_path` (env `$MEMORY_VAULT_PATH` or config) | the built-in `vault`, seeded from `harness_memory.vault_path()` — an existing operator's vault is selected with zero re-setup, byte-identical. |
+| 3 | Fresh install — **no** `vault_path` | `device-local` (the bare-markdown floor under `~/.agentm/memory/`). |
+
+> [!NOTE]
+> The shipped precedence places an existing `vault_path` (rule 2) **above** the fresh-install `device-local` floor (rule 3) — a fresh install with no vault resolves `device-local`; a `vault_path`-config resolves `vault`, both proven by [`scripts/test_backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_backend_selection.py).
+
+### The fail-loud guard
+
+> [!IMPORTANT]
+> **Refuse, never demote.** If config names a `storage.backend` whose [`registry.get()`](#the-backendregistry) returns `None` (the plugin isn't installed), the resolver **raises and refuses the memory operation** — it does **not** silently fall back to `device-local`. Silent demotion is the one failure that could orphan or mis-write an operator's configured store, so the seam forbids it. This is the loud half of the [registry's absence-vs-fail-loud split](#the-backendregistry): the registry *reports* absence (`get` → `None`); the resolver *decides* it is fatal.
+
+> [!NOTE]
+> **Task-1 state: a bare placeholder, not the polished guard.** As shipped, `select_backend` raises only a generic `RuntimeError` on an unregistered backend ([`backend_selection.py#L117`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L117)). The **part-5 task 3** refinement — a dedicated `StorageSelectionError` naming the exact missing plugin (the "install the `<name>` backend plugin" message), plus the negative test proving there is no silent `device-local` fall-back — has **not** landed yet. The guard also only *bites* after V5-3 deletes the built-in `vault` backend (until then `vault` is always registered). A companion guard already ships in task 1: selecting `vault` with no `vault_path` to seed it raises rather than guessing ([`#L122`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L122)).
+
+### The `doctor` storage check
+
+`doctor` (the install-health skill) gains a **storage-backend preview** — the operator's read-only way to see what selection *would* resolve before any memory operation could refuse. It reports the selected backend, whether its plugin is registered, and that the `device-local` root is writable. See the how-to [Choose a storage backend](Choose-A-Storage-Backend) for the operator-facing flow.
+
 ## `ProtocolError`
 
 A `ValueError` subclass ([`scripts/storage_seam.py#L272`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L272)) raised by `BackendRegistry.register` on an empty or duplicate protocol name. Registering badly is a *programming* error, surfaced loudly — kept deliberately distinct from a registry *miss*, which is not an error at all (`get` → `None`).
@@ -218,7 +270,7 @@ The contract-only stance is enforced executably, not just by convention, in [`sc
 The first **concrete** `StorageBackend` ([`scripts/storage_device_local.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_device_local.py)) — the fresh-install default: plain markdown under `~/.agentm/memory/`, user-owned, no vault, no Drive, no service. It implements the [seven verbs](#the-storagebackend-abc) and the [`capabilities`](#the-capabilities-type) descriptor against the local filesystem, and registers under the `device-local` protocol name in the default [`registry`](#registry-module-default) at import. Bare markdown is the floor; a database is something a *plugin* may offer, never the kernel default. For *why* this is the floor, see [Memory↔storage seam § The first concrete backend](Memory-Storage-Seam#the-first-concrete-backend-the-bare-markdown-floor).
 
 > [!NOTE]
-> **The engine does not use this backend yet.** Constructing a `DeviceLocalBackend` and calling its verbs works, but the live memory engine (`recall`/`reflect`/`save`/`evolve` + the five hooks) is byte-unchanged and still accesses its state the way it does today. The fresh-engine cutover — routing the public API through `device-local` — is part 5.
+> **The engine does not use this backend yet.** Constructing a `DeviceLocalBackend` and calling its verbs works, but the live memory engine (`recall`/`reflect`/`save`/`evolve` + the five hooks) is byte-unchanged and still accesses its state the way it does today. Part 5 lets selection *resolve* `device-local` (the fresh-install default) and exposes its `.capabilities` — but routing the engine's public API through it (the **engine cutover**) is a **separate, later step beyond V5-1**, not part 5.
 
 | Aspect | Detail |
 |---|---|
@@ -253,7 +305,7 @@ A locator maps to a path by joining its normalized parts under the root (`root /
 The second **concrete** `StorageBackend` ([`scripts/storage_vault.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py)) — today's Obsidian/GDrive vault, reached *through the seam* rather than via the engine's old direct file access. It implements the [seven verbs](#the-storagebackend-abc) against the resolved per-project vault root and registers under the `vault` protocol name in the default [`registry`](#registry-module-default) at import ([`storage_vault.py#L241`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L241)). It is the synced, multi-writer counterweight to the device-local floor: where device-local declares the all-`False` floor, the vault backend declares the positive profile and overrides the conflict floor. For *why* the vault sits behind a seam at all, see [Memory↔storage seam](Memory-Storage-Seam#what-the-seam-is-for).
 
 > [!NOTE]
-> **The engine does not use this backend yet.** Constructing a `VaultBackend` and calling its verbs works, and the [never-orphan invariant](#the-never-orphan-invariant) proves it reaches the same on-disk bytes the engine's old direct path does — but the live engine (`recall`/`reflect`/`save`/`evolve` + the five hooks) is byte-unchanged and does not yet route through it. Choosing the vault backend behind the public API is part 5.
+> **The engine does not use this backend yet.** Constructing a `VaultBackend` and calling its verbs works, and the [never-orphan invariant](#the-never-orphan-invariant) proves it reaches the same on-disk bytes the engine's old direct path does — but the live engine (`recall`/`reflect`/`save`/`evolve` + the five hooks) is byte-unchanged and does not yet route through it. Part 5 lets selection *resolve* the vault backend by name (an existing `vault_path` selects it) and exposes its `.capabilities` — but pointing the engine's public API at it (the **engine cutover**) is a **separate, later step beyond V5-1**, not part 5.
 
 | Aspect | Detail |
 |---|---|

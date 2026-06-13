@@ -42,6 +42,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | `--get <field>` | Read a single field to stdout; `rc=0` if present, `rc=1` (silent) if absent. |
 | `--list` | Dump the full config as JSON. |
 | `--unset <field>` | Clear a single field. |
+| `--storage-backend <name>` | Set `storage.backend` — the named [storage backend](Storage-Seam#backend-selection-part-5) the memory engine selects (`device-local`, `vault`, or a plugin-provided name). Stored under the literal flat key `"storage.backend"` ([`agentm_config.py#L151`](https://github.com/alexherrero/agentm/blob/main/scripts/agentm_config.py#L151)), so it round-trips through `--get storage.backend` / `--unset storage.backend`. Idempotent. Validates **non-empty only** — it does **not** check the backend is registered, so an as-yet-uninstalled backend stays configurable; the resolver's fail-loud guard handles a missing plugin at resolve time (the polished install-the-plugin error lands in part-5 task 3). Unset → the resolver picks from the existing config (fresh → `device-local`; an existing `vault_path` → `vault`). See [Choose a storage backend](Choose-A-Storage-Backend). |
 
 ## Prerequisites
 
