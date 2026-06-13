@@ -120,7 +120,7 @@ def _configured_backend(install_prefix: Optional[Path] = None) -> Optional[str]:
         return None  # genuinely fresh — no config file to drop a selection from.
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError) as exc:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         raise StorageSelectionError(
             f"the install config at {path} exists but could not be read ({exc}); "
             f"refusing to guess a backend. Fix or remove the file — a silent "

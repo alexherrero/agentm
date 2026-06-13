@@ -170,6 +170,20 @@ class TestAgentmConfig(unittest.TestCase):
         self.assertEqual(out, "")
         self.assertEqual(err, "")
 
+    def test_read_config_non_utf8_returns_none(self) -> None:
+        # A non-UTF-8 config (a Windows editor's UTF-16/BOM save) is "malformed"
+        # per the _read_config contract. read_text(utf-8) raises UnicodeDecodeError
+        # — a ValueError, not an OSError/JSONDecodeError — so a guard naming only
+        # those two leaks it and crashes the CLI instead of staying rc1-silent.
+        (self.prefix / ".agentm-config.json").write_bytes(
+            b'\xff\xfe{"vault_path": "/v"}',
+        )
+        self.assertIsNone(ac._read_config(self.prefix))
+        rc, out, err = self._run("--get", "vault_path")
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "")
+
     # -----------------------------------------------------------------------
     # --list
     # -----------------------------------------------------------------------

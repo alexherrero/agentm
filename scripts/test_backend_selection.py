@@ -253,6 +253,25 @@ class TestFailLoud(unittest.TestCase):
             "silent device-local fall-back on a non-string storage.backend value",
         )
 
+    def test_non_utf8_config_with_explicit_backend_raises(self) -> None:
+        # A config that EXISTS but is not valid UTF-8 — a Windows editor saved it
+        # UTF-16/BOM (the \xff\xfe byte-order mark) or disk corruption flipped a
+        # byte. Path.read_text(encoding="utf-8") raises UnicodeDecodeError, which
+        # is a ValueError — NOT an OSError and NOT a JSONDecodeError — so it slips
+        # past a guard that only names those two and leaks an uncaught traceback,
+        # breaking the docstring's "file present but unparseable → raise" contract.
+        # It must be caught by the same fail-loud guard as malformed JSON: refuse,
+        # never demote, and never construct a device-local backend.
+        config_path = ac._config_path(self.prefix)
+        config_path.write_bytes(b'\xff\xfe{"storage.backend": "' + self.SENTINEL.encode() + b'"}')
+        with self.assertRaises(bs.StorageSelectionError) as ctx:
+            bs.select_backend(device_local_root=self.device_root)
+        self.assertIn(str(config_path), str(ctx.exception))
+        self.assertFalse(
+            self.device_root.exists(),
+            "silent device-local fall-back on a non-UTF-8 config",
+        )
+
 
 class TestCapabilitiesRead(unittest.TestCase):
     """Part-5 task 2: the kernel reads the (already-shipped) capability descriptor.
@@ -387,6 +406,19 @@ class TestStoragePreview(unittest.TestCase):
         # preview must CATCH that and report a fail row, never propagate / crash.
         config_path = ac._config_path(self.prefix)
         config_path.write_text('{ "storage.backend": "x", }', encoding="utf-8")  # invalid JSON
+        prev = bs.storage_preview(device_local_root=self.device_root)
+        self.assertEqual(prev.status, "fail")
+        self.assertIsNone(prev.protocol)
+        self.assertIn("[FAIL]", prev.line)
+        self.assertFalse(self.device_root.exists())
+
+    def test_non_utf8_config_previews_fail_not_crash(self) -> None:
+        # A non-UTF-8 config (UTF-16/BOM from a Windows editor) raises
+        # UnicodeDecodeError deep in the resolver. The preview promises to never
+        # propagate / crash — it must catch the fail-loud raise and report a fail
+        # row, exactly as it does for malformed JSON above.
+        config_path = ac._config_path(self.prefix)
+        config_path.write_bytes(b'\xff\xfe{"storage.backend": "x"}')
         prev = bs.storage_preview(device_local_root=self.device_root)
         self.assertEqual(prev.status, "fail")
         self.assertIsNone(prev.protocol)

@@ -181,7 +181,7 @@ def _read_config_vault_path(install_prefix: Optional[Path] = None) -> Optional[P
         return None
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         return None
     if not isinstance(data, dict):
         return None
@@ -213,7 +213,7 @@ def _read_config_state_mode(install_prefix: Optional[Path] = None) -> Optional[s
         return None
     try:
         data = json.loads(config_path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
         return None
     if not isinstance(data, dict):
         return None

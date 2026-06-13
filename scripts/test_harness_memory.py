@@ -272,6 +272,24 @@ class TestVaultPathResolutionOrder(unittest.TestCase):
             ):
                 self.assertIsNone(hm.vault_path())
 
+    # Bonus: non-UTF-8 config bytes (a Windows editor's UTF-16/BOM save) → the
+    # "never raises / graceful-skip" contract must hold. read_text(utf-8) raises
+    # UnicodeDecodeError (a ValueError, not an OSError/JSONDecodeError), so a guard
+    # naming only those two would leak it and crash vault_path() instead of
+    # falling through to the next resolution layer.
+    def test_g2_env_unset_config_non_utf8_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            (prefix / ".agentm-config.json").write_bytes(
+                b'\xff\xfe{"vault_path": "/v"}',
+            )
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+
     # Bonus: vault_path with ~/ expansion works.
     # Skipped on Windows: os.path.expanduser uses USERPROFILE on Windows, not
     # HOME, so the env-override pattern this test uses to fake a home dir is
@@ -1266,6 +1284,15 @@ class TestReadConfigStateMode(unittest.TestCase):
     def test_non_string_value_returns_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self._write_config(Path(tmp), json.dumps({"state_mode": 1}))
+            self.assertIsNone(hm._read_config_state_mode(Path(tmp)))
+
+    def test_non_utf8_returns_none(self) -> None:
+        # UTF-16/BOM config from a Windows editor → graceful-skip, not a leaked
+        # UnicodeDecodeError (mirrors the vault_path reader's contract).
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / ".agentm-config.json").write_bytes(
+                b'\xff\xfe{"state_mode": "local"}',
+            )
             self.assertIsNone(hm._read_config_state_mode(Path(tmp)))
 
 
