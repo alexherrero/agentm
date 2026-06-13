@@ -218,6 +218,25 @@ class StorageBackend(ABC):
         """
         return "none"
 
+    @property
+    def derived_maintenance(self) -> "DerivedMaintenance | None":
+        """The backend's derived-tier maintenance ops, or ``None`` if it has none.
+
+        A **concrete** property defaulting to the conservative floor ``None``
+        (mirroring ``conflict_strategy`` — concrete-with-safe-default, so any
+        backend answers without a ``hasattr`` dance), added additively in part 3
+        so the conformance suite can detect "does this backend expose a derived
+        layer?" without inspecting backend internals: the suite runs the
+        delete→``reindex``→identical-read invariant **iff** this is non-``None``,
+        and skips it otherwise. Both V5-1 built-ins (device-local, the part-4
+        vault wrap) return ``None`` — neither builds a derived layer; the V6
+        vector index is the first backend to override it with a real
+        :class:`DerivedMaintenance`. Returns a ``DerivedMaintenance`` or ``None``
+        — never a path — so it stays below the public API (DC-7) and clear of the
+        no-Path-leak gate (it is not one of the seven verbs).
+        """
+        return None
+
     @abstractmethod
     def resolve(self, *parts: str) -> Locator:
         """Make a backend-relative locator from path ``parts``.
