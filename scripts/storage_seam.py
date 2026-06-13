@@ -168,6 +168,18 @@ class Info:
     ``mtime`` is the basis for ``changed-since`` (the incremental feed named in
     task 3): epoch seconds, the *lean* granularity chosen for v1 over a
     content-hash log. ``size`` is bytes (``0`` for a directory).
+
+    Caveat for synced backends (``Capabilities.sync`` is ``True``): a sync layer
+    stamps its own mtime on replication and device clocks skew, so mtime is
+    **not a reliable total order** there — a watermark can miss a write whose
+    replicated mtime landed *before* it, or re-surface one whose mtime moved
+    forward. On a synced tier the ``mtime`` feed is therefore a *hint*, not a
+    guarantee; V6's :meth:`DerivedMaintenance.changed_since` must treat it as
+    such (gate on ``Capabilities.sync`` or fall back to a content-hash diff)
+    rather than trust it as authoritative. The never-sync ``LOCAL_INDEX`` tier
+    (:class:`Tier`) has no such layer, so there mtime is monotonic and the
+    watermark is exact — which is the tier an incremental reindex actually runs
+    against.
     """
 
     locator: Locator
