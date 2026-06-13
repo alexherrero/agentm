@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+# pre-push — agentm PII guardrail.
+#
+# Protects agentm's own pushes (agentm is a PUBLIC repo). Runs
+# `scripts/check-no-pii.sh` against the push range and blocks the push on
+# any finding. Install into this repo with:
+#   cp templates/hooks/pre-push .git/hooks/pre-push && chmod +x .git/hooks/pre-push
+# Harness-authored; refresh on install.sh --update.
+#
+# Receives on stdin lines of the form: <local_ref> <local_sha> <remote_ref> <remote_sha>
+# (one per ref being pushed).
+
+set -uo pipefail
+
+# ── locate the scanner ────────────────────────────────────────────────
+# The scanner ships in this same repo, so prefer the repo root (robust to
+# the clone living anywhere). Fall back to $AGENT_HARNESS_PATH and the
+# conventional dev-machine layouts only if the repo-root lookup fails.
+SCRIPT=""
+toplevel="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [[ -n "$toplevel" && -x "$toplevel/scripts/check-no-pii.sh" ]]; then
+    SCRIPT="$toplevel/scripts/check-no-pii.sh"
+else
+    for candidate in \
+        "${AGENT_HARNESS_PATH:-}/scripts/check-no-pii.sh" \
+        "$HOME/Antigravity/agentm/scripts/check-no-pii.sh" \
+        "$HOME/dev/agentm/scripts/check-no-pii.sh" \
+        "../agentm/scripts/check-no-pii.sh"
+    do
+        if [[ -x "$candidate" ]]; then
+            SCRIPT="$candidate"
+            break
+        fi
+    done
+fi
+
+if [[ -z "$SCRIPT" || ! -x "$SCRIPT" ]]; then
+    echo "pre-push: WARNING — agentm/scripts/check-no-pii.sh not found." >&2
+    echo "  Searched: repo root, \$AGENT_HARNESS_PATH, ~/Antigravity/agentm, ~/dev/agentm, ../agentm" >&2
+    echo "  PII guardrail SKIPPED (degraded gracefully). To enforce, run from the repo or set AGENT_HARNESS_PATH." >&2
+    exit 0
+fi
+
+# ── scan each ref being pushed ────────────────────────────────────────────
+zero_sha="0000000000000000000000000000000000000000"
+exit_code=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    # Skip deletions
+    [[ "$local_sha" == "$zero_sha" ]] && continue
+
+    if [[ "$remote_sha" == "$zero_sha" ]]; then
+        # New branch — scan the whole working tree as a conservative default
+        echo "pre-push: new branch — scanning entire working tree for PII..." >&2
+        if ! bash "$SCRIPT" --all; then
+            exit_code=1
+        fi
+    else
+        # Existing branch — scan the push range
+        range="${remote_sha}..${local_sha}"
+        echo "pre-push: scanning $range for PII..." >&2
+        if ! bash "$SCRIPT" --diff "$range"; then
+            exit_code=1
+        fi
+    fi
+done
+
+if [[ $exit_code -ne 0 ]]; then
+    echo "" >&2
+    echo "pre-push: BLOCKED — PII findings in the push range." >&2
+    echo "  Invoke the pii-scrubber skill for interactive remediation," >&2
+    echo "  or fix manually (scripts/check-no-pii.sh --diff <range>) and amend your commits." >&2
+fi
+
+exit $exit_code
