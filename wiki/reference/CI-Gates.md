@@ -10,9 +10,9 @@ bash scripts/check-all.sh
 
 | Workflow | Runs on | Jobs |
 |---|---|---|
-| [`[T] Linux Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) | `ubuntu-latest` | install-smoke + adapter-parity + validate + check-references + check-wiki + unit tests + **verify-v4** + **verify-phases** + **verify-memory-roundtrip** + syntax + dogfood-workflows |
-| [`[T] Mac Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-mac.yml) | `macos-latest` | install-smoke + validate + unit tests + **verify-v4** + **verify-phases** + **verify-memory-roundtrip** + syntax (both shells) |
-| [`[T] Windows Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-windows.yml) | `windows-latest` | install-smoke (pwsh) + validate + pwsh syntax |
+| [`[T] Linux Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) | `ubuntu-latest` | install-smoke + adapter-parity + validate + check-references + check-wiki + unit tests + **verify-v4** + **verify-phases** + **verify-memory-roundtrip** + syntax + **lib-parity** + **pii-guardrails** (check-no-pii + gitleaks) + dogfood-workflows |
+| [`[T] Mac Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-mac.yml) | `macos-latest` | install-smoke + validate + check-references + unit tests + **verify-v4** + **verify-phases** + **verify-memory-roundtrip** + syntax (both shells) + **lib-parity** + **check-no-pii** |
+| [`[T] Windows Tests`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-windows.yml) | `windows-latest` | install-smoke (pwsh) + installer-boundary + validate + check-references + pwsh syntax + **lib-parity** + **check-no-pii** + unit tests |
 
 ## What each gate proves
 
