@@ -1,9 +1,9 @@
 # Storage seam reference
 
-The memory↔storage contract ([`scripts/storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py)) — the small interface of *verbs* the memory engine calls instead of touching the filesystem directly. A backend implements the verbs; the engine consumes the seam's own `Locator` type and so learns no filesystem assumption. This page documents the **abstract contract that ships today** (V5-1 part 1 of 5): the seven verbs as an abstract `StorageBackend`, the three value types, and the no-`Path`-leak gate. For *why* the seam is shaped this way, see [Memory↔storage seam](Memory-Storage-Seam).
+The memory↔storage contract ([`scripts/storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py)) — the small interface of *verbs* the memory engine calls instead of touching the filesystem directly. A backend implements the verbs; the engine consumes the seam's own `Locator` type and so learns no filesystem assumption. This page documents the **abstract contract that ships today** (V5-1 part 1 of 5): the seven verbs as an abstract `StorageBackend`, the three value types, the named-backend registry, and the no-`Path`-leak gate. For *why* the seam is shaped this way, see [Memory↔storage seam](Memory-Storage-Seam).
 
 > [!NOTE]
-> **Contract only — no concrete backend ships here.** The device-local backend (part 2), the named-backend registry (part 2), the conformance suite (part 3), the vault wrap (part 4), and selection + fail-loud (part 5) are forthcoming. The `StorageBackend` below is abstract; the `_MemoryBackend` used in tests is a fixture, not a shipped backend. Anything this page marks *(part N)* is a forward reference, not current behavior.
+> **Contract only — no concrete backend ships here.** The abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, and the [`BackendRegistry`](#the-backendregistry) all ship now; **no concrete backend does.** The device-local backend (part 2), the conformance suite (part 3), the vault wrap (part 4), and selection + fail-loud (part 5) are forthcoming. The `StorageBackend` below is abstract; the `_MemoryBackend` used in tests is a fixture, not a shipped backend. The registry holds backend *classes* but ships with none registered into the default `registry` — the two real backends register under their protocol names in parts 2 / 4. Anything this page marks *(part N)* is a forward reference, not current behavior.
 
 ## ⚡ Quick Reference
 
@@ -70,7 +70,7 @@ What a backend can promise — the per-backend descriptor a backend declares, a 
 
 ## The `StorageBackend` ABC
 
-The abstract interface a backend conforms to. A concrete backend registers under a protocol name (`device-local`, `vault` — part 2) and implements every verb. Concrete backends are out of scope for this part.
+The abstract interface a backend conforms to. A concrete backend registers under a protocol name (`device-local`, `vault`) via the [`BackendRegistry`](#the-backendregistry) and implements every verb. Concrete backends are out of scope for this part; the registry they will plug into ships here.
 
 ### `resolve(*parts) -> Locator`
 
@@ -122,9 +122,35 @@ What this backend promises — see [Capabilities](#the-capabilities-type).
 
 A `ValueError` subclass raised by `normalize_key` (and therefore `Locator` construction / `resolve`) when a key escaped or malformed its backend-relative namespace — today, a `..` segment. It signals a *caller bug* (an unsafe key), kept deliberately distinct from the absent-data degrade a backend reports for a missing `read` (`FileNotFoundError`).
 
+## The `BackendRegistry`
+
+A hand-rolled name→backend registry ([`scripts/storage_seam.py#L247`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L247)) — the fsspec named-protocol pattern, mirrored, importing neither fsspec nor any DB. A backend registers under a **protocol name** (`device-local`, `vault`); selection (part 5) resolves a configured name against the registry to choose a backend. The registry stores backend **classes**, not instances — selection instantiates the chosen one.
+
+The contract that matters for part 5's fail-loud: **a miss is reported as absent, never raised.** `get` returns `None` and `in` returns `False` for an unregistered name. The registry reports absence; the *caller* turns absence into a loud failure if the configured backend doesn't exist. That split — absence here, fail-loud there — mirrors the seam's absent-vs-corrupt stance (a missing `read` degrades to `FileNotFoundError`; only a malformed key raises).
+
+| Member | Signature | Returns | Raises |
+|---|---|---|---|
+| `register` | `register(protocol, backend, *, clobber=False)` | `None` | `TypeError` if `backend` isn't a concrete `StorageBackend` subclass; `ProtocolError` on an empty name or a duplicate (unless `clobber=True`) |
+| `get` | `get(protocol)` | `type[StorageBackend] | None` — the registered class, or `None` if absent | — (a miss is *not* an error) |
+| `__contains__` | `protocol in registry` | `bool` — whether `protocol` is registered | — |
+| `protocols` | `protocols()` | `tuple[str, ...]` — the registered names, sorted | — |
+
+> [!IMPORTANT]
+> **`register` fails loud on a bad registration, but a *miss* is absence, not an error.** A bad registration is a programming bug, surfaced immediately: an empty protocol name or a silent duplicate raises `ProtocolError`; a non-backend, the abstract `StorageBackend` base itself, or a backend *instance* (rather than a class) raises `TypeError`. Refusing a silent duplicate keeps one backend from shadowing another by accident. Resolving an unregistered name is the opposite case — it returns `None`, the signal part 5 reads to decide whether the absence is fatal.
+
+`BackendRegistry` instances are independent — no shared global state — so a fresh `BackendRegistry()` can be registered into without leaking across callers (the contract tests rely on this for hermeticity).
+
+### `registry` (module default)
+
+A process-wide default `BackendRegistry` instance ([`scripts/storage_seam.py#L312`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L312)) the real backends register into. It ships **empty** in this part — the device-local backend (part 2) and the vault wrap (part 4) register under their protocol names when they arrive.
+
+## `ProtocolError`
+
+A `ValueError` subclass ([`scripts/storage_seam.py#L237`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L237)) raised by `BackendRegistry.register` on an empty or duplicate protocol name. Registering badly is a *programming* error, surfaced loudly — kept deliberately distinct from a registry *miss*, which is not an error at all (`get` → `None`).
+
 ## Module exports
 
-`storage_seam.__all__` is the public surface: `InvalidLocatorError`, `normalize_key`, `Locator`, `Info`, `Capabilities`, `StorageBackend`. No concrete backend, and no `python -m` entrypoint — unlike the [process seam](Process-Seam), this module is consumed *in-process* by the engine, so it ships as an importable contract only.
+`storage_seam.__all__` is the public surface: `InvalidLocatorError`, `normalize_key`, `Locator`, `Info`, `Capabilities`, `StorageBackend`, `ProtocolError`, `BackendRegistry`, `registry`. No concrete backend, and no `python -m` entrypoint — unlike the [process seam](Process-Seam), this module is consumed *in-process* by the engine, so it ships as an importable contract only.
 
 ## Related
 

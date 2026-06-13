@@ -16,7 +16,12 @@ Scope of *this* part — **contract only**:
     ``pathlib.Path``, so an FS assumption can't cross the seam to the engine);
   - the ``Info`` metadata record (carries ``mtime`` — the ``changed-since``
     granularity, lean for v1) and the four-boolean ``Capabilities`` descriptor a
-    backend declares.
+    backend declares;
+  - the hand-rolled ``BackendRegistry`` (and the module-default ``registry``)
+    backends register a protocol name with (``device-local``, ``vault``) and
+    selection looks up — a miss reports *absent*, never raises (part 5 decides
+    whether absence is fatal). This mirrors the seam's absent-vs-corrupt split:
+    the registry reports absence; the caller fails loud on it.
 
 Locked design calls this module encodes (see the parent design, ``Status:
 final``):
@@ -25,7 +30,7 @@ final``):
     ``list``/``exists`` are the five canonical verbs; ``info``/``mkdir`` the two
     ergonomic ones. The vocabulary mirrors fsspec's method names and its
     named-protocol registry pattern, but imports neither fsspec nor any DB —
-    bare markdown is the floor. (The registry itself is task 2.)
+    bare markdown is the floor.
   - **The write path composes V5-0.** A *filesystem* backend's ``write`` routes
     through ``vault_lock`` (``atomic_write`` + content-hash CAS + ``vault_mutex``)
     and never reinvents write-safety. The abstract contract here only declares
@@ -50,6 +55,9 @@ __all__ = [
     "Info",
     "Capabilities",
     "StorageBackend",
+    "ProtocolError",
+    "BackendRegistry",
+    "registry",
 ]
 
 
@@ -224,3 +232,81 @@ class StorageBackend(ABC):
     @abstractmethod
     def mkdir(self, locator: Locator) -> Locator:
         """Ensure a directory exists at ``locator``; return it. Idempotent."""
+
+
+class ProtocolError(ValueError):
+    """A backend-registry protocol error — an empty or duplicate protocol name.
+
+    A ``ValueError`` subclass: registering badly is a *programming* error,
+    surfaced loudly. Distinct from a registry *miss*, which is not an error at
+    all — a miss reports absence (``get`` → ``None``), and the caller decides
+    whether that absence is fatal.
+    """
+
+
+class BackendRegistry:
+    """A hand-rolled name→backend registry — the fsspec named-protocol pattern, mirrored.
+
+    Backends register under a protocol name (``device-local``, ``vault``);
+    selection (part 5) looks the name up to choose a backend. The contract that
+    matters for fail-loud (part 5): **a miss is reported as absent, never
+    raised** — ``get`` returns ``None`` and ``in`` returns ``False`` for an
+    unregistered name. The registry reports absence; the caller turns absence
+    into a loud failure if the configured backend doesn't exist. That split —
+    absence here, fail-loud there — mirrors the seam's absent-vs-corrupt stance.
+
+    Instances are independent (no shared global state), which is what lets the
+    contract tests register into a fresh registry without leaking across tests;
+    :data:`registry` is the process-wide default the real backends register into.
+    """
+
+    def __init__(self) -> None:
+        self._backends: dict[str, type[StorageBackend]] = {}
+
+    def register(
+        self, protocol: str, backend: type[StorageBackend], *, clobber: bool = False
+    ) -> None:
+        """Register ``backend`` (a concrete ``StorageBackend`` subclass) under ``protocol``.
+
+        Raises ``TypeError`` if ``backend`` is not a ``StorageBackend`` subclass
+        (the abstract base itself is rejected — there's nothing to instantiate),
+        and ``ProtocolError`` on an empty name or a duplicate registration
+        (unless ``clobber=True``). Refusing a silent duplicate keeps one backend
+        from shadowing another by accident.
+        """
+        if not (
+            isinstance(backend, type)
+            and issubclass(backend, StorageBackend)
+            and backend is not StorageBackend
+        ):
+            raise TypeError(
+                f"{backend!r} is not a concrete StorageBackend subclass"
+            )
+        if not protocol:
+            raise ProtocolError("protocol name must be a non-empty string")
+        if protocol in self._backends and not clobber:
+            raise ProtocolError(
+                f"protocol {protocol!r} is already registered "
+                "(pass clobber=True to override)"
+            )
+        self._backends[protocol] = backend
+
+    def get(self, protocol: str) -> type[StorageBackend] | None:
+        """Return the backend registered under ``protocol``, or ``None`` if absent.
+
+        The absent path is *not* an error — it is the signal part 5's selection
+        reads to decide whether to fail loud.
+        """
+        return self._backends.get(protocol)
+
+    def __contains__(self, protocol: object) -> bool:
+        return protocol in self._backends
+
+    def protocols(self) -> tuple[str, ...]:
+        """The registered protocol names, sorted."""
+        return tuple(sorted(self._backends))
+
+
+#: The process-wide default registry the real backends register into (parts 2/4).
+#: Contract tests use fresh ``BackendRegistry()`` instances to stay hermetic.
+registry = BackendRegistry()

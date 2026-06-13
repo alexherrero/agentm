@@ -2,7 +2,7 @@
 """Contract tests for `storage_seam` (V5-1 part 1/5) — the memory↔storage seam.
 
 `storage_seam` is the interface the memory engine will call instead of touching
-files directly. These tests pin its *contract*, two ways:
+files directly. These tests pin its *contract*, three ways:
 
   - **Per-verb behavior against an in-memory fixture backend** (`_MemoryBackend`).
     That the seven verbs are fully implementable over a plain dict — no
@@ -12,6 +12,12 @@ files directly. These tests pin its *contract*, two ways:
   - **The Locator type** — normalization, root-confinement (no ``..`` escape),
     and the namespace operations (`child`/`name`/`parts`) that make it usable
     *without* being a ``pathlib.Path``.
+  - **The named-backend registry** — two protocol names register independently
+    and resolve to distinct backends; an unregistered name resolves *as absent*
+    (``get`` → ``None``, never a raise) — the signal part 5's fail-loud guard
+    reads — while bad registrations (empty name, silent duplicate, a non-backend)
+    fail loud. Every case registers into a *fresh* ``BackendRegistry()`` so
+    nothing leaks across tests or into the module-default ``ss.registry``.
 
 `NoPathCrossesSeam` is the behavioral mirror of the static
 `check-storage-seam-no-path-leak` gate: it asserts every verb actually returns
@@ -282,6 +288,83 @@ class Descriptors(unittest.TestCase):
     def test_info_carries_mtime(self) -> None:
         info = ss.Info(locator=ss.Locator("a"), is_dir=False, size=3, mtime=12.0)
         self.assertEqual(info.mtime, 12.0)
+
+
+class _BackendA(_MemoryBackend):
+    """A distinct concrete backend — the registry resolves a protocol to *this* class."""
+
+
+class _BackendB(_MemoryBackend):
+    """A second distinct concrete backend — proves two protocols resolve apart."""
+
+
+class BackendRegistryContract(unittest.TestCase):
+    """The hand-rolled name→backend registry — register, resolve-as-absent, fail-loud inputs.
+
+    Every test registers into a *fresh* ``BackendRegistry()``; nothing leaks
+    across cases or into the process-wide default ``ss.registry`` (asserted
+    present, never mutated). The registry stores backend *classes*, not
+    instances — selection (part 5) instantiates the chosen one.
+    """
+
+    def setUp(self) -> None:
+        self.reg = ss.BackendRegistry()
+
+    def test_two_protocols_register_and_resolve_to_distinct_backends(self) -> None:
+        # The core task-2 verification: two names, two backends, kept apart.
+        self.reg.register("device-local", _BackendA)
+        self.reg.register("vault", _BackendB)
+        self.assertIs(self.reg.get("device-local"), _BackendA)
+        self.assertIs(self.reg.get("vault"), _BackendB)
+        self.assertIsNot(self.reg.get("device-local"), self.reg.get("vault"))
+
+    def test_unregistered_name_resolves_as_absent(self) -> None:
+        # The signal part 5's fail-loud guard reads: a miss is None, never a raise.
+        self.assertIsNone(self.reg.get("nope"))
+
+    def test_contains_reflects_registration(self) -> None:
+        self.assertNotIn("device-local", self.reg)
+        self.reg.register("device-local", _BackendA)
+        self.assertIn("device-local", self.reg)
+
+    def test_protocols_lists_registered_names_sorted(self) -> None:
+        self.reg.register("vault", _BackendB)
+        self.reg.register("device-local", _BackendA)
+        self.assertEqual(self.reg.protocols(), ("device-local", "vault"))
+
+    def test_duplicate_registration_raises(self) -> None:
+        # A silent shadow is a footgun — a duplicate without clobber fails loud.
+        self.reg.register("device-local", _BackendA)
+        with self.assertRaises(ss.ProtocolError):
+            self.reg.register("device-local", _BackendB)
+
+    def test_clobber_allows_intentional_override(self) -> None:
+        self.reg.register("device-local", _BackendA)
+        self.reg.register("device-local", _BackendB, clobber=True)
+        self.assertIs(self.reg.get("device-local"), _BackendB)
+
+    def test_empty_protocol_name_is_rejected(self) -> None:
+        with self.assertRaises(ss.ProtocolError):
+            self.reg.register("", _BackendA)
+
+    def test_register_rejects_non_backend(self) -> None:
+        # Registering a non-StorageBackend is a programming error, surfaced loudly:
+        # an unrelated class, the abstract base itself, and an instance (not a class).
+        with self.assertRaises(TypeError):
+            self.reg.register("bad", object)  # not a StorageBackend subclass
+        with self.assertRaises(TypeError):
+            self.reg.register("abstract", ss.StorageBackend)  # the ABC — nothing to instantiate
+        with self.assertRaises(TypeError):
+            self.reg.register("instance", _BackendA())  # an instance, not the class
+
+    def test_protocol_error_is_a_valueerror(self) -> None:
+        # A bad registration stays in the ValueError family, distinct from a miss.
+        self.assertTrue(issubclass(ss.ProtocolError, ValueError))
+
+    def test_module_default_registry_exists(self) -> None:
+        # The process-wide default the real backends (parts 2/4) register into;
+        # asserted without mutating it, so the contract suite stays hermetic.
+        self.assertIsInstance(ss.registry, ss.BackendRegistry)
 
 
 # -----------------------------------------------------------------------------
