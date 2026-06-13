@@ -354,13 +354,28 @@ def check_list_on_absent(make_backend: BackendFactory) -> None:
     """
     b = make_backend()
     absent = b.resolve("never", "created")
-    if b.list(absent) != []:
-        raise ConformanceFailure(f"list on an absent locator must return [], not raise: {absent!r}")
+    # The violation this check exists to catch *is* "list-on-absent raises", so a
+    # raise must be converted to a contract-named failure — not allowed to escape
+    # as an unexpected error (mirrors check_info's absent handling).
+    try:
+        got = b.list(absent)
+    except Exception as exc:  # noqa: BLE001 - any raise is the violation
+        raise ConformanceFailure(
+            f"list on an absent locator must return [], not raise: {absent!r} raised {exc!r}"
+        )
+    if got != []:
+        raise ConformanceFailure(f"list on an absent locator must return [], got {got!r}: {absent!r}")
 
     f = b.resolve("file.md")
     b.write(f, "i am a file\n")
-    if b.list(f) != []:
-        raise ConformanceFailure(f"list on a non-directory (file) locator must return []: {f!r}")
+    try:
+        got = b.list(f)
+    except Exception as exc:  # noqa: BLE001 - any raise is the violation
+        raise ConformanceFailure(
+            f"list on a non-directory (file) locator must return [], not raise: {f!r} raised {exc!r}"
+        )
+    if got != []:
+        raise ConformanceFailure(f"list on a non-directory (file) locator must return []: {f!r} got {got!r}")
 
 
 def check_invalid_locator_rejected(make_backend: BackendFactory) -> None:
@@ -414,10 +429,13 @@ DERIVED_SEED: tuple[tuple[str, str], ...] = (
 
 
 def _assert_derived_mirrors_source(
-    backend: StorageBackend, derived_root: Locator, when: str
+    backend: StorageBackend,
+    derived_root: Locator,
+    expected: tuple[tuple[str, str], ...],
+    when: str,
 ) -> None:
-    """Every seed entry has a byte-identical derived counterpart under ``derived_root``."""
-    for rel, content in DERIVED_SEED:
+    """Every ``expected`` entry has a byte-identical derived counterpart under ``derived_root``."""
+    for rel, content in expected:
         loc = derived_root.child(rel)
         try:
             got = backend.read(loc)
@@ -429,7 +447,7 @@ def _assert_derived_mirrors_source(
         if got != content or got.encode("utf-8") != content.encode("utf-8"):
             raise ConformanceFailure(
                 f"rebuildability violated {when}: derived entry {loc!r} is not byte-identical "
-                f"to source — wrote {content!r}, reindex produced {got!r}"
+                f"to source — source is {content!r}, reindex produced {got!r}"
             )
 
 
@@ -438,12 +456,24 @@ def check_rebuildable(
 ) -> None:
     """delete the derived layer → ``reindex`` from source → byte-identical reads.
 
-    The derived layer starts empty (the "deleted index" precondition — a fresh
-    backend has nothing under ``derived_root``); ``reindex`` must rebuild it from
-    source byte-for-byte; and a *second* full ``reindex`` must reproduce identical
-    reads (rebuildable, not merely built once). Only run against a backend whose
-    ``derived_maintenance`` is non-``None`` — :func:`run_conformance` and the
-    mixin gate on that; calling it on a derived-less backend is a caller error.
+    Three things are proven, in order:
+
+      1. **The deleted-index precondition** — a fresh backend has nothing under
+         ``derived_root`` (the post-delete state). (Assumes ``derived_root`` is
+         disjoint from ``source_root`` — not an ancestor of it; the seam's
+         ``TierLayout`` keeps the tier roots distinct, and the V5-1 fixtures use
+         sibling roots.)
+      2. **Rebuild from source** — after ``reindex`` the derived layer is
+         byte-identical to source.
+      3. **The rebuild actually reads source, not a constant** — mutate every
+         source entry, ``reindex`` again, and require the derived layer to track
+         the *new* source. This is what distinguishes a real rebuild from a
+         ``reindex`` that hardcodes the seed shape (the cutover's whole proof
+         rests on this: a faithful-looking-but-wrong backend must not pass).
+
+    Only run against a backend whose ``derived_maintenance`` is non-``None`` —
+    :func:`run_conformance` and the mixin gate on that; calling it on a
+    derived-less backend is a caller error (``ValueError``).
     """
     b = make_backend()
     dm = b.derived_maintenance
@@ -455,18 +485,26 @@ def check_rebuildable(
     # Seed the source tier.
     for rel, content in DERIVED_SEED:
         b.write(source_root.child(rel), content)
-    # The deleted-index precondition: nothing derived yet.
+    # (1) The deleted-index precondition: nothing derived yet.
     pre = b.list(derived_root)
     if pre != []:
         raise ConformanceFailure(
             f"rebuildability precondition: derived root {derived_root!r} must be empty before "
             f"reindex (the deleted-index state), found {[str(p) for p in pre]}"
         )
-    # Rebuild from source, then prove a second full rebuild is byte-identical.
+    # (2) Rebuild from source — byte-identical.
     dm.reindex(Tier.LOCAL_INDEX)
-    _assert_derived_mirrors_source(b, derived_root, when="after reindex")
+    _assert_derived_mirrors_source(b, derived_root, DERIVED_SEED, when="after reindex")
+    # (3) Prove the rebuild *reads source*: change every source entry, reindex,
+    # and require the derived layer to reflect the new source (not a constant the
+    # reindex happened to emit, and not the stale pre-change bytes).
+    mutated = tuple((rel, content + " (rev2)") for rel, content in DERIVED_SEED)
+    for rel, content in mutated:
+        b.write(source_root.child(rel), content)
     dm.reindex(Tier.LOCAL_INDEX)
-    _assert_derived_mirrors_source(b, derived_root, when="after a second reindex")
+    _assert_derived_mirrors_source(
+        b, derived_root, mutated, when="after a source change + reindex"
+    )
 
 
 # -----------------------------------------------------------------------------

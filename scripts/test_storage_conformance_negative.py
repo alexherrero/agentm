@@ -38,10 +38,12 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from storage_conformance import (  # noqa: E402
+    DERIVED_SEED,
     ConformanceFailure,
     ConformanceSuite,
     InMemoryBackend,
     check_lf_exact_round_trip,
+    check_list_on_absent,
     check_rebuildable,
 )
 from storage_seam import DerivedMaintenance, Locator, Tier  # noqa: E402
@@ -64,6 +66,20 @@ class _CrStrippingBackend(InMemoryBackend):
 
     def read(self, locator: Locator) -> str:
         return super().read(locator).replace("\r\n", "\n").replace("\r", "\n")
+
+
+class _RaisingListBackend(InMemoryBackend):
+    """`list` **raises** on an absent / non-directory locator — the list-on-absent violation.
+
+    The exact contract `check_list_on_absent` exists to catch; the check must
+    convert the raise to a named `ConformanceFailure`, not let it escape as an
+    unexpected error.
+    """
+
+    def list(self, locator: Locator) -> list[Locator]:
+        if locator.key not in self._dirs:
+            raise FileNotFoundError(locator.key)
+        return super().list(locator)
 
 
 # -----------------------------------------------------------------------------
@@ -114,6 +130,19 @@ class _GarblingMaintenance(_MirrorMaintenance):
             self._backend.write(self._derived_root.child(child.name), content)
 
 
+class _CheatingMaintenance(_MirrorMaintenance):
+    """A `reindex` that **ignores source** and emits the original seed constants.
+
+    Byte-identical on the first pass (so a single-pass check would pass it), but it
+    cannot track a source change — the source-derivation step of `check_rebuildable`
+    is what catches this faithful-looking-but-wrong reindex.
+    """
+
+    def reindex(self, tier: Tier) -> None:
+        for rel, content in DERIVED_SEED:
+            self._backend.write(self._derived_root.child(rel), content)
+
+
 class _FaithfulDerivedBackend(InMemoryBackend):
     """An in-memory backend that *does* expose a faithful derived layer (the positive)."""
 
@@ -132,6 +161,12 @@ class _GarblingDerivedBackend(InMemoryBackend):
     @property
     def derived_maintenance(self) -> DerivedMaintenance:
         return _GarblingMaintenance(self, _SOURCE_ROOT, _DERIVED_ROOT)
+
+
+class _CheatingDerivedBackend(InMemoryBackend):
+    @property
+    def derived_maintenance(self) -> DerivedMaintenance:
+        return _CheatingMaintenance(self, _SOURCE_ROOT, _DERIVED_ROOT)
 
 
 # -----------------------------------------------------------------------------
@@ -162,6 +197,24 @@ class SuiteBites(unittest.TestCase):
         msg = str(cm.exception)
         self.assertIn("rebuildability", msg)
         self.assertIn("byte-identical", msg)  # the garbled entry is named
+
+    def test_list_on_absent_raise_is_named_a_conformance_failure(self) -> None:
+        # A backend that *raises* on list-on-absent (the violation) must surface a
+        # named ConformanceFailure, not let the raw exception escape un-converted.
+        with self.assertRaises(ConformanceFailure) as cm:
+            check_list_on_absent(_RaisingListBackend)
+        self.assertIn("not raise", str(cm.exception))
+
+    def test_cheating_reindex_fails_source_derivation(self) -> None:
+        # A reindex that emits the seed constants but never reads source passes the
+        # first byte-identity pass, then fails when source changes underneath it.
+        with self.assertRaises(ConformanceFailure) as cm:
+            check_rebuildable(
+                _CheatingDerivedBackend, source_root=_SOURCE_ROOT, derived_root=_DERIVED_ROOT
+            )
+        msg = str(cm.exception)
+        self.assertIn("rebuildability", msg)
+        self.assertIn("after a source change", msg)
 
 
 class SuiteRunsGreenWhenSatisfied(unittest.TestCase):
