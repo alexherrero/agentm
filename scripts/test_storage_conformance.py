@@ -9,10 +9,13 @@ cross-OS ``[T]`` CI matrix.
   - **InMemoryConformance** (part 3 task 1 self-test) — runs the universal
     battery against the dict-backed reference backend and confirms the derived
     case *skips* when ``derived_maintenance`` is ``None``. Hermetic; no filesystem.
+  - **DeviceLocalConformance** (part 3 task 2) — runs the same universal battery
+    against ``DeviceLocalBackend`` over a fresh temp root, on every CI OS. This is
+    where the byte-identical LF-exact round-trip is proven on the Windows runner
+    (the only place ``\\r\\n`` translation would surface).
 
-``DeviceLocalConformance`` (part 3 task 2) runs the same suite against the
-``device-local`` backend on every CI OS; the negative/positive fixtures that
-prove the suite *bites* live in ``test_storage_conformance_negative`` (task 3).
+The negative/positive fixtures that prove the suite *bites* live in
+``test_storage_conformance_negative`` (part 3 task 3).
 
 Run directly:
 
@@ -21,6 +24,7 @@ Run directly:
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -29,6 +33,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import storage_conformance as sc  # noqa: E402
+import storage_device_local as sdl  # noqa: E402
 from storage_conformance import ConformanceSuite, InMemoryBackend, run_conformance  # noqa: E402
 
 
@@ -64,6 +69,25 @@ class SelfTestReport(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             run_conformance(_Claimed)
+
+
+class DeviceLocalConformance(ConformanceSuite, unittest.TestCase):
+    """The universal battery over ``DeviceLocalBackend`` — runs on every CI OS.
+
+    A fresh temp root per backend (never the operator's ``~/.agentm/memory``), so
+    the run is hermetic and the factory hands every check a clean store. The
+    LF-exact round-trip case here is the one that must execute on the **Windows**
+    runner: device-local's bytes-mode I/O (``read_bytes`` + ``atomic_write``,
+    which encodes utf-8 with no newline translation) is what keeps ``\\r\\n`` from
+    being rewritten, and this is the gate that proves it. The derived case is N/A
+    — device-local exposes no derived layer (``derived_maintenance`` is ``None``)
+    — so ``test_derived_rebuildable`` skips.
+    """
+
+    def make_backend(self) -> "sdl.DeviceLocalBackend":
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        return sdl.DeviceLocalBackend(root=Path(tmp.name) / "agentm-memory")
 
 
 if __name__ == "__main__":
