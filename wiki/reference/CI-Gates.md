@@ -33,7 +33,8 @@ bash scripts/check-all.sh
 | verify-v4 | The V4 #23 auto-orchestration push surface works end-to-end (briefing · idle · phase-dispatch · nudges · config/state) against a throwaway scratch vault — see below. Linux/Mac only. | [`scripts/verify-v4.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-v4.sh) |
 | verify-phases | A full phase lifecycle (`/setup → /plan → /work → /release`) drives its deterministic seams — state read/write, `progress.md` appends, `features.json` updates, post-phase dispatch plumbing — end-to-end on a throwaway fixture project, run twice: once vault-resident, once repo-local. Linux/Mac only. | [`scripts/verify-phases.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-phases.sh) |
 | verify-memory-roundtrip | The memory engine round-trips on a throwaway fixture vault: stub-mode `embed` (deterministic hash vector, no network/model) → `save` → `recall query` surfaces it by content → `reflect` a synthetic transcript → `vec_index` full-sync/drain builds the index → nearest-neighbor read-back → `vault_lint` clean. 12 checks; a `VERIFY_MEMORY_FAULT=drop-save` injection drives the negative path. The nearest-neighbor sub-check is conditional on the backend — asserted when the Python `sqlite3` supports `enable_load_extension` (Mac/Linux CI `pip install sqlite-vec` to exercise it), logged as SKIPPED (never silently dropped) when it falls back to keyword recall by design. Hermetic, Linux/Mac only. | [`scripts/verify-memory-roundtrip.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/verify-memory-roundtrip.sh) |
-| dogfood-workflows | Every workflow the harness ships as a template under `templates/.github/workflows/` is active at the repo root, byte-identical to the template. | Inline job in [`tests-linux.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) |
+| dogfood-workflows | Every workflow the harness ships as a template under `templates/.github/workflows/` is active at the repo root, byte-identical to the template. Mirrored locally by `check-workflow-parity` (below), so a one-sided edit is caught in `check-all.sh` before the push, not as a red Linux run after it. | Inline job in [`tests-linux.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) |
+| check-workflow-parity | The local mirror of `dogfood-workflows` (above): every templated `templates/.github/workflows/*.yml` is active at the repo root, byte-identical (`diff -u`, the same comparator CI uses, so the two verdicts cannot diverge). Active workflows without a template twin (e.g. `ci-all.yml`) are out of scope — the invariant is template→active, not the reverse. One deliberate divergence from CI: zero templated workflows is a setup error (exit 2), not the vacuous pass CI's `nullglob` yields — a local gate that checked nothing must not read as green. | [`scripts/check-workflow-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-workflow-parity.sh) |
 
 ## `verify-v4.sh` — the push-surface integration check
 
@@ -60,7 +61,7 @@ Red-on-Windows but green-on-POSIX almost always indicates a path-separator or pw
 
 ## Running the gate set locally
 
-One command runs the deterministic battery — 13 gates: unit tests + every `check-*` gate + the three integration checks (`verify-v4`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
+One command runs the deterministic battery — 16 gates: unit tests + every `check-*` gate + the three integration checks (`verify-v4`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
 
 ```bash
 bash scripts/check-all.sh

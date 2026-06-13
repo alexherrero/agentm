@@ -47,6 +47,7 @@ gate "validate-adapters"                       "$PY" scripts/validate-adapters.p
 gate "check-parity (adapter sets)"             bash scripts/check-parity.sh
 gate "check-lib-parity (lib/install checksums)" bash scripts/check-lib-parity.sh
 gate "check-vault-lock-parity (vendored vault_lock)" bash scripts/check-vault-lock-parity.sh
+gate "check-workflow-parity (templated workflows byte-identical)" bash scripts/check-workflow-parity.sh
 gate "check-multi-plan-naming (named-plan contract)" bash scripts/check-multi-plan-naming.sh
 gate "check-worktree-slug (slug == origin basename)" bash scripts/check-worktree-slug.sh
 gate "check-no-auto-worktree (no agentm auto-spawn)" bash scripts/check-no-auto-worktree.sh
