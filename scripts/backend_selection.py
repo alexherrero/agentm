@@ -23,15 +23,18 @@ Importing this module guarantees the two built-ins are registered (their modules
 self-register at import).
 
 Minimal in V5-1: exactly one `storage.backend` key + this resolver. The full
-per-plugin config model and capability-request *matching* are V5-7; the
-**fail-loud guard** for an unregistered backend lands in part-5 task 3 (it
-refines the bare `registry.get → None` guard below into a named
-install-the-plugin error + a no-silent-fall-back negative test).
+per-plugin config model and capability-request *matching* are V5-7. The
+**fail-loud guard** (part-5 task 3) refuses rather than demotes whenever the
+configured backend can't be produced — an unregistered plugin
+(`registry.get → None`), a `vault` selection with no `vault_path`, or an explicit
+selection trapped in a corrupt/unreadable config — always raising
+`StorageSelectionError`, never a silent fall-back to `device-local`.
 
 Stdlib-only per ADR 0001.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -81,20 +84,57 @@ def _install_plugin_message(protocol: str) -> str:
 
 
 def _configured_backend(install_prefix: Optional[Path] = None) -> Optional[str]:
-    """Read the explicit `storage.backend` value from config, or None if unset.
+    """Read the explicit `storage.backend` value from config — fail loud, never demote.
 
-    Reuses `agentm_config`'s prefix resolution + reader so the source of truth is
-    the same file the `--storage-backend` setter writes. Returns the stripped name
-    when present + non-empty; None otherwise (no explicit selection).
+    Returns the stripped backend name when an explicit, valid selection is present;
+    `None` only when there is *genuinely no* explicit selection. It deliberately
+    does **not** reuse `agentm_config._read_config`, whose tolerant contract
+    collapses "file missing" and "file present but unreadable" into the same `None`
+    — that collapse is a silent-demotion hole the never-demote invariant forbids:
+    an explicitly-configured backend trapped in a corrupt config would be dropped
+    and the chain would fall back to `device-local`, mis-writing or orphaning the
+    vault. Instead it distinguishes:
+
+      - config file absent              → `None` (genuinely fresh — continue the chain)
+      - file present but unparseable    → raise `StorageSelectionError` (never guess)
+      - file present, key absent        → `None` (readable config, no explicit pick)
+      - key present, valid non-empty str → the stripped name
+      - key present but non-string/empty → raise `StorageSelectionError` (an explicit
+                                           selection we can't honor, never demoted —
+                                           the setter refuses empty and `--unset`
+                                           removes the key, so neither is a
+                                           legitimate write).
     """
     prefix = agentm_config._resolve_install_prefix(
         str(install_prefix) if install_prefix is not None else None
     )
-    config = agentm_config._read_config(prefix) or {}
-    raw = config.get(agentm_config._STORAGE_BACKEND_KEY)
+    path = agentm_config._config_path(prefix)
+    if not path.is_file():
+        return None  # genuinely fresh — no config file to drop a selection from.
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise StorageSelectionError(
+            f"the install config at {path} exists but could not be read ({exc}); "
+            f"refusing to guess a backend. Fix or remove the file — a silent "
+            f"fall-back to device-local could mis-write or orphan the vault."
+        )
+    if not isinstance(data, dict):
+        raise StorageSelectionError(
+            f"the install config at {path} is not a JSON object; refusing to guess "
+            f"a backend rather than risk a silent device-local fall-back."
+        )
+    if agentm_config._STORAGE_BACKEND_KEY not in data:
+        return None  # readable config, no explicit selection — continue the chain.
+    raw = data[agentm_config._STORAGE_BACKEND_KEY]
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
-    return None
+    raise StorageSelectionError(
+        f"storage.backend in {path} is set but is not a non-empty string "
+        f"(got {raw!r}); refusing to demote to device-local. Set a valid backend "
+        f"name (agentm_config --storage-backend <name>) or remove it "
+        f"(agentm_config --unset storage.backend)."
+    )
 
 
 def choose_protocol(

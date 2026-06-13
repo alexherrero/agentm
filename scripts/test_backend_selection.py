@@ -217,6 +217,42 @@ class TestFailLoud(unittest.TestCase):
             bs.select_backend(vault_lock_root=self.lock_root)
         self.assertIn("vault_path", str(ctx.exception))
 
+    def test_unparseable_config_with_explicit_backend_raises(self) -> None:
+        # A config file that EXISTS and explicitly names a backend but is malformed
+        # JSON (a partial write, a hand-edit slip, disk corruption). The tolerant
+        # agentm_config._read_config collapses "file missing" and "file unreadable"
+        # into the same None, so naively the chain would treat this as a fresh
+        # install and demote to device-local — dropping the operator's explicit
+        # selection and orphaning the vault. The resolver must refuse instead, and
+        # must NOT construct a device-local backend (root stays uncreated).
+        config_path = ac._config_path(self.prefix)
+        config_path.write_text(
+            '{ "storage.backend": "' + self.SENTINEL + '", }',  # trailing comma → invalid JSON
+            encoding="utf-8",
+        )
+        with self.assertRaises(bs.StorageSelectionError) as ctx:
+            bs.select_backend(device_local_root=self.device_root)
+        # The error points the operator at the unreadable file.
+        self.assertIn(str(config_path), str(ctx.exception))
+        self.assertFalse(
+            self.device_root.exists(),
+            "silent device-local fall-back on an unreadable config",
+        )
+
+    def test_non_string_storage_backend_value_raises(self) -> None:
+        # Valid JSON, but storage.backend is the wrong type (a list — corruption or
+        # a stray hand-edit; the setter only ever writes a non-empty string and
+        # --unset removes the key, so a non-string value is never a legitimate
+        # write). An explicit-but-unhonorable selection: refuse, never demote.
+        config_path = ac._config_path(self.prefix)
+        config_path.write_text('{"storage.backend": ["x"]}', encoding="utf-8")
+        with self.assertRaises(bs.StorageSelectionError):
+            bs.select_backend(device_local_root=self.device_root)
+        self.assertFalse(
+            self.device_root.exists(),
+            "silent device-local fall-back on a non-string storage.backend value",
+        )
+
 
 class TestCapabilitiesRead(unittest.TestCase):
     """Part-5 task 2: the kernel reads the (already-shipped) capability descriptor.
