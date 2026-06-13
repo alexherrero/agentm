@@ -2,9 +2,11 @@ name: "[W] Update Wiki"
 
 # Mirrors wiki/ in this repo to the GitHub Wiki on every push to the
 # default branch that touches wiki/**. Mirror semantics — add, edit,
-# rename, delete. Fails loudly on duplicate basenames across subdirs
-# (GH Wiki resolves page links by basename, so collisions would silently
-# clobber). Gracefully skips when the wiki is disabled on the repo.
+# rename, delete. Fails loudly on duplicate *content-page* basenames
+# across subdirs (GH Wiki resolves page links by basename, so collisions
+# would silently clobber); the reserved per-directory _Sidebar/_Footer/
+# _Header special files are excluded. Gracefully skips when the wiki is
+# disabled on the repo.
 #
 # Harness-authored; refreshed on install.sh --update. The full
 # convention spec lives at:
@@ -46,11 +48,16 @@ jobs:
 
           # Fail loudly on duplicate basenames across subdirs. GitHub
           # Wiki resolves [text](Page-Name) links by flat basename, so
-          # two files with the same name (even in different subdirs)
-          # would silently overwrite each other on sync.
+          # two *content* files with the same name (even in different
+          # subdirs) would silently overwrite each other on sync.
+          # Exception: the GitHub-Wiki reserved special files
+          # (_Sidebar.md, _Footer.md, _Header.md) are *meant* to be
+          # per-directory — GH Wiki renders the nearest one for each
+          # page — so they are legitimately duplicated across subdirs and
+          # are excluded here (rsync below preserves their distinct paths).
           # Portable: avoid GNU-only `find -printf` so the shell body
           # can be exercised locally on macOS / BSD find too.
-          dupes=$(find wiki -type f -name '*.md' | awk -F/ '{print $NF}' | sort | uniq -d || true)
+          dupes=$(find wiki -type f -name '*.md' | awk -F/ '$NF !~ /^_(Sidebar|Footer|Header)\.md$/ {print $NF}' | sort | uniq -d || true)
           if [[ -n "$dupes" ]]; then
             echo "::error::Duplicate wiki basenames (would collide on GitHub Wiki):"
             while IFS= read -r name; do
