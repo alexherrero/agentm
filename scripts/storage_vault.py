@@ -34,11 +34,17 @@ Design calls this module encodes (see the parent design, ``Status: final``):
       * ``atomic_write`` — the crash-safe temp→fsync→rename; never an
         open-and-truncate, so an interrupted write leaves prior bytes intact.
 
-  - **A synced, multi-writer capability profile.** Unlike device-local's all-False
-    floor, the vault declares ``concurrent_writers`` (the mutex makes N writers
-    safe), ``sync`` (GDrive replicates the tree), and ``conflict_files`` (DriveFS
-    surfaces "(conflicted copy)" files the engine must tolerate). The
-    ``conflict_strategy`` override to ``"whole-file"`` lands in task 3.
+  - **A synced, multi-writer capability profile + the whole-file conflict policy.**
+    Unlike device-local's all-False floor, the vault declares
+    ``concurrent_writers`` (the mutex makes N writers safe), ``sync`` (GDrive
+    replicates the tree), and ``conflict_files`` (DriveFS surfaces
+    "(conflicted copy)" files the engine must tolerate). It overrides the seam's
+    ``conflict_strategy`` floor (``"none"``) to ``"whole-file"`` — *naming* the
+    GDrive whole-file reconcile (DriveFS conflict files surfaced for
+    operator-by-hand resolution by the existing ``detect_conflict_files`` +
+    ``conflict-merger`` machinery), the policy part 5's selection reads. It is a
+    name, not an executor — the backend ships no merge machinery; device-local
+    stays ``"none"``.
 
   - **Depends only on ``vault_lock``, never the engine.** The seam sits strictly
     *below* the public memory API (DC-7); a storage backend importing
@@ -136,6 +142,22 @@ class VaultBackend(StorageBackend):
             encryption=False,
             sync=True,
         )
+
+    @property
+    def conflict_strategy(self) -> str:
+        # Override the seam's "none" floor with the GDrive whole-file strategy —
+        # the synced, multi-writer reality device-local never faces (it stays
+        # "none": one machine, nothing to reconcile). When Drive sync diverges
+        # (two devices write the same file while offline), DriveFS materializes a
+        # "(conflicted copy)" sibling rather than losing a write; the
+        # reconciliation unit is the *whole file*. The existing conflict
+        # machinery — harness_memory.detect_conflict_files + the
+        # `conflict-merger` SessionStart hook — surfaces each conflict/base pair
+        # for operator-by-hand resolution; resolution stays operator judgment,
+        # never a line-level auto-merge (that would be a future CRDT strategy).
+        # This is a *named* policy the part-5 selection reads, NOT an executor:
+        # the backend ships no merge machinery of its own.
+        return "whole-file"
 
     # -- the seven verbs ------------------------------------------------------
 

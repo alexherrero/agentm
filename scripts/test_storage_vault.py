@@ -39,6 +39,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import storage_device_local as sdl  # noqa: E402
 import storage_seam as ss  # noqa: E402
 import storage_vault as sv  # noqa: E402
 from vault_lock import ConcurrentModificationError, content_hash  # noqa: E402
@@ -197,6 +198,40 @@ class VaultCapabilities(_ScratchVaultMixin, unittest.TestCase):
         self.assertTrue(caps.sync)  # GDrive replicates the tree
         self.assertTrue(caps.conflict_files)  # DriveFS surfaces conflict copies
         self.assertFalse(caps.encryption)  # not encrypted at rest by the backend
+
+
+class VaultConflictStrategy(_ScratchVaultMixin, unittest.TestCase):
+    """The conflict-strategy override — the vault names the GDrive whole-file policy.
+
+    The slot shipped in part 2 (a concrete ``@property`` on the contract
+    defaulting to ``"none"``); part 4 task 3 is the *override*. Proven here: the
+    vault returns ``"whole-file"``; device-local still inherits ``"none"`` (the
+    policy is per-backend, not a global change); and the slot is observable with
+    no ``hasattr`` dance — a plain property on the contract, never an
+    abstractmethod (the part-2 ``ConflictStrategySlot`` pin, re-asserted off the
+    vault).
+    """
+
+    def test_vault_conflict_strategy_is_whole_file(self) -> None:
+        self.assertEqual(self.b.conflict_strategy, "whole-file")
+
+    def test_conflict_strategy_is_a_str(self) -> None:
+        # A name the part-5 selection switches on — not a bool or a path.
+        self.assertIsInstance(self.b.conflict_strategy, str)
+
+    def test_device_local_still_inherits_none(self) -> None:
+        # The override is per-backend: device-local (single machine, nothing to
+        # reconcile) is unaffected and still answers the inherited "none" floor.
+        dl = sdl.DeviceLocalBackend(root=Path(self._tmp.name) / "dl-memory")
+        self.assertEqual(dl.conflict_strategy, "none")
+
+    def test_slot_is_observable_with_no_hasattr_dance(self) -> None:
+        # The contract always answers conflict_strategy — a concrete property,
+        # not an abstractmethod — so a caller reads it off any backend with no
+        # hasattr/getattr guard. Asserted both on the base (not abstract) and on
+        # the vault (the override is itself a plain property).
+        self.assertNotIn("conflict_strategy", ss.StorageBackend.__abstractmethods__)
+        self.assertIsInstance(type(self.b).conflict_strategy, property)
 
 
 class VaultRegistration(unittest.TestCase):
