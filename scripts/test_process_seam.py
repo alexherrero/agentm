@@ -32,6 +32,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -413,6 +414,103 @@ class CLIShim(_SeamFixture):
         )
         self.assertEqual(rc, 0)
         self.assertEqual(json.loads(out), [])
+
+
+# -----------------------------------------------------------------------------
+# Task 2 — the check-process-seam-import-direction.sh gate via subprocess (POSIX)
+# -----------------------------------------------------------------------------
+
+_IMPORT_GATE = _HERE / "check-process-seam-import-direction.sh"
+
+
+def _run_import_gate(root: Path | None = None) -> subprocess.CompletedProcess:
+    cmd = ["bash", str(_IMPORT_GATE)]
+    if root is not None:
+        cmd += ["--root", str(root)]
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+@unittest.skipIf(os.name == "nt", "bash gate — POSIX only")
+class ImportDirectionGate(unittest.TestCase):
+    """The LC-4 one-way invariant — *memory never imports the process*.
+
+    Subprocess tests against `check-process-seam-import-direction.sh`. The import
+    verb is assembled at runtime so this file never carries the contiguous string
+    the gate greps for (it's an excluded ``test_*.py`` regardless, but this keeps
+    the fixtures unambiguous). Fixtures land under ``scripts/`` — one of the gate's
+    scanned automation surfaces — pointed at via ``--root``.
+    """
+
+    IMPORT = "import " + "process_seam"                  # the bare-import back-edge
+    FROM = "from " + "process_seam import state_path"    # the from-import back-edge
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        (self.root / "scripts").mkdir(parents=True)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_gate_passes_on_live_repo(self) -> None:
+        # The live repo's only seam importers are excluded by construction: its own
+        # `test_*.py` suite and the module itself. So the real tree is one-way → rc 0.
+        proc = _run_import_gate()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_gate_passes_on_clean_fixture(self) -> None:
+        (self.root / "scripts" / "engine.py").write_text(
+            "import harness_memory as hm\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_gate_fails_on_engine_back_edge(self) -> None:
+        # The mandatory negative test: a memory-engine module importing the seam.
+        (self.root / "scripts" / "harness_memory.py").write_text(
+            f"{self.IMPORT}\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("harness_memory.py", proc.stderr)
+
+    def test_gate_fails_on_from_import_form(self) -> None:
+        (self.root / "scripts" / "phase_runner.py").write_text(
+            f"{self.FROM}\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("phase_runner.py", proc.stderr)
+
+    def test_gate_ignores_test_files(self) -> None:
+        # The seam's contract tests import it by design — not a back-edge.
+        (self.root / "scripts" / "test_seam_thing.py").write_text(
+            f"{self.IMPORT}\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_gate_ignores_the_seam_module_itself(self) -> None:
+        # process_seam.py is the module; it imports the engine, not itself. The
+        # basename exclusion means a self-shaped match never trips the gate.
+        (self.root / "scripts" / "process_seam.py").write_text(
+            f"{self.IMPORT}\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_false_positive_guard_process_seam_helper(self) -> None:
+        # `process_seam_helper` is a different module — the regex's trailing
+        # word-boundary class must not mistake it for a seam import.
+        (self.root / "scripts" / "engine.py").write_text(
+            f"{self.IMPORT}_helper\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_gate_missing_root_is_setup_error(self) -> None:
+        proc = _run_import_gate(self.root / "does-not-exist")
+        self.assertEqual(proc.returncode, 2, proc.stdout)
 
 
 if __name__ == "__main__":

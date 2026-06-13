@@ -51,6 +51,7 @@ gate "check-workflow-parity (templated workflows byte-identical)" bash scripts/c
 gate "check-multi-plan-naming (named-plan contract)" bash scripts/check-multi-plan-naming.sh
 gate "check-worktree-slug (slug == origin basename)" bash scripts/check-worktree-slug.sh
 gate "check-no-auto-worktree (no agentm auto-spawn)" bash scripts/check-no-auto-worktree.sh
+gate "check-process-seam-import-direction (memory never imports the process)" bash scripts/check-process-seam-import-direction.sh
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
 gate "verify-v4 (push-surface integration)"    bash scripts/verify-v4.sh
