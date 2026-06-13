@@ -29,6 +29,7 @@ Run directly:
 """
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
@@ -39,6 +40,7 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import harness_memory as hm  # noqa: E402
 import storage_device_local as sdl  # noqa: E402
 import storage_seam as ss  # noqa: E402
 import storage_vault as sv  # noqa: E402
@@ -353,6 +355,117 @@ class VaultWriteComposesFullV50Stack(_ScratchVaultMixin, unittest.TestCase):
         self.b.write(loc, "v1")
         self.b.write(loc, "v2-longer-content")
         self.assertEqual(self.b.read(loc), "v2-longer-content")
+
+
+class VaultNeverOrphanInvariant(unittest.TestCase):
+    """The expand-step invariant — the wrap moves no data (task 4's headline).
+
+    The transitional vault wrap must reach the *exact same bytes at the exact
+    same path* the engine's old direct vault write/read reach — that is the whole
+    safety claim of "wrap, not migrate": expanding the seam in front of the live
+    vault orphans nothing, on either side of the cut-over. Proven both directions
+    over a *scratch* vault (never the operator's live vault):
+
+      A. the old way writes (``harness_memory.write_state_file``'s vault branch) →
+         the seam reads it back identical (``VaultBackend.read``) — a session that
+         has moved to the seam sees an already-present vault file unchanged;
+      B. the seam writes (``VaultBackend.write``, the full V5-0 stack) → the old
+         way reads it back identical (``harness_memory.read_state_file``'s vault
+         branch) — a session still on the old read path sees a seam-written file
+         unchanged.
+
+    Plus the crux of "no data moves": both name the **same on-disk file**
+    (``_harness/<name>`` under ``<vault>/projects/<slug>``), so there is one set
+    of bytes reached two ways — not a migrated copy.
+
+    Hermeticity: the vault branch is forced deterministically with a per-repo
+    ``.harness/.project-mode = "vault"`` marker — the authoritative layer-1
+    override (``_read_project_mode``), so the run never consults, and never
+    depends on, the operator's device config — and ``XDG_CACHE_HOME`` is
+    redirected into the scratch tree so the engine's ``vault_mutex`` (whose lock
+    base is *not* injectable on the ``write_state_file`` path) lands its lockdir
+    in temp, never the real ``~/.cache``.
+    """
+
+    # Representative harness state-file content: LF newlines (every real PLAN.md /
+    # progress.md is LF) plus non-ASCII. Deliberately NOT CRLF — the engine's
+    # read_state_file decodes via read_text (universal-newline translating), while
+    # the seam's read is byte-exact; they agree on exactly the LF content the
+    # harness actually stores. (The CRLF byte-exact round-trip is each backend's
+    # own conformance/round-trip case, not the cross-path never-orphan proof.)
+    PAYLOAD = "# PLAN\n\n- [x] task 1 — café\n- [ ] task 4 🦗\n"
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        base = Path(self._tmp.name)
+        # Scratch vault shaped like the real per-project path.
+        self.vault_p = base / "vault" / "projects" / "agentm"
+        # A project root carrying the authoritative per-repo "vault" marker, so
+        # _read_project_mode resolves vault-mode without reading device config.
+        self.project_root = base / "project"
+        (self.project_root / ".harness").mkdir(parents=True)
+        (self.project_root / ".harness" / ".project-mode").write_text(
+            "vault", encoding="utf-8"
+        )
+        self.resolution = {
+            "vault_path": self.vault_p,
+            "project_root": self.project_root,
+        }
+        # Redirect the engine's vault_mutex lock base into the scratch tree — the
+        # write_state_file path acquires the mutex with no injectable lock_root,
+        # so XDG_CACHE_HOME is the escape valve that keeps the real ~/.cache untouched.
+        self._xdg = mock.patch.dict(
+            os.environ, {"XDG_CACHE_HOME": str(base / "cache")}
+        )
+        self._xdg.start()
+        self.addCleanup(self._xdg.stop)
+        # The seam backend over the *same* scratch vault, with its own injected
+        # lock base (belt-and-suspenders: never the real ~/.cache either way).
+        self.backend = sv.VaultBackend(root=self.vault_p, lock_root=base / "seam-locks")
+
+    def test_old_way_write_is_read_identically_through_the_seam(self) -> None:
+        # Direction A: the engine's vault write lands bytes; the seam reads them
+        # back unchanged. Expanding the seam in front of an existing vault file
+        # orphans nothing.
+        written = hm.write_state_file(self.resolution, "PLAN.md", self.PAYLOAD)
+        self.assertEqual(written, self.vault_p / "_harness" / "PLAN.md")
+        seam_read = self.backend.read(self.backend.resolve("_harness", "PLAN.md"))
+        self.assertEqual(seam_read, self.PAYLOAD)
+
+    def test_seam_write_is_read_identically_the_old_way(self) -> None:
+        # Direction B: the seam writes (full V5-0 stack); the engine's old read
+        # path returns the same content.
+        self.backend.write(self.backend.resolve("_harness", "progress.md"), self.PAYLOAD)
+        old_read = hm.read_state_file(self.resolution, "progress.md")
+        self.assertEqual(old_read, self.PAYLOAD)
+
+    def test_both_paths_name_the_identical_file(self) -> None:
+        # The crux of "no data moves": the old way and the seam resolve to the
+        # SAME on-disk path — one set of bytes reached two ways, not a copy.
+        # Proven structurally (paths equal) and behaviorally (an old-way rewrite
+        # is visible through the seam read at that path).
+        old_target = hm.write_state_file(self.resolution, "PLAN.md", self.PAYLOAD)
+        seam_path = self.backend._path(self.backend.resolve("_harness", "PLAN.md"))
+        self.assertEqual(old_target, seam_path)
+        # One file, two doors: an old-way rewrite is seen by the seam read.
+        hm.write_state_file(self.resolution, "PLAN.md", "rewritten\n")
+        self.assertEqual(
+            self.backend.read(self.backend.resolve("_harness", "PLAN.md")),
+            "rewritten\n",
+        )
+
+    def test_round_trip_is_byte_exact_through_both_doors(self) -> None:
+        # The full loop a cut-over actually exercises: old-way write → seam read →
+        # seam write (same bytes) → old-way read, all returning the original.
+        # If any door silently rewrote the bytes (newline translation, re-encode),
+        # this would diverge.
+        hm.write_state_file(self.resolution, "PLAN.md", self.PAYLOAD)
+        loc = self.backend.resolve("_harness", "PLAN.md")
+        via_seam = self.backend.read(loc)
+        self.assertEqual(via_seam, self.PAYLOAD)
+        self.backend.write(loc, via_seam)
+        self.assertEqual(hm.read_state_file(self.resolution, "PLAN.md"), self.PAYLOAD)
 
 
 if __name__ == "__main__":
