@@ -39,7 +39,7 @@ The selected backend resolves from the on-host `.agentm-config.json` ([config re
    A clean result names the backend you just set and reports it registered:
 
    ```
-   storage [OK] selected backend 'device-local' (configured (storage.backend)) — registered; root /Users/you/.agentm/memory writable
+   storage [OK] selected backend 'device-local' (configured (storage.backend)) — registered; root ~/.agentm/memory writable
    ```
 
    If instead you set a `storage.backend` whose plugin is **not** installed, the preview returns `[FAIL]` with the install-the-plugin message — the same one the engine would raise at the first memory operation:
