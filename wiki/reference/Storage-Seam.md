@@ -1,9 +1,9 @@
 # Storage seam reference
 
-The memory↔storage contract ([`scripts/storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py)) — the small interface of *verbs* the memory engine calls instead of touching the filesystem directly. A backend implements the verbs; the engine consumes the seam's own `Locator` type and so learns no filesystem assumption. This page documents the **abstract contract plus the first concrete backend** (V5-1 parts 1–3 of 5): the seven verbs as an abstract `StorageBackend`, the three value types, the `conflict_strategy` slot, the named-backend registry, the three-tier source/derived taxonomy, the no-`Path`-leak gate, the [`DeviceLocalBackend`](#the-devicelocalbackend) that implements all of it over plain markdown (since part 2), and — since part 3 — the backend-agnostic conformance suite that holds device-local and any future backend to one objective contract. For *why* the seam is shaped this way, see [Memory↔storage seam](Memory-Storage-Seam).
+The memory↔storage contract ([`scripts/storage_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py)) — the small interface of *verbs* the memory engine calls instead of touching the filesystem directly. A backend implements the verbs; the engine consumes the seam's own `Locator` type and so learns no filesystem assumption. This page documents the **abstract contract plus its two concrete backends** (V5-1 parts 1–4 of 5): the seven verbs as an abstract `StorageBackend`, the three value types, the `conflict_strategy` slot, the named-backend registry, the three-tier source/derived taxonomy, the no-`Path`-leak gate, the [`DeviceLocalBackend`](#the-devicelocalbackend) that implements all of it over plain markdown (since part 2), the backend-agnostic conformance suite that holds both backends to one objective contract (since part 3), and — since part 4 — the [`VaultBackend`](#the-vaultbackend) that wraps the synced vault write path behind the same seam. For *why* the seam is shaped this way, see [Memory↔storage seam](Memory-Storage-Seam).
 
 > [!NOTE]
-> **Parts 1–3 shipped: the contract, one concrete backend, and the conformance gate.** The abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, the `conflict_strategy` slot, the [`BackendRegistry`](#the-backendregistry), and the [three-tier taxonomy](#the-tier-taxonomy) (`Tier` / `TierLayout` / `DerivedMaintenance`) shipped in part 1; the [`DeviceLocalBackend`](#the-devicelocalbackend) — the fresh-install default, plain markdown under `~/.agentm/memory/` — ships in part 2 and registers under `device-local` in the default [`registry`](#registry-module-default); the backend-agnostic conformance suite ships in part 3 and runs device-local against the shared contract — it is **not** a new `check-*` gate, it rides the existing cross-OS `[T]` unit-test step. Still forthcoming: the vault wrap (part 4) and selection + fail-loud (part 5). **No index or abstract-promotion ships** — `DerivedMaintenance` remains an abstract class with **no concrete subclass** (`reindex`/`changed_since` are *reserved names*), and the actual derived index lands in V6. **The engine is not yet wired to the seam** — `recall`/`reflect`/`save`/`evolve` and the five hooks are byte-unchanged; routing the engine's public API through `device-local` is part 5. The `_MemoryBackend` used in the contract tests is a fixture, not a shipped backend. Anything this page marks *(part N)* or *(V6)* is a forward reference, not current behavior.
+> **Parts 1–4 shipped: the contract, two concrete backends, and the conformance gate.** The abstract `StorageBackend`, the `Locator`/`Info`/`Capabilities` types, the `conflict_strategy` slot, the [`BackendRegistry`](#the-backendregistry), and the [three-tier taxonomy](#the-tier-taxonomy) (`Tier` / `TierLayout` / `DerivedMaintenance`) shipped in part 1; the [`DeviceLocalBackend`](#the-devicelocalbackend) — the fresh-install default, plain markdown under `~/.agentm/memory/` — ships in part 2 and registers under `device-local` in the default [`registry`](#registry-module-default); the backend-agnostic conformance suite ships in part 3 and runs both backends against the shared contract — it is **not** a new `check-*` gate, it rides the existing cross-OS `[T]` unit-test step; the [`VaultBackend`](#the-vaultbackend) ships in part 4, wrapping the synced vault write path (the full V5-0 `vault_mutex` + content-hash CAS + `atomic_write` stack) behind the seam and registering under `vault`. Still forthcoming: backend selection + fail-loud (part 5) — reading [`Capabilities`](#the-capabilities-type) + [`conflict_strategy`](#conflict_strategy---str-property) + the registry's resolve-as-absent to choose a backend and fail loud on a configured-but-uninstalled one. **No index or abstract-promotion ships** — `DerivedMaintenance` remains an abstract class with **no concrete subclass** (`reindex`/`changed_since` are *reserved names*), and the actual derived index lands in V6. **The engine is not yet wired to the seam** — `recall`/`reflect`/`save`/`evolve` and the five hooks are byte-unchanged; routing the engine's public API through a chosen backend is part 5. The `_MemoryBackend` used in the contract tests is a fixture, not a shipped backend. Anything this page marks *(part 5)* or *(V6)* is a forward reference, not current behavior.
 
 ## ⚡ Quick Reference
 
@@ -125,7 +125,7 @@ How this backend reconciles divergent concurrent writes — a *named* policy, di
 | Strategy | Meaning | Who declares it |
 |---|---|---|
 | `"none"` | Last write wins; nothing to reconcile. **The inherited floor** — a backend that doesn't override it gets this. | `StorageBackend` default; [`DeviceLocalBackend`](#the-devicelocalbackend) inherits it (single machine). |
-| `"whole-file"` | The whole file is the conflict unit. | The synced vault backend (part 4) will override to this. |
+| `"whole-file"` | The whole file is the conflict unit — a *named* policy [part-5 selection](#the-backendregistry) reads, **not** an executor; agentm ships no automated whole-file merger, only the detect-and-notice machinery (`detect_conflict_files` + the `conflict-merger` SessionStart hook) that surfaces each conflict/base pair for operator-by-hand resolution. | The synced [`VaultBackend`](#the-vaultbackend) (part 4) overrides the floor to this ([`storage_vault.py#L160`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L160)). |
 | _(later)_ | An iCloud numbered-suffix or a CRDT line-level strategy (design §6). | Reserved — the slot is always present and always answerable. |
 
 ## `InvalidLocatorError`
@@ -152,12 +152,12 @@ The contract that matters for part 5's fail-loud: **a miss is reported as absent
 
 ### `registry` (module default)
 
-A process-wide default `BackendRegistry` instance ([`scripts/storage_seam.py#L347`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L347)) the real backends register into. As of part 2 it holds **one** entry — `device-local`, registered at import of [`storage_device_local`](#the-devicelocalbackend) (the class, not an instance; selection instantiates the chosen backend). The vault wrap (part 4) adds `vault` when it arrives.
+A process-wide default `BackendRegistry` instance ([`scripts/storage_seam.py#L347`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_seam.py#L347)) the real backends register into. As of part 4 it holds **two** entries — `device-local`, registered at import of [`storage_device_local`](#the-devicelocalbackend), and `vault`, registered at import of [`storage_vault`](#the-vaultbackend) ([`storage_vault.py#L241`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L241)). Both are stored as classes, not instances; selection (part 5) instantiates the chosen one.
 
 | Protocol | Registered class | Since |
 |---|---|---|
-| `device-local` | [`DeviceLocalBackend`](#the-devicelocalbackend) | part 2 (now) |
-| `vault` | — | part 4 (forthcoming) |
+| `device-local` | [`DeviceLocalBackend`](#the-devicelocalbackend) | part 2 |
+| `vault` | [`VaultBackend`](#the-vaultbackend) | part 4 (now) |
 
 ## `ProtocolError`
 
@@ -242,20 +242,61 @@ A locator maps to a path by joining its normalized parts under the root (`root /
 | `mkdir(locator)` | Idempotent (`parents=True, exist_ok=True`). |
 
 > [!IMPORTANT]
-> **Crash-safe by composition, not reinvention.** `write` routes through the V5-0 [`atomic_write`](Vault-Write-Protocol) primitive rather than opening the target for truncation. Device-local needs **none** of the `vault_mutex` / content-hash CAS stack the synced [vault backend](Vault-Write-Protocol) (part 4) layers on — it is single-machine, so the atomic file swap is sufficient. It also ships **no** sync, derived-index (`_index`), or conflict-merger machinery; an AST-based scope guard in [`scripts/test_storage_device_local.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_storage_device_local.py) asserts the module defines no such code and imports no DB / index library. Those concerns ride with the vault backend (part 4) and the V6 index.
+> **Crash-safe by composition, not reinvention.** `write` routes through the V5-0 [`atomic_write`](Vault-Write-Protocol) primitive rather than opening the target for truncation. Device-local needs **none** of the `vault_mutex` / content-hash CAS stack the synced [`VaultBackend`](#the-vaultbackend) layers on — it is single-machine, so the atomic file swap is sufficient. It also ships **no** sync, derived-index (`_index`), or conflict-merger machinery; an AST-based scope guard in [`scripts/test_storage_device_local.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_storage_device_local.py) asserts the module defines no such code and imports no DB / index library. Those concerns ride with the [vault backend](#the-vaultbackend) and the V6 index.
 
 ### Module exports (`storage_device_local`)
 
 `storage_device_local.__all__` is `DeviceLocalBackend`, `PROTOCOL`. Importing the module has the side effect of registering `DeviceLocalBackend` under `device-local` in the seam's default [`registry`](#registry-module-default). Like the seam module it ships no `python -m` entrypoint — it is consumed in-process.
 
+## The `VaultBackend`
+
+The second **concrete** `StorageBackend` ([`scripts/storage_vault.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py)) — today's Obsidian/GDrive vault, reached *through the seam* rather than via the engine's old direct file access. It implements the [seven verbs](#the-storagebackend-abc) against the resolved per-project vault root and registers under the `vault` protocol name in the default [`registry`](#registry-module-default) at import ([`storage_vault.py#L241`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L241)). It is the synced, multi-writer counterweight to the device-local floor: where device-local declares the all-`False` floor, the vault backend declares the positive profile and overrides the conflict floor. For *why* the vault sits behind a seam at all, see [Memory↔storage seam](Memory-Storage-Seam#what-the-seam-is-for).
+
+> [!NOTE]
+> **The engine does not use this backend yet.** Constructing a `VaultBackend` and calling its verbs works, and the [never-orphan invariant](#the-never-orphan-invariant) proves it reaches the same on-disk bytes the engine's old direct path does — but the live engine (`recall`/`reflect`/`save`/`evolve` + the five hooks) is byte-unchanged and does not yet route through it. Choosing the vault backend behind the public API is part 5.
+
+| Aspect | Detail |
+|---|---|
+| Protocol name | `vault` (the module's `PROTOCOL` constant, [`storage_vault.py#L89`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L89)). Registered at import — the class, not an instance. |
+| Root | The resolved per-project vault path — a **required** ctor arg (the vault has no universal default, unlike device-local's `~/.agentm/memory/`). Created on construction (idempotent), so the root locator always resolves to a real directory ([`storage_vault.py#L104`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L104)). |
+| `lock_root` | Injectable ctor arg for the `vault_mutex` local lock base; `None` → `vault_lock`'s default (`~/.cache/agentm/locks`). Tests inject a temp dir so the real cache and the operator's live vault are never touched. |
+| `capabilities` | The synced, multi-writer profile — the positive contrast to device-local's floor: `concurrent_writers=True` (the mutex makes N writers safe), `conflict_files=True` (DriveFS surfaces "(conflicted copy)" siblings the engine must tolerate), `sync=True` (GDrive replicates the tree), `encryption=False` (no encryption at rest) ([`storage_vault.py#L139`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L139)). |
+| `conflict_strategy` | Overrides the seam's `"none"` floor to `"whole-file"` ([`storage_vault.py#L160`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L160)) — see the [strategy note below](#a-named-policy-not-an-auto-merger). |
+
+> [!IMPORTANT]
+> <a name="a-named-policy-not-an-auto-merger"></a>**`"whole-file"` is a *named policy*, not an auto-merger.** The string names the reconciliation unit that [part-5 selection](#the-backendregistry) reads — it does **not** make agentm merge conflicts. The backend ships no merge machinery of its own. When GDrive sync diverges (two devices write the same file while offline), DriveFS materializes a "(conflicted copy)" sibling rather than losing a write; the existing detect-and-notice machinery — `harness_memory.detect_conflict_files` + the `conflict-merger` SessionStart hook — surfaces each conflict/base pair, and **resolution stays operator-by-hand judgment**. A line-level auto-merge would be a future CRDT strategy, not this. Device-local still inherits `"none"` (one machine, nothing to reconcile).
+
+### How the verbs map to the vault filesystem
+
+Like device-local, a locator maps to a path by joining its normalized parts under the root (`root.joinpath(*locator.parts)`), and the `..`/leading-slash rejection at `Locator` construction keeps the join confined to the root. `Path` is used **internally only**; every verb returns the seam's `Locator` / `Info` (the [`check-storage-seam-no-path-leak`](CI-Gates) gate enforces this). The load-bearing difference is `write`.
+
+| Verb | Vault behavior |
+|---|---|
+| `read(locator)` | `read_bytes().decode("utf-8")` — **byte-exact**, no newline translation, so content round-trips with the atomic writer ([`storage_vault.py#L167`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L167)). |
+| `write(locator, content)` | Composes the **full V5-0 stack**: serialize fleet-local writers on the one per-vault [`vault_mutex`](Vault-Write-Protocol), then land via a content-hash-CAS-guarded [`atomic_write`](Vault-Write-Protocol). The mutex serializes agentm sessions against each other; the CAS catches a *non-mutex* writer (GDrive sync / another device) landing between the pre-write read and the rename — the cross-device hazard device-local does not have ([`storage_vault.py#L173`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_vault.py#L173)). |
+| `resolve` / `list` / `exists` / `info` / `mkdir` | Same shape as [device-local](#how-the-verbs-map-to-the-filesystem); the conformance suite holds both to the identical contract. |
+
+> [!IMPORTANT]
+> **The write composes `vault_lock` primitives, never the engine — DC-7 preserved.** `write` imports `vault_mutex`, `content_hash`, and `atomic_write` from [`vault_lock`](Vault-Write-Protocol) directly, so the seam never reaches up into the memory engine module. The CAS step (`_cas_atomic_write`) re-reads the target under the mutex and raises `ConcurrentModificationError` if its content changed since the pre-write read — the V5-0 `safe_write_replace_style` discipline, recomposed from primitives.
+
+### Conformance + the never-orphan invariant
+
+The vault backend is held to the **same objective contract** as device-local. `VaultConformance` ([`scripts/test_storage_conformance.py#L123`](https://github.com/alexherrero/agentm/blob/main/scripts/test_storage_conformance.py#L123)) runs the wrap through all 9 universal conformance checks over a scratch vault — including the byte-exact LF round-trip on the Windows runner — and skips only the derived-layer cases (the vault has no derived layer). `VaultRunConformanceReport` ([`#L140`](https://github.com/alexherrero/agentm/blob/main/scripts/test_storage_conformance.py#L140)) emits the per-backend pass report.
+
+<a name="the-never-orphan-invariant"></a>`VaultNeverOrphanInvariant` ([`scripts/test_storage_vault.py#L360`](https://github.com/alexherrero/agentm/blob/main/scripts/test_storage_vault.py#L360)) proves the wrap **moves no data**: an old-way write (the `write_state_file` vault branch) is read back through the seam, a seam write is read back the old way, and both reach the same bytes at the same on-disk path. The wrap is a new *door* onto the existing vault, not a migration.
+
+### Module exports (`storage_vault`)
+
+`storage_vault.__all__` is `VaultBackend`, `PROTOCOL`. Importing the module registers `VaultBackend` under `vault` in the seam's default [`registry`](#registry-module-default). Like the other backend modules it ships no `python -m` entrypoint — it is consumed in-process.
+
 ## Module exports
 
-`storage_seam.__all__` is the public surface: `InvalidLocatorError`, `normalize_key`, `Locator`, `Info`, `Capabilities`, `StorageBackend`, `ProtocolError`, `BackendRegistry`, `registry`, `Tier`, `TierLayout`, `DerivedMaintenance`. No `DerivedMaintenance` implementation and no `python -m` entrypoint — unlike the [process seam](Process-Seam), this module is consumed *in-process* by the engine, so it ships as an importable contract only. The one concrete backend that implements `StorageBackend` lives in its own module — see [`DeviceLocalBackend`](#the-devicelocalbackend).
+`storage_seam.__all__` is the public surface: `InvalidLocatorError`, `normalize_key`, `Locator`, `Info`, `Capabilities`, `StorageBackend`, `ProtocolError`, `BackendRegistry`, `registry`, `Tier`, `TierLayout`, `DerivedMaintenance`. No `DerivedMaintenance` implementation and no `python -m` entrypoint — unlike the [process seam](Process-Seam), this module is consumed *in-process* by the engine, so it ships as an importable contract only. The two concrete backends that implement `StorageBackend` live in their own modules — see [`DeviceLocalBackend`](#the-devicelocalbackend) and [`VaultBackend`](#the-vaultbackend).
 
 ## Related
 
 - [Memory↔storage seam](Memory-Storage-Seam) — why the seam exists, why the engine never holds a path, and the graceful design choices behind the lean types.
 - [Process seam](Process-Seam) — the *other* seam's reference: the read-only client a process calls. Same pattern, opposite direction.
-- [Vault write protocol](Vault-Write-Protocol) — the `atomic_write` primitive `DeviceLocalBackend.write` composes for crash-safety.
+- [Vault write protocol](Vault-Write-Protocol) — the `atomic_write` primitive `DeviceLocalBackend.write` composes, and the `vault_mutex` + content-hash CAS stack [`VaultBackend.write`](#the-vaultbackend) adds on top.
 - [CI gates](CI-Gates) — the `check-storage-seam-no-path-leak` gate that enforces the no-`Path`-leak rule.
 - [Memory-OS Architecture (V5)](memory-os-architecture) — the design context: storage-agnostic engine, device-local default, vault-behind-the-seam.
