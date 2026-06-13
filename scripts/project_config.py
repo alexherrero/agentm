@@ -228,14 +228,23 @@ def register(
 
     write_config(resolution, config)
 
-    # Register in the vault repo_registry (best-effort; skip silently if no vault).
+    # Register in the vault repo_registry. Best-effort: the config write above
+    # already succeeded and registration self-heals on the next run, so a
+    # failure is non-fatal — but it is *logged*, never swallowed silently. A
+    # failure here is a real signal (a CAS that lost every retry, a lock
+    # timeout, an I/O error), not noise. The no-vault case is the `is not None`
+    # guard below, not an exception.
     v = hm.vault_path()
     slug = resolution.get("slug")
     if v is not None and slug:
         try:
             repo_registry.register_repo(v, slug, cwd)
-        except Exception:
-            pass
+        except Exception as e:
+            print(
+                f"warning: repo registration for {slug!r} failed "
+                f"({type(e).__name__}: {e}); will retry on next run",
+                file=sys.stderr,
+            )
     return config
 
 

@@ -2325,6 +2325,69 @@ class TestRepoRegistry(unittest.TestCase):
             with self.assertRaises(hm.ConcurrentModificationError):
                 repo_registry.write_registry(vault, data, expected_hash=stale_hash)
 
+    def test_register_repo_recovers_from_cas_race(self) -> None:
+        """A concurrent (cross-machine) write during register_repo's CAS window
+        is retried, not silently dropped: both the racing peer's entry and ours
+        survive. Pre-fix (read-mutate-CAS with no retry) the first CAS miss
+        propagated out / dropped the registration — so this test bites."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            repo_registry.register_repo(vault, "seed", "/seed")
+
+            real_write = repo_registry.write_registry
+            state = {"raced": False}
+
+            def racing_write(v, data, *, expected_hash=None):
+                if not state["raced"]:
+                    state["raced"] = True
+                    # A peer on another machine lands its own entry first,
+                    # invalidating our expected_hash — exactly the CAS miss the
+                    # real backend raises. Land it, then drive the retry.
+                    real_write(v, {
+                        "version": 1,
+                        "repos": [
+                            {"slug": "seed", "root_path": "/seed"},
+                            {"slug": "peer", "root_path": "/peer"},
+                        ],
+                    })
+                    raise hm.ConcurrentModificationError("simulated cross-machine race")
+                return real_write(v, data, expected_hash=expected_hash)
+
+            repo_registry.write_registry = racing_write
+            try:
+                repo_registry.register_repo(vault, "mine", "/mine")
+            finally:
+                repo_registry.write_registry = real_write
+
+            self.assertTrue(state["raced"], "the race path must have fired")
+            slugs = {r["slug"] for r in repo_registry.list_repos(vault)}
+            self.assertEqual(slugs, {"seed", "peer", "mine"})  # nothing dropped
+
+    def test_register_repo_raises_after_exhausting_retries(self) -> None:
+        """If the CAS never wins (a peer races every attempt), register_repo
+        raises loudly after _MAX_REGISTRY_RETRIES rather than dropping silently —
+        the fail-loud half of honoring the retry contract."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            repo_registry.register_repo(vault, "seed", "/seed")
+
+            real_write = repo_registry.write_registry
+            attempts = {"n": 0}
+
+            def always_racing(v, data, *, expected_hash=None):
+                attempts["n"] += 1
+                raise hm.ConcurrentModificationError("perpetual race")
+
+            repo_registry.write_registry = always_racing
+            try:
+                with self.assertRaises(hm.ConcurrentModificationError):
+                    repo_registry.register_repo(vault, "mine", "/mine")
+            finally:
+                repo_registry.write_registry = real_write
+            self.assertEqual(attempts["n"], repo_registry._MAX_REGISTRY_RETRIES)
+
     def test_atomic_write_no_tmp_remnant(self) -> None:
         """After successful write, no <path>.tmp lingers."""
         with tempfile.TemporaryDirectory() as tmp:
