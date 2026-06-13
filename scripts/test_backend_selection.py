@@ -140,6 +140,84 @@ class TestSelectBackend(unittest.TestCase):
         )
 
 
+class TestFailLoud(unittest.TestCase):
+    """Part-5 task 3: the fail-loud guard — refuse, never demote.
+
+    A config naming a backend whose plugin is not installed (`registry.get → None`)
+    must raise a clear install-the-plugin error and refuse the memory operation —
+    NEVER silently fall back to `device-local`. The negative test
+    (`test_no_silent_device_local_fallback`) is the load-bearing one: a silent
+    demotion is the single failure that mis-writes or orphans the vault.
+    """
+
+    SENTINEL = "never-registered-sentinel-backend"
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-fail-loud-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.device_root = Path(self.tmp) / "device-local-root"
+        self.lock_root = Path(self.tmp) / "locks"
+        self.env = _Env(self.prefix)
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_sentinel_is_genuinely_unregistered(self) -> None:
+        # The premise: this name really does resolve to absent. (Both real
+        # built-ins register at import, so a negative test needs a name that
+        # registry.get genuinely doesn't resolve.)
+        from storage_seam import registry
+        self.assertNotIn(self.SENTINEL, registry)
+        self.assertIsNone(registry.get(self.SENTINEL))
+
+    def test_unregistered_backend_raises_install_the_plugin(self) -> None:
+        self.assertEqual(ac.main(["--storage-backend", self.SENTINEL]), 0)
+        with self.assertRaises(bs.StorageSelectionError) as ctx:
+            bs.select_backend(device_local_root=self.device_root)
+        msg = str(ctx.exception)
+        # The error names the exact missing backend.
+        self.assertIn(self.SENTINEL, msg)
+        # …and points at the fix.
+        self.assertIn("install", msg.lower())
+
+    def test_no_silent_device_local_fallback(self) -> None:
+        # The load-bearing negative test. Configure an unregistered backend AND
+        # hand select_backend a usable device_local_root — so device-local COULD
+        # be produced. It must NOT be: the resolver raises, it does not return a
+        # DeviceLocalBackend, and it never even constructs one (the root stays
+        # uncreated — DeviceLocalBackend mkdirs its root on construction).
+        self.assertEqual(ac.main(["--storage-backend", self.SENTINEL]), 0)
+        with self.assertRaises(bs.StorageSelectionError):
+            bs.select_backend(device_local_root=self.device_root)
+        self.assertFalse(
+            self.device_root.exists(),
+            "silent device-local fall-back: a backend was constructed despite "
+            "the configured backend being unregistered",
+        )
+
+    def test_install_message_lists_registered_alternatives(self) -> None:
+        self.assertEqual(ac.main(["--storage-backend", self.SENTINEL]), 0)
+        with self.assertRaises(bs.StorageSelectionError) as ctx:
+            bs.select_backend(device_local_root=self.device_root)
+        msg = str(ctx.exception)
+        # The two built-ins are registered today → both named as alternatives.
+        self.assertIn(storage_device_local.PROTOCOL, msg)
+        self.assertIn(storage_vault.PROTOCOL, msg)
+
+    def test_vault_selected_without_vault_path_raises(self) -> None:
+        # Explicit `vault` with no vault_path to seed it → same fail-loud family,
+        # never a guess. (registry.get('vault') resolves, so this is the
+        # companion no-root guard, not the unregistered-backend path.)
+        self.assertEqual(ac.main(["--storage-backend", "vault"]), 0)
+        with self.assertRaises(bs.StorageSelectionError) as ctx:
+            bs.select_backend(vault_lock_root=self.lock_root)
+        self.assertIn("vault_path", str(ctx.exception))
+
+
 class TestCapabilitiesRead(unittest.TestCase):
     """Part-5 task 2: the kernel reads the (already-shipped) capability descriptor.
 

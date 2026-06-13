@@ -45,10 +45,39 @@ import storage_device_local
 import storage_vault
 from storage_seam import StorageBackend, registry
 
-__all__ = ["select_backend", "choose_protocol"]
+__all__ = ["select_backend", "choose_protocol", "StorageSelectionError"]
 
 _DEVICE_LOCAL = storage_device_local.PROTOCOL  # "device-local"
 _VAULT = storage_vault.PROTOCOL  # "vault"
+
+
+class StorageSelectionError(RuntimeError):
+    """Selection refused: the configured backend can't be produced — fail loud, never demote.
+
+    Raised when `storage.backend` names a backend whose plugin is not installed
+    (`registry.get → None`, the part-1 resolve-as-absent signal), or when the
+    `vault` backend is selected with no `vault_path` to seed it. This is the one
+    failure the engine must NEVER paper over with a silent `device-local`
+    fall-back: a silent demotion is exactly what mis-writes or orphans the vault.
+    The caller (the future engine cutover; `doctor`, task 4) catches this to
+    surface the install-the-plugin message rather than proceeding.
+    """
+
+
+def _install_plugin_message(protocol: str) -> str:
+    """The fail-loud message naming the exact missing backend + how to resolve it.
+
+    Reused by `doctor` (task 4) so its preview is byte-identical to what the guard
+    raises. Names the currently-registered backends so the operator sees the valid
+    alternatives.
+    """
+    installed = ", ".join(registry.protocols()) or "(none)"
+    return (
+        f"storage backend {protocol!r} is configured (storage.backend) but no "
+        f"installed plugin registers it. Install the plugin that provides the "
+        f"{protocol!r} backend, or set storage.backend to an installed backend "
+        f"(currently registered: {installed})."
+    )
 
 
 def _configured_backend(install_prefix: Optional[Path] = None) -> Optional[str]:
@@ -111,21 +140,24 @@ def select_backend(
     backend_cls = registry.get(protocol)
     if backend_cls is None:
         # Fail loud, never demote. The configured backend's plugin is not
-        # installed. Part-5 task 3 refines this into the dedicated
-        # StorageSelectionError naming the exact missing plugin, and adds the
-        # negative test proving there is no silent device-local fall-back.
-        raise RuntimeError(
-            f"storage backend {protocol!r} is configured but not registered"
-        )
+        # installed (registry.get → None, the part-1 resolve-as-absent signal).
+        # NOT a silent fall-back to device-local — that demotion is the single
+        # failure that mis-writes or orphans the vault. (Bites in earnest after
+        # V5-3 deletes the built-in vault backend; until then both built-ins
+        # register at import, so this fires only for a genuinely-unregistered
+        # configured name.)
+        raise StorageSelectionError(_install_plugin_message(protocol))
 
     if protocol == _VAULT:
         if vault_root is None:
             # `vault` selected but no vault_path to seed it — a configuration
-            # error, surfaced loudly rather than guessed at. (V5-7 owns the full
-            # per-plugin config; V5-1 seeds vault from vault_path() only.)
-            raise RuntimeError(
+            # error, surfaced loudly rather than guessed at (same never-demote
+            # family). V5-7 owns the full per-plugin config; V5-1 seeds vault
+            # from vault_path() only.
+            raise StorageSelectionError(
                 "storage backend 'vault' is selected but no vault_path is "
-                "configured to seed it"
+                "configured to seed it — set vault_path (agentm_config "
+                "--vault-path <dir>) or change storage.backend."
             )
         return backend_cls(vault_root, lock_root=vault_lock_root)
     if protocol == _DEVICE_LOCAL:
