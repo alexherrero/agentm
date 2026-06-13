@@ -42,7 +42,7 @@ Before every commit, run the full local gate battery — it's the one command th
 bash scripts/check-all.sh
 ```
 
-It runs the unit suite (`scripts/test_*.py`) + every `check-*` gate (syntax · references · adapters · parity · lib-parity · vault-lock-parity · workflow-parity · multi-plan-naming · worktree-slug · no-auto-worktree · no-pii · wiki) + the three `verify-*` integration checks (`verify-v4` push-surface · `verify-phases` lifecycle · `verify-memory-roundtrip` engine, against throwaway scratch vaults), prints a PASS/FAIL table, and exits non-zero if any gate fails. CI additionally runs the heavier `smoke-install` + `gitleaks` on every push. As the project grows, add new checks to `check-all.sh` (and a CI step) so the battery stays the single source of truth for "is it green." Full reference: [wiki/reference/CI-Gates.md](wiki/reference/CI-Gates.md).
+It runs the unit suite (`scripts/test_*.py`) + every `check-*` gate (syntax · references · adapters · parity · lib-parity · vault-lock-parity · workflow-parity · multi-plan-naming · worktree-slug · no-auto-worktree · process-seam-import-direction · storage-seam-no-path-leak · no-pii · wiki) + the three `verify-*` integration checks (`verify-v4` push-surface · `verify-phases` lifecycle · `verify-memory-roundtrip` engine, against throwaway scratch vaults), prints a PASS/FAIL table, and exits non-zero if any gate fails. CI additionally runs the heavier `smoke-install` + `gitleaks` on every push. As the project grows, add new checks to `check-all.sh` (and a CI step) so the battery stays the single source of truth for "is it green." Full reference: [wiki/reference/CI-Gates.md](wiki/reference/CI-Gates.md).
 
 ## Directory layout (in a project that installs this harness)
 
