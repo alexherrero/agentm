@@ -11,6 +11,8 @@ Background and rationale — *why* the harness works the way it does. These page
 - **[GitHub Projects integration](GitHub-Projects-Integration)** — why and how the harness writes to ProjectsV2.
 - **[Auto-orchestration](Auto-Orchestration)** — why the memory skills became a push surface, and how the briefing + idle chain + phase dispatch never nag.
 - **[Single-repo state mode](Single-Repo-State-Mode)** — how the harness degrades gracefully to repo-local state when no vault is reachable.
+- **[Memory↔process seam](Memory-Process-Seam)** — why a process talks to the engine through a small stable client, and why that dependency is one-directional.
+- **[Memory↔storage seam](Memory-Storage-Seam)** — why the engine reads and writes through verbs that hand back an opaque locator, never a filesystem path (V5-1, contract only).
 
 ## See also
 

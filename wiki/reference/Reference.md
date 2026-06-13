@@ -22,6 +22,8 @@ Lookup-oriented technical detail for the Agent M harness — CLI flags, config s
 - **[Vault lint checks](Vault-Lint-Checks)** — the read-only `vault_lint.py` checks: id · severity · what each checks · suggested-fix shape.
 - **[Note relatedness signals](Note-Relatedness-Signals)** — the signals + thresholds `notes_link_discovery.py` scores on.
 - **[Vault write protocol](Vault-Write-Protocol)** — the lock path, content-hash CAS, atomic-writer, and the pin-offline / partitioning operator habits for N≥2 concurrent writers.
+- **[Process seam](Process-Seam)** — the read-only client a *process* calls instead of reaching into the engine: the three functions, their signatures, and degrade contracts.
+- **[Storage seam](Storage-Seam)** — the verbs the engine calls instead of touching files: the seven-verb `StorageBackend` contract and the `Locator`/`Info`/`Capabilities` types (V5-1, contract only).
 
 ## CI & shipped work
 

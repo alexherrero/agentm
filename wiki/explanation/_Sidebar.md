@@ -12,5 +12,6 @@
 - [Auto-orchestration](Auto-Orchestration)
 - [Single-repo state mode](Single-Repo-State-Mode)
 - [Memory↔process seam](Memory-Process-Seam)
+- [Memory↔storage seam](Memory-Storage-Seam)
 - [Named plans](Named-Plans) ⏳
 ### 📐 [Decisions](Decisions)
