@@ -305,6 +305,218 @@ class TestVaultPluginDiscovery(unittest.TestCase):
         self.assertIn("obsidian-vault", prev.line)
         self.assertFalse(self.device_root.exists())
 
+    def test_loader_leaves_empty_slot_unmutated(self) -> None:
+        # Regression (review DEFECT 1): when the `vault` slot is EMPTY at loader
+        # entry (`prior is None`), the plugin's import-time self-register must not
+        # leak — the loader has to leave the registry exactly as it found it, i.e.
+        # empty. The shipped `test_selection_leaves_registry_unmutated` only covers
+        # the prior-non-None branch; this one drives the prior-None branch the loader
+        # docstring's unconditional "no lingering mutation" promise also has to honor.
+        from storage_seam import registry
+
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        prior = registry._backends.pop(storage_vault.PROTOCOL, None)
+        try:
+            self.assertNotIn(
+                storage_vault.PROTOCOL, registry._backends, "slot not empty at entry"
+            )
+            cls = bs._load_vault_plugin_backend(plugin_scripts=plugin_scripts)
+            self.assertIsNotNone(cls, "the loader did not discover the plugin backend")
+            self.assertNotIn(
+                storage_vault.PROTOCOL,
+                registry._backends,
+                "loader leaked the plugin self-registration into an empty vault slot",
+            )
+        finally:
+            if prior is not None:
+                registry._backends[storage_vault.PROTOCOL] = prior
+
+    def test_preview_and_select_agree_on_present_but_unloadable_plugin(self) -> None:
+        # Regression (review DEFECT 2): a plugin dir that is PRESENT (a
+        # `storage_vault.py` exists) but exports no `VaultBackend` (a partial /
+        # wrong-version install) must not preview "ok" while selection refuses.
+        # Doctor's preview now uses the SAME load-discovery the runtime guard uses,
+        # so the two can't drift on a present-but-unloadable install.
+        self._configure_vault()
+        broken = Path(self.tmp) / "broken-plugin" / "scripts"
+        broken.mkdir(parents=True)
+        (broken / "storage_vault.py").write_text(
+            '"""Present, but exports no VaultBackend (partial install)."""\n'
+            "VAULT_BACKEND_MISSING = True\n",
+            encoding="utf-8",
+        )
+        # Runtime selection refuses (fail-loud) and constructs no device-local backend.
+        with self.assertRaises(bs.StorageSelectionError):
+            bs.select_backend(
+                device_local_root=self.device_root,
+                vault_lock_root=self.lock_root,
+                vault_plugin_scripts=broken,
+            )
+        self.assertFalse(self.device_root.exists())
+        # Doctor's preview must AGREE — a fail row, not a misleading "ok" — and stay
+        # read-only (never raises, constructs nothing).
+        prev = bs.storage_preview(
+            device_local_root=self.device_root, vault_plugin_scripts=broken
+        )
+        self.assertEqual(
+            prev.status,
+            "fail",
+            "doctor previewed OK for a present-but-unloadable plugin the engine refuses",
+        )
+        self.assertIn("obsidian-vault", prev.line)
+        self.assertFalse(self.device_root.exists())
+
+    def test_preview_and_select_agree_on_throws_on_import_plugin(self) -> None:
+        # Regression (Verify-phase review, follow-on to DEFECT 2): the OTHER
+        # present-but-unloadable variant — a `storage_vault.py` that is present and
+        # parses but RAISES at import time (a broken / wrong-version install). Before
+        # the follow-on fix the doctor preview wrapped the loader in try/except
+        # (clean "fail" + install message) while `select_backend` called the loader
+        # UNGUARDED — so a throws-on-import plugin made the engine die with a raw
+        # traceback (not StorageSelectionError, not the actionable install message)
+        # while doctor previewed a clean refusal: exactly the preview/select drift
+        # DEFECT 2 was chartered to eliminate, left open for this variant and newly
+        # *documented* as closed. Both paths must collapse the import failure to the
+        # SAME fail-loud refusal — and never demote to device-local.
+        self._configure_vault()
+        exploding = Path(self.tmp) / "exploding-plugin" / "scripts"
+        exploding.mkdir(parents=True)
+        (exploding / "storage_vault.py").write_text(
+            '"""Present, parses, but explodes at import (broken install)."""\n'
+            "raise RuntimeError('obsidian-vault plugin import explodes')\n",
+            encoding="utf-8",
+        )
+        # Runtime selection refuses with the fail-loud StorageSelectionError — never
+        # a raw RuntimeError (assertRaises(StorageSelectionError) would not catch a
+        # RuntimeError, so this errors against the pre-fix code), never a demotion.
+        with self.assertRaises(bs.StorageSelectionError) as ctx:
+            bs.select_backend(
+                device_local_root=self.device_root,
+                vault_lock_root=self.lock_root,
+                vault_plugin_scripts=exploding,
+            )
+        # The underlying import failure is chained (`from exc`), not discarded —
+        # the actionable install message leads, the real cause stays attached.
+        self.assertIsInstance(
+            ctx.exception.__cause__,
+            RuntimeError,
+            "select must chain the underlying import failure, not swallow it",
+        )
+        self.assertFalse(self.device_root.exists())
+        # Doctor's preview AGREES — same fail row + install message, still read-only.
+        prev = bs.storage_preview(
+            device_local_root=self.device_root, vault_plugin_scripts=exploding
+        )
+        self.assertEqual(
+            prev.status,
+            "fail",
+            "doctor drifted from select on a throws-on-import plugin",
+        )
+        self.assertIn("obsidian-vault", prev.line)
+        self.assertFalse(self.device_root.exists())
+
+    def test_preview_and_select_agree_on_non_class_vaultbackend_export(self) -> None:
+        # Regression (Verify-phase review, follow-on #2 to DEFECT 2): the THIRD
+        # present-but-unloadable variant — `storage_vault.py` execs cleanly and DOES
+        # export `VaultBackend`, but as something non-instantiable (`VaultBackend =
+        # 42`, a stray value shadowing the class, a wrong-version misdefinition).
+        # `getattr(module, "VaultBackend", None)` returns the non-None junk, so it
+        # slips past the loader's None-gate: before the loader-side type check, the
+        # preview reported "ok" while `select_backend` detonated with a RAW TypeError
+        # at `plugin_cls(...)` (construction is outside the load try/except by
+        # design). The loader now validates the export is a real StorageBackend
+        # subclass and returns None otherwise, so BOTH paths refuse identically.
+        self._configure_vault()
+        bad = Path(self.tmp) / "non-class-export-plugin" / "scripts"
+        bad.mkdir(parents=True)
+        (bad / "storage_vault.py").write_text(
+            '"""Present, execs clean, but VaultBackend is not a class."""\n'
+            "VaultBackend = 42\n",
+            encoding="utf-8",
+        )
+        # The loader treats a non-StorageBackend export as absent — None, not junk.
+        self.assertIsNone(
+            bs._load_vault_plugin_backend(plugin_scripts=bad),
+            "loader handed back a non-StorageBackend export instead of None",
+        )
+        # Runtime selection refuses (fail-loud) — never a raw TypeError, never demote.
+        with self.assertRaises(bs.StorageSelectionError):
+            bs.select_backend(
+                device_local_root=self.device_root,
+                vault_lock_root=self.lock_root,
+                vault_plugin_scripts=bad,
+            )
+        self.assertFalse(self.device_root.exists())
+        # Doctor's preview AGREES — a fail row, not a misleading "ok".
+        prev = bs.storage_preview(
+            device_local_root=self.device_root, vault_plugin_scripts=bad
+        )
+        self.assertEqual(
+            prev.status,
+            "fail",
+            "doctor previewed OK for a non-class VaultBackend export the engine refuses",
+        )
+        self.assertIn("obsidian-vault", prev.line)
+        self.assertFalse(self.device_root.exists())
+
+    def test_loadable_plugin_with_failing_constructor_is_a_bounded_boundary(self) -> None:
+        # Bounded-contract PIN (Verify-phase review, variant (h)): a plugin that
+        # loads to a *valid* StorageBackend subclass but whose __init__ raises (a
+        # version-skewed constructor signature, or an environmental error like a
+        # read-only vault root) is NOT a loadability failure. The loader returns it;
+        # doctor's read-only preview certifies loadability ("ok") because it
+        # deliberately never constructs (construction mkdirs the vault root, which
+        # would break read-only). select DOES construct, so it surfaces the failure
+        # RAW — true cause preserved, never mislabeled "install the plugin" — but it
+        # MUST NOT demote to device-local. This pins that deliberate boundary and
+        # guards the never-demote invariant on the construction-failure path; the
+        # one place preview and select intentionally differ. Closing the residual
+        # gap needs a read-only plugin-API conformance check (deferred to V5-8), not
+        # a behavior change here — if a future change makes preview return "fail"
+        # for this case, that is a conscious decision and this pin should be updated.
+        self._configure_vault()
+        broken_ctor = Path(self.tmp) / "broken-ctor-plugin" / "scripts"
+        broken_ctor.mkdir(parents=True)
+        (broken_ctor / "storage_vault.py").write_text(
+            '"""Loads to a valid StorageBackend subclass, but __init__ raises."""\n'
+            "from storage_seam import registry\n"
+            "from storage_vault import PROTOCOL, VaultBackend as _Builtin\n"
+            "\n\n"
+            "class VaultBackend(_Builtin):\n"
+            "    def __init__(self, *a, **k):\n"
+            "        raise RuntimeError('version-skewed constructor')\n"
+            "\n\n"
+            "registry.register(PROTOCOL, VaultBackend)\n",
+            encoding="utf-8",
+        )
+        # It genuinely LOADS — this is variant (h), not a load failure.
+        self.assertIsNotNone(
+            bs._load_vault_plugin_backend(plugin_scripts=broken_ctor),
+            "the broken-constructor plugin should still LOAD to a usable class",
+        )
+        # select surfaces the construction failure RAW (its true cause, RuntimeError)
+        # — NOT StorageSelectionError (it is not an install problem), NOT a demotion.
+        with self.assertRaises(RuntimeError):
+            bs.select_backend(
+                device_local_root=self.device_root,
+                vault_lock_root=self.lock_root,
+                vault_plugin_scripts=broken_ctor,
+            )
+        self.assertFalse(
+            self.device_root.exists(),
+            "vault selection demoted to device-local on a construction failure",
+        )
+        # Doctor's preview certifies LOADABILITY ("ok") — the documented boundary: a
+        # read-only preview can't verify side-effecting construction without mkdir'ing
+        # the vault root. This is the deliberate select/preview difference.
+        prev = bs.storage_preview(
+            device_local_root=self.device_root, vault_plugin_scripts=broken_ctor
+        )
+        self.assertEqual(
+            prev.status, "ok", "preview should certify loadability for variant (h)"
+        )
+        self.assertFalse(self.device_root.exists())
+
 
 class TestFailLoud(unittest.TestCase):
     """Part-5 task 3: the fail-loud guard — refuse, never demote.

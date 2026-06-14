@@ -169,9 +169,11 @@ def _vault_plugin_scripts_dir(
 ) -> Optional[Path]:
     """The first candidate dir that actually carries a `storage_vault.py`, or `None`.
 
-    A pure filesystem probe — it never imports or execs the module, so the doctor
-    preview can ask "is the plugin discoverable?" without the registration
-    side-effect of loading it. The loader (below) execs the dir this returns.
+    A pure filesystem probe — it never imports or execs the module; it only
+    *locates* the plugin's scripts dir. `_load_vault_plugin_backend` (below) execs
+    the dir this returns and is the authority on whether the plugin actually loads
+    to a usable `VaultBackend`; both selection and the doctor preview go through
+    the loader, so a present-but-unloadable install can't slip past either.
     """
     for candidate in _vault_plugin_candidates(plugin_scripts=plugin_scripts):
         if (candidate / "storage_vault.py").is_file():
@@ -182,12 +184,17 @@ def _vault_plugin_scripts_dir(
 def _load_vault_plugin_backend(
     *, plugin_scripts: Optional[Path | str] = None
 ) -> Optional[type[StorageBackend]]:
-    """Discover + load the obsidian-vault plugin's `VaultBackend` class, or `None` if absent.
+    """Discover + load the plugin's `VaultBackend` class, or `None` if absent/unusable.
 
     The discovery edge: locate the plugin's `scripts/storage_vault.py` (convention
-    path), exec it, and hand back its `VaultBackend`. `None` means no plugin is
-    discoverable — the caller raises the fail-loud install-the-plugin refusal
-    rather than demoting.
+    path), exec it, and hand back its `VaultBackend` — but only if that export is a
+    genuine `StorageBackend` subclass. `None` means no *usable* plugin is
+    discoverable (no scripts dir, no `VaultBackend` export, or an export that isn't a
+    `StorageBackend` subclass), so the caller raises the fail-loud install-the-plugin
+    refusal rather than demoting. A `storage_vault.py` that *raises* at import is the
+    one variant this can't reduce to `None` — it propagates, and both callers
+    (`select_backend`, `storage_preview`) wrap the load to convert it to the same
+    refusal, so every present-but-unloadable shape ends at one fail-loud row.
 
     The plugin's module self-registers under `vault` at import, but the kernel
     built-in still holds that slot through V5-2 — so the slot is freed *before*
@@ -216,8 +223,29 @@ def _load_vault_plugin_backend(
             return None
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        return getattr(module, "VaultBackend", None)
+        candidate = getattr(module, "VaultBackend", None)
+        # The loader is the single authority on "loads to a *usable* VaultBackend"
+        # — the contract both `select_backend` and the doctor preview lean on. A
+        # present-but-non-`StorageBackend` export (`VaultBackend = 42`, a stray value
+        # shadowing the class, a wrong-version misdefinition) is a broken install,
+        # indistinguishable in kind from a missing export — so treat it as absent
+        # (`None`). That way BOTH None-gates (select's and the preview's) collapse it
+        # to the one fail-loud install-the-plugin refusal, instead of letting
+        # `select_backend` detonate raw at `plugin_cls(...)` while the preview still
+        # reports "ok" (the preview/select drift this family exists to eliminate).
+        if isinstance(candidate, type) and issubclass(candidate, StorageBackend):
+            return candidate
+        return None
     finally:
+        # Restore the registry to exactly the state we found it in. The
+        # unconditional pop removes whatever `exec_module`'s import-time
+        # self-register added; then the prior occupant is restored if there was
+        # one. The pop is what makes the "no lingering mutation" guarantee hold
+        # even when the slot was *empty* at entry (`prior is None`) — without it
+        # the plugin's self-registration would leak permanently and
+        # `registry.get('vault')` would stop yielding the built-in, breaking the
+        # V5-2 parallel-run.
+        registry._backends.pop(_VAULT, None)
         if prior is not None:
             registry._backends[_VAULT] = prior
 
@@ -351,7 +379,21 @@ def select_backend(
         # parallel-run). Plugin absent → fail loud, never demote (same never-demote
         # family). The plugin's `write` composes the kernel `vault_lock.py` by
         # import (LC-3), so the round-trip flows through the single canonical lock.
-        plugin_cls = _load_vault_plugin_backend(plugin_scripts=vault_plugin_scripts)
+        #
+        # A *present-but-unloadable* plugin is the same fail-loud refusal as an
+        # absent one — and must never let a raw import traceback escape
+        # `select_backend`. `_load_vault_plugin_backend` returns None for the
+        # no-`VaultBackend`-export case and *raises* for the throws-on-import case;
+        # both collapse to the one StorageSelectionError so this path stays in
+        # lockstep with the doctor preview (which wraps the same loader identically).
+        # The try covers only the load — `plugin_cls(...)` construction below stays
+        # outside it, so a genuine backend-construction bug still surfaces raw rather
+        # than masquerading as "install the plugin". `from exc` keeps the underlying
+        # import failure attached for debugging while the actionable message leads.
+        try:
+            plugin_cls = _load_vault_plugin_backend(plugin_scripts=vault_plugin_scripts)
+        except Exception as exc:  # noqa: BLE001 — unloadable == refuse, not propagate
+            raise StorageSelectionError(_install_obsidian_vault_message()) from exc
         if plugin_cls is None:
             raise StorageSelectionError(_install_obsidian_vault_message())
         return plugin_cls(vault_root, lock_root=vault_lock_root)
@@ -378,6 +420,12 @@ class StoragePreview(NamedTuple):
     `status` is one of `"ok"` / `"warn"` / `"fail"`; `line` is the doctor-format
     summary printed verbatim; `protocol` is the resolved backend name, or `None`
     when the config could not even be read.
+
+    "No raise" means no `Exception`: a plugin that raises a `BaseException`
+    (`SystemExit` / `KeyboardInterrupt`) at *import* propagates by design — the
+    load wrap is `except Exception`, which must not swallow an interrupt, and a
+    plugin that `sys.exit()`s at import is broken past what a preview row should
+    paper over.
     """
 
     status: str
@@ -418,15 +466,38 @@ def storage_preview(
     Status rows:
       - `"fail"` — config unreadable / non-string selection, the configured
         backend's plugin is not installed, `vault` is selected with no
-        `vault_path`, or `vault` is selected but the obsidian-vault plugin is not
-        discoverable (the engine will refuse at runtime — this previews it).
+        `vault_path`, or `vault` is selected but the obsidian-vault plugin is
+        absent or does not load to a usable `VaultBackend` class (the engine will
+        refuse at runtime — this previews it).
       - `"warn"` — `device-local` is selected but its root is not writable.
       - `"ok"`   — the selected backend is registered (+ device-local root writable,
-        or, for `vault`, the obsidian-vault plugin is discoverable).
+        or, for `vault`, the obsidian-vault plugin loads to a usable `VaultBackend`
+        class — see "Bounded by design" below: `"ok"` certifies loadability, not
+        that construction will succeed).
 
-    The `vault` discoverability check is a pure filesystem probe
-    (`_vault_plugin_scripts_dir`) — the preview never execs the plugin module, so
-    it stays free of the registration side-effect that loading would carry.
+    The `vault` discoverability check goes through the **same** loader
+    `select_backend` uses (`_load_vault_plugin_backend`), so the doctor row can
+    never drift from the runtime refusal on a present-but-unloadable plugin —
+    every shape that fails to *load to a usable `VaultBackend` class* (scripts dir
+    absent, no `VaultBackend` export, an export that isn't a `StorageBackend`
+    subclass, or a module that raises at import) is caught and reported as the same
+    fail row, never raised. The loader restores the registry and constructs no
+    backend instance, so the preview stays read-only (no mkdir / touch, no lingering
+    registration).
+
+    **Bounded by design — `"ok"` certifies *loadability*, not *constructability*.**
+    The preview deliberately does not call `VaultBackend(vault_root, lock_root=...)`:
+    construction mkdirs the vault root, which would break read-only. So a plugin
+    that loads to a valid `StorageBackend` subclass but whose `__init__` then fails
+    — a version-skewed constructor signature, or an environmental error like a
+    read-only vault root — previews `"ok"` yet refuses at first real use. That
+    residual select/preview gap is a known boundary: a read-only preview cannot
+    verify side-effecting, fallible construction. Closing it needs a plugin-API
+    conformance check `doctor` can run *without* constructing (deferred to the V5-8
+    capability-discovery work). On the runtime side those construction failures
+    surface **raw, with their true cause** rather than being mislabeled "install the
+    plugin" (an environmental `OSError` is not an install problem) — and selection
+    still never demotes to device-local.
     """
     # The explicit selection read can itself fail loud (corrupt config / non-string
     # value, part-5 task-3 hardening); surface it as a fail row rather than raising.
@@ -457,10 +528,20 @@ def storage_preview(
                 "vault_path is configured to seed it — set vault_path "
                 "(agentm_config --vault-path <dir>) or change storage.backend.",
             )
-        # V5-2 task 3 — `vault` now requires the obsidian-vault plugin. Probe for
-        # it (pure filesystem check, no exec); absent → the same fail-loud refusal
-        # the runtime guard raises, so doctor's preview never drifts from it.
-        if _vault_plugin_scripts_dir(plugin_scripts=vault_plugin_scripts) is None:
+        # V5-2 task 3 — `vault` now requires the obsidian-vault plugin. Use the SAME
+        # discovery the runtime guard uses (`_load_vault_plugin_backend`: locate +
+        # exec the plugin and confirm it exports a usable `VaultBackend`), so the
+        # doctor row can never drift from selection on a *present-but-unloadable*
+        # install (scripts dir there, but no `VaultBackend` / broken import). The
+        # loader restores the registry and constructs no backend, so the preview
+        # stays read-only; and since the preview must never raise, an unloadable
+        # plugin is caught and reported as the same fail-loud refusal rather than
+        # propagating.
+        try:
+            plugin_cls = _load_vault_plugin_backend(plugin_scripts=vault_plugin_scripts)
+        except Exception:  # noqa: BLE001 — preview never raises; unloadable == refuse
+            plugin_cls = None
+        if plugin_cls is None:
             return StoragePreview(
                 "fail",
                 protocol,
