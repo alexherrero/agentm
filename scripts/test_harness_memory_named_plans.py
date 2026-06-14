@@ -149,17 +149,13 @@ class NamedPlanResolverContract(unittest.TestCase):
 
 
 class NamedPlanConflictJanitor(unittest.TestCase):
-    """A GDrive `(conflicted copy)` of a *named* plan is detected exactly like
-    one of the singleton `PLAN.md` — the janitor keys on the marker, not the
-    base name."""
-
-    def setUp(self) -> None:
-        self._tmp = tempfile.mkdtemp(prefix="agentm-named-plans-janitor-")
-        self.vault = Path(self._tmp)
-        (self.vault / "_harness").mkdir(parents=True)
-
-    def tearDown(self) -> None:
-        shutil.rmtree(self._tmp, ignore_errors=True)
+    """The conflict *classifier* `_conflict_family` stays kernel-side (V5-2 task 2
+    left it here because queue_status_lite.py consumes it) and keys on the GDrive
+    marker, not the base name — so a `(conflicted copy)` of a *named* plan is
+    classified exactly like one of the singleton `PLAN.md`. The full detection
+    sweep (`_infer_conflict_base_path` / `detect_conflict_files`) re-homed to the
+    crickets obsidian-vault plugin; its named-plan cases moved with it (crickets
+    `test_obsidian_vault_conflicts.py`)."""
 
     def test_conflict_family_classifies_named_plan_conflict(self) -> None:
         self.assertEqual(
@@ -167,22 +163,32 @@ class NamedPlanConflictJanitor(unittest.TestCase):
             "conflicted-copy",
         )
 
-    def test_infer_base_strips_marker_to_named_plan(self) -> None:
-        base = hm._infer_conflict_base_path(
-            Path("/v/_harness/PLAN-foo (conflicted copy 2026-06-12) - Mac.md")
-        )
-        self.assertEqual(base.name, "PLAN-foo.md")
 
-    def test_detect_conflict_files_finds_named_plan_conflict(self) -> None:
-        harness = self.vault / "_harness"
-        (harness / "PLAN-foo.md").write_text("base\n", encoding="utf-8")
-        conflict = harness / "PLAN-foo (conflicted copy 2026-06-12).md"
-        conflict.write_text("dupe\n", encoding="utf-8")
-        found = hm.detect_conflict_files(self.vault)
-        names = {f["conflict"].name for f in found}
-        self.assertIn(conflict.name, names)
-        match = next(f for f in found if f["conflict"].name == conflict.name)
-        self.assertEqual(match["base"].name, "PLAN-foo.md")
+class ReHomedSweepStaysGone(unittest.TestCase):
+    """Guard: the vault conflict sweep re-homed to the crickets obsidian-vault
+    plugin (V5-2 task 2) must not drift back into this storage-agnostic kernel.
+    If a later edit re-introduces any of these symbols on `harness_memory`, this
+    fails — pointing the author at the plugin copy (`scripts/vault_conflicts.py`)
+    instead. `_conflict_family` is deliberately NOT listed: it stays kernel-side."""
+
+    def test_sweep_symbols_absent_from_kernel(self) -> None:
+        for sym in (
+            "_infer_conflict_base_path",
+            "default_lost_and_found_root",
+            "detect_conflict_files",
+        ):
+            with self.subTest(symbol=sym):
+                self.assertFalse(
+                    hasattr(hm, sym),
+                    f"{sym} was re-homed to the crickets obsidian-vault plugin "
+                    "(V5-2 task 2) — it must not be re-introduced in harness_memory; "
+                    "the plugin's scripts/vault_conflicts.py owns it now.",
+                )
+
+    def test_conflict_family_stays_kernel_side(self) -> None:
+        """The classifier the plugin imports (LC-3) must remain — queue_status_lite.py
+        also consumes it. The positive complement to the guard above."""
+        self.assertTrue(hasattr(hm, "_conflict_family"))
 
 
 if __name__ == "__main__":

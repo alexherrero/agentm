@@ -5,6 +5,14 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**Engine-version note (V5-2, in progress).** The kernel-thinning half of **V5-2** — re-homing the Obsidian/Drive vault machinery out of this storage-agnostic engine into the [crickets](https://github.com/alexherrero/crickets) `obsidian-vault` plugin — has begun landing. This is the **parallel-run** middle of V5-1's three-step storage chain (expand `v5.0.0` → **parallel-run** → contract `V5-3`); the built-in `vault` backend **stays** through V5-2 so the plugin copy can be proven byte-identical against it. The version header is finalized when V5-2 ships; this note records the in-progress engine surface change.
+
+### Changed
+
+- **The GDrive vault conflict sweep left the kernel for the crickets `obsidian-vault` plugin (V5-2 task 2).** `detect_conflict_files`, `_infer_conflict_base_path`, and `default_lost_and_found_root` — plus the `conflict-merger-session-start` SessionStart hook — were removed from `harness_memory.py` / `harness/hooks/` and re-homed beside the backend they serve (the plugin's `scripts/vault_conflicts.py` + hook). The classifier `_conflict_family` **stays kernel-side** because `queue_status_lite.py` (the named-plan dashboard) consumes it; the plugin **imports** it rather than vendoring a copy (LC-3 — the plugin runs only under a present engine). The sweep's tests moved with it; a guard test (`test_harness_memory_named_plans.py::ReHomedSweepStaysGone`) asserts the three symbols stay absent from `harness_memory` so a re-introduction can't drift back in unnoticed. `vault_probe.py` + `migrate-harness-to-vault.{sh,ps1}` deliberately **stay** (wired into live install/onboarding surfaces; their move defers to V5-7). Paired with crickets `obsidian-vault` `0.1.0`.
+
 ## [v5.0.1] — 2026-06-13 — V5-1 follow-on: non-UTF-8 config readers honor their contract
 
 **PATCH.** A correctness follow-on to the **V5-1 storage seam** shipped in v5.0.0. The four config readers each document a contract — `backend_selection.py::_configured_backend` is **fail-loud** (raise `StorageSelectionError` when the config is present but unparseable), and the three best-effort readers (`harness_memory.py::_read_config_vault_path`, `harness_memory.py::_read_config_state_mode`, `agentm_config.py::_read_config`) are **graceful-skip** (return `None`). Each guarded only `(json.JSONDecodeError, OSError)`. A non-UTF-8 config file makes `Path.read_text(encoding="utf-8")` raise `UnicodeDecodeError` — a `ValueError`, which is neither an `OSError` nor a `json.JSONDecodeError` — so it leaked past every guard and crashed the caller instead of honoring the documented contract. Surfaced by an adversarial review of the V5-1 part-5 selection code immediately after the v5.0.0 tag. Solo harness PATCH; no crickets pairing.

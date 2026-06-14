@@ -330,9 +330,10 @@ Copy-UserWalk (Join-Path $HarnessRoot 'templates/wiki') 'wiki'
 # harness/agents/<file>.md, dispatching each based on its supported_hosts
 # field. Imported from crickets in v4.0.0 per design call #28 of plan #18:
 # compound skills (memory, design, ship-release), memory
-# hooks (memory-recall-*, memory-reflect-*, conflict-merger-session-start,
-# harness-context-session-start), and the memory-idea-researcher +
-# adapt-evaluator sub-agents.
+# hooks (memory-recall-*, memory-reflect-*, harness-context-session-start),
+# and the memory-idea-researcher + adapt-evaluator sub-agents. (The
+# conflict-merger-session-start hook re-homed to the crickets obsidian-vault
+# plugin in V5-2 task 2 — vault-specific machinery left the kernel.)
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +
 # supported_hosts: <list>). The legacy agentm single-file skill (doctor.md)

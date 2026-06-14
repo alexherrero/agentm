@@ -90,7 +90,11 @@ KEPT_PATHS = (
     "harness/agents/memory-idea-researcher.md",
     "harness/skills/memory",
     "harness/skills/doctor.md",
-    "harness/hooks/conflict-merger-session-start",
+    # NB: `harness/hooks/conflict-merger-session-start` was a KEEP path until
+    # V5-2 task 2 re-homed the vault conflict sweep out of this storage-agnostic
+    # kernel into the crickets obsidian-vault plugin. It is no longer kept here —
+    # the plugin owns the hook now. (Not added to RETIRED_PATHS: that set is the
+    # V5 dev-loop slim, a different axis from the V5-2 vault re-home.)
     "harness/hooks/harness-context-session-start",
     "harness/hooks/memory-recall-prompt-submit",
     "harness/hooks/memory-recall-session-start",
