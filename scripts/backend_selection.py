@@ -22,6 +22,16 @@ The chosen protocol is instantiated via `storage_seam.registry.get(<protocol>)`.
 Importing this module guarantees the two built-ins are registered (their modules
 self-register at import).
 
+**V5-2 task 3 — the vault backend is re-homed into the obsidian-vault plugin.**
+When the resolved protocol is `vault`, selection no longer returns the kernel
+built-in: it *discovers* the crickets `obsidian-vault` plugin (a convention path
+off the plugin-install root — `$OBSIDIAN_VAULT_SCRIPTS`, then the sibling
+checkout, then the native plugin cache; the V5-8 resolver generalizes this later)
+and loads its backend module. The plugin absent → the same **fail-loud** refusal
+(`StorageSelectionError`), never a silent demotion to device-local — the built-in
+is shadowed, not a fall-back. The built-in stays registered through V5-2 only so
+the task-5 parallel-run can reach it by direct import; V5-3 deletes it.
+
 Minimal in V5-1: exactly one `storage.backend` key + this resolver. The full
 per-plugin config model and capability-request *matching* are V5-7. The
 **fail-loud guard** (part-5 task 3) refuses rather than demotes whenever the
@@ -34,8 +44,10 @@ Stdlib-only per ADR 0001.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 from typing import NamedTuple, Optional
 
@@ -88,6 +100,126 @@ def _install_plugin_message(protocol: str) -> str:
         f"{protocol!r} backend, or set storage.backend to an installed backend "
         f"(currently registered: {installed})."
     )
+
+
+# --- the discovery edge (V5-2 task 3) ---------------------------------------
+#
+# When the resolved protocol is `vault`, the backend is no longer the kernel
+# built-in — it is re-homed into the crickets `obsidian-vault` plugin. Selection
+# *discovers* that plugin's `scripts/storage_vault.py` via a convention path and
+# loads its `VaultBackend`. The plugin absent → the same fail-loud refusal the
+# never-demote invariant demands (`StorageSelectionError`), never a silent
+# fall-back to the soon-deleted built-in or to device-local. V5-8 generalizes
+# this convention into the capability-discovery resolver; v1 is a fixed path.
+
+
+def _install_obsidian_vault_message() -> str:
+    """Fail-loud message when `storage.backend=vault` but the obsidian-vault plugin is absent.
+
+    Distinct from `_install_plugin_message` (which fires when a configured name is
+    *unregistered*): here the name `vault` IS registered — the kernel built-in
+    still holds the slot through V5-2 — but the plugin that re-homes the backend
+    (crickets `obsidian-vault`) is not discoverable. Selection refuses rather than
+    serve the shadowed built-in or demote to device-local; the built-in is
+    reachable only by direct import (the task-5 parallel-run), never via selection.
+    """
+    return (
+        "storage backend 'vault' is selected but the obsidian-vault plugin is "
+        "not installed. Install it (crickets: `claude plugin install "
+        "obsidian-vault@crickets`), or point $OBSIDIAN_VAULT_SCRIPTS at its "
+        "scripts dir, or change storage.backend — refusing to demote to "
+        "device-local, which could mis-write or orphan the vault."
+    )
+
+
+def _vault_plugin_candidates(
+    *, plugin_scripts: Optional[Path | str] = None
+):
+    """Yield candidate `scripts/` dirs for the obsidian-vault plugin, highest precedence first.
+
+    The convention path (lean v1; V5-8 generalizes): an explicit injection or the
+    `$OBSIDIAN_VAULT_SCRIPTS` override is **authoritative** (yields only itself, so
+    tests and advanced operators get a deterministic single candidate); absent
+    both, the resolver probes the dogfood sibling checkout then the native Claude
+    Code plugin cache. Other host caches (Antigravity) are the env override's job
+    until V5-8 — the escape hatch covers any root this convention doesn't yet name.
+    """
+    if plugin_scripts is not None:
+        yield Path(plugin_scripts)
+        return
+    env = os.environ.get("OBSIDIAN_VAULT_SCRIPTS")
+    if env:
+        yield Path(env)
+        return
+    # Dogfood sibling layout: <…>/agentm/scripts → <…>/crickets/src/obsidian-vault/scripts.
+    agentm_root = Path(__file__).resolve().parent.parent
+    yield agentm_root.parent / "crickets" / "src" / "obsidian-vault" / "scripts"
+    # Installed Claude Code plugin cache (newest version dir first; lexical is good
+    # enough for v1 — V5-8 owns real version ordering across hosts).
+    cache = (
+        Path.home() / ".claude" / "plugins" / "cache" / "crickets" / "obsidian-vault"
+    )
+    if cache.is_dir():
+        for version_dir in sorted(cache.iterdir(), reverse=True):
+            yield version_dir / "scripts"
+
+
+def _vault_plugin_scripts_dir(
+    *, plugin_scripts: Optional[Path | str] = None
+) -> Optional[Path]:
+    """The first candidate dir that actually carries a `storage_vault.py`, or `None`.
+
+    A pure filesystem probe — it never imports or execs the module, so the doctor
+    preview can ask "is the plugin discoverable?" without the registration
+    side-effect of loading it. The loader (below) execs the dir this returns.
+    """
+    for candidate in _vault_plugin_candidates(plugin_scripts=plugin_scripts):
+        if (candidate / "storage_vault.py").is_file():
+            return candidate
+    return None
+
+
+def _load_vault_plugin_backend(
+    *, plugin_scripts: Optional[Path | str] = None
+) -> Optional[type[StorageBackend]]:
+    """Discover + load the obsidian-vault plugin's `VaultBackend` class, or `None` if absent.
+
+    The discovery edge: locate the plugin's `scripts/storage_vault.py` (convention
+    path), exec it, and hand back its `VaultBackend`. `None` means no plugin is
+    discoverable — the caller raises the fail-loud install-the-plugin refusal
+    rather than demoting.
+
+    The plugin's module self-registers under `vault` at import, but the kernel
+    built-in still holds that slot through V5-2 — so the slot is freed *before*
+    exec (else the registry's duplicate guard raises `ProtocolError`) and the
+    built-in is restored in `finally`. Selection therefore returns the **plugin**
+    class directly while `registry.get('vault')` keeps yielding the built-in
+    (reachable by direct import for the task-5 parallel-run). Selection is left
+    with the global registry exactly as it found it — no lingering mutation. V5-3
+    deletes the built-in and retires this whole dance.
+    """
+    scripts_dir = _vault_plugin_scripts_dir(plugin_scripts=plugin_scripts)
+    if scripts_dir is None:
+        return None
+    target = scripts_dir / "storage_vault.py"
+    # The plugin module imports kernel modules (`storage_seam`, `vault_lock`); make
+    # sure this kernel `scripts/` dir is importable when its `exec_module` runs.
+    kernel_scripts = str(Path(__file__).resolve().parent)
+    if kernel_scripts not in sys.path:
+        sys.path.insert(0, kernel_scripts)
+    prior = registry._backends.pop(_VAULT, None)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "obsidian_vault_storage_backend", target
+        )
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return getattr(module, "VaultBackend", None)
+    finally:
+        if prior is not None:
+            registry._backends[_VAULT] = prior
 
 
 def _configured_backend(install_prefix: Optional[Path] = None) -> Optional[str]:
@@ -168,18 +300,25 @@ def select_backend(
     install_prefix: Optional[Path] = None,
     device_local_root: Optional[Path | str] = None,
     vault_lock_root: Optional[Path | str] = None,
+    vault_plugin_scripts: Optional[Path | str] = None,
 ) -> StorageBackend:
     """Return the selected, instantiated `StorageBackend` for this install.
 
     The happy path (part-5 task 1): a fresh install resolves `device-local`; an
-    install carrying a `vault_path` resolves the built-in `vault` seeded from
-    `harness_memory.vault_path()` — byte-identical recall, zero re-setup.
+    install carrying a `vault_path` resolves the `vault` backend seeded from
+    `harness_memory.vault_path()` — byte-identical recall, zero re-setup. Since
+    V5-2 task 3 the `vault` backend is the one re-homed into the crickets
+    `obsidian-vault` plugin, *discovered* and loaded here; the kernel built-in is
+    shadowed (reachable only by direct import for the parallel-run), and a `vault`
+    selection with the plugin **absent** fails loud rather than serving it.
 
     Injection points keep tests off the operator's real home / cache / vault:
-    `device_local_root` (the device-local markdown root; None → `~/.agentm/memory`)
-    and `vault_lock_root` (the `vault_mutex` lock base; None → `~/.cache/agentm/locks`).
-    `install_prefix` overrides where the explicit `storage.backend` key is read from
-    (None → `$AGENTM_INSTALL_PREFIX` → `~/.claude`).
+    `device_local_root` (the device-local markdown root; None → `~/.agentm/memory`),
+    `vault_lock_root` (the `vault_mutex` lock base; None → `~/.cache/agentm/locks`),
+    and `vault_plugin_scripts` (the obsidian-vault plugin's `scripts/` dir; None →
+    the convention path / `$OBSIDIAN_VAULT_SCRIPTS`). `install_prefix` overrides
+    where the explicit `storage.backend` key is read from (None →
+    `$AGENTM_INSTALL_PREFIX` → `~/.claude`).
     """
     vault_root = harness_memory.vault_path()
     protocol = choose_protocol(install_prefix=install_prefix, vault_root=vault_root)
@@ -206,7 +345,16 @@ def select_backend(
                 "configured to seed it — set vault_path (agentm_config "
                 "--vault-path <dir>) or change storage.backend."
             )
-        return backend_cls(vault_root, lock_root=vault_lock_root)
+        # V5-2 task 3 — the vault backend is re-homed into the obsidian-vault
+        # plugin: discover + load *its* VaultBackend rather than the shadowed
+        # built-in `backend_cls` (registry.get('vault'), still registered for the
+        # parallel-run). Plugin absent → fail loud, never demote (same never-demote
+        # family). The plugin's `write` composes the kernel `vault_lock.py` by
+        # import (LC-3), so the round-trip flows through the single canonical lock.
+        plugin_cls = _load_vault_plugin_backend(plugin_scripts=vault_plugin_scripts)
+        if plugin_cls is None:
+            raise StorageSelectionError(_install_obsidian_vault_message())
+        return plugin_cls(vault_root, lock_root=vault_lock_root)
     if protocol == _DEVICE_LOCAL:
         return backend_cls(device_local_root)
     # An explicitly-configured, registered third-party backend: the V5-1 minimal
@@ -256,6 +404,7 @@ def storage_preview(
     *,
     install_prefix: Optional[Path] = None,
     device_local_root: Optional[Path | str] = None,
+    vault_plugin_scripts: Optional[Path | str] = None,
 ) -> StoragePreview:
     """Preview the selected storage backend for `doctor` — read-only, never raises, never mutates.
 
@@ -268,10 +417,16 @@ def storage_preview(
 
     Status rows:
       - `"fail"` — config unreadable / non-string selection, the configured
-        backend's plugin is not installed, or `vault` is selected with no
-        `vault_path` (the engine will refuse at runtime — this previews it).
+        backend's plugin is not installed, `vault` is selected with no
+        `vault_path`, or `vault` is selected but the obsidian-vault plugin is not
+        discoverable (the engine will refuse at runtime — this previews it).
       - `"warn"` — `device-local` is selected but its root is not writable.
-      - `"ok"`   — the selected backend is registered (+ device-local root writable).
+      - `"ok"`   — the selected backend is registered (+ device-local root writable,
+        or, for `vault`, the obsidian-vault plugin is discoverable).
+
+    The `vault` discoverability check is a pure filesystem probe
+    (`_vault_plugin_scripts_dir`) — the preview never execs the plugin module, so
+    it stays free of the registration side-effect that loading would carry.
     """
     # The explicit selection read can itself fail loud (corrupt config / non-string
     # value, part-5 task-3 hardening); surface it as a fail row rather than raising.
@@ -302,11 +457,20 @@ def storage_preview(
                 "vault_path is configured to seed it — set vault_path "
                 "(agentm_config --vault-path <dir>) or change storage.backend.",
             )
+        # V5-2 task 3 — `vault` now requires the obsidian-vault plugin. Probe for
+        # it (pure filesystem check, no exec); absent → the same fail-loud refusal
+        # the runtime guard raises, so doctor's preview never drifts from it.
+        if _vault_plugin_scripts_dir(plugin_scripts=vault_plugin_scripts) is None:
+            return StoragePreview(
+                "fail",
+                protocol,
+                f"storage [FAIL] {_install_obsidian_vault_message()}",
+            )
         return StoragePreview(
             "ok",
             protocol,
-            f"storage [OK] selected backend 'vault' ({origin}) — registered; "
-            f"seeded from {vault_root}",
+            f"storage [OK] selected backend 'vault' ({origin}) — obsidian-vault "
+            f"plugin discoverable; seeded from {vault_root}",
         )
 
     if protocol == _DEVICE_LOCAL:

@@ -34,19 +34,56 @@ import storage_device_local  # noqa: E402
 import storage_vault  # noqa: E402
 
 
+# A marker stand-in for the crickets obsidian-vault plugin's storage_vault.py.
+# Subclassing the kernel built-in keeps the real write/lock behavior (so a
+# round-trip flows through the genuine imported vault_lock) while giving a
+# *distinct* class/module — which is how a test proves selection resolved to the
+# plugin, not the shadowed built-in, with no crickets checkout in agentm CI. It
+# self-registers under `vault` exactly as the real plugin does, exercising the
+# loader's free-the-slot-then-restore dance (the kernel built-in still holds the
+# slot through V5-2, so the registry's duplicate guard would raise otherwise).
+_PLUGIN_FIXTURE_SRC = '''\
+"""Test fixture: stand-in for the crickets obsidian-vault plugin backend."""
+from storage_seam import registry
+from storage_vault import PROTOCOL, VaultBackend as _BuiltinVaultBackend
+
+
+class VaultBackend(_BuiltinVaultBackend):
+    is_obsidian_vault_plugin_fixture = True
+
+
+registry.register(PROTOCOL, VaultBackend)
+'''
+
+
+def _install_plugin_fixture(parent: Path) -> Path:
+    """Write the plugin-backend fixture into a fresh `scripts/` dir and return it."""
+    scripts = parent / "obsidian-vault-plugin" / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    (scripts / "storage_vault.py").write_text(_PLUGIN_FIXTURE_SRC, encoding="utf-8")
+    return scripts
+
+
 class _Env:
-    """Save/restore env: set AGENTM_INSTALL_PREFIX, drop MEMORY_VAULT_PATH."""
+    """Save/restore env: set AGENTM_INSTALL_PREFIX, drop MEMORY_VAULT_PATH + OBSIDIAN_VAULT_SCRIPTS."""
 
     def __init__(self, prefix: Path):
         self._prefix = prefix
-        self._keys = ("AGENTM_INSTALL_PREFIX", "MEMORY_VAULT_PATH")
+        self._keys = (
+            "AGENTM_INSTALL_PREFIX",
+            "MEMORY_VAULT_PATH",
+            "OBSIDIAN_VAULT_SCRIPTS",
+        )
         self._saved: dict[str, str | None] = {}
 
     def __enter__(self):
         for k in self._keys:
             self._saved[k] = os.environ.get(k)
         os.environ["AGENTM_INSTALL_PREFIX"] = str(self._prefix)
+        # Drop the discovery env overrides so a stray operator value can't leak
+        # into the resolver; the vault tests inject `vault_plugin_scripts` directly.
         os.environ.pop("MEMORY_VAULT_PATH", None)
+        os.environ.pop("OBSIDIAN_VAULT_SCRIPTS", None)
         return self
 
     def __exit__(self, *exc):
@@ -98,9 +135,18 @@ class TestSelectBackend(unittest.TestCase):
         expected_root = harness_memory.vault_path()
         self.assertIsNotNone(expected_root, "vault_path() should read the config")
 
-        backend = bs.select_backend(vault_lock_root=self.lock_root)
-        self.assertIsInstance(backend, storage_vault.VaultBackend)
-        # Byte-identical: the vault backend is seeded from the configured path,
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        backend = bs.select_backend(
+            vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
+        )
+        # Re-homed (V5-2 task 3): selection resolves to the *plugin* backend — a
+        # distinct class from the shadowed kernel built-in, not device-local.
+        from storage_seam import StorageBackend
+
+        self.assertIsInstance(backend, StorageBackend)
+        self.assertIsNot(type(backend), storage_vault.VaultBackend)
+        self.assertTrue(getattr(backend, "is_obsidian_vault_plugin_fixture", False))
+        # Byte-identical: the plugin backend is seeded from the configured path,
         # zero re-setup.
         self.assertEqual(backend.root, expected_root)
 
@@ -129,8 +175,14 @@ class TestSelectBackend(unittest.TestCase):
         self.assertEqual(ac.main(["--vault-path", str(vault)]), 0)
         self.assertEqual(ac.main(["--storage-backend", "vault"]), 0)
 
-        backend = bs.select_backend(vault_lock_root=self.lock_root)
-        self.assertIsInstance(backend, storage_vault.VaultBackend)
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        backend = bs.select_backend(
+            vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
+        )
+        # Explicit `vault` resolves to the re-homed plugin backend (V5-2 task 3),
+        # not the shadowed built-in.
+        self.assertTrue(getattr(backend, "is_obsidian_vault_plugin_fixture", False))
+        self.assertIsNot(type(backend), storage_vault.VaultBackend)
 
     def test_choose_protocol_explicit_value_wins(self) -> None:
         self.assertEqual(ac.main(["--storage-backend", "some-future-backend"]), 0)
@@ -138,6 +190,120 @@ class TestSelectBackend(unittest.TestCase):
         self.assertEqual(
             bs.choose_protocol(vault_root=Path(self.tmp)), "some-future-backend"
         )
+
+
+class TestVaultPluginDiscovery(unittest.TestCase):
+    """V5-2 task 3: the vault backend is re-homed into the obsidian-vault plugin.
+
+    Selecting `storage.backend=vault` now *discovers* the plugin and returns ITS
+    backend — not the shadowed kernel built-in, never a silent device-local
+    demotion. A marker-subclass fixture stands in for the plugin so these run
+    deterministically without a crickets checkout; the real plugin's write
+    round-trip through the imported `vault_lock` is proven crickets-side.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-vault-discovery-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.device_root = Path(self.tmp) / "device-local-root"
+        self.lock_root = Path(self.tmp) / "locks"
+        self.env = _Env(self.prefix)
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _configure_vault(self) -> Path:
+        vault = Path(self.tmp) / "vault"
+        vault.mkdir()
+        self.assertEqual(ac.main(["--vault-path", str(vault)]), 0)
+        return vault
+
+    def test_vault_resolves_to_plugin_not_builtin(self) -> None:
+        # Plugin discoverable → selection returns the PLUGIN backend (distinct class
+        # + marker attr), seeded byte-identically from the configured vault_path.
+        self._configure_vault()
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        backend = bs.select_backend(
+            vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
+        )
+        self.assertTrue(getattr(backend, "is_obsidian_vault_plugin_fixture", False))
+        self.assertIsNot(
+            type(backend),
+            storage_vault.VaultBackend,
+            "selection returned the shadowed built-in, not the plugin backend",
+        )
+        self.assertEqual(backend.root, harness_memory.vault_path())
+
+    def test_plugin_absent_raises_install_message_not_demote(self) -> None:
+        # The load-bearing negative: vault selected, plugin NOT discoverable → fail
+        # loud with the install-the-obsidian-vault message, and it must NOT demote
+        # to device-local (the usable device_local_root stays uncreated — the
+        # backend was never constructed).
+        self._configure_vault()
+        missing = Path(self.tmp) / "no-such-plugin" / "scripts"
+        with self.assertRaises(bs.StorageSelectionError) as ctx:
+            bs.select_backend(
+                device_local_root=self.device_root,
+                vault_lock_root=self.lock_root,
+                vault_plugin_scripts=missing,
+            )
+        msg = str(ctx.exception)
+        self.assertIn("obsidian-vault", msg)
+        self.assertIn("install", msg.lower())
+        self.assertFalse(
+            self.device_root.exists(),
+            "silent device-local demotion when the obsidian-vault plugin is absent",
+        )
+
+    def test_selection_leaves_registry_unmutated(self) -> None:
+        # Discovery frees the `vault` slot so the plugin can self-register, then
+        # restores the built-in: a select_backend call must leave the global
+        # registry exactly as it found it (the built-in stays reachable for the
+        # task-5 parallel-run by direct import / registry.get).
+        from storage_seam import registry
+
+        self._configure_vault()
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        self.assertIs(registry.get(storage_vault.PROTOCOL), storage_vault.VaultBackend)
+        bs.select_backend(
+            vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
+        )
+        self.assertIs(
+            registry.get(storage_vault.PROTOCOL),
+            storage_vault.VaultBackend,
+            "select_backend left the plugin registered — the built-in must be restored",
+        )
+
+    def test_plugin_backend_carries_injected_lock_root(self) -> None:
+        # The lock edge: the resolved plugin backend is constructed with the
+        # injected lock_root, so its `write` composes the imported kernel
+        # vault_lock against that base (the real FS round-trip is proven
+        # crickets-side; here we assert the lock wiring is threaded through).
+        self._configure_vault()
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        backend = bs.select_backend(
+            vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
+        )
+        self.assertEqual(backend._lock_root, self.lock_root)
+
+    def test_preview_plugin_absent_is_fail_row(self) -> None:
+        # Doctor's vault preview mirrors the runtime refusal: plugin not
+        # discoverable → a fail row carrying the same install-the-plugin message,
+        # and the probe is read-only (no device-local construction).
+        self._configure_vault()
+        missing = Path(self.tmp) / "no-such-plugin" / "scripts"
+        prev = bs.storage_preview(
+            device_local_root=self.device_root, vault_plugin_scripts=missing
+        )
+        self.assertEqual(prev.status, "fail")
+        self.assertEqual(prev.protocol, storage_vault.PROTOCOL)
+        self.assertIn("[FAIL]", prev.line)
+        self.assertIn("obsidian-vault", prev.line)
+        self.assertFalse(self.device_root.exists())
 
 
 class TestFailLoud(unittest.TestCase):
@@ -309,7 +475,10 @@ class TestCapabilitiesRead(unittest.TestCase):
         vault = Path(self.tmp) / "vault"
         vault.mkdir()
         self.assertEqual(ac.main(["--vault-path", str(vault)]), 0)
-        caps = bs.select_backend(vault_lock_root=self.lock_root).capabilities
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        caps = bs.select_backend(
+            vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
+        ).capabilities
         # The synced vault: multi-writer-safe (mutex), GDrive replicates the tree
         # (sync) + surfaces conflict copies (conflict_files); not encrypted at rest.
         self.assertTrue(caps.concurrent_writers)
@@ -383,11 +552,15 @@ class TestStoragePreview(unittest.TestCase):
         vault = Path(self.tmp) / "vault"
         vault.mkdir()
         self.assertEqual(ac.main(["--vault-path", str(vault)]), 0)
-        prev = bs.storage_preview()
+        # The preview's vault row is now gated on the obsidian-vault plugin being
+        # discoverable (V5-2 task 3) — a pure presence probe, no module exec.
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        prev = bs.storage_preview(vault_plugin_scripts=plugin_scripts)
         self.assertEqual(prev.status, "ok")
         self.assertEqual(prev.protocol, storage_vault.PROTOCOL)
         self.assertIn("[OK]", prev.line)
         self.assertIn("vault", prev.line)
+        self.assertIn("obsidian-vault plugin discoverable", prev.line)
 
     def test_unregistered_backend_previews_install_message_verbatim(self) -> None:
         # The byte-identical-to-the-guard assertion: the preview embeds the EXACT
