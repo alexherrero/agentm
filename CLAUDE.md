@@ -10,3 +10,6 @@ This project uses [agentm](https://github.com/alexherrero/agentm). The universal
 - **Commit messages: no `Co-Authored-By: Claude` trailer.** See [AGENTS.md § Conventions § Commit messages](AGENTS.md#commit-messages) — the rule is host-agnostic; this bullet is the Claude-specific reminder because Claude Code emits the trailer by default.
 
 For anything not Claude-specific, [AGENTS.md](AGENTS.md) is authoritative.
+
+<!-- Harness conventions auto-load below — moved here from the global ~/.claude/CLAUDE.md for the token-efficiency floor-trim (2026-06-13) so non-agentm projects no longer re-read this AGENTS.md on every tool call. -->
+@AGENTS.md
