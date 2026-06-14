@@ -393,6 +393,15 @@ class BackendRegistry:
 registry = BackendRegistry()
 
 
+# ── V6 reservation — Tier / TierLayout / DerivedMaintenance have no V5 consumer ──
+# Nothing in V5 imports the three types below: the device-local backend has no
+# derived tier, and grepping the backends for `Tier` / `reindex` /
+# `DerivedMaintenance` returns only this module and its tests. They ship in part 1
+# anyway so V6's vector/SQLite index lands on a *frozen* contract instead of
+# re-opening the seam mid-V6 — the frozen-API thesis, accepted-with-rationale per
+# the 2026-06-13 adversarial audit (finding M3). Re-audit trigger: when V6's first
+# consumer of these types lands, confirm the frozen shape matches what it actually
+# needs — a mismatch is the signal the early freeze guessed wrong.
 class Tier(Enum):
     """The three storage tiers — one hard line: the local index **never** syncs.
 

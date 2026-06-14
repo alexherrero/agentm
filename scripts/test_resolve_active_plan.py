@@ -257,5 +257,50 @@ class ResolveActivePlanCLI(unittest.TestCase):
         self.assertFalse((self.harness / "active-plan").exists())
 
 
+# ── Plan-name contract — golden vectors shared with the crickets twin ───────────
+# These two tables are duplicated VERBATIM in the crickets fallback's test suite
+# (crickets/scripts/test_resolve_plan.py, class PlanNameContractParity) so the
+# standalone fallback normalizer can't drift from this authority. That's the
+# disposition of the 2026-06-13 adversarial audit (finding ML2): no cross-repo
+# import edge (DC-2), just one table asserted on both sides. Change a row here →
+# change it there. `PLAN-PLAN.md` (singleton on both) and `foo\x00` (unsafe on
+# both) are the two rows that encode the drifts the audit caught.
+_PLAN_NAME_VECTORS = [
+    ("", ("PLAN.md", "progress.md")),
+    ("   ", ("PLAN.md", "progress.md")),
+    ("PLAN", ("PLAN.md", "progress.md")),
+    ("PLAN.md", ("PLAN.md", "progress.md")),
+    ("PLAN-PLAN", ("PLAN.md", "progress.md")),
+    ("PLAN-PLAN.md", ("PLAN.md", "progress.md")),
+    ("foo", ("PLAN-foo.md", "progress-foo.md")),
+    ("PLAN-foo", ("PLAN-foo.md", "progress-foo.md")),
+    ("PLAN-foo.md", ("PLAN-foo.md", "progress-foo.md")),
+    ("  PLAN-foo.md  ", ("PLAN-foo.md", "progress-foo.md")),
+    ("my-plan", ("PLAN-my-plan.md", "progress-my-plan.md")),
+]
+
+_PLAN_SLUG_SAFETY = [
+    ("foo", True), ("foo-bar", True), ("foo.bar", True), ("v2", True),
+    (".", False), ("..", False), ("a/b", False), ("a\\b", False), ("foo\x00", False),
+]
+
+
+class PlanNameContractParity(unittest.TestCase):
+    """The (name → pair) + slug-safety contract the crickets fallback must match.
+
+    agentm is the authority (crickets delegates to it when a clone is present);
+    these vectors pin the meaning so the standalone-crickets fallback can't drift.
+    """
+
+    def test_name_to_pair_golden_vectors(self) -> None:
+        for name, expected in _PLAN_NAME_VECTORS:
+            slug = hm._normalize_plan_name(name)
+            self.assertEqual(hm._plan_pair(slug), expected, f"name={name!r}")
+
+    def test_slug_safety_golden_vectors(self) -> None:
+        for slug, expected in _PLAN_SLUG_SAFETY:
+            self.assertEqual(hm._is_safe_plan_slug(slug), expected, f"slug={slug!r}")
+
+
 if __name__ == "__main__":
     unittest.main()
