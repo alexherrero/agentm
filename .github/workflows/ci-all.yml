@@ -27,7 +27,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
+          # On pull_request, github.sha is the ephemeral merge commit, but the
+          # per-OS workflow runs are recorded under the PR *head* SHA — so
+          # `gh run list --commit github.sha` matches nothing and times out.
+          # Use the PR head SHA on pull_request; fall back to github.sha on push.
+          SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -e
           WORKFLOWS="tests-linux tests-mac tests-windows"
