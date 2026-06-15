@@ -16,6 +16,7 @@
 - [Process seam](Process-Seam)
 - [Storage seam](Storage-Seam)
 - [Auto-orchestration config](Auto-Orchestration-Config)
+- [Capability resolver](Capability-Resolver)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 ### 🏛️ [Architecture](Architecture)

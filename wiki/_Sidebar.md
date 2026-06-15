@@ -29,6 +29,7 @@
 - [Vault write protocol](Vault-Write-Protocol)
 - [Queue status lite](Queue-Status-Lite)
 - [Auto-orchestration config](Auto-Orchestration-Config)
+- [Capability resolver](Capability-Resolver)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 ### 🏛️ [Architecture](Architecture)
