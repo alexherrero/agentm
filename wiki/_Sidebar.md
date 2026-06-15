@@ -69,3 +69,4 @@
 - [0011 — V5 unbundling: slim the dev loop](0011-v5-unbundling-dev-loop)
 - [0012 — Vault-write protocol](0012-vault-write-protocol)
 - [0013 — Storage-seam fail-loud selection](0013-storage-seam-fail-loud-selection)
+- [0014 — Tier-2 gate: don't fork the loop](0014-tier-2-sdk-fork-gate)

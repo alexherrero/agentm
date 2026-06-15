@@ -20,6 +20,7 @@ This page is the index. The homepage links here once instead of listing every AD
 - [ADR 0011 — V5 unbundling: slim the dev loop + migrate-to-diataxis](0011-v5-unbundling-dev-loop)
 - [ADR 0012 — The vault-write protocol (R4 Phase-0 concurrency floor)](0012-vault-write-protocol)
 - [ADR 0013 — The memory↔storage seam: backend selection fails loud, never demotes](0013-storage-seam-fail-loud-selection)
+- [ADR 0014 — The Tier-2 gate: don't fork the loop through the Agent SDK](0014-tier-2-sdk-fork-gate)
 
 ## See also
 
