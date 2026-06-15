@@ -453,9 +453,11 @@ class TestCLISubprocess(unittest.TestCase):
         import subprocess
         # Cross-platform home redirect: the resolver finds the host root via
         # Path.home(). On POSIX that honors $HOME; on Windows ntpath.expanduser
-        # consults %USERPROFILE% first and ignores %HOME%. Mirror any HOME the
-        # caller set onto USERPROFILE so the temp fixture is found on both.
-        if env is not None and "HOME" in env and "USERPROFILE" not in env:
+        # consults %USERPROFILE% first and ignores %HOME%. Callers build env as
+        # {**os.environ, "HOME": tmp}, and on Windows os.environ already carries
+        # the *real* USERPROFILE — so we must overwrite it unconditionally
+        # (not "if absent") for Path.home() to resolve to the temp fixture.
+        if env is not None and "HOME" in env:
             env = {**env, "USERPROFILE": env["HOME"]}
         result = subprocess.run(
             [sys.executable, self._SCRIPT] + list(args),
