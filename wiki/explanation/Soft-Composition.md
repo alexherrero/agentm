@@ -1,0 +1,38 @@
+<!-- mode: explanation -->
+# Soft composition and hard composition
+
+agentm and crickets use two distinct composition models for plugins. Conflating them is the most common source of confusion when reading the `enhances:` or `requires:` fields.
+
+## Hard composition: `requires:` (the host's job)
+
+A plugin that *requires* another to function correctly lists it in `requires:`. On Claude Code this serializes to the `dependencies:` array in the marketplace entry; on Antigravity it is listed in the marketplace entry's `requires:` field. The host installer enforces it: if the dependency is absent, the host refuses to install the plugin or marks it as broken.
+
+Hard deps are the host's job. agentm reads the `requires:` field to document it in the marketplace entry, but does not enforce it — that is the host's contract with the user.
+
+## Soft composition: `enhances:` (the substrate's job)
+
+A plugin that *optionally* uses another plugin's capabilities lists them in `enhances:`. Unlike `requires:`, an unmet `enhances:` is not an error — the dependent plugin falls back to its standalone behavior. An `enhances:` entry may carry a version range (`>= 1.2`) to express "I need at least this version for the enhancement to be safe."
+
+**`enhances ∩ requires = ∅`.** A capability that is truly required must be in `requires:` (hard dep, host-enforced). A capability in `enhances:` is by definition optional — if it is not optional, it is in the wrong field. This invariant is enforced by design: agentm's resolver is a single-range check (LC-3), not a solver, so it is structurally incapable of resolving transitive or mandatory deps.
+
+## The runtime: `capability_available()`
+
+When a plugin's phase script checks whether an enhancement is available, it calls `agentm capability <name>` (or imports `capability_available` directly). The resolver:
+
+1. Builds a registry from installed plugins' declared `capabilities:` — one provider per capability, first installed wins.
+2. Returns exit 0 (available) or exit 1 (unavailable), with optional version-range matching.
+3. Falls through to unavailable on any error — the safe default (LC-4).
+
+The caller never names the providing plugin — it names the *capability*. "git-review" is a capability; a plugin that declares `capabilities: [git-review]` is its provider. The caller is insulated from which plugin provides it.
+
+## Why "vocabulary, not wire"
+
+`enhances:` borrows vocabulary from the MCP / capability-negotiation world (V5-9) but is not a wire protocol. It is a manifest-level declaration, resolved statically at runtime from on-disk JSON files. There is no negotiation, no handshake, no socket — just a registry lookup and a boolean answer.
+
+V5-9 (MCP negotiation) will sit on top of this vocabulary, not replace it. The resolver is the read-only, substrate-level half; MCP will add the wire half. The two are designed to be composable.
+
+## Related
+
+- [Capability resolver reference](../reference/Capability-Resolver) — the API.
+- [ADR 0015 — Capability discovery](../decisions/0015-capability-discovery) — the design decisions.
+- [ADR 0006 — crickets split](../decisions/0006-crickets-split) — the C3 principle (substrate beneath, not plugin host).

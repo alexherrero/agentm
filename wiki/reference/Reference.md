@@ -25,6 +25,10 @@ Lookup-oriented technical detail for the Agent M harness — CLI flags, config s
 - **[Process seam](Process-Seam)** — the read-only client a *process* calls instead of reaching into the engine: the three functions, their signatures, and degrade contracts.
 - **[Storage seam](Storage-Seam)** — the verbs the engine calls instead of touching files: the seven-verb `StorageBackend` contract, the `Locator`/`Info`/`Capabilities` types, and its two concrete backends — `DeviceLocalBackend` (plain markdown) and `VaultBackend` (the synced vault wrap) — held to one conformance contract (V5-1 parts 1–4).
 
+## Plugin capabilities
+
+- **[Capability resolver](Capability-Resolver)** — the `capability_available` / `capability_resolve` / `build_registry` public API, the four reason codes, the Claude Code and Antigravity read paths, merge semantics, and the CLI shim exit codes.
+
 ## CI & shipped work
 
 - **[CI gates](CI-Gates)** — what each CI workflow proves and the script behind it.

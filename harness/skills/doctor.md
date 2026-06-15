@@ -180,6 +180,22 @@ test -f ~/.gemini/config/plugins/example-plugin/plugin.json    # if example-plug
 **Fail signals:** `install-plugin.sh` not found in crickets toolkit; `plugin.json` malformed.
 **Skip:** no `kind: plugin` customizations installed (nothing to verify).
 
+### Probe 10: Capability resolver sanity (V5-8)
+
+Always runs (not gated on crickets). Exercises the V5-8 capability resolver against the current host state to verify it can be imported and returns a valid result without raising.
+
+```python
+python3 "<agentm>/scripts/capability_resolver.py" "nonexistent-capability-doctor-probe"
+```
+
+**Expected behavior:** exits 1 (unavailable) — the probe uses a capability name that no real plugin will ever declare, so "unavailable" is the correct answer regardless of what plugins are installed. Exit 2 is a FAIL (usage error in the shim). An unhandled exception printed to stderr is a FAIL.
+
+**Pass criteria:** exit 0 or exit 1 (both mean the resolver ran); no Python traceback on stderr; `capability_resolver.py` importable.
+**Fail signals:** `capability_resolver.py` not found (V5-8 not shipped or wrong install path); Python syntax/import error; exit 2 (usage regression in `_main`).
+**Skip:** never — this probe is always cheap (it reads no files on an empty host).
+
+If an installed plugin happens to declare `"nonexistent-capability-doctor-probe"` as a capability, the probe will exit 0 — that is still a pass (the resolver worked correctly). The probe name is deliberately unlikely; the check is liveness, not absence.
+
 ## Output contract
 
 ```

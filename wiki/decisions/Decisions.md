@@ -21,6 +21,7 @@ This page is the index. The homepage links here once instead of listing every AD
 - [ADR 0012 — The vault-write protocol (R4 Phase-0 concurrency floor)](0012-vault-write-protocol)
 - [ADR 0013 — The memory↔storage seam: backend selection fails loud, never demotes](0013-storage-seam-fail-loud-selection)
 - [ADR 0014 — The Tier-2 gate: don't fork the loop through the Agent SDK](0014-tier-2-sdk-fork-gate)
+- [ADR 0015 — Capability discovery: the `enhances:` runtime](0015-capability-discovery)
 
 ## See also
 

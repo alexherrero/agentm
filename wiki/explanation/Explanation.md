@@ -13,6 +13,7 @@ Background and rationale — *why* the harness works the way it does. These page
 - **[Single-repo state mode](Single-Repo-State-Mode)** — how the harness degrades gracefully to repo-local state when no vault is reachable.
 - **[Memory↔process seam](Memory-Process-Seam)** — why a process talks to the engine through a small stable client, and why that dependency is one-directional.
 - **[Memory↔storage seam](Memory-Storage-Seam)** — why the engine reads and writes through verbs that hand back an opaque locator, never a filesystem path, why the default backend is bare markdown on-device, and why the synced vault is a *wrap* over existing state that moves no data (V5-1 parts 1–4).
+- **[Soft composition and hard composition](Soft-Composition)** — why `enhances:` and `requires:` are disjoint, what the capability resolver does, and why it is "vocabulary, not wire."
 
 ## See also
 

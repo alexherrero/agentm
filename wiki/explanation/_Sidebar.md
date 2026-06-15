@@ -14,4 +14,5 @@
 - [Memory↔process seam](Memory-Process-Seam)
 - [Memory↔storage seam](Memory-Storage-Seam)
 - [Named plans](Named-Plans) ⏳
+- [Soft composition and hard composition](Soft-Composition)
 ### 📐 [Decisions](Decisions)
