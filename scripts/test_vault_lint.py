@@ -308,9 +308,11 @@ class TestSchemaPin(unittest.TestCase):
 
     def test_lint_uses_save_required_fields(self):
         # The required-field check iterates save.REQUIRED_FRONTMATTER_FIELDS.
+        # heat_pin is written by the heat policy only (not by _build_frontmatter),
+        # so it is optional alongside supersedes.
         self.assertEqual(
             set(save.REQUIRED_FRONTMATTER_FIELDS),
-            set(save.FRONTMATTER_FIELD_ORDER) - {"supersedes"},
+            set(save.FRONTMATTER_FIELD_ORDER) - save._OPTIONAL_FIELDS,
         )
 
     def test_build_frontmatter_emits_locked_order(self):
@@ -320,7 +322,10 @@ class TestSchemaPin(unittest.TestCase):
         )
         keys = [line.split(":", 1)[0] for line in fm.splitlines()
                 if ":" in line and not line.startswith("---")]
-        self.assertEqual(tuple(keys), save.FRONTMATTER_FIELD_ORDER)
+        # heat_pin is an optional field written by the heat policy only,
+        # not emitted by _build_frontmatter(); compare against the policy-writer subset.
+        expected = tuple(f for f in save.FRONTMATTER_FIELD_ORDER if f != "heat_pin")
+        self.assertEqual(tuple(keys), expected)
 
 
 if __name__ == "__main__":

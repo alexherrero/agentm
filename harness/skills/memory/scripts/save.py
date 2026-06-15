@@ -48,11 +48,12 @@ _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "kind", "status", "created", "updated", "tags", "group", "slug",
-    "always_load", "supersedes",
+    "always_load", "supersedes", "heat_pin",
 )
-# Required fields = every field except the optional `supersedes`.
+# Required fields = every field except the optional ones.
+_OPTIONAL_FIELDS = frozenset({"supersedes", "heat_pin"})
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
-    f for f in FRONTMATTER_FIELD_ORDER if f != "supersedes"
+    f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
 )
 
 

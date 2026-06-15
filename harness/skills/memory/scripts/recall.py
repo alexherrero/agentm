@@ -858,6 +858,12 @@ def prompt_submit(
     # Results are already salience-ordered (combined-score desc) from query().
     raw_blocks: list[str] = []
     raw_slugs: list[str] = []
+    # Part G (#46): lazy-import heat_policy for on-demand hit recording.
+    # Best-effort — missing heat_policy never blocks the recall pipeline.
+    try:
+        from heat_policy import record_hit as _record_recall_hit  # type: ignore
+    except ImportError:
+        _record_recall_hit = None
     for result in results:
         md_path = vault / result["path"]
         try:
@@ -867,6 +873,9 @@ def prompt_submit(
         fm, body = _parse_frontmatter(content)
         raw_blocks.append(_format_recall_result(result, body, fm))
         raw_slugs.append(result["slug"])
+        # Record the on-demand hit for heat tracking (best-effort).
+        if _record_recall_hit is not None:
+            _record_recall_hit(vault, result["slug"])
 
     # Apply token budget: results are highest-salience first → truncation
     # drops the least-relevant tail entries, never the top hits.
@@ -999,6 +1008,30 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     q.add_argument("--mode", choices=["local", "stub"], default=None,
                    help="embedding mode override (default: local; see embed.py for details)")
 
+    hp = sub.add_parser(
+        "heat-policy",
+        help=(
+            "evaluate the heat-based always-load curation policy. "
+            "Reports demotion/promotion candidates (dry-run by default). "
+            "Pass --apply to move entries. Part G of ROADMAP #46."
+        ),
+    )
+    hp.add_argument(
+        "--apply",
+        action="store_true",
+        help="apply tier changes (move files). Default: dry-run only.",
+    )
+
+    hpin = sub.add_parser(
+        "heat-pin",
+        help=(
+            "pin an entry to always-load (heat_pin: true). "
+            "Restores the entry to the always-load directory if it was demoted. "
+            "Part G of ROADMAP #46."
+        ),
+    )
+    hpin.add_argument("slug", help="slug of the entry to pin (e.g. 'adr-shape')")
+
     return parser.parse_args(argv)
 
 
@@ -1043,6 +1076,35 @@ def main(argv: list[str] | None = None) -> int:
         for r in results:
             print(json.dumps(r))
         return 0
+    if args.cmd == "heat-policy":
+        if vault is None:
+            print(
+                "ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            from heat_policy import run_policy  # type: ignore
+        except ImportError:
+            print("ERROR: heat_policy module not found", file=sys.stderr)
+            return 1
+        result = run_policy(vault, dry_run=not args.apply)
+        print(json.dumps(result))
+        return 0
+    if args.cmd == "heat-pin":
+        if vault is None:
+            print(
+                "ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)",
+                file=sys.stderr,
+            )
+            return 1
+        try:
+            from heat_policy import pin_entry  # type: ignore
+        except ImportError:
+            print("ERROR: heat_policy module not found", file=sys.stderr)
+            return 1
+        ok = pin_entry(vault, args.slug)
+        return 0 if ok else 1
     return 1  # pragma: no cover
 
 
