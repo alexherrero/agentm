@@ -18,7 +18,7 @@ The plugin-capability registry + resolver ([`scripts/capability_resolver.py`](ht
 | `"available"` | A provider is installed and the version constraint (if any) is satisfied. |
 | `"no-provider"` | No plugin in any registry declares this capability. |
 | `"provider-not-installed"` | A plugin declares the capability but is not enabled on this host. |
-| `"version-mismatch"` | The provider is installed but its version does not satisfy the requested range (version-range matching ships in Task 2). |
+| `"version-mismatch"` | The provider is installed but its version does not satisfy the requested range. |
 
 ## Public API
 
@@ -29,7 +29,7 @@ The boolean surface — the primary interface for callers that only need `True`/
 | Parameter | Type | Detail |
 |---|---|---|
 | `name` | `str` | The capability key to probe (e.g. `"developer-workflows"`, `"code-review"`). |
-| `version` | `str \| None` | Version-range constraint (e.g. `">= 1.2"`). Accepted today; evaluated in Task 2. Any version satisfies in Task 1. |
+| `version` | `str \| None` | Version-range constraint (e.g. `">= 1.2"`). When `None`, any installed version satisfies. Evaluated by `satisfies()` — see [Version matching](#version-matching) below. |
 | `registry` | `dict \| None` | Pre-built registry from `build_registry()`. When `None`, builds on each call. Inject when calling in a loop to avoid repeated I/O. |
 
 Never raises. Returns `False` on any internal error (LC-4: unavailable is the safe default).
@@ -103,9 +103,56 @@ This is the entry point wired by the `agentm capability` shim (Task 3). The impo
 | Label | Constraint |
 |---|---|
 | LC-2 | Capability-keyed: callers name the capability; the resolver finds the provider. |
-| LC-3 | Version matching is a single range check, not a solver. Stub in Task 1; implemented in Task 2. |
+| LC-3 | Version matching is a single range check, not a solver. Compound specifiers (PEP 440 `a, b` syntax) are rejected — `satisfies()` returns `False` rather than partially evaluating. |
 | LC-4 | Unavailable is the safe default; the resolver never raises on absence. |
 | LC-6 | No agentm substrate → all capabilities resolve to `"unavailable"` (safe). |
+
+## Version matching
+
+Version range evaluation is implemented in [`scripts/capability_version_match.py`](https://github.com/alexherrero/agentm/blob/main/scripts/capability_version_match.py) (stdlib-only). The public API is a single function:
+
+```python
+satisfies(installed_version: str | None, range_str: str) -> bool
+```
+
+Returns `True` when `installed_version` satisfies the constraint expressed in `range_str`. Returns `False` — never raises — on any malformed input, a `None` version, or a compound specifier (LC-4 graceful degrade).
+
+### Supported operators
+
+| Operator | Meaning | Example |
+|---|---|---|
+| `>=` | Greater than or equal | `>= 1.2` |
+| `>` | Strictly greater than | `> 1.0` |
+| `<=` | Less than or equal | `<= 2.0` |
+| `<` | Strictly less than | `< 3.0` |
+| `==` | Exact match | `== 1.2.3` |
+| `!=` | Not equal | `!= 1.0` |
+| `~=` | Compatible release (PEP 440) | `~= 1.2` |
+
+### Compatible release (`~=`) semantics
+
+`~= X.Y` expands to `>= X.Y AND < (X+1)`, meaning "any release of the same major version starting at X.Y or later". For example:
+
+| Range | Satisfies | Does not satisfy |
+|---|---|---|
+| `~= 1.2` | `1.2`, `1.3`, `1.9.99` | `2.0`, `1.1` |
+| `~= 2.0` | `2.0`, `2.5` | `3.0`, `1.9` |
+
+This follows PEP 440's compatible release clause exactly.
+
+### Version padding
+
+Versions with fewer components are zero-padded before comparison: `1.2` is treated as `1.2.0` and compared component-wise as integers.
+
+### Graceful degrade (LC-4)
+
+`satisfies()` returns `False` (never raises) for:
+
+- `None` installed version — provider's version is undeclared in its manifest.
+- Malformed version string — cannot be parsed as dot-separated integers.
+- Compound specifier — range strings containing `,` (PEP 440 `a, b` multi-constraint form). The resolver is a single-check, not a solver; compound specifiers are rejected whole.
+
+`capability_resolve` uses the `"version-mismatch"` reason code when `satisfies()` returns `False` for an installed provider.
 
 ## Related
 
