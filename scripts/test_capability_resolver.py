@@ -424,9 +424,91 @@ class TestCLIMain(unittest.TestCase):
         import unittest.mock as mock
         reg = {"cap": cr.ProviderEntry("p", "1.0.0", True)}
         with mock.patch("capability_resolver.build_registry", return_value=reg):
-            # With the Task-2 stub, version arg causes graceful except → exit 1.
             rc = cr._main(["capability_resolver.py", "cap", ">= 1.0"])
-        self.assertIn(rc, (0, 1))  # either is acceptable until Task 2 lands
+        self.assertEqual(rc, 0)  # Task 2 live: satisfies("1.0.0", ">= 1.0") → True
+
+    def test_version_mismatch_exits_1(self):
+        import unittest.mock as mock
+        reg = {"cap": cr.ProviderEntry("p", "1.0.0", True)}
+        with mock.patch("capability_resolver.build_registry", return_value=reg):
+            rc = cr._main(["capability_resolver.py", "cap", ">= 2.0"])
+        self.assertEqual(rc, 1)  # version-mismatch → unavailable → exit 1
+
+
+# ── CLI subprocess tests (Task 3): real exit codes via subprocess ─────────────
+
+class TestCLISubprocess(unittest.TestCase):
+    """Verify the CLI shim exit-code contract by spawning a real subprocess.
+
+    These tests call `python3 capability_resolver.py <args>` with a temp root
+    dir (AGENTM_TEST_ROOT env var injected via build_registry override is not
+    available here, so we test the exit-2 path and use a no-host root for
+    exit-1). For exit-0, we build a real Antigravity fixture and pass it via
+    a monkeypatched Path.home() via TMPDIR semantics.
+    """
+
+    _SCRIPT = str(_HERE / "capability_resolver.py")
+
+    def _run(self, *args, env=None) -> int:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, self._SCRIPT] + list(args),
+            capture_output=True,
+            env=env,
+        )
+        return result.returncode
+
+    def test_subprocess_exit_2_no_args(self):
+        self.assertEqual(self._run(), 2)
+
+    def test_subprocess_exit_2_too_many_args(self):
+        self.assertEqual(self._run("a", "b", "c"), 2)
+
+    def test_subprocess_exit_1_no_host_state(self):
+        with tempfile.TemporaryDirectory() as t:
+            import os
+            env = {**os.environ, "HOME": t}
+            rc = self._run("nonexistent-capability-xyz-subprocess", env=env)
+            self.assertEqual(rc, 1)
+
+    def test_subprocess_exit_0_antigravity_fixture(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            _build_antigravity_root(
+                root,
+                enabled_plugins=["test-plugin"],
+                sidecars={"test-plugin": {"version": "1.0.0", "capabilities": ["proc-test-cap"]}},
+            )
+            import os
+            env = {**os.environ, "HOME": t}
+            rc = self._run("proc-test-cap", env=env)
+            self.assertEqual(rc, 0)
+
+    def test_subprocess_exit_0_with_version_range(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            _build_antigravity_root(
+                root,
+                enabled_plugins=["vp"],
+                sidecars={"vp": {"version": "2.0.0", "capabilities": ["ver-cap"]}},
+            )
+            import os
+            env = {**os.environ, "HOME": t}
+            rc = self._run("ver-cap", ">= 1.5", env=env)
+            self.assertEqual(rc, 0)
+
+    def test_subprocess_exit_1_version_mismatch(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            _build_antigravity_root(
+                root,
+                enabled_plugins=["vp"],
+                sidecars={"vp": {"version": "1.0.0", "capabilities": ["ver-cap"]}},
+            )
+            import os
+            env = {**os.environ, "HOME": t}
+            rc = self._run("ver-cap", ">= 2.0", env=env)
+            self.assertEqual(rc, 1)
 
 
 if __name__ == "__main__":
