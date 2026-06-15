@@ -451,6 +451,12 @@ class TestCLISubprocess(unittest.TestCase):
 
     def _run(self, *args, env=None) -> int:
         import subprocess
+        # Cross-platform home redirect: the resolver finds the host root via
+        # Path.home(). On POSIX that honors $HOME; on Windows ntpath.expanduser
+        # consults %USERPROFILE% first and ignores %HOME%. Mirror any HOME the
+        # caller set onto USERPROFILE so the temp fixture is found on both.
+        if env is not None and "HOME" in env and "USERPROFILE" not in env:
+            env = {**env, "USERPROFILE": env["HOME"]}
         result = subprocess.run(
             [sys.executable, self._SCRIPT] + list(args),
             capture_output=True,
