@@ -64,6 +64,10 @@ PROMPT_SUBMIT_BUDGET_MS = 300
 # Default top-K per locked design call (plan #7a part 2 recall-loop).
 DEFAULT_K = 5
 
+# Default per-recall token budget (≈10% of a 200k Claude context).
+# 0 = unlimited. Override via --token-budget CLI arg or RECALL_TOKEN_BUDGET env.
+DEFAULT_TOKEN_BUDGET = 20_000
+
 # Merge formula weights (per locked design call — recall-loop.md):
 #   combined = sim × SIM_WEIGHT + keyword × KEYWORD_WEIGHT
 # Tuned 2026-05-20 during plan #7a part 5 task 6 (seed-pass validation)
@@ -97,6 +101,60 @@ _INBOX_DIR_NAME = "_inbox"
 # in v1 — keep tokenization simple + greppable; tune via real-use feedback.
 _MIN_TOKEN_LEN = 3
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+
+
+def _estimate_tokens(text: str) -> int:
+    """Rough token estimate: len(chars) / 4 (standard approximation, ±20%).
+
+    Good enough for budget-enforcement heuristics; not used for billing or
+    exact reporting. Returns at least 1 to avoid zero-cost infinite loops.
+    """
+    return max(1, len(text) // 4)
+
+
+def _resolve_token_budget(arg_value: int | None) -> int:
+    """Resolve token budget: --token-budget arg → RECALL_TOKEN_BUDGET env → default.
+
+    Returns 0 for unlimited (0 or negative disables budget enforcement).
+    """
+    if arg_value is not None:
+        return arg_value
+    env_val = os.environ.get("RECALL_TOKEN_BUDGET", "").strip()
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    return DEFAULT_TOKEN_BUDGET
+
+
+def _apply_token_budget(
+    blocks: list[str],
+    slugs: list[str],
+    token_budget: int,
+) -> tuple[list[str], list[str], int]:
+    """Truncate blocks to the token budget (highest-salience first).
+
+    Walks blocks in order (caller must pass them salience-ordered, highest
+    first). Stops when adding the next block would exceed `token_budget`.
+    Returns (kept_blocks, kept_slugs, omitted_count).
+
+    If token_budget <= 0, returns all blocks unchanged (0 = unlimited).
+    """
+    if token_budget <= 0 or not blocks:
+        return blocks, slugs, 0
+    kept_blocks: list[str] = []
+    kept_slugs: list[str] = []
+    tokens_used = 0
+    for block, slug in zip(blocks, slugs):
+        est = _estimate_tokens(block)
+        if tokens_used + est > token_budget:
+            break
+        kept_blocks.append(block)
+        kept_slugs.append(slug)
+        tokens_used += est
+    omitted = len(blocks) - len(kept_blocks)
+    return kept_blocks, kept_slugs, omitted
 
 
 def _resolve_vault_path(arg_vault_path: str | None) -> Path | None:
@@ -166,6 +224,7 @@ def session_start(
     *,
     vault: Path | None,
     budget_ms: int = SESSION_START_BUDGET_MS,
+    token_budget: int = DEFAULT_TOKEN_BUDGET,
     stdout=sys.stdout,
     stderr=sys.stderr,
 ) -> int:
@@ -244,8 +303,14 @@ def session_start(
         blocks.append(_format_entry_for_injection(slug, fm, body))
         loaded_slugs.append(slug)
 
+    # Apply token budget: always-load entries are sorted alphabetically
+    # (deterministic, no per-query salience). Truncate tail if budget exceeded.
+    blocks, loaded_slugs, token_budget_omitted = _apply_token_budget(
+        blocks, loaded_slugs, token_budget
+    )
+
     # Output assembly. Header gives the agent a clear "this is MemoryVault content" marker.
-    if blocks:
+    if blocks or token_budget_omitted > 0:
         print("# MemoryVault — always-load entries", file=stdout)
         print("", file=stdout)
         print(
@@ -258,6 +323,15 @@ def session_start(
             if i > 0:
                 print("\n---\n", file=stdout)
             print(block, file=stdout)
+        if token_budget_omitted > 0:
+            if blocks:
+                print("\n---\n", file=stdout)
+            print(
+                f"> [!NOTE] recall truncated: {token_budget_omitted} always-load "
+                f"entries omitted to stay within token budget "
+                f"(budget={token_budget:,} tokens estimated)",
+                file=stdout,
+            )
 
     # Transparency line on stderr (shown in hook logs, not agent context).
     slug_list = ", ".join(loaded_slugs) if loaded_slugs else "(none)"
@@ -268,7 +342,12 @@ def session_start(
     if overrun:
         transparency += (
             f" (WARNING: {budget_ms}ms time budget exceeded; partial results — "
-            f"{len(candidates) - len(loaded_slugs)} entries skipped)"
+            f"{len(candidates) - len(loaded_slugs) - token_budget_omitted} entries skipped)"
+        )
+    if token_budget_omitted > 0:
+        transparency += (
+            f" (token budget: {token_budget_omitted} entries omitted; "
+            f"budget={token_budget:,})"
         )
     print(transparency, file=stderr)
     return 0
@@ -711,6 +790,7 @@ def prompt_submit(
     prompt: str | None,
     budget_ms: int = PROMPT_SUBMIT_BUDGET_MS,
     k: int = DEFAULT_K,
+    token_budget: int = DEFAULT_TOKEN_BUDGET,
     include_inbox: bool = False,
     mode: str | None = None,
     stdout=sys.stdout,
@@ -774,31 +854,52 @@ def prompt_submit(
             )
             return 0
 
-    # Output assembly: only print stdout when we have hits.
-    loaded_slugs: list[str] = []
-    if results:
+    # Build formatted blocks from results (reading entry content).
+    # Results are already salience-ordered (combined-score desc) from query().
+    raw_blocks: list[str] = []
+    raw_slugs: list[str] = []
+    for result in results:
+        md_path = vault / result["path"]
+        try:
+            content = md_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        fm, body = _parse_frontmatter(content)
+        raw_blocks.append(_format_recall_result(result, body, fm))
+        raw_slugs.append(result["slug"])
+
+    # Apply token budget: results are highest-salience first → truncation
+    # drops the least-relevant tail entries, never the top hits.
+    blocks, loaded_slugs, token_budget_omitted = _apply_token_budget(
+        raw_blocks, raw_slugs, token_budget
+    )
+
+    # Output assembly: only print stdout when we have hits or a truncation notice.
+    if blocks or token_budget_omitted > 0:
         print(
             "# MemoryVault — recall hits for your prompt",
             file=stdout,
         )
         print("", file=stdout)
         print(
-            f"The following entries match your prompt (top {len(results)} by "
+            f"The following entries match your prompt (top {len(blocks)} by "
             f"semantic+keyword merge; deduped against always-load set).",
             file=stdout,
         )
         print("", file=stdout)
-        for i, result in enumerate(results):
-            md_path = vault / result["path"]
-            try:
-                content = md_path.read_text(encoding="utf-8")
-            except (OSError, UnicodeDecodeError):
-                continue
-            fm, body = _parse_frontmatter(content)
+        for i, block in enumerate(blocks):
             if i > 0:
                 print("\n---\n", file=stdout)
-            print(_format_recall_result(result, body, fm), file=stdout)
-            loaded_slugs.append(result["slug"])
+            print(block, file=stdout)
+        if token_budget_omitted > 0:
+            if blocks:
+                print("\n---\n", file=stdout)
+            print(
+                f"> [!NOTE] recall truncated: {token_budget_omitted} entries omitted "
+                f"to stay within token budget "
+                f"(budget={token_budget:,} tokens estimated)",
+                file=stdout,
+            )
 
     overrun = (budget_ms <= 0) or (time.monotonic() >= deadline)
     slug_list = ", ".join(loaded_slugs) if loaded_slugs else "(none)"
@@ -809,6 +910,11 @@ def prompt_submit(
     if overrun:
         transparency += (
             f" (WARNING: {budget_ms}ms time budget exceeded; results may be partial)"
+        )
+    if token_budget_omitted > 0:
+        transparency += (
+            f" (token budget: {token_budget_omitted} entries omitted; "
+            f"budget={token_budget:,})"
         )
     print(transparency, file=stderr)
     return 0
@@ -841,6 +947,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         default=SESSION_START_BUDGET_MS,
         help=f"time budget in milliseconds (default: {SESSION_START_BUDGET_MS})",
     )
+    ss.add_argument(
+        "--token-budget",
+        type=int,
+        default=None,
+        help=(
+            f"per-recall token budget (default: {DEFAULT_TOKEN_BUDGET}; "
+            "0 = unlimited). Also read from RECALL_TOKEN_BUDGET env."
+        ),
+    )
 
     ps = sub.add_parser(
         "prompt-submit",
@@ -855,6 +970,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         type=int,
         default=PROMPT_SUBMIT_BUDGET_MS,
         help=f"time budget in milliseconds (default: {PROMPT_SUBMIT_BUDGET_MS})",
+    )
+    ps.add_argument(
+        "--token-budget",
+        type=int,
+        default=None,
+        help=(
+            f"per-recall token budget (default: {DEFAULT_TOKEN_BUDGET}; "
+            "0 = unlimited). Also read from RECALL_TOKEN_BUDGET env."
+        ),
     )
 
     q = sub.add_parser(
@@ -882,10 +1006,19 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv if argv is not None else sys.argv[1:])
     vault = _resolve_vault_path(args.vault_path)
     if args.cmd == "session-start":
-        return session_start(vault=vault, budget_ms=args.budget_ms)
+        return session_start(
+            vault=vault,
+            budget_ms=args.budget_ms,
+            token_budget=_resolve_token_budget(args.token_budget),
+        )
     if args.cmd == "prompt-submit":
         prompt = _read_prompt_from_stdin()
-        return prompt_submit(vault=vault, prompt=prompt, budget_ms=args.budget_ms)
+        return prompt_submit(
+            vault=vault,
+            prompt=prompt,
+            budget_ms=args.budget_ms,
+            token_budget=_resolve_token_budget(args.token_budget),
+        )
     if args.cmd == "query":
         if vault is None:
             print(
