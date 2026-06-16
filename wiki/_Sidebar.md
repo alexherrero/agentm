@@ -30,6 +30,7 @@
 - [Queue status lite](Queue-Status-Lite)
 - [Auto-orchestration config](Auto-Orchestration-Config)
 - [Capability resolver](Capability-Resolver)
+- [Persona tier schema](persona-tier-schema)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 ### 🏛️ [Architecture](Architecture)

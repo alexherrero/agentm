@@ -35,6 +35,8 @@ jobs:
       - name: Run check-no-pii.sh
         shell: bash
         run: bash scripts/check-no-pii.sh --all
+      - name: check-personas (requires ⊆ substrate + no-always-load)
+        run: python scripts/check-personas.py
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where

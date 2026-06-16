@@ -54,6 +54,7 @@ gate "check-no-auto-worktree (no agentm auto-spawn)" bash scripts/check-no-auto-
 gate "check-process-seam-import-direction (memory never imports the process)" bash scripts/check-process-seam-import-direction.sh
 gate "check-storage-seam-no-path-leak (no Path crosses the seam)" "$PY" scripts/check-storage-seam-no-path-leak.py
 gate "check-capability-resolver-one-way (resolver never imports plugin code)" "$PY" scripts/check-capability-resolver-one-way.py
+gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/check-personas.py
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
 gate "verify-v4 (push-surface integration)"    bash scripts/verify-v4.sh

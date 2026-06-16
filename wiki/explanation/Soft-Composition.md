@@ -31,8 +31,15 @@ The caller never names the providing plugin — it names the *capability*. "git-
 
 V5-9 (MCP negotiation) will sit on top of this vocabulary, not replace it. The resolver is the read-only, substrate-level half; MCP will add the wire half. The two are designed to be composable.
 
+## Personas and `enhances:`
+
+> [!NOTE]
+> **Status: implemented (V5-12)** — The `kind: persona` primitive reuses `enhances:` for its optional composition. A persona lists capabilities it can exploit in `enhances:`, subject to the same soft-dep semantics described above: unmet entries are not errors, the persona falls back to standalone behavior. The `check-personas` gate does **not** validate `enhances:` entries — soft deps may name any capability (confirmed in [`scripts/check-personas.py`](../../scripts/check-personas.py), which only asserts `requires ⊆ substrate-native` and no-always-load). See [persona-tier-schema reference](persona-tier-schema).
+
 ## Related
 
 - [Capability resolver reference](../reference/Capability-Resolver) — the API.
+- [Persona tier schema](persona-tier-schema) — the `kind: persona` manifest fields and `check-personas` gate (V5-12).
 - [ADR 0015 — Capability discovery](../decisions/0015-capability-discovery) — the design decisions.
+- [ADR 0016 — Persona tier](../decisions/0016-persona-tier) — design decisions for the persona primitive; DC-3 covers `enhances:` reuse.
 - [ADR 0006 — crickets split](../decisions/0006-crickets-split) — the C3 principle (substrate beneath, not plugin host).
