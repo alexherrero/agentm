@@ -46,6 +46,9 @@ For contributors running the harness:
 - [CI gates](CI-Gates) — what each CI workflow proves and the script behind it.
 - [Completed features](Completed-Features) — the reverse-chronological log of shipped work.
 
+> [!NOTE]
+> **Latest release — [v5.2.0](https://github.com/alexherrero/agentm/releases/tag/v5.2.0) (2026-06-16):** V5-8 capability-discovery resolver (`scripts/capability_resolver.py` + `scripts/capability_version_match.py` + `agentm capability` CLI shim; [ADR 0015](0015-capability-discovery)) and V5-12 persona tier (`personas/rememberer.md` + `scripts/check-personas.py` + `check-personas` CI gate; [ADR 0016](0016-persona-tier)).
+
 → Full field-level detail lives under **Reference** in the sidebar.
 
 ## 🏛️ How it's built

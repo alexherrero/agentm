@@ -8,8 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
-| 2026-06-15 | V5-8 Task 2 — version-range matching (in-progress, worktree `v5-8-capability-discovery`) | `scripts/capability_version_match.py` — stdlib `satisfies()` for single semver-range checks; wired into the resolver's `"version-mismatch"` path. | 40 unit tests (+ 32 Task 1 tests still green); check-all.sh 18/18 green. No release tag yet — Task 2 of a multi-task plan. |
-| 2026-06-15 | V5-8 Task 1 — capability-discovery registry + resolver (in-progress, worktree `v5-8-capability-discovery`) | `scripts/capability_resolver.py` — plugin-capability registry + resolver (the runtime half of crickets' `enhances:` soft-composition). | 1 module + 32 unit tests; check-all.sh 18/18 green. No release tag yet — Task 1 of a multi-task plan. |
+| 2026-06-16 | [v5.2.0](https://github.com/alexherrero/agentm/releases/tag/v5.2.0) — V5-8 capability-discovery resolver + V5-12 persona tier | **V5-8:** `scripts/capability_resolver.py` + `scripts/capability_version_match.py` + `agentm capability` CLI shim — the `enhances:` runtime ([ADR 0015](0015-capability-discovery)). **V5-12:** `personas/rememberer.md` + `scripts/check-personas.py` + `check-personas` CI gate — the `kind: persona` third tier ([ADR 0016](0016-persona-tier)). | 6 commits (`v5.1.0..v5.2.0`); 72 unit tests (32 resolver + 40 version-match); `check-capability-resolver-one-way` + `check-personas` gates green; solo harness MINOR, no crickets pairing |
 | 2026-06-13 | [v5.0.1](https://github.com/alexherrero/agentm/releases/tag/v5.0.1) — V5-1 follow-on: non-UTF-8 config readers honor their contract (harness-only PATCH) | **Correctness follow-on to the V5-1 storage seam.** The four config readers (`backend_selection.py::_configured_backend`, `harness_memory.py::_read_config_vault_path` + `_read_config_state_mode`, `agentm_config.py::_read_config`) caught `(json.JSONDecodeError, OSError)` but not `UnicodeDecodeError` — a `ValueError` subclass — so a non-UTF-8 config (realistic trigger: a Windows UTF-16/BOM "Save As") leaked an uncaught decode error past each reader's documented contract: the fail-loud resolver crashed instead of raising `StorageSelectionError`, and the three graceful readers crashed instead of returning `None`. All four now also catch `UnicodeDecodeError`; five regression tests pin the contract (incl. the `doctor` preview reporting `[FAIL]` not crashing). Found by an adversarial review of the V5-1 part-5 selection code. | 2 commits (`v5.0.0..v5.0.1`: the fix `50cde80` + this release commit); solo harness PATCH, no crickets pairing; no new ADR — correctness fix within the [ADR 0013](0013-storage-seam-fail-loud-selection) fail-loud contract |
 | 2026-06-13 | [v5.0.0](https://github.com/alexherrero/agentm/releases/tag/v5.0.0) — Agent M V5: the memory↔storage seam + the dev-loop unbundling (MAJOR) | **The storage-agnostic memory OS arrives, and the vendored dev loop leaves.** Five roadmap arcs land together. **V5-1 — the memory↔storage seam** (the headline): a verb interface (`resolve`/`read`/`write`/`list`/`exists`/`info`/`mkdir`) handing back an opaque `Locator` (never a `Path`, AST-gate-enforced); a named-backend registry (resolve-as-absent); a `device-local` plain-markdown backend (`~/.agentm/memory/`); a backend-agnostic conformance suite; the existing GDrive vault wrapped behind the seam (whole-file conflict-strategy *name*, never-orphan invariant); and **selection + fail-loud** — a `storage.backend` config key + resolver (fresh→device-local; `vault_path`→vault), a `StorageSelectionError` that refuses an unregistered/misconfigured backend rather than silently demoting (incl. corrupt-config hardening), and a `doctor` storage preview byte-identical to the guard. **V5-0 — vault-write protocol**: `vault_lock` mutex + content-hash CAS + `atomic_write` routing + a four-marker-family conflict-janitor (incl. DriveFS `lost_and_found`). **V5-4 — process seam**: a read-only memory↔process client seam + a one-way import-direction gate. **V5-10 — named plans**: a named-plan resolver + binding (loud-error guard), `queue_status_lite` read-only multi-plan dashboard, named-plan-aware session-start hooks + `doctor`, a naming gate, and a `resolve-active-plan` CLI bridge. **The 2 BREAKING changes**: docs taxonomy converged to seven sections; `migrate-to-diataxis` + the dev-loop primitives (phase commands + review sub-agents) + the vendored `documenter`/`diataxis-author` copies were **retired** from agentm — now provided by crickets plugins with graceful-skip. Two new seam gates (`check-storage-seam-no-path-leak`, `check-process-seam-import-direction`). | 76 commits (`v4.15.0..v5.0.0`); new [ADR 0013](0013-storage-seam-fail-loud-selection) (storage-seam fail-loud selection) joins [ADR 0011](0011-v5-unbundling-dev-loop) (V5 unbundling) + [ADR 0012](0012-vault-write-protocol) (vault-write protocol) shipped earlier in the wave; the two BREAKING `refactor(harness)!:` commits (`5e85b6b` retire migrate-to-diataxis; `3d2b328` slim the dev-loop) drove the MAJOR bump; per-`/work` documenter passes flipped each arc's pages `pending → implemented` during the wave — this release sweep adds the reconciliation entry + sidebar nav + the storage-seam ADR. **`Named-Plans` stays `pending`** on a single remaining dependency (the `.harness/active-plan` marker *writer*, a worktree-spawn helper not in this range) — see its page |
 | 2026-05-25 | [v3.1.0](https://github.com/alexherrero/agentm/releases/tag/v3.1.0) — Repo rename `agentic-harness` → `agentm` (paired with crickets v1.1.0) | **Repo rename**: GitHub repo for this project is now `alexherrero/agentm` (was `alexherrero/agentic-harness`); local sibling-clone path convention changes to `~/Antigravity/agentm/`. Brand-name (`Agent M`) was always the operator-facing label; rename brings URL slug + clone path in line with the brand. Sibling repo also renamed: `alexherrero/agent-toolkit` → `alexherrero/crickets`. All cross-references across both repos swept (~595 occurrences across ~112 files in agentm; ~642 occurrences across ~142 files in crickets; vault entries also swept ~43 files/157 occurrences). GitHub installs HTTP redirects from old URLs to new automatically; existing clones/links keep working. **No behavior changes** — pure rename + cross-reference sweep; no API surface or installer behavior changes. | 1 commit (`v3.0.1..v3.1.0`); paired with [crickets v1.1.0](https://github.com/alexherrero/crickets/releases/tag/v1.1.0) which does the toolkit-side equivalent sweep; **9th consecutive paired-release pair**; closes plan #15 task 11 (the final closing task of the README refresh plan); operator-local `~/.claude/CLAUDE.md` imports + sibling `dev-setup` repo + `alexherrero/alexherrero` profile README all updated for cross-repo consistency |
@@ -31,61 +30,40 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentm/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentm/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
 
-## 2026-06-15 — V5-8 Task 2: version-range matching (in-progress)
+## 2026-06-16 — v5.2.0: capability-discovery resolver + persona tier
 
-**Branch:** `v5-8-capability-discovery` (worktree). No release tag yet — Task 2 of a multi-task plan; release will pair with the full V5-8 arc.
-
-### What shipped
-
-`scripts/capability_version_match.py` — stdlib-only single-range semver checker. Public API: `satisfies(installed_version: str | None, range_str: str) -> bool`. Wired into `capability_resolver.py` so that passing `version=">= 1.2"` to `capability_available` or `capability_resolve` now evaluates the constraint rather than treating any installed version as satisfying.
-
-**Supported operators:** `>=`, `>`, `<=`, `<`, `==`, `!=`, `~=` (compatible release per PEP 440). `~= X.Y` expands to `>= X.Y AND < (X+1)`. Versions are zero-padded before component-wise integer comparison.
-
-**Graceful degrade (LC-4):** `satisfies()` returns `False` — never raises — for `None` installed version, malformed version strings, or compound specifiers (`a, b` form). Compound specifiers are rejected whole; the module is a single-check, not a solver (LC-3).
-
-**Test coverage (`scripts/test_capability_version_match.py`):** 40 tests — all operators, version padding, compatible-release bounds, graceful-degrade paths (malformed/None inputs), no-solver contract (compound specifiers rejected), and integration with `capability_resolver.capability_resolve`. Task 1's 32 tests remain green; check-all.sh 18/18 gates green.
-
-### Design constraints honored
-
-LC-3 (single range check, not a solver — compound specifiers rejected at the boundary), LC-4 (unavailable is the safe default; `satisfies()` never raises on malformed input).
-
-### Related
-
-- [Capability resolver](Capability-Resolver) — the reference page; the [Version matching](Capability-Resolver#version-matching) section documents the full operator table and compatible-release semantics.
-- [Auto-orchestration](Auto-Orchestration) — the downstream consumer that uses `capability_available` to gate `enhances:`-declared skill dispatch.
-
-## 2026-06-15 — V5-8 Task 1: capability-discovery registry + resolver (in-progress)
-
-**Branch:** `v5-8-capability-discovery` (worktree). No release tag yet — Task 1 of a multi-task plan; release will pair with the full V5-8 arc. Module is in `scripts/capability_resolver.py`.
+**Commit range:** `v5.1.0..v5.2.0` (6 commits on `main`). Release notes: [v5.2.0](https://github.com/alexherrero/agentm/releases/tag/v5.2.0). Solo harness MINOR — no crickets pairing.
 
 ### What shipped
 
-`scripts/capability_resolver.py` — the plugin-capability registry + resolver, the runtime half of crickets' `enhances:` soft-composition mechanism. It aggregates installed plugins' declared `capabilities:` keys into a per-host registry and answers whether a given capability is available, optionally at a version range.
+Two roadmap arcs landed together:
 
-**Public API (the module contract; the `agentm capability` CLI shim wires it in Task 3):**
+**V5-8 — the `enhances:` runtime** ([ADR 0015](0015-capability-discovery)). The capability-discovery resolver is the runtime half of crickets' `enhances:` soft-composition — it answers "is this capability available on this host?" without importing plugin code.
 
-- `capability_available(name, *, version=None) → bool` — the boolean surface; True iff a provider is installed and the version constraint (if any) is satisfied. Never raises (LC-4).
-- `capability_resolve(name) → dict` — richer form returning `{available, provider, version, reason}`. Reason codes: `"available"` / `"no-provider"` / `"provider-not-installed"` / `"version-mismatch"`.
-- `build_registry(root=None) → dict[str, ProviderEntry]` — low-level builder; `root` overrides home (used by tests with temp dirs).
+- `scripts/capability_resolver.py` — plugin-capability registry + resolver. Aggregates installed plugins' declared `capabilities:` keys from two host state directories (Claude Code's `installed_plugins.json` / marketplace manifests; Antigravity's `import_manifest.json` / per-plugin `capabilities.json` sidecars). Public API: `capability_available(name, *, version=None) → bool` and `capability_resolve(name) → {available, provider, version, reason}`. Claude Code wins the merge when both hosts declare the same capability. 32 unit tests; all four reason codes (`available` / `no-provider` / `provider-not-installed` / `version-mismatch`).
+- `scripts/capability_version_match.py` — stdlib-only single-range semver checker. `satisfies(installed_version, range_str) → bool`. Supports `>=`, `>`, `<=`, `<`, `==`, `!=`, `~=` (PEP 440 compatible-release). Gracefully returns `False` — never raises — for `None` versions, malformed strings, or compound specifiers (LC-3: single-check, not a solver). 40 unit tests.
+- `scripts/agentm-capability` CLI shim (Task 3) — wires the resolver for shell callers; exit 0 (available) / 1 (unavailable) / 2 (usage error).
+- CI gate: `check-capability-resolver-one-way` — enforces the one-way read contract (resolver never imports plugin code).
 
-**Host read paths (confirmed by spike M7):**
+**V5-12 — the persona tier** ([ADR 0016](0016-persona-tier)). A third classification above the substrate/plugin binary: personas are curated `kind: persona` markdown manifests that describe a sustained mode of engagement with the agent. They live in `personas/` in the repo root, have `requires:` substrate-native deps, and may optionally list `enhances:` capabilities for soft-composition.
 
-- Claude Code: `~/.claude/plugins/known_marketplaces.json` → `<installLocation>/.claude-plugin/marketplace.json` for capabilities, cross-referenced against `~/.claude/plugins/installed_plugins.json` for the enabled set.
-- Antigravity: `~/.gemini/config/import_manifest.json` for the enabled set, `~/.gemini/config/plugins/<name>/capabilities.json` sidecar for each plugin's declared capabilities.
+- `personas/rememberer.md` — the first persona manifest; demonstrates the schema and `requires:` / `enhances:` fields.
+- `scripts/check-personas.py` — the `check-personas` CI gate; asserts `requires ⊆ substrate-native` (no hard-dep on crickets capabilities) and no `always_load: true` (personas are opt-in, never injected automatically).
+- `scripts/test_check_personas.py` — unit tests for the gate.
+- CI wired on Linux, macOS, and Windows.
 
-Both paths are optional; missing or corrupt files yield an empty partial registry. Claude Code entries win over Antigravity when both declare the same capability.
+### Why this shape
 
-**Test coverage (`scripts/test_capability_resolver.py`):** 32 tests — Claude Code read path, Antigravity read path, merge semantics (CC wins), all four reason codes, `capability_available` boolean surface, CLI `_main` exit codes (0/1/2), and all graceful-degrade paths (missing files, corrupt JSON, empty registries). check-all.sh 18/18 gates green.
-
-### Design constraints honored
-
-LC-2 (capability-keyed, not provider-keyed), LC-3 (single range check, not a solver — version range matching is a Task 2 stub in this task), LC-4 (unavailable is the safe default; never raises), LC-6 (no agentm substrate → all capabilities resolve to unavailable). Stdlib-only; one-directional (reads manifests, never imports plugin code).
+The two arcs are complementary: V5-8 delivers the runtime that `enhances:` promises require; V5-12 is the first consumer of the persona-primitive the roadmap reserved. Both are stdlib-only, both are gate-enforced, and both ship without crickets pairing because the contracts they fulfill are harness-substrate concerns — the crickets `enhances:` orchestration consumes V5-8 at the toolkit surface.
 
 ### Related
 
-- [Capability resolver](Capability-Resolver) — the reference page for the public API.
-- [Auto-orchestration](Auto-Orchestration) — the runtime that will consume `capability_available` to gate `enhances:`-declared skill dispatch.
-- [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop) — establishes plugins as the soft-composition surface.
+- [Capability resolver](Capability-Resolver) — full reference page for the V5-8 public API, reason codes, host read paths, merge semantics, and version-matching operator table.
+- [Persona tier schema](persona-tier-schema) — the `kind: persona` manifest fields + `check-personas` gate reference (V5-12).
+- [Soft-Composition](Soft-Composition) — explanation of the `enhances:` mechanism and how V5-12 personas compose with it.
+- [ADR 0015 — Capability discovery](0015-capability-discovery) · [ADR 0016 — Persona tier](0016-persona-tier)
+- [CI gates](CI-Gates) — `check-capability-resolver-one-way` + `check-personas`.
+- [v5.2.0](https://github.com/alexherrero/agentm/releases/tag/v5.2.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
 
 ## 2026-06-13 — v5.0.1: V5-1 follow-on — non-UTF-8 config readers honor their contract (PATCH)
 
