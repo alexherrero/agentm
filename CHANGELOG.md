@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.2.0] — 2026-06-16 — V5-8 capability-discovery resolver + V5-12 persona tier
+
+**MINOR.** Two architectural additions land together. **V5-8** ships the `enhances:` capability-discovery resolver — the substrate-level soft-composition runtime that lets any agentm primitive declare optional capabilities it wants without hard-depending on them, degrading cleanly when absent. **V5-12** ships the persona tier, the third architectural classification ADR 0011's substrate/plugin binary had no slot for: a standing concern that composes capabilities it does not own, anchored on the neutral substrate, with hard deps (`requires:`) restricted to substrate-native primitives only. Both are additive — zero behavior change for existing installs; both are enforced by static gates (`check-capability-resolver-one-way` for V5-8, `check-personas` for V5-12). Gates: 20/20, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-8 — capability-discovery resolver: the `enhances:` runtime (ADR 0015, `e7b9139`).** `scripts/capability_resolver.py` implements the soft-composition runtime: a capability-keyed, graceful-degrade resolver that answers "is capability X present on this host?" by reading installed-plugin manifests as data (never importing plugin code). A primitive declares `enhances: [capability-name]` in its manifest; the resolver answers present/absent at load time and the caller degrades cleanly when absent. `enhances ∩ requires = ∅` is a hard invariant (no capability appears in both). `scripts/capability_version_match.py` implements the single-range version check used by the resolver. The `check-capability-resolver-one-way` gate asserts the resolver never imports plugin code — reads manifests as JSON only (ADR 0015 DC-5). Paired with the `agentm-capability` shell helper for host-adapter probing.
+- **V5-12 — persona tier: `kind: persona` primitive, `check-personas` gate, rememberer (ADR 0016, `1234663`).** Names the missing third architectural tier — a *persona* is a standing concern that composes capabilities it does not own (arbitrating among them when it composes ≥2), is anchored on the neutral substrate, and whose hard deps (`requires:`) are restricted to substrate-native primitives only. Zero new runtime: the tier maps entirely onto shipped infra (positive-match `kind:` dispatch both hosts already tolerate, the V5-8 `enhances:` resolver for soft composition, the on-demand load path). Three deliverables: (1) `personas/` directory as the persona home; (2) `personas/rememberer.md` — the degenerate first persona (`requires: []`, `enhances: []`), naming the memory engine as the standing concern agentm already shipped; (3) `scripts/check-personas.py` — static gate asserting `requires ⊆ substrate-native` + no-always-load for every file under `personas/`, wired into `check-all.sh` and all three CI workflows. 11 unit tests including both required reject cases: (a) non-substrate `requires:` entry, (b) `always_load: true`. The chief-of-staff (the first *real* persona, V5-11) is gated behind this substrate and ships in a separate plan.
+
+### Internal
+
+- **ADR 0015 — Capability discovery: the `enhances:` runtime.** Decision record for the soft-composition vocabulary and the one-way resolver seam (`wiki/decisions/0015-capability-discovery.md`, `e7b9139`).
+- **ADR 0016 — The persona tier: a third classification above the substrate/plugin binary.** Decision record for the persona tier, the inverted-dependency-direction test, the `check-personas` gate contract, and the honest residual (null hypothesis litigated) (`wiki/decisions/0016-persona-tier.md`, `1c42283` through `6354cdb`).
+- **Wiki: `persona-tier-schema` reference page + `Soft-Composition` cross-reference.** `wiki/reference/persona-tier-schema.md` documents the `kind: persona` manifest fields and `check-personas` gate contract (pending → implemented). `wiki/explanation/Soft-Composition.md` adds the persona + `enhances:` note. `wiki/_Sidebar.md` wired (`1234663`).
+
+### Cross-references
+
+- [agentm v5.1.0](https://github.com/alexherrero/agentm/releases/tag/v5.1.0) — the prior release (V5-2 kernel-thinning + #46 token-efficiency).
+- ADR [0015 (capability-discovery resolver)](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0015-capability-discovery.md).
+- ADR [0016 (persona tier)](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0016-persona-tier.md).
+
 ## [v5.1.0] — 2026-06-14 — V5-2 parallel-run + token-efficiency: recall budget and heat-based floor curation
 
 **MINOR.** Two threads land together. The **V5-2 kernel-thinning parallel-run** continues extracting Obsidian/Drive machinery from the storage-agnostic engine into crickets plugins: the GDrive conflict sweep moved to the `obsidian-vault` plugin (task 2), and backend-selection now discovers and fails loud on a misconfigured `obsidian-vault` backend (task 3). The **#46 token-efficiency batch (Hardening I)** lands two of its three floor-shrink targets: a configurable per-recall token budget (Part A task 3) that keeps recall injection ≤ N tokens highest-salience-first, and a heat-based always-load curation system (Part G) that demotes sustained-cold entries and promotes sustained-hot ones — principled floor shrinkage instead of silent alphabetic truncation. Gates: 18/18, CI green across Linux/Mac/Windows.
