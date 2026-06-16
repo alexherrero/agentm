@@ -4,6 +4,7 @@
 > [!NOTE]
 > **Status:** accepted
 > **Date:** 2026-06-16
+> **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16, sequenced ahead of V5-11 as its substrate (V5-11's chief-of-staff is this tier's first real persona).
 
 ## Context
 

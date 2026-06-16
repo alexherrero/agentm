@@ -4,6 +4,7 @@
 > **Status:** final (locked) — 2026-06-16. Design-only pass; build pickup deferred to a build session.
 > **Position in arc:** refinement of [`memory-os-architecture.md`](memory-os-architecture) (the V5 "unbundling" HLD) and [ADR 0011](../decisions/0011-v5-unbundling-dev-loop). Pairs with [ADR 0016](../decisions/0016-persona-tier), which records the load-bearing calls.
 > **Method:** the locked 10-section design template (the V5-11 design method).
+> **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16; sequenced after V5-10, ahead of V5-11 as its substrate (V5-11's chief-of-staff is this tier's first *real* persona = build-part 4).
 
 ## Context
 
@@ -154,3 +155,4 @@ Fully reversible. The tier is additive: removing `personas/`, the `kind: persona
 |---|---|---|
 | 2026-06-16 | Initial authoring from the personas-vs-capabilities pre-audit; §10 re-checks cleared against shipped infra; paired with ADR 0016. | final |
 | 2026-06-16 | Re-verified against the authoritative pre-audit findings (read in full): corrected the crickets "persona"→"role" rename direction (agentm keeps "persona"; crickets' looser usage renames); folded in arbitration as the clause-2 discriminator, the two killed axes (remembers / crosses-plugins), owns-no-engine, the `check-personas` always-load guard (#46), the three-reason null + honest residual, the opinionation-migration line, and the agent-def-shape framing. | final |
+| 2026-06-16 | Roadmap placement resolved (operator-approved): slotted as **V5-12** in the agentm V5 kernel (ROADMAP-MASTER bucket ⑤), sequenced after V5-10 and ahead of V5-11 as its substrate. | final |
