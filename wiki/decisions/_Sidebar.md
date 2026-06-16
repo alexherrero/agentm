@@ -21,3 +21,4 @@
 - [0013 — Memory↔storage seam: fail loud](0013-storage-seam-fail-loud-selection)
 - [0014 — Tier-2 gate: don't fork the loop](0014-tier-2-sdk-fork-gate)
 - [0015 — Capability discovery: `enhances:` runtime](0015-capability-discovery)
+- [0016 — The persona tier](0016-persona-tier)

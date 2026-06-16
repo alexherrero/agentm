@@ -20,6 +20,7 @@ The permanent agent-memory store and its six implementation parts.
 - [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going.
 - [Device-Wide Architecture](device-wide-architecture) — the device-wide design Agent M targets.
 - [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 memory-OS HLD.
+- [The persona tier](persona-tier) — the third classification above the substrate/plugin binary: a standing concern that composes capabilities it does not own (rememberer = degenerate persona; V5-11 chief-of-staff = first real persona). Refines ADR 0011 · pairs with ADR 0016.
 
 ## Documentation & tooling
 

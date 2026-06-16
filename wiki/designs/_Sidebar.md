@@ -14,6 +14,7 @@
 - [Agent Memory Evolution V1→V4](agent-memory-evolution)
 - [Device-Wide Architecture](device-wide-architecture)
 - [Memory-OS Architecture (V5)](memory-os-architecture)
+- [The persona tier](persona-tier)
 - [Seven-Section Wiki Convergence](seven-section-convergence)
 ### 💡 [Explanation](Explanation)
 ### 📐 [Decisions](Decisions)

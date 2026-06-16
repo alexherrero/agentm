@@ -82,6 +82,7 @@ The doc edits only stop the surviving docs from advertising deleted primitives a
 - [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow.md) — the workflow whose *primitives* this slim relocates to crickets; the workflow shape itself is unchanged, only its home.
 - [ADR 0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec.md) — the convention `migrate-to-diataxis` encoded, now enforced by crickets' `diataxis-author`.
 - [ADR 0006 — Split customizations into `crickets`](0006-crickets-split.md) — the precedent; this ADR revises its "two retained skills" load-bearing assumption.
+- [ADR 0016 — The persona tier](0016-persona-tier.md) — refines this ADR: the substrate/plugin binary did not name the third tier (the persona) that lives in agentm yet composes capabilities it does not own.
 - [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 design this slim opens (bucket ⑤); V5-6 is the deferred identity rewrite.
 - [Seven-Section Wiki Convergence](seven-section-convergence) — the prior docs-retirement wave (documenter / diataxis-author) this continues.
 - crickets [ADR 0013 — Bundles are native plugins](https://github.com/alexherrero/crickets/wiki/0013-bundles-native-plugins), [ADR 0015 — #36 partial-revision](https://github.com/alexherrero/crickets/wiki/0015-partial-revision-36), [ADR 0017 — Soft composition + three-way developer split](https://github.com/alexherrero/crickets/wiki/0017-enhances-soft-composition) — the toolkit-side decisions that made the dev loop a launched plugin suite.
