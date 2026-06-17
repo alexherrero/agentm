@@ -1,7 +1,7 @@
 # Persona tier — schema and gate reference
 
 > [!NOTE]
-> **Status: implemented** — shipped in V5-12 (tasks 1–3). Gate (`scripts/check-personas.py`) and first manifest (`personas/rememberer.md`) are live. CI wired on Linux, macOS, and Windows.
+> **Status: implemented** — V5-12 shipped the primitive (tasks 1–3): gate (`scripts/check-personas.py`), degenerate persona (`personas/rememberer.md`), CI on Linux/macOS/Windows. V5-11 shipped the first real composed persona (`personas/team-coordinator.md`): `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`.
 
 The `kind: persona` manifest primitive and the `check-personas` static gate.
 
@@ -44,6 +44,25 @@ description: >
   across sessions. Anchors on the neutral substrate; composes no external capabilities.
 ---
 ```
+
+### Example: the first real composed persona (`personas/team-coordinator.md`)
+
+Shipped in V5-11. Hard-requires `queue_status_lite` (agentm-native); soft-composes `developer-workflows` and `github-projects` via `enhances:`.
+
+```yaml
+---
+kind: persona
+name: team-coordinator
+requires: [queue_status_lite]
+enhances: [developer-workflows, github-projects]
+description: >
+  The standing concern for multi-worker program coordination: surfaces plan standup,
+  readiness, and merge order. Degrades gracefully when developer-workflows or
+  github-projects are absent.
+---
+```
+
+The `requires: [queue_status_lite]` entry passes `check-personas` because `scripts/queue_status_lite.py` is a substrate-native script (agentm-shipped). The `enhances:` entries are never validated by `check-personas` — unmet soft deps are not errors.
 
 ## `check-personas` gate
 

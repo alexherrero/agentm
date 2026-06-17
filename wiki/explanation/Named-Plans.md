@@ -25,6 +25,17 @@ Named plan files are **flat at the `_harness/` root** — not a per-plan subdire
 | `progress.md` (unnamed) | append-only | the singleton path — unchanged |
 | `progress-<name>.md` | append-only | the named-plan writer (crickets-side) |
 
+### Optional YAML frontmatter on plan files
+
+Plan files may carry a YAML frontmatter block (delimited by `---`) with two optional coordinator fields introduced in V5-11:
+
+| Field | Type | Purpose |
+|---|---|---|
+| `depends_on` | list[string] | Slugs of plans that must complete before this one is ready to start. Used by `scripts/readiness.py` for dependency-readiness checks and `scripts/merge_order.py` for topo-sort ordering. |
+| `touches` | list[string] | Glob patterns of files this plan modifies (e.g. `scripts/foo*.py`, `wiki/reference/*.md`). Used by `scripts/readiness.py` to detect safe-to-run-together overlap. Plans **without** `touches:` are loudly degraded by the readiness checker — never silently assumed safe to run concurrently. |
+
+Both fields are purely additive — absent fields mean "no declared deps" and "no declared file scope" respectively. A solo-session plan without frontmatter is unchanged by this convention.
+
 The replace-vs-append split is load-bearing. `PLAN-*` files are **replace-style** and go through the vault-write protocol's content-hash compare-and-swap, exactly like the unnamed `PLAN.md`. `progress-*` files are **append-only** — they are never CAS-replaced, because two workers appending to one progress file is naturally mergeable by Drive's append handling, whereas a replace-style write of a progress file would reintroduce the contention this whole design avoids. The append discipline for `progress-<name>.md` is enforced where the *writer* lives (crickets-side); this substrate slice locks the round-trip read contract and documents the append-contract so the writer cannot drift.
 
 ## Why this is a naming convention, not a dispatcher rewrite
