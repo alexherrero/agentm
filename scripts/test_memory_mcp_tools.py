@@ -377,6 +377,79 @@ class TestHelperUnits(unittest.TestCase):
 
 
 @unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
+class TestStdioShim(unittest.TestCase):
+    """Unit tests for memory_mcp_shim.py (the stdio→HTTP proxy for Claude Desktop)."""
+
+    def _run_shim(self, args, env_overrides=None, timeout=10):
+        """Run memory_mcp_shim.py as a subprocess; return (stdout, stderr, returncode)."""
+        import subprocess
+        shim_path = str(Path(__file__).parent / "memory_mcp_shim.py")
+        env = {k: v for k, v in os.environ.items() if k != "AGENTM_MCP_TOKEN"}
+        if env_overrides:
+            env.update(env_overrides)
+        proc = subprocess.run(
+            [sys.executable, shim_path] + list(args),
+            capture_output=True, text=True, timeout=timeout, env=env,
+        )
+        return proc.stdout, proc.stderr, proc.returncode
+
+    def test_shim_imports_cleanly(self):
+        """memory_mcp_shim can be imported without side effects on stdout."""
+        import subprocess
+        result = subprocess.run(
+            [
+                sys.executable, "-c",
+                "import sys; sys.path.insert(0, sys.argv[1]); "
+                "import memory_mcp_shim; print('OK')",
+                str(Path(__file__).parent),
+            ],
+            capture_output=True, text=True, timeout=10,
+            env={k: v for k, v in os.environ.items() if k != "AGENTM_MCP_TOKEN"},
+        )
+        self.assertEqual(result.returncode, 0, f"Import failed:\n{result.stderr}")
+        self.assertEqual(result.stdout.strip(), "OK",
+                         f"Unexpected stdout on import: {result.stdout!r}")
+
+    def test_print_configs_exits_zero(self):
+        """--print-configs exits 0 and writes to stdout."""
+        stdout, stderr, code = self._run_shim(["--print-configs"])
+        self.assertEqual(code, 0, f"Expected exit 0, got {code}:\n{stderr}")
+        self.assertTrue(stdout.strip(), "stdout should not be empty")
+
+    def test_print_configs_stdout_contains_agentm_memory(self):
+        """--print-configs output references the agentm-memory server key."""
+        stdout, _, code = self._run_shim(["--print-configs"])
+        self.assertEqual(code, 0)
+        self.assertIn("agentm-memory", stdout)
+
+    def test_print_configs_token_is_env_placeholder(self):
+        """--print-configs uses ${AGENTM_MCP_TOKEN} — no literal bearer token."""
+        stdout, _, code = self._run_shim(["--print-configs"])
+        self.assertEqual(code, 0)
+        # The env-var placeholder must appear (proves the pattern is used).
+        self.assertIn("AGENTM_MCP_TOKEN", stdout,
+                      "Config must reference AGENTM_MCP_TOKEN as the token placeholder")
+        # No literal bearer value should follow "Bearer " (only the ${...} form).
+        import re
+        bearer_literals = re.findall(r'Bearer (?!\$\{)[^\s"\\]+', stdout)
+        self.assertEqual(bearer_literals, [],
+                         f"Literal bearer token found in config output: {bearer_literals}")
+
+    def test_no_token_exits_nonzero(self):
+        """Running the shim without AGENTM_MCP_TOKEN (and no --no-auth) exits non-zero."""
+        stdout, stderr, code = self._run_shim([])
+        self.assertNotEqual(code, 0,
+                            "Expected non-zero exit when AGENTM_MCP_TOKEN is unset")
+        self.assertTrue(stderr.strip(), "stderr should contain the error explanation")
+
+    def test_stdout_clean_on_missing_token(self):
+        """No MCP protocol content leaks to stdout when shim exits due to missing token."""
+        stdout, _, _ = self._run_shim([])
+        self.assertEqual(stdout, "",
+                         f"stdout should be empty on early exit, got: {stdout!r}")
+
+
+@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
 class TestSecurityOriginValidation(unittest.TestCase):
     """Origin→403 validation: non-localhost Origin is blocked at HTTP level."""
 
