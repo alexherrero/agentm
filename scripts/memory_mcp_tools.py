@@ -201,6 +201,7 @@ def register_tools(mcp) -> None:
         context is accepted for API symmetry with future streaming use; it is
         not used in v1 dispatch.
         """
+        _require_vault()
         return harness_memory.phase_recall(
             phase=phase,
             project=project,

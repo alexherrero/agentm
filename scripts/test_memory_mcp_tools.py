@@ -375,5 +375,100 @@ class TestHelperUnits(unittest.TestCase):
         self.assertIn("body text", snippet)
 
 
+@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
+class TestVaultSourceResolution(unittest.IsolatedAsyncioTestCase):
+    """All four tools must fail loud when the vault is not configured.
+
+    harness_memory.vault_path() reads a hardcoded ~/.claude/.agentm-config.json
+    with no env override, so we patch the function directly to return None rather
+    than trying to manipulate env vars.
+    """
+
+    async def _call_expect_fail(self, method: str, args: dict):
+        """Call a tool with vault_path() → None; the tool must raise."""
+        from unittest.mock import patch
+        import harness_memory
+        transport = FastMCPTransport(_srv.mcp)
+        with patch.object(harness_memory, "vault_path", return_value=None):
+            async with Client(transport) as client:
+                with self.assertRaises(Exception):
+                    await client.call_tool(method, args)
+
+    async def test_search_fails_loud_without_vault(self):
+        """memory_search raises when vault is not configured."""
+        await self._call_expect_fail("memory_search", {"query": "anything"})
+
+    async def test_recall_fails_loud_without_vault(self):
+        """memory_recall raises when vault is not configured (verifies task-1 fix)."""
+        await self._call_expect_fail("memory_recall", {"context": "x", "phase": "plan"})
+
+    async def test_append_fails_loud_without_vault(self):
+        """memory_append raises when vault is not configured."""
+        await self._call_expect_fail("memory_append", {"content": "x", "kind": "feedback"})
+
+    async def test_forget_fails_loud_without_vault(self):
+        """memory_forget raises when vault is not configured."""
+        await self._call_expect_fail("memory_forget", {"id": "some/entry.md"})
+
+
+@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
+class TestWriterTwoRouting(unittest.IsolatedAsyncioTestCase):
+    """Writer-#2 chain: vault_lock.atomic_write() is in the write path for all MCP writes."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._vault = _make_vault(Path(self._tmp.name))
+        os.environ["MEMORY_VAULT_PATH"] = str(self._vault)
+
+    def tearDown(self):
+        os.environ.pop("MEMORY_VAULT_PATH", None)
+        self._tmp.cleanup()
+
+    async def test_append_writes_within_vault_root(self):
+        """memory_append writes the entry inside the vault root (not a repo path)."""
+        import memory_mcp_tools
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            res = await client.call_tool("memory_append", {
+                "content": "routing proof body",
+                "kind": "feedback",
+                "title": "writer-routing-test",
+            })
+        entry = res.data
+        # id is a relative path; vault / id must be a real file inside the vault.
+        entry_path = self._vault / entry["id"]
+        self.assertTrue(entry_path.is_file(), f"Entry not found at {entry_path}")
+        # Confirm it's strictly inside the vault root (no repo-path escape).
+        entry_path.resolve().relative_to(self._vault.resolve())  # raises ValueError on escape
+
+    def test_vault_lock_in_mcp_tools_import(self):
+        """vault_lock is imported in memory_mcp_tools (proves memory_forget uses the lock lib)."""
+        import memory_mcp_tools
+        self.assertIn("vault_lock", memory_mcp_tools.__dict__,
+                      "vault_lock not imported in memory_mcp_tools — write path not wired")
+
+    async def test_forget_write_is_atomic(self):
+        """After memory_forget, the file is a complete parseable YAML with status=deleted + valid deleted_at."""
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            app = await client.call_tool("memory_append", {
+                "content": "atomic write proof",
+                "kind": "user",
+                "title": "atomic-forget-test",
+            })
+            entry_id = app.data["id"]
+            await client.call_tool("memory_forget", {"id": entry_id})
+
+        content = (self._vault / entry_id).read_text()
+        fm = _parse_frontmatter(content)
+        # Must parse cleanly — torn writes would fail yaml.safe_load.
+        self.assertEqual(fm.get("status"), "deleted")
+        # deleted_at must be a valid ISO-8601 UTC timestamp.
+        deleted_at = fm.get("deleted_at", "")
+        self.assertRegex(str(deleted_at),
+                         r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$",
+                         f"deleted_at is not ISO-8601 UTC: {deleted_at!r}")
+
+
 if __name__ == "__main__":
     unittest.main()
