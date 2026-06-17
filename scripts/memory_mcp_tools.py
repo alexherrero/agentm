@@ -103,6 +103,19 @@ def _find_by_idem_tag(vault: Path, tag: str) -> Optional[dict]:
     return None
 
 
+_SAFE_SEGMENT_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+
+
+def _validate_path_segment(value: str, field: str) -> None:
+    """Raise ValueError if `value` is not safe to use as a filesystem path segment."""
+    if not value or not _SAFE_SEGMENT_RE.match(value):
+        raise ValueError(
+            f"Invalid {field!r} value {value!r}: must start with alphanumeric "
+            "and contain only alphanumeric, hyphen, or underscore characters. "
+            "Path separators and dots are not allowed."
+        )
+
+
 def _make_slug(text: str, max_len: int = 48) -> str:
     """Generate a kebab-case slug from `text`."""
     slug = text.lower()
@@ -226,6 +239,12 @@ def register_tools(mcp) -> None:
         """
         vault = _require_vault()
 
+        # Engine-side path-traversal validation.  MCP annotations are host hints,
+        # not enforcement — these checks are the real boundary.
+        _validate_path_segment(kind, "kind")
+        if project:
+            _validate_path_segment(project, "project")
+
         # Idempotency: check before writing.
         if idempotency_key:
             itag = _idem_tag(idempotency_key)
@@ -252,6 +271,14 @@ def register_tools(mcp) -> None:
             group=group,
             tags=actual_tags or None,
         )
+        # Defense-in-depth: confirm written path is strictly inside the vault.
+        try:
+            written.resolve().relative_to(vault.resolve())
+        except ValueError:
+            written.unlink(missing_ok=True)
+            raise ValueError(
+                f"save_entry wrote outside the vault root — rejected: {written}"
+            )
         return {
             "id": str(written.relative_to(vault)),
             "slug": slug,

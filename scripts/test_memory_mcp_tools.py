@@ -34,6 +34,7 @@ try:
         _idem_tag,
         _make_slug,
         _get_snippet,
+        _validate_path_segment,
     )
     import yaml
 
@@ -373,6 +374,213 @@ class TestHelperUnits(unittest.TestCase):
         snippet = _get_snippet(content, max_chars=200)
         self.assertNotIn("kind:", snippet)
         self.assertIn("body text", snippet)
+
+
+@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
+class TestSecurityOriginValidation(unittest.TestCase):
+    """Origin→403 validation: non-localhost Origin is blocked at HTTP level."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._vault = _make_vault(Path(self._tmp.name))
+        os.environ["MEMORY_VAULT_PATH"] = str(self._vault)
+
+    def tearDown(self):
+        os.environ.pop("MEMORY_VAULT_PATH", None)
+        self._tmp.cleanup()
+
+    def _make_client(self):
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            from starlette.testclient import TestClient
+        return TestClient(_srv.build_app(), raise_server_exceptions=False)
+
+    def _mcp_init_body(self):
+        import json
+        return json.dumps({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"},
+            },
+            "id": 1,
+        }).encode()
+
+    def test_bad_origin_blocked(self):
+        """A non-localhost Origin header returns 403 (DNS-rebinding defense)."""
+        client = self._make_client()
+        resp = client.post(
+            "/mcp",
+            headers={"Origin": "http://evil.example.com", "Content-Type": "application/json"},
+            content=self._mcp_init_body(),
+        )
+        self.assertEqual(resp.status_code, 403, f"Expected 403, got {resp.status_code}")
+
+    def test_localhost_origin_allowed(self):
+        """A localhost Origin header passes the Origin check (not 403)."""
+        client = self._make_client()
+        resp = client.post(
+            "/mcp",
+            headers={"Origin": "http://localhost:7821", "Content-Type": "application/json"},
+            content=self._mcp_init_body(),
+        )
+        self.assertNotEqual(resp.status_code, 403,
+                            f"localhost Origin should not be 403, got {resp.status_code}")
+
+    def test_loopback_ip_origin_allowed(self):
+        """A 127.0.0.1 Origin header passes the Origin check (not 403)."""
+        client = self._make_client()
+        resp = client.post(
+            "/mcp",
+            headers={"Origin": "http://127.0.0.1:7821", "Content-Type": "application/json"},
+            content=self._mcp_init_body(),
+        )
+        self.assertNotEqual(resp.status_code, 403,
+                            f"127.0.0.1 Origin should not be 403, got {resp.status_code}")
+
+    def test_no_origin_allowed(self):
+        """Requests without an Origin header pass the Origin check (MCP clients never send one)."""
+        client = self._make_client()
+        resp = client.post(
+            "/mcp",
+            headers={"Content-Type": "application/json"},
+            content=self._mcp_init_body(),
+        )
+        self.assertNotEqual(resp.status_code, 403,
+                            f"No-Origin request should not be 403, got {resp.status_code}")
+
+
+@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
+class TestSecurityBearerAuth(unittest.TestCase):
+    """Bearer token auth: wrong/missing token → 401; correct token → non-401/403."""
+
+    _TEST_TOKEN = "test-static-bearer-xyz-12345"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._vault = _make_vault(Path(self._tmp.name))
+        os.environ["MEMORY_VAULT_PATH"] = str(self._vault)
+
+    def tearDown(self):
+        os.environ.pop("MEMORY_VAULT_PATH", None)
+        self._tmp.cleanup()
+
+    def _make_auth_client(self):
+        """TestClient backed by a fresh FastMCP instance with static bearer auth."""
+        from fastmcp import FastMCP as FreshMCP
+        from memory_mcp_tools import register_tools as _rt
+        import memory_mcp_server as srv
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            from starlette.testclient import TestClient
+        auth_mcp = FreshMCP(name="test-auth", auth=srv._StaticBearerAuth(self._TEST_TOKEN))
+        _rt(auth_mcp)
+        return TestClient(srv.build_app(_mcp=auth_mcp), raise_server_exceptions=False)
+
+    def _mcp_init_body(self):
+        import json
+        return json.dumps({
+            "jsonrpc": "2.0",
+            "method": "initialize",
+            "params": {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"},
+            },
+            "id": 1,
+        }).encode()
+
+    def test_bearer_missing_rejected(self):
+        """Request without Authorization header is rejected (401) when auth is configured."""
+        client = self._make_auth_client()
+        resp = client.post(
+            "/mcp",
+            headers={"Content-Type": "application/json"},
+            content=self._mcp_init_body(),
+        )
+        self.assertIn(resp.status_code, (401, 403),
+                      f"Expected 401/403 for missing token, got {resp.status_code}")
+
+    def test_bearer_invalid_rejected(self):
+        """Request with wrong bearer token is rejected (401) when auth is configured."""
+        client = self._make_auth_client()
+        resp = client.post(
+            "/mcp",
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer wrong-token-value"},
+            content=self._mcp_init_body(),
+        )
+        self.assertIn(resp.status_code, (401, 403),
+                      f"Expected 401/403 for invalid token, got {resp.status_code}")
+
+    def test_bearer_valid_passes(self):
+        """Request with correct bearer token passes auth (not 401/403)."""
+        client = self._make_auth_client()
+        resp = client.post(
+            "/mcp",
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {self._TEST_TOKEN}"},
+            content=self._mcp_init_body(),
+        )
+        self.assertNotIn(resp.status_code, (401, 403),
+                         f"Expected non-401/403 for valid token, got {resp.status_code}")
+
+
+@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
+class TestAppendPathTraversal(unittest.IsolatedAsyncioTestCase):
+    """memory_append rejects kind/project values containing path-traversal sequences."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._vault = _make_vault(Path(self._tmp.name))
+        os.environ["MEMORY_VAULT_PATH"] = str(self._vault)
+
+    def tearDown(self):
+        os.environ.pop("MEMORY_VAULT_PATH", None)
+        self._tmp.cleanup()
+
+    async def test_kind_traversal_rejected(self):
+        """memory_append raises when kind contains path-traversal characters."""
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            with self.assertRaises(Exception):
+                await client.call_tool("memory_append", {
+                    "content": "body",
+                    "kind": "../../etc",
+                })
+
+    async def test_project_traversal_rejected(self):
+        """memory_append raises when project contains path-traversal characters."""
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            with self.assertRaises(Exception):
+                await client.call_tool("memory_append", {
+                    "content": "body",
+                    "kind": "feedback",
+                    "project": "../../root",
+                })
+
+    async def test_kind_dot_rejected(self):
+        """memory_append raises when kind is a dot (.) — not a valid segment."""
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            with self.assertRaises(Exception):
+                await client.call_tool("memory_append", {
+                    "content": "body",
+                    "kind": ".",
+                })
+
+    async def test_validate_path_segment_unit(self):
+        """_validate_path_segment unit: valid segments pass; invalid raise ValueError."""
+        for valid in ("user", "feedback", "my-project", "proj_1"):
+            _validate_path_segment(valid, "kind")  # must not raise
+        for invalid in ("../../etc", "/abs", "a/b", "..", ".", "", "has space"):
+            with self.assertRaises(ValueError, msg=f"Expected ValueError for {invalid!r}"):
+                _validate_path_segment(invalid, "kind")
 
 
 @unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
