@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.3.0] — 2026-06-16 — V5-11 team-coordinator persona
+
+**MINOR.** The first *composed* persona lands: the `team-coordinator` reads the vault, computes answers, and hands the operator decision-ready recommendations — where the team stands, which plans are safe to run together, and what order to merge in. Advisory only; zero execution authority. Built on the V5-12 persona tier substrate (shipped in v5.2.0). All answers are computed by plain code, never guessed; the model narrates on top. Gates: 20/20, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-11 — team-coordinator persona: standup, readiness, merge-order (`7966ac3`).** `personas/team-coordinator.md` (`kind: persona`, `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`) — the first composed persona, built on the V5-12 substrate. Four new stdlib scripts, all read-only and fixture-tested with no live vault required:
+  - `scripts/plan_graph.py` — shared map engine. Reads `_harness/` (active plans) and `queued-plans/` (staged plans), parses optional YAML frontmatter (`depends_on:`, `touches:`) from each plan, and returns a `list[PlanInfo]` consumed by the three capability scripts below. 17 unit tests; fixture tree at `scripts/fixtures/plan_graph/`.
+  - `scripts/standup.py` — derives `worker_state` per active plan: `building` (tasks remain, recent progress), `mergeable` (all tasks done, not yet merged), or `idle` (no progress-log touch in >2h). `IDLE_THRESHOLD_HOURS = 2` is a named constant. 13 unit tests.
+  - `scripts/readiness.py` — two-stage dispatch pre-flight: (1) dependency readiness — a queued plan is ready when every `depends_on` entry has `Status: done`; (2) file-overlap safe-to-run-together check using `fnmatch` on `touches:` glob lists. Plans without a `touches:` field are loudly degraded (never silently included, never guessed). 9 unit tests covering all four required cases.
+  - `scripts/merge_order.py` — Kahn topological sort by `depends_on` edges, smallest-git-diff-stat tie-break among topologically equivalent plans, alphabetical fallback when git is unavailable. Cycle detection raises `ValueError`. 12 unit tests; determinism verified (same input → same output).
+
+### Internal
+
+- Wiki sweep: `persona-tier-schema.md`, `persona-tier.md`, `Completed-Features.md`, `Named-Plans.md` updated to reflect V5-11 (`8d021a1`).
+
 ## [v5.2.0] — 2026-06-16 — V5-8 capability-discovery resolver + V5-12 persona tier
 
 **MINOR.** Two architectural additions land together. **V5-8** ships the `enhances:` capability-discovery resolver — the substrate-level soft-composition runtime that lets any agentm primitive declare optional capabilities it wants without hard-depending on them, degrading cleanly when absent. **V5-12** ships the persona tier, the third architectural classification ADR 0011's substrate/plugin binary had no slot for: a standing concern that composes capabilities it does not own, anchored on the neutral substrate, with hard deps (`requires:`) restricted to substrate-native primitives only. Both are additive — zero behavior change for existing installs; both are enforced by static gates (`check-capability-resolver-one-way` for V5-8, `check-personas` for V5-12). Gates: 20/20, CI green across Linux/Mac/Windows.
