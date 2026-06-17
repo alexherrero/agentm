@@ -22,3 +22,4 @@
 - [0014 — Tier-2 gate: don't fork the loop](0014-tier-2-sdk-fork-gate)
 - [0015 — Capability discovery: `enhances:` runtime](0015-capability-discovery)
 - [0016 — The persona tier](0016-persona-tier)
+- [0017 — MCP server design: singleton-HTTP broker, four tools, loopback-first](0017-mcp-server-design)

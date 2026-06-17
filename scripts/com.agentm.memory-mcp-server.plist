@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.agentm.memory-mcp-server</string>
+
+    <!--
+      Fill in: replace the two PLACEHOLDER values below with real paths.
+      Run `bash install.sh --mcp-server <project>` to generate a filled-in copy
+      at ~/.config/agentm/com.agentm.memory-mcp-server.plist automatically.
+    -->
+
+    <!-- PLACEHOLDER: replace with the Python interpreter path -->
+    <!-- e.g. /opt/homebrew/bin/python3.13                     -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>__PYTHON_BIN__</string>
+        <!-- PLACEHOLDER: absolute path to memory_mcp_server.py -->
+        <string>__MCP_SERVER_SCRIPT__</string>
+    </array>
+
+    <!--
+      AGENTM_MCP_TOKEN is NOT stored here — set it once via:
+        launchctl setenv AGENTM_MCP_TOKEN <your-token>
+      (add to ~/.zshrc / ~/.bashrc so it survives reboots).
+    -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>AGENTM_MCP_URL</key>
+        <string>http://127.0.0.1:7821/mcp</string>
+    </dict>
+
+    <!-- Keep the daemon warm — avoids cold-start drops under host timeouts. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Standard</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- stderr only — stdout is sacred (stdio-shim protocol uses stdout). -->
+    <key>StandardErrorPath</key>
+    <string>/tmp/agentm-memory-mcp.log</string>
+</dict>
+</plist>

@@ -14,6 +14,7 @@
 - [Tune auto-orchestration](Tune-Auto-Orchestration)
 - [Run without a vault](Run-Without-A-Vault)
 - [Choose a storage backend](Choose-A-Storage-Backend) _(forthcoming, V5-1 part 5)_
+- [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)
 ### 🧩 [Designs](Designs)

@@ -19,6 +19,7 @@
 - [Capability resolver](Capability-Resolver)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
+- [Memory MCP tools](Memory-MCP-Tools)
 ### 🏛️ [Architecture](Architecture)
 ### 🧩 [Designs](Designs)
 ### 💡 [Explanation](Explanation)

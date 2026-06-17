@@ -156,6 +156,8 @@ Per the operator's [[hld-evolution-update-on-major-release]] convention, this HL
 
 - **v0.1 — 2026-06-03** — initial publication. The V5 design pass: locks agentm-as-memory-OS-+-plugin-host, the storage-agnostic core with device-local default, the two seams, the capability-unbundling boundary, and the vault-conserving cutover. The detailed working design (full file-by-file classification, part split, quality attributes) lives in the confidential `crickets-v3x-bundle-catalog` design; this HLD is the public architecture of record.
 
+- **v5.3.0 — 2026-06-17** — V5-9 ships the memory engine as an MCP server: a singleton streamable-HTTP daemon (`127.0.0.1:7821`) exposing four snake_case tools (`memory_search`, `memory_recall`, `memory_append`, `memory_forget`), with static bearer auth and mandatory Origin-validation as DNS-rebinding defense. The daemon is writer #2 alongside the CLI — all MCP-host writes funnel through the same `vault_lock` write protocol established in V5-0. Soft-delete (`status → deleted`, `deleted_at` stamped, file never unlinked) is the only deletion shape. Five design calls locked in ADR 0017. Remote-tier shape (outbound tunnel + OAuth 2.1) is bounded but deferred to v1.1.
+
 ## See also
 
 - [`agent-memory-evolution.md`](agent-memory-evolution.md) — the V1→V7 evolution of Agent Memory (V5 = this shift; V6 = indexed retrieval; V7 = dreaming)

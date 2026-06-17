@@ -2,7 +2,7 @@
 # install.sh — install or update agentm in a target project.
 #
 # Usage:
-#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] <target-project-path>
+#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] [--mcp-server] <target-project-path>
 #
 # Options:
 #   --hooks    Install the PostToolUse/PreCompact/SessionStart hooks into
@@ -18,6 +18,10 @@
 #              writes "state_mode": "local" to .agentm-config.json (the on-host
 #              config; DC-8) and skips vault auto-detection. State then lives in
 #              <repo>/.harness/ instead of a MemoryVault.
+#   --mcp-server   Generate the launchd plist for the memory MCP daemon at
+#              ~/.config/agentm/com.agentm.memory-mcp-server.plist and print
+#              the three launchctl commands to load it. Does NOT auto-load;
+#              the operator runs the commands. macOS only.
 #
 # Without --update: existing files are preserved (skip-if-exists).
 # With --update:    harness-authored files are overwritten; user files stay.
@@ -37,6 +41,7 @@ INSTALL_HOOKS=0
 UPDATE_MODE=0
 FORCE_VAULT_PROMPT=0   # v4.5.1 task 4: re-fire first-run vault prompt
 LOCAL_STATE=0          # Hardening I #44 task 4: --local-state → repo-local (vault-less) state
+INSTALL_MCP_SERVER=0   # V5-9: --mcp-server → generate launchd plist for memory daemon
 TARGET=""
 SCOPE="project"  # V4 #30 task 8: --scope user|project. Default 'project' for
                  # v4.3.0 backward compat; default flips to 'user' in a future
@@ -50,6 +55,7 @@ while [[ $# -gt 0 ]]; do
     --update) UPDATE_MODE=1; shift ;;
     --force-vault-prompt) FORCE_VAULT_PROMPT=1; shift ;;
     --local-state) LOCAL_STATE=1; shift ;;
+    --mcp-server) INSTALL_MCP_SERVER=1; shift ;;
     --scope)
       if [[ -z "${2:-}" ]]; then
         echo "Error: --scope requires a value (user|project)" >&2
@@ -944,6 +950,79 @@ fi
 # ── record version ──────────────────────────────────────────────────────────
 
 echo "$HARNESS_VERSION" > .harness/.version
+
+# ── memory MCP server launchd plist (V5-9, --mcp-server) ────────────────────
+
+if [[ $INSTALL_MCP_SERVER -eq 1 ]]; then
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "==> --mcp-server: skipped (launchd is macOS-only; on this OS use your system's service manager)." >&2
+  else
+    PYTHON_BIN="$(command -v python3.13 || command -v python3 || echo python3)"
+    MCP_SERVER_SCRIPT="$HARNESS_ROOT/scripts/memory_mcp_server.py"
+    PLIST_DIR="$HOME/.config/agentm"
+    PLIST_FILE="$PLIST_DIR/com.agentm.memory-mcp-server.plist"
+    mkdir -p "$PLIST_DIR"
+    cat > "$PLIST_FILE" << PLISTEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.agentm.memory-mcp-server</string>
+
+    <!-- Fill in: the Python interpreter that has fastmcp + uvicorn installed. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>$PYTHON_BIN</string>
+        <string>$MCP_SERVER_SCRIPT</string>
+    </array>
+
+    <!--
+      AGENTM_MCP_TOKEN is NOT stored in this file — set it once via:
+        launchctl setenv AGENTM_MCP_TOKEN <your-token>
+      (and add that line to your ~/.zshrc / ~/.bashrc for persistence across reboots).
+      The daemon reads the env var at startup via launchd's environment inheritance.
+    -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>AGENTM_MCP_URL</key>
+        <string>http://127.0.0.1:7821/mcp</string>
+    </dict>
+
+    <!-- Keep the daemon warm — avoids cold-start drops under host timeouts. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ProcessType</key>
+    <string>Standard</string>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <!-- stderr only — stdout is sacred (stdio-shim protocol uses it). -->
+    <key>StandardErrorPath</key>
+    <string>/tmp/agentm-memory-mcp.log</string>
+</dict>
+</plist>
+PLISTEOF
+    echo ""
+    echo "==> memory MCP server launchd plist generated: $PLIST_FILE"
+    echo ""
+    echo "    Next steps (three commands):"
+    echo ""
+    echo "    1. Set the bearer token (add to ~/.zshrc for persistence):"
+    echo "         launchctl setenv AGENTM_MCP_TOKEN <your-token>"
+    echo ""
+    echo "    2. Load the daemon:"
+    echo "         launchctl bootstrap gui/\$UID $PLIST_FILE"
+    echo ""
+    echo "    3. Verify it loaded:"
+    echo "         launchctl list | grep agentm"
+    echo ""
+    echo "    To unload: launchctl bootout gui/\$UID $PLIST_FILE"
+    echo "    Logs at:   /tmp/agentm-memory-mcp.log"
+  fi
+fi
 
 # ── done ────────────────────────────────────────────────────────────────────
 
