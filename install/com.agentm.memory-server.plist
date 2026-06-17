@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.agentm.memory-server.plist — launchd user agent for the agentm memory MCP daemon.
+
+  Rulebook (inherited from V5-10 sidecar pattern):
+    - ProcessType Standard  : not throttled Background — avoids CPU priority suppression.
+    - RunAtLoad true        : start on login without a manual launchctl kickstart.
+    - KeepAlive true        : launchd restarts the daemon if it exits unexpectedly.
+    - ThrottleInterval 10   : floor between restart attempts (seconds). Prevents a
+                              crash-loop from burning CPU before the operator notices.
+    - StandardOutPath /dev/null : stdout is sacred for the stdio-shim path (Part 5).
+                                  Never redirect stdout to a file here.
+    - StandardErrorPath     : named log file so the operator can tail it.
+    - AGENTM_TOKEN          : bearer token — NEVER a literal here. Operator sets this
+                              in ~/Library/LaunchAgents/ after copying this file, or
+                              via: launchctl setenv AGENTM_TOKEN <value>
+                              See wiki/how-to/Setup-Memory-MCP-Server.md for details.
+
+  Install (operator step — see install.sh --mcp-server):
+    cp install/com.agentm.memory-server.plist ~/Library/LaunchAgents/
+    # Set AGENTM_TOKEN in the copy before loading:
+    /usr/libexec/PlistBuddy -c \
+      "Set :EnvironmentVariables:AGENTM_TOKEN $(cat ~/.agentm_token)" \
+      ~/Library/LaunchAgents/com.agentm.memory-server.plist
+    launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.agentm.memory-server.plist
+
+  Verify:
+    launchctl list | grep agentm.memory   # PID should be non-zero
+    curl -s http://127.0.0.1:7821/health  # {"status": "ok"}
+
+  Uninstall:
+    launchctl bootout gui/$UID/com.agentm.memory-server
+    rm ~/Library/LaunchAgents/com.agentm.memory-server.plist
+-->
+<plist version="1.0">
+<dict>
+  <!-- Identity -->
+  <key>Label</key>
+  <string>com.agentm.memory-server</string>
+
+  <!-- Command: invoke the server via the Homebrew Python 3.13 that has fastmcp.
+       Lean on the direct interpreter path rather than uvx/uvicorn so launchd
+       can restart without a cold-start pip fetch on every restart. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/python3.13</string>
+    <string>-u</string>
+    <!-- PYTHONPATH is set below; this resolves to scripts/memory_mcp_server.py
+         relative to the project root injected via PYTHONPATH. -->
+    <string>-m</string>
+    <string>memory_mcp_server</string>
+    <string>--host</string>
+    <string>127.0.0.1</string>
+  </array>
+
+  <!-- Supervision -->
+  <key>ProcessType</key>
+  <string>Standard</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <!-- Minimum seconds between crash-loop restart attempts. -->
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <!-- I/O: stdout is /dev/null (stdio-shim safety); stderr goes to a named log. -->
+  <key>StandardOutPath</key>
+  <string>/dev/null</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/Shared/Library/Logs/agentm/memory-server.log</string>
+
+  <!-- Environment variables -->
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- AGENTM_MCP_PORT: listen port (default 7821). -->
+    <key>AGENTM_MCP_PORT</key>
+    <string>7821</string>
+
+    <!-- AGENTM_TOKEN: bearer token for MCP host authentication.
+         NEVER commit a literal token here — set it after copying to
+         ~/Library/LaunchAgents/ (see install notes above). -->
+    <key>AGENTM_TOKEN</key>
+    <string></string>
+
+    <!-- PYTHONPATH: adds the project's scripts/ dir so `python -m memory_mcp_server`
+         resolves correctly regardless of the working directory. -->
+    <key>PYTHONPATH</key>
+    <string>/Users/alex/Antigravity/agentm/scripts</string>
+  </dict>
+
+</dict>
+</plist>
