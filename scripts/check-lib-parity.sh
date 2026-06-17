@@ -48,7 +48,7 @@ fi
 # platforms — macOS's default locale uses case-insensitive collation,
 # producing different ordering than CI Linux (C locale). Same fix in
 # sync-lib.sh.
-RECOMPUTED=$(cd "$LIB_DIR" && find . -type f -not -name '.checksums.txt' -print0 \
+RECOMPUTED=$(cd "$LIB_DIR" && find . -type f -not -name '.checksums.txt' -not -path './__pycache__/*' -not -path './python/__pycache__/*' -print0 \
     | LC_ALL=C sort -z \
     | xargs -0 $SHA_CMD \
     | sed 's| [ *]\./|  |')

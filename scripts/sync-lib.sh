@@ -56,7 +56,7 @@ fi
 # Normalize both to "<hash>  <file>" (2 spaces, no leading ./).
 compute_checksums() {
     local root="$1"
-    (cd "$root" && find . -type f -not -name '.checksums.txt' -print0 \
+    (cd "$root" && find . -type f -not -name '.checksums.txt' -not -path './__pycache__/*' -not -path './python/__pycache__/*' -print0 \
         | LC_ALL=C sort -z \
         | xargs -0 $_SHA_CMD \
         | sed 's| [ *]\./|  |')
