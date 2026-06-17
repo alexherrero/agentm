@@ -13,6 +13,8 @@
     - StandardOutPath /dev/null : stdout is sacred for the stdio-shim path (Part 5).
                                   Never redirect stdout to a file here.
     - StandardErrorPath     : named log file so the operator can tail it.
+                              NOTE: launchd does NOT expand ~ here — install.sh
+                              fills this in with the absolute expanded path.
     - AGENTM_TOKEN          : bearer token — NEVER a literal here. Operator sets this
                               in ~/Library/LaunchAgents/ after copying this file, or
                               via: launchctl setenv AGENTM_TOKEN <value>
@@ -74,7 +76,8 @@
   <string>/dev/null</string>
 
   <key>StandardErrorPath</key>
-  <string>~/Library/Logs/agentm/memory-server.log</string>
+  <!-- install.sh replaces AGENTM_LOG_DIR with the expanded $HOME path at install time. -->
+  <string>AGENTM_LOG_DIR/memory-server.log</string>
 
   <!-- Environment variables -->
   <key>EnvironmentVariables</key>
