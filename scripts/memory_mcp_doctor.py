@@ -135,7 +135,7 @@ def check_index_root_safe() -> tuple:
     except ImportError:
         return (None, "skipped — vault_lock not importable (agentm scripts not on PYTHONPATH)")
 
-    lock_root_str = str(lock_root.resolve())
+    lock_root_str = lock_root.resolve().as_posix()
 
     for marker in _SYNC_MARKERS:
         if marker in lock_root_str:
