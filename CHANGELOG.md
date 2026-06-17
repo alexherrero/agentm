@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.4.0] — 2026-06-17 — V5-9 memory MCP server
+
+**MINOR.** The memory engine is now reachable from any MCP host — Claude Code, Cursor, Goose, Claude Desktop — through a single local HTTP daemon. Four snake_case tools (`memory_search`, `memory_recall`, `memory_append`, `memory_forget`), singleton streamable-HTTP broker, static bearer auth, mandatory Origin-validation, and soft-delete. The daemon is writer #2 alongside the CLI, routing all MCP-host writes through the V5-0 `vault_lock` protocol. Five locked design calls in ADR 0017. Gates: 20/20, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-9 Part 1 — server skeleton, liveness probe, contract tests (`cfda095`).** `scripts/memory_mcp_server.py` — FastMCP 3.x singleton daemon binding `127.0.0.1:7821`; `/health` liveness endpoint returning `{"status":"ok"}`; initial contract tests.
+
+- **V5-9 Part 2 — four-tool MCP surface (`ccdcb98`).** `memory_search` (semantic similarity, top_k, cursor pagination), `memory_recall` (budgeted phase-aware bundle, idempotency_key), `memory_append` (soft-write, idempotency dedup), `memory_forget` (soft-delete — status flip + deleted_at, file never unlinked). In-memory FastMCP test client for offline CI.
+
+- **V5-9 Part 3 — writer-routing + vault-source-resolution (`fb4c4ef`).** `memory_recall` resolves its source through V5-1 `backend_selection` — vault-primary when the `vault`/`obsidian-vault` backend is configured, device-local otherwise; never a hardcoded repo allowlist. Fail-loud when backend is misconfigured; the daemon is writer #2 composing the full V5-0 `vault_mutex`/CAS/`atomic_write` stack.
+
+- **V5-9 Part 4 — security layer (`cd8d358`).** `TokenVerifier` for static bearer auth (env-injected `AGENTM_MCP_TOKEN`, never literal in config). ASGI `_OriginValidator` middleware: 403 on any non-loopback `Origin:` header (DNS-rebinding defense). Engine-side path-traversal validation; `_SECURITY_DOC` surface contract.
+
+- **V5-9 Part 5 — stdio shim + host configs (`e895cef`).** `scripts/memory_mcp_stdio_shim.py` — proxies stdio ↔ `http://127.0.0.1:7821/mcp` for Claude Desktop (which requires stdio transport); the daemon stays the sole writer. Host config snippets for Claude Code (`.claude/mcp.json`), Cursor (Settings → MCP), Goose (`~/.config/goose/config.yaml`), Claude Desktop (`claude_desktop_config.json`).
+
+- **V5-9 Part 6 — operations & docs (`c9d79dc`).** `scripts/memory_mcp_doctor.py` — four health checks (`liveness`, `token_env`, `origin_guard`, `index_root_safe`), 13 unit tests, stdlib-only. `scripts/com.agentm.memory-mcp-server.plist` — launchd template (`ProcessType Standard`, `RunAtLoad`, `KeepAlive`, stderr-only log; stdout unredirected for stdio purity). `install.sh --mcp-server <project>` generates a filled-in plist and prints the three bootstrap commands. `harness/skills/doctor.md` + `adapters/claude-code/skills/doctor/SKILL.md` extended with check `4e` (graceful-skip pre-V5-9; default mode = liveness+token_env; `--live` adds origin_guard+index_root_safe). ADR 0017 (five locked calls: DC-1 singleton HTTP broker, DC-2 four snake_case tools, DC-3 soft-delete, DC-4 loopback-first remote deferred, DC-5 FastMCP >=3,<4). `wiki/how-to/Stand-Up-Memory-MCP-Server.md` and `wiki/reference/Memory-MCP-Tools.md` published.
+
+### Internal
+
+- **Fix: `check-lib-parity` / `sync-lib` exclude `__pycache__` from checksums (`67bf8a7`).** CI runners don't generate `.pyc` files; stale `__pycache__` entries in `.checksums.txt` caused the parity gate to fail cross-platform. Both scripts updated; checksums regenerated.
+- **Fix: normalize lock-root path to POSIX before sync-marker check (`1e11426`).** `check_index_root_safe` used `str(Path.resolve())` which produces backslash paths on Windows; forward-slash markers (`/CloudStorage/` etc.) never matched. Changed to `Path.resolve().as_posix()`.
+
 ## [v5.3.0] — 2026-06-16 — V5-11 team-coordinator persona
 
 **MINOR.** The first *composed* persona lands: the `team-coordinator` reads the vault, computes answers, and hands the operator decision-ready recommendations — where the team stands, which plans are safe to run together, and what order to merge in. Advisory only; zero execution authority. Built on the V5-12 persona tier substrate (shipped in v5.2.0). All answers are computed by plain code, never guessed; the model narrates on top. Gates: 20/20, CI green across Linux/Mac/Windows.

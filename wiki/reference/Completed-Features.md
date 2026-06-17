@@ -8,6 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-06-17 | [v5.4.0](https://github.com/alexherrero/agentm/releases/tag/v5.4.0) — V5-9 memory MCP server | **V5-9:** `scripts/memory_mcp_server.py` (singleton streamable-HTTP daemon at `127.0.0.1:7821`) + four MCP tools (`memory_search` / `memory_recall` / `memory_append` / `memory_forget`) + bearer-token + Origin-validation security + `scripts/memory_mcp_stdio_shim.py` (Claude Desktop stdio shim) + `scripts/memory_mcp_doctor.py` (4 health checks) + `install.sh --mcp-server` + launchd plist + host configs for Claude Code / Cursor / Goose / Claude Desktop. ([ADR 0017](0017-mcp-server-design)) | 11 commits (`v5.3.0..v5.4.0`); contract tests + 13 doctor unit tests; solo harness MINOR |
 | 2026-06-16 | V5-11 (post-v5.2.0, pre-release) — team-coordinator persona | **V5-11:** `personas/team-coordinator.md` (first real composed persona) + `scripts/plan_graph.py` + `scripts/standup.py` + `scripts/readiness.py` + `scripts/merge_order.py` — the coordinator capability set. `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`. | 1 commit (`7966ac3`); 62 fixture-backed tests; `check-personas` exits 0; solo harness, no release tag yet |
 | 2026-06-16 | [v5.2.0](https://github.com/alexherrero/agentm/releases/tag/v5.2.0) — V5-8 capability-discovery resolver + V5-12 persona tier | **V5-8:** `scripts/capability_resolver.py` + `scripts/capability_version_match.py` + `agentm capability` CLI shim — the `enhances:` runtime ([ADR 0015](0015-capability-discovery)). **V5-12:** `personas/rememberer.md` + `scripts/check-personas.py` + `check-personas` CI gate — the `kind: persona` third tier ([ADR 0016](0016-persona-tier)). | 6 commits (`v5.1.0..v5.2.0`); 72 unit tests (32 resolver + 40 version-match); `check-capability-resolver-one-way` + `check-personas` gates green; solo harness MINOR, no crickets pairing |
 | 2026-06-13 | [v5.0.1](https://github.com/alexherrero/agentm/releases/tag/v5.0.1) — V5-1 follow-on: non-UTF-8 config readers honor their contract (harness-only PATCH) | **Correctness follow-on to the V5-1 storage seam.** The four config readers (`backend_selection.py::_configured_backend`, `harness_memory.py::_read_config_vault_path` + `_read_config_state_mode`, `agentm_config.py::_read_config`) caught `(json.JSONDecodeError, OSError)` but not `UnicodeDecodeError` — a `ValueError` subclass — so a non-UTF-8 config (realistic trigger: a Windows UTF-16/BOM "Save As") leaked an uncaught decode error past each reader's documented contract: the fail-loud resolver crashed instead of raising `StorageSelectionError`, and the three graceful readers crashed instead of returning `None`. All four now also catch `UnicodeDecodeError`; five regression tests pin the contract (incl. the `doctor` preview reporting `[FAIL]` not crashing). Found by an adversarial review of the V5-1 part-5 selection code. | 2 commits (`v5.0.0..v5.0.1`: the fix `50cde80` + this release commit); solo harness PATCH, no crickets pairing; no new ADR — correctness fix within the [ADR 0013](0013-storage-seam-fail-loud-selection) fail-loud contract |
@@ -30,6 +31,40 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentm/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentm/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentm/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-06-17 — v5.4.0: V5-9 — memory MCP server
+
+**Commit range:** `v5.3.0..v5.4.0` (11 commits on `main`). Release notes: [v5.4.0](https://github.com/alexherrero/agentm/releases/tag/v5.4.0). Solo harness MINOR — no crickets pairing.
+
+### What shipped
+
+V5-9 wraps the memory engine as a local MCP server so every MCP-capable host on the machine can reach the vault through a single protocol surface.
+
+**Server skeleton and transport.** `scripts/memory_mcp_server.py` — a FastMCP (`>=3,<4`) singleton daemon bound to `127.0.0.1:7821`. Streamable-HTTP transport; one daemon, N `Mcp-Session-Id` sessions. All writes from all MCP hosts funnel through one process — the Phase-1 concurrent-write broker the V5-0 write protocol was staged to receive. A liveness probe at `/health` returns `{"status": "ok"}`.
+
+**Four MCP tools.** `memory_search` (semantic similarity, paginated), `memory_recall` (budgeted phase-bundle), `memory_append` (idempotent write), `memory_forget` (soft-delete — never unlinks the backing file; status flip propagates safely under Drive sync). Tool names are snake_case, no dots — OpenAI-family host compatibility. An in-memory test client covers contract tests offline.
+
+**Writer routing.** `memory_recall` fails loud on an unconfigured source; source resolution goes through V5-1 `backend_selection` (vault-primary) — never a hardcoded repo allowlist. The daemon is writer #2 alongside the CLI as writer #1.
+
+**Security.** `TokenVerifier` ASGI middleware (bearer token via `AGENTM_MCP_TOKEN` env var); `_OriginValidator` ASGI middleware (unexpected `Origin:` header → 403, DNS-rebinding defense); path-traversal validation engine-side.
+
+**stdio shim.** `scripts/memory_mcp_stdio_shim.py` — proxies stdio transport to the HTTP daemon for hosts that require it (Claude Desktop). The daemon stays the sole write-broker; the shim is a thin compatibility adaptor.
+
+**Operations.** `scripts/memory_mcp_doctor.py` — four health checks (`liveness`, `token_env`, `origin_guard`, `index_root_safe`), 13 unit tests. `scripts/com.agentm.memory-mcp-server.plist` — launchd template (`RunAtLoad` + `KeepAlive`; binds the daemon at login). `install.sh --mcp-server` flag registers the plist. Host config snippets ship for Claude Code, Cursor, Goose, and Claude Desktop.
+
+**Two bug-fix commits in range.** `fix: exclude __pycache__ from lib-parity checksum` and `fix(V5-9): normalize lock-root path to POSIX before marker check` (Windows backslash compatibility).
+
+### Why this shape
+
+V5-0 built the write protocol as "Phase 1: single-writer CLI"; V5-9 is Phase 2: any MCP host is a second writer, and the singleton HTTP daemon is the broker that collapses that fan-out from N writers to one. DC-1 through DC-5 in [ADR 0017](0017-mcp-server-design) record the five load-bearing design calls: singleton streamable-HTTP over stdio (single-writer property), four snake_case tools (host compat), soft-delete as a hard acceptance criterion (synced-vault safety), loopback-first deferring the remote tier (homelab posture + scope), and FastMCP `>=3,<4` with the official SDK named as fallback (OOtB bearer auth + in-memory test client; cheap to swap).
+
+### Related
+
+- [ADR 0017 — MCP server design](0017-mcp-server-design) — five design decisions + load-bearing assumptions.
+- [Memory MCP tools reference](Memory-MCP-Tools) — full parameter tables, pagination, soft-delete contract, error codes.
+- [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server) — operator how-to: install deps → set token → launchd → configure each host → verify.
+- [ADR 0012 — Vault-write protocol](0012-vault-write-protocol) — V5-0; the write stack the daemon composes as writer #2.
+- [v5.4.0](https://github.com/alexherrero/agentm/releases/tag/v5.4.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
 
 ## 2026-06-16 — V5-11: team-coordinator persona (first real composed persona)
 

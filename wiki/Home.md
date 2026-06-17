@@ -36,6 +36,7 @@ Agent M is two sibling repos plus a vault folder. Clone both, point the vault at
 | 🩺 **Keep the vault healthy** — lint it, find missing note links | [Audit the vault](Audit-The-Vault) · [Find missing note links](Find-Missing-Note-Links) |
 | 🌐 **Read the vault from any agent** — Claude.ai · Gemini · ChatGPT · Antigravity | [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) |
 | 🖥️ **Keep state per-repo** — when to stay `--scope project` | [Use per-project install](Use-Per-Project-Install) |
+| 🔌 **Expose the vault as an MCP server** — Claude Code · Cursor · Goose · Claude Desktop | [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server) |
 
 ## 📖 Look up a detail
 
@@ -45,9 +46,10 @@ For contributors running the harness:
 - [Installer CLI](Installer-CLI) — flags, prerequisites, and the ownership table for `install.sh` / `install.ps1`.
 - [CI gates](CI-Gates) — what each CI workflow proves and the script behind it.
 - [Completed features](Completed-Features) — the reverse-chronological log of shipped work.
+- [Memory MCP tools](Memory-MCP-Tools) — four-tool MCP surface: parameters, pagination, soft-delete contract, error codes.
 
 > [!NOTE]
-> **Latest release — [v5.2.0](https://github.com/alexherrero/agentm/releases/tag/v5.2.0) (2026-06-16):** V5-8 capability-discovery resolver (`scripts/capability_resolver.py` + `scripts/capability_version_match.py` + `agentm capability` CLI shim; [ADR 0015](0015-capability-discovery)) and V5-12 persona tier (`personas/rememberer.md` + `scripts/check-personas.py` + `check-personas` CI gate; [ADR 0016](0016-persona-tier)).
+> **Latest release — [v5.4.0](https://github.com/alexherrero/agentm/releases/tag/v5.4.0) (2026-06-17):** V5-9 memory MCP server — singleton streamable-HTTP daemon at `127.0.0.1:7821`; four MCP tools (`memory_search` / `memory_recall` / `memory_append` / `memory_forget`); bearer-token + Origin-validation security; stdio shim for Claude Desktop; launchd plist + `install.sh --mcp-server`; `memory_mcp_doctor.py` health checks. ([ADR 0017](0017-mcp-server-design))
 
 → Full field-level detail lives under **Reference** in the sidebar.
 
