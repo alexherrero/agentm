@@ -22,7 +22,7 @@
     cp install/com.agentm.memory-server.plist ~/Library/LaunchAgents/
     # Set AGENTM_TOKEN in the copy before loading:
     /usr/libexec/PlistBuddy -c \
-      "Set :EnvironmentVariables:AGENTM_TOKEN $(cat ~/.agentm_token)" \
+      "Set :EnvironmentVariables:AGENTM_TOKEN <your-token>" \
       ~/Library/LaunchAgents/com.agentm.memory-server.plist
     launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.agentm.memory-server.plist
 
@@ -74,7 +74,7 @@
   <string>/dev/null</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/Shared/Library/Logs/agentm/memory-server.log</string>
+  <string>~/Library/Logs/agentm/memory-server.log</string>
 
   <!-- Environment variables -->
   <key>EnvironmentVariables</key>
@@ -89,10 +89,13 @@
     <key>AGENTM_TOKEN</key>
     <string></string>
 
-    <!-- PYTHONPATH: adds the project's scripts/ dir so `python -m memory_mcp_server`
-         resolves correctly regardless of the working directory. -->
+    <!-- PYTHONPATH: filled in by install.sh with the absolute path to scripts/.
+         Replace AGENTM_SCRIPTS_DIR with the actual path before loading, e.g.:
+           /usr/libexec/PlistBuddy -c \
+             "Set :EnvironmentVariables:PYTHONPATH $(pwd)/scripts" \
+             ~/Library/LaunchAgents/com.agentm.memory-server.plist -->
     <key>PYTHONPATH</key>
-    <string>/Users/alex/Antigravity/agentm/scripts</string>
+    <string>AGENTM_SCRIPTS_DIR</string>
   </dict>
 
 </dict>
