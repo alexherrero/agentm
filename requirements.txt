@@ -28,3 +28,19 @@ sentence-transformers>=2.0  # harness/skills/memory/scripts/embed.py — local
 # Note: as of v4.0.0 (V4 #36 reorg), agentm absorbed the memory skill +
 # memory hooks + embedding stack from crickets. crickets v2.0.0+ ships
 # pyyaml only; these heavier deps live here now.
+
+# ── MCP server (V5-9) ── requires Python ≥3.10 ──────────────────────────────
+# The agentmemory MCP daemon (scripts/memory_mcp_server.py) is a separate
+# runtime component from the harness scripts above. It must be run under
+# Python ≥3.10 (e.g. /opt/homebrew/bin/python3.13 on macOS).
+#
+# Install for the server runtime:
+#   /opt/homebrew/bin/python3.13 -m pip install --user --break-system-packages \
+#       "fastmcp>=3,<4" "mcp<2"
+# Or via the install.sh --mcp-server flag (V5-9 final task).
+
+fastmcp>=3,<4              # MCP server framework; bearer-auth out of the box;
+                           # in-memory test client for check-all.sh contract tests.
+                           # Pin <4: 3.0 broke unpinned transitive deps.
+                           # Fallback: mcp<2 (official SDK, drop-in at 4 tools).
+mcp<2                      # Official MCP SDK — fallback if FastMCP is unavailable.
