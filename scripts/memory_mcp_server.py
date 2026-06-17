@@ -39,8 +39,16 @@ except ImportError as exc:  # pragma: no cover
 # Default port; override with AGENTM_MCP_PORT env var.
 _DEFAULT_PORT: int = 7821
 
-# The singleton MCP server instance.  Tools are registered in Part 2.
+# The singleton MCP server instance.
 mcp = FastMCP(name="agentm-memory")
+
+# Register the four memory tools (memory_search, memory_recall,
+# memory_append, memory_forget) on the server.
+try:
+    from memory_mcp_tools import register_tools as _register_tools
+    _register_tools(mcp)
+except ImportError:
+    pass  # tools module not yet available — bare skeleton mode (Part 1)
 
 
 async def _health_endpoint(request):
