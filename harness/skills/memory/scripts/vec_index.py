@@ -43,6 +43,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -70,13 +71,32 @@ _QUEUE_FILENAME = "embedding-queue.jsonl"
 # statement as returned by SELECT sql FROM sqlite_master.
 _DIM_REGEX = re.compile(r"FLOAT\[(\d+)\]", re.IGNORECASE)
 
+# The vector index is device-local: SQLite on cloud-sync is a known
+# corruption pattern. Mirrors the V5-1 storage-seam Tier.LOCAL_INDEX
+# "never sync" contract. The embedding queue stays vault-local (plain
+# JSONL; safe to sync and useful across devices).
+_LOCAL_INDEX_ROOT = Path.home() / ".agentm" / "memory" / "_meta"
+
 
 def _meta_dir(vault: Path) -> Path:
+    """Vault-local _meta/ dir — used for the embedding queue only."""
     return vault / _META_DIR
 
 
+def _local_index_dir(vault: Path) -> Path:
+    """Device-local dir for this vault's vector index.
+
+    Named by vault path so multiple vaults don't collide. Uses a
+    short hash suffix to survive vault-root renames without breaking
+    the index namespace (the vault rename task migrates data; this
+    just ensures new ops land in a stable, unambiguous slot).
+    """
+    key = f"{vault.resolve().name}-{hashlib.sha256(str(vault.resolve()).encode()).hexdigest()[:8]}"
+    return _LOCAL_INDEX_ROOT / key
+
+
 def _index_path(vault: Path) -> Path:
-    return _meta_dir(vault) / _INDEX_FILENAME
+    return _local_index_dir(vault) / _INDEX_FILENAME
 
 
 def _queue_path(vault: Path) -> Path:
@@ -145,7 +165,7 @@ def _open_index(vault: Path) -> sqlite3.Connection | None:
     """
     if not _try_import_sqlite_vec():
         return None
-    _meta_dir(vault).mkdir(parents=True, exist_ok=True)
+    _local_index_dir(vault).mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_index_path(vault))
     try:
         conn.enable_load_extension(True)
@@ -634,7 +654,7 @@ def rebuild_index(vault_path: Path | str) -> dict:
     vault = Path(vault_path)
     if not _try_import_sqlite_vec():
         return {"skipped": True, "note": "sqlite-vec unavailable"}
-    _meta_dir(vault).mkdir(parents=True, exist_ok=True)
+    _local_index_dir(vault).mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(_index_path(vault))
     try:
         conn.enable_load_extension(True)
