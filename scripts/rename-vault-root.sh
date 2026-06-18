@@ -312,7 +312,7 @@ echo ""
 # ── step 3: post-run residual check ──────────────────────────────────────
 echo "==> Step 3: residual AgentMemory/ check (non-archive .md files)"
 residual=$(grep -rn "AgentMemory/" "$NEW_VAULT_PATH" --include='*.md' 2>/dev/null \
-    | grep -vE '(_archive/|PLAN\.archive|pre-rename-backup)' | wc -l | tr -d ' ')
+    | grep -vE '(_archive/|PLAN\.archive|pre-rename-backup)' | wc -l | tr -d ' ' || echo "0")
 if [[ "$residual" -gt 0 ]]; then
     echo "  WARN: $residual residual 'AgentMemory/' reference(s) remain (review manually):" >&2
     grep -rn "AgentMemory/" "$NEW_VAULT_PATH" --include='*.md' 2>/dev/null \
