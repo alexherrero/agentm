@@ -23,7 +23,7 @@ Stdlib-only. Cross-platform.
 
 CLI:
     python3 vault_lint.py [--vault PATH] [--format json|text] [--scope SCOPE]
-    # SCOPE ∈ {all, always-load, projects, personal-private}; default all.
+    # SCOPE ∈ {all, always-load, projects, personal}; default all.
 
 (The `audit` report mode lands in V4 #33 task 2.)
 """
@@ -65,10 +65,10 @@ _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 
 # --scope → directory subset under the vault root.
 _SCOPE_DIRS = {
-    "all": ["personal-private", "projects"],
-    "always-load": ["personal-private/_always-load"],
+    "all": ["personal", "projects"],
+    "always-load": ["personal/_always-load"],
     "projects": ["projects"],
-    "personal-private": ["personal-private"],
+    "personal": ["personal"],
 }
 
 

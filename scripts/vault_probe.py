@@ -36,7 +36,7 @@ which would risk symlink-loop hangs when no `timeout` binary is present):
      stable order.
   2. ``find_nested_vault`` — given a candidate root, descend ONE level into it:
      if the root itself lacks the vault shape but exactly one immediate child
-     has it (``_meta/repos.json`` or a ``personal-private/`` dir), return that
+     has it (``_meta/repos.json`` or a ``personal/`` dir), return that
      child. This recovers the deep-nested AgentMemory subfolder via its parent's
      shallow ``.obsidian`` hit, without deepening the find.
 
@@ -127,12 +127,12 @@ def _has_vault_shape(p: Path) -> bool:
     """True iff ``p`` looks like a MemoryVault root.
 
     Strongest signal: ``_meta/repos.json``. Fallback shape: a
-    ``personal-private/`` dir (the always-load conventions live there).
+    ``personal/`` dir (the always-load conventions live there).
     """
     try:
         if (p / "_meta" / "repos.json").is_file():
             return True
-        if (p / "personal-private").is_dir():
+        if (p / "personal").is_dir():
             return True
     except OSError:
         return False

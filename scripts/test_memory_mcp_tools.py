@@ -48,7 +48,7 @@ def _make_vault(tmp: Path) -> Path:
     vault = tmp / "vault"
     vault.mkdir()
     # Minimum required dirs so save_entry + recall don't fail.
-    (vault / "personal-private" / "_always-load").mkdir(parents=True)
+    (vault / "personal" / "_always-load").mkdir(parents=True)
     return vault
 
 

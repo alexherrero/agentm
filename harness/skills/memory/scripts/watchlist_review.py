@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # watchlist_review.py — /memory watchlist review command (plan #7b task 5).
 #
-# Walks `<vault>/personal-private/_skill-watchlist/<source-slug>/<pattern-slug>.md`
+# Walks `<vault>/personal/_skill-watchlist/<source-slug>/<pattern-slug>.md`
 # entries; presents each to the operator with promote / dismiss / defer
 # options. Pattern mirrors `ideas_promote.py`'s GC flow (keep / archive /
 # delete) — same interactive-prompt + non-TTY-default-to-keep semantics.
@@ -58,7 +58,7 @@ def _resolve_vault_path(arg_path: str | None) -> Path:
 
 
 def _watchlist_root(vault: Path) -> Path:
-    return vault / "personal-private" / "_skill-watchlist"
+    return vault / "personal" / "_skill-watchlist"
 
 
 def _archive_root(vault: Path) -> Path:

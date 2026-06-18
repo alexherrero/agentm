@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # ideas_incubator.py — Tier-2 deep-research writer for the idea ledger.
 #
-# Creates the `<vault>/personal-private/_idea-incubator/<slug>/` directory
+# Creates the `<vault>/personal/_idea-incubator/<slug>/` directory
 # with the locked file set per the parent design (B1.i):
 #
 #   <slug>/
@@ -262,7 +262,7 @@ def create_incubator_skeleton(
     if not slug:
         slug = _slugify(title)
 
-    incubator_root = vault / "personal-private" / "_idea-incubator"
+    incubator_root = vault / "personal" / "_idea-incubator"
     incubator_root.mkdir(parents=True, exist_ok=True)
 
     # Collision suffix (<slug>, <slug>-2, ...) — safe since slug-collision

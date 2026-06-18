@@ -103,7 +103,7 @@ class TestFindNestedVault(unittest.TestCase):
         if repos:
             (base / "_meta").mkdir(parents=True, exist_ok=True)
             (base / "_meta" / "repos.json").write_text("{}", encoding="utf-8")
-        (base / "personal-private").mkdir(parents=True, exist_ok=True)
+        (base / "personal").mkdir(parents=True, exist_ok=True)
 
     def test_root_itself_has_shape_returns_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -129,7 +129,7 @@ class TestFindNestedVault(unittest.TestCase):
             obs.mkdir()
             child = obs / "AgentMemory"
             child.mkdir()
-            (child / "personal-private").mkdir()  # shape via personal-private only
+            (child / "personal").mkdir()  # shape via personal only
             self.assertEqual(vp.find_nested_vault(str(obs)), str(child))
 
     def test_no_shape_anywhere_returns_root(self) -> None:

@@ -85,7 +85,7 @@ def _make_documenter_vault(root: Path, *, project: str = "agentm") -> Path:
     `wiki-style/`. Returns the vault path."""
     vault = root / "vault"
 
-    al = vault / "personal-private" / "_always-load"
+    al = vault / "personal" / "_always-load"
     al.mkdir(parents=True)
     (al / "diataxis-conventions.md").write_text(
         "# diataxis\nfour modes; never mix on one page.\n", encoding="utf-8",

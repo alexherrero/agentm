@@ -10,7 +10,7 @@
 #
 #   ## YYYY-MM-DD: <Idea Title>
 #   <2-sentence summary>
-#   See deep research: [[MemoryVault/personal-private/_idea-incubator/<slug>/_index.md]]
+#   See deep research: [[MemoryVault/personal/_idea-incubator/<slug>/_index.md]]
 #
 # Sections sorted by date-prefix; new ideas append to the bottom (file is
 # read-only-mostly for the user; the agent appends without touching
@@ -96,7 +96,7 @@ def _format_section(
     return (
         f"## {date_iso}: {title}\n"
         f"{summary}\n"
-        f"See deep research: [[MemoryVault/personal-private/_idea-incubator/{slug}/_index.md]]\n"
+        f"See deep research: [[MemoryVault/personal/_idea-incubator/{slug}/_index.md]]\n"
     )
 
 
@@ -185,7 +185,7 @@ def append_idea_to_surface(
             "Surface-tier idea ledger written by the MemoryVault reflection "
             "sidecar (plan #7a part 4). Each section is a 2-sentence pitch "
             "linking to a deep-research entry under "
-            "`MemoryVault/personal-private/_idea-incubator/<slug>/`.\n"
+            "`MemoryVault/personal/_idea-incubator/<slug>/`.\n"
             "\n"
             "Append-only — sections accumulate over time, sorted by surfaced "
             "date. Promotion graduates an idea to "

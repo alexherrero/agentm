@@ -96,13 +96,13 @@ def _frozen_clock(epoch: float):
 
 class _VaultFixture(unittest.TestCase):
     """Builds a tempfile vault with always-load entries under
-    personal-private/_always-load/. No vec index → recall is grep-only +
+    personal/_always-load/. No vec index → recall is grep-only +
     deterministic."""
 
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self.tmp.name)
-        self.always_load = self.vault / "personal-private" / "_always-load"
+        self.always_load = self.vault / "personal" / "_always-load"
         self.always_load.mkdir(parents=True)
 
     def tearDown(self) -> None:

@@ -84,10 +84,10 @@ DEFAULT_TOKEN_BUDGET = 20_000
 SIM_WEIGHT = 0.85
 KEYWORD_WEIGHT = 0.05
 
-# Path convention: always-load entries live under <vault>/personal-private/_always-load/.
+# Path convention: always-load entries live under <vault>/personal/_always-load/.
 # Group-scoped _always-load/ dirs (e.g. work-public/_always-load/) are reserved
-# for future per-group recall; v0.1.0 hardwires personal-private/.
-_ALWAYS_LOAD_REL = Path("personal-private") / "_always-load"
+# for future per-group recall; v0.1.0 hardwires personal/.
+_ALWAYS_LOAD_REL = Path("personal") / "_always-load"
 
 # Directories excluded from recall walks. _archive/ is always excluded
 # (audit-trail content, never surfaced to the agent). _inbox/ is excluded
@@ -425,7 +425,7 @@ def _iter_entry_paths(
       - Hidden directories (dirnames starting with `.`).
 
     Does NOT filter by frontmatter `status` (that happens at match time).
-    Walks `<vault>/**` so all groups (`personal-private/`, `work-public/`,
+    Walks `<vault>/**` so all groups (`personal/`, `work-public/`,
     future per-group dirs) are covered uniformly.
     """
     out: list[Path] = []

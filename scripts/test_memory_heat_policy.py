@@ -36,10 +36,10 @@ from heat_policy import (  # noqa: E402
     run_policy,
 )
 
-_ALWAYS_LOAD_REL = Path("personal-private") / "_always-load"
+_ALWAYS_LOAD_REL = Path("personal") / "_always-load"
 
 
-def _make_entry(slug: str, *, group: str = "personal-private", always_load: bool = True,
+def _make_entry(slug: str, *, group: str = "personal", always_load: bool = True,
                 heat_pin: bool = False) -> str:
     """Build a minimal valid entry file content."""
     heat_pin_line = "\nheat_pin: true" if heat_pin else ""
@@ -57,7 +57,7 @@ def _make_vault(tmp_root: Path, always_load_slugs: list[str],
     vault = tmp_root / "vault"
     al_dir = vault / _ALWAYS_LOAD_REL
     al_dir.mkdir(parents=True, exist_ok=True)
-    pd_dir = vault / "personal-private"
+    pd_dir = vault / "personal"
     pd_dir.mkdir(parents=True, exist_ok=True)
     for slug in always_load_slugs:
         (al_dir / f"{slug}.md").write_text(_make_entry(slug), encoding="utf-8")
@@ -368,7 +368,7 @@ class TestRecallHitIntegration(unittest.TestCase):
 
         vault = _make_vault(self.root, [], ondemand_slugs=[])
         # Create a simple on-demand entry the recall engine can match.
-        pd_dir = vault / "personal-private"
+        pd_dir = vault / "personal"
         pd_dir.mkdir(parents=True, exist_ok=True)
         entry_path = pd_dir / "test-convention.md"
         entry_path.write_text(

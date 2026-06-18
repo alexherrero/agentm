@@ -68,7 +68,7 @@ echo "verify-v4: scratch vault = $SV"
 
 # ── A. config seed + parse ──────────────────────────────────────────────────
 "$PY" "$S/auto_orchestration.py" --vault-path "$SV" seed-config >/dev/null 2>&1
-[ -f "$SV/personal-private/auto-orchestration-config.md" ] \
+[ -f "$SV/personal/auto-orchestration-config.md" ] \
   && pass "config: seed-config materializes the operator config" \
   || fail "config: seed-config materializes the operator config" "no file created"
 CFG="$("$PY" "$S/auto_orchestration.py" --vault-path "$SV" show-config 2>/dev/null)"
@@ -82,12 +82,12 @@ assert_equals "briefing: empty vault renders nothing" "$(render)" ""
 mkdir -p "$SV/_inbox"; for i in $(seq 1 10); do echo x > "$SV/_inbox/e$i.md"; done
 assert_contains "briefing: inbox over threshold surfaces"       "$(render)" "10 inbox entries to sort"
 
-mkdir -p "$SV/personal-private/_skill-watchlist/src"
+mkdir -p "$SV/personal/_skill-watchlist/src"
 printf -- '---\nstatus: pending-review\nevaluator_classification: HIGH\n---\nb\n' \
-  > "$SV/personal-private/_skill-watchlist/src/p1.md"
+  > "$SV/personal/_skill-watchlist/src/p1.md"
 assert_contains "briefing: HIGH skill-watchlist surfaces"       "$(render)" "1 HIGH skill-watchlist"
 
-mkdir -p "$SV/personal-private/_idea-incubator/an-idea"
+mkdir -p "$SV/personal/_idea-incubator/an-idea"
 assert_contains "briefing: incubator idea surfaces"             "$(render)" "1 incubator idea"
 
 # ── C. staged-adapt signal (v4.13.1) surfaces + clears on evaluation ────────
@@ -96,12 +96,12 @@ printf '{}' > "$SV/_meta/skill-discovery-cache/adapt-state/src/newpat.json"
 printf '{}' > "$SV/_meta/skill-discovery-cache/adapt-state/evaluated.json"   # root file: must be skipped
 assert_contains "briefing: staged adapt candidate surfaces"     "$(render)" "1 skill candidate staged for adapt-evaluation"
 printf -- '---\nstatus: pending-review\n---\nb\n' \
-  > "$SV/personal-private/_skill-watchlist/src/newpat.md"   # Pass-2 verdict exists → clears
+  > "$SV/personal/_skill-watchlist/src/newpat.md"   # Pass-2 verdict exists → clears
 assert_absent  "briefing: staged adapt clears once evaluated"   "$(render)" "staged for adapt-evaluation"
 
 # ── D. nudges (f + g) ───────────────────────────────────────────────────────
 printf -- '---\nstatus: promoted\npromoted_at: 2026-01-01T00:00:00+00:00\n---\nb\n' \
-  > "$SV/personal-private/_skill-watchlist/src/stale.md"
+  > "$SV/personal/_skill-watchlist/src/stale.md"
 assert_contains "nudge: stale-promotion (>30d) surfaces"        "$(render)" "promoted >30d ago"
 
 TODAY="$(date -u +%Y-%m-%d)"   # today → never idea-ledger-stale; isolates the promote-suggest signal

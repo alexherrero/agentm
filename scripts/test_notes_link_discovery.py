@@ -137,12 +137,12 @@ class TestAgentMemoryExcluded(unittest.TestCase):
                    "Confirmation is a covenant ordinance conferring the sacrament gift.")
             # An agent entry that shares the SAME distinctive vocabulary — must
             # still never appear as a source or target (hard domain boundary).
-            _write(v, "AgentMemory/personal-private/agent-note.md",
+            _write(v, "AgentMemory/personal/agent-note.md",
                    "Covenant ordinance sacrament covenant ordinance sacrament.",
                    fm={"kind": "convention", "status": "active", "created": "2026-05-29"})
             notes, sugg = nld.discover(v, min_score=0.05, top=40)
             rels = {n.rel for n in notes}
-            self.assertNotIn("AgentMemory/personal-private/agent-note", rels,
+            self.assertNotIn("AgentMemory/personal/agent-note", rels,
                              "AgentMemory entry leaked into the corpus")
             for s in sugg:
                 self.assertNotIn("AgentMemory", s.a_rel)

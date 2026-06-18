@@ -72,7 +72,7 @@ def _read_frontmatter(path: Path) -> dict[str, str]:
 
 
 def count_watchlist_high_pending(vault: Path) -> int:
-    root = Path(vault) / "personal-private" / "_skill-watchlist"
+    root = Path(vault) / "personal" / "_skill-watchlist"
     if not root.is_dir():
         return 0
     n = 0
@@ -95,7 +95,7 @@ def count_watchlist_high_pending(vault: Path) -> int:
 
 
 def count_incubator_pending(vault: Path) -> int:
-    root = Path(vault) / "personal-private" / "_idea-incubator"
+    root = Path(vault) / "personal" / "_idea-incubator"
     if not root.is_dir():
         return 0
     try:
@@ -198,7 +198,7 @@ def count_stale_promoted(vault: Path, stale_days: int, now: datetime) -> int:
     """(g) Count `_skill-watchlist/` entries marked `status: promoted` whose
     `promoted_at` is older than `stale_days` — the operator said "I'll author
     this skill" N days ago and hasn't. The safety-rail nudge. Never raises → 0."""
-    root = Path(vault) / "personal-private" / "_skill-watchlist"
+    root = Path(vault) / "personal" / "_skill-watchlist"
     if not root.is_dir():
         return 0
     cutoff = max(0, int(stale_days))
@@ -238,7 +238,7 @@ def count_staged_adapt(vault: Path) -> int:
     root = Path(vault) / "_meta" / "skill-discovery-cache" / "adapt-state"
     if not root.is_dir():
         return 0
-    wl_root = Path(vault) / "personal-private" / "_skill-watchlist"
+    wl_root = Path(vault) / "personal" / "_skill-watchlist"
     n = 0
     try:
         for source_dir in root.iterdir():

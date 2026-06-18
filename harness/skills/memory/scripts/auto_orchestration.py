@@ -11,7 +11,7 @@ Two operator-facing artifacts, both vault-resident:
       - last_shown → the SessionStart "only when state shifted" guard:
                      a snapshot of the pending-state signal counts last surfaced.
 
-  <vault>/personal-private/auto-orchestration-config.md
+  <vault>/personal/auto-orchestration-config.md
       Operator-editable markdown carrying thresholds / cooldowns / chain toggles
       inside a fenced ``` settings block. Auto-seeded with sensible defaults on
       first use; re-seeding NEVER clobbers an existing file (operator edits win).
@@ -76,7 +76,7 @@ def state_path(vault: Path) -> Path:
 
 
 def config_path(vault: Path) -> Path:
-    return Path(vault) / "personal-private" / _CONFIG_FILENAME
+    return Path(vault) / "personal" / _CONFIG_FILENAME
 
 
 # ── state ───────────────────────────────────────────────────────────────────

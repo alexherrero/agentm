@@ -145,8 +145,8 @@ _RECALL_QUERIES = {
     "documenter": "documentation conventions decisions wiki style mode",
 }
 
-# Always-load conventions live at personal-private/_always-load/.
-_ALWAYS_LOAD_REL = ("personal-private", "_always-load")
+# Always-load conventions live at personal/_always-load/.
+_ALWAYS_LOAD_REL = ("personal", "_always-load")
 
 # Cursor file relative to project root.
 _CURSOR_REL = (".harness", ".promoted-progress-cursor")
@@ -1186,7 +1186,7 @@ def resolve_documenter_context(slug: str) -> Optional[dict]:
     )
 
     # Global ON-DEMAND wiki conventions — the reserved `_global` pseudo-project
-    # under the top-level `projects/` root (NOT under personal-private/). Read
+    # under the top-level `projects/` root (NOT under personal/). Read
     # here so the relocation of global wiki conventions OUT of _always-load into
     # `_global` (crickets wiki-maintenance part 3) keeps surfacing to documenter-
     # time callers. Additive: the `_always-load` read above remains the transition

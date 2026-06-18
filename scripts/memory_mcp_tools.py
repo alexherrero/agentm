@@ -257,8 +257,8 @@ def register_tools(mcp) -> None:
         if idempotency_key:
             actual_tags.append(_idem_tag(idempotency_key))
 
-        # Resolve group: personal-private by default; projects/<project> if given.
-        group = "personal-private"
+        # Resolve group: personal by default; projects/<project> if given.
+        group = "personal"
         if project:
             projects_seg = harness_memory._vault_projects_dir(vault).name
             group = f"{projects_seg}/{project}"

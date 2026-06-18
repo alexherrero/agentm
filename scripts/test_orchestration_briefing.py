@@ -28,7 +28,7 @@ _NOW = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
 
 
 def _watchlist_entry(vault: Path, source: str, slug: str, classification: str, status: str) -> None:
-    d = vault / "personal-private" / "_skill-watchlist" / source
+    d = vault / "personal" / "_skill-watchlist" / source
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{slug}.md").write_text(
         f"---\nkind: skill-watchlist\nstatus: {status}\n"
@@ -38,7 +38,7 @@ def _watchlist_entry(vault: Path, source: str, slug: str, classification: str, s
 
 
 def _promoted_entry(vault: Path, source: str, slug: str, promoted_at: str) -> None:
-    d = vault / "personal-private" / "_skill-watchlist" / source
+    d = vault / "personal" / "_skill-watchlist" / source
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{slug}.md").write_text(
         f"---\nkind: skill-watchlist\nstatus: promoted\npromoted_at: {promoted_at}\n---\nbody\n",
@@ -53,7 +53,7 @@ def _inbox_entry(vault: Path, name: str) -> None:
 
 
 def _incubator(vault: Path, slug: str) -> None:
-    (vault / "personal-private" / "_idea-incubator" / slug).mkdir(parents=True, exist_ok=True)
+    (vault / "personal" / "_idea-incubator" / slug).mkdir(parents=True, exist_ok=True)
 
 
 class TestCounters(unittest.TestCase):
@@ -114,7 +114,7 @@ class TestCounters(unittest.TestCase):
         (cache / "src" / "p1.json").write_text("{}", encoding="utf-8")   # no entry → counts
         (cache / "src" / "p2.json").write_text("{}", encoding="utf-8")   # entry exists → not
         (cache / "evaluated.json").write_text("{}", encoding="utf-8")    # root file → skipped
-        wl = self.vault / "personal-private" / "_skill-watchlist" / "src"
+        wl = self.vault / "personal" / "_skill-watchlist" / "src"
         wl.mkdir(parents=True)
         (wl / "p2.md").write_text("---\nstatus: pending-review\n---\nb\n", encoding="utf-8")
         self.assertEqual(ob.count_staged_adapt(self.vault), 1)
@@ -183,14 +183,14 @@ class TestCounters(unittest.TestCase):
         self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 0)
 
     def test_stale_promoted_missing_date_does_not_count(self) -> None:
-        d = self.vault / "personal-private" / "_skill-watchlist" / "src"
+        d = self.vault / "personal" / "_skill-watchlist" / "src"
         d.mkdir(parents=True, exist_ok=True)
         (d / "p1.md").write_text("---\nstatus: promoted\n---\nbody\n", encoding="utf-8")  # no promoted_at
         self.assertEqual(ob.count_stale_promoted(self.vault, 30, _NOW), 0)
 
     def test_counters_never_raise_on_garbage(self) -> None:
         # malformed watchlist frontmatter must not raise
-        d = self.vault / "personal-private" / "_skill-watchlist" / "src"
+        d = self.vault / "personal" / "_skill-watchlist" / "src"
         d.mkdir(parents=True, exist_ok=True)
         (d / "bad.md").write_bytes(b"\xe9\xe9 not utf-8 \xff")
         self.assertEqual(ob.count_watchlist_high_pending(self.vault), 0)
@@ -298,7 +298,7 @@ class TestEmit(unittest.TestCase):
         self.assertIn("HIGH skill-watchlist", first)
         # operator clears the only pending entry; the clearing session fires even
         # within the cooldown window (recording the clear is cooldown-independent)
-        (self.vault / "personal-private" / "_skill-watchlist" / "src" / "p1.md").unlink()
+        (self.vault / "personal" / "_skill-watchlist" / "src" / "p1.md").unlink()
         cleared = ob.emit_briefing(self.vault, _NOW + timedelta(hours=1))
         self.assertEqual(cleared, "")
         self.assertEqual(ao.load_state(self.vault)["last_shown"], {})  # snapshot reset

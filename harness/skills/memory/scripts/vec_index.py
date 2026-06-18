@@ -366,7 +366,7 @@ def _resolve_entry_path(vault: Path, entry_relative: str) -> Path:
     """Resolve `entry_relative` to an absolute path under the vault.
 
     Entries are stored with paths relative to the vault root (e.g.
-    `personal-private/_always-load/coding-style.md` or
+    `personal/_always-load/coding-style.md` or
     `projects/agentm/decisions/2026-03-01-key-decisions.md`). Just join.
     """
     return vault / entry_relative
@@ -444,7 +444,7 @@ def find_drifted_entries(vault_path: Path | str) -> dict:
         }
 
     Walks:
-      - <vault>/personal-private/**/*.md
+      - <vault>/personal/**/*.md
       - <vault>/projects/<slug>/**/*.md (or legacy personal-projects/ fallback)
       - <vault>/_idea-incubator/**/*.md
 
@@ -467,7 +467,7 @@ def find_drifted_entries(vault_path: Path | str) -> dict:
 
     # Collect walk targets.
     walk_roots: list[Path] = []
-    private = vault / "personal-private"
+    private = vault / "personal"
     if private.is_dir():
         walk_roots.append(private)
     projects = _vault_projects_dir(vault)

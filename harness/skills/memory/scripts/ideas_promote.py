@@ -4,8 +4,8 @@
 # Two operations:
 #
 #   1. promote_idea(slug):
-#      - Moves <vault>/personal-private/_idea-incubator/<slug>/
-#             → <vault>/personal-private/projects/<slug>/
+#      - Moves <vault>/personal/_idea-incubator/<slug>/
+#             → <vault>/personal/projects/<slug>/
 #        (project-personal dir mirrors save.py's group/kind hierarchy;
 #        the spec called for projects/<slug>/ — slug becomes a
 #        project dir at the canonical location).
@@ -16,7 +16,7 @@
 #        A3 permeable-boundary confirmation; reuses the same helper).
 #
 #   2. gc_idea_incubator():
-#      - Walks <vault>/personal-private/_idea-incubator/<slug>/ dirs.
+#      - Walks <vault>/personal/_idea-incubator/<slug>/ dirs.
 #      - For each, computes age from _index.md frontmatter `updated:`
 #        field (falls back to file mtime if frontmatter missing).
 #      - Entries older than `gc_months` (default 6) get presented to the
@@ -256,15 +256,15 @@ def promote_idea(
     if not vault.exists():
         raise FileNotFoundError(f"vault path does not exist: {vault}")
 
-    incubator_dir = vault / "personal-private" / "_idea-incubator" / slug
+    incubator_dir = vault / "personal" / "_idea-incubator" / slug
     if not incubator_dir.exists() or not incubator_dir.is_dir():
         raise FileNotFoundError(
             f"incubator entry not found: {incubator_dir} "
             f"(check slug spelling; list entries with "
-            f"`ls {vault}/personal-private/_idea-incubator/`)"
+            f"`ls {vault}/personal/_idea-incubator/`)"
         )
 
-    project_dir = vault / "personal-private" / "projects" / slug
+    project_dir = vault / "personal" / "projects" / slug
     if project_dir.exists():
         raise FileExistsError(
             f"projects/{slug}/ already exists at {project_dir}; "
@@ -276,8 +276,8 @@ def promote_idea(
     shutil.move(str(incubator_dir), str(project_dir))
 
     # Recalculate vec-index entries.
-    old_prefix = f"personal-private/_idea-incubator/{slug}/"
-    new_prefix = f"personal-private/projects/{slug}/"
+    old_prefix = f"personal/_idea-incubator/{slug}/"
+    new_prefix = f"personal/projects/{slug}/"
     vec_stats = _vec_index_reflect_move(vault, old_prefix, new_prefix)
 
     # Annotate Ideas.md section.
@@ -367,7 +367,7 @@ def gc_idea_incubator(
     Non-TTY contexts default every prompt to 'keep' — never silent deletion.
     """
     vault = _resolve_vault_path(str(vault_path) if vault_path else None)
-    incubator_root = vault / "personal-private" / "_idea-incubator"
+    incubator_root = vault / "personal" / "_idea-incubator"
     stats = {"scanned": 0, "kept": 0, "archived": 0, "deleted": 0}
     if not incubator_root.exists():
         return stats

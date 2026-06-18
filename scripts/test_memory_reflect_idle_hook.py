@@ -50,11 +50,11 @@ class TestMemoryReflectIdleHook(unittest.TestCase):
         # that runs BEFORE the chain; the chain itself is covered by verify-v4.sh.
         self.root = Path(tempfile.mkdtemp(prefix="agentm-idle-hook-test-"))
         self.vault = self.root / "vault"
-        (self.vault / "personal-private").mkdir(parents=True)
+        (self.vault / "personal").mkdir(parents=True)
         (self.vault / "_inbox").mkdir(parents=True)
         # Neutralize the detached idle chain (enable_idle_chain=false) so it exits
         # fast without corpus-mining writes that would race tearDown.
-        (self.vault / "personal-private" / "auto-orchestration-config.md").write_text(
+        (self.vault / "personal" / "auto-orchestration-config.md").write_text(
             "```settings\nenable_idle_chain = false\n```\n", encoding="utf-8",
         )
         self.proj = self.root / "proj"

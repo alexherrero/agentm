@@ -3,8 +3,8 @@
 #
 # Renames `<vault>/personal-projects/` → `<vault>/projects/` AND sweeps
 # every internal reference to the old name across:
-#   - <vault>/personal-private/_always-load/*.md   (always-load conventions)
-#   - <vault>/personal-private/**/*.md             (inbox, domains, workflow,
+#   - <vault>/personal/_always-load/*.md   (always-load conventions)
+#   - <vault>/personal/**/*.md             (inbox, domains, workflow,
 #                                                   patterns, etc.)
 #   - <vault>/projects/*/_index.md                 (group: frontmatter field)
 #   - <vault>/projects/*/**/*.md                   (wikilinks to sibling projects)
@@ -133,9 +133,9 @@ fi
 # and PLAN.archive.*.md if any landed in vault. Markdown only.
 sweep_targets() {
     # Always-load
-    find "$VAULT_PATH/personal-private/_always-load" -type f -name '*.md' 2>/dev/null
-    # personal-private/**/*.md (depth-walk) but not _archive/
-    find "$VAULT_PATH/personal-private" -type f -name '*.md' -not -path '*/_archive/*' 2>/dev/null
+    find "$VAULT_PATH/personal/_always-load" -type f -name '*.md' 2>/dev/null
+    # personal/**/*.md (depth-walk) but not _archive/
+    find "$VAULT_PATH/personal" -type f -name '*.md' -not -path '*/_archive/*' 2>/dev/null
     # _idea-incubator/**/*.md — incubator entries often have wikilinks to
     # `[[personal-projects/<slug>/...]]` and forward-looking promotion-
     # destination prose like "moves to AgentMemory/personal-projects/<slug>/".

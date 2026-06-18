@@ -35,7 +35,7 @@ _CLEAN_FM = [
     "created: 2026-05-19",
     "updated: 2026-05-19",
     "tags: [dev-flow, docs]",
-    "group: personal-private",
+    "group: personal",
     "slug: {slug}",
     "always_load: true",
 ]
@@ -49,7 +49,7 @@ class _Vault:
     def __enter__(self) -> Path:
         self._td = tempfile.TemporaryDirectory()
         self.root = Path(self._td.name)
-        (self.root / "personal-private" / "_always-load").mkdir(parents=True)
+        (self.root / "personal" / "_always-load").mkdir(parents=True)
         return self.root
 
     def __exit__(self, *exc):
@@ -68,7 +68,7 @@ def _ids(findings, severity=None):
 class TestGateAndParse(unittest.TestCase):
     def test_clean_entry_no_findings(self):
         with _Vault() as v:
-            _write(v, "personal-private/_always-load/foo.md", _clean("foo"))
+            _write(v, "personal/_always-load/foo.md", _clean("foo"))
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 1)
             self.assertEqual(findings, [], _ids(findings))
@@ -76,7 +76,7 @@ class TestGateAndParse(unittest.TestCase):
     def test_free_form_note_skipped(self):
         with _Vault() as v:
             # No frontmatter trio -> operator personal note -> skipped.
-            (v / "personal-private" / "my-note.md").write_text(
+            (v / "personal" / "my-note.md").write_text(
                 "# Just my thoughts\n\nno frontmatter here\n", encoding="utf-8")
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
@@ -86,14 +86,14 @@ class TestGateAndParse(unittest.TestCase):
     def test_partial_frontmatter_skipped(self):
         with _Vault() as v:
             # Has `kind` but not the full trio -> not an agent entry.
-            _write(v, "personal-private/p.md", ["kind: note"])
+            _write(v, "personal/p.md", ["kind: note"])
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
             self.assertEqual(model.skipped, 1)
 
     def test_excluded_dirs_skipped(self):
         with _Vault() as v:
-            _write(v, "personal-private/_idea-incubator/x.md", _clean("x"))
+            _write(v, "personal/_idea-incubator/x.md", _clean("x"))
             _write(v, "_meta/y.md", _clean("y"))
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
@@ -103,7 +103,7 @@ class TestChecks(unittest.TestCase):
     def test_required_field_missing(self):
         with _Vault() as v:
             fm = [l for l in _clean("a") if not l.startswith("tags:")]
-            _write(v, "personal-private/_always-load/a.md", fm)
+            _write(v, "personal/_always-load/a.md", fm)
             _, findings = _lint(v)
             self.assertIn("required-field", _ids(findings, "error"))
 
@@ -112,7 +112,7 @@ class TestChecks(unittest.TestCase):
             fm = _clean("b")
             fm[0] = "kind: Bad_Kind"
             fm[4] = "tags: [Bad_Tag, ok]"
-            _write(v, "personal-private/_always-load/b.md", fm)
+            _write(v, "personal/_always-load/b.md", fm)
             _, findings = _lint(v)
             kebab = [f for f in findings if f.check_id == "kebab-case"]
             self.assertGreaterEqual(len(kebab), 2)
@@ -121,13 +121,13 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("c")
             fm[0], fm[1] = fm[1], fm[0]  # swap kind/status
-            _write(v, "personal-private/_always-load/c.md", fm)
+            _write(v, "personal/_always-load/c.md", fm)
             _, findings = _lint(v)
             self.assertIn("field-order", _ids(findings, "warn"))
 
     def test_slug_filename_mismatch(self):
         with _Vault() as v:
-            _write(v, "personal-private/_always-load/d.md", _clean("not-d"))
+            _write(v, "personal/_always-load/d.md", _clean("not-d"))
             _, findings = _lint(v)
             self.assertIn("slug-filename", _ids(findings, "warn"))
 
@@ -135,7 +135,7 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("e")
             fm[2] = "created: 2026/05/19"
-            _write(v, "personal-private/_always-load/e.md", fm)
+            _write(v, "personal/_always-load/e.md", fm)
             _, findings = _lint(v)
             self.assertIn("date-format", _ids(findings, "error"))
 
@@ -143,7 +143,7 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("f")
             fm[3] = "updated: 2026-05-01"  # before created 2026-05-19
-            _write(v, "personal-private/_always-load/f.md", fm)
+            _write(v, "personal/_always-load/f.md", fm)
             _, findings = _lint(v)
             self.assertTrue(any(f.check_id == "date-format" and f.severity == "warn" for f in findings))
 
@@ -151,21 +151,21 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("g")
             fm[1] = "status: active | resolved | superseded"
-            _write(v, "personal-private/_always-load/g.md", fm)
+            _write(v, "personal/_always-load/g.md", fm)
             _, findings = _lint(v)
             self.assertIn("placeholder-value", _ids(findings, "warn"))
 
     def test_schema_drift_unknown_key(self):
         with _Vault() as v:
             fm = _clean("h") + ["mystery: value"]
-            _write(v, "personal-private/_always-load/h.md", fm)
+            _write(v, "personal/_always-load/h.md", fm)
             _, findings = _lint(v)
             self.assertIn("schema-drift", _ids(findings, "warn"))
 
     def test_wikilink_resolution(self):
         with _Vault() as v:
-            _write(v, "personal-private/_always-load/real-slug.md", _clean("real-slug"))
-            _write(v, "personal-private/_always-load/linker.md", _clean("linker"),
+            _write(v, "personal/_always-load/real-slug.md", _clean("real-slug"))
+            _write(v, "personal/_always-load/linker.md", _clean("linker"),
                    body="see [[real-slug]] and [[ghost]]\n")
             _, findings = _lint(v)
             wl = [f for f in findings if f.check_id == "wikilink-resolution"]
@@ -175,8 +175,8 @@ class TestChecks(unittest.TestCase):
     def test_wikilink_path_style_and_excluded_targets(self):
         with _Vault() as v:
             # A real target inside an EXCLUDED-from-lint dir is still a valid link target.
-            _write(v, "personal-private/_idea-incubator/cluster/_index.md", _clean("idx"))
-            _write(v, "personal-private/_always-load/k.md", _clean("k"),
+            _write(v, "personal/_idea-incubator/cluster/_index.md", _clean("idx"))
+            _write(v, "personal/_always-load/k.md", _clean("k"),
                    body="see [[_idea-incubator/cluster/_index]] and [[nope/missing]]\n")
             _, findings = _lint(v)
             wl = [f for f in findings if f.check_id == "wikilink-resolution"]
@@ -190,8 +190,8 @@ class TestChecks(unittest.TestCase):
             (obs / ".obsidian").mkdir()
             (obs / "Ideas.md").write_text("# Ideas\n", encoding="utf-8")  # outside AgentMemory
             vault = obs / "AgentMemory"
-            (vault / "personal-private" / "_always-load").mkdir(parents=True)
-            _write(vault, "personal-private/_always-load/m.md", _clean("m"),
+            (vault / "personal" / "_always-load").mkdir(parents=True)
+            _write(vault, "personal/_always-load/m.md", _clean("m"),
                    body="see [[Ideas#some heading]] and [[ghost-note]]\n")
             _, findings = vl.lint_vault(vault)
             wl = [f for f in findings if f.check_id == "wikilink-resolution"]
@@ -201,15 +201,15 @@ class TestChecks(unittest.TestCase):
     def test_supersede_dangling(self):
         with _Vault() as v:
             fm = _clean("newer") + ["supersedes: nonexistent-slug"]
-            _write(v, "personal-private/_always-load/newer.md", fm)
+            _write(v, "personal/_always-load/newer.md", fm)
             _, findings = _lint(v)
             self.assertIn("supersede-integrity", _ids(findings, "error"))
 
     def test_supersede_target_still_active(self):
         with _Vault() as v:
-            _write(v, "personal-private/_always-load/old.md", _clean("old"))  # status active
+            _write(v, "personal/_always-load/old.md", _clean("old"))  # status active
             fm = _clean("new2") + ["supersedes: old"]
-            _write(v, "personal-private/_always-load/new2.md", fm)
+            _write(v, "personal/_always-load/new2.md", fm)
             _, findings = _lint(v)
             self.assertTrue(any(
                 f.check_id == "supersede-integrity" and f.severity == "warn" for f in findings))
@@ -220,9 +220,9 @@ class TestChecks(unittest.TestCase):
         # stem+slug union; the "still active" warn must resolve by stem too.
         with _Vault() as v:
             fm_target = _clean("real-old")  # slug=real-old, status active
-            _write(v, "personal-private/_always-load/oldfile.md", fm_target)  # stem=oldfile != slug
+            _write(v, "personal/_always-load/oldfile.md", fm_target)  # stem=oldfile != slug
             fm = _clean("newer3") + ["supersedes: oldfile"]  # references by stem
-            _write(v, "personal-private/_always-load/newer3.md", fm)
+            _write(v, "personal/_always-load/newer3.md", fm)
             _, findings = _lint(v)
             sup = [f for f in findings if f.check_id == "supersede-integrity"]
             # NOT flagged dangling (stem resolves) AND the still-active warn fires.
@@ -246,7 +246,7 @@ class TestCalibration(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("a-decision")
             fm[5] = "group: projects/agent-m-v4/decisions"
-            _write(v, "personal-private/_always-load/a-decision.md", fm)
+            _write(v, "personal/_always-load/a-decision.md", fm)
             _, findings = _lint(v)
             self.assertFalse(any(f.check_id == "kebab-case" and "group" in f.message for f in findings))
         # save.py's validator accepts it too (single source of truth).
@@ -283,7 +283,7 @@ class TestAuditReport(unittest.TestCase):
 
     def test_audit_writes_only_the_report(self):
         with _Vault() as v:
-            _write(v, "personal-private/_always-load/a.md", _clean("a"))
+            _write(v, "personal/_always-load/a.md", _clean("a"))
             before = {p: p.read_bytes() for p in v.rglob("*.md")}
             with tempfile.TemporaryDirectory() as outdir:
                 out = Path(outdir) / "report.md"
@@ -296,7 +296,7 @@ class TestAuditReport(unittest.TestCase):
 
     def test_audit_default_path_under_meta(self):
         with _Vault() as v:
-            _write(v, "personal-private/_always-load/a.md", _clean("a"))
+            _write(v, "personal/_always-load/a.md", _clean("a"))
             rc = vl.main(["--audit", "--vault", str(v)])
             self.assertEqual(rc, 0)
             reports = list((v / "_meta").glob("vault-lint-*.md"))
@@ -317,7 +317,7 @@ class TestSchemaPin(unittest.TestCase):
 
     def test_build_frontmatter_emits_locked_order(self):
         fm = save._build_frontmatter(
-            kind="k", group="personal-private", slug="s", tags=["a"],
+            kind="k", group="personal", slug="s", tags=["a"],
             always_load=False, supersedes="some/path.md",
         )
         keys = [line.split(":", 1)[0] for line in fm.splitlines()

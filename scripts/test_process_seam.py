@@ -107,7 +107,7 @@ class _SeamFixture(unittest.TestCase):
 
     def _seed_always_load(self, body: str = "- a test convention\n") -> None:
         """Give `phase_recall` something to return: one always-load entry."""
-        al = self.vault / "personal-private" / "_always-load"
+        al = self.vault / "personal" / "_always-load"
         al.mkdir(parents=True, exist_ok=True)
         (al / "test-conv.md").write_text(body, encoding="utf-8")
 

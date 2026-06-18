@@ -41,8 +41,8 @@ def _write_always_load_entry(
     tags: str = "[test]",
     status: str = "",
 ) -> Path:
-    """Write a minimal always-load entry to <vault>/personal-private/_always-load/<slug>.md."""
-    al_dir = vault / "personal-private" / "_always-load"
+    """Write a minimal always-load entry to <vault>/personal/_always-load/<slug>.md."""
+    al_dir = vault / "personal" / "_always-load"
     al_dir.mkdir(parents=True, exist_ok=True)
     fm_lines = [
         "---",
@@ -317,9 +317,9 @@ class TestPromptSubmitTokenBudget(unittest.TestCase):
     """prompt_submit token budget tests use a vault with no vec index (grep-only)."""
 
     def _make_recall_vault(self, tmp_path: Path, n: int, token: str) -> Path:
-        """Create a vault with n query-relevant entries in personal-private/."""
+        """Create a vault with n query-relevant entries in personal/."""
         vault = tmp_path
-        group = vault / "personal-private"
+        group = vault / "personal"
         group.mkdir(parents=True, exist_ok=True)
         for i in range(n):
             slug = f"recall-entry-{i:02d}"

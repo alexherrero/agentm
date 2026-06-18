@@ -129,7 +129,7 @@ def save_entry(
     slug: str,
     body: str,
     *,
-    group: str = "personal-private",
+    group: str = "personal",
     always_load: bool = False,
     tags: list[str] | None = None,
     supersedes: str | None = None,
@@ -155,9 +155,9 @@ def save_entry(
     _validate_tags(tags)
 
     # Compute target path. --always-load overrides --group: routes to
-    # personal-private/_always-load/<slug>.md regardless of group.
+    # personal/_always-load/<slug>.md regardless of group.
     if always_load:
-        target = vault / "personal-private" / "_always-load" / f"{slug}.md"
+        target = vault / "personal" / "_always-load" / f"{slug}.md"
     else:
         target = vault / group / kind / f"{slug}.md"
 
@@ -236,14 +236,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--group",
-        default="personal-private",
-        help="memory group (default: personal-private)",
+        default="personal",
+        help="memory group (default: personal)",
     )
     parser.add_argument(
         "--always-load",
         action="store_true",
         help=(
-            "route to personal-private/_always-load/ + set always_load: true. "
+            "route to personal/_always-load/ + set always_load: true. "
             "Overrides --group."
         ),
     )

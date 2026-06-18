@@ -12,7 +12,7 @@
 # Pass 2 (sub-agent — see `agents/adapt-evaluator.md`): reads each enriched
 # candidate JSON; outputs final HIGH/MEDIUM/LOW classification + adaptation
 # notes; writes the final watchlist entry to
-# <vault>/personal-private/_skill-watchlist/<source-slug>/<pattern-slug>.md.
+# <vault>/personal/_skill-watchlist/<source-slug>/<pattern-slug>.md.
 #
 # Adapt-don't-import contract (locked from plan #7b PLAN.md):
 #   - Never writes to `crickets/skills/<x>/SKILL.md`.
@@ -99,11 +99,11 @@ def _adapt_state_root(vault: Path) -> Path:
 
 
 def _trusted_sources_path(vault: Path) -> Path:
-    return vault / "personal-private" / "trusted-sources.md"
+    return vault / "personal" / "trusted-sources.md"
 
 
 def _skill_watchlist_root(vault: Path) -> Path:
-    return vault / "personal-private" / "_skill-watchlist"
+    return vault / "personal" / "_skill-watchlist"
 
 
 def _personal_skills_root(vault: Path) -> Path:
@@ -111,7 +111,7 @@ def _personal_skills_root(vault: Path) -> Path:
 
 
 def _always_load_root(vault: Path) -> Path:
-    return vault / "personal-private" / "_always-load"
+    return vault / "personal" / "_always-load"
 
 
 def _utcnow_iso() -> str:

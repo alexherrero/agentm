@@ -490,7 +490,7 @@ def _resolve_route_mode(arg_mode: str | None) -> str:
 def _save_candidate_to_inbox(
     candidate: Candidate, vault: Path, *, stderr=sys.stderr
 ) -> Path | None:
-    """Save a candidate to MemoryVault/personal-private/_inbox/<slug>.md.
+    """Save a candidate to MemoryVault/personal/_inbox/<slug>.md.
 
     Returns the saved path on success, None on failure (e.g. slug collision —
     operator runs `/memory evolve` to resolve). Writes the candidate's body
@@ -519,13 +519,13 @@ def _save_candidate_to_inbox(
         f"{excerpts_block}"
     )
 
-    # Inbox path: <vault>/personal-private/_inbox/<slug>.md. save_entry's
+    # Inbox path: <vault>/personal/_inbox/<slug>.md. save_entry's
     # standard target is <vault>/<group>/<kind>/<slug>.md, so we save with
     # kind="_inbox" to route there. Actually _inbox/ is a flat dir like
-    # _always-load/, not a kind subdir. Use group=personal-private + kind=_inbox.
+    # _always-load/, not a kind subdir. Use group=personal + kind=_inbox.
     # save_entry validates kind as kebab-case ([a-z0-9-]+) — "_inbox" has
     # underscore, fails validation. Bypass via direct file write.
-    inbox_dir = vault / "personal-private" / "_inbox"
+    inbox_dir = vault / "personal" / "_inbox"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     target = inbox_dir / f"{candidate.slug}.md"
     if target.exists():
@@ -575,7 +575,7 @@ def _save_candidate_canonical(
             kind=candidate.category,
             slug=candidate.slug,
             body=candidate.body,
-            group="personal-private",
+            group="personal",
         )
     except (FileExistsError, ValueError, FileNotFoundError) as e:
         print(

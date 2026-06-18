@@ -41,7 +41,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
 HEAT_SIDECAR_NAME = ".heat.json"
 
 # Always-load directory (relative to vault root), matching recall.py convention.
-_ALWAYS_LOAD_REL = Path("personal-private") / "_always-load"
+_ALWAYS_LOAD_REL = Path("personal") / "_always-load"
 
 # Policy thresholds (conservative by design — incorrect demotions are silent quality bugs).
 COLD_SESSIONS_MIN = 10   # min prompt-submit sessions recorded before cold-demotion is eligible
@@ -289,7 +289,7 @@ def run_policy(
         demote_candidates = demote_candidates[:allowed_demotions]
 
     for md_path, fm, slug in demote_candidates:
-        group = fm.get("group", "personal-private")
+        group = fm.get("group", "personal")
         dest_dir = vault / group
         dest_path = dest_dir / md_path.name
 

@@ -7,7 +7,7 @@
 # for the adapt-don't-import workflow (task 4) to evaluate.
 #
 # Locked design calls referenced:
-#   - Source whitelist lives at <vault>/personal-private/skill-discovery-sources.md
+#   - Source whitelist lives at <vault>/personal/skill-discovery-sources.md
 #     (operator-editable in Obsidian; lines starting with # are comments;
 #      blank lines ignored; URLs preserved in file order — operator can
 #      prioritize which sources are scanned first).
@@ -112,7 +112,7 @@ def _resolve_cadence_days(arg_days: int | None) -> int:
 
 
 def _whitelist_path(vault: Path) -> Path:
-    return vault / "personal-private" / "skill-discovery-sources.md"
+    return vault / "personal" / "skill-discovery-sources.md"
 
 
 def _cache_root(vault: Path) -> Path:
@@ -444,7 +444,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
             "the internet; cache + diff each fetch; emit 'new content since "
             "last scan' for the adapt-don't-import workflow (task 4) to "
             "evaluate. Source whitelist is operator-editable at "
-            "<vault>/personal-private/skill-discovery-sources.md."
+            "<vault>/personal/skill-discovery-sources.md."
         ),
     )
     parser.add_argument(
