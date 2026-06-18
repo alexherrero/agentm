@@ -319,6 +319,108 @@ class TestVaultPathResolutionOrder(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------------
+# V5-3 fail-loud guard: vault_path() raises when storage.backend=vault + no vault
+# -----------------------------------------------------------------------------
+
+class TestVaultPathGuard(unittest.TestCase):
+    """LC-6: vault_path() is the choke point — raises StorageBackendNotInstalledError
+    when storage.backend=vault is configured but no vault path is accessible. The
+    guard only fires on the config-file branch (not the env override branch, which is
+    a per-session escape hatch)."""
+
+    def _write_config(self, prefix: Path, **fields) -> None:
+        config = prefix / ".agentm-config.json"
+        config.write_text(json.dumps(fields), encoding="utf-8")
+
+    def test_raises_when_storage_backend_vault_and_no_vault_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            self._write_config(prefix, **{"storage.backend": "vault"})
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                with self.assertRaises(hm.StorageBackendNotInstalledError):
+                    hm.vault_path()
+
+    def test_raises_when_storage_backend_vault_and_vault_path_nonexistent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            self._write_config(
+                prefix,
+                **{"storage.backend": "vault", "vault_path": "/nonexistent/path/xyz"},
+            )
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                with self.assertRaises(hm.StorageBackendNotInstalledError):
+                    hm.vault_path()
+
+    def test_does_not_raise_when_storage_backend_vault_and_vault_accessible(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            self._write_config(
+                prefix,
+                **{"storage.backend": "vault", "vault_path": str(vault)},
+            )
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertEqual(hm.vault_path(), vault)
+
+    def test_does_not_raise_when_no_storage_backend_set(self) -> None:
+        # No storage.backend key → graceful-skip still fires (no guard).
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            self._write_config(prefix)  # empty config
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+
+    def test_env_override_skips_guard_even_with_storage_backend_vault(self) -> None:
+        # MEMORY_VAULT_PATH set to a bad path: graceful-skip (not fail-loud).
+        # The env branch is a per-session escape hatch; the guard only fires on
+        # the config-file branch.
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            self._write_config(prefix, **{"storage.backend": "vault"})
+            with _ClearEnv(
+                set_vars={
+                    "AGENTM_INSTALL_PREFIX": str(prefix),
+                    "MEMORY_VAULT_PATH": "/nonexistent/env/vault",
+                },
+            ):
+                # Must return None (graceful-skip), never raise.
+                self.assertIsNone(hm.vault_path())
+
+    def test_error_message_names_vault_and_fix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            prefix.mkdir()
+            self._write_config(prefix, **{"storage.backend": "vault"})
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                with self.assertRaises(hm.StorageBackendNotInstalledError) as ctx:
+                    hm.vault_path()
+                msg = str(ctx.exception)
+                self.assertIn("vault", msg)
+                self.assertIn("vault_path", msg)
+
+
+# -----------------------------------------------------------------------------
 # recall
 # -----------------------------------------------------------------------------
 

@@ -81,6 +81,14 @@ from vault_lock import (  # noqa: E402
 )
 
 
+class StorageBackendNotInstalledError(RuntimeError):
+    """Raised when `storage.backend=vault` is explicitly configured but the vault
+    is not accessible (V5-3 fail-loud guard). Never a silent demotion to device-local:
+    a configured backend that silently goes missing is an operator mistake that must
+    be surfaced, not papered over.
+    """
+
+
 # -----------------------------------------------------------------------------
 # Constants
 # -----------------------------------------------------------------------------
@@ -193,6 +201,30 @@ def _read_config_vault_path(install_prefix: Optional[Path] = None) -> Optional[P
     return p
 
 
+def _read_config_storage_backend(install_prefix: Optional[Path] = None) -> Optional[str]:
+    """Read `storage.backend` from `<install-prefix>/.agentm-config.json`.
+
+    Returns the stripped backend name when explicitly set; None otherwise.
+    Graceful-skips silently on I/O or parse errors — never raises.
+    Used by vault_path() to implement the V5-3 fail-loud guard.
+    """
+    if install_prefix is None:
+        install_prefix = _agentm_install_prefix()
+    config_path = install_prefix / ".agentm-config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("storage.backend")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    return raw.strip()
+
+
 def _read_config_state_mode(install_prefix: Optional[Path] = None) -> Optional[str]:
     """Read `state_mode` from `<install-prefix>/.agentm-config.json`.
 
@@ -237,6 +269,16 @@ def vault_path() -> Optional[Path]:
       3. `None` — graceful-skip; same semantics as pre-v4.5.1 but now fires
          only when BOTH paths are empty.
 
+    V5-3 fail-loud guard (LC-6): if `storage.backend=vault` is explicitly
+    configured in the install config AND neither resolution path finds an
+    accessible vault, raises `StorageBackendNotInstalledError`. A silent None
+    return here would let the caller silently demote to device-local, which
+    could mis-write or orphan the vault — that is the one failure this must
+    never permit when the operator has explicitly requested vault storage.
+    The env override (`$MEMORY_VAULT_PATH`) is excluded from the guard: it is
+    a per-session escape hatch, so a missing-path env is treated as a
+    broken export (still graceful-skip on the env branch).
+
     The directory must exist for the path to be returned.
     """
     raw = os.environ.get("MEMORY_VAULT_PATH", "").strip()
@@ -245,7 +287,15 @@ def vault_path() -> Optional[Path]:
         if not p.is_dir():
             return None
         return p
-    return _read_config_vault_path()
+    result = _read_config_vault_path()
+    if result is None and _read_config_storage_backend() == "vault":
+        raise StorageBackendNotInstalledError(
+            "storage.backend is set to 'vault' in the install config but no "
+            "vault_path is accessible. Set vault_path (run "
+            "`agentm_config --vault-path <dir>`) or install the obsidian-vault "
+            "plugin — never silently demoting to device-local (V5-3 LC-6)."
+        )
+    return result
 
 
 def is_available() -> bool:

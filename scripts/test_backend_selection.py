@@ -587,11 +587,12 @@ class TestFailLoud(unittest.TestCase):
         self.assertIn(storage_vault.PROTOCOL, msg)
 
     def test_vault_selected_without_vault_path_raises(self) -> None:
-        # Explicit `vault` with no vault_path to seed it → same fail-loud family,
-        # never a guess. (registry.get('vault') resolves, so this is the
-        # companion no-root guard, not the unregistered-backend path.)
+        # Explicit `vault` with no vault_path to seed it → fail-loud, never demote.
+        # V5-3: the choke point moved upstream — vault_path() raises
+        # StorageBackendNotInstalledError before select_backend()'s vault-root
+        # guard even fires. Same never-demote contract, earlier detection.
         self.assertEqual(ac.main(["--storage-backend", "vault"]), 0)
-        with self.assertRaises(bs.StorageSelectionError) as ctx:
+        with self.assertRaises(harness_memory.StorageBackendNotInstalledError) as ctx:
             bs.select_backend(vault_lock_root=self.lock_root)
         self.assertIn("vault_path", str(ctx.exception))
 
