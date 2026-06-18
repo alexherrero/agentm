@@ -32,8 +32,10 @@ and loads its backend module. The plugin absent → the same **fail-loud** refus
 is shadowed, not a fall-back. The built-in stays registered through V5-2 only so
 the task-5 parallel-run can reach it by direct import; V5-3 deletes it.
 
-Minimal in V5-1: exactly one `storage.backend` key + this resolver. The full
-per-plugin config model and capability-request *matching* are V5-7. The
+Minimal in V5-1: exactly one `storage.backend` key + this resolver. V5-7 added
+capability-request *matching*: the optional ``required`` parameter on
+``select_backend()`` raises ``CapabilityMismatchError`` when the resolved
+backend's capabilities don't satisfy the caller's declared requirements. The
 **fail-loud guard** (part-5 task 3) refuses rather than demotes whenever the
 configured backend can't be produced — an unregistered plugin
 (`registry.get → None`), a `vault` selection with no `vault_path`, or an explicit
@@ -44,6 +46,7 @@ Stdlib-only per ADR 0001.
 """
 from __future__ import annotations
 
+import dataclasses
 import importlib.util
 import json
 import os
@@ -59,12 +62,13 @@ import harness_memory
 # wiring layer that depends on the backends; the seam itself never does.
 import storage_device_local
 import storage_vault
-from storage_seam import StorageBackend, registry
+from storage_seam import Capabilities, StorageBackend, registry
 
 __all__ = [
     "select_backend",
     "choose_protocol",
     "StorageSelectionError",
+    "CapabilityMismatchError",
     "storage_preview",
     "StoragePreview",
 ]
@@ -84,6 +88,22 @@ class StorageSelectionError(RuntimeError):
     The caller (the future engine cutover; `doctor`, task 4) catches this to
     surface the install-the-plugin message rather than proceeding.
     """
+
+
+class CapabilityMismatchError(StorageSelectionError):
+    """The resolved backend lacks a capability the caller declared as required.
+
+    Raised by ``select_backend(required=...)`` when the resolved backend's
+    ``.capabilities`` does not satisfy every ``True`` flag the caller declared.
+    Subclasses ``StorageSelectionError`` so existing ``except StorageSelectionError``
+    catch sites cover capability mismatches automatically.
+    """
+
+    def __init__(self, protocol: str, unsatisfied: list[str]) -> None:
+        super().__init__(
+            f"backend {protocol!r} does not satisfy required capabilities: "
+            + ", ".join(unsatisfied)
+        )
 
 
 def _install_plugin_message(protocol: str) -> str:
@@ -329,6 +349,7 @@ def select_backend(
     device_local_root: Optional[Path | str] = None,
     vault_lock_root: Optional[Path | str] = None,
     vault_plugin_scripts: Optional[Path | str] = None,
+    required: Capabilities | None = None,
 ) -> StorageBackend:
     """Return the selected, instantiated `StorageBackend` for this install.
 
@@ -339,6 +360,12 @@ def select_backend(
     `obsidian-vault` plugin, *discovered* and loaded here; the kernel built-in is
     shadowed (reachable only by direct import for the parallel-run), and a `vault`
     selection with the plugin **absent** fails loud rather than serving it.
+
+    When `required` is provided (V5-7), the resolved backend's ``.capabilities``
+    must satisfy every ``True`` flag — a subset check. Mismatch raises
+    ``CapabilityMismatchError`` naming the unsatisfied fields and the backend's
+    protocol. Passing ``required=None`` (the default) preserves today's behavior
+    unchanged; no existing callers need updating.
 
     Injection points keep tests off the operator's real home / cache / vault:
     `device_local_root` (the device-local markdown root; None → `~/.agentm/memory`),
@@ -396,13 +423,23 @@ def select_backend(
             raise StorageSelectionError(_install_obsidian_vault_message()) from exc
         if plugin_cls is None:
             raise StorageSelectionError(_install_obsidian_vault_message())
-        return plugin_cls(vault_root, lock_root=vault_lock_root)
-    if protocol == _DEVICE_LOCAL:
-        return backend_cls(device_local_root)
-    # An explicitly-configured, registered third-party backend: the V5-1 minimal
-    # contract is a no-arg constructor (the backend owns its own defaults).
-    # Rich per-plugin construction config is V5-7.
-    return backend_cls()
+        backend = plugin_cls(vault_root, lock_root=vault_lock_root)
+    elif protocol == _DEVICE_LOCAL:
+        backend = backend_cls(device_local_root)
+    else:
+        # An explicitly-configured, registered third-party backend: the V5-1 minimal
+        # contract is a no-arg constructor (the backend owns its own defaults).
+        backend = backend_cls()
+
+    if required is not None:
+        unsatisfied = [
+            f.name
+            for f in dataclasses.fields(required)
+            if getattr(required, f.name) and not getattr(backend.capabilities, f.name)
+        ]
+        if unsatisfied:
+            raise CapabilityMismatchError(protocol, unsatisfied)
+    return backend
 
 
 # --- doctor preview (part-5 task 4) -----------------------------------------

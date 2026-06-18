@@ -835,5 +835,109 @@ class TestStoragePreview(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class TestCapabilityMatching(unittest.TestCase):
+    """V5-7: select_backend(required=...) subset check + CapabilityMismatchError.
+
+    All tests run against the device-local backend (fresh-install default) because
+    its capabilities are all-False — the conservative floor — which makes both the
+    pass cases (required=None / all-False required) and the fail cases (any True
+    requirement) deterministic and vault-plugin-free.
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-capability-matching-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.device_root = Path(self.tmp) / "device-local-root"
+        self.env = _Env(self.prefix)
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    # -- pass cases -----------------------------------------------------------
+
+    def test_required_none_no_check(self) -> None:
+        # required=None (default) → no check, existing behavior unchanged.
+        from storage_seam import Capabilities
+        backend = bs.select_backend(
+            device_local_root=self.device_root, required=None
+        )
+        self.assertIsInstance(backend, storage_device_local.DeviceLocalBackend)
+
+    def test_all_false_required_passes(self) -> None:
+        # required=Capabilities() — all False — is vacuously satisfied by any backend.
+        from storage_seam import Capabilities
+        backend = bs.select_backend(
+            device_local_root=self.device_root, required=Capabilities()
+        )
+        self.assertIsInstance(backend, storage_device_local.DeviceLocalBackend)
+
+    def test_matching_capabilities_passes(self) -> None:
+        # Device-local has all capabilities False; requiring all False passes.
+        from storage_seam import Capabilities
+        backend = bs.select_backend(
+            device_local_root=self.device_root,
+            required=Capabilities(
+                concurrent_writers=False,
+                conflict_files=False,
+                encryption=False,
+                sync=False,
+            ),
+        )
+        self.assertIsInstance(backend, storage_device_local.DeviceLocalBackend)
+
+    # -- fail cases -----------------------------------------------------------
+
+    def test_single_mismatched_field_raises(self) -> None:
+        # Device-local has concurrent_writers=False; requiring True → mismatch.
+        from storage_seam import Capabilities
+        with self.assertRaises(bs.CapabilityMismatchError) as ctx:
+            bs.select_backend(
+                device_local_root=self.device_root,
+                required=Capabilities(concurrent_writers=True),
+            )
+        msg = str(ctx.exception)
+        self.assertIn("concurrent_writers", msg)
+        self.assertIn("device-local", msg)
+
+    def test_multiple_mismatched_fields_all_named(self) -> None:
+        # Two mismatched fields → both named in the error message.
+        from storage_seam import Capabilities
+        with self.assertRaises(bs.CapabilityMismatchError) as ctx:
+            bs.select_backend(
+                device_local_root=self.device_root,
+                required=Capabilities(concurrent_writers=True, encryption=True),
+            )
+        msg = str(ctx.exception)
+        self.assertIn("concurrent_writers", msg)
+        self.assertIn("encryption", msg)
+
+    def test_error_is_subclass_of_storage_selection_error(self) -> None:
+        # CapabilityMismatchError is a StorageSelectionError so existing catch
+        # sites cover it automatically.
+        from storage_seam import Capabilities
+        with self.assertRaises(bs.StorageSelectionError):
+            bs.select_backend(
+                device_local_root=self.device_root,
+                required=Capabilities(sync=True),
+            )
+
+    def test_str_contains_protocol_and_field(self) -> None:
+        # str(e) names the backend protocol and the unsatisfied field.
+        from storage_seam import Capabilities
+        try:
+            bs.select_backend(
+                device_local_root=self.device_root,
+                required=Capabilities(conflict_files=True),
+            )
+            self.fail("expected CapabilityMismatchError")
+        except bs.CapabilityMismatchError as e:
+            self.assertIn("device-local", str(e))
+            self.assertIn("conflict_files", str(e))
+
+
 if __name__ == "__main__":
     unittest.main()
