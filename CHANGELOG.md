@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.5.0] — 2026-06-18 — V5-3 storage cutover: device-local is canonical
+
+**MINOR.** The kernel no longer contains a built-in vault backend. State (`harness_state_dir`, `read_state_file`, `write_state_file`) is device-local only; `phase_recall` returns `""`; `resolve_documenter_context` returns `None`. The vault is reachable only through the `obsidian-vault` plugin; a config-file `storage.backend=vault` with no vault accessible now raises `StorageBackendNotInstalledError` — never a silent demotion to device-local. Four locked design calls in ADR 0018. Gates: 20/20, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-3 — lock A2 index invariant (`53f96fa`).** `scripts/test_a2_index_invariant.py` — new gate confirming the vector index directory stays under the device-local `~/.cache/agentm/` path, never inside the synced vault root.
+
+- **V5-3 — vault-root rename tooling (`cd78cdd`, `1358e1d`).** `scripts/rename-vault-root.sh` — Phase A: backup + runbook (dry-run only, operator-reviewed); Phase B: string sweep across 36 files in `scripts/` and `harness/`, CHANGELOG, README, wiki. Guarded against zero-match grep exit under `pipefail`. Used to execute the `AgentMemory → Agent` rename on this device.
+
+- **V5-3 — group rename: personal-private → personal (`053217b`).** 3-part lockstep across kernel `_ALWAYS_LOAD_REL`, plugin `vault_probe.py`, and 10 skill scripts. `memory_mcp_tools.py` group default confirmed correct as part of the V5-9 ↔ V5-3 reconciliation fast-follow.
+
+- **V5-3 — delete vault backend from kernel; device-local state only (`8cb2b48`).** `harness_memory.py` loses the `_vault` state routing; `harness_state_dir`, `read_state_file`, `write_state_file` are unconditional `<project_root>/.harness/`. `phase_recall` frozen to return `""` (replaced by V5-9 MCP recall). `resolve_documenter_context` returns `None` (wiki-maintenance dispatches directly).
+
+- **V5-3 — `vault_path()` fail-loud guard (`05e63d3`).** `StorageBackendNotInstalledError` (new `RuntimeError` subclass, LC-6). `vault_path()` raises when `storage.backend=vault` is configured in `.agentm-config.json` but no vault path is accessible — never silent demotion. `$MEMORY_VAULT_PATH` env override remains a graceful-skip per-session escape hatch (DC-5 asymmetry). Six targeted tests in `TestVaultPathGuard`; `TestBackendSelection` regression updated.
+
+- **V5-3 — ADR 0018; HLD v0.9 lifecycle entry; ADR 0010/0013 amendments (`8ce8824`).** ADR 0018 records all seven V5-3 design calls. `device-wide-architecture.md` v0.9 entry added. ADR 0010 Amendment 2026-06-18 closes re-audit trigger #1 (personal-private rename) and notes `resolve_documenter_context` supersession. ADR 0013 two negative bullets annotated `[Resolved in V5-3 / ADR 0018]`.
+
+### Internal
+
+- **Wiki sweep: `Memory-Storage-Seam.md`, `Storage-Seam.md`, `Choose-A-Storage-Backend.md` updated.** Removed "engine cutover is a separate, later step beyond V5-1" language; updated all three to reflect that the cutover shipped in V5-3.
+
 ## [v5.4.0] — 2026-06-17 — V5-9 memory MCP server
 
 **MINOR.** The memory engine is now reachable from any MCP host — Claude Code, Cursor, Goose, Claude Desktop — through a single local HTTP daemon. Four snake_case tools (`memory_search`, `memory_recall`, `memory_append`, `memory_forget`), singleton streamable-HTTP broker, static bearer auth, mandatory Origin-validation, and soft-delete. The daemon is writer #2 alongside the CLI, routing all MCP-host writes through the V5-0 `vault_lock` protocol. Five locked design calls in ADR 0017. Gates: 20/20, CI green across Linux/Mac/Windows.

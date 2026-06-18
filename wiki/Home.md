@@ -49,7 +49,7 @@ For contributors running the harness:
 - [Memory MCP tools](Memory-MCP-Tools) — four-tool MCP surface: parameters, pagination, soft-delete contract, error codes.
 
 > [!NOTE]
-> **Latest release — [v5.4.0](https://github.com/alexherrero/agentm/releases/tag/v5.4.0) (2026-06-17):** V5-9 memory MCP server — singleton streamable-HTTP daemon at `127.0.0.1:7821`; four MCP tools (`memory_search` / `memory_recall` / `memory_append` / `memory_forget`); bearer-token + Origin-validation security; stdio shim for Claude Desktop; launchd plist + `install.sh --mcp-server`; `memory_mcp_doctor.py` health checks. ([ADR 0017](0017-mcp-server-design))
+> **Latest release — [v5.5.0](https://github.com/alexherrero/agentm/releases/tag/v5.5.0) (2026-06-18):** V5-3 storage cutover — vault backend deleted from the `harness_memory.py` kernel; `harness_state_dir` / `read_state_file` / `write_state_file` always device-local; `phase_recall` always `""`; `resolve_documenter_context` always `None`; `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault; `personal-private/` → `personal/` group rename in lockstep. ([ADR 0018](0018-v5-3-storage-cutover))
 
 → Full field-level detail lives under **Reference** in the sidebar.
 
