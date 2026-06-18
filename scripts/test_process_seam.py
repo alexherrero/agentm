@@ -126,28 +126,30 @@ class RecallHere(_SeamFixture):
     def test_absent_vault_returns_empty_string(self) -> None:
         self.assertEqual(seam.recall_here(self._ctx(phase="work")), "")
 
-    def test_present_vault_returns_markdown(self) -> None:
+    def test_present_vault_returns_empty_v5_3(self) -> None:
+        # V5-3: phase_recall always returns ""; vault data in context is handled
+        # by the V5-9 MCP memory server, not by the kernel's recall path.
         self._set_vault()
         self._seed_always_load()
         out = seam.recall_here(self._ctx(phase="work"))
-        self.assertIn("Auto-context recall", out)
-        self.assertIn("phase: work", out)
+        self.assertEqual(out, "")
 
-    def test_unknown_phase_degrades_to_work_never_raises(self) -> None:
-        # An unknown phase must map to the "work" default, not raise the
-        # ValueError that `phase_recall` raises on an unknown phase.
+    def test_unknown_phase_degrades_to_work_never_raises_v5_3(self) -> None:
+        # An unknown phase must not raise — it should degrade gracefully to "".
+        # V5-3: both known and unknown phases return "" (vault backend removed).
         self._set_vault()
         self._seed_always_load()
         work = seam.recall_here(self._ctx(phase="work"))
         bogus = seam.recall_here(self._ctx(phase="not-a-real-phase"))
-        self.assertEqual(bogus, work)        # mapped to "work"
-        self.assertIn("phase: work", bogus)  # never "phase: not-a-real-phase"
+        self.assertEqual(work, "")
+        self.assertEqual(bogus, "")
 
-    def test_missing_phase_defaults_to_work(self) -> None:
+    def test_missing_phase_defaults_to_work_v5_3(self) -> None:
+        # V5-3: all modes return ""; phase defaulting to "work" still works.
         self._set_vault()
         self._seed_always_load()
         out = seam.recall_here(self._ctx())  # context carries no phase
-        self.assertIn("phase: work", out)
+        self.assertEqual(out, "")
 
     def test_reserved_query_is_a_noop(self) -> None:
         # `query` is reserved/forward-compat — it must neither filter nor error.
@@ -229,10 +231,11 @@ class StatePath(_SeamFixture):
         self._unset_vault()
         self.assertEqual(seam.state_path(self._ctx(), "plan"), self.harness / "PLAN.md")
 
-    def test_vault_backed_resolves_under_vault(self) -> None:
+    def test_vault_mode_resolves_device_local_v5_3(self) -> None:
+        # V5-3: vault mode no longer routes state to the vault — always device-local.
         self._set_vault()
         self.assertEqual(
-            seam.state_path(self._ctx(), "plan"), self.vault_harness / "PLAN.md"
+            seam.state_path(self._ctx(), "plan"), self.harness / "PLAN.md"
         )
 
     def test_named_plan_via_context(self) -> None:
@@ -378,12 +381,13 @@ class CLIShim(_SeamFixture):
         self.assertEqual(rc, 0)
         self.assertEqual(out, "")
 
-    def test_recall_here_present_exits_zero_markdown(self) -> None:
+    def test_recall_here_present_exits_zero_empty_v5_3(self) -> None:
+        # V5-3: phase_recall always returns ""; vault context via V5-9 MCP server.
         self._set_vault()
         self._seed_always_load()
         rc, out, _ = self._run("recall-here", "--cwd", str(self.repo), "--phase", "work")
         self.assertEqual(rc, 0)
-        self.assertIn("Auto-context recall", out)
+        self.assertEqual(out, "")
 
     def test_state_path_emits_path_exit_zero(self) -> None:
         self._local_mode()

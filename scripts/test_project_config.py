@@ -159,8 +159,8 @@ class TestRegisterIntegration(unittest.TestCase):
                     os.environ.pop("MEMORY_VAULT_PATH", None)
                 else:
                     os.environ["MEMORY_VAULT_PATH"] = old_env
-            # vault project.json now carries the enablement block + preserved slug.
-            vault_pj = vault / "projects" / "demo" / "_harness" / "project.json"
+            # V5-3: project.json lands in device-local .harness/, not vault.
+            vault_pj = repo / ".harness" / "project.json"
             self.assertTrue(vault_pj.is_file())
             data = json.loads(vault_pj.read_text(encoding="utf-8"))
             self.assertEqual(data["vault_project"], "demo")

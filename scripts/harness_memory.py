@@ -18,9 +18,8 @@ Sub-commands:
     available           — exit 0 if vault accessible, 1 otherwise
     phase-dispatch      — V4 #23: post-work reflect / post-release refresh
                           (shells out to orchestration_phase.py; non-blocking)
-    read-state          — read a project state file via the resolver (vault-first)
-    write-state         — write a project state file via the resolver (vault-only)
-    vault-state-path    — emit the resolved on-disk path for a state file
+    read-state          — read a project state file via the resolver (device-local)
+    write-state         — write a project state file via the resolver (device-local)
     documenter-context  — V4 #35: doc-write-time recall bundle (operator conventions
                           + project decisions + wiki-style) for the documenter
                           sub-agent + wiki-author/diataxis-author skills
@@ -128,8 +127,8 @@ _PHASE_PROJECT_DIRS = {
     # `decisions/` keep the documenter from re-litigating ADR-recorded calls;
     # `wiki-style/` (optional — graceful-skip if absent) carries per-project doc
     # conventions (heading shape, page-length norms, mode preferences). Operator
-    # globals from `_always-load/` load unconditionally via `_load_always_load`,
-    # so they're not listed here.
+    # globals from `personal/_always-load/` are not listed here (V5-3: direct
+    # vault reads removed; context via V5-9 MCP memory server).
     "documenter": ("_index.md", "decisions", "wiki-style"),
 }
 
@@ -304,9 +303,6 @@ def resolve_project(context: Optional[dict] = None) -> dict:
       - `layout`: "new" | "legacy" | "none" — which vault layout the resolution
                   used. Useful for the dispatcher's warn-once decision in task 3.
 
-    For state lookups, use the companion `vault_state_path(resolution, filename)`
-    which appends `_harness/<filename>` to `vault_path`.
-
     Pure function; no side effects. Safe to call from any phase / hook.
     """
     if context is None:
@@ -363,40 +359,17 @@ def resolve_project(context: Optional[dict] = None) -> dict:
     }
 
 
-def vault_state_path(resolution: dict, filename: str) -> Optional[Path]:
-    """Return <vault_path>/_harness/<filename> for a project state file.
-
-    Returns None if resolution lacks vault_path (no slug, no vault, etc.).
-
-    Pure path-construction; doesn't check existence. Callers that need to
-    read should use `read_state_file()` below (checks vault first, falls
-    back to legacy <project_root>/.harness/<file>). Writes go only to this
-    path via `write_state_file()`.
-
-    Per plan #18 task 5 — `05-state-migration.md` § "Per-file target mapping".
-    """
-    if not resolution.get("vault_path"):
-        return None
-    return resolution["vault_path"] / "_harness" / filename
-
-
 def harness_state_dir(resolution: dict) -> Optional[Path]:
-    """Return the `_harness/` directory to enumerate for this project, honoring
-    state mode — the directory companion to `vault_state_path` (which returns a
-    single file path).
+    """Return the `_harness/` directory to enumerate for this project.
 
-    - **local mode** (`.project-mode` = "local") → `<project_root>/.harness/`.
-    - **vault mode** (default) → `<vault_path>/_harness/`.
-    - returns None when neither resolves (a vault-mode project with no vault_path).
+    V5-3: state is device-local only. Always returns `<project_root>/.harness/`.
+    Returns None only when project_root is not set.
 
     Used by `queue_status_lite` and named-plan-aware session-start discovery to
     glob every `PLAN*.md`. Pure path-construction; does not check existence.
     """
-    if _read_project_mode(resolution) == "local":
-        root = resolution.get("project_root") or Path.cwd()
-        return Path(root) / ".harness"
-    vault_p = resolution.get("vault_path")
-    return Path(vault_p) / "_harness" if vault_p else None
+    root = resolution.get("project_root")
+    return Path(root) / ".harness" if root else None
 
 
 # -----------------------------------------------------------------------------
@@ -513,50 +486,20 @@ def _read_repo_local_state_file(project_root: Path, filename: str) -> str:
 
 
 def read_state_file(resolution: dict, filename: str) -> str:
-    """Read a project state file, preferring vault-backed location.
+    """Read a project state file from device-local location.
 
-    Resolution chain:
-      1. <vault>/projects/<slug>/_harness/<filename>  (V4 #26 canonical)
-      2. <project_root>/.harness/<filename>           (legacy fallback;
-                                                       emits warn-once)
-      3. ""                                           (neither exists; empty
-                                                       string for caller's
-                                                       missing-state semantic)
+    V5-3: vault-first read removed. Resolution chain:
+      1. <project_root>/.harness/<filename>  (local mode — configured home)
+      2. <project_root>/.harness/<filename>  (legacy fallback; emits warn-once
+                                              when `.project-mode` is not set)
+      3. ""                                  (file absent)
 
-    Per plan #18 task 5 + task 9 design specs. Per locked DC-2: warn once
-    per session per file. Warn-once state is module-level (session-scoped);
-    test helpers can reset via `_reset_warn_state()`.
-
-    Honors the effective state mode (per locked DC-2/DC-8): if mode is "local",
-    the read targets `<project_root>/.harness/<filename>` directly — local mode
-    is the configured home, not a legacy fallback, so it does *not* emit the
-    migrate-to-vault warn. The mode is resolved via `_read_project_mode()` from
-    two on-host layers (repo-local `.harness/.project-mode` marker → device-level
-    `state_mode` in `.agentm-config.json`), so it is honored with no vault.
+    Warn-once state is module-level (session-scoped); test helpers can reset
+    via `_reset_warn_state()`. The mode is resolved via `_read_project_mode()`.
     """
-    vault_p = resolution.get("vault_path")
     project_root = resolution.get("project_root") or Path.cwd()
-
-    # Local mode (DC-2/DC-3): the repo-local `.harness/` is the canonical home.
-    # Read it directly — vault-independent, no deprecation warning.
-    if _read_project_mode(resolution) == "local":
-        return _read_repo_local_state_file(project_root, filename)
-
-    if vault_p:
-        # Default: try the vault path.
-        target = vault_p / "_harness" / filename
-        if target.is_file():
-            try:
-                return target.read_text(encoding="utf-8")
-            except OSError as exc:
-                print(
-                    f"[harness_memory] failed to read {target}: {exc}",
-                    file=sys.stderr,
-                )
-                # Fall through to legacy as a last resort.
-
-    # Legacy fallback — <project_root>/.harness/<filename> (emits warn-once).
-    return _read_legacy_state_file(project_root, filename)
+    # V5-3: vault backend removed. All reads from <project_root>/.harness/<filename>.
+    return _read_repo_local_state_file(project_root, filename)
 
 
 def _read_legacy_state_file(project_root: Path, filename: str) -> str:
@@ -575,47 +518,13 @@ def _read_legacy_state_file(project_root: Path, filename: str) -> str:
 
 
 def write_state_file(resolution: dict, filename: str, content: str) -> Path:
-    """Write a project state file, vault-backed by default, repo-local in local mode.
+    """Write a project state file to device-local storage.
 
-    Creates <vault>/projects/<slug>/_harness/ if absent. Atomic write via
-    `<path>.tmp` + `rename()`. Returns the absolute path written.
-
-    Mode resolution (per locked DC-2/DC-8): `_read_project_mode()` honors two
-    on-host layers — a per-repo `<project_root>/.harness/.project-mode` marker,
-    then the device-level `state_mode` in `.agentm-config.json`. When the
-    effective mode is "local", the write targets `<project_root>/.harness/<filename>`
-    — the first-class single-repo write path, which succeeds **with no vault**.
-
-    Raises ValueError only when the mode is *not* local **and** the resolution
-    lacks a vault_path — i.e. a vault-mode project with no reachable vault. The
-    error names the local-mode opt-in so the caller knows the escape hatch.
+    V5-3: vault backend removed. All writes go to <project_root>/.harness/<filename>.
+    Atomic write via `<path>.tmp` + `rename()`. Returns the absolute path written.
     """
-    vault_p = resolution.get("vault_path")
     project_root = resolution.get("project_root") or Path.cwd()
-
-    # Local mode (DC-2/DC-3): route to the repo-local home. Vault-independent —
-    # this is what makes single-repo mode writable without a vault.
-    if _read_project_mode(resolution) == "local":
-        return _write_repo_local_state_file(project_root, filename, content)
-
-    if vault_p is None:
-        raise ValueError(
-            f"cannot write {filename}: resolution lacks vault_path "
-            f"(slug={resolution.get('slug')!r}, layout={resolution.get('layout')!r}). "
-            f"Resolve the project first, set MEMORY_VAULT_PATH, or opt into "
-            f"single-repo mode with a <repo>/.harness/.project-mode file "
-            f"containing 'local'."
-        )
-
-    target = vault_p / "_harness" / filename
-    target.parent.mkdir(parents=True, exist_ok=True)
-    # V5-0: shared-vault write — acquire the one per-vault advisory mutex, then
-    # land atomically (temp→fsync→rename) via the canonical writer. The mutex
-    # serializes concurrent writers so two atomic_write calls to the same target
-    # never collide on the shared `<target>.tmp` path (R4 rule 2 + DC-2).
-    with vault_mutex(vault_p):
-        atomic_write(target, content)
-    return target
+    return _write_repo_local_state_file(project_root, filename, content)
 
 
 def _write_repo_local_state_file(project_root: Path, filename: str, content: str) -> Path:
@@ -744,8 +653,8 @@ def resolve_active_plan(
       3. **legacy singleton** — no arg, no marker file → ``("PLAN.md", "progress.md")``.
 
     Reader only: never writes the marker (component 2 owns the writer). Returns a
-    `(plan, progress)` tuple of bare filenames — resolve to a path with
-    ``vault_state_path(resolution, plan)`` or read with ``read_state_file``.
+    `(plan, progress)` tuple of bare filenames — resolve to an absolute path via
+    ``harness_state_dir(resolution)`` or read with ``read_state_file``.
     """
     # 1. Explicit arg — highest precedence, the caller's deliberate choice.
     if plan_arg is not None:
@@ -1002,69 +911,6 @@ def _format_entry(label: str, body: str) -> str:
     return f"### {label}\n\n{body.rstrip()}\n"
 
 
-def _load_always_load(vault: Path, permanent_only: bool) -> list[str]:
-    """Return the list of always-load markdown bodies (one per file).
-
-    Permanent-only is a no-op for always-load (they're always permanent by
-    design — that's the whole point of the directory).
-    """
-    al = vault / _ALWAYS_LOAD_REL[0] / _ALWAYS_LOAD_REL[1]
-    if not al.is_dir():
-        return []
-    out: list[str] = []
-    for path in sorted(al.glob("*.md")):
-        try:
-            body = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        out.append(_format_entry(f"always-load: {path.stem}", body))
-    return out
-
-
-def _load_project_entries(
-    vault: Path,
-    project: str,
-    phase: str,
-    permanent_only: bool,
-) -> list[str]:
-    """Return per-project entries scoped to the phase.
-
-    Prefers the new V4 #26 `<vault>/projects/<slug>/` layout; falls back to
-    the legacy `<vault>/personal-projects/<slug>/` if the operator hasn't
-    run the vault rename yet.
-    """
-    base = _vault_projects_dir(vault) / project
-    if not base.is_dir():
-        return []
-
-    out: list[str] = []
-    rels = _PHASE_PROJECT_DIRS.get(phase, ())
-    for rel in rels:
-        target = base / rel
-        if target.is_file() and target.suffix == ".md":
-            try:
-                body = target.read_text(encoding="utf-8")
-            except OSError:
-                continue
-            out.append(_format_entry(f"{project}/{rel}", body))
-        elif target.is_dir():
-            for path in sorted(target.glob("*.md")):
-                # Permanent-only: skip files marked ephemeral via convention.
-                # Convention: filenames under `daily/` or starting with `_inbox-`
-                # are ephemeral. Per-phase dirs we walk here are by definition
-                # permanent (decisions/, open-questions/, known-issues/), so
-                # permanent_only is mostly a no-op at this stage — but we still
-                # honor it for forward-compat.
-                if permanent_only and path.name.startswith("_inbox-"):
-                    continue
-                try:
-                    body = path.read_text(encoding="utf-8")
-                except OSError:
-                    continue
-                out.append(_format_entry(f"{project}/{rel}/{path.stem}", body))
-    return out
-
-
 def phase_recall(
     phase: str,
     project: Optional[str],
@@ -1073,46 +919,15 @@ def phase_recall(
     permanent_only: bool = False,
     project_first: bool = False,
 ) -> str:
-    """Return a markdown summary of recall context for `phase` + `project`.
+    """Return recall context for `phase` + `project`.
 
-    Empty string if vault unavailable (graceful-skip).
-
-    `project_first` (V4 #35): when True, per-project entries (decisions, _index,
-    …) are emitted BEFORE the operator-global always-load conventions, so they
-    survive budget truncation (which drops from the end). The documenter phase
-    sets this — its raison d'être is the project's settled decisions, which must
-    not be the first thing cut when the convention set is large. Other phases
-    keep always-load-first (their global conventions are the priority).
+    V5-3: vault backend removed. Always returns empty string; context is now
+    provided by the V5-9 MCP memory server. Phase validation is preserved so
+    callers relying on ValueError for unknown phases are unaffected.
     """
     if phase not in _VALID_PHASES:
         raise ValueError(f"unknown phase: {phase!r}")
-    v = vault_path()
-    if v is None:
-        return ""
-
-    always = _load_always_load(v, permanent_only)
-    project_parts = (
-        _load_project_entries(v, project, phase, permanent_only) if project else []
-    )
-    parts: list[str] = []
-    if project_first:
-        parts.extend(project_parts)
-        parts.extend(always)
-    else:
-        parts.extend(always)
-        parts.extend(project_parts)
-
-    if not parts:
-        return ""
-
-    cap = phase_budget(phase, budget)
-    parts = _truncate_to_budget(parts, cap)
-
-    header = (
-        f"# Auto-context recall — phase: {phase}, project: {project or '(unknown)'}\n"
-        f"(budget: ~{cap} tokens, entries: {len(parts)})\n\n"
-    )
-    return header + "\n".join(parts) + "\n"
+    return ""
 
 
 # -----------------------------------------------------------------------------
@@ -1138,79 +953,11 @@ def _load_md_dir(directory: Path) -> list[dict]:
 def resolve_documenter_context(slug: str) -> Optional[dict]:
     """Structured documenter-time recall bundle for `slug` (V4 #35).
 
-    The structured counterpart to ``phase_recall("documenter", ...)``: where
-    `phase_recall` returns a flat markdown blob, this returns a typed dict so
-    programmatic callers (the `documenter-context --format json` path, future
-    primitives) can address each context source independently.
-
-    Returned shape::
-
-        {
-            "slug":                 <slug>,
-            "registered":           bool,   # projects/<slug>/ dir exists in vault
-            "operator_conventions": [{"name": str, "body": str}, ...],  # _always-load/
-            "global_wiki_style":    [{"name": str, "body": str}, ...],  # projects/_global/wiki-style/
-            "project_decisions":    [{"name": str, "body": str}, ...],  # decisions/
-            "project_anchor":       Optional[str],   # abs path to projects/<slug>/_index.md
-            "wiki_style":           [{"name": str, "body": str}, ...],  # wiki-style/ (optional)
-        }
-
-    Graceful-skip contract:
-
-    - **Vault unavailable** (``vault_path()`` is None) → returns ``None``. The
-      caller detects this via ``is None`` and falls back to repo-local context.
-    - **Slug not registered** (``projects/<slug>/`` dir absent) → returns the
-      dict with ``registered=False``, empty ``project_decisions``/``wiki_style``,
-      and ``project_anchor=None``. ``operator_conventions`` still loads, since
-      ``_always-load/`` conventions apply globally regardless of project.
-
-    Never raises on I/O errors — unreadable files are skipped.
+    V5-3: vault backend removed. Always returns None (vault-unavailable signal)
+    so callers fall back to repo-local context. Context is provided by the
+    V5-9 MCP memory server.
     """
-    v = vault_path()
-    if v is None:
-        return None
-
-    bundle: dict = {
-        "slug": slug,
-        "registered": False,
-        "operator_conventions": [],
-        "global_wiki_style": [],
-        "project_decisions": [],
-        "project_anchor": None,
-        "wiki_style": [],
-    }
-
-    # Operator-global conventions — always loaded (apply across every project).
-    bundle["operator_conventions"] = _load_md_dir(
-        v / _ALWAYS_LOAD_REL[0] / _ALWAYS_LOAD_REL[1]
-    )
-
-    # Global ON-DEMAND wiki conventions — the reserved `_global` pseudo-project
-    # under the top-level `projects/` root (NOT under personal/). Read
-    # here so the relocation of global wiki conventions OUT of _always-load into
-    # `_global` (crickets wiki-maintenance part 3) keeps surfacing to documenter-
-    # time callers. Additive: the `_always-load` read above remains the transition
-    # fallback for any un-relocated entries. Like `operator_conventions`, this is
-    # slug-independent, so it loads even when the slug is unregistered. See ADR
-    # 0010 (vault internal taxonomy) for why `_global` lives under `projects/`.
-    bundle["global_wiki_style"] = _load_md_dir(
-        _vault_projects_dir(v) / "_global" / "wiki-style"
-    )
-
-    base = _vault_projects_dir(v) / slug
-    if not base.is_dir():
-        # Slug not registered — project-specific bundle stays empty.
-        return bundle
-
-    bundle["registered"] = True
-
-    anchor = base / "_index.md"
-    if anchor.is_file():
-        bundle["project_anchor"] = str(anchor)
-
-    bundle["project_decisions"] = _load_md_dir(base / "decisions")
-    bundle["wiki_style"] = _load_md_dir(base / "wiki-style")
-    return bundle
+    return None
 
 
 def documenter_context(slug: str, *, budget: Optional[int] = None, fmt: str = "text") -> tuple[str, int]:
@@ -1573,7 +1320,7 @@ def _build_parser() -> argparse.ArgumentParser:
     # so the workflow actually uses the vault canonical path post-V4 #26.
     p_read_state = sub.add_parser(
         "read-state",
-        help="read a project state file via the resolver (vault-first, legacy fallback)",
+        help="read a project state file via the resolver (device-local)",
     )
     p_read_state.add_argument("filename", help="state file shortname (e.g. PLAN.md)")
     p_read_state.add_argument(
@@ -1583,7 +1330,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_write_state = sub.add_parser(
         "write-state",
-        help="write a project state file via the resolver (vault-only unless .project-mode=local)",
+        help="write a project state file via the resolver (device-local)",
     )
     p_write_state.add_argument("filename", help="state file shortname (e.g. PLAN.md)")
     p_write_state.add_argument(
@@ -1593,16 +1340,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_write_state.add_argument(
         "--content-file", default="-",
         help="path to file containing new content, or '-' for stdin (default)",
-    )
-
-    p_vsp = sub.add_parser(
-        "vault-state-path",
-        help="emit the resolved on-disk path for a state file",
-    )
-    p_vsp.add_argument("filename", help="state file shortname (e.g. PLAN.md)")
-    p_vsp.add_argument(
-        "--project-root", default=None,
-        help="path to project root (default: cwd)",
     )
 
     # resolve-active-plan (V5-10 part 1): emit the active (PLAN, progress) path
@@ -1755,23 +1492,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         except OSError as exc:
             print(f"[harness_memory] cannot read --content-file: {exc}", file=sys.stderr)
             return 2
-        try:
-            path = write_state_file(resolution, args.filename, content)
-        except ValueError as exc:
-            # Resolver lacks vault_path (no slug, no vault) — surface error.
-            print(f"[harness_memory] {exc}", file=sys.stderr)
-            return 2
-        print(str(path))
-        return 0
-
-    if args.cmd == "vault-state-path":
-        root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
-        resolution = resolve_project({"cwd": root})
-        path = vault_state_path(resolution, args.filename)
-        if path is None:
-            # No vault_path — emit empty + non-zero exit (caller can graceful-skip).
-            print("", end="")
-            return 1
+        path = write_state_file(resolution, args.filename, content)
         print(str(path))
         return 0
 
@@ -1781,8 +1502,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         # effective state mode (vault vs local) via harness_state_dir, the same
         # dir read_state_file / write_state_file target. Exit codes:
         #   0 — resolved; pair printed.
-        #   1 — no resolvable _harness/ dir (vault-mode project, no vault):
-        #       graceful-skip signal, same convention as vault-state-path.
+        #   1 — state_dir is None (project_root absent from resolution): dead code
+        #       post-V5-3 (harness_state_dir always resolves when project_root set).
         #   2 — LOUD error: a dangling .harness/active-plan marker (Risk #7) or
         #       an unsafe plan slug. Never a silent singleton fallback.
         root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()

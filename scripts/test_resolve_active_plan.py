@@ -56,10 +56,10 @@ class ResolveActivePlanPrecedence(unittest.TestCase):
         self._tmp = tempfile.mkdtemp(prefix="agentm-active-plan-")
         self.root = Path(self._tmp)
         self.vault = self.root / "vault"
-        self.harness = self.vault / "_harness"
-        self.harness.mkdir(parents=True)
         self.proj = self.root / "repo"
-        (self.proj / ".harness").mkdir(parents=True)
+        # V5-3: plan files live in device-local .harness/, not vault/_harness/.
+        self.harness = self.proj / ".harness"
+        self.harness.mkdir(parents=True)
         self.resolution = {
             "vault_path": self.vault,
             "project_root": self.proj,
@@ -241,14 +241,17 @@ class ResolveActivePlanCLI(unittest.TestCase):
         self.assertEqual(out.strip(), "")
         self.assertIn("unsafe plan name", err)
 
-    # --- graceful-skip: no resolvable _harness/ (vault-mode, no vault) → exit 1 ---
+    # --- V5-3: bare .harness/ always resolves to the singleton (no vault-mode dead end) ---
 
-    def test_no_resolvable_harness_dir_exits_one(self) -> None:
+    def test_bare_project_resolves_singleton_v5_3(self) -> None:
+        # V5-3: harness_state_dir always returns <root>/.harness/ — no vault needed.
+        # A bare project with .harness/ (no PLAN.md) resolves the singleton pair.
         bare = Path(self._tmp) / "bare"
-        (bare / ".harness").mkdir(parents=True)  # no .project-mode → vault mode
+        (bare / ".harness").mkdir(parents=True)
         rc, out, _ = self._run(root=bare)
-        self.assertEqual(rc, 1)
-        self.assertEqual(out, "")
+        self.assertEqual(rc, 0)
+        self.assertIn("PLAN.md", out)
+        self.assertIn("progress.md", out)
 
     # --- reader only ---
 

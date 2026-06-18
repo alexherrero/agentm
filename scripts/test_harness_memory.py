@@ -328,55 +328,26 @@ class TestRecall(unittest.TestCase):
         with _ClearEnv(unset_keys=["MEMORY_VAULT_PATH"]):
             self.assertEqual(hm.phase_recall("plan", "any-slug"), "")
 
-    def test_recall_loads_always_load_and_project_entries(self) -> None:
+    def test_recall_always_empty_v5_3(self) -> None:
+        """V5-3: vault backend removed — phase_recall always returns empty string."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 out = hm.phase_recall("plan", "agentm")
-        self.assertIn("coding style", out)
-        self.assertIn("pick stdlib", out)
-        self.assertIn("budget tuning", out)
-        # plan phase doesn't include known-issues:
-        self.assertNotIn("CRLF on windows", out)
-
-    def test_recall_work_phase_includes_known_issues(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(Path(tmp), project="agentm")
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                out = hm.phase_recall("work", "agentm")
-        self.assertIn("CRLF on windows", out)
-        self.assertIn("pick stdlib", out)
-        # work doesn't include open-questions:
-        self.assertNotIn("budget tuning", out)
-
-    def test_recall_budget_env_caps_output(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_vault(Path(tmp), project="agentm")
-            with _ClearEnv(
-                set_vars={
-                    "MEMORY_VAULT_PATH": str(vault),
-                    # Brutally tight budget — should drop trailing entries.
-                    "HARNESS_RECALL_BUDGET_PLAN": "30",
-                }
-            ):
-                out = hm.phase_recall("plan", "agentm")
-        # Output should be small. Approx budget=30 tokens = ~120 chars.
-        # Allow for the header + at least one entry; the rest must be truncated.
-        self.assertLess(len(out), 600)
+        self.assertEqual(out, "")
 
     def test_recall_unknown_phase_raises(self) -> None:
         with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": "/tmp"}):
             with self.assertRaises(ValueError):
                 hm.phase_recall("bogus", "x")
 
-    def test_recall_review_phase_no_project_entries(self) -> None:
-        """Review phase reads only always-load (no per-project, by spec)."""
+    def test_recall_review_phase_empty_v5_3(self) -> None:
+        """V5-3: all phases return empty (vault backend removed)."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 out = hm.phase_recall("review", "agentm")
-        self.assertIn("coding style", out)
-        self.assertNotIn("pick stdlib", out)
+        self.assertEqual(out, "")
 
 
 # -----------------------------------------------------------------------------
@@ -630,7 +601,8 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
 
-    def test_cli_recall_with_vault_emits_content(self) -> None:
+    def test_cli_recall_always_empty_v5_3(self) -> None:
+        """V5-3: vault backend removed — recall returns empty for any phase/vault."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_vault(Path(tmp), project="agentm")
             result = self._run(
@@ -638,8 +610,7 @@ class TestCLI(unittest.TestCase):
                 env_extra={"MEMORY_VAULT_PATH": str(vault)},
             )
         self.assertEqual(result.returncode, 0)
-        self.assertIn("coding style", result.stdout)
-        self.assertIn("pick stdlib", result.stdout)
+        self.assertEqual(result.stdout, "")
 
     def test_cli_plan_done_promotion_empty_when_no_progress(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -651,59 +622,10 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
 
-    # V4 #37 task 7: dispatcher CLI subcommands.
+    # V4 #37 task 7 / V5-3: read-state and write-state are device-local only.
 
-    def test_cli_vault_state_path_resolves_post_v37_layout(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_root = Path(tmp) / "project"
-            project_root.mkdir()
-            (project_root / ".harness").mkdir()
-            (project_root / ".harness" / "project.json").write_text(
-                '{"vault_project": "fixture"}', encoding="utf-8"
-            )
-            vault = _make_vault_new_layout(Path(tmp), project="fixture")
-            result = self._run(
-                "vault-state-path", "PLAN.md",
-                "--project-root", str(project_root),
-                env_extra={"MEMORY_VAULT_PATH": str(vault)},
-            )
-        self.assertEqual(result.returncode, 0)
-        expected = str(vault / "projects" / "fixture" / "_harness" / "PLAN.md")
-        self.assertEqual(result.stdout.strip(), expected)
-
-    def test_cli_vault_state_path_exits_1_when_no_resolution(self) -> None:
-        """No slug + no vault → empty stdout + exit 1 (caller graceful-skips)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            result = self._run(
-                "vault-state-path", "PLAN.md",
-                "--project-root", tmp,
-            )
-        self.assertEqual(result.returncode, 1)
-        self.assertEqual(result.stdout, "")
-
-    def test_cli_read_state_returns_vault_content(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            project_root = Path(tmp) / "project"
-            project_root.mkdir()
-            (project_root / ".harness").mkdir()
-            (project_root / ".harness" / "project.json").write_text(
-                '{"vault_project": "fixture"}', encoding="utf-8"
-            )
-            vault = _make_vault_new_layout(Path(tmp), project="fixture")
-            (vault / "projects" / "fixture" / "_harness").mkdir(parents=True)
-            (vault / "projects" / "fixture" / "_harness" / "PLAN.md").write_text(
-                "vault PLAN content\n", encoding="utf-8"
-            )
-            result = self._run(
-                "read-state", "PLAN.md",
-                "--project-root", str(project_root),
-                env_extra={"MEMORY_VAULT_PATH": str(vault)},
-            )
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, "vault PLAN content\n")
-
-    def test_cli_read_state_falls_back_to_legacy(self) -> None:
-        """Vault file absent → falls back to legacy <project>/.harness/<file>."""
+    def test_cli_read_state_returns_repo_local_content(self) -> None:
+        """V5-3: vault-first read removed — read-state reads from repo .harness/."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -712,7 +634,7 @@ class TestCLI(unittest.TestCase):
                 '{"vault_project": "fixture"}', encoding="utf-8"
             )
             (project_root / ".harness" / "PLAN.md").write_text(
-                "legacy PLAN content\n", encoding="utf-8"
+                "repo PLAN content\n", encoding="utf-8"
             )
             vault = _make_vault_new_layout(Path(tmp), project="fixture")
             result = self._run(
@@ -721,11 +643,10 @@ class TestCLI(unittest.TestCase):
                 env_extra={"MEMORY_VAULT_PATH": str(vault)},
             )
         self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, "legacy PLAN content\n")
-        # Warn-once notice on stderr.
-        self.assertIn("legacy", result.stderr.lower())
+        self.assertEqual(result.stdout, "repo PLAN content\n")
 
-    def test_cli_write_state_writes_to_vault(self) -> None:
+    def test_cli_read_state_reads_repo_local(self) -> None:
+        """V5-3: read-state reads from <project>/.harness/<file> (device-local)."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -733,19 +654,33 @@ class TestCLI(unittest.TestCase):
             (project_root / ".harness" / "project.json").write_text(
                 '{"vault_project": "fixture"}', encoding="utf-8"
             )
-            vault = _make_vault_new_layout(Path(tmp), project="fixture")
+            (project_root / ".harness" / "PLAN.md").write_text(
+                "repo PLAN content\n", encoding="utf-8"
+            )
+            result = self._run(
+                "read-state", "PLAN.md",
+                "--project-root", str(project_root),
+            )
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "repo PLAN content\n")
+
+    def test_cli_write_state_writes_device_local(self) -> None:
+        """V5-3: write-state writes to <project>/.harness/ (device-local)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp) / "project"
+            project_root.mkdir()
+            (project_root / ".harness").mkdir()
             content_file = Path(tmp) / "input.md"
-            content_file.write_text("new vault content\n", encoding="utf-8")
+            content_file.write_text("new content\n", encoding="utf-8")
             result = self._run(
                 "write-state", "PLAN.md",
                 "--project-root", str(project_root),
                 "--content-file", str(content_file),
-                env_extra={"MEMORY_VAULT_PATH": str(vault)},
             )
             self.assertEqual(result.returncode, 0)
-            target = vault / "projects" / "fixture" / "_harness" / "PLAN.md"
+            target = project_root / ".harness" / "PLAN.md"
             self.assertEqual(result.stdout.strip(), str(target))
-            self.assertEqual(target.read_text(encoding="utf-8"), "new vault content\n")
+            self.assertEqual(target.read_text(encoding="utf-8"), "new content\n")
 
     def test_cli_write_then_read_state_local_mode_no_vault(self) -> None:
         """Hardening I task 2: with NO vault configured + a repo-local
@@ -785,7 +720,7 @@ class TestCLI(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------------
-# resolve_project / vault_state_path / _vault_projects_dir  (V4 #26)
+# resolve_project / _vault_projects_dir  (V4 #26)
 # -----------------------------------------------------------------------------
 
 def _make_vault_new_layout(root: Path, *, project: str = "fixture-project") -> Path:
@@ -912,37 +847,12 @@ class TestResolveProject(unittest.TestCase):
         self.assertEqual(resolution["layout"], "new")
 
 
-class TestVaultStatePath(unittest.TestCase):
-    """Covers vault_state_path(resolution, filename) — path construction only."""
-
-    def test_returns_none_when_no_vault_path(self) -> None:
-        result = hm.vault_state_path({"vault_path": None}, "PLAN.md")
-        self.assertIsNone(result)
-
-    def test_returns_none_when_missing_field(self) -> None:
-        result = hm.vault_state_path({}, "PLAN.md")
-        self.assertIsNone(result)
-
-    def test_returns_harness_subpath(self) -> None:
-        resolution = {"vault_path": Path("/tmp/vault/projects/agentm")}
-        result = hm.vault_state_path(resolution, "PLAN.md")
-        self.assertEqual(result, Path("/tmp/vault/projects/agentm/_harness/PLAN.md"))
-
-    def test_handles_nested_filenames(self) -> None:
-        resolution = {"vault_path": Path("/tmp/vault/projects/agentm")}
-        result = hm.vault_state_path(resolution, "designs/v4-26/01-pre-flight.md")
-        self.assertEqual(
-            result,
-            Path("/tmp/vault/projects/agentm/_harness/designs/v4-26/01-pre-flight.md"),
-        )
-
-
 # -----------------------------------------------------------------------------
-# read_state_file / write_state_file / warn_once  (V4 #26 task 3)
+# read_state_file / write_state_file / warn_once  (V4 #26 task 3 / V5-3)
 # -----------------------------------------------------------------------------
 
 class TestReadStateFile(unittest.TestCase):
-    """Covers backward-compat read with vault-first, legacy-fallback semantics."""
+    """Covers device-local read (V5-3: vault-first read removed)."""
 
     def setUp(self) -> None:
         hm._reset_warn_state()
@@ -956,49 +866,38 @@ class TestReadStateFile(unittest.TestCase):
             (Path(tmp) / "project").mkdir()
             self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "")
 
-    def test_reads_from_vault_when_present(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            vp = Path(tmp) / "vault" / "projects" / "p"
-            (vp / "_harness").mkdir(parents=True)
-            (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
-            project = Path(tmp) / "project"
-            project.mkdir()
-            resolution = {"vault_path": vp, "project_root": project}
-            self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "vault content")
-
-    def test_falls_back_to_legacy_with_warn(self) -> None:
+    def test_reads_device_local_no_warn_v5_3(self) -> None:
+        # V5-3: device-local .harness/ is the canonical location — no warning emitted.
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
-            (project / ".harness" / "PLAN.md").write_text("legacy content", encoding="utf-8")
+            (project / ".harness" / "PLAN.md").write_text("device-local content", encoding="utf-8")
             resolution = {
-                "vault_path": Path(tmp) / "vault" / "projects" / "p",  # doesn't exist
+                "vault_path": Path(tmp) / "vault" / "projects" / "p",
                 "project_root": project,
             }
             with io.StringIO() as buf:
-                # Capture stderr via mock
                 with mock.patch("sys.stderr", buf):
                     result = hm.read_state_file(resolution, "PLAN.md")
-                self.assertEqual(result, "legacy content")
-                stderr = buf.getvalue()
-                self.assertIn("reading PLAN.md from legacy", stderr)
-                self.assertIn("migrate-harness-to-vault.sh", stderr)
+                self.assertEqual(result, "device-local content")
+                self.assertEqual(buf.getvalue(), "")  # no legacy warning
 
-    def test_warn_only_once_per_session_per_file(self) -> None:
+    def test_multiple_reads_no_warn_v5_3(self) -> None:
+        # V5-3: multiple reads of the same device-local file produce no warnings.
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
-            (project / ".harness" / "PLAN.md").write_text("legacy", encoding="utf-8")
+            (project / ".harness" / "PLAN.md").write_text("content", encoding="utf-8")
             resolution = {"vault_path": None, "project_root": project}
             with io.StringIO() as buf:
                 with mock.patch("sys.stderr", buf):
                     hm.read_state_file(resolution, "PLAN.md")
                     hm.read_state_file(resolution, "PLAN.md")
                     hm.read_state_file(resolution, "PLAN.md")
-                # Single warning despite 3 reads.
-                self.assertEqual(buf.getvalue().count("reading PLAN.md from legacy"), 1)
+                self.assertEqual(buf.getvalue(), "")  # no warnings across all reads
 
-    def test_warns_separately_for_different_files(self) -> None:
+    def test_different_files_no_warn_v5_3(self) -> None:
+        # V5-3: reads of different device-local files produce no warnings.
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
@@ -1007,11 +906,11 @@ class TestReadStateFile(unittest.TestCase):
             resolution = {"vault_path": None, "project_root": project}
             with io.StringIO() as buf:
                 with mock.patch("sys.stderr", buf):
-                    hm.read_state_file(resolution, "PLAN.md")
-                    hm.read_state_file(resolution, "progress.md")
-                stderr = buf.getvalue()
-                self.assertEqual(stderr.count("reading PLAN.md from legacy"), 1)
-                self.assertEqual(stderr.count("reading progress.md from legacy"), 1)
+                    result_plan = hm.read_state_file(resolution, "PLAN.md")
+                    result_prog = hm.read_state_file(resolution, "progress.md")
+                self.assertEqual(result_plan, "a")
+                self.assertEqual(result_prog, "b")
+                self.assertEqual(buf.getvalue(), "")  # no warnings
 
     def test_project_mode_local_bypasses_vault_read(self) -> None:
         """DC-8: device-level state_mode=local routes the read to the repo-local
@@ -1034,24 +933,21 @@ class TestReadStateFile(unittest.TestCase):
             with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
                 self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "repo content")
 
-    def test_in_vault_marker_ignored_on_read(self) -> None:
-        """Hardening I task 3: the in-vault `.project-mode` marker is removed —
-        config never lives in the vault. With only an in-vault marker present
-        (no repo marker, no device state_mode), the read comes from the vault
-        as normal — the marker is ignored."""
+    def test_vault_content_not_read_v5_3(self) -> None:
+        """V5-3: vault-first read removed. Even with vault_path set and a vault
+        file present, read_state_file returns repo-local content (not vault)."""
         with tempfile.TemporaryDirectory() as tmp:
             prefix = Path(tmp) / "prefix"
             prefix.mkdir()  # empty config dir → no device state_mode
             vp = Path(tmp) / "vault" / "projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
-            (vp / "_harness" / ".project-mode").write_text("local", encoding="utf-8")
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
             (project / ".harness" / "PLAN.md").write_text("repo content", encoding="utf-8")
             resolution = {"vault_path": vp, "project_root": project}
             with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
-                self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "vault content")
+                self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "repo content")
 
     # Hardening I task 2: vault-less read path + repo-local marker (DC-2).
 
@@ -1098,32 +994,41 @@ class TestReadStateFile(unittest.TestCase):
 
 
 class TestWriteStateFile(unittest.TestCase):
-    """Covers vault-only writes (with .project-mode=local override)."""
+    """Covers device-local writes (V5-3: vault backend removed)."""
 
-    def test_writes_to_vault_creating_harness_dir(self) -> None:
+    def test_writes_device_local_regardless_of_vault_path(self) -> None:
+        """V5-3: write_state_file writes to <project_root>/.harness/ always."""
         with tempfile.TemporaryDirectory() as tmp:
             vp = Path(tmp) / "vault" / "projects" / "p"
-            resolution = {"vault_path": vp, "project_root": Path(tmp) / "project"}
+            project = Path(tmp) / "project"
+            project.mkdir()
+            resolution = {"vault_path": vp, "project_root": project}
             target = hm.write_state_file(resolution, "PLAN.md", "new content")
-            self.assertEqual(target, vp / "_harness" / "PLAN.md")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
             self.assertEqual(target.read_text(encoding="utf-8"), "new content")
-            # _harness/ dir created.
-            self.assertTrue((vp / "_harness").is_dir())
+            # _harness/ dir created in project root.
+            self.assertTrue((project / ".harness").is_dir())
+            # Vault untouched.
+            self.assertFalse((vp / "_harness" / "PLAN.md").exists())
 
-    def test_raises_when_no_vault_path(self) -> None:
-        resolution = {"vault_path": None, "project_root": Path("/tmp/project")}
-        with self.assertRaises(ValueError) as cm:
-            hm.write_state_file(resolution, "PLAN.md", "x")
-        self.assertIn("cannot write PLAN.md", str(cm.exception))
+    def test_no_vault_path_writes_device_local(self) -> None:
+        """V5-3: no vault_path no longer raises — writes to project_root/.harness/."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            project.mkdir()
+            resolution = {"vault_path": None, "project_root": project}
+            target = hm.write_state_file(resolution, "PLAN.md", "x")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
 
     def test_atomic_write_no_tmp_remnant(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            vp = Path(tmp) / "vault" / "projects" / "p"
-            resolution = {"vault_path": vp, "project_root": Path(tmp)}
+            project = Path(tmp) / "project"
+            project.mkdir()
+            resolution = {"vault_path": None, "project_root": project}
             hm.write_state_file(resolution, "PLAN.md", "content")
             # No .tmp file left behind.
             self.assertEqual(
-                list((vp / "_harness").glob("PLAN.md.*")), []
+                list((project / ".harness").glob("PLAN.md.*")), []
             )
 
     def test_device_state_mode_local_writes_to_repo(self) -> None:
@@ -1176,10 +1081,8 @@ class TestWriteStateFile(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "repo wins")
             self.assertFalse((vp / "_harness" / "PLAN.md").exists())
 
-    def test_repo_local_marker_wins_over_device_state_mode(self) -> None:
-        """DC-2 precedence: a per-repo marker overrides the device-level default.
-        repo-local='vault' (non-local) overrides device state_mode='local', so the
-        write targets the vault."""
+    def test_all_modes_write_device_local_v5_3(self) -> None:
+        """V5-3: vault backend removed — all mode configurations write device-locally."""
         with tempfile.TemporaryDirectory() as tmp:
             prefix = Path(tmp) / "prefix"
             prefix.mkdir()
@@ -1189,28 +1092,21 @@ class TestWriteStateFile(unittest.TestCase):
             (vp / "_harness").mkdir(parents=True)
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
-            (project / ".harness" / ".project-mode").write_text("vault", encoding="utf-8")
             resolution = {"vault_path": vp, "project_root": project}
             with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
-                target = hm.write_state_file(resolution, "PLAN.md", "vault wins")
-            self.assertEqual(target, vp / "_harness" / "PLAN.md")
-            self.assertEqual(target.read_text(encoding="utf-8"), "vault wins")
-            self.assertFalse((project / ".harness" / "PLAN.md").exists())
+                target = hm.write_state_file(resolution, "PLAN.md", "device local")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
+            # Vault untouched.
+            self.assertFalse((vp / "_harness" / "PLAN.md").exists())
 
-    def test_no_vault_and_no_local_marker_still_raises(self) -> None:
-        """Contract preserved: no vault + no (or non-local) repo-local marker is a
-        vault-mode project with no reachable vault → ValueError (NOT a silent
-        local write). Guards against auto-detecting 'no vault ⇒ local' (DC-3)."""
+    def test_no_vault_no_local_marker_writes_device_local_v5_3(self) -> None:
+        """V5-3: no vault + no local marker no longer raises; writes device-locally."""
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
             resolution = {"vault_path": None, "project_root": project}
-            with self.assertRaises(ValueError):
-                hm.write_state_file(resolution, "PLAN.md", "x")
-            # An explicit non-local repo-local marker is still vault-mode → raises.
-            (project / ".harness" / ".project-mode").write_text("vault", encoding="utf-8")
-            with self.assertRaises(ValueError):
-                hm.write_state_file(resolution, "PLAN.md", "x")
+            target = hm.write_state_file(resolution, "PLAN.md", "x")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
 
     def test_local_write_tolerates_str_project_root(self) -> None:
         """read/write symmetry: the local read path wraps `project_root` in Path,
@@ -2920,91 +2816,75 @@ class TestAgentmUpdateLauncher(unittest.TestCase):
 
 
 class TestEngineConcurrencyProof(unittest.TestCase):
-    """V5-0 Task 3: executable proof that N>=2 concurrent writers to ONE shared
-    vault file serialize through `vault_mutex` + `atomic_write` — no lost
-    update, no torn file, no `.tmp` remnant; the final content is exactly one
-    writer's complete payload.
+    """V5-3: executable proof that N concurrent workers writing to DISTINCT
+    device-local files (the named-plan model) each land a complete, un-torn
+    payload with no `.tmp` remnants.
 
-    This is the answer to "is the vault safe at N>=2 single-machine writers."
-    Eight threads race `write_state_file` against the SAME vault target. Without
-    the per-vault mutex the writers collide on the shared `<target>.tmp` path
-    and a half-written temp can be renamed into place (a torn file). With it,
-    each writer owns the temp exclusively, so the final file is always exactly
-    one writer's payload — never a byte-level mix of two.
+    After V5-3 the vault backend is gone and the concurrency model is
+    writer-per-file: each worker owns its own `PLAN-<slug>.md` / `progress-<slug>.md`
+    pair in `<project_root>/.harness/`. Contention between writers is eliminated
+    by file isolation, not by a per-vault mutex. This test proves that
+    `write_state_file` (→ `_write_repo_local_state_file` → `atomic_write`)
+    lands a complete, un-torn payload for each of N concurrent writers when each
+    writes to its OWN distinct file.
     """
 
-    def test_concurrent_writers_to_one_vault_file_never_tear(self) -> None:
+    def test_concurrent_writers_to_distinct_files_never_tear_v5_3(self) -> None:
         n_writers = 8
         iterations = 5
         payload_len = 120_000  # large enough that an unserialized overwrite tears
 
-        prev_xdg = os.environ.get("XDG_CACHE_HOME")
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            # Redirect the lock root off the real ~/.cache (plan constraint:
-            # tests never touch the operator's cache). vault_mutex's default
-            # lock_root honors XDG_CACHE_HOME.
-            os.environ["XDG_CACHE_HOME"] = str(tmp_path / "cache")
-            try:
-                vault = tmp_path / "vault" / "projects" / "probe"
-                vault.mkdir(parents=True, exist_ok=True)
-                repo = tmp_path / "repo"  # no .project-mode marker => vault mode
-                repo.mkdir(parents=True, exist_ok=True)
-                resolution = {"vault_path": vault, "project_root": repo}
-                filename = "concurrency-probe.md"
+            repo = tmp_path / "repo"
+            repo.mkdir(parents=True, exist_ok=True)
 
-                # Distinct single-char payloads, all the same length: a torn mix
-                # of two writers shows up as either a wrong length or more than
-                # one distinct byte value in the final file.
-                chars = "0123456789abcdefghij"[:n_writers]
-                payloads = {c: (c * payload_len) for c in chars}
+            chars = "0123456789abcdefghij"[:n_writers]
+            # Each writer owns its own distinct file — the named-plan model.
+            filenames = {c: f"PLAN-worker-{c}.md" for c in chars}
+            payloads = {c: (c * payload_len) for c in chars}
+            resolutions = {c: {"project_root": repo} for c in chars}
 
-                errors: list[BaseException] = []
-                barrier = threading.Barrier(n_writers)
+            errors: list[BaseException] = []
+            barrier = threading.Barrier(n_writers)
 
-                def writer(ch: str) -> None:
-                    try:
-                        barrier.wait()  # release all writers together: max race
-                        for _ in range(iterations):
-                            hm.write_state_file(resolution, filename, payloads[ch])
-                    except BaseException as exc:  # noqa: BLE001 - surface any
-                        errors.append(exc)
+            def writer(ch: str) -> None:
+                try:
+                    barrier.wait()  # release all writers together: max race
+                    for _ in range(iterations):
+                        hm.write_state_file(resolutions[ch], filenames[ch], payloads[ch])
+                except BaseException as exc:  # noqa: BLE001 - surface any
+                    errors.append(exc)
 
-                threads = [threading.Thread(target=writer, args=(c,)) for c in chars]
-                for t in threads:
-                    t.start()
-                for t in threads:
-                    t.join(timeout=60)
+            threads = [threading.Thread(target=writer, args=(c,)) for c in chars]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=60)
 
-                self.assertEqual(
-                    [t for t in threads if t.is_alive()], [],
-                    "a writer thread hung (possible deadlock in vault_mutex)",
-                )
-                self.assertEqual(errors, [], f"writers raised: {errors!r}")
+            self.assertEqual(
+                [t for t in threads if t.is_alive()], [],
+                "a writer thread hung",
+            )
+            self.assertEqual(errors, [], f"writers raised: {errors!r}")
 
-                target = vault / "_harness" / filename
-                self.assertTrue(target.is_file(), "final vault file missing")
+            harness_dir = repo / ".harness"
+            for c in chars:
+                target = harness_dir / filenames[c]
+                self.assertTrue(target.is_file(), f"file missing for worker {c!r}")
                 data = target.read_text(encoding="utf-8")
-
-                # 1. No torn write: every byte is the SAME char (one writer's).
+                # Each file must be exactly one writer's full payload — never torn.
                 distinct = set(data)
                 self.assertEqual(
                     len(distinct), 1,
-                    f"torn write: final file mixes {len(distinct)} distinct byte value(s)",
+                    f"worker {c!r}: torn write ({len(distinct)} distinct byte values)",
                 )
-                # 2. Exactly one writer's full payload (right length + known char).
-                self.assertEqual(len(data), payload_len, "final file truncated/concatenated")
-                self.assertIn(data[0], chars, "final content is not any writer's payload")
-                self.assertEqual(data, payloads[data[0]], "final != exactly one writer's payload")
+                self.assertEqual(len(data), payload_len, f"worker {c!r}: truncated/concatenated")
+                self.assertEqual(data, payloads[c], f"worker {c!r}: wrong content")
 
-                # 3. No `.tmp` remnant left behind in the vault _harness dir.
-                leftovers = list((vault / "_harness").glob("*.tmp"))
-                self.assertEqual(leftovers, [], f".tmp remnant(s) left behind: {leftovers}")
-            finally:
-                if prev_xdg is None:
-                    os.environ.pop("XDG_CACHE_HOME", None)
-                else:
-                    os.environ["XDG_CACHE_HOME"] = prev_xdg
+            # No `.tmp` remnant left behind.
+            leftovers = list(harness_dir.glob("*.tmp"))
+            self.assertEqual(leftovers, [], f".tmp remnant(s) left behind: {leftovers}")
 
 
 if __name__ == "__main__":

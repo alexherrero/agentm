@@ -184,8 +184,8 @@ class QueueStatusLiteFixture(unittest.TestCase):
 
 
 class HarnessStateDirResolution(unittest.TestCase):
-    """`harness_state_dir` is the directory companion to `vault_state_path`: it
-    resolves `_harness/` per state mode, the basis for plan enumeration."""
+    """`harness_state_dir` resolves the `_harness/` directory — always device-local
+    after V5-3 (vault backend removed)."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp(prefix="agentm-state-dir-")
@@ -197,24 +197,22 @@ class HarnessStateDirResolution(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def test_vault_mode_dir(self) -> None:
-        resolution = {"vault_path": self.vault, "project_root": self.proj}
-        self.assertEqual(
-            hm.harness_state_dir(resolution), self.vault / "_harness"
-        )
-
-    def test_local_mode_dir(self) -> None:
-        (self.proj / ".harness" / ".project-mode").write_text(
-            "local\n", encoding="utf-8"
-        )
+    def test_vault_mode_dir_returns_device_local_v5_3(self) -> None:
+        # V5-3: vault backend gone — harness_state_dir always returns device-local.
         resolution = {"vault_path": self.vault, "project_root": self.proj}
         self.assertEqual(
             hm.harness_state_dir(resolution), self.proj / ".harness"
         )
 
-    def test_no_vault_no_local_is_none(self) -> None:
-        # Vault mode (default) with no vault_path → nothing resolves.
-        self.assertIsNone(hm.harness_state_dir({"project_root": self.proj}))
+    def test_local_mode_dir(self) -> None:
+        resolution = {"vault_path": self.vault, "project_root": self.proj}
+        self.assertEqual(
+            hm.harness_state_dir(resolution), self.proj / ".harness"
+        )
+
+    def test_no_project_root_is_none(self) -> None:
+        # V5-3: with no project_root, harness_state_dir cannot resolve.
+        self.assertIsNone(hm.harness_state_dir({"vault_path": self.vault}))
 
 
 if __name__ == "__main__":

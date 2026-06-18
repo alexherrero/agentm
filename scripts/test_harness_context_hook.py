@@ -57,17 +57,15 @@ class TestHarnessContextHook(unittest.TestCase):
         self.tmp.cleanup()
 
     def _env(self, **over) -> dict:
-        env = {**os.environ, "HOME": str(self.fake_home), "MEMORY_VAULT_PATH": str(self.vault)}
-        env.pop("AGENTM_INSTALL_PREFIX", None)  # MEMORY_VAULT_PATH wins anyway
+        env = {**os.environ, "HOME": str(self.fake_home)}
+        env.pop("AGENTM_INSTALL_PREFIX", None)
+        env.pop("MEMORY_VAULT_PATH", None)
         env.update(over)
         return env
 
-    def _resolve(self, name: str, env: dict) -> str:
-        r = subprocess.run(
-            [sys.executable, str(_RESOLVER), "vault-state-path", name],
-            cwd=str(self.proj), env=env, capture_output=True, text=True,
-        )
-        return r.stdout.strip()
+    def _harness_dir_from_proj(self) -> Path:
+        """V5-3: state is always in <project_root>/.harness/."""
+        return self.proj / ".harness"
 
     def _run_hook(self, cwd: str, env: dict):
         payload = json.dumps({"session_id": "doctor-probe", "cwd": cwd})
@@ -76,17 +74,18 @@ class TestHarnessContextHook(unittest.TestCase):
         )
 
     def test_injects_block_when_both_state_files_exist(self) -> None:
+        # V5-3: state lives in .harness/ (device-local), not the vault.
         env = self._env()
-        plan = self._resolve("PLAN.md", env)
-        prog = self._resolve("progress.md", env)
-        self.assertTrue(plan and prog, f"resolver returned empty: plan={plan!r} prog={prog!r}")
-        for p in (plan, prog):
-            Path(p).parent.mkdir(parents=True, exist_ok=True)
-            Path(p).write_text("# fixture\n", encoding="utf-8")
+        hdir = self._harness_dir_from_proj()
+        plan = str(hdir / "PLAN.md")
+        prog = str(hdir / "progress.md")
+        hdir.mkdir(parents=True, exist_ok=True)
+        Path(plan).write_text("# fixture\n", encoding="utf-8")
+        Path(prog).write_text("# progress\n", encoding="utf-8")
 
         r = self._run_hook(str(self.proj), env)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("[agentm] Project state for this repo lives in the vault", r.stdout)
+        self.assertIn("[agentm] Project state for this repo lives in .harness/", r.stdout)
         self.assertIn(plan, r.stdout)
         self.assertIn(prog, r.stdout)
         self.assertIn("Read PLAN.md before", r.stdout)
@@ -103,8 +102,8 @@ class TestHarnessContextHook(unittest.TestCase):
     # ── Named plans (V5-10 part 1, task 5) ─────────────────────────────────────
 
     def _harness_dir(self, env: dict) -> Path:
-        """The resolved _harness/ dir = parent of the constructed PLAN.md path."""
-        hdir = Path(self._resolve("PLAN.md", env)).parent
+        """V5-3: the harness dir is always <project_root>/.harness/."""
+        hdir = self.proj / ".harness"
         hdir.mkdir(parents=True, exist_ok=True)
         return hdir
 
@@ -125,12 +124,12 @@ class TestHarnessContextHook(unittest.TestCase):
     def test_named_plans_list_unnamed_singleton_too(self) -> None:
         # Unnamed PLAN.md alongside a named one → BOTH listed (surface them all).
         env = self._env()
-        plan = self._resolve("PLAN.md", env)
-        prog = self._resolve("progress.md", env)
-        Path(plan).parent.mkdir(parents=True, exist_ok=True)
+        hdir = self._harness_dir(env)
+        plan = str(hdir / "PLAN.md")
+        prog = str(hdir / "progress.md")
         Path(plan).write_text("# unnamed\n", encoding="utf-8")
         Path(prog).write_text("# progress\n", encoding="utf-8")
-        (Path(plan).parent / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (hdir / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
         r = self._run_hook(str(self.proj), env)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("Named-plan mode", r.stdout)

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# harness-context-session-start — inject the project's vault PLAN.md/progress.md
+# harness-context-session-start — inject the project's PLAN.md/progress.md
 # paths into session context on SessionStart.
 #
-# Post-V4 #26 a project's harness state lives at <vault>/projects/<slug>/_harness/,
-# not in the repo's .harness/. This hook tells the agent where, on every session
-# boot, so it reads PLAN.md before plan-status questions or phase commands. Only
-# fires the injection when BOTH PLAN.md and progress.md resolve + exist on disk;
-# silent no-op otherwise. See hook.md for full docs. V4 #39.
+# V5-3: harness state lives in <project_root>/.harness/ (device-local only).
+# This hook tells the agent where, on every session boot, so it reads PLAN.md
+# before plan-status questions or phase commands. Only fires the injection when
+# PLAN.md or PLAN-*.md exists in .harness/; silent no-op otherwise.
+# See hook.md for full docs. V4 #39, V5-3 update.
 
 set -uo pipefail   # NOTE: no -e — must never block session boot (graceful-skip).
 
@@ -63,23 +63,17 @@ elif command -v timeout >/dev/null 2>&1; then
     TIMEOUT_CMD="timeout 0.5"
 fi
 
-_resolve_state() {  # $1 = state filename (PLAN.md | progress.md)
-    ( cd "$EVENT_CWD" 2>/dev/null && $TIMEOUT_CMD python3 "$RESOLVER" vault-state-path "$1" 2>/dev/null )
-}
+# ── V5-3: state is always device-local in <project_root>/.harness/ ─────────────
+HARNESS_DIR="$EVENT_CWD/.harness"
+PLAN_PATH="$HARNESS_DIR/PLAN.md"
+PROGRESS_PATH="$HARNESS_DIR/progress.md"
 
-PLAN_PATH="$(_resolve_state PLAN.md || true)"
-PROGRESS_PATH="$(_resolve_state progress.md || true)"
-
-# ── Named plans (V5-10): enumerate PLAN-<name>.md alongside the singleton ──────
-# The _harness/ dir is the parent of the resolved (vault) PLAN.md path — pure
-# path-construction, so it resolves even when the unnamed PLAN.md doesn't exist
-# on disk. Glob PLAN-*.md there, skipping GDrive conflict copies. Back-compat: a
-# vault holding only the unnamed PLAN.md finds zero named plans and falls through
-# to the LOCKED singleton block below, byte-identical.
+# ── Named plans (V5-10): enumerate PLAN-<name>.md in .harness/ ─────────────────
+# Glob PLAN-*.md, skipping GDrive conflict copies. Back-compat: a harness holding
+# only the unnamed PLAN.md finds zero named plans and falls through to the LOCKED
+# singleton block below, byte-identical.
 NAMED_PLANS=()
-HARNESS_DIR=""
-[[ -n "$PLAN_PATH" ]] && HARNESS_DIR="$(dirname "$PLAN_PATH")"
-if [[ -n "$HARNESS_DIR" && -d "$HARNESS_DIR" ]]; then
+if [[ -d "$HARNESS_DIR" ]]; then
     shopt -s nullglob
     for _pf in "$HARNESS_DIR"/PLAN-*.md; do
         case "$(basename "$_pf")" in
@@ -94,7 +88,7 @@ fi
 if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
     # Named-plan mode: surface every PLAN*.md + the .harness/active-plan binding.
     {
-        echo "[agentm] Project state for this repo lives in the vault, not in .harness/:"
+        echo "[agentm] Project state for this repo lives in .harness/:"
         echo "Named-plan mode - this repo has more than one active plan:"
         # Unnamed singleton first (only if it exists), then named alphabetically
         # (the glob expands sorted). Each plan's progress is its progress-<name>.md.
@@ -118,19 +112,19 @@ if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
         fi
         echo "Read the plan you own (or the .harness/active-plan one) before /work, /review, /release."
     }
-    SLUG="$(basename "$(dirname "$HARNESS_DIR")" 2>/dev/null || echo '?')"
+    SLUG="$(basename "$EVENT_CWD" 2>/dev/null || echo '?')"
     echo "[harness-context] injected ${#NAMED_PLANS[@]} named plan(s) for slug=$SLUG" >&2
 
 elif [[ -n "$PLAN_PATH" && -n "$PROGRESS_PATH" && -f "$PLAN_PATH" && -f "$PROGRESS_PATH" ]]; then
     # Singleton path — LOCKED DC-7 4-line block, byte-identical (back-compat).
     cat <<EOF
-[agentm] Project state for this repo lives in the vault, not in .harness/:
+[agentm] Project state for this repo lives in .harness/:
   PLAN.md:     $PLAN_PATH
   progress.md: $PROGRESS_PATH
 Read PLAN.md before answering plan-status questions or running /work, /review, /release.
 EOF
-    # Transparency line on stderr. Slug = parent-of-_harness dir name.
-    SLUG="$(basename "$(dirname "$(dirname "$PLAN_PATH")")" 2>/dev/null || echo '?')"
+    # Transparency line on stderr. Slug = basename of project root dir.
+    SLUG="$(basename "$EVENT_CWD" 2>/dev/null || echo '?')"
     echo "[harness-context] injected vault paths for slug=$SLUG" >&2
 else
     # No vault PLAN/progress resolved. This may be an UNCONFIGURED project that

@@ -157,52 +157,24 @@ class TestDocumenterPhaseWiring(unittest.TestCase):
         with _ClearEnv(set_vars={"HARNESS_RECALL_BUDGET_DOCUMENTER": "1500"}):
             self.assertEqual(hm.phase_budget("documenter", 9000), 9000)
 
-    def test_documenter_text_is_project_first(self) -> None:
-        # V4 #35 task-5 fix: the documenter text bundle emits project context
-        # (decisions/_index) BEFORE always-load conventions, so the project's
-        # settled decisions survive budget truncation instead of being cut first.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_documenter_vault(Path(tmp), project="agentm")
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                out, rc = hm.documenter_context("agentm", fmt="text")
-        self.assertEqual(rc, 0)
-        first_heading = next(l for l in out.splitlines() if l.startswith("### "))
-        self.assertTrue(
-            first_heading.startswith("### agentm/"),
-            f"expected a project entry first, got: {first_heading!r}",
-        )
-        # Explicit ordering: project decision precedes any always-load entry.
-        self.assertLess(out.find("### agentm/"), out.find("### always-load:"))
+    def test_documenter_context_returns_rc1_v5_3(self) -> None:
+        # V5-3: resolve_documenter_context always returns None → rc=1 (vault unavailable).
+        # Context is now served by the V5-9 MCP memory server.
+        out, rc = hm.documenter_context("agentm", fmt="text")
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
 
-    def test_project_first_keeps_project_when_budget_truncates(self) -> None:
-        # With project_first + a budget too small for everything, what survives
-        # is project context (always-load is dropped from the tail first).
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_documenter_vault(Path(tmp), project="agentm")
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                full = hm.phase_recall("documenter", "agentm", project_first=True)
-                tight = hm.phase_recall("documenter", "agentm", budget=40, project_first=True)
-        # Full bundle has both; tight bundle keeps a project entry up front.
-        self.assertIn("### always-load:", full)
-        self.assertIn("### agentm/", tight)
-        # Sanity: project_first=False would have led with always-load instead.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_documenter_vault(Path(tmp), project="agentm")
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                default_order = hm.phase_recall("documenter", "agentm")
-        self.assertLess(
-            default_order.find("### always-load:"), default_order.find("### agentm/")
-        )
+    def test_project_first_always_empty_v5_3(self) -> None:
+        # V5-3: phase_recall("documenter", ...) always returns "" regardless of vault.
+        full = hm.phase_recall("documenter", "agentm", project_first=True)
+        tight = hm.phase_recall("documenter", "agentm", budget=40, project_first=True)
+        self.assertEqual(full, "")
+        self.assertEqual(tight, "")
 
-    def test_phase_recall_documenter_does_not_raise(self) -> None:
-        # Pre-V4 #35, phase_recall("documenter", ...) raised ValueError.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_documenter_vault(Path(tmp))
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                out = hm.phase_recall("documenter", "agentm")
-        self.assertIn("always-load", out)
-        self.assertIn("agentm/decisions", out)
-        self.assertIn("wiki-style", out)
+    def test_phase_recall_documenter_does_not_raise_v5_3(self) -> None:
+        # V5-3: phase_recall("documenter", ...) returns "" (never raises).
+        out = hm.phase_recall("documenter", "agentm")
+        self.assertEqual(out, "")
 
 
 # -----------------------------------------------------------------------------
@@ -211,94 +183,46 @@ class TestDocumenterPhaseWiring(unittest.TestCase):
 
 class TestResolveDocumenterContext(unittest.TestCase):
 
-    def test_b_registered_project_returns_structured_bundle(self) -> None:
+    def test_b_resolve_documenter_context_always_none_v5_3(self) -> None:
+        # V5-3: vault backend removed → resolve_documenter_context always returns None.
+        # Context is provided by the V5-9 MCP memory server.
+        self.assertIsNone(hm.resolve_documenter_context("agentm"))
+        self.assertIsNone(hm.resolve_documenter_context("no-such-project"))
+
+    def test_c_resolve_any_slug_returns_none_v5_3(self) -> None:
+        # V5-3: vault reachable or not — always None. rc=1 from documenter_context.
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_documenter_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 bundle = hm.resolve_documenter_context("agentm")
-
-        self.assertIsNotNone(bundle)
-        # Expected key shape.
-        self.assertEqual(
-            set(bundle.keys()),
-            {"slug", "registered", "operator_conventions", "global_wiki_style",
-             "project_decisions", "project_anchor", "wiki_style"},
-        )
-        self.assertEqual(bundle["slug"], "agentm")
-        self.assertTrue(bundle["registered"])
-
-        # operator conventions from _always-load/ (sorted by stem).
-        conv_names = [c["name"] for c in bundle["operator_conventions"]]
-        self.assertEqual(conv_names, ["diataxis-conventions", "writing-style"])
-        self.assertIn("never mix", bundle["operator_conventions"][0]["body"])
-
-        # global on-demand wiki conventions from projects/_global/wiki-style/ —
-        # the relocation target the documenter resolver now reads (part 3 task 4).
-        gws_names = [w["name"] for w in bundle["global_wiki_style"]]
-        self.assertEqual(gws_names, ["house-voice"])
-        self.assertIn("cut peacock words", bundle["global_wiki_style"][0]["body"])
-
-        # project decisions from decisions/.
-        dec_names = [d["name"] for d in bundle["project_decisions"]]
-        self.assertEqual(dec_names, ["2026-05-20-stdlib-only"])
-
-        # project anchor points at _index.md.
-        self.assertIsNotNone(bundle["project_anchor"])
-        self.assertTrue(bundle["project_anchor"].endswith("_index.md"))
-
-        # wiki-style conventions.
-        ws_names = [w["name"] for w in bundle["wiki_style"]]
-        self.assertEqual(ws_names, ["page-length"])
-
-    def test_c_unregistered_slug_returns_empty_project_bundle(self) -> None:
-        # (c) vault reachable but slug not registered → registered=False,
-        #     empty project lists, anchor None. Operator conventions still load
-        #     (they're global). No exception fires.
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = _make_documenter_vault(Path(tmp), project="agentm")
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
-                bundle = hm.resolve_documenter_context("no-such-project")
-
-        self.assertIsNotNone(bundle)
-        self.assertFalse(bundle["registered"])
-        self.assertEqual(bundle["project_decisions"], [])
-        self.assertIsNone(bundle["project_anchor"])
-        self.assertEqual(bundle["wiki_style"], [])
-        # Operator-global conventions still present.
-        self.assertEqual(len(bundle["operator_conventions"]), 2)
-        # Global `_global` wiki conventions are slug-independent — still loaded.
-        self.assertEqual([w["name"] for w in bundle["global_wiki_style"]], ["house-voice"])
+                bundle_missing = hm.resolve_documenter_context("no-such-project")
+        self.assertIsNone(bundle)
+        self.assertIsNone(bundle_missing)
 
     def test_d_vault_unavailable_returns_none(self) -> None:
         # (d) MEMORY_VAULT_PATH unset + sandboxed (empty) config prefix → None.
+        # This test's behavior is unchanged by V5-3 (was already testing None).
         with _ClearEnv(unset_keys=["MEMORY_VAULT_PATH"]):
             self.assertIsNone(hm.resolve_documenter_context("agentm"))
 
-    def test_registered_project_without_optional_dirs(self) -> None:
-        # Registered project that lacks decisions/ + wiki-style/ + _index.md
-        # still resolves: registered=True, empty lists, anchor None.
+    def test_registered_project_returns_none_v5_3(self) -> None:
+        # V5-3: even a fully-registered project returns None.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
             (vault / "projects" / "bare").mkdir(parents=True)
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 bundle = hm.resolve_documenter_context("bare")
-        self.assertTrue(bundle["registered"])
-        self.assertEqual(bundle["project_decisions"], [])
-        self.assertEqual(bundle["wiki_style"], [])
-        self.assertIsNone(bundle["project_anchor"])
+        self.assertIsNone(bundle)
 
-    def test_legacy_personal_projects_layout_still_resolves(self) -> None:
-        # Operators who haven't run the V4 #26 vault rename keep
-        # personal-projects/<slug>/ — resolver falls back via _vault_projects_dir.
+    def test_legacy_layout_returns_none_v5_3(self) -> None:
+        # V5-3: even legacy layout projects return None.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
             base = vault / "personal-projects" / "agentm"
             (base / "decisions").mkdir(parents=True)
-            (base / "decisions" / "d1.md").write_text("# d1\nx\n", encoding="utf-8")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 bundle = hm.resolve_documenter_context("agentm")
-        self.assertTrue(bundle["registered"])
-        self.assertEqual([d["name"] for d in bundle["project_decisions"]], ["d1"])
+        self.assertIsNone(bundle)
 
 
 # -----------------------------------------------------------------------------
@@ -307,60 +231,55 @@ class TestResolveDocumenterContext(unittest.TestCase):
 
 class TestDocumenterContextCLI(unittest.TestCase):
 
-    def test_a_registered_returns_rc0_with_bundle(self) -> None:
+    def test_a_always_rc1_v5_3(self) -> None:
+        # V5-3: resolve_documenter_context always None → rc=1 for any slug.
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_documenter_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 rc, out = _run_cli(["documenter-context", "--slug", "agentm"])
-        self.assertEqual(rc, 0)
-        self.assertIn("always-load", out)
-        self.assertIn("agentm/decisions", out)
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
 
     def test_b_vault_unavailable_returns_rc1(self) -> None:
+        # This test's behavior is unchanged by V5-3 (rc=1 was already expected).
         with _ClearEnv(unset_keys=["MEMORY_VAULT_PATH"]):
             rc, out = _run_cli(["documenter-context", "--slug", "agentm"])
         self.assertEqual(rc, 1)
         self.assertEqual(out, "")
 
-    def test_c_unregistered_slug_returns_rc2(self) -> None:
+    def test_c_unregistered_slug_also_rc1_v5_3(self) -> None:
+        # V5-3: unregistered slug → rc=1 (same as registered; vault backend gone).
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_documenter_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 rc, out = _run_cli(["documenter-context", "--slug", "no-such-project"])
-        self.assertEqual(rc, 2)
-        # Operator-global conventions still surface on rc=2 (text path).
-        self.assertIn("always-load", out)
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
 
-    def test_d_format_json_parses_with_expected_keys(self) -> None:
+    def test_d_format_json_rc1_empty_v5_3(self) -> None:
+        # V5-3: JSON format also rc=1, empty output (no bundle to serialize).
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_documenter_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 rc, out = _run_cli(
                     ["documenter-context", "--slug", "agentm", "--format", "json"]
                 )
-        self.assertEqual(rc, 0)
-        parsed = json.loads(out)
-        self.assertEqual(
-            set(parsed.keys()),
-            {"slug", "registered", "operator_conventions", "global_wiki_style",
-             "project_decisions", "project_anchor", "wiki_style"},
-        )
-        self.assertTrue(parsed["registered"])
-        self.assertEqual(parsed["slug"], "agentm")
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
 
-    def test_json_on_unregistered_slug_is_rc2_but_valid_json(self) -> None:
+    def test_json_unregistered_also_rc1_v5_3(self) -> None:
+        # V5-3: unregistered slug JSON → rc=1, empty output.
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_documenter_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 rc, out = _run_cli(
                     ["documenter-context", "--slug", "ghost", "--format", "json"]
                 )
-        self.assertEqual(rc, 2)
-        parsed = json.loads(out)
-        self.assertFalse(parsed["registered"])
-        self.assertEqual(parsed["project_decisions"], [])
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
 
-    def test_budget_flag_caps_text_output(self) -> None:
+    def test_budget_flag_accepted_exits_cleanly_v5_3(self) -> None:
+        # V5-3: budget flag is accepted (no crash), but output is always "".
         with tempfile.TemporaryDirectory() as tmp:
             vault = _make_documenter_vault(Path(tmp), project="agentm")
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
@@ -370,10 +289,10 @@ class TestDocumenterContextCLI(unittest.TestCase):
                 rc_small, small = _run_cli(
                     ["documenter-context", "--slug", "agentm", "--budget", "1"]
                 )
-        self.assertEqual(rc_big, 0)
-        self.assertEqual(rc_small, 0)
-        # A 1-token budget drops project entries; output is strictly smaller.
-        self.assertLess(len(small), len(big))
+        self.assertEqual(rc_big, 1)
+        self.assertEqual(rc_small, 1)
+        self.assertEqual(big, "")
+        self.assertEqual(small, "")
 
 
 if __name__ == "__main__":

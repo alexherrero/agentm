@@ -4,11 +4,11 @@
 Locks the contract that the state resolver is **filename-agnostic**: a named
 plan (`PLAN-<name>.md` / `progress-<name>.md`) round-trips, CAS-guards, and
 conflict-detects *exactly* like the singleton `PLAN.md` / `progress.md`. The
-resolver already takes an arbitrary `filename` (`vault_state_path` /
-`read_state_file` / `write_state_file`) and `safe_write_replace_style` does
-content-hash CAS on an arbitrary path keying on no literal "PLAN.md" — so named
-plans are a naming convention, not a new code path. These tests *codify* that
-so a later edit can't silently re-introduce a singleton assumption.
+resolver already takes an arbitrary `filename` (`read_state_file` /
+`write_state_file`) and `safe_write_replace_style` does content-hash CAS on an
+arbitrary path keying on no literal "PLAN.md" — so named plans are a naming
+convention, not a new code path. These tests *codify* that so a later edit can't
+silently re-introduce a singleton assumption.
 
 Run directly:
 
@@ -80,32 +80,19 @@ class NamedPlanResolverContract(unittest.TestCase):
             os.environ["XDG_CACHE_HOME"] = self._prev_xdg
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    # --- vault_state_path: pure path construction over an arbitrary filename ---
-
-    def test_vault_state_path_handles_named_plan(self) -> None:
-        for fname in ("PLAN.md", "PLAN-foo.md", "progress-foo.md", "PLAN-bar.md"):
-            with self.subTest(fname=fname):
-                self.assertEqual(
-                    hm.vault_state_path(self.resolution, fname),
-                    self.vault / "_harness" / fname,
-                )
-
-    def test_vault_state_path_none_without_vault(self) -> None:
-        self.assertIsNone(
-            hm.vault_state_path({"project_root": self.proj}, "PLAN-foo.md")
-        )
-
     # --- write/read round-trip: identical for singleton and named ---
 
     def test_round_trip_singleton_and_named(self) -> None:
+        """V5-3: write+read round-trip via device-local .harness/."""
         for plan_name, prog_name in (_SINGLETON, _NAMED):
             with self.subTest(plan=plan_name):
                 plan_body = f"# {plan_name}\nStatus: in-progress\n"
                 prog_body = f"log entry for {prog_name}\n"
                 wrote_plan = hm.write_state_file(self.resolution, plan_name, plan_body)
                 wrote_prog = hm.write_state_file(self.resolution, prog_name, prog_body)
-                self.assertEqual(wrote_plan, self.vault / "_harness" / plan_name)
-                self.assertEqual(wrote_prog, self.vault / "_harness" / prog_name)
+                # V5-3: writes land in project_root/.harness/, not vault.
+                self.assertEqual(wrote_plan, self.proj / ".harness" / plan_name)
+                self.assertEqual(wrote_prog, self.proj / ".harness" / prog_name)
                 self.assertEqual(
                     hm.read_state_file(self.resolution, plan_name), plan_body
                 )
