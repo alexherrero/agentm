@@ -23,6 +23,8 @@ This page is the index. The homepage links here once instead of listing every AD
 - [ADR 0014 — The Tier-2 gate: don't fork the loop through the Agent SDK](0014-tier-2-sdk-fork-gate)
 - [ADR 0015 — Capability discovery: the `enhances:` runtime](0015-capability-discovery)
 - [ADR 0016 — The persona tier: a third classification above the substrate/plugin binary](0016-persona-tier)
+- [ADR 0017 — MCP server design: singleton-HTTP broker, four tools, loopback-first](0017-mcp-server-design)
+- [ADR 0018 — V5-3 storage cutover: delete vault backend from kernel, device-local is canonical](0018-v5-3-storage-cutover)
 
 ## See also
 

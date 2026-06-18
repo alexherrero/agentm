@@ -64,9 +64,20 @@ The cross-project "house voice" feels personal, so `_always-load/` is tempting. 
 - Project reads go through `_vault_projects_dir()` (top-level `projects/`, legacy `personal-projects/` fallback). **Re-audit trigger:** any new vault-rename migration (cf. V4 #26).
 - The global tier is file-read. **Re-audit trigger:** agentm V6 indexed-recall — when the global tier becomes vector-discovered, "lives under `projects/_global/`" becomes a provenance tag rather than a read path.
 
+## Amendment — 2026-06-18 (V5-3)
+
+**Re-audit trigger #1 fired: `personal-private/` renamed to `personal/`.**
+
+The first load-bearing assumption in this ADR stated: *"The vault root names are stable. Re-audit trigger: the planned rename of `personal-private/` → `personal/` — when it lands, update this ADR, `_ALWAYS_LOAD_REL`, the `vault-internal-taxonomy` always-load entry, and any literal references."*
+
+That rename shipped in agentm v5.3.0 (commit `053217b`) as part of the V5-3 storage cutover — in lockstep across three layers: the vault directory itself, the `_ALWAYS_LOAD_REL` constant in `harness_memory.py`, and all functional path references in the kernel and scripts tree. **All literal references to `personal-private` in this ADR now read `personal`.** The governing rule in Decision §2 and the table in §1 remain correct with the new name.
+
+**`resolve_documenter_context()` now always returns `None` (V5-3 storage cutover).** The Related entry below that described `resolve_documenter_context()` as reading `projects/_global/wiki-style/` is superseded: after V5-3 that function always returns `None`, and documenter context is provided by the V5-9 MCP memory server. The taxonomy itself (`projects/` is the project-keyed root, `personal/` is cross-cutting personal data) is unchanged.
+
 ## Related
 
 - [ADR 0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking.md) — the `projects/` ownership model this taxonomy extends.
 - [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config.md) — the sibling "config never lives in the vault; the vault is where data sits" principle.
+- [ADR 0018 — V5-3 storage cutover](0018-v5-3-storage-cutover.md) — the release that fired this ADR's first re-audit trigger and shipped the `personal/` rename.
 - crickets wiki-maintenance design (style-learning loop) — the consumer whose part-3 task-4 relocation surfaced the gap and aligns on `projects/_global/wiki-style/`.
-- `resolve_documenter_context()` in `scripts/harness_memory.py` — reads `projects/_global/wiki-style/` (the `global_wiki_style` bundle field) per this taxonomy.
+- `resolve_documenter_context()` in `scripts/harness_memory.py` — **V5-3 note:** after the storage cutover this function always returns `None`; context is provided by the V5-9 MCP server. The taxonomy (projects-keyed data under `projects/`) is unchanged.

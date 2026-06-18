@@ -69,8 +69,8 @@ After part 5, selection can *resolve which* backend a config would use and refus
 **Negative**
 
 - **A loud refusal is a hard stop, not a graceful degrade.** An operator whose `vault` plugin is uninstalled gets an error rather than a running (if wrong) engine. This is the intended trade — for memory state, a wrong-but-running engine is worse than a stopped one — but it means backend config errors block startup until fixed.
-- **The fail-loud guard mostly sleeps until V5-3.** Until the built-in `vault` backend is removed (V5-3), both built-ins register at import, so `registry.get → None` only fires for a genuinely-unregistered third-party name. The guard is correct and tested now, but its primary blast radius (a configured-but-uninstalled `vault`) arrives later.
-- **The engine cutover is still pending**, so the seam's swap-the-backend property is proven but not yet *exercised* by the live engine. Selection resolving a backend is not the same as the engine using it.
+- **The fail-loud guard mostly sleeps until V5-3.** Until the built-in `vault` backend is removed (V5-3), both built-ins register at import, so `registry.get → None` only fires for a genuinely-unregistered third-party name. The guard is correct and tested now, but its primary blast radius (a configured-but-uninstalled `vault`) arrives later. ***[Resolved in V5-3 / ADR 0018]:** the guard is now load-bearing — `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` is configured + no vault accessible.*
+- **The engine cutover is still pending**, so the seam's swap-the-backend property is proven but not yet *exercised* by the live engine. Selection resolving a backend is not the same as the engine using it. ***[Resolved in V5-3 / ADR 0018]:** `harness_state_dir`, `read_state_file`, `write_state_file`, `phase_recall`, and `resolve_documenter_context` now all use device-local paths exclusively; the kernel no longer routes state through the vault.*
 
 **Load-bearing assumptions (with re-audit triggers)**
 
