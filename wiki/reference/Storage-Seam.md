@@ -172,7 +172,7 @@ A new operator-facing field on the on-host `.agentm-config.json`, set via the [c
 
 | Aspect | Detail |
 |---|---|
-| Field | `storage.backend` on `.agentm-config.json` (the same on-host config that holds `vault_path` / `state_mode` — the vault holds data; config is on-host only). |
+| Field | `storage.backend` on `.agentm-config.json` (the same on-host config that holds `plugins.obsidian-vault.vault_path` / `state_mode` — V5-7 tasks 1+2 shipped: `vault_path()` reads the plugin-namespaced key first, falling back to the legacy flat key; `--vault-path` writes the plugin key + `storage.backend=vault`; the vault holds data; config is on-host only). V5-7 task 3 (shipped): `choose_protocol` lost its `vault_root` parameter; vault selection is now always explicit via `storage.backend` (the 2-step chain below). |
 | Value | A registered [protocol name](#registry-module-default) — `device-local`, `vault`, or a plugin-provided name. |
 | Default | _Unset._ Absent → the resolver picks a backend from the existing config (see the resolution chain). |
 | Who reads it | The selection resolver (below), via `_configured_backend` ([`backend_selection.py#L54`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L54)) — which reuses `agentm_config`'s own prefix-resolution + reader, so the read is the same file the `--storage-backend` setter writes. The config CLI only stores it; it does **not** validate that the named backend is registered ([`agentm_config.py#L151`](https://github.com/alexherrero/agentm/blob/main/scripts/agentm_config.py#L151) validates non-empty only) — that is the [fail-loud guard](#the-fail-loud-guard)'s job at resolve time. |
@@ -184,20 +184,20 @@ The resolver ([`scripts/backend_selection.py`](https://github.com/alexherrero/ag
 | Aspect | Detail |
 |---|---|
 | Module | `scripts/backend_selection.py` — deliberately not `storage_*.py` (keeps it out of the [no-`Path`-leak gate](CI-Gates)'s glob, even though the resolver handles `Path`). |
-| `choose_protocol(*, install_prefix=None, vault_root=None) -> str` | Resolves the protocol *name* per the chain below, no instantiation ([`#L71`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L71)). `vault_root` is the already-resolved `harness_memory.vault_path()`, passed in so the chain stays pure / testable. |
+| `choose_protocol(*, install_prefix=None) -> str` | Resolves the protocol *name* per the chain below, no instantiation ([`#L71`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L71)). **V5-7 task 3 (shipped):** `vault_root` parameter removed; vault selection is always explicit (`storage.backend` config). `vault_path()` reads `plugins.obsidian-vault.vault_path` first, then the legacy flat key (V5-7 task 1, shipped). |
 | `select_backend(*, install_prefix=None, device_local_root=None, vault_lock_root=None, required=None) -> StorageBackend` | Resolves the protocol, then instantiates via `registry.get` ([`#L90`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L90)). The `*_root` args are injection points so tests never touch the operator's real home / cache / vault. **V5-7 Part 1:** the optional `required: Capabilities \| None` parameter — when provided, runs a subset check after resolving the backend and raises [`CapabilityMismatchError`](#capabilitymismatcherror) if any `True` requirement is unmet; `None` (default) preserves prior behavior. |
-| How it instantiates | `storage_seam.registry.get(<protocol>)` → the registered class → instantiate ([`#L111`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L111)). `vault` is constructed with `vault_root` as its seed (`backend_cls(vault_root, lock_root=…)`); `device-local` with its optional root; an explicitly-configured third-party backend with the V5-1 minimal no-arg constructor. |
+| How it instantiates | `storage_seam.registry.get(<protocol>)` → the registered class → instantiate ([`#L111`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L111)). `vault` is constructed with the vault root resolved internally from `plugins.obsidian-vault.vault_path` (`backend_cls(vault_root, lock_root=…)`); `device-local` with its optional root; an explicitly-configured third-party backend with the V5-1 minimal no-arg constructor. (`vault_root` as an external `choose_protocol` parameter was removed in V5-7 task 3.) |
 
 The resolution chain (config → backend), first hit wins:
 
+<!-- V5-7 tasks 1+2 shipped: vault_path() reads plugins.obsidian-vault.vault_path first before falling back to the flat vault_path key; --vault-path writes the plugin-namespaced key + storage.backend=vault. V5-7 task 3 shipped: implicit vault-selection step (former precedence 2) removed from choose_protocol; chain is now 2-step (explicit config wins; else device-local). -->
 | Precedence | Condition | Resolved backend |
 |---|---|---|
 | 1 (wins) | `storage.backend` is set | The named backend (via `registry.get`); the [fail-loud guard](#the-fail-loud-guard) fires if it isn't registered. |
-| 2 | An existing `vault_path` (env `$MEMORY_VAULT_PATH` or config) | the built-in `vault`, seeded from `harness_memory.vault_path()` — an existing operator's vault is selected with zero re-setup, byte-identical. |
-| 3 | Fresh install — **no** `vault_path` | `device-local` (the bare-markdown floor under `~/.agentm/memory/`). |
+| 2 | No `storage.backend` — fresh install or explicit config not yet set | `device-local` (the bare-markdown floor under `~/.agentm/memory/`). |
 
 > [!NOTE]
-> The shipped precedence places an existing `vault_path` (rule 2) **above** the fresh-install `device-local` floor (rule 3) — a fresh install with no vault resolves `device-local`; a `vault_path`-config resolves `vault`, both proven by [`scripts/test_backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_backend_selection.py).
+> **V5-7 task 3 (shipped):** vault selection is now always explicit. An operator migrating from an implicit `vault_path` setup must set `storage.backend=vault` (via `--vault-path` or `agentm config --storage-backend vault`) — `choose_protocol` no longer infers `vault` from an existing `vault_path`. Both branches proven by [`scripts/test_backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_backend_selection.py).
 
 ### The fail-loud guard
 

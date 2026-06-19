@@ -76,7 +76,7 @@ Carried from V4: device-wide ≠ autonomous. Capability plugins propose; the ope
 | **Engineering process** | `engineering-process` plugin | phases, pipelines, `evidence-tracker` + `harness-context` hooks, adversarial-reviewer ×2, explorer, the design skill, cross-review, `ship-release` |
 | **Wiki / documentation** | wiki plugin | `diataxis-author`, `wiki-author`, `migrate-to-diataxis`, the `documenter` agent, `check-wiki`, `recent-wiki-changes`, the wiki scaffold — **and maintaining agentm's own wiki** |
 | **Project management / meta-loop** | PM plugin | GitHub-Projects integration + the cross-project briefing/nudge half of the orchestration engine |
-| **Obsidian-vault storage** | `obsidian-vault` plugin | the vault backend, vault detection (`vault_probe`), Drive sync-conflict handling (`conflict-merger`), the `_index.md` convention, the consolidated `migrate-harness-to-vault-backed` skill, and the `vault_path` config it adopts on first run |
+| **Obsidian-vault storage** | `obsidian-vault` plugin | the vault backend, vault detection (`vault_probe`), Drive sync-conflict handling (`conflict-merger`), the `_index.md` convention, the consolidated `migrate-harness-to-vault-backed` skill, and the `plugins.obsidian-vault.vault_path` config it adopts on first run (V5-7 config-plane all 3 tasks shipped: `--vault-path` writes the plugin-namespaced key + `storage.backend=vault`; `vault_path()` reads the plugin key first then falls back to the legacy flat key; `choose_protocol` no longer accepts `vault_root` — vault selection is always explicit via `storage.backend`) |
 
 The fused **`auto_orchestration`** engine splits three ways: reflection cadence → kernel; per-repo phase-dispatch → `engineering-process`; cross-project briefing/nudges → PM plugin. (This is a real refactor, not a file-move — tracked as its own task.)
 
@@ -114,7 +114,7 @@ The invariant: **at every commit on both repos, the operator's existing Obsidian
 
 | Step | Repo | Change | Vault during the step |
 |---|---|---|---|
-| **Expand** | agentm | Introduce the storage seam; refactor the existing vault logic to sit *behind* it as a built-in backend; add `device-local` as the fresh-install default. Operator config keeps selecting the vault, **seeded from the existing `vault_path`** — no re-setup. | Unchanged, reached through the seam. |
+| **Expand** | agentm | Introduce the storage seam; refactor the existing vault logic to sit *behind* it as a built-in backend; add `device-local` as the fresh-install default. Operator config selects the vault via `storage.backend=vault` (written by `--vault-path`); `vault_path()` resolves the root from `plugins.obsidian-vault.vault_path` — no re-setup. (V5-7 task 3 shipped: implicit vault-seeding from the flat `vault_path` key in `choose_protocol` is removed; selection is now always explicit.) | Unchanged, reached through the seam. |
 | **Parallel-run** | crickets | Ship the `obsidian-vault` plugin providing the same backend; install it. Both backends point at the same vault; contract tests assert identical resolution; dogfood on the real vault. | Live, doubly-served, provably identical. |
 | **Contract** | agentm | Once the plugin is proven, delete the built-in vault backend. Kernel ships only `device-local`; vault-backing lives solely in the installed plugin. | Carried by the already-proven plugin; fail-loud guard prevents silent demotion. |
 

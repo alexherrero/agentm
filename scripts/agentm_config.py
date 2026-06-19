@@ -206,8 +206,8 @@ def cmd_get(prefix: Path, field: str) -> int:
     config = _read_config(prefix)
     if not config:
         return 1
-    if field == "vault_path":
-        value = config.get(_PLUGIN_VAULT_PATH_KEY) or config.get("vault_path")
+    if field == "vault_path":  # CLI field name — reads plugin key (legacy fallback)
+        value = config.get(_PLUGIN_VAULT_PATH_KEY) or config.get("vault_path")  # legacy fallback
     else:
         value = config.get(field)
     if value is None:
@@ -246,13 +246,13 @@ def cmd_unset(prefix: Path, field: str) -> int:
             file=sys.stderr,
         )
         return 2
-    if field == "vault_path":
+    if field == "vault_path":  # CLI field name — clears plugin + legacy keys
         removed = False
         if _PLUGIN_VAULT_PATH_KEY in config:
             del config[_PLUGIN_VAULT_PATH_KEY]
             removed = True
-        if "vault_path" in config:
-            del config["vault_path"]
+        if "vault_path" in config:  # legacy key — remove both on unset
+            del config["vault_path"]  # legacy key
             removed = True
         if not removed:
             return 1
