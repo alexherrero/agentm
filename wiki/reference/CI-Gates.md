@@ -48,7 +48,7 @@ End-to-end check of the V4 #23 auto-orchestration surface. Runs the real scripts
 |---|---|
 | Isolation | A `mktemp -d` scratch vault + an exported `IDEAS_SURFACE_PATH` — never reads or writes a real vault. |
 | No side effects | No network, no transcript mining, no sub-agent dispatch; self-cleans via a `trap`. |
-| Coverage | config seed/parse · every briefing signal (inbox · HIGH watchlist · incubator · idea-ledger · staged-adapt · both nudges) · staged-adapt surfaces-and-clears · idle-chain dry-run (ordering + bounded `--max-batches`/`--limit`) · phase-dispatch plans + session-marker resolution (incl. the `ambiguous-session` concurrency guard) · emit gating (shifted-guard + cooldown) · atomic state write. |
+| Coverage | config seed/parse · every briefing signal (inbox · HIGH watchlist · incubator · idea-ledger · staged-adapt · both nudges) · staged-adapt surfaces-and-clears · idle-chain dry-run (ordering + bounded `--max-batches`/`--limit`) · phase-dispatch plans + session-marker resolution (incl. the `ambiguous-session` concurrency guard) · emit gating (shifted-guard + cooldown) · atomic state write · **segment G** (static): greps `orchestration_*.py` for `^def save_state` and asserts 0 matches — making the V5-5 LC-2 single-writer invariant a gate-checked property. |
 | Out of scope | The real-boot integration (does a live session inject the briefing), the cross-surface read paths, and subjective fatigue calibration — those are the operator dogfood (vault-resident `projects/agentm/_harness/DOGFOOD-V4.md`). |
 | Extend it | Add a `check_*` per new push-surface signal (drive the real script against `$SV`; assert with `assert_contains`/`assert_equals`/`assert_absent`), keeping each check scratch-isolated. |
 

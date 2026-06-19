@@ -11,7 +11,7 @@ The two files that drive the memory push-surface: the operator-tunable config at
 | Does a re-seed overwrite my edits? | No. `seed_config` is idempotent and never clobbers an existing file. |
 | What are the four config groups? | Emission toggles · briefing thresholds · nudge thresholds · chain cooldowns. |
 | What does the state file gate? | Cooldown windows (`should_fire(chain, now)`) and the shifted-since-last-shown briefing check. |
-| Who writes the state file? | The memory scripts under `harness/skills/memory/scripts/` (stdlib-only). |
+| Who writes the state file? | `auto_orchestration.py` alone — via `save_state()`. No other script in `orchestration_*.py` may call `save_state` directly (V5-5 single-writer invariant, LC-2; enforced by `verify-v4.sh` segment G). |
 | Related pages | [Auto-orchestration](Auto-Orchestration), [Tune auto-orchestration](Tune-Auto-Orchestration) |
 
 ## Emission toggles
@@ -71,7 +71,7 @@ The bounded steps the idle chain runs in order. The whole chain is gated by `ena
 
 ## State file shape
 
-`<vault>/_meta/auto-orchestration-state.json` — written by `save_state`, not in git. JSON with two top-level objects.
+`<vault>/_meta/auto-orchestration-state.json` — written exclusively by `auto_orchestration.py:save_state()` (V5-5 LC-2 single-writer invariant). No other script writes this file directly; sibling orchestration scripts call through `ao.save_state()`. Not tracked by git. JSON with two top-level objects.
 
 | Field | Type | Meaning |
 |---|---|---|

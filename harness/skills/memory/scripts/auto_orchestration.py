@@ -22,6 +22,14 @@ idle-chain (task 4), the phase-integration dispatch (task 5), and the nudges
 
 The functions are pure-ish (state is passed in / returned); only `save_state`,
 `seed_config`, and the `_resolve_vault_path` env read touch the outside world.
+
+**Single-writer invariant (V5-5 [LC-2]):** this module is the **sole writer** of
+``<vault>/_meta/auto-orchestration-state.json``.  Every caller (orchestration_phase,
+orchestration_idle, orchestration_briefing) routes its state write through
+``save_state()`` defined here; none of them write the state file directly.  The
+V5-5 orchestration bridge (harness_memory.phase_dispatch) enforces this by
+delegating to orchestration_phase.py, which in turn calls ``ao.save_state()``.
+``verify-v4.sh`` segment G asserts this invariant statically.
 """
 from __future__ import annotations
 
@@ -109,12 +117,17 @@ def load_state(vault: Path) -> dict:
 
 
 def save_state(vault: Path, state: dict) -> None:
-    """Persist state atomically. The state file lives in the SHARED vault
-    (`<vault>/_meta/`), so concurrent agents across the operator's repos can
-    write it at the same time — a plain `write_text` could be read mid-write as
-    torn/partial JSON (degrading to an empty shape → a lost cooldown / spurious
-    re-fire). Write to a pid-unique temp in the same dir, then `os.replace`
-    (atomic on POSIX + Windows), so a reader only ever sees a complete file."""
+    """Persist state atomically — the single-writer entry point ([LC-2]).
+
+    All callers (orchestration_phase, orchestration_idle, orchestration_briefing)
+    must route state writes through this function; never write the state file
+    directly.  The state file lives in the SHARED vault (``<vault>/_meta/``), so
+    concurrent agents across the operator's repos can write it at the same time —
+    a plain ``write_text`` could be read mid-write as torn/partial JSON (degrading
+    to an empty shape → a lost cooldown / spurious re-fire).  Write to a
+    pid-unique temp in the same dir, then ``os.replace`` (atomic on POSIX +
+    Windows), so a reader only ever sees a complete file.
+    """
     p = state_path(vault)
     p.parent.mkdir(parents=True, exist_ok=True)
     data = json.dumps(state, indent=2, sort_keys=True) + "\n"

@@ -147,6 +147,11 @@ assert_equals  "emit: second run (cooldown/unchanged) is silent" "$EMIT2" ""
   || fail "state: emit records the state file" "no state file"
 TMPS="$(find "$SV/_meta" -maxdepth 1 -name '*.tmp' 2>/dev/null | wc -l | tr -d ' ')"
 assert_equals  "state: atomic write leaves no .tmp artifact"    "$TMPS" "0"
+# V5-5 [LC-2] single-writer: save_state is defined only in auto_orchestration.py;
+# sibling scripts (orchestration_{phase,idle,briefing}) call ao.save_state() — they
+# never define their own writer or touch the state file directly.
+SW_DEFS="$(grep -l "^def save_state" "$S"/orchestration_*.py 2>/dev/null | wc -l | tr -d ' ')"
+assert_equals  "state: single-writer — save_state not redefined in sibling scripts" "$SW_DEFS" "0"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo
