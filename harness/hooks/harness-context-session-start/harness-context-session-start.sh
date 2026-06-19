@@ -2,11 +2,13 @@
 # harness-context-session-start — inject the project's PLAN.md/progress.md
 # paths into session context on SessionStart.
 #
-# V5-3: harness state lives in <project_root>/.harness/ (device-local only).
-# This hook tells the agent where, on every session boot, so it reads PLAN.md
-# before plan-status questions or phase commands. Only fires the injection when
-# PLAN.md or PLAN-*.md exists in .harness/; silent no-op otherwise.
-# See hook.md for full docs. V4 #39, V5-3 update.
+# ADR 0020 (amends ADR 0018 DC-1): harness state is backend-aware — it lives in
+# <vault>/projects/<slug>/_harness/ when a synced backend is active, else
+# device-local <project_root>/.harness/. This hook resolves the location through
+# the bridge (list-plans -> harness_state_dir) and tells the agent where, on every
+# session boot, so it reads PLAN.md before plan-status questions or phase commands.
+# Only fires the injection when PLAN.md or PLAN-*.md is resolved; silent no-op
+# otherwise. See hook.md for full docs. V4 #39, V5-3 cutover, ADR 0020 re-vault.
 
 set -uo pipefail   # NOTE: no -e — must never block session boot (graceful-skip).
 
@@ -79,8 +81,16 @@ if [[ -n "$PLANS_OUT" ]]; then
         esac
     done <<< "$PLANS_OUT"
 fi
-HARNESS_DIR="$EVENT_CWD/.harness"     # V5-3: always device-local; used for progress.md
-PROGRESS_PATH="$HARNESS_DIR/progress.md"
+# progress.md is the sibling of the resolved PLAN.md: co-locate it with whatever
+# _harness/ the bridge resolved PLAN_PATH into (vault when a synced backend is
+# active, else device-local), so the singleton injection fires on a synced backend
+# too (ADR 0020 — amends the V5-3 device-local hardcode). Fall back to the
+# device-local path only when no singleton plan was resolved.
+if [[ -n "$PLAN_PATH" ]]; then
+    PROGRESS_PATH="$(dirname "$PLAN_PATH")/progress.md"
+else
+    PROGRESS_PATH="$EVENT_CWD/.harness/progress.md"
+fi
 
 # ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ────────────
 if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then

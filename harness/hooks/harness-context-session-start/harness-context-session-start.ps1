@@ -1,7 +1,9 @@
 #!/usr/bin/env pwsh
-# harness-context-session-start (pwsh twin) — inject the project's vault
-# PLAN.md/progress.md paths into session context on SessionStart.
-# Mirrors harness-context-session-start.sh. Never blocks session boot. V4 #39.
+# harness-context-session-start (pwsh twin) — inject the project's
+# PLAN.md/progress.md paths into session context on SessionStart. State is
+# backend-aware: <vault>/projects/<slug>/_harness/ when a synced backend is
+# active, else device-local <project_root>/.harness/ (ADR 0020, amends ADR 0018
+# DC-1). Mirrors harness-context-session-start.sh. Never blocks boot. V4 #39.
 
 $ErrorActionPreference = 'SilentlyContinue'
 
@@ -65,8 +67,16 @@ foreach ($line in ($plansOut -split "`n")) {
         $namedPlans += $line
     }
 }
-$harnessDir = Join-Path $eventCwd ".harness"  # V5-3: always device-local
-$progressPath = Join-Path $harnessDir "progress.md"
+# progress.md is the sibling of the resolved PLAN.md: co-locate it with whatever
+# _harness/ the bridge resolved $planPath into (vault when a synced backend is
+# active, else device-local), so the singleton injection fires on a synced backend
+# too (ADR 0020 — amends the V5-3 device-local hardcode). Fall back to the
+# device-local path only when no singleton plan was resolved.
+if ($planPath) {
+    $progressPath = Join-Path (Split-Path -Parent $planPath) "progress.md"
+} else {
+    $progressPath = Join-Path (Join-Path $eventCwd ".harness") "progress.md"
+}
 
 # ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ──
 if ($namedPlans.Count -gt 0) {

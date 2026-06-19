@@ -239,12 +239,23 @@ class StatePath(_SeamFixture):
         self._unset_vault()
         self.assertEqual(seam.state_path(self._ctx(), "plan"), self.harness / "PLAN.md")
 
-    def test_vault_mode_resolves_device_local_v5_3(self) -> None:
-        # V5-3: vault mode no longer routes state to the vault — always device-local.
+    def test_vault_mode_resolves_vault_when_synced(self) -> None:
+        # ADR 0020 (reverses V5-3 DC-1): vault mode + a live synced backend routes
+        # state into <vault>/projects/<slug>/_harness/. OBSIDIAN_VAULT_SCRIPTS pins
+        # the kernel's own storage_vault.py as the discovered backend, so the result
+        # is deterministic in CI (no obsidian-vault plugin installed there).
         self._set_vault()
-        self.assertEqual(
-            seam.state_path(self._ctx(), "plan"), self.harness / "PLAN.md"
-        )
+        prev = os.environ.get("OBSIDIAN_VAULT_SCRIPTS")
+        os.environ["OBSIDIAN_VAULT_SCRIPTS"] = str(_HERE)
+        try:
+            self.assertEqual(
+                seam.state_path(self._ctx(), "plan"), self.vault_harness / "PLAN.md"
+            )
+        finally:
+            if prev is None:
+                os.environ.pop("OBSIDIAN_VAULT_SCRIPTS", None)
+            else:
+                os.environ["OBSIDIAN_VAULT_SCRIPTS"] = prev
 
     def test_named_plan_via_context(self) -> None:
         self._local_mode()

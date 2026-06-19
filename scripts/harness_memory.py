@@ -23,8 +23,10 @@ Sub-commands:
                           chain through the kernel core; always non-blocking;
                           the importable ``phase_dispatch()`` function is the
                           contract, the CLI verb is the shell shim over it
-    read-state          — read a project state file via the resolver (device-local)
-    write-state         — write a project state file via the resolver (device-local)
+    read-state          — read a project state file via the resolver (backend-aware:
+                          vault when a synced backend is active, else device-local)
+    write-state         — write a project state file via the resolver (backend-aware:
+                          vault when a synced backend is active, else device-local)
     documenter-context  — V4 #35: doc-write-time recall bundle (operator conventions
                           + project decisions + wiki-style) for the documenter
                           sub-agent + wiki-author/diataxis-author skills
@@ -502,15 +504,69 @@ def resolve_project(context: Optional[dict] = None) -> dict:
     }
 
 
-def harness_state_dir(resolution: dict) -> Optional[Path]:
-    """Return the `_harness/` directory to enumerate for this project.
+def _state_backend_target(resolution: dict) -> Optional[tuple]:
+    """Resolve the synced-backend ``_harness/`` target for this project's state,
+    or ``None`` when state should live device-local in ``<project_root>/.harness/``.
 
-    V5-3: state is device-local only. Always returns `<project_root>/.harness/`.
-    Returns None only when project_root is not set.
+    The discriminator that re-routes harness state onto the V5-6 storage seam
+    (ADR 0020 — amends the V5-3 device-local cutover, ADR 0018 DC-1):
+
+      - **explicit force-local** — ``_read_project_mode(resolution) == "local"``
+        (a repo-local ``.harness/.project-mode`` marker or device-level
+        ``state_mode=local``) → ``None``: the per-repo / per-device opt-out wins
+        over any backend (preserves DC-2 / DC-8).
+      - **synced backend present** — the resolution carries a ``backend`` whose
+        ``capabilities.sync`` is ``True`` (the obsidian-vault backend) plus a
+        ``project_locator`` → return ``(backend, harness_locator, backend_root)``
+        so reads/writes route through the backend verbs (vault_mutex + content-hash
+        CAS + atomic_write) and discovery resolves the real
+        ``<vault>/projects/<slug>/_harness/`` path.
+      - **otherwise** — no backend, a device-local (``sync=False``) backend, or a
+        backend missing a ``root`` → ``None``: device-local fallback. This is the
+        graceful degradation a vault-absent machine relies on (``select_backend``
+        yields ``None`` or a device-local backend there).
+
+    Duck-typed on ``capabilities.sync`` + ``root`` (never ``isinstance``), so the
+    engine never imports the vault plugin and the process-seam import-direction
+    gate stays green. ``_read_project_mode`` is defined below; module-level late
+    binding makes the forward reference safe (resolved at call time, not import).
+    """
+    if _read_project_mode(resolution) == "local":
+        return None
+    backend = resolution.get("backend")
+    locator = resolution.get("project_locator")
+    if backend is None or locator is None:
+        return None
+    try:
+        if not backend.capabilities.sync:
+            return None
+    except Exception:
+        # A backend that can't answer its capabilities is not a vault we trust —
+        # degrade to device-local rather than risk a wrong-tree write.
+        return None
+    backend_root = getattr(backend, "root", None)
+    if backend_root is None:
+        return None
+    return backend, locator.child("_harness"), Path(backend_root)
+
+
+def harness_state_dir(resolution: dict) -> Optional[Path]:
+    """Return the ``_harness/`` directory to enumerate for this project.
+
+    Honors the active storage backend (ADR 0020, amends ADR 0018 DC-1): on a
+    synced backend (the obsidian vault) this is the real vault path
+    ``<vault>/projects/<slug>/_harness/``; otherwise — no vault, a device-local
+    backend, or a ``.project-mode=local`` opt-out — it degrades to the
+    device-local ``<project_root>/.harness/``. Returns ``None`` only when neither
+    a synced backend nor a ``project_root`` is available.
 
     Used by `queue_status_lite` and named-plan-aware session-start discovery to
     glob every `PLAN*.md`. Pure path-construction; does not check existence.
     """
+    target = _state_backend_target(resolution)
+    if target is not None:
+        _backend, harness_loc, backend_root = target
+        return backend_root.joinpath(*harness_loc.parts)
     root = resolution.get("project_root")
     return Path(root) / ".harness" if root else None
 
@@ -651,19 +707,32 @@ def _read_repo_local_state_file(project_root: Path, filename: str) -> str:
 
 
 def read_state_file(resolution: dict, filename: str) -> str:
-    """Read a project state file from device-local location.
+    """Read a project state file, honoring the active storage backend.
 
-    V5-3: vault-first read removed. Resolution chain:
-      1. <project_root>/.harness/<filename>  (local mode — configured home)
-      2. <project_root>/.harness/<filename>  (legacy fallback; emits warn-once
-                                              when `.project-mode` is not set)
-      3. ""                                  (file absent)
+    Resolution (ADR 0020, amends the V5-3 device-local cutover, ADR 0018 DC-1):
+      1. a synced backend (the vault) is present and the project has not opted out
+         via `.project-mode=local` → `backend.read(projects/<slug>/_harness/<file>)`
+         — the read routes through the seam verb, no raw vault path I/O in the
+         engine; a missing file degrades to "" rather than raising.
+      2. otherwise → `<project_root>/.harness/<filename>` (device-local fallback /
+         explicit local mode), "" when absent.
 
-    Warn-once state is module-level (session-scoped); test helpers can reset
-    via `_reset_warn_state()`. The mode is resolved via `_read_project_mode()`.
+    Warn-once state is module-level (session-scoped); reset via `_reset_warn_state()`.
     """
+    target = _state_backend_target(resolution)
+    if target is not None:
+        backend, harness_loc, _backend_root = target
+        try:
+            return backend.read(harness_loc.child(filename))
+        except FileNotFoundError:
+            return ""
+        except Exception as exc:  # a backend read error degrades to absent, not crash
+            print(
+                f"[harness_memory] failed to read {filename} from backend: {exc}",
+                file=sys.stderr,
+            )
+            return ""
     project_root = resolution.get("project_root") or Path.cwd()
-    # V5-3: vault backend removed. All reads from <project_root>/.harness/<filename>.
     return _read_repo_local_state_file(project_root, filename)
 
 
@@ -683,11 +752,22 @@ def _read_legacy_state_file(project_root: Path, filename: str) -> str:
 
 
 def write_state_file(resolution: dict, filename: str, content: str) -> Path:
-    """Write a project state file to device-local storage.
+    """Write a project state file, honoring the active storage backend.
 
-    V5-3: vault backend removed. All writes go to <project_root>/.harness/<filename>.
-    Atomic write via `<path>.tmp` + `rename()`. Returns the absolute path written.
+    On a synced backend (the vault) not opted out via `.project-mode=local`, the
+    write routes through `backend.write()` — the full V5-0 stack (vault_mutex +
+    content-hash CAS + atomic_write) — landing at
+    `<vault>/projects/<slug>/_harness/<filename>`, whose absolute path is
+    returned. Otherwise it writes device-local `<project_root>/.harness/<filename>`
+    (atomic_write only — each checkout owns its own `.harness/`, nothing to lock).
+    ADR 0020 (amends ADR 0018 DC-1).
     """
+    target = _state_backend_target(resolution)
+    if target is not None:
+        backend, harness_loc, backend_root = target
+        loc = harness_loc.child(filename)
+        backend.write(loc, content)
+        return backend_root.joinpath(*loc.parts)
     project_root = resolution.get("project_root") or Path.cwd()
     return _write_repo_local_state_file(project_root, filename, content)
 

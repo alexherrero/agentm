@@ -184,8 +184,9 @@ class QueueStatusLiteFixture(unittest.TestCase):
 
 
 class HarnessStateDirResolution(unittest.TestCase):
-    """`harness_state_dir` resolves the `_harness/` directory — always device-local
-    after V5-3 (vault backend removed)."""
+    """`harness_state_dir` resolves the `_harness/` directory per the active backend
+    (ADR 0020, amends ADR 0018 DC-1): a synced backend → the vault path; no synced
+    backend (or a `.project-mode=local` opt-out) → device-local `<repo>/.harness/`."""
 
     def setUp(self) -> None:
         self._tmp = tempfile.mkdtemp(prefix="agentm-state-dir-")
@@ -197,11 +198,26 @@ class HarnessStateDirResolution(unittest.TestCase):
     def tearDown(self) -> None:
         shutil.rmtree(self._tmp, ignore_errors=True)
 
-    def test_vault_mode_dir_returns_device_local_v5_3(self) -> None:
-        # V5-3: vault backend gone — harness_state_dir always returns device-local.
+    def test_no_backend_returns_device_local(self) -> None:
+        # ADR 0020: a stale vault_path key with no synced backend → device-local.
         resolution = {"vault_path": self.vault, "project_root": self.proj}
         self.assertEqual(
             hm.harness_state_dir(resolution), self.proj / ".harness"
+        )
+
+    def test_synced_backend_returns_vault(self) -> None:
+        # ADR 0020: a synced backend routes state to <vault>/projects/<slug>/_harness/.
+        from storage_vault import VaultBackend
+        from storage_seam import Locator
+        backend = VaultBackend(root=self.vault, lock_root=self.root / "locks")
+        resolution = {
+            "backend": backend,
+            "project_locator": Locator("projects/repo"),
+            "project_root": self.proj,
+        }
+        self.assertEqual(
+            hm.harness_state_dir(resolution),
+            self.vault / "projects" / "repo" / "_harness",
         )
 
     def test_local_mode_dir(self) -> None:
@@ -211,7 +227,7 @@ class HarnessStateDirResolution(unittest.TestCase):
         )
 
     def test_no_project_root_is_none(self) -> None:
-        # V5-3: with no project_root, harness_state_dir cannot resolve.
+        # No backend and no project_root → harness_state_dir cannot resolve.
         self.assertIsNone(hm.harness_state_dir({"vault_path": self.vault}))
 
 

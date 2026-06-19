@@ -858,10 +858,15 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, "")
 
-    # V4 #37 task 7 / V5-3: read-state and write-state are device-local only.
+    # V4 #37 task 7: read-state / write-state CLI. ADR 0020 (amends ADR 0018 DC-1)
+    # re-routes them onto the storage backend — vault when synced, else device-local.
 
-    def test_cli_read_state_returns_repo_local_content(self) -> None:
-        """V5-3: vault-first read removed — read-state reads from repo .harness/."""
+    def test_cli_read_state_prefers_vault_when_backend_synced(self) -> None:
+        """ADR 0020 (amends ADR 0018 DC-1): with a synced backend (the vault)
+        active, read-state reads <vault>/projects/<slug>/_harness/<file> — the
+        vault copy wins over a stale repo-local one. OBSIDIAN_VAULT_SCRIPTS pins
+        the plugin to agentm's own scripts/ so backend selection is deterministic
+        in CI without a sibling crickets checkout."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -869,17 +874,26 @@ class TestCLI(unittest.TestCase):
             (project_root / ".harness" / "project.json").write_text(
                 '{"vault_project": "fixture"}', encoding="utf-8"
             )
+            # A stale repo-local copy that must LOSE to the vault.
             (project_root / ".harness" / "PLAN.md").write_text(
-                "repo PLAN content\n", encoding="utf-8"
+                "stale repo PLAN content\n", encoding="utf-8"
             )
             vault = _make_vault_new_layout(Path(tmp), project="fixture")
+            vault_harness = vault / "projects" / "fixture" / "_harness"
+            vault_harness.mkdir(parents=True)
+            (vault_harness / "PLAN.md").write_text(
+                "vault PLAN content\n", encoding="utf-8"
+            )
             result = self._run(
                 "read-state", "PLAN.md",
                 "--project-root", str(project_root),
-                env_extra={"MEMORY_VAULT_PATH": str(vault)},
+                env_extra={
+                    "MEMORY_VAULT_PATH": str(vault),
+                    "OBSIDIAN_VAULT_SCRIPTS": str(_HERE),
+                },
             )
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(result.stdout, "repo PLAN content\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "vault PLAN content\n")
 
     def test_cli_read_state_reads_repo_local(self) -> None:
         """V5-3: read-state reads from <project>/.harness/<file> (device-local)."""
@@ -1129,7 +1143,11 @@ class TestResolveProject(unittest.TestCase):
 # -----------------------------------------------------------------------------
 
 class TestReadStateFile(unittest.TestCase):
-    """Covers device-local read (V5-3: vault-first read removed)."""
+    """Covers the device-local read path — the graceful-degradation branch taken
+    when the resolution carries no synced backend (ADR 0020, amends ADR 0018 DC-1).
+    A resolution with a legacy ``vault_path`` key but no ``backend`` does NOT route
+    to the vault: the discriminator is a synced ``backend``, never ``vault_path``
+    alone. Positive vault routing lives in TestStateBackendRouting."""
 
     def setUp(self) -> None:
         hm._reset_warn_state()
@@ -1210,9 +1228,11 @@ class TestReadStateFile(unittest.TestCase):
             with _ClearEnv(set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)}):
                 self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "repo content")
 
-    def test_vault_content_not_read_v5_3(self) -> None:
-        """V5-3: vault-first read removed. Even with vault_path set and a vault
-        file present, read_state_file returns repo-local content (not vault)."""
+    def test_vault_path_key_alone_does_not_route_to_vault(self) -> None:
+        """ADR 0020: a stale ``vault_path`` key with NO synced ``backend`` in the
+        resolution must NOT read the vault — the discriminator is a synced backend,
+        not the legacy path key. Degrades to repo-local even with a vault file
+        present. (Regression guard for the Option B discriminator.)"""
         with tempfile.TemporaryDirectory() as tmp:
             prefix = Path(tmp) / "prefix"
             prefix.mkdir()  # empty config dir → no device state_mode
@@ -1271,10 +1291,14 @@ class TestReadStateFile(unittest.TestCase):
 
 
 class TestWriteStateFile(unittest.TestCase):
-    """Covers device-local writes (V5-3: vault backend removed)."""
+    """Covers the device-local write path — the graceful-degradation branch taken
+    when the resolution carries no synced backend (ADR 0020, amends ADR 0018 DC-1).
+    A legacy ``vault_path`` key without a ``backend`` does NOT route to the vault.
+    Positive vault routing lives in TestStateBackendRouting."""
 
-    def test_writes_device_local_regardless_of_vault_path(self) -> None:
-        """V5-3: write_state_file writes to <project_root>/.harness/ always."""
+    def test_vault_path_key_alone_writes_device_local(self) -> None:
+        """ADR 0020: a stale ``vault_path`` key with NO synced ``backend`` writes
+        to <project_root>/.harness/ — only a synced backend routes to the vault."""
         with tempfile.TemporaryDirectory() as tmp:
             vp = Path(tmp) / "vault" / "projects" / "p"
             project = Path(tmp) / "project"
@@ -1358,8 +1382,10 @@ class TestWriteStateFile(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "repo wins")
             self.assertFalse((vp / "_harness" / "PLAN.md").exists())
 
-    def test_all_modes_write_device_local_v5_3(self) -> None:
-        """V5-3: vault backend removed — all mode configurations write device-locally."""
+    def test_device_state_mode_local_writes_device_local(self) -> None:
+        """DC-8 + ADR 0020: device-level state_mode=local forces the write
+        device-local even though a vault_path is present (here with no backend
+        either) — the local opt-out is authoritative."""
         with tempfile.TemporaryDirectory() as tmp:
             prefix = Path(tmp) / "prefix"
             prefix.mkdir()
@@ -1416,6 +1442,127 @@ class TestWriteStateFile(unittest.TestCase):
                 target = hm.write_state_file(resolution, "PLAN.md", "device decides")
             # empty repo marker → device state_mode=local → repo-local home.
             self.assertEqual(target, project / ".harness" / "PLAN.md")
+
+
+class TestStateBackendRouting(unittest.TestCase):
+    """Positive coverage for ADR 0020 (amends ADR 0018 DC-1): when the resolution
+    carries a *synced* backend, harness_state_dir / read_state_file /
+    write_state_file route to <vault>/projects/<slug>/_harness/. A non-synced
+    (device-local) backend, a backend without a root, or a .project-mode=local
+    opt-out degrades to <repo>/.harness/. Backends are constructed by direct import
+    (no plugin discovery), so these are hermetic — VaultBackend gets an injected
+    lock_root so the real ~/.cache and the operator's live vault are never touched."""
+
+    def setUp(self) -> None:
+        hm._reset_warn_state()
+
+    def _vault_backend(self, vault_root: Path, lock_root: Path):
+        from storage_vault import VaultBackend
+        return VaultBackend(root=vault_root, lock_root=lock_root)
+
+    def _device_backend(self, root: Path):
+        from storage_device_local import DeviceLocalBackend
+        return DeviceLocalBackend(root=root)
+
+    def _resolution(self, backend, project_root: Path) -> dict:
+        from storage_seam import Locator
+        return {
+            "backend": backend,
+            "project_locator": Locator("projects/fixture"),
+            "project_root": project_root,
+        }
+
+    def test_harness_state_dir_resolves_to_vault(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            backend = self._vault_backend(vault, Path(tmp) / "locks")
+            resolution = self._resolution(backend, Path(tmp) / "project")
+            self.assertEqual(
+                hm.harness_state_dir(resolution),
+                vault / "projects" / "fixture" / "_harness",
+            )
+
+    def test_read_routes_to_vault_and_wins_over_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            harness = vault / "projects" / "fixture" / "_harness"
+            harness.mkdir(parents=True)
+            (harness / "PLAN.md").write_text("vault content\n", encoding="utf-8")
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / "PLAN.md").write_text(
+                "stale repo\n", encoding="utf-8"
+            )
+            backend = self._vault_backend(vault, Path(tmp) / "locks")
+            resolution = self._resolution(backend, project)
+            self.assertEqual(
+                hm.read_state_file(resolution, "PLAN.md"), "vault content\n"
+            )
+
+    def test_read_missing_vault_file_returns_empty(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            backend = self._vault_backend(vault, Path(tmp) / "locks")
+            resolution = self._resolution(backend, Path(tmp) / "project")
+            # Synced backend selected, file absent → "" (FileNotFoundError swallowed).
+            self.assertEqual(hm.read_state_file(resolution, "PLAN.md"), "")
+
+    def test_write_routes_to_vault(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            project = Path(tmp) / "project"
+            backend = self._vault_backend(vault, Path(tmp) / "locks")
+            resolution = self._resolution(backend, project)
+            target = hm.write_state_file(resolution, "PLAN.md", "via backend\n")
+            expected = vault / "projects" / "fixture" / "_harness" / "PLAN.md"
+            self.assertEqual(target, expected)
+            self.assertEqual(expected.read_text(encoding="utf-8"), "via backend\n")
+            # Repo-local .harness/ untouched — the write landed in the vault only.
+            self.assertFalse((project / ".harness" / "PLAN.md").exists())
+
+    def test_write_then_read_roundtrip_via_vault(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            backend = self._vault_backend(vault, Path(tmp) / "locks")
+            resolution = self._resolution(backend, Path(tmp) / "project")
+            hm.write_state_file(resolution, "progress.md", "p1\n")
+            self.assertEqual(
+                hm.read_state_file(resolution, "progress.md"), "p1\n"
+            )
+
+    def test_device_local_backend_degrades_to_repo(self) -> None:
+        """A non-synced backend (sync=False) is not a vault — state stays device-local."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            backend = self._device_backend(Path(tmp) / "dl-root")
+            resolution = self._resolution(backend, project)
+            self.assertEqual(
+                hm.harness_state_dir(resolution), project / ".harness"
+            )
+            target = hm.write_state_file(resolution, "PLAN.md", "device local\n")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
+
+    def test_project_mode_local_overrides_synced_backend(self) -> None:
+        """DC-2: a repo-local .project-mode=local opt-out beats even a synced
+        backend — read/write stay device-local, the vault is untouched."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            project = Path(tmp) / "project"
+            (project / ".harness").mkdir(parents=True)
+            (project / ".harness" / ".project-mode").write_text(
+                "local", encoding="utf-8"
+            )
+            backend = self._vault_backend(vault, Path(tmp) / "locks")
+            resolution = self._resolution(backend, project)
+            self.assertEqual(
+                hm.harness_state_dir(resolution), project / ".harness"
+            )
+            target = hm.write_state_file(resolution, "PLAN.md", "stays local\n")
+            self.assertEqual(target, project / ".harness" / "PLAN.md")
+            self.assertFalse(
+                (vault / "projects" / "fixture" / "_harness" / "PLAN.md").exists()
+            )
 
 
 class TestReadConfigStateMode(unittest.TestCase):

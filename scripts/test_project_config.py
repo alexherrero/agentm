@@ -168,18 +168,30 @@ class TestRegisterIntegration(unittest.TestCase):
                     os.environ.pop("MEMORY_VAULT_PATH", None)
                 else:
                     os.environ["MEMORY_VAULT_PATH"] = old_env
-            # V5-3: project.json lands in device-local .harness/, not vault.
-            vault_pj = repo / ".harness" / "project.json"
+            # ADR 0020 (reverses V5-3 DC-1): a synced backend routes the rich
+            # project.json to <vault>/projects/<slug>/_harness/. The device-local
+            # .harness/project.json stays the thin {vault_project} routing pointer.
+            vault_pj = vault / "projects" / "demo" / "_harness" / "project.json"
             self.assertTrue(vault_pj.is_file())
             data = json.loads(vault_pj.read_text(encoding="utf-8"))
-            self.assertEqual(data["vault_project"], "demo")
             self.assertIn("skills", data)
             self.assertEqual(data["registered_via"], "auto-detect")
+            # The vault config is keyed by slug (its directory) — the device-local
+            # vault_project pointer is not duplicated into it.
+            self.assertNotIn("vault_project", data)
+            # Device-local file is untouched: still the thin slug pointer.
+            self.assertEqual(
+                json.loads(
+                    (repo / ".harness" / "project.json").read_text(encoding="utf-8")
+                ),
+                {"vault_project": "demo"},
+            )
             # repo registered — read back via same VaultBackend.
             slugs = [r.get("slug") for r in repo_registry.list_repos(vault_backend)]
             self.assertIn("demo", slugs)
-            # returned config matches.
-            self.assertEqual(config["vault_project"], "demo")
+            # returned config carries the merged enablement block.
+            self.assertEqual(config["registered_via"], "auto-detect")
+            self.assertIn("skills", config)
 
     def test_register_does_not_drop_github_env_under_local_mode(self):
         # Regression (adversarial review 2026-05-29): read_state_file honors

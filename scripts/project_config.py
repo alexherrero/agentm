@@ -189,12 +189,13 @@ def load_project_json(resolution: dict) -> dict:
 def write_config(resolution: dict, config: dict) -> Path:
     """Atomically write `config` back to project.json.
 
-    Routes through the dispatcher's `write_state_file`, which is
-    `.project-mode`-aware (writes to legacy `<repo>/.harness/` when the project
-    opted out of vault-mode). This MUST match where `load_project_json` read
-    from — otherwise a local-mode project would read the legacy file but write
-    the vault file, dropping the vault's `github`/`env` keys. Raises ValueError
-    if the resolution lacks a vault_path.
+    Routes through the dispatcher's `write_state_file`, which is backend-aware
+    (ADR 0020): it writes to `<vault>/projects/<slug>/_harness/` when a live
+    synced backend is active, else to device-local `<repo>/.harness/` (vault
+    absent, or a `.project-mode=local` opt-out). This MUST match where
+    `load_project_json` read from — both traverse the same seam — otherwise a
+    project could read one location and write the other, dropping keys that live
+    only in the read location (e.g. `github`/`env`). Returns the path written.
     """
     payload = json.dumps(config, indent=2, ensure_ascii=False) + "\n"
     return hm.write_state_file(resolution, "project.json", payload)

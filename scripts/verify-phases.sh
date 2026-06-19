@@ -156,12 +156,16 @@ printf '{"vault_project": "%s"}\n' "$SLUG" > "$V_PROJ/.harness/project.json"
 # not installed (CI). The kernel built-in has the same interface and writes the
 # same registry format; this is a CI-isolation shim, not a behavior change.
 MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$REPO/scripts")
-run_lifecycle "[vault]" "$V_PROJ" "$V_PROJ/.harness" 1
+run_lifecycle "[vault]" "$V_PROJ" "$V_VAULT/projects/$SLUG/_harness" 1
 # The vault repo_registry seam fired (cross-device index).
 assert_exists "[vault] setup: repo_registry index written" "$V_VAULT/_meta/repos.json"
-# V5-3: state is device-local; vault _harness/ must NOT be created by the kernel.
-assert_absent "[vault] isolation: vault _harness/ not written by kernel (V5-3)" \
+# ADR 0020 (reverses V5-3 DC-1): a synced backend routes state into the vault
+# _harness/; the device-local .harness/ stays the thin {vault_project} pointer and
+# must NOT carry the kernel-written plan state.
+assert_exists "[vault] isolation: vault _harness/ written by kernel (ADR 0020)" \
   "$V_VAULT/projects/$SLUG/_harness/PLAN.md"
+assert_absent "[vault] isolation: device-local .harness/ free of kernel plan state" \
+  "$V_PROJ/.harness/PLAN.md"
 
 # ── PASS 2: repo-local (device state_mode:local, NO vault) ───────────────────
 echo "verify-phases: ── pass 2/2 — repo-local (vault-less) ──"
