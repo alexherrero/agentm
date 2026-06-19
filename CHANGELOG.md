@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.7.0] — 2026-06-18 — V5-6 routing-plane de-vaulting
+
+**MINOR.** The kernel's routing layer is now backend-agnostic. Three mechanisms that previously built `vault_path() / …` filesystem paths — `resolve_project` / `_vault_projects_dir`, `repo_registry`, and the `state_mode` resolver — now speak `Locator`s to the V5-1 storage seam. On the `obsidian-vault` backend behavior is byte-identical (LC-1). A fresh install with only `device-local` can now host a project, its harness state, and the repo registry without a vault. `state_mode: vault` in device config and `.project-mode` markers is aliased to `state_mode: backend` at read time — no operator migration required (LC-5). Gate extensions enforce the no-Path-leak and one-way-import-direction invariants on the routing layer. `AGENTM_DEVICE_LOCAL_ROOT` env-var override added for test isolation in CI environments without the obsidian-vault plugin. This is the third and final leg of the V5 de-vaulting arc. Gates: 20/20, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-6 — `resolve_project` / `_vault_projects_dir` via seam (`b762987`).** `harness_memory._vault_projects_dir` signature changed from `(vault: Path) -> Path` to `(backend: StorageBackend) -> Locator`; `resolve_project` returns `{slug, project_locator, backend, project_root, layout}` instead of `{slug, vault_path, project_root, layout}`. Callers in `process_seam.py` and `memory_mcp_tools.py` updated to use `project_locator.key`. 10 new tests. LC-7 parallel-run: `VaultBackend` `Locator` resolves to same on-disk path.
+
+- **V5-6 — `repo_registry` onto the seam (`3af7fa6`).** `registry_path(vault) -> Path` replaced by `registry_locator(backend) -> Locator`; `_vault_or_none()` replaced by `_backend_or_none()` (lazy-imports `select_backend()`); all five public functions (`read_registry`, `write_registry`, `register_repo`, `unregister_repo`, `list_repos`) now take `StorageBackend`. `_mutate_registry` drops `vault_mutex` (held internally by `VaultBackend.write()`); `write_registry` adds an explicit content-hash CAS. CLI graceful-skip fires when `select_backend()` raises, not merely when `MEMORY_VAULT_PATH` is unset. 10 new/rewritten tests.
+
+- **V5-6 — `state_mode: vault` → `backend` alias (`b62e378`).** `_read_config_state_mode` and `_read_project_mode` alias `"vault"` → `"backend"` at read time — one-line guard, no rewrite, no operator migration (LC-5). `agentm_config._STATE_MODES` adds `"backend"` as the canonical value; `cmd_set_state_mode` normalizes `"vault"` → `"backend"` at write time. 5 new/updated tests.
+
+- **V5-6 — gate extensions + conformance suite for routing layer (`51b1a32`).** `check-storage-seam-no-path-leak.py` Pass 2 checks 8 named routing functions in `harness_memory.py` and `repo_registry.py` for `pathlib.Path` return annotations. `check-process-seam-import-direction.sh` LC-8 block scans routing files for `storage_vault` imports. `storage_conformance.py` gains `check_routing_repo_registry()` and `ROUTING_CHECKS`; `ConformanceSuite.test_routing_repo_registry()` is now inherited by all conformance subclasses. 8 new tests across three gate test files.
+
+- **V5-6 — ADR 0019 + wiki sweep (`e185946`).** ADR 0019 records the three-leg de-vaulting arc completion, all locked design calls (LC-1/4/5/6/7/8), and load-bearing assumptions with re-audit triggers. `Decisions.md` + `decisions/_Sidebar.md` updated. `device-wide-architecture.md` v1.0 entry finalized. `Storage-Seam.md` routing layer NOTE updated to complete. `Single-Repo-State-Mode.md` updated: `state_mode` value `"vault"` → `"backend"` with backward-compat note.
+
+### Internal
+
+- **CI test isolation — `AGENTM_DEVICE_LOCAL_ROOT` + backend mocks (`4a28b1c`).** `storage_device_local._default_root()` reads `$AGENTM_DEVICE_LOCAL_ROOT` to redirect the device-local root in CI without the vault plugin. 2 subprocess CLI tests updated to use this env var; 2 in-process tests updated to patch `backend_selection.select_backend` directly.
+
+- **CI `verify-phases.sh` vault pass fix (`d055423`).** Set `OBSIDIAN_VAULT_SCRIPTS=$REPO/scripts` so the vault pass can load the kernel `VaultBackend` as a stand-in when the crickets obsidian-vault plugin is absent in CI. `verify-phases: 32/32` (was 31/32).
+
 ## [v5.6.0] — 2026-06-18 — V5-7 capability-request matching
 
 **MINOR.** `select_backend()` now accepts a `required: Capabilities | None = None` keyword parameter. When provided, the resolved backend's `.capabilities` must satisfy every `True` flag — a subset check. Mismatch raises `CapabilityMismatchError` (new `StorageSelectionError` subclass) naming the backend protocol and all unsatisfied fields; existing `except StorageSelectionError` catch sites cover it automatically. Operators can pre-flight requirements without code via `doctor --requires <cap1,cap2>`. Zero existing callers updated (default `None` preserves prior behavior). Gates: 20/20, CI green across Linux/Mac/Windows.
