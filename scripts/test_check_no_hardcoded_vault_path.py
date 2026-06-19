@@ -127,7 +127,7 @@ class TestViolations(unittest.TestCase):
         """Baked-in /Library/CloudStorage/ absolute path literal must be flagged."""
         content = (
             "# Hardcoded — this must NOT pass the gate\n"
-            'VAULT = "/Users/alex/Library/CloudStorage/GoogleDrive-a@b.net/My Drive/Obsidian/Agent"\n'
+            'VAULT = "/Users/x/Library/CloudStorage/GoogleDrive-y/My Drive/Obsidian/Agent"\n'
         )
         with tempfile.TemporaryDirectory() as tmp:
             rc = _run(tmp, "config.py", content)
@@ -137,7 +137,7 @@ class TestViolations(unittest.TestCase):
         """Absolute path component /Obsidian/AgentMemory (retired name) must be flagged."""
         content = (
             "# Stale pre-V5-3 path — must NOT pass the gate\n"
-            'VAULT = "/Users/alex/Library/CloudStorage/GoogleDrive-a/My Drive/Obsidian/AgentMemory"\n'
+            'VAULT = "/Users/x/Library/CloudStorage/GoogleDrive-y/My Drive/Obsidian/AgentMemory"\n'
         )
         with tempfile.TemporaryDirectory() as tmp:
             rc = _run(tmp, "config.py", content)

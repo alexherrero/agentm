@@ -42,7 +42,17 @@ Before every commit, run the full local gate battery — it's the one command th
 bash scripts/check-all.sh
 ```
 
-It runs the unit suite (`scripts/test_*.py`) + every `check-*` gate (syntax · references · adapters · parity · lib-parity · vault-lock-parity · workflow-parity · multi-plan-naming · worktree-slug · no-auto-worktree · process-seam-import-direction · storage-seam-no-path-leak · no-pii · wiki) + the four `verify-*` integration checks (`verify-v4` kernel push-surface · `verify-orchestration-briefing` PM-half · `verify-phases` lifecycle · `verify-memory-roundtrip` engine, against throwaway scratch vaults), prints a PASS/FAIL table, and exits non-zero if any gate fails. CI additionally runs the heavier `smoke-install` + `gitleaks` on every push. As the project grows, add new checks to `check-all.sh` (and a CI step) so the battery stays the single source of truth for "is it green." Full reference: [wiki/reference/CI-Gates.md](wiki/reference/CI-Gates.md).
+It runs the unit suite (`scripts/test_*.py`) + every `check-*` gate (syntax · references · adapters · parity · lib-parity · vault-lock-parity · workflow-parity · multi-plan-naming · worktree-slug · no-auto-worktree · process-seam-import-direction · storage-seam-no-path-leak · capability-resolver-one-way · personas · no-hardcoded-vault-path · no-pii · wiki) + the four `verify-*` integration checks (`verify-v4` kernel push-surface · `verify-orchestration-briefing` PM-half · `verify-phases` lifecycle · `verify-memory-roundtrip` engine, against throwaway scratch vaults), prints a PASS/FAIL table, and exits non-zero if any gate fails. CI additionally runs the heavier `smoke-install` + `gitleaks` on every push. As the project grows, add new checks to `check-all.sh` (and a CI step) so the battery stays the single source of truth for "is it green." Full reference: [wiki/reference/CI-Gates.md](wiki/reference/CI-Gates.md).
+
+### Vault-path convention — resolve, don't recall
+
+Vault paths are **resolved at runtime; never cache an absolute path as a literal constant, config value, or remembered fact.**
+
+The canonical resolver is `harness_memory.vault_path()`, which reads `plugins.obsidian-vault.vault_path` from the kernel config (set by `agentm_config --vault-path`; V5-7 config-plane). The `$MEMORY_VAULT_PATH` env var is the escape hatch for per-invocation overrides.
+
+Why this matters: an absolute path like `/Users/<name>/Library/CloudStorage/GoogleDrive-<id>/…/Obsidian/Agent` encodes machine-specific state (username, drive ID, mount point) that changes across installations and over time. A path cached as a literal in memory or code silently becomes wrong when any of those change — and wrong content is worse than no content because it reads as valid.
+
+`check-no-hardcoded-vault-path` ([CI-Gates reference](wiki/reference/CI-Gates.md)) enforces this at the repo level: it fails if any non-test tracked file embeds `…/Library/CloudStorage/…` as an absolute literal or the retired pre-V5-3 vault root name `…/Obsidian/AgentMemory`.
 
 ## Directory layout (in a project that installs this harness)
 
