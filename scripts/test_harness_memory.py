@@ -881,9 +881,10 @@ class TestCLI(unittest.TestCase):
             vault = _make_vault_new_layout(Path(tmp), project="fixture")
             vault_harness = vault / "projects" / "fixture" / "_harness"
             vault_harness.mkdir(parents=True)
-            (vault_harness / "PLAN.md").write_text(
-                "vault PLAN content\n", encoding="utf-8"
-            )
+            # LF-only bytes: VaultBackend read is byte-exact, so seed exactly as
+            # production's atomic_write would (write_text emits CRLF on Windows,
+            # which the byte-exact backend read would then surface).
+            (vault_harness / "PLAN.md").write_bytes(b"vault PLAN content\n")
             result = self._run(
                 "read-state", "PLAN.md",
                 "--project-root", str(project_root),
@@ -1487,7 +1488,11 @@ class TestStateBackendRouting(unittest.TestCase):
             vault = Path(tmp) / "vault"
             harness = vault / "projects" / "fixture" / "_harness"
             harness.mkdir(parents=True)
-            (harness / "PLAN.md").write_text("vault content\n", encoding="utf-8")
+            # LF-only bytes (not write_text, which emits CRLF on Windows): the
+            # VaultBackend read is byte-exact for CAS integrity, so the fixture
+            # must match production's atomic_write. The device-local read_text path
+            # translates newlines; the backend deliberately does not.
+            (harness / "PLAN.md").write_bytes(b"vault content\n")
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
             (project / ".harness" / "PLAN.md").write_text(
