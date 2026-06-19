@@ -319,6 +319,140 @@ class TestVaultPathResolutionOrder(unittest.TestCase):
 
 
 # -----------------------------------------------------------------------------
+# V5-7 config-plane: plugin-namespaced key + first-read migration
+# -----------------------------------------------------------------------------
+
+class TestPluginNamespacedVaultPath(unittest.TestCase):
+    """V5-7: _read_config_vault_path() reads plugins.obsidian-vault.vault_path first,
+    falls back to legacy flat vault_path, and migrates legacy installs on first read."""
+
+    def setUp(self) -> None:
+        hm._reset_warn_state()
+
+    def tearDown(self) -> None:
+        hm._reset_warn_state()
+
+    def _write_config(self, prefix: Path, **fields) -> None:
+        prefix.mkdir(parents=True, exist_ok=True)
+        payload = {"schema_version": 2}
+        payload.update(fields)
+        (prefix / ".agentm-config.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    def _read_config(self, prefix: Path) -> dict:
+        cfg = prefix / ".agentm-config.json"
+        return json.loads(cfg.read_text(encoding="utf-8"))
+
+    # (i) New key read: plugin-namespaced key present → returned directly, no migration.
+    def test_i_plugin_key_returns_path_no_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, **{hm._PLUGIN_VAULT_PATH_KEY: str(vault)})
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertEqual(hm.vault_path(), vault)
+            # No migration: legacy key not written.
+            cfg = self._read_config(prefix)
+            self.assertNotIn("vault_path", cfg)
+
+    # (ii) Legacy key + migration: writes plugin key + storage.backend=vault.
+    def test_ii_legacy_key_triggers_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, vault_path=str(vault))
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                result = hm.vault_path()
+            self.assertEqual(result, vault)
+            # Migration must have written both new keys.
+            cfg = self._read_config(prefix)
+            self.assertEqual(cfg.get(hm._PLUGIN_VAULT_PATH_KEY), str(vault))
+            self.assertEqual(cfg.get("storage.backend"), "vault")
+            # Legacy key preserved (migration adds, doesn't remove).
+            self.assertEqual(cfg.get("vault_path"), str(vault))
+
+    # (iii) Both keys present: plugin key wins; no migration fired.
+    def test_iii_both_keys_plugin_wins_no_migration(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            plugin_vault = Path(tmp) / "plugin_vault"
+            plugin_vault.mkdir()
+            legacy_vault = Path(tmp) / "legacy_vault"
+            legacy_vault.mkdir()
+            prefix = Path(tmp) / "prefix"
+            self._write_config(
+                prefix,
+                **{hm._PLUGIN_VAULT_PATH_KEY: str(plugin_vault), "vault_path": str(legacy_vault)},
+            )
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                result = hm.vault_path()
+            self.assertEqual(result, plugin_vault)
+            # No migration: storage.backend not written by this call.
+            cfg = self._read_config(prefix)
+            self.assertNotIn("storage.backend", cfg)
+
+    # (iv) Neither key present → None (no migration).
+    def test_iv_neither_key_returns_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix)  # no vault keys
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                self.assertIsNone(hm.vault_path())
+
+    # (v) Migration idempotent: second call with legacy key doesn't re-migrate.
+    def test_v_migration_idempotent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, vault_path=str(vault))
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                r1 = hm.vault_path()
+                r2 = hm.vault_path()  # second call — plugin key now present; no re-migration
+            self.assertEqual(r1, vault)
+            self.assertEqual(r2, vault)
+            # Config written exactly once — storage.backend=vault present.
+            cfg = self._read_config(prefix)
+            self.assertEqual(cfg.get("storage.backend"), "vault")
+
+    # (vi) Full call chain: legacy key → migration → choose_protocol sees explicit backend.
+    # This verifies that the migration write completes BEFORE choose_protocol() runs
+    # in select_backend(), which is the load-bearing timing constraint from the plan.
+    def test_vi_migration_write_visible_to_choose_protocol(self) -> None:
+        import backend_selection as bs
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            prefix = Path(tmp) / "prefix"
+            self._write_config(prefix, vault_path=str(vault))
+            with _ClearEnv(
+                set_vars={"AGENTM_INSTALL_PREFIX": str(prefix)},
+                unset_keys=["MEMORY_VAULT_PATH"],
+            ):
+                # After vault_path() fires migration, _configured_backend() reads
+                # the updated config and returns "vault" — so choose_protocol returns
+                # "vault" even without the legacy vault_root parameter.
+                _ = hm.vault_path()  # fires migration
+                protocol = bs.choose_protocol(install_prefix=prefix)
+            self.assertEqual(protocol, "vault")
+
+
+# -----------------------------------------------------------------------------
 # V5-3 fail-loud guard: vault_path() raises when storage.backend=vault + no vault
 # -----------------------------------------------------------------------------
 

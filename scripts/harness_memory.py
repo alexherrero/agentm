@@ -5,9 +5,9 @@ Wires MemoryVault read + write into each harness phase command
 (`/setup`, `/plan`, `/work`, `/review`, `/release`, `/bugfix`). Phase specs
 invoke this CLI unconditionally; the dispatcher graceful-skips when
 MemoryVault is not installed (`$MEMORY_VAULT_PATH` env unset AND no
-`vault_path` in `<install-prefix>/.agentm-config.json` OR directory
-missing), so the harness runs the same on systems with or without the
-sibling `crickets` install.
+`plugins.obsidian-vault.vault_path` in `<install-prefix>/.agentm-config.json`
+OR directory missing), so the harness runs the same on systems with or without
+the sibling `crickets` install.
 
 Sub-commands:
 
@@ -172,14 +172,61 @@ def _agentm_install_prefix() -> Path:
     return Path.home() / ".claude"
 
 
+# Flat key used to store vault_path under the obsidian-vault plugin's namespace.
+# Stored as a literal string key in the JSON (same flat-with-dots convention as
+# "storage.backend") so it round-trips through agentm_config --get/--unset.
+_PLUGIN_VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
+
+# One-time migration warning flag (reset by _reset_warn_state() in tests).
+_warned_vault_path_migration: bool = False
+
+
+def _migrate_config_vault_path(config_path: Path, vault_path_str: str) -> None:
+    """Atomically migrate the legacy flat `vault_path` key to the plugin namespace.
+
+    Writes `plugins.obsidian-vault.vault_path` into the config; also writes
+    `storage.backend=vault` when no explicit backend is already configured, so
+    `choose_protocol()` sees an explicit selection on the same call chain.
+    Preserves an existing non-vault `storage.backend` setting. Graceful-skips on
+    any I/O error — migration failure never breaks the read path; the caller
+    already has the value from the legacy key.
+    """
+    global _warned_vault_path_migration
+    if not _warned_vault_path_migration:
+        _warned_vault_path_migration = True
+        print(
+            "[harness_memory] migrating legacy 'vault_path' config key to "
+            f"'{_PLUGIN_VAULT_PATH_KEY}' + 'storage.backend=vault'. "
+            "This runs once per install. Re-audit when all known installs have migrated.",
+            file=sys.stderr,
+        )
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return
+        data[_PLUGIN_VAULT_PATH_KEY] = vault_path_str
+        # Only set storage.backend=vault when no explicit backend is already configured.
+        # An explicit non-vault backend (e.g. device-local) must be preserved.
+        if not data.get("storage.backend"):
+            data["storage.backend"] = "vault"
+        tmp = config_path.with_suffix(config_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        tmp.replace(config_path)
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        pass
+
+
 def _read_config_vault_path(install_prefix: Optional[Path] = None) -> Optional[Path]:
-    """Read `vault_path` from `<install-prefix>/.agentm-config.json`.
+    """Read vault root path from `<install-prefix>/.agentm-config.json`.
+
+    Reads `plugins.obsidian-vault.vault_path` first; falls back to the legacy
+    flat `vault_path` key. On the first legacy-key read (plugin key absent), fires
+    `_migrate_config_vault_path()` which writes both the new key and
+    `storage.backend=vault` so the next `choose_protocol()` call resolves the
+    backend explicitly.
 
     Returns the parsed Path if the field is set + the directory exists.
     Graceful-skips silently on any I/O or parse error — never raises.
-
-    v4.5.1 task 2: introduced as the on-device source-of-truth for the
-    vault root. Env `$MEMORY_VAULT_PATH` still wins as an override.
     """
     if install_prefix is None:
         install_prefix = _agentm_install_prefix()
@@ -192,10 +239,24 @@ def _read_config_vault_path(install_prefix: Optional[Path] = None) -> Optional[P
         return None
     if not isinstance(data, dict):
         return None
-    raw = data.get("vault_path")
-    if not isinstance(raw, str) or not raw.strip():
+
+    raw_plugin = data.get(_PLUGIN_VAULT_PATH_KEY)
+    raw_legacy = data.get("vault_path")
+
+    if isinstance(raw_plugin, str) and raw_plugin.strip():
+        raw = raw_plugin.strip()
+    elif isinstance(raw_legacy, str) and raw_legacy.strip():
+        raw = raw_legacy.strip()
+        p = Path(os.path.expanduser(raw))
+        if not p.is_dir():
+            return None
+        # Legacy key present, plugin key absent, vault accessible — migrate.
+        _migrate_config_vault_path(config_path, raw)
+        return p
+    else:
         return None
-    p = Path(os.path.expanduser(raw.strip()))
+
+    p = Path(os.path.expanduser(raw))
     if not p.is_dir():
         return None
     return p
@@ -269,9 +330,11 @@ def vault_path() -> Optional[Path]:
          per-session use. Even when set to a non-existent path, env takes
          precedence: this branch returns None rather than falling through,
          so operators can detect + fix a broken export. (v4.5.1 locked DC-2.)
-      2. `<install-prefix>/.agentm-config.json::vault_path` — the on-device
-         source of truth written by `agentm_config.py --vault-path <path>` or
-         the installer's first-run prompt. Install prefix honors
+      2. `<install-prefix>/.agentm-config.json::plugins.obsidian-vault.vault_path`
+         — the plugin-namespaced key written by `agentm_config --vault-path` (V5-7).
+         Falls back to the legacy flat `vault_path` key; on first legacy-key read
+         (plugin key absent) fires `_migrate_config_vault_path()` to write both
+         the new key and `storage.backend=vault`. Install prefix honors
          `$AGENTM_INSTALL_PREFIX` for non-default setups.
       3. `None` — graceful-skip; same semantics as pre-v4.5.1 but now fires
          only when BOTH paths are empty.
@@ -488,8 +551,10 @@ def warn_once(filename: str, source: str = "legacy") -> None:
 
 
 def _reset_warn_state() -> None:
-    """Test-only: clear the warned-set. Not part of the public API."""
+    """Test-only: clear the warned-set and migration flag. Not part of the public API."""
+    global _warned_vault_path_migration
     _warned_legacy_reads.clear()
+    _warned_vault_path_migration = False
 
 
 def _read_mode_marker(path: Path) -> Optional[str]:
