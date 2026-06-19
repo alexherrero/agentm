@@ -104,5 +104,37 @@ if [ "$fail" -ne 0 ]; then
   exit 1
 fi
 
+# LC-8: routing mechanism files must not import capability plugins.
+# `storage_vault` is the vault capability plugin — routing files that import it
+# directly create a plugin dependency the seam exists to prevent. Routing
+# mechanisms use the seam's abstract types; the backend is injected at call time.
+LC8_IMPORT_RE='^[[:space:]]*(import|from)[[:space:]]+storage_vault([^A-Za-z0-9_]|$)'
+LC8_ROUTING_FILES=(
+  "$ROOT/scripts/harness_memory.py"
+  "$ROOT/scripts/repo_registry.py"
+)
+
+lc8_fail=0
+lc8_hits=""
+
+for rf in "${LC8_ROUTING_FILES[@]}"; do
+  [ -f "$rf" ] || continue
+  m="$(grep -nHE "$LC8_IMPORT_RE" "$rf" 2>/dev/null || true)"
+  if [ -n "$m" ]; then
+    lc8_hits+="$m"$'\n'
+    lc8_fail=1
+  fi
+done
+
+if [ "$lc8_fail" -ne 0 ]; then
+  echo "check-process-seam-import-direction: a routing mechanism imports a capability plugin (LC-8) —" >&2
+  printf '%s' "$lc8_hits" | sed 's/^/    /' >&2
+  echo "" >&2
+  echo "  LC-8: de-vaulted routing mechanisms may import the storage seam" >&2
+  echo "  (storage_seam), never a capability plugin (storage_vault). Use the" >&2
+  echo "  seam's abstract types; the concrete backend is injected at call time." >&2
+  exit 1
+fi
+
 echo "check-process-seam-import-direction: clean — the seam→engine edge is one-way."
 exit 0

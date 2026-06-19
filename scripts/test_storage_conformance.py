@@ -154,5 +154,36 @@ class VaultRunConformanceReport(unittest.TestCase):
         self.assertIn("lf_exact_round_trip", report["universal"])
 
 
+class RoutingConformanceReport(unittest.TestCase):
+    """``run_conformance(include_routing=True)`` proves ``repo_registry`` on both backends.
+
+    The routing-layer invariant (V5-6 LC-4): ``repo_registry`` operations produce
+    identical semantic outcomes on every conforming backend. Exercises both the
+    one-call importable driver (``include_routing=True``) and checks the report
+    contains a ``routing`` key naming what ran.
+    """
+
+    def test_run_conformance_device_local_includes_routing(self) -> None:
+        def make() -> "sdl.DeviceLocalBackend":
+            tmp = tempfile.TemporaryDirectory()
+            self.addCleanup(tmp.cleanup)
+            return sdl.DeviceLocalBackend(root=Path(tmp.name) / "agentm-memory")
+
+        report = run_conformance(make, include_routing=True)
+        self.assertIn("routing_repo_registry", report["routing"])
+
+    def test_run_conformance_vault_includes_routing(self) -> None:
+        report = run_conformance(
+            lambda: _make_scratch_vault_backend(self),
+            include_routing=True,
+        )
+        self.assertIn("routing_repo_registry", report["routing"])
+
+    def test_run_conformance_routing_empty_when_not_requested(self) -> None:
+        # Default (include_routing=False) must not run routing checks.
+        report = run_conformance(InMemoryBackend)
+        self.assertEqual(report["routing"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

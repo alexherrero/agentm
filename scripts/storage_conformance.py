@@ -80,7 +80,9 @@ __all__ = [
     "check_list_on_absent",
     "check_invalid_locator_rejected",
     "check_rebuildable",
+    "check_routing_repo_registry",
     "UNIVERSAL_CHECKS",
+    "ROUTING_CHECKS",
     "DERIVED_SEED",
     "run_conformance",
     "ConformanceSuite",
@@ -416,6 +418,66 @@ UNIVERSAL_CHECKS: tuple[tuple[str, Callable[[BackendFactory], None]], ...] = (
 
 
 # -----------------------------------------------------------------------------
+# The routing layer contract — prove repo_registry works on any conforming backend.
+# -----------------------------------------------------------------------------
+def check_routing_repo_registry(make_backend: BackendFactory) -> None:
+    """``repo_registry`` operations produce consistent outcomes on any conforming backend.
+
+    Proves the V5-6 routing-plane invariant (LC-4): register a slug, confirm it
+    appears in ``list_repos``, unregister it, confirm it disappears. The same
+    cycle must produce the same semantic outcome on every backend that passes the
+    universal storage contract — it is the executable proof that ``repo_registry``
+    rides the active backend, not the vault path.
+
+    ``repo_registry`` is imported lazily — contexts where the routing layer is
+    unavailable (e.g. the V5-2 vault plugin's minimally-installed conformance
+    run) skip this check via :exc:`ImportError` propagation (the mixin catches it
+    as a ``skipTest``).
+    """
+    import repo_registry as rr  # lazy: routing layer, not always present
+
+    b = make_backend()
+    slug = "conformance-test-repo"
+    root_path = "/tmp/conformance-test"
+
+    # register_repo returns the full registry dict (version + repos list).
+    result = rr.register_repo(b, slug, root_path)
+    found_in_result = any(r.get("slug") == slug for r in result.get("repos", []))
+    if not found_in_result:
+        raise ConformanceFailure(
+            f"register_repo must return a registry dict whose 'repos' list contains "
+            f"slug {slug!r}, got repos={result.get('repos', [])!r}"
+        )
+
+    repos = rr.list_repos(b)
+    slugs = [r.get("slug") for r in repos]
+    if slug not in slugs:
+        raise ConformanceFailure(
+            f"list_repos after register must contain {slug!r}, got slugs={slugs!r}"
+        )
+
+    removed = rr.unregister_repo(b, slug)
+    if not removed:
+        raise ConformanceFailure(
+            f"unregister_repo must return True when the slug exists, got {removed!r}"
+        )
+
+    repos_after = rr.list_repos(b)
+    slugs_after = [r.get("slug") for r in repos_after]
+    if slug in slugs_after:
+        raise ConformanceFailure(
+            f"list_repos after unregister must not contain {slug!r}, got slugs={slugs_after!r}"
+        )
+
+
+#: The routing layer checks. Gated separately from universal checks — requires
+#: ``repo_registry`` to be importable (routing layer present).
+ROUTING_CHECKS: tuple[tuple[str, Callable[[BackendFactory], None]], ...] = (
+    ("routing_repo_registry", check_routing_repo_registry),
+)
+
+
+# -----------------------------------------------------------------------------
 # The gated derived-layer invariant — delete → reindex → byte-identical reads.
 # -----------------------------------------------------------------------------
 #: A deterministic seed for the rebuildability case: relative key → content,
@@ -514,15 +576,17 @@ def run_conformance(
     make_backend: BackendFactory,
     *,
     derived_layout: tuple[Locator, Locator] | None = None,
+    include_routing: bool = False,
 ) -> dict[str, object]:
     """Run the whole suite against ``make_backend``; raise on the first violation.
 
     The entry point a non-unittest caller imports (the V5-2 vault plugin's
     self-test). Runs every universal check over a fresh backend, then — **iff**
     the backend exposes a derived layer — the gated rebuildability invariant
-    (which requires ``derived_layout=(source_root, derived_root)``). Returns a
-    report of what ran; raises :class:`ConformanceFailure` (naming the contract)
-    the moment a check fails.
+    (which requires ``derived_layout=(source_root, derived_root)``). When
+    ``include_routing=True`` also runs :data:`ROUTING_CHECKS` (requires
+    ``repo_registry`` to be importable). Returns a report of what ran; raises
+    :class:`ConformanceFailure` (naming the contract) the moment a check fails.
     """
     ran: list[str] = []
     for name, fn in UNIVERSAL_CHECKS:
@@ -540,7 +604,13 @@ def run_conformance(
         check_rebuildable(make_backend, source_root=source_root, derived_root=derived_root)
         derived_status = "passed"
 
-    return {"universal": ran, "derived": derived_status}
+    routing_ran: list[str] = []
+    if include_routing:
+        for name, fn in ROUTING_CHECKS:
+            fn(make_backend)
+            routing_ran.append(name)
+
+    return {"universal": ran, "derived": derived_status, "routing": routing_ran}
 
 
 class ConformanceSuite:
@@ -607,3 +677,9 @@ class ConformanceSuite:
             )
         source_root, derived_root = layout
         check_rebuildable(self.make_backend, source_root=source_root, derived_root=derived_root)
+
+    def test_routing_repo_registry(self) -> None:
+        try:
+            check_routing_repo_registry(self.make_backend)
+        except ImportError:
+            self.skipTest("repo_registry not importable in this context (routing layer absent)")  # type: ignore[attr-defined]

@@ -643,6 +643,30 @@ class PathLeakGate(unittest.TestCase):
         proc = _run_gate(self.root)
         self.assertEqual(proc.returncode, 1, proc.stdout)
 
+    def test_gate_fails_on_path_returning_routing_function(self) -> None:
+        # Pass 2 (V5-6): a routing file whose named routing function returns Path
+        # must be caught even though it is not a storage_*.py.
+        (self.root / "scripts" / "harness_memory.py").write_text(
+            "from pathlib import Path\n"
+            "def resolve_project(cwd) -> Path: ...\n",
+            encoding="utf-8",
+        )
+        proc = _run_gate(self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("resolve_project", proc.stderr)
+        self.assertIn("harness_memory.py", proc.stderr)
+
+    def test_gate_ignores_non_routing_functions_in_routing_files(self) -> None:
+        # A helper in harness_memory.py that returns Path is fine — only the
+        # explicitly named routing functions are checked in pass 2.
+        (self.root / "scripts" / "harness_memory.py").write_text(
+            "from pathlib import Path\n"
+            "def some_internal_helper() -> Path: ...\n",
+            encoding="utf-8",
+        )
+        proc = _run_gate(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
     def test_gate_ignores_non_storage_files(self) -> None:
         # The glob scopes scanning to the seam surface; an engine module with a
         # Path-returning helper named `read` is not the seam and not scanned.

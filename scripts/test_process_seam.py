@@ -516,6 +516,34 @@ class ImportDirectionGate(unittest.TestCase):
         proc = _run_import_gate(self.root / "does-not-exist")
         self.assertEqual(proc.returncode, 2, proc.stdout)
 
+    def test_lc8_fails_on_routing_file_import_form(self) -> None:
+        # LC-8: harness_memory.py importing storage_vault (a capability plugin)
+        # is a forbidden routing→plugin dependency.
+        (self.root / "scripts" / "harness_memory.py").write_text(
+            "import " + "storage_vault\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("harness_memory.py", proc.stderr)
+
+    def test_lc8_fails_on_routing_file_from_import_form(self) -> None:
+        # LC-8: from-import form of the capability plugin in a routing file.
+        (self.root / "scripts" / "repo_registry.py").write_text(
+            "from " + "storage_vault import VaultBackend\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("repo_registry.py", proc.stderr)
+
+    def test_lc8_passes_on_non_routing_files(self) -> None:
+        # A non-routing file importing storage_vault is fine (e.g. tests);
+        # the LC-8 check is scoped to the routing mechanism files only.
+        (self.root / "scripts" / "some_other_module.py").write_text(
+            "import " + "storage_vault\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
