@@ -11,7 +11,7 @@
 - [GitHub Projects integration](GitHub-Projects-Integration)
 - [Auto-orchestration](Auto-Orchestration)
 - [Single-repo state mode](Single-Repo-State-Mode)
-- [Seam de-vaulting V5-6](Seam-De-Vaulting-V5-6) ⏳
+- [Seam de-vaulting V5-6](Seam-De-Vaulting-V5-6)
 - [Memory↔process seam](Memory-Process-Seam)
 - [Memory↔storage seam](Memory-Storage-Seam)
 - [Named plans](Named-Plans) ⏳

@@ -8,6 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-06-18 | [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) — V5-6: routing-plane de-vaulting | **V5-6:** `resolve_project` / `_vault_projects_dir` → `Locator` (task 1); `repo_registry` fully de-vaulted to seam (task 2); `state_mode: vault` aliases to `backend` at read time (task 3); `check-storage-seam-no-path-leak` Pass 2 + `check-process-seam-import-direction` LC-8 block + `storage_conformance` routing checks (task 4); ADR 0019 + docs (task 5). ([ADR 0019](0019-v5-6-routing-plane-devaulting)) | 5 tasks, 26 files changed; 20/20 check-all.sh; solo harness MINOR |
 | 2026-06-18 | [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0) — V5-7: capability-request matching | **V5-7:** `CapabilityMismatchError(StorageSelectionError)` + `select_backend(required=)` — subset-only capability matching, fail-loud. `_doctor_main` gains `--requires <CAPS>` pre-flight flag. 4 new injection params on `_doctor_main` for test isolation. (ADR 0013 amendment) | 2 commits (`v5.5.0..v5.6.0`); 13 new unit tests (`TestCapabilityMatching` 8 + `TestDoctorRequires` 5); check-all.sh green; solo harness MINOR |
 | 2026-06-18 | [v5.5.0](https://github.com/alexherrero/agentm/releases/tag/v5.5.0) — V5-3: storage cutover: kernel → device-local | **V5-3:** vault backend deleted from `harness_memory.py` kernel; `harness_state_dir` / `read_state_file` / `write_state_file` always device-local; `phase_recall` always `""`; `resolve_documenter_context` always `None`; `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault (`$MEMORY_VAULT_PATH` stays graceful-skip). `personal-private/` → `personal/` group rename shipped in lockstep. ([ADR 0018](0018-v5-3-storage-cutover)) | 7 commits (`v5.4.0..v5.5.0`); 1170 unit tests 0 failures; 20/20 check-all.sh; solo harness MINOR |
 | 2026-06-17 | [v5.4.0](https://github.com/alexherrero/agentm/releases/tag/v5.4.0) — V5-9 memory MCP server | **V5-9:** `scripts/memory_mcp_server.py` (singleton streamable-HTTP daemon at `127.0.0.1:7821`) + four MCP tools (`memory_search` / `memory_recall` / `memory_append` / `memory_forget`) + bearer-token + Origin-validation security + `scripts/memory_mcp_stdio_shim.py` (Claude Desktop stdio shim) + `scripts/memory_mcp_doctor.py` (4 health checks) + `install.sh --mcp-server` + launchd plist + host configs for Claude Code / Cursor / Goose / Claude Desktop. ([ADR 0017](0017-mcp-server-design)) | 11 commits (`v5.3.0..v5.4.0`); contract tests + 13 doctor unit tests; solo harness MINOR |
@@ -33,6 +34,38 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentm/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentm/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentm/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-06-18 — v5.7.0: V5-6 — routing-plane de-vaulting (third leg)
+
+**Commit range:** `v5.6.0..v5.7.0` (5 tasks, 26 files changed on `main`). Release notes: [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0). Solo harness MINOR — no crickets pairing.
+
+### What shipped
+
+V5-6 closes the third and final leg of the V5 de-vaulting arc (data plane V5-3 ✅, config plane V5-7 partial ✅, routing plane V5-6 ✅). After this release a fresh install with only the `device-local` backend can host a project, its harness state, and the repo registry without needing an Obsidian/GDrive vault. On the `obsidian-vault` backend every mechanism resolves to identical bytes at identical locations — behavior-preserving by parallel-run proof (LC-1 / LC-7).
+
+**Task 1 — `resolve_project` / `_vault_projects_dir` onto the seam.** `harness_memory._vault_projects_dir` signature changed from `(vault: Path) -> Path` to `(backend: StorageBackend) -> Locator`. `harness_memory.resolve_project` returns `{slug, project_locator, backend, project_root, layout}` — `project_locator` is a `Locator`, never a `Path`. Callers updated: `process_seam.py:161` uses `project_locator.key`; `memory_mcp_tools.py:263` inlines segment detection. LC-1 parallel-run assertion proved byte-identical resolution before removing vault-shaped path construction.
+
+**Task 2 — `repo_registry` fully de-vaulted.** `registry_path(vault_path) -> Path` replaced by `registry_locator(backend: StorageBackend) -> Locator`. All five public functions (`read_registry`, `write_registry`, `register_repo`, `unregister_repo`, `list_repos`) take `backend: StorageBackend`. `_mutate_registry` no longer holds `vault_mutex` directly — `VaultBackend.write()` handles it; CAS retry loop handles cross-device races. On `obsidian-vault`, resolves to identical on-disk path as before (LC-7 parallel-run test at `test_harness_memory.py#L2265`). `project_config.is_registered` takes `backend=None` instead of `vault_path=None`.
+
+**Task 3 — `state_mode: vault` → `backend` alias.** `_read_config_state_mode` maps `"vault"` → `"backend"` at read time via a one-line guard. `_read_project_mode` applies the same alias for `.harness/.project-mode` markers. `agentm_config._STATE_MODES` adds `"backend"` as canonical; `"vault"` is retained as a deprecated CLI alias. `cmd_set_state_mode` normalizes `"vault"` → `"backend"` at write time. No operator migration required (LC-5): existing config entries continue to resolve correctly.
+
+**Task 4 — Gate extensions + conformance suite.** `check-storage-seam-no-path-leak.py` gains Pass 2 targeting the two routing files and seven named routing functions for `pathlib.Path` return annotations. `check-process-seam-import-direction.sh` gains an LC-8 block: scans `harness_memory.py` + `repo_registry.py` for any `import storage_vault` and fails loud. `storage_conformance.py` extended with `check_routing_repo_registry(make_backend)` proving the register/list/unregister cycle on any conforming backend; gated by `run_conformance(include_routing=False)` default with explicit opt-in.
+
+**Task 5 — ADR 0019 + docs.** [ADR 0019](0019-v5-6-routing-plane-devaulting) created, recording the three-leg arc completion, locked design calls (LC-1/4/5/6/7/8), and load-bearing assumptions with re-audit triggers. `Decisions.md` and `decisions/_Sidebar.md` updated. `device-wide-architecture.md` v1.0 lifecycle entry updated (pending → 2026-06-18 complete). `Storage-Seam.md` routing layer NOTE updated to complete. `Single-Repo-State-Mode.md` `state_mode` value updated (`"vault"` → `"backend"` with backward-compat note).
+
+### By the numbers
+
+26 files changed (1005 insertions, 361 deletions); 20/20 `check-all.sh` PASS; 9 new/rewritten `TestRepoRegistry` tests + 3 `TestReadConfigStateMode` tests + 3 routing gate tests + 3 conformance routing tests.
+
+### Related
+
+- [ADR 0019 — V5-6 routing-plane de-vaulting](0019-v5-6-routing-plane-devaulting) — the three-leg arc, locked design calls, load-bearing assumptions.
+- [Seam-De-Vaulting-V5-6](../explanation/Seam-De-Vaulting-V5-6) — intent, design, and full implementation trace.
+- [Storage seam § Routing layer](Storage-Seam#routing-layer-v5-6) — quick-reference tables for the three de-vaulted mechanisms.
+- [Single-repo state mode](../explanation/Single-Repo-State-Mode) — `state_mode: vault` alias callout.
+- [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
+
+---
 
 ## 2026-06-18 — v5.6.0: V5-7 — capability-request matching
 

@@ -78,3 +78,4 @@
 - [0016 — Persona tier: third classification above substrate/plugin binary](0016-persona-tier)
 - [0017 — MCP server design: singleton-HTTP broker, four tools, loopback-first](0017-mcp-server-design)
 - [0018 — V5-3 storage cutover: device-local is canonical](0018-v5-3-storage-cutover)
+- [0019 — V5-6 routing-plane de-vaulting](0019-v5-6-routing-plane-devaulting)

@@ -49,7 +49,7 @@ For contributors running the harness:
 - [Memory MCP tools](Memory-MCP-Tools) — four-tool MCP surface: parameters, pagination, soft-delete contract, error codes.
 
 > [!NOTE]
-> **Latest release — [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0) (2026-06-18):** V5-7 capability-request matching — `CapabilityMismatchError` + `select_backend(required=)` for subset-only capability enforcement; `_doctor_main --requires <CAPS>` pre-flight flag. Fail-loud on any unsatisfied requirement, never a silent downgrade. ([ADR 0013 amendment](0013-storage-seam-fail-loud-selection))
+> **Latest release — [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) (2026-06-18):** V5-6 routing-plane de-vaulting — `resolve_project` / `repo_registry` / `state_mode` route through the storage seam; `state_mode: vault` aliases to `state_mode: backend`; gate extensions for routing layer; storage conformance suite extended. Third and final leg of the V5 de-vaulting arc. ([ADR 0019](0019-v5-6-routing-plane-devaulting))
 
 → Full field-level detail lives under **Reference** in the sidebar.
 
