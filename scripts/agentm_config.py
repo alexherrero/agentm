@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """agentm_config — read/write fields in `~/.claude/.agentm-config.json`.
 
-The on-device source of truth for the agentm install. Schema v2 added
-`vault_path` as the top-level field that backs `harness_memory.py::vault_path()`
-when `$MEMORY_VAULT_PATH` env is unset. Hardening I #44 added `state_mode`
-(local|vault) — the on-host run mode (DC-8): `.agentm-config.json` is the single
-config file, the vault holds data only. This CLI is the operator-facing way to
-set / read / unset those fields without re-running the full installer.
+The on-device source of truth for the agentm install. V5-7 moved vault_path
+from the kernel's flat `vault_path` key to the plugin-namespaced key
+`plugins.obsidian-vault.vault_path` (stored flat with dots, same convention as
+`storage.backend`). Hardening I #44 added `state_mode` (local|vault) — the
+on-host run mode (DC-8): `.agentm-config.json` is the single config file, the
+vault holds data only. This CLI is the operator-facing way to set / read / unset
+those fields without re-running the full installer.
 
 Operations:
 
-    agentm_config.py --vault-path <path>   # write vault_path (validates dir exists)
+    agentm_config.py --vault-path <path>   # write plugins.obsidian-vault.vault_path
+                                            #   + storage.backend=vault (validates dir exists)
     agentm_config.py --state-mode local    # write state_mode (local|vault); opt a
                                             #   vault-less machine into repo-local state
     agentm_config.py --storage-backend <name>  # write storage.backend (the selected
                                             #   storage backend protocol name; V5-1 part 5)
-    agentm_config.py --get vault_path      # read single field; rc=0 if present, rc=1 if absent
+    agentm_config.py --get vault_path      # read plugins.obsidian-vault.vault_path (with
+                                            #   legacy vault_path fallback); rc=0 if present
     agentm_config.py --list                # dump full config as JSON
-    agentm_config.py --unset vault_path    # clear a single field
+    agentm_config.py --unset vault_path    # clear plugins.obsidian-vault.vault_path field
 
 Common flags:
 
@@ -55,6 +58,11 @@ _STATE_MODES = ("local", "backend", "vault")  # "vault" is a deprecated alias; n
 #: through the existing `--get`/`--unset` field lookup, and named to match the
 #: V5-7 config-model target so there is no later rename.
 _STORAGE_BACKEND_KEY = "storage.backend"
+
+#: Plugin-namespaced vault path key (V5-7). Stored flat with dots — same
+#: convention as _STORAGE_BACKEND_KEY — so it round-trips through --get/--unset.
+#: Must match harness_memory._PLUGIN_VAULT_PATH_KEY exactly.
+_PLUGIN_VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
 
 
 def _resolve_install_prefix(cli_arg: Optional[str] = None) -> Path:
@@ -102,7 +110,12 @@ def _write_config(prefix: Path, config: dict) -> Path:
 # -----------------------------------------------------------------------------
 
 def cmd_set_vault_path(prefix: Path, raw_path: str) -> int:
-    """Set vault_path field. Validates that the target is an existing directory."""
+    """Write vault path to the plugin-namespaced key + set storage.backend=vault.
+
+    Writes `plugins.obsidian-vault.vault_path` (V5-7) and `storage.backend=vault`
+    so the selection resolver sees an explicit backend. Validates the target is an
+    existing directory. Idempotent: silent no-op when the value is unchanged.
+    """
     candidate = Path(os.path.expanduser(raw_path)).resolve()
     if not candidate.is_dir():
         print(
@@ -111,13 +124,13 @@ def cmd_set_vault_path(prefix: Path, raw_path: str) -> int:
         )
         return 2
     config = _read_config(prefix) or {}
-    existing = config.get("vault_path")
-    if existing == str(candidate):
-        # Idempotent — silent no-op when value unchanged.
+    if config.get(_PLUGIN_VAULT_PATH_KEY) == str(candidate) and config.get(_STORAGE_BACKEND_KEY) == "vault":
+        # Idempotent — silent no-op when both values are already correct.
         return 0
-    config["vault_path"] = str(candidate)
+    config[_PLUGIN_VAULT_PATH_KEY] = str(candidate)
+    config[_STORAGE_BACKEND_KEY] = "vault"
     written = _write_config(prefix, config)
-    print(f"vault_path = {candidate}")
+    print(f"{_PLUGIN_VAULT_PATH_KEY} = {candidate}")
     print(f"(written to {written})", file=sys.stderr)
     return 0
 
@@ -184,11 +197,19 @@ def cmd_set_storage_backend(prefix: Path, name: str) -> int:
 
 
 def cmd_get(prefix: Path, field: str) -> int:
-    """Read a single field; rc=0 if present, rc=1 silent if absent."""
+    """Read a single field; rc=0 if present, rc=1 silent if absent.
+
+    For `vault_path`: checks `plugins.obsidian-vault.vault_path` first (V5-7
+    plugin-namespaced key), then falls back to the legacy flat `vault_path` key,
+    so shell scripts that call `--get vault_path` work before and after migration.
+    """
     config = _read_config(prefix)
     if not config:
         return 1
-    value = config.get(field)
+    if field == "vault_path":
+        value = config.get(_PLUGIN_VAULT_PATH_KEY) or config.get("vault_path")
+    else:
+        value = config.get(field)
     if value is None:
         return 1
     if isinstance(value, (dict, list)):
@@ -208,11 +229,15 @@ def cmd_list(prefix: Path) -> int:
 
 
 def cmd_unset(prefix: Path, field: str) -> int:
-    """Clear a field. rc=0 if removed; rc=1 silent if config or field missing."""
+    """Clear a field. rc=0 if removed; rc=1 silent if config or field missing.
+
+    For `vault_path`: removes `plugins.obsidian-vault.vault_path` (V5-7) AND the
+    legacy flat `vault_path` key if present, so a single `--unset vault_path`
+    fully clears the vault configuration regardless of which key format is in use.
+    Returns rc=0 if either key was removed; rc=1 only when neither is present.
+    """
     config = _read_config(prefix)
     if not config:
-        return 1
-    if field not in config:
         return 1
     if field == "schema_version":
         # schema_version is structural — refuse to remove via --unset.
@@ -221,6 +246,20 @@ def cmd_unset(prefix: Path, field: str) -> int:
             file=sys.stderr,
         )
         return 2
+    if field == "vault_path":
+        removed = False
+        if _PLUGIN_VAULT_PATH_KEY in config:
+            del config[_PLUGIN_VAULT_PATH_KEY]
+            removed = True
+        if "vault_path" in config:
+            del config["vault_path"]
+            removed = True
+        if not removed:
+            return 1
+        _write_config(prefix, config)
+        return 0
+    if field not in config:
+        return 1
     del config[field]
     _write_config(prefix, config)
     return 0

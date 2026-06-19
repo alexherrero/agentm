@@ -94,8 +94,12 @@ class TestAgentmConfig(unittest.TestCase):
         rc, out, err = self._run("--vault-path", str(vault))
         self.assertEqual(rc, 0, err)
         config = json.loads((self.prefix / ".agentm-config.json").read_text())
-        self.assertEqual(config["vault_path"], str(vault.resolve()))
+        # V5-7: written to plugin-namespaced key, not the legacy flat key.
+        self.assertEqual(config[ac._PLUGIN_VAULT_PATH_KEY], str(vault.resolve()))
+        self.assertEqual(config["storage.backend"], "vault")
         self.assertEqual(config["schema_version"], 2)
+        # Legacy flat key must NOT be written by the new code path.
+        self.assertNotIn("vault_path", config)
 
     def test_set_vault_path_refuses_nonexistent_dir(self) -> None:
         rc, out, err = self._run("--vault-path", "/no/such/dir/at/all")
@@ -139,8 +143,8 @@ class TestAgentmConfig(unittest.TestCase):
             rc, _, _ = self._run("--vault-path", "~/tilde-vault")
         self.assertEqual(rc, 0)
         config = json.loads((self.prefix / ".agentm-config.json").read_text())
-        # Path resolution turns ~/tilde-vault into absolute via resolve()
-        self.assertEqual(config["vault_path"], str(vault.resolve()))
+        # V5-7: plugin-namespaced key, not legacy flat key.
+        self.assertEqual(config[ac._PLUGIN_VAULT_PATH_KEY], str(vault.resolve()))
 
     # -----------------------------------------------------------------------
     # --get
@@ -219,7 +223,46 @@ class TestAgentmConfig(unittest.TestCase):
         rc, _, _ = self._run("--unset", "vault_path")
         self.assertEqual(rc, 0)
         config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        # V5-7: both the plugin-namespaced key and the legacy flat key must be absent.
+        self.assertNotIn(ac._PLUGIN_VAULT_PATH_KEY, config)
         self.assertNotIn("vault_path", config)
+
+    # V5-7 backward-compat: --get vault_path reads legacy flat key when plugin key absent.
+    def test_get_vault_path_reads_legacy_flat_key(self) -> None:
+        (self.prefix / ".agentm-config.json").write_text(
+            json.dumps({"schema_version": 2, "vault_path": "/some/path"}), encoding="utf-8",
+        )
+        rc, out, _ = self._run("--get", "vault_path")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "/some/path")
+
+    # V5-7 backward-compat: --unset vault_path also clears legacy flat key.
+    def test_unset_vault_path_clears_both_keys(self) -> None:
+        (self.prefix / ".agentm-config.json").write_text(
+            json.dumps({
+                "schema_version": 2,
+                ac._PLUGIN_VAULT_PATH_KEY: "/p",
+                "vault_path": "/l",
+            }),
+            encoding="utf-8",
+        )
+        rc, _, _ = self._run("--unset", "vault_path")
+        self.assertEqual(rc, 0)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertNotIn(ac._PLUGIN_VAULT_PATH_KEY, config)
+        self.assertNotIn("vault_path", config)
+
+    # V5-7: --unset vault_path on legacy-only config returns rc=0 + clears it.
+    def test_unset_vault_path_clears_legacy_only(self) -> None:
+        (self.prefix / ".agentm-config.json").write_text(
+            json.dumps({"schema_version": 2, "vault_path": "/legacy"}),
+            encoding="utf-8",
+        )
+        rc, _, _ = self._run("--unset", "vault_path")
+        self.assertEqual(rc, 0)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertNotIn("vault_path", config)
+        self.assertNotIn(ac._PLUGIN_VAULT_PATH_KEY, config)
 
     def test_unset_missing_field_rc1_silent(self) -> None:
         (self.prefix / ".agentm-config.json").write_text(
@@ -287,6 +330,7 @@ class TestAgentmConfig(unittest.TestCase):
         rc, _, _ = self._run("--vault-path", str(vault))
         self.assertEqual(rc, 0)
 
+        # --get vault_path reads the plugin-namespaced key (V5-7 backward-compat alias).
         rc, out, _ = self._run("--get", "vault_path")
         self.assertEqual(rc, 0)
         self.assertEqual(out.strip(), str(vault.resolve()))
@@ -294,7 +338,9 @@ class TestAgentmConfig(unittest.TestCase):
         rc, out, _ = self._run("--list")
         self.assertEqual(rc, 0)
         parsed = json.loads(out)
-        self.assertEqual(parsed["vault_path"], str(vault.resolve()))
+        # V5-7: plugin-namespaced key in the config; legacy flat key absent.
+        self.assertEqual(parsed[ac._PLUGIN_VAULT_PATH_KEY], str(vault.resolve()))
+        self.assertNotIn("vault_path", parsed)
         self.assertEqual(parsed["schema_version"], 2)
 
         rc, _, _ = self._run("--unset", "vault_path")
@@ -375,7 +421,8 @@ class TestStateMode(unittest.TestCase):
         rc, _, err = self._run("--state-mode", "local")
         self.assertEqual(rc, 0, err)
         config = json.loads((self.prefix / ".agentm-config.json").read_text())
-        self.assertEqual(config["vault_path"], str(vault.resolve()))
+        # V5-7: plugin-namespaced key preserved by --state-mode.
+        self.assertEqual(config[ac._PLUGIN_VAULT_PATH_KEY], str(vault.resolve()))
         self.assertEqual(config["state_mode"], "local")
 
     def test_state_mode_round_trips_via_get(self) -> None:
@@ -455,7 +502,8 @@ class TestStorageBackend(unittest.TestCase):
         rc, _, err = self._run("--storage-backend", "vault")
         self.assertEqual(rc, 0, err)
         config = json.loads((self.prefix / ".agentm-config.json").read_text())
-        self.assertEqual(config["vault_path"], str(vault.resolve()))
+        # V5-7: plugin-namespaced key preserved by --storage-backend.
+        self.assertEqual(config[ac._PLUGIN_VAULT_PATH_KEY], str(vault.resolve()))
         self.assertEqual(config["storage.backend"], "vault")
 
     def test_storage_backend_round_trips_via_get(self) -> None:
