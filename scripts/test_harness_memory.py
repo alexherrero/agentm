@@ -2108,28 +2108,31 @@ _spec_rr.loader.exec_module(repo_registry)
 
 
 class TestRepoRegistry(unittest.TestCase):
-    """V4 #30 task 2: vault-backed registry primitives."""
+    """V4 #30 task 2 / V5-6: seam-backed registry primitives (now takes StorageBackend)."""
+
+    def _make_backend(self, root: Path):
+        from storage_device_local import DeviceLocalBackend
+        return DeviceLocalBackend(root=root)
 
     def test_read_empty_returns_default_schema(self) -> None:
         """First-write semantics: missing registry file returns {version:1, repos:[]}."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            data = repo_registry.read_registry(vault)
+            backend = self._make_backend(Path(tmp))
+            data = repo_registry.read_registry(backend)
             self.assertEqual(data, {"version": 1, "repos": []})
             # Read does NOT create the file (write_registry is responsible).
-            self.assertFalse((vault / "_meta" / "repos.json").exists())
+            self.assertFalse((Path(tmp) / "_meta" / "repos.json").exists())
 
     def test_register_creates_file_and_entry(self) -> None:
-        """First register_repo populates <vault>/_meta/repos.json."""
+        """First register_repo populates _meta/repos.json in the backend root."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
+            root = Path(tmp)
+            backend = self._make_backend(root)
             repo_registry.register_repo(
-                vault, "agentm", "/tmp/fixture-agentm",
+                backend, "agentm", "/tmp/fixture-agentm",
                 wiki_path="/tmp/fixture-agentm/wiki",
             )
-            path = vault / "_meta" / "repos.json"
+            path = root / "_meta" / "repos.json"
             self.assertTrue(path.exists())
             data = json.loads(path.read_text(encoding="utf-8"))
             self.assertEqual(data["version"], 1)
@@ -2138,20 +2141,16 @@ class TestRepoRegistry(unittest.TestCase):
             self.assertEqual(entry["slug"], "agentm")
             self.assertEqual(entry["root_path"], "/tmp/fixture-agentm")
             self.assertEqual(entry["wiki_path"], "/tmp/fixture-agentm/wiki")
-            # Hardening I task 3 (DC-8): the registry is a pure index — it carries
-            # NO run-mode config. harness_state_mode was dead (write-only) + removed.
+            # DC-8: the registry is a pure index — no run-mode config.
             self.assertNotIn("harness_state_mode", entry)
 
     def test_register_upserts_existing_slug(self) -> None:
         """Re-registering the same slug updates the entry in-place (not appended)."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            repo_registry.register_repo(vault, "agentm", "/old/path")
-            repo_registry.register_repo(
-                vault, "agentm", "/new/path", wiki_path="/wiki",
-            )
-            repos = repo_registry.list_repos(vault)
+            backend = self._make_backend(Path(tmp))
+            repo_registry.register_repo(backend, "agentm", "/old/path")
+            repo_registry.register_repo(backend, "agentm", "/new/path", wiki_path="/wiki")
+            repos = repo_registry.list_repos(backend)
             self.assertEqual(len(repos), 1)
             self.assertEqual(repos[0]["root_path"], "/new/path")
             self.assertEqual(repos[0]["wiki_path"], "/wiki")
@@ -2159,27 +2158,25 @@ class TestRepoRegistry(unittest.TestCase):
     def test_unregister_removes_existing(self) -> None:
         """unregister_repo removes the matching slug; idempotent on absent."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            repo_registry.register_repo(vault, "agentm", "/a")
-            repo_registry.register_repo(vault, "sherwood", "/s")
-            removed = repo_registry.unregister_repo(vault, "agentm")
+            backend = self._make_backend(Path(tmp))
+            repo_registry.register_repo(backend, "agentm", "/a")
+            repo_registry.register_repo(backend, "sherwood", "/s")
+            removed = repo_registry.unregister_repo(backend, "agentm")
             self.assertTrue(removed)
-            repos = repo_registry.list_repos(vault)
+            repos = repo_registry.list_repos(backend)
             self.assertEqual(len(repos), 1)
             self.assertEqual(repos[0]["slug"], "sherwood")
             # Idempotent: unregister of already-absent slug returns False, no-op.
-            removed_again = repo_registry.unregister_repo(vault, "agentm")
+            removed_again = repo_registry.unregister_repo(backend, "agentm")
             self.assertFalse(removed_again)
 
     def test_list_preserves_insertion_order(self) -> None:
         """list_repos returns entries in the order they were first registered."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
+            backend = self._make_backend(Path(tmp))
             for slug in ("agentm", "sherwood", "dev-setup"):
-                repo_registry.register_repo(vault, slug, f"/path/{slug}")
-            repos = repo_registry.list_repos(vault)
+                repo_registry.register_repo(backend, slug, f"/path/{slug}")
+            repos = repo_registry.list_repos(backend)
             self.assertEqual(
                 [r["slug"] for r in repos],
                 ["agentm", "sherwood", "dev-setup"],
@@ -2188,39 +2185,32 @@ class TestRepoRegistry(unittest.TestCase):
     def test_concurrent_modification_raises(self) -> None:
         """write_registry with an expected_hash mismatch raises ConcurrentModificationError."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            repo_registry.register_repo(vault, "agentm", "/a")
-            path = repo_registry.registry_path(vault)
-            stale_hash = hm.content_hash(path.read_bytes())
-            # Simulate another writer mutating the file — content changes, so the
-            # hash no longer matches. No mtime-tick sleep needed: content-hash CAS
-            # is immune to filesystem mtime granularity (a V5-0 win over mtime).
-            path.write_text(path.read_text() + " ", encoding="utf-8")
-            data = repo_registry.read_registry(vault)
+            backend = self._make_backend(Path(tmp))
+            repo_registry.register_repo(backend, "agentm", "/a")
+            loc = repo_registry.registry_locator(backend)
+            content = backend.read(loc)
+            stale_hash = hm.content_hash(content.encode("utf-8"))
+            # Simulate another writer mutating the file via the backend.
+            backend.write(loc, content + " ")
+            data = repo_registry.read_registry(backend)
             with self.assertRaises(hm.ConcurrentModificationError):
-                repo_registry.write_registry(vault, data, expected_hash=stale_hash)
+                repo_registry.write_registry(backend, data, expected_hash=stale_hash)
 
     def test_register_repo_recovers_from_cas_race(self) -> None:
         """A concurrent (cross-machine) write during register_repo's CAS window
         is retried, not silently dropped: both the racing peer's entry and ours
-        survive. Pre-fix (read-mutate-CAS with no retry) the first CAS miss
-        propagated out / dropped the registration — so this test bites."""
+        survive."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            repo_registry.register_repo(vault, "seed", "/seed")
+            backend = self._make_backend(Path(tmp))
+            repo_registry.register_repo(backend, "seed", "/seed")
 
             real_write = repo_registry.write_registry
             state = {"raced": False}
 
-            def racing_write(v, data, *, expected_hash=None):
+            def racing_write(b, data, *, expected_hash=None):
                 if not state["raced"]:
                     state["raced"] = True
-                    # A peer on another machine lands its own entry first,
-                    # invalidating our expected_hash — exactly the CAS miss the
-                    # real backend raises. Land it, then drive the retry.
-                    real_write(v, {
+                    real_write(b, {
                         "version": 1,
                         "repos": [
                             {"slug": "seed", "root_path": "/seed"},
@@ -2228,38 +2218,35 @@ class TestRepoRegistry(unittest.TestCase):
                         ],
                     })
                     raise hm.ConcurrentModificationError("simulated cross-machine race")
-                return real_write(v, data, expected_hash=expected_hash)
+                return real_write(b, data, expected_hash=expected_hash)
 
             repo_registry.write_registry = racing_write
             try:
-                repo_registry.register_repo(vault, "mine", "/mine")
+                repo_registry.register_repo(backend, "mine", "/mine")
             finally:
                 repo_registry.write_registry = real_write
 
             self.assertTrue(state["raced"], "the race path must have fired")
-            slugs = {r["slug"] for r in repo_registry.list_repos(vault)}
-            self.assertEqual(slugs, {"seed", "peer", "mine"})  # nothing dropped
+            slugs = {r["slug"] for r in repo_registry.list_repos(backend)}
+            self.assertEqual(slugs, {"seed", "peer", "mine"})
 
     def test_register_repo_raises_after_exhausting_retries(self) -> None:
-        """If the CAS never wins (a peer races every attempt), register_repo
-        raises loudly after _MAX_REGISTRY_RETRIES rather than dropping silently —
-        the fail-loud half of honoring the retry contract."""
+        """If the CAS never wins, register_repo raises after _MAX_REGISTRY_RETRIES."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            repo_registry.register_repo(vault, "seed", "/seed")
+            backend = self._make_backend(Path(tmp))
+            repo_registry.register_repo(backend, "seed", "/seed")
 
             real_write = repo_registry.write_registry
             attempts = {"n": 0}
 
-            def always_racing(v, data, *, expected_hash=None):
+            def always_racing(b, data, *, expected_hash=None):
                 attempts["n"] += 1
                 raise hm.ConcurrentModificationError("perpetual race")
 
             repo_registry.write_registry = always_racing
             try:
                 with self.assertRaises(hm.ConcurrentModificationError):
-                    repo_registry.register_repo(vault, "mine", "/mine")
+                    repo_registry.register_repo(backend, "mine", "/mine")
             finally:
                 repo_registry.write_registry = real_write
             self.assertEqual(attempts["n"], repo_registry._MAX_REGISTRY_RETRIES)
@@ -2267,21 +2254,28 @@ class TestRepoRegistry(unittest.TestCase):
     def test_atomic_write_no_tmp_remnant(self) -> None:
         """After successful write, no <path>.tmp lingers."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            repo_registry.register_repo(vault, "agentm", "/a")
-            meta_dir = vault / "_meta"
+            root = Path(tmp)
+            backend = self._make_backend(root)
+            repo_registry.register_repo(backend, "agentm", "/a")
+            meta_dir = root / "_meta"
             tmp_files = list(meta_dir.glob("*.tmp"))
             self.assertEqual(tmp_files, [])
 
-    def test_vault_missing_raises(self) -> None:
-        """Operating against a non-existent vault directory raises FileNotFoundError."""
+    def test_parallel_run_vault_backend_maps_to_same_path(self) -> None:
+        """LC-7: VaultBackend registry_locator maps to <vault>/_meta/repos.json (behavior-preserving)."""
         with tempfile.TemporaryDirectory() as tmp:
-            missing = Path(tmp) / "no-such-vault"
-            with self.assertRaises(FileNotFoundError):
-                repo_registry.read_registry(missing)
-            with self.assertRaises(FileNotFoundError):
-                repo_registry.register_repo(missing, "agentm", "/a")
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            from storage_vault import VaultBackend
+            backend = VaultBackend(root=vault)
+            repo_registry.register_repo(backend, "test-repo", "/some/path")
+            loc = repo_registry.registry_locator(backend)
+            self.assertEqual(loc.key, "_meta/repos.json")
+            expected_path = vault / "_meta" / "repos.json"
+            self.assertTrue(expected_path.is_file())
+            data = json.loads(expected_path.read_text(encoding="utf-8"))
+            slugs = {r["slug"] for r in data["repos"]}
+            self.assertIn("test-repo", slugs)
 
 
 class TestRepoRegistryCLI(unittest.TestCase):
@@ -2300,13 +2294,16 @@ class TestRepoRegistryCLI(unittest.TestCase):
             capture_output=True, text=True, env=e,
         )
 
-    def test_list_skipped_when_no_vault(self) -> None:
-        """MEMORY_VAULT_PATH unset → CLI exits 1 with skip JSON."""
-        res = self._run("list", env={"MEMORY_VAULT_PATH": ""})
-        self.assertEqual(res.returncode, 1)
-        out = json.loads(res.stdout)
+    def test_list_skipped_when_backend_unavailable(self) -> None:
+        """CLI exits 1 with skip JSON when select_backend() raises (backend plugin unavailable)."""
+        buf = io.StringIO()
+        with mock.patch("repo_registry._backend_or_none", return_value=None):
+            with mock.patch("sys.stdout", buf):
+                rc = repo_registry.main(["list"])
+        self.assertEqual(rc, 1)
+        out = json.loads(buf.getvalue())
         self.assertTrue(out["skipped"])
-        self.assertIn("MEMORY_VAULT_PATH", out["reason"])
+        self.assertIn("select_backend", out["reason"])
 
     def test_register_then_list_via_cli(self) -> None:
         """Register two repos via CLI; list returns both with correct fields."""

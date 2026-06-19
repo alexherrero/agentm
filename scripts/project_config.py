@@ -151,18 +151,18 @@ def apply_override(
 def is_registered(
     project_json: Optional[dict],
     *,
-    vault_path: Optional[Path] = None,
+    backend=None,
     slug: Optional[str] = None,
 ) -> bool:
     """A project is registered if its project.json carries a non-empty `skills`
-    enablement block OR it has an entry in the vault repo_registry."""
+    enablement block OR it has an entry in the backend repo_registry."""
     if isinstance(project_json, dict):
         skills = project_json.get("skills")
         if isinstance(skills, dict) and skills:
             return True
-    if vault_path is not None and slug:
+    if backend is not None and slug:
         try:
-            for r in repo_registry.list_repos(vault_path):
+            for r in repo_registry.list_repos(backend):
                 if r.get("slug") == slug:
                     return True
         except Exception:
@@ -228,17 +228,16 @@ def register(
 
     write_config(resolution, config)
 
-    # Register in the vault repo_registry. Best-effort: the config write above
+    # Register in the backend repo_registry. Best-effort: the config write above
     # already succeeded and registration self-heals on the next run, so a
     # failure is non-fatal — but it is *logged*, never swallowed silently. A
     # failure here is a real signal (a CAS that lost every retry, a lock
-    # timeout, an I/O error), not noise. The no-vault case is the `is not None`
-    # guard below, not an exception.
-    v = hm.vault_path()
+    # timeout, an I/O error), not noise.
+    backend = resolution.get("backend")
     slug = resolution.get("slug")
-    if v is not None and slug:
+    if backend is not None and slug:
         try:
-            repo_registry.register_repo(v, slug, cwd)
+            repo_registry.register_repo(backend, slug, cwd)
         except Exception as e:
             print(
                 f"warning: repo registration for {slug!r} failed "
@@ -255,7 +254,7 @@ def register(
 def _cmd_is_registered(cwd: Path) -> int:
     resolution = hm.resolve_project({"cwd": cwd})
     pj = load_project_json(resolution)
-    reg = is_registered(pj, vault_path=hm.vault_path(), slug=resolution.get("slug"))
+    reg = is_registered(pj, backend=resolution.get("backend"), slug=resolution.get("slug"))
     print("registered" if reg else "unconfigured")
     return 0 if reg else 1
 
@@ -276,7 +275,7 @@ def _cmd_should_nudge(cwd: Path) -> int:
         return 1
     resolution = hm.resolve_project({"cwd": cwd})
     pj = load_project_json(resolution)
-    if is_registered(pj, vault_path=hm.vault_path(), slug=resolution.get("slug")):
+    if is_registered(pj, backend=resolution.get("backend"), slug=resolution.get("slug")):
         print("silent: already registered")
         return 1
     print("nudge")

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""repo_registry — vault-backed registry of agent-aware repos.
+"""repo_registry — seam-backed registry of agent-aware repos (V5-6).
 
-The registry lives at `<vault>/_meta/repos.json` and is a cross-device **index**
-of the operator's known agent-aware repos: their slug, root filesystem path, and
-wiki path (if applicable). Cross-device naturally — the vault is GDrive-synced, so
-all machines that share the vault see the same registry.
+The registry lives at `_meta/repos.json` in the active storage backend.
+On the `obsidian-vault` backend this is `<vault>/_meta/repos.json` —
+byte-identical to the pre-V5-6 location; on `device-local` it lives at
+`~/.agentm/memory/_meta/repos.json`.
 
 It holds **no run configuration** — how the harness runs (vault vs local state
 mode) is on-host config in `.agentm-config.json` + the per-repo `.project-mode`
-marker (locked DC-8), never in this vault-resident index.
+marker (locked DC-8), never in this backend-resident index.
 
 Schema (v1):
 
@@ -26,8 +26,8 @@ Schema (v1):
 
 Per-host root paths differ across operator machines (e.g. Unix-style
 absolute paths on macOS/Linux vs Windows-style paths on Windows). For v1,
-the registry stores the path as-recorded; a later plan (V4 #30 plan 2 or 3)
-may introduce per-host overrides if real-use surfaces the need.
+the registry stores the path as-recorded; a later plan may introduce
+per-host overrides if real-use surfaces the need.
 
 Three CLI subcommands:
 
@@ -36,28 +36,28 @@ Three CLI subcommands:
     unregister <slug>   — remove a repo (idempotent)
 
 Graceful-skip:
-- If `$MEMORY_VAULT_PATH` env unset AND `vault_path` absent from
-  `<install-prefix>/.agentm-config.json` (or any resolved path's directory
-  missing) → CLI exits 1 with `{"skipped": true, "reason": "..."}` JSON;
-  primitives return None on read, raise on write. Set the path via
-  `python3 scripts/agentm_config.py --vault-path <path>` or re-run
-  `install.sh --scope user --force-vault-prompt`.
+- If the active backend is unavailable (select_backend() raises) → CLI
+  exits 1 with `{"skipped": true, "reason": "..."}` JSON. On a fresh
+  install with no vault configured, the device-local backend is always
+  available (no skip). Set the vault via `agentm_config --vault-path <path>`
+  or re-run `install.sh --scope user --force-vault-prompt`.
 
 Stdlib-only (ADR 0001). Cross-platform via pathlib.
 
-Per V4 #30 plan #22 task 2.
+V5-6: re-plumbed onto the storage seam (LC-4). Per V4 #30 plan #22 task 2.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
-# Allow direct import of harness_memory (same scripts/ dir) for atomic-write
-# primitives. Mirrors the pattern harness_memory itself uses for vault_project.
+if TYPE_CHECKING:
+    from storage_seam import Locator, StorageBackend
+
+# Allow direct import of harness_memory (same scripts/ dir) for CAS utilities.
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
@@ -66,97 +66,115 @@ import harness_memory as hm  # noqa: E402
 
 
 _REGISTRY_REL = "_meta/repos.json"
+_REGISTRY_PARTS = ("_meta", "repos.json")
 _SCHEMA_VERSION = 1
 
 
 # -----------------------------------------------------------------------------
-# Path resolution
+# Locator resolution
 # -----------------------------------------------------------------------------
 
-def registry_path(vault_path: Path | str) -> Path:
-    """Return the registry file path under the given vault.
+def registry_locator(backend: "StorageBackend") -> "Locator":
+    """Return the Locator for the registry file in the given backend.
 
-    Pure path construction; does not check existence.
+    Replaces the V5-5 `registry_path(vault_path) -> Path` — on the
+    obsidian-vault backend the returned Locator maps to the same
+    `<vault>/_meta/repos.json` as before (LC-1 behavior-preserving).
     """
-    return Path(vault_path) / _REGISTRY_REL
+    return backend.resolve(*_REGISTRY_PARTS)
 
 
-def _vault_or_none() -> Optional[Path]:
-    """Return MEMORY_VAULT_PATH if accessible, else None.
+def _backend_or_none() -> Optional["StorageBackend"]:
+    """Return the active StorageBackend, or None if unavailable.
 
-    Mirrors hm.vault_path() semantics — the directory must exist for the
-    path to be returned.
+    Lazy-imports backend_selection to avoid circular imports. On a fresh
+    install with no vault configured, returns the device-local backend
+    (never None in normal operation — graceful-skip fires only when
+    select_backend() itself raises, e.g., a missing required plugin).
     """
-    return hm.vault_path()
+    try:
+        import backend_selection as _bs  # noqa: E402
+        return _bs.select_backend()
+    except Exception:
+        return None
 
 
 # -----------------------------------------------------------------------------
 # Read / write primitives
 # -----------------------------------------------------------------------------
 
-def read_registry(vault_path: Path | str) -> dict:
+def read_registry(backend: "StorageBackend") -> dict:
     """Read the registry; return `{version, repos: [...]}`.
 
     First-write semantics: if the registry file doesn't exist, return an
     empty-but-valid registry `{version: 1, repos: []}` (does NOT create the
     file — write_registry is responsible for creation).
 
-    Raises FileNotFoundError if the vault directory itself doesn't exist
-    (different failure mode from missing-registry-file).
-
     Raises json.JSONDecodeError if the file exists but is malformed —
     caller should surface to operator; corruption is not auto-repaired.
     """
-    vault = Path(vault_path)
-    if not vault.is_dir():
-        raise FileNotFoundError(f"vault path does not exist: {vault}")
-    path = registry_path(vault)
-    if not path.is_file():
+    loc = registry_locator(backend)
+    if not backend.exists(loc):
         return {"version": _SCHEMA_VERSION, "repos": []}
-    with path.open(encoding="utf-8") as f:
-        data = json.load(f)
-    # Schema migration shim: if no "version" field, treat as v1
+    content = backend.read(loc)
+    data = json.loads(content)
     data.setdefault("version", _SCHEMA_VERSION)
     data.setdefault("repos", [])
     return data
 
 
 def write_registry(
-    vault_path: Path | str,
+    backend: "StorageBackend",
     data: dict,
     *,
     expected_hash: Optional[str] = None,
-) -> Path:
-    """Write the registry atomically.
+) -> "Locator":
+    """Write the registry through the storage seam, with an optional CAS guard.
 
-    Uses `harness_memory.safe_write_replace_style` for atomic temp→fsync→rename
-    + an optional content-hash compare-and-swap via `expected_hash` (V5-0; the
-    R4 rule-4 currency that replaces the weaker mtime check).
+    When `expected_hash` is provided, the registry file's content is re-read
+    before writing; if it differs (another process or device wrote it since
+    the caller's read), ConcurrentModificationError is raised. The caller
+    (`_mutate_registry`) retries after re-reading.
 
     Pattern for race-protected upsert:
 
-        path = registry_path(vault)
-        current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
-        data = read_registry(vault)
+        loc = registry_locator(backend)
+        current_hash = (
+            hm.content_hash(backend.read(loc).encode("utf-8"))
+            if backend.exists(loc) else None
+        )
+        data = read_registry(backend)
         # mutate data ...
-        write_registry(vault, data, expected_hash=current_hash)
+        write_registry(backend, data, expected_hash=current_hash)
 
-    Raises ConcurrentModificationError (re-exported from harness_memory) if
-    another process wrote between read + write. The read-mutate-CAS callers
-    (`register_repo` / `unregister_repo`) drive the retry via `_mutate_registry`
-    — they re-read, re-apply, and re-attempt rather than dropping the change.
-
-    Creates parent dir (`<vault>/_meta/`) if absent. Returns the written path.
+    The backend's write verb handles atomic temp→fsync→rename and creates
+    parent dirs if absent. For the vault backend, write() additionally holds
+    the vault_mutex and does an inner CAS against same-device concurrent
+    writers. Returns the written Locator.
     """
-    vault = Path(vault_path)
-    if not vault.is_dir():
-        raise FileNotFoundError(f"vault path does not exist: {vault}")
-    # Ensure version field — operator should never have to think about it
+    data = dict(data)
     data.setdefault("version", _SCHEMA_VERSION)
     data.setdefault("repos", [])
-    path = registry_path(vault)
+    loc = registry_locator(backend)
     content = json.dumps(data, indent=2, sort_keys=False) + "\n"
-    return hm.safe_write_replace_style(path, content, expected_hash=expected_hash)
+
+    if expected_hash is not None:
+        if backend.exists(loc):
+            actual = hm.content_hash(backend.read(loc).encode("utf-8"))
+            if actual != expected_hash:
+                raise hm.ConcurrentModificationError(
+                    f"registry was modified concurrently "
+                    f"(expected hash={expected_hash[:12]}…, actual={actual[:12]}…). "
+                    f"Re-read and re-apply changes."
+                )
+        else:
+            raise hm.ConcurrentModificationError(
+                f"registry was deleted since read "
+                f"(expected hash={expected_hash[:12]}…). "
+                f"Re-read and re-apply changes."
+            )
+
+    return backend.write(loc, content)
 
 
 # -----------------------------------------------------------------------------
@@ -165,10 +183,10 @@ def write_registry(
 
 # A read-mutate-CAS upsert can lose its race: another writer lands between our
 # read and our compare-and-swap, so write_registry raises
-# ConcurrentModificationError. Five attempts is ample headroom — the vault_mutex
-# already serializes same-machine writers, so a CAS miss only happens against a
-# *cross-machine* peer on the synced vault (R4 gives no cross-device mutual
-# exclusion), which is rare and self-clearing on re-read.
+# ConcurrentModificationError. Five attempts is ample headroom — the vault
+# backend's vault_mutex already serializes same-machine writers; a CAS miss
+# only happens against a cross-machine peer on the synced vault (R4 gives no
+# cross-device mutual exclusion), which is rare and self-clearing on re-read.
 _MAX_REGISTRY_RETRIES = 5
 
 # A mutate-fn returns this sentinel to mean "nothing changed — skip the write."
@@ -178,44 +196,46 @@ _SKIP_WRITE: Any = object()
 
 
 def _mutate_registry(
-    vault_path: Path | str,
+    backend: "StorageBackend",
     mutate: Callable[[dict], Any],
 ) -> Any:
-    """Read-mutate-CAS the registry under the per-vault mutex, retrying on a CAS
-    miss so a concurrent writer can't silently drop the change.
+    """Read-mutate-CAS the registry, retrying on a CAS miss.
 
     `mutate(data)` edits the freshly-read registry `data` in place and returns
-    the caller's result — or the `_SKIP_WRITE` sentinel to skip the write
-    entirely. The `vault_mutex` serializes same-machine writers (the vault
-    floor's stack); the bounded retry recovers from the one race it can't
-    prevent — a cross-machine peer on the synced vault — by re-reading and
-    re-applying. After `_MAX_REGISTRY_RETRIES` consecutive collisions it raises
-    rather than drop the write, honoring write_registry's retry contract instead
-    of leaving it fiction.
+    the caller's result — or the `_SKIP_WRITE` sentinel to skip the write.
+    The CAS retry recovers from the one race that can't be prevented locally —
+    a cross-machine peer on the synced vault — by re-reading and re-applying.
+    After `_MAX_REGISTRY_RETRIES` consecutive collisions it raises rather than
+    dropping the write, honoring write_registry's retry contract.
+
+    V5-6: vault_mutex removed from this layer — the vault backend's write()
+    verb holds it internally, so serialization is still correct. The outer
+    CAS loop (via write_registry's expected_hash) handles cross-device races.
     """
-    vault = Path(vault_path)
-    path = registry_path(vault)
+    loc = registry_locator(backend)
     last_exc: Optional[BaseException] = None
-    with hm.vault_mutex(vault):
-        for _ in range(_MAX_REGISTRY_RETRIES):
-            current_hash = hm.content_hash(path.read_bytes()) if path.exists() else None
-            data = read_registry(vault)
-            result = mutate(data)
-            if result is _SKIP_WRITE:
-                return result
-            try:
-                write_registry(vault, data, expected_hash=current_hash)
-                return result
-            except hm.ConcurrentModificationError as exc:
-                last_exc = exc
+    for _ in range(_MAX_REGISTRY_RETRIES):
+        current_hash = (
+            hm.content_hash(backend.read(loc).encode("utf-8"))
+            if backend.exists(loc) else None
+        )
+        data = read_registry(backend)
+        result = mutate(data)
+        if result is _SKIP_WRITE:
+            return result
+        try:
+            write_registry(backend, data, expected_hash=current_hash)
+            return result
+        except hm.ConcurrentModificationError as exc:
+            last_exc = exc
     raise hm.ConcurrentModificationError(
-        f"registry CAS lost {_MAX_REGISTRY_RETRIES} consecutive times on {path} "
-        f"— a cross-machine writer keeps winning the race"
+        f"registry CAS lost {_MAX_REGISTRY_RETRIES} consecutive times — "
+        f"a cross-machine writer keeps winning the race"
     ) from last_exc
 
 
 def register_repo(
-    vault_path: Path | str,
+    backend: "StorageBackend",
     slug: str,
     root_path: str | Path,
     *,
@@ -229,31 +249,25 @@ def register_repo(
 
     Returns the updated registry dict (after write).
 
-    Concurrency: the read-mutate-CAS runs under `_mutate_registry`, which holds
-    the per-vault mutex and retries on a CAS miss — a concurrent registration on
-    another machine can no longer silently drop this one.
+    Concurrency: the read-mutate-CAS runs under `_mutate_registry`, which
+    retries on a CAS miss — a concurrent registration on another machine
+    can no longer silently drop this one.
 
-    Path normalization: `root_path` is stored as a string (str(Path(value)))
-    to preserve operator's home-relative paths verbatim. Cross-platform:
-    caller decides whether to pass absolute or symlink-resolved paths.
+    Path normalization: `root_path` is stored as POSIX-style (forward
+    slashes) for vault portability (GDrive-synced, read by Mac/Linux +
+    Windows clients).
     """
     if not slug:
         raise ValueError("slug must be non-empty")
 
-    # Build the entry — only include fields that have values (avoid writing nulls).
-    # Use POSIX-style paths (forward slashes) for vault portability: the registry
-    # is GDrive-synced and read by both Mac/Linux + Windows clients; native
-    # separators on one would break path semantics on the other.
     new_entry: dict[str, Any] = {"slug": slug, "root_path": Path(root_path).as_posix()}
     if wiki_path is not None:
         new_entry["wiki_path"] = Path(wiki_path).as_posix()
 
     def _apply(data: dict) -> dict:
         repos = data.get("repos", [])
-        # Upsert: replace existing entry by slug, or append new.
         for i, entry in enumerate(repos):
             if entry.get("slug") == slug:
-                # Merge: existing fields preserved unless explicitly overwritten.
                 merged = dict(entry)
                 merged.update(new_entry)
                 repos[i] = merged
@@ -263,15 +277,15 @@ def register_repo(
         data["repos"] = repos
         return data
 
-    return _mutate_registry(vault_path, _apply)
+    return _mutate_registry(backend, _apply)
 
 
-def unregister_repo(vault_path: Path | str, slug: str) -> bool:
+def unregister_repo(backend: "StorageBackend", slug: str) -> bool:
     """Remove a repo entry by slug. Idempotent — returns True if removed,
     False if no matching slug existed.
 
-    Re-reads + writes under `_mutate_registry`: per-vault mutex + content-hash
-    CAS + bounded retry, so a concurrent writer can't drop the removal.
+    Re-reads + writes under `_mutate_registry`: content-hash CAS + bounded
+    retry, so a concurrent writer can't drop the removal.
     """
     if not slug:
         raise ValueError("slug must be non-empty")
@@ -280,21 +294,20 @@ def unregister_repo(vault_path: Path | str, slug: str) -> bool:
         repos = data.get("repos", [])
         new_repos = [r for r in repos if r.get("slug") != slug]
         if len(new_repos) == len(repos):
-            # No change — skip write entirely (preserves mtime; no churn).
             return _SKIP_WRITE
         data["repos"] = new_repos
         return True
 
-    return _mutate_registry(vault_path, _apply) is True
+    return _mutate_registry(backend, _apply) is True
 
 
-def list_repos(vault_path: Path | str) -> list[dict]:
+def list_repos(backend: "StorageBackend") -> list[dict]:
     """Return the list of registered repos.
 
     Order: insertion order (the order entries were first registered).
     Stable across reads — register_repo's upsert preserves position.
     """
-    data = read_registry(vault_path)
+    data = read_registry(backend)
     return list(data.get("repos", []))
 
 
@@ -307,10 +320,10 @@ def _print_skip_and_exit() -> int:
     sys.stdout.write(json.dumps({
         "skipped": True,
         "reason": (
-            "MEMORY_VAULT_PATH unset AND no vault_path in .agentm-config.json "
-            "(or resolved directory missing). Run "
-            "`python3 scripts/agentm_config.py --vault-path <path>` to set, "
-            "or re-run `install.sh --scope user --force-vault-prompt`."
+            "The active storage backend is unavailable (select_backend() failed). "
+            "Install the configured backend plugin, or set vault_path via "
+            "`python3 scripts/agentm_config.py --vault-path <path>` / "
+            "`install.sh --scope user --force-vault-prompt`."
         ),
     }) + "\n")
     return 1
@@ -318,7 +331,7 @@ def _print_skip_and_exit() -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Vault-backed registry of agent-aware repos.",
+        description="Seam-backed registry of agent-aware repos (V5-6).",
     )
     sub = parser.add_subparsers(dest="cmd")
 
@@ -339,8 +352,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    vault = _vault_or_none()
-    if vault is None:
+    backend = _backend_or_none()
+    if backend is None:
         return _print_skip_and_exit()
 
     if args.cmd is None:
@@ -348,14 +361,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     if args.cmd == "list":
-        repos = list_repos(vault)
+        repos = list_repos(backend)
         sys.stdout.write(json.dumps({"repos": repos}, indent=2) + "\n")
         return 0
 
     if args.cmd == "register":
         try:
             register_repo(
-                vault,
+                backend,
                 args.slug,
                 args.root,
                 wiki_path=args.wiki,
@@ -363,17 +376,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         except ValueError as exc:
             print(f"[repo_registry] {exc}", file=sys.stderr)
             return 2
-        # Echo the registered slug for chainability.
         sys.stdout.write(args.slug + "\n")
         return 0
 
     if args.cmd == "unregister":
         try:
-            removed = unregister_repo(vault, args.slug)
+            removed = unregister_repo(backend, args.slug)
         except ValueError as exc:
             print(f"[repo_registry] {exc}", file=sys.stderr)
             return 2
-        # Idempotent: exit 0 either way; stdout indicates whether action occurred.
         sys.stdout.write(("removed" if removed else "noop") + "\n")
         return 0
 

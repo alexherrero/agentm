@@ -108,10 +108,11 @@ class TestIsRegistered(unittest.TestCase):
 
     def test_registry_hit_means_registered(self):
         with tempfile.TemporaryDirectory() as td:
-            vault = Path(td)
-            repo_registry.register_repo(vault, "demo", "/some/repo")
-            self.assertTrue(pc.is_registered({}, vault_path=vault, slug="demo"))
-            self.assertFalse(pc.is_registered({}, vault_path=vault, slug="other"))
+            from storage_device_local import DeviceLocalBackend
+            backend = DeviceLocalBackend(root=Path(td))
+            repo_registry.register_repo(backend, "demo", "/some/repo")
+            self.assertTrue(pc.is_registered({}, backend=backend, slug="demo"))
+            self.assertFalse(pc.is_registered({}, backend=backend, slug="other"))
 
 
 class TestWriteLoadRoundtrip(unittest.TestCase):
@@ -166,8 +167,10 @@ class TestRegisterIntegration(unittest.TestCase):
             self.assertEqual(data["vault_project"], "demo")
             self.assertIn("skills", data)
             self.assertEqual(data["registered_via"], "auto-detect")
-            # repo registered.
-            slugs = [r.get("slug") for r in repo_registry.list_repos(vault)]
+            # repo registered — read back via VaultBackend (MEMORY_VAULT_PATH points at vault).
+            from storage_vault import VaultBackend
+            vault_backend = VaultBackend(root=vault)
+            slugs = [r.get("slug") for r in repo_registry.list_repos(vault_backend)]
             self.assertIn("demo", slugs)
             # returned config matches.
             self.assertEqual(config["vault_project"], "demo")
