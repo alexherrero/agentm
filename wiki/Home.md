@@ -49,7 +49,7 @@ For contributors running the harness:
 - [Memory MCP tools](Memory-MCP-Tools) — four-tool MCP surface: parameters, pagination, soft-delete contract, error codes.
 
 > [!NOTE]
-> **Latest release — [v5.5.0](https://github.com/alexherrero/agentm/releases/tag/v5.5.0) (2026-06-18):** V5-3 storage cutover — vault backend deleted from the `harness_memory.py` kernel; `harness_state_dir` / `read_state_file` / `write_state_file` always device-local; `phase_recall` always `""`; `resolve_documenter_context` always `None`; `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault; `personal-private/` → `personal/` group rename in lockstep. ([ADR 0018](0018-v5-3-storage-cutover))
+> **Latest release — [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0) (2026-06-18):** V5-7 capability-request matching — `CapabilityMismatchError` + `select_backend(required=)` for subset-only capability enforcement; `_doctor_main --requires <CAPS>` pre-flight flag. Fail-loud on any unsatisfied requirement, never a silent downgrade. ([ADR 0013 amendment](0013-storage-seam-fail-loud-selection))
 
 → Full field-level detail lives under **Reference** in the sidebar.
 

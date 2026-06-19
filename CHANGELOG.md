@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.6.0] — 2026-06-18 — V5-7 capability-request matching
+
+**MINOR.** `select_backend()` now accepts a `required: Capabilities | None = None` keyword parameter. When provided, the resolved backend's `.capabilities` must satisfy every `True` flag — a subset check. Mismatch raises `CapabilityMismatchError` (new `StorageSelectionError` subclass) naming the backend protocol and all unsatisfied fields; existing `except StorageSelectionError` catch sites cover it automatically. Operators can pre-flight requirements without code via `doctor --requires <cap1,cap2>`. Zero existing callers updated (default `None` preserves prior behavior). Gates: 20/20, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-7 — `CapabilityMismatchError` (`03aceb5`).** New `StorageSelectionError` subclass in `scripts/backend_selection.py`. Constructor `(protocol, unsatisfied)`; `str(e)` → `"backend '<proto>' does not satisfy required capabilities: <fields>"`. Added to `__all__`.
+
+- **V5-7 — `select_backend(required=)` (`03aceb5`).** Keyword-only `required: Capabilities | None = None` parameter. After resolving the backend, iterates `dataclasses.fields(required)` and raises `CapabilityMismatchError` on any `True` requirement the backend's `.capabilities` doesn't satisfy. 8 new tests in `TestCapabilityMatching`.
+
+- **V5-7 — `doctor --requires` flag (`5a6f94c`).** `_doctor_main()` gains `--requires CAPS` (comma-separated capability names). Unknown field names are validated against `dataclasses.fields(Capabilities)` before any backend is constructed — invalid names print to stderr and exit 1. Valid names print `PASS: backend '<proto>' satisfies required capabilities: <caps>` or `FAIL: <str(e)>`. 5 new tests in `TestDoctorRequires`. `_doctor_main()` also gains injection params (`device_local_root`, `vault_lock_root`, `vault_plugin_scripts`) matching `select_backend()` for test isolation.
+
+### Internal
+
+- **Closed V5-7 deferral marker in `backend_selection.py` module docstring.** Updated the "capability-request matching is V5-7" placeholder to describe the shipped implementation.
+- **ADR 0013 amendment.** Subset-only matching rationale (mismatch is always an error, never a silent downgrade/reroute) recorded as an amendment to ADR 0013; `CapabilityMismatchError` as a `StorageSelectionError` subclass is the DC-4 fail-loud extension for capability checks. See `wiki/explanation/decisions/0013-storage-seam-fail-loud-selection.md`.
+
 ## [v5.5.0] — 2026-06-18 — V5-3 storage cutover: device-local is canonical
 
 **MINOR.** The kernel no longer contains a built-in vault backend. State (`harness_state_dir`, `read_state_file`, `write_state_file`) is device-local only; `phase_recall` returns `""`; `resolve_documenter_context` returns `None`. The vault is reachable only through the `obsidian-vault` plugin; a config-file `storage.backend=vault` with no vault accessible now raises `StorageBackendNotInstalledError` — never a silent demotion to device-local. Four locked design calls in ADR 0018. Gates: 20/20, CI green across Linux/Mac/Windows.

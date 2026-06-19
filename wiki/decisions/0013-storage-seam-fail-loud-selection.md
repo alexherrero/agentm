@@ -80,13 +80,31 @@ After part 5, selection can *resolve which* backend a config would use and refus
 - **A wrong-but-running memory engine is worse than a stopped one**, which is the whole justification for fail-loud over graceful-degrade. **Re-audit trigger:** a deployment appears where memory is genuinely optional and a missing backend should degrade rather than block — then the refusal would need a config-gated soft mode (it has none today, by design).
 - **Scaffolding decays with the model.** **Re-audit trigger:** the underlying model ships a new major version — re-audit the whole seam (the operator's standing harness-maintenance principle).
 
+## Amendment — 2026-06-18 (V5-7): capability-request matching extends DC-4 with the same fail-loud principle
+
+**V5-7 adds `CapabilityMismatchError` and the `required=` parameter to `select_backend`.** A caller may now declare what capabilities it needs by passing `required: Capabilities | None = None`; when the selected backend does not satisfy every `True` requirement, `select_backend` raises `CapabilityMismatchError` (a `StorageSelectionError` subclass). `required=None` (the default) preserves all prior behavior — zero caller changes needed on existing call sites.
+
+**The key non-obvious decision: subset-only matching — a mismatch is always an error, never a silent downgrade or reroute.**
+
+Alternatives considered:
+
+- *Silent downgrade:* if the selected backend fails the requirement, pick the next-registered backend that satisfies it. Rejected — this is the same silent-demotion hazard DC-4 already forbids: a caller that asked for `concurrent_writers=True` and gets `device-local` silently has a worse problem than a loud stop.
+- *Return a warning:* yield the mismatched backend and surface a warning string. Rejected — a caller that declared a capability *requirement* gets what it asked for or gets a stop; "here's the backend but it can't do what you asked" is incoherent.
+- *Partial satisfaction:* raise only when *no* requirement is met; allow a backend that satisfies *some* but not all requirements. Rejected — partial satisfaction is indistinguishable from silent demotion on the unsatisfied capabilities.
+
+The rationale is the same load-bearing assumption DC-4 carries: a wrong-but-running engine (with unmet capability requirements) is worse than a stopped one. The re-audit trigger is likewise the same: if a deployment genuinely needs partial-satisfaction or graceful-degrade semantics, add a config-gated soft mode rather than softening the default.
+
+**V5-7 also adds `--requires <CAPS>` to `_doctor_main`** — the operator-facing surface of `required=`. It validates capability names (unknown name → stderr + exit 1 before any backend is constructed), calls `select_backend(required=...)`, and prints `PASS`/`FAIL` with exit 0/1. This extends DC-5's "preview and runtime share a code path" principle: the `--requires` flag is the pre-flight surface for the `required=` guard, byte-identical in its output.
+
+**Constructor:** `CapabilityMismatchError(protocol: str, unsatisfied: list[str])`. `str(e)` → `"backend '<protocol>' does not satisfy required capabilities: <field1>, <field2>"`. Exposed in `backend_selection.__all__` alongside `StorageSelectionError`. Proven by `TestCapabilityMatching` (8 cases) + `TestDoctorRequires` (5 cases) in [`scripts/test_backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_backend_selection.py).
+
 ## Related
 
 - [ADR 0011 — V5 unbundling: slim the dev loop](0011-v5-unbundling-dev-loop.md) — established the "memory engine is what only agentm provides" framing this seam realizes.
 - [ADR 0012 — The vault-write protocol](0012-vault-write-protocol.md) — the write-safety floor the `vault` backend composes; this ADR's "never demote" is the selection-side sibling of 0012's "surface, never auto-merge".
 - [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config.md) — the vault-vs-repo-local state mode whose vault branch the seam wraps.
 - [Memory↔storage seam](Memory-Storage-Seam) — the narrative explanation: the verbs, the opaque locator, the three tiers, the two concrete backends.
-- [Storage seam](Storage-Seam) — the verb-by-verb reference (signatures, `Locator` / `Info` / `Capabilities`, the `BackendRegistry` surface).
+- [Storage seam](Storage-Seam) — the verb-by-verb reference (signatures, `Locator` / `Info` / `Capabilities`, the `BackendRegistry` surface, and V5-7 `CapabilityMismatchError`).
 - [Memory↔process seam](Memory-Process-Seam) — the *other* V5 seam, facing up; same "small stable interface, gate-enforced" pattern.
 - [CI gates](CI-Gates) — the `check-storage-seam-no-path-leak` gate enforcing the no-`Path` rule.
 - [Choose a storage backend](Choose-A-Storage-Backend) — the operator-facing how-to for setting `storage.backend` and reading the `doctor` preview.

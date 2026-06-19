@@ -8,6 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-06-18 | [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0) — V5-7: capability-request matching | **V5-7:** `CapabilityMismatchError(StorageSelectionError)` + `select_backend(required=)` — subset-only capability matching, fail-loud. `_doctor_main` gains `--requires <CAPS>` pre-flight flag. 4 new injection params on `_doctor_main` for test isolation. (ADR 0013 amendment) | 2 commits (`v5.5.0..v5.6.0`); 13 new unit tests (`TestCapabilityMatching` 8 + `TestDoctorRequires` 5); check-all.sh green; solo harness MINOR |
 | 2026-06-18 | [v5.5.0](https://github.com/alexherrero/agentm/releases/tag/v5.5.0) — V5-3: storage cutover: kernel → device-local | **V5-3:** vault backend deleted from `harness_memory.py` kernel; `harness_state_dir` / `read_state_file` / `write_state_file` always device-local; `phase_recall` always `""`; `resolve_documenter_context` always `None`; `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault (`$MEMORY_VAULT_PATH` stays graceful-skip). `personal-private/` → `personal/` group rename shipped in lockstep. ([ADR 0018](0018-v5-3-storage-cutover)) | 7 commits (`v5.4.0..v5.5.0`); 1170 unit tests 0 failures; 20/20 check-all.sh; solo harness MINOR |
 | 2026-06-17 | [v5.4.0](https://github.com/alexherrero/agentm/releases/tag/v5.4.0) — V5-9 memory MCP server | **V5-9:** `scripts/memory_mcp_server.py` (singleton streamable-HTTP daemon at `127.0.0.1:7821`) + four MCP tools (`memory_search` / `memory_recall` / `memory_append` / `memory_forget`) + bearer-token + Origin-validation security + `scripts/memory_mcp_stdio_shim.py` (Claude Desktop stdio shim) + `scripts/memory_mcp_doctor.py` (4 health checks) + `install.sh --mcp-server` + launchd plist + host configs for Claude Code / Cursor / Goose / Claude Desktop. ([ADR 0017](0017-mcp-server-design)) | 11 commits (`v5.3.0..v5.4.0`); contract tests + 13 doctor unit tests; solo harness MINOR |
 | 2026-06-16 | [v5.3.0](https://github.com/alexherrero/agentm/releases/tag/v5.3.0) — V5-11: team-coordinator persona | **V5-11:** `personas/team-coordinator.md` (first real composed persona) + `scripts/plan_graph.py` + `scripts/standup.py` + `scripts/readiness.py` + `scripts/merge_order.py` — the coordinator capability set. `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`. | 1 commit (`7966ac3`); 62 fixture-backed tests; `check-personas` exits 0; solo harness MINOR |
@@ -32,6 +33,39 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentm/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentm/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentm/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-06-18 — v5.6.0: V5-7 — capability-request matching
+
+**Commit range:** `v5.5.0..v5.6.0` (2 commits on `main`). Release notes: [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0). Solo harness MINOR — no crickets pairing.
+
+### What shipped
+
+V5-7 closes the capability-read/match split introduced when V5-1 part 5 (task 2) shipped the capabilities-read. That task added the ability to *read* a selected backend's capabilities; V5-7 adds the ability to *declare requirements* and have selection enforce them.
+
+**`CapabilityMismatchError`** — a new public error class in `backend_selection.py`, subclassing `StorageSelectionError`. Constructor `(protocol: str, unsatisfied: list[str])`; `str(e)` → `"backend '<protocol>' does not satisfy required capabilities: <field1>, <field2>"`. Added to `backend_selection.__all__` alongside `StorageSelectionError`.
+
+**`select_backend(required=)`** — the existing resolver gains an optional `required: Capabilities | None = None` keyword parameter. After resolving the backend instance, `select_backend` iterates `dataclasses.fields(required)` and raises `CapabilityMismatchError` listing every `True` requirement the backend cannot satisfy. `required=None` (default) preserves all prior behavior — zero changes needed at existing call sites.
+
+**`_doctor_main --requires <CAPS>`** — the operator-facing pre-flight surface for `required=`. Accepts a comma-separated list of `Capabilities` field names (e.g. `--requires concurrent_writers,encryption`). Unknown names print an error to stderr and exit 1 before any backend is constructed. Valid names construct `Capabilities(**{name: True for name in requested})`, call `select_backend(required=...)`, and print exactly one line: `PASS: backend '<protocol>' satisfies required capabilities: <caps>` (exit 0) or `FAIL: <CapabilityMismatchError message>` (exit 1). `StorageSelectionError` (unregistered backend, missing vault path, corrupt config) also prints `FAIL` and exits 1.
+
+**Three injection params on `_doctor_main`** — `device_local_root`, `vault_lock_root`, and `vault_plugin_scripts` are forwarded to `select_backend` for test isolation, following the same pattern as `select_backend` itself.
+
+### Why this shape
+
+The subset-only matching decision — a mismatch is always an error, never a silent downgrade or reroute — is the same load-bearing principle as DC-4 in ADR 0013: a wrong-but-running engine (satisfying fewer capabilities than a caller needs) is worse than a stopped one. Alternatives — pick the next registered backend that satisfies the requirement, return a warning, allow partial satisfaction — were rejected because each is a form of silent demotion. The `--requires` flag extends DC-5's principle: the pre-flight surface and the runtime guard share the same code path and produce identical output. See [ADR 0013 amendment (2026-06-18)](0013-storage-seam-fail-loud-selection#amendment--2026-06-18-v5-7-capability-request-matching-extends-dc-4-with-the-same-fail-loud-principle) for the full rationale.
+
+### By the numbers
+
+13 new unit tests: `TestCapabilityMatching` (8 cases covering mismatch, single-cap satisfaction, multi-cap mismatch, multi-cap all-satisfied, partial mismatch, required=None backward compat, `CapabilityMismatchError` str format, superclass chain) + `TestDoctorRequires` (5 cases: unknown field, mismatch, satisfied cap with vault fixture, multiple unknown fields, no-flag backward compat). `check-all.sh` green.
+
+### Related
+
+- [ADR 0013 amendment — capability-request matching](0013-storage-seam-fail-loud-selection) — the design rationale for subset-only matching and why alternatives were rejected.
+- [Storage seam](Storage-Seam) — `CapabilityMismatchError` reference entry; `select_backend` `required=` parameter; `_doctor_main --requires` flag; `TestCapabilityMatching` + `TestDoctorRequires`.
+- [Choose a storage backend](Choose-A-Storage-Backend) — operator how-to: step 4 `--requires` pre-flight.
+- [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
+
+---
 
 ## 2026-06-18 — v5.5.0: V5-3: storage cutover — kernel → device-local
 
