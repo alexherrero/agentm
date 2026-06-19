@@ -394,22 +394,22 @@ The vault backend is held to the **same objective contract** as device-local. `V
 ## Routing layer (V5-6)
 
 > [!NOTE]
-> **Status: in progress.** Plan: V5-6 — Seam De-Vaulting (routing plane onto the storage seam). Created 2026-06-18. **Task 1 (`resolve_project` / `_vault_projects_dir`) shipped.** Tasks 2–5 pending.
+> **Status: complete** (V5-6, 2026-06-18). All five tasks shipped: `resolve_project` / `_vault_projects_dir` (task 1), `repo_registry` (task 2), `state_mode` vault→backend alias (task 3), gate extensions + conformance suite (task 4), ADR + docs (task 5). Decision: [ADR 0019](../decisions/0019-v5-6-routing-plane-devaulting).
 
 The third de-vaulting leg re-plumbs the kernel's routing/index mechanisms so they speak `Locator`s to this seam instead of building `vault_path() / …` filesystem paths directly. Three mechanisms are in scope:
 
 | Mechanism | File | Status | Detail |
 |---|---|---|---|
 | `resolve_project` / `_vault_projects_dir` | `harness_memory.py:318,339` | **Shipped (task 1)** | `_vault_projects_dir(backend: StorageBackend) -> Locator`; `resolve_project` returns `{slug, project_locator, backend, project_root, layout}` — `project_locator` is a `Locator`, not a `Path`. `process_seam.py:161` uses `project_locator.key`. |
-| `repo_registry` read/write | `repo_registry.py:68` | Pending (task 2) | Will replace hardcoded `<vault>/_meta/repos.json` with `backend.resolve("_meta", "repos.json")`. |
-| `state_mode` resolver | `harness_memory.py:228` | Pending (task 3) | Will rename non-local value from `"vault"` to `"backend"`; existing `state_mode: vault` entries alias at read time — no operator action. |
+| `repo_registry` read/write | `repo_registry.py` | **Shipped (task 2)** | `registry_path(vault_path) -> Path` replaced by `registry_locator(backend: StorageBackend) -> Locator` ([`#L77`](https://github.com/alexherrero/agentm/blob/main/scripts/repo_registry.py#L77)). All five public functions take `backend: StorageBackend`. `_mutate_registry` no longer holds `vault_mutex` — `VaultBackend.write()` handles it; CAS retry loop handles cross-device races. On `obsidian-vault` resolves to identical path (LC-1, proven by LC-7 parallel-run test at [`test_harness_memory.py#L2265`](https://github.com/alexherrero/agentm/blob/main/scripts/test_harness_memory.py#L2265)). |
+| `state_mode` resolver | `harness_memory.py:228` | **Shipped (task 3)** | `"vault"` aliases to `"backend"` at read time in both `_read_config_state_mode` and `_read_project_mode`; `agentm_config` normalizes `"vault"` → `"backend"` at write time; CLI `--state-mode` help surfaces the deprecation note — no operator action required. |
 
 **Behavior-preserving invariant (LC-1):** on the `obsidian-vault` backend every mechanism resolves to the same bytes at the same path before and after. The task 1 parallel-run assertion confirmed byte-identical resolution for `resolve_project` / `_vault_projects_dir` before vault-shaped path construction was removed.
 
-**Gate extensions (task 4 — pending):**
-- `check-storage-seam-no-path-leak.sh` extended to cover `resolve_project`, `_vault_projects_dir`, and repo_registry functions — fails if any returns `pathlib.Path`.
-- `check-process-seam-import-direction.sh` extended to verify de-vaulted mechanisms import the seam but never a capability plugin.
-- `storage_conformance.py` extended: routing layer parameterized across `DeviceLocalBackend` + `VaultBackend`.
+**Gate extensions (task 4 — shipped):**
+- `check-storage-seam-no-path-leak.py` — Pass 2 (V5-6): scans `harness_memory.py` + `repo_registry.py` for seven named routing functions (`resolve_project`, `_vault_projects_dir`, `registry_locator`, `read_registry`, `write_registry`, `register_repo`, `unregister_repo`, `list_repos`) that return `pathlib.Path`. Driven by `ROUTING_FUNCTIONS`, `_ROUTING_FILENAMES`, `_routing_files()`, and an updated `_scan_source(names=…)` kwarg.
+- `check-process-seam-import-direction.sh` — LC-8 block: scans the same two files for any `import storage_vault` / `from storage_vault import` and fails loud — a routing mechanism may import the seam, never a capability plugin.
+- `storage_conformance.py` extended: `check_routing_repo_registry(make_backend)` proves the register/list/unregister cycle on any conforming backend; gated by `run_conformance(include_routing=False)` (default off, explicit opt-in); `RoutingConformanceReport` in `test_storage_conformance.py` runs `include_routing=True` on both backends.
 
 For the intent and three-leg arc context, see [Seam-De-Vaulting-V5-6](../explanation/Seam-De-Vaulting-V5-6).
 
