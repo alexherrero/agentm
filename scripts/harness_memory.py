@@ -228,7 +228,7 @@ def _read_config_storage_backend(install_prefix: Optional[Path] = None) -> Optio
 def _read_config_state_mode(install_prefix: Optional[Path] = None) -> Optional[str]:
     """Read `state_mode` from `<install-prefix>/.agentm-config.json`.
 
-    Returns the stripped-lowercase value ("local" / "vault") or None when the
+    Returns the stripped-lowercase value ("local" / "backend") or None when the
     field is absent / empty / unreadable. This is the **device-level** run-mode
     config — read **vault-free** (mirrors `_read_config_vault_path`), so it works
     on a machine with no vault. Honors `$AGENTM_INSTALL_PREFIX`.
@@ -236,6 +236,9 @@ def _read_config_state_mode(install_prefix: Optional[Path] = None) -> Optional[s
     Per Hardening I #44 task 3 / locked DC-8: config is on-host only; the vault
     holds data, never configuration. This is the second resolution layer in
     `_read_project_mode()` (under the per-repo `.harness/.project-mode` marker).
+
+    V5-6 LC-5: legacy `state_mode: vault` aliases to `backend` at read time —
+    no operator migration or config rewrite required.
     """
     if install_prefix is None:
         install_prefix = _agentm_install_prefix()
@@ -251,7 +254,11 @@ def _read_config_state_mode(install_prefix: Optional[Path] = None) -> Optional[s
     raw = data.get("state_mode")
     if not isinstance(raw, str):
         return None
-    return raw.strip().lower() or None
+    mode = raw.strip().lower() or None
+    # LC-5: "vault" aliases to "backend" — no migration, no rewrite.
+    if mode == "vault":
+        return "backend"
+    return mode
 
 
 def vault_path() -> Optional[Path]:
@@ -526,9 +533,11 @@ def _read_project_mode(resolution: dict) -> Optional[str]:
     # 1. Repo-local marker — per-repo override, on-host, vault-independent.
     repo_local = _read_mode_marker(Path(project_root) / ".harness" / ".project-mode")
     if repo_local is not None:
-        return repo_local
+        # LC-5: "vault" in .project-mode aliases to "backend" at read time.
+        return "backend" if repo_local == "vault" else repo_local
 
     # 2. Device-level default — state_mode in .agentm-config.json (on-host).
+    # _read_config_state_mode() already normalizes "vault" → "backend" (LC-5).
     return _read_config_state_mode()
 
 

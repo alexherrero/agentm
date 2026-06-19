@@ -335,11 +335,20 @@ class TestStateMode(unittest.TestCase):
         self.assertEqual(config["schema_version"], 2)
         self.assertEqual(out.strip(), "state_mode = local")
 
-    def test_set_state_mode_vault_writes_field_rc0(self) -> None:
+    def test_set_state_mode_backend_writes_field_rc0(self) -> None:
+        rc, out, err = self._run("--state-mode", "backend")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config["state_mode"], "backend")
+        self.assertEqual(out.strip(), "state_mode = backend")
+
+    def test_set_state_mode_vault_normalizes_to_backend(self) -> None:
+        """LC-5: --state-mode vault is accepted but written as 'backend' (deprecated alias)."""
         rc, out, err = self._run("--state-mode", "vault")
         self.assertEqual(rc, 0, err)
         config = json.loads((self.prefix / ".agentm-config.json").read_text())
-        self.assertEqual(config["state_mode"], "vault")
+        self.assertEqual(config["state_mode"], "backend")
+        self.assertEqual(out.strip(), "state_mode = backend")
 
     def test_set_state_mode_rejects_invalid(self) -> None:
         # argparse `choices` rejects at parse time → SystemExit(2), no write.

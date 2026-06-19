@@ -48,7 +48,7 @@ from typing import Optional
 
 _CONFIG_FILENAME = ".agentm-config.json"
 _SCHEMA_VERSION = 2
-_STATE_MODES = ("local", "vault")
+_STATE_MODES = ("local", "backend", "vault")  # "vault" is a deprecated alias; normalized to "backend" at write time
 
 #: The literal flat key for the selected storage backend protocol name (V5-1
 #: part 5). Flat (with a dot in the name, not a nested object) so it round-trips
@@ -125,18 +125,23 @@ def cmd_set_vault_path(prefix: Path, raw_path: str) -> int:
 def cmd_set_state_mode(prefix: Path, mode: str) -> int:
     """Set the device-level `state_mode` field (the on-host run mode; DC-8).
 
-    Accepts 'local' or 'vault' only. This is the post-install / `/setup` way to
-    opt a machine into repo-local (vault-less) harness state — or back to
-    vault-resident — without re-running the full installer. Idempotent: a silent
-    no-op when the value is already set. The repo-local `<repo>/.harness/.project-mode`
-    marker stays the higher-precedence per-repo override (DC-2).
+    Accepts 'local' or 'backend'. 'vault' is a deprecated alias for 'backend'
+    that is accepted for backward compat and normalized at write time (LC-5).
+    This is the post-install / `/setup` way to opt a machine into repo-local
+    (vault-less) harness state without re-running the full installer. Idempotent:
+    a silent no-op when the value is already set. The repo-local
+    `<repo>/.harness/.project-mode` marker stays the higher-precedence per-repo
+    override (DC-2).
     """
     if mode not in _STATE_MODES:
         print(
-            f"[agentm_config] refusing to set state_mode: {mode!r} is not 'local' or 'vault'",
+            f"[agentm_config] refusing to set state_mode: {mode!r} is not 'local', 'backend', or 'vault'",
             file=sys.stderr,
         )
         return 2
+    # LC-5: normalize deprecated "vault" alias to "backend" at write time.
+    if mode == "vault":
+        mode = "backend"
     config = _read_config(prefix) or {}
     if config.get("state_mode") == mode:
         # Idempotent — silent no-op when value unchanged.
@@ -237,7 +242,7 @@ def _build_parser() -> argparse.ArgumentParser:
     op = parser.add_mutually_exclusive_group(required=True)
     op.add_argument("--vault-path", metavar="PATH", help="set vault_path field")
     op.add_argument("--state-mode", metavar="MODE", choices=_STATE_MODES,
-                    help="set state_mode field (how harness state is stored: local|vault)")
+                    help="set state_mode field (how harness state is stored: local|backend; 'vault' is a deprecated alias for 'backend')")
     op.add_argument("--storage-backend", metavar="NAME",
                     help="set storage.backend field (the selected storage backend protocol name)")
     op.add_argument("--get", metavar="FIELD", help="read single field to stdout")

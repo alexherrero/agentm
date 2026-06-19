@@ -1296,10 +1296,26 @@ class TestReadConfigStateMode(unittest.TestCase):
             self._write_config(Path(tmp), json.dumps({"state_mode": "local"}))
             self.assertEqual(hm._read_config_state_mode(Path(tmp)), "local")
 
-    def test_reads_vault(self) -> None:
+    def test_reads_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            self._write_config(Path(tmp), json.dumps({"state_mode": "backend"}))
+            self.assertEqual(hm._read_config_state_mode(Path(tmp)), "backend")
+
+    def test_reads_vault_aliases_to_backend(self) -> None:
+        """LC-5: legacy state_mode:vault aliases to 'backend' at read time (no migration)."""
         with tempfile.TemporaryDirectory() as tmp:
             self._write_config(Path(tmp), json.dumps({"state_mode": "vault"}))
-            self.assertEqual(hm._read_config_state_mode(Path(tmp)), "vault")
+            self.assertEqual(hm._read_config_state_mode(Path(tmp)), "backend")
+
+    def test_vault_and_backend_produce_identical_resolution(self) -> None:
+        """LC-5 alias test: state_mode:vault and state_mode:backend resolve identically."""
+        with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
+            self._write_config(Path(tmp1), json.dumps({"state_mode": "vault"}))
+            self._write_config(Path(tmp2), json.dumps({"state_mode": "backend"}))
+            self.assertEqual(
+                hm._read_config_state_mode(Path(tmp1)),
+                hm._read_config_state_mode(Path(tmp2)),
+            )
 
     def test_absent_field_returns_none(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
