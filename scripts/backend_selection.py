@@ -13,10 +13,13 @@ deliberately not named `storage_*.py` and using no seam-verb name
 The resolution chain (first hit wins):
 
   1. An explicit `storage.backend` value in config → that protocol name.
-  2. else an existing `vault_path` (env `$MEMORY_VAULT_PATH` or config) → the
-     built-in `vault`, **seeded from `harness_memory.vault_path()`** — an existing
-     operator's vault is selected with zero re-setup, byte-identical.
-  3. else (fresh install, no vault) → `device-local`, the fresh-install default.
+  2. else (no explicit backend configured) → `device-local`, the fresh-install
+     default.
+
+V5-7 config-plane removed the former implicit step-2 that inferred `vault` from an
+existing `vault_path`. Vault selection is now always explicit: either `storage.backend=
+vault` (written by the installer, `agentm_config --vault-path`, or the first-read
+migration in `harness_memory._read_config_vault_path()`) or `device-local` by default.
 
 The chosen protocol is instantiated via `storage_seam.registry.get(<protocol>)`.
 Importing this module guarantees the two built-ins are registered (their modules
@@ -327,19 +330,18 @@ def _configured_backend(install_prefix: Optional[Path] = None) -> Optional[str]:
 def choose_protocol(
     *,
     install_prefix: Optional[Path] = None,
-    vault_root: Optional[Path] = None,
 ) -> str:
     """Resolve the storage backend *protocol name* per the V5-1 chain (no instantiation).
 
-    `vault_root` is the already-resolved `harness_memory.vault_path()` (passed in so
-    the chain stays pure / testable). The name "choose" is deliberate — never a
-    seam verb — so this resolver is never mistaken for a backend.
+    Returns the explicit `storage.backend` from config if set, otherwise the
+    `device-local` default. Vault selection is always explicit (V5-7 config-plane):
+    the caller must have written `storage.backend=vault` — implicit inference from
+    `vault_path` was removed. The name "choose" is deliberate — never a seam verb —
+    so this resolver is never mistaken for a backend.
     """
     explicit = _configured_backend(install_prefix)
     if explicit:
         return explicit
-    if vault_root is not None:
-        return _VAULT
     return _DEVICE_LOCAL
 
 
@@ -376,7 +378,7 @@ def select_backend(
     `$AGENTM_INSTALL_PREFIX` → `~/.claude`).
     """
     vault_root = harness_memory.vault_path()
-    protocol = choose_protocol(install_prefix=install_prefix, vault_root=vault_root)
+    protocol = choose_protocol(install_prefix=install_prefix)
 
     backend_cls = registry.get(protocol)
     if backend_cls is None:
@@ -397,8 +399,8 @@ def select_backend(
             # from vault_path() only.
             raise StorageSelectionError(
                 "storage backend 'vault' is selected but no vault_path is "
-                "configured to seed it — set vault_path (agentm_config "
-                "--vault-path <dir>) or change storage.backend."
+                "configured to seed it — set plugins.obsidian-vault.vault_path "
+                "(agentm_config --vault-path <dir>) or change storage.backend."
             )
         # V5-2 task 3 — the vault backend is re-homed into the obsidian-vault
         # plugin: discover + load *its* VaultBackend rather than the shadowed
@@ -546,8 +548,6 @@ def storage_preview(
     vault_root = harness_memory.vault_path()
     if explicit:
         protocol, origin = explicit, "configured (storage.backend)"
-    elif vault_root is not None:
-        protocol, origin = _VAULT, "existing vault_path"
     else:
         protocol, origin = _DEVICE_LOCAL, "fresh-install default"
 
@@ -562,8 +562,9 @@ def storage_preview(
                 "fail",
                 protocol,
                 "storage [FAIL] storage backend 'vault' is selected but no "
-                "vault_path is configured to seed it — set vault_path "
-                "(agentm_config --vault-path <dir>) or change storage.backend.",
+                "vault_path is configured to seed it — set "
+                "plugins.obsidian-vault.vault_path (agentm_config --vault-path "
+                "<dir>) or change storage.backend.",
             )
         # V5-2 task 3 — `vault` now requires the obsidian-vault plugin. Use the SAME
         # discovery the runtime guard uses (`_load_vault_plugin_backend`: locate +

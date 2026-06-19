@@ -121,7 +121,7 @@ class TestSelectBackend(unittest.TestCase):
 
     def test_choose_protocol_fresh_is_device_local(self) -> None:
         self.assertEqual(
-            bs.choose_protocol(vault_root=None), storage_device_local.PROTOCOL
+            bs.choose_protocol(), storage_device_local.PROTOCOL
         )
 
     # -- existing operator's vault ------------------------------------------
@@ -150,10 +150,11 @@ class TestSelectBackend(unittest.TestCase):
         # zero re-setup.
         self.assertEqual(backend.root, expected_root)
 
-    def test_choose_protocol_with_vault_root_is_vault(self) -> None:
-        self.assertEqual(
-            bs.choose_protocol(vault_root=Path(self.tmp)), storage_vault.PROTOCOL
-        )
+    def test_choose_protocol_explicit_vault_backend_is_vault(self) -> None:
+        # V5-7: vault selection is explicit only — choose_protocol() returns vault
+        # iff storage.backend=vault is configured; vault_root alone is not enough.
+        self.assertEqual(ac.main(["--storage-backend", "vault"]), 0)
+        self.assertEqual(bs.choose_protocol(), storage_vault.PROTOCOL)
 
     # -- explicit selection wins --------------------------------------------
 
@@ -186,10 +187,8 @@ class TestSelectBackend(unittest.TestCase):
 
     def test_choose_protocol_explicit_value_wins(self) -> None:
         self.assertEqual(ac.main(["--storage-backend", "some-future-backend"]), 0)
-        # Even with a vault_root present, the explicit name is returned verbatim.
-        self.assertEqual(
-            bs.choose_protocol(vault_root=Path(self.tmp)), "some-future-backend"
-        )
+        # Explicit storage.backend is returned verbatim regardless of vault_path.
+        self.assertEqual(bs.choose_protocol(), "some-future-backend")
 
 
 class TestVaultPluginDiscovery(unittest.TestCase):
