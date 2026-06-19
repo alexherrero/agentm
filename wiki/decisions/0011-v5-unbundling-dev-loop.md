@@ -74,7 +74,7 @@ The doc edits only stop the surviving docs from advertising deleted primitives a
 
 - The crickets `developer-workflows` / `code-review` / `wiki-maintenance` plugins remain the canonical providers and stay launched. **Re-audit trigger:** crickets retires, renames, or regresses any of them below the deleted agentm copies' behavior — then agentm either re-vendors a harness-shaped primitive (not a copy of crickets') or pins a crickets version floor.
 - The deleted primitives were true byte-duplicates, not agentm-specific forks. **Re-audit trigger:** a future need for an agentm-shaped phase the crickets generic can't express — it returns to `harness/`, owned by agentm, rather than as a vendored copy.
-- DC-1's deferred slice (`harness-context-session-start` + the auto-orchestration push surface) follows the orchestration out later. **Re-audit trigger:** V5-5 lands the three-way orchestration split.
+- DC-1's deferred slice (`harness-context-session-start` + the auto-orchestration push surface) follows the orchestration out later. **Re-audit trigger:** V5-5 lands the three-way orchestration split. **Trigger fired (v5.8.0 / v5.9.0):** V5-5 landed — the write-capable bridge (`phase_dispatch()`) is formalized and gate-checked; the baked-in orchestration call in the Developer plugin can now be retired via a separate crickets plan. The PM-half briefing trigger remains kernel-side until the crickets PM-trigger plan ships (gate lifted — `github-projects` exists; see [Orchestration bridge](Orchestration-Bridge) and [Auto-orchestration](Auto-Orchestration)).
 - Scaffolding decays with the model. **Re-audit trigger:** the underlying model ships a new major version — re-audit the whole slim (the operator's standing harness-maintenance principle).
 
 ## Related

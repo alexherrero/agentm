@@ -27,6 +27,7 @@
 - [AgentMemory context payload](AgentMemory-Context-Payload)
 - [Process seam](Process-Seam)
 - [Storage seam](Storage-Seam)
+- [Orchestration bridge](Orchestration-Bridge)
 - [Vault write protocol](Vault-Write-Protocol)
 - [Queue status lite](Queue-Status-Lite)
 - [Auto-orchestration config](Auto-Orchestration-Config)
