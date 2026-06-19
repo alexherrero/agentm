@@ -16,8 +16,10 @@ Sub-commands:
                           by --confidence: ≥ threshold auto-saves silently)
     plan-done-promotion — dumps progress.md tail past a byte cursor; advances cursor
     available           — exit 0 if vault accessible, 1 otherwise
-    phase-dispatch      — V4 #23: post-work reflect / post-release refresh
-                          (shells out to orchestration_phase.py; non-blocking)
+    phase-dispatch      — V5-5 orchestration bridge (LC-3): fire a named phase
+                          chain through the kernel core; always non-blocking;
+                          the importable ``phase_dispatch()`` function is the
+                          contract, the CLI verb is the shell shim over it
     read-state          — read a project state file via the resolver (device-local)
     write-state         — write a project state file via the resolver (device-local)
     documenter-context  — V4 #35: doc-write-time recall bundle (operator conventions
@@ -1534,14 +1536,44 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def phase_dispatch(*, phase: str, project_root: Optional[str], dry_run: bool) -> int:
-    """Shell out to the auto-orchestration phase dispatcher (V4 #23 task 5).
+# V5-5 orchestration bridge ([LC-3]) — the valid phase set is the contract;
+# the CLI argparse ``choices=`` mirrors this constant so they stay in sync.
+_BRIDGE_PHASES: frozenset = frozenset({"post-work", "post-release"})
 
-    `phase` is 'post-work' (reflect the just-finished session, dedup-guarded vs
-    the Stop hook) or 'post-release' (index-skills + discover-skills refresh).
-    Always returns 0 — graceful-skip when the vault is unavailable, the toolkit
-    isn't installed, or the dispatcher errors. NEVER blocks a phase.
+
+def phase_dispatch(
+    *, phase: str, project_root: Optional[str] = None, dry_run: bool = False
+) -> int:
+    """Orchestration bridge — fire a named phase chain through the kernel core.
+
+    This function IS the V5-5 write-capable sibling bridge ([LC-3]).  It is the
+    only path a plugin should use to fire a phase-triggered orchestration chain;
+    the plugin asks the kernel to fire-and-record, the plugin never touches the
+    state file.
+
+    Contract properties:
+    - **Non-blocking.** Always returns 0.  A phase is never wedged by
+      orchestration errors.
+    - **Graceful-skip.** Returns 0 with no side-effects when the vault is
+      unavailable or the memory toolkit is not installed.
+    - **Kernel-single-writer.** The state write happens inside the kernel
+      (``orchestration_phase.py`` → ``ao.save_state``); the bridge does not
+      touch ``auto-orchestration-state.json`` directly.
+    - **Write-capable sibling** (not the read-only process seam).  The bridge
+      fires writes through the kernel; V5-4's ``process_seam`` is read-only.
+
+    ``phase`` must be a member of ``_BRIDGE_PHASES``; ``ValueError`` is raised
+    for anything else.  The argparse ``choices=`` at the CLI layer mirrors this
+    set, so only a direct Python call with a bad value would reach this guard.
+
+    ``project_root`` defaults to cwd when ``None``.
+    ``dry_run=True`` prints the resolved dispatch plan without executing.
     """
+    if phase not in _BRIDGE_PHASES:
+        raise ValueError(
+            f"phase_dispatch: unknown phase {phase!r}; "
+            f"valid: {sorted(_BRIDGE_PHASES)}"
+        )
     v = vault_path()
     if v is None:
         return 0  # graceful-skip: no vault configured
