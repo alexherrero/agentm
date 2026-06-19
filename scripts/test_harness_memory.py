@@ -2322,11 +2322,21 @@ class TestRepoRegistryCLI(unittest.TestCase):
         self.assertIn("select_backend", out["reason"])
 
     def test_register_then_list_via_cli(self) -> None:
-        """Register two repos via CLI; list returns both with correct fields."""
+        """Register two repos via CLI; list returns both with correct fields.
+
+        Uses device-local backend via AGENTM_DEVICE_LOCAL_ROOT so the test
+        works in CI without the obsidian-vault plugin (V5-6 de-vaulting).
+        """
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            env = {"MEMORY_VAULT_PATH": str(vault)}
+            dl_root = Path(tmp) / "device_local"
+            dl_root.mkdir()
+            # Use device-local backend: clear vault selection, redirect root,
+            # sandbox AGENTM_INSTALL_PREFIX so no storage.backend config leaks.
+            env = {
+                "MEMORY_VAULT_PATH": "",        # delete — no vault selection
+                "AGENTM_DEVICE_LOCAL_ROOT": str(dl_root),
+                "AGENTM_INSTALL_PREFIX": str(Path(tmp) / "install_prefix"),
+            }
 
             reg1 = self._run(
                 "register", "agentm",
@@ -2356,11 +2366,19 @@ class TestRepoRegistryCLI(unittest.TestCase):
             self.assertNotIn("wiki_path", data["repos"][1])
 
     def test_unregister_via_cli(self) -> None:
-        """Unregister an existing repo via CLI; re-running is a no-op."""
+        """Unregister an existing repo via CLI; re-running is a no-op.
+
+        Uses device-local backend via AGENTM_DEVICE_LOCAL_ROOT so the test
+        works in CI without the obsidian-vault plugin (V5-6 de-vaulting).
+        """
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            vault.mkdir()
-            env = {"MEMORY_VAULT_PATH": str(vault)}
+            dl_root = Path(tmp) / "device_local"
+            dl_root.mkdir()
+            env = {
+                "MEMORY_VAULT_PATH": "",        # delete — no vault selection
+                "AGENTM_DEVICE_LOCAL_ROOT": str(dl_root),
+                "AGENTM_INSTALL_PREFIX": str(Path(tmp) / "install_prefix"),
+            }
 
             self._run("register", "agentm", "--root", "/a", env=env)
             res = self._run("unregister", "agentm", env=env)

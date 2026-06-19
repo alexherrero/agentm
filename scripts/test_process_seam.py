@@ -36,6 +36,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -180,16 +181,23 @@ class OfferSaveHere(_SeamFixture):
         self.assertEqual(seam.offer_save_here(self._ctx(), cand), [])
 
     def test_present_enriches_with_project_and_target(self) -> None:
+        # Needs a working backend. Use DeviceLocalBackend via AGENTM_DEVICE_LOCAL_ROOT
+        # so the test works in CI without the obsidian-vault plugin (V5-6 de-vaulting).
+        # MEMORY_VAULT_PATH stays set for is_available(); select_backend() is patched
+        # to return a DeviceLocalBackend pointed at the temp location.
         self._set_vault()
+        import storage_device_local as _sdl
+        dl_backend = _sdl.DeviceLocalBackend(self.root / "device_local")
         cand = {"kind": "decision", "slug": "x", "body": "b"}
-        out = seam.offer_save_here(self._ctx(), cand)
+        with unittest.mock.patch("backend_selection.select_backend", return_value=dl_backend):
+            out = seam.offer_save_here(self._ctx(), cand)
         self.assertEqual(len(out), 1)
         enriched = out[0]
         self.assertEqual(enriched["project"], _SLUG)
         self.assertEqual(enriched["kind"], "decision")  # original keys preserved
         self.assertEqual(enriched["body"], "b")
         self.assertIsNotNone(enriched["target"])
-        self.assertIn(_SLUG, enriched["target"])  # resolved vault target
+        self.assertIn(_SLUG, enriched["target"])  # resolved seam target key
 
     def test_phase_passed_through_onto_candidate(self) -> None:
         self._set_vault()

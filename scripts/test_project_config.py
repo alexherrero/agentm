@@ -13,6 +13,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -154,7 +155,14 @@ class TestRegisterIntegration(unittest.TestCase):
             old_env = os.environ.get("MEMORY_VAULT_PATH")
             os.environ["MEMORY_VAULT_PATH"] = str(vault)
             try:
-                config = pc.register(repo, registered_via="auto-detect")
+                # Patch select_backend to return the kernel VaultBackend so the
+                # test works in CI without the obsidian-vault plugin (V5-6).
+                from storage_vault import VaultBackend
+                vault_backend = VaultBackend(root=vault)
+                with unittest.mock.patch(
+                    "backend_selection.select_backend", return_value=vault_backend
+                ):
+                    config = pc.register(repo, registered_via="auto-detect")
             finally:
                 if old_env is None:
                     os.environ.pop("MEMORY_VAULT_PATH", None)
@@ -167,9 +175,7 @@ class TestRegisterIntegration(unittest.TestCase):
             self.assertEqual(data["vault_project"], "demo")
             self.assertIn("skills", data)
             self.assertEqual(data["registered_via"], "auto-detect")
-            # repo registered — read back via VaultBackend (MEMORY_VAULT_PATH points at vault).
-            from storage_vault import VaultBackend
-            vault_backend = VaultBackend(root=vault)
+            # repo registered — read back via same VaultBackend.
             slugs = [r.get("slug") for r in repo_registry.list_repos(vault_backend)]
             self.assertIn("demo", slugs)
             # returned config matches.

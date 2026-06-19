@@ -42,6 +42,7 @@ stays exactly as designed here.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from storage_seam import Capabilities, Info, Locator, StorageBackend, registry
@@ -56,10 +57,17 @@ PROTOCOL = "device-local"
 #: exactly as designed so the V5-3 ``AgentMemory → Agent`` rename reconciles here.
 _ROOT_PARTS = (".agentm", "memory")
 
+#: Env-var override for the device-local root. Set in CI / tests to redirect
+#: away from the real ``~/.agentm/memory`` without the vault plugin or a vault
+#: path. Never set by operators in production — this is a test-isolation escape
+#: hatch only.
+_AGENTM_DEVICE_LOCAL_ROOT_ENV = "AGENTM_DEVICE_LOCAL_ROOT"
+
 
 def _default_root() -> Path:
-    """``~/.agentm/memory`` — resolved against ``Path.home()`` at call time."""
-    return Path.home().joinpath(*_ROOT_PARTS)
+    """``~/.agentm/memory``, or $AGENTM_DEVICE_LOCAL_ROOT when set (CI/tests)."""
+    env = os.environ.get(_AGENTM_DEVICE_LOCAL_ROOT_ENV)
+    return Path(env) if env else Path.home().joinpath(*_ROOT_PARTS)
 
 
 class DeviceLocalBackend(StorageBackend):
