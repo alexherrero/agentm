@@ -137,7 +137,8 @@ run_lifecycle() {
   assert_equals  "$label release: post-release dispatch non-blocking (exit 0)" "$rc" "0"
   if [ "$vault_mode" = "1" ]; then
     assert_contains "$label work: post-work renders a dry-run plan"  "$pw" '"status"'
-    assert_contains "$label release: post-release runs index-skills" "$pr" 'index_skills.py'
+    assert_contains "$label release: post-release runs index-skills"    "$pr" 'index_skills.py'
+    assert_contains "$label release: post-release runs discover-skills" "$pr" 'discover_skills.py'
   else
     assert_equals  "$label work: post-work graceful-skips (no vault, empty)"  "$pw" ""
     assert_equals  "$label release: post-release graceful-skips (no vault)"   "$pr" ""
@@ -175,6 +176,26 @@ run_lifecycle "[local]" "$L_PROJ" "$L_PROJ/.harness" 0
 # device prefix nor the project tree (the register() guard skips it when vault is None).
 assert_absent "[local] isolation: no registry under device prefix" "$L_PREFIX/_meta/repos.json"
 assert_absent "[local] isolation: no registry under project tree"  "$L_PROJ/_meta/repos.json"
+
+# ── phase-dispatch bridge: session-marker scenarios ─────────────────────────
+# Verifies the concurrency-safe session-discovery that post-work relies on.
+# Relocated from verify-v4.sh (V5-5 task 4 fracture) — Developer-half owner.
+echo "verify-phases: ── bridge: session-marker scenarios ──"
+SM_PROJ="$SCRATCH/sm-proj"; mkdir -p "$SM_PROJ/.harness"
+SM_VAULT="$SCRATCH/sm-vault"; mkdir -p "$SM_VAULT"
+sm_hm() { env -u AGENTM_INSTALL_PREFIX MEMORY_VAULT_PATH="$SM_VAULT" HARNESS_MEMORY_TOOLKIT_PATH="$S" "$PY" "$HM" "$@"; }
+
+PW_SM0="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
+assert_contains "bridge: post-work no marker → no-session"          "$PW_SM0" '"status": "no-session"'
+printf 'session_id: s\ntranscript: /tmp/t.jsonl\n' > "$SM_PROJ/.harness/session-id-s.start"
+PW_SM1="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
+assert_contains "bridge: post-work single marker → dry-run plan"    "$PW_SM1" '"status": "dry-run"'
+assert_contains "bridge: post-work reflect uses --route"            "$PW_SM1" '--route'
+printf 'session_id: s2\ntranscript: /tmp/t2.jsonl\n' > "$SM_PROJ/.harness/session-id-s2.start"
+PW_SM2="$(sm_hm phase-dispatch post-work --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
+assert_contains "bridge: 2 markers → ambiguous-session"             "$PW_SM2" '"status": "ambiguous-session"'
+PR_SM="$(sm_hm phase-dispatch post-release --project-root "$SM_PROJ" --dry-run 2>/dev/null)"
+assert_contains "bridge: post-release runs discover-skills"         "$PR_SM"  'discover_skills.py'
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo
