@@ -260,7 +260,9 @@ def register_tools(mcp) -> None:
         # Resolve group: personal by default; projects/<project> if given.
         group = "personal"
         if project:
-            projects_seg = harness_memory._vault_projects_dir(vault).name
+            projects_seg = (
+                "projects" if (vault / "projects").is_dir() else "personal-projects"
+            )
             group = f"{projects_seg}/{project}"
 
         written = _save.save_entry(

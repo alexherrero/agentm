@@ -15,6 +15,9 @@ Where a phase write lands is decided by **two on-host configuration layers** —
 - **The repo-local marker** — `<repo>/.harness/.project-mode`. The optional per-repo override. When it reads `local`, state I/O routes to `<repo>/.harness/<file>` and never raises for a missing vault. It lives in the repo so it is reachable on a vault-less machine, and it **wins when present**.
 - **The device-level default** — `state_mode` (`"local"` | `"vault"`) in `<install-prefix>/.agentm-config.json`. This is "how agentm runs on this machine," read vault-free. `install.sh --local-state` writes it at install time; `scripts/agentm_config.py --state-mode local` flips it afterwards without re-running the installer. It is consulted when no repo-local marker is set; absent, the default is vault.
 
+> [!NOTE]
+> **V5-6 pending — `state_mode: vault` will alias to `state_mode: backend` at read time.** The non-local value is being renamed from `"vault"` to `"backend"` as part of the routing-plane de-vaulting (plan V5-6, task 3). Existing `state_mode: vault` entries in device config and `.harness/.project-mode` markers will alias to `"backend"` transparently — no operator action required. The `"local"` value and its semantics are unchanged. See [Seam-De-Vaulting-V5-6](Seam-De-Vaulting-V5-6) for the full arc context.
+
 Precedence is deterministic: an explicit repo-local `.project-mode=local` marker wins over the device-level `state_mode`. There is **no in-vault marker layer** — an earlier design that read a marker from `<vault>/_harness/` was removed, because configuration never lives in the vault. The mode is also never *inferred* from a missing `vault_path`: a transiently-unreachable vault must not split-brain the mode.
 
 ## Why explicit opt-in, not auto-detect

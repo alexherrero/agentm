@@ -315,45 +315,51 @@ _VAULT_PROJECTS_REL_NEW = "projects"
 _VAULT_PROJECTS_REL_LEGACY = "personal-projects"
 
 
-def _vault_projects_dir(vault: Path) -> Path:
-    """Return <vault>/projects/ if present, else <vault>/personal-projects/.
+def _vault_projects_dir(backend: "StorageBackend") -> "Locator":
+    """Return a Locator for projects/ (or personal-projects/ as legacy fallback).
 
-    Prefers the new (post-V4 #26) name. Falls back to the legacy name if
-    the operator hasn't run the vault rename yet. Returns the new path even
-    if neither exists — callers that need to write should target the new
-    layout.
+    Prefers the new (post-V4 #26) namespace. Falls back to the legacy name
+    when the backend holds that layout. Returns the new Locator even if
+    neither exists — callers that need to write should target the new layout.
 
-    No warning emitted here — that's task 3's `warn_once()` job, which wraps
-    this helper from the dispatcher path.
+    V5-6 de-vaulting: changed from vault: Path → backend: StorageBackend,
+    returns Locator instead of Path, so the routing layer learns no filesystem
+    assumption and the no-path-leak gate remains satisfied.
     """
-    new = vault / _VAULT_PROJECTS_REL_NEW
-    if new.is_dir():
+    from storage_seam import Locator  # already registered at import; lazy avoids issues
+    new = backend.resolve(_VAULT_PROJECTS_REL_NEW)
+    if backend.exists(new):
         return new
-    legacy = vault / _VAULT_PROJECTS_REL_LEGACY
-    if legacy.is_dir():
+    legacy = backend.resolve(_VAULT_PROJECTS_REL_LEGACY)
+    if backend.exists(legacy):
         return legacy
     # Neither exists — return new (preferred) for caller to mkdir as needed.
     return new
 
 
 def resolve_project(context: Optional[dict] = None) -> dict:
-    """Return a resolution dict: {slug, vault_path, project_root, layout}.
+    """Return a resolution dict: {slug, project_locator, backend, project_root, layout}.
 
-    Resolution chain (per plan #18 task 4 — `04-project-resolution.md`):
+    Resolution chain (V5-6 de-vaulting — routing plane onto the storage seam):
       1. Read the project slug via `vault_project.read_vault_project(cwd)`.
-      2. Resolve `<vault>/projects/<slug>/` (new) or `<vault>/personal-projects/<slug>/`
-         (legacy fallback). Prefer new layout.
-      3. Build the resolution dict.
+      2. Obtain the active StorageBackend via backend_selection.select_backend().
+      3. Resolve `backend.resolve("projects", slug)` (new) or
+         `backend.resolve("personal-projects", slug)` (legacy fallback).
+      4. Build the resolution dict.
 
     Returns dict fields:
       - `slug`: project slug string, or None if unresolvable.
-      - `vault_path`: Path to `<vault>/projects/<slug>/` (or legacy fallback),
-                      or None if vault unavailable / slug unresolvable.
+      - `project_locator`: Locator into the active backend at projects/<slug>/
+                           (or legacy fallback), or None if unavailable.
+      - `backend`: the active StorageBackend instance, or None if unavailable.
       - `project_root`: Path to the cwd / context-provided project root.
-      - `layout`: "new" | "legacy" | "none" — which vault layout the resolution
-                  used. Useful for the dispatcher's warn-once decision in task 3.
+      - `layout`: "new" | "legacy" | "none" — which namespace layout was used.
 
     Pure function; no side effects. Safe to call from any phase / hook.
+
+    Behavior-preserving (LC-1): on the obsidian-vault backend, project_locator
+    maps to the same bytes at the same vault path as the pre-V5-6 vault_path
+    field did — only the return type changes (Locator, not Path).
     """
     if context is None:
         context = {}
@@ -367,43 +373,55 @@ def resolve_project(context: Optional[dict] = None) -> dict:
     if slug is None:
         return {
             "slug": None,
-            "vault_path": None,
+            "project_locator": None,
+            "backend": None,
             "project_root": project_root,
             "layout": "none",
         }
 
-    v = vault_path()
-    if v is None:
+    # Lazy import backend_selection to avoid the circular-import that would
+    # result from a top-level import (backend_selection imports harness_memory).
+    try:
+        import backend_selection as _bs  # noqa: E402
+        backend = _bs.select_backend()
+    except Exception:
+        backend = None
+
+    if backend is None:
         return {
             "slug": slug,
-            "vault_path": None,
+            "project_locator": None,
+            "backend": None,
             "project_root": project_root,
             "layout": "none",
         }
 
-    new = v / _VAULT_PROJECTS_REL_NEW / slug
-    if new.is_dir():
+    new_loc = backend.resolve(_VAULT_PROJECTS_REL_NEW, slug)
+    if backend.exists(new_loc):
         return {
             "slug": slug,
-            "vault_path": new,
+            "project_locator": new_loc,
+            "backend": backend,
             "project_root": project_root,
             "layout": "new",
         }
 
-    legacy = v / _VAULT_PROJECTS_REL_LEGACY / slug
-    if legacy.is_dir():
+    legacy_loc = backend.resolve(_VAULT_PROJECTS_REL_LEGACY, slug)
+    if backend.exists(legacy_loc):
         return {
             "slug": slug,
-            "vault_path": legacy,
+            "project_locator": legacy_loc,
+            "backend": backend,
             "project_root": project_root,
             "layout": "legacy",
         }
 
-    # Project not yet present in vault — return new path so writes target
-    # the post-rename layout. Callers that need to mkdir do so explicitly.
+    # Project not yet present — return new locator so writes target the
+    # post-rename layout. Callers that need to mkdir do so explicitly.
     return {
         "slug": slug,
-        "vault_path": new,
+        "project_locator": new_loc,
+        "backend": backend,
         "project_root": project_root,
         "layout": "new",
     }
@@ -1112,8 +1130,13 @@ def _invoke_toolkit_save(
     if not save_py.is_file():
         return 127
     # Resolve which projects-dir segment to use (post-V4 #26 "projects" preferred;
-    # falls back to legacy "personal-projects" if rename not yet run).
-    projects_segment = _vault_projects_dir(vault).name
+    # falls back to legacy "personal-projects" if rename not yet run). Inlined
+    # here because _vault_projects_dir now takes a StorageBackend (V5-6).
+    projects_segment = (
+        _VAULT_PROJECTS_REL_NEW
+        if (vault / _VAULT_PROJECTS_REL_NEW).is_dir()
+        else _VAULT_PROJECTS_REL_LEGACY
+    )
     group = f"{projects_segment}/{project}"
     cmd = [
         sys.executable,
@@ -1174,7 +1197,11 @@ def offer_save(
     if should_prompt(confidence, mode=mode):
         # Preview + prompt
         thr = confidence_threshold()
-        projects_segment = _vault_projects_dir(v).name
+        projects_segment = (
+            _VAULT_PROJECTS_REL_NEW
+            if (v / _VAULT_PROJECTS_REL_NEW).is_dir()
+            else _VAULT_PROJECTS_REL_LEGACY
+        )
         preview_lines = [
             f"--- offer-save preview ({phase} → {projects_segment}/{project}) ---",
             f"kind: {kind}",

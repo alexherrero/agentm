@@ -157,8 +157,8 @@ def offer_save_here(context: Optional[dict], candidate: Any) -> list[dict]:
     phase = (context or {}).get("phase")
     if phase is not None:
         enriched.setdefault("phase", phase)
-    vault_target = resolution.get("vault_path")
-    enriched["target"] = str(vault_target) if vault_target else None
+    project_locator = resolution.get("project_locator")
+    enriched["target"] = project_locator.key if project_locator is not None else None
     return [enriched]
 
 

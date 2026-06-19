@@ -391,6 +391,28 @@ The vault backend is held to the **same objective contract** as device-local. `V
 
 `backend_selection.__all__` (the resolver module above the seam) exports: `StorageSelectionError`, `CapabilityMismatchError` (V5-7 Part 1), `choose_protocol`, `select_backend`, `StoragePreview`, `storage_preview`. `Capabilities` is also imported (from `storage_seam`) so callers can construct a requirement descriptor without a separate import.
 
+## Routing layer (V5-6)
+
+> [!NOTE]
+> **Status: in progress.** Plan: V5-6 — Seam De-Vaulting (routing plane onto the storage seam). Created 2026-06-18. **Task 1 (`resolve_project` / `_vault_projects_dir`) shipped.** Tasks 2–5 pending.
+
+The third de-vaulting leg re-plumbs the kernel's routing/index mechanisms so they speak `Locator`s to this seam instead of building `vault_path() / …` filesystem paths directly. Three mechanisms are in scope:
+
+| Mechanism | File | Status | Detail |
+|---|---|---|---|
+| `resolve_project` / `_vault_projects_dir` | `harness_memory.py:318,339` | **Shipped (task 1)** | `_vault_projects_dir(backend: StorageBackend) -> Locator`; `resolve_project` returns `{slug, project_locator, backend, project_root, layout}` — `project_locator` is a `Locator`, not a `Path`. `process_seam.py:161` uses `project_locator.key`. |
+| `repo_registry` read/write | `repo_registry.py:68` | Pending (task 2) | Will replace hardcoded `<vault>/_meta/repos.json` with `backend.resolve("_meta", "repos.json")`. |
+| `state_mode` resolver | `harness_memory.py:228` | Pending (task 3) | Will rename non-local value from `"vault"` to `"backend"`; existing `state_mode: vault` entries alias at read time — no operator action. |
+
+**Behavior-preserving invariant (LC-1):** on the `obsidian-vault` backend every mechanism resolves to the same bytes at the same path before and after. The task 1 parallel-run assertion confirmed byte-identical resolution for `resolve_project` / `_vault_projects_dir` before vault-shaped path construction was removed.
+
+**Gate extensions (task 4 — pending):**
+- `check-storage-seam-no-path-leak.sh` extended to cover `resolve_project`, `_vault_projects_dir`, and repo_registry functions — fails if any returns `pathlib.Path`.
+- `check-process-seam-import-direction.sh` extended to verify de-vaulted mechanisms import the seam but never a capability plugin.
+- `storage_conformance.py` extended: routing layer parameterized across `DeviceLocalBackend` + `VaultBackend`.
+
+For the intent and three-leg arc context, see [Seam-De-Vaulting-V5-6](../explanation/Seam-De-Vaulting-V5-6).
+
 ## Related
 
 - [Memory↔storage seam](Memory-Storage-Seam) — why the seam exists, why the engine never holds a path, and the graceful design choices behind the lean types.

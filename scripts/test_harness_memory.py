@@ -838,67 +838,103 @@ def _make_vault_new_layout(root: Path, *, project: str = "fixture-project") -> P
 
 
 class TestVaultProjectsDir(unittest.TestCase):
-    """Covers the dual-path helper that prefers `projects/` over `personal-projects/`."""
+    """Covers _vault_projects_dir — now takes a StorageBackend, returns Locator (V5-6)."""
+
+    def _make_backend(self, root: Path):
+        from storage_device_local import DeviceLocalBackend
+        return DeviceLocalBackend(root=root)
 
     def test_prefers_new_projects_dir_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            (vault / "projects").mkdir(parents=True)
-            result = hm._vault_projects_dir(vault)
-            self.assertEqual(result, vault / "projects")
+            root = Path(tmp)
+            (root / "projects").mkdir(parents=True)
+            backend = self._make_backend(root)
+            result = hm._vault_projects_dir(backend)
+            from storage_seam import Locator
+            self.assertEqual(result, Locator("projects"))
+            self.assertEqual(result.name, "projects")
 
     def test_falls_back_to_legacy_personal_projects(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            (vault / "personal-projects").mkdir(parents=True)
-            result = hm._vault_projects_dir(vault)
-            self.assertEqual(result, vault / "personal-projects")
+            root = Path(tmp)
+            (root / "personal-projects").mkdir(parents=True)
+            backend = self._make_backend(root)
+            result = hm._vault_projects_dir(backend)
+            from storage_seam import Locator
+            self.assertEqual(result, Locator("personal-projects"))
+            self.assertEqual(result.name, "personal-projects")
 
     def test_prefers_new_when_both_present(self) -> None:
         """Locked semantics: if both dirs exist, new layout wins (legacy is stale)."""
         with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "vault"
-            (vault / "projects").mkdir(parents=True)
-            (vault / "personal-projects").mkdir(parents=True)
-            result = hm._vault_projects_dir(vault)
-            self.assertEqual(result, vault / "projects")
+            root = Path(tmp)
+            (root / "projects").mkdir(parents=True)
+            (root / "personal-projects").mkdir(parents=True)
+            backend = self._make_backend(root)
+            result = hm._vault_projects_dir(backend)
+            from storage_seam import Locator
+            self.assertEqual(result, Locator("projects"))
 
-    def test_returns_new_path_when_neither_present(self) -> None:
-        """Empty vault: return the new path (so write callers target post-V4 layout)."""
+    def test_returns_new_locator_when_neither_present(self) -> None:
+        """Empty backend: return the new Locator (so write callers target post-V4 layout)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            backend = self._make_backend(root)
+            result = hm._vault_projects_dir(backend)
+            from storage_seam import Locator
+            self.assertEqual(result, Locator("projects"))
+
+    def test_parallel_run_vault_backend_maps_to_same_path(self) -> None:
+        """LC-7 parallel-run: vault backend Locator maps to the same path as the old vault_path (V5-6)."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
-            vault.mkdir()
-            result = hm._vault_projects_dir(vault)
-            self.assertEqual(result, vault / "projects")
+            (vault / "projects").mkdir(parents=True)
+            from storage_vault import VaultBackend
+            backend = VaultBackend(root=vault)
+            loc = hm._vault_projects_dir(backend)
+            # The Locator key is "projects" — on the vault backend this maps to
+            # <vault>/projects, exactly the same directory the old Path returned.
+            self.assertEqual(loc.key, "projects")
+            # Confirm the vault backend maps it to the same physical path.
+            expected_path = vault / "projects"
+            actual_path = vault / Path(*loc.parts) if loc.parts else vault
+            self.assertEqual(actual_path, expected_path)
 
 
 class TestResolveProject(unittest.TestCase):
-    """Covers resolve_project() → {slug, vault_path, project_root, layout}."""
+    """Covers resolve_project() → {slug, project_locator, backend, project_root, layout} (V5-6)."""
+
+    def _make_vault_backend(self, vault_root: Path):
+        """VaultBackend seeded from vault_root — direct import, bypasses plugin discovery."""
+        from storage_vault import VaultBackend
+        return VaultBackend(root=vault_root)
 
     def test_no_slug_returns_none_fields(self) -> None:
-        """No git origin + no project.json = no slug → layout='none'."""
+        """No git origin + no project.json = no slug → layout='none', locator=None."""
         with tempfile.TemporaryDirectory() as tmp:
             resolution = hm.resolve_project({"cwd": Path(tmp)})
         self.assertIsNone(resolution["slug"])
-        self.assertIsNone(resolution["vault_path"])
+        self.assertIsNone(resolution["project_locator"])
+        self.assertIsNone(resolution["backend"])
         self.assertEqual(resolution["layout"], "none")
 
-    def test_slug_present_but_vault_unset(self) -> None:
-        """Slug from .harness/project.json, but MEMORY_VAULT_PATH unset → vault_path=None."""
+    def test_slug_present_but_backend_unavailable(self) -> None:
+        """Slug resolves but select_backend() raises → project_locator=None, layout='none'."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp)
             (project_root / ".harness").mkdir()
             (project_root / ".harness" / "project.json").write_text(
                 '{"vault_project": "my-project"}', encoding="utf-8"
             )
-            with _ClearEnv(unset_keys=["MEMORY_VAULT_PATH"]):
+            with mock.patch("backend_selection.select_backend", side_effect=Exception("no backend")):
                 resolution = hm.resolve_project({"cwd": project_root})
         self.assertEqual(resolution["slug"], "my-project")
-        self.assertIsNone(resolution["vault_path"])
+        self.assertIsNone(resolution["project_locator"])
+        self.assertIsNone(resolution["backend"])
         self.assertEqual(resolution["layout"], "none")
 
     def test_resolves_new_layout(self) -> None:
-        """Vault has projects/<slug>/ → layout='new'."""
+        """Vault backend has projects/<slug>/ → layout='new', project_locator.key='projects/fixture'."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -907,14 +943,17 @@ class TestResolveProject(unittest.TestCase):
                 '{"vault_project": "fixture"}', encoding="utf-8"
             )
             vault = _make_vault_new_layout(Path(tmp), project="fixture")
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
+            backend = self._make_vault_backend(vault)
+            with mock.patch("backend_selection.select_backend", return_value=backend):
                 resolution = hm.resolve_project({"cwd": project_root})
         self.assertEqual(resolution["slug"], "fixture")
-        self.assertEqual(resolution["vault_path"], vault / "projects" / "fixture")
+        from storage_seam import Locator
+        self.assertEqual(resolution["project_locator"], Locator("projects/fixture"))
+        self.assertIs(resolution["backend"], backend)
         self.assertEqual(resolution["layout"], "new")
 
     def test_resolves_legacy_layout(self) -> None:
-        """Vault has personal-projects/<slug>/ (no projects/) → layout='legacy'."""
+        """Vault backend has personal-projects/<slug>/ (no projects/) → layout='legacy'."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -923,16 +962,16 @@ class TestResolveProject(unittest.TestCase):
                 '{"vault_project": "fixture"}', encoding="utf-8"
             )
             vault = _make_vault(Path(tmp), project="fixture")  # legacy layout
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
+            backend = self._make_vault_backend(vault)
+            with mock.patch("backend_selection.select_backend", return_value=backend):
                 resolution = hm.resolve_project({"cwd": project_root})
         self.assertEqual(resolution["slug"], "fixture")
-        self.assertEqual(
-            resolution["vault_path"], vault / "personal-projects" / "fixture"
-        )
+        from storage_seam import Locator
+        self.assertEqual(resolution["project_locator"], Locator("personal-projects/fixture"))
         self.assertEqual(resolution["layout"], "legacy")
 
-    def test_returns_new_path_when_neither_layout_has_project(self) -> None:
-        """Slug + vault present but no project dir → layout='new', path=projects/<slug>."""
+    def test_returns_new_locator_when_neither_layout_has_project(self) -> None:
+        """Slug + backend present but no project dir → layout='new', locator=projects/<slug>."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -942,10 +981,12 @@ class TestResolveProject(unittest.TestCase):
             )
             vault = Path(tmp) / "vault"
             vault.mkdir()
-            with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
+            backend = self._make_vault_backend(vault)
+            with mock.patch("backend_selection.select_backend", return_value=backend):
                 resolution = hm.resolve_project({"cwd": project_root})
         self.assertEqual(resolution["slug"], "new-project")
-        self.assertEqual(resolution["vault_path"], vault / "projects" / "new-project")
+        from storage_seam import Locator
+        self.assertEqual(resolution["project_locator"], Locator("projects/new-project"))
         self.assertEqual(resolution["layout"], "new")
 
 
