@@ -136,5 +136,36 @@ if [ "$lc8_fail" -ne 0 ]; then
   exit 1
 fi
 
+# LC-8 bridge extension (V5-5): kernel orchestration/toolkit scripts must not
+# import harness_memory (the bridge). The bridge calls them as subprocesses;
+# a toolkit script importing back creates a cycle and violates the one-way posture.
+BRIDGE_IMPORT_RE='^[[:space:]]*(import|from)[[:space:]]+harness_memory([^A-Za-z0-9_]|$)'
+BRIDGE_KERNEL_DIR="$ROOT/harness/skills/memory/scripts"
+
+bridge_fail=0
+bridge_hits=""
+
+if [ -d "$BRIDGE_KERNEL_DIR" ]; then
+  while IFS= read -r f; do
+    base="$(basename "$f")"
+    case "$base" in test_*.py) continue ;; esac  # tests import the bridge by design
+    m="$(grep -nHE "$BRIDGE_IMPORT_RE" "$f" 2>/dev/null || true)"
+    if [ -n "$m" ]; then
+      bridge_hits+="$m"$'\n'
+      bridge_fail=1
+    fi
+  done < <(find "$BRIDGE_KERNEL_DIR" -type f -name '*.py' 2>/dev/null)
+fi
+
+if [ "$bridge_fail" -ne 0 ]; then
+  echo "check-process-seam-import-direction: a kernel toolkit script imports harness_memory (LC-8 bridge) —" >&2
+  printf '%s' "$bridge_hits" | sed 's/^/    /' >&2
+  echo "" >&2
+  echo "  LC-8 bridge: harness_memory.py (the bridge) calls toolkit scripts as" >&2
+  echo "  subprocesses — never the reverse. A toolkit script importing harness_memory" >&2
+  echo "  creates a bridge back-edge. Remove the import (V5-5)." >&2
+  exit 1
+fi
+
 echo "check-process-seam-import-direction: clean — the seam→engine edge is one-way."
 exit 0

@@ -552,6 +552,40 @@ class ImportDirectionGate(unittest.TestCase):
         proc = _run_import_gate(self.root)
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_bridge_lc8_fails_on_toolkit_back_edge(self) -> None:
+        # V5-5 LC-8 bridge: a kernel toolkit script importing harness_memory is
+        # a forbidden back-edge. The check scans harness/skills/memory/scripts/.
+        toolkit_dir = self.root / "harness" / "skills" / "memory" / "scripts"
+        toolkit_dir.mkdir(parents=True)
+        (toolkit_dir / "auto_orchestration.py").write_text(
+            "import " + "harness_memory\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("harness_memory", proc.stderr)
+
+    def test_bridge_lc8_fails_on_toolkit_from_import_form(self) -> None:
+        # from-import form of harness_memory in a toolkit script is also forbidden.
+        toolkit_dir = self.root / "harness" / "skills" / "memory" / "scripts"
+        toolkit_dir.mkdir(parents=True)
+        (toolkit_dir / "orchestration_phase.py").write_text(
+            "from " + "harness_memory import phase_dispatch\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 1, proc.stdout)
+        self.assertIn("orchestration_phase.py", proc.stderr)
+
+    def test_bridge_lc8_ignores_test_files_in_toolkit(self) -> None:
+        # test_*.py files in the toolkit dir are excluded — they import the bridge
+        # by design (that is what they test).
+        toolkit_dir = self.root / "harness" / "skills" / "memory" / "scripts"
+        toolkit_dir.mkdir(parents=True)
+        (toolkit_dir / "test_auto_orchestration.py").write_text(
+            "import " + "harness_memory\n", encoding="utf-8"
+        )
+        proc = _run_import_gate(self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
