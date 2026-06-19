@@ -26,6 +26,7 @@ This page is the index. The homepage links here once instead of listing every AD
 - [ADR 0017 — MCP server design: singleton-HTTP broker, four tools, loopback-first](0017-mcp-server-design)
 - [ADR 0018 — V5-3 storage cutover: delete vault backend from kernel, device-local is canonical](0018-v5-3-storage-cutover)
 - [ADR 0019 — V5-6 routing-plane de-vaulting: `resolve_project`, `repo_registry`, and `state_mode` route through the storage seam](0019-v5-6-routing-plane-devaulting)
+- [ADR 0020 — Backend-aware harness state: route `harness_state_dir` / `read_state_file` / `write_state_file` through the storage seam](0020-backend-aware-harness-state)
 
 ## See also
 

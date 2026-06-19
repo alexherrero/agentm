@@ -95,8 +95,17 @@ The vault top-level area `personal-private/` renames to `personal/` in the same 
 - **The device-local `.harness/` path is stable.** All state I/O now converges on `<project_root>/.harness/`. **Re-audit trigger:** a move of the harness state dir (e.g. to `<project_root>/.agentm/`) — then update `harness_state_dir` and all callers.
 - **The routing/index layer (LC-1) remains read-only with respect to state.** `resolve_project`, `_vault_projects_dir`, etc. probe for vault identity but do not write state. **Re-audit trigger:** any proposal to write state through the routing layer — route that through the seam instead.
 
+## Amendment — 2026-06-19 (ADR 0020 reverses DC-1)
+
+**DC-1 is reversed by [ADR 0020](0020-backend-aware-harness-state.md).** DC-1 made `harness_state_dir` / `read_state_file` / `write_state_file` device-local *only* — always `<project_root>/.harness/`, never a vault path. That choice broke the surfacing of synced harness state: on a machine with a synced backend active (`storage.backend=vault`), the operator's PLAN.md / ROADMAP.md / progress.md live in `<vault>/projects/<slug>/_harness/`, but the kernel's state functions read the empty device-local `.harness/` instead — so the SessionStart hook never injected them.
+
+ADR 0020 makes those three functions **backend-aware**: they route through the storage seam to `<vault>/projects/<slug>/_harness/` when a *live synced backend* is active (discriminated by `backend.capabilities.sync`, not by the presence of a `vault_path` config key), and **gracefully degrade** to device-local `<project_root>/.harness/` when no synced backend resolves (vault absent, fresh install, or a `.harness/.project-mode=local` opt-out). This is not a return to the pre-V5-3 vault-routing tier DC-1 deleted: it routes through the V5-6 `resolve_project` seam rather than the old `vault_path()` probe-and-prefer ordering, and the `.project-mode=local` opt-out still wins over a synced backend.
+
+**DC-2 through DC-7 stand unchanged.** `phase_recall` → `""` (DC-2), `resolve_documenter_context` → `None` (DC-3), the `vault_path()` fail-loud guard (DC-4), the `$MEMORY_VAULT_PATH` graceful-skip (DC-5), the retained routing/index layer (DC-6), and the `personal-private/` → `personal/` rename (DC-7) are all untouched. Only the device-local-only state-I/O decision (DC-1) is reversed; the load-bearing assumption *"the device-local `.harness/` path is stable / all state I/O converges on `<project_root>/.harness/`"* is the one ADR 0020 updates.
+
 ## Related
 
+- [ADR 0020 — Backend-aware harness state](0020-backend-aware-harness-state.md) — reverses DC-1: state I/O is backend-aware again (synced backend → vault, else device-local), routed through the V5-6 seam. See the Amendment above.
 - [ADR 0013 — The memory↔storage seam](0013-storage-seam-fail-loud-selection.md) — established the seam and explicitly deferred the engine cutover (DC-6); this ADR closes that deferral. ADR 0013's two "negative" V5-3 bullets are resolved by this ADR.
 - [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop.md) — set the direction of "memory engine is what only agentm provides"; V5-3 completes the kernel-side separation.
 - [ADR 0010 — Vault internal taxonomy](0010-vault-internal-taxonomy.md) — its first re-audit trigger (the `personal-private/` → `personal/` rename) fires in this release; see the Amendment 2026-06-18 in that ADR.
