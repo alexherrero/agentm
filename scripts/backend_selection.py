@@ -620,12 +620,25 @@ def storage_preview(
     )
 
 
-def _doctor_main(argv: Optional[list[str]] = None) -> int:
+def _doctor_main(
+    argv: Optional[list[str]] = None,
+    *,
+    device_local_root: Optional[Path | str] = None,
+    vault_lock_root: Optional[Path | str] = None,
+    vault_plugin_scripts: Optional[Path | str] = None,
+) -> int:
     """CLI entry for the `doctor` storage check: print the preview row, map status → exit code.
 
     Exit 1 only on a `"fail"` row (the engine will refuse at runtime); `"ok"` and
     `"warn"` exit 0 (a WARN is never a hard install failure). `doctor` reads the
     `[OK]`/`[WARN]`/`[FAIL]` token from the printed line for the per-row status.
+
+    ``--requires <CAPS>`` (V5-7): comma-separated capability names to pre-flight.
+    Validates names first (unknown names → error, exit 1, no backend touched), then
+    calls ``select_backend(required=...)`` and prints ``PASS`` or ``FAIL`` with the
+    outcome. Injection params (``device_local_root``, ``vault_lock_root``,
+    ``vault_plugin_scripts``) are forwarded to ``select_backend`` and used only in
+    tests — they keep tests off the operator's real home / vault.
     """
     import argparse
 
@@ -638,8 +651,56 @@ def _doctor_main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="print the selected-backend preview (doctor structural check)",
     )
-    parser.parse_args(argv)  # `--doctor` is the only (default) mode
-    preview = storage_preview()
+    parser.add_argument(
+        "--requires",
+        metavar="CAPS",
+        default=None,
+        help=(
+            "comma-separated capability names to check before any real operation "
+            "(e.g. --requires concurrent_writers,encryption)"
+        ),
+    )
+    args = parser.parse_args(argv)
+
+    if args.requires is not None:
+        valid_names = {f.name for f in dataclasses.fields(Capabilities)}
+        requested = [n.strip() for n in args.requires.split(",") if n.strip()]
+        unknown = [n for n in requested if n not in valid_names]
+        if unknown:
+            print(
+                f"error: unknown capability name(s): {', '.join(unknown)}. "
+                f"Valid names: {', '.join(sorted(valid_names))}",
+                file=sys.stderr,
+            )
+            return 1
+        req = Capabilities(**{name: True for name in requested})
+        try:
+            select_backend(
+                required=req,
+                device_local_root=device_local_root,
+                vault_lock_root=vault_lock_root,
+                vault_plugin_scripts=vault_plugin_scripts,
+            )
+        except CapabilityMismatchError as exc:
+            print(f"FAIL: {exc}")
+            return 1
+        except StorageSelectionError as exc:
+            print(f"FAIL: {exc}")
+            return 1
+        # Resolve the protocol name for the PASS message via the read-only preview.
+        preview = storage_preview(
+            device_local_root=device_local_root,
+            vault_plugin_scripts=vault_plugin_scripts,
+        )
+        caps_str = ", ".join(requested)
+        print(f"PASS: backend {preview.protocol!r} satisfies required capabilities: {caps_str}")
+        return 0
+
+    # No --requires → existing behavior: print the preview row.
+    preview = storage_preview(
+        device_local_root=device_local_root,
+        vault_plugin_scripts=vault_plugin_scripts,
+    )
     print(preview.line)
     return 1 if preview.status == "fail" else 0
 

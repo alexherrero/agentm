@@ -1,7 +1,7 @@
 # How to choose and configure the storage backend
 
 > [!NOTE]
-> **Status: implemented** (part-5 **tasks 1–4 of 4 shipped**) — describes the **V5-1 part 5** behavior (`.harness/PLAN.md` — `selection-and-fail-loud`). **Shipped:** the `storage.backend` config key (the `--storage-backend` setter, task 1), the [selection resolver](Storage-Seam#the-selection-resolver) (task 1), the kernel [capabilities-read](Storage-Seam#the-capabilities-type) (task 2), the polished install-the-plugin [fail-loud refusal](Storage-Seam#the-fail-loud-guard) (task 3), and — task 4, this page — the [`doctor` storage preview](#what-okwarnfail-mean). Part 5 ships **selection + the fail-loud guard + the doctor preview only** — the engine cutover (routing `harness_state_dir` / `read_state_file` / `write_state_file` / `phase_recall` / `resolve_documenter_context` to device-local exclusively) shipped separately in **V5-3 ([ADR 0018](0018-v5-3-storage-cutover))** as part of v5.5.0.
+> **Status: implemented** (part-5 **tasks 1–4 of 4 shipped** + **V5-7 Part 2 shipped**) — describes the **V5-1 part 5** behavior (`.harness/PLAN.md` — `selection-and-fail-loud`). **Shipped:** the `storage.backend` config key (the `--storage-backend` setter, task 1), the [selection resolver](Storage-Seam#the-selection-resolver) (task 1), the kernel [capabilities-read](Storage-Seam#the-capabilities-type) (task 2), the polished install-the-plugin [fail-loud refusal](Storage-Seam#the-fail-loud-guard) (task 3), and — task 4, this page — the [`doctor` storage preview](#what-okwarnfail-mean). **V5-7 Part 2 (shipped):** `--requires <CAPS>` flag on `python3 scripts/backend_selection.py` for operator capability pre-flight — see [step 4](#step-4-optional-pre-flight-a-capability-requirement). Part 5 ships **selection + the fail-loud guard + the doctor preview only** — the engine cutover (routing `harness_state_dir` / `read_state_file` / `write_state_file` / `phase_recall` / `resolve_documenter_context` to device-local exclusively) shipped separately in **V5-3 ([ADR 0018](0018-v5-3-storage-cutover))** as part of v5.5.0.
 >
 > **Goal:** Tell agentm which [storage backend](Storage-Seam) the memory engine should use, and confirm — before any memory operation could refuse — that the named backend's plugin is installed.
 > **Prereqs:** agentm with V5-1 part 5 installed; `python3` on `PATH`; the [config CLI](Installer-CLI#config-cli--agentm_configpy) (`scripts/agentm_config.py`).
@@ -50,6 +50,34 @@ The selected backend resolves from the on-host `.agentm-config.json` ([config re
 
    The fix is in the message: install the named plugin, or set `storage.backend` back to a registered name with the setter from step 2.
 
+## Step 4 (optional): pre-flight a capability requirement {#step-4-optional-pre-flight-a-capability-requirement}
+
+Use `--requires` to confirm the selected backend satisfies a named capability before any memory operation could refuse. This is the operator-facing surface of the `required=` parameter on `select_backend` (V5-7):
+
+```sh
+python3 scripts/backend_selection.py --requires concurrent_writers,encryption
+```
+
+Pass a comma-separated list of capability names from the `Capabilities` dataclass (`concurrent_writers`, `conflict_files`, `encryption`, `sync`). The flag validates names first — an unknown name prints an error to stderr and exits 1 without touching any backend:
+
+```
+error: unknown capability name(s): encryp. Valid names: concurrent_writers, conflict_files, encryption, sync
+```
+
+On valid names it calls `select_backend(required=...)` and prints exactly one line:
+
+```
+PASS: backend 'vault' satisfies required capabilities: concurrent_writers, encryption
+```
+
+or
+
+```
+FAIL: backend 'device-local' does not satisfy required capabilities: concurrent_writers, encryption
+```
+
+Exit code is `0` on `PASS`, `1` on `FAIL` (including an unregistered backend or missing vault path, which also print `FAIL`). Use this in install scripts or CI environment checks to gate on a specific backend capability before starting a long operation. No backend is constructed if name validation fails; construction happens only when the name check passes.
+
 ## What `[OK]`/`[WARN]`/`[FAIL]` mean
 
 The preview emits exactly one status row. The same `--doctor` exit code drives whether the `doctor` skill reports a hard failure:
@@ -85,9 +113,11 @@ The `[FAIL]` row proving the preview never silently demotes to `device-local` is
 | `storage_preview(...)` — read-only resolution, never constructs a backend | [`scripts/backend_selection.py#L255`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L255) |
 | `[FAIL]` message reuses the guard's `_install_plugin_message` (byte-identical) | [`#L293`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L293) (guard at [`#L196`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L196)) |
 | `device-local` root writability probe (`_root_is_writable`) | [`scripts/backend_selection.py#L240`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L240) |
-| `--doctor` CLI entry + status→exit mapping (`_doctor_main`) | [`scripts/backend_selection.py#L341`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L341), runnable via `if __name__ == "__main__"` at [`#L365`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L365) |
+| `--doctor` CLI entry + status→exit mapping (`_doctor_main`) | [`scripts/backend_selection.py#L623`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L623), runnable via `if __name__ == "__main__"` at [`#L708`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L708) |
+| `--requires <CAPS>` flag on `_doctor_main` (V5-7 Part 2) — name validation + `select_backend(required=...)` + `PASS`/`FAIL` output | [`scripts/backend_selection.py#L655`](https://github.com/alexherrero/agentm/blob/main/scripts/backend_selection.py#L655) |
 | `doctor` skill structural check `4d` | [`harness/skills/doctor.md`](https://github.com/alexherrero/agentm/blob/main/harness/skills/doctor.md) (Claude Code adapter: `adapters/claude-code/skills/doctor/SKILL.md`) |
 | Tests — `TestStoragePreview` (6 cases) | [`scripts/test_backend_selection.py#L324`](https://github.com/alexherrero/agentm/blob/main/scripts/test_backend_selection.py#L324) |
+| Tests — `TestDoctorRequires` (5 cases: unknown field, mismatch, satisfied cap, multiple unknown, no-flag compat) | [`scripts/test_backend_selection.py`](https://github.com/alexherrero/agentm/blob/main/scripts/test_backend_selection.py) |
 
 ## Related
 

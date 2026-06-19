@@ -835,6 +835,93 @@ class TestStoragePreview(unittest.TestCase):
         self.assertEqual(rc, 1)
 
 
+class TestDoctorRequires(unittest.TestCase):
+    """V5-7: _doctor_main --requires flag — pre-flight capability check.
+
+    Tests call ``_doctor_main()`` directly (not via subprocess) with injected
+    roots so the operator's real home / vault are never touched. The unknown-field
+    validation test exercises the path that fires before any backend is resolved;
+    the FAIL test uses device-local (all caps False) + a True requirement; the PASS
+    test uses the vault plugin fixture (concurrent_writers=True).
+    """
+
+    def setUp(self) -> None:
+        self.tmp = tempfile.mkdtemp(prefix="agentm-doctor-requires-test-")
+        self.prefix = Path(self.tmp) / "prefix"
+        self.prefix.mkdir(parents=True, exist_ok=True)
+        self.device_root = Path(self.tmp) / "device-local-root"
+        self.lock_root = Path(self.tmp) / "locks"
+        self.env = _Env(self.prefix)
+        self.env.__enter__()
+
+    def tearDown(self) -> None:
+        self.env.__exit__(None, None, None)
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def _run(self, *args, **kwargs):
+        """Call _doctor_main, capturing stdout + stderr; return (rc, stdout, stderr)."""
+        import contextlib
+        import io
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = bs._doctor_main(list(args), **kwargs)
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_unknown_field_exits_nonzero_before_backend(self) -> None:
+        # Validation fires before any backend is resolved — device root stays uncreated.
+        rc, _out, err = self._run(
+            "--doctor", "--requires", "not_a_real_capability",
+            device_local_root=self.device_root,
+        )
+        self.assertNotEqual(rc, 0)
+        self.assertIn("unknown", err)
+        self.assertIn("not_a_real_capability", err)
+        self.assertFalse(self.device_root.exists(), "backend was constructed despite unknown field")
+
+    def test_mismatched_capability_prints_fail_and_exits_1(self) -> None:
+        # Device-local has concurrent_writers=False; requiring True → FAIL, exit 1.
+        rc, out, _err = self._run(
+            "--doctor", "--requires", "concurrent_writers",
+            device_local_root=self.device_root,
+        )
+        self.assertEqual(rc, 1)
+        self.assertIn("FAIL", out)
+        self.assertIn("concurrent_writers", out)
+
+    def test_satisfied_capability_prints_pass_and_exits_0(self) -> None:
+        # Vault backend (concurrent_writers=True) + --requires concurrent_writers → PASS.
+        vault = Path(self.tmp) / "vault"
+        vault.mkdir()
+        import agentm_config as ac
+        self.assertEqual(ac.main(["--vault-path", str(vault)]), 0)
+        plugin_scripts = _install_plugin_fixture(Path(self.tmp))
+        rc, out, _err = self._run(
+            "--doctor", "--requires", "concurrent_writers",
+            vault_lock_root=self.lock_root,
+            vault_plugin_scripts=plugin_scripts,
+        )
+        self.assertEqual(rc, 0)
+        self.assertIn("PASS", out)
+        self.assertIn("concurrent_writers", out)
+
+    def test_multiple_unknown_fields_all_named(self) -> None:
+        rc, _out, err = self._run(
+            "--doctor", "--requires", "not_real,also_fake",
+            device_local_root=self.device_root,
+        )
+        self.assertNotEqual(rc, 0)
+        self.assertIn("not_real", err)
+        self.assertIn("also_fake", err)
+
+    def test_no_requires_flag_preserves_existing_behavior(self) -> None:
+        # Without --requires, doctor prints the standard preview row.
+        rc, out, _err = self._run("--doctor", device_local_root=self.device_root)
+        self.assertEqual(rc, 0)
+        self.assertIn("[OK]", out)
+        self.assertIn("device-local", out)
+
+
 class TestCapabilityMatching(unittest.TestCase):
     """V5-7: select_backend(required=...) subset check + CapabilityMismatchError.
 
