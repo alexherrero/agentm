@@ -13,13 +13,17 @@ deliberately not named `storage_*.py` and using no seam-verb name
 The resolution chain (first hit wins):
 
   1. An explicit `storage.backend` value in config → that protocol name.
-  2. else (no explicit backend configured) → `device-local`, the fresh-install
+  2. `$MEMORY_VAULT_PATH` env var set (non-empty) → `vault` (the env-based escape
+     hatch; setting this env var IS explicit vault selection).
+  3. else (no explicit backend configured) → `device-local`, the fresh-install
      default.
 
-V5-7 config-plane removed the former implicit step-2 that inferred `vault` from an
-existing `vault_path`. Vault selection is now always explicit: either `storage.backend=
-vault` (written by the installer, `agentm_config --vault-path`, or the first-read
-migration in `harness_memory._read_config_vault_path()`) or `device-local` by default.
+V5-7 config-plane removed the former implicit step-2 that inferred `vault` from a
+config-supplied `vault_path`. That form of implicit inference is gone: the operator
+must set `storage.backend=vault` in config (written by the installer, `agentm_config
+--vault-path`, or the first-read migration in `harness_memory._read_config_vault_path()`)
+**or** use the `$MEMORY_VAULT_PATH` env override, which has always implied vault
+selection. Step 2 here is the env-override path, not the old config inference.
 
 The chosen protocol is instantiated via `storage_seam.registry.get(<protocol>)`.
 Importing this module guarantees the two built-ins are registered (their modules
@@ -333,15 +337,21 @@ def choose_protocol(
 ) -> str:
     """Resolve the storage backend *protocol name* per the V5-1 chain (no instantiation).
 
-    Returns the explicit `storage.backend` from config if set, otherwise the
-    `device-local` default. Vault selection is always explicit (V5-7 config-plane):
-    the caller must have written `storage.backend=vault` — implicit inference from
-    `vault_path` was removed. The name "choose" is deliberate — never a seam verb —
-    so this resolver is never mistaken for a backend.
+    Resolution order (first hit wins):
+    1. Explicit `storage.backend` in config → that protocol name.
+    2. `$MEMORY_VAULT_PATH` env var set (non-empty) → `vault` (env-based escape hatch).
+    3. else → `device-local` (fresh-install default).
+
+    V5-7 removed implicit vault inference from a config-supplied `vault_path`;
+    `$MEMORY_VAULT_PATH` is explicit — setting the env var IS selecting vault.
+    The name "choose" is deliberate — never a seam verb — so this resolver is
+    never mistaken for a backend.
     """
     explicit = _configured_backend(install_prefix)
     if explicit:
         return explicit
+    if os.environ.get("MEMORY_VAULT_PATH", "").strip():
+        return _VAULT
     return _DEVICE_LOCAL
 
 
@@ -548,6 +558,8 @@ def storage_preview(
     vault_root = harness_memory.vault_path()
     if explicit:
         protocol, origin = explicit, "configured (storage.backend)"
+    elif os.environ.get("MEMORY_VAULT_PATH", "").strip():
+        protocol, origin = _VAULT, "$MEMORY_VAULT_PATH env override"
     else:
         protocol, origin = _DEVICE_LOCAL, "fresh-install default"
 

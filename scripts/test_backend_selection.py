@@ -156,6 +156,18 @@ class TestSelectBackend(unittest.TestCase):
         self.assertEqual(ac.main(["--storage-backend", "vault"]), 0)
         self.assertEqual(bs.choose_protocol(), storage_vault.PROTOCOL)
 
+    def test_choose_protocol_memory_vault_path_env_is_vault(self) -> None:
+        # $MEMORY_VAULT_PATH env var set → vault (the env-based escape hatch).
+        # Regression test: V5-7 implicit-inference removal must not break the env path.
+        old = os.environ.pop("MEMORY_VAULT_PATH", None)
+        os.environ["MEMORY_VAULT_PATH"] = "/tmp/fake-vault-for-protocol-test"
+        try:
+            self.assertEqual(bs.choose_protocol(), storage_vault.PROTOCOL)
+        finally:
+            os.environ.pop("MEMORY_VAULT_PATH", None)
+            if old is not None:
+                os.environ["MEMORY_VAULT_PATH"] = old
+
     # -- explicit selection wins --------------------------------------------
 
     def test_explicit_storage_backend_wins_over_vault_path(self) -> None:
