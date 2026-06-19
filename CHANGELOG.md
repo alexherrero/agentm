@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.8.0] — 2026-06-19 — V5-7 config-plane: plugin-namespaced vault_path + explicit backend selection
+
+**MINOR.** The kernel no longer owns obsidian-vault's config. `vault_path` moves from the flat kernel key `"vault_path"` to `"plugins.obsidian-vault.vault_path"` — the first plugin-namespaced config key. Existing operators self-heal on first use: `_read_config_vault_path()` detects the legacy flat key, atomically writes both the new key and `storage.backend=vault`, and emits a one-time deprecation warning — no manual migration required. `choose_protocol()` loses its implicit step-2 vault-inference branch: vault selection is now always explicit (either `storage.backend=vault` in config, set by the migration / installer / `agentm_config --vault-path`, or `device-local` as the default). The resolution chain collapses from 3 steps to 2. `harness_memory.vault_path()` public API is unchanged; only what it reads from config changes. Gates: 20/20, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-7 — `harness_memory` plugin-namespaced vault_path read + first-read migration (`6b6dd17`).** `_read_config_vault_path()` reads `plugins.obsidian-vault.vault_path` first; falls back to legacy flat `"vault_path"` key; on first read of an accessible legacy-key vault, atomically writes `plugins.obsidian-vault.vault_path` + `storage.backend=vault` (guards: preserves an existing explicit non-vault backend). Idempotent. `_PLUGIN_VAULT_PATH_KEY` constant. `_reset_warn_state()` resets migration flag for test isolation. 6 new migration tests.
+
+- **V5-7 — `agentm_config` writes plugin-namespaced key + `storage.backend` (`07e3293`).** `--vault-path <dir>` now writes `plugins.obsidian-vault.vault_path` + `storage.backend=vault` instead of flat `vault_path`. `--get vault_path` reads plugin key first with legacy fallback. `--unset vault_path` removes both keys. `_PLUGIN_VAULT_PATH_KEY` constant mirrors `harness_memory`. 3 new backward-compat tests.
+
+- **V5-7 — `choose_protocol()` vault_root parameter removed + implicit inference eliminated (`31f1ba9`).** `vault_root` removed from `choose_protocol()` signature entirely; step-2 `if vault_root is not None: return _VAULT` branch removed. Same removal in `_check_vault_protocol_preview()`. `select_backend()` no longer passes `vault_root` to `choose_protocol()`. Error messages updated to reference `plugins.obsidian-vault.vault_path`. `test_choose_protocol_with_vault_root_is_vault` replaced by `test_choose_protocol_explicit_vault_backend_is_vault` (explicit `storage.backend=vault` → vault; implicit inference → device-local). Module docstring and `choose_protocol()` docstring updated to describe the 2-step chain.
+
+### Internal
+
+- **V5-7 — `choose_protocol()` env-var escape hatch fix (`bab0cfd`).** V5-7's implicit-inference removal also accidentally broke `$MEMORY_VAULT_PATH` — the env-based escape hatch. Setting `$MEMORY_VAULT_PATH` IS explicit vault selection (not config inference); re-added as step 2 of the resolution chain in both `choose_protocol()` and `_check_vault_protocol_preview()`. Regression test `test_choose_protocol_memory_vault_path_env_is_vault` added. `verify-phases` vault pass was failing in CI (no config file) but passing locally (config had `storage.backend=vault`).
+
+- **V5-7 — ADR 0013 amendment + docs sweep (`4615f45`, `a864465`).** ADR 0013 DC-4 section documents the step-2 removal. `wiki/reference/Storage-Seam.md` resolution chain updated to 3 steps (restored); `choose_protocol()` signature row updated. `wiki/designs/memory-os-architecture.md` all 3 V5-7 tasks marked shipped. `wiki/reference/Installer-CLI.md` `--vault-path` row updated to describe plugin-namespaced key behavior. `agentm_config.py` backward-compat dispatch lines annotated with inline comments so `grep -rn '"vault_path"'` returns zero primary-path hits.
+
+- **V5-6 post-release wiki sweep (`5ca7251`).** `Home.md` latest-release block, `_Sidebar.md`, and `Completed-Features.md` updated to record the v5.7.0 V5-6 routing-plane de-vaulting release.
+
 ## [v5.7.0] — 2026-06-18 — V5-6 routing-plane de-vaulting
 
 **MINOR.** The kernel's routing layer is now backend-agnostic. Three mechanisms that previously built `vault_path() / …` filesystem paths — `resolve_project` / `_vault_projects_dir`, `repo_registry`, and the `state_mode` resolver — now speak `Locator`s to the V5-1 storage seam. On the `obsidian-vault` backend behavior is byte-identical (LC-1). A fresh install with only `device-local` can now host a project, its harness state, and the repo registry without a vault. `state_mode: vault` in device config and `.project-mode` markers is aliased to `state_mode: backend` at read time — no operator migration required (LC-5). Gate extensions enforce the no-Path-leak and one-way-import-direction invariants on the routing layer. `AGENTM_DEVICE_LOCAL_ROOT` env-var override added for test isolation in CI environments without the obsidian-vault plugin. This is the third and final leg of the V5 de-vaulting arc. Gates: 20/20, CI green across Linux/Mac/Windows.

@@ -8,6 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-06-19 | [v5.8.0](https://github.com/alexherrero/agentm/releases/tag/v5.8.0) — V5-7: config-plane migration | **V5-7:** `harness_memory._read_config_vault_path` reads `plugins.obsidian-vault.vault_path` first + first-read migration to plugin key + `storage.backend=vault` (task 1, `6b6dd17`); `agentm_config --vault-path` writes plugin-namespaced key + `storage.backend=vault`; `--get vault_path` reads plugin key with legacy fallback; `--unset vault_path` removes both keys (task 2, `07e3293`); `choose_protocol` loses `vault_root` parameter; implicit vault inference removed; resolution chain is now 2-step (task 3, `31f1ba9`); ADR 0013 amendment + `Storage-Seam.md` 2-step chain + `memory-os-architecture.md` V5-7 noted (task 4, `4615f45`, `a864465`). | 4 tasks, 4 code commits + 2 docs commits; solo harness MINOR |
 | 2026-06-18 | [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) — V5-6: routing-plane de-vaulting | **V5-6:** `resolve_project` / `_vault_projects_dir` → `Locator` (task 1); `repo_registry` fully de-vaulted to seam (task 2); `state_mode: vault` aliases to `backend` at read time (task 3); `check-storage-seam-no-path-leak` Pass 2 + `check-process-seam-import-direction` LC-8 block + `storage_conformance` routing checks (task 4); ADR 0019 + docs (task 5). ([ADR 0019](0019-v5-6-routing-plane-devaulting)) | 5 tasks, 26 files changed; 20/20 check-all.sh; solo harness MINOR |
 | 2026-06-18 | [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0) — V5-7: capability-request matching | **V5-7:** `CapabilityMismatchError(StorageSelectionError)` + `select_backend(required=)` — subset-only capability matching, fail-loud. `_doctor_main` gains `--requires <CAPS>` pre-flight flag. 4 new injection params on `_doctor_main` for test isolation. (ADR 0013 amendment) | 2 commits (`v5.5.0..v5.6.0`); 13 new unit tests (`TestCapabilityMatching` 8 + `TestDoctorRequires` 5); check-all.sh green; solo harness MINOR |
 | 2026-06-18 | [v5.5.0](https://github.com/alexherrero/agentm/releases/tag/v5.5.0) — V5-3: storage cutover: kernel → device-local | **V5-3:** vault backend deleted from `harness_memory.py` kernel; `harness_state_dir` / `read_state_file` / `write_state_file` always device-local; `phase_recall` always `""`; `resolve_documenter_context` always `None`; `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault (`$MEMORY_VAULT_PATH` stays graceful-skip). `personal-private/` → `personal/` group rename shipped in lockstep. ([ADR 0018](0018-v5-3-storage-cutover)) | 7 commits (`v5.4.0..v5.5.0`); 1170 unit tests 0 failures; 20/20 check-all.sh; solo harness MINOR |
@@ -34,6 +35,42 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentm/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentm/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentm/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-06-19 — v5.8.0: V5-7 — config-plane migration
+
+**Commit range:** `v5.7.0..v5.8.0` (4 tasks, 4 code commits + 2 docs commits on `main`). Release notes: [v5.8.0](https://github.com/alexherrero/agentm/releases/tag/v5.8.0). Solo harness MINOR — no crickets pairing.
+
+### What shipped
+
+V5-7 completes the config-plane leg of the V5 de-vaulting arc: the `vault_path` config key migrates from the flat top-level to the plugin-namespaced location (`plugins.obsidian-vault.vault_path`), vault selection becomes always explicit, and `choose_protocol` loses its last implicit vault-inference path.
+
+**Task 1 — `harness_memory._read_config_vault_path`: plugin-namespaced read + first-read migration** (`6b6dd17`). `_read_config_vault_path()` now reads `plugins.obsidian-vault.vault_path` first; if absent, falls back to the legacy flat `"vault_path"` key. On the *first* successful legacy-key read that finds an accessible vault, the function atomically writes both `plugins.obsidian-vault.vault_path` and `storage.backend=vault` into the install config, migrating in place. The public `vault_path()` API is unchanged — callers see no difference.
+
+**Task 2 — `agentm_config`: plugin-namespaced write + `--unset` cleanup** (`07e3293`). `--vault-path <dir>` now writes `plugins.obsidian-vault.vault_path` + `storage.backend=vault` (previously wrote the flat `vault_path` key only). `--get vault_path` reads the plugin key first with legacy fallback. `--unset vault_path` removes both the plugin-namespaced key and the legacy flat key, leaving no orphaned config state.
+
+**Task 3 — `backend_selection`: remove implicit vault inference** (`31f1ba9`). `choose_protocol()` loses its `vault_root` parameter. The former implicit rule — "if `vault_path` resolves to an accessible directory, infer `vault`" — is removed. The resolution chain is now exactly 2 steps: (1) explicit `storage.backend` config wins; (2) `device-local`. An operator migrating from a pre-V5-7 implicit setup must run `agentm config --vault-path <dir>` or `agentm config --storage-backend vault` once. Both proof paths (`TestChooseProtocol`) updated in the same commit.
+
+**Task 4 — Docs sweep** (`4615f45`, `a864465`). ADR 0013 amended: DC-4 comment block updated to record all 3 V5-7 tasks shipped, including the removal of the implicit vault-inference rule. `wiki/reference/Storage-Seam.md` 2-step resolution chain table updated (the former implicit-vault precedence 2 row removed; note added). `wiki/designs/memory-os-architecture.md` obsidian-vault row updated to note V5-7 config-plane all 3 tasks shipped. `wiki/reference/Installer-CLI.md` `--vault-path` row updated for the plugin-namespaced write.
+
+### Why this shape
+
+The implicit vault inference — "if `vault_path` is present and the directory exists, pick `vault`" — was the last place in the kernel that made vault selection *automatic* rather than *explicit*. This was a correctness hazard: on a machine where the `obsidian-vault` plugin is not installed but an old `vault_path` key persists, `choose_protocol` would silently resolve to `vault` and the fail-loud guard would then stop memory operations with a confusing "vault backend not registered" error rather than falling through to `device-local`. Making selection always explicit means the resolution chain is stateless and predictable: the only reason to reach `vault` is a deliberate write of `storage.backend=vault`.
+
+The first-read migration in task 1 is the operator-transparent migration path: the first time a legacy-key vault is used after upgrading, the read succeeds (because the legacy key still works), and the atomic write promotes the config silently. Subsequent reads use the plugin-namespaced key. No operator intervention required for existing setups.
+
+### By the numbers
+
+4 code commits + 2 docs commits (`v5.7.0..v5.8.0`); 20/20 `check-all.sh` PASS (pre-release verification); solo harness MINOR.
+
+### Related
+
+- [ADR 0013 amendment — V5-7 config-plane](0013-storage-seam-fail-loud-selection#amendment--2026-06-18-v5-7-capability-request-matching-extends-dc-4-with-the-same-fail-loud-principle) — DC-4 updated to record all 3 V5-7 tasks and the removal of implicit vault inference.
+- [Storage seam § The selection resolver](Storage-Seam#the-selection-resolver) — `choose_protocol` signature change; 2-step chain table.
+- [Installer CLI](Installer-CLI) — `--vault-path` updated to show plugin-namespaced write.
+- [Choose a storage backend](Choose-A-Storage-Backend) — operator-facing how-to; migration note for pre-V5-7 setups.
+- [v5.8.0](https://github.com/alexherrero/agentm/releases/tag/v5.8.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
+
+---
 
 ## 2026-06-18 — v5.7.0: V5-6 — routing-plane de-vaulting (third leg)
 
