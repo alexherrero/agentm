@@ -3195,5 +3195,127 @@ class TestEngineConcurrencyProof(unittest.TestCase):
             self.assertEqual(leftovers, [], f".tmp remnant(s) left behind: {leftovers}")
 
 
+# -----------------------------------------------------------------------------
+# V5-5 task 3: list_plan_files() + list-plans CLI verb
+# -----------------------------------------------------------------------------
+
+class TestListPlanFiles(unittest.TestCase):
+    """Tests for harness_memory.list_plan_files (shared plan-discovery function)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.harness = Path(self._tmp.name) / ".harness"
+        self.harness.mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_returns_empty_when_no_plans(self) -> None:
+        self.assertEqual(hm.list_plan_files(self.harness), [])
+
+    def test_returns_singleton_only(self) -> None:
+        (self.harness / "PLAN.md").write_text("# plan\n", encoding="utf-8")
+        result = [p.name for p in hm.list_plan_files(self.harness)]
+        self.assertEqual(result, ["PLAN.md"])
+
+    def test_singleton_first_then_named(self) -> None:
+        (self.harness / "PLAN.md").write_text("# plan\n", encoding="utf-8")
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (self.harness / "PLAN-bar.md").write_text("# bar\n", encoding="utf-8")
+        result = [p.name for p in hm.list_plan_files(self.harness)]
+        self.assertEqual(result, ["PLAN.md", "PLAN-bar.md", "PLAN-foo.md"])
+
+    def test_named_only_no_singleton(self) -> None:
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        result = [p.name for p in hm.list_plan_files(self.harness)]
+        self.assertEqual(result, ["PLAN-foo.md"])
+
+    def test_excludes_conflict_copies(self) -> None:
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (self.harness / "PLAN-foo (conflicted copy 2026-06-01).md").write_text("# dup\n", encoding="utf-8")
+        result = [p.name for p in hm.list_plan_files(self.harness)]
+        self.assertEqual(result, ["PLAN-foo.md"])
+
+    def test_excludes_archives(self) -> None:
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (self.harness / "PLAN.archive.20260601-foo.md").write_text("# archive\n", encoding="utf-8")
+        result = [p.name for p in hm.list_plan_files(self.harness)]
+        self.assertEqual(result, ["PLAN-foo.md"])
+
+
+class TestListPlansCLI(unittest.TestCase):
+    """Tests for the list-plans CLI verb (V5-5 task 3)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.harness = self.root / ".harness"
+        self.harness.mkdir()
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def _run(self, *extra_args) -> tuple:
+        """Run list-plans via subprocess and return (rc, stdout_lines)."""
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, str(_HERE / "harness_memory.py"),
+             "list-plans", "--project-root", str(self.root)] + list(extra_args),
+            capture_output=True, text=True,
+        )
+        lines = [l for l in result.stdout.splitlines() if l]
+        return result.returncode, lines
+
+    def test_empty_harness_returns_rc0_no_output(self) -> None:
+        rc, lines = self._run()
+        self.assertEqual(rc, 0)
+        self.assertEqual(lines, [])
+
+    def test_singleton_emitted(self) -> None:
+        (self.harness / "PLAN.md").write_text("# plan\n", encoding="utf-8")
+        rc, lines = self._run()
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(lines), 1)
+        self.assertTrue(lines[0].endswith("PLAN.md"))
+
+    def test_named_plans_emitted(self) -> None:
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (self.harness / "PLAN-bar.md").write_text("# bar\n", encoding="utf-8")
+        rc, lines = self._run()
+        self.assertEqual(rc, 0)
+        names = [Path(l).name for l in lines]
+        self.assertIn("PLAN-foo.md", names)
+        self.assertIn("PLAN-bar.md", names)
+
+    def test_active_binding_emitted(self) -> None:
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        (self.harness / "active-plan").write_text("foo\n", encoding="utf-8")
+        rc, lines = self._run()
+        self.assertEqual(rc, 0)
+        self.assertIn("active-binding=foo", lines)
+
+    def test_no_binding_line_when_no_marker(self) -> None:
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        rc, lines = self._run()
+        binding_lines = [l for l in lines if l.startswith("active-binding=")]
+        self.assertEqual(binding_lines, [])
+
+    def test_missing_project_root_graceful_rc0(self) -> None:
+        import subprocess
+        result = subprocess.run(
+            [sys.executable, str(_HERE / "harness_memory.py"),
+             "list-plans", "--project-root", "/nonexistent-project-root-v5-5-test"],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0)
+
+    def test_absolute_paths_in_output(self) -> None:
+        (self.harness / "PLAN-foo.md").write_text("# foo\n", encoding="utf-8")
+        rc, lines = self._run()
+        plan_lines = [l for l in lines if l.endswith(".md")]
+        for line in plan_lines:
+            self.assertTrue(Path(line).is_absolute(), f"not absolute: {line!r}")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

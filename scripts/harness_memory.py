@@ -16,6 +16,9 @@ Sub-commands:
                           by --confidence: ≥ threshold auto-saves silently)
     plan-done-promotion — dumps progress.md tail past a byte cursor; advances cursor
     available           — exit 0 if vault accessible, 1 otherwise
+    list-plans          — V5-5 bridge: enumerate active plans + active-plan
+                          binding for a project root (feeds session-start hook;
+                          routes through harness_state_dir for V5-6 compat)
     phase-dispatch      — V5-5 orchestration bridge (LC-3): fire a named phase
                           chain through the kernel core; always non-blocking;
                           the importable ``phase_dispatch()`` function is the
@@ -510,6 +513,24 @@ def harness_state_dir(resolution: dict) -> Optional[Path]:
     """
     root = resolution.get("project_root")
     return Path(root) / ".harness" if root else None
+
+
+def list_plan_files(harness_dir: Path) -> list:
+    """Every active plan file in harness_dir: singleton PLAN.md plus named plans.
+
+    Sorting: singleton first, then named alphabetically — deterministic.
+    Excludes archived plans (PLAN.archive.* — the `PLAN-*` glob skips them) and
+    GDrive conflict copies (detected by ``_conflict_family``).
+    Used by the ``list-plans`` CLI verb and ``queue_status_lite``.
+    """
+    files = []
+    singleton = harness_dir / "PLAN.md"
+    if singleton.is_file():
+        files.append(singleton)
+    for p in sorted(harness_dir.glob("PLAN-*.md")):
+        if p.is_file() and _conflict_family(p.name) is None:
+            files.append(p)
+    return files
 
 
 # -----------------------------------------------------------------------------
@@ -1516,6 +1537,20 @@ def _build_parser() -> argparse.ArgumentParser:
         help="path to project root (default: cwd)",
     )
 
+    # list-plans (V5-5 task 3): enumerate active plan files + active-plan binding
+    # for a project root — used by the harness-context-session-start hook so plan
+    # discovery routes through harness_state_dir (V5-6 compat) instead of inline
+    # shell path construction.
+    p_lp = sub.add_parser(
+        "list-plans",
+        help="list active plan files (PLAN.md + PLAN-*.md) for a project root; "
+             "also emits the active-plan binding when set (V5-5 task 3)",
+    )
+    p_lp.add_argument(
+        "--project-root", default=None,
+        help="path to project root (default: cwd)",
+    )
+
     # documenter-context (V4 #35): doc-write-time recall bundle for the
     # documenter sub-agent + wiki-author/diataxis-author skills. Composes
     # `recall` under the hood with phase=documenter; one subcommand for all
@@ -1703,6 +1738,29 @@ def main(argv: Optional[list[str]] = None) -> int:
             print("", end="")
             return 1
         print(f"{state_dir / plan_name}\t{state_dir / progress_name}")
+        return 0
+
+    if args.cmd == "list-plans":
+        # V5-5 task 3: enumerate active plan files for the project root and
+        # emit the active-plan binding when present. Used by the
+        # harness-context-session-start hook so plan discovery routes through
+        # harness_state_dir (V5-6 compat). Output format (one per line):
+        #   <absolute-path-to-PLAN.md>           (singleton, first if present)
+        #   <absolute-path-to-PLAN-<slug>.md>    (named plans, sorted)
+        #   active-binding=<slug>                (only when .harness/active-plan set)
+        # Always exits 0 — graceful-skip when no harness dir or no plans.
+        root = Path(args.project_root).expanduser() if args.project_root else Path.cwd()
+        resolution = resolve_project({"cwd": root})
+        harness_dir = harness_state_dir(resolution)
+        if harness_dir is not None and harness_dir.is_dir():
+            for p in list_plan_files(harness_dir):
+                print(p)
+        try:
+            present, raw = _read_active_plan_marker(root)
+            if present and raw:
+                print(f"active-binding={raw}")
+        except ActivePlanError:
+            pass  # graceful-skip: marker unreadable
         return 0
 
     if args.cmd == "documenter-context":

@@ -63,26 +63,24 @@ elif command -v timeout >/dev/null 2>&1; then
     TIMEOUT_CMD="timeout 0.5"
 fi
 
-# ── V5-3: state is always device-local in <project_root>/.harness/ ─────────────
-HARNESS_DIR="$EVENT_CWD/.harness"
-PLAN_PATH="$HARNESS_DIR/PLAN.md"
-PROGRESS_PATH="$HARNESS_DIR/progress.md"
-
-# ── Named plans (V5-10): enumerate PLAN-<name>.md in .harness/ ─────────────────
-# Glob PLAN-*.md, skipping GDrive conflict copies. Back-compat: a harness holding
-# only the unnamed PLAN.md finds zero named plans and falls through to the LOCKED
-# singleton block below, byte-identical.
+# ── V5-5: route plan discovery through the bridge (harness_memory.py list-plans) ──
+# Outputs plan file paths (one per line) + "active-binding=<slug>" when binding set.
+# Routes through harness_state_dir for V5-6 state_mode compat (no inline .harness/).
+PLANS_OUT="$($TIMEOUT_CMD python3 "$RESOLVER" list-plans --project-root "$EVENT_CWD" 2>/dev/null || true)"
 NAMED_PLANS=()
-if [[ -d "$HARNESS_DIR" ]]; then
-    shopt -s nullglob
-    for _pf in "$HARNESS_DIR"/PLAN-*.md; do
-        case "$(basename "$_pf")" in
-            *"(conflicted copy"*) continue ;;   # GDrive conflict copy - not a plan
+PLAN_PATH=""
+ACTIVE_BINDING=""
+if [[ -n "$PLANS_OUT" ]]; then
+    while IFS= read -r _line; do
+        case "$_line" in
+            active-binding=*) ACTIVE_BINDING="${_line#active-binding=}" ;;
+            *PLAN.md)         PLAN_PATH="$_line" ;;
+            *)                [[ -n "$_line" ]] && NAMED_PLANS+=("$_line") ;;
         esac
-        NAMED_PLANS+=("$_pf")
-    done
-    shopt -u nullglob
+    done <<< "$PLANS_OUT"
 fi
+HARNESS_DIR="$EVENT_CWD/.harness"     # V5-3: always device-local; used for progress.md
+PROGRESS_PATH="$HARNESS_DIR/progress.md"
 
 # ── Inject: named-plan mode → singleton (DC-7, locked) → nudge/skip ────────────
 if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
@@ -90,24 +88,23 @@ if [[ ${#NAMED_PLANS[@]} -gt 0 ]]; then
     {
         echo "[agentm] Project state for this repo lives in .harness/:"
         echo "Named-plan mode - this repo has more than one active plan:"
-        # Unnamed singleton first (only if it exists), then named alphabetically
-        # (the glob expands sorted). Each plan's progress is its progress-<name>.md.
-        [[ -n "$PLAN_PATH" && -f "$PLAN_PATH" ]] && printf '  %-22s %s\n' "PLAN.md" "$PLAN_PATH"
+        # Unnamed singleton first (only if it exists), then named alphabetically.
+        # Each plan's progress is its progress-<name>.md.
+        [[ -n "$PLAN_PATH" ]] && printf '  %-22s %s\n' "PLAN.md" "$PLAN_PATH"
         for _pf in "${NAMED_PLANS[@]}"; do
             printf '  %-22s %s\n' "$(basename "$_pf")" "$_pf"
         done
-        # Active-plan binding — the worktree-local .harness/active-plan marker
-        # (read here, written by component (2)'s worktree-spawn helper). A present
-        # marker naming an absent PLAN-<name>.md is dangling — surfaced, not fatal.
-        MARKER="$EVENT_CWD/.harness/active-plan"
-        if [[ -f "$MARKER" ]]; then
-            BIND="$(head -n1 "$MARKER" 2>/dev/null | tr -d '[:space:]')"
-            if [[ -n "$BIND" ]]; then
-                if [[ -f "$HARNESS_DIR/PLAN-$BIND.md" ]]; then
-                    echo "Active plan (.harness/active-plan -> $BIND): $HARNESS_DIR/PLAN-$BIND.md"
-                else
-                    echo "Active plan (.harness/active-plan -> $BIND): DANGLING - PLAN-$BIND.md not found; run doctor."
-                fi
+        # Active-plan binding — resolved by list-plans from .harness/active-plan.
+        # A binding whose plan file is absent in the output is dangling — surfaced, not fatal.
+        if [[ -n "$ACTIVE_BINDING" ]]; then
+            BOUND_PATH=""
+            for _np in "${NAMED_PLANS[@]}"; do
+                [[ "$(basename "$_np")" == "PLAN-$ACTIVE_BINDING.md" ]] && { BOUND_PATH="$_np"; break; }
+            done
+            if [[ -n "$BOUND_PATH" ]]; then
+                echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): $BOUND_PATH"
+            else
+                echo "Active plan (.harness/active-plan -> $ACTIVE_BINDING): DANGLING - PLAN-$ACTIVE_BINDING.md not found; run doctor."
             fi
         fi
         echo "Read the plan you own (or the .harness/active-plan one) before /work, /review, /release."
