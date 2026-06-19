@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.9.1] — 2026-06-19 — Vault-path hygiene: `check-no-hardcoded-vault-path` gate + convention doc
+
+**PATCH.** A new CI gate prevents absolute vault-path literals from re-entering the codebase, paired with a prose lock of the runtime-resolve convention in `AGENTS.md`. No behavior changes; no new runtime code; gate count 21→22.
+
+### Added
+
+- **`check-no-hardcoded-vault-path` gate — 22nd gate in `check-all.sh` (`034a846`).** Fails if any non-test tracked file embeds an absolute `…/Library/CloudStorage/…` path literal or the retired pre-V5-3 vault root name `…/Obsidian/AgentMemory` as a path component. Shell tilde/variable expansions (`~/Library/CloudStorage`, `$HOME/Library/CloudStorage`) and placeholder notation (`<…>`, `…`) are allowed. Fourteen unit tests in `scripts/test_check_no_hardcoded_vault_path.py`. Gate row added to `wiki/reference/CI-Gates.md`.
+
+### Internal
+
+- **`AGENTS.md` — `§ Vault-path convention — resolve, don't recall` (`306cbf0`).** New subsection under Conventions: canonical resolver (`harness_memory.vault_path()`), `$MEMORY_VAULT_PATH` escape hatch, and the "why" (machine-specific path segments become silently stale across installs). Running-the-checks paragraph updated to list the 22nd gate.
+
 ## [v5.9.0] — 2026-06-19 — V5-5: `auto_orchestration` trigger split — orchestration bridge formalized
 
 **MINOR.** The `auto_orchestration` push-surface is split into its three natural owners without changing behavior or raising autonomy. `phase_dispatch()` in `harness_memory` is formalized as the write-capable sibling bridge (non-blocking, graceful-skip, kernel-single-writer, `_BRIDGE_PHASES = frozenset({"post-work", "post-release"})`). `auto_orchestration.py` is declared the sole writer of `_meta/auto-orchestration-state.json`, gate-checked by a static assertion in `verify-v4.sh`. Session-start hooks delegate plan-file discovery through a new `list_plan_files()` public function + `list-plans` CLI verb (V5-6 `state_mode`/Locator-aware). `verify-v4.sh` fractured to kernel-only (A+E+G, 162→85 lines); new `verify-orchestration-briefing.sh` holds the PM-half (B+C+D); session-marker + discover-skills scenarios relocated to `verify-phases.sh`; `check-all.sh` 20→21 gates. Import-direction gate extended to assert no bridge back-edge. PM-half trigger remains kernel-side until the crickets PM-trigger plan ships (gate lifted — `github-projects` exists). Gates: 21/21, CI green across Linux/Mac/Windows.

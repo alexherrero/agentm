@@ -8,6 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-06-19 | [v5.9.1](https://github.com/alexherrero/agentm/releases/tag/v5.9.1) — vault-path hygiene: `check-no-hardcoded-vault-path` gate | **hygiene:** `scripts/check-no-hardcoded-vault-path.py` — new CI gate banning absolute vault-path literals (`…/Library/CloudStorage/…`) and retired pre-V5-3 root name (`…/Obsidian/AgentMemory`) from non-test tracked files; 14 unit tests; wired as 22nd gate in `check-all.sh`. `AGENTS.md` new `§ Vault-path convention — resolve, don't recall` subsection locks the runtime-resolve contract in prose. | 2 commits (`034a846`, `306cbf0`); 22/22 check-all.sh; solo harness PATCH |
 | 2026-06-19 | [v5.9.0](https://github.com/alexherrero/agentm/releases/tag/v5.9.0) — V5-5: `auto_orchestration` trigger split | **V5-5:** `_BRIDGE_PHASES` frozenset + `phase_dispatch()` formalized (non-blocking, graceful-skip, kernel-single-writer, write-capable sibling) + 21 contract tests (task 1, `a65f901`); single-writer invariant declared + static `verify-v4.sh` assertion (task 2, `15da187`); `list_plan_files()` + `list-plans` CLI; session-start hooks delegate plan discovery through bridge (task 3, `a7e3bee`); `verify-v4.sh` fractured 162→85 lines (kernel A+E+G); `verify-orchestration-briefing.sh` new (PM-half B+C+D); session-marker + discover-skills scenarios → `verify-phases.sh` (Developer-half); `check-all.sh` 20→21 gates (task 4, `8e4b170`); bridge back-edge gate + 3 tests in `check-process-seam-import-direction.sh` (task 5, `0fcdfb0`); `Auto-Orchestration.md` trigger-ownership section (task 6, `9dffa4d`); `Orchestration-Bridge.md` reference + ADR 0011 DC-1 re-audit trigger fired (task 7, `4d3622c`). | 8 tasks (incl. re-audit task 0), 7 commits; 21/21 check-all.sh; solo harness MINOR |
 | 2026-06-19 | [v5.8.0](https://github.com/alexherrero/agentm/releases/tag/v5.8.0) — V5-7: config-plane migration | **V5-7:** `harness_memory._read_config_vault_path` reads `plugins.obsidian-vault.vault_path` first + first-read migration to plugin key + `storage.backend=vault` (task 1, `6b6dd17`); `agentm_config --vault-path` writes plugin-namespaced key + `storage.backend=vault`; `--get vault_path` reads plugin key with legacy fallback; `--unset vault_path` removes both keys (task 2, `07e3293`); `choose_protocol` loses `vault_root` parameter; implicit vault inference removed; resolution chain is now 2-step (task 3, `31f1ba9`); ADR 0013 amendment + `Storage-Seam.md` 2-step chain + `memory-os-architecture.md` V5-7 noted (task 4, `4615f45`, `a864465`). | 4 tasks, 4 code commits + 2 docs commits; solo harness MINOR |
 | 2026-06-18 | [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) — V5-6: routing-plane de-vaulting | **V5-6:** `resolve_project` / `_vault_projects_dir` → `Locator` (task 1); `repo_registry` fully de-vaulted to seam (task 2); `state_mode: vault` aliases to `backend` at read time (task 3); `check-storage-seam-no-path-leak` Pass 2 + `check-process-seam-import-direction` LC-8 block + `storage_conformance` routing checks (task 4); ADR 0019 + docs (task 5). ([ADR 0019](0019-v5-6-routing-plane-devaulting)) | 5 tasks, 26 files changed; 20/20 check-all.sh; solo harness MINOR |
@@ -36,6 +37,36 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentm/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentm/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentm/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-06-19 — v5.9.1: vault-path hygiene gate + convention doc
+
+**Commit range:** `v5.9.0..v5.9.1` (2 commits on `main`: `034a846`, `306cbf0`). Release notes: [v5.9.1](https://github.com/alexherrero/agentm/releases/tag/v5.9.1). Solo harness PATCH — no crickets pairing.
+
+### What shipped
+
+A CI gate that prevents absolute vault-path literals from re-entering the codebase, paired with a prose lock of the runtime-resolve convention in `AGENTS.md`.
+
+**`scripts/check-no-hardcoded-vault-path.py`** (`034a846`). New gate that fails (exit 1) when any non-test tracked file contains either (A) an absolute `…/Library/CloudStorage/…` path literal — as opposed to shell tilde/variable expansions or placeholder notation — or (B) the retired pre-V5-3 vault root name `…/Obsidian/AgentMemory` as a path component. Exit 0 = clean; exit 1 = violations printed with file, line, and column; exit 2 = setup error. Fourteen unit tests in `scripts/test_check_no_hardcoded_vault_path.py`, using the importlib pattern. Wired as the 22nd gate in `scripts/check-all.sh`. Row added to `wiki/reference/CI-Gates.md`.
+
+**`AGENTS.md` convention lock** (`306cbf0`). New subsection `§ Vault-path convention — resolve, don't recall` under the Conventions heading. Captures in prose: the canonical resolver (`harness_memory.vault_path()`, which reads `plugins.obsidian-vault.vault_path` from kernel config set by `agentm_config --vault-path`); the `$MEMORY_VAULT_PATH` env-override escape hatch; and the "why" — machine-specific path segments (username, drive ID, mount point) encoded as literals become silently wrong across installs and over time. Also updates the Running-the-checks paragraph to name the 22nd gate.
+
+### Why this shape
+
+The V5-7 config-plane migration (v5.8.0) removed the last production site that read a vault path from a durable config key written by pre-V5-7 code. This gate closes the loop: it mechanically prevents any future refactor from re-introducing the pattern. The gate is intentionally narrow — shell variable expansions (`$MEMORY_VAULT_PATH`, `~/.agentm/`) and placeholder notation pass — so it flags only the cases that are unambiguously wrong (baked absolute machine-specific paths) without blocking legitimate relative or env-driven usage.
+
+No ADR is needed: the gate enforces the existing AGENTS.md convention, not a new architectural decision.
+
+### By the numbers
+
+2 commits (`v5.9.0..v5.9.1`). 22/22 `check-all.sh` PASS (was 21/21; grew by one gate). Solo harness PATCH.
+
+### Related
+
+- [CI gates — `check-no-hardcoded-vault-path`](CI-Gates#what-each-gate-proves) — gate row; invariant; script link.
+- [AGENTS.md § Vault-path convention](https://github.com/alexherrero/agentm/blob/main/AGENTS.md#vault-path-convention--resolve-dont-recall) — the prose lock of the resolve-don't-recall rule.
+- [v5.9.1](https://github.com/alexherrero/agentm/releases/tag/v5.9.1) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
+
+---
 
 ## 2026-06-19 — v5.9.0: V5-5 — `auto_orchestration` three-way trigger split
 

@@ -49,7 +49,7 @@ For contributors running the harness:
 - [Memory MCP tools](Memory-MCP-Tools) — four-tool MCP surface: parameters, pagination, soft-delete contract, error codes.
 
 > [!NOTE]
-> **Latest release — [v5.9.0](https://github.com/alexherrero/agentm/releases/tag/v5.9.0) (2026-06-19):** V5-5 orchestration trigger split — `phase_dispatch()` formalized as the write-capable sibling bridge (`_BRIDGE_PHASES`); `auto_orchestration.py` declared sole state writer (gate-checked); `list_plan_files()` + `list-plans` CLI verb; `verify-v4.sh` fractured to kernel-only (21 gates). ([Orchestration-Bridge reference](Orchestration-Bridge))
+> **Latest release — [v5.9.1](https://github.com/alexherrero/agentm/releases/tag/v5.9.1) (2026-06-19):** Vault-path hygiene patch — new `check-no-hardcoded-vault-path` CI gate (22nd gate) bans absolute vault-path literals from non-test tracked files; `AGENTS.md` locks the resolve-don't-recall convention in prose. ([CI gates reference](CI-Gates))
 
 → Full field-level detail lives under **Reference** in the sidebar.
 
