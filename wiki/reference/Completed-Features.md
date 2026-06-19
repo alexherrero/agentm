@@ -8,6 +8,7 @@ This page is **narrative**, not a changelog — the authoritative version log is
 
 | Date | Plan / release | Features flipped | Notes |
 |---|---|---|---|
+| 2026-06-19 | [v5.9.0](https://github.com/alexherrero/agentm/releases/tag/v5.9.0) — V5-5: `auto_orchestration` trigger split | **V5-5:** `_BRIDGE_PHASES` frozenset + `phase_dispatch()` formalized (non-blocking, graceful-skip, kernel-single-writer, write-capable sibling) + 21 contract tests (task 1, `a65f901`); single-writer invariant declared + static `verify-v4.sh` assertion (task 2, `15da187`); `list_plan_files()` + `list-plans` CLI; session-start hooks delegate plan discovery through bridge (task 3, `a7e3bee`); `verify-v4.sh` fractured 162→85 lines (kernel A+E+G); `verify-orchestration-briefing.sh` new (PM-half B+C+D); session-marker + discover-skills scenarios → `verify-phases.sh` (Developer-half); `check-all.sh` 20→21 gates (task 4, `8e4b170`); bridge back-edge gate + 3 tests in `check-process-seam-import-direction.sh` (task 5, `0fcdfb0`); `Auto-Orchestration.md` trigger-ownership section (task 6, `9dffa4d`); `Orchestration-Bridge.md` reference + ADR 0011 DC-1 re-audit trigger fired (task 7, `4d3622c`). | 8 tasks (incl. re-audit task 0), 7 commits; 21/21 check-all.sh; solo harness MINOR |
 | 2026-06-19 | [v5.8.0](https://github.com/alexherrero/agentm/releases/tag/v5.8.0) — V5-7: config-plane migration | **V5-7:** `harness_memory._read_config_vault_path` reads `plugins.obsidian-vault.vault_path` first + first-read migration to plugin key + `storage.backend=vault` (task 1, `6b6dd17`); `agentm_config --vault-path` writes plugin-namespaced key + `storage.backend=vault`; `--get vault_path` reads plugin key with legacy fallback; `--unset vault_path` removes both keys (task 2, `07e3293`); `choose_protocol` loses `vault_root` parameter; implicit vault inference removed; resolution chain is now 2-step (task 3, `31f1ba9`); ADR 0013 amendment + `Storage-Seam.md` 2-step chain + `memory-os-architecture.md` V5-7 noted (task 4, `4615f45`, `a864465`). | 4 tasks, 4 code commits + 2 docs commits; solo harness MINOR |
 | 2026-06-18 | [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) — V5-6: routing-plane de-vaulting | **V5-6:** `resolve_project` / `_vault_projects_dir` → `Locator` (task 1); `repo_registry` fully de-vaulted to seam (task 2); `state_mode: vault` aliases to `backend` at read time (task 3); `check-storage-seam-no-path-leak` Pass 2 + `check-process-seam-import-direction` LC-8 block + `storage_conformance` routing checks (task 4); ADR 0019 + docs (task 5). ([ADR 0019](0019-v5-6-routing-plane-devaulting)) | 5 tasks, 26 files changed; 20/20 check-all.sh; solo harness MINOR |
 | 2026-06-18 | [v5.6.0](https://github.com/alexherrero/agentm/releases/tag/v5.6.0) — V5-7: capability-request matching | **V5-7:** `CapabilityMismatchError(StorageSelectionError)` + `select_backend(required=)` — subset-only capability matching, fail-loud. `_doctor_main` gains `--requires <CAPS>` pre-flight flag. 4 new injection params on `_doctor_main` for test isolation. (ADR 0013 amendment) | 2 commits (`v5.5.0..v5.6.0`); 13 new unit tests (`TestCapabilityMatching` 8 + `TestDoctorRequires` 5); check-all.sh green; solo harness MINOR |
@@ -35,6 +36,54 @@ This page is **narrative**, not a changelog — the authoritative version log is
 | 2026-05-11 | [v1.0.0](https://github.com/alexherrero/agentm/releases/tag/v1.0.0) — Three-adapter scope; Codex dropped; 1.0.0 commitment | **BREAKING**: Codex adapter removed; true-sync `--update` semantics; firm-semver 1.0.0 floor | 13 commits (`v0.9.0..v1.0.0`); new [ADR 0005](0005-drop-codex-support); ~1300 lines net removed; first major version; parity invariant simplified to three adapters |
 | 2026-04-23 | [v0.9.0](https://github.com/alexherrero/agentm/releases/tag/v0.9.0) — Diátaxis documentation spec + `/doctor` skill | Diátaxis rollout (ADR 0004, 7-task plan); `migrate-to-diataxis` skill; mode-aware `documenter` writes; `/doctor` skill for post-install verification | 10 commits (`v0.8.7..v0.9.0`); new [ADR 0004](0004-diataxis-documentation-spec); two new shared skills; `scripts/check-wiki.py` shipped + flipped to `--strict`; wiki dogfood reshaped with `git mv` for blame |
 | 2026-04-21 | [v0.8.7](https://github.com/alexherrero/agentm/releases/tag/v0.8.7) — GitHub Projects wiring + documenter end-to-end dogfood | `feat-gh-projects-integration` (pending — gated on offer-cycle observation); `feat-documenter-subagent` (this sweep is the dogfood) | 4 commits (`801dbd7..HEAD`), 23 files; new [ADR 0003](0003-ProjectsV2-Ownership-And-Linking), new [Feature page](GitHub-Projects-Integration) |
+
+## 2026-06-19 — v5.9.0: V5-5 — `auto_orchestration` three-way trigger split
+
+**Commit range:** `v5.8.0..v5.9.0` (7 commits on `main`). Release notes: [v5.9.0](https://github.com/alexherrero/agentm/releases/tag/v5.9.0). Solo harness MINOR — no crickets pairing.
+
+### What shipped
+
+V5-5 splits the fused `auto_orchestration` push surface into its three natural trigger owners without changing behavior or raising autonomy. The memory logic (reflect/discover/adapt/index) and cadence state stay kernel-resident; only the *knowledge of which boundary fires a loop* relocates to the owner of that boundary.
+
+**Task 0 — Re-audit trigger topology (finding, no code commit).** Confirmed `phase_dispatch()` in `harness_memory.py` is the **sole caller** of `orchestration_phase.py` — the bridge embryo already exists as a production path. The dev-workflows plugin does NOT call `phase-dispatch` at v0.25.0 (premise from the design-doc drifted). State-writer audit: 4 sites call `ao.save_state()` — all routing through the same kernel function in `auto_orchestration.py`. Task 1 sized as formalization/hardening, not net-new construction.
+
+**Task 1 — Formalize the orchestration bridge** (`a65f901`). Added `_BRIDGE_PHASES = frozenset({"post-work", "post-release"})` constant. `phase_dispatch()` refactored with four explicit contract properties in its docstring: non-blocking (subprocess, session-agnostic), graceful-skip (missing session-marker → `{"status": "no-session"}`), kernel-single-writer (only `auto_orchestration.py` writes the state file), write-capable sibling (distinct from the read-only process seam). `ValueError` on unknown phase. `project_root=None` and `dry_run=False` defaults added for direct Python callability. The CLI `phase-dispatch` verb and `choices=` arg mirror `_BRIDGE_PHASES`. 21 contract tests in `scripts/test_orchestration_bridge.py`.
+
+**Task 2 — Declare `auto_orchestration.py` the sole state writer** (`15da187`). Updated module docstring and `save_state()` docstring to explicitly state the single-writer invariant (LC-2). Added static assertion to `verify-v4.sh` segment G: greps `orchestration_*.py` for `^def save_state` and asserts 0 matches — making the accidental invariant a stated, gate-checked one.
+
+**Task 3 — Fold `harness-context-session-start` plan-resolution into the bridge** (`a7e3bee`). Added `list_plan_files(harness_dir: Path) -> list` to `harness_memory.py` — canonical enumeration of active `PLAN*.md` files (singleton first, named sorted, excluding conflict copies and archives). Added `list-plans` CLI verb that prints each plan path and `active-binding=<slug>` when `.harness/active-plan` is set; routes through `harness_state_dir()` to respect the V5-6 state_mode/Locator chain. Both `harness-context-session-start.sh` and `.ps1` now delegate plan discovery to `list-plans` instead of carrying their own PLAN-*.md glob + active-plan marker read. Removed the broken `vault-state-path` call silently dead in the PS1 hook since V5-3; fixed singleton output message. 13 new tests (TestListPlanFiles × 6, TestListPlansCLI × 7).
+
+**Task 4 — Fracture `verify-v4.sh`** (`8e4b170`). Rewrote `verify-v4.sh` from 162 to 85 lines — kernel-only (config-seed A + idle-chain E + emit-gating/atomic-state G + single-writer assertion). Added G-seed (minimal inbox files) so the emit-gating assertion has signals without depending on briefing-check vault state. Created new `verify-orchestration-briefing.sh` (PM-half: segments B+C+D — briefing signals, staged-adapt, nudges; travels to crickets PM-trigger plan when that ships). Relocated phase-dispatch session-marker scenarios (no-session / single-marker / ambiguous) + discover-skills chain check to `verify-phases.sh` (Developer-half). `check-all.sh` grows from 20 to 21 gates.
+
+**Task 5 — Extend `check-process-seam-import-direction.sh` to the bridge** (`0fcdfb0`). Added LC-8 bridge back-edge assertion: scans `harness/skills/memory/scripts/` for any `import harness_memory` or `from harness_memory import`; fails on a hit; excludes `test_*.py` by design. Three new tests in `ImportDirectionGate`.
+
+**Task 6 — Document the PM-half hand-off** (`9dffa4d`). Added "Trigger ownership (V5-5)" section to `wiki/explanation/Auto-Orchestration.md`: three owners (kernel / Developer plugin / PM plugin), bridge entry point, PM-half forward-reference status (gate lifted — `github-projects` exists; actual relocation = separate crickets plan; failure mode = non-relocation, never broken briefing).
+
+**Task 7 — Docs refresh** (`4d3622c`). Created `wiki/reference/Orchestration-Bridge.md` (new reference sibling to Process-Seam / Storage-Seam): chains, API, CLI, single-writer guarantee, one-way direction. Added to `wiki/_Sidebar.md`. Fixed `AGENTS.md` "three verify-*" → "four verify-*". Updated `CI-Gates.md` `check-process-seam-import-direction` row (V5-5 LC-8 bridge extension noted); fixed `verify-orchestration-briefing` description. Updated ADR 0011 DC-1 re-audit trigger as fired: baked-in orchestration call in the Developer plugin can now be retired via a separate crickets plan.
+
+### Why this shape
+
+The trigger-relocation (not a file-move) is the key framing: the memory logic and cadence core stay kernel-resident; what relocates is *which boundary fires a loop*. The two alternatives in the design-doc fork — multiple writers vs. kernel-single-owner + write-capable sibling bridge — were resolved before task 1 (LC-2 is the load-bearing safety call: shared state with multiple writers is torn state).
+
+The fracture of `verify-v4.sh` is "relocate + de-dupe, don't rewrite": the phase-half coverage already existed in `verify-phases.sh`; the session-marker scenarios that didn't were added there. The three-file result maps directly to the three trigger owners.
+
+`list-plans` resolves a latent coupling: the session-start hooks were carrying their own PLAN*.md glob and `active-plan` marker read, duplicating logic the bridge should own. Delegating through `harness_state_dir()` also makes the hooks respect the V5-6 routing-plane Locator chain at zero cost.
+
+The PM-half is a forward-reference, not deferred scope: `github-projects` exists (gate lifted since the design), the bridge is ready, but the actual trigger relocation is a separate crickets plan. The failure mode is non-relocation (briefing keeps firing from kernel), never a broken briefing.
+
+### By the numbers
+
+7 commits (`v5.8.0..v5.9.0`): `a65f901`, `15da187`, `a7e3bee`, `8e4b170`, `0fcdfb0`, `9dffa4d`, `4d3622c`. 21/21 `check-all.sh` PASS (was 20/20; grew by one gate — `verify-orchestration-briefing`). New test file: `test_orchestration_bridge.py` (21 tests); 3 new `ImportDirectionGate` tests; 13 new tests in `test_harness_memory.py`. Solo harness MINOR.
+
+### Related
+
+- [Orchestration bridge](Orchestration-Bridge) — new reference page: `phase_dispatch()` contract, valid phases, session-marker states, CLI.
+- [Auto-orchestration](Auto-Orchestration) — "Trigger ownership (V5-5)" section; three-owner topology.
+- [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop) — DC-1 re-audit trigger fired; baked-in orchestration call in Developer plugin can now be retired.
+- [CI gates](CI-Gates) — `verify-orchestration-briefing` added (21st gate); `check-process-seam-import-direction` extended (LC-8 bridge back-edge).
+- [v5.9.0](https://github.com/alexherrero/agentm/releases/tag/v5.9.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
+
+---
 
 ## 2026-06-19 — v5.8.0: V5-7 — config-plane migration
 
