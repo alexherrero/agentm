@@ -49,7 +49,7 @@ For contributors running the harness:
 - [Memory MCP tools](Memory-MCP-Tools) — four-tool MCP surface: parameters, pagination, soft-delete contract, error codes.
 
 > [!NOTE]
-> **Latest release — [v5.8.0](https://github.com/alexherrero/agentm/releases/tag/v5.8.0) (2026-06-19):** V5-7 config-plane migration — `vault_path` now reads/writes the plugin-namespaced key (`plugins.obsidian-vault.vault_path`); `--vault-path` writes the plugin key + `storage.backend=vault`; `choose_protocol` loses its `vault_root` parameter; vault selection is always explicit via `storage.backend`. First-read migration is atomic; legacy flat key falls back transparently. ([ADR 0013 amendment](0013-storage-seam-fail-loud-selection))
+> **Latest release — [v5.9.0](https://github.com/alexherrero/agentm/releases/tag/v5.9.0) (2026-06-19):** V5-5 orchestration trigger split — `phase_dispatch()` formalized as the write-capable sibling bridge (`_BRIDGE_PHASES`); `auto_orchestration.py` declared sole state writer (gate-checked); `list_plan_files()` + `list-plans` CLI verb; `verify-v4.sh` fractured to kernel-only (21 gates). ([Orchestration-Bridge reference](Orchestration-Bridge))
 
 → Full field-level detail lives under **Reference** in the sidebar.
 

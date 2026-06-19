@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v5.9.0] — 2026-06-19 — V5-5: `auto_orchestration` trigger split — orchestration bridge formalized
+
+**MINOR.** The `auto_orchestration` push-surface is split into its three natural owners without changing behavior or raising autonomy. `phase_dispatch()` in `harness_memory` is formalized as the write-capable sibling bridge (non-blocking, graceful-skip, kernel-single-writer, `_BRIDGE_PHASES = frozenset({"post-work", "post-release"})`). `auto_orchestration.py` is declared the sole writer of `_meta/auto-orchestration-state.json`, gate-checked by a static assertion in `verify-v4.sh`. Session-start hooks delegate plan-file discovery through a new `list_plan_files()` public function + `list-plans` CLI verb (V5-6 `state_mode`/Locator-aware). `verify-v4.sh` fractured to kernel-only (A+E+G, 162→85 lines); new `verify-orchestration-briefing.sh` holds the PM-half (B+C+D); session-marker + discover-skills scenarios relocated to `verify-phases.sh`; `check-all.sh` 20→21 gates. Import-direction gate extended to assert no bridge back-edge. PM-half trigger remains kernel-side until the crickets PM-trigger plan ships (gate lifted — `github-projects` exists). Gates: 21/21, CI green across Linux/Mac/Windows.
+
+### Added
+
+- **V5-5 — `phase_dispatch()` orchestration bridge formalized (`a65f901`).** `_BRIDGE_PHASES = frozenset({"post-work", "post-release"})` constant. `phase_dispatch(phase, project_root=None, dry_run=False)` docstring codifies four contract properties: non-blocking (fires-and-returns), graceful-skip (unknown phase → ValueError; vault absent → skip), kernel-single-writer (calls into `auto_orchestration` core; never touches state file directly), write-capable sibling (distinct from the read-only process seam). `ValueError` on unrecognized phase. CLI `phase-dispatch` verb gains `choices=_BRIDGE_PHASES`. 21 contract tests in `test_orchestration_bridge.py`.
+
+- **V5-5 — `list_plan_files(harness_dir)` + `list-plans` CLI verb (`a7e3bee`).** Canonical enumeration of active `PLAN*.md` files: singleton first, then named sorted, excluding conflict copies and archives. `list-plans` CLI verb prints each plan path + `active-binding=<slug>` when `.harness/active-plan` is set; routes through `harness_state_dir()` to respect V5-6 `state_mode`/Locator chain. Session-start hooks (`harness-context-session-start.{sh,ps1}`) delegate plan discovery to `list-plans`; broken `vault-state-path` call dead since V5-3 removed. 13 new tests.
+
+### Internal
+
+- **V5-5 — single-writer invariant declared + gate-checked (`15da187`).** `auto_orchestration.py` module and `save_state()` docstrings explicitly state that `auto_orchestration.py` is the sole writer of `<vault>/_meta/auto-orchestration-state.json`. Static assertion in `verify-v4.sh` segment G: greps `orchestration_*.py` for `^def save_state` and asserts 0 matches.
+
+- **V5-5 — `verify-v4.sh` fractured; `verify-orchestration-briefing.sh` added; `verify-phases.sh` extended (`8e4b170`).** `verify-v4.sh` rewritten to kernel-only (config-seed A + idle-chain E + emit-gating/atomic-state G); 162→85 lines. New `verify-orchestration-briefing.sh` holds the PM-half (briefing signals B, staged-adapt C, nudges D — travels to crickets when the PM-trigger plan ships). Session-marker scenarios and discover-skills chain check relocated to `verify-phases.sh` (Developer-half). `check-all.sh` 20→21 gates.
+
+- **V5-5 — bridge back-edge gate (`0fcdfb0`).** `check-process-seam-import-direction.sh` extended: asserts that no file under `harness/skills/memory/scripts/` imports `harness_memory` (the bridge back-edge). Test files excluded by design. 3 new tests in `ImportDirectionGate`.
+
+- **V5-5 — PM-half hand-off + Orchestration-Bridge reference (`9dffa4d`, `4d3622c`, `365fc00`).** `Auto-Orchestration.md` gains a "Trigger ownership (V5-5)" section (three owners, bridge entry point, PM-half forward-reference status). New `wiki/reference/Orchestration-Bridge.md` (chains, API, CLI, single-writer guarantee, one-way direction). CI-Gates.md + ADR 0011 DC-1 re-audit trigger updated: baked-in orchestration call in the Developer plugin can now be retired via a separate crickets plan.
+
 ## [v5.8.0] — 2026-06-19 — V5-7 config-plane: plugin-namespaced vault_path + explicit backend selection
 
 **MINOR.** The kernel no longer owns obsidian-vault's config. `vault_path` moves from the flat kernel key `"vault_path"` to `"plugins.obsidian-vault.vault_path"` — the first plugin-namespaced config key. Existing operators self-heal on first use: `_read_config_vault_path()` detects the legacy flat key, atomically writes both the new key and `storage.backend=vault`, and emits a one-time deprecation warning — no manual migration required. `choose_protocol()` loses its implicit config-based vault-inference step: vault selection is now always explicit. The resolution chain is now: (1) explicit `storage.backend` in config, (2) `$MEMORY_VAULT_PATH` env var set → vault (the env-based escape hatch), (3) else → `device-local`. `harness_memory.vault_path()` public API is unchanged; only what it reads from config changes. Gates: 20/20, CI green across Linux/Mac/Windows.
