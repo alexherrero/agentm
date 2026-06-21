@@ -77,7 +77,7 @@ That rename shipped in agentm v5.3.0 (commit `053217b`) as part of the V5-3 stor
 ## Related
 
 - [ADR 0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking.md) — the `projects/` ownership model this taxonomy extends.
-- [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config.md) — the sibling "config never lives in the vault; the vault is where data sits" principle.
-- [ADR 0018 — V5-3 storage cutover](0018-v5-3-storage-cutover.md) — the release that fired this ADR's first re-audit trigger and shipped the `personal/` rename.
+- [ADR 0009 — On-host state-mode config](memory-storage-seam) — the sibling "config never lives in the vault; the vault is where data sits" principle.
+- [ADR 0018 — V5-3 storage cutover](memory-storage-seam) — the release that fired this ADR's first re-audit trigger and shipped the `personal/` rename.
 - crickets wiki-maintenance design (style-learning loop) — the consumer whose part-3 task-4 relocation surfaced the gap and aligns on `projects/_global/wiki-style/`.
 - `resolve_documenter_context()` in `scripts/harness_memory.py` — **V5-3 note:** after the storage cutover this function always returns `None`; context is provided by the V5-9 MCP server. The taxonomy (projects-keyed data under `projects/`) is unchanged.

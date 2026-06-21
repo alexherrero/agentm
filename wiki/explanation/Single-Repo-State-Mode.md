@@ -1,6 +1,6 @@
 # Single-repo (vault-less) state mode
 
-Why the harness can run on one repo with no Obsidian / Google Drive / vault dependency — and the resolution model that decides where a phase write lands. The call is recorded in [ADR 0009](0009-on-host-state-mode-config); for the operator steps, see [Run without a vault](Run-Without-A-Vault).
+Why the harness can run on one repo with no Obsidian / Google Drive / vault dependency — and the resolution model that decides where a phase write lands. The call is recorded in [ADR 0009](memory-storage-seam); for the operator steps, see [Run without a vault](Run-Without-A-Vault).
 
 ## Why this mode exists
 
@@ -16,7 +16,7 @@ Where a phase write lands is decided by **two on-host configuration layers** —
 - **The device-level default** — `state_mode` (`"local"` | `"backend"`) in `<install-prefix>/.agentm-config.json`. This is "how agentm runs on this machine," read vault-free. `install.sh --local-state` writes it at install time; `scripts/agentm_config.py --state-mode local` (or `--state-mode backend`) flips it afterwards without re-running the installer. It is consulted when no repo-local marker is set; absent, the default is backend (vault-backed, via the active storage backend).
 
 > [!NOTE]
-> **V5-6 (shipped 2026-06-18) — `state_mode: vault` now aliases to `state_mode: backend` at read time.** The non-local value was renamed from `"vault"` to `"backend"` in the routing-plane de-vaulting (V5-6, task 3). Existing `state_mode: vault` entries in device config and `.harness/.project-mode` markers are aliased to `"backend"` transparently at read time — no operator action required; the underlying file is not rewritten. The `"local"` value and its semantics are unchanged. Decision: [ADR 0019](../decisions/0019-v5-6-routing-plane-devaulting).
+> **V5-6 (shipped 2026-06-18) — `state_mode: vault` now aliases to `state_mode: backend` at read time.** The non-local value was renamed from `"vault"` to `"backend"` in the routing-plane de-vaulting (V5-6, task 3). Existing `state_mode: vault` entries in device config and `.harness/.project-mode` markers are aliased to `"backend"` transparently at read time — no operator action required; the underlying file is not rewritten. The `"local"` value and its semantics are unchanged. Decision: [ADR 0019](memory-storage-seam).
 
 Precedence is deterministic: an explicit repo-local `.project-mode=local` marker wins over the device-level `state_mode`. There is **no in-vault marker layer** — an earlier design that read a marker from `<vault>/_harness/` was removed, because configuration never lives in the vault. The mode is also never *inferred* from a missing `vault_path`: a transiently-unreachable vault must not split-brain the mode.
 
@@ -30,7 +30,7 @@ It makes local mode *reachable and writable* without a vault — it does not mig
 
 ## Related
 
-- [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config) — why the mode is configured on-host only, never in the vault, and never inferred from a missing `vault_path`.
+- [ADR 0009 — On-host state-mode config](memory-storage-seam) — why the mode is configured on-host only, never in the vault, and never inferred from a missing `vault_path`.
 - [Run without a vault](Run-Without-A-Vault) — the operator recipe for enabling single-repo local state.
 - [Installer CLI](Installer-CLI) — the `--local-state` flag and the `agentm_config.py --state-mode` setter.
 - [Project config](Project-Config) — how `register()` degrades when no vault is present.

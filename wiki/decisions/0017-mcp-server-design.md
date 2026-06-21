@@ -173,8 +173,8 @@ to keep that swap cheap.
 
 ## Related
 
-- [ADR 0012 — Vault-write protocol](0012-vault-write-protocol) — V5-0; the
+- [ADR 0012 — Vault-write protocol](memory-storage-seam) — V5-0; the
   write protocol (`vault_lock.py`) this daemon composes as writer #2.
-- [ADR 0013 — Storage-seam fail-loud selection](0013-storage-seam-fail-loud-selection) — V5-1; the seam the daemon reads/writes through.
+- [ADR 0013 — Storage-seam fail-loud selection](memory-storage-seam) — V5-1; the seam the daemon reads/writes through.
 - [Memory MCP tools reference](Memory-MCP-Tools) — signatures, behavioral guarantees, soft-delete contract.
 - [Stand up memory MCP server](Stand-Up-Memory-MCP-Server) — how-to for connecting each host.

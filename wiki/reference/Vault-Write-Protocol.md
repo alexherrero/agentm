@@ -1,6 +1,6 @@
 # Vault write protocol
 
-How the memory engine writes a Drive-synced vault safely when two or more agent sessions run at once, and the three operator habits that keep it safe. The *why* is [ADR 0012 — The vault-write protocol](0012-vault-write-protocol.md); this page is the lookup.
+How the memory engine writes a Drive-synced vault safely when two or more agent sessions run at once, and the three operator habits that keep it safe. The *why* is [ADR 0012 — The vault-write protocol](memory-storage-seam); this page is the lookup.
 
 ## ⚡ Quick Reference
 
@@ -34,6 +34,6 @@ The `conflict-merger-session-start` hook sweeps the vault on session boot and **
 
 ## See also
 
-- [ADR 0012 — The vault-write protocol](0012-vault-write-protocol.md) — the full rationale, the five R4 rules, and the re-audit triggers.
+- [ADR 0012 — The vault-write protocol](memory-storage-seam) — the full rationale, the five R4 rules, and the re-audit triggers.
 - [Run without a vault](Run-Without-A-Vault) — the repo-local state mode, which is partitioned and needs no mutex.
 - [CI gates](CI-Gates) · [How-to](How-To) · [Reference](Reference) · [Home](Home)

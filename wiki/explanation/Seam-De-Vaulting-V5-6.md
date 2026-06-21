@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Status: complete** (2026-06-18)
 > Plan: `.harness/PLAN.md` (V5-6 — Seam De-Vaulting, routing layer onto the storage seam)
-> Decision: [ADR 0019](../decisions/0019-v5-6-routing-plane-devaulting)
+> Decision: [ADR 0019](memory-storage-seam)
 
 The third and final leg of the V5 de-vaulting arc: re-plumb the kernel's routing/index mechanisms so they speak `Locator`s to the V5-1 storage seam instead of building `vault_path() / …` filesystem paths directly. After this plan, a fresh install with only the `device-local` backend can host a project, its harness state, and the repo registry without needing an Obsidian/GDrive vault.
 
@@ -99,7 +99,7 @@ Tests in `TestVaultProjectsDir` and `TestResolveProject` updated to use the `Loc
 
 ### Task 5 — ADR amendment + docs refresh (shipped)
 
-ADR 0019 created ([`wiki/decisions/0019-v5-6-routing-plane-devaulting.md`](../decisions/0019-v5-6-routing-plane-devaulting.md)) recording the three-leg de-vaulting arc completion, all four locked design calls (LC-1/4/5/6/7/8), and the load-bearing assumptions with re-audit triggers. `Decisions.md` and `decisions/_Sidebar.md` updated.
+ADR 0019 created ([`wiki/decisions/0019-v5-6-routing-plane-devaulting.md`](memory-storage-seam)) recording the three-leg de-vaulting arc completion, all four locked design calls (LC-1/4/5/6/7/8), and the load-bearing assumptions with re-audit triggers. `Decisions.md` and `decisions/_Sidebar.md` updated.
 
 `wiki/designs/device-wide-architecture.md` v1.0 lifecycle entry updated from *pending* to *2026-06-18 complete* with all four task commit SHAs and ADR 0019 cross-link.
 
@@ -114,4 +114,4 @@ ADR 0019 created ([`wiki/decisions/0019-v5-6-routing-plane-devaulting.md`](../de
 - **Out of scope:** V5-6 narrative-shed (docs/prose identity rewrite — separate plan), PM slim (gated on crickets github-projects plugin), `auto_orchestration` 3-way split (V5-5), `agentm_config` / `detect_project` / `vault_project` slug-resolution (already vault-agnostic), V5-7 full config model.
 - **Kernel stays the OS map (LC-1):** routing mechanisms are not moved to a plugin — they remain kernel-resident, now speaking `Locator`s.
 - **One-way import direction (LC-8):** de-vaulted mechanisms may import the seam, never a capability plugin.
-- **Related:** [Storage-Seam reference](../reference/Storage-Seam), [Single-Repo-State-Mode explanation](Single-Repo-State-Mode), [ADR 0018 — V5-3 storage cutover](../decisions/0018-v5-3-storage-cutover.md).
+- **Related:** [Storage-Seam reference](../reference/Storage-Seam), [Single-Repo-State-Mode explanation](Single-Repo-State-Mode), [ADR 0018 — V5-3 storage cutover](memory-storage-seam).

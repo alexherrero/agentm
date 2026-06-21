@@ -13,7 +13,7 @@
 - [Single-repo state mode](Single-Repo-State-Mode)
 - [Seam de-vaulting V5-6](Seam-De-Vaulting-V5-6)
 - [Memory↔process seam](Memory-Process-Seam)
-- [Memory↔storage seam](Memory-Storage-Seam)
+- [Memory↔storage seam](Storage-Seam-Concepts)
 - [Named plans](Named-Plans) ⏳
 - [Soft composition and hard composition](Soft-Composition)
 ### 📐 [Decisions](Decisions)

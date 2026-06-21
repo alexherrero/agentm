@@ -87,6 +87,6 @@ The resolver lives in agentm (`scripts/capability_resolver.py`). The crickets cu
 
 - [ADR 0006 — Split customizations into crickets](0006-crickets-split) — C3 (substrate beneath, not plugin host) is the anchoring principle.
 - [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop) — context for the agentm/crickets split.
-- [ADR 0013 — Storage seam](0013-storage-seam-fail-loud-selection) — sibling seam ADR (storage read is also data-only, never code import).
+- [ADR 0013 — Storage seam](memory-storage-seam) — sibling seam ADR (storage read is also data-only, never code import).
 - [Capability resolver reference](../reference/Capability-Resolver) — the `capability_resolver.py` API.
 - [Soft-composition explanation](../explanation/Soft-Composition) — why `enhances ∩ requires = ∅`.

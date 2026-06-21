@@ -13,18 +13,12 @@ This page is the index. The homepage links here once instead of listing every AD
 - [ADR 0006 — Split customizations into `crickets`](0006-crickets-split)
 - [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)
 - [ADR 0008 — Project surface split](0008-project-surface-split)
-- [ADR 0009 — On-host state-mode config](0009-on-host-state-mode-config)
 - [ADR 0010 — Vault internal taxonomy](0010-vault-internal-taxonomy)
 - [ADR 0011 — V5 unbundling: slim the dev loop + migrate-to-diataxis](0011-v5-unbundling-dev-loop)
-- [ADR 0012 — The vault-write protocol (R4 Phase-0 concurrency floor)](0012-vault-write-protocol)
-- [ADR 0013 — The memory↔storage seam: backend selection fails loud, never demotes](0013-storage-seam-fail-loud-selection)
 - [ADR 0014 — The Tier-2 gate: don't fork the loop through the Agent SDK](0014-tier-2-sdk-fork-gate)
 - [ADR 0015 — Capability discovery: the `enhances:` runtime](0015-capability-discovery)
 - [ADR 0016 — The persona tier: a third classification above the substrate/plugin binary](0016-persona-tier)
 - [ADR 0017 — MCP server design: singleton-HTTP broker, four tools, loopback-first](0017-mcp-server-design)
-- [ADR 0018 — V5-3 storage cutover: delete vault backend from kernel, device-local is canonical](0018-v5-3-storage-cutover)
-- [ADR 0019 — V5-6 routing-plane de-vaulting: `resolve_project`, `repo_registry`, and `state_mode` route through the storage seam](0019-v5-6-routing-plane-devaulting)
-- [ADR 0020 — Backend-aware harness state: route `harness_state_dir` / `read_state_file` / `write_state_file` through the storage seam](0020-backend-aware-harness-state)
 
 ## See also
 
