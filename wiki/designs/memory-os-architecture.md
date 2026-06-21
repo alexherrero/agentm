@@ -1,6 +1,9 @@
 # Memory-OS architecture: agentm as a storage-agnostic kernel + plugin host
 
 > [!NOTE]
+> **SUPERSEDED (2026-06-20) → [agentm-hld.md](agentm-hld).** This is the **V5 point-in-time HLD**, kept as the historical arc record alongside [agent-memory-evolution.md](agent-memory-evolution) (V1→V4) and [device-wide-architecture.md](device-wide-architecture) (V4 device-wide). The live agentm parent design is now **[agentm-hld.md](agentm-hld)** (AG-track Phase 1), which `succeeds:` this doc. Read this for V5 history; read the successor for current truth. The basename is preserved so existing up-links (notably crickets' `developer-plugin-suite.md`) keep resolving.
+
+> [!NOTE]
 > **Status:** initial publication (v0.1) — 2026-06-03. The **V5 design pass**.
 > **Position in arc:** **V5 of the Agent Memory evolution — "the unbundling."** Companion to [`agent-memory-evolution.md`](agent-memory-evolution.md) (the V1→V7 arc) and [`device-wide-architecture.md`](device-wide-architecture.md) (V4, device-wide). This doc locks the V5 shape: **agentm becomes a pure memory OS + plugin host**; every non-memory capability unbundles into a crickets plugin; storage becomes pluggable.
 > **Lifecycle:** updated per the operator's [[hld-evolution-update-on-major-release]] convention — a new dated subsection per qualifying release. See **Lifecycle** at the bottom.

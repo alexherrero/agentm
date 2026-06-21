@@ -15,11 +15,18 @@ The permanent agent-memory store and its six implementation parts.
   - [seed-pass](seed-pass) — the co-created first pass that bootstraps a vault.
   - [discovery-mining](discovery-mining) — surfacing latent structure from existing notes.
 
+## Architecture-Governance (AG track) — the live parents
+
+The current top-level design parents (AG-track Phase 1, `status: launched`). Children point *up* at these.
+
+- [Foundations](agentm-foundations-hld) — the shared cross-repo "why": the nine principles agentm and crickets both stand on, and how the person (agentm) and its tools (crickets) relate. The root both HLDs inherit by reference.
+- [AgentM HLD](agentm-hld) — the agentm parent: the four pillars (Experience · Memory · Opinions · Personas), their components, and where each touches crickets. **Succeeds** [Memory-OS Architecture (V5)](memory-os-architecture).
+
 ## Evolution & architecture
 
 - [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going.
 - [Device-Wide Architecture](device-wide-architecture) — the device-wide design Agent M targets.
-- [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 memory-OS HLD.
+- [Memory-OS Architecture (V5, superseded)](memory-os-architecture) — the V5 memory-OS HLD, kept as the historical arc record; superseded by [AgentM HLD](agentm-hld).
 - [The persona tier](persona-tier) — the third classification above the substrate/plugin binary: a standing concern that composes capabilities it does not own (rememberer = degenerate persona; V5-11 chief-of-staff = first real persona). Refines ADR 0011 · pairs with ADR 0016.
 
 ## Documentation & tooling

@@ -1,0 +1,61 @@
+<svg viewBox="0 0 980 470" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <rect x="6" y="6" width="968" height="458" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+
+  <!-- Experience -->
+  <rect x="18" y="24" width="228" height="50" rx="9" fill="#E9F6EE" stroke="#3A9D5D" stroke-width="1.6"/>
+  <text x="132" y="46" font-size="14.5" font-weight="700" fill="#1E5435" text-anchor="middle">📈 Experience</text>
+  <text x="132" y="63" font-size="10" font-style="italic" fill="#4E7A60" text-anchor="middle">past + world</text>
+  <rect x="18" y="82" width="228" height="362" rx="9" fill="#ffffff" stroke="#A8DCBD" stroke-width="1.3"/>
+  <g font-size="11.5" fill="#23503A">
+    <text x="34" y="110">• reflection — backward</text>
+    <text x="34" y="136">• scheduled learning — forward</text>
+    <text x="34" y="162">• heat policy</text>
+    <text x="34" y="188">• idea incubation</text>
+    <text x="34" y="214">• import watchlist</text>
+    <text x="34" y="240">• the scheduler</text>
+    <text x="34" y="266">• dreaming <tspan font-style="italic" fill="#6FA083">(designed)</tspan></text>
+  </g>
+
+  <!-- Memory -->
+  <rect x="254" y="24" width="228" height="50" rx="9" fill="#EAF1FB" stroke="#2F6FBA" stroke-width="1.6"/>
+  <text x="368" y="46" font-size="14.5" font-weight="700" fill="#1B3A5B" text-anchor="middle">🧠 Memory</text>
+  <text x="368" y="63" font-size="10" font-style="italic" fill="#5E7A99" text-anchor="middle">what it has learned</text>
+  <rect x="254" y="82" width="228" height="362" rx="9" fill="#ffffff" stroke="#B9CDE6" stroke-width="1.3"/>
+  <g font-size="11.5" fill="#1B3A5B">
+    <text x="270" y="110">• memory engine</text>
+    <text x="270" y="136">• storage seam</text>
+    <text x="270" y="162">• resolution plane</text>
+    <text x="270" y="188">• backends <tspan font-style="italic" fill="#5E7A99">(+ extensible)</tspan></text>
+    <text x="270" y="214">• write protocol</text>
+    <text x="270" y="240">• recall loop</text>
+    <text x="270" y="266">• harness-state I/O</text>
+    <text x="270" y="292">• MCP server <tspan font-style="italic" fill="#5E7A99">(opt-in)</tspan></text>
+  </g>
+
+  <!-- Opinions -->
+  <rect x="490" y="24" width="228" height="50" rx="9" fill="#FBF3E2" stroke="#C8961E" stroke-width="1.6"/>
+  <text x="604" y="46" font-size="14.5" font-weight="700" fill="#6B4E12" text-anchor="middle">⚖️ Opinions</text>
+  <text x="604" y="63" font-size="10" font-style="italic" fill="#9A7A2E" text-anchor="middle">how things should go</text>
+  <rect x="490" y="82" width="228" height="362" rx="9" fill="#ffffff" stroke="#EBD3A0" stroke-width="1.3"/>
+  <g font-size="11.5" fill="#6B4E12">
+    <text x="506" y="110">• what 'done' looks like</text>
+    <text x="506" y="136">• what 'good' looks like</text>
+    <text x="506" y="162">• what's efficient</text>
+    <text x="506" y="188">• how we engineer</text>
+  </g>
+  <text x="506" y="224" font-size="10.5" font-style="italic" fill="#A98B4E">named buckets a tool</text>
+  <text x="506" y="240" font-size="10.5" font-style="italic" fill="#A98B4E">requests by name</text>
+
+  <!-- Personas -->
+  <rect x="726" y="24" width="228" height="50" rx="9" fill="#F2EEFB" stroke="#7E57C2" stroke-width="1.6"/>
+  <text x="840" y="46" font-size="14.5" font-weight="700" fill="#4A2E80" text-anchor="middle">🎭 Personas</text>
+  <text x="840" y="63" font-size="10" font-style="italic" fill="#6E5B96" text-anchor="middle">the hats it wears</text>
+  <rect x="726" y="82" width="228" height="362" rx="9" fill="#ffffff" stroke="#CBBCE8" stroke-width="1.3"/>
+  <g font-size="11.5" fill="#4A2E80">
+    <text x="742" y="110">• the persona tier</text>
+    <text x="742" y="136">• rememberer + the roster</text>
+    <text x="742" y="162">• the persona gate</text>
+  </g>
+  <text x="742" y="198" font-size="10.5" font-style="italic" fill="#8A78AE">Memory is the pseudo-</text>
+  <text x="742" y="214" font-size="10.5" font-style="italic" fill="#8A78AE">persona beneath all</text>
+</svg>

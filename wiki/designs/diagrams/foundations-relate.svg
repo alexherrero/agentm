@@ -1,0 +1,41 @@
+<svg viewBox="0 0 760 470" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arrG" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#3A9D5D"/></marker>
+    <marker id="arrB" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#2F6FBA"/></marker>
+  </defs>
+  <rect x="6" y="6" width="748" height="458" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+  <rect x="36" y="34" width="300" height="300" rx="12" fill="#EAF1FB" stroke="#2F6FBA" stroke-width="1.6"/>
+  <text x="56" y="63" font-size="16" font-weight="700" fill="#1B3A5B">agentm — the person</text>
+  <text x="56" y="82" font-size="12" font-style="italic" fill="#5E7A99">stateful · what persists</text>
+  <rect x="58" y="98" width="256" height="46" rx="8" fill="#ffffff" stroke="#9DBCE0"/>
+  <text x="72" y="120" font-size="13.5" font-weight="600" fill="#1B3A5B">Experience</text>
+  <text x="72" y="137" font-size="11" font-style="italic" fill="#7E8A99">what's worked before</text>
+  <rect x="58" y="154" width="256" height="46" rx="8" fill="#ffffff" stroke="#9DBCE0"/>
+  <text x="72" y="176" font-size="13.5" font-weight="600" fill="#1B3A5B">Memory</text>
+  <text x="72" y="193" font-size="11" font-style="italic" fill="#7E8A99">what it has learned</text>
+  <rect x="58" y="210" width="256" height="46" rx="8" fill="#ffffff" stroke="#9DBCE0"/>
+  <text x="72" y="232" font-size="13.5" font-weight="600" fill="#1B3A5B">Opinions</text>
+  <text x="72" y="249" font-size="11" font-style="italic" fill="#7E8A99">how things should go</text>
+  <rect x="58" y="266" width="256" height="46" rx="8" fill="#ffffff" stroke="#9DBCE0"/>
+  <text x="72" y="288" font-size="13.5" font-weight="600" fill="#1B3A5B">Personas</text>
+  <text x="72" y="305" font-size="11" font-style="italic" fill="#7E8A99">the hats it wears</text>
+  <rect x="470" y="150" width="250" height="150" rx="12" fill="#E9F6EE" stroke="#3A9D5D" stroke-width="1.6"/>
+  <text x="490" y="192" font-size="16" font-weight="700" fill="#1E5435">crickets — the tools</text>
+  <text x="490" y="212" font-size="12" font-style="italic" fill="#4E7A60">stateless · holds nothing</text>
+  <text x="490" y="248" font-size="11.5" fill="#3F6B4E">plan · build · review · release</text>
+  <text x="490" y="268" font-size="11" font-style="italic" fill="#6FA083">add or remove freely</text>
+  <rect x="36" y="398" width="684" height="44" rx="10" fill="#FBF3E2" stroke="#C8961E" stroke-width="1.6"/>
+  <text x="378" y="425" font-size="14" font-weight="700" fill="#6B4E12" text-anchor="middle">shared foundation</text>
+  <line x1="186" y1="334" x2="186" y2="396" stroke="#2F6FBA" stroke-width="1.6" marker-end="url(#arrB)"/>
+  <rect x="196" y="356" width="52" height="17" rx="3" fill="#ffffff"/>
+  <text x="200" y="369" font-size="11" fill="#2F6FBA">runs on</text>
+  <line x1="470" y1="185" x2="318" y2="177" stroke="#3A9D5D" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrG)"/>
+  <rect x="365" y="165" width="58" height="17" rx="3" fill="#ffffff"/>
+  <text x="369" y="178" font-size="11" fill="#3A9D5D">draws on</text>
+  <line x1="470" y1="225" x2="318" y2="233" stroke="#3A9D5D" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrG)"/>
+  <rect x="372" y="222" width="50" height="17" rx="3" fill="#ffffff"/>
+  <text x="376" y="235" font-size="11" fill="#3A9D5D">follows</text>
+  <line x1="470" y1="262" x2="318" y2="289" stroke="#3A9D5D" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#arrG)"/>
+  <rect x="372" y="270" width="66" height="17" rx="3" fill="#ffffff"/>
+  <text x="376" y="283" font-size="11" fill="#3A9D5D">wielded by</text>
+</svg>
