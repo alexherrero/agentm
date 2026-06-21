@@ -73,6 +73,9 @@ _DEFAULT_INDEX_FILES = [
     "wiki/decisions/_Sidebar.md",
     "wiki/_Sidebar.md",
 ]
+# Repo-root docs governed by check-wiki rule (l) — their relative links to a
+# deleted ADR dangle (CI-caught for the README), so the fold must sweep them too.
+_DEFAULT_ROOT_DOCS = ["README.md"]
 
 LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+)\)")
 LIST_ITEM_RE = re.compile(r"^\s*[-*]\s")
@@ -97,11 +100,18 @@ def _href_basename(href: str) -> str:
     return page
 
 
-def _build_map(fold_map: dict, repo: Path, plan: Plan) -> tuple[dict[str, str], dict[str, str]]:
-    """Return (stem→target_stem, adr_number→target_stem); record errors in `plan`."""
+def _build_map(fold_map: dict, repo: Path, plan: Plan
+               ) -> tuple[dict[str, str], dict[str, str], dict[str, str]]:
+    """Return (stem→target_stem, adr_number→target_stem, stem→target_path); errors in `plan`.
+
+    `target_stem` is the bare wiki basename (for wiki-internal links resolved by
+    basename); `target_path` is the repo-relative path (for repo-root docs like
+    the README whose links are filesystem-relative — rule l).
+    """
     decisions_dir = repo / fold_map.get("decisions_dir", _DEFAULT_DECISIONS_DIR)
     stem_to_target: dict[str, str] = {}
     num_to_target: dict[str, str] = {}
+    stem_to_path: dict[str, str] = {}
     for fold in fold_map.get("folds", []):
         into = repo / fold["into"]
         into_stem = fold["into_stem"]
@@ -112,16 +122,17 @@ def _build_map(fold_map: dict, repo: Path, plan: Plan) -> tuple[dict[str, str], 
             if not adr_file.is_file():
                 plan.errors.append(f"ADR to fold missing: {adr_file.relative_to(repo)}")
             stem_to_target[adr_stem] = into_stem
+            stem_to_path[adr_stem] = fold["into"]
             m = re.match(r"(\d{3,4})", adr_stem)
             if m:
                 num_to_target[m.group(1)] = into_stem
-    return stem_to_target, num_to_target
+    return stem_to_target, num_to_target, stem_to_path
 
 
 def plan_fold(fold_map: dict, repo: Path) -> Plan:
     """Compute the full change plan (no writes)."""
     plan = Plan()
-    stem_to_target, num_to_target = _build_map(fold_map, repo, plan)
+    stem_to_target, num_to_target, stem_to_path = _build_map(fold_map, repo, plan)
     if not stem_to_target:
         plan.errors.append("fold-map declares no ADRs to fold")
         return plan
@@ -164,6 +175,20 @@ def plan_fold(fold_map: dict, repo: Path) -> Plan:
                 for pm in prose_num_re.finditer(line):
                     plan.prose_refs.append((rel, i, line.strip()))
 
+    # Repo-root docs governed by check-wiki rule (l) (default: README.md). Their
+    # links are filesystem-relative paths, so they rewrite to the target's full
+    # repo-relative PATH, not the bare wiki stem.
+    for rd in fold_map.get("root_docs", _DEFAULT_ROOT_DOCS):
+        doc = repo / rd
+        if not doc.is_file():
+            continue
+        text = doc.read_text(encoding="utf-8", errors="replace")
+        for i, line in enumerate(text.splitlines(), 1):
+            for m in LINK_RE.finditer(line):
+                base = _href_basename(m.group(2))
+                if base in stem_to_path:
+                    plan.link_rewrites.append((rd, i, m.group(2), stem_to_path[base]))
+
     for stem in sorted(stem_to_target):
         f = decisions_dir / f"{stem}.md"
         if f.is_file():
@@ -173,7 +198,7 @@ def plan_fold(fold_map: dict, repo: Path) -> Plan:
 
 def apply_fold(fold_map: dict, repo: Path, plan: Plan) -> None:
     """Execute the plan: rewrite links + prune index lines, then delete ADR files."""
-    stem_to_target, _ = _build_map(fold_map, repo, Plan())
+    stem_to_target, _, stem_to_path = _build_map(fold_map, repo, Plan())
     index_files = {
         (repo / p).resolve()
         for p in fold_map.get("index_files", _DEFAULT_INDEX_FILES)
@@ -207,6 +232,21 @@ def apply_fold(fold_map: dict, repo: Path, plan: Plan) -> None:
         if changed:
             md.write_text("\n".join(out_lines) + ("\n" if text.endswith("\n") else ""),
                           encoding="utf-8")
+
+    # Repo-root docs (rule l): rewrite relative links to the target's full path.
+    for rd in fold_map.get("root_docs", _DEFAULT_ROOT_DOCS):
+        doc = repo / rd
+        if not doc.is_file():
+            continue
+        text = doc.read_text(encoding="utf-8", errors="replace")
+        def _sub_root(m: re.Match) -> str:
+            base = _href_basename(m.group(2))
+            if base in stem_to_path:
+                return f"[{m.group(1)}]({stem_to_path[base]})"
+            return m.group(0)
+        new_text = LINK_RE.sub(_sub_root, text)
+        if new_text != text:
+            doc.write_text(new_text, encoding="utf-8")
 
     # Retire the records (links already repointed above).
     for stem in stem_to_target:

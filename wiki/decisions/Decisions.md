@@ -8,9 +8,7 @@ This page is the index. The homepage links here once instead of listing every AD
 ## Records
 
 - [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow)
-- [ADR 0002 — Documentation convention](0002-documentation-convention)
 - [ADR 0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking)
-- [ADR 0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec)
 - [ADR 0005 — Drop Codex support; three-adapter scope](0005-drop-codex-support)
 - [ADR 0006 — Split customizations into `crickets`](0006-crickets-split)
 - [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases)

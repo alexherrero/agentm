@@ -1,12 +1,14 @@
 ---
-title: Seven-Section Wiki Convergence Design
+title: Documentation convention (agentm) — the seven-section wiki taxonomy
 status: launched
 visibility: published
 author: Alex Herrero
 contributors: []
 created: 2026-06-11
-updated: 2026-06-11
-last_major_revision: 2026-06-11
+updated: 2026-06-21
+last_major_revision: 2026-06-21
+kind: design
+scope: feature
 prd:
 project:
 ---
@@ -22,13 +24,38 @@ project:
   status: draft → review → final → launched.
 -->
 
-# Seven-Section Wiki Convergence Design
+# Documentation convention (agentm)
+
+> This is the **living documentation-convention design** for agentm — the current truth, amended in place. It absorbs the two predecessor ADRs that the AG-track ADR fold retired into it: **ADR 0002** (the original documentation convention) and **ADR 0004** (the Diátaxis spec). Their decision history — rationale, why-not-the-alternative, re-audit triggers — is preserved in the **Amendment log** at the bottom. (AG Phase 2, 2026-06-21; see [Design governance](Design-Governance).)
+
+## The convention (current truth)
+
+agentm's documentation is a **narrative wiki at `wiki/`**, organized by the **seven-section taxonomy** crickets standardized — identical across both repos. Five sections are always present, two are conditional:
+
+| # | Section | Presence |
+|---|---|---|
+| 1 | `how-to/` | always (task-oriented; tutorials fold in here — no separate `tutorials/`) |
+| 2 | `reference/` | always (information-dense: tables, flags, layouts) |
+| 3 | `architecture/` | **conditional** — only when a `wiki/architecture.yml` manifest is declared |
+| 4 | `designs/` | always (HLDs / design docs like this one) |
+| 5 | `explanation/` | always (rationale, concepts) |
+| 6 | `decisions/` | always (historically ADRs; the agentm/crickets ADR **model is retired** — new decisions amend the relevant living design, not a new ADR) |
+| 7 | `operational/` | **conditional** — only on non-public visibility |
+
+Four invariants carry forward unchanged from the predecessor ADRs (their rationale is in the Amendment log):
+
+- **Phase-boundary writes, never inline.** A `documenter` sub-agent owns `wiki/**` writes and runs only at phase boundaries (`/setup`, `/plan`, `/work`'s commit step, `/release`, `/bugfix`) — never during `/work`'s implement step. This is the hard rule against "defensive documentation."
+- **Installer boundary.** `install.sh` / `install.ps1` copy **only** from `templates/` and `adapters/` — never this repo's own `wiki/`, `scripts/`, or CI — enforced at copy time (`ensure_boundary_src` / `Ensure-BoundarySrc`), not just asserted post-hoc.
+- **GitHub Wiki is a dumb mirror.** A sync workflow mirrors `wiki/**` to the GitHub Wiki; the repo is the source of truth.
+- **Deterministic structural lint, not LLM-judgment.** `scripts/check-wiki.py` enforces one-mode-per-page, filename uniqueness, link resolution, sidebar completeness, and soft word-count ceilings in CI ([principle 4](https://github.com/alexherrero/agentm/blob/main/harness/principles.md)).
+
+The rest of this doc records *how agentm converged onto the seven-section frame* (the change that produced the current convention) — kept as the design narrative; the predecessor decisions are folded into the Amendment log.
 
 ## Context
 
 ### Objective
 
-agentm's documentation spec ([ADR 0004](0004-diataxis-documentation-spec)) and its `diataxis-author` tooling still describe a four-mode Diátaxis layout (tutorials · how-to · reference · explanation), but agentm's own wiki and its `scripts/check-wiki.py` gate have already moved to the seven-section frame crickets standardized — How-to · Reference · Architecture · Designs · Explanation · Decisions · Operational. This design converges agentm onto that seven-section model as its one documentation taxonomy: it amends ADR 0004, updates the harness spec and the `diataxis-author` scripts, reshapes the `templates/wiki/` scaffold, and resolves the now-duplicated four-mode copy of the skill against crickets' canonical seven-section one. The goal is a single taxonomy across spec, tooling, gate, and content — no surface left asserting four modes.
+agentm's documentation spec (the predecessor ADR 0004, now folded into this design — see the Amendment log) and its `diataxis-author` tooling still described a four-mode Diátaxis layout (tutorials · how-to · reference · explanation), but agentm's own wiki and its `scripts/check-wiki.py` gate have already moved to the seven-section frame crickets standardized — How-to · Reference · Architecture · Designs · Explanation · Decisions · Operational. This design converges agentm onto that seven-section model as its one documentation taxonomy: it amends ADR 0004, updates the harness spec and the `diataxis-author` scripts, reshapes the `templates/wiki/` scaffold, and resolves the now-duplicated four-mode copy of the skill against crickets' canonical seven-section one. The goal is a single taxonomy across spec, tooling, gate, and content — no surface left asserting four modes.
 
 ### Background
 
@@ -158,3 +185,13 @@ TBD — not yet sequenced. Lands via agentm's `/work` after this design finalize
 | 2026-06-11 | Translated to 4 parts via `/design translate`: `amend-adr-0004` · `retire-diataxis-author` · `harness-documentation` · `templates-wiki`. Parts written to the vault (`projects/agentm/_harness/designs/seven-section-convergence/parts/`) per the vault-redirect convention, not the skill's default `wiki/designs/parts/` (which would pollute the published wiki + trip `check-wiki`); `parent_design` points back to the repo path. | final |
 | 2026-06-11 | Sequenced into 4 plans via `/design sequence` (topo order `amend-adr-0004` → `retire-diataxis-author` → `harness-documentation` → `templates-wiki`); first plan active at the **vault** `_harness/PLAN.md` (`amend-adr-0004`), 3 queued at `_harness/designs/seven-section-convergence/queued-plans/` — vault-redirected, not repo `.harness/`. Next: `/work` task 1. | final |
 | 2026-06-11 | **Launched** — all 4 parts shipped: `amend-adr-0004` (`51f77a9`+`deb6ef4`), `retire-diataxis-author` (`07f7ddc`), `harness-documentation` (`9e5322c`), `templates-wiki` (final part). Every surface that asserted four modes — ADR 0004, `harness/documentation.md`, the retired `diataxis-author` copy, the `templates/wiki/` scaffold — now agrees with the seven-section frame the gate (`check-wiki.py`) already enforced. Formal version-tagged release deferred per the Launch Plans (sequencing TBD); the release notes will cross-link crickets' `wiki-section-taxonomy` launch (the upstream this converges to). Note: converging the **documenter** sub-agent's own prose (still four-mode in both repos) + retiring agentm's duplicate copy toward crickets' canonical `wiki-maintenance:documenter` is a **separate** effort, not one of this design's four parts. | launched |
+
+## Amendment log
+
+Newest-first. This design is the living documentation convention; the predecessor ADRs 0002 + 0004 folded in here (AG Phase 2). git holds the deep history; this log holds the load-bearing "why."
+
+**2026-06-21 — ADR fold: 0002 + 0004 retired into this living design (AG Phase 2).** The agentm/crickets ADR *model* was retired (see [Design governance](Design-Governance), AG design-doc §5); ADR 0002 (documentation convention) and ADR 0004 (Diátaxis spec) were folded into this design and deleted via `migrate-adr.py` (inbound links repointed here, index/sidebars pruned). Their decision history is preserved in the two entries below. The body now leads with **The convention (current truth)**; the convergence narrative is kept as the design record. *Why not keep them as ADRs:* the AG track retired the immutability-by-append model precisely because it forces a chain-read (read 0002 → 0004 → its amendments → this design) to reach live truth; one living body collapses the chain. *Note:* the convergence below was originally landed *as an ADR amendment* because that was the model in June 2026 — that mechanism is itself now retired. *Re-audit trigger:* if a sixth documentation surface (beyond spec/tooling/gate/content) ever asserts a different taxonomy.
+
+**2026-04-21 — Diátaxis spec (was ADR 0004), then seven-section convergence.** Replaced ADR 0002's audience-based four-subdir split (development/operational/design/architecture) with an intent-based **Diátaxis four-mode** split (tutorial/how-to/reference/explanation) + a deterministic `check-wiki.py` lint + mode-aware `documenter` write rules. *Why not the audience model:* every page ended up simultaneously reference + how-to + explanation, optimizing for none; intent (learn/do/look-up/understand) is how readers and agents actually navigate, not role. *Why not LLM-judged quality:* structural lints catch ≥80% of authoring mistakes deterministically; the rest stays a human call ([principle 4](https://github.com/alexherrero/agentm/blob/main/harness/principles.md)). Prototype-validated (reshaped Getting-Started into 3 mode-pure pages) before acceptance. *Superseded 2026-06-11* by the **seven-section** frame (this doc) — the four modes became how-to·reference·architecture·designs·explanation·decisions·operational (tutorials fold into how-to; architecture/operational conditional), matching crickets' standardized taxonomy that agentm's gate already enforced. *Re-audit trigger:* a model bump that changes how agents consume mode-separated docs.
+
+**2026-04-01 — Documentation convention (was ADR 0002).** Established the narrative wiki at `wiki/` with the four load-bearing invariants that still hold (now in **The convention** above): phase-boundary `documenter` writes (never inline — the rule against defensive documentation), the copy-time installer boundary (`ensure_boundary_src`), the dumb-mirror GitHub Wiki sync, and `CamelCase-With-Dashes.md` globally-unique filenames. *Why not docs-alongside-code:* the implementer biases toward confirming the plan, not describing what shipped, and it bloats implementer context. *Why not a single `DOCS.md` / auto-generated-from-code / YAML-status-frontmatter:* doesn't scale / humans can't freely edit / overhead nobody maintains. *Load-bearing assumption:* target projects want a wiki-shaped narrative; unused sections may collapse to a `README.md` pointer, but the section frame stays for cross-project navigability.

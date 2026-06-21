@@ -148,6 +148,26 @@ class TestApply(unittest.TestCase):
             self.assertFalse((root / "wiki" / "decisions" / "0009-on-host-state-mode-config.md").is_file())
             self.assertFalse((root / "wiki" / "decisions" / "0012-vault-write-protocol.md").is_file())
 
+    def test_root_readme_swept_to_target_path(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            _scaffold(root)
+            (root / "README.md").write_text(
+                "See [protocol](wiki/decisions/0012-vault-write-protocol.md) "
+                "and [state](wiki/decisions/0009-on-host-state-mode-config.md) "
+                "and [other](wiki/decisions/0099-keeper.md).\n",
+                encoding="utf-8",
+            )
+            ma.apply_fold(_fold_map(), root, ma.Plan())
+            readme = (root / "README.md").read_text()
+            # folded ADRs' relative links rewritten to the target's full repo-relative PATH
+            self.assertIn("[protocol](wiki/designs/memory-storage-seam.md)", readme)
+            self.assertIn("[state](wiki/designs/memory-storage-seam.md)", readme)
+            self.assertNotIn("0012-vault-write-protocol", readme)
+            self.assertNotIn("0009-on-host-state-mode-config", readme)
+            # a non-folded ADR link is left untouched
+            self.assertIn("(wiki/decisions/0099-keeper.md)", readme)
+
     def test_no_dangling_gated_links_after_apply(self):
         with TemporaryDirectory() as d:
             root = Path(d)

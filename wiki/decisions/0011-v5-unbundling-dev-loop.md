@@ -80,7 +80,7 @@ The doc edits only stop the surviving docs from advertising deleted primitives a
 ## Related
 
 - [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow.md) — the workflow whose *primitives* this slim relocates to crickets; the workflow shape itself is unchanged, only its home.
-- [ADR 0004 — Diátaxis documentation spec](0004-diataxis-documentation-spec.md) — the convention `migrate-to-diataxis` encoded, now enforced by crickets' `diataxis-author`.
+- [ADR 0004 — Diátaxis documentation spec](seven-section-convergence) — the convention `migrate-to-diataxis` encoded, now enforced by crickets' `diataxis-author`.
 - [ADR 0006 — Split customizations into `crickets`](0006-crickets-split.md) — the precedent; this ADR revises its "two retained skills" load-bearing assumption.
 - [ADR 0016 — The persona tier](0016-persona-tier.md) — refines this ADR: the substrate/plugin binary did not name the third tier (the persona) that lives in agentm yet composes capabilities it does not own.
 - [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 design this slim opens (bucket ⑤); V5-6 is the deferred identity rewrite.

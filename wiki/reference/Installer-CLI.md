@@ -93,5 +93,5 @@ The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **no
 
 - [Tutorial 1: Your first harness install](01-First-Install) — end-to-end walkthrough.
 - [How to install into an existing project](Install-Into-Project) — recipe for production use.
-- [ADR 0002: Documentation convention](0002-documentation-convention) — why the installer boundary exists.
+- [ADR 0002: Documentation convention](seven-section-convergence) — why the installer boundary exists.
 - [ADR 0009: On-host state-mode config](0009-on-host-state-mode-config) — why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.
