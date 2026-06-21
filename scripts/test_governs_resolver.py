@@ -95,11 +95,23 @@ class TestBuildIndex(unittest.TestCase):
             self.assertEqual(entries[0].design, "wiki/designs/a.md")
             self.assertEqual(entries[0].area, "memory")
 
-    def test_design_without_governs_skipped(self):
+    def test_design_with_neither_area_nor_governs_skipped(self):
         with TemporaryDirectory() as d:
             root = Path(d)
-            _write_design(root, "a.md", area="memory", governs=None)
+            # no area: passed and no governs: → not a governance participant
+            p = (root / "wiki" / "designs")
+            p.mkdir(parents=True)
+            (p / "a.md").write_text("---\nstatus: launched\n---\n# a\n", encoding="utf-8")
             self.assertEqual(gr.build_index(root), [])
+
+    def test_area_only_design_indexed_with_empty_pattern(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            _write_design(root, "a.md", area="shared/foundations", governs=None)
+            entries = gr.build_index(root)
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0].pattern, "")
+            self.assertEqual(entries[0].area, "shared/foundations")
 
     def test_proposed_excluded_by_default(self):
         with TemporaryDirectory() as d:
@@ -187,13 +199,32 @@ class TestResolvePath(unittest.TestCase):
             self.assertTrue(r["governed"])
             self.assertEqual(r["design"], "wiki/designs/g.md")
 
-    def test_tie_breaks_on_sorted_design_path(self):
+    def test_exact_tie_is_overlap_failloud(self):
         with TemporaryDirectory() as d:
             root = Path(d)
             _write_design(root, "b.md", area="x", governs=["scripts"])
             _write_design(root, "a.md", area="y", governs=["scripts"])
             r = gr.resolve_governing_design("scripts/x.py", root=root)
-            # equal specificity → lexicographically-first design path
+            # equal specificity between two designs → fail-loud overlap, not a guess
+            self.assertFalse(r["governed"])
+            self.assertEqual(r["reason"], "overlap")
+            self.assertIsNone(r["design"])
+
+    def test_same_design_two_globs_is_not_overlap(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            _write_design(root, "a.md", area="x", governs=["scripts", "harness"])
+            r = gr.resolve_governing_design("scripts/x.py", root=root)
+            # two globs from the SAME design at equal spec → still governed (no overlap)
+            self.assertTrue(r["governed"])
+            self.assertEqual(r["design"], "wiki/designs/a.md")
+
+    def test_double_star_glob_matches(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            _write_design(root, "a.md", area="agentm/architecture", governs=["scripts/**"])
+            r = gr.resolve_governing_design("scripts/sub/deep.py", root=root)
+            self.assertTrue(r["governed"])
             self.assertEqual(r["design"], "wiki/designs/a.md")
 
     def test_backslash_target_normalized(self):
@@ -216,12 +247,39 @@ class TestResolveArea(unittest.TestCase):
             self.assertEqual(r["design"], "wiki/designs/parent.md")
             self.assertEqual(r["area"], "agentm")
 
+    def test_area_only_design_reachable_by_area_not_by_file(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            # area-only root (no governs:), like shared/foundations
+            _write_design(root, "found.md", area="shared/foundations", governs=None)
+            _write_design(root, "arch.md", area="agentm/architecture", governs=["scripts/**"])
+            # reachable by area name
+            r = gr.resolve_governing_design("shared/foundations", root=root)
+            self.assertTrue(r["governed"])
+            self.assertEqual(r["design"], "wiki/designs/found.md")
+            # listed by designs_in
+            self.assertEqual(gr.designs_in("shared/foundations", root=root),
+                             ["wiki/designs/found.md"])
+            # but governs NO file (empty pattern never matches)
+            r2 = gr.resolve_governing_design("harness/principles.md", root=root)
+            self.assertFalse(r2["governed"])
+
     def test_unknown_area_is_greenfield(self):
         with TemporaryDirectory() as d:
             root = Path(d)
             _write_design(root, "parent.md", area="agentm", governs=["scripts"])
             r = gr.resolve_governing_design("nonexistent-area", root=root)
             self.assertFalse(r["governed"])
+
+    def test_designs_in_lists_area_members(self):
+        with TemporaryDirectory() as d:
+            root = Path(d)
+            _write_design(root, "seam.md", area="agentm/storage", governs=["scripts/storage_seam.py"])
+            _write_design(root, "sel.md", area="agentm/storage", governs=["scripts/backend_selection.py"])
+            _write_design(root, "arch.md", area="agentm/architecture", governs=["scripts/**"])
+            got = gr.designs_in("agentm/storage", root=root)
+            self.assertEqual(got, ["wiki/designs/seam.md", "wiki/designs/sel.md"])
+            self.assertEqual(gr.designs_in("nope", root=root), [])
 
 
 # ── fail-safe ───────────────────────────────────────────────────────────────--

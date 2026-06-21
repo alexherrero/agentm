@@ -16,12 +16,13 @@ Public API (the module contract; the CLI shim in `agentm-governs.sh` wraps it):
               "governed": bool,
               "design":   str | None,   # repo-relative path to the design
               "area":     str | None,   # the governing design's area
-              "reason":   str,          # "governed" | "greenfield" | "error"
+              "reason":   str,          # "governed" | "greenfield" | "overlap" | "error"
             }
-        Most-specific governs:-pattern wins; ties break on sorted design path.
-        Never raises — any internal error collapses to
-        {governed: False, design: None, area: None, reason: "error"} (fail-safe,
-        like capability_resolver). "greenfield" is the clean no-match default.
+        Most-specific governs:-pattern wins; an exact-specificity tie between two
+        designs is fail-loud "overlap" (design=None), never a guess — designs must
+        not overlap (area-taxonomy.md no-overlap rule). Never raises — any internal
+        error collapses to {…, reason: "error"} (fail-safe, like capability_resolver).
+        "greenfield" is the clean no-match default.
 
     build_index(root=None, *, include_proposed=False) -> list[GovernsEntry]
         Low-level: scan `wiki/designs/**/*.md`, return one GovernsEntry per
@@ -194,18 +195,26 @@ def build_index(root: Path | None = None, *,
                 continue
             fm = _parse_frontmatter(text)
             governs = _as_list(fm.get("governs"))
-            if not governs:
+            area = fm.get("area") if isinstance(fm.get("area"), str) else None
+            # A design participates in governance if it declares governs: (file
+            # resolution) OR area: (area-only roots like shared/foundations, which
+            # govern no code but must be reachable by area — area-taxonomy.md).
+            if not governs and not area:
                 continue
             status = fm.get("status") if isinstance(fm.get("status"), str) else None
             if status not in allowed:
                 continue
-            area = fm.get("area") if isinstance(fm.get("area"), str) else None
             try:
                 design_rel = md.relative_to(repo).as_posix()
             except ValueError:
                 design_rel = md.as_posix()
-            for pat in governs:
-                entries.append(GovernsEntry(pat, design_rel, area, status))
+            if governs:
+                for pat in governs:
+                    entries.append(GovernsEntry(pat, design_rel, area, status))
+            else:
+                # area-only: an empty pattern never matches a file (_specificity
+                # returns -1), so it affects area lookup / designs_in only.
+                entries.append(GovernsEntry("", design_rel, area, status))
     except Exception:
         return []
     return entries
@@ -265,24 +274,43 @@ def resolve_governing_design(target: str, *, root: Path | None = None,
             return {"governed": True, "design": design, "area": area,
                     "reason": "governed"}
 
-        # Path resolution: most-specific governs: pattern wins.
-        best: tuple[int, str, str | None] | None = None  # (spec, design, area)
+        # Path resolution: most-specific governs: pattern wins; an exact tie
+        # between *different* designs is fail-loud "overlap", not a guess
+        # (area-taxonomy.md no-overlap rule — designs must not overlap).
         norm = target.replace("\\", "/")
+        matches: list[tuple[int, str, str | None]] = []  # (spec, design, area)
         for e in entries:
             spec = _specificity(e.pattern, norm)
-            if spec < 0:
-                continue
-            cand = (spec, e.design, e.area)
-            if best is None or spec > best[0] or (spec == best[0] and e.design < best[1]):
-                best = cand
-        if best is None:
+            if spec >= 0:
+                matches.append((spec, e.design, e.area))
+        if not matches:
             return {"governed": False, "design": None, "area": None,
                     "reason": "greenfield"}
-        return {"governed": True, "design": best[1], "area": best[2],
+        max_spec = max(m[0] for m in matches)
+        top = {(d, a) for s, d, a in matches if s == max_spec}
+        if len(top) > 1:
+            return {"governed": False, "design": None, "area": None,
+                    "reason": "overlap"}
+        design, area = next(iter(top))
+        return {"governed": True, "design": design, "area": area,
                 "reason": "governed"}
     except Exception:
         return {"governed": False, "design": None, "area": None,
                 "reason": "error"}
+
+
+def designs_in(area: str, *, root: Path | None = None,
+               include_proposed: bool = False) -> list[str]:
+    """Return the repo-relative paths of every design declaring `area:` == `area`.
+
+    The area-keyed accessor (area-taxonomy.md) the SessionStart paths-only inject
+    and the index page use. Sorted, de-duplicated; `[]` on no match. Never raises.
+    """
+    try:
+        entries = build_index(root, include_proposed=include_proposed)
+        return sorted({e.design for e in entries if e.area == area})
+    except Exception:
+        return []
 
 
 # ── CLI (entry point for the agentm-governs shim) ──────────────────────────────

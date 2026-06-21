@@ -5,9 +5,7 @@ seeded: 2026-06-19
 approved: 2026-06-20
 kind: design
 scope: arc
-area: foundations
-governs:
-  - harness/principles.md
+area: shared/foundations
 ---
 
 > [!NOTE]
@@ -137,4 +135,4 @@ Key calls preserved through review: the agentm/crickets **primary-home banding**
 
 **Approved 2026-06-20** (frontmatter `approved: 2026-06-20`); `status` stays `proposed` until the Phase-1 lift into tracked `wiki/designs/` flips it to `launched`. **Re-audit triggers:** flip `status` at the lift; re-confirm the primary-home banding against the agentm + crickets HLDs (they must not contradict it); re-count P3's gates if `check-all.sh` changes; the references are deliberately thin and expected to be replaced as the code moves.
 
-**2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/` and flipped `status: proposed → launched`. Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: foundations`, `governs: [harness/principles.md]` (the file rewritten to point up at this doc). Now resolvable by [`governs_resolver.py`](Design-Governance) — `harness/principles.md` routes here ahead of the broader agentm-HLD `harness` claim (most-specific-wins). *Re-audit trigger satisfied:* status flipped at the lift.
+**2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/` and flipped `status: proposed → launched`. Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: shared/foundations` — **area-only, no `governs:`**: the shared-philosophy root governs no code (it's reached by area, not by file glob), per the [area taxonomy](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift. (Area reconciled 2026-06-21 from the placeholder `foundations`/`harness/principles.md` stamp to the canonical two-level vocab.)

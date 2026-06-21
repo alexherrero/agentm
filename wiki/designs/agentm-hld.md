@@ -5,10 +5,9 @@ seeded: 2026-06-19
 approved: 2026-06-20
 kind: design
 scope: arc
-area: agentm
+area: agentm/architecture
 governs:
-  - scripts
-  - harness
+  - scripts/**
 succeeds: wiki/designs/memory-os-architecture.md
 children:
   - children/agentm-memory-system.md
@@ -172,4 +171,4 @@ The review rounds settled the model. **Opinions** = four named, abstract surface
 
 **Honesty calls:** forward learning, the scheduler, the request-by-name Opinion registry, the persona roster + adoption modes, and the MCP-server-as-seam-client storage convergence (**V5-14**) are **designed, not built**. **Approved 2026-06-20**; `status` stays `proposed` until the Phase-1 lift flips it to `launched`, and the four children stay `status: seeded` for their own passes. **Re-audit triggers:** flip `status` at the lift; flip each designed component to as-built as it ships; give every child its own voice/structure pass.
 
-**2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/`, flipped `status: proposed → launched`, and superseded the predecessor [memory-os-architecture.md](memory-os-architecture) with a forward-pointer (its basename preserved so crickets' up-links resolve). Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: agentm`, `governs: [scripts, harness]` — deliberately broad until the four `children/` lift narrower `governs:` patterns in Phase 3, at which point most-specific-wins refines resolution automatically. Now resolvable by [`governs_resolver.py`](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift.
+**2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/`, flipped `status: proposed → launched`, and superseded the predecessor [memory-os-architecture.md](memory-os-architecture) with a forward-pointer (its basename preserved so crickets' up-links resolve). Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: agentm/architecture`, `governs: [scripts/**]` — the broad agentm-substrate fallback; the children lift narrower `governs:` globs in Phase 3 (and the seam fold adds `agentm/storage`), at which point most-specific-wins refines resolution automatically. Now resolvable by [`governs_resolver.py`](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift. (Area + governs reconciled 2026-06-21 to the canonical two-level taxonomy: `agentm` → `agentm/architecture`, `[scripts, harness]` → `[scripts/**]`.)

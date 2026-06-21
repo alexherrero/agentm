@@ -7,8 +7,9 @@ The AG-track substrate for grounding the loop (design-doc §6): a small frontmat
 | Function / command | Signature | Returns | Absent / error → |
 |---|---|---|---|
 | `resolve_governing_design` | `resolve_governing_design(target, *, root=None, include_proposed=False) → dict` | `{governed, design, area, reason}` | `{governed: False, …, reason: "greenfield"}` (never raises) |
-| `build_index` | `build_index(root=None, *, include_proposed=False) → list[GovernsEntry]` | one entry per `governs:` pattern of each launched design | `[]` (never raises) |
-| CLI | `python3 scripts/governs_resolver.py [--json] [--root DIR] [--include-proposed] <file-or-area>` | exit 0 (governed) / 1 (greenfield) / 2 (usage) | exit 1 |
+| `designs_in` | `designs_in(area, *, root=None, include_proposed=False) → list[str]` | sorted design paths whose `area:` == `area` (the area-keyed lookup for SessionStart inject / index) | `[]` (never raises) |
+| `build_index` | `build_index(root=None, *, include_proposed=False) → list[GovernsEntry]` | one entry per `governs:` pattern of each launched design (area-only designs get one empty-pattern entry) | `[]` (never raises) |
+| CLI | `python3 scripts/governs_resolver.py [--json] [--root DIR] [--include-proposed] <file-or-area>` | exit 0 (governed) / 1 (greenfield/overlap) / 2 (usage) | exit 1 |
 | Shim | `scripts/agentm-governs.sh <file-or-area>` | same exit codes as the CLI | exit 1 |
 
 ## Exit / reason codes (the bridge contract)
@@ -17,6 +18,7 @@ The AG-track substrate for grounding the loop (design-doc §6): a small frontmat
 |---|---|---|---|
 | `0` | `"governed"` | A living design governs the target. | the design's repo-relative path (or full dict with `--json`) |
 | `1` | `"greenfield"` | No design governs the target — clean none. | empty (a note goes to stderr) |
+| `1` | `"overlap"` | Two designs match at equal specificity — **fail-loud, not a guess** (the no-overlap rule was violated; narrow one `governs:` glob). | empty (a note goes to stderr) |
 | `1` | `"error"` | An internal error occurred; treated as not-governed (fail-safe). | empty (note to stderr) |
 | `2` | — | Usage error (no target given). | usage to stderr |
 
@@ -28,13 +30,26 @@ Every living design under `wiki/designs/` carries machine-readable altitude + ow
 
 | Key | Domain | Values | Used by the resolver? |
 |---|---|---|---|
-| `governs:` | design docs | list of repo-relative path globs / dir-prefixes the design owns (e.g. `harness/principles.md`, `scripts`) | **yes** — the match surface |
-| `area:` | design docs | taxonomy bucket: `foundations · agentm · memory · experience · opinions · personas` | **yes** — area-name resolution + grouping |
+| `governs:` | non-root designs | list of repo-relative path globs the design owns (e.g. `scripts/storage_seam.py`, `scripts/**`). Root/area-only designs omit it. | **yes** — the match surface |
+| `area:` | every design | one value from the two-level controlled vocabulary (below) | **yes** — area-name resolution + grouping |
 | `scope:` | design docs | altitude: `arc › feature › sub-feature › tweak` | no (metadata / human navigation) |
 | `kind:` | any artifact | artifact type: `design` \| `research` | no (metadata; keeps `research/` separate from `design`) |
 | `shape:` | **primitives only** | Axis-A SHAPE: `skill · hook · agent · slash-command · persona · script · service` | no |
 
 > **`shape:` is not stamped on design docs.** It is the Pillar-1 SHAPE axis for *host-loaded primitives* (a skill, a hook, an agent def). A design document is not a host-loaded primitive, so it carries no honest `shape:` value — the key is defined here for the primitives the spine classifies, never overloaded onto `kind:`. See the [AgentM HLD](agentm-hld) classification spine.
+
+### The `area:` vocabulary (two-level `<root>/<domain>`)
+
+A controlled vocabulary — one **owning design** per area; other designs in the area are children pointing up. agentm-side values:
+
+| Root | Areas |
+|---|---|
+| `shared/` | `shared/foundations` (area-only — governs no code) |
+| `agentm/` | `agentm/architecture` · `agentm/memory` · `agentm/storage` · `agentm/experience` · `agentm/opinions` · `agentm/personas` · `agentm/capability-resolution` · `agentm/phase-contract` · `agentm/mcp` · `agentm/vault-taxonomy` |
+| `crickets/` | `crickets/architecture` + one per capability (`crickets/developer-workflows`, `crickets/wiki`, …) |
+| `governance/` | `governance` (the AG machinery: design-doc, this index, the grounding hooks, the ADR model) |
+
+An `area:` not in the vocabulary should fail a valid-area lint (the honesty lints mirror the capability lints; the lints themselves are a follow-on to this resolver). The canonical source is the AG `area-taxonomy.md` spec.
 
 ### Status filter
 
@@ -42,13 +57,14 @@ Only `status: launched` designs participate in resolution by default (the live t
 
 ## Resolution semantics
 
-1. **Area-name input** — if `target` exactly equals a known `area:` value, return the launched design with that area (ties break on sorted design path).
-2. **Path input** — otherwise treat `target` as a repo-relative path and find the **most-specific** matching `governs:` pattern:
+1. **Area-name input** — if `target` exactly equals a known `area:` value, return that area's design (e.g. `shared/foundations` → the Foundations HLD, even though it governs no file). Area-only roots are reachable here but never match a path.
+2. **Path input** — otherwise treat `target` as a repo-relative path and find the **most-specific** matching `governs:` glob:
    - exact file match (`target == pattern`),
    - directory prefix (`target` under `pattern + "/"`),
-   - glob (`fnmatch`, incl. `pattern/*`).
-   - **Longest matching pattern wins**; equal specificity breaks on lexicographically-first design path. So `harness/principles.md` (governed by [Foundations](agentm-foundations-hld)) wins over the broader `harness` (governed by the [AgentM HLD](agentm-hld)).
-3. **No match** → `greenfield` (exit 1). As children lift in Phase 3 and stamp narrower `governs:` patterns, resolution refines automatically — no resolver change needed.
+   - glob (`fnmatch`, incl. `scripts/**`).
+   - **Longest matching pattern wins.** A more-specific child (e.g. `memory-storage-seam` governing `scripts/storage_seam.py`) wins over the broad `agentm/architecture` fallback (`scripts/**`) — this is the area-walk-up: a file with no specific owner lands on its area's broad-fallback glob.
+   - **An exact-specificity tie between *different* designs is `overlap` (fail-loud), never a guess** — the no-overlap rule was violated; narrow one glob. (Multiple globs from the *same* design at equal specificity is fine.)
+3. **No match** → `greenfield` (exit 1). As children lift in Phase 3 and stamp narrower `governs:` globs, resolution refines automatically — no resolver change needed.
 
 ## Public API
 
@@ -59,7 +75,7 @@ Only `status: launched` designs participate in resolution by default (the live t
     "governed": bool,
     "design":   str | None,   # repo-relative path to the governing design
     "area":     str | None,   # the governing design's area
-    "reason":   str,          # "governed" | "greenfield" | "error"
+    "reason":   str,          # "governed" | "greenfield" | "overlap" | "error"
 }
 ```
 

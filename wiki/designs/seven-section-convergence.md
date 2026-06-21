@@ -9,6 +9,7 @@ updated: 2026-06-21
 last_major_revision: 2026-06-21
 kind: design
 scope: feature
+area: agentm/vault-taxonomy
 prd:
 project:
 ---
