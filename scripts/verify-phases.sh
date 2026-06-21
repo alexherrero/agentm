@@ -151,11 +151,13 @@ V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/projects"
 V_PROJ="$SCRATCH/vault-proj"; mkdir -p "$V_PROJ/.harness"
 printf '{"vault_project": "%s"}\n' "$SLUG" > "$V_PROJ/.harness/project.json"
 # Toolkit path lets the post-release dispatch resolve orchestration_phase.py.
-# OBSIDIAN_VAULT_SCRIPTS: point to the kernel scripts dir so backend_selection
-# can load the kernel VaultBackend when the crickets obsidian-vault plugin is
-# not installed (CI). The kernel built-in has the same interface and writes the
-# same registry format; this is a CI-isolation shim, not a behavior change.
-MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$REPO/scripts")
+# V5-3 deleted scripts/storage_vault.py (kernel built-in). Write a minimal
+# plugin shim into SCRATCH; the loader adds scripts/ to sys.path before
+# exec'ing so vault_backend_stub is importable from the shim.
+_VP_SHIM="$SCRATCH/vault-plugin"
+mkdir -p "$_VP_SHIM"
+printf 'from vault_backend_stub import VaultBackend\nPROTOCOL = "vault"\n' > "$_VP_SHIM/storage_vault.py"
+MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$_VP_SHIM")
 run_lifecycle "[vault]" "$V_PROJ" "$V_VAULT/projects/$SLUG/_harness" 1
 # The vault repo_registry seam fired (cross-device index).
 assert_exists "[vault] setup: repo_registry index written" "$V_VAULT/_meta/repos.json"

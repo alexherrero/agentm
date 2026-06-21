@@ -31,25 +31,91 @@ import agentm_config as ac  # noqa: E402
 import backend_selection as bs  # noqa: E402
 import harness_memory  # noqa: E402
 import storage_device_local  # noqa: E402
-import storage_vault  # noqa: E402
 
 
 # A marker stand-in for the crickets obsidian-vault plugin's storage_vault.py.
-# Subclassing the kernel built-in keeps the real write/lock behavior (so a
-# round-trip flows through the genuine imported vault_lock) while giving a
-# *distinct* class/module — which is how a test proves selection resolved to the
-# plugin, not the shadowed built-in, with no crickets checkout in agentm CI. It
-# self-registers under `vault` exactly as the real plugin does, exercising the
-# loader's free-the-slot-then-restore dance (the kernel built-in still holds the
-# slot through V5-2, so the registry's duplicate guard would raise otherwise).
+# V5-3 deleted the kernel built-in, so this fixture is now fully standalone —
+# it declares the vault contract directly rather than subclassing the old kernel
+# class. The real plugin's write round-trip through vault_lock is proven
+# crickets-side; here we need a discoverable, instantiable StorageBackend subclass
+# with `is_obsidian_vault_plugin_fixture` so tests can confirm selection returned
+# the plugin, not a demotion or dereference to a stale kernel module.
 _PLUGIN_FIXTURE_SRC = '''\
-"""Test fixture: stand-in for the crickets obsidian-vault plugin backend."""
-from storage_seam import registry
-from storage_vault import PROTOCOL, VaultBackend as _BuiltinVaultBackend
+"""Test fixture: stand-in for the crickets obsidian-vault plugin backend (post-V5-3)."""
+from pathlib import Path
+from storage_seam import Capabilities, Info, Locator, StorageBackend, registry
+from vault_lock import ConcurrentModificationError, atomic_write, content_hash, vault_mutex
+
+PROTOCOL = "vault"
 
 
-class VaultBackend(_BuiltinVaultBackend):
+class VaultBackend(StorageBackend):
     is_obsidian_vault_plugin_fixture = True
+
+    def __init__(self, root, *, lock_root=None):
+        self._root = Path(root)
+        self._lock_root = Path(lock_root) if lock_root is not None else None
+        self._root.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def root(self):
+        return self._root
+
+    @property
+    def capabilities(self):
+        return Capabilities(
+            concurrent_writers=True, conflict_files=True, encryption=False, sync=True
+        )
+
+    @property
+    def conflict_strategy(self):
+        return "whole-file"
+
+    def _path(self, locator):
+        return self._root.joinpath(*locator.parts)
+
+    def resolve(self, *parts):
+        return Locator("/".join(str(p) for p in parts))
+
+    def read(self, locator):
+        return self._path(locator).read_bytes().decode("utf-8")
+
+    def write(self, locator, content):
+        target = self._path(locator)
+        with vault_mutex(self._root, lock_root=self._lock_root):
+            expected = content_hash(target.read_bytes()) if target.exists() else None
+            if expected is not None:
+                current = content_hash(target.read_bytes()) if target.exists() else None
+                if current != expected:
+                    raise ConcurrentModificationError(
+                        f"{target.name} changed under the vault mutex"
+                    )
+            atomic_write(target, content)
+        return locator
+
+    def list(self, locator):
+        p = self._path(locator)
+        if not p.is_dir():
+            return []
+        return sorted(
+            (locator.child(c.name) for c in p.iterdir()), key=lambda loc: loc.key
+        )
+
+    def exists(self, locator):
+        return self._path(locator).exists()
+
+    def info(self, locator):
+        p = self._path(locator)
+        st = p.stat()
+        is_dir = p.is_dir()
+        return Info(
+            locator=locator, is_dir=is_dir,
+            size=0 if is_dir else st.st_size, mtime=st.st_mtime,
+        )
+
+    def mkdir(self, locator):
+        self._path(locator).mkdir(parents=True, exist_ok=True)
+        return locator
 
 
 registry.register(PROTOCOL, VaultBackend)
@@ -139,12 +205,11 @@ class TestSelectBackend(unittest.TestCase):
         backend = bs.select_backend(
             vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
         )
-        # Re-homed (V5-2 task 3): selection resolves to the *plugin* backend — a
-        # distinct class from the shadowed kernel built-in, not device-local.
+        # V5-3: vault backend lives in the obsidian-vault plugin (kernel built-in
+        # deleted). Selection resolves to the plugin backend, not device-local.
         from storage_seam import StorageBackend
 
         self.assertIsInstance(backend, StorageBackend)
-        self.assertIsNot(type(backend), storage_vault.VaultBackend)
         self.assertTrue(getattr(backend, "is_obsidian_vault_plugin_fixture", False))
         # Byte-identical: the plugin backend is seeded from the configured path,
         # zero re-setup.
@@ -154,7 +219,7 @@ class TestSelectBackend(unittest.TestCase):
         # V5-7: vault selection is explicit only — choose_protocol() returns vault
         # iff storage.backend=vault is configured; vault_root alone is not enough.
         self.assertEqual(ac.main(["--storage-backend", "vault"]), 0)
-        self.assertEqual(bs.choose_protocol(), storage_vault.PROTOCOL)
+        self.assertEqual(bs.choose_protocol(), "vault")
 
     def test_choose_protocol_memory_vault_path_env_is_vault(self) -> None:
         # $MEMORY_VAULT_PATH env var set → vault (the env-based escape hatch).
@@ -162,7 +227,7 @@ class TestSelectBackend(unittest.TestCase):
         old = os.environ.pop("MEMORY_VAULT_PATH", None)
         os.environ["MEMORY_VAULT_PATH"] = "/tmp/fake-vault-for-protocol-test"
         try:
-            self.assertEqual(bs.choose_protocol(), storage_vault.PROTOCOL)
+            self.assertEqual(bs.choose_protocol(), "vault")
         finally:
             os.environ.pop("MEMORY_VAULT_PATH", None)
             if old is not None:
@@ -192,10 +257,8 @@ class TestSelectBackend(unittest.TestCase):
         backend = bs.select_backend(
             vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
         )
-        # Explicit `vault` resolves to the re-homed plugin backend (V5-2 task 3),
-        # not the shadowed built-in.
+        # Explicit `vault` resolves to the plugin backend (kernel built-in deleted in V5-3).
         self.assertTrue(getattr(backend, "is_obsidian_vault_plugin_fixture", False))
-        self.assertIsNot(type(backend), storage_vault.VaultBackend)
 
     def test_choose_protocol_explicit_value_wins(self) -> None:
         self.assertEqual(ac.main(["--storage-backend", "some-future-backend"]), 0)
@@ -241,12 +304,8 @@ class TestVaultPluginDiscovery(unittest.TestCase):
         backend = bs.select_backend(
             vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
         )
+        # V5-3: no kernel built-in; the fixture IS the plugin backend.
         self.assertTrue(getattr(backend, "is_obsidian_vault_plugin_fixture", False))
-        self.assertIsNot(
-            type(backend),
-            storage_vault.VaultBackend,
-            "selection returned the shadowed built-in, not the plugin backend",
-        )
         self.assertEqual(backend.root, harness_memory.vault_path())
 
     def test_plugin_absent_raises_install_message_not_demote(self) -> None:
@@ -271,22 +330,20 @@ class TestVaultPluginDiscovery(unittest.TestCase):
         )
 
     def test_selection_leaves_registry_unmutated(self) -> None:
-        # Discovery frees the `vault` slot so the plugin can self-register, then
-        # restores the built-in: a select_backend call must leave the global
-        # registry exactly as it found it (the built-in stays reachable for the
-        # task-5 parallel-run by direct import / registry.get).
+        # V5-3: no kernel built-in holds the vault slot — it is empty before and after
+        # selection. The loader pops the plugin's import-time self-registration in its
+        # finally block; select_backend must leave the registry exactly as it found it.
         from storage_seam import registry
 
         self._configure_vault()
         plugin_scripts = _install_plugin_fixture(Path(self.tmp))
-        self.assertIs(registry.get(storage_vault.PROTOCOL), storage_vault.VaultBackend)
+        self.assertIsNone(registry.get("vault"), "vault slot not empty before selection")
         bs.select_backend(
             vault_lock_root=self.lock_root, vault_plugin_scripts=plugin_scripts
         )
-        self.assertIs(
-            registry.get(storage_vault.PROTOCOL),
-            storage_vault.VaultBackend,
-            "select_backend left the plugin registered — the built-in must be restored",
+        self.assertIsNone(
+            registry.get("vault"),
+            "select_backend leaked the plugin's self-registration into the vault slot",
         )
 
     def test_plugin_backend_carries_injected_lock_root(self) -> None:
@@ -311,36 +368,26 @@ class TestVaultPluginDiscovery(unittest.TestCase):
             device_local_root=self.device_root, vault_plugin_scripts=missing
         )
         self.assertEqual(prev.status, "fail")
-        self.assertEqual(prev.protocol, storage_vault.PROTOCOL)
+        self.assertEqual(prev.protocol, "vault")
         self.assertIn("[FAIL]", prev.line)
         self.assertIn("obsidian-vault", prev.line)
         self.assertFalse(self.device_root.exists())
 
     def test_loader_leaves_empty_slot_unmutated(self) -> None:
-        # Regression (review DEFECT 1): when the `vault` slot is EMPTY at loader
-        # entry (`prior is None`), the plugin's import-time self-register must not
-        # leak — the loader has to leave the registry exactly as it found it, i.e.
-        # empty. The shipped `test_selection_leaves_registry_unmutated` only covers
-        # the prior-non-None branch; this one drives the prior-None branch the loader
-        # docstring's unconditional "no lingering mutation" promise also has to honor.
+        # V5-3: the kernel built-in is deleted, so the vault slot is ALWAYS empty at
+        # loader entry. The loader's finally block pops whatever the plugin registered,
+        # leaving the slot empty. This is the canonical branch; see
+        # test_selection_leaves_registry_unmutated for the select_backend surface.
         from storage_seam import registry
 
         plugin_scripts = _install_plugin_fixture(Path(self.tmp))
-        prior = registry._backends.pop(storage_vault.PROTOCOL, None)
-        try:
-            self.assertNotIn(
-                storage_vault.PROTOCOL, registry._backends, "slot not empty at entry"
-            )
-            cls = bs._load_vault_plugin_backend(plugin_scripts=plugin_scripts)
-            self.assertIsNotNone(cls, "the loader did not discover the plugin backend")
-            self.assertNotIn(
-                storage_vault.PROTOCOL,
-                registry._backends,
-                "loader leaked the plugin self-registration into an empty vault slot",
-            )
-        finally:
-            if prior is not None:
-                registry._backends[storage_vault.PROTOCOL] = prior
+        self.assertIsNone(registry.get("vault"), "vault slot not empty at loader entry")
+        cls = bs._load_vault_plugin_backend(plugin_scripts=plugin_scripts)
+        self.assertIsNotNone(cls, "the loader did not discover the plugin backend")
+        self.assertIsNone(
+            registry.get("vault"),
+            "loader leaked the plugin self-registration into the vault slot",
+        )
 
     def test_preview_and_select_agree_on_present_but_unloadable_plugin(self) -> None:
         # Regression (review DEFECT 2): a plugin dir that is PRESENT (a
@@ -490,12 +537,24 @@ class TestVaultPluginDiscovery(unittest.TestCase):
         broken_ctor.mkdir(parents=True)
         (broken_ctor / "storage_vault.py").write_text(
             '"""Loads to a valid StorageBackend subclass, but __init__ raises."""\n'
-            "from storage_seam import registry\n"
-            "from storage_vault import PROTOCOL, VaultBackend as _Builtin\n"
+            "from storage_seam import Capabilities, StorageBackend, registry\n"
             "\n\n"
-            "class VaultBackend(_Builtin):\n"
+            "PROTOCOL = 'vault'\n"
+            "\n\n"
+            "class VaultBackend(StorageBackend):\n"
             "    def __init__(self, *a, **k):\n"
             "        raise RuntimeError('version-skewed constructor')\n"
+            # All abstract methods must be overridden so Python can reach __init__;
+            # without them Python raises TypeError before __init__ runs (V5-3).
+            "    @property\n"
+            "    def capabilities(self): return Capabilities()\n"
+            "    def resolve(self, *p): return None\n"
+            "    def read(self, loc): return ''\n"
+            "    def write(self, loc, c): return loc\n"
+            "    def list(self, loc): return []\n"
+            "    def exists(self, loc): return False\n"
+            "    def info(self, loc): return None\n"
+            "    def mkdir(self, loc): return loc\n"
             "\n\n"
             "registry.register(PROTOCOL, VaultBackend)\n",
             encoding="utf-8",
@@ -593,9 +652,9 @@ class TestFailLoud(unittest.TestCase):
         with self.assertRaises(bs.StorageSelectionError) as ctx:
             bs.select_backend(device_local_root=self.device_root)
         msg = str(ctx.exception)
-        # The two built-ins are registered today → both named as alternatives.
+        # V5-3: kernel vault built-in deleted; only device-local is registered.
         self.assertIn(storage_device_local.PROTOCOL, msg)
-        self.assertIn(storage_vault.PROTOCOL, msg)
+        self.assertIn(self.SENTINEL, msg)
 
     def test_vault_selected_without_vault_path_raises(self) -> None:
         # Explicit `vault` with no vault_path to seed it → fail-loud, never demote.
@@ -781,7 +840,7 @@ class TestStoragePreview(unittest.TestCase):
         plugin_scripts = _install_plugin_fixture(Path(self.tmp))
         prev = bs.storage_preview(vault_plugin_scripts=plugin_scripts)
         self.assertEqual(prev.status, "ok")
-        self.assertEqual(prev.protocol, storage_vault.PROTOCOL)
+        self.assertEqual(prev.protocol, "vault")
         self.assertIn("[OK]", prev.line)
         self.assertIn("vault", prev.line)
         self.assertIn("obsidian-vault plugin discoverable", prev.line)

@@ -157,7 +157,7 @@ class TestRegisterIntegration(unittest.TestCase):
             try:
                 # Patch select_backend to return the kernel VaultBackend so the
                 # test works in CI without the obsidian-vault plugin (V5-6).
-                from storage_vault import VaultBackend
+                from vault_backend_stub import VaultBackend
                 vault_backend = VaultBackend(root=vault)
                 with unittest.mock.patch(
                     "backend_selection.select_backend", return_value=vault_backend

@@ -241,21 +241,20 @@ class StatePath(_SeamFixture):
 
     def test_vault_mode_resolves_vault_when_synced(self) -> None:
         # ADR 0020 (reverses V5-3 DC-1): vault mode + a live synced backend routes
-        # state into <vault>/projects/<slug>/_harness/. OBSIDIAN_VAULT_SCRIPTS pins
-        # the kernel's own storage_vault.py as the discovered backend, so the result
-        # is deterministic in CI (no obsidian-vault plugin installed there).
+        # state into <vault>/projects/<slug>/_harness/. V5-3 deleted the kernel
+        # storage_vault.py, so we mock select_backend to return a vault stub
+        # (same approach as test_present_enriches_with_project_and_target).
+        import unittest.mock
+        from vault_backend_stub import VaultBackend
+
         self._set_vault()
-        prev = os.environ.get("OBSIDIAN_VAULT_SCRIPTS")
-        os.environ["OBSIDIAN_VAULT_SCRIPTS"] = str(_HERE)
-        try:
+        vault_backend = VaultBackend(root=self.vault)
+        with unittest.mock.patch(
+            "backend_selection.select_backend", return_value=vault_backend
+        ):
             self.assertEqual(
                 seam.state_path(self._ctx(), "plan"), self.vault_harness / "PLAN.md"
             )
-        finally:
-            if prev is None:
-                os.environ.pop("OBSIDIAN_VAULT_SCRIPTS", None)
-            else:
-                os.environ["OBSIDIAN_VAULT_SCRIPTS"] = prev
 
     def test_named_plan_via_context(self) -> None:
         self._local_mode()

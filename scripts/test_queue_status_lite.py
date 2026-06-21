@@ -207,7 +207,7 @@ class HarnessStateDirResolution(unittest.TestCase):
 
     def test_synced_backend_returns_vault(self) -> None:
         # ADR 0020: a synced backend routes state to <vault>/projects/<slug>/_harness/.
-        from storage_vault import VaultBackend
+        from vault_backend_stub import VaultBackend
         from storage_seam import Locator
         backend = VaultBackend(root=self.vault, lock_root=self.root / "locks")
         resolution = {

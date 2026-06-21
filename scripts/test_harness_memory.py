@@ -864,9 +864,9 @@ class TestCLI(unittest.TestCase):
     def test_cli_read_state_prefers_vault_when_backend_synced(self) -> None:
         """ADR 0020 (amends ADR 0018 DC-1): with a synced backend (the vault)
         active, read-state reads <vault>/projects/<slug>/_harness/<file> — the
-        vault copy wins over a stale repo-local one. OBSIDIAN_VAULT_SCRIPTS pins
-        the plugin to agentm's own scripts/ so backend selection is deterministic
-        in CI without a sibling crickets checkout."""
+        vault copy wins over a stale repo-local one. A minimal plugin shim is
+        written to a temp dir so OBSIDIAN_VAULT_SCRIPTS can be set without
+        relying on the deleted kernel storage_vault.py (V5-3)."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -885,12 +885,21 @@ class TestCLI(unittest.TestCase):
             # production's atomic_write would (write_text emits CRLF on Windows,
             # which the byte-exact backend read would then surface).
             (vault_harness / "PLAN.md").write_bytes(b"vault PLAN content\n")
+            # V5-3 deleted scripts/storage_vault.py (kernel built-in). Write a
+            # plugin shim to a temp dir; the loader adds scripts/ to sys.path
+            # before exec'ing, so vault_backend_stub is importable.
+            plugin_dir = Path(tmp) / "vault-plugin"
+            plugin_dir.mkdir()
+            (plugin_dir / "storage_vault.py").write_text(
+                "from vault_backend_stub import VaultBackend\nPROTOCOL = 'vault'\n",
+                encoding="utf-8",
+            )
             result = self._run(
                 "read-state", "PLAN.md",
                 "--project-root", str(project_root),
                 env_extra={
                     "MEMORY_VAULT_PATH": str(vault),
-                    "OBSIDIAN_VAULT_SCRIPTS": str(_HERE),
+                    "OBSIDIAN_VAULT_SCRIPTS": str(plugin_dir),
                 },
             )
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -1038,7 +1047,7 @@ class TestVaultProjectsDir(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
             (vault / "projects").mkdir(parents=True)
-            from storage_vault import VaultBackend
+            from vault_backend_stub import VaultBackend
             backend = VaultBackend(root=vault)
             loc = hm._vault_projects_dir(backend)
             # The Locator key is "projects" — on the vault backend this maps to
@@ -1055,7 +1064,7 @@ class TestResolveProject(unittest.TestCase):
 
     def _make_vault_backend(self, vault_root: Path):
         """VaultBackend seeded from vault_root — direct import, bypasses plugin discovery."""
-        from storage_vault import VaultBackend
+        from vault_backend_stub import VaultBackend
         return VaultBackend(root=vault_root)
 
     def test_no_slug_returns_none_fields(self) -> None:
@@ -1458,7 +1467,7 @@ class TestStateBackendRouting(unittest.TestCase):
         hm._reset_warn_state()
 
     def _vault_backend(self, vault_root: Path, lock_root: Path):
-        from storage_vault import VaultBackend
+        from vault_backend_stub import VaultBackend
         return VaultBackend(root=vault_root, lock_root=lock_root)
 
     def _device_backend(self, root: Path):
@@ -2568,7 +2577,7 @@ class TestRepoRegistry(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
             vault.mkdir()
-            from storage_vault import VaultBackend
+            from vault_backend_stub import VaultBackend
             backend = VaultBackend(root=vault)
             repo_registry.register_repo(backend, "test-repo", "/some/path")
             loc = repo_registry.registry_locator(backend)
