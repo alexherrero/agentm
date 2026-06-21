@@ -28,6 +28,7 @@ Lookup-oriented technical detail for the Agent M harness — CLI flags, config s
 ## Plugin capabilities
 
 - **[Capability resolver](Capability-Resolver)** — the `capability_available` / `capability_resolve` / `build_registry` public API, the four reason codes, the Claude Code and Antigravity read paths, merge semantics, and the CLI shim exit codes.
+- **[Design governance](Design-Governance)** — the AG-track `governs:`/`area:`/`scope:`/`shape:`/`kind:` frontmatter convention and the `governs_resolver.py` API + CLI exit-code contract the crickets grounding-hooks bridge targets.
 
 ## CI & shipped work
 

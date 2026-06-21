@@ -3,6 +3,11 @@ title: Foundations for a useful assistant — AgentM and Crickets
 status: launched
 seeded: 2026-06-19
 approved: 2026-06-20
+kind: design
+scope: arc
+area: foundations
+governs:
+  - harness/principles.md
 ---
 
 > [!NOTE]
@@ -131,3 +136,5 @@ Authored 2026-06-19 from the ratified shared-philosophy Overview (design-doc App
 Key calls preserved through review: the agentm/crickets **primary-home banding** in the synthesis diagram (agentm carries P1/P2/P3/P9, jointly-held P6/P7/P8, crickets carries P4/P5); and the honesty flags — **P7** (simplest thing) is thinly-established, **P8** (re-check scaffolding) is manual discipline with no enforcing CI gate, and **P3**'s gate count is reconciled to **22** against `check-all.sh`. The generalized voice lessons from the operator's rewrite were captured in the always-load `docs-prose-style.md` and carried into the agentm + crickets passes.
 
 **Approved 2026-06-20** (frontmatter `approved: 2026-06-20`); `status` stays `proposed` until the Phase-1 lift into tracked `wiki/designs/` flips it to `launched`. **Re-audit triggers:** flip `status` at the lift; re-confirm the primary-home banding against the agentm + crickets HLDs (they must not contradict it); re-count P3's gates if `check-all.sh` changes; the references are deliberately thin and expected to be replaced as the code moves.
+
+**2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/` and flipped `status: proposed → launched`. Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: foundations`, `governs: [harness/principles.md]` (the file rewritten to point up at this doc). Now resolvable by [`governs_resolver.py`](Design-Governance) — `harness/principles.md` routes here ahead of the broader agentm-HLD `harness` claim (most-specific-wins). *Re-audit trigger satisfied:* status flipped at the lift.

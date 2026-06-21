@@ -3,6 +3,12 @@ title: AgentM — High Level Design
 status: launched
 seeded: 2026-06-19
 approved: 2026-06-20
+kind: design
+scope: arc
+area: agentm
+governs:
+  - scripts
+  - harness
 succeeds: wiki/designs/memory-os-architecture.md
 children:
   - children/agentm-memory-system.md
@@ -165,3 +171,5 @@ Authored 2026-06-19 from the ratified Overview (design-doc Appendix B) and a rea
 The review rounds settled the model. **Opinions** = four named, abstract surfaces a tool requests by name — what *done* looks like (the check battery is its implementation), what *good* looks like (adversarial review), what's *efficient* (a budget with a quality floor), and *how we engineer* (the phase discipline + the plan→design→architecture sizing ladder). **Experience** = **backward** (reflection from past sessions) + **forward** (scheduled, opt-in learning from approved sources), with a **scheduler**. **Personas** = a full model: a persona declares a stance + composition + the Opinions it leans on + its launch modes (sub-agent / interactive / loop / goal), and may be adopted explicitly or automatically; **Memory** is the pseudo-persona beneath all; the Coordinator is renamed **Planner**; the roster includes the **Architect/Designer split by scope**. **"Role" is retired** — a role *is* a persona, while crickets provides tools + packages — resolving design-doc §9.6.
 
 **Honesty calls:** forward learning, the scheduler, the request-by-name Opinion registry, the persona roster + adoption modes, and the MCP-server-as-seam-client storage convergence (**V5-14**) are **designed, not built**. **Approved 2026-06-20**; `status` stays `proposed` until the Phase-1 lift flips it to `launched`, and the four children stay `status: seeded` for their own passes. **Re-audit triggers:** flip `status` at the lift; flip each designed component to as-built as it ships; give every child its own voice/structure pass.
+
+**2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/`, flipped `status: proposed → launched`, and superseded the predecessor [memory-os-architecture.md](memory-os-architecture) with a forward-pointer (its basename preserved so crickets' up-links resolve). Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: agentm`, `governs: [scripts, harness]` — deliberately broad until the four `children/` lift narrower `governs:` patterns in Phase 3, at which point most-specific-wins refines resolution automatically. Now resolvable by [`governs_resolver.py`](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift.

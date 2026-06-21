@@ -17,6 +17,7 @@
 - [Storage seam](Storage-Seam)
 - [Auto-orchestration config](Auto-Orchestration-Config)
 - [Capability resolver](Capability-Resolver)
+- [Design governance](Design-Governance)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 - [Memory MCP tools](Memory-MCP-Tools)
