@@ -1,0 +1,7 @@
+{
+  "decisions_dir": "wiki/decisions",
+  "index_files": ["wiki/decisions/Decisions.md", "wiki/decisions/_Sidebar.md", "wiki/_Sidebar.md"],
+  "folds": [
+    {"into_stem": "agentm-memory-system", "into": "wiki/designs/agentm-memory-system.md", "adrs": ["0017-mcp-server-design"]}
+  ]
+}

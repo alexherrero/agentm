@@ -8,7 +8,6 @@ This page is the index. The homepage links here once instead of listing every AD
 ## Records
 
 - [ADR 0016 — The persona tier: a third classification above the substrate/plugin binary](0016-persona-tier)
-- [ADR 0017 — MCP server design: singleton-HTTP broker, four tools, loopback-first](0017-mcp-server-design)
 
 ## See also
 

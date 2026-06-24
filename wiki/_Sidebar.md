@@ -59,4 +59,3 @@
 - [Named plans](Named-Plans)
 ### 📐 [Decisions](Decisions)
 - [0016 — Persona tier: third classification above substrate/plugin binary](0016-persona-tier)
-- [0017 — MCP server design: singleton-HTTP broker, four tools, loopback-first](0017-mcp-server-design)
