@@ -1,15 +1,12 @@
-<!-- mode: index -->
+<!-- mode: redirect -->
 # Architecture decisions
 
-Every load-bearing call in `agentm` is recorded as an Architecture Decision Record (ADR): the context, the decision with explicit *"why X, and why not Y"* reasoning, and the consequences with re-audit triggers so a stale assumption surfaces later instead of rotting silently.
-
-This page is the index. The homepage links here once instead of listing every ADR.
-
-## Records
-
+> **The ADR model has been retired in agentm** (AG ADR-migration, 2026-06-24).
+> All twelve agentm ADRs are folded into the relevant living designs in [`wiki/designs/`](Designs) — each design's body + amendment log carries the decision, the "why not the alternative", and the re-audit triggers, so the live truth reads in one place instead of through a chain of append-only records.
+> The governing policy lives in [Design-Governance](Design-Governance).
 
 ## See also
 
+- [Designs](Designs) — the living designs the folded decisions now live in.
+- [Explanation](Explanation) — the narrative rationale behind the design.
 - [Home](Home) — the wiki landing page.
-- [Explanation](Explanation) — the narrative rationale behind these decisions.
-- [Designs](Designs) — the design docs the larger decisions trace back to.
