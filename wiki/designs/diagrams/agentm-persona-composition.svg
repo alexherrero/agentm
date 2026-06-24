@@ -1,0 +1,36 @@
+<svg viewBox="0 0 720 396" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="pa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7E57C2"/></marker>
+  </defs>
+  <rect x="6" y="6" width="708" height="384" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+  <text x="360" y="32" text-anchor="middle" font-size="15" font-weight="700" fill="#4A2E80">How a persona is composed</text>
+
+  <!-- invocation -->
+  <rect x="70" y="56" width="270" height="46" rx="9" fill="#F2EEFB" stroke="#7E57C2" stroke-width="1.4"/>
+  <text x="205" y="78" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4A2E80">Manual</text>
+  <text x="205" y="94" text-anchor="middle" font-size="9" fill="#6E5B96">sub-agent · interactive · loop · goal</text>
+  <rect x="380" y="56" width="270" height="46" rx="9" fill="#F2EEFB" stroke="#7E57C2" stroke-width="1.4"/>
+  <text x="515" y="78" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4A2E80">Automatic</text>
+  <text x="515" y="94" text-anchor="middle" font-size="9" fill="#6E5B96">workflow step · detection</text>
+
+  <path d="M205,102 V146" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#pa)"/>
+  <path d="M515,102 V146" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#pa)"/>
+  <text x="360" y="128" text-anchor="middle" font-size="9.5" font-style="italic" fill="#8A78AE">adopts</text>
+
+  <!-- the persona -->
+  <rect x="120" y="148" width="480" height="130" rx="12" fill="#F2EEFB" stroke="#7E57C2" stroke-width="2"/>
+  <text x="360" y="172" text-anchor="middle" font-size="13" font-weight="700" fill="#4A2E80">A persona = stance + composition, on Memory</text>
+  <g font-size="10.5" fill="#4A2E80">
+    <text x="142" y="198">• <tspan font-weight="700">stance</tspan> — the cross-capability judgment (the manifest body)</text>
+    <text x="142" y="222">• <tspan font-weight="700">tools</tspan> — <tspan font-style="italic">enhances:</tspan> capabilities, resolved by capability_resolver</text>
+    <text x="142" y="246">• <tspan font-weight="700">opinions</tspan> — the surfaces it leans on (done / good / efficient / …)</text>
+  </g>
+  <text x="360" y="268" text-anchor="middle" font-size="8.5" font-style="italic" fill="#8A78AE">declared in the manifest — personas/&lt;name&gt;.md (shape: persona), validated by check-personas.py</text>
+
+  <!-- memory base -->
+  <path d="M360,310 V280" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#pa)"/>
+  <text x="372" y="298" text-anchor="start" font-size="9.5" font-style="italic" fill="#8A78AE">stands on</text>
+  <rect x="70" y="312" width="580" height="46" rx="9" fill="#EDE9F7" stroke="#7E57C2" stroke-width="1.4"/>
+  <text x="360" y="334" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4A2E80">Memory — the pseudo-persona beneath all</text>
+  <text x="360" y="350" text-anchor="middle" font-size="9" fill="#6E5B96">recall at the start · reflection at the end</text>
+</svg>

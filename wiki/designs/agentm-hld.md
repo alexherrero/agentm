@@ -14,10 +14,11 @@ children:
   - children/agentm-experience-and-dreaming.md
   - children/agentm-opinions-and-gates.md
   - children/agentm-personas.md
+  - children/agentm-model-effort-routing.md
 ---
 
 > [!NOTE]
-> **LAUNCHED (2026-06-20).** The live agentm parent HLD, lifted into tracked `wiki/designs/` in AG Phase 2, **succeeding** the existing [memory-os-architecture.md](memory-os-architecture) (the HLD crickets points up at, now superseded with a forward-pointer to this doc). Framed around the four [Foundations](agentm-foundations-hld.md) pillars; the deep mechanics of each live in the child designs under `children/` (still `status: seeded` — they get their own passes later, at which point those `children/…` links resolve). Built on design-doc Appendix B. Diagrams are hand-authored vector images under `diagrams/`, matching Foundations.
+> **LAUNCHED (2026-06-20).** The live agentm parent HLD, lifted into tracked `wiki/designs/` in AG Phase 2, **succeeding** the existing [memory-os-architecture.md](memory-os-architecture) (the HLD crickets points up at, now superseded with a forward-pointer to this doc). Framed around the four [Foundations](agentm-foundations-hld.md) pillars; the deep mechanics of each live in the child designs (all **content-final 2026-06-24**, lifted AG Phase 3). Built on design-doc Appendix B. Diagrams are hand-authored vector images under `diagrams/`, matching Foundations.
 
 # AgentM — the part of the assistant that's yours
 
@@ -65,7 +66,7 @@ The durable record: everything agentm knows, kept on disk so it survives a sessi
 
 **Where it touches crickets:** the `obsidian-vault` backend ships as a crickets plugin, depending one-way *up* on the seam; harness-state is shared with crickets' phase tools; and the availability-query is the runtime half of crickets' `enhances:` composition.
 
-*Detail — the seam contract, the write protocol, the recall loop, the storage-serving layers, the memory layers, and the V5-14 as-built/target gap — in the [Memory System design](children/agentm-memory-system.md).*
+*Detail — the seam contract, the write protocol, the recall loop, the storage-serving layers, the memory layers, and the V5-14 as-built/target gap — in the [Memory System design](agentm-memory-system.md).*
 
 ### Experience — what's worked before, and what's worth knowing
 
@@ -83,7 +84,7 @@ How the person gets better, in two directions. **Backward:** it learns from its 
 
 **Where it touches crickets:** lightly — the sub-agents run inside the harness, and forward learning reaches *out* to sources rather than into crickets. The Experience pillar keeps working on a bare agentm.
 
-*Detail — backward vs. forward learning, the scheduler, the approved-source pipeline, the import watchlist, the heat thresholds, incubation, and the full dream-mode design — in the [Experience & Dreaming design](children/agentm-experience-and-dreaming.md).*
+*Detail — backward vs. forward learning, the scheduler, the approved-source pipeline, the import watchlist, the heat thresholds, incubation, and the full dream-mode design — in the [Experience & Dreaming design](agentm-experience-and-dreaming.md).*
 
 ### Opinions — how things should go
 
@@ -99,7 +100,7 @@ agentm's opinions are **abstract, named buckets of opinionated knowledge** — w
 
 **Where it touches crickets:** by request, not by wiring. A crickets tool **names the opinion it needs** — `done`, `good`, `efficient`, the engineering process — and the substrate hands back the opinionated knowledge; the tool stays free to act on it. (The check battery does run inside crickets' review/release phases, and the phase commands are crickets per ADR 0011 — but those are one surface's implementation, not the pillar.)
 
-*Detail — each surface, the request-by-name model, the gate inventory behind "done," the adversarial-review contract behind "good," the efficiency budget, and the system-sizing ladder (plan → design → architecture) — in the [Opinions design](children/agentm-opinions-and-gates.md).*
+*Detail — each surface, the request-by-name model, the gate inventory behind "done," the adversarial-review contract behind "good," the efficiency budget, and the system-sizing ladder (plan → design → architecture) — in the [Opinions design](agentm-opinions-and-gates.md).*
 
 ### Personas — the hats it wears
 
@@ -110,6 +111,7 @@ The top tier: a persona is a **stance the person takes for a job** — a named "
 - **what it composes** — the capabilities (crickets tools) it wields, named by `enhances:`;
 - **which Opinions it leans on** — the Engineer leans on *what "done" looks like*; the Reviewer on *what "good" looks like*;
 - **how it's adopted** — a persona is either **explicitly launched** in a mode it declares (not all support all) — **sub-agent** (scoped, returns a result), **interactive session** (you talk to it in that stance), **loop** (a cadence, `/loop`), **goal** (autonomous toward a goal, `/goal`) — or **automatically adopted** when the work calls for it: a crickets workflow puts the fitting persona on for a step (the work phase adopts the Engineer, the review phase the Reviewer), or agentm detects the need mid-conversation and adopts it on the spot.
+- **its tier** — the model + reasoning-effort tier it runs at (T0 Mechanical … T4 Deep), from the [model + effort routing](agentm-model-effort-routing.md) scale (research/audit → T4, roadmap → T3, planning/design → T2, the worker → T1). The `tier:` manifest axis is what makes the right brain run each job automatically.
 
 **Memory is the pseudo-persona beneath them all.** `rememberer` isn't a peer in the roster — it sits *under* every persona, giving each one the memory it stands on. Every other persona is, in effect, "Memory + a stance."
 
@@ -137,7 +139,7 @@ The top tier: a persona is a **stance the person takes for a job** — a named "
 
 **Where it touches crickets:** a persona composes crickets tools by name (`enhances:`) — lighting up richer behavior when a tool is present and degrading gracefully when it's absent — while hard-requiring only the substrate. And a crickets workflow can **adopt** a persona for a step (the Engineer for the work phase, the Reviewer for review), so the right stance and the right tool meet at the moment of use.
 
-*Detail — each persona's composition, the launch-mode mechanics, the role-is-a-persona resolution, and the cross-capability-judgment discriminator — in the [Personas design](children/agentm-personas.md).*
+*Detail — each persona's composition, the launch-mode mechanics, the role-is-a-persona resolution, and the cross-capability-judgment discriminator — in the [Personas design](agentm-personas.md).*
 
 ## How the pillars fit together
 
@@ -150,10 +152,11 @@ One rule holds across all four: the dependency arrow points one way. The pillars
 The component-level sources now live in each pillar's child design (linked above). This parent keeps the high-level map.
 
 **Child designs** (`children/`)
-- [Memory System](children/agentm-memory-system.md) — the seam, backends, write protocol, recall loop, storage layers, V5-14
-- [Experience & Dreaming](children/agentm-experience-and-dreaming.md) — reflection, heat, incubation, adapt-watchlist, dreaming
-- [Opinions & Gates](children/agentm-opinions-and-gates.md) — the check battery, conventions, phase discipline
-- [Personas](children/agentm-personas.md) — the persona tier, the gate, the two personas
+- [Memory System](agentm-memory-system.md) — the seam, backends, write protocol, recall loop, storage layers, V5-14
+- [Experience & Dreaming](agentm-experience-and-dreaming.md) — reflection, heat, incubation, adapt-watchlist, dreaming
+- [Opinions & Gates](agentm-opinions-and-gates.md) — the check battery, conventions, phase discipline
+- [Personas](agentm-personas.md) — the persona tier, the gate, the full ~11-persona roster
+- [Model + effort routing](agentm-model-effort-routing.md) — the model × effort tier scale (T0…T4, Claude + Gemini), the persona→tier map, the `tier:` manifest axis
 
 **Anchors**
 - design-doc **Appendix B** — the ratified agentm Overview this HLD expands (the input spec, not a sibling HLD)
@@ -169,6 +172,8 @@ Authored 2026-06-19 from the ratified Overview (design-doc Appendix B) and a rea
 
 The review rounds settled the model. **Opinions** = four named, abstract surfaces a tool requests by name — what *done* looks like (the check battery is its implementation), what *good* looks like (adversarial review), what's *efficient* (a budget with a quality floor), and *how we engineer* (the phase discipline + the plan→design→architecture sizing ladder). **Experience** = **backward** (reflection from past sessions) + **forward** (scheduled, opt-in learning from approved sources), with a **scheduler**. **Personas** = a full model: a persona declares a stance + composition + the Opinions it leans on + its launch modes (sub-agent / interactive / loop / goal), and may be adopted explicitly or automatically; **Memory** is the pseudo-persona beneath all; the Coordinator is renamed **Planner**; the roster includes the **Architect/Designer split by scope**. **"Role" is retired** — a role *is* a persona, while crickets provides tools + packages — resolving design-doc §9.6.
 
-**Honesty calls:** forward learning, the scheduler, the request-by-name Opinion registry, the persona roster + adoption modes, and the MCP-server-as-seam-client storage convergence (**V5-14**) are **designed, not built**. **Approved 2026-06-20**; `status` stays `proposed` until the Phase-1 lift flips it to `launched`, and the four children stay `status: seeded` for their own passes. **Re-audit triggers:** flip `status` at the lift; flip each designed component to as-built as it ships; give every child its own voice/structure pass.
+**Honesty calls:** forward learning, the scheduler, the request-by-name Opinion registry, the persona roster + adoption modes, and the MCP-server-as-seam-client storage convergence (**V5-14**) are **designed, not built**. **Approved 2026-06-20**; children content-final 2026-06-24 + lifted AG Phase 3. **Re-audit triggers:** flip each designed component to as-built as it ships; give every child its own voice/structure pass.
+
+**2026-06-24 — reconciled to the now-final children + added the model+effort-routing child (AG Phase 3 lift).** All AG child designs are content-final; this parent is brought current. A new cross-cutting child **[model + effort routing](agentm-model-effort-routing.md)** (a model × effort tier scale T0…T4 with Claude + Gemini equivalents, a persona→tier map, and a new **`tier:`** persona-manifest axis) is added to the frontmatter `children`, the Personas "a persona declares" list, and the References child block. The Personas gloss is corrected ("the two personas" → the full ~11-persona roster). Why not a fifth pillar: it is cross-cutting — it adds a `tier:` axis to Personas and realizes the `efficient` opinion's model-routing lever, not a standalone pillar. `diagrams/agentm-pillars.svg` regenerated at the lift to show the tier axis under Personas. *Re-audit trigger:* re-pin the SVG tier axis label on the next persona model change.
 
 **2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/`, flipped `status: proposed → launched`, and superseded the predecessor [memory-os-architecture.md](memory-os-architecture) with a forward-pointer (its basename preserved so crickets' up-links resolve). Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: agentm/architecture`, `governs: [scripts/**]` — the broad agentm-substrate fallback; the children lift narrower `governs:` globs in Phase 3 (and the seam fold adds `agentm/storage`), at which point most-specific-wins refines resolution automatically. Now resolvable by [`governs_resolver.py`](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift. (Area + governs reconciled 2026-06-21 to the canonical two-level taxonomy: `agentm` → `agentm/architecture`, `[scripts, harness]` → `[scripts/**]`.)

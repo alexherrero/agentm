@@ -55,7 +55,8 @@
     <text x="742" y="110">• the persona tier</text>
     <text x="742" y="136">• rememberer + the roster</text>
     <text x="742" y="162">• the persona gate</text>
+    <text x="742" y="188">• model/effort tier (declared)</text>
   </g>
-  <text x="742" y="198" font-size="10.5" font-style="italic" fill="#8A78AE">Memory is the pseudo-</text>
-  <text x="742" y="214" font-size="10.5" font-style="italic" fill="#8A78AE">persona beneath all</text>
+  <text x="742" y="224" font-size="10.5" font-style="italic" fill="#8A78AE">Memory is the pseudo-</text>
+  <text x="742" y="240" font-size="10.5" font-style="italic" fill="#8A78AE">persona beneath all</text>
 </svg>

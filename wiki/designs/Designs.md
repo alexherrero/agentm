@@ -17,10 +17,15 @@ The permanent agent-memory store and its six implementation parts.
 
 ## Architecture-Governance (AG track) — the live parents
 
-The current top-level design parents (AG-track Phase 1, `status: launched`). Children point *up* at these.
+The current top-level design parents (AG-track Phase 1, `status: launched`). Children point *up* at these; all children are content-final and launched as of AG Phase 3 (2026-06-24).
 
 - [Foundations](agentm-foundations-hld) — the shared cross-repo "why": the nine principles agentm and crickets both stand on, and how the person (agentm) and its tools (crickets) relate. The root both HLDs inherit by reference.
 - [AgentM HLD](agentm-hld) — the agentm parent: the four pillars (Experience · Memory · Opinions · Personas), their components, and where each touches crickets. **Succeeds** [Memory-OS Architecture (V5)](memory-os-architecture).
+  - [Memory System](agentm-memory-system) — the seam, backends, write protocol, recall loop, storage layers, V5-14 target gap.
+  - [Experience & Dreaming](agentm-experience-and-dreaming) — reflection (backward), scheduled learning (forward), heat policy, dreaming, the scheduler.
+  - [Opinions & Gates](agentm-opinions-and-gates) — the four named opinion surfaces (done · good · efficient · how-we-engineer) and the request-by-name model.
+  - [Personas](agentm-personas) — the persona tier, the ~11-persona roster, the gate, launch modes, role-retirement.
+  - [Model + effort routing](agentm-model-effort-routing) — the T0…T4 tier scale (Claude + Gemini), the persona→tier map, the `tier:` manifest axis.
 
 ## Evolution & architecture
 

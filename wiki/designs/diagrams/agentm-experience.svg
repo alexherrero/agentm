@@ -1,0 +1,43 @@
+<svg viewBox="0 0 720 350" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="eb" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#3A9D5D"/></marker>
+  </defs>
+  <rect x="6" y="6" width="708" height="338" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+  <text x="360" y="28" text-anchor="middle" font-size="15" font-weight="700" fill="#1E5435">Experience — how agentm gets better over time</text>
+
+  <!-- sources -->
+  <rect x="24" y="84" width="146" height="40" rx="9" fill="#ffffff" stroke="#3A9D5D" stroke-width="1.4"/>
+  <text x="97" y="108" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1E5435">past sessions</text>
+  <rect x="24" y="168" width="146" height="40" rx="9" fill="#ffffff" stroke="#3A9D5D" stroke-width="1.4"/>
+  <text x="97" y="192" text-anchor="middle" font-size="10.5" font-weight="700" fill="#1E5435">the world · sources</text>
+
+  <!-- memory -->
+  <rect x="296" y="110" width="168" height="72" rx="10" fill="#E9F6EE" stroke="#3A9D5D" stroke-width="1.8"/>
+  <text x="380" y="139" text-anchor="middle" font-size="12" font-weight="700" fill="#1E5435">agentm memory</text>
+  <text x="380" y="157" text-anchor="middle" font-size="9" fill="#4E7A60">what it has learned</text>
+
+  <!-- backward (built, solid) -->
+  <path d="M170,104 L294,132" fill="none" stroke="#3A9D5D" stroke-width="1.6" marker-end="url(#eb)"/>
+  <text x="232" y="110" text-anchor="middle" font-size="8.5" font-style="italic" fill="#3A9D5D">backward · reflection (built)</text>
+
+  <!-- forward (designed, dashed) -->
+  <path d="M170,188 L294,160" fill="none" stroke="#6FA083" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#eb)"/>
+  <text x="232" y="186" text-anchor="middle" font-size="8.5" font-style="italic" fill="#6FA083">forward · scheduled, surfaced to you (designed)</text>
+
+  <!-- opinions outflow -->
+  <text x="474" y="150" text-anchor="start" font-size="9" font-style="italic" fill="#4E7A60">→ sharpens Opinions</text>
+
+  <!-- scheduler -->
+  <rect x="540" y="92" width="154" height="44" rx="9" fill="#ffffff" stroke="#3A9D5D" stroke-width="1.3" stroke-dasharray="5 4"/>
+  <text x="617" y="113" text-anchor="middle" font-size="10" font-weight="700" fill="#1E5435">the scheduler</text>
+  <text x="617" y="127" text-anchor="middle" font-size="8" font-style="italic" fill="#6FA083">designed · drives the scheduled passes</text>
+
+  <!-- dreaming (designed, dashed) -->
+  <rect x="296" y="236" width="168" height="44" rx="9" fill="#ffffff" stroke="#3A9D5D" stroke-width="1.3" stroke-dasharray="5 4"/>
+  <text x="380" y="257" text-anchor="middle" font-size="10" font-weight="700" fill="#1E5435">Dreaming · designed</text>
+  <text x="380" y="271" text-anchor="middle" font-size="8" fill="#6FA083">whole-corpus → insights</text>
+  <path d="M372,182 L372,234" fill="none" stroke="#6FA083" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#eb)"/>
+  <path d="M390,234 L390,184" fill="none" stroke="#6FA083" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#eb)"/>
+
+  <text x="360" y="316" text-anchor="middle" font-size="9" font-style="italic" fill="#4E7A60">solid = built (backward learning) · dashed = designed (forward learning · the scheduler · dreaming)</text>
+</svg>

@@ -1,0 +1,72 @@
+<svg viewBox="0 0 820 560" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7.5" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#7A8089"/></marker>
+  </defs>
+  <rect x="6" y="6" width="808" height="548" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+
+  <!-- callers -->
+  <g>
+    <rect x="24" y="28" width="175" height="56" rx="9" fill="#F3F4F6" stroke="#9AA0A6" stroke-width="1.3"/>
+    <text x="111" y="52" font-size="12.5" font-weight="600" fill="#3C4043" text-anchor="middle">in-process callers</text>
+    <text x="111" y="69" font-size="10" font-style="italic" fill="#6B7280" text-anchor="middle">host · hooks</text>
+  </g>
+  <g>
+    <rect x="211" y="28" width="175" height="56" rx="9" fill="#F3F4F6" stroke="#9AA0A6" stroke-width="1.3"/>
+    <text x="298" y="52" font-size="12.5" font-weight="600" fill="#3C4043" text-anchor="middle">MCP clients</text>
+    <text x="298" y="69" font-size="10" font-style="italic" fill="#6B7280" text-anchor="middle">opt-in · external</text>
+  </g>
+  <g>
+    <rect x="398" y="28" width="175" height="56" rx="9" fill="#E9F6EE" stroke="#3A9D5D" stroke-width="1.3"/>
+    <text x="485" y="52" font-size="12.5" font-weight="600" fill="#1E5435" text-anchor="middle">crickets tools</text>
+    <text x="485" y="69" font-size="10" font-style="italic" fill="#4E7A60" text-anchor="middle">plan · work · review</text>
+  </g>
+  <g>
+    <rect x="585" y="28" width="175" height="56" rx="9" fill="#F2EEFB" stroke="#7E57C2" stroke-width="1.3"/>
+    <text x="672" y="52" font-size="12.5" font-weight="600" fill="#4A2E80" text-anchor="middle">personas</text>
+    <text x="672" y="69" font-size="10" font-style="italic" fill="#6E5B96" text-anchor="middle">rememberer · roster</text>
+  </g>
+
+  <!-- spine -->
+  <rect x="270" y="150" width="280" height="56" rx="10" fill="#EAF1FB" stroke="#2F6FBA" stroke-width="1.7"/>
+  <text x="410" y="174" font-size="14" font-weight="700" fill="#1B3A5B" text-anchor="middle">Memory engine</text>
+  <text x="410" y="192" font-size="10.5" font-style="italic" fill="#5E7A99" text-anchor="middle">save · recall · forget · reflect</text>
+
+  <rect x="270" y="234" width="280" height="56" rx="10" fill="#EAF1FB" stroke="#2F6FBA" stroke-width="1.7"/>
+  <text x="410" y="258" font-size="14" font-weight="700" fill="#1B3A5B" text-anchor="middle">Resolution plane</text>
+  <text x="410" y="276" font-size="10.5" font-style="italic" fill="#5E7A99" text-anchor="middle">config · vault_path · selector · capability</text>
+
+  <rect x="270" y="318" width="280" height="56" rx="10" fill="#DCE8F8" stroke="#2F6FBA" stroke-width="1.9"/>
+  <text x="410" y="342" font-size="14" font-weight="700" fill="#1B3A5B" text-anchor="middle">Storage seam — the one port</text>
+  <text x="410" y="360" font-size="10.5" font-style="italic" fill="#5E7A99" text-anchor="middle">contract · registry · Locator · 3 tiers</text>
+
+  <!-- backends -->
+  <rect x="180" y="420" width="210" height="56" rx="9" fill="#ffffff" stroke="#2F6FBA" stroke-width="1.3"/>
+  <text x="285" y="444" font-size="12.5" font-weight="600" fill="#1B3A5B" text-anchor="middle">device-local</text>
+  <text x="285" y="461" font-size="10" font-style="italic" fill="#5E7A99" text-anchor="middle">agentm · default</text>
+  <rect x="430" y="420" width="210" height="56" rx="9" fill="#E9F6EE" stroke="#3A9D5D" stroke-width="1.3"/>
+  <text x="535" y="444" font-size="12.5" font-weight="600" fill="#1E5435" text-anchor="middle">obsidian-vault</text>
+  <text x="535" y="461" font-size="10" font-style="italic" fill="#4E7A60" text-anchor="middle">crickets plugin · live vault</text>
+
+  <!-- caller -> engine -->
+  <line x1="111" y1="84" x2="350" y2="150" stroke="#7A8089" stroke-width="1.4" marker-end="url(#ar)"/>
+  <line x1="298" y1="84" x2="388" y2="150" stroke="#7A8089" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+  <text x="300" y="120" font-size="9.5" fill="#6B7280">opt-in</text>
+  <line x1="485" y1="84" x2="432" y2="150" stroke="#7A8089" stroke-width="1.3" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+  <text x="470" y="120" font-size="9.5" fill="#6B7280">one-way</text>
+  <line x1="672" y1="84" x2="470" y2="150" stroke="#7A8089" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="556" y="120" font-size="9.5" fill="#6B7280">requires ⊆ substrate</text>
+
+  <!-- spine flow -->
+  <line x1="410" y1="206" x2="410" y2="234" stroke="#2F6FBA" stroke-width="1.7" marker-end="url(#ar)"/>
+  <line x1="410" y1="290" x2="410" y2="318" stroke="#2F6FBA" stroke-width="1.7" marker-end="url(#ar)"/>
+
+  <!-- backends implement seam (up) -->
+  <line x1="285" y1="420" x2="360" y2="374" stroke="#7A8089" stroke-width="1.4" marker-end="url(#ar)"/>
+  <line x1="535" y1="420" x2="460" y2="374" stroke="#7A8089" stroke-width="1.4" marker-end="url(#ar)"/>
+  <text x="300" y="404" font-size="9.5" fill="#6B7280">implements</text>
+  <text x="470" y="404" font-size="9.5" fill="#6B7280">implements</text>
+
+  <!-- caption -->
+  <text x="410" y="506" font-size="11" font-style="italic" fill="#6B7280" text-anchor="middle">Every arrow points inward: callers depend on the engine, backends implement the seam; the spine (engine → resolution → seam) depends on nothing below it.</text>
+  <text x="410" y="524" font-size="11" font-style="italic" fill="#6B7280" text-anchor="middle">The MCP edge and memory entries flowing through the seam are the V5-14 target — today they still write the vault directly.</text>
+</svg>

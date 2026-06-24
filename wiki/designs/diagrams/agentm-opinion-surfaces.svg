@@ -1,0 +1,37 @@
+<svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="oa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#C8961E"/></marker>
+  </defs>
+  <rect x="6" y="6" width="708" height="328" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+  <text x="360" y="30" text-anchor="middle" font-size="14.5" font-weight="700" fill="#6B4E12">An opinion = a coded base ⊕ what agentm has learned</text>
+  <text x="360" y="54" text-anchor="middle" font-size="10" font-style="italic" fill="#9A7A2E">a tool asks opinion(name) and gets back the composite</text>
+
+  <!-- the fold -->
+  <rect x="24" y="86" width="200" height="74" rx="9" fill="#FBF3E2" stroke="#C8961E" stroke-width="1.5"/>
+  <text x="124" y="110" text-anchor="middle" font-size="11.5" font-weight="700" fill="#6B4E12">Coded base</text>
+  <text x="124" y="128" text-anchor="middle" font-size="9" fill="#9A7A2E">in agentm code</text>
+  <text x="124" y="143" text-anchor="middle" font-size="8.5" font-style="italic" fill="#A98B4E">checked-in · the seed</text>
+
+  <text x="240" y="130" text-anchor="middle" font-size="20" font-weight="700" fill="#C8961E">⊕</text>
+
+  <rect x="256" y="86" width="200" height="74" rx="9" fill="#FBF3E2" stroke="#C8961E" stroke-width="1.5"/>
+  <text x="356" y="110" text-anchor="middle" font-size="11.5" font-weight="700" fill="#6B4E12">Stored supplement</text>
+  <text x="356" y="128" text-anchor="middle" font-size="9" fill="#9A7A2E">agentm memory · local or vault</text>
+  <text x="356" y="143" text-anchor="middle" font-size="8.5" font-style="italic" fill="#A98B4E">learned · mutable</text>
+
+  <text x="472" y="130" text-anchor="middle" font-size="18" font-weight="700" fill="#C8961E">=</text>
+
+  <rect x="488" y="86" width="204" height="74" rx="9" fill="#F6E4BC" stroke="#C8961E" stroke-width="1.8"/>
+  <text x="590" y="110" text-anchor="middle" font-size="11.5" font-weight="700" fill="#6B4E12">Composite</text>
+  <text x="590" y="128" text-anchor="middle" font-size="9" fill="#9A7A2E">base + learned</text>
+  <text x="590" y="143" text-anchor="middle" font-size="8.5" font-style="italic" fill="#A98B4E">served by name to the tool</text>
+
+  <!-- experience writes the supplement -->
+  <path d="M356,238 V164" fill="none" stroke="#C8961E" stroke-width="1.4" marker-end="url(#oa)"/>
+  <text x="366" y="200" text-anchor="start" font-size="9" font-style="italic" fill="#9A7A2E">writes the supplement</text>
+  <rect x="256" y="240" width="200" height="46" rx="9" fill="#ffffff" stroke="#C8961E" stroke-width="1.3"/>
+  <text x="356" y="262" text-anchor="middle" font-size="11" font-weight="700" fill="#6B4E12">Experience</text>
+  <text x="356" y="278" text-anchor="middle" font-size="8.5" fill="#9A7A2E">reflection · scheduled learning</text>
+
+  <text x="360" y="312" text-anchor="middle" font-size="9.5" font-style="italic" fill="#9A7A2E">named opinions today: done · good · efficient · how-we-engineer  (the set is open)</text>
+</svg>
