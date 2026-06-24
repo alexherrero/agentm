@@ -20,6 +20,5 @@
   - [Model + effort routing](agentm-model-effort-routing)
 - [Memory↔Storage Seam](memory-storage-seam)
 - [The persona tier](persona-tier)
-- [Seven-Section Wiki Convergence](seven-section-convergence)
 ### 💡 [Explanation](Explanation)
 ### 📐 [Decisions](Decisions)

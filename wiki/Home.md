@@ -15,7 +15,7 @@
 **Agent M** is a phase-gated agent harness with a persistent memory layer. The harness gives the dev loop hard boundaries — Setup · Plan · Work · Review · Release · Bugfix — so an agent executes one phase at a time against on-disk state instead of freestyling the whole lifecycle. The MemoryVault gives it a durable, file-based memory that carries your preferences, project state, and learned lessons across sessions and across projects. Imagine the workflows you saw in the movies: you talk to your agent, it remembers your projects and your notes, and it improves automatically as you work — no knowledge graph to hand-maintain. Agent M has grown across the paired releases of `agentm` (this harness) and [`crickets`](https://github.com/alexherrero/crickets) (the toolkit of skills, hooks, and sub-agents that ride on top).
 
 > [!NOTE]
-> This wiki documents the `agentm` repo for contributors. Projects that *install* the harness get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) scaffolded into them instead — see [ADR 0002](seven-section-convergence) for why the two are kept separate.
+> This wiki documents the `agentm` repo for contributors. Projects that *install* the harness get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) scaffolded into them instead — see [ADR 0002](agentm-foundations-hld) for why the two are kept separate.
 
 ## 📚 Get started
 

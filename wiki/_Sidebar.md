@@ -47,7 +47,6 @@
 - [MemoryVault](memoryvault)
   - [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining)
 - [Memory↔Storage Seam](memory-storage-seam)
-- [Seven-Section Wiki Convergence](seven-section-convergence)
 ### 💡 [Explanation](Explanation)
 - [Product intent](Product-Intent)
 - [Auto-detect + auto-configure](Auto-Detect-Configure)

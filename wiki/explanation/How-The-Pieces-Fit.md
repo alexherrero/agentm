@@ -1,6 +1,6 @@
 # How the pieces fit
 
-How the phases, adapters, templates, scripts, and this wiki interact — the narrative behind the on-disk map. For the map itself see [Repo layout](Repo-Layout); for *why* the phase gates and the doc convention exist, see [ADR 0001](agentm-hld) and [ADR 0002](seven-section-convergence).
+How the phases, adapters, templates, scripts, and this wiki interact — the narrative behind the on-disk map. For the map itself see [Repo layout](Repo-Layout); for *why* the phase gates and the doc convention exist, see [ADR 0001](agentm-hld) and [ADR 0002](agentm-foundations-hld).
 
 ## Canonical specs → adapters → target project
 
@@ -49,7 +49,7 @@ The phase specs in `harness/` are the single source of truth. Each adapter is a 
 
 They **never** read from `wiki/` (the dogfood docs for *this* repo), `scripts/` (this repo's test infra), or `.github/workflows/tests-*.yml` (this repo's CI). That boundary is what keeps the harness's own documentation from leaking into every project it installs into.
 
-The boundary is enforced in three layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh), the runtime `ensure_boundary_src` guard inside `cp_managed`, and the byte-for-byte assertions in [`scripts/test-install.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.sh) and [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh). The full rationale is in [ADR 0002](seven-section-convergence).
+The boundary is enforced in three layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh), the runtime `ensure_boundary_src` guard inside `cp_managed`, and the byte-for-byte assertions in [`scripts/test-install.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.sh) and [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh). The full rationale is in [ADR 0002](agentm-foundations-hld).
 
 ## Verification runs before any agent
 
@@ -61,4 +61,4 @@ CI runs on Linux, macOS, and Windows in parallel, and every gate is deterministi
 - [Repo layout](Repo-Layout) — the on-disk map this narrative describes.
 - [CI gates](CI-Gates) — what each CI workflow proves.
 - [Host adapters](Host-Adapters) — how a single canonical spec reaches each host.
-- [ADR 0001 — Phase-gated workflow](agentm-hld) · [ADR 0002 — Documentation convention](seven-section-convergence).
+- [ADR 0001 — Phase-gated workflow](agentm-hld) · [ADR 0002 — Documentation convention](agentm-foundations-hld).

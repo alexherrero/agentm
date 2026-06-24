@@ -32,10 +32,6 @@ The current top-level design parents (AG-track Phase 1, `status: launched`). Chi
 - The three historical arc HLDs — **Agent Memory Evolution (V1→V8)**, **Device-Wide Architecture (V4)**, and **Memory-OS Architecture (V5)** — were **vault-archived 2026-06-24 (AG Wave 2)**; their still-live framing now lives in the [AgentM HLD](agentm-hld) (the V1→V8 Evolution-arc subsection + the V5 baseline) and [Foundations](agentm-foundations-hld) (the V4 device-wide substrate). Full text: `<vault>/_vault-archive/ag-design-history/`.
 - [The persona tier](persona-tier) — the third classification above the substrate/plugin binary: a standing concern that composes capabilities it does not own (rememberer = degenerate persona; V5-11 chief-of-staff = first real persona). Refines ADR 0011 · pairs with ADR 0016.
 
-## Documentation & tooling
-
-- [Seven-Section Wiki Convergence](seven-section-convergence) — converging agentm's documentation spec + tooling onto the seven-section wiki taxonomy crickets standardized (amend ADR 0004 · retire the duplicate `diataxis-author` copy toward crickets · reshape `templates/wiki/`).
-
 ## See also
 
 [Architecture](Architecture) · [Decisions](Decisions) · [Home](Home)

@@ -69,4 +69,4 @@ cat .harness/.version   # expect: a version string (only after --update)
 | Files missing from `.claude/commands/` | Re-run with `--update` to refresh the managed tree. |
 | `jq: command not found` | Install `jq` (needed only with `--hooks` on POSIX), or drop `--hooks`. |
 
-See [Installer CLI reference](Installer-CLI) for all flags. See [ADR 0002: Documentation convention](seven-section-convergence) for the installer boundary rationale.
+See [Installer CLI reference](Installer-CLI) for all flags. See [ADR 0002: Documentation convention](agentm-foundations-hld) for the installer boundary rationale.

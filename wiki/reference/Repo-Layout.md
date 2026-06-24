@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # Repo layout
 
-The top-level layout of agentm on disk. For *why* this shape, see [How the pieces fit](How-The-Pieces-Fit), [ADR 0001](agentm-hld), and [ADR 0002](seven-section-convergence).
+The top-level layout of agentm on disk. For *why* this shape, see [How the pieces fit](How-The-Pieces-Fit), [ADR 0001](agentm-hld), and [ADR 0002](agentm-foundations-hld).
 
 ## ⚡ Quick Reference
 
@@ -11,7 +11,7 @@ The top-level layout of agentm on disk. For *why* this shape, see [How the piece
 | Where does an adapter live? | [`adapters/<host>/`](https://github.com/alexherrero/agentm/tree/main/adapters) — `claude-code`, `antigravity` (the two supported hosts). |
 | Where does the install scaffold live? | [`templates/`](https://github.com/alexherrero/agentm/tree/main/templates) — state files, hooks, wiki scaffold. |
 | Where does the test infra live? | [`scripts/`](https://github.com/alexherrero/agentm/tree/main/scripts) — **never propagated to target projects**. |
-| Where does this wiki get copied from on install? | Nowhere. Target projects get `templates/wiki/` (an empty scaffold), not this one — see [ADR 0002](seven-section-convergence). |
+| Where does this wiki get copied from on install? | Nowhere. Target projects get `templates/wiki/` (an empty scaffold), not this one — see [ADR 0002](agentm-foundations-hld). |
 | Where do personal customizations live? | [`crickets`](https://github.com/alexherrero/crickets) — the sibling toolkit repo (since v2.0.0 / [ADR 0006](agentm-foundations-hld)). |
 | Where does the shared install plumbing live? | [`lib/install/`](https://github.com/alexherrero/agentm/tree/main/lib/install) — byte-identical to `crickets/lib/install/`; synced via `scripts/sync-lib.sh`, parity-gated in CI. |
 | Where does the vault-less mode signal live? | Two on-host layers — the device-level `state_mode` in `<install-prefix>/.agentm-config.json` and the higher-precedence per-repo `<repo>/.harness/.project-mode`. See [Single-repo state mode](Single-Repo-State-Mode). |
@@ -82,4 +82,4 @@ A third directory, `adapters/gemini/`, remains in the tree but is **not a suppor
 - [Installer CLI](Installer-CLI) — flags and the owned-vs-managed tree.
 - [CI gates](CI-Gates) — what each workflow proves.
 - [Compatibility](Compatibility) — the supported hosts and dropped hosts.
-- [ADR 0002 — Documentation convention](seven-section-convergence) — why this wiki is never installed into target projects.
+- [ADR 0002 — Documentation convention](agentm-foundations-hld) — why this wiki is never installed into target projects.
