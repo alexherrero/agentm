@@ -40,6 +40,6 @@ V5-9 (MCP negotiation) will sit on top of this vocabulary, not replace it. The r
 
 - [Capability resolver reference](../reference/Capability-Resolver) — the API.
 - [Persona tier schema](persona-tier-schema) — the `kind: persona` manifest fields and `check-personas` gate (V5-12).
-- [ADR 0015 — Capability discovery](../decisions/0015-capability-discovery) — the design decisions.
+- [ADR 0015 — Capability discovery](agentm-hld) — the design decisions.
 - [ADR 0016 — Persona tier](../decisions/0016-persona-tier) — design decisions for the persona primitive; DC-3 covers `enhances:` reuse.
-- [ADR 0006 — crickets split](../decisions/0006-crickets-split) — the C3 principle (substrate beneath, not plugin host).
+- [ADR 0006 — crickets split](agentm-foundations-hld) — the C3 principle (substrate beneath, not plugin host).

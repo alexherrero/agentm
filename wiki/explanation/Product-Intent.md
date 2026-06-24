@@ -51,4 +51,4 @@ The full text is in [`harness/principles.md`](https://github.com/alexherrero/age
 - [How the pieces fit](How-The-Pieces-Fit) — how phases, adapters, templates, and scripts interact.
 - [Repo layout](Repo-Layout) — the on-disk map and the current adapter/agent/skill roster.
 - [Compatibility](Compatibility) — the supported hosts and the OS matrix.
-- [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow) · [ADR 0002 — Documentation convention](seven-section-convergence).
+- [ADR 0001 — Phase-gated workflow](agentm-hld) · [ADR 0002 — Documentation convention](seven-section-convergence).

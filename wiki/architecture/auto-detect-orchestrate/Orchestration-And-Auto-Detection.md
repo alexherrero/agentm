@@ -30,6 +30,6 @@ Detail:
 - [Auto-detect + auto-configure](Auto-Detect-Configure) · [Auto-orchestration](Auto-Orchestration) — what each surface does and why it never nags.
 - [Detection rules](Detection-Rules) · [Auto-orchestration config](Auto-Orchestration-Config) — the rule table and every config key.
 - [Configure a new project](Configure-A-New-Project) · [Tune auto-orchestration](Tune-Auto-Orchestration) — the recipes.
-- [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases) — the decision behind the pull surface (no standalone design doc).
+- [ADR 0007 — Auto-context into harness phases](agentm-memory-system) — the decision behind the pull surface (no standalone design doc).
 
 [Architecture](Architecture) · [Explanation](Explanation) · [Home](Home)

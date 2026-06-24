@@ -99,4 +99,4 @@ The importable module is the first-class contract; the entrypoint is a convenien
 - [Memory↔process seam](Memory-Process-Seam) — why the seam exists, the one-way dependency, and the graceful-no-op philosophy.
 - [CI gates](CI-Gates) — the `check-process-seam-import-direction` gate that enforces the one-way edge.
 - [AgentMemory context payload](AgentMemory-Context-Payload) — the read-only memory contract the seam composes over.
-- [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop) — the decision that introduced the seam concept.
+- [ADR 0011 — V5 unbundling](agentm-hld) — the decision that introduced the seam concept.

@@ -70,7 +70,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 
 ## Phase commands
 
-The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **not** shipped by the agentm installer — it lives in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)). agentm no longer vendors the phase specs; the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`) those phases run against.
+The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **not** shipped by the agentm installer — it lives in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](agentm-hld)). agentm no longer vendors the phase specs; the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`) those phases run against.
 
 ## Exit codes
 

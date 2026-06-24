@@ -1,6 +1,6 @@
 # The memory↔process seam
 
-Why a *process* — a dev-loop phase, an MCP server — talks to the memory engine through a small stable client rather than reaching into engine internals, and why that client dependency is one-directional and gate-enforced. The seam concept was introduced by [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop); this note explains the shape it took. For the function-by-function contract, see [Process seam](Process-Seam).
+Why a *process* — a dev-loop phase, an MCP server — talks to the memory engine through a small stable client rather than reaching into engine internals, and why that client dependency is one-directional and gate-enforced. The seam concept was introduced by [ADR 0011 — V5 unbundling](agentm-hld); this note explains the shape it took. For the function-by-function contract, see [Process seam](Process-Seam).
 
 ## What the seam is for
 
@@ -56,5 +56,5 @@ The other half of the same philosophy is the read-only stance. The seam never wr
 
 - [Process seam](Process-Seam) — the function-by-function reference (signatures, degrade contracts, the `python -m` entrypoint).
 - [CI gates](CI-Gates) — the `check-process-seam-import-direction` gate enforcing the one-way edge.
-- [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop) — the decision that split the phase loop out and introduced the seam concept.
+- [ADR 0011 — V5 unbundling](agentm-hld) — the decision that split the phase loop out and introduced the seam concept.
 - [Single-repo (vault-less) state mode](Single-Repo-State-Mode) — the broader "runs without a vault" stance the seam's graceful degrade participates in.

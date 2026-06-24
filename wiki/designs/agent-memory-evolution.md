@@ -103,7 +103,7 @@ Three coordinated systems on top of an Obsidian markdown folder synced via Googl
 | `release` | 6000 | `decisions/` |
 | `bugfix` | 6000 | `known-issues/` |
 
-Detail: [harness ADR 0007](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0007-auto-context-into-harness-phases.md).
+Detail: [harness ADR 0007](agentm-memory-system).
 
 **Write layer.** `/memory save` is the primary write surface; saves are collision-checked, no overwrite. `/memory evolve` archives the old and writes the new with a `supersedes:` cross-link. `harness_memory.py offer-save` is the harness-side dispatcher at phase exit, routed by confidence (see [Constitutional Schema](#constitutional-schema)).
 
@@ -287,7 +287,7 @@ V4 commands are deliberately under-specified here. Each gets its own design doc 
 - [`memory-os-architecture.md`](memory-os-architecture.md) — V5: agentm as a storage-agnostic Memory OS + plugin host
 - [`memoryvault`](memoryvault) — the parent design doc that drove V3 implementation
 - [Use the memory skill (Agent M wiki)](https://github.com/alexherrero/agentm/wiki/Use-The-Memory-Skill) — operator-facing how-to for `/memory` (skill moved to Agent M in v2.0.0)
-- [harness ADR 0007](https://github.com/alexherrero/agentm/blob/main/wiki/explanation/decisions/0007-auto-context-into-harness-phases.md) — per-phase recall integration
+- [harness ADR 0007](agentm-memory-system) — per-phase recall integration
 - [toolkit ADR 0007](https://github.com/alexherrero/crickets/wiki/0007-memoryvault-discovery) — discovery + mining + adapt-don't-import
 - `agentm/.harness/ROADMAP-AgentMemoryV4.md` — V4 roadmap (operator-local; `.harness/` is gitignored)
 - `agentm/.harness/ROADMAP.archive.20260523-v3-complete.md` — full V3-era ROADMAP snapshot (operator-local; preserved for eventual vault migration)

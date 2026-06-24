@@ -76,7 +76,7 @@ The agent should move fast on anything it can undo and stop on anything it can't
 
 **P6 · Build from independent pieces that snap together.**
 A part you can add or remove on its own is a part you can understand, test, and replace; one tangled whole is none of those. So the system is built from separate pieces that snap together — the memory engine stands alone, and each capability plugs on beside it, finding the others by name and carrying on when one is missing.
-*Grounded in [agentm ADR 0011](#references).*
+*Grounded in [agentm-hld](agentm-hld.md) — V5 unbundling call.*
 
 **P7 · Prefer the simplest thing that works.**
 Reach for the least machinery the job needs, and add more only when the work demands it. This shows up most in what we choose to leave out — splitting the toolbox out of the core, unbundling the phase loop — keeping each piece small enough to hold in your head.
@@ -109,7 +109,7 @@ A single primary source per principle, grouped by where it lives today. Repo pat
 - `AGENTS.md` — state-on-disk (P1), single-thread + sub-agent rules (P2), checks-first (P3)
 - `scripts/` — `harness_memory.py`, `vault_lock.py`, `harness/skills/memory/scripts/recall.py` (P1); `check-all.sh` (P3); `check-process-seam-import-direction.sh`, `queue_status_lite.py` (P2); `capability_resolver.py` (P6); `heat_policy.py` (P9)
 - `wiki/reference/CI-Gates.md`, `Vault-Write-Protocol.md` (P1, P3); `wiki/explanation/Product-Intent.md` (P7, P8)
-- ADRs — 0012 / 0013 / 0018 (P1), 0019 (P2), 0001 (P4), 0006 / 0011 (P6), 0016 (P8), 0014 (P9)
+- [memory-storage-seam](memory-storage-seam.md) (P1: 0012/0013/0018/0019); [agentm-hld](agentm-hld.md) (P4: 0001, P6: 0011, P9: 0014); [agentm-foundations-hld](agentm-foundations-hld.md) (P6: 0006); ADR 0016 (P8: held)
 
 **crickets repo**
 - `src/code-review/agents/adversarial-reviewer.md`, `wiki/explanation/Why-Adversarial-Review.md` (P4)
@@ -134,5 +134,15 @@ Authored 2026-06-19 from the ratified shared-philosophy Overview (design-doc App
 Key calls preserved through review: the agentm/crickets **primary-home banding** in the synthesis diagram (agentm carries P1/P2/P3/P9, jointly-held P6/P7/P8, crickets carries P4/P5); and the honesty flags — **P7** (simplest thing) is thinly-established, **P8** (re-check scaffolding) is manual discipline with no enforcing CI gate, and **P3**'s gate count is reconciled to **22** against `check-all.sh`. The generalized voice lessons from the operator's rewrite were captured in the always-load `docs-prose-style.md` and carried into the agentm + crickets passes.
 
 **Approved 2026-06-20** (frontmatter `approved: 2026-06-20`); `status` stays `proposed` until the Phase-1 lift into tracked `wiki/designs/` flips it to `launched`. **Re-audit triggers:** flip `status` at the lift; re-confirm the primary-home banding against the agentm + crickets HLDs (they must not contradict it); re-count P3's gates if `check-all.sh` changes; the references are deliberately thin and expected to be replaced as the code moves.
+
+**2026-06-24 — folded ADRs 0003 / 0005 / 0006 / 0008 into this design (AG Phase 4, move-and-retire).**
+
+**0003 — GitHub ProjectsV2 ownership and linking (2026-04-21).** Two-call flow: create the issue, then `gh project item-add` to classify it. `@me` must be passed literally (not interpolatable by the CLI); the `repo` field is the audit anchor for cross-project tracing. Why not a single GQL call: GitHub's API has no one-shot create-and-classify; the two-call split is load-bearing, not convenience. *Re-audit trigger:* if GitHub adds one-shot create-and-classify to the GQL API.
+
+**0005 — Drop Codex adapter support (2026-05-11).** Scope the adapter layer to three hosts — Claude / Gemini / Antigravity — at v1.0.0. The managed-parents wipe model is incompatible with Codex's execution model. Why not retain Codex: no active users; maintenance cost is disproportionate; three adapters cover the model-family diversity goal. *Re-audit trigger:* if Codex or an equivalent OpenAI-hosted agent executor re-enters active use.
+
+**0006 — Crickets split: personal customizations into a sibling repo (2026-05-12).** Personal skills, sub-agents, hooks, slash commands, and the phase loop live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo. agentm exports byte-identical `lib/` and `install/` stubs. PII guardrails and the soft-dependency pattern (agentm works without crickets; crickets requires agentm) are the interface contract. Why not monorepo: agentm is the public harness; personal customizations are private; separation enforces the clean interface and prevents accidental PII leakage. *Cross-repo:* crickets side of this decision lives in the [Crickets HLD](https://github.com/alexherrero/crickets/wiki/crickets-hld). *Re-audit trigger:* if the soft-dependency pattern causes installation friction or the byte-identical stubs drift.
+
+**0008 — Project surface split: agentm → #2, crickets → #5 (2026-06-03).** Two separate GitHub Projects boards; cross-repo dependencies expressed via the issue graph, not board membership; operator-personal issues stay in agentm#2. Why not a single board: the two projects have different audiences and lifecycles; one board hides crickets work behind agentm noise. *Cross-repo:* the crickets board and its depth convention live in the [Crickets GitHub Projects design](https://github.com/alexherrero/crickets/wiki/crickets-github-projects). *Re-audit trigger:* if the two boards diverge in tooling or the cross-repo issue graph becomes unmanageable.
 
 **2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/` and flipped `status: proposed → launched`. Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: shared/foundations` — **area-only, no `governs:`**: the shared-philosophy root governs no code (it's reached by area, not by file glob), per the [area taxonomy](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift. (Area reconciled 2026-06-21 from the placeholder `foundations`/`harness/principles.md` stamp to the canonical two-level vocab.)

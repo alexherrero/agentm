@@ -147,7 +147,7 @@ flowchart LR
 
 ## Phases
 
-These phases ship in the companion [Crickets](https://github.com/alexherrero/crickets) **developer-workflows** plugin (since the [V5 unbundling](wiki/decisions/0011-v5-unbundling-dev-loop.md)); the harness contributes the memory engine that auto-recalls phase-scoped entries as each one runs.
+These phases ship in the companion [Crickets](https://github.com/alexherrero/crickets) **developer-workflows** plugin (since the [V5 unbundling](wiki/designs/agentm-hld.md)); the harness contributes the memory engine that auto-recalls phase-scoped entries as each one runs.
 
 | Command | Purpose |
 |---|---|
@@ -176,7 +176,7 @@ Compound skills imported from Crickets in v4.0.0 (V4 #36) — delivered via the 
 | [`design`](harness/skills/design/SKILL.md) | Human-facing design pipeline → agent execution handoff. `/design author` walks a 10-section template; `/design translate` splits the approved design into structural parts; `/design sequence` generates a `PLAN.md` per part for `/work` + `/release` flow. |
 | [`ship-release`](harness/skills/ship-release/SKILL.md) | Cut a tagged GitHub release with semver-driven version bumps from conventional commits. Writes CHANGELOG, tags, pushes, creates the release. |
 
-> **Wiki authoring lives in crickets now.** The `diataxis-author` skill was retired from agentm in the seven-section convergence ([documentation-convention design](wiki/designs/seven-section-convergence.md)) — it is canonical in [crickets' `wiki-maintenance` plugin](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance). The harness defers to it with the [ADR 0006](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0006-crickets-split.md) graceful-skip (suggest-then-skip when crickets is not installed); the surviving seven-folder `scripts/check-wiki.py` is agentm's wiki gate.
+> **Wiki authoring lives in crickets now.** The `diataxis-author` skill was retired from agentm in the seven-section convergence ([documentation-convention design](wiki/designs/seven-section-convergence.md)) — it is canonical in [crickets' `wiki-maintenance` plugin](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance). The harness defers to it with the [crickets soft-dep pattern](https://github.com/alexherrero/crickets/wiki/crickets-hld) graceful-skip (suggest-then-skip when crickets is not installed); the surviving seven-folder `scripts/check-wiki.py` is agentm's wiki gate.
 
 Hooks (claude-code only per [ADR 0009](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0009-evidence-tracker-hook.md)):
 
@@ -198,7 +198,7 @@ Plugins (Antigravity 2.0 / agy v1.0.2+):
 |---|---|
 | [`example-plugin`](harness/plugins/example-plugin/) | Reference plugin showing the Antigravity 2.0 plugin manifest format. Install via `bash scripts/install-plugin.sh example-plugin`. |
 
-Base primitives + the 2 evaluator sub-agents (`evaluator`, `diataxis-evaluator`) + 3 operator-control hooks (`kill-switch`, `steer`, `commit-on-stop`) + 2 utility skills (`pii-scrubber`, `dependabot-fixer`) live in **Crickets**. (The memory-flow `adapt-evaluator` sub-agent moved to agentm in V4 #23 — memory primitives are agentm-native.) See [ADR 0012](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0012-device-wide-by-default.md) for the device-wide-by-default split rationale and [ADR 0006](wiki/decisions/0006-crickets-split.md) for the original split decision.
+Base primitives + the 2 evaluator sub-agents (`evaluator`, `diataxis-evaluator`) + 3 operator-control hooks (`kill-switch`, `steer`, `commit-on-stop`) + 2 utility skills (`pii-scrubber`, `dependabot-fixer`) live in **Crickets**. (The memory-flow `adapt-evaluator` sub-agent moved to agentm in V4 #23 — memory primitives are agentm-native.) See [ADR 0012](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0012-device-wide-by-default.md) for the device-wide-by-default split rationale and [ADR 0006](wiki/designs/agentm-foundations-hld.md) for the original split decision.
 
 ## Telemetry
 

@@ -12,7 +12,7 @@ This page covers: what loads/saves at each phase boundary, the env vars that tun
 
 1. **MemoryVault installed** (v4.0.0+: shipped with agentm at `harness/skills/memory/`; in v3.x and earlier it lived at `crickets/skills/memory/` and the harness loaded it via sibling-clone resolution). For v3.x compatibility, the harness's 3-tier resolver checks `agentm/harness/skills/memory/scripts/save.py` first, then falls back to the legacy `crickets/skills/memory/scripts/save.py` sibling path, then to `HARNESS_MEMORY_TOOLKIT_PATH` env override.
 2. **`MEMORY_VAULT_PATH` env set** to your vault root (e.g. `~/Library/CloudStorage/GoogleDrive-…/Obsidian/AgentMemory`).
-3. **`.harness/project.json` has a `vault_project` field** OR your repo has a `github.repo` field OR a git origin — auto-detect uses the 3-tier fallback (see [ADR 0007](0007-auto-context-into-harness-phases) §Q2).
+3. **`.harness/project.json` has a `vault_project` field** OR your repo has a `github.repo` field OR a git origin — auto-detect uses the 3-tier fallback (see [ADR 0007](agentm-memory-system) §Q2).
 
 If any prerequisite is absent, every phase still works — the dispatcher graceful-skips silently (see Troubleshooting below).
 
@@ -115,7 +115,7 @@ Entry cap is a separate constraint (default 5 per phase) — if you need more en
 
 - [Repo-Layout](Repo-Layout) — where `scripts/harness_memory.py` + `scripts/vault_project.py` live in the harness tree.
 - [CI-Gates](CI-Gates) — the unit tests that exercise the dispatcher cross-platform on Linux/Mac/Windows.
-- [ADR 0007 — Auto-context into harness phases](0007-auto-context-into-harness-phases) — 5 locked design calls + load-bearing assumptions.
+- [ADR 0007 — Auto-context into harness phases](agentm-memory-system) — 5 locked design calls + load-bearing assumptions.
 - [crickets Cross-Repo Memory Protocol](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side contract documentation.
 - [crickets `/memory` skill](https://github.com/alexherrero/crickets/blob/main/skills/memory/SKILL.md) — the underlying save/recall surface that `harness_memory.py` shells out to.
-- Phase specs: the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) ships in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](0011-v5-unbundling-dev-loop)).
+- Phase specs: the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) ships in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](agentm-hld)).

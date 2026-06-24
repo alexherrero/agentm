@@ -73,4 +73,4 @@ The CLI `choices=` mirrors `_BRIDGE_PHASES`, so only valid phase names are accep
 - [Process seam](Process-Seam) — the read-only sibling for memory↔process reads.
 - [Memory↔process seam](Memory-Process-Seam) — the one-way dependency philosophy this bridge extends to writes.
 - [CI gates](CI-Gates) — `check-process-seam-import-direction` (enforces the one-way LC-8 direction, V5-5 bridge extension) and `verify-phases` (session-marker scenario integration checks).
-- [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop) — the unbundling that prompted this bridge (DC-1 deferred slice).
+- [ADR 0011 — V5 unbundling](agentm-hld) — the unbundling that prompted this bridge (DC-1 deferred slice).

@@ -8,7 +8,7 @@
 
 ## Context
 
-[ADR 0011](0011-v5-unbundling-dev-loop) framed agentm's V5 identity as a **binary**: agentm is the neutral memory-OS **substrate** (the memory engine + the plugin host), crickets supplies **capabilities** as plugins, and the dev loop is a **consumer** of the substrate that crickets provides. That binary is correct as far as it goes, but it under-describes one thing agentm already ships and one thing the roadmap wants to ship.
+[ADR 0011](agentm-hld) framed agentm's V5 identity as a **binary**: agentm is the neutral memory-OS **substrate** (the memory engine + the plugin host), crickets supplies **capabilities** as plugins, and the dev loop is a **consumer** of the substrate that crickets provides. That binary is correct as far as it goes, but it under-describes one thing agentm already ships and one thing the roadmap wants to ship.
 
 The thing it already ships: the **memory engine itself** is not "just the substrate." The substrate is the storage-agnostic kernel + plugin host — neutral plumbing. The memory engine is a *standing concern* that runs **on** that plumbing: it recalls, reflects, reflects-on-idle, curates always-load entries. ADR 0011's binary files it under "substrate," but it is not plumbing — it is a tenant with behavior, anchored on the neutral kernel, depending on nothing but kernel-native scripts.
 
@@ -18,7 +18,7 @@ The thing the roadmap wants to ship: the **V5-11 chief-of-staff** (the PM depth-
 
 - Is there a classification between "the substrate" and "a crickets plugin" — and if so, what is its defining signature?
 - Where does such a thing live, and why is that not arbitrary?
-- Does it need new machinery, or does it map onto shipped infra (the `requires:` / `enhances:` vocabulary + the V5-8 resolver, [ADR 0015](0015-capability-discovery))?
+- Does it need new machinery, or does it map onto shipped infra (the `requires:` / `enhances:` vocabulary + the V5-8 resolver, [ADR 0015](agentm-hld))?
 - How is the bare-agentm-stays-coherent + agentm-takes-no-hard-dep-on-crickets invariant *mechanically* held, not just asserted?
 
 ## Decision
@@ -54,7 +54,7 @@ A persona is **mechanically the same shape as an agent-def** — an opinionated 
 
 ### [DC-3] Composition reuses `enhances:` and the V5-8 resolver — no `composes:` alias (LC-3).
 
-"Composes" is the conceptual verb; the on-disk field is **`enhances:`**, resolved by the shipped capability resolver ([ADR 0015](0015-capability-discovery)): capability-keyed, graceful-degrade, one-provider. A persona composes by declaring `enhances:` and letting the resolver answer "is this capability present?" at load time.
+"Composes" is the conceptual verb; the on-disk field is **`enhances:`**, resolved by the shipped capability resolver ([ADR 0015](agentm-hld)): capability-keyed, graceful-degrade, one-provider. A persona composes by declaring `enhances:` and letting the resolver answer "is this capability present?" at load time.
 
 **Why not a new `composes:` keyword:** ADR 0015 already owns the soft-composition vocabulary and its runtime. A second keyword forks the resolver, doubles the gate surface, and buys nothing — the semantics are identical (optional, present-or-absent, degrade cleanly). New vocabulary for an existing mechanism is exactly the machinery this tier is designed *not* to add.
 
@@ -110,8 +110,8 @@ The rename rides the **V5-6 narrative shed** (the agentm identity rewrite, ADR 0
 
 ## Related
 
-- [ADR 0011 — V5 unbundling](0011-v5-unbundling-dev-loop) — the binary this ADR refines; the persona is the missing third tier its substrate/plugin split did not name.
-- [ADR 0015 — Capability discovery: the `enhances:` runtime](0015-capability-discovery) — the shipped resolver this tier reuses for composition; `enhances ∩ requires = ∅` is the seam `check-personas` extends.
-- [ADR 0006 — Split customizations into crickets](0006-crickets-split) — C3 (substrate beneath, not plugin host) is the anchoring principle the persona's "lives in agentm" call rests on.
+- [ADR 0011 — V5 unbundling](agentm-hld) — the binary this ADR refines; the persona is the missing third tier its substrate/plugin split did not name.
+- [ADR 0015 — Capability discovery: the `enhances:` runtime](agentm-hld) — the shipped resolver this tier reuses for composition; `enhances ∩ requires = ∅` is the seam `check-personas` extends.
+- [ADR 0006 — Split customizations into crickets](agentm-foundations-hld) — C3 (substrate beneath, not plugin host) is the anchoring principle the persona's "lives in agentm" call rests on.
 - [Persona tier design doc](persona-tier) — the full mechanism, the §10 re-verification, and the null-hypothesis litigation.
 - [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 HLD this tier extends; the kernel/plugin boundary it draws is the one the persona sits above.

@@ -69,7 +69,7 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 - **crickets touches by request, not by wiring.** A tool names the opinion it needs and runs its implementation: `/review` asks for *good* (runs the adversarial pass); `/release` and `/work` ask for *done* (run the check battery); any tool can ask for *efficient* or a process opinion. The crickets side of the wiring is the [composition design](https://github.com/alexherrero/crickets/wiki/crickets-composition).
 - **Personas lean on opinions** — the "Leans on" column of the [Personas design](agentm-personas.md) names which surface each persona consults.
 - **Experience feeds back** — reflection + scheduled learning sharpen the surfaces over time (the [Experience design](agentm-experience-and-dreaming.md)).
-- **Points up at** the [agentm HLD](agentm-hld.md) §Opinions. **ADR 0011** (V5 unbundling — phase commands → crickets) is why agentm owns the discipline while crickets owns the phase tools.
+- **Points up at** the [agentm HLD](agentm-hld.md) §Opinions. The [V5 unbundling](agentm-hld.md) — phase commands moved to crickets — is why agentm owns the discipline while crickets owns the phase tools.
 
 ## Risks & open questions
 

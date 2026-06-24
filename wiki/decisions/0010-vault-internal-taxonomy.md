@@ -76,7 +76,7 @@ That rename shipped in agentm v5.3.0 (commit `053217b`) as part of the V5-3 stor
 
 ## Related
 
-- [ADR 0003 — ProjectsV2 ownership and linking](0003-ProjectsV2-Ownership-And-Linking.md) — the `projects/` ownership model this taxonomy extends.
+- [ADR 0003 — ProjectsV2 ownership and linking](agentm-foundations-hld) — the `projects/` ownership model this taxonomy extends.
 - [ADR 0009 — On-host state-mode config](memory-storage-seam) — the sibling "config never lives in the vault; the vault is where data sits" principle.
 - [ADR 0018 — V5-3 storage cutover](memory-storage-seam) — the release that fired this ADR's first re-audit trigger and shipped the `personal/` rename.
 - crickets wiki-maintenance design (style-learning loop) — the consumer whose part-3 task-4 relocation surfaced the gap and aligns on `projects/_global/wiki-style/`.

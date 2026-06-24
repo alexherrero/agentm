@@ -1,0 +1,37 @@
+{
+  "decisions_dir": "wiki/decisions",
+  "index_files": [
+    "wiki/decisions/Decisions.md",
+    "wiki/decisions/_Sidebar.md",
+    "wiki/_Sidebar.md"
+  ],
+  "folds": [
+    {
+      "into_stem": "agentm-hld",
+      "into": "wiki/designs/agentm-hld.md",
+      "adrs": [
+        "0001-phase-gated-workflow",
+        "0011-v5-unbundling-dev-loop",
+        "0014-tier-2-sdk-fork-gate",
+        "0015-capability-discovery"
+      ]
+    },
+    {
+      "into_stem": "agentm-foundations-hld",
+      "into": "wiki/designs/agentm-foundations-hld.md",
+      "adrs": [
+        "0003-ProjectsV2-Ownership-And-Linking",
+        "0005-drop-codex-support",
+        "0006-crickets-split",
+        "0008-project-surface-split"
+      ]
+    },
+    {
+      "into_stem": "agentm-memory-system",
+      "into": "wiki/designs/agentm-memory-system.md",
+      "adrs": [
+        "0007-auto-context-into-harness-phases"
+      ]
+    }
+  ]
+}

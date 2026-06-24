@@ -18,7 +18,7 @@ The six phases, in order, with Bugfix as a parallel track for defects:
 | **Release** | pre-merge gate: clean tree, checks pass | the changelog is updated + green |
 | **Bugfix** | Report → Analyze → Fix → Verify | the fix is verified |
 
-The canonical spec for each lives in the crickets **developer-workflows** plugin, not in agentm — the phase loop was unbundled in V5 ([ADR 0011](0011-v5-unbundling-dev-loop)); agentm provides the durable state substrate and memory engine the phases run on. The host adapters point back to those specs rather than restating them. Verification is **executable first** — typecheck, lint, tests, build come before any LLM judgement, which augments but never replaces them.
+The canonical spec for each lives in the crickets **developer-workflows** plugin, not in agentm — the phase loop was unbundled in V5 ([ADR 0011](agentm-hld)); agentm provides the durable state substrate and memory engine the phases run on. The host adapters point back to those specs rather than restating them. Verification is **executable first** — typecheck, lint, tests, build come before any LLM judgement, which augments but never replaces them.
 
 ## How it fits
 
@@ -32,6 +32,6 @@ Detail:
 
 - [How the pieces fit](How-The-Pieces-Fit) · [Product intent](Product-Intent) — why the workflow is shaped this way.
 - [Use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) · [Cut a release](Cut-A-Release) — phase recipes.
-- [ADR 0001 — Phase-gated workflow](0001-phase-gated-workflow) — the founding decision (no standalone design doc).
+- [ADR 0001 — Phase-gated workflow](agentm-hld) — the founding decision (no standalone design doc).
 
 [Architecture](Architecture) · [Explanation](Explanation) · [Home](Home)

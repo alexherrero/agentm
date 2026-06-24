@@ -116,4 +116,4 @@ You should see the current harness version string (e.g. `v0.8.7`).
 
 - **Use the harness on a real project:** [How to install into an existing project](Install-Into-Project).
 - **Look up a specific flag:** [Installer CLI reference](Installer-CLI).
-- **Understand *why* the harness is shaped this way:** [ADR 0001: Phase-gated workflow](0001-phase-gated-workflow), [ADR 0002: Documentation convention](seven-section-convergence).
+- **Understand *why* the harness is shaped this way:** [ADR 0001: Phase-gated workflow](agentm-hld), [ADR 0002: Documentation convention](seven-section-convergence).
