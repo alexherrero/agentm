@@ -81,13 +81,13 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 ### The persona gate
 
-`check-personas.py` keeps the tier honest at build time: **`requires ⊆ substrate`** (a persona hard-requires only substrate, never a crickets capability — composition is the soft `enhances:` path) and **no always-load** (a persona carries no always-load weight). These keep a persona from quietly becoming a layer everything depends on, and keep it cheap. The gate is build-time *enforcement* of the manifest contract — the contract itself is defined in the [persona-tier design](persona-tier.md) (ADR 0016), not here.
+`check-personas.py` keeps the tier honest at build time: **`requires ⊆ substrate`** (a persona hard-requires only substrate, never a crickets capability — composition is the soft `enhances:` path) and **no always-load** (a persona carries no always-load weight). These keep a persona from quietly becoming a layer everything depends on, and keep it cheap. The gate is build-time *enforcement* of the manifest contract — the contract itself is defined in the [persona-tier design](persona-tier.md) (which folds the former ADR 0016), not here.
 
 ## Dependencies
 
 - **Composes crickets tools by name** through the soft `enhances:` path — the runtime resolver is agentm's `capability_resolver.py` (the [composition design](https://github.com/alexherrero/crickets/wiki/crickets-composition)); when a named tool is absent the persona degrades gracefully and still works on a bare agentm.
 - **Leans on** the [Opinions](agentm-opinions-and-gates.md) surfaces (the "Leans on" column) — *how* a persona retrieves an opinion is the request-by-name registry there (designed, not built).
-- **Points up at** the [agentm HLD](agentm-hld.md) §Personas; **builds on** `wiki/designs/persona-tier.md` (the locked tier design) + ADR 0016 (the inverted-dependency tier).
+- **Points up at** the [agentm HLD](agentm-hld.md) §Personas; **builds on** `wiki/designs/persona-tier.md` (the locked tier design — the inverted-dependency tier; it folds the former ADR 0016).
 
 ## The roster
 
@@ -122,7 +122,7 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 - `personas/` — `rememberer.md` (the pseudo-persona), `team-coordinator.md` (today's Planner seed)
 - `scripts/check-personas.py` — the `requires ⊆ substrate` + no-always-load gate
 - `scripts/capability_resolver.py` — the `enhances:` runtime resolver a persona composes through
-- ADR 0016 (persona tier) · `wiki/designs/persona-tier.md` (the locked tier design; its "arbitrates" discriminator is superseded by "cross-capability judgment")
+- [persona-tier](persona-tier.md) (the locked tier design — folds the former ADR 0016; its "arbitrates" discriminator is superseded by "cross-capability judgment")
 - design-doc §4 (classification spine) + §9.6 (persona-vs-role — **resolved here**)
 
 ## Amendment log

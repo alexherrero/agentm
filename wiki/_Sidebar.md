@@ -58,4 +58,3 @@
 - [Memory↔storage seam](Storage-Seam-Concepts)
 - [Named plans](Named-Plans)
 ### 📐 [Decisions](Decisions)
-- [0016 — Persona tier: third classification above substrate/plugin binary](0016-persona-tier)

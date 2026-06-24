@@ -1,0 +1,7 @@
+{
+  "decisions_dir": "wiki/decisions",
+  "index_files": ["wiki/decisions/Decisions.md", "wiki/decisions/_Sidebar.md", "wiki/_Sidebar.md"],
+  "folds": [
+    {"into_stem": "persona-tier", "into": "wiki/designs/persona-tier.md", "adrs": ["0016-persona-tier"]}
+  ]
+}

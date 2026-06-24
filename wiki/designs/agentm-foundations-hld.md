@@ -109,7 +109,7 @@ A single primary source per principle, grouped by where it lives today. Repo pat
 - `AGENTS.md` — state-on-disk (P1), single-thread + sub-agent rules (P2), checks-first (P3)
 - `scripts/` — `harness_memory.py`, `vault_lock.py`, `harness/skills/memory/scripts/recall.py` (P1); `check-all.sh` (P3); `check-process-seam-import-direction.sh`, `queue_status_lite.py` (P2); `capability_resolver.py` (P6); `heat_policy.py` (P9)
 - `wiki/reference/CI-Gates.md`, `Vault-Write-Protocol.md` (P1, P3); `wiki/explanation/Product-Intent.md` (P7, P8)
-- [memory-storage-seam](memory-storage-seam.md) (P1: 0012/0013/0018/0019); [agentm-hld](agentm-hld.md) (P4: 0001, P6: 0011, P9: 0014); [agentm-foundations-hld](agentm-foundations-hld.md) (P6: 0006); ADR 0016 (P8: held)
+- [memory-storage-seam](memory-storage-seam.md) (P1: 0012/0013/0018/0019); [agentm-hld](agentm-hld.md) (P4: 0001, P6: 0011, P9: 0014); [agentm-foundations-hld](agentm-foundations-hld.md) (P6: 0006, P8: 0002/0004/0010 — doc + vault taxonomy); [persona-tier](persona-tier.md) (P8: the persona tier, former ADR 0016)
 
 **crickets repo**
 - `src/code-review/agents/adversarial-reviewer.md`, `wiki/explanation/Why-Adversarial-Review.md` (P4)

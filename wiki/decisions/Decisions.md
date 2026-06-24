@@ -7,7 +7,6 @@ This page is the index. The homepage links here once instead of listing every AD
 
 ## Records
 
-- [ADR 0016 — The persona tier: a third classification above the substrate/plugin binary](0016-persona-tier)
 
 ## See also
 

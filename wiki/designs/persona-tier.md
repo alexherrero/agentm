@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Status:** final (locked) — 2026-06-16. Design-only pass; build pickup deferred to a build session.
-> **Position in arc:** refinement of [`memory-os-architecture.md`](agentm-hld) (the V5 "unbundling" HLD) and [ADR 0011](agentm-hld). Pairs with [ADR 0016](../decisions/0016-persona-tier), which records the load-bearing calls.
+> **Position in arc:** refinement of [`memory-os-architecture.md`](agentm-hld) (the V5 "unbundling" HLD) and [ADR 0011](agentm-hld). Its load-bearing calls (the former ADR 0016) are folded into the Amendment log below (2026-06-24).
 > **Method:** the locked 10-section design template (the V5-11 design method).
 > **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16; sequenced after V5-10, ahead of V5-11 as its substrate (V5-11's chief-of-staff is this tier's first *real* persona = build-part 4).
 
@@ -84,7 +84,7 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 
 **Model a persona as a sub-agent. Rejected** — sub-agents are read-only ephemeral fan-out (AGENTS.md rule 6); a persona is a durable classification with hard substrate deps and declared soft composition. It may be surfaced through a sub-agent, but it is not one.
 
-**Add a `composes:` keyword. Rejected** — see DC-3 in [ADR 0016](../decisions/0016-persona-tier); identical semantics to `enhances:`, so a second keyword is pure machinery.
+**Add a `composes:` keyword. Rejected** — see DC-3 in the Amendment log (the former ADR 0016); identical semantics to `enhances:`, so a second keyword is pure machinery.
 
 ## Dependencies
 
@@ -100,7 +100,7 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 ## Technical Debt & Risks
 
 - **`check-personas` is a permanent new gate surface** to keep wired into `check-all.sh` + CI. Small but real.
-- **The persona/role term is unsettled until V5-6.** Docs carry "persona" in the interim; a later doc-only sweep may rename. Risk: a reader meets two terms across the V5-6 boundary. Mitigation: ADR 0016 DC-6 records the deferral explicitly.
+- **The persona/role term is unsettled until V5-6.** Docs carry "persona" in the interim; a later doc-only sweep may rename. Risk: a reader meets two terms across the V5-6 boundary. Mitigation: DC-6 in the Amendment log (the former ADR 0016) records the deferral explicitly.
 - **Tier confusion.** Operators may mis-file a capability as a persona or vice-versa. Mitigation: the one-sentence inverted-dependency test (DC-1) and the rememberer as a worked example; `check-personas` catches the most damaging error (a crickets hard-dep) automatically.
 - **Surfacing path is unspecified here.** *How* an activated persona's body reaches the agent (injected context vs. on-demand sub-agent) is left to the build — flagged so it is not mistaken for "already decided."
 
@@ -135,7 +135,7 @@ Default part split follows the Detailed Design subsections — buildable indepen
 
 ### Documentation Plan
 
-- [ADR 0016](../decisions/0016-persona-tier) — shipped with this design (the *why*).
+- The *why* + load-bearing calls (the former ADR 0016) — folded into the Amendment log below (2026-06-24).
 - This design doc (`wiki/designs/persona-tier.md`) — the canonical "why we built the persona tier."
 - At build time: a `wiki/reference/` page for the `kind: persona` schema + `check-personas` contract; an update to [`memory-os-architecture.md`](agentm-hld) noting the rememberer-as-degenerate-persona reframe; an `enhances:` cross-reference from [Soft-Composition](../explanation/Soft-Composition).
 
@@ -156,4 +156,19 @@ Fully reversible. The tier is additive: removing `personas/`, the `kind: persona
 | 2026-06-16 | Initial authoring from the personas-vs-capabilities pre-audit; §10 re-checks cleared against shipped infra; paired with ADR 0016. | final |
 | 2026-06-16 | Re-verified against the authoritative pre-audit findings (read in full): corrected the crickets "persona"→"role" rename direction (agentm keeps "persona"; crickets' looser usage renames); folded in arbitration as the clause-2 discriminator, the two killed axes (remembers / crosses-plugins), owns-no-engine, the `check-personas` always-load guard (#46), the three-reason null + honest residual, the opinionation-migration line, and the agent-def-shape framing. | final |
 | 2026-06-16 | Roadmap placement resolved (operator-approved): slotted as **V5-12** in the agentm V5 kernel (ROADMAP-MASTER bucket ⑤), sequenced after V5-10 and ahead of V5-11 as its substrate. | final |
+
+## Amendment log
+
+**2026-06-24 — folded ADR 0016 (the persona tier) into this design (AG ADR-migration tail, move-and-retire).** ADR 0016 was the decision record paired with this design (the *why* + the load-bearing calls); the held ADR resolved (design-doc amendment 2026-06-24) and folds here, so this design now records both the mechanism (above) and the decision rationale (below). This design **stays** — a live, cited sub-contract, now nudged toward living-design shape. *(0016 refined [ADR 0011 — V5 unbundling](agentm-hld.md), the substrate/plugin binary it adds the missing third tier to.)*
+
+**The persona tier (2026-06-16; was ADR 0016).** Name a **third tier** — the **persona** — defined by its **dependency direction**, not by what it stores: a standing concern that **composes capabilities it does not own** (arbitrating between them when it composes more than one), is **anchored on the neutral substrate**, and whose hard deps (`requires:`) are **substrate-native only** (soft `enhances:` may name any capability). It owns no engine — a *stance + composition manifest* over engines that stay in crickets. The **rememberer** (the memory engine) is the degenerate persona (zero composed plugins); the **V5-11 chief-of-staff** is the first real persona. The load-bearing calls:
+
+- **DC-1 — the signature is the inverted dependency direction.** A plugin is depended *upon*; a persona *composes* and is depended on by nothing — it sits above the capability layer, rooted at the substrate. *Why not classify by "it remembers" / "stateful":* breaks both ways (the chief-of-staff is stateless; a `security-review` plugin remembers) — neither necessary nor sufficient. *Why not "crosses multiple plugins":* `github-projects` crosses `developer-workflows` and is a plain capability; **arbitration** + the inverted substrate-only hard-dep direction is the discriminator.
+- **DC-2 — a persona is a first-class primitive (`kind: persona` in `personas/`),** not a skill, not a sub-agent. Both hosts' dispatch is positive-match (unknown `kind:` skipped, never rejected); mechanically an agent-def shape, made a *persona* by tier + home + composition-scope, gate-checkable via the new `kind:`. *Why not a skill:* a skill is a capability (the thing a persona composes) — collapses the tier. *Why not a sub-agent:* sub-agents are read-only ephemeral fan-out; a persona is a durable classification.
+- **DC-3 — composition reuses `enhances:` + the V5-8 resolver, no `composes:` alias.** *Why not a new keyword:* ADR 0015 already owns the soft-composition vocabulary + runtime; a second keyword forks the resolver for identical semantics.
+- **DC-4 — `requires ⊆ substrate` + no-always-load, enforced by `check-personas`.** Mechanically holds the *agentm-takes-no-hard-dep-on-crickets* + *bare-agentm-coherent* invariants (the rememberer is the lone always-on exception). *Why not allow crickets capabilities in `requires:`:* inverts the host/plugin relationship, breaks bare-agentm coherence, reintroduces cross-repo coupling.
+- **DC-5 — personas live in agentm, loaded on demand.** *Why not ship from crickets:* a persona must be available regardless of installed plugins (compose-present, degrade-absent) — homing it in crickets couples it to a plugin set and inverts the dependency arrow.
+- **DC-6 — agentm keeps "persona"; crickets' looser "persona" → "role" rename is doc-only** (coordinated with V5-6). *Why not rename agentm's tier:* "persona" is the load-bearing identity name; the collision is resolved by moving the *looser* use (crickets' four coordinator roles), not the precise one.
+
+*Re-audit triggers:* a persona needs multi-provider composition / conflict resolution (then `enhances:`-reuse is revisited — ADR 0015's "becomes a solver" trigger); either host adds a closed-enum primitive validator that rejects unknown kinds; a persona needs a hard dep only crickets provides (migrate the dep into the substrate, or re-tier the artifact); V5-6 settles agentm's persona/role vocabulary; the underlying model ships a new major (re-audit the tier with the rest of the harness). **Resist the persona-zoo** — add the next persona only when a real cross-capability arbitration concern with no single-plugin home appears.
 | 2026-06-16 | **Part 4 shipped (V5-11).** `personas/team-coordinator.md` — `kind: persona`, `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`. Four stdlib-only scripts back it: `plan_graph.py` (shared map engine), `standup.py` (worker-state derivation), `readiness.py` (dep + file-overlap readiness), `merge_order.py` (topo-sort + diff-size tie-break). 62 fixture-backed tests. `check-personas` exits 0. Commit: [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3). | final |
