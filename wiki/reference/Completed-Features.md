@@ -450,7 +450,7 @@ The **paired-release-as-documentation pattern** continues from v2.4.0 + v2.4.1 +
 
 - [crickets v0.11.0](https://github.com/alexherrero/crickets/releases/tag/v0.11.0) — paired release; 8 commits across plan #13 parts 1-5
 - [crickets ADR 0008 — diataxis-author skill](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0008-diataxis-author.md) — 4 locked design calls + 4 load-bearing assumptions with re-audit triggers
-- [crickets parent design — diataxis-author](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/diataxis-author.md) — full architectural context (Status: launched)
+- [crickets wiki capability design](https://github.com/alexherrero/crickets/wiki/crickets-wiki) — full architectural context (the diataxis-author design was vault-archived 2026-06-24, AG Wave 2; its skill internals now live in the `wiki` capability design)
 - [crickets how-to — Use Diataxis Author](https://github.com/alexherrero/crickets/blob/main/wiki/how-to/Use-Diataxis-Author.md) — 5 worked scenarios + AgentMemory walkthrough + troubleshooting
 - [agentm ADR 0004 — Diátaxis Documentation Spec](seven-section-convergence) — canonical Diátaxis convention this skill enforces (upstream)
 - [predecessor `migrate-to-diataxis` (deprecated)](https://github.com/alexherrero/agentm/blob/main/harness/skills/migrate-to-diataxis.md) — subsumed by `/diataxis migrate`
