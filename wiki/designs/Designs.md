@@ -20,7 +20,7 @@ The permanent agent-memory store and its six implementation parts.
 The current top-level design parents (AG-track Phase 1, `status: launched`). Children point *up* at these; all children are content-final and launched as of AG Phase 3 (2026-06-24).
 
 - [Foundations](agentm-foundations-hld) — the shared cross-repo "why": the nine principles agentm and crickets both stand on, and how the person (agentm) and its tools (crickets) relate. The root both HLDs inherit by reference.
-- [AgentM HLD](agentm-hld) — the agentm parent: the four pillars (Experience · Memory · Opinions · Personas), their components, and where each touches crickets. **Succeeds** [Memory-OS Architecture (V5)](memory-os-architecture).
+- [AgentM HLD](agentm-hld) — the agentm parent: the four pillars (Experience · Memory · Opinions · Personas), their components, and where each touches crickets. **Succeeds** the V5 Memory-OS HLD (vault-archived 2026-06-24, AG Wave 2; its V1→V8 arc lives in the AgentM HLD's Evolution-arc subsection).
   - [Memory System](agentm-memory-system) — the seam, backends, write protocol, recall loop, storage layers, V5-14 target gap.
   - [Experience & Dreaming](agentm-experience-and-dreaming) — reflection (backward), scheduled learning (forward), heat policy, dreaming, the scheduler.
   - [Opinions & Gates](agentm-opinions-and-gates) — the four named opinion surfaces (done · good · efficient · how-we-engineer) and the request-by-name model.
@@ -29,9 +29,7 @@ The current top-level design parents (AG-track Phase 1, `status: launched`). Chi
 
 ## Evolution & architecture
 
-- [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going.
-- [Device-Wide Architecture](device-wide-architecture) — the device-wide design Agent M targets.
-- [Memory-OS Architecture (V5, superseded)](memory-os-architecture) — the V5 memory-OS HLD, kept as the historical arc record; superseded by [AgentM HLD](agentm-hld).
+- The three historical arc HLDs — **Agent Memory Evolution (V1→V8)**, **Device-Wide Architecture (V4)**, and **Memory-OS Architecture (V5)** — were **vault-archived 2026-06-24 (AG Wave 2)**; their still-live framing now lives in the [AgentM HLD](agentm-hld) (the V1→V8 Evolution-arc subsection + the V5 baseline) and [Foundations](agentm-foundations-hld) (the V4 device-wide substrate). Full text: `<vault>/_vault-archive/ag-design-history/`.
 - [The persona tier](persona-tier) — the third classification above the substrate/plugin binary: a standing concern that composes capabilities it does not own (rememberer = degenerate persona; V5-11 chief-of-staff = first real persona). Refines ADR 0011 · pairs with ADR 0016.
 
 ## Documentation & tooling

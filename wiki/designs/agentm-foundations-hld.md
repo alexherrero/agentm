@@ -115,7 +115,7 @@ A single primary source per principle, grouped by where it lives today. Repo pat
 - `src/code-review/agents/adversarial-reviewer.md`, `wiki/explanation/Why-Adversarial-Review.md` (P4)
 - `src/developer-safety/skills/recoverability/SKILL.md` (P5, primary), `hooks/commit-on-stop/hook.md` (P5)
 - `src/developer-workflows/commands/{work,bugfix,release,review}.md` (P4, P5)
-- `wiki/designs/developer-plugin-suite.md` (P6)
+- `wiki/designs/crickets-composition.md` (P6) — the `enhances:` soft-composition design (subsumed `developer-plugin-suite.md`, AG Wave 2)
 - ADRs — 0002 (P4), 0013 / 0017 (P6), 0026 (P9)
 
 **vault research** (`projects/agentm/`)

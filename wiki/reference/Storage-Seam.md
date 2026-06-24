@@ -420,4 +420,4 @@ For the intent and three-leg arc context, see [Seam-De-Vaulting-V5-6](../explana
 - [Process seam](Process-Seam) — the *other* seam's reference: the read-only client a process calls. Same pattern, opposite direction.
 - [Vault write protocol](Vault-Write-Protocol) — the `atomic_write` primitive `DeviceLocalBackend.write` composes, and the `vault_mutex` + content-hash CAS stack [`VaultBackend.write`](#the-vaultbackend) adds on top.
 - [CI gates](CI-Gates) — the `check-storage-seam-no-path-leak` gate that enforces the no-`Path`-leak rule.
-- [Memory-OS Architecture (V5)](memory-os-architecture) — the design context: storage-agnostic engine, device-local default, vault-behind-the-seam.
+- [Memory-OS Architecture (V5)](agentm-hld) — the design context: storage-agnostic engine, device-local default, vault-behind-the-seam.

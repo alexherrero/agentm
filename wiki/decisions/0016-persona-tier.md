@@ -114,4 +114,4 @@ The rename rides the **V5-6 narrative shed** (the agentm identity rewrite, ADR 0
 - [ADR 0015 — Capability discovery: the `enhances:` runtime](agentm-hld) — the shipped resolver this tier reuses for composition; `enhances ∩ requires = ∅` is the seam `check-personas` extends.
 - [ADR 0006 — Split customizations into crickets](agentm-foundations-hld) — C3 (substrate beneath, not plugin host) is the anchoring principle the persona's "lives in agentm" call rests on.
 - [Persona tier design doc](persona-tier) — the full mechanism, the §10 re-verification, and the null-hypothesis litigation.
-- [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 HLD this tier extends; the kernel/plugin boundary it draws is the one the persona sits above.
+- [Memory-OS Architecture (V5)](agentm-hld) — the V5 HLD this tier extends; the kernel/plugin boundary it draws is the one the persona sits above.

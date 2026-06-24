@@ -34,6 +34,6 @@ Detail:
 Designs:
 
 - [MemoryVault](memoryvault) — the write-primitives → recall → reflection build, part by part.
-- [Agent Memory Evolution V1→V4](agent-memory-evolution) · [Memory-OS Architecture (V5)](memory-os-architecture) — where it came from and where it's going.
+- [Agent Memory Evolution V1→V4](agentm-hld) · [Memory-OS Architecture (V5)](agentm-hld) — where it came from and where it's going.
 
 [Architecture](Architecture) · [Designs](Designs) · [Home](Home)

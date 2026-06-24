@@ -7,7 +7,7 @@ Why the memory engine reads and writes its state through a small interface of *v
 
 ## What the seam is for
 
-The V5 unbundling repositioned agentm as a *storage-agnostic* memory engine: its default backing becomes device-local (`~/.agentm/memory/`), and the Obsidian vault becomes a backing it reaches through an interface rather than the one filesystem layout it was born assuming. (The full architecture is the design note [Memory-OS Architecture](memory-os-architecture).) That repositioning created a question it did not answer: *how* does the engine read its markdown state without hard-coding "the vault is a directory tree on this disk"?
+The V5 unbundling repositioned agentm as a *storage-agnostic* memory engine: its default backing becomes device-local (`~/.agentm/memory/`), and the Obsidian vault becomes a backing it reaches through an interface rather than the one filesystem layout it was born assuming. (The full architecture is the design note [Memory-OS Architecture](agentm-hld).) That repositioning created a question it did not answer: *how* does the engine read its markdown state without hard-coding "the vault is a directory tree on this disk"?
 
 The tempting answer is "the engine already knows it's files — let it keep calling `pathlib` and `open()`." That bakes one filesystem layout into every read and write the engine makes. Swapping the backing — to a device-local default, to a future bytes or remote channel — would then mean editing the engine itself, everywhere it touched a path. The seam is the deliberate alternative. It is a small interface (`scripts/storage_seam.py`) of the verbs a storage layer actually needs:
 
@@ -128,5 +128,5 @@ Part 2 does **not** change the public API, and neither does part 5. Part 5 narro
 - [Memory↔process seam](Memory-Process-Seam) — the *other* seam: why a process talks to the engine through a small stable client. Same "small stable interface, gate-enforced" pattern, facing the opposite direction.
 - [CI gates](CI-Gates) — the `check-storage-seam-no-path-leak` gate enforcing the no-`Path` rule.
 - [Vault write protocol](Vault-Write-Protocol) — the `atomic_write` primitive the device-local backend composes for crash-safe writes (and the `vault_mutex` / CAS stack it deliberately does *not* need).
-- [Memory-OS Architecture (V5)](memory-os-architecture) — the design note that introduced the storage-agnostic repositioning and the two-seam shape.
+- [Memory-OS Architecture (V5)](agentm-hld) — the design note that introduced the storage-agnostic repositioning and the two-seam shape.
 - [Vault write protocol](Vault-Write-Protocol) — the write-safety the filesystem backends will compose (parts 2 / 4), not reinvent.

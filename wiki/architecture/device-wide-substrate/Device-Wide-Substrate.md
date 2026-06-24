@@ -34,6 +34,6 @@ Detail:
 
 Designs:
 
-- [Device-Wide Architecture](device-wide-architecture) — the full model behind the device-wide substrate.
+- [Device-Wide Architecture](agentm-foundations-hld) — the full model behind the device-wide substrate.
 
 [Architecture](Architecture) · [Designs](Designs) · [Home](Home)

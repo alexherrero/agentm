@@ -2,7 +2,7 @@
 
 > [!NOTE]
 > **Status:** final (locked) — 2026-06-16. Design-only pass; build pickup deferred to a build session.
-> **Position in arc:** refinement of [`memory-os-architecture.md`](memory-os-architecture) (the V5 "unbundling" HLD) and [ADR 0011](agentm-hld). Pairs with [ADR 0016](../decisions/0016-persona-tier), which records the load-bearing calls.
+> **Position in arc:** refinement of [`memory-os-architecture.md`](agentm-hld) (the V5 "unbundling" HLD) and [ADR 0011](agentm-hld). Pairs with [ADR 0016](../decisions/0016-persona-tier), which records the load-bearing calls.
 > **Method:** the locked 10-section design template (the V5-11 design method).
 > **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16; sequenced after V5-10, ahead of V5-11 as its substrate (V5-11's chief-of-staff is this tier's first *real* persona = build-part 4).
 
@@ -137,7 +137,7 @@ Default part split follows the Detailed Design subsections — buildable indepen
 
 - [ADR 0016](../decisions/0016-persona-tier) — shipped with this design (the *why*).
 - This design doc (`wiki/designs/persona-tier.md`) — the canonical "why we built the persona tier."
-- At build time: a `wiki/reference/` page for the `kind: persona` schema + `check-personas` contract; an update to [`memory-os-architecture.md`](memory-os-architecture) noting the rememberer-as-degenerate-persona reframe; an `enhances:` cross-reference from [Soft-Composition](../explanation/Soft-Composition).
+- At build time: a `wiki/reference/` page for the `kind: persona` schema + `check-personas` contract; an update to [`memory-os-architecture.md`](agentm-hld) noting the rememberer-as-degenerate-persona reframe; an `enhances:` cross-reference from [Soft-Composition](../explanation/Soft-Composition).
 
 ### Launch Plans
 

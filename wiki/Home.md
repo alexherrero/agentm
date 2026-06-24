@@ -69,9 +69,7 @@ The structural component map — six components, each a folder under **Architect
 The high-level designs behind Agent M's memory layer — the full HLDs, where the design started and where it's going. → **[Browse all designs](Designs)**
 
 - [MemoryVault](memoryvault) — permanent agent memory: [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining).
-- [Agent Memory Evolution V1→V4](agent-memory-evolution) — the full HLD: where Agent M started, how it grew, where it's going.
-- [Device-Wide Architecture](device-wide-architecture) — the device-wide design Agent M targets.
-- [Memory-OS Architecture (V5)](memory-os-architecture) — the V5 memory-OS HLD.
+- [AgentM HLD](agentm-hld) — where Agent M started (the V1→V8 Evolution arc), the V5 memory-OS baseline, and the four pillars it's built on. *(The standalone Agent-Memory-Evolution / Device-Wide / Memory-OS V5 HLDs were vault-archived 2026-06-24; their framing now lives here + in [Foundations](agentm-foundations-hld).)*
 
 ## 💡 Why it works the way it does
 
