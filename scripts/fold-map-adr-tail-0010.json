@@ -1,0 +1,15 @@
+{
+  "decisions_dir": "wiki/decisions",
+  "index_files": [
+    "wiki/decisions/Decisions.md",
+    "wiki/decisions/_Sidebar.md",
+    "wiki/_Sidebar.md"
+  ],
+  "folds": [
+    {
+      "into_stem": "agentm-foundations-hld",
+      "into": "wiki/designs/agentm-foundations-hld.md",
+      "adrs": ["0010-vault-internal-taxonomy"]
+    }
+  ]
+}
