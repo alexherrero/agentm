@@ -116,7 +116,7 @@ A single primary source per principle, grouped by where it lives today. Repo pat
 - `src/developer-safety/skills/recoverability/SKILL.md` (P5, primary), `hooks/commit-on-stop/hook.md` (P5)
 - `src/developer-workflows/commands/{work,bugfix,release,review}.md` (P4, P5)
 - `wiki/designs/crickets-composition.md` (P6) — the `enhances:` soft-composition design (subsumed `developer-plugin-suite.md`, AG Wave 2)
-- ADRs — 0002 (P4), 0013 / 0017 (P6), 0026 (P9)
+- [development-lifecycle](https://github.com/alexherrero/crickets/wiki/crickets-development-lifecycle) (P9 — phase-aware model routing; former ADR 0026) · [build-system](https://github.com/alexherrero/crickets/wiki/crickets-build-system) (P6 — native plugin distribution; former ADR 0013)
 
 **vault research** (`projects/agentm/`)
 - `decisions/` — `autonomous-write-contract.md` (P1, P5), `research-concurrent-vault-writes.md` (P1), `research-multi-developer-vault.md` (P2), `memory-os-architecture-scan.md` (P6), `research-dream-mode-design.md` (P5), `research-token-efficiency-novel.md` (P9), `research-loop-engineering-autonomy.md` (P8)

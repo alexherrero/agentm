@@ -11,7 +11,7 @@ approved: 2026-06-21
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** child-design — the Memory pillar, parent [agentm HLD](agentm-hld.md); inherits the [Foundations HLD](agentm-foundations-hld.md) by reference. The largest pillar — the ground the other three stand on. `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3); the seam content migrates to `memory-storage-seam` at the A2 fold.
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** child-design — the Memory pillar, parent [agentm HLD](agentm-hld.md); inherits the [Foundations HLD](agentm-foundations-hld.md) by reference. The largest pillar — the ground the other three stand on. `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3); the seam content has migrated to the launched `memory-storage-seam` design.
 
 # AgentM Memory System
 
@@ -31,7 +31,7 @@ The components:
 
 - **The memory engine** — the verbs the rest of the system calls (`save` · `recall` · `forget`, plus reflection) and the cross-cutting logic that must live exactly once: idempotency + content-hash CAS, soft-delete, token-budgeted recall, link integrity.
 - **The resolution plane** — how a call finds its store without naming one: the config holds the backend choice; the selector (`backend_selection.py`) maps a protocol name to a concrete `StorageBackend`, failing loud if it's missing.
-- **The storage seam** — the one port to disk: a `StorageBackend` contract, a registry, an opaque `Locator`, and the storage tiers. *(The seam's full contract — the verbs, the `Locator` guards, the tiers + the never-sync invariant, the reserved `DerivedMaintenance` — is the [memory-storage-seam design](memory-storage-seam.md), the living design the A2 ADR-fold creates; this pillar points down to it.)*
+- **The storage seam** — the one port to disk: a `StorageBackend` contract, a registry, an opaque `Locator`, and the storage tiers. *(The seam's full contract — the verbs, the `Locator` guards, the tiers + the never-sync invariant, the reserved `DerivedMaintenance` — is the launched [memory-storage-seam design](memory-storage-seam.md); this pillar points down to it.)*
 - **Harness-state I/O** — plan/progress/feature state is backend-aware (ADR 0020): it routes through the seam to the active backend, so state and memory reach disk the same way.
 
 **The one-way rule, enforced.** Routing and memory code may import the seam + selector (substrate) but **never a concrete backend** — the LC-8 gate (`check-process-seam-import-direction.sh`) fails the build on any `import storage_vault`. The backend is chosen at call time and injected through the abstract contract. Backends and tools point up; the substrate points at nothing below.
@@ -101,7 +101,7 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 
 ## Dependencies
 
-- **The seam design** — [memory-storage-seam](memory-storage-seam.md) holds the deep storage contract (created by the A2 fold); this pillar points down to it.
+- **The seam design** — [memory-storage-seam](memory-storage-seam.md) holds the deep storage contract (A2-fold, launched 2026-06-24); this pillar points down to it.
 - **Experience grows the sole-owned space** — reflection, heat curation, dreaming write here ([Experience design](agentm-experience-and-dreaming.md)); the heat policy owns the `always_load` gate.
 - **Opinions keep their learned half here** — an opinion's vault supplement is a memory entry ([Opinions design](agentm-opinions-and-gates.md)).
 - **Personas draw their state here** — Memory is the pseudo-persona beneath all ([Personas design](agentm-personas.md)).
@@ -111,9 +111,9 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 
 - **V6 indexed-recall is designed-for, not built.** The recall loop is the pre-V6 form (semantic-weighted merge + grep fallback); the reserved `DerivedMaintenance` extension point is where V6 adds the **knowledge-graph layer** (typed edges over the wikilinks; multi-hop traversal), **hybrid retrieval** (RRF over BM25 + vector + graph), a **SQLite metadata table**, **consolidation tiers**, and **chunking**. Graph and index stay layers over the markdown (the pages remain source of truth). Framed designed-for; the spec lives in the V6 plan + the seam design.
 - **Kind-scoped recall — validate as-built.** The `kind` classification and the entry frontmatter are live; confirm the current `recall.py` actually enforces the kind/phase recall budget vs a flat top-K (a check at review).
-- **The seam content migrates to `memory-storage-seam`** at the A2 fold; this pillar keeps only the pointer afterward.
-- **The kernel `storage_vault.py` lag** — V5-3 shipped but the kernel module remains (two vault backends); the A2 seam fold's delete-vs-ratify code call resolves it (fold-map).
-- **Re-audit triggers:** flip the V5-14 as-built flags when storage-convergence lands; migrate the seam prose to `memory-storage-seam` at A2; confirm kind-scoped recall.
+- **The seam content has migrated** — `memory-storage-seam` is launched (A2 ADR-fold, 2026-06-24); this pillar holds the pointer down to it.
+- **The kernel `storage_vault.py` was deleted** — removed in V5-3 (commit d95468b); the vault backend now lives only in the `obsidian-vault` plugin's `storage_vault.py`.
+- **Re-audit triggers:** flip the V5-14 as-built flags when storage-convergence lands; confirm kind-scoped recall.
 
 ## References
 

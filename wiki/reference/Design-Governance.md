@@ -45,8 +45,8 @@ A controlled vocabulary — one **owning design** per area; other designs in the
 | Root | Areas |
 |---|---|
 | `shared/` | `shared/foundations` (area-only — governs no code) |
-| `agentm/` | `agentm/architecture` · `agentm/memory` · `agentm/storage` · `agentm/experience` · `agentm/opinions` · `agentm/personas` · `agentm/capability-resolution` · `agentm/phase-contract` · `agentm/mcp` · `agentm/vault-taxonomy` |
-| `crickets/` | `crickets/architecture` + one per capability (`crickets/developer-workflows`, `crickets/wiki`, …) |
+| `agentm/` | `agentm/architecture` · `agentm/memory` · `agentm/storage` · `agentm/experience` · `agentm/opinions` · `agentm/personas` · `agentm/capability-resolution` · `agentm/model-effort-routing` · `agentm/phase-contract` · `agentm/mcp` · `agentm/vault-taxonomy` |
+| `crickets/` | `crickets/architecture` + one per capability (`crickets/development-lifecycle`, `crickets/wiki`, …) |
 | `governance/` | `governance` (the AG machinery: design-doc, this index, the grounding hooks, the ADR model) |
 
 An `area:` not in the vocabulary should fail a valid-area lint (the honesty lints mirror the capability lints; the lints themselves are a follow-on to this resolver). The canonical source is the AG `area-taxonomy.md` spec.

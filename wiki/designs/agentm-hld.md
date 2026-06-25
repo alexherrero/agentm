@@ -10,11 +10,11 @@ governs:
   - scripts/**
 succeeds: memory-os-architecture.md  # the V5 HLD, vault-archived 2026-06-24 (AG Wave 2); see References → Evolution arc
 children:
-  - children/agentm-memory-system.md
-  - children/agentm-experience-and-dreaming.md
-  - children/agentm-opinions-and-gates.md
-  - children/agentm-personas.md
-  - children/agentm-model-effort-routing.md
+  - agentm-memory-system.md
+  - agentm-experience-and-dreaming.md
+  - agentm-opinions-and-gates.md
+  - agentm-personas.md
+  - agentm-model-effort-routing.md
 ---
 
 > [!NOTE]
@@ -151,7 +151,7 @@ One rule holds across all four: the dependency arrow points one way. The pillars
 
 The component-level sources now live in each pillar's child design (linked above). This parent keeps the high-level map.
 
-**Child designs** (`children/`)
+**Child designs**
 - [Memory System](agentm-memory-system.md) — the seam, backends, write protocol, recall loop, storage layers, V5-14
 - [Experience & Dreaming](agentm-experience-and-dreaming.md) — reflection, heat, incubation, adapt-watchlist, dreaming
 - [Opinions & Gates](agentm-opinions-and-gates.md) — the check battery, conventions, phase discipline
@@ -176,7 +176,7 @@ The component-level sources now live in each pillar's child design (linked above
 
 **2026-06-20 — authored, reviewed, and finalized.**
 
-Authored 2026-06-19 from the ratified Overview (design-doc Appendix B) and a read-only grounding sweep (components, memory-layers, lifecycle, storage-serving), then restructured through operator review around the four [Foundations](agentm-foundations-hld.md) pillars — **Experience · Memory · Opinions · Personas**. The parent stays high-level: each pillar names its components and where it touches crickets, and the in-the-weeds mechanics were **migrated, not deleted**, into four seeded child designs under `children/` (memory-system · experience-and-dreaming · opinions-and-gates · personas). Diagrams are hand-authored vector SVGs.
+Authored 2026-06-19 from the ratified Overview (design-doc Appendix B) and a read-only grounding sweep (components, memory-layers, lifecycle, storage-serving), then restructured through operator review around the four [Foundations](agentm-foundations-hld.md) pillars — **Experience · Memory · Opinions · Personas**. The parent stays high-level: each pillar names its components and where it touches crickets, and the in-the-weeds mechanics were **migrated, not deleted**, into four seeded child designs (memory-system · experience-and-dreaming · opinions-and-gates · personas). Diagrams are hand-authored vector SVGs.
 
 The review rounds settled the model. **Opinions** = four named, abstract surfaces a tool requests by name — what *done* looks like (the check battery is its implementation), what *good* looks like (adversarial review), what's *efficient* (a budget with a quality floor), and *how we engineer* (the phase discipline + the plan→design→architecture sizing ladder). **Experience** = **backward** (reflection from past sessions) + **forward** (scheduled, opt-in learning from approved sources), with a **scheduler**. **Personas** = a full model: a persona declares a stance + composition + the Opinions it leans on + its launch modes (sub-agent / interactive / loop / goal), and may be adopted explicitly or automatically; **Memory** is the pseudo-persona beneath all; the Coordinator is renamed **Planner**; the roster includes the **Architect/Designer split by scope**. **"Role" is retired** — a role *is* a persona, while crickets provides tools + packages — resolving design-doc §9.6.
 

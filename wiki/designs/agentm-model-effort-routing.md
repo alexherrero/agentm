@@ -11,7 +11,7 @@ approved: 2026-06-23
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-23).** child-design — **model + effort routing** (automatically binding a model + reasoning-effort *tier* to each persona/role, so the right brain runs each job without a per-session `/model`). A **cross-cutting** design, agentm-anchored. `status` stays `seeded` until the lift. Points *up* at the [agentm HLD](agentm-hld.md).
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-23).** child-design — **model + effort routing** (automatically binding a model + reasoning-effort *tier* to each persona/role, so the right brain runs each job without a per-session `/model`). A **cross-cutting** design, agentm-anchored. Points *up* at the [agentm HLD](agentm-hld.md).
 
 # model + effort routing
 
