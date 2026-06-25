@@ -146,7 +146,7 @@ These are the four explicit resolutions the fold-plan required to land in this d
 | **`state_mode`** | The canonical non-local value is `"backend"`. `"vault"` is a deprecated read-alias (normalized at read time, no file rewrite needed). See §5 above. |
 | **`storage_vault` DELETE** | The kernel `storage_vault.py` was deleted in V5-3 (this commit, 2026-06-21). The vault backend now lives exclusively in the crickets `obsidian-vault` plugin. Tests use `vault_backend_stub.VaultBackend`. See §2 ("Vault plugin discovery") above. |
 
-**Cross-design pointer:** ADR 0018's "re-audit if `personal-private/` → `personal/` rename ships" trigger fired in V5-3. See [ADR 0010](agentm-foundations-hld) (vault taxonomy, folded into the Foundations HLD).
+**Cross-design pointer:** ADR 0018's "re-audit if `personal-private/` → `personal/` rename ships" trigger fired in V5-3. See [Foundations HLD](agentm-foundations-hld) (vault taxonomy).
 
 ## Amendment log
 
@@ -218,7 +218,7 @@ This log preserves the decision history from the six retired ADRs. Each entry re
 
 **Re-audit triggers:** V5-9 MCP server is removed (restore a minimal recall path in the kernel); any installer auto-writes `storage.backend=vault` without ensuring a vault path; a harness state dir move (update `harness_state_dir` and callers); a proposal to write state through the routing layer (route through the seam instead).
 
-**Cross-design pointer:** ADR 0018 DC-7's `personal-private/` → `personal/` rename fires ADR 0010's first load-bearing assumption re-audit trigger — see [ADR 0010 — Vault internal taxonomy](agentm-foundations-hld).
+**Cross-design pointer:** ADR 0018 DC-7's `personal-private/` → `personal/` rename fires ADR 0010's first load-bearing assumption re-audit trigger — see [Foundations HLD — Vault internal taxonomy](agentm-foundations-hld).
 
 ---
 

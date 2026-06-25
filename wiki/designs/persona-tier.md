@@ -10,7 +10,7 @@ parent: agentm-hld.md
 
 > [!NOTE]
 > **Status:** launched — all four build parts shipped (V5-11, commit [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3)); ADR 0016 folded into the Amendment log below (2026-06-24).
-> **Position in arc:** refinement of [AgentM HLD](agentm-hld) (the V5 "unbundling" HLD) and [ADR 0011](agentm-hld).
+> **Position in arc:** refinement of [AgentM HLD](agentm-hld) (the V5 "unbundling" HLD).
 > **Method:** the locked 10-section design template (the V5-11 design method).
 > **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16; sequenced after V5-10, ahead of V5-11 as its substrate (V5-11's chief-of-staff is this tier's first *real* persona = build-part 4).
 
@@ -24,9 +24,9 @@ ADR 0011 split agentm's world in two — a neutral memory-OS **substrate** and c
 
 The memory engine has always been more than plumbing: it recalls, reflects, and curates — a tenant with behavior anchored on the neutral kernel, depending on nothing but kernel-native scripts. ADR 0011's binary files it under "substrate," which under-describes it. At the same time the roadmap wants the **V5-11 chief-of-staff** (the PM depth-maintainer / drift-corrector, see [[multi-agent-orchestration]], [[github-project-sync]]): a standing concern that composes dev-loop and board capabilities it does not own, must run on a bare substrate, and must not drag a hard dependency on crickets into agentm.
 
-Two shipped pieces make naming this tier cheap. [ADR 0015](agentm-hld) (V5-8) shipped the `enhances:` soft-composition runtime — a capability-keyed, graceful-degrade resolver with `enhances ∩ requires = ∅`. And the host installers already dispatch primitives by **positive match** on `kind:`, so an unknown kind is skipped, not rejected. The third tier therefore needs no new resolver, no new loader, and no new host adapter — only a name, a directory, and one gate.
+Two shipped pieces make naming this tier cheap. The [AgentM HLD](agentm-hld) (V5-8) shipped the `enhances:` soft-composition runtime — a capability-keyed, graceful-degrade resolver with `enhances ∩ requires = ∅`. And the host installers already dispatch primitives by **positive match** on `kind:`, so an unknown kind is skipped, not rejected. The third tier therefore needs no new resolver, no new loader, and no new host adapter — only a name, a directory, and one gate.
 
-The constraints that drive every call below: **bare agentm must stay coherent** (the memory engine needs zero plugins) and **agentm must take no hard dependency on crickets** (discovery, never bundling). Both are invariants from ADR 0011 / ADR 0006; this design holds them *mechanically* rather than by discipline.
+The constraints that drive every call below: **bare agentm must stay coherent** (the memory engine needs zero plugins) and **agentm must take no hard dependency on crickets** (discovery, never bundling). Both are invariants from the [AgentM HLD](agentm-hld); this design holds them *mechanically* rather than by discipline.
 
 ## Design
 
@@ -46,7 +46,7 @@ Two near-miss axes are explicitly *not* the test. **"Remembers"** breaks both wa
 |---|---|---|
 | Primitive kind | Positive-match `kind:` dispatch in `install.{sh,ps1}` | `kind: persona` (a value, not a code path) |
 | Home on disk | `harness/`-style primitive directory | `personas/` directory |
-| Composition (soft) | V5-8 resolver, `enhances:` ([ADR 0015](agentm-hld)) | none — `enhances:` reused verbatim |
+| Composition (soft) | V5-8 resolver, `enhances:` ([AgentM HLD](agentm-hld)) | none — `enhances:` reused verbatim |
 | Hard-dep restriction | `requires:` + one-way seam gates | `check-personas` (one new static gate) |
 | Load | Existing on-demand memory-load path | none — dormant-until-activated |
 
@@ -96,7 +96,7 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 
 ## Dependencies
 
-- **[ADR 0015](agentm-hld) / the V5-8 resolver** (`scripts/capability_resolver.py`) — the composition runtime, reused verbatim. Hard prerequisite (already shipped).
+- **[AgentM HLD](agentm-hld) / the V5-8 resolver** (`scripts/capability_resolver.py`) — the composition runtime, reused verbatim. Hard prerequisite (already shipped).
 - **The positive-match `kind:` dispatch** in `install.{sh,ps1}` — relied on for unknown-kind tolerance (already shipped).
 - **V5-6 (identity rewrite)** — *coordinates with*, does not block: the persona→role naming call is parked there. No build dependency.
 - **No dependency on crickets.** The chief-of-staff persona composes crickets capabilities via soft `enhances:` only; `check-personas` forbids any crickets entry in `requires:`.
@@ -167,7 +167,7 @@ Fully reversible. The tier is additive: removing `personas/`, the `kind: persona
 
 ## Amendment log
 
-**2026-06-24 — folded ADR 0016 (the persona tier) into this design (AG ADR-migration tail, move-and-retire).** ADR 0016 was the decision record paired with this design (the *why* + the load-bearing calls); the held ADR resolved (design-doc amendment 2026-06-24) and folds here, so this design now records both the mechanism (above) and the decision rationale (below). This design **stays** — a live, cited sub-contract, now nudged toward living-design shape. *(0016 refined [ADR 0011 — V5 unbundling](agentm-hld.md), the substrate/plugin binary it adds the missing third tier to.)*
+**2026-06-24 — folded ADR 0016 (the persona tier) into this design (AG ADR-migration tail, move-and-retire).** ADR 0016 was the decision record paired with this design (the *why* + the load-bearing calls); the held ADR resolved (design-doc amendment 2026-06-24) and folds here, so this design now records both the mechanism (above) and the decision rationale (below). This design **stays** — a live, cited sub-contract, now nudged toward living-design shape. *(0016 refined [AgentM HLD — V5 unbundling](agentm-hld), the substrate/plugin binary it adds the missing third tier to.)*
 
 **The persona tier (2026-06-16; was ADR 0016).** Name a **third tier** — the **persona** — defined by its **dependency direction**, not by what it stores: a standing concern that **composes capabilities it does not own** (arbitrating between them when it composes more than one), is **anchored on the neutral substrate**, and whose hard deps (`requires:`) are **substrate-native only** (soft `enhances:` may name any capability). It owns no engine — a *stance + composition manifest* over engines that stay in crickets. The **rememberer** (the memory engine) is the degenerate persona (zero composed plugins); the **V5-11 chief-of-staff** is the first real persona. The load-bearing calls:
 
