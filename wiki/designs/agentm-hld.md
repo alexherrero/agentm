@@ -11,9 +11,11 @@ governs:
 succeeds: memory-os-architecture.md  # the V5 HLD, vault-archived 2026-06-24 (AG Wave 2); see References → Evolution arc
 children:
   - agentm-memory-system.md
+  - memory-storage-seam.md
   - agentm-experience-and-dreaming.md
   - agentm-opinions-and-gates.md
   - agentm-personas.md
+  - persona-tier.md
   - agentm-model-effort-routing.md
 ---
 

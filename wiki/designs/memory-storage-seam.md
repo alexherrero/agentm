@@ -6,6 +6,7 @@ approved: 2026-06-21
 kind: design
 scope: arc
 area: agentm/storage
+parent: agentm-hld.md
 governs:
   - scripts/storage_seam.py
   - scripts/backend_selection.py

@@ -22,6 +22,7 @@ The current top-level design parents (AG-track Phase 1, `status: launched`). Chi
 - [Foundations](agentm-foundations-hld) — the shared cross-repo "why": the nine principles agentm and crickets both stand on, and how the person (agentm) and its tools (crickets) relate. The root both HLDs inherit by reference.
 - [AgentM HLD](agentm-hld) — the agentm parent: the four pillars (Experience · Memory · Opinions · Personas), their components, and where each touches crickets. **Succeeds** the V5 Memory-OS HLD (vault-archived 2026-06-24, AG Wave 2; its V1→V8 arc lives in the AgentM HLD's Evolution-arc subsection).
   - [Memory System](agentm-memory-system) — the seam, backends, write protocol, recall loop, storage layers, V5-14 target gap.
+  - [Memory↔Storage Seam](memory-storage-seam) — the storage contract (seam verbs, `Locator` guards, tiers), backends, V5-0 write protocol, routing plane, backend-aware harness state.
   - [Experience & Dreaming](agentm-experience-and-dreaming) — reflection (backward), scheduled learning (forward), heat policy, dreaming, the scheduler.
   - [Opinions & Gates](agentm-opinions-and-gates) — the four named opinion surfaces (done · good · efficient · how-we-engineer) and the request-by-name model.
   - [Personas](agentm-personas) — the persona tier, the ~11-persona roster, the gate, launch modes, role-retirement.
