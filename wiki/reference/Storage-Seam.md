@@ -315,7 +315,7 @@ The contract-only stance is enforced executably, not just by convention, in [`sc
 The first **concrete** `StorageBackend` ([`scripts/storage_device_local.py`](https://github.com/alexherrero/agentm/blob/main/scripts/storage_device_local.py)) — the fresh-install default: plain markdown under `~/.agentm/memory/`, user-owned, no vault, no Drive, no service. It implements the [seven verbs](#the-storagebackend-abc) and the [`capabilities`](#the-capabilities-type) descriptor against the local filesystem, and registers under the `device-local` protocol name in the default [`registry`](#registry-module-default) at import. Bare markdown is the floor; a database is something a *plugin* may offer, never the kernel default. For *why* this is the floor, see [Memory↔storage seam § The first concrete backend](Storage-Seam-Concepts#the-first-concrete-backend-the-bare-markdown-floor).
 
 > [!NOTE]
-> **Engine cutover landed in V5-3 (v5.5.0).** `DeviceLocalBackend` works as a storage backend; the kernel's state functions (`harness_state_dir` / `read_state_file` / `write_state_file` / `phase_recall` / `resolve_documenter_context`) now route exclusively to device-local, completing the cutover ADR 0013 DC-6 deferred. See [Memory-storage seam design](memory-storage-seam).
+> **Engine cutover landed in V5-3 (v5.5.0).** `DeviceLocalBackend` works as a storage backend; the kernel's state functions (`harness_state_dir` / `read_state_file` / `write_state_file` / `phase_recall` / `resolve_documenter_context`) now route exclusively to device-local, completing the cutover deferred by the seam design. See [Memory-storage seam design](memory-storage-seam).
 
 | Aspect | Detail |
 |---|---|

@@ -29,7 +29,7 @@ Every file under `personas/*.md` must open with a YAML frontmatter block delimit
 | `name` | yes | string | Slug identifying this persona (e.g. `rememberer`). |
 | `requires` | yes | list[string] | Hard substrate deps. Every entry must be the stem of a file in `scripts/` (`<stem>.py` or `<stem>.sh`). Empty list is valid. |
 | `enhances` | yes | list[string] | Soft capability deps. Any capability name is accepted; unmet entries are not errors. See [Soft-Composition](../explanation/Soft-Composition). |
-| `always_load` | no | bool | Must be absent or `false`. Setting to `true` is a gate violation (ADR 0016 DC-4). Both spellings (`always_load` and `always-load`) are checked. |
+| `always_load` | no | bool | Must be absent or `false`. Setting to `true` is a gate violation (see the [persona-tier design](persona-tier)). Both spellings (`always_load` and `always-load`) are checked. |
 
 ### Example: the degenerate persona (`personas/rememberer.md`)
 

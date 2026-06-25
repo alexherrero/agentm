@@ -140,5 +140,5 @@ Action kinds:
 - [Use-Per-Project-Install](Use-Per-Project-Install) — when to deliberately keep `--scope project` and not run the migration tool
 - [Install-Into-Project](Install-Into-Project) — the default install workflow
 - [Installer-CLI](Installer-CLI) — `install.sh` flag reference
-- ADR 0012 § 6 — dev-setup invisibility policy (load-bearing assumption preserved)
+- [Memory-storage seam design](memory-storage-seam) — the dev-setup invisibility policy (a load-bearing assumption it preserves)
 - `lib/install/python/install_migrate.py` — the primitive that powers all four modes
