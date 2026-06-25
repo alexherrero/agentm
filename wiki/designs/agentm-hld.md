@@ -90,7 +90,7 @@ How the person gets better, in two directions. **Backward:** it learns from its 
 
 ### Opinions — how things should go
 
-agentm's opinions are **abstract, named buckets of opinionated knowledge** — what good work looks like, captured once and given a name. They stay deliberately abstract: an opinion doesn't reach into any tool, and it isn't a tool. A capability **asks for an opinion by name** and uses it to inform what it does. One opinion can serve many tools, and an opinion can sharpen over time without touching a single tool.
+agentm's opinions are **abstract, named buckets of opinionated knowledge** — what good work looks like, captured once and given a name. They stay deliberately abstract: an opinion doesn't reach into any tool. A capability **asks for an opinion by name** and uses it to inform what it does. One opinion can serve many tools, and an opinion can sharpen over time without touching a single tool.
 
 **The surfaces** — the named opinions agentm holds today, or means to:
 - **What "done" looks like** — completeness: *is the work actually finished?* The most deterministic surface; it confirms against a checklist. Its implementation is the **check battery** — the gates that must pass — plus the written conventions for shape.
@@ -155,9 +155,11 @@ The component-level sources now live in each pillar's child design (linked above
 
 **Child designs**
 - [Memory System](agentm-memory-system.md) — the seam, backends, write protocol, recall loop, storage layers, V5-14
+- [Memory↔Storage Seam](memory-storage-seam.md) — the storage contract (seam verbs, `Locator` guards, tiers), backends, V5-0 write protocol, routing plane, backend-aware harness state
 - [Experience & Dreaming](agentm-experience-and-dreaming.md) — reflection, heat, incubation, adapt-watchlist, dreaming
 - [Opinions & Gates](agentm-opinions-and-gates.md) — the check battery, conventions, phase discipline
 - [Personas](agentm-personas.md) — the persona tier, the gate, the full ~11-persona roster
+- [The persona tier](persona-tier.md) — the third classification above the substrate/plugin binary; folds the former ADR 0016
 - [Model + effort routing](agentm-model-effort-routing.md) — the model × effort tier scale (T0…T4, Claude + Gemini), the persona→tier map, the `tier:` manifest axis
 
 **Anchors**

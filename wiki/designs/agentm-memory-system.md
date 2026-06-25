@@ -78,11 +78,12 @@ Everything agentm remembers reaches disk through a single **storage port** — t
 
 The MCP server **belongs above the seam, as a client of it** — never underneath (that would force a daemon onto the simple local case and invert the layering; V5-0 put the mutex + content-hash CAS into the storage *primitives* precisely so the system needs no daemon). The seam, selector, device-local backend, and MCP shim are genericizable → **agentm substrate**; the `obsidian-vault` backend implements the contract one-way up → a **crickets backing plugin**.
 
-The **MCP server** carries four load-bearing design choices:
+The **MCP server** carries five load-bearing design choices:
 - **Singleton streamable-HTTP** — one daemon, many sessions (`Mcp-Session-Id`), collapsing the host fan-out to a single writer alongside the CLI. Not stdio: stdio spawns one server per client, giving N OS processes on `vault_mutex` — safe but not single-writer.
 - **Four snake_case tools**: `memory_search` · `memory_recall` · `memory_append` · `memory_forget`. Not dot-names: OpenAI-family MCP hosts reject them.
 - **Soft-delete**: `memory_forget` flips `status → deleted` + stamps `deleted_at`; the file is never unlinked. Not hard-delete: GDrive sync resurrects a hard-deleted file from propagation cache.
 - **Loopback-first** (`127.0.0.1` / Unix socket): the remote tier (cross-device via OAuth 2.1 tunnel) is a deferred v1.1 addition.
+- **Built on FastMCP, pinned `>=3,<4`** — with the official MCP SDK as a named fallback. Not unpinned: a FastMCP major can move the transport surface under the server.
 
 **As-built vs. target.** Today harness *state* routes through the seam, but memory **entries** and the MCP server still write the vault directly — reaching around the port. Routing `save`/`recall`/`forget` through the engine→seam and re-platforming the MCP tools is **V5-14** (see References).
 
