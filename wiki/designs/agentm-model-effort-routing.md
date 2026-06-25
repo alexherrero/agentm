@@ -4,7 +4,7 @@ status: launched
 kind: design
 scope: feature
 area: agentm/model-effort-routing
-governs: [persona manifest model/effort tier axis, developer-workflows agent-def model: frontmatter]
+governs: [personas/*.md, scripts/check-personas.py]
 parent: agentm-hld.md
 seeded: 2026-06-23
 approved: 2026-06-23

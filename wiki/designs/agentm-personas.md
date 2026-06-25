@@ -95,14 +95,14 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 | Persona | Stance (the judgment it makes) | Composes | Leans on | Modes | Tier |
 |---|---|---|---|---|---|
-| *Memory* (pseudo) | keep the record true, beneath all | the memory engine | — | always-on | T0 |
+| *Memory* (pseudo) | keep the record true, beneath all | the memory engine | — | always-on | T0–T1 |
 | **Planner** (TPM) | turn intent into a plan and a board | development-lifecycle (plan) · github-projects | how we engineer | loop · sub-agent | T2–T3 |
 | **Architect** | shape the broad picture *across* systems | design/architecture · research | how we engineer | interactive · goal | T3 |
 | **Designer** | design a *single* system in depth | design · research | how we engineer | interactive · goal | T2 |
 | **Tech-Lead** | hold the technical bar across the work | development-lifecycle · code-review | done · good | interactive · sub-agent | T2 |
 | **Engineer** (worker) | build the thing | development-lifecycle (work) · code-review | done · efficient | goal · interactive | T1 |
 | **Reviewer** | assume it's broken, find the flaw | code-review (adversarial) | good | sub-agent | T4 |
-| **Operator** | run things and report — no changes | queue-status · maintenance (read) | — | loop · sub-agent | T0 |
+| **Operator** | run things and report — no changes | queue-status · maintenance (read) | — | loop · sub-agent | T0–T1 |
 | **Troubleshooter / SRE** | diagnose failures in complex systems | code-review · maintenance · diagnostics | good · how we engineer | interactive · sub-agent | T3 |
 | **Researcher** | go learn what we don't know | research · forward-experience | what's worth knowing | goal · loop | T4 |
 | **Maintainer** | keep the house clean (deps, docs, drift) | maintenance · wiki | done | loop | T1 |
