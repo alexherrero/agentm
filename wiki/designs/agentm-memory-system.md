@@ -6,6 +6,7 @@ scope: feature
 area: agentm/memory
 governs: [scripts/harness_memory.py, harness/skills/memory/scripts/]
 parent: agentm-hld.md
+children: [memoryvault.md]
 seeded: 2026-06-20
 approved: 2026-06-21
 ---
