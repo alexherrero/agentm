@@ -78,7 +78,13 @@ Everything agentm remembers reaches disk through a single **storage port** — t
 
 The MCP server **belongs above the seam, as a client of it** — never underneath (that would force a daemon onto the simple local case and invert the layering; V5-0 put the mutex + content-hash CAS into the storage *primitives* precisely so the system needs no daemon). The seam, selector, device-local backend, and MCP shim are genericizable → **agentm substrate**; the `obsidian-vault` backend implements the contract one-way up → a **crickets backing plugin**.
 
-**As-built vs. target.** Today harness *state* routes through the seam, but memory **entries** and the MCP server still write the vault directly — reaching around the port. Routing `save`/`recall`/`forget` through the engine→seam and re-platforming the MCP tools is **V5-14**; flip these flags when it lands.
+The **MCP server** carries four load-bearing design choices:
+- **Singleton streamable-HTTP** — one daemon, many sessions (`Mcp-Session-Id`), collapsing the host fan-out to a single writer alongside the CLI. Not stdio: stdio spawns one server per client, giving N OS processes on `vault_mutex` — safe but not single-writer.
+- **Four snake_case tools**: `memory_search` · `memory_recall` · `memory_append` · `memory_forget`. Not dot-names: OpenAI-family MCP hosts reject them.
+- **Soft-delete**: `memory_forget` flips `status → deleted` + stamps `deleted_at`; the file is never unlinked. Not hard-delete: GDrive sync resurrects a hard-deleted file from propagation cache.
+- **Loopback-first** (`127.0.0.1` / Unix socket): the remote tier (cross-device via OAuth 2.1 tunnel) is a deferred v1.1 addition.
+
+**As-built vs. target.** Today harness *state* routes through the seam, but memory **entries** and the MCP server still write the vault directly — reaching around the port. Routing `save`/`recall`/`forget` through the engine→seam and re-platforming the MCP tools is **V5-14** (see References).
 
 ### Capture — the write protocol
 
@@ -114,7 +120,7 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 - **Kind-scoped recall — validate as-built.** The `kind` classification and the entry frontmatter are live; confirm the current `recall.py` actually enforces the kind/phase recall budget vs a flat top-K (a check at review).
 - **The seam content has migrated** — `memory-storage-seam` is launched (A2 ADR-fold, 2026-06-24); this pillar holds the pointer down to it.
 - **The kernel `storage_vault.py` was deleted** — removed in V5-3 (commit d95468b); the vault backend now lives only in the `obsidian-vault` plugin's `storage_vault.py`.
-- **Re-audit triggers:** flip the V5-14 as-built flags when storage-convergence lands; confirm kind-scoped recall.
+- **Re-audit triggers:** confirm kind-scoped recall.
 
 ## References
 
@@ -129,9 +135,7 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 
 ## Amendment log
 
-**2026-06-24 — folded ADR 0017 (MCP server design) into this design (AG ADR-migration tail, move-and-retire).** The held ADR 0017 resolved (design-doc amendment 2026-06-24) and folds into this design's **MCP-server inbound adapter** (§"How storage is served" — the opt-in transport shim above the seam; the in-process library call stays the always-present path). The V5-9 MCP server (`memory_mcp_server.py`) is the memory engine's network-reachable front door.
-
-**0017 — MCP server: singleton-HTTP broker, four tools, loopback-first (2026-06-17).** Five load-bearing calls: **[DC-1]** one **singleton streamable-HTTP daemon**, many sessions (N `Mcp-Session-Id` headers) — every MCP-host write funnels through one process, the Phase-1 concurrent-write **broker** the V5-0 write protocol was staged to receive (collapsing the host fan-out from N writers to one, alongside the CLI). *Why not stdio:* it spawns one server per client, so N hosts are N OS processes contending on `vault_mutex` — the lock makes that safe but not single-writer; the broker property is the reason for the choice. **[DC-2]** **four snake_case tools** — `memory_search` · `memory_recall` · `memory_append` · `memory_forget`. *Why not dots* (`memory.search`): OpenAI-family hosts reject them — a name that breaks on a major host is not a name. *Why not fewer:* three would drop soft-delete (a status flip on an existing entry, not a write). *Why not more:* twenty-plus is the bloat target; `memory_get` is the named v1.1 verb, held for the remote tier. **[DC-3]** **soft-delete is a hard acceptance criterion** — `memory_forget` flips `status → deleted` + stamps `deleted_at`; the file is never unlinked. *Why not hard-delete:* the GDrive-synced vault resurrects an `unlink` from a cached copy during propagation (a status flip propagates as a content update, handled correctly); it also preserves the audit trail + un-delete, and matches the reference state machine. **[DC-4]** **loopback-first** (`127.0.0.1`, Unix socket where supported); the remote tier (claude.ai / cross-device) is a deferred v1.1 outbound-only tunnel (Tailscale → NetBird → Cloudflare) pulling in OAuth 2.1. *Why not build it now:* the homelab posture forbids port-forwards / public DNS / VPS; the loopback daemon already delivers the headline value (vault reachable from every desktop MCP host); the remote shape is bounded so it slots on additively. **[DC-5]** **FastMCP `>=3,<4`** primary, the official `mcp` SDK `<2` named fallback. *Why not the SDK primary:* at design time it lacked bearer-auth OOtB + an in-memory test client that fits `check-all.sh`'s offline discipline; the four-tool surface keeps the framework cheap to swap (the transport, DC-1, is the load-bearing choice). *Re-audit triggers:* the MCP spec deprecates streamable-HTTP; a spec revision mandates dot-names; the next FastMCP major (re-check whether the SDK closed the bearer-auth / in-memory gaps); a backend or compliance rule introduces a hard-delete obligation; the operator's homelab posture changes (re-rank the tunnel). *(V5-14 note: the MCP server still writes the vault directly today, reaching around the seam — re-platforming it onto the engine→seam path is tracked as V5-14.)*
+**2026-06-24 — folded ADR 0017 (MCP server) into §“How storage is served” (AG ADR-migration tail).** Five DC calls, all surfaced into the body: singleton streamable-HTTP + broker property (DC-1); 4 snake_case tools `memory_search · memory_recall · memory_append · memory_forget` (DC-2, dot-names break OpenAI-family hosts); soft-delete `status → deleted` + `deleted_at` never unlinks (DC-3, not hard-delete: GDrive sync resurrects from propagation cache); loopback-first / deferred remote tier via OAuth 2.1 (DC-4); FastMCP `>=3,<4` primary / official SDK named fallback (DC-5). *Re-audit triggers:* MCP spec deprecates streamable-HTTP; spec mandates dot-names; next FastMCP major; hard-delete obligation arises; homelab posture changes.
 
 **2026-06-21 — authored, reviewed, and finalized.**
 
