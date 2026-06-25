@@ -1,5 +1,5 @@
 ---
-parent_design: ../../memoryvault.md
+parent: memoryvault.md
 part_slug: reflection-and-recovery
 title: "Reflection sidecar + crash-recovery markers"
 status: pending

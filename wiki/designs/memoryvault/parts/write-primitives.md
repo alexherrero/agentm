@@ -1,5 +1,5 @@
 ---
-parent_design: ../../memoryvault.md
+parent: memoryvault.md
 part_slug: write-primitives
 title: "Write primitives — `memory save` + `memory evolve`"
 status: pending

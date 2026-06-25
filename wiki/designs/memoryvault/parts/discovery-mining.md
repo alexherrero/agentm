@@ -1,5 +1,5 @@
 ---
-parent_design: ../../memoryvault.md
+parent: memoryvault.md
 part_slug: discovery-mining
 title: "Discovery + mining — transcript reflection + personal-skills indexer + internet skill-scan"
 status: pending

@@ -1,5 +1,5 @@
 ---
-parent_design: ../../memoryvault.md
+parent: memoryvault.md
 part_slug: seed-pass
 title: "Manual co-created seed pass + content migration"
 status: pending

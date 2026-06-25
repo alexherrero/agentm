@@ -1,5 +1,5 @@
 ---
-parent_design: ../../memoryvault.md
+parent: memoryvault.md
 part_slug: idea-ledger
 title: "Two-tier idea capture — Ideas.md + _idea-incubator/"
 status: pending

@@ -4,7 +4,7 @@ status: launched
 kind: design
 area: agentm/vault-taxonomy
 parent: agentm-memory-system.md
-children: [write-primitives.md, recall-loop.md, reflection-and-recovery.md, idea-ledger.md, seed-pass.md, discovery-mining.md]
+children: [memoryvault/parts/write-primitives.md, memoryvault/parts/recall-loop.md, memoryvault/parts/reflection-and-recovery.md, memoryvault/parts/idea-ledger.md, memoryvault/parts/seed-pass.md, memoryvault/parts/discovery-mining.md]
 visibility: published
 author: Alex Herrero
 created: 2026-05-15
@@ -363,11 +363,13 @@ N/A: personal tooling, user-owned data, no regulatory framework applies. GDPR-st
 ### Documentation Plan
 
 **Agent-toolkit wiki additions** (#7a):
-- **New how-to**: `crickets/wiki/how-to/Use-The-Memory-Skill.md` — comprehensive page covering 4 sub-commands + worked scenarios (capture flow / recall flow / idea promotion / supersede flow) + tri-modal routing explanation + interactive-review mode setting + troubleshooting (sqlite-vec install / cloud sync issues / API embedding fallback / vault bloat).- **Updated**: `Home.md` + `_Sidebar.md` (add memory skill to reader-intent sections); `README.md` "What's inside" table (bump version + add memory skill row); `Customization-Types.md` (add memory as concrete example link in skill row).
+- **New how-to**: `crickets/wiki/how-to/Use-The-Memory-Skill.md` — comprehensive page covering 4 sub-commands + worked scenarios (capture flow / recall flow / idea promotion / supersede flow) + tri-modal routing explanation + interactive-review mode setting + troubleshooting (sqlite-vec install / cloud sync issues / API embedding fallback / vault bloat).
+- **Updated**: `Home.md` + `_Sidebar.md` (add memory skill to reader-intent sections); `README.md` "What's inside" table (bump version + add memory skill row); `Customization-Types.md` (add memory as concrete example link in skill row).
 - **This design doc itself** (`memoryvault.md`) becomes the canonical "Why we built this" wiki entry point per the locked design call from plan #6.
 
 **Agent-toolkit wiki additions** (#7b):
 - **Update**: `Use-The-Memory-Skill.md` — add transcript-reflection + skill-discovery sections.
+
 **Harness wiki additions**: None for #7a (toolkit-only). #7b: same. Plan #8 (auto context integration into harness phases) is when harness wiki adds memory references.
 
 ### Launch Plans
@@ -392,7 +394,7 @@ N/A: personal tooling, no external SLA exposure. The hooks have soft time budget
 Minimal personal-only monitoring:
 
 - **Hook execution log**: `.harness/memoryvault.log` (rotating, gitignored) — one structured JSON line per hook invocation with timestamp, hook name, duration, result (success / partial / error), entries-injected count. User-readable; supports `tail -f` for debugging.
-- **Vault health snapshot**: `/memory health` command outputs entry count per group + last-reflection timestamp + sqlite-vec index size + inbox count + incubator count + API embedding spend (estimated from save count).
+- **Vault health snapshot**: `/memory health` command outputs entry count per group + last-reflection timestamp + sqlite-vec index size + inbox count + incubator count.
 - **Alerts** (personal — no PagerDuty): the `/memory reflect` Stop-event output warns when inbox > 50 entries or incubator > 20 unpromoted entries. Idle-time hook surfaces a "no reflection in 7+ days, something might be broken" notice if vault is silent.
 - **Disk + memory usage**: BGE-large is ~1.3GB on disk + ~1.5GB RAM at runtime per [crickets HLD](https://github.com/alexherrero/crickets/wiki/crickets-hld). Monitor via `~/.cache/crickets/sentence-transformers/` (disk) and process RSS (RAM). If footprint becomes a problem, swap to a smaller model via `AGENT_TOOLKIT_EMBEDDING_MODEL` env var.
 

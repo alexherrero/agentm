@@ -1,5 +1,5 @@
 ---
-parent_design: ../../memoryvault.md
+parent: memoryvault.md
 part_slug: recall-loop
 title: "Recall hooks + recall engine"
 status: pending

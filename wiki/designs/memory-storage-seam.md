@@ -87,7 +87,7 @@ The `.project-mode=local` opt-out is checked first and wins over a synced backen
 
 **Why route via `capabilities.sync`, not `isinstance(backend, VaultBackend)`:** `harness_memory.py` must not import the obsidian-vault plugin (the process-seam import-direction gate forbids it). The `capabilities.sync` flag is the contract; a backend that can't answer its capabilities degrades to device-local.
 
-**Session-start hook co-location (ADR 0020 DC-6):** `harness-context-session-start.sh/.ps1` derives `progress.md` as a sibling of the resolved `PLAN_PATH` (taking `dirname`), so it co-locates with whatever `_harness/` the bridge resolved (vault or device-local). This ensures the locked DC-7 4-line output block fires when both files are present at the vault path.
+**Session-start hook co-location:** `harness-context-session-start.sh/.ps1` derives `progress.md` as a sibling of the resolved `PLAN_PATH` (taking `dirname`), so it co-locates with whatever `_harness/` the bridge resolved (vault or device-local). This ensures the locked DC-7 4-line output block fires when both files are present at the vault path.
 
 ### 4. Vault write protocol (V5-0 concurrency floor)
 
