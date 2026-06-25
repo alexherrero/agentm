@@ -34,4 +34,4 @@ The current top-level design parents (AG-track Phase 1, `status: launched`). Chi
 
 ## See also
 
-[Architecture](Architecture) · [Decisions](Decisions) · [Home](Home)
+[Architecture](Architecture) · [Home](Home)

@@ -21,4 +21,4 @@
 - [Memory↔Storage Seam](memory-storage-seam)
 - [The persona tier](persona-tier)
 ### 💡 [Explanation](Explanation)
-### 📐 [Decisions](Decisions)
+- [Decisions (archived)](Decisions)

@@ -15,7 +15,7 @@
 **Agent M** is a phase-gated agent harness with a persistent memory layer. The harness gives the dev loop hard boundaries — Setup · Plan · Work · Review · Release · Bugfix — so an agent executes one phase at a time against on-disk state instead of freestyling the whole lifecycle. The MemoryVault gives it a durable, file-based memory that carries your preferences, project state, and learned lessons across sessions and across projects. Imagine the workflows you saw in the movies: you talk to your agent, it remembers your projects and your notes, and it improves automatically as you work — no knowledge graph to hand-maintain. Agent M has grown across the paired releases of `agentm` (this harness) and [`crickets`](https://github.com/alexherrero/crickets) (the toolkit of skills, hooks, and sub-agents that ride on top).
 
 > [!NOTE]
-> This wiki documents the `agentm` repo for contributors. Projects that *install* the harness get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) scaffolded into them instead — see [ADR 0002](agentm-foundations-hld) for why the two are kept separate.
+> This wiki documents the `agentm` repo for contributors. Projects that *install* the harness get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) scaffolded into them instead — see the [Foundations HLD](agentm-foundations-hld) for why the two are kept separate.
 
 ## 📚 Get started
 
@@ -81,6 +81,6 @@ The high-level designs behind Agent M's memory layer — the full HLDs, where th
 - [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable.
 - [Memory↔process seam](Memory-Process-Seam) — why a process reads memory through a one-way, read-only client instead of reaching into the engine.
 
-## 📐 Architecture decisions
+## 📐 Design decisions
 
-Every load-bearing call is recorded as an ADR — the "why X, and why not Y" trail, with re-audit triggers. → **[Browse all decisions](Decisions)**
+Load-bearing calls live in each design's amendment log — the "why X, and why not Y" trail, with re-audit triggers. → **[Browse all designs](Designs)**

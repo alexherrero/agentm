@@ -1,6 +1,6 @@
 # Product intent
 
-What Agent M is, who it's for, and the shape of the problem it solves — the "why this repo exists" page, readable in five minutes. The deeper reasoning lives in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md) and the [Decisions](Decisions).
+What Agent M is, who it's for, and the shape of the problem it solves — the "why this repo exists" page, readable in five minutes. The deeper reasoning lives in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md) and the design amendment logs under [Designs](Designs).
 
 ## The problem is scaffolding, not the model
 
@@ -29,7 +29,7 @@ Someone who pays per token and per minute, values minimal ceremony over a 150-ag
 
 ## The principles, in short
 
-The full text is in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md); each has its own decision record under [Decisions](Decisions).
+The full text is in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md); each decision is recorded in the relevant design's amendment log under [Designs](Designs).
 
 1. **Phase-gated workflow over free-form conversation.** Each session does one thing; fresh context at boundaries beats compaction.
 2. **State lives on disk, not in context.** `PLAN.md`, `features.json`, `progress.md` — the next session starts by reading.
@@ -43,7 +43,7 @@ The full text is in [`harness/principles.md`](https://github.com/alexherrero/age
 - **A one-shot "build me a feature" agent.** The harness refuses to plan, implement, and review in a single session.
 - **A supermarket of agents.** The harness keeps its own roster small on purpose — read-only explorers, the adversarial reviewers, a `documenter`, and a focused skill set — because every addition costs coherence. The current set is in [Repo layout](Repo-Layout).
 - **A replacement for tests or code review.** Deterministic gates come first; LLMs augment.
-- **Dynamic doc generation from code.** Docs are human-edited narrative, refreshed by the `documenter` at phase boundaries only — see [ADR 0002](agentm-foundations-hld).
+- **Dynamic doc generation from code.** Docs are human-edited narrative, refreshed by the `documenter` at phase boundaries only — see the [Foundations HLD](agentm-foundations-hld).
 - **Universal across every tool.** The harness targets `AGENTS.md`-aware hosts; a host without an adapter tree needs one written per [Repo layout](Repo-Layout).
 
 ## Related
@@ -51,4 +51,4 @@ The full text is in [`harness/principles.md`](https://github.com/alexherrero/age
 - [How the pieces fit](How-The-Pieces-Fit) — how phases, adapters, templates, and scripts interact.
 - [Repo layout](Repo-Layout) — the on-disk map and the current adapter/agent/skill roster.
 - [Compatibility](Compatibility) — the supported hosts and the OS matrix.
-- [ADR 0001 — Phase-gated workflow](agentm-hld) · [ADR 0002 — Documentation convention](agentm-foundations-hld).
+- [Phase-gated workflow design](agentm-hld) · [Documentation convention design](agentm-foundations-hld).

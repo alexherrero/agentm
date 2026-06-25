@@ -88,4 +88,4 @@ rm -rf .claude/{skills,hooks,agents,commands}
 - [Migration-Tool](Migration-Tool) — full reference for the `migrate-to-user-scope.{sh,ps1}` CLI + the 4-state matrix
 - [Install-Into-Project](Install-Into-Project) — the default install workflow (defaults to `--scope user` from v4.5.0+)
 - [Installer-CLI](Installer-CLI) — install.sh / install.ps1 flag reference
-- ADR 0012 § 6 — dev-setup invisibility policy (load-bearing assumption preserved)
+- [Memory-storage seam](memory-storage-seam) § 6 — dev-setup invisibility policy (load-bearing assumption preserved)

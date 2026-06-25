@@ -1,7 +1,7 @@
 <!-- mode: index -->
 # Explanation
 
-Background and rationale — *why* the harness works the way it does. These pages give the reasoning behind the design; the load-bearing calls themselves are recorded as [Decisions](Decisions), and the structural map is under [Architecture](Architecture).
+Background and rationale — *why* the harness works the way it does. These pages give the reasoning behind the design; load-bearing calls live in each design's amendment log under [Designs](Designs), and the structural map is under [Architecture](Architecture).
 
 ## What's here
 
@@ -17,4 +17,4 @@ Background and rationale — *why* the harness works the way it does. These page
 
 ## See also
 
-[Decisions](Decisions) · [Architecture](Architecture) · [Designs](Designs) · [Home](Home)
+[Designs](Designs) · [Architecture](Architecture) · [Home](Home)

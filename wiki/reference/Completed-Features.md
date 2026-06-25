@@ -1,5 +1,8 @@
 # Completed Features
 
+> [!NOTE]
+> **Historical record.** Entries before 2026-06-24 reference "ADR NNNN" — those decisions have since been folded into the living designs under [Designs](Designs). The ADR nomenclature in older entries is preserved as written.
+
 Reverse-chronological log of feature deliveries in this repo. One line in the overview table per plan; a dated section below with branch/commit ref and a short summary. Maintained by the `documenter` sub-agent at `/release` time.
 
 This page is **narrative**, not a changelog — the authoritative version log is [`CHANGELOG.md`](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md). Use this page when you want to understand *what shipped and why* without reading every commit; use `CHANGELOG.md` when you want the semver history.

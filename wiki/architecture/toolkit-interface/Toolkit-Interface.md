@@ -26,7 +26,7 @@ Because the dependency is soft in both directions, a bare harness runs with no t
 Detail:
 
 - [Product intent](Product-Intent) · [How the pieces fit](How-The-Pieces-Fit) — what the harness is, and where the toolkit sits beside it.
-- [ADR 0006 — Split into crickets](agentm-foundations-hld) — the decision that drew this seam (no standalone design doc).
+- [Foundations HLD — crickets split](agentm-foundations-hld) — the decision that drew this seam.
 - [crickets wiki ↗](https://github.com/alexherrero/crickets/wiki) — the toolkit's own documentation, from the other side of the seam.
 
 [Architecture](Architecture) · [Explanation](Explanation) · [Home](Home)

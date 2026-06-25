@@ -128,7 +128,7 @@ Stated plainly so the gap is read as scope, not as unfinished work:
 
 - [Queue status lite](Queue-Status-Lite) — the read-only coordinator dashboard that lists every active plan and its status.
 - [Vault write protocol](Vault-Write-Protocol) — the per-vault mutex + content-hash CAS + atomic writer that every `PLAN-*` replace-style write goes through.
-- [ADR 0012 — The vault-write protocol](memory-storage-seam) — the concurrency floor (N≥2 writers) that named plans rely on; the hard dependency this slice builds on.
-- [ADR 0011 — V5 unbundling of the dev loop](agentm-hld) — why the phase behavior lives in crickets and the state substrate lives here.
+- [Memory-storage seam — The vault-write protocol](memory-storage-seam) — the concurrency floor (N≥2 writers) that named plans rely on; the hard dependency this slice builds on.
+- [AgentM HLD — V5 unbundling of the dev loop](agentm-hld) — why the phase behavior lives in crickets and the state substrate lives here.
 - [Single-repo state mode](Single-Repo-State-Mode) — the related repo-local `.project-mode` marker pattern that `resolve_active_plan`'s `.harness/active-plan` marker mirrors.
 - [CI gates](CI-Gates) — the `check-multi-plan-naming` gate (#13) that locks the naming contract.

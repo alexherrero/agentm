@@ -112,6 +112,6 @@ The gate enforces two invariants (both in `_check_one()` at [scripts/check-perso
 ## Related
 
 - [Soft-Composition](../explanation/Soft-Composition) — `enhances:` field that personas reuse for optional composition.
-- [ADR 0016 — Persona tier](persona-tier) — design decisions: DC-2 (positive-match kind), DC-3 (enhances: reuse), DC-4 (no-always-load invariant).
+- [Persona tier design](persona-tier) — design decisions: DC-2 (positive-match kind), DC-3 (enhances: reuse), DC-4 (no-always-load invariant).
 - [Capability-Resolver](Capability-Resolver) — the resolver that backs `enhances:` lookups.
 - [CI-Gates](CI-Gates) — where `check-personas` appears in the gate battery.

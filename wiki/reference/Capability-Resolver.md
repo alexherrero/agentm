@@ -158,4 +158,4 @@ Versions with fewer components are zero-padded before comparison: `1.2` is treat
 
 - [CI gates](CI-Gates) — the test gate (`scripts/test_capability_resolver.py`, 32 tests) runs in `check-all.sh`.
 - [Auto-orchestration](Auto-Orchestration) — the runtime that will consume `capability_available` to gate enhances-declared skill dispatch.
-- [ADR 0011 — V5 unbundling](agentm-hld) — the decision that established plugins as the soft-composition surface.
+- [AgentM HLD — V5 unbundling](agentm-hld) — the decision that established plugins as the soft-composition surface.

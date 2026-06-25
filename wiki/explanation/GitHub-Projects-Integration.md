@@ -1,6 +1,6 @@
 # GitHub Projects integration
 
-Why every phase command can file deferred-work items to a GitHub Project — and why the integration is opt-in, preview-and-ask at every write, and a silent no-op when unconfigured. The ownership mechanics are recorded in [ADR 0003](agentm-foundations-hld).
+Why every phase command can file deferred-work items to a GitHub Project — and why the integration is opt-in, preview-and-ask at every write, and a silent no-op when unconfigured. The ownership mechanics are recorded in the [agentm Foundations HLD](agentm-foundations-hld).
 
 ## What it's for
 
@@ -14,7 +14,7 @@ The same wiring lands identically on both supported host adapters — [Claude Co
 
 ## How the flow is shaped
 
-Opt-in happens once, at `/setup`: the operator is offered a project, and on yes the agent runs the two-step ProjectsV2 dance — `gh project create` then `gh project link`. The two steps are load-bearing, because ProjectsV2 has no repo-owned form: to make a project appear under the repo you must link a user- or org-owned project to it. The rationale is [ADR 0003](agentm-foundations-hld). On success, `.harness/project.json` records `{owner, number, url, repo}`; the *absence* of that file is the signal every downstream phase uses to skip silently.
+Opt-in happens once, at `/setup`: the operator is offered a project, and on yes the agent runs the two-step ProjectsV2 dance — `gh project create` then `gh project link`. The two steps are load-bearing, because ProjectsV2 has no repo-owned form: to make a project appear under the repo you must link a user- or org-owned project to it. The rationale is in the [agentm Foundations HLD](agentm-foundations-hld). On success, `.harness/project.json` records `{owner, number, url, repo}`; the *absence* of that file is the signal every downstream phase uses to skip silently.
 
 Each phase proposes from a different signal, with a soft cap that flags scope-creep rather than hard-blocking:
 
@@ -33,6 +33,6 @@ An earlier draft capped proposals at "at most one per session." It was dropped i
 
 ## Related
 
-- [ADR 0003 — ProjectsV2 ownership and linking](agentm-foundations-hld) — why the create-then-link dance.
+- [agentm Foundations HLD — ProjectsV2 ownership and linking](agentm-foundations-hld) — why the create-then-link dance.
 - [Configure a new project](Configure-A-New-Project) — the `/setup` flow that writes `project.json`.
 - [Host adapters](Host-Adapters) — how the same wiring reaches both hosts.

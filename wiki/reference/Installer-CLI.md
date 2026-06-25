@@ -70,7 +70,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 
 ## Phase commands
 
-The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **not** shipped by the agentm installer — it lives in the crickets **developer-workflows** plugin since the V5 unbundling ([ADR 0011](agentm-hld)). agentm no longer vendors the phase specs; the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`) those phases run against.
+The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **not** shipped by the agentm installer — it lives in the crickets **developer-workflows** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)). agentm no longer vendors the phase specs; the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`) those phases run against.
 
 ## Exit codes
 
@@ -93,5 +93,5 @@ The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **no
 
 - [Tutorial 1: Your first harness install](01-First-Install) — end-to-end walkthrough.
 - [How to install into an existing project](Install-Into-Project) — recipe for production use.
-- [ADR 0002: Documentation convention](agentm-foundations-hld) — why the installer boundary exists.
-- [ADR 0009: On-host state-mode config](memory-storage-seam) — why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.
+- [Foundations HLD](agentm-foundations-hld) — why the installer boundary exists.
+- [Memory-storage seam — On-host state-mode config](memory-storage-seam) — why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.

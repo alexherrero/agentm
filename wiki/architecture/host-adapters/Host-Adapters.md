@@ -3,7 +3,7 @@
 
 _One harness, three hosts — the same phases reach Claude Code, Antigravity 2.0, and the Antigravity CLI through host-shaped entrypoints, and where a host can't follow, the gap is named._
 
-The phase workflow is host-agnostic, but each host invokes it differently. An adapter per host maps the six phases onto that host's native surface — slash commands on Claude Code, prompted entrypoints on Antigravity — while the canonical phase specs stay in one place: the crickets **developer-workflows** plugin, since the V5 unbundling ([ADR 0011](agentm-hld)). Supported hosts are **Claude Code · Antigravity 2.0 · Antigravity CLI**.
+The phase workflow is host-agnostic, but each host invokes it differently. An adapter per host maps the six phases onto that host's native surface — slash commands on Claude Code, prompted entrypoints on Antigravity — while the canonical phase specs stay in one place: the crickets **developer-workflows** plugin, since the V5 unbundling (the [AgentM HLD](agentm-hld)). Supported hosts are **Claude Code · Antigravity 2.0 · Antigravity CLI**.
 
 ## How it works
 
@@ -32,6 +32,6 @@ Each adapter points back to the canonical spec rather than restating it, so a ph
 Detail:
 
 - [Compatibility](Compatibility) — which surfaces are supported and what each host can honor.
-- [ADR 0005 — Drop Codex support](agentm-foundations-hld) · [ADR 0006 — Split into crickets](agentm-foundations-hld) — the decisions that shaped the host set (no standalone design doc).
+- [Foundations HLD — drop Codex + crickets split](agentm-foundations-hld) — the decisions that shaped the host set.
 
 [Architecture](Architecture) · [Reference](Reference) · [Home](Home)

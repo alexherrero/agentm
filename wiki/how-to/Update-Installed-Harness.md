@@ -66,4 +66,4 @@ Running a second `--update` back-to-back should be a no-op — the installer is 
 
 **When in doubt about ownership**, see the `cp_managed` function and the `MANAGED_PARENTS` array in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh). Dirs listed in `MANAGED_PARENTS` are fully harness-authored and wiped-then-recreated on `--update`; anything outside that list is user-authored and preserved.
 
-See [Installer CLI reference](Installer-CLI) for all flags. See [ADR 0002](agentm-foundations-hld) for why the boundary exists.
+See [Installer CLI reference](Installer-CLI) for all flags. See the [Foundations HLD](agentm-foundations-hld) for why the boundary exists.

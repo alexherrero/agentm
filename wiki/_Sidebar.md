@@ -57,4 +57,3 @@
 - [Memory↔process seam](Memory-Process-Seam)
 - [Memory↔storage seam](Storage-Seam-Concepts)
 - [Named plans](Named-Plans)
-### 📐 [Decisions](Decisions)
