@@ -71,7 +71,7 @@ When the configured backend **cannot be produced**, `select_backend` raises `Sto
 
 **Vault plugin discovery (post-V5-3):** the kernel `storage_vault.py` was deleted in V5-3 (the kernel built-in) and replaced by the crickets `obsidian-vault` plugin. `_load_vault_plugin_backend` discovers the plugin via `$OBSIDIAN_VAULT_SCRIPTS` override → sibling checkout → plugin-cache path, execs `scripts/storage_vault.py` in the plugin dir, and returns the `VaultBackend` class. The registry slot is always empty at entry (no built-in pre-registers it); the `finally` block pops whatever the plugin registered, leaving the slot empty on exit.
 
-### 3. Backend-aware harness state (ADR 0020 — current truth)
+### 3. Backend-aware harness state
 
 `harness_state_dir`, `read_state_file`, and `write_state_file` are **backend-aware**. A single private helper, `_state_backend_target(resolution)`, encodes the routing rule:
 
@@ -88,7 +88,7 @@ The `.project-mode=local` opt-out is checked first and wins over a synced backen
 
 **Session-start hook co-location (ADR 0020 DC-6):** `harness-context-session-start.sh/.ps1` derives `progress.md` as a sibling of the resolved `PLAN_PATH` (taking `dirname`), so it co-locates with whatever `_harness/` the bridge resolved (vault or device-local). This ensures the locked DC-7 4-line output block fires when both files are present at the vault path.
 
-### 4. Vault write protocol (ADR 0012 — V5-0 concurrency floor)
+### 4. Vault write protocol (V5-0 concurrency floor)
 
 `scripts/vault_lock.py` is the one canonical write library: `vault_mutex` (advisory lock-dir outside the vault at `~/.cache/agentm/locks/<sha256(realpath(vault))>/lock`; heartbeat-liveness; bounded-block-with-backoff) + `content_hash` (sha256 CAS currency) + `atomic_write` (bytes-mode `fsync→rename`). It is vendored byte-identically to `harness/skills/memory/scripts/vault_lock.py`, enforced by `check-vault-lock-parity.sh`.
 
@@ -99,7 +99,7 @@ Key decisions:
 - **Plain `fsync`, not `F_FULLFSYNC`** (the cloud copy is the durability backstop; plain `fsync` before rename keeps each uploaded snapshot internally consistent at the right cost).
 - **Cross-device mutual exclusion is out of scope** (impossible on Drive; out-of-band writers — another device, Obsidian itself — are the Phase-1 broker's problem).
 
-### 5. State-mode configuration (ADRs 0009 + 0019)
+### 5. State-mode configuration
 
 The state mode (vault-backed vs. device-local) is an on-host configuration:
 
@@ -107,13 +107,13 @@ The state mode (vault-backed vs. device-local) is an on-host configuration:
 - **Per-repo override:** `<project>/.harness/.project-mode` marker — higher precedence than the device default.
 - **Neither:** vault-first, guarded by a `ValueError` so a missing/unreachable vault fails loudly.
 
-**`state_mode: vault` → `backend` read-alias (§2b, ADR 0019 task 3):** the canonical non-local value is `"backend"`. Any `"vault"` value in config or per-repo marker is returned as `"backend"` at read time **without rewriting the file**. `"vault"` is retained as a deprecated CLI alias and normalized to `"backend"` at write time. No operator action required.
+**`state_mode: vault` → `backend` read-alias (§2b):** the canonical non-local value is `"backend"`. Any `"vault"` value in config or per-repo marker is returned as `"backend"` at read time **without rewriting the file**. `"vault"` is retained as a deprecated CLI alias and normalized to `"backend"` at write time. No operator action required.
 
 **Why on-host, not in-vault:** you cannot read a marker out of a store you do not have. Configuration must be reachable on a vault-less machine. `.agentm-config.json` is already read vault-free.
 
 **Why explicit, not inferred from `vault_path == null`:** a null `vault_path` is ambiguous between never-configured and transiently-unreachable (Drive not yet mounted). Inferring local from absence causes a transiently-unreachable vault to silently split state across two stores — the V4 #35 split-brain class.
 
-### 6. Routing plane (ADR 0019 — V5-6)
+### 6. Routing plane (V5-6)
 
 `resolve_project` returns `{slug, project_locator, backend, project_root, layout}`:
 - `project_locator` is a `Locator`, not a `Path`.
@@ -136,8 +136,6 @@ The state mode (vault-backed vs. device-local) is an on-host configuration:
 | `storage_conformance` | Universal verb battery + routing contract on any backend |
 
 ## §2b In-body resolutions
-
-These are the four explicit resolutions the fold-plan required to land in this design body before `migrate-adr.py --apply` retires the source ADRs.
 
 | Tag | Resolution |
 |---|---|

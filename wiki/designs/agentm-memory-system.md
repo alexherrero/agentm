@@ -32,7 +32,7 @@ The components:
 - **The memory engine** — the verbs the rest of the system calls (`save` · `recall` · `forget`, plus reflection) and the cross-cutting logic that must live exactly once: idempotency + content-hash CAS, soft-delete, token-budgeted recall, link integrity.
 - **The resolution plane** — how a call finds its store without naming one: the config holds the backend choice; the selector (`backend_selection.py`) maps a protocol name to a concrete `StorageBackend`, failing loud if it's missing.
 - **The storage seam** — the one port to disk: a `StorageBackend` contract, a registry, an opaque `Locator`, and the storage tiers. *(The seam's full contract — the verbs, the `Locator` guards, the tiers + the never-sync invariant, the reserved `DerivedMaintenance` — is the launched [memory-storage-seam design](memory-storage-seam.md); this pillar points down to it.)*
-- **Harness-state I/O** — plan/progress/feature state is backend-aware (ADR 0020): it routes through the seam to the active backend, so state and memory reach disk the same way.
+- **Harness-state I/O** — plan/progress/feature state is backend-aware: it routes through the seam to the active backend, so state and memory reach disk the same way.
 
 **The one-way rule, enforced.** Routing and memory code may import the seam + selector (substrate) but **never a concrete backend** — the LC-8 gate (`check-process-seam-import-direction.sh`) fails the build on any `import storage_vault`. The backend is chosen at call time and injected through the abstract contract. Backends and tools point up; the substrate points at nothing below.
 
@@ -123,7 +123,7 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 - `scripts/vault_lock.py` — `atomic_write` · `content_hash` (CAS) · `vault_mutex` (the V5-0 primitives)
 - `harness/skills/memory/scripts/` — `recall.py` (5-step engine), `vec_index.py` (sqlite-vec index), `save.py` / `evolve.py` (write + supersession), `notes_link_discovery.py` (wikilink integrity)
 - `harness/hooks/` — `memory-recall-session-start`, `memory-recall-prompt-submit`
-- ADRs — 0012 (write protocol), 0013 (seam fail-loud selection), 0018 (V5-3 cutover), 0019 (routing-plane de-vaulting), 0020 (backend-aware harness state)
+- [memory-storage-seam design](memory-storage-seam.md) — the concurrent-write protocol, seam fail-loud selection, V5-3 cutover, routing plane, backend-aware harness state
 - V5-14 — storage-convergence (memory-entry seam adoption + MCP re-platform); ROADMAP-MASTER ⑤
 
 ## Amendment log
