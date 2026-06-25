@@ -20,7 +20,7 @@ approved: 2026-06-21
 
 Memory is the **durable record agentm keeps** — what it has learned, the plans and designs it works on, the standards it holds — and the single disciplined path every caller takes to reach it. It is the largest of the four pillars and the ground the other three stand on: **Experience** grows it, **Opinions** keep their learned half in it, **Personas** draw their state from it.
 
-It is built to **compound**, not just persist: entries are typed, densely linked to their neighbors, and indexed for recall — so as agentm learns and reaches outward, the record grows into an interconnected knowledge base, not a flat log.
+It is built to **compound**: entries are typed, densely linked to their neighbors, and indexed for recall — so as agentm learns and reaches outward, the record grows into an interconnected knowledge base.
 
 ## Overview
 
@@ -98,9 +98,9 @@ Memory is injected by two hooks. At **session start**, the **always-load set** (
 
 ### How it grows — into an interconnected knowledge base
 
-The record is built to **compound**, not just hold. Three things turn a growing pile of entries into a navigable knowledge base:
+The record is built to **compound**. Three things turn a growing pile of entries into a navigable knowledge base:
 
-- **It's populated by learning, not only by hand.** Reflection mines durable entries from finished sessions, and forward learning + deep research reach approved sources and the web for any task and bring back what's worth keeping — typed and filed like anything else (the [Experience design](agentm-experience-and-dreaming.md)). The more agentm works and reaches outward, the larger and richer the record. This is the growth engine.
+- **Learning populates it.** Reflection mines durable entries from finished sessions, and forward learning + deep research reach approved sources and the web for any task and bring back what's worth keeping — typed and filed like anything else (the [Experience design](agentm-experience-and-dreaming.md)). The more agentm works and reaches outward, the larger and richer the record. This is the growth engine.
 - **It's interconnected by wikilinks — built.** Every entry cross-references its neighbors with `[[wikilinks]]`, and the engine maintains link integrity. The links are the connective tissue: the substrate everything else builds on.
 - **It becomes navigable by an index over the markdown — built → designed-for.** Today a device-local vector index makes the corpus semantically searchable. The designed-for V6 layer extends this *without* moving the source of truth off markdown: a **knowledge-graph** (V6-2) extracts typed edges over the wikilinks (deterministic, no LLM) so relationships become a retrieval path — including **multi-hop traversal**; a **SQLite metadata table**, **chunking**, and **RRF hybrid retrieval** (V6-3/10/11) sharpen recall as the corpus grows past the hundreds. Graph and index are layers *over* the pages — markdown stays the source of truth; the graph is for navigation and discovery.
 

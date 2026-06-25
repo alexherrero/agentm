@@ -40,7 +40,7 @@ Two near-miss axes are explicitly *not* the test. **"Remembers"** breaks both wa
 
 ### Infrastructure
 
-**N/A: no new infrastructure.** The tier is a classification mapped onto shipped pieces — the table below is reuse, not new components.
+**N/A: no new infrastructure.** The tier is a classification mapped onto shipped pieces — the table below is pure reuse.
 
 | Concern | Shipped mechanism reused | New surface |
 |---|---|---|
@@ -82,7 +82,7 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 2. **Home / taste.** The Planner (TPM) carries agentm's *opinion about how a program should be run* (computed-not-guessed, advisory-not-acting, smaller-merge-first). The V5-6 thesis is that agentm's identity is the thing that *persists*. Putting that standing point-of-view in an optional, swappable plugin declares "agentm's taste is optional" — the opposite of "do most of the opinionation in agentm."
 3. **Default-presence.** A persona ships with agentm and is *always there, degrading*; a plugin is opt-in. If minding-the-program is a plugin, then "is anyone minding the program?" depends on your install set. As a persona the stance is always present and merely says "install github-projects for the board."
 
-**Honest residual (carried, not buried):** the tier buys **architecture** — neutral home, default-presence, identity-anchoring — **not new runtime mechanism** (it reuses the V5-8 resolver, `requires:` + one gate, the on-demand load path, and positive-match `kind:` dispatch). If the operator weights shipping-velocity over the identity-home argument, the null is a *legitimate* cheaper path whose cost is precisely "agentm's program-minding taste lives in an optional plugin." The layer earns its keep on the three arguments above, eyes open — not on mechanism.
+**Honest residual:** the tier buys **architecture** — neutral home, default-presence, identity-anchoring — **not new runtime mechanism** (it reuses the V5-8 resolver, `requires:` + one gate, the on-demand load path, and positive-match `kind:` dispatch). If the operator weights shipping-velocity over the identity-home argument, the null is a *legitimate* cheaper path whose cost is precisely "agentm's program-minding taste lives in an optional plugin." The layer earns its keep on the three arguments above, eyes open.
 
 **Where opinionation lives (the migration rule).** Capability-local opinion — how `/work` gates, how a release is recoverable — stays in crickets; *cross-capability* opinion — what order to merge, which plans run together — is what a persona arbitrates, homed in agentm. The line: capability-local → the capability; cross-capability → the persona. This is additive (no migration sweep); a stranded cross-capability stance migrates only case-by-case when a persona claims it, as the PM-thin→Planner (TPM) handoff already does.
 

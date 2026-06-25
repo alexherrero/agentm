@@ -20,7 +20,7 @@ An opinion is **opinionated knowledge agentm holds, named so any tool can ask fo
 
 ## Overview
 
-An opinion is deliberately **abstract** — it is knowledge, not a tool, and it does not reach into one. A capability that wants to do the right thing **asks for an opinion by name** and acts on what comes back.
+An opinion is deliberately **abstract** — knowledge that carries the standard; a capability asks for it by name and acts on what comes back.
 
 ![An opinion is a coded base (in agentm code, checked-in) folded with a vault supplement (learned) into a composite served by name; Experience writes the supplement; the named opinions today are done, good, efficient, how-we-engineer](diagrams/agentm-opinion-surfaces.svg)
 
@@ -29,7 +29,7 @@ Two things follow from keeping opinions abstract:
 - **One opinion serves many tools.** The same *good* is asked for whether `/review`, a persona, or a future tool asks — defined once, named once.
 - **An opinion sharpens without touching a tool.** Improve the standard and every caller that asks for it gets the better standard for free — this is where **Experience** feeds in over time (the [Experience design](agentm-experience-and-dreaming.md)).
 
-Opinions are a **queryable knowledge surface**, not wiring between the substrate and the tools.
+Opinions are a **queryable knowledge surface** — a tool names what it needs and the substrate serves it.
 
 ## Design
 
@@ -37,7 +37,7 @@ Opinions are what make agentm **opinionated**: a standard for *done* / *good* / 
 
 ### Where opinions live: a coded base, extended in agentm's memory
 
-- **The base is in agentm's code, checked in.** Each opinion ships as a coded default — the standard the agent starts with. This is *why agentm is opinionated out of the box*: it already holds a view of what *done* / *good* / *efficient* / *how-we-engineer* mean, not a blank slate. The base changes only by a check-in — it's the durable seed, the same for every install.
+- **The base is in agentm's code, checked in.** Each opinion ships as a coded default — the standard the agent starts with. This is *why agentm is opinionated out of the box*: it already holds a view of what *done* / *good* / *efficient* / *how-we-engineer* mean. The base changes only by a check-in — it's the durable seed, the same for every install.
 - **agentm's memory extends it — and this is the part that learns.** A supplement layer in **agentm's memory — whichever storage backend the agent is connected to (device-local or the vault), through the storage seam** — holds what the agent has *added* to a base opinion over time (an `opinions/` area beside the always-load conventions). **Experience** (reflection + scheduled learning) writes here; the agent never rewrites the coded base. This layer already exists in spirit — the learned conventions in `personal/_always-load/` are exactly this kind of stored, learned supplement to a coded standard.
 
 ### How a tool gets one: the composite

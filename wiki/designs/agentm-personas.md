@@ -22,7 +22,7 @@ A persona is a **stance** agentm takes for a job — it is composed of capabilit
 
 A persona is defined by four things it **declares**:
 
-1. **Its stance** — the cross-capability judgment it makes. (A persona that makes no judgment is a tool, not a persona.)
+1. **Its stance** — the cross-capability judgment it makes.
 2. **What it composes** — the capabilities (crickets tools) it wields, named by `enhances:`. It hard-requires only the substrate.
 3. **Which Opinions it leans on** — the named [Opinion surfaces](agentm-opinions-and-gates.md) it consults.
 4. **Its launch modes** — the subset of run-modes that fit it (not every persona supports all four).
