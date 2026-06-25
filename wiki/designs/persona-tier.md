@@ -9,7 +9,7 @@ parent: agentm-hld.md
 # The persona tier: a standing concern that composes capabilities it does not own
 
 > [!NOTE]
-> **Status:** launched — all four build parts shipped (V5-11, commit [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3)); ADR 0016 folded into the Amendment log below (2026-06-24).
+> **Status:** launched — build parts 1–2 + 4 shipped (V5-11, commit [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3)); **part 3 (on-demand load + surfacing path) is `[PENDING-IMPL]`**; ADR 0016 folded into the Amendment log below (2026-06-24).
 > **Position in arc:** refinement of [AgentM HLD](agentm-hld) (the V5 "unbundling" HLD).
 > **Method:** the locked 10-section design template (the V5-11 design method).
 > **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16; sequenced after V5-10, ahead of V5-11 as its substrate (V5-11's Planner (TPM) is this tier's first *real* persona = build-part 4).
@@ -60,7 +60,7 @@ Trigger shape is unchanged: `check-personas` runs where the other `check-*` gate
 
 **The gate is the enforcement.** `check-personas` asserts two things for every file under `personas/`: that each `requires:` entry resolves to an agentm-native primitive (never a crickets capability), and that no persona manifest lands in the always-load set (so a dormant persona never inflates the per-call token floor — [#46](https://github.com/alexherrero/agentm/issues/46)). The first holds *agentm-no-hard-dep-on-crickets*; the second holds the token floor; soft `enhances:` is unrestricted. It mirrors `check-capability-resolver-one-way.py` and `check-process-seam-import-direction.sh` — a one-way dependency assertion, statically checkable, added to the gate battery.
 
-**Load is on demand.** A persona body loads only when the persona is activated, reusing the existing on-demand memory-load path — not the always-load floor. The rememberer is the implicit always-on degenerate persona; everything else is dormant until invoked. A persona may be *surfaced* through a sub-agent at activation, but it is not a sub-agent (it is a durable classification, not ephemeral fan-out).
+**Load is on demand `[PENDING-IMPL]`.** Design: a persona body loads only when the persona is activated, reusing the existing on-demand memory-load path — not the always-load floor. The rememberer is the implicit always-on degenerate persona; everything else is dormant until invoked. A persona may be *surfaced* through a sub-agent at activation, but it is not a sub-agent (it is a durable classification, not ephemeral fan-out). The surfacing mechanism is designed (see Risks) but not yet built.
 
 **The naming question (deferred).** agentm **keeps "persona"** for this tier. The collision is on the crickets side — it calls its four coordinator roles "personas" loosely, though it mostly already says "role" — so the rename moves *there*: crickets' looser "persona" usage becomes "**role**", freeing the term for the tier that earns it (a standing-concern identity that composes, distinct from a thin role that wraps one phase command). The pass is doc-only and rides **V5-6** (the identity rewrite) — see Re-verification below for why it is zero-code.
 
@@ -110,7 +110,7 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 - **`check-personas` is a permanent new gate surface** to keep wired into `check-all.sh` + CI. Small but real.
 - **The persona/role term is unsettled until V5-6.** Docs carry "persona" in the interim; a later doc-only sweep may rename. Risk: a reader meets two terms across the V5-6 boundary. Mitigation: DC-6 in the Amendment log (the former ADR 0016) records the deferral explicitly.
 - **Tier confusion.** Operators may mis-file a capability as a persona or vice-versa. Mitigation: the one-sentence inverted-dependency test (DC-1) and the rememberer as a worked example; `check-personas` catches the most damaging error (a crickets hard-dep) automatically.
-- **Surfacing path is unspecified here.** *How* an activated persona's body reaches the agent (injected context vs. on-demand sub-agent) is left to the build — flagged so it is not mistaken for "already decided."
+- **Surfacing path `[PENDING-IMPL]`.** How an activated persona's body reaches the agent (injected context vs. on-demand sub-agent) is designed (`build-part 3`) but not yet built. The Planner (TPM) manifest (`personas/team-coordinator.md`) therefore exists as a seed that cannot yet be activated.
 
 ## Quality Attributes
 
@@ -138,7 +138,7 @@ Default part split follows the Detailed Design subsections — buildable indepen
 
 1. **`kind: persona` primitive + `personas/` directory** (S) — the schema + one example (the rememberer manifest).
 2. **`check-personas` gate** (M) — `requires ⊆ substrate` assertion, wired into `check-all.sh` + CI, with tests.
-3. **On-demand load + surfacing path** (M) — activation → body load, reusing the memory-load path; resolve the surfacing-path open item.
+3. **On-demand load + surfacing path** (M) `[PENDING-IMPL]` — activation → body load, reusing the memory-load path; resolve the surfacing-path open item.
 4. **First real persona** (M, V5-11) — the Planner (TPM) manifest composing dev-loop/board capabilities. Gated behind 1–3.
 
 ### Documentation Plan
@@ -164,6 +164,7 @@ Fully reversible. The tier is additive: removing `personas/`, the `kind: persona
 | 2026-06-16 | Initial authoring from the personas-vs-capabilities pre-audit; §10 re-checks cleared against shipped infra; paired with ADR 0016. | final |
 | 2026-06-16 | Re-verified against the authoritative pre-audit findings (read in full): corrected the crickets "persona"→"role" rename direction (agentm keeps "persona"; crickets' looser usage renames); folded in arbitration as the clause-2 discriminator, the two killed axes (remembers / crosses-plugins), owns-no-engine, the `check-personas` always-load guard (#46), the three-reason null + honest residual, the opinionation-migration line, and the agent-def-shape framing. | final |
 | 2026-06-16 | Roadmap placement resolved (operator-approved): slotted as **V5-12** in the agentm V5 kernel (ROADMAP-MASTER bucket ⑤), sequenced after V5-10 and ahead of V5-11 as its substrate. | final |
+| 2026-06-16 | **Parts 1–2 + 4 shipped (V5-11).** `personas/team-coordinator.md` — `kind: persona`, `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`. Four stdlib-only scripts: `plan_graph.py` (shared map engine), `standup.py` (worker-state derivation), `readiness.py` (dep + file-overlap readiness), `merge_order.py` (topo-sort + diff-size tie-break). 62 fixture-backed tests. `check-personas` exits 0. Commit: [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3). **Part 3 (on-demand load + surfacing path) was not built in V5-11 — `[PENDING-IMPL]`.** | final |
 
 ## Amendment log
 
@@ -179,4 +180,3 @@ Fully reversible. The tier is additive: removing `personas/`, the `kind: persona
 - **DC-6 — agentm keeps "persona"; crickets' looser "persona" → "role" rename is doc-only** (coordinated with V5-6). *Why not rename agentm's tier:* "persona" is the load-bearing identity name; the collision is resolved by moving the *looser* use (crickets' four coordinator roles), not the precise one.
 
 *Re-audit triggers:* a persona needs multi-provider composition / conflict resolution (then `enhances:`-reuse is revisited — ADR 0015's "becomes a solver" trigger); either host adds a closed-enum primitive validator that rejects unknown kinds; a persona needs a hard dep only crickets provides (migrate the dep into the substrate, or re-tier the artifact); V5-6 settles agentm's persona/role vocabulary; the underlying model ships a new major (re-audit the tier with the rest of the harness). **Resist the persona-zoo** — add the next persona only when a real cross-capability arbitration concern with no single-plugin home appears.
-| 2026-06-16 | **Part 4 shipped (V5-11).** `personas/team-coordinator.md` — `kind: persona`, `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`. Four stdlib-only scripts back it: `plan_graph.py` (shared map engine), `standup.py` (worker-state derivation), `readiness.py` (dep + file-overlap readiness), `merge_order.py` (topo-sort + diff-size tie-break). 62 fixture-backed tests. `check-personas` exits 0. Commit: [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3). | final |
