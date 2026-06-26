@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Relicensed from MIT to a medium-matched split.** Agent M's contribution lives largely in prose — prompts, phase specs, skill instructions, wiki — so a single software license fit it poorly. Code now ships under Apache-2.0; documentation, prompts, agent instructions, and skill / command / workflow definitions ship under CC-BY-4.0; the "agentm" / "Agent M" name and logos are covered by a brand policy. No use is restricted — both licenses permit commercial use and derivatives; the change matches the attribution mechanism to the medium and adds a trademark the open-source licenses deliberately don't reach. See [`TRADEMARK.md`](TRADEMARK.md), [`NOTICE`](NOTICE), and the README License section.
+
+### Changed
+
+- **`LICENSE`** is now Apache-2.0 (was MIT) — the explicit patent grant + `NOTICE` attribution file strengthen credit at zero cost to openness.
+
+### Added
+
+- **`LICENSE-CONTENT`** — CC-BY-4.0 for documentation, prompts, agent instructions, and skill / command / workflow definitions (the prose where the contribution lives). Boundary rule: a prompt embedded as a string literal inside a code file is content (CC-BY-4.0).
+- **`NOTICE`** — Apache attribution notice + the code/content license map.
+- **`TRADEMARK.md`** — brand policy for the "agentm" / "Agent M" name and logos.
+
 ## [v5.10.0] — 2026-06-19 — Backend-aware harness state via the storage seam
 
 **MINOR.** Harness state I/O is backend-aware again. `harness_state_dir` / `read_state_file` / `write_state_file` route to `<vault>/projects/<slug>/_harness/` when a *live synced backend* is active and gracefully degrade to device-local `<project_root>/.harness/` otherwise — reversing [ADR 0018](wiki/decisions/0018-v5-3-storage-cutover.md) DC-1's device-local-only state I/O while keeping every other V5-3 decision (DC-2–DC-7) intact. The discriminator is `backend.capabilities.sync` on the backend `resolve_project` already returns (duck-typed — the kernel never imports the vault plugin), *not* the presence of a `vault_path` config key. Precedence: a `.harness/.project-mode=local` opt-out wins, then a synced backend → vault, else device-local. This is not a return to the pre-V5-3 `vault_path()` probe-and-prefer tier — it routes through the V5-6 `resolve_project` seam. It fixes the surfacing regression where an operator on a synced backend kept their PLAN/ROADMAP/progress in the vault but the kernel read the empty device-local `.harness/`, so the SessionStart hook never injected them. Storage-seam no-Path-leak and import-direction gates remain green (the three state functions are outside the gate's routing-function set by design).

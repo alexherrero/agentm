@@ -91,3 +91,11 @@ The script renders both PNG sizes (1600×430 + 3200×860 retina) and writes them
 Requirements: a Google Chrome install (macOS auto-detected; Linux `google-chrome`/`chromium` on `PATH`; Windows Chrome in default Program Files). If Chrome isn't found the script prints the install paths it checked.
 
 The banner is a **static brand asset** — it does not carry release-version data (live version + CI status live in shields.io badges in the README), so regeneration is NOT tied to releases. Crickets has its own designer-rendered banner setup (`crickets/assets/crickets/banner-*.png`) which is not currently script-driven.
+
+## Licensing
+
+Agent M is **multi-licensed by medium** — code under [Apache-2.0](LICENSE), documentation / prompts / skill instructions under [CC-BY-4.0](LICENSE-CONTENT), and the name + logos under a [trademark policy](TRADEMARK.md). The full split and the boundary rule (a prompt embedded as a string literal in a code file is *content*) live in the [README License section](README.md#license).
+
+**Why this shape, not blanket MIT:** the harness's contribution lives largely in prose — prompts, phase specs, skill instructions, wiki — so one software license fit it poorly. The goal is **attribution + brand, not idea-protection**: no license can stop someone reimplementing the methodology (copyright protects expression, not ideas), so we secure credit on the words (CC-BY's medium-matched attribution beats MIT's bare notice) plus a trademark that makes a true rip-off *nameable*. We deliberately did **not** reach for copyleft (AGPL) or source-available / Fair-Source (FSL/BSL) — both chill the broad reuse this project wants and solve a hosted-revenue problem it doesn't have.
+
+By contributing, you agree your contributions ship under the same split (code → Apache-2.0; prose → CC-BY-4.0).
