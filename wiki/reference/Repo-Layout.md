@@ -26,7 +26,10 @@ agentm/
 ├── AGENTS.md                  # universal agent entry point
 ├── CLAUDE.md                  # Claude Code entry (links back to AGENTS.md)
 ├── CHANGELOG.md               # Keep-a-Changelog format; written by ship-release
-├── LICENSE                    # MIT
+├── LICENSE                    # Apache-2.0 (code)
+├── LICENSE-CONTENT            # CC-BY-4.0 (docs, prompts, prose)
+├── NOTICE                     # Apache attribution notice + license map
+├── TRADEMARK.md               # brand policy for the "agentm" name
 ├── harness/                   # canonical specs (source of truth)
 │   ├── agents/                # canonical sub-agent specs (see roster below)
 │   ├── skills/                # canonical skill specs (see roster below)

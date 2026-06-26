@@ -1,0 +1,20 @@
+agentm
+Copyright 2026 Alex Herrero
+https://github.com/alexherrero/agentm
+
+This repository is multi-licensed:
+
+  - Source code (Python, shell, PowerShell, and configuration logic) is
+    licensed under the Apache License, Version 2.0. See LICENSE.
+
+  - Documentation, prompts, agent instructions, skill / command / workflow
+    definitions, and other prose content are licensed under the Creative
+    Commons Attribution 4.0 International License (CC-BY-4.0). See
+    LICENSE-CONTENT.
+
+The names "agentm" and "Agent M" and the associated logos and banner artwork
+are trademarks of Alex Herrero and are NOT licensed for use in derivative or
+third-party works by the licenses above. See TRADEMARK.md.
+
+Suggested attribution for redistributions:
+"agentm by Alex Herrero (https://github.com/alexherrero/agentm)".
