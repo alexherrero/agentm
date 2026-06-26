@@ -45,14 +45,50 @@ agentm classifies every memory on **three independent axes**: by **kind** (what 
 
 **By kind.** Every entry declares a **`kind`** — open-ended but conventional: `preference` · `workflow` · `fix` · `domain-reference` · `idea` · `skill-pointer`. Kind is load-bearing: it picks the storage group an entry is written to, and it scopes which entries a phase pulls into its recall budget (a `/work` pass recalls different kinds than a `/plan` pass). Kind is how a caller asks for *the right sort of memory* rather than a flat search over everything.
 
-**By durability + ownership.** Two planes, shown below:
+**By durability + ownership.** Two planes:
 
 - **Layer 0 — agent-harness memory (not durable):** the host's context window — the running conversation. Short-lived; it fills and gets summarized away. Scratch space; the record lives below, on disk. *(The layer the whole substrate exists to compensate for.)*
-- **Layer 1 — the agentm substrate (durable):** the on-disk record, resolved at runtime (never a cached path). Within it, three **ownership bands**: **agentm-sole** (memories, learnings, reflection — agentm writes/curates/prunes freely; the part that makes "gets better over time" true), **co-owned with the user** (plans, designs, research — collaborative; agentm drafts, the human ratifies), and **user-owned** (the vault *above* the Agent folder — agentm reads and links but writes **only when told**).
+- **Layer 1 — the durable record (on disk):** resolved at runtime, never a cached path. It splits into **three ownership tiers, by ascending agent autonomy** — and each tier is a place in the vault:
 
-![The layers of memory: Layer 0 harness memory (ephemeral scratch) above the durability line; Layer 1 the durable substrate below it, split into agentm-sole and co-owned-with-the-user; and below the Agent-folder boundary, the user's curated vault that agentm reads but writes only when told](diagrams/agentm-memory-layers.svg)
+| Tier | What it holds | Where | The agent's hand |
+|---|---|---|---|
+| **T1 — personal** | the operator's own notes | the Obsidian vault *above* `Agent/` (its siblings) | reads + links; **writes only when told**, through a separate seam call |
+| **T2 — curated / collaborative** | designs · plans · roadmaps, and the operator-directives the agent follows (voice, conventions, preferences) | the `Agent/` root — *our* shared drive | writes as needed and **reports each change in the digest**; revertable |
+| **T3 — agentm-sole** | the agent's own learned memory + insights | `Agent/Memory/` | writes, curates, and prunes freely; no notice |
 
-*The diagram shows the durability × ownership planes; **kind is the orthogonal third axis**, carried in each entry's frontmatter.*
+Personal (T1) sits *outside* agentm's `vault_path` (which is `Agent/`), so it is out of reach by default, not by policy alone. The agent writes there only through an **explicit, separate storage-seam call** that an operator request authorizes — keeping agent-controlled and user-controlled space cleanly apart (the [memory-storage-seam design](memory-storage-seam.md)). Autonomous jobs work mostly in T3; when a job changes T2, that change lands in the digest for the operator to see and revert.
+
+![The three ownership tiers as a vault hierarchy: the operator's personal vault at the top (T1, untouched), the Agent/ shared drive inside it (T2, agent writes and reports), and Agent/Memory/ within that (T3, the agent's own memory); kind is the orthogonal third axis carried in each entry's frontmatter](diagrams/agentm-memory-layers.svg)
+
+*[PENDING-IMPL — regenerate `diagrams/agentm-memory-layers.svg` to the three-tier hierarchy above; it currently shows the prior two-band model. The documenter regenerates it at the next pass.] The diagram shows the durability × ownership planes; **kind is the orthogonal third axis**, carried in each entry's frontmatter.*
+
+### The vault layout
+
+The structure is opinionated — the agent controls most of it, so the design fixes the shape:
+
+```
+.../Obsidian/                    T1 personal — the operator's vault; agentm does not touch it
+├── Church/ · Home/ · Tech/ · …    the operator's own notes
+└── Agent/                       T2 curated — agentm's vault_path; the shared drive
+    ├── projects/<project>/        designs · plans (_harness) · roadmap · progress
+    ├── _always-load/              operator-directives the agent follows (voice, conventions, non-negotiables)
+    ├── preferences/ · feedback/   more operator-directives
+    ├── _archive/                  retired curated content (cold; recall skips it)
+    └── Memory/                  T3 agentm-sole — the agent's own memory
+        ├── _always-load/          the heat-promoted floor (flat — kind is not a subfolder here)
+        ├── <kind>/<slug>.md       the leaf: kind is the subfolder (insight/, domain-reference/, crystallized/, …)
+        ├── _inbox/                raw reflection candidates (recall-excluded by default)
+        ├── _idea-incubator/       agent-incubated ideas
+        ├── _index.md              a generated map of contents, rebuilt from frontmatter (never hand-kept)
+        ├── _archive/              the cold zone (recall skips it)
+        └── _meta/                 device-local sidecars — vector index, heat, embedding queue; derived, never synced as truth
+```
+
+**T2 (curated) shape.** Curated content lives under `projects/<project>/` — each project carrying `designs/`, plans in `_harness/`, a `roadmap`, and a `progress` log — or in a named directive space at the `Agent/` root. No loose notes at the root. The operator-directives the agent follows (voice, conventions, preferences, feedback) are curated: the operator owns them, the agent refines them and reports the change.
+
+**T3 (Memory) leaves** reuse the live entry convention — `<kind>/<slug>.md` with the locked frontmatter (below); **kind is the subfolder**, because kind drives recall. The reserved leading-underscore folders (`_always-load`, `_inbox`, `_archive`, `_idea-incubator`, `_meta`) are recall-aware. Two consolidation kinds are designed-for: `crystallized/` (the phase-close digest) and `procedural/` (distilled how-to) — see *How it grows*.
+
+**Archive at every tier.** Each tier carries a cold `_archive/` for retired content. Recall **skips it by default**, so the record stays cheap to load as it grows; it opens only on deep research, an explicit ask, or granted permission. Nothing is hard-deleted — "prune" means *move to `_archive/`* (markdown stays the source of truth; the revert-log is the undo). The per-tier archive policy follows the autonomy gradient: **T1** archives only on an operator-confirmed proposal; **T2** archives a curated artifact when its successor supersedes it; **T3** the agent archives its own cold entries on its own. *Capture* describes the decay pipeline that feeds the archive.
 
 ### What a memory is — the entry contract
 
@@ -93,9 +129,13 @@ The goal is concurrency-safe writes: when two sessions save to the same synced b
 
 **Supersession is archive-then-replace, not overwrite.** A new entry that evolves an old one flips the old to `status: superseded` and sets a `supersedes:` back-link from the new — so the history is an **auditable link-chain**, not a lost update or a numeric confidence score.
 
+**Archive, decay, and prune.** Supersession is one road into the archive; the other is **decay** — an entry that goes cold over time is retired to its tier's `_archive/` rather than left to bloat recall. Two arms run today: heat curation demotes a cold always-load entry to its group root, and `/memory evolve` archives a superseded entry. The fuller lifecycle — access-reinforced decay, consolidation tiers (episodic → semantic → procedural), the phase-close crystallization digest, and a whole-corpus dreaming pass that compacts supersession chains — is **designed-for**, framed in V6/V7. Two prerequisites gate any *autonomous* archive: the **revert-log plus a `derived-from` provenance edge** (so undoing a consolidated entry also undoes what was derived from it), and a **staging gate** — an autonomous job proposes archival to a staging inbox and the operator confirms via the digest before anything goes cold (`_dream-staging/`, the pre-approval inbox, is a separate place from `_archive/`, the cold store). Prune resolves to archive; there is no hard delete.
+
+**Writing T1 (personal) takes a separate, explicit call.** The normal write path reaches T2/T3 inside `Agent/`. Personal content sits outside `vault_path`, so writing it goes through a distinct seam call that the operator's request authorizes — the line between agent-controlled and user-controlled space (the [memory-storage-seam design](memory-storage-seam.md)).
+
 ### Surface — the recall loop
 
-Memory is injected by two hooks. At **session start**, the **always-load set** (entries gated by `always_load: true`) is assembled under a hard ~500 ms budget. On **every prompt**, a five-step engine runs under ~300 ms: **tokenize** → **embed** (an API embedder, degrading to a local model, then a deterministic stub) and search the local sqlite-vec index for the top-K by cosine similarity → **keyword-grep** (filtering `status: superseded`) → **merge** (semantic-weighted: ~0.85 similarity + ~0.05 keyword) → **dedup** against always-load → return the top few. Recall is **token-budgeted** and **scoped by kind + phase** — a phase pulls the kinds its budget allows, not a flat top-K over the whole corpus. The vector index is **device-local and never synced** (the local-index tier), with mtime-vs-indexed-at drift detection that falls back to grep when an entry changed since it was embedded.
+Memory is injected by two hooks. At **session start**, the **always-load set** (entries gated by `always_load: true`) is assembled under a hard ~500 ms budget. On **every prompt**, a five-step engine runs under ~300 ms: **tokenize** → **embed** (an API embedder, degrading to a local model, then a deterministic stub) and search the local sqlite-vec index for the top-K by cosine similarity → **keyword-grep** (filtering `status: superseded`) → **merge** (semantic-weighted: ~0.85 similarity + ~0.05 keyword) → **dedup** against always-load → return the top few. Recall is **token-budgeted** and **scoped by kind + phase** — a phase pulls the kinds its budget allows, not a flat top-K over the whole corpus. The vector index is **device-local and never synced** (the local-index tier), with mtime-vs-indexed-at drift detection that falls back to grep when an entry changed since it was embedded. Recall **skips every tier's `_archive/` by default** — the cold store stays out of the always-load floor and the per-prompt search, so a growing record does not inflate what each call pays. An `--include-archive` opt-in (mirroring `--include-inbox`) widens the walk over the archive for deep research, an explicit ask, or a granted request; the vector index still covers archived entries, so an opened search ranks them on the same budget.
 
 ### How it grows — into an interconnected knowledge base
 
@@ -114,11 +154,13 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 - **Opinions keep their learned half here** — an opinion's vault supplement is a memory entry ([Opinions design](agentm-opinions-and-gates.md)).
 - **Personas draw their state here** — Memory is the pseudo-persona beneath all ([Personas design](agentm-personas.md)).
 - **crickets backs the store** — `obsidian-vault` implements the `StorageBackend` contract, one-way up.
+- **The runner + the digest** — scheduled jobs (the job-runner design, designed-for) write T2/T3 on their own and surface T2 changes to the operator through the reporting capability's digest; both route by the ownership tiers above.
 
 ## Risks & open questions
 
 - **V6 indexed-recall is designed-for, not built.** The recall loop is the pre-V6 form (semantic-weighted merge + grep fallback); the reserved `DerivedMaintenance` extension point is where V6 adds the **knowledge-graph layer** (typed edges over the wikilinks; multi-hop traversal), **hybrid retrieval** (RRF over BM25 + vector + graph), a **SQLite metadata table**, **consolidation tiers**, and **chunking**. Graph and index stay layers over the markdown (the pages remain source of truth). Framed designed-for; the spec lives in the V6 plan + the seam design.
 - **Kind-scoped recall — validate as-built.** The `kind` classification and the entry frontmatter are live; confirm the current `recall.py` actually enforces the kind/phase recall budget vs a flat top-K (a check at review).
+- **The decay/archive lifecycle is mostly designed-for.** Heat curation + supersession-archive ship; access-reinforced decay, consolidation tiers, crystallization, self-healing lint, and the dreaming compaction pass are V6/V7, gated on the revert-log + the `derived-from` provenance edge and the staging inbox. Until those land, archival stays manual (`/memory evolve`) or operator-confirmed. The migration to the three-tier folder layout is operator-gated and updates the hardwired `personal/_always-load` constants in `recall.py` / `heat_policy.py` / `save.py`.
 - **The seam content has migrated** — `memory-storage-seam` is launched (A2 ADR-fold, 2026-06-24); this pillar holds the pointer down to it.
 - **The kernel `storage_vault.py` was deleted** — removed in V5-3 (commit d95468b); the vault backend now lives only in the `obsidian-vault` plugin's `storage_vault.py`.
 - **Re-audit triggers:** confirm kind-scoped recall.
@@ -135,6 +177,8 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 - V5-14 — storage-convergence (memory-entry seam adoption + MCP re-platform); ROADMAP-MASTER ⑤
 
 ## Amendment log
+
+**2026-06-26 — codified the three ownership tiers + the vault folder layout, the per-tier archive, and the decay pipeline (operator design pass).** Reworked §"By durability + ownership" into three explicit tiers by ascending autonomy — **T1 personal** (the operator's vault above `Agent/`, written only through a separate explicit seam call), **T2 curated/collaborative** (the `Agent/` shared drive: designs · plans · roadmaps + the operator-directives; autonomous writes reported in the digest, revertable), **T3 agentm-sole** (`Agent/Memory/`, fully autonomous) — reconciling the prior "co-owned"/"user-owned"/"agentm-sole" band labels. Added the opinionated vault layout (the T2 `projects/<project>/` shape + the prescribed `Memory/` internals: `<kind>/<slug>.md` leaves, the reserved folders, a generated `_index.md`, the `crystallized`/`procedural` consolidation kinds), an `_archive/` at every tier with recall skipping it by default (the `--include-archive` opt-in), and the archive/decay/prune lifecycle (heat curation + supersession ship; the fuller decay → consolidation → crystallization → dreaming-compaction arc is designed-for, gated on the revert-log + provenance edge + a staging inbox; prune resolves to archive, never hard delete). Why not approve-before for curated content: the operator co-owns it, so autonomous-write-with-revert + a digest report is the lighter, correct gate; a non-revertable curated change is the one case that would warrant asking, accepted as a known limitation until agent-memory is git-backed (backlogged). Grounded in the 2026-06 research (R02 lifecycle/consolidation · R06 token-efficiency · R09 content-shapes) + the live `save.py`/`recall.py`/`evolve.py`/`heat_policy.py`. **Re-audit triggers:** regenerate `agentm-memory-layers.svg` to the three-tier hierarchy; flip the decay/consolidation arms to as-built as V6/V7 land; run the operator-gated vault migration (relocate today's `Agent/personal/*` learned-memory → `Memory/`, directives → T2, updating the hardwired `personal/_always-load` constants); confirm the new `reporting` capability's digest is the T2-change report surface.
 
 **2026-06-24 — folded ADR 0017 (MCP server) into §“How storage is served” (AG ADR-migration tail).** Five DC calls, all surfaced into the body: singleton streamable-HTTP + broker property (DC-1); 4 snake_case tools `memory_search · memory_recall · memory_append · memory_forget` (DC-2, dot-names break OpenAI-family hosts); soft-delete `status → deleted` + `deleted_at` never unlinks (DC-3, not hard-delete: GDrive sync resurrects from propagation cache); loopback-first / deferred remote tier via OAuth 2.1 (DC-4); FastMCP `>=3,<4` primary / official SDK named fallback (DC-5). *Re-audit triggers:* MCP spec deprecates streamable-HTTP; spec mandates dot-names; next FastMCP major; hard-delete obligation arises; homelab posture changes.
 
