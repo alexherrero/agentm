@@ -19,6 +19,7 @@
   - [Opinions & Gates](agentm-opinions-and-gates)
   - [Personas](agentm-personas)
   - [Model + effort routing](agentm-model-effort-routing)
+  - [Runner](agentm-runner)
 - [The persona tier](persona-tier)
 ### 💡 [Explanation](Explanation)
 - [Decisions (archived)](Decisions)

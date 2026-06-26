@@ -17,6 +17,7 @@ children:
   - agentm-personas.md
   - persona-tier.md
   - agentm-model-effort-routing.md
+  - agentm-runner.md
 ---
 
 > [!NOTE]
@@ -161,6 +162,7 @@ The component-level sources now live in each pillar's child design (linked above
 - [Personas](agentm-personas.md) — the persona tier, the gate, the full ~11-persona roster
 - [The persona tier](persona-tier.md) — the third classification above the substrate/plugin binary; folds the former ADR 0016
 - [Model + effort routing](agentm-model-effort-routing.md) — the model × effort tier scale (T0…T4, Claude + Gemini), the persona→tier map, the `tier:` manifest axis
+- [Runner](agentm-runner.md) — the standalone background-job executor: rides the hosts' built-in scheduled tasks, routes writes by ownership tier, reports to the digest
 
 **Anchors**
 - design-doc **Appendix B** — the ratified agentm Overview this HLD expands (the input spec, not a sibling HLD)

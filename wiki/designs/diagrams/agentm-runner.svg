@@ -1,0 +1,49 @@
+<svg viewBox="0 0 720 414" width="1040" height="598" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="sa" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7E57C2"/></marker>
+  </defs>
+  <rect x="6" y="6" width="708" height="402" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+  <text x="360" y="30" text-anchor="middle" font-size="15" font-weight="700" fill="#4A2E80">How a job runs</text>
+  <text x="360" y="47" text-anchor="middle" font-size="9.5" font-style="italic" fill="#8A78AE">a standalone runner — the host scheduler is one of three triggers</text>
+
+  <!-- host trigger (external) -->
+  <rect x="70" y="62" width="270" height="44" rx="9" fill="#EAF0F6" stroke="#5B7C9E" stroke-width="1.4"/>
+  <text x="205" y="84" text-anchor="middle" font-size="11.5" font-weight="700" fill="#2F4B6B">Claude — Desktop Scheduled Tasks</text>
+  <text x="205" y="99" text-anchor="middle" font-size="9" fill="#5E7891">local files · no open session · 1-min min</text>
+  <rect x="380" y="62" width="270" height="44" rx="9" fill="#EAF0F6" stroke="#5B7C9E" stroke-width="1.4"/>
+  <text x="515" y="84" text-anchor="middle" font-size="11.5" font-weight="700" fill="#2F4B6B">Antigravity — Scheduled Tasks</text>
+  <text x="515" y="99" text-anchor="middle" font-size="9" fill="#5E7891">cron-style · local agent</text>
+
+  <path d="M205,106 V150" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#sa)"/>
+  <path d="M515,106 V150" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#sa)"/>
+  <text x="360" y="130" text-anchor="middle" font-size="9.5" font-style="italic" fill="#8A78AE">fires the runner on a heartbeat</text>
+
+  <!-- the runner (agentm) -->
+  <rect x="120" y="150" width="480" height="52" rx="12" fill="#F2EEFB" stroke="#7E57C2" stroke-width="2"/>
+  <text x="360" y="173" text-anchor="middle" font-size="12.5" font-weight="700" fill="#4A2E80">agentm runner — one idempotent cycle, then exit</text>
+  <text x="360" y="190" text-anchor="middle" font-size="9" fill="#6E5B96">runs jobs that are due + past-due (lookback) · cursor-backed · idempotent</text>
+
+  <path d="M360,202 V232" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#sa)"/>
+  <text x="372" y="221" text-anchor="start" font-size="9.5" font-style="italic" fill="#8A78AE">decides what's due · checks budget</text>
+
+  <!-- the jobs (agentm) -->
+  <rect x="90" y="232" width="540" height="66" rx="12" fill="#F2EEFB" stroke="#7E57C2" stroke-width="1.4"/>
+  <text x="360" y="254" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4A2E80">Jobs — <tspan font-weight="400" font-style="italic">.harness/jobs/&lt;name&gt;.yaml</tspan></text>
+  <text x="360" y="273" text-anchor="middle" font-size="9.5" fill="#4A2E80">forward-learning · dreaming · health check · research learn-forward · persona loop/goal</text>
+  <text x="360" y="289" text-anchor="middle" font-size="8.5" font-style="italic" fill="#8A78AE">hard fleet budget checked before each run · writes routed by ownership tier</text>
+
+  <path d="M300,298 L214,332" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#sa)"/>
+  <path d="M420,298 L506,332" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#sa)"/>
+  <text x="244" y="320" text-anchor="middle" font-size="9.5" font-style="italic" fill="#8A78AE">writes</text>
+  <text x="476" y="320" text-anchor="middle" font-size="9.5" font-style="italic" fill="#8A78AE">reports</text>
+
+  <!-- outputs (agentm) -->
+  <rect x="70" y="336" width="270" height="46" rx="9" fill="#EDE9F7" stroke="#7E57C2" stroke-width="1.4"/>
+  <text x="205" y="358" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4A2E80">Vault — the third writer</text>
+  <text x="205" y="373" text-anchor="middle" font-size="9" fill="#6E5B96">via vault_lock · by tier (T3 free · T2 reported)</text>
+  <rect x="380" y="336" width="270" height="46" rx="9" fill="#EDE9F7" stroke="#7E57C2" stroke-width="1.4"/>
+  <text x="515" y="358" text-anchor="middle" font-size="11.5" font-weight="700" fill="#4A2E80">The digest</text>
+  <text x="515" y="373" text-anchor="middle" font-size="9" fill="#6E5B96">reports T2 changes · revert pointers · health</text>
+
+  <text x="360" y="398" text-anchor="middle" font-size="8.5" font-style="italic" fill="#8A78AE">an on-demand call or OS cron / launchd invoke the same runner — the host scheduler is one caller of three</text>
+</svg>
