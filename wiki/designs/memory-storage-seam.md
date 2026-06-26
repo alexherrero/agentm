@@ -127,7 +127,15 @@ The state mode (vault-backed vs. device-local) is an on-host configuration:
 
 **Routing conformance suite:** `storage_conformance.py`'s `check_routing_repo_registry(make_backend)` proves the register/list/unregister cycle on any conforming backend; exercised by `RoutingConformanceReport` against both `DeviceLocalBackend` and `vault_backend_stub.VaultBackend`.
 
-### 7. Gate summary
+### 7. Writing user space (T1) — a separate seam call
+
+The seam's normal write verb targets the active backend's store — `Agent/`, which holds the agent-controlled tiers (T2 curated, T3 agentm-sole; the [memory-system tier model](agentm-memory-system)). The operator's personal space (T1) sits *above* the `Agent/` folder, outside that store, so the normal verbs cannot reach it — its path lies above the store root the seam operates in.
+
+Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that targets a path above the store root and runs only when an operator request authorizes it. The separation is the guard: reaching T1 means calling a different verb deliberately, with no tier flag to set wrong — so the seam itself draws the line between agent-controlled space (`write`) and user-controlled space (the personal-write call, opened only on request).
+
+[PENDING-IMPL — the personal-write call ships with the T1/T2/T3 tier work; the documenter flips this to as-built when the seam method lands. It composes the same V5-0 write protocol (`vault_mutex` + CAS + atomic `fsync→rename`) as the normal path; only the target root and the explicit-authorization gate differ.]
+
+### 8. Gate summary
 
 | Gate | What it checks |
 |---|---|
@@ -246,3 +254,15 @@ This log preserves the decision history from the six retired ADRs. Each entry re
 **Why writes go through `backend.write()`, not raw path I/O:** writing the vault directly would bypass `vault_mutex` + CAS + `atomic_write`, reintroducing the torn-write and lost-update hazards ADR 0012 exists to prevent.
 
 **Re-audit triggers:** a future backend is `sync=True` but not an appropriate state home (add a more specific capability than `sync`); any change lets a backend-selection error propagate out of `resolve_project` (crash session boot instead of degrading); vault layout moves `_harness/` out from under `projects/<slug>/`; the hook gains a second plan-discovery path that doesn't route through the bridge.
+
+---
+
+### 2026-06-26 — The T1 user-space write: a separate, explicit seam call
+
+**Decision:** Writing T1 (the operator's personal space, above the `Agent/` store root) is a **separate seam call**, distinct from the normal `write` verb, run only on an authorized operator request. The normal verbs target the agent-controlled store (`Agent/` = T2/T3); T1 is unreachable through them, since its path lies above the store root. Grounds the tier model in [memory-system](agentm-memory-system).
+
+**Why not a tier flag on `write`:** a flag is fat-fingerable — one wrong argument spills agent output into the operator's notes. A distinct verb makes reaching user space a deliberate act, so the seam itself carries the agent-controlled / user-controlled line; the call is the gate.
+
+**Why it still composes the V5-0 protocol:** a T1 write is still a vault write — it takes the same `vault_mutex` + CAS + atomic `fsync→rename` floor; only the target root (above `Agent/`) and the authorization gate differ.
+
+**Re-audit triggers:** the vault becomes git-backed (a non-revertable T1 write stops being a concern — revisit whether the gate can relax); a host exposes a finer permission surface for user space; multi-vault support lands (a per-project shared vault may need its own tier mapping).
