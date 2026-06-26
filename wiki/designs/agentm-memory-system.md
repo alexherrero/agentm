@@ -100,7 +100,7 @@ A memory is **one atomic entry**: a markdown note with a locked frontmatter bloc
 - **`supersedes`** — a back-link to the entry this one replaces (the supersession chain — see Capture).
 - plus `created` / `updated` / `tags` / `slug`.
 
-The content rule is **engagement, not encyclopedia**: an entry captures *why it mattered here and how to apply it*, not a generic description. **One note is one fragment** — small, indexable on its own — and **densely linked to its neighbors**: beyond the typed `supersedes:` back-link, a note cross-references related entries with Obsidian `[[wikilinks]]`, the native interconnection substrate, and the engine keeps those links sound (link-integrity discovery across the corpus, `notes_link_discovery.py`). Linking is **first-class, not decoration** — a well-connected fragment is what lets the vector index, and later the V6 knowledge-graph, retrieve over the *relationships* and not just the text.
+The content rule is **engagement, not encyclopedia**: an entry captures *why it mattered here and how to apply it*, not a generic description. **One note is one fragment** — small, indexable on its own — and **densely linked to its neighbors**. Beyond the typed `supersedes:` back-link, a note cross-references related entries with Obsidian `[[wikilinks]]`, the native interconnection substrate; the engine keeps those links sound (link-integrity discovery across the corpus, `notes_link_discovery.py`). Linking is **first-class**: a well-connected fragment is what lets the vector index, and later the V6 knowledge-graph, retrieve over *relationships*, not just text.
 
 ### How storage is served — one port, every caller through it
 
@@ -135,7 +135,15 @@ The goal is concurrency-safe writes: when two sessions save to the same synced b
 
 ### Surface — the recall loop
 
-Memory is injected by two hooks. At **session start**, the **always-load set** (entries gated by `always_load: true`) is assembled under a hard ~500 ms budget. On **every prompt**, a five-step engine runs under ~300 ms: **tokenize** → **embed** (an API embedder, degrading to a local model, then a deterministic stub) and search the local sqlite-vec index for the top-K by cosine similarity → **keyword-grep** (filtering `status: superseded`) → **merge** (semantic-weighted: ~0.85 similarity + ~0.05 keyword) → **dedup** against always-load → return the top few. Recall is **token-budgeted** and **scoped by kind + phase** — a phase pulls the kinds its budget allows, not a flat top-K over the whole corpus. The vector index is **device-local and never synced** (the local-index tier), with mtime-vs-indexed-at drift detection that falls back to grep when an entry changed since it was embedded. Recall **skips every tier's `_archive/` by default** — the cold store stays out of the always-load floor and the per-prompt search, so a growing record does not inflate what each call pays. An `--include-archive` opt-in (mirroring `--include-inbox`) widens the walk over the archive for deep research, an explicit ask, or a granted request; the vector index still covers archived entries, so an opened search ranks them on the same budget.
+Memory is injected by two hooks. At **session start**, the **always-load set** (entries gated by `always_load: true`) is assembled under a hard ~500 ms budget. On **every prompt**, a five-step engine runs under ~300 ms:
+
+1. **tokenize** the prompt;
+2. **embed** it (an API embedder, degrading to a local model, then a deterministic stub) and search the local sqlite-vec index for the top-K by cosine similarity;
+3. **keyword-grep** (filtering `status: superseded`);
+4. **merge** (semantic-weighted: ~0.85 similarity + ~0.05 keyword);
+5. **dedup** against always-load, and return the top few.
+
+Recall is **token-budgeted** and **scoped by kind + phase** — a phase pulls the kinds its budget allows, not a flat top-K over the whole corpus. The vector index is **device-local and never synced** (the local-index tier), with mtime-vs-indexed-at drift detection that falls back to grep when an entry changed since it was embedded. Recall **skips every tier's `_archive/` by default** — the cold store stays out of the always-load floor and the per-prompt search, so a growing record does not inflate what each call pays. An `--include-archive` opt-in (mirroring `--include-inbox`) widens the walk over the archive for deep research, an explicit ask, or a granted request; the vector index still covers archived entries, so an opened search ranks them on the same budget.
 
 ### How it grows — into an interconnected knowledge base
 

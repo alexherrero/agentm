@@ -44,7 +44,7 @@ This part ships the **write loop** — the reflection logic that mines conversat
 
 1. **SessionStart hook** writes `.harness/session-id-<session-uuid>.start` (one file per session, contents = session start timestamp + transcript path).
 2. **Stop hook** (after reflection succeeds) renames `.start` → `.reflected`. On failure, file stays as `.start` for retry.
-3. **Idle-time hook** scans for `.start` files older than 1 hour (idle threshold for assuming session is truly dead) → runs reflection retroactively → renames to `.reflected` on success.
+3. **Idle-time hook** scans for `.start` files older than 1 hour (idle threshold for assuming the session is dead) → runs reflection retroactively → renames to `.reflected` on success.
 4. **GC**: `.reflected` markers older than 30 days get deleted on next idle pass.
 
 All markers live in `.harness/` (gitignored, runtime-only).

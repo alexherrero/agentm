@@ -26,7 +26,7 @@ This part ships the **read loop** — the two hooks that inject MemoryVault cont
 **Two-hook recall pattern**:
 
 - **SessionStart hook** — fires once on session boot. Globs `MemoryVault/personal-private/_always-load/*.md`, reads each, formats as a single markdown block, injects into session context. Outputs a "Loaded N MemoryVault always-load entries" transparency line. Hard time budget 500ms; degraded-graceful on overrun.
-- **UserPromptSubmit hook** — fires on every user message. Takes the prompt as the recall query, calls the recall engine for top-K (K=5 default) relevant entries, dedups against the already-loaded `_always-load` entries (by file path), and injects the remaining matches as a system message before the agent processes the prompt. Outputs a "Loaded N relevant entries: <slug-list>" transparency line so the user can see what memory shaped the response. Hard time budget 300ms; degraded-graceful on overrun.
+- **UserPromptSubmit hook** — fires on every user message. Takes the prompt as the recall query and calls the recall engine for top-K (K=5 default) relevant entries. Dedups against the already-loaded `_always-load` entries (by file path), then injects the remaining matches as a system message before the agent processes the prompt. Outputs a "Loaded N relevant entries: <slug-list>" transparency line so the user can see what memory shaped the response. Hard time budget 300ms; degraded-graceful on overrun.
 
 **Recall engine** (called by both hooks; also exposable as `/memory search` for manual semantic queries):
 

@@ -16,7 +16,11 @@ approved: 2026-06-21
 
 ## Objective
 
-An opinion is **opinionated knowledge agentm holds, named so any tool can ask for it** — a standard (i.e. proxy) for **how to work**. They define things generally, what does it mean when something is called *done*, *good*, or *efficient*. When we build something, *how should we approach the engineering process*, and more. Holding the standard once, by name, is what lets quality be **checked rather than asserted**, lets one standard serve every caller, and lets the standard sharpen over time across agents and tools without necessary refactoring.
+An opinion is **opinionated knowledge agentm holds, named so any tool can ask for it** — a standard for **how to work**. It answers a general question: what does *done*, *good*, or *efficient* mean? What does our engineering process look like? Holding the standard once, by name, buys three things:
+
+- quality gets **checked**, not just asserted;
+- one standard serves every caller;
+- the standard sharpens over time across agents and tools, without refactoring.
 
 ## Overview
 

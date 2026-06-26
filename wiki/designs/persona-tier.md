@@ -6,7 +6,7 @@ area: agentm/personas
 parent: agentm-hld.md
 ---
 
-# The persona tier: a standing concern that composes capabilities it does not own
+# The persona tier
 
 > [!NOTE]
 > **Status:** launched — build parts 1–2 + 4 shipped (V5-11, commit [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3)); **part 3 (on-demand load + surfacing path) is `[PENDING-IMPL]`**; ADR 0016 folded into the Amendment log below (2026-06-24).
@@ -32,11 +32,19 @@ The constraints that drive every call below: **bare agentm must stay coherent** 
 
 ### Overview
 
-A **persona** is a standing concern that **composes capabilities it does not own** — **arbitrating among them** when it composes more than one (a judgment *between* capabilities that none could make alone) — is **anchored on the neutral substrate**, and whose **hard dependencies (`requires:`) are restricted to substrate-native primitives only**. Its soft composition (`enhances:`) may name any capability, present or absent. It **owns no engine** of its own — it is a stance plus a composition manifest over engines that stay in crickets. It lives in agentm for universality and neutrality — not because it "remembers."
+A **persona** is a standing concern that **composes capabilities it does not own**. Three properties define it:
+
+- it **arbitrates** among the capabilities it composes — a judgment *between* them that none could make alone;
+- it is **anchored on the neutral substrate**, with hard dependencies (`requires:`) restricted to substrate-native primitives;
+- its soft composition (`enhances:`) may name any capability, present or absent.
+
+A persona **owns no engine**. It is a stance plus a composition manifest over engines that stay in crickets. It lives in agentm for universality and neutrality, not because it "remembers."
 
 The defining signature is the **inverted dependency direction**. A plugin is a capability that *others compose* — it is depended **upon**. A persona *composes capabilities* and is depended upon by nothing — it sits **above** the capability layer, rooted at the substrate. The **rememberer** (the memory engine) is the **degenerate persona**: zero composed plugins, `requires:` ⊆ substrate — the persona agentm already shipped, now named. The **Planner (TPM)** is the **first real persona**: it composes dev-loop/board capabilities via `enhances:`, hard-requires only agentm-native scripts.
 
-Two near-miss axes are explicitly *not* the test. **"Remembers"** breaks both ways — the Planner (TPM) is stateless (a persona that doesn't remember), while the planned crickets `security-review` capability `requires: agentm` *for memory* (a capability that does). **"Crosses multiple plugins"** is insufficient — `github-projects` composes `developer-workflows` and is a plain capability. The discriminator is arbitration plus the inverted, substrate-only hard-dep direction. A persona is, mechanically, **just an agent-def** (an opinionated prompt + a `tools:` allowlist + a `model:` + declared deps); what makes it a persona is tier, home, and composition-scope, not a new file format. Prior art confirms the shape is conventional, not exotic: a persona is to capabilities what a VS Code **extension pack** is to extensions — it composes others and ships no feature of its own, with the same "recommended extension missing → reduced behaviour + one-click install" degrade.
+Two near-miss axes are explicitly *not* the test. **"Remembers"** breaks both ways: the Planner (TPM) is stateless, while the planned crickets `security-review` capability `requires: agentm` *for memory*. **"Crosses multiple plugins"** is insufficient — `github-projects` composes `developer-workflows` yet is a plain capability. The discriminator is **arbitration plus the inverted, substrate-only hard-dep direction**.
+
+Mechanically, a persona is **just an agent-def**: an opinionated prompt, a `tools:` allowlist, a `model:`, and declared deps. What makes it a persona is its tier, home, and composition-scope — the file format is ordinary. The shape is conventional: a thing that composes capabilities, ships no feature of its own, degrades when a composed capability is absent, and offers one-click install for it.
 
 ### Infrastructure
 
@@ -76,13 +84,13 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 
 ## Alternatives Considered
 
-**The null hypothesis, strongest form — ship the Planner (TPM) as a *new crickets plugin* `coordination` with `requires: [developer-workflows, github-projects, agentm]`, and call its agent-def a "persona" informally. This works mechanically** — the most important honest flag in this design. Rejected on three *architectural* (not mechanical) grounds:
+**The null hypothesis, strongest form — ship the Planner (TPM) as a *new crickets plugin* `coordination` with `requires: [developer-workflows, github-projects, agentm]`, and call its agent-def a "persona" informally. This works mechanically.** Rejected on three *architectural* (not mechanical) grounds:
 
 1. **Swallowing / up-reach.** The Planner (TPM) composes `developer-workflows` (queue) + `github-projects` (board) + substrate. Home it in `developer-workflows` and that plugin reaches *up* into `github-projects`, which `requires:` it, not the reverse. Home it in `github-projects` and "render a board" now owns coordination *thinking*, blowing its one-job contract. A *new* `coordination` plugin dodges both — but then the persona tier has been built *inside* crickets, and it `requires: agentm` anyway. You re-derived the layer and mis-homed it.
 2. **Home / taste.** The Planner (TPM) carries agentm's *opinion about how a program should be run* (computed-not-guessed, advisory-not-acting, smaller-merge-first). The V5-6 thesis is that agentm's identity is the thing that *persists*. Putting that standing point-of-view in an optional, swappable plugin declares "agentm's taste is optional" — the opposite of "do most of the opinionation in agentm."
 3. **Default-presence.** A persona ships with agentm and is *always there, degrading*; a plugin is opt-in. If minding-the-program is a plugin, then "is anyone minding the program?" depends on your install set. As a persona the stance is always present and merely says "install github-projects for the board."
 
-**Honest residual:** the tier buys **architecture** — neutral home, default-presence, identity-anchoring — **not new runtime mechanism** (it reuses the V5-8 resolver, `requires:` + one gate, the on-demand load path, and positive-match `kind:` dispatch). If the operator weights shipping-velocity over the identity-home argument, the null is a *legitimate* cheaper path whose cost is precisely "agentm's program-minding taste lives in an optional plugin." The layer earns its keep on the three arguments above, eyes open.
+**Honest residual:** the tier buys **architecture** — neutral home, default-presence, identity-anchoring — **not new runtime mechanism** (it reuses the V5-8 resolver, `requires:` + one gate, the on-demand load path, and positive-match `kind:` dispatch). If the operator weights shipping-velocity over the identity-home argument, the null is a *legitimate* cheaper path whose cost is precisely "agentm's program-minding taste lives in an optional plugin." The layer earns its keep on the three arguments above.
 
 **Where opinionation lives (the migration rule).** Capability-local opinion — how `/work` gates, how a release is recoverable — stays in crickets; *cross-capability* opinion — what order to merge, which plans run together — is what a persona arbitrates, homed in agentm. The line: capability-local → the capability; cross-capability → the persona. This is additive (no migration sweep); a stranded cross-capability stance migrates only case-by-case when a persona claims it, as the PM-thin→Planner (TPM) handoff already does.
 

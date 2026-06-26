@@ -17,7 +17,7 @@ approved: 2026-06-23
 
 ## Objective
 
-**Bind a model + reasoning-effort *tier* to each persona, and apply it automatically when that persona is adopted** — so research runs on the strongest brain at the deepest setting, a long build stretch runs cheap, and nobody hand-sets `/model` per session. It is the concrete realization of foundation principle **P9 ("match the model to the work")** and of the **`efficient`** opinion's named *model-routing* lever. It is **not a plugin** — it is a policy (agentm), a per-persona binding (the persona manifest), and an enforcement surface (crickets agent-defs + the host).
+**Bind a model + reasoning-effort *tier* to each persona, and apply it automatically when that persona is adopted.** Research then runs on the strongest brain at the deepest setting, a long build stretch runs cheap, and nobody hand-sets `/model` per session. It is the concrete realization of foundation principle **P9 ("match the model to the work")** and of the **`efficient`** opinion's named *model-routing* lever. It is **not a plugin**: it is a policy (agentm), a per-persona binding (the persona manifest), and an enforcement surface (crickets agent-defs + the host).
 
 ## Overview
 

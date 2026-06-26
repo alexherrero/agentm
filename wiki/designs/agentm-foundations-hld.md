@@ -12,11 +12,11 @@ area: shared/foundations
 > **LAUNCHED (2026-06-20).** The live shared-philosophy / foundations parent HLD, lifted into tracked `wiki/designs/` in AG Phase 2. This is the root the agentm and crickets HLDs point *up* at and inherit by reference.
 
 # Foundations for a useful assistant
-Artificial Intelligence, and by extension an Agent, must be useful to be worthwhile. Agents are gaining capabilities quickly through harnesses like Claude Code or Antigravity, but for these harnesses to be useful to the largest possible audience, they must by definition, appeal to large groups. So agents today are more versatile tools, and less personal, individualized extensions of the person using them.
+Artificial Intelligence, and by extension an Agent, must be useful to be worthwhile. Agents are gaining capabilities fast through harnesses like Claude Code or Antigravity. But to be useful to the largest audience, a harness must appeal to large groups. So agents today are versatile tools more than personal, individualized extensions of the person using them.
 
-A truly useful agent, one that acts as an extension of you, needs to think, remember and know you. To be engaging, it needs character and attitude. To be helpful, it needs to have opinions, and be capable of teaching what good 'looks like'. A truly useful agent feels natural to use, and isn't limited by its harness. 
+A useful agent — one that acts as an extension of you — needs to think, remember, and know you. To be engaging, it needs character and attitude. To be helpful, it needs opinions, and to teach what good 'looks like'. A useful agent feels natural to use, and isn't limited by its harness.
 
-Here we will discuss the foundations needed for an assistant (agent) that's truly useful, inspired by the assistants we've seen in the movies for years that talk, act and help naturally.
+Here we discuss the foundations for a useful assistant, inspired by the assistants we've seen in the movies for years that talk, act, and help naturally.
 
 
 The bedrock the whole system stands on: the beliefs every part holds in common, and how the two halves — agentm (the person) and crickets (its tools) — relate. The agentm and crickets HLDs both point *up* at this doc and inherit it by reference instead of restating it.
@@ -40,7 +40,7 @@ To achieve our goals, we build our foundation around two ideas. A **person** and
 
 agentm is the stateful person; crickets are its stateless tools. agentm holds everything that persists — the memory of what past sessions learned, the opinions about how work should go, the personas it puts on for different jobs. crickets holds each capability: plan, build, review, release, etc. — abilities the person picks up, uses, and sets down, carrying no state of its own between uses.
 
-The relationship runs strictly one way. A tool or capability **draws on** agentm's memory (it recalls what earlier sessions wrote), **follows** agentm's opinions (the gates and conventions the substrate enforces), and is **wielded by** agentm's personas (i.e. architect, project-manager, tech-lead, engineer, reviewer are hats the person wears). While crickets may lean on agentm; agentm doesn't lean on crickets. Said differently, a bare agentm — the memory engine with no tools bolted on — is whole and runs on its own. The toolbox is the optional part, it can run on its own as well, but it's more **useful** when it depends on AgentM who knows how to use it correctly.
+The relationship runs strictly one way. A tool **draws on** agentm's memory (what earlier sessions wrote), **follows** agentm's opinions (the gates and conventions the substrate enforces), and is **wielded by** agentm's personas — architect, tech-lead, engineer, reviewer are hats the person wears. crickets may lean on agentm; agentm never leans on crickets. A bare agentm — the memory engine with no tools attached — is whole and runs on its own. The toolbox is the optional part: it can run alone too, but it works best in the hands of agentm, which knows how to use it.
 
 agentm and crickets are built off of this same, shared foundation, inheriting the same beliefs. 
 

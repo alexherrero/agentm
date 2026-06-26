@@ -17,7 +17,13 @@ updated: 2026-06-25
 
 ### Objective
 
-Built-in agent memory (Claude memories, Gemini personal context, etc.) is per-platform, opaque, lossy, and not composable across tools — bouncing between models fragments context every session. Today, every new Claude Code chat starts cold even on the same project; manual re-priming wastes tokens and loses nuance. MemoryVault is a file-based, agent-curated permanent memory layer that captures durable preferences / workflows / fixes via a reflection sidecar, recalls relevant entries automatically into every new prompt, and adapts the agent's behavior over time without explicit configuration. The goal: compound learning — each conversation makes the next one better, because the agent never forgets what already happened.
+Built-in agent memory (Claude memories, Gemini personal context, etc.) is per-platform, opaque, lossy, and not composable across tools — bouncing between models fragments context every session. Today every new Claude Code chat starts cold even on the same project, and manual re-priming wastes tokens and loses nuance. MemoryVault is a file-based, agent-curated permanent memory layer that:
+
+- captures durable preferences, workflows, and fixes via a reflection sidecar;
+- recalls relevant entries automatically into every new prompt;
+- adapts the agent's behavior over time, with no explicit configuration.
+
+The goal is compound learning: each conversation makes the next one better, because the agent never forgets what already happened.
 
 ### Background
 
@@ -35,7 +41,7 @@ The idea evolved through three stages:
 
 ### Overview
 
-MemoryVault is a single `memory` skill in `crickets` with four sub-commands and four Claude Code hooks. The skill's on-disk format is **markdown + YAML frontmatter inside a folder of the user's existing Obsidian vault**, synced between devices via the user's existing setup. Writes default to `MemoryVault/`; reads default to **everywhere in the Obsidian vault** (rich grounding context from the user's existing notes); writes outside `MemoryVault/` happen only on explicit user request or agent-proposed + user-confirmed (the permeable boundary).
+MemoryVault is a single `memory` skill in `crickets` with four sub-commands and four Claude Code hooks. The skill's on-disk format is **markdown + YAML frontmatter inside a folder of the user's existing Obsidian vault**, synced between devices via the user's existing setup. Writes default to `MemoryVault/`; reads default to the **whole Obsidian vault** (rich grounding context from the user's existing notes). Writes outside `MemoryVault/` happen only on explicit user request, or agent-proposed and user-confirmed — the permeable boundary.
 
 Three architectural pillars drive the design:
 
@@ -162,7 +168,7 @@ The idle-time hook recovers crashed sessions where the Stop hook never fired (Cl
 
 1. **SessionStart hook** writes `.harness/session-id-<session-uuid>.start` (one file per session, contents = session start timestamp + transcript path).
 2. **Stop hook** (after running reflection successfully) renames `.start` → `.reflected`. If reflection fails, file stays as `.start` (idle hook will retry).
-3. **Idle-time hook** scans for `.start` files older than 1 hour (idle threshold for assuming session is truly dead) → runs reflection retroactively on those transcripts → renames to `.reflected` on success.
+3. **Idle-time hook** scans for `.start` files older than 1 hour (idle threshold for assuming the session is dead) → runs reflection retroactively on those transcripts → renames to `.reflected` on success.
 4. **GC**: `.reflected` markers older than 30 days get deleted on next idle pass.
 
 All markers in `.harness/` (gitignored, runtime-only).
@@ -363,7 +369,7 @@ N/A: personal tooling, user-owned data, no regulatory framework applies. GDPR-st
 ### Documentation Plan
 
 **Agent-toolkit wiki additions** (#7a):
-- **New how-to**: `crickets/wiki/how-to/Use-The-Memory-Skill.md` — comprehensive page covering 4 sub-commands + worked scenarios (capture flow / recall flow / idea promotion / supersede flow) + tri-modal routing explanation + interactive-review mode setting + troubleshooting (sqlite-vec install / cloud sync issues / API embedding fallback / vault bloat).
+- **New how-to**: `crickets/wiki/how-to/Use-The-Memory-Skill.md` — a page covering 4 sub-commands + worked scenarios (capture flow / recall flow / idea promotion / supersede flow) + tri-modal routing explanation + interactive-review mode setting + troubleshooting (sqlite-vec install / cloud sync issues / API embedding fallback / vault bloat).
 - **Updated**: `Home.md` + `_Sidebar.md` (add memory skill to reader-intent sections); `README.md` "What's inside" table (bump version + add memory skill row); `Customization-Types.md` (add memory as concrete example link in skill row).
 - **This design doc itself** (`memoryvault.md`) becomes the canonical "Why we built this" wiki entry point per the locked design call from plan #6.
 
