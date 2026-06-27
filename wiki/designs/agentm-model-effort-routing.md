@@ -11,13 +11,13 @@ approved: 2026-06-23
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-23).** child-design — **model + effort routing** (automatically binding a model + reasoning-effort *tier* to each persona/role, so the right brain runs each job without a per-session `/model`). A **cross-cutting** design, agentm-anchored. Points *up* at the [agentm HLD](agentm-hld.md).
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-23).** child-design — **model + effort routing** (automatically binding a model + reasoning-effort *tier* to each persona/role, so the right model runs each job without a per-session `/model`). A **cross-cutting** design, agentm-anchored. Points *up* at the [agentm HLD](agentm-hld.md).
 
 # model + effort routing
 
 ## Objective
 
-**Bind a model + reasoning-effort *tier* to each persona, and apply it automatically when that persona is adopted.** Research then runs on the strongest brain at the deepest setting, a long build stretch runs cheap, and nobody hand-sets `/model` per session. It is the concrete realization of foundation principle **P9 ("match the model to the work")** and of the **`efficient`** opinion's named *model-routing* lever. It is **not a plugin**: it is a policy (agentm), a per-persona binding (the persona manifest), and an enforcement surface (crickets agent-defs + the host).
+**Bind a model + reasoning-effort *tier* to each persona, and apply it automatically when that persona is adopted.** Research then runs on the strongest model at the deepest setting, a long build stretch runs cheap, and nobody hand-sets `/model` per session. It is the concrete realization of foundation principle **P9 ("match the model to the work")** and of the **`efficient`** opinion's named *model-routing* lever. It is **not a plugin**: it is a policy (agentm), a per-persona binding (the persona manifest), and an enforcement surface (crickets agent-defs + the host).
 
 ## Overview
 
@@ -72,7 +72,7 @@ The scale is the canonical artifact: each tier is a (model-class, effort) bundle
 
 ### The binding — a tier axis on the persona manifest
 
-The persona manifest gains a **`tier:`** field (and, where a persona spans modes, a `tier-ceiling:` for bounded escalation). This is the net-new axis: today the manifest declares stance · `enhances:` · `requires:` · opinions · modes · triggers, and **carries no model or effort at all**. Adding `tier:` makes "which brain this stance runs on" a declared, validated property (extending `check-personas.py`), not an operator habit. The persona roster gains the tier column shown above.
+The persona manifest gains a **`tier:`** field (and, where a persona spans modes, a `tier-ceiling:` for bounded escalation). This is the net-new axis: today the manifest declares stance · `enhances:` · `requires:` · opinions · modes · triggers, and **carries no model or effort at all**. Adding `tier:` makes "which model this stance runs on" a declared, validated property (extending `check-personas.py`), not an operator habit. The persona roster gains the tier column shown above.
 
 ### Enforcement — three surfaces, by what the host can enforce
 
