@@ -14,6 +14,7 @@ children:
   - memory-storage-seam.md
   - agentm-experience-and-dreaming.md
   - agentm-opinions-and-gates.md
+  - agentm-opinion-registry.md
   - agentm-personas.md
   - persona-tier.md
   - agentm-model-effort-routing.md
@@ -99,6 +100,8 @@ agentm's opinions are **abstract, named buckets of opinionated knowledge** — w
 - **What's efficient** — cost: *do the work cheaply when you can,* without giving up too much quality. Don't spend tokens (or time) the job doesn't need.
 - **How we engineer** — process: the **phase discipline**, how **bugs get fixed** (the bugfix track), and how to **size the approach to the work** — a small change needs only a plan, a large one needs a design, a huge one needs an architecture pass before any design.
 
+Beyond these four, the catalog also holds **recoverable** (can it be undone?), **private** (safe to commit/share?), **ready** (ready to ship to real users?), **simple** (the simplest thing that works?), and **worth-knowing** (worth remembering or surfacing?) — same shape, each a named standard a tool asks for; the full set is in the [Opinions design](agentm-opinions-and-gates.md).
+
 **How they fit:** each surface is a named bucket a capability can ask for; together they answer "should this proceed, and is it good enough?" at the moments that matter. The buckets are independent — a tool might consult *done* and *efficient* but not *good*.
 
 **Where it touches crickets:** by request, not by wiring. A crickets tool **names the opinion it needs** — `done`, `good`, `efficient`, the engineering process — and the substrate hands back the opinionated knowledge; the tool stays free to act on it. (The check battery does run inside crickets' review/release phases, and the phase commands are crickets — but those are one surface's implementation, not the pillar.)
@@ -159,6 +162,7 @@ The component-level sources now live in each pillar's child design (linked above
 - [Memory↔Storage Seam](memory-storage-seam.md) — the storage contract (seam verbs, `Locator` guards, tiers), backends, V5-0 write protocol, routing plane, backend-aware harness state
 - [Experience & Dreaming](agentm-experience-and-dreaming.md) — reflection, heat, incubation, adapt-watchlist, dreaming
 - [Opinions & Gates](agentm-opinions-and-gates.md) — the check battery, conventions, phase discipline
+- [Opinion registry](agentm-opinion-registry.md) — the request-by-name resolver, the nine-opinion catalog, the entry schema
 - [Personas](agentm-personas.md) — the persona tier, the gate, the full ~11-persona roster
 - [The persona tier](persona-tier.md) — the third classification above the substrate/plugin binary; folds the former ADR 0016
 - [Model + effort routing](agentm-model-effort-routing.md) — the model × effort tier scale (T0…T4, Claude + Gemini), the persona→tier map, the `tier:` manifest axis

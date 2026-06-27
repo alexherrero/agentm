@@ -17,6 +17,7 @@
   - [Memory↔Storage Seam](memory-storage-seam)
   - [Experience & Dreaming](agentm-experience-and-dreaming)
   - [Opinions & Gates](agentm-opinions-and-gates)
+  - [Opinion registry](agentm-opinion-registry)
   - [Personas](agentm-personas)
   - [Model + effort routing](agentm-model-effort-routing)
   - [Runner](agentm-runner)

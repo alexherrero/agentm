@@ -37,7 +37,7 @@ Opinions are a **queryable knowledge surface** — a tool names what it needs an
 
 ## Design
 
-Opinions are what make agentm **opinionated**: a standard for *done* / *good* / *efficient* / *how-we-engineer* that the agent **ships with, in code**, and then **grows in agentm's memory as it learns**. The design folds this into existing seams — a coded base, a vault supplement, composed on request and served by name — rather than standing up a new store or recall path. The named opinions are listed at the end; this section is the system that holds and serves them.
+Opinions are what make agentm **opinionated**: a standard for things like *done* / *good* / *efficient* / *how-we-engineer* (the full catalog is below) that the agent **ships with, in code**, and then **grows in agentm's memory as it learns**. The design folds this into existing seams — a coded base, a vault supplement, composed on request and served by name — rather than standing up a new store or recall path. The named opinions are listed at the end; this section is the system that holds and serves them.
 
 ### Where opinions live: a coded base, extended in agentm's memory
 
@@ -65,6 +65,11 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 | **good** | a quality standard | `/review`, `code-review` | the adversarial-review contract — *does it survive a hostile read?* |
 | **efficient** | a cost budget with a quality floor | `token-audit`, model routing, `/work` | cheap as the job allows, held above the *good* floor |
 | **how we engineer** | the process discipline | `/plan`, `/work`, `design`, `/bugfix` | the phase discipline · the bugfix track · the plan → design → architecture sizing ladder |
+| **recoverable** | the reversibility doctrine | `/work`, `/release`, `/bugfix`, the push gate | classify each action recoverable / unrecoverable — proceed on the recoverable, stop on the unrecoverable; *can it be undone?* (standard lives in `developer-safety`) |
+| **private** | a leak floor | `development-lifecycle` finalize, CI, `diagnostics` | secrets + PII stay out of what's committed — *is it safe to commit / share?* (deterministic floor lives in `privacy`) |
+| **ready** | a launch-readiness gate | `/launch` | metrics + alerts + a tested rollback + a flag off-switch + a staged rollout — *is it ready to ship to real users?* |
+| **simple** | the simplest-thing-that-works standard | `/simplify`, `maintenance` | Chesterton's Fence + the Rule of 500 — *is any of this accidental complexity?* |
+| **worth-knowing** | a relevance bar | `research`, Experience, the Researcher persona | *is this worth remembering, researching, or surfacing?* |
 
 *(The phase discipline is agentm's; the phase commands are crickets' — the discipline-vs-tools split; see Dependencies. The full standard behind each opinion lives in its entry. **`efficient`'s model-routing lever is specified in [model + effort routing](agentm-model-effort-routing.md)** — the model × effort tier scale + persona→tier map that turns "cheap as the job allows" into a concrete model + effort pick.)*
 
@@ -77,7 +82,7 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 ## Risks & open questions
 
-- **The compose-and-serve path is designed, not built** — today each base opinion is hardwired into its tool (e.g. `code-review` embeds *good*); there is no stored supplement layer and no fold/lookup. The work: make the coded bases addressable opinions, add the stored supplement layer (in agentm's memory, whichever backend), and fold them on request through the existing bridge + style-overlay + memory seams. That code is what this design will *govern* once built (area-only until then). Marked `[PENDING-IMPL]` above.
+- **The compose-and-serve path is designed, not built** — today each base opinion is hardwired into its tool (e.g. `code-review` embeds *good*); there is no stored supplement layer and no fold/lookup. The work: make the coded bases addressable opinions, add the stored supplement layer (in agentm's memory, whichever backend), and fold them on request through the existing bridge + style-overlay + memory seams. That code is specified by the [opinion registry](agentm-opinion-registry) design, which *governs* `opinion_resolver.py` once built; this pillar stays discipline/area-only. Marked `[PENDING-IMPL]` above.
 - **Opinion versioning** — when a standard shifts (a new check joins the *done* battery), how do callers that cached the old standard adapt? Open.
 - **The Experience → Opinions sharpening loop** — which experience signals sharpen which opinion, how often, and what keeps a bad signal from corrupting a standard — is designed, not specified.
 - **Re-audit triggers:** flip the request-by-name API to as-built when the registry ships; specify the sharpening loop when forward learning lands.
@@ -90,6 +95,8 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 - **The by-name seam:** `find_capability.py` → `capability_resolver.py` — the one-way bridge a thin `opinion` lookup rides
 
 ## Amendment log
+
+**2026-06-26 — catalog expanded to nine; the resolver mechanism homed in its own design.** The opinions catalog grows from four to nine: added *recoverable* (the reversibility doctrine, provided by `developer-safety`), *private* (the leak floor, provided by `privacy`), *ready* (the launch-readiness gate), *simple* (the simplest-thing-that-works standard), and *worth-knowing* (the relevance bar the Researcher persona leans on). `recoverable` and `private` are promoted from sub-standards folded into other opinions to peer opinions; *voice* stays a prose-style overlay in `style_resolver`, not a catalog opinion. The request-by-name mechanism this pillar left as `[PENDING-IMPL]` is now specified by the new **[opinion registry](agentm-opinion-registry)** child design, which governs `opinion_resolver.py`; this pillar stays discipline/area-only. **Re-audit trigger:** revisit the catalog when a new surface is authored; flip the compose-and-serve `[PENDING-IMPL]` to as-built when the registry ships.
 
 **2026-06-24 — pointed `efficient`'s model-routing lever at the routing design.** The `efficient` opinion names "model routing" as a lever it backs; that lever now has a concrete design — **[model + effort routing](agentm-model-effort-routing.md)** (the model × effort tier scale + persona→tier map + the `tier:` persona-manifest axis). Added a pointer from the opinions-table footnote; one-way (the opinion names the lever, the routing design specifies it). No change to the compose-and-serve model. **Re-audit trigger:** when the request-by-name registry ships, `efficient` returns the routing policy as part of its served composite.
 
