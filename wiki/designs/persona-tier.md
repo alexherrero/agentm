@@ -40,7 +40,7 @@ A **persona** is a standing concern that **composes capabilities it does not own
 
 A persona **owns no engine**. It is a stance plus a composition manifest over engines that stay in crickets. It lives in agentm for universality and neutrality, not because it "remembers."
 
-The defining signature is the **inverted dependency direction**. A plugin is a capability that *others compose* — it is depended **upon**. A persona *composes capabilities* and is depended upon by nothing — it sits **above** the capability layer, rooted at the substrate. The **rememberer** (the memory engine) is the **degenerate persona**: zero composed plugins, `requires:` ⊆ substrate — the persona agentm already shipped, now named. The **Planner (TPM)** is the **first real persona**: it composes dev-loop/board capabilities via `enhances:`, hard-requires only agentm-native scripts.
+The defining signature is the **inverted dependency direction**. A plugin is a capability that *others compose* — it is depended **upon**. A persona *composes capabilities* and is depended upon by nothing — it sits **above** the capability layer, rooted at the substrate. The **brain** (the memory engine) is the **degenerate persona**: zero composed plugins, `requires:` ⊆ substrate — the persona agentm already shipped, now named. The **Planner (TPM)** is the **first real persona**: it composes dev-loop/board capabilities via `enhances:`, hard-requires only agentm-native scripts.
 
 Two near-miss axes are explicitly *not* the test. **"Remembers"** breaks both ways: the Planner (TPM) is stateless, while the planned crickets `security-review` capability `requires: agentm` *for memory*. **"Crosses multiple plugins"** is insufficient — `github-projects` composes `developer-workflows` yet is a plain capability. The discriminator is **arbitration plus the inverted, substrate-only hard-dep direction**.
 
@@ -62,13 +62,13 @@ Trigger shape is unchanged: `check-personas` runs where the other `check-*` gate
 
 ### Detailed Design
 
-**The primitive.** Each persona is a markdown file under `personas/` with frontmatter — `kind: persona`, `requires: [...]` (substrate-native scripts/primitives), `enhances: [...]` (composed capabilities), plus the agent-def fields it shares with any agent (`model:`, a read-only `tools:` allowlist) — and a body carrying the standing-concern instructions. The rememberer is the degenerate case: `enhances: []`, `requires:` ⊆ substrate.
+**The primitive.** Each persona is a markdown file under `personas/` with frontmatter — `kind: persona`, `requires: [...]` (substrate-native scripts/primitives), `enhances: [...]` (composed capabilities), plus the agent-def fields it shares with any agent (`model:`, a read-only `tools:` allowlist) — and a body carrying the standing-concern instructions. The brain is the degenerate case: `enhances: []`, `requires:` ⊆ substrate.
 
 **Composition is `enhances:`, not a new keyword.** "Composes" is the conceptual verb; the on-disk field is `enhances:`, resolved by the V5-8 resolver. A persona names the capabilities it wants and the resolver answers "present on this host?" at load time, degrading cleanly when absent. There is deliberately **no `composes:` alias** — that would fork a resolver and a vocabulary that already exist, for identical semantics.
 
 **The gate is the enforcement.** `check-personas` asserts two things for every file under `personas/`: that each `requires:` entry resolves to an agentm-native primitive (never a crickets capability), and that no persona manifest lands in the always-load set (so a dormant persona never inflates the per-call token floor — [#46](https://github.com/alexherrero/agentm/issues/46)). The first holds *agentm-no-hard-dep-on-crickets*; the second holds the token floor; soft `enhances:` is unrestricted. It mirrors `check-capability-resolver-one-way.py` and `check-process-seam-import-direction.sh` — a one-way dependency assertion, statically checkable, added to the gate battery.
 
-**Load is on demand `[PENDING-IMPL]`.** Design: a persona body loads only when the persona is activated, reusing the existing on-demand memory-load path — not the always-load floor. The rememberer is the implicit always-on degenerate persona; everything else is dormant until invoked. A persona may be *surfaced* through a sub-agent at activation, but it is not a sub-agent (it is a durable classification, not ephemeral fan-out). The surfacing mechanism is designed (see Risks) but not yet built.
+**Load is on demand `[PENDING-IMPL]`.** Design: a persona body loads only when the persona is activated, reusing the existing on-demand memory-load path — not the always-load floor. The brain is the implicit always-on degenerate persona; everything else is dormant until invoked. A persona may be *surfaced* through a sub-agent at activation, but it is not a sub-agent (it is a durable classification, not ephemeral fan-out). The surfacing mechanism is designed (see Risks) but not yet built.
 
 **The naming question (deferred).** agentm **keeps "persona"** for this tier. The collision is on the crickets side — it calls its four coordinator roles "personas" loosely, though it mostly already says "role" — so the rename moves *there*: crickets' looser "persona" usage becomes "**role**", freeing the term for the tier that earns it (a standing-concern identity that composes, distinct from a thin role that wraps one phase command). The pass is doc-only and rides **V5-6** (the identity rewrite) — see Re-verification below for why it is zero-code.
 
@@ -94,7 +94,7 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 
 **Where opinionation lives (the migration rule).** Capability-local opinion — how `/work` gates, how a release is recoverable — stays in crickets; *cross-capability* opinion — what order to merge, which plans run together — is what a persona arbitrates, homed in agentm. The line: capability-local → the capability; cross-capability → the persona. This is additive (no migration sweep); a stranded cross-capability stance migrates only case-by-case when a persona claims it, as the PM-thin→Planner (TPM) handoff already does.
 
-**Filing the persona as a crickets plugin (general case). Rejected** — the inverted arrow again: a plugin is composed *by* others; a persona *composes* and is composed by nothing. Persona-as-plugin creates plugin→plugin hard-dep chains, exactly what the `enhances ∩ requires = ∅` / one-provider / no-solver rules forbid. Restricting persona `requires:` to substrate-native keeps the hard-dep graph acyclic and rooted at the neutral substrate, and keeps the tier universal (bare agentm has the rememberer; add crickets and the Planner (TPM) composes the dev loop).
+**Filing the persona as a crickets plugin (general case). Rejected** — the inverted arrow again: a plugin is composed *by* others; a persona *composes* and is composed by nothing. Persona-as-plugin creates plugin→plugin hard-dep chains, exactly what the `enhances ∩ requires = ∅` / one-provider / no-solver rules forbid. Restricting persona `requires:` to substrate-native keeps the hard-dep graph acyclic and rooted at the neutral substrate, and keeps the tier universal (bare agentm has the brain; add crickets and the Planner (TPM) composes the dev loop).
 
 **Model a persona as a skill. Rejected** — a skill is a capability (the thing a persona composes); filing a persona as a skill collapses the tier distinction and inverts the arrow.
 
@@ -111,20 +111,20 @@ This design treats the pre-audit as a pre-audit; the load-bearing assumptions we
 
 ## Migrations
 
-**N/A: no existing state to migrate.** The tier is additive — a new `kind:`, a new directory, a new gate. The memory engine is *re-described* as the degenerate rememberer persona but is not moved or rewritten; no on-disk artifact changes. A later, separate step may author the memory engine's persona manifest, but this design does not require touching shipped memory-engine code.
+**N/A: no existing state to migrate.** The tier is additive — a new `kind:`, a new directory, a new gate. The memory engine is *re-described* as the degenerate brain persona but is not moved or rewritten; no on-disk artifact changes. A later, separate step may author the memory engine's persona manifest, but this design does not require touching shipped memory-engine code.
 
 ## Technical Debt & Risks
 
 - **`check-personas` is a permanent new gate surface** to keep wired into `check-all.sh` + CI. Small but real.
 - **The persona/role term is unsettled until V5-6.** Docs carry "persona" in the interim; a later doc-only sweep may rename. Risk: a reader meets two terms across the V5-6 boundary. Mitigation: DC-6 in the Amendment log (the former ADR 0016) records the deferral explicitly.
-- **Tier confusion.** Operators may mis-file a capability as a persona or vice-versa. Mitigation: the one-sentence inverted-dependency test (DC-1) and the rememberer as a worked example; `check-personas` catches the most damaging error (a crickets hard-dep) automatically.
+- **Tier confusion.** Operators may mis-file a capability as a persona or vice-versa. Mitigation: the one-sentence inverted-dependency test (DC-1) and the brain as a worked example; `check-personas` catches the most damaging error (a crickets hard-dep) automatically.
 - **Surfacing path `[PENDING-IMPL]`.** How an activated persona's body reaches the agent (injected context vs. on-demand sub-agent) is designed (`build-part 3`) but not yet built. The Planner (TPM) manifest (`personas/team-coordinator.md`) therefore exists as a seed that cannot yet be activated.
 
 ## Quality Attributes
 
 ### Reliability
 
-Graceful degradation is inherited from the resolver: a persona composing an absent capability gets a clean "unavailable," never a crash. A bare agentm runs the rememberer with zero plugins — the degenerate persona is the floor, so there is no "no persona" failure state.
+Graceful degradation is inherited from the resolver: a persona composing an absent capability gets a clean "unavailable," never a crash. A bare agentm runs the brain with zero plugins — the degenerate persona is the floor, so there is no "no persona" failure state.
 
 ### Data Integrity
 
@@ -144,7 +144,7 @@ Every load-bearing call is deterministically checkable: `check-personas` (requir
 
 Default part split follows the Detailed Design subsections — buildable independently, in order:
 
-1. **`kind: persona` primitive + `personas/` directory** (S) — the schema + one example (the rememberer manifest).
+1. **`kind: persona` primitive + `personas/` directory** (S) — the schema + one example (the brain manifest).
 2. **`check-personas` gate** (M) — `requires ⊆ substrate` assertion, wired into `check-all.sh` + CI, with tests.
 3. **On-demand load + surfacing path** (M) `[PENDING-IMPL]` — activation → body load, reusing the memory-load path; resolve the surfacing-path open item.
 4. **First real persona** (M, V5-11) — the Planner (TPM) manifest composing dev-loop/board capabilities. Gated behind 1–3.
@@ -153,11 +153,11 @@ Default part split follows the Detailed Design subsections — buildable indepen
 
 - The *why* + load-bearing calls (the former ADR 0016) — folded into the Amendment log below (2026-06-24).
 - This design doc (`wiki/designs/persona-tier.md`) — the canonical "why we built the persona tier."
-- At build time: a `wiki/reference/` page for the `kind: persona` schema + `check-personas` contract; an update to [AgentM HLD](agentm-hld) noting the rememberer-as-degenerate-persona reframe; an `enhances:` cross-reference from [Soft-Composition](../explanation/Soft-Composition).
+- At build time: a `wiki/reference/` page for the `kind: persona` schema + `check-personas` contract; an update to [AgentM HLD](agentm-hld) noting the brain-as-degenerate-persona reframe; an `enhances:` cross-reference from [Soft-Composition](../explanation/Soft-Composition).
 
 ### Launch Plans
 
-Additive, no flag day — each part lands behind its own gate. The rememberer persona is a re-description of shipped behavior (no runtime change); the Planner (TPM) is the first net-new persona and ships under V5-11.
+Additive, no flag day — each part lands behind its own gate. The brain persona is a re-description of shipped behavior (no runtime change); the Planner (TPM) is the first net-new persona and ships under V5-11.
 
 ## Operations
 
@@ -178,12 +178,12 @@ Fully reversible. The tier is additive: removing `personas/`, the `kind: persona
 
 **2026-06-24 — folded ADR 0016 (the persona tier) into this design (AG ADR-migration tail, move-and-retire).** ADR 0016 was the decision record paired with this design (the *why* + the load-bearing calls); the held ADR resolved (design-doc amendment 2026-06-24) and folds here, so this design now records both the mechanism (above) and the decision rationale (below). This design **stays** — a live, cited sub-contract, now nudged toward living-design shape. *(0016 refined [AgentM HLD — V5 unbundling](agentm-hld), the substrate/plugin binary it adds the missing third tier to.)*
 
-**The persona tier (2026-06-16; was ADR 0016).** Name a **third tier** — the **persona** — defined by its **dependency direction**, not by what it stores: a standing concern that **composes capabilities it does not own** (arbitrating between them when it composes more than one), is **anchored on the neutral substrate**, and whose hard deps (`requires:`) are **substrate-native only** (soft `enhances:` may name any capability). It owns no engine — a *stance + composition manifest* over engines that stay in crickets. The **rememberer** (the memory engine) is the degenerate persona (zero composed plugins); the **Planner (TPM)** is the first real persona. The load-bearing calls:
+**The persona tier (2026-06-16; was ADR 0016).** Name a **third tier** — the **persona** — defined by its **dependency direction**, not by what it stores: a standing concern that **composes capabilities it does not own** (arbitrating between them when it composes more than one), is **anchored on the neutral substrate**, and whose hard deps (`requires:`) are **substrate-native only** (soft `enhances:` may name any capability). It owns no engine — a *stance + composition manifest* over engines that stay in crickets. The **brain** (the memory engine) is the degenerate persona (zero composed plugins); the **Planner (TPM)** is the first real persona. The load-bearing calls:
 
 - **DC-1 — the signature is the inverted dependency direction.** A plugin is depended *upon*; a persona *composes* and is depended on by nothing — it sits above the capability layer, rooted at the substrate. *Why not classify by "it remembers" / "stateful":* breaks both ways (the Planner (TPM) is stateless; a `security-review` plugin remembers) — neither necessary nor sufficient. *Why not "crosses multiple plugins":* `github-projects` crosses `developer-workflows` and is a plain capability; **arbitration** + the inverted substrate-only hard-dep direction is the discriminator.
 - **DC-2 — a persona is a first-class primitive (`kind: persona` in `personas/`),** not a skill, not a sub-agent. Both hosts' dispatch is positive-match (unknown `kind:` skipped, never rejected); mechanically an agent-def shape, made a *persona* by tier + home + composition-scope, gate-checkable via the new `kind:`. *Why not a skill:* a skill is a capability (the thing a persona composes) — collapses the tier. *Why not a sub-agent:* sub-agents are read-only ephemeral fan-out; a persona is a durable classification.
 - **DC-3 — composition reuses `enhances:` + the V5-8 resolver, no `composes:` alias.** *Why not a new keyword:* the soft-composition vocabulary + runtime already exist; a second keyword forks the resolver for identical semantics.
-- **DC-4 — `requires ⊆ substrate` + no-always-load, enforced by `check-personas`.** Mechanically holds the *agentm-takes-no-hard-dep-on-crickets* + *bare-agentm-coherent* invariants (the rememberer is the lone always-on exception). *Why not allow crickets capabilities in `requires:`:* inverts the host/plugin relationship, breaks bare-agentm coherence, reintroduces cross-repo coupling.
+- **DC-4 — `requires ⊆ substrate` + no-always-load, enforced by `check-personas`.** Mechanically holds the *agentm-takes-no-hard-dep-on-crickets* + *bare-agentm-coherent* invariants (the brain is the lone always-on exception). *Why not allow crickets capabilities in `requires:`:* inverts the host/plugin relationship, breaks bare-agentm coherence, reintroduces cross-repo coupling.
 - **DC-5 — personas live in agentm, loaded on demand.** *Why not ship from crickets:* a persona must be available regardless of installed plugins (compose-present, degrade-absent) — homing it in crickets couples it to a plugin set and inverts the dependency arrow.
 - **DC-6 — agentm keeps "persona"; crickets' looser "persona" → "role" rename is doc-only** (coordinated with V5-6). *Why not rename agentm's tier:* "persona" is the load-bearing identity name; the collision is resolved by moving the *looser* use (crickets' four coordinator roles), not the precise one.
 

@@ -33,7 +33,7 @@ A persona is **stateful**, but its state isn't in the manifest — it's drawn fr
 
 ### Memory — the pseudo-persona
 
-`rememberer` is a **pseudo-persona that sits under every other persona**, giving each the memory it uses to act (recall at the start, reflection at the end). Every other persona is, in effect, **Memory + a stance** — which is why even a bare agentm "has a persona."
+`brain` is a **pseudo-persona that sits under every other persona**, giving each the memory it uses to act (recall at the start, reflection at the end). Every other persona is, in effect, **Memory + a stance** — which is why even a bare agentm "has a persona."
 
 ### Persona, tool, and the retired "role"
 
@@ -77,7 +77,7 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 **Composed.** At adoption, the manifest's `enhances:` names resolve through `capability_resolver.py` (the [composition](https://github.com/alexherrero/crickets/wiki/crickets-composition) runtime): the stance, the resolved tools, and the Memory beneath compose into the working persona. A named tool that's absent degrades gracefully — the persona still runs on a bare agentm.
 
-**Invoked.** The two paths from §Adoption are realized by the **activation plumbing** — how a manifest's stance + composition reach a *running* agent: injected context for an interactive session, a dispatched sub-agent (cold or warm), a scheduled `/loop`, or a `/goal` runner. **Automatic** adoption fires when a crickets workflow step, or a mid-conversation detection cue, matches a manifest trigger. *(This plumbing is the unbuilt core: today only `rememberer` + the `team-coordinator` Planner seed run; the resolver, the gate, and the `kind: persona` primitive are built — the dispatch/detection wiring is design.)* **`[PENDING-IMPL]`** — refresh the built-vs-designed line and cite the dispatch/detection implementation once the activation plumbing ships (documenter).
+**Invoked.** The two paths from §Adoption are realized by the **activation plumbing** — how a manifest's stance + composition reach a *running* agent: injected context for an interactive session, a dispatched sub-agent (cold or warm), a scheduled `/loop`, or a `/goal` runner. **Automatic** adoption fires when a crickets workflow step, or a mid-conversation detection cue, matches a manifest trigger. *(This plumbing is the unbuilt core: today only `brain` + the `team-coordinator` Planner seed run; the resolver, the gate, and the `kind: persona` primitive are built — the dispatch/detection wiring is design.)* **`[PENDING-IMPL]`** — refresh the built-vs-designed line and cite the dispatch/detection implementation once the activation plumbing ships (documenter).
 
 ### The persona gate
 
@@ -114,12 +114,12 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 ## Risks & open questions
 
-- **Mostly designed.** Today only `rememberer` (pseudo) + `team-coordinator` (the Planner seed) exist. The full roster, the **launch-mode activation plumbing** (how a stance reaches a running agent — injected context vs. sub-agent dispatch vs. session-switching), the **automatic-detection triggers**, and the **opinion-retrieval wiring** are design.
+- **Mostly designed.** Today only `brain` (pseudo) + `team-coordinator` (the Planner seed) exist. The full roster, the **launch-mode activation plumbing** (how a stance reaches a running agent — injected context vs. sub-agent dispatch vs. session-switching), the **automatic-detection triggers**, and the **opinion-retrieval wiring** are design.
 - **Re-audit triggers:** confirm the roster as personas ship; flip the adoption plumbing to as-built as it lands; reconcile `Coordinator-Roles.md` + the crickets agent-defs at the role-retirement landing.
 
 ## References
 
-- `personas/` — `rememberer.md` (the pseudo-persona), `team-coordinator.md` (today's Planner seed)
+- `personas/` — `brain.md` (the pseudo-persona), `team-coordinator.md` (today's Planner seed)
 - `scripts/check-personas.py` — the `requires ⊆ substrate` + no-always-load gate
 - `scripts/capability_resolver.py` — the `enhances:` runtime resolver a persona composes through
 - [persona-tier](persona-tier.md) (the locked tier design — folds the former ADR 0016; its "arbitrates" discriminator is superseded by "cross-capability judgment")

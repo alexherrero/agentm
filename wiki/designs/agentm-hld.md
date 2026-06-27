@@ -48,7 +48,7 @@ The shape of it — the person and its four pillars, the tools, and the foundati
 
 Each pillar, and the components that make it real:
 
-![The four pillars and the components that make each one real: Experience (reflection, scheduled learning, heat policy, idea incubation, import watchlist, the scheduler, dreaming), Memory (memory engine, storage seam, resolution plane, backends, write protocol, recall loop, harness-state I/O, MCP server), Opinions (what done/good/efficient looks like, how we engineer), Personas (the persona tier, rememberer + the roster, the persona gate)](diagrams/agentm-pillars.svg)
+![The four pillars and the components that make each one real: Experience (reflection, scheduled learning, heat policy, idea incubation, import watchlist, the scheduler, dreaming), Memory (memory engine, storage seam, resolution plane, backends, write protocol, recall loop, harness-state I/O, MCP server), Opinions (what done/good/efficient looks like, how we engineer), Personas (the persona tier, brain + the roster, the persona gate)](diagrams/agentm-pillars.svg)
 
 *The four pillars and the components that make each one real. (How each pillar relates to crickets is described per pillar below.)*
 
@@ -119,7 +119,7 @@ The top tier: a persona is a **stance the person takes for a job** — a named "
 - **how it's adopted** — a persona is either **explicitly launched** in a mode it declares (not all support all), or **automatically adopted** when the work calls for it. The launch modes: **sub-agent** (scoped, returns a result), **interactive session** (you talk to it in that stance), **loop** (a cadence, `/loop`), **goal** (autonomous toward a goal, `/goal`). Automatic adoption means a crickets workflow puts the fitting persona on for a step (the work phase adopts the Engineer, the review phase the Reviewer), or agentm detects the need mid-conversation and adopts it on the spot.
 - **its tier** — the model + reasoning-effort tier it runs at (T0 Mechanical … T4 Deep), from the [model + effort routing](agentm-model-effort-routing.md) scale (research/audit → T4, roadmap → T3, planning/design → T2, the worker → T1). The `tier:` manifest axis is what makes the right brain run each job automatically.
 
-**Memory is the pseudo-persona beneath them all.** `rememberer` isn't a peer in the roster — it sits *under* every persona, giving each one the memory it stands on. Every other persona is, in effect, "Memory + a stance."
+**Memory is the pseudo-persona beneath them all.** `brain` isn't a peer in the roster — it sits *under* every persona, giving each one the memory it stands on. Every other persona is, in effect, "Memory + a stance."
 
 **The roster** (the person's hats — Memory and the Planner seed exist today; the rest are designed):
 
