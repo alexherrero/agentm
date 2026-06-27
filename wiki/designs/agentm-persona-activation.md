@@ -116,7 +116,7 @@ Extend `check-personas.py` (the built gate — exit 0/1/2, in `check-all.sh` + C
 - **vs the [opinion registry](agentm-opinion-registry)** — the registry owns `opinion_resolve` (base ⊕ supplement); activation calls it at adoption to bind a persona's `opinions:`. The registry's CLI + composition-edge consumers work before activation exists; only its persona-axis consumers wait on this.
 - **vs the capability resolver** — `capability_resolver.py` owns name → installed-capability matching; activation composes the resolved tools into the running persona.
 - **vs [model + effort routing](agentm-model-effort-routing)** — that design owns the T0–T4 scale + per-host rendering; activation applies the declared tier at adoption.
-- **vs [persona tier](persona-tier)** — that design owns the primitive, the gate, and the persona-vs-tool discriminator; this design is its build-part 3 (load-on-demand + the surfacing/activation path), the one part V5-11 did not ship.
+- **vs [persona tier](persona-tier)** — that design owns the primitive and the gate (the persona-vs-tool discriminator is owned by [personas](agentm-personas)); this design is its build-part 3 (load-on-demand + the surfacing/activation path), the one part V5-11 did not ship.
 - **vs the host dispatch** — the host owns `Task` / `start_subagent` + description-routing; activation compiles a persona down to the host's agent-def or `SKILL.md` and rides those rails. A persona is a layer above a host sub-agent — surfaced through one on the cold-dispatch path, while remaining a durable classification that outlives any single dispatch.
 
 ## Dependencies

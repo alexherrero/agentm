@@ -37,28 +37,22 @@ A persona is **stateful**, but its state isn't in the manifest — it's drawn fr
 
 ### Persona, tool, and the retired "role"
 
-The persona-vs-tool discriminator is **cross-capability judgment**: does the thing make a call that spans *more than one* capability, leaning on a named opinion to make it? If yes, it is a candidate persona. If it does one thing and makes no such judgment, it is a tool/skill/capability — home it in crickets. The crickets read-only helpers (`explorer`, `evaluator`) are tools; `github-projects` is a tool even though it composes `developer-workflows` (composition alone is not the test); the stance-bearing coordinators are personas.
+The persona-vs-tool discriminator is **cross-capability judgment**: does the thing make a call that spans *more than one* capability, leaning on a named opinion to make it? If yes, it is a candidate persona; if it does one thing and makes no such judgment, it is a tool/skill/capability that belongs in crickets. The crickets read-only helpers (`explorer`, `evaluator`) are tools; `github-projects` is a tool even though it composes `developer-workflows` (composition alone is not the test); the stance-bearing coordinators are personas.
 
-**The mechanical floor (the gate enforces it).** A persona hard-requires only substrate-native primitives (`requires:` ⊆ agentm `scripts/`) and expresses everything else as soft `enhances:`. This is the **inverted dependency direction**: a capability is depended *upon* (others compose it); a persona *composes* capabilities and is depended on by nothing — it sits above the capability layer, rooted at the substrate. `check-personas.py` enforces this floor: a would-be persona that must hard-require a crickets capability fails it, and is really a capability that depends up.
+Underneath the judgment is a **mechanical floor**: a persona hard-requires only the substrate (`requires:` ⊆ agentm `scripts/`) and composes everything else softly (`enhances:`) — the **inverted dependency direction**, where a persona composes capabilities yet is depended on by nothing. A thing that must hard-require a crickets capability is a capability that depends up, not a persona. §The persona gate enforces this floor.
 
 **Classifying a new standing concern X, in order:**
 1. **Cross-capability judgment?** No → a tool/skill/capability; home it in crickets. Yes → a candidate persona; continue.
-2. **Substrate-only hard deps?** If X must hard-require a crickets capability, it cannot be a persona; re-home it in crickets. Otherwise continue.
-3. **Place it** as `kind: persona` in agentm `personas/`; `check-personas.py` then enforces `kind: persona`, `requires:` ⊆ substrate, and no always-load.
+2. **Substrate-only hard deps?** If X must hard-require a crickets capability, re-home it in crickets; otherwise continue.
+3. **Place it** as `kind: persona` in agentm `personas/`; the gate validates it.
 
 ![Classifying a new standing concern: ask cross-capability judgment (spans more than one capability, leans on an opinion) — the false branch routes to a tool/capability homed in crickets; the true branch drops to the mechanical floor (hard-requires only substrate), where a hard-require on crickets routes back to crickets as a capability that depends up, and substrate-only deps make it a persona filed in agentm personas/; two axes — 'remembers' and 'crosses more than one plugin' — are shown as rejected discriminators](diagrams/agentm-persona-discriminator.svg)
 
-**How the check runs.** `check-personas.py` is a build-time lint, not a runtime call. `scripts/check-all.sh` runs it before every commit, and the CI workflows run it on every push (`python3 scripts/check-personas.py`); it scans every `*.md` under `personas/` and validates each manifest's frontmatter, exiting `0` when all pass, `1` on a violation, `2` on a setup error. Nothing *calls* the cross-capability-judgment test — that is the author's decision when they place a file in `personas/`; the gate then enforces the mechanical floor on whatever landed there. That is the difference from the opinion and capability resolvers, which a running tool calls to fetch something: the discriminator is a human judgment plus a checked-in lint, not a resolver anything queries.
+The test is a **human call** made when a file is placed in `personas/` — nothing queries it at runtime, unlike the opinion and capability resolvers a running tool calls. The only enforcement is the build-time gate (`check-personas.py`, run by `check-all.sh` + CI — see §The persona gate), which catches the mechanical floor; the judgment stays the author's, with the one-sentence test and the worked examples as the safety net. Two axes are explicitly *not* the test: "it remembers" (the Planner is stateless) and "it crosses multiple plugins" (`github-projects` does, yet is a capability).
 
-**Two axes that are not the test.** "It remembers / is stateful" breaks both ways — the Planner is stateless, and a crickets `security-review` capability would `require: agentm` for memory. "It crosses multiple plugins" is insufficient — `github-projects` crosses `developer-workflows` yet is a plain capability.
+**The vocabulary it sits in.** A **skill** is a capability — the thing a persona composes. A **sub-agent** is read-only ephemeral fan-out; a persona may be *surfaced through* one but is a durable classification, not a sub-agent. **Role** is retired — a role *is* a persona; what looks like a role is a crickets package of correlated tools named after the persona that wields them (the crickets-side rename is still pending). The **homing rule**: capability-local opinion (how `/work` gates) stays in the crickets capability; cross-capability opinion (what order to merge) is what the persona arbitrates, homed in agentm.
 
-**The vocabulary it sits in.** A **skill** is a capability — the thing a persona composes; filing a persona as a skill inverts the arrow. A **sub-agent** is read-only ephemeral fan-out; a persona is a durable classification that may be *surfaced through* a sub-agent yet remains itself — durability is what decides, independent of the dispatch mechanism. **Role** is retired: a role *is* a persona (the stateful stance, an agentm concept), and what looks like a role is a crickets package of correlated tools named after the persona that wields them — a "worker" bundle is only correlated tools under a name. An **opinion** is the knowledge a persona leans on; the persona is the wielder.
-
-**The homing rule behind the cut.** Capability-local opinion — how `/work` gates, how a release is recoverable — stays in the crickets capability. Cross-capability opinion — what order to merge, which plans co-run — is what the persona arbitrates, homed in agentm.
-
-**Resist the persona-zoo.** Adding a persona is cheap once activation ships; add the next one only when a real cross-capability concern with no single-plugin home appears.
-
-The floor is necessary, not sufficient: `check-personas.py` catches a persona that hard-requires crickets, but the cross-capability-judgment test stays a human call — the one-sentence test plus the worked examples are the safety net.
+**Resist the persona-zoo:** add the next persona only when a real cross-capability concern with no single-plugin home appears.
 
 ### Adoption — how a persona is put on
 
@@ -72,7 +66,7 @@ The persona is the *who*; how it's put on is a separate axis, with two paths.
 - **Sub-agent** — dispatched, scoped, returns a result. Best for read-only fan-out or a bounded task. *(A sub-agent launch can run **cold** — with fresh context even though the persona is stateful; the Reviewer must, for adversarial independence.)*
 - **Interactive session** — a session *wearing the hat*; you converse with it in that stance. Best for design/architecture and diagnosis.
 - **Loop** — runs its job on a cadence (`/loop`). Best for coordination and upkeep.
-- **Goal** — given a goal, works autonomously toward it (`/goal`). Best for open-ended pursuit.
+- **Goal** — given a goal, works autonomously toward it on the host's run (Claude's `/goal`, Antigravity's Agent Manager), under the [goal contract](agentm-goal-contract). Best for open-ended pursuit.
 
 Not every persona supports every mode — For example, the Reviewer is sub-agent-only (cold independence), the Operator is loop/sub-agent, the Architect is interactive/goal. The declared set is part of the definition.
 
@@ -80,7 +74,7 @@ Not every persona supports every mode — For example, the Reviewer is sub-agent
 
 ![How a persona is composed: a manifest (stance + enhances + opinions + modes/triggers) composes crickets tools via capability_resolver and leans on opinions, standing on Memory; invoked manually (sub-agent/interactive/loop/goal) or automatically (workflow step / detection)](diagrams/agentm-persona-composition.svg)
 
-A persona is a file in `personas/` (`shape: persona`) — a light manifest plus a prose body. The manifest is what `check-personas.py` validates and what the runtime composes from. It declares:
+A persona is a file in `personas/` (`kind: persona`) — a light manifest plus a prose body. The manifest is what `check-personas.py` validates and what the runtime composes from. It declares:
 
 - **stance** — the cross-capability judgment, in the body (prose).
 - **`enhances:`** — the capabilities (crickets tools) it composes, by name (soft).
@@ -96,7 +90,7 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 **Composed.** At adoption, the manifest's `enhances:` names resolve through `capability_resolver.py` (the [composition](https://github.com/alexherrero/crickets/wiki/crickets-composition) runtime): the stance, the resolved tools, and the Memory beneath compose into the working persona. A named tool that's absent degrades gracefully — the persona still runs on a bare agentm.
 
-**Invoked.** The two paths from §Adoption are realized by the **activation plumbing** — how a manifest's stance + composition reach a *running* agent: injected context for an interactive session, a dispatched sub-agent (cold or warm), a scheduled `/loop`, or a `/goal` runner. **Automatic** adoption fires when a crickets workflow step, or a mid-conversation detection cue, matches a manifest trigger. *(This plumbing is the unbuilt core: today only `brain` + the `team-coordinator` Planner seed run; the resolver, the gate, and the `kind: persona` primitive are built — the dispatch/detection wiring is design.)* **`[PENDING-IMPL]`** — refresh the built-vs-designed line and cite the dispatch/detection implementation once the activation plumbing ships (documenter).
+**Invoked.** The two paths from §Adoption are realized by the **activation plumbing** — how a manifest's stance + composition reach a *running* agent: injected context for an interactive session, a dispatched sub-agent (cold or warm), a scheduled `/loop`, or a host-run goal (the [goal contract](agentm-goal-contract)). **Automatic** adoption fires when a crickets workflow step, or a mid-conversation detection cue, matches a manifest trigger. *(This plumbing is the unbuilt core: today only `brain` + the `team-coordinator` Planner seed run; the resolver, the gate, and the `kind: persona` primitive are built — the dispatch/detection wiring is design.)* **`[PENDING-IMPL]`** — refresh the built-vs-designed line and cite the dispatch/detection implementation once the activation plumbing ships (documenter).
 
 ### The persona gate
 
@@ -138,7 +132,7 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 ## References
 
-- `personas/` — `brain.md` (the pseudo-persona), `team-coordinator.md` (today's Planner seed)
+- `personas/` — `rememberer.md` (the pseudo-persona, renaming to `brain.md`), `team-coordinator.md` (today's Planner seed)
 - `scripts/check-personas.py` — the `requires ⊆ substrate` + no-always-load gate
 - `scripts/capability_resolver.py` — the `enhances:` runtime resolver a persona composes through
 - [persona-tier](persona-tier.md) (the locked tier design — folds the former ADR 0016; reconciled to point here for the discriminator)
@@ -146,6 +140,7 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 ## Amendment log
 
+- **2026-06-27 — re-review compression (operator).** The 2026-06-26 discriminator fold over-weighted this abbreviated design (~40% of the body) and triplicated the gate. Compressed the discriminator to its core — the live test, the in-order classification, the decision-tree SVG, and a tightened note that the test is a human call enforced only by the build-time gate (§The persona gate stays the single home for the gate mechanics; `persona-tier` holds the rest of the detail). Fixed three nits: `(shape: persona)` → `(kind: persona)` in §manifest; the References seed file named `rememberer.md` (renaming to `brain.md`, pending); the Goal launch-mode qualified as riding the host's run (the [goal contract](agentm-goal-contract)), since agentm ships no `/goal` command. No content lost.
 - **2026-06-24 — added the `tier:` model+effort axis (pointer to the routing design).** A persona now declares a **`tier:`** (model × reasoning-effort, T0…T4) — a manifest field + a Tier column on the roster — bound from the new cross-cutting [model + effort routing](agentm-model-effort-routing.md) design (which owns the scale, the Claude/Gemini equivalents, and the enforcement). One-way: personas declare the tier, the routing design defines the scale; no scale/rationale is duplicated here. **Re-audit trigger:** wire the `tier:` field into `check-personas.py` + the activation plumbing (apply the tier at adoption) when the routing design is built.
 - **2026-06-23 — roster reconciled to two capability renames (propagation).** The "Leans on" column updated for renames that landed elsewhere: `developer-workflows` → `development-lifecycle` (the lifecycle merge) and `github-ci` → `maintenance` (the maintenance reframe). No model change. Maintainer leans on `maintenance` (its executing arm); Troubleshooter/SRE on `maintenance` + `diagnostics` (repair + diagnose).
 - **2026-06-21 — operator edit pass + technical additions.** Operator rewrote the Objective/Overview (plain-definition opener) and restructured. Added (additive, no rewrites of operator prose): the **manifest** section (the fields `check-personas.py` validates) + a **composition diagram** + the **composed/invoked mechanics** (activation plumbing) between Adoption and the gate; linked the gate to its source contract (`persona-tier.md` / ADR 0016). **Moved the roster** to a top-level section between Dependencies and Risks. Added two **`[PENDING-IMPL]`** placeholders (the schema direct-link; the dispatch/detection built-vs-designed line) per the new pending-implementation-placeholder rule. **Re-audit trigger:** the documenter resolves the `[PENDING-IMPL]` markers when the manifest schema is finalized + the activation plumbing ships.
