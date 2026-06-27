@@ -19,6 +19,7 @@
   - [Opinions & Gates](agentm-opinions-and-gates)
   - [Opinion registry](agentm-opinion-registry)
   - [Personas](agentm-personas)
+  - [Persona activation](agentm-persona-activation)
   - [Model + effort routing](agentm-model-effort-routing)
   - [Runner](agentm-runner)
 - [The persona tier](persona-tier)

@@ -27,6 +27,7 @@ The current top-level design parents (AG-track Phase 1, `status: launched`). Chi
   - [Opinions & Gates](agentm-opinions-and-gates) — the nine-opinion catalog and the request-by-name model.
   - [Opinion registry](agentm-opinion-registry) — the request-by-name resolver, the entry schema, the catalog the resolver serves.
   - [Personas](agentm-personas) — the persona tier, the ~11-persona roster, the gate, launch modes, role-retirement.
+  - [Persona activation](agentm-persona-activation) — selecting + adopting a persona at runtime (persona-tier's build-part 3).
   - [Model + effort routing](agentm-model-effort-routing) — the T0…T4 tier scale (Claude + Gemini), the persona→tier map, the `tier:` manifest axis.
   - [Runner](agentm-runner) — agentm's background-job executor on the hosts' built-in schedulers; writes routed by ownership tier, reported in the digest.
 

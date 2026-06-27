@@ -17,6 +17,7 @@ children:
   - agentm-opinion-registry.md
   - agentm-personas.md
   - persona-tier.md
+  - agentm-persona-activation.md
   - agentm-model-effort-routing.md
   - agentm-runner.md
 ---
@@ -165,6 +166,7 @@ The component-level sources now live in each pillar's child design (linked above
 - [Opinion registry](agentm-opinion-registry.md) — the request-by-name resolver, the nine-opinion catalog, the entry schema
 - [Personas](agentm-personas.md) — the persona tier, the gate, the full ~11-persona roster
 - [The persona tier](persona-tier.md) — the third classification above the substrate/plugin binary; folds the former ADR 0016
+- [Persona activation](agentm-persona-activation.md) — selecting + adopting a persona at runtime; persona-tier's build-part 3
 - [Model + effort routing](agentm-model-effort-routing.md) — the model × effort tier scale (T0…T4, Claude + Gemini), the persona→tier map, the `tier:` manifest axis
 - [Runner](agentm-runner.md) — the standalone background-job executor: rides the hosts' built-in scheduled tasks, routes writes by ownership tier, reports to the digest
 
