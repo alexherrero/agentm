@@ -20,6 +20,8 @@ children:
   - agentm-persona-activation.md
   - agentm-model-effort-routing.md
   - agentm-runner.md
+  - agentm-goal-contract.md
+  - agentm-memory-index.md
 ---
 
 > [!NOTE]
@@ -169,6 +171,8 @@ The component-level sources now live in each pillar's child design (linked above
 - [Persona activation](agentm-persona-activation.md) — selecting + adopting a persona at runtime; persona-tier's build-part 3
 - [Model + effort routing](agentm-model-effort-routing.md) — the model × effort tier scale (T0…T4, Claude + Gemini), the persona→tier map, the `tier:` manifest axis
 - [Runner](agentm-runner.md) — the standalone background-job executor: rides the hosts' built-in scheduled tasks, routes writes by ownership tier, reports to the digest
+- [Goal contract](agentm-goal-contract.md) — the contract a persona rides the host's autonomous run under: done-determination, anti-gaming, the convergence bound, the four exits
+- [Memory index](agentm-memory-index.md) — the V6-11 SQLite metadata table for hybrid SQL+vector recall, plus the build-from-source (cold-start) path
 
 **Anchors**
 - design-doc **Appendix B** — the ratified agentm Overview this HLD expands (the input spec, not a sibling HLD)

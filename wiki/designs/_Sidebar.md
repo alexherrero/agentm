@@ -22,6 +22,8 @@
   - [Persona activation](agentm-persona-activation)
   - [Model + effort routing](agentm-model-effort-routing)
   - [Runner](agentm-runner)
+  - [Goal contract](agentm-goal-contract)
+  - [Memory index](agentm-memory-index)
 - [The persona tier](persona-tier)
 ### 💡 [Explanation](Explanation)
 - [Decisions (archived)](Decisions)

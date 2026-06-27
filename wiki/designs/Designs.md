@@ -30,6 +30,8 @@ The current top-level design parents (AG-track Phase 1, `status: launched`). Chi
   - [Persona activation](agentm-persona-activation) — selecting + adopting a persona at runtime (persona-tier's build-part 3).
   - [Model + effort routing](agentm-model-effort-routing) — the T0…T4 tier scale (Claude + Gemini), the persona→tier map, the `tier:` manifest axis.
   - [Runner](agentm-runner) — agentm's background-job executor on the hosts' built-in schedulers; writes routed by ownership tier, reported in the digest.
+  - [Goal contract](agentm-goal-contract) — the contract for a persona riding the host's autonomous run (done-determination, anti-gaming, the four exits).
+  - [Memory index](agentm-memory-index) — the V6-11 SQLite metadata table for hybrid SQL+vector recall + the build-from-source path.
 
 ## Evolution & architecture
 

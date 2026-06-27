@@ -1,0 +1,56 @@
+<svg viewBox="0 0 880 420" width="1100" height="525" xmlns="http://www.w3.org/2000/svg" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="ia" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#7E57C2"/></marker>
+    <marker id="ig" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#9AA0AA"/></marker>
+  </defs>
+  <rect x="6" y="6" width="868" height="408" rx="16" fill="#ffffff" stroke="#E3E3E8" stroke-width="1.5"/>
+  <text x="440" y="30" text-anchor="middle" font-size="15" font-weight="700" fill="#4A2E80">The memory index — hybrid SQL + vector recall</text>
+
+  <!-- markdown source -->
+  <rect x="22" y="168" width="146" height="60" rx="9" fill="#EAF0F6" stroke="#5B7C9E" stroke-width="1.3"/>
+  <text x="95" y="194" text-anchor="middle" font-size="10.5" font-weight="700" fill="#2F4B6B">markdown entries</text>
+  <text x="95" y="210" text-anchor="middle" font-size="8" fill="#5E7891">source of truth</text>
+
+  <path d="M168,198 H196" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#ia)"/>
+
+  <!-- drain -->
+  <rect x="198" y="176" width="120" height="44" rx="9" fill="#EAF0F6" stroke="#5B7C9E" stroke-width="1.3"/>
+  <text x="258" y="195" text-anchor="middle" font-size="9.5" font-weight="700" fill="#2F4B6B">vec_index</text>
+  <text x="258" y="210" text-anchor="middle" font-size="8" fill="#5E7891">drain · full-sync</text>
+
+  <path d="M318,198 H348" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#ia)"/>
+
+  <!-- SQLite container -->
+  <rect x="350" y="86" width="288" height="216" rx="12" fill="#FBFAFE" stroke="#7E57C2" stroke-width="1.6"/>
+  <text x="494" y="106" text-anchor="middle" font-size="9.5" font-weight="700" fill="#6E5B96">device-local SQLite · LOCAL_INDEX (never synced)</text>
+
+  <!-- entry_meta -->
+  <rect x="366" y="118" width="256" height="104" rx="9" fill="#F2EEFB" stroke="#7E57C2" stroke-width="1.4"/>
+  <text x="494" y="137" text-anchor="middle" font-size="10.5" font-weight="700" fill="#4A2E80">entry_meta  (extended)</text>
+  <text x="378" y="156" text-anchor="start" font-size="8" fill="#6E5B96">built: rowid · path · updated_at · indexed_at</text>
+  <text x="378" y="174" text-anchor="start" font-size="8" fill="#4A2E80">+ kind · status · tags · project · slug ·</text>
+  <text x="378" y="188" text-anchor="start" font-size="8" fill="#4A2E80">  group_name · created · fingerprint</text>
+  <text x="378" y="208" text-anchor="start" font-size="7.5" font-style="italic" fill="#8A78AE">additive ALTER ADD COLUMN (idempotent)</text>
+
+  <!-- rowid join -->
+  <path d="M494,222 V234" fill="none" stroke="#7E57C2" stroke-width="1.2" stroke-dasharray="3 2"/>
+  <text x="506" y="232" text-anchor="start" font-size="7.5" font-style="italic" fill="#8A8A92">rowid join</text>
+
+  <!-- entries -->
+  <rect x="366" y="236" width="256" height="50" rx="9" fill="#EDE9F7" stroke="#7E57C2" stroke-width="1.3"/>
+  <text x="494" y="256" text-anchor="middle" font-size="10.5" font-weight="700" fill="#4A2E80">entries</text>
+  <text x="494" y="272" text-anchor="middle" font-size="8" fill="#6E5B96">FLOAT[1024] embeddings (built)</text>
+
+  <path d="M638,194 H678" fill="none" stroke="#7E57C2" stroke-width="1.4" marker-end="url(#ia)"/>
+
+  <!-- hybrid recall -->
+  <rect x="680" y="146" width="176" height="96" rx="10" fill="#EDE9F7" stroke="#7E57C2" stroke-width="1.8"/>
+  <text x="768" y="167" text-anchor="middle" font-size="11" font-weight="700" fill="#4A2E80">hybrid recall</text>
+  <text x="768" y="185" text-anchor="middle" font-size="8" fill="#6E5B96">SQL WHERE</text>
+  <text x="768" y="198" text-anchor="middle" font-size="8" fill="#6E5B96">(kind · project · tag · status)</text>
+  <text x="768" y="214" text-anchor="middle" font-size="8" fill="#6E5B96">+ vector MATCH</text>
+  <text x="768" y="231" text-anchor="middle" font-size="8.5" font-weight="700" fill="#4A2E80">→ top-K</text>
+
+  <text x="440" y="338" text-anchor="middle" font-size="8.5" font-style="italic" fill="#8A78AE">Markdown stays the source of truth; the index is a derived device-local cache. The hybrid filter replaces the grep-over-frontmatter pass,</text>
+  <text x="440" y="354" text-anchor="middle" font-size="8.5" font-style="italic" fill="#8A78AE">with grep kept as the graceful fallback when sqlite-vec is absent. The fingerprint column feeds the diagnostics recall ladder.</text>
+</svg>

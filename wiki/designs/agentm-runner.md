@@ -52,7 +52,7 @@ The runner reads every manifest each cycle, decides which jobs are due (`schedul
 | **Dreaming** (experience) | whole-corpus consolidation → a derived layer, staged for operator apply (the heaviest job) | activity-gated (~weekly) |
 | **Health check** (diagnostics) | an idempotent health snapshot; doubles as the fleet watchdog | daily / idle |
 | **Research learn-forward** (research) | `learn-forward` + `codebase-improvement` — the crickets caller of the experience pipeline | weekly |
-| **Persona loop / goal** (personas) | Maintainer / Researcher upkeep loops + run-until-done goals | per-persona |
+| **Persona loop / goal** (personas) | Maintainer / Researcher upkeep loops; Engineer / Researcher / Architect / Designer run-until-done goals (the [goal contract](agentm-goal-contract)) | per-persona |
 
 `content-refresh` is **not** a consumer — model-currency rides a CI drift-detector on CI cron. The one remaining maintenance touchpoint is the V7-6 security-vuln-watch job.
 
