@@ -11,7 +11,7 @@ approved: 2026-06-21
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** Abbreviated-design child — the Personas pillar, parent [agentm HLD](agentm-hld.md); follows the abbreviated-design template. Operator-approved after the edit pass + technical additions. Two `[PENDING-IMPL]` markers await implementation (documenter); `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3).
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** Abbreviated-design child — the Personas pillar, parent [agentm HLD](agentm-hld.md); follows the abbreviated-design template. Operator-approved after the edit pass + technical additions, and **re-approved 2026-06-27** after the discriminator-fold review pass. Two `[PENDING-IMPL]` markers await implementation (documenter); `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3).
 
 # AgentM Personas Design
 
