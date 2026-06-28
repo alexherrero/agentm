@@ -157,41 +157,69 @@ Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that
 
 ## Amendment log
 
-This log preserves the decision history from the six retired ADRs. Each entry records the original decision, why-not-the-alternative, re-audit triggers, and any later amendments. Entries appear in chronological order (earliest first); the most recent (0020) is current truth.
+This log preserves the decision history from the six retired ADRs. Each entry records the original decision, why-not-the-alternative, re-audit triggers, and any later amendments. Entries appear **newest-first** (most recent at the top), matching the other designs; **0020** (backend-aware harness state) remains the current substantive truth for state routing.
 
 ---
 
-### 2026-06-03 — ADR 0009: On-host state-mode config (Hardening I)
+### 2026-06-28 — lock-down sweep (operator review)
 
-**Decision:** State mode (vault vs. local) is configured on-host only — `state_mode` in `.agentm-config.json`, with an optional per-repo `<repo>/.harness/.project-mode` marker override. No configuration lives in the vault.
-
-**Why not in-vault markers:** a marker inside the vault is structurally unreachable on a vault-less machine — the exact machine the vault-less feature targets. The retired design read `.project-mode` from `<vault>/_harness/` (deleted); the `harness_state_mode` registry field (write-only, never read by any resolution path) was deleted as dead weight.
-
-**Why not overload the existing `mode` key:** `mode` means install mode (`source` vs. `release`) — a different axis. Conflating "how this harness was installed" with "where it writes state" would require every reader to know which bits mean what.
-
-**Why explicit, not inferred from `vault_path == null`:** a null `vault_path` is ambiguous between never-set and transiently-unreachable (Drive not yet mounted). Silent inference causes the V4 #35 split-brain class; an explicit setting is the only one that distinguishes "I chose local" from "my vault is late to mount."
-
-**Resolution order (DC-2):** (1) repo-local `<repo>/.harness/.project-mode` marker; (2) device `state_mode` in `.agentm-config.json`; (3) neither → vault-first, guarded `ValueError`.
-
-**Re-audit triggers:** `.agentm-config.json` fragments across multiple files; `vault_path == null` ambiguity is resolved (inference becomes safe); multi-vault-per-device becomes a real use case; per-repo marker proves to be the common path.
+**Locked** as a v5–v8 guidepost (final AG design sweep). No change to the seam contract; this log was reordered **newest-first** to match the other designs (it had been earliest-first as a preserved-evolution record). The six absorbed-ADR entries cite each other by number, so the reversed order doesn't break the cross-references — **0020** (backend-aware harness state) remains the current substantive truth for state routing.
 
 ---
 
-### 2026-06-12 — ADR 0012: Vault write protocol (V5-0 concurrency floor)
+### 2026-06-26 — The T1 user-space write: a separate, explicit seam call
 
-**Decision:** Ship the write-safety floor for N≥2 concurrent vault writers: per-vault advisory mutex (lock-dir outside vault, mtime heartbeat, bounded-block-with-backoff), content-hash CAS (replacing mtime CAS), atomic `fsync→rename` writer, broadened conflict-janitor, and operator pin-offline / ownership-partitioning guidance. Not the singleton MCP broker, SQLite-WAL journal, or encryption-at-rest.
+**Decision:** Writing T1 (the operator's personal space, above the `Agent/` store root) is a **separate seam call**, distinct from the normal `write` verb, run only on an authorized operator request. The normal verbs target the agent-controlled store (`Agent/` = T2/T3); T1 is unreachable through them, since its path lies above the store root. Grounds the tier model in [memory-system](agentm-memory-system).
 
-**Why not build the broker now:** R4 sequences those as Phase 1 / V5-9 / optional. The floor unblocks N≥2 writers and is the prerequisite the broker imports — shipping the floor first keeps each diff reviewable and the cutover an expand→contract.
+**Why not a tier flag on `write`:** a flag is fat-fingerable — one wrong argument spills agent output into the operator's notes. A distinct verb makes reaching user space a deliberate act, so the seam itself carries the agent-controlled / user-controlled line; the call is the gate.
 
-**Why one global lock, not per-file:** writes are short and rare, so one lock suffices. Ownership-partitioning (agents write different slugs → different files) already keeps contention near zero; per-file locking adds machinery for contention that doesn't exist.
+**Why it still composes the V5-0 protocol:** a T1 write is still a vault write — it takes the same `vault_mutex` + CAS + atomic `fsync→rename` floor; only the target root (above `Agent/`) and the authorization gate differ.
 
-**Why content-hash over mtime:** Drive re-downloads rewrite mtimes, producing false "changed" and false "unchanged" CAS verdicts. sha256 of bytes is the only reliable currency.
+**Re-audit triggers:** the vault becomes git-backed (a non-revertable T1 write stops being a concern — revisit whether the gate can relax); a host exposes a finer permission surface for user space; multi-vault support lands (a per-project shared vault may need its own tier mapping).
 
-**Why plain `fsync`, not `F_FULLFSYNC`:** the cloud copy is the durability backstop; plain `fsync` before rename ensures each uploaded snapshot is internally consistent at the right cost for short markdown writes. `fsync ≠ durable` on macOS is a documented limit, not a bug.
+---
 
-**Why vendored, not imported cross-tree (DC-9):** the `/memory` skill scripts are self-contained by construction (three install scopes; top-level `scripts/` is not installed into target prefixes). Byte-identity gate (`check-vault-lock-parity`) makes drift a hard CI failure.
+### 2026-06-19 — ADR 0020: Backend-aware harness state (current truth for DC-1)
 
-**Re-audit triggers:** a write path ever approaches seconds (grows the stale window); top-level `scripts/` ever ships into target prefixes (collapse the vendored copy to an import); vault runs on a non-synced/local-only backend (re-evaluate `F_FULLFSYNC`); a second machine ever becomes a writer (broker becomes mandatory).
+**Decision:** Reverse ADR 0018 DC-1. The three kernel state functions (`harness_state_dir`, `read_state_file`, `write_state_file`) are backend-aware: synced-backend active → vault `_harness/`; otherwise → device-local `<project>/.harness/`. Single discriminator: `resolution["backend"].capabilities.sync`. `.project-mode=local` opt-out wins over a synced backend.
+
+**Why reverse DC-1:** ADR 0018 DC-1 conflated *recall* (read-only context bundles — correctly device-local / MCP-owned, per DC-2/DC-3) with *execution state* (`PLAN.md` / `progress.md` / `ROADMAP.md`, which the synced vault exists to hold across devices). The concrete failure: a `storage.backend=vault` project's plan was invisible at session start because the SessionStart hook read the empty device-local `.harness/` instead of the vault's `_harness/`.
+
+**Why `capabilities.sync`, not `isinstance(backend, VaultBackend)`:** `harness_memory.py` must not import the obsidian-vault plugin (process-seam import-direction gate). The `capabilities.sync` flag is the contract; the implementation detail of which plugin provides it is invisible to the kernel.
+
+**Why the discriminator is the live backend, not the `vault_path` key:** ADR 0019 removed `vault_path` from the resolution shape; V5-7 removed implicit vault selection from a config-supplied `vault_path`. Honoring a bare path would resurrect the implicit inference ADR 0018 DC-4/DC-5 guard against. The backend object is the single source of truth for "is a synced store active."
+
+**Why writes go through `backend.write()`, not raw path I/O:** writing the vault directly would bypass `vault_mutex` + CAS + `atomic_write`, reintroducing the torn-write and lost-update hazards ADR 0012 exists to prevent.
+
+**Re-audit triggers:** a future backend is `sync=True` but not an appropriate state home (add a more specific capability than `sync`); any change lets a backend-selection error propagate out of `resolve_project` (crash session boot instead of degrading); vault layout moves `_harness/` out from under `projects/<slug>/`; the hook gains a second plan-discovery path that doesn't route through the bridge.
+
+---
+
+### 2026-06-18 — ADR 0019: V5-6 routing-plane de-vaulting
+
+**Decisions:** (task 1) `resolve_project` / `_vault_projects_dir` speak `Locator`s: signature change from `(vault: Path) -> Path` to `(backend: StorageBackend) -> Locator`; `resolve_project` returns `{slug, project_locator, backend, project_root, layout}`. (task 2) `repo_registry` rides the active backend: `registry_locator(backend) -> Locator`, all five public functions take `backend: StorageBackend`. (task 3) `state_mode: vault` → `"backend"` read-alias at both `_read_config_state_mode` and `_read_project_mode`; canonical value is `"backend"`; no file rewrite. (task 4) Gate extensions: no-`Path`-leak Pass 2 on routing functions; LC-8 block on routing-to-plugin imports; `storage_conformance.py` routing suite.
+
+**Why not preserve `vault_path: Path` in the resolve_project return value:** V5-7 removed implicit vault selection from a bare `vault_path` config key (a configured path ≠ a chosen backend). Honoring a bare path would resurrect implicit inference and route state to a vault the selection chain deliberately did not pick — the exact split-brain ADR 0018 DC-4/DC-5 guard against.
+
+**Why `state_mode: vault` → `"backend"` at read time, not file rewrite:** every operator's config written before V5-6 carries `state_mode: vault`; a file rewrite would require operator action for zero functional change. The alias makes the rename transparent.
+
+**Re-audit triggers:** `VaultBackend.write()` is refactored to not hold `vault_mutex` internally (update `_mutate_registry`); `"local"` state-mode value ever needs a rename; V8 multi-agent / cross-machine support is designed (cross-machine registry coherence is device-specific by assumption today).
+
+---
+
+### 2026-06-18 — ADR 0018: V5-3 storage cutover
+
+**Decisions:** (DC-1 — reversed by ADR 0020, see §3 and the §2b block) make state functions device-local only *(reversed)*. (DC-2) `phase_recall → ""` (context now V5-9 MCP). (DC-3) `resolve_documenter_context → None`. (DC-4) `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault accessible — load-bearing fail-loud guard. (DC-5) `$MEMORY_VAULT_PATH` env override is a graceful-skip (per-session escape hatch, not a durable commitment). (DC-6) Routing/index layer retained (`resolve_project`, `_vault_projects_dir`, `repo_registry`, etc. — probes for vault identity, not state reads). (DC-7) `personal-private/` → `personal/` rename shipped in lockstep with V5-3.
+
+**Why DC-4 in `vault_path()`, not only in `select_backend()`:** the guard fires on every call path that reaches vault resolution, not only through explicit selection. Also avoids circular import (`harness_memory.py` does not import `backend_selection.py`).
+
+**Why DC-2 empty-string return, not removal:** `phase_recall` is part of the frozen process-seam surface; callers get a no-op result, not an import error. V5-9 MCP replaces the recall capability at the process boundary.
+
+**DC-1 amendment — 2026-06-19 (ADR 0020 reverses DC-1):** making state functions device-local only conflated *recall* (read-only context bundles, correctly device-local / MCP-owned) with *execution state* (`PLAN.md` / `progress.md` / `ROADMAP.md`, which a synced vault exists to hold). See ADR 0020 / §3.
+
+**Re-audit triggers:** V5-9 MCP server is removed (restore a minimal recall path in the kernel); any installer auto-writes `storage.backend=vault` without ensuring a vault path; a harness state dir move (update `harness_state_dir` and callers); a proposal to write state through the routing layer (route through the seam instead).
+
+**Cross-design pointer:** ADR 0018 DC-7's `personal-private/` → `personal/` rename fires ADR 0010's first load-bearing assumption re-audit trigger — see [Foundations HLD — Vault internal taxonomy](agentm-foundations-hld).
 
 ---
 
@@ -213,56 +241,34 @@ This log preserves the decision history from the six retired ADRs. Each entry re
 
 ---
 
-### 2026-06-18 — ADR 0018: V5-3 storage cutover
+### 2026-06-12 — ADR 0012: Vault write protocol (V5-0 concurrency floor)
 
-**Decisions:** (DC-1 — reversed by ADR 0020, see §3 and the §2b block) make state functions device-local only *(reversed)*. (DC-2) `phase_recall → ""` (context now V5-9 MCP). (DC-3) `resolve_documenter_context → None`. (DC-4) `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault accessible — load-bearing fail-loud guard. (DC-5) `$MEMORY_VAULT_PATH` env override is a graceful-skip (per-session escape hatch, not a durable commitment). (DC-6) Routing/index layer retained (`resolve_project`, `_vault_projects_dir`, `repo_registry`, etc. — probes for vault identity, not state reads). (DC-7) `personal-private/` → `personal/` rename shipped in lockstep with V5-3.
+**Decision:** Ship the write-safety floor for N≥2 concurrent vault writers: per-vault advisory mutex (lock-dir outside vault, mtime heartbeat, bounded-block-with-backoff), content-hash CAS (replacing mtime CAS), atomic `fsync→rename` writer, broadened conflict-janitor, and operator pin-offline / ownership-partitioning guidance. Not the singleton MCP broker, SQLite-WAL journal, or encryption-at-rest.
 
-**Why DC-4 in `vault_path()`, not only in `select_backend()`:** the guard fires on every call path that reaches vault resolution, not only through explicit selection. Also avoids circular import (`harness_memory.py` does not import `backend_selection.py`).
+**Why not build the broker now:** R4 sequences those as Phase 1 / V5-9 / optional. The floor unblocks N≥2 writers and is the prerequisite the broker imports — shipping the floor first keeps each diff reviewable and the cutover an expand→contract.
 
-**Why DC-2 empty-string return, not removal:** `phase_recall` is part of the frozen process-seam surface; callers get a no-op result, not an import error. V5-9 MCP replaces the recall capability at the process boundary.
+**Why one global lock, not per-file:** writes are short and rare, so one lock suffices. Ownership-partitioning (agents write different slugs → different files) already keeps contention near zero; per-file locking adds machinery for contention that doesn't exist.
 
-**DC-1 amendment — 2026-06-19 (ADR 0020 reverses DC-1):** making state functions device-local only conflated *recall* (read-only context bundles, correctly device-local / MCP-owned) with *execution state* (`PLAN.md` / `progress.md` / `ROADMAP.md`, which a synced vault exists to hold). See ADR 0020 / §3.
+**Why content-hash over mtime:** Drive re-downloads rewrite mtimes, producing false "changed" and false "unchanged" CAS verdicts. sha256 of bytes is the only reliable currency.
 
-**Re-audit triggers:** V5-9 MCP server is removed (restore a minimal recall path in the kernel); any installer auto-writes `storage.backend=vault` without ensuring a vault path; a harness state dir move (update `harness_state_dir` and callers); a proposal to write state through the routing layer (route through the seam instead).
+**Why plain `fsync`, not `F_FULLFSYNC`:** the cloud copy is the durability backstop; plain `fsync` before rename ensures each uploaded snapshot is internally consistent at the right cost for short markdown writes. `fsync ≠ durable` on macOS is a documented limit, not a bug.
 
-**Cross-design pointer:** ADR 0018 DC-7's `personal-private/` → `personal/` rename fires ADR 0010's first load-bearing assumption re-audit trigger — see [Foundations HLD — Vault internal taxonomy](agentm-foundations-hld).
+**Why vendored, not imported cross-tree (DC-9):** the `/memory` skill scripts are self-contained by construction (three install scopes; top-level `scripts/` is not installed into target prefixes). Byte-identity gate (`check-vault-lock-parity`) makes drift a hard CI failure.
 
----
-
-### 2026-06-18 — ADR 0019: V5-6 routing-plane de-vaulting
-
-**Decisions:** (task 1) `resolve_project` / `_vault_projects_dir` speak `Locator`s: signature change from `(vault: Path) -> Path` to `(backend: StorageBackend) -> Locator`; `resolve_project` returns `{slug, project_locator, backend, project_root, layout}`. (task 2) `repo_registry` rides the active backend: `registry_locator(backend) -> Locator`, all five public functions take `backend: StorageBackend`. (task 3) `state_mode: vault` → `"backend"` read-alias at both `_read_config_state_mode` and `_read_project_mode`; canonical value is `"backend"`; no file rewrite. (task 4) Gate extensions: no-`Path`-leak Pass 2 on routing functions; LC-8 block on routing-to-plugin imports; `storage_conformance.py` routing suite.
-
-**Why not preserve `vault_path: Path` in the resolve_project return value:** V5-7 removed implicit vault selection from a bare `vault_path` config key (a configured path ≠ a chosen backend). Honoring a bare path would resurrect implicit inference and route state to a vault the selection chain deliberately did not pick — the exact split-brain ADR 0018 DC-4/DC-5 guard against.
-
-**Why `state_mode: vault` → `"backend"` at read time, not file rewrite:** every operator's config written before V5-6 carries `state_mode: vault`; a file rewrite would require operator action for zero functional change. The alias makes the rename transparent.
-
-**Re-audit triggers:** `VaultBackend.write()` is refactored to not hold `vault_mutex` internally (update `_mutate_registry`); `"local"` state-mode value ever needs a rename; V8 multi-agent / cross-machine support is designed (cross-machine registry coherence is device-specific by assumption today).
+**Re-audit triggers:** a write path ever approaches seconds (grows the stale window); top-level `scripts/` ever ships into target prefixes (collapse the vendored copy to an import); vault runs on a non-synced/local-only backend (re-evaluate `F_FULLFSYNC`); a second machine ever becomes a writer (broker becomes mandatory).
 
 ---
 
-### 2026-06-19 — ADR 0020: Backend-aware harness state (current truth for DC-1)
+### 2026-06-03 — ADR 0009: On-host state-mode config (Hardening I)
 
-**Decision:** Reverse ADR 0018 DC-1. The three kernel state functions (`harness_state_dir`, `read_state_file`, `write_state_file`) are backend-aware: synced-backend active → vault `_harness/`; otherwise → device-local `<project>/.harness/`. Single discriminator: `resolution["backend"].capabilities.sync`. `.project-mode=local` opt-out wins over a synced backend.
+**Decision:** State mode (vault vs. local) is configured on-host only — `state_mode` in `.agentm-config.json`, with an optional per-repo `<repo>/.harness/.project-mode` marker override. No configuration lives in the vault.
 
-**Why reverse DC-1:** ADR 0018 DC-1 conflated *recall* (read-only context bundles — correctly device-local / MCP-owned, per DC-2/DC-3) with *execution state* (`PLAN.md` / `progress.md` / `ROADMAP.md`, which the synced vault exists to hold across devices). The concrete failure: a `storage.backend=vault` project's plan was invisible at session start because the SessionStart hook read the empty device-local `.harness/` instead of the vault's `_harness/`.
+**Why not in-vault markers:** a marker inside the vault is structurally unreachable on a vault-less machine — the exact machine the vault-less feature targets. The retired design read `.project-mode` from `<vault>/_harness/` (deleted); the `harness_state_mode` registry field (write-only, never read by any resolution path) was deleted as dead weight.
 
-**Why `capabilities.sync`, not `isinstance(backend, VaultBackend)`:** `harness_memory.py` must not import the obsidian-vault plugin (process-seam import-direction gate). The `capabilities.sync` flag is the contract; the implementation detail of which plugin provides it is invisible to the kernel.
+**Why not overload the existing `mode` key:** `mode` means install mode (`source` vs. `release`) — a different axis. Conflating "how this harness was installed" with "where it writes state" would require every reader to know which bits mean what.
 
-**Why the discriminator is the live backend, not the `vault_path` key:** ADR 0019 removed `vault_path` from the resolution shape; V5-7 removed implicit vault selection from a config-supplied `vault_path`. Honoring a bare path would resurrect the implicit inference ADR 0018 DC-4/DC-5 guard against. The backend object is the single source of truth for "is a synced store active."
+**Why explicit, not inferred from `vault_path == null`:** a null `vault_path` is ambiguous between never-set and transiently-unreachable (Drive not yet mounted). Silent inference causes the V4 #35 split-brain class; an explicit setting is the only one that distinguishes "I chose local" from "my vault is late to mount."
 
-**Why writes go through `backend.write()`, not raw path I/O:** writing the vault directly would bypass `vault_mutex` + CAS + `atomic_write`, reintroducing the torn-write and lost-update hazards ADR 0012 exists to prevent.
+**Resolution order (DC-2):** (1) repo-local `<repo>/.harness/.project-mode` marker; (2) device `state_mode` in `.agentm-config.json`; (3) neither → vault-first, guarded `ValueError`.
 
-**Re-audit triggers:** a future backend is `sync=True` but not an appropriate state home (add a more specific capability than `sync`); any change lets a backend-selection error propagate out of `resolve_project` (crash session boot instead of degrading); vault layout moves `_harness/` out from under `projects/<slug>/`; the hook gains a second plan-discovery path that doesn't route through the bridge.
-
----
-
-### 2026-06-26 — The T1 user-space write: a separate, explicit seam call
-
-**Decision:** Writing T1 (the operator's personal space, above the `Agent/` store root) is a **separate seam call**, distinct from the normal `write` verb, run only on an authorized operator request. The normal verbs target the agent-controlled store (`Agent/` = T2/T3); T1 is unreachable through them, since its path lies above the store root. Grounds the tier model in [memory-system](agentm-memory-system).
-
-**Why not a tier flag on `write`:** a flag is fat-fingerable — one wrong argument spills agent output into the operator's notes. A distinct verb makes reaching user space a deliberate act, so the seam itself carries the agent-controlled / user-controlled line; the call is the gate.
-
-**Why it still composes the V5-0 protocol:** a T1 write is still a vault write — it takes the same `vault_mutex` + CAS + atomic `fsync→rename` floor; only the target root (above `Agent/`) and the authorization gate differ.
-
-**Re-audit triggers:** the vault becomes git-backed (a non-revertable T1 write stops being a concern — revisit whether the gate can relax); a host exposes a finer permission surface for user space; multi-vault support lands (a per-project shared vault may need its own tier mapping).
+**Re-audit triggers:** `.agentm-config.json` fragments across multiple files; `vault_path == null` ambiguity is resolved (inference becomes safe); multi-vault-per-device becomes a real use case; per-repo marker proves to be the common path.
