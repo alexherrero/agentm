@@ -11,7 +11,7 @@ approved: 2026-06-21
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** child-design — the Experience pillar, parent [agentm HLD](agentm-hld.md); the store this lifecycle tends is the [Memory System design](agentm-memory-system.md). `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3); the designed pieces (forward learning · scheduler · dreaming · crystallization) carry `[PENDING-IMPL]` markers.
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** child-design — the Experience pillar, parent [agentm HLD](agentm-hld.md); the store this lifecycle tends is the [Memory System design](agentm-memory-system.md). `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3); the designed pieces (forward learning · runner · dreaming · crystallization) carry `[PENDING-IMPL]` markers.
 
 # AgentM Experience & Dreaming
 
@@ -26,7 +26,7 @@ Experience runs in **two directions**:
 - **Backward** — learning from its own past. Every finished session leaves something behind that sharpens the next. **Built today.**
 - **Forward** — learning from the world. On a schedule, when configured, the agent reaches approved sources, brings back ideas to improve itself, and surfaces them to you. **Largely designed.**
 
-![Experience feeds agentm's memory from two directions — backward (reflection, built) from past sessions, forward (scheduled learning, designed) from the world — and dreaming (designed) consolidates the whole corpus into insights; the scheduler (designed) drives the scheduled passes, and the memory sharpens Opinions over time](diagrams/agentm-experience.svg)
+![Experience feeds agentm's memory from two directions — backward (reflection, built) from past sessions, forward (scheduled learning, designed) from the world — and dreaming (designed) consolidates the whole corpus into insights; the runner (designed) drives the scheduled passes, and the memory sharpens Opinions over time](diagrams/agentm-experience.svg)
 ## Design
 
 ### Backward experience
@@ -41,13 +41,13 @@ Backward learning can only sharpen what the agent has already seen; forward lear
 
 - **Approved-source learning.** On a schedule (operator-configured), the agent pulls from a list of **approved sources** — feeds, named repositories, the web — and mines them for ideas that could improve it: techniques, tools, patterns, conventions. What it finds is **surfaced to you** to accept or pass on; nothing is adopted silently. The source list and the cadence are operator-controlled — opt-in by design.
 - **The import watchlist (adapt-don't-import)** is the one piece that exists today: a deterministic rubric (`adapt_skills.py`) enriches candidate external *skills*, a judge sub-agent (`adapt-evaluator`) classifies them HIGH/MEDIUM/LOW, and a review CLI (`watchlist_review.py`) lets you promote / dismiss / defer. The broader loop generalizes this same shape — find → screen → surface — beyond skills to ideas, patterns, and references.
-- **The scheduler (the cron element).** Backward learning rides session events; forward learning has no session to ride, so it needs a scheduled trigger. The scheduler is also the home for other periodic upkeep (dreaming, index maintenance). It's a shared substrate primitive — the Maintainer and Researcher persona loops wait on it too.
+- **The runner (the background-job executor).** Backward learning rides session events; forward learning has no session to ride, so it runs on the **runner** — fired by the host's scheduler (see the [Runner design](agentm-runner.md)). The runner is also the home for other periodic upkeep (dreaming, index maintenance). It's a shared substrate primitive — the Maintainer and Researcher persona loops wait on it too.
 
-**`[PENDING-IMPL]`** — build the approved-source pipeline + the scheduler, then flip this section to as-built (documenter); today only the import watchlist ships.
+**`[PENDING-IMPL]`** — build the approved-source pipeline + the runner, then flip this section to as-built (documenter); today only the import watchlist ships.
 
 ### Dreaming — designed
 
-Memory's "sleep": a scheduled, whole-corpus consolidation pass — dedup, contradiction triage, compression, insight-generation — producing a derived insights layer. The design is locked; there's no implementation, and its own prerequisite (a revert-log primitive) is unbuilt. The planned path is a thin manual `/dream` first, scheduled later (on the scheduler above).
+Memory's "sleep": a scheduled, whole-corpus consolidation pass — dedup, contradiction triage, compression, insight-generation — producing a derived insights layer. The design is locked; there's no implementation, and its own prerequisite (a revert-log primitive) is unbuilt. The planned path is a thin manual `/dream` first, scheduled later (on the runner above).
 
 **`[PENDING-IMPL]`** — build the revert-log primitive, then `/dream`, then the scheduled pass; flip to as-built as each lands (documenter).
 
@@ -64,15 +64,15 @@ Everything routes through the existing memory engine — no new store; heat cura
 
 - **Writes to Memory** — every direction lands in the [Memory System](agentm-memory-system.md), and Experience is the **growth engine** that grows it into the interconnected knowledge base (its *How it grows* section).
 - **Sharpens Opinions** — the learned supplement is what makes an opinion's vault layer grow over time (the [Opinions design](agentm-opinions-and-gates.md)); the precise *accumulate* loop is designed, not specified.
-- **The scheduler is shared substrate** — once built, the Maintainer + Researcher persona loops ([Personas design](agentm-personas.md)) run on it too.
+- **The runner is shared substrate** — once built, the Maintainer + Researcher persona loops ([Personas design](agentm-personas.md)) run on it too.
 - **crickets touch is light** — the memory-engine sub-agents (`memory-idea-researcher`, `adapt-evaluator`) run read-only inside the harness; reflection mines sessions that *used* crickets tools but depends on none; forward learning reaches *out* to sources. Experience keeps working on a bare agentm.
 
 ## Risks & open questions
 
-- **Forward learning, the scheduler, and dreaming are designed, not built** — the two directions are lopsided today (backward shipped, forward is a sketch). Marked `[PENDING-IMPL]` above.
+- **Forward learning, the runner, and dreaming are designed, not built** — the two directions are lopsided today (backward shipped, forward is a sketch). Marked `[PENDING-IMPL]` above.
 - **The accumulate → Opinions loop is unspecified** — which experience signals sharpen which opinion, how often, and what keeps a bad signal from corrupting a standard.
 - **Dreaming's prerequisite** — a revert-log primitive must exist before whole-corpus consolidation is safe to run.
-- **Re-audit triggers:** flip forward-learning / scheduler / dreaming to as-built as each ships; specify the accumulate loop when forward learning lands.
+- **Re-audit triggers:** flip forward-learning / runner / dreaming to as-built as each ships; specify the accumulate loop when forward learning lands.
 
 ## References
 
@@ -83,6 +83,8 @@ Everything routes through the existing memory engine — no new store; heat cura
 - `~/.claude/CLAUDE.md` (opusplan) + the heat policy — the token-cost lever behind curation
 
 ## Amendment log
+
+**2026-06-28 — scheduler → runner rename (Bucket-B / critique W1).** Renamed the agentm background-job primitive **scheduler → runner** through the current-state prose — the LAUNCHED note, the diagram caption, the cron bullet, Risks, and the re-audit triggers — and pointed it at the new [Runner design](agentm-runner.md), which now owns it; the host's scheduler stays the cron that fires it. The historical 2026-06-21 entry keeps its original wording. *Re-audit trigger:* flip the runner's `[PENDING-IMPL]` to as-built when it ships.
 
 **2026-06-21 — authored, reviewed, and finalized.**
 

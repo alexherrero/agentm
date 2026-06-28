@@ -37,7 +37,7 @@ This doc is about agentm's insides: the four pillars it's built from, the compon
 
 agentm carries the goals the whole system shares — continuity, trust, control, durability (see the [Foundations](agentm-foundations-hld.md)) — and adds one that's its own:
 
-- **Growth** — agentm doesn't only persist, it accumulates. More memory, sharper opinions, eventually more hats to wear. The tools stay fixed; the person gets better with use.
+- **Growth** — agentm doesn't only persist, it accumulates. Today that means more memory: the corpus grows into a usable record. Sharper opinions and more hats to wear are the designed next step, not today's truth. The tools stay fixed; the person compounds with use — first by remembering more, in time by sharpening how it works.
 
 Everything below serves that: a durable place to keep what's learned, sound judgment about how to use it, and a way to get better with every session.
 
@@ -51,13 +51,13 @@ The shape of it — the person and its four pillars, the tools, and the foundati
 
 Each pillar, and the components that make it real:
 
-![The four pillars and the components that make each one real: Experience (reflection, scheduled learning, heat policy, idea incubation, import watchlist, the scheduler, dreaming), Memory (memory engine, storage seam, resolution plane, backends, write protocol, recall loop, harness-state I/O, MCP server), Opinions (what done/good/efficient looks like, how we engineer), Personas (the persona tier, brain + the roster, the persona gate)](diagrams/agentm-pillars.svg)
+![The four pillars and the components that make each one real: Experience (reflection, scheduled learning, heat policy, idea incubation, import watchlist, the runner, dreaming), Memory (memory engine, storage seam, resolution plane, backends, write protocol, recall loop, harness-state I/O, MCP server), Opinions (what done/good/efficient looks like, how we engineer), Personas (the persona tier, brain + the roster, the persona gate)](diagrams/agentm-pillars.svg)
 
 *The four pillars and the components that make each one real. (How each pillar relates to crickets is described per pillar below.)*
 
 ### Memory — what it has learned
 
-The durable record: everything agentm knows, kept on disk so it survives a session ending. This is the largest pillar and the ground the other three stand on. Its discipline is **one port** — every caller reaches storage the same way, through a single seam.
+The durable record: everything agentm knows, kept on disk so it survives a session ending. This is the largest pillar and the ground the other three stand on. Its discipline is **one port** — every caller reaches storage the same way, through a single seam. *(As-built caveat: two write paths — direct entry writes and the MCP server — still reach around the seam; routing them through it is the designed **V5-14** convergence, not yet built.)*
 
 **Components:**
 - **Memory engine** — the verbs (`save` · `recall` · `forget`) and the cross-cutting logic that lives exactly once (idempotency, content-hash CAS, soft-delete, token-budgeted recall, link integrity).
@@ -77,21 +77,21 @@ The durable record: everything agentm knows, kept on disk so it survives a sessi
 
 ### Experience — what's worked before, and what's worth knowing
 
-How the person gets better, in two directions. **Backward:** it learns from its own past — every finished session leaves something behind. **Forward:** on a schedule (when configured), it goes out and learns from the world — approved sources, feeds, the web — and surfaces what's worth knowing back to you.
+How the person learns, in two directions. **Backward:** it learns from its own past — every finished session leaves something behind. **Forward:** on a schedule (when configured), it goes out and learns from the world — approved sources, feeds, the web — and surfaces what's worth knowing back to you.
 
 **Components:**
 - **Reflection** *(backward)* — mines a finished session's transcript for durable preferences, workflows, and fixes (a `reflect.py` engine + a Stop-event hook + an idle-recovery hook).
 - **Scheduled learning** *(forward — largely designed)* — a periodic, opt-in pass that pulls from approved sources (RSS, the web, named repos) to mine ideas for improving the agent, then surfaces them to you to accept or pass on. The **import watchlist** (adapt-don't-import: a rubric plus a judge sub-agent) is one element of this — the part that screens external *skills* worth borrowing.
-- **The scheduler** *(the cron element)* — what lets forward learning, and other upkeep, run on a schedule rather than only as in-session hooks.
+- **The runner** *(the background-job executor)* — what lets forward learning, and other upkeep, run on a schedule (fired by the host's scheduler) rather than only as in-session hooks. *(Its own [Runner design](agentm-runner.md).)*
 - **Heat policy** — curates which memories load every session, promoting frequently-hit ones and demoting cold ones.
 - **Idea incubation** — captures a half-formed idea as a skeleton a researcher sub-agent later fills.
 - **Dreaming** *(designed, not built)* — a scheduled whole-corpus consolidation pass; the design is locked, the build is still ahead.
 
-**How they fit:** backward learning runs as session hooks (reflection → Memory / incubation / watchlist); forward learning runs on the scheduler (out to approved sources → surfaced to you); heat curation keeps the always-load set lean; dreaming (future) would consolidate the whole corpus.
+**How they fit:** backward learning runs as session hooks (reflection → Memory / incubation / watchlist); forward learning runs on the runner (out to approved sources → surfaced to you); heat curation keeps the always-load set lean; dreaming (future) would consolidate the whole corpus.
 
 **Where it touches crickets:** lightly — the sub-agents run inside the harness, and forward learning reaches *out* to sources rather than into crickets. The Experience pillar keeps working on a bare agentm.
 
-*Detail — backward vs. forward learning, the scheduler, the approved-source pipeline, the import watchlist, the heat thresholds, incubation, and the full dream-mode design — in the [Experience & Dreaming design](agentm-experience-and-dreaming.md).*
+*Detail — backward vs. forward learning, the runner, the approved-source pipeline, the import watchlist, the heat thresholds, incubation, and the full dream-mode design — in the [Experience & Dreaming design](agentm-experience-and-dreaming.md).*
 
 ### Opinions — how things should go
 
@@ -211,5 +211,7 @@ The review rounds settled the model. **Opinions** = four named, abstract surface
 **0015 — Capability discovery via `capability_resolver.py` (2026-06-15).** Capability-keyed registry in agentm; single version-range check; Antigravity `capabilities.json` sidecar; graceful degrade (empty capability set, never error). Why not host enumeration: capability IDs are stable across hosts; range checks let the host evolve without agentm changes. Why not error on missing: graceful degrade keeps phases functional when the plugin is absent. *Re-audit triggers:* DC-1 through DC-6 (multi-host, ID collision, range-check ambiguity, sidecar burden, masked mismatch, startup latency).
 
 **2026-06-24 — reconciled to the now-final children + added the model+effort-routing child (AG Phase 3 lift).** All AG child designs are content-final; this parent is brought current. A new cross-cutting child **[model + effort routing](agentm-model-effort-routing.md)** (a model × effort tier scale T0…T4 with Claude + Gemini equivalents, a persona→tier map, and a new **`tier:`** persona-manifest axis) is added to the frontmatter `children`, the Personas "a persona declares" list, and the References child block. The Personas gloss is corrected ("the two personas" → the full ~11-persona roster). Why not a fifth pillar: it is cross-cutting — it adds a `tier:` axis to Personas and realizes the `efficient` opinion's model-routing lever, not a standalone pillar. `diagrams/agentm-pillars.svg` regenerated at the lift to show the tier axis under Personas. *Re-audit trigger:* re-pin the SVG tier axis label on the next persona model change.
+
+**2026-06-28 — AG critique revisions (R7 · W4 · scheduler→runner).** Softened the **Growth** framing so memory-accumulation reads as today's truth and opinion-sharpening as the explicit designed next step (ruling 7 / critique §4). Added the **one-port** as-built caveat — direct entry writes + the MCP server still reach around the seam (the V5-14 convergence is designed, not built; W4). Renamed the agentm background-job primitive **scheduler → runner** through the Memory/Experience prose, pointing to the [Runner design](agentm-runner.md) (the host's scheduler stays the cron that fires it); the historical 2026-06-20 entry keeps its original wording. *Re-audit triggers:* flip the V5-14 + runner flags to as-built as each ships.
 
 **2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/`, flipped `status: proposed → launched`, and superseded the predecessor `memory-os-architecture.md` with a forward-pointer (its basename was preserved so crickets' up-links resolved; since vault-archived 2026-06-24, AG Wave 2, with those up-links repointed here). Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: agentm/architecture`, `governs: [scripts/**]` — the broad agentm-substrate fallback; the children lift narrower `governs:` globs in Phase 3 (and the seam fold adds `agentm/storage`), at which point most-specific-wins refines resolution automatically. Now resolvable by [`governs_resolver.py`](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift. (Area + governs reconciled 2026-06-21 to the canonical two-level taxonomy: `agentm` → `agentm/architecture`, `[scripts, harness]` → `[scripts/**]`.)
