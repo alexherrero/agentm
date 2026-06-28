@@ -9,7 +9,7 @@ area: shared/foundations
 ---
 
 > [!NOTE]
-> **LAUNCHED (2026-06-20).** The live shared-philosophy / foundations parent HLD, lifted into tracked `wiki/designs/` in AG Phase 2. This is the root the agentm and crickets HLDs point *up* at and inherit by reference.
+> **LAUNCHED (2026-06-20) · locked 2026-06-28 (final AG design sweep).** The live shared-philosophy / foundations parent HLD, lifted into tracked `wiki/designs/` in AG Phase 2. This is the root the agentm and crickets HLDs point *up* at and inherit by reference.
 
 # Foundations for a useful assistant
 Artificial Intelligence, and by extension an Agent, must be useful to be worthwhile. Agents are gaining capabilities fast through harnesses like Claude Code or Antigravity. But to be useful to the largest audience, a harness must appeal to large groups. So agents today are versatile tools more than personal, individualized extensions of the person using them.
@@ -56,23 +56,23 @@ Each principle below includes an **explanation** about why we believe it, citati
 
 **P1 · Memory lives on disk, not in the conversation.**
 Every session starts blank — on its own, the agent recalls nothing from last time. So anything worth keeping is written to a durable file and read back when the next session begins. Memory lives on disk, written as the agent works and recalled when it returns, the way a careful engineer trusts their notes over their recollection.
-*Grounded in [`harness/principles.md`](#references).*
+*Grounded in [`harness/principles.md` § "State lives on disk, not in context"](#references).*
 
 **P2 · Coherent work is grouped and owned.**
 Work that has to hold together in one mind — building a feature, keeping a design straight — suffers when it's split across several hands at once. So each coherent piece has one owner that sees it through. Reading and research can fan out widely; the authoring stays with a single owner. In practice, one session works one task at a time, and the build stops a change that crosses ownership the wrong way.
-*Grounded in [`harness/principles.md`](#references).*
+*Grounded in [`harness/principles.md` § "Single-threaded for coherence, fan-out only for read-only breadth"](#references).*
 
 **P3 · Checks before opinions.**
 A test that runs tells you the truth; an AI's "looks good to me" only sounds like it does. So the agent trusts deterministic checks — types, lint, tests, build — ahead of any judgment, its own or another model's. The checks pass before anything counts as done, and a model's review sits on top of them.
-*Grounded in [`scripts/check-all.sh`](#references).*
+*Grounded in [`scripts/check-all.sh` — the deterministic gate battery](#references).*
 
 **P4 · Assume there are bugs.**
 A reviewer only finds problems if it goes in expecting them. So review starts from the assumption that the work is flawed and hunts for the flaw — and it has to come back with something concrete, a failing test or an exact line, to count. A review that waves everything through is doing nothing.
-*Grounded in [`adversarial-reviewer.md`](#references).*
+*Grounded in [`adversarial-reviewer.md` — the assume-bugs review contract](#references).*
 
 **P5 · The human owns the irreversible.**
 The agent should move fast on anything it can undo and stop on anything it can't. The line that matters is recoverability: a change you can roll back, it just makes; a change you can't — rewriting shared history, deleting the only copy of something — it pauses and hands to you. When the answer to "can this be undone?" is no, the human owns the call.
-*Grounded in [`recoverability/SKILL.md`](#references).*
+*Grounded in [`recoverability/SKILL.md` § the recoverable-vs-unrecoverable gate](#references).*
 
 **P6 · Build from independent pieces that snap together.**
 A part you can add or remove on its own is a part you can understand, test, and replace; one tangled whole is none of those. So the system is built from separate pieces that snap together — the memory engine stands alone, and each capability plugs on beside it, finding the others by name and carrying on when one is missing.
@@ -80,15 +80,15 @@ A part you can add or remove on its own is a part you can understand, test, and 
 
 **P7 · Prefer the simplest thing that works.**
 Reach for the least machinery the job needs, and add more only when the work demands it. This shows up most in what we choose to leave out — splitting the toolbox out of the core, unbundling the phase loop — keeping each piece small enough to hold in your head.
-*Grounded in [`harness/principles.md`](#references).*
+*Grounded in [`harness/principles.md` § "Simplicity first"](#references).*
 
 **P8 · Re-check the scaffolding when the model changes.**
 The whole harness is scaffolding shaped around how one model behaves. When the model changes, that shaping can quietly stop helping. So a new model is a cue to re-audit the scaffolding rather than carry it forward on faith — every decision record carries its own "re-check this if…" note for exactly that moment.
-*Grounded in [`harness/principles.md`](#references).*
+*Grounded in [`harness/principles.md` § "Re-audit the harness on every model bump"](#references).*
 
 **P9 · Match the model to the work.**
 A powerful model doing simple work spends the day's budget for nothing. So the heavy model is saved for planning and judgment, a lighter one runs the long mechanical stretches, and memory loads only what's warm enough to earn its cost. Done right, it's the difference between running for an hour and running all day.
-*Grounded in [`heat_policy.py`](#references).*
+*Grounded in [`heat_policy.py` — the warm-set heat lever](#references).*
 
 *A note on the list:* "work in phases" isn't among these nine — running work in phases is how the person operates, so it lives in the [agentm HLD](agentm-hld.md), not in the shared foundation.
 
@@ -102,21 +102,21 @@ These homes are centers of gravity with shared edges. *Checks before opinions* (
 
 ## References
 
-A single primary source per principle, grouped by where it lives today. Repo paths are relative to each repo root; vault paths are relative to `projects/agentm/_harness/` unless noted; ADRs by number. These point at today's evidence and will move as the code evolves — the principle is what's load-bearing, the citation just shows where it's grounded now.
+A single primary source per principle, grouped by where it lives today. Repo paths are relative to each repo root; vault paths are relative to `projects/agentm/_harness/` unless noted; a folded decision is cited by the living design that now holds it (the decision lives in that design's amendment log), not by a retired ADR number. These point at today's evidence and will move as the code evolves — the principle is what matters, the citation just shows where it's grounded now.
 
 **agentm repo**
 - `harness/principles.md` — memory-on-disk (P1), single ownership (P2), the evaluator section (P3), simplest-thing (P7), re-audit (P8)
 - `AGENTS.md` — state-on-disk (P1), single-thread + sub-agent rules (P2), checks-first (P3)
 - `scripts/` — `harness_memory.py`, `vault_lock.py`, `harness/skills/memory/scripts/recall.py` (P1); `check-all.sh` (P3); `check-process-seam-import-direction.sh`, `queue_status_lite.py` (P2); `capability_resolver.py` (P6); `heat_policy.py` (P9)
 - `wiki/reference/CI-Gates.md`, `Vault-Write-Protocol.md` (P1, P3); `wiki/explanation/Product-Intent.md` (P7, P8)
-- [memory-storage-seam](memory-storage-seam.md) (P1: 0012/0013/0018/0019); [agentm-hld](agentm-hld.md) (P4: 0001, P6: 0011, P9: 0014); [agentm-foundations-hld](agentm-foundations-hld.md) (P6: 0006, P8: 0002/0004/0010 — doc + vault taxonomy); [persona-tier](persona-tier.md) (P8: the persona tier, former ADR 0016)
+- [memory-storage-seam](memory-storage-seam.md) (P1 — the storage + write-protocol decisions); [agentm-hld](agentm-hld.md) (P4 phase-gating · P6 unbundling · P9 model-routing); [agentm-foundations-hld](agentm-foundations-hld.md) (P6 crickets-split · P8 the doc + vault-taxonomy conventions); [persona-tier](persona-tier.md) (P8 — the persona tier)
 
 **crickets repo**
 - `src/code-review/agents/adversarial-reviewer.md`, `wiki/explanation/Why-Adversarial-Review.md` (P4)
 - `src/developer-safety/skills/recoverability/SKILL.md` (P5, primary), `hooks/commit-on-stop/hook.md` (P5)
 - `src/developer-workflows/commands/{work,bugfix,release,review}.md` (P4, P5)
 - [crickets-composition](https://github.com/alexherrero/crickets/wiki/crickets-composition) (P6) — the `enhances:` soft-composition design (subsumed `developer-plugin-suite.md`, AG Wave 2)
-- [development-lifecycle](https://github.com/alexherrero/crickets/wiki/crickets-development-lifecycle) (P9 — phase-aware model routing; former ADR 0026) · [build-system](https://github.com/alexherrero/crickets/wiki/crickets-build-system) (P6 — native plugin distribution; former ADR 0013)
+- [development-lifecycle](https://github.com/alexherrero/crickets/wiki/crickets-development-lifecycle) (P9 — phase-aware model routing) · [build-system](https://github.com/alexherrero/crickets/wiki/crickets-build-system) (P6 — native plugin distribution)
 
 **vault research** (`projects/agentm/`)
 - `decisions/` — `autonomous-write-contract.md` (P1, P5), `research-concurrent-vault-writes.md` (P1), `research-multi-developer-vault.md` (P2), `memory-os-architecture-scan.md` (P6), `research-dream-mode-design.md` (P5), `research-token-efficiency-novel.md` (P9), `research-loop-engineering-autonomy.md` (P8)
@@ -127,13 +127,7 @@ A single primary source per principle, grouped by where it lives today. Repo pat
 
 ## Amendment log
 
-**2026-06-20 — authored, reviewed, and finalized.**
-
-Authored 2026-06-19 from the ratified shared-philosophy Overview (design-doc Appendix A) and a two-round read-only grounding sweep (readers + a completeness critic), then taken through operator review to a vision-led voice. The nine principles **P1–P9** each carry a plain-English explanation and a single reference into the index; the three diagrams (relate, foundation-tree, synthesis) are hand-authored vector SVGs under `diagrams/`.
-
-Key calls preserved through review: the agentm/crickets **primary-home banding** in the synthesis diagram (agentm carries P1/P2/P3/P9, jointly-held P6/P7/P8, crickets carries P4/P5); and the honesty flags — **P7** (simplest thing) is thinly-established, **P8** (re-check scaffolding) is manual discipline with no enforcing CI gate, and **P3**'s gate count is reconciled to **22** against `check-all.sh` (16 `check-*` + 4 `verify-*` + unit tests + adapter validation). The generalized voice lessons from the operator's rewrite were captured in the always-load `docs-prose-style.md` and carried into the agentm + crickets passes.
-
-**Approved 2026-06-20** (frontmatter `approved: 2026-06-20`); `status` stays `proposed` until the Phase-1 lift into tracked `wiki/designs/` flips it to `launched`. **Re-audit triggers:** flip `status` at the lift; re-confirm the primary-home banding against the agentm + crickets HLDs (they must not contradict it); re-count P3's gates if `check-all.sh` changes; the references are deliberately thin and expected to be replaced as the code moves.
+**2026-06-28 — lock-down sweep (operator review).** Sized the three diagrams (`width`/`height` so they render large like the other designs); made each P-by-P **grounding link specific** — it now names the section within its source (e.g. `principles.md` § "State lives on disk") rather than the bare file; reworked **References** to point at the living designs (whose amendment logs hold the former-ADR decisions) instead of citing retired ADR numbers; and reordered this log newest-first. *Presentation + citation hygiene only — no change to the principles or the model.*
 
 **2026-06-24 — subsumed the agentm documentation-convention design (`seven-section-convergence.md`) into this shared root (AG Wave 2, move-and-retire).** That living design — itself the home of the folded agentm ADRs **0002** (documentation convention) and **0004** (Diátaxis spec) — is deleted; git retains the full convergence narrative. The shared documentation convention now lives here.
 
@@ -159,3 +153,11 @@ The two decisions this convention folded in (preserved with decision + why-not +
 **0008 — Project surface split: agentm → #2, crickets → #5 (2026-06-03).** Two separate GitHub Projects boards; cross-repo dependencies expressed via the issue graph, not board membership; operator-personal issues stay in agentm#2. Why not a single board: the two projects have different audiences and lifecycles; one board hides crickets work behind agentm noise. *Cross-repo:* the crickets board and its depth convention live in the [Crickets GitHub Projects design](https://github.com/alexherrero/crickets/wiki/crickets-github-projects). *Re-audit trigger:* if the two boards diverge in tooling or the cross-repo issue graph becomes unmanageable.
 
 **2026-06-20 — lifted + launched (AG Phase 2, A0/A1).** Lifted into tracked `wiki/designs/` and flipped `status: proposed → launched`. Stamped the AG governance frontmatter: `kind: design`, `scope: arc`, `area: shared/foundations` — **area-only, no `governs:`**: the shared-philosophy root governs no code (it's reached by area, not by file glob), per the [area taxonomy](Design-Governance). *Re-audit trigger satisfied:* status flipped at the lift. (Area reconciled 2026-06-21 from the placeholder `foundations`/`harness/principles.md` stamp to the canonical two-level vocab.)
+
+**2026-06-20 — authored, reviewed, and finalized.**
+
+Authored 2026-06-19 from the ratified shared-philosophy Overview (design-doc Appendix A) and a two-round read-only grounding sweep (readers + a completeness critic), then taken through operator review to a vision-led voice. The nine principles **P1–P9** each carry a plain-English explanation and a single reference into the index; the three diagrams (relate, foundation-tree, synthesis) are hand-authored vector SVGs under `diagrams/`.
+
+Key calls preserved through review: the agentm/crickets **primary-home banding** in the synthesis diagram (agentm carries P1/P2/P3/P9, jointly-held P6/P7/P8, crickets carries P4/P5); and the honesty flags — **P7** (simplest thing) is thinly-established, **P8** (re-check scaffolding) is manual discipline with no enforcing CI gate, and **P3**'s gate count is reconciled to **22** against `check-all.sh` (16 `check-*` + 4 `verify-*` + unit tests + adapter validation). The generalized voice lessons from the operator's rewrite were captured in the always-load `docs-prose-style.md` and carried into the agentm + crickets passes.
+
+**Approved 2026-06-20** (frontmatter `approved: 2026-06-20`); `status` stays `proposed` until the Phase-1 lift into tracked `wiki/designs/` flips it to `launched`. **Re-audit triggers:** flip `status` at the lift; re-confirm the primary-home banding against the agentm + crickets HLDs (they must not contradict it); re-count P3's gates if `check-all.sh` changes; the references are deliberately thin and expected to be replaced as the code moves.
