@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Vault Storage & Presentation design + two how-tos (proposed).** A full design ([`wiki/designs/agentm-vault-storage-presentation.md`](wiki/designs/agentm-vault-storage-presentation.md)) under the [Memory↔Storage Seam](wiki/designs/memory-storage-seam.md) — where the vault is stored and how it reaches your devices: the git and Drive transports plus the optional Obsidian presentation layer, with the hub/hybrid rejected (two sync engines on one tree → double-conflicts). Ships the two operator recipes [Back the vault with Google Drive](wiki/how-to/Back-The-Vault-With-Drive.md) and [Set up Obsidian on the vault](wiki/how-to/Use-Obsidian-With-The-Vault.md). Governs no code yet (`status: proposed`); the git transport is the forthcoming crickets `vault-git` plugin.
 - **`LICENSE-CONTENT`** — CC-BY-4.0 for documentation, prompts, agent instructions, and skill / command / workflow definitions (the prose where the contribution lives). Boundary rule: a prompt embedded as a string literal inside a code file is content (CC-BY-4.0).
 - **`NOTICE`** — Apache attribution notice + the code/content license map.
 - **`TRADEMARK.md`** — brand policy for the "agentm" / "Agent M" name and logos.

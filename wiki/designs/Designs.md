@@ -23,6 +23,7 @@ The current top-level design parents (AG-track Phase 1, `status: launched`). Chi
 - [AgentM HLD](agentm-hld) — the agentm parent: the four pillars (Experience · Memory · Opinions · Personas), their components, and where each touches crickets. **Succeeds** the V5 Memory-OS HLD (vault-archived 2026-06-24, AG Wave 2; its V1→V8 arc lives in the AgentM HLD's Evolution-arc subsection).
   - [Memory System](agentm-memory-system) — the seam, backends, write protocol, recall loop, storage layers, V5-14 target gap.
   - [Memory↔Storage Seam](memory-storage-seam) — the storage contract (seam verbs, `Locator` guards, tiers), backends, V5-0 write protocol, routing plane, backend-aware harness state.
+    - [Vault Storage & Presentation](agentm-vault-storage-presentation) — where the vault is stored and how it reaches your devices: the git and Drive transports plus the optional Obsidian layer. (Proposed; governs no code yet.)
   - [Experience & Dreaming](agentm-experience-and-dreaming) — reflection (backward), scheduled learning (forward), heat policy, dreaming, the runner.
   - [Opinions & Gates](agentm-opinions-and-gates) — the nine-opinion catalog and the request-by-name model.
   - [Opinion registry](agentm-opinion-registry) — the request-by-name resolver, the entry schema, the catalog the resolver serves.

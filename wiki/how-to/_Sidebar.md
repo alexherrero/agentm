@@ -14,6 +14,8 @@
 - [Tune auto-orchestration](Tune-Auto-Orchestration)
 - [Run without a vault](Run-Without-A-Vault)
 - [Choose a storage backend](Choose-A-Storage-Backend)
+- [Back the vault with Google Drive](Back-The-Vault-With-Drive)
+- [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault)
 - [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)

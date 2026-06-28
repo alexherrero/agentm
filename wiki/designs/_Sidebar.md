@@ -15,6 +15,7 @@
 - [AgentM HLD](agentm-hld)
   - [Memory System](agentm-memory-system)
   - [Memory↔Storage Seam](memory-storage-seam)
+    - [Vault Storage & Presentation](agentm-vault-storage-presentation)
   - [Experience & Dreaming](agentm-experience-and-dreaming)
   - [Opinions & Gates](agentm-opinions-and-gates)
   - [Opinion registry](agentm-opinion-registry)
