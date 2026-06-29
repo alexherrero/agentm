@@ -94,13 +94,13 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 ### The persona gate
 
-`check-personas.py` keeps the tier honest at build time: **`requires ⊆ substrate`** (a persona hard-requires only substrate, never a crickets capability — composition is the soft `enhances:` path) and **no always-load** (a persona carries no always-load weight). These keep a persona from quietly becoming a layer everything depends on, and keep it cheap. The gate is build-time *enforcement* of the manifest contract — the contract itself is defined in the [persona-tier design](persona-tier.md) (which folds the former ADR 0016), not here.
+`check-personas.py` keeps the tier honest at build time: **`requires ⊆ substrate`** (a persona hard-requires only substrate, never a crickets capability — composition is the soft `enhances:` path) and **no always-load** (a persona carries no always-load weight). These keep a persona from quietly becoming a layer everything depends on, and keep it cheap. The gate is build-time *enforcement* of the manifest contract — the contract itself is defined in the [persona-tier design](persona-tier.md), not here.
 
 ## Dependencies
 
 - **Composes crickets tools by name** through the soft `enhances:` path — the runtime resolver is agentm's `capability_resolver.py` (the [composition design](https://github.com/alexherrero/crickets/wiki/crickets-composition)); when a named tool is absent the persona degrades gracefully and still works on a bare agentm.
 - **Leans on** the [Opinions](agentm-opinions-and-gates.md) surfaces (the "Leans on" column) — *how* a persona retrieves an opinion is the request-by-name registry there (designed, not built).
-- **Points up at** the [agentm HLD](agentm-hld.md) §Personas; **builds on** `wiki/designs/persona-tier.md` (the locked tier design — the inverted-dependency tier; it folds the former ADR 0016).
+- **Points up at** the [agentm HLD](agentm-hld.md) §Personas; **builds on** `wiki/designs/persona-tier.md` (the locked tier design — the inverted-dependency tier).
 
 ## The roster
 
@@ -135,11 +135,12 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 - `personas/` — `rememberer.md` (the pseudo-persona, renaming to `brain.md`), `team-coordinator.md` (today's Planner seed)
 - `scripts/check-personas.py` — the `requires ⊆ substrate` + no-always-load gate
 - `scripts/capability_resolver.py` — the `enhances:` runtime resolver a persona composes through
-- [persona-tier](persona-tier.md) (the locked tier design — folds the former ADR 0016; reconciled to point here for the discriminator)
+- [persona-tier](persona-tier.md) (the locked tier design — reconciled to point here for the discriminator)
 - design-doc §4 (classification spine) + §9.6 (persona-vs-role — **resolved here**)
 
 ## Amendment log
 
+- **2026-06-28 — lock-down sweep (operator review).** Dropped the three `former ADR 0016` citations (body · Dependencies · References) — the persona-tier design holds that decision in its own amendment log (item-3 hygiene). Everything else was already compliant from the 06-27 re-promote (both SVGs sized, log newest-first). Locked as a v5–v8 guidepost.
 - **2026-06-27 — re-review compression (operator).** The 2026-06-26 discriminator fold over-weighted this abbreviated design (~40% of the body) and triplicated the gate. Compressed the discriminator to its core — the live test, the in-order classification, the decision-tree SVG, and a tightened note that the test is a human call enforced only by the build-time gate (§The persona gate stays the single home for the gate mechanics; `persona-tier` holds the rest of the detail). Fixed three nits: `(shape: persona)` → `(kind: persona)` in §manifest; the References seed file named `rememberer.md` (renaming to `brain.md`, pending); the Goal launch-mode qualified as riding the host's run (the [goal contract](agentm-goal-contract)), since agentm ships no `/goal` command. No content lost.
 - **2026-06-26 — made this the canonical home of the persona/tool discriminator.** Expanded the discriminator section into the full test: the live test (cross-capability judgment), the mechanical floor (the inverted dependency direction / `requires:` ⊆ substrate, gate-enforced), the in-order classification rule + a decision-tree diagram, **how the check runs** (`check-personas.py` is a build-time lint run by `check-all.sh` + CI — not a runtime resolver; the judgment test is the author's call at placement), the two rejected near-miss axes, the surrounding vocabulary (skill · sub-agent · role · opinion · substrate), the homing rule, and resist-the-persona-zoo. [persona-tier](persona-tier) is reconciled to point here (closing its one-directional "arbitrates" supersession); the HLD, the design-doc spine, and persona-activation point here for the rule. *Re-audit:* land the role-retirement rename in crickets; do the manifest `rememberer`→`brain` rename.
 - **2026-06-24 — added the `tier:` model+effort axis (pointer to the routing design).** A persona now declares a **`tier:`** (model × reasoning-effort, T0…T4) — a manifest field + a Tier column on the roster — bound from the new cross-cutting [model + effort routing](agentm-model-effort-routing.md) design (which owns the scale, the Claude/Gemini equivalents, and the enforcement). One-way: personas declare the tier, the routing design defines the scale; no scale/rationale is duplicated here. **Re-audit trigger:** wire the `tier:` field into `check-personas.py` + the activation plumbing (apply the tier at adoption) when the routing design is built.
