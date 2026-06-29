@@ -11,7 +11,7 @@ approved: 2026-06-23
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-23).** child-design — **model + effort routing** (automatically binding a model + reasoning-effort *tier* to each persona/role, so the right model runs each job without a per-session `/model`). A **cross-cutting** design, agentm-anchored. Points *up* at the [agentm HLD](agentm-hld.md).
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-23) · locked 2026-06-28 (final AG design sweep).** child-design — **model + effort routing** (automatically binding a model + reasoning-effort *tier* to each persona/role, so the right model runs each job without a per-session `/model`). A **cross-cutting** design, agentm-anchored. Points *up* at the [agentm HLD](agentm-hld.md).
 
 # model + effort routing
 
@@ -47,20 +47,7 @@ Routing collapses two dimensions — **model strength × reasoning effort** — 
 
 *A persona's tier is its **default**; a mode-dependent persona escalates one tier for a genuinely harder sub-task (e.g. Planner → T3 for a roadmap call). The escalation is bounded by the persona's declared ceiling.*
 
-```mermaid
-graph TD
-    P9["P9 · match the model to the work<br/><i>foundation principle</i>"] --> POL["tier scale<br/><i>T0 mechanical … T4 deep<br/>(model × effort)</i>"]
-    EFF["efficient opinion<br/><i>the policy lever</i>"] --> POL
-    PER["personas<br/><i>each declares a tier</i>"] --> POL
-    POL --> ENF{"enforcement<br/>per host + surface"}
-    ENF -->|spawned agent-def| AUTO["model: + effort: frontmatter<br/><i>host-applied · automatic</i>"]
-    ENF -->|in-session phase| ADV["tier nudge<br/><i>advisory · /model override</i>"]
-    ENF -->|build default| OPL["opusplan<br/><i>global alias</i>"]
-    TA["token-audit<br/><i>cost trend</i>"] -. "tunes (dreaming)" .-> POL
-    CR["content-refresh"] -. "re-pins model strings" .-> POL
-    classDef des fill:#f4f4f6,stroke:#b0b0b8,color:#8a8a92;
-    class CR des;
-```
+![Model + effort routing — P9, the efficient opinion, and personas feed the tier scale (T0 mechanical … T4 deep, model × effort); enforcement renders a tier per host + surface into a spawned agent-def (model:/effort: frontmatter, automatic), an in-session advisory nudge, or the opusplan build default; token-audit's cost trend tunes the scale and content-refresh (designed) re-pins its model strings](diagrams/agentm-model-effort-routing.svg)
 
 *P9 + the `efficient` opinion set the policy; the personas declare tiers against the scale; enforcement renders a tier into a real model+effort per host and surface; token-audit's cost trend tunes the scale and content-refresh keeps its model strings current.*
 
@@ -121,8 +108,10 @@ The tier is the portable unit; each host renders it through the chart. Claude Co
 - **Binding + enforcement + feed:** [personas](agentm-personas.md) (the `tier:` axis) · [development-lifecycle](https://github.com/alexherrero/crickets/wiki/crickets-development-lifecycle) (agent-def frontmatter) · [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit) (the cost trend) · [`content-refresh`](https://github.com/alexherrero/crickets/wiki/crickets-maintenance) (chart re-pin)
 - **Up:** [agentm HLD](agentm-hld.md) · [composition](https://github.com/alexherrero/crickets/wiki/crickets-composition)
 
+**2026-06-28 — lock-down sweep (operator review).** Replaced the mermaid diagram with a hand-authored SVG ([`agentm-model-effort-routing.svg`](diagrams/agentm-model-effort-routing.svg), house style, sized) — the first of the mermaid→SVG conversions. Reordered the amendment entries newest-first. Locked as a v5–v8 guidepost.
+
+**2026-06-28 — worker.md realigned to T1 (critique ruling 8).** The crickets `developer-workflows` worker agent-def moved `model: claude-opus-4-8` → `claude-sonnet-4-6` (the T1 executor; crickets `developer-workflows` 0.27.0, CHANGELOG-recorded), resolving the W4 as-built/design contradiction — the design specified worker→T1 while the code pinned full Opus. The as-built-precedent reference above is updated to match. *Re-audit:* none — design + code now agree; the broader effort-axis + `tier:` wiring stays `[PENDING-IMPL]`.
+
 **2026-06-23 — authored, reviewed, and finalized.** Homed as **its own cross-cutting design, agentm-anchored** (not a plugin, not a single-doc amendment): the policy is the `efficient` opinion + foundation P9, the per-persona binding is a new `tier:` axis on the persona manifest, and enforcement spans crickets agent-defs + the host. Model + effort are normalized to a **five-tier scale** (T0 Mechanical … T4 Deep) with **Claude + Gemini equivalents** — T4–T2 on Opus / Gemini 3 Pro, T1 Execute on `opusplan` / Gemini 3.5 Flash high, T0 Mechanical on Sonnet-Haiku / Gemini 3.5 Flash normal (operator-set; on Gemini the bottom two tiers are one Flash model at differing effort, no Pro→Flash split) — plus a **persona→tier** map (research/audit→T4, roadmap→T3, planning/PM→T2, worker→T1).
 
 The **net-new** pieces are all `[PENDING-IMPL]`: the **effort axis** (today's as-built crickets *phase-aware-model-routing* is model-only, three roles), the **`tier:` manifest field** + validator, roster-wide binding, and activation that applies the tier at adoption. token-audit feeds the tuning trend one-way; **`content-refresh` carries the chart as a named refresh-checklist item** — a model release auto-re-pins the version strings + Gemini column, while a genuinely new model's tier placement surfaces for review. **Next (wiring):** short pointer amendments into [personas](agentm-personas.md) (the `tier:` axis) + the [`efficient` opinion](agentm-opinions-and-gates.md) (the routing lever). **Re-audit:** add the `tier:` field + validator; generalize the agent-def routing + add `effort:`; wire activation + content-refresh; re-pin on every model release.
-
-**2026-06-28 — worker.md realigned to T1 (critique ruling 8).** The crickets `developer-workflows` worker agent-def moved `model: claude-opus-4-8` → `claude-sonnet-4-6` (the T1 executor; crickets `developer-workflows` 0.27.0, CHANGELOG-recorded), resolving the W4 as-built/design contradiction — the design specified worker→T1 while the code pinned full Opus. The as-built-precedent reference above is updated to match. *Re-audit:* none — design + code now agree; the broader effort-axis + `tier:` wiring stays `[PENDING-IMPL]`.
