@@ -11,7 +11,7 @@ approved: 2026-06-21
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** child-design — the Experience pillar, parent [agentm HLD](agentm-hld.md); the store this lifecycle tends is the [Memory System design](agentm-memory-system.md). `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3); the designed pieces (forward learning · runner · dreaming · crystallization) carry `[PENDING-IMPL]` markers.
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21) · locked 2026-06-28 (final AG design sweep).** child-design — the Experience pillar, parent [agentm HLD](agentm-hld.md); the store this lifecycle tends is the [Memory System design](agentm-memory-system.md). `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3); the designed pieces (forward learning · runner · dreaming · crystallization) carry `[PENDING-IMPL]` markers.
 
 # AgentM Experience & Dreaming
 
@@ -83,6 +83,8 @@ Everything routes through the existing memory engine — no new store; heat cura
 - `~/.claude/CLAUDE.md` (opusplan) + the heat policy — the token-cost lever behind curation
 
 ## Amendment log
+
+**2026-06-28 — lock-down sweep (operator review).** Sized the diagram (`width`/`height`); confirmed the content (two-directional learning · the built-vs-designed split · the growth-engine framing) and the newest-first log. Locked as a v5–v8 guidepost. *(The deferred memoryvault split will later fold its reflection-sidecar, idea-ledger, crash-recovery-marker, and internet-skill-discovery units in here — see MEMORYVAULT-SPLIT-MAP.)*
 
 **2026-06-28 — scheduler → runner rename (Bucket-B / critique W1).** Renamed the agentm background-job primitive **scheduler → runner** through the current-state prose — the LAUNCHED note, the diagram caption, the cron bullet, Risks, and the re-audit triggers — and pointed it at the new [Runner design](agentm-runner.md), which now owns it; the host's scheduler stays the cron that fires it. The historical 2026-06-21 entry keeps its original wording. *Re-audit trigger:* flip the runner's `[PENDING-IMPL]` to as-built when it ships.
 
