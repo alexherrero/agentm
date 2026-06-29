@@ -14,6 +14,7 @@
 - [Queue status lite](Queue-Status-Lite)
 - [AgentMemory context payload](AgentMemory-Context-Payload)
 - [Process seam](Process-Seam)
+- [Orchestration bridge](Orchestration-Bridge)
 - [Storage seam](Storage-Seam)
 - [Auto-orchestration config](Auto-Orchestration-Config)
 - [Capability resolver](Capability-Resolver)
