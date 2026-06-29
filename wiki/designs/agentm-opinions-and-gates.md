@@ -10,7 +10,7 @@ approved: 2026-06-21
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21).** child-design — the Opinions pillar, parent [agentm HLD](agentm-hld.md). One `[PENDING-IMPL]` (the compose-and-serve path) awaits implementation; `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3).
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21) · locked 2026-06-28 (final AG design sweep).** child-design — the Opinions pillar, parent [agentm HLD](agentm-hld.md). One `[PENDING-IMPL]` (the compose-and-serve path) awaits implementation; `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3).
 
 # AgentM Opinions Design
 
@@ -95,6 +95,8 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 - **The by-name seam:** `find_capability.py` → `capability_resolver.py` — the one-way bridge a thin `opinion` lookup rides
 
 ## Amendment log
+
+**2026-06-28 — lock-down sweep (operator review).** Sized the diagram (`width`/`height`); confirmed the nine-opinion catalog + the request-by-name model. Log already newest-first. Locked as a v5–v8 guidepost.
 
 **2026-06-26 — catalog expanded to nine; the resolver mechanism homed in its own design.** The opinions catalog grows from four to nine: added *recoverable* (the reversibility doctrine, provided by `developer-safety`), *private* (the leak floor, provided by `privacy`), *ready* (the launch-readiness gate), *simple* (the simplest-thing-that-works standard), and *worth-knowing* (the relevance bar the Researcher persona leans on). `recoverable` and `private` are promoted from sub-standards folded into other opinions to peer opinions; *voice* stays a prose-style overlay in `style_resolver`, not a catalog opinion. The request-by-name mechanism this pillar left as `[PENDING-IMPL]` is now specified by the new **[opinion registry](agentm-opinion-registry)** child design, which governs `opinion_resolver.py`; this pillar stays discipline/area-only. **Re-audit trigger:** revisit the catalog when a new surface is authored; flip the compose-and-serve `[PENDING-IMPL]` to as-built when the registry ships.
 
