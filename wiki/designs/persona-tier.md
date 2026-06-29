@@ -165,16 +165,9 @@ Additive, no flag day — each part lands behind its own gate. The brain persona
 
 Fully reversible. The tier is additive: removing `personas/`, the `kind: persona` handling (a skipped kind today), and `check-personas` returns the tree to its pre-tier state with no data migration. The memory engine is untouched, so a rollback cannot regress it.
 
-## Document History
-
-| Date | Change | Status |
-|---|---|---|
-| 2026-06-16 | Initial authoring from the personas-vs-capabilities pre-audit; §10 re-checks cleared against shipped infra; paired with ADR 0016. | final |
-| 2026-06-16 | Re-verified against the authoritative pre-audit findings (read in full): corrected the crickets "persona"→"role" rename direction (agentm keeps "persona"; crickets' looser usage renames); folded in arbitration as the clause-2 discriminator, the two killed axes (remembers / crosses-plugins), owns-no-engine, the `check-personas` always-load guard (#46), the three-reason null + honest residual, the opinionation-migration line, and the agent-def-shape framing. | final |
-| 2026-06-16 | Roadmap placement resolved (operator-approved): slotted as **V5-12** in the agentm V5 kernel (ROADMAP-MASTER bucket ⑤), sequenced after V5-10 and ahead of V5-11 as its substrate. | final |
-| 2026-06-16 | **Parts 1–2 + 4 shipped (V5-11).** `personas/team-coordinator.md` — `kind: persona`, `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`. Four stdlib-only scripts: `plan_graph.py` (shared map engine), `standup.py` (worker-state derivation), `readiness.py` (dep + file-overlap readiness), `merge_order.py` (topo-sort + diff-size tie-break). 62 fixture-backed tests. `check-personas` exits 0. Commit: [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3). **Part 3 (on-demand load + surfacing path) was not built in V5-11 — `[PENDING-IMPL]`.** | final |
-
 ## Amendment log
+
+**2026-06-28 — lock-down sweep (operator review).** Removed the redundant `## Document History` table (the AG convention is amendment-log-only; its build status lives in the launched NOTE, its rationale in the folded ADR 0016 below, granular history in git). No content change to the tier contract. Locked as a v5–v8 guidepost.
 
 **2026-06-26 — reconciled the discriminator wording to cross-capability judgment.** The Overview + DC-1 led with "arbitrates," which [personas](agentm-personas) had already recorded as superseded by "cross-capability judgment" — but the tier body was never repointed (a one-directional supersession). The body now leads with the live test and keeps the inverted-dependency direction as its mechanical floor, pointing at [personas](agentm-personas) as the canonical home. No change to the rejected near-miss axes or the `github-projects` counterexample. *Re-audit trigger:* if the canonical discriminator section in [personas](agentm-personas) is renamed or moved, repoint this body's link.
 
