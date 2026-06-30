@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-**Relicensed from MIT to a medium-matched split.** Agent M's contribution lives largely in prose — prompts, phase specs, skill instructions, wiki — so a single software license fit it poorly. Code now ships under Apache-2.0; documentation, prompts, agent instructions, and skill / command / workflow definitions ship under CC-BY-4.0; the "agentm" / "Agent M" name and logos are covered by a brand policy. No use is restricted — both licenses permit commercial use and derivatives; the change matches the attribution mechanism to the medium and adds a trademark the open-source licenses deliberately don't reach. See [`TRADEMARK.md`](TRADEMARK.md), [`NOTICE`](NOTICE), and the README License section.
+**Relicensed from MIT to a medium-matched split.** AgentM's contribution lives largely in prose — prompts, phase specs, skill instructions, wiki — so a single software license fit it poorly. Code now ships under Apache-2.0; documentation, prompts, agent instructions, and skill / command / workflow definitions ship under CC-BY-4.0; the "agentm" / "AgentM" name and logos are covered by a brand policy. No use is restricted — both licenses permit commercial use and derivatives; the change matches the attribution mechanism to the medium and adds a trademark the open-source licenses deliberately don't reach. See [`TRADEMARK.md`](TRADEMARK.md), [`NOTICE`](NOTICE), and the README License section.
 
 ### Changed
 
@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Vault Storage & Presentation design + two how-tos (proposed).** A full design ([`wiki/designs/agentm-vault-storage-presentation.md`](wiki/designs/agentm-vault-storage-presentation.md)) under the [Memory↔Storage Seam](wiki/designs/memory-storage-seam.md) — where the vault is stored and how it reaches your devices: the git and Drive transports plus the optional Obsidian presentation layer, with the hub/hybrid rejected (two sync engines on one tree → double-conflicts). Ships the two operator recipes [Back the vault with Google Drive](wiki/how-to/Back-The-Vault-With-Drive.md) and [Set up Obsidian on the vault](wiki/how-to/Use-Obsidian-With-The-Vault.md). Governs no code yet (`status: proposed`); the git transport is the forthcoming crickets `vault-git` plugin.
 - **`LICENSE-CONTENT`** — CC-BY-4.0 for documentation, prompts, agent instructions, and skill / command / workflow definitions (the prose where the contribution lives). Boundary rule: a prompt embedded as a string literal inside a code file is content (CC-BY-4.0).
 - **`NOTICE`** — Apache attribution notice + the code/content license map.
-- **`TRADEMARK.md`** — brand policy for the "agentm" / "Agent M" name and logos.
+- **`TRADEMARK.md`** — brand policy for the "agentm" / "AgentM" name and logos.
 
 ## [v5.10.0] — 2026-06-19 — Backend-aware harness state via the storage seam
 
@@ -347,7 +347,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v4.13.0] — 2026-06-01 — Auto-orchestration: the memory push-surface (V4 #23)
 
-**MINOR.** The Agent M memory skills were a *pull surface* — you had to remember to run recall, reflect, discover-skills, adapt-skills, and the watchlist by hand, so pending work piled up unseen. This release turns them into a **push surface**: open a session and the system already tells you what needs attention; during idle time it runs the right memory chains itself; at phase boundaries it reflects and refreshes. It never blocks a session, never nags (cooldowns plus a "only when state shifted since you last saw it" guard), and never acts on its own — every adoption or write stays operator-gated. Hook/file-based and cross-host (DC-1), entirely **agentm-native** (DC-3: crickets carries zero AgentM crossover now). This is the last open V4 item — the foundation finish. Single-repo release. The default thresholds and cooldowns are a first guess; the real-use dogfood on the operator's own vault calibrates them.
+**MINOR.** The AgentM memory skills were a *pull surface* — you had to remember to run recall, reflect, discover-skills, adapt-skills, and the watchlist by hand, so pending work piled up unseen. This release turns them into a **push surface**: open a session and the system already tells you what needs attention; during idle time it runs the right memory chains itself; at phase boundaries it reflects and refreshes. It never blocks a session, never nags (cooldowns plus a "only when state shifted since you last saw it" guard), and never acts on its own — every adoption or write stays operator-gated. Hook/file-based and cross-host (DC-1), entirely **agentm-native** (DC-3: crickets carries zero AgentM crossover now). This is the last open V4 item — the foundation finish. Single-repo release. The default thresholds and cooldowns are a first guess; the real-use dogfood on the operator's own vault calibrates them.
 
 ### Added
 
@@ -376,7 +376,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ROADMAP-V4 item **#23** — auto-orchestration (the last open V4 item; foundation finish).
 - [agentm v4.12.0](https://github.com/alexherrero/agentm/releases/tag/v4.12.0) — the immediately prior release (cross-surface vault access).
 
-## [v4.12.0] — 2026-06-01 — Cross-surface Agent M vault access (V4 #22)
+## [v4.12.0] — 2026-06-01 — Cross-surface AgentM vault access (V4 #22)
 
 **MINOR.** Until now your AgentMemory vault was only readable natively by Claude Code (via its SessionStart hooks). This release makes the vault readable from **every agent surface you use** — Claude.ai, Claude Desktop, and Antigravity — so each one already knows your conventions, projects, and decisions without you re-explaining them every session. The mechanism is **configure-don't-build**: one canonical, paste-anywhere context payload plus thin per-surface wiring; no new MCP server, API, or daemon. Read-only v1 for the chat surfaces; the filesystem working agents you run (Claude Code, Antigravity) may write. Single-repo release; crickets untouched. Every surface is operator-dogfood-validated — Antigravity confirmed on **both** the Antigravity CLI and the Antigravity IDE.
 
@@ -406,7 +406,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Cross-references
 
-- ROADMAP-V4 item **#22** — cross-surface Agent M vault access (read-only v1).
+- ROADMAP-V4 item **#22** — cross-surface AgentM vault access (read-only v1).
 - [agentm v4.11.1](https://github.com/alexherrero/agentm/releases/tag/v4.11.1) — the immediately prior release (conflict-merger hotfix), carried forward in this release's history.
 
 ## [v4.11.1] — 2026-05-31 — Fix: conflict-merger hook inert on user-scope installs
@@ -1009,11 +1009,11 @@ Operators who pulled v4.0.0 but haven't run any migration command continue worki
 
 ## [v4.0.0] — 2026-05-27 — V4 device-wide era opens: compound surface absorbed from Crickets
 
-**MAJOR.** V4 #36 reorganization. Agent M absorbs the compound skills (`memory`, `design`, `diataxis-author`, `ship-release`), the four memory hooks (`memory-recall-session-start`, `memory-recall-prompt-submit`, `memory-reflect-stop`, `memory-reflect-idle`), the `evidence-tracker` hook, the `memory-idea-researcher` sub-agent, and the `plugins/` tree (including `example-plugin` and the `install-plugin.sh` user-global plugin installer) — all of which previously shipped from Crickets v1.x. Per [ADR 0012](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0012-device-wide-by-default.md) (device-wide-by-default), Agent M is now the canonical home for agentic-memory primitives + compound flows that turn the harness into a learning environment; Crickets narrows to base primitives universal to any project. Paired with **Crickets v2.0.0** — see the [Crickets v2.0.0 release notes](https://github.com/alexherrero/crickets/releases/tag/v2.0.0). This release **opens the V4 era**: subsequent v4.x builds (state migration, global install scope, auto-detect bootstrap, vault-context documenter, etc.) operate against this cleanly-bounded repo layout.
+**MAJOR.** V4 #36 reorganization. AgentM absorbs the compound skills (`memory`, `design`, `diataxis-author`, `ship-release`), the four memory hooks (`memory-recall-session-start`, `memory-recall-prompt-submit`, `memory-reflect-stop`, `memory-reflect-idle`), the `evidence-tracker` hook, the `memory-idea-researcher` sub-agent, and the `plugins/` tree (including `example-plugin` and the `install-plugin.sh` user-global plugin installer) — all of which previously shipped from Crickets v1.x. Per [ADR 0012](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0012-device-wide-by-default.md) (device-wide-by-default), AgentM is now the canonical home for agentic-memory primitives + compound flows that turn the harness into a learning environment; Crickets narrows to base primitives universal to any project. Paired with **Crickets v2.0.0** — see the [Crickets v2.0.0 release notes](https://github.com/alexherrero/crickets/releases/tag/v2.0.0). This release **opens the V4 era**: subsequent v4.x builds (state migration, global install scope, auto-detect bootstrap, vault-context documenter, etc.) operate against this cleanly-bounded repo layout.
 
 ### Added
 
-- **`harness/skills/memory/`** — 14-script compound skill (`save.py`, `evolve.py`, `recall.py`, `reflect.py`, `embed.py`, `vec_index.py`, `permeable_boundary.py`, `ideas_surface.py`, `ideas_incubator.py`, `ideas_promote.py`, `index_skills.py`, `discover_skills.py`, `adapt_skills.py`, `watchlist_review.py`). The Agent M memory skill itself — `/memory save` / `evolve` / `reflect` / `search` / `index-skills` / `discover-skills` / `adapt-skills` / `watchlist` / `promote`.
+- **`harness/skills/memory/`** — 14-script compound skill (`save.py`, `evolve.py`, `recall.py`, `reflect.py`, `embed.py`, `vec_index.py`, `permeable_boundary.py`, `ideas_surface.py`, `ideas_incubator.py`, `ideas_promote.py`, `index_skills.py`, `discover_skills.py`, `adapt_skills.py`, `watchlist_review.py`). The AgentM memory skill itself — `/memory save` / `evolve` / `reflect` / `search` / `index-skills` / `discover-skills` / `adapt-skills` / `watchlist` / `promote`.
 - **`harness/skills/design/`** — Human-facing 10-section design pipeline → agent execution handoff.
 - **`harness/skills/diataxis-author/`** — Diátaxis-wiki authoring + maintenance (5 sub-commands).
 - **`harness/skills/ship-release/`** — Semver-driven release-cutting skill.
@@ -1053,7 +1053,7 @@ bash ~/Antigravity/crickets/install.sh <target-project>
 bash ~/Antigravity/agentm/install.sh <target-project>
 ```
 
-Crickets ships first (base primitives + 3 evaluator sub-agents + 3 operator-control hooks); Agent M ships second (compound skills + memory hooks + memory-idea-researcher + plugins layer). The compound skills + memory hooks land at the same `.claude/skills/`, `.claude/hooks/`, `.agents/skills/` destinations Crickets v1.x used; your vault content is untouched.
+Crickets ships first (base primitives + 3 evaluator sub-agents + 3 operator-control hooks); AgentM ships second (compound skills + memory hooks + memory-idea-researcher + plugins layer). The compound skills + memory hooks land at the same `.claude/skills/`, `.claude/hooks/`, `.agents/skills/` destinations Crickets v1.x used; your vault content is untouched.
 
 **Legacy `<project>/.harness/` paths stay supported** in v4.0.0. The hard-cut deprecation (vault-as-canonical-context: `<vault>/projects/<slug>/_harness/`) moves to whichever v4.x release ships state migration (ROADMAP-V4 #26). Deprecation banners + read fallback stay in v4.0.0.
 
@@ -1065,7 +1065,7 @@ Crickets ships first (base primitives + 3 evaluator sub-agents + 3 operator-cont
 - **HLD updates:**
   - [agent-memory-evolution.md § V4 release milestones](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/agent-memory-evolution.md) — V4.1 + V4.2 retroactively captured per `hld-evolution-update-on-major-release`.
   - [device-wide-architecture.md § Lifecycle v0.2](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/device-wide-architecture.md) — V4.2 documented as the foundational V4 build.
-- **ADRs referenced:** [ADR 0012 — device-wide-by-default](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0012-device-wide-by-default.md) (locked the decision; this release implements it on the Agent M side).
+- **ADRs referenced:** [ADR 0012 — device-wide-by-default](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0012-device-wide-by-default.md) (locked the decision; this release implements it on the AgentM side).
 - **Plan:** `.harness/PLAN.md` plan #19 — coordinated paired release pair #11. Toolkit-first per `coordinated-release-order`.
 
 ### Deferred to subsequent v4.x releases
@@ -1105,7 +1105,7 @@ The Antigravity 2.0 customization surface is owned by `crickets` (the toolkit sh
 
 ## [v3.1.0] — 2026-05-25 — Repo rename agentic-harness → agentm + cross-ref sweep
 
-Minor — **repo rename release**. The GitHub repo for this project is now `alexherrero/agentm` (was `alexherrero/agentic-harness`). Brand name (Agent M) was always the operator-facing label; the rename brings the URL slug + clone path in line with the brand. Paired with `alexherrero/crickets` v1.1.0 (the customization toolkit, was agent-toolkit) — see [crickets v1.1.0 release notes](https://github.com/alexherrero/crickets/releases/tag/v1.1.0).
+Minor — **repo rename release**. The GitHub repo for this project is now `alexherrero/agentm` (was `alexherrero/agentic-harness`). Brand name (AgentM) was always the operator-facing label; the rename brings the URL slug + clone path in line with the brand. Paired with `alexherrero/crickets` v1.1.0 (the customization toolkit, was agent-toolkit) — see [crickets v1.1.0 release notes](https://github.com/alexherrero/crickets/releases/tag/v1.1.0).
 
 GitHub installs HTTP redirects from the old URLs to the new ones automatically — existing clones, links, and bookmarks keep working without action. New clones should use `https://github.com/alexherrero/agentm.git`.
 
@@ -1134,15 +1134,15 @@ GitHub installs HTTP redirects from the old URLs to the new ones automatically �
 - Paired sibling release: [crickets v1.1.0](https://github.com/alexherrero/crickets/releases/tag/v1.1.0) — the customization toolkit (was agent-toolkit)
 - Plan #15 task 11 — README refresh closing task (final task of the plan)
 
-## [v3.0.1] — 2026-05-24 — Agent M logo hero + brand asset set (harness-only PATCH)
+## [v3.0.1] — 2026-05-24 — AgentM logo hero + brand asset set (harness-only PATCH)
 
-Patch — **first visual brand iteration**. Adds the Agent M logo asset set and refreshes `README.md` with a centered logo hero, italic tagline, and reorganized badge layout per the new [[personal-comms-style]] public-surface conventions. Designed in Claude.ai Artifacts.
+Patch — **first visual brand iteration**. Adds the AgentM logo asset set and refreshes `README.md` with a centered logo hero, italic tagline, and reorganized badge layout per the new [[personal-comms-style]] public-surface conventions. Designed in Claude.ai Artifacts.
 
 **No behavior changes.** Pure docs + asset additions; harness behavior unchanged. **Not paired with Crickets this round** — Crickets assets land separately when those arrive; this is a solo harness PATCH. Plan #15 task 1 close-out (Wave 1 of the README refresh).
 
 ### Added
 
-- **`assets/agent-m/`** — Agent M primary mark in 4 treatments (standard / clean / transparent / clean-transparent) × multiple PNG sizes (16 / 32 / 48 / 64 / 128 / 256 / 512 / 1024 / 2048) + SVG wrappers. ~27 asset files.
+- **`assets/agent-m/`** — AgentM primary mark in 4 treatments (standard / clean / transparent / clean-transparent) × multiple PNG sizes (16 / 32 / 48 / 64 / 128 / 256 / 512 / 1024 / 2048) + SVG wrappers. ~27 asset files.
 - **`assets/m-monogram/`** — secondary "M" letter mark in true-vector SVG + transparent variants + PNG sizes (16 → 2048). ~14 asset files.
 - **`assets/index.html`** — brand-asset preview page showing all variants on light / dark / checkered backgrounds. Includes brand palette swatch (`--ink: #0a0a0a` + `--paper: #f4efe6`) and typography choices (Inter Tight + JetBrains Mono).
 
@@ -1157,11 +1157,11 @@ Patch — **first visual brand iteration**. Adds the Agent M logo asset set and 
 - **Crickets has no corresponding change this round** — Crickets assets will land in a separate `crickets` PATCH when those are designed.
 - **Operator-review-gated** per [[docs-prose-style]] workflow; explicit approve-and-ship green-light received before push.
 
-## [v3.0.0] — 2026-05-24 — Agent M V3 close-out (paired with toolkit v1.0.0 — Crickets 1.0)
+## [v3.0.0] — 2026-05-24 — AgentM V3 close-out (paired with toolkit v1.0.0 — Crickets 1.0)
 
-Major — **Agent M V3 ships**. The harness version now matches the memory implementation V-versioning: V3 is the merged-Obsidian-and-GDrive vault with auto-recall in every harness phase + controlled write under the permeable A3 boundary + the full `/memory` skill surface on the Crickets side. Paired with [`crickets v1.0.0`](https://github.com/alexherrero/crickets/releases/tag/v1.0.0) which ships **Crickets 1.0** — the toolkit's 1.0 commitment to a stable public API surface.
+Major — **AgentM V3 ships**. The harness version now matches the memory implementation V-versioning: V3 is the merged-Obsidian-and-GDrive vault with auto-recall in every harness phase + controlled write under the permeable A3 boundary + the full `/memory` skill surface on the Crickets side. Paired with [`crickets v1.0.0`](https://github.com/alexherrero/crickets/releases/tag/v1.0.0) which ships **Crickets 1.0** — the toolkit's 1.0 commitment to a stable public API surface.
 
-**What Agent M V3 is** (in operator-facing terms):
+**What AgentM V3 is** (in operator-facing terms):
 
 - The system as a whole — this repo + Crickets + your AgentMemory vault folder, working together.
 - Markdown-and-frontmatter knowledge layer that lives in a folder your agent reads at every session start, can write to under controlled conditions, and that the harness's phase commands hook into at natural boundaries (`/setup` / `/plan` / `/work` / `/review` / `/release` / `/bugfix`).
@@ -1192,26 +1192,26 @@ V4 design space lives in `.harness/ROADMAP-AgentMemoryV4.md` (operator-local; `.
 | (patch) | External-review-handoff option | v2.3.1 + toolkit v0.8.1 |
 | #15 | Gemini-CLI host removal | v2.4.0 + toolkit v0.9.0 |
 | #18 | Local-only embeddings + BGE-large default | v2.4.1 + toolkit v0.9.2 |
-| #7a + #7b | Agent M Core + Discovery + Mining | v2.4.2 + toolkit v0.10.0 (closed after 5/5 + 7/7 parts) |
+| #7a + #7b | AgentM Core + Discovery + Mining | v2.4.2 + toolkit v0.10.0 (closed after 5/5 + 7/7 parts) |
 | #13 | `diataxis-author` skill | v2.4.3 + toolkit v0.11.0 |
 | #8 | Auto-context into harness phases | v2.5.0 + toolkit v0.11.1 |
 | #9 | Evidence-tracking for `/work` | v2.6.0 + toolkit v0.12.0 |
 | #10 | Quality-gates bundle | v2.6.1 + toolkit v0.13.0 |
-| #12 + #27 + #31 | V3 close-out (retrospective + Agent M HLD + roadmap split + READMEs + 1.0/3.0 paired release) | **v3.0.0 + toolkit v1.0.0 (this release)** |
+| #12 + #27 + #31 | V3 close-out (retrospective + AgentM HLD + roadmap split + READMEs + 1.0/3.0 paired release) | **v3.0.0 + toolkit v1.0.0 (this release)** |
 
 ### Added
 
-- **`README.md`** — Agent M brand-framed rewrite. Lead paragraph names Agent M, then a "What's where" table that names the four pieces (Agent M as the whole / harness this repo / Crickets the sibling toolkit / AgentMemory vault). Get-started section restored (clone both repos, point vault, install harness + Crickets bundle + memory skill, seed always-load, verify). Phases table preserved with auto-recall note. Architecture-history pointer goes to V3 retrospective + HLD on Crickets side.
-- **`wiki/Home.md`** rewrite (shipped earlier in this arc, commit `ed5ab7b`) — Agent M-centric landing for the harness wiki.
+- **`README.md`** — AgentM brand-framed rewrite. Lead paragraph names AgentM, then a "What's where" table that names the four pieces (AgentM as the whole / harness this repo / Crickets the sibling toolkit / AgentMemory vault). Get-started section restored (clone both repos, point vault, install harness + Crickets bundle + memory skill, seed always-load, verify). Phases table preserved with auto-recall note. Architecture-history pointer goes to V3 retrospective + HLD on Crickets side.
+- **`wiki/Home.md`** rewrite (shipped earlier in this arc, commit `ed5ab7b`) — AgentM-centric landing for the harness wiki.
 - **`wiki/reference/Completed-Features.md`** v3.0.0 row.
 
 ### Changed
 
-- **Brand**: the system is now **Agent M** in operator-facing prose. The `agentm` repo name + path literals (`AgentMemory/` vault folder, `harness_memory.py` script, `MEMORY_VAULT_PATH` env var) stay as code-side names. Per the locked branding convention.
+- **Brand**: the system is now **AgentM** in operator-facing prose. The `agentm` repo name + path literals (`AgentMemory/` vault folder, `harness_memory.py` script, `MEMORY_VAULT_PATH` env var) stay as code-side names. Per the locked branding convention.
 
 ### Internal
 
-- **2 commits on this side** since v2.6.1: `ed5ab7b` (harness wiki Home rewrite as Agent M landing), `8c871c5` (Agent M README), plus this v3.0.0 release commit.
+- **2 commits on this side** since v2.6.1: `ed5ab7b` (harness wiki Home rewrite as AgentM landing), `8c871c5` (AgentM README), plus this v3.0.0 release commit.
 - **Paired-release ordering**: toolkit v1.0.0 tagged first; this release URL-links to it per `[[coordinated-release-order]]`.
 - **8th consecutive paired-release pair** + first MAJOR-MAJOR pair. The harness's V-versioning (v3.0.0) now matches the memory implementation V-versioning (V3) explicitly.
 - **Roadmap split** (operator-local, `.harness/` gitignored): main `ROADMAP.md` slimmed to non-V4 backlog (118 lines, was 658); new `ROADMAP-AgentMemoryV4.md` carries the 9 V4-line items; full pre-split V3-era snapshot preserved at `ROADMAP.archive.20260523-v3-complete.md`.

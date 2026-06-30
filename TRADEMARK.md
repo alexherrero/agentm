@@ -15,7 +15,7 @@ rights to the code and content; they grant **no rights to the name or logos**.
 
 ## The marks
 
-The name **"agentm"** (and **"Agent M"**), the project logos, and the banner
+The name **"agentm"** (and **"AgentM"**), the project logos, and the banner
 artwork are trademarks of **Alex Herrero**, claimed through use (™); formal
 registration may follow.
 

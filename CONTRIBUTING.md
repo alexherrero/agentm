@@ -78,7 +78,7 @@ The workflow files at `.github/workflows/tests-*.yml` and the helper scripts und
 
 ## Regenerating the brand banner
 
-The Agent M brand banner (`assets/agent-m/banner-1600.png` + `banner-3200.png`) ships in the README hero + the wiki Home page. The banner is rendered from `assets/banner.html` via headless Chrome.
+The AgentM brand banner (`assets/agent-m/banner-1600.png` + `banner-3200.png`) ships in the README hero + the wiki Home page. The banner is rendered from `assets/banner.html` via headless Chrome.
 
 **Run whenever you change `assets/banner.html`:**
 
@@ -94,7 +94,7 @@ The banner is a **static brand asset** — it does not carry release-version dat
 
 ## Licensing
 
-Agent M is **multi-licensed by medium** — code under [Apache-2.0](LICENSE), documentation / prompts / skill instructions under [CC-BY-4.0](LICENSE-CONTENT), and the name + logos under a [trademark policy](TRADEMARK.md). The full split and the boundary rule (a prompt embedded as a string literal in a code file is *content*) live in the [README License section](README.md#license).
+AgentM is **multi-licensed by medium** — code under [Apache-2.0](LICENSE), documentation / prompts / skill instructions under [CC-BY-4.0](LICENSE-CONTENT), and the name + logos under a [trademark policy](TRADEMARK.md). The full split and the boundary rule (a prompt embedded as a string literal in a code file is *content*) live in the [README License section](README.md#license).
 
 **Why this shape, not blanket MIT:** the harness's contribution lives largely in prose — prompts, phase specs, skill instructions, wiki — so one software license fit it poorly. The goal is **attribution + brand, not idea-protection**: no license can stop someone reimplementing the methodology (copyright protects expression, not ideas), so we secure credit on the words (CC-BY's medium-matched attribution beats MIT's bare notice) plus a trademark that makes a true rip-off *nameable*. We deliberately did **not** reach for copyleft (AGPL) or source-available / Fair-Source (FSL/BSL) — both chill the broad reuse this project wants and solve a hosted-revenue problem it doesn't have.
 

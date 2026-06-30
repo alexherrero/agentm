@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/agent-m/banner-1600.png" alt="Agent M — The structural backend harness you wished you had">
+  <img src="assets/agent-m/banner-1600.png" alt="AgentM — The structural backend harness you wished you had">
 </p>
 
 <p align="center"><em>The agent harness that gives you the assistant you want — part Star Trek Computer, part J.A.R.V.I.S.</em></p>
@@ -27,11 +27,11 @@
 
 <p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentm/wiki/Compatibility">see compatibility</a></sub></p>
 
-Think of **Agent M** as the structural backend harness you wished you had—part Star Trek Computer, part J.A.R.V.I.S.-level contextual autonomy, engineered to manage your projects, memory, and persistent knowledge across any modern agent surface, gaining experience and self-improving as it goes.
+Think of **AgentM** as the structural backend harness you wished you had—part Star Trek Computer, part J.A.R.V.I.S.-level contextual autonomy, engineered to manage your projects, memory, and persistent knowledge across any modern agent surface, gaining experience and self-improving as it goes.
 
-Imagine those workflows you saw in the movies. You're talking to your agent, *"open a new project file for M"* and off you go. Agent M remembers your projects and files together, talks with you about them, and learns and grows with you as you work. The context is self-maintaining — no time spent curating your own knowledge graph, and it can help with your personal notes too when **you** want it to.
+Imagine those workflows you saw in the movies. You're talking to your agent, *"open a new project file for M"* and off you go. AgentM remembers your projects and files together, talks with you about them, and learns and grows with you as you work. The context is self-maintaining — no time spent curating your own knowledge graph, and it can help with your personal notes too when **you** want it to.
 
-This repo is the **harness** — the memory engine, auto-recall hooks, and on-disk state that make Agent M a system instead of a folder of files. It pairs with [**Crickets**](https://github.com/alexherrero/crickets) — a tactical suite of agent primitives (skills, hooks, sub-agents, bundles, and the phase-gated dev loop) that acts as the execution engine the harness installs into your target projects.
+This repo is the **harness** — the memory engine, auto-recall hooks, and on-disk state that make AgentM a system instead of a folder of files. It pairs with [**Crickets**](https://github.com/alexherrero/crickets) — a tactical suite of agent primitives (skills, hooks, sub-agents, bundles, and the phase-gated dev loop) that acts as the execution engine the harness installs into your target projects.
 
 > **Latest:** v5.0.1 (2026-06-13) — **V5-1 follow-on: non-UTF-8 config no longer crashes** (PATCH). The four `storage.backend` / vault-path / state-mode config readers caught `(json.JSONDecodeError, OSError)` but not `UnicodeDecodeError` (a `ValueError`) — so a non-UTF-8 config (e.g. a Windows UTF-16/BOM "Save As") leaked an uncaught decode error past each reader's documented contract. Now the fail-loud resolver raises `StorageSelectionError` and the three graceful readers return `None`, as documented; five regression tests pin it.  
 > **Prior:** v5.0.0 (2026-06-13) — **Seams: pluggable storage, vault-write safety, and the dev-loop split completes** (MAJOR). The load-bearing boundaries are now formal, tested seams: the **memory↔storage seam** (V5-1, five parts) — a backend-agnostic storage contract + named-protocol registry, a built-in `device-local` backend, a conformance suite, the vault write-path wrapped behind the seam moving **zero** data, and **fail-loud backend selection** (refuse with an "install the plugin" error, never silently demote) with a read-only `doctor` storage preview. Plus the **vault-write protocol** (V5-0: cross-process lock + content-hash CAS + atomic writes), the **process seam** (V5-4: a one-way memory↔process edge), **named plans** (V5-10: concurrently-addressable plans + a queue dashboard), and the **seven-section documentation convergence**. **MAJOR** because the dev-loop primitives + the vendored `documenter` / `diataxis-author` / `migrate-to-diataxis` surfaces are **retired** — now provided by [Crickets](https://github.com/alexherrero/crickets) plugins via graceful-skip dispatch.  
@@ -41,16 +41,16 @@ This repo is the **harness** — the memory engine, auto-recall hooks, and on-di
 
 | Piece | What it is |
 |---|---|
-| **Agent M** | The system as a whole — this repo + Crickets + your AgentMemory vault folder, working together |
+| **AgentM** | The system as a whole — this repo + Crickets + your AgentMemory vault folder, working together |
 | **Harness** (this repo) | Memory engine — auto-recall hooks + vault-backed on-disk state + the memory/doctor/design skills + scripts |
 | **Crickets** ([`crickets`](https://github.com/alexherrero/crickets)) | Skills, hooks, sub-agents, bundles, and the phase-gated dev loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) — the primitives you install into your projects |
 | **AgentMemory vault** | Your Obsidian markdown folder (synced via Google Drive / Dropbox / etc.) — agent reads at session start, writes under controlled conditions |
 
-Agent M is opinionated — small, not a 150-agent supermarket. It works with YOLO mode and other fully automated coding workflows, but it's designed for the ones that keep a human in the loop.
+AgentM is opinionated — small, not a 150-agent supermarket. It works with YOLO mode and other fully automated coding workflows, but it's designed for the ones that keep a human in the loop.
 
-## Why Agent M?
+## Why AgentM?
 
-|  | Vanilla Claude Code | Claude Code + Agent M |
+|  | Vanilla Claude Code | Claude Code + AgentM |
 |---|---|---|
 | **Session continuity** | Memory ends with the session; the next prompt starts blank | Vault-backed; new sessions auto-recall the entries relevant to where you left off |
 | **Per-phase auto-context** | You re-explain conventions every time, or rely on a static `CLAUDE.md` | Each phase (`/setup` `/plan` `/work` `/review` `/release`) recalls phase-scoped entries within a token budget |
@@ -58,11 +58,11 @@ Agent M is opinionated — small, not a 150-agent supermarket. It works with YOL
 | **Paired-release coordination** | Manual cross-repo coordination per release | Locked release-order convention + URL-linked sibling release notes + paired CI verification on both repos |
 | **Cross-project memory** | Each project's `CLAUDE.md` lives in isolation | Vault holds operator-wide conventions + per-project sub-trees; the same locked decisions surface across every project you work in |
 
-Agent M doesn't replace Claude Code — it gives it persistence, structure, and the kind of accumulating context that turns a fresh session into a continuation.
+AgentM doesn't replace Claude Code — it gives it persistence, structure, and the kind of accumulating context that turns a fresh session into a continuation.
 
 ## Get started
 
-Once both repos are cloned and the vault folder exists, Agent M is operational.
+Once both repos are cloned and the vault folder exists, AgentM is operational.
 
 **1. Install both repos as siblings**
 
@@ -173,7 +173,7 @@ Compound skills imported from Crickets in v4.0.0 (V4 #36) — delivered via the 
 
 | Skill | What it does |
 |---|---|
-| [`memory`](harness/skills/memory/SKILL.md) | The Agent M memory skill itself. `/memory save` / `evolve` / `reflect` / `search` / `index-skills` / `discover-skills` / `adapt-skills` / `watchlist` / `promote`. Permeable A3 write boundary; collision-checked; supersession-not-deletion. Powers the recall + reflect hook loop. |
+| [`memory`](harness/skills/memory/SKILL.md) | The AgentM memory skill itself. `/memory save` / `evolve` / `reflect` / `search` / `index-skills` / `discover-skills` / `adapt-skills` / `watchlist` / `promote`. Permeable A3 write boundary; collision-checked; supersession-not-deletion. Powers the recall + reflect hook loop. |
 | [`design`](harness/skills/design/SKILL.md) | Human-facing design pipeline → agent execution handoff. `/design author` walks a 10-section template; `/design translate` splits the approved design into structural parts; `/design sequence` generates a `PLAN.md` per part for `/work` + `/release` flow. |
 | [`ship-release`](harness/skills/ship-release/SKILL.md) | Cut a tagged GitHub release with semver-driven version bumps from conventional commits. Writes CHANGELOG, tags, pushes, creates the release. |
 
@@ -217,7 +217,7 @@ agentm/
 ├── wiki/             # Diátaxis-shaped docs (tutorials/ + how-to/ + reference/ + explanation/) — published as the GitHub Wiki
 ├── scripts/          # install helpers + smoke tests + harness_memory.py + manifest validators
 ├── templates/        # scaffolding (PLAN.md template, init.sh template) installed into target projects
-├── assets/           # Agent M brand assets — logo, monogram, brand preview
+├── assets/           # AgentM brand assets — logo, monogram, brand preview
 ├── lib/              # shared install plumbing — byte-identical to Crickets' lib/install/
 ├── AGENTS.md         # universal instructions for any AGENTS.md-aware host
 ├── CLAUDE.md         # Claude Code entry point — points back at AGENTS.md
@@ -229,15 +229,15 @@ agentm/
 
 ## Architecture history
 
-Agent M has grown over time across paired releases of `agentm` and `crickets`. The full V1→V8 evolution — what shipped, what's deferred, where the design is going — lives in the [AgentM HLD](https://github.com/alexherrero/agentm/wiki/agentm-hld)'s Evolution-arc section (the standalone Agent-Memory-Evolution HLD was vault-archived 2026-06-24, AG Wave 2). The crickets [V3 Retrospective](https://github.com/alexherrero/crickets/wiki/v3-retrospective) covers what shipped, what we learned, what's deferred.
+AgentM has grown over time across paired releases of `agentm` and `crickets`. The full V1→V8 evolution — what shipped, what's deferred, where the design is going — lives in the [AgentM HLD](https://github.com/alexherrero/agentm/wiki/agentm-hld)'s Evolution-arc section (the standalone Agent-Memory-Evolution HLD was vault-archived 2026-06-24, AG Wave 2). The crickets [V3 Retrospective](https://github.com/alexherrero/crickets/wiki/v3-retrospective) covers what shipped, what we learned, what's deferred.
 
 For the harness's design rationale, see [harness/principles.md](harness/principles.md) and the architecture decisions under [wiki/decisions/](wiki/decisions/).
 
 ## Status
 
-Currently shipping **v4.15.0** — **Hardening I: single-repo first-class + e2e breadth** (single-repo MINOR). The harness now runs on a single repo with **zero vault dependency** (`install.sh --local-state` → state in `<repo>/.harness/`; state-mode config is on-host only, DC-8), the redundant `install-state-sync` hook + the last crickets install coupling are gone, and a first end-to-end test batch (whole-phase lifecycle in both state modes · every memory hook's firing/graceful-skip · the memory-engine round-trip) is wired into `check-all.sh` (11 gates) + CI. Built on **v4.14.0** (decoupled from crickets — agentm is a self-contained standalone install owning its `lib/install/` outright). The current major capability remains **v4.13.0's auto-orchestration push-surface** (V4 #23; single-repo MINOR), which turns the Agent M memory skills from a *pull surface* (you had to remember to run them) into a *push surface*: a SessionStart **briefing** surfaces pending state (inbox over threshold · HIGH skill-watchlist · incubator ideas in research · GC-eligible idea-ledger items) in one tight 1–3 line block, emitting only when state shifted since you last saw it and the cooldown allows; an **idle-time chain** (`orchestration_idle.py`) runs reflect-corpus → discover-skills → adapt Pass-1 itself, detached so it never blocks the hook's 30s timeout and bounded by `--max-batches 1`/`--limit 3`; **phase-integration** (`orchestration_phase.py`) reflects the just-finished session after `/work` (dedup-guarded vs the `memory-reflect-stop` hook via the `.reflected` marker, cross-host incl. Antigravity) and refreshes skill sources after `/release`; and two **nudges** suggest `/memory promote` for an idea surfaced ≥3× and flag `_skill-watchlist/` entries `promoted` >30d without action. All gated by an operator-tunable config (`<vault>/personal-private/auto-orchestration-config.md`) + cooldown/shifted-state guard (`<vault>/_meta/auto-orchestration-state.json`); never blocks a session, never nags, never auto-adopts. Entirely **agentm-native** (DC-3); hook/file-based + cross-host (DC-1). **This is the last open V4 item — the V4 foundation is complete.** Each code task passed an adversarial review that caught a real defect (non-UTF-8 hook crash · clear-then-refill suppression · wrong-session-under-concurrency reflect), each fixed + regression-tested. 84 new tests (549 suite, 4-OS). The default thresholds/cooldowns calibrate under the operator's real-use dogfood. Single-repo release; the paired crickets `adapt-evaluator` de-crossover already merged (ships with crickets' next release). See [CHANGELOG.md](CHANGELOG.md) and the [latest release](https://github.com/alexherrero/agentm/releases/latest).
+Currently shipping **v4.15.0** — **Hardening I: single-repo first-class + e2e breadth** (single-repo MINOR). The harness now runs on a single repo with **zero vault dependency** (`install.sh --local-state` → state in `<repo>/.harness/`; state-mode config is on-host only, DC-8), the redundant `install-state-sync` hook + the last crickets install coupling are gone, and a first end-to-end test batch (whole-phase lifecycle in both state modes · every memory hook's firing/graceful-skip · the memory-engine round-trip) is wired into `check-all.sh` (11 gates) + CI. Built on **v4.14.0** (decoupled from crickets — agentm is a self-contained standalone install owning its `lib/install/` outright). The current major capability remains **v4.13.0's auto-orchestration push-surface** (V4 #23; single-repo MINOR), which turns the AgentM memory skills from a *pull surface* (you had to remember to run them) into a *push surface*: a SessionStart **briefing** surfaces pending state (inbox over threshold · HIGH skill-watchlist · incubator ideas in research · GC-eligible idea-ledger items) in one tight 1–3 line block, emitting only when state shifted since you last saw it and the cooldown allows; an **idle-time chain** (`orchestration_idle.py`) runs reflect-corpus → discover-skills → adapt Pass-1 itself, detached so it never blocks the hook's 30s timeout and bounded by `--max-batches 1`/`--limit 3`; **phase-integration** (`orchestration_phase.py`) reflects the just-finished session after `/work` (dedup-guarded vs the `memory-reflect-stop` hook via the `.reflected` marker, cross-host incl. Antigravity) and refreshes skill sources after `/release`; and two **nudges** suggest `/memory promote` for an idea surfaced ≥3× and flag `_skill-watchlist/` entries `promoted` >30d without action. All gated by an operator-tunable config (`<vault>/personal-private/auto-orchestration-config.md`) + cooldown/shifted-state guard (`<vault>/_meta/auto-orchestration-state.json`); never blocks a session, never nags, never auto-adopts. Entirely **agentm-native** (DC-3); hook/file-based + cross-host (DC-1). **This is the last open V4 item — the V4 foundation is complete.** Each code task passed an adversarial review that caught a real defect (non-UTF-8 hook crash · clear-then-refill suppression · wrong-session-under-concurrency reflect), each fixed + regression-tested. 84 new tests (549 suite, 4-OS). The default thresholds/cooldowns calibrate under the operator's real-use dogfood. Single-repo release; the paired crickets `adapt-evaluator` de-crossover already merged (ships with crickets' next release). See [CHANGELOG.md](CHANGELOG.md) and the [latest release](https://github.com/alexherrero/agentm/releases/latest).
 
-Prior: **v4.12.0** — Cross-surface Agent M vault access (V4 #22; single-repo MINOR). Made the AgentMemory vault readable natively from every agent surface (Claude.ai · Claude Desktop · Antigravity), not just Claude Code, via one paste-anywhere context payload + thin per-surface wiring (configure-don't-build, no new MCP server/API/daemon). Read/write surface-scoped (chat surfaces read-only; filesystem working agents may write). Migrated the Antigravity adapter `.agent/` → `.agents/` (2.0 default) and made `/doctor` host-aware. All surfaces operator-dogfood-validated. See [CHANGELOG.md](CHANGELOG.md) and the [latest release](https://github.com/alexherrero/agentm/releases/latest).
+Prior: **v4.12.0** — Cross-surface AgentM vault access (V4 #22; single-repo MINOR). Made the AgentMemory vault readable natively from every agent surface (Claude.ai · Claude Desktop · Antigravity), not just Claude Code, via one paste-anywhere context payload + thin per-surface wiring (configure-don't-build, no new MCP server/API/daemon). Read/write surface-scoped (chat surfaces read-only; filesystem working agents may write). Migrated the Antigravity adapter `.agent/` → `.agents/` (2.0 default) and made `/doctor` host-aware. All surfaces operator-dogfood-validated. See [CHANGELOG.md](CHANGELOG.md) and the [latest release](https://github.com/alexherrero/agentm/releases/latest).
 
 ## Contributing
 
@@ -245,13 +245,13 @@ Self-tested on every push by three per-OS workflows (Linux, Mac, Windows) runnin
 
 ## License
 
-Agent M is multi-licensed so each layer carries the license that fits it:
+AgentM is multi-licensed so each layer carries the license that fits it:
 
 | Layer | What it covers | License |
 |---|---|---|
 | **Code** | `.py`, `.sh`, `.ps1`, and configuration logic | [Apache-2.0](LICENSE) |
 | **Content** | docs, prompts, agent instructions, skill / command / workflow definitions, wiki, and other prose (`.md`) | [CC-BY-4.0](LICENSE-CONTENT) |
-| **Names & logos** | the "agentm" / "Agent M" name and brand artwork | Trademark — see [TRADEMARK.md](TRADEMARK.md) |
+| **Names & logos** | the "agentm" / "AgentM" name and brand artwork | Trademark — see [TRADEMARK.md](TRADEMARK.md) |
 
 **Boundary rule:** prompt or instruction text embedded as a string literal inside a code file (e.g. a prompt inside a `.py` script) is **content** (CC-BY-4.0), even though it lives in a code file.
 
