@@ -21,6 +21,18 @@ Both adapters are thin shims for agentm's own surfaces — its always-on rules a
 
 The single aggregate `CI` badge in the README + wiki Home rolls up all three OS workflows into one status. Diagnostic drill-down: click the badge → Actions tab → pick the OS that's failing.
 
+## Vault storage & sync
+
+The MemoryVault is a folder of markdown. On one machine it can live anywhere; to back it up and sync it across devices, pick a transport:
+
+| Option | Status | Best for |
+|---|---|---|
+| **Google Drive** | ✅ recommended right now | the simplest setup — background sync across devices with nothing to run. See [Back the vault with Google Drive](Back-The-Vault-With-Drive). |
+| **git** | forthcoming (turnkey via [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git)) | version history, off-device backup, and a safe chat-write path. Doable manually today; turnkey once `vault-git` ships. |
+| **Device-local (no sync)** | ✅ supported | one machine, zero vault/Drive dependency. See [Run without a vault](Run-Without-A-Vault). |
+
+The search index stays device-local either way (`~/.agentm/memory/_meta/`), so it never syncs.
+
 ## Sibling repo
 
 AgentM pairs with **[Crickets (`crickets`)](https://github.com/alexherrero/crickets)** — the customization surface (skills, hooks, sub-agents, bundles, MCP servers, slash commands). Crickets is tested on the same OS matrix; both repos ship paired releases per the [Foundations HLD](agentm-foundations-hld).

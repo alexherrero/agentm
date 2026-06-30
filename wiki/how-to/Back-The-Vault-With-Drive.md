@@ -5,12 +5,12 @@
 > **Goal:** Back up the Obsidian vault and sync it across your devices with Google Drive, with sync running in the background.
 > **Prereqs:** Google Drive for Desktop installed and signed in; Obsidian on each device.
 
-> [!WARNING]
-> **Drive sync is discouraged.** It's fully supported, but **git is the recommended backing** ([vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git)) — Drive gives up version history, off-device backup, and a safe chat-write path in exchange for effortless mobile sync. Prefer git unless seamless mobile is your priority. The full picture is in [Drive's trade-offs](#drives-trade-offs-and-keeping-git-alongside) below.
+> [!NOTE]
+> **Google Drive is the recommended way to sync the vault right now.** It's the simplest setup and works today. A git-backed option ([vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git)) is **forthcoming** — when it ships it adds version history, off-device backup, and a safe chat-write path; until then, Drive is the supported default. What you trade with Drive is in [Drive's trade-offs](#drives-trade-offs-and-keeping-git-alongside) below.
 
 By default a vault lives only on the machine that created it — it isn't backed up, and it isn't synced anywhere. To back it up and reach it from your other devices, you enable one transport: **Google Drive or git.** This page is the Google Drive route.
 
-Drive's appeal is effortless sync: drop the vault in your Drive folder and every signed-in device sees the changes, with nothing to run and smooth mobile access. The cost is that Drive keeps no real history, which is why git stays the recommendation — a short summary of what you trade is in [Drive's trade-offs](#drives-trade-offs-and-keeping-git-alongside) below.
+Drive's appeal is effortless sync: drop the vault in your Drive folder and every signed-in device sees the changes, with nothing to run and smooth mobile access. The cost is that Drive keeps no real history; if that matters, a git-backed vault is the alternative (manual today, turnkey once [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git) ships) — a short summary of what you trade is in [Drive's trade-offs](#drives-trade-offs-and-keeping-git-alongside) below.
 
 Obsidian itself is a separate, optional add-on that sits on top of *either* a Drive- or git-backed vault — see [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault). This page only sets up the Drive transport.
 
@@ -58,7 +58,7 @@ Obsidian itself is a separate, optional add-on that sits on top of *either* a Dr
 
 ## Drive's trade-offs (and keeping git alongside)
 
-**Why git is the recommendation.** git gives per-commit history and rollback, an off-device backup that doesn't depend on Drive's trash window, and a safe chat-write path (propose-via-PR). Drive offers none of those: recovery is bounded by Drive's trash retention, concurrent edits land as `(conflicted copy)` files instead of merges, and chat connectors get read-only access. If any of those matter, use [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git).
+**What a git-backed vault would add.** git gives per-commit history and rollback, an off-device backup that doesn't depend on Drive's trash window, and a safe chat-write path (propose-via-PR). Drive offers none of those: recovery is bounded by Drive's trash retention, concurrent edits land as `(conflicted copy)` files instead of merges, and chat connectors get read-only access. If any of those matter, you can wire git manually today, and [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git) will make it turnkey once it ships.
 
 **Keeping git alongside Drive — discouraged, but supported.** The clean setup is one transport per folder. You *can* keep a git repo on the same folder, but Drive and git are two sync engines that don't know about each other, so a file edited through both between syncs produces a Drive `(conflicted copy)` *and* git conflict markers at once. If you keep both anyway, the one rule is to hold `.git` outside the synced tree so Drive never replicates it:
 
@@ -85,6 +85,6 @@ It (a) lists each Drive `(conflicted copy)` sibling and removes it once you've m
 ## Related
 
 - [Vault Storage & Presentation Design](agentm-vault-storage-presentation) — where Drive sits as the design's simple mode, and the full reasoning for one transport per folder.
-- [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git) — the recommended git-backed alternative: history, off-device backup, and a chat propose-via-PR path.
+- [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git) — the forthcoming git-backed option: history, off-device backup, and a chat propose-via-PR path.
 - [Memory↔Storage Seam](memory-storage-seam) — why the search index is device-local (`~/.agentm/memory/_meta/`), so Drive never touches it.
 - [Installer CLI reference](Installer-CLI) — the `agentm_config.py` config CLI used in step 3 (the `--vault-path` setter).
