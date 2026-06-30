@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Structural lints for the Diátaxis wiki convention (ADR 0004).
+"""Structural lints for the documentation convention (the crickets conventions `documentation` domain).
 
 Walks a wiki tree and enforces the mode-based layout + per-mode page
-discipline described in
-wiki/explanation/decisions/0004-diataxis-documentation-spec.md.
+discipline of the six-section frame (How-to · Reference · Architecture ·
+Designs · Explanation · Operational).
 
 Rules (hard = blocking under --strict; soft = always warn-only):
 
   (a) Every content .md lives under one of the taxonomy folders
       (how-to/, reference/, architecture/, designs/, explanation/,
-      decisions/, operational/). Structural pages (Home.md,
+      operational/). Structural pages (Home.md,
       _Sidebar.md, _Footer.md, README.md) are exempt.         [hard]
   (b) Tutorials and how-tos have a `> [!NOTE]` mode-declaration block
       in the first 25 lines with the required fields:
@@ -22,9 +22,6 @@ Rules (hard = blocking under --strict; soft = always warn-only):
   (e) Reference pages open with either a `## ⚡ Quick Reference`
       block, a table, or a fenced code block within 25 lines of the
       H1.                                                     [hard]
-  (f) ADRs under explanation/decisions/ with `Status: accepted`: any
-      `## Amendment` H2 must use the form `## Amendment YYYY-MM-DD`.
-      (Full git-based append-only enforcement is a follow-up.) [hard]
   (g) Filenames match `[A-Za-z0-9][A-Za-z0-9-]*\\.md` and basenames
       are globally unique across the wiki.                    [hard]
   (h) Every wiki-internal markdown link resolves to a known page
@@ -72,7 +69,6 @@ _FOLDER_MODE = {
     "architecture": "index",
     "designs": "explanation",
     "explanation": "explanation",
-    "decisions": "explanation",
     "operational": "how-to",
 }
 MODE_DIRS = tuple(_FOLDER_MODE)
@@ -287,26 +283,6 @@ def rule_e_reference_shape(p: Path, mode: str | None, lines: list[str],
              "code block within 25 lines of the H1")
 
 
-def rule_f_adr_amendments(p: Path, wiki_root: Path, text: str,
-                          heads: list[tuple[int, int, str]],
-                          issues: list[Issue]) -> None:
-    try:
-        rel = p.relative_to(wiki_root)
-    except ValueError:
-        return
-    if len(rel.parts) < 2 or rel.parts[0] != "explanation" or rel.parts[1] != "decisions":
-        return
-    status = STATUS_RE.search(text)
-    if not status or status.group(1).lower() != "accepted":
-        return
-    for ln, lvl, title in heads:
-        if lvl != 2 or not title.lower().startswith("amendment"):
-            continue
-        if not AMENDMENT_DATE_RE.match(title):
-            emit(issues, p, ln, "f",
-                 f"ADR amendment heading must be `## Amendment YYYY-MM-DD`, got `## {title}`")
-
-
 def rule_g_filename(p: Path, issues: list[Issue]) -> None:
     if is_structural(p):
         return
@@ -493,7 +469,6 @@ def collect_issues(wiki_root: Path) -> list[Issue]:
             rule_c_tutorial_shape(p, mode, heads, issues)
             rule_d_howto_shape(p, mode, heads, lines, issues)
             rule_e_reference_shape(p, mode, lines, heads, issues)
-            rule_f_adr_amendments(p, wiki_root, text, heads, issues)
             rule_k_word_count(p, mode, text, issues)
 
         out_stems = {page for _, _, page in extract_wiki_links(text)}

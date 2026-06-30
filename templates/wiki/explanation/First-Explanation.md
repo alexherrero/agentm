@@ -12,7 +12,7 @@ _A short narrative (prose, or a diagram plus prose) of how the major components 
 
 ## Non-obvious decisions
 
-_For each architectural choice a reader is likely to ask "why?" about, one paragraph. If a decision has its own ADR under `decisions/`, link to the ADR instead of restating it — this section is an index of rationale, not a replacement for ADRs._
+_For each architectural choice a reader is likely to ask "why?" about, one paragraph. If a decision is recorded in a design's `## Amendment log` under `designs/`, link to it instead of restating it — this section is an index of rationale, not a replacement for the design record._
 
 ## Trade-offs
 

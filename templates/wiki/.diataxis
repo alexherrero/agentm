@@ -1,15 +1,15 @@
-This file marks that the project's wiki/ follows the seven-section
-documentation taxonomy from ADR 0004 of agentm (amended 2026-06-11 to
-converge on crickets' frame). Five sections are always present; two are
-conditional:
+This file marks that the project's wiki/ follows the six-section
+documentation taxonomy (the crickets conventions `documentation` domain).
+Four sections are always present; two are conditional:
 
   how-to/      — task-oriented recipes (onboarding walkthroughs live here,
                  numerically prefixed, carrying a `<!-- mode: tutorial -->`
                  hint so the gate holds them to tutorial discipline)
   reference/   — canonical lookup tables, flags, APIs
-  designs/     — "Why we built X" design docs (crickets' /design skill)
+  designs/     — "Why we built X" design docs (crickets' /design skill);
+                 load-bearing decisions are recorded in each design's
+                 `## Amendment log` (the ADR model is retired)
   explanation/ — narrative rationale, intent, trade-offs
-  decisions/   — Architecture Decision Records (ADRs)
 
   architecture/ — added only when a per-repo wiki/architecture.yml manifest
                   declares it
@@ -20,4 +20,4 @@ project. Do not remove unless you are migrating away from the taxonomy.
 
 See:
 - wiki/README.md — the convention as it applies here.
-- https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md
+- https://github.com/alexherrero/agentm/blob/main/harness/documentation.md (the full convention spec)

@@ -2,8 +2,7 @@
 
 <!-- mode: tutorial -->
 <!-- Onboarding walkthroughs are numerically prefixed and live under how-to/ in
-     the seven-section frame (tutorials fold into How-to; ADR 0004 Amendment
-     2026-06-11). The mode hint above keeps this page tutorial-shaped — the lint
+     the six-section frame (tutorials fold into How-to). The mode hint above keeps this page tutorial-shaped — the lint
      gate enforces the tutorial discipline (Goal/Time/Prereqs, numbered steps,
      "What you learned") even though it sits in how-to/. -->
 

@@ -2,7 +2,7 @@
 
 How this project documents itself. This `wiki/` folder is the source of truth for human-and-agent-readable documentation and is mirrored to the repo's GitHub Wiki on every push to the default branch.
 
-This scaffold follows the seven-section documentation taxonomy — one reader intent per page, never mixed. See [ADR 0004 in agentm](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md) for the rationale (it converges the older four-mode Diátaxis layout onto crickets' frame).
+This scaffold follows the six-section documentation taxonomy — one reader intent per page, never mixed. See the crickets [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) convention for the rationale (it converges the older four-mode Diátaxis layout onto crickets' frame).
 
 > [!NOTE]
 > **Authoring tooling lives in crickets.** Page authoring + the structural lint are owned by [`crickets`](https://github.com/alexherrero/crickets)' `wiki-maintenance` plugin (ADR 0006 single-source). If crickets is paired, use its `/wiki-init` to scaffold the two conditional sections (architecture/operational) and provision wiki-sync CI; if it isn't, the harness degrades gracefully (graceful-skip) and this native scaffold stands on its own. The lint gate is `scripts/check-wiki.py`.
@@ -19,9 +19,8 @@ Five sections are always present; two are conditional, added only when the repo 
 |---|---|---|---|
 | 🔧 `how-to/` | Task-focused recipes | "How do I X?" | `Run-The-Tests.md`, `Deploy.md`, `01-Getting-Started.md` |
 | 📖 `reference/` | Canonical lookup | "What are the flags / keys / codes?" | `CLI.md`, `Config.md`, `Exit-Codes.md` |
-| 📐 `designs/` | "Why we built X" | "What was the plan, and why this shape?" | `<slug>.md` (via crickets' `/design`) |
+| 📐 `designs/` | "Why we built X" + decision records | "What was the plan, why this shape, what did we decide?" | `<slug>.md` (via crickets' `/design`); decisions live in each design's `## Amendment log` |
 | 💡 `explanation/` | Intent and rationale | "Why is it this way?" | `Product-Intent.md`, `How-The-Pieces-Fit.md` |
-| 🧭 `decisions/` | Decision records | "What did we decide, and why not the alternative?" | `<NNNN>-<slug>.md` (ADRs) |
 | 🏛️ `architecture/` *(conditional)* | Component map | "How do the pieces fit at the system level?" | added when a `wiki/architecture.yml` manifest declares it |
 | ⚙️ `operational/` *(conditional)* | Run-the-system | "How do I operate / recover this in prod?" | added when the repo's visibility is non-public |
 
@@ -29,7 +28,7 @@ Onboarding walkthroughs (the learning-by-doing pages the old layout called "tuto
 
 ## The single-section rule
 
-Each page serves exactly one reader intent. An onboarding walkthrough does not contain rationale; a how-to does not contain background narrative; a reference is not a walk-through; a decision record is not a design doc. When content mixes intents, split the page — don't cram intents together under different headings.
+Each page serves exactly one reader intent. An onboarding walkthrough does not contain rationale; a how-to does not contain background narrative; a reference is not a walk-through; an explanation is not a how-to. When content mixes intents, split the page — don't cram intents together under different headings.
 
 The `.diataxis` marker file in this folder enables structural-lint enforcement of this rule (in agentm, via `scripts/check-wiki.py`).
 
@@ -129,30 +128,23 @@ Used for `reference/<Surface>.md`. Tables-first, no narrative.
 - <cross-links to how-tos or other references.>
 ```
 
-### Explanation / Design / ADR
+### Explanation / Design / Decision records
 
-Explanation pages (`explanation/<Topic>.md`) are narrative and may use any section structure that serves the argument. Design docs (`designs/<slug>.md`) are authored via crickets' `/design` skill. ADRs (`decisions/<NNNN>-<slug>.md`) use the canonical Nygard shape:
+Explanation pages (`explanation/<Topic>.md`) are narrative and may use any section structure that serves the argument. Design docs (`designs/<slug>.md`) are authored via crickets' `/design` skill. **Decision records are not standalone files** — a load-bearing decision is recorded as an entry in the governing design's `## Amendment log` (under `designs/`), reconciling the design's body in the same atomic change:
 
 ```markdown
-# ADR <NNNN>: <Title>
-
-> [!NOTE]
-> **Status:** proposed | accepted | superseded-by-<NNNN>
-> **Date:** YYYY-MM-DD
-
-## Context
-## Decision
-## Consequences
+**YYYY-MM-DD — <summary of the change>.**
+<decision prose>. *Why not the alternative:* <why-not>. *Re-audit trigger:* <condition that would make this wrong>.
 ```
 
-ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subheadings; supersede by recording a new ADR.
+This replaces the retired ADR model. The why-not + re-audit discipline carries over; only the artifact moved (into the design, not a separate `decisions/` file).
 
 ## Stylistic conventions
 
 - **Tables over bullet lists** for comparative information.
 - **Diagrams** — ASCII in fenced code blocks or Mermaid. Use one whenever a relationship is clearer drawn than described.
 - **GitHub alerts** for load-bearing callouts: `> [!NOTE]`, `> [!IMPORTANT]`, `> [!WARNING]`.
-- **Emoji section markers**, consistent: 🔧 How-to · 📖 Reference · 📐 Designs · 💡 Explanation · 🧭 Decisions · 🏛️ Architecture · ⚙️ Operational · ⚡ Quick Reference · 📁 File Layout · 🤝 Integration.
+- **Emoji section markers**, consistent: 🔧 How-to · 📖 Reference · 📐 Designs · 💡 Explanation · 🏛️ Architecture · ⚙️ Operational · ⚡ Quick Reference · 📁 File Layout · 🤝 Integration.
 - **Cross-links**: wiki pages by basename (`Home`, `01-Getting-Started`, etc.), full GitHub URLs with `#L<line>` for code references.
 
 ## Who maintains what
@@ -162,7 +154,7 @@ ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subhead
   - `/setup` — populates a seed onboarding walkthrough + reference + explanation from the codebase.
   - `/plan` — creates pending how-to pages and reference rows for the plan's tasks.
   - `/work` (post-gates) — flips pending how-tos to implemented, fills reference tables.
-  - `/release` — adversarial sweep across all sections; may add new ADRs under `decisions/`.
+  - `/release` — adversarial sweep across all sections; may record decisions in the governing design's amendment log.
 - `Home.md` and `_Sidebar.md` are maintained by the sub-agent — not generated by sync.
 
 ## GitHub Wiki sync
@@ -171,4 +163,4 @@ ADRs are append-only once accepted. Amend with `## Amendment YYYY-MM-DD` subhead
 
 ## Full spec
 
-[agentm/harness/documentation.md](https://github.com/alexherrero/agentm/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold, amended by [ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md).
+[agentm/harness/documentation.md](https://github.com/alexherrero/agentm/blob/main/harness/documentation.md) is the canonical convention spec that shipped this scaffold; the taxonomy is owned by the crickets [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) convention.

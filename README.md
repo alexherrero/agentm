@@ -231,7 +231,7 @@ agentm/
 
 AgentM has grown over time across paired releases of `agentm` and `crickets`. The full V1→V8 evolution — what shipped, what's deferred, where the design is going — lives in the [AgentM HLD](https://github.com/alexherrero/agentm/wiki/agentm-hld)'s Evolution-arc section (the standalone Agent-Memory-Evolution HLD was vault-archived 2026-06-24, AG Wave 2). The crickets [V3 Retrospective](https://github.com/alexherrero/crickets/wiki/v3-retrospective) covers what shipped, what we learned, what's deferred.
 
-For the harness's design rationale, see [harness/principles.md](harness/principles.md) and the architecture decisions under [wiki/decisions/](wiki/decisions/).
+For the harness's design rationale, see [harness/principles.md](harness/principles.md) and the [living designs](https://github.com/alexherrero/agentm/wiki/Designs) — each design's amendment log holds the architectural decisions that shaped it (the ADR model is retired; see [Design-Governance](https://github.com/alexherrero/agentm/wiki/Design-Governance)).
 
 ## Status
 

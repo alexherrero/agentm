@@ -26,7 +26,7 @@ Four surfaces, each with a defined job:
 
 ## The `wiki/` folder
 
-Seven top-level sections at repo root, in a fixed order, per the seven-section taxonomy ([ADR 0004 Amendment 2026-06-11](../wiki/decisions/0004-diataxis-documentation-spec.md#amendment-2026-06-11), which supersedes the earlier four-mode Diátaxis split). **Five are always present** (how-to · reference · designs · explanation · decisions); **two are conditional** — `architecture/` appears only when a per-repo `wiki/architecture.yml` manifest is declared, and `operational/` only on non-public visibility:
+Six top-level sections at repo root, in a fixed order, per the six-section taxonomy (the crickets conventions [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) domain, which supersedes the earlier four-mode Diátaxis split). **Four are always present** (how-to · reference · designs · explanation); **two are conditional** — `architecture/` appears only when a per-repo `wiki/architecture.yml` manifest is declared, and `operational/` only on non-public visibility:
 
 ```
 wiki/
@@ -37,43 +37,41 @@ wiki/
 ├── how-to/                     # accomplish a task (recipes); onboarding walkthroughs fold in here
 ├── reference/                  # look up a detail (tables, flags, commands)
 ├── architecture/               # conditional: pillar overviews — only when wiki/architecture.yml is declared
-├── designs/                    # design docs / HLDs
+├── designs/                    # design docs / HLDs (+ decision records, in each design's amendment log)
 ├── explanation/                # understand *why* (intent, rationale)
-├── decisions/                  # ADRs (top-level): decisions/<NNNN>-<slug>.md, append-only once accepted
 └── operational/                # conditional: runbooks / ops — only on non-public visibility
 ```
 
-### What belongs where (the seven sections)
+### What belongs where (the six sections)
 
 | # | Section | Presence | Reader intent / contents | Shape |
 |---|---|---|---|---|
 | 1 | **how-to/** | always | Accomplish a task (reader already knows basics). Onboarding walkthroughs fold in here as numbered `01-`/`02-` pages. | `> [!NOTE]` Goal / Prereqs, `## Steps` numbered list. **No `## Rationale` / `## Why` / `## Background` / `## Context`.** |
 | 2 | **reference/** | always | Look up a detail | `## ⚡ Quick Reference` table in the first 20 lines; tables-first throughout. |
 | 3 | **architecture/** | conditional — only when `wiki/architecture.yml` is declared | Pillar / subsystem overviews | Prose + diagrams; one page per declared pillar. |
-| 4 | **designs/** | always | Design docs / HLDs (the "why we built X this way") | Prose narrative; the `/design` skill owns the 10-section shape. |
+| 4 | **designs/** | always | Design docs / HLDs (the "why we built X this way"). **Decision records live here too** — as entries in each design's `## Amendment log`, not a separate section. | Prose narrative; the `/design` skill owns the 10-section shape. |
 | 5 | **explanation/** | always | Understand *why* (intent, rationale, trade-offs) | Prose-heavy narrative. Feature/Subsystem pages (Template 2) live here. |
-| 6 | **decisions/** | always | ADRs (top-level; was nested `explanation/decisions/`) | Template 3; append-only once `Status: accepted`. |
-| 7 | **operational/** | conditional — only on non-public visibility | Runbooks / ops; omitted from public wikis | Prose + checklists. |
+| 6 | **operational/** | conditional — only on non-public visibility | Runbooks / ops; omitted from public wikis | Prose + checklists. |
 
-The five always-present sections (how-to · reference · designs · explanation · decisions) appear in every wiki; **Architecture** is gated on the `wiki/architecture.yml` manifest and **Operational** on non-public visibility.
+The four always-present sections (how-to · reference · designs · explanation) appear in every wiki; **Architecture** is gated on the `wiki/architecture.yml` manifest and **Operational** on non-public visibility.
 
 **The single-section rule:** each page serves exactly one section. A page that mixes shapes (a how-to with a `## Rationale` section, a reference with `## Steps`, etc.) fails `scripts/check-wiki.py --strict` and breaks the reader contract. If a page would benefit from cross-section content, create a companion page in the correct section and cross-link.
 
-Pages outside these seven sections are not part of the convention — either file them under the correct section or add a subdir with a rationale in that section's `README.md`.
+Pages outside these six sections are not part of the convention — either file them under the correct section or add a subdir with a rationale in that section's `README.md`.
 
 > [!NOTE]
-> **Authoring tooling lives in crickets.** The seven-section authoring + maintenance tooling is crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin (the `diataxis-author` skill + `/diataxis` commands). agentm's duplicate four-mode copy was retired toward it in the seven-section convergence ([ADR 0004 Amendment 2026-06-11](../wiki/decisions/0004-diataxis-documentation-spec.md#amendment-2026-06-11)). Harness wiki-authoring now **defers to crickets with the [ADR 0006](../wiki/decisions/0006-crickets-split.md) graceful-skip**: when crickets is installed it drives mode selection + section-template choice; when it is absent the harness suggests installing it and falls back — never hard-fails. The deterministic gate stays agentm's own seven-folder [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py), unchanged by the retire.
+> **Authoring tooling lives in crickets.** The six-section authoring + maintenance tooling is crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin (the `diataxis-author` skill + `/diataxis` commands). agentm's duplicate four-mode copy was retired toward it. Harness wiki-authoring now **defers to crickets with the crickets-split graceful-skip**: when crickets is installed it drives mode selection + section-template choice; when it is absent the harness suggests installing it and falls back — never hard-fails. The deterministic gate stays agentm's own six-folder [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py), unchanged by the retire.
 
 ### Filename rules
 
 - `CamelCase-With-Dashes.md` (matches GitHub Wiki URL convention).
 - **Globally unique** across mode dirs — basename collisions fail the sync workflow loudly.
 - Onboarding walkthroughs under `how-to/` are numerically prefixed (`01-`, `02-`, ...) to suggest reading order.
-- ADRs live at `decisions/<NNNN>-<slug>.md` (top-level); the `NNNN` is append-only (never renumber).
+- Decision records are entries in the governing design's `## Amendment log` (under `designs/`), not standalone files — the agentm/crickets ADR model is retired.
 - Subdirs within a mode are allowed but kept shallow — prefer a flat list of basenames.
 
 > [!NOTE]
-> This seven-section layout ([ADR 0004 Amendment 2026-06-11](../wiki/decisions/0004-diataxis-documentation-spec.md#amendment-2026-06-11)) supersedes the four-mode Diátaxis layout, which itself superseded [ADR 0002](../wiki/decisions/0002-documentation-convention.md)'s audience-based layout. It converges agentm onto crickets' seven-section taxonomy (crickets ADR 0020). See the [Migrating an existing install](#migrating-an-existing-install) section below for the conversion of already-installed projects.
+> This six-section layout (the crickets conventions [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) domain) supersedes the four-mode Diátaxis layout, which itself superseded the original audience-based layout. It matches crickets' six-section taxonomy. See the [Migrating an existing install](#migrating-an-existing-install) section below for the conversion of already-installed projects.
 
 ## Templates
 
@@ -133,25 +131,18 @@ Layered on Template 1. Used for explanation pages `documenter` tracks through `p
 <footguns, follow-ups, deferred items.>
 ```
 
-### Template 3 — "ADR"
+### Template 3 — "Decision record" (amendment-log entry)
 
-Only for `explanation/decisions/<NNNN>-<slug>.md`.
+The ADR model is retired: a load-bearing decision is recorded as an entry in the governing living design's `## Amendment log` (under `designs/`), not a standalone file. Reconcile the design's body to the new truth and append the entry in the same atomic change.
 
 ```markdown
-# ADR <NNNN>: <Title>
-
-> [!NOTE]
-> **Status:** proposed | accepted | superseded-by-<NNNN>
-> **Date:** YYYY-MM-DD
-
-## Context
-## Decision
-## Consequences
+**YYYY-MM-DD — <summary of the change>.**
+<decision prose>. *Why not the alternative:* <why-not>. *Re-audit trigger:* <condition that would make this wrong>.
 ```
 
 ### Template 4 — "How-to" (incl. onboarding walkthroughs)
 
-For `how-to/<Verb-Object>.md` and the numbered onboarding pages (`how-to/<NN>-<slug>.md`) that the seven-section frame folds in where a separate `tutorials/` dir used to live. Opens with a `> [!NOTE]` Goal / (Time, for onboarding / ) Prereqs block; body is numbered steps.
+For `how-to/<Verb-Object>.md` and the numbered onboarding pages (`how-to/<NN>-<slug>.md`) that the six-section frame folds in where a separate `tutorials/` dir used to live. Opens with a `> [!NOTE]` Goal / (Time, for onboarding / ) Prereqs block; body is numbered steps.
 
 ```markdown
 # <Verb the reader is doing>
@@ -182,7 +173,7 @@ Plain how-to variant: skip the onboarding framing paragraph and the "What you le
 - **Tables over bullet lists** for comparative information.
 - **Diagrams** — ASCII in fenced code blocks or Mermaid. Use one whenever a relationship is clearer drawn than described.
 - **GitHub alerts** for load-bearing callouts: `> [!NOTE]`, `> [!IMPORTANT]`, `> [!WARNING]`.
-- **Emoji section markers**, consistent across pages: 🔧 How-to · 📖 Reference · 🏛️ Architecture · 📐 Designs · 💡 Explanation · 🧭 Decisions · 🛠️ Operational · ⚡ Quick Reference.
+- **Emoji section markers**, consistent across pages: 🔧 How-to · 📖 Reference · 🏛️ Architecture · 📐 Designs · 💡 Explanation · 🛠️ Operational · ⚡ Quick Reference.
 - **Cross-links**: wiki pages by basename (`Home`, `01-Getting-Started`, etc.), full GitHub URLs with `#L<line>` for code references.
 
 ## `Home.md` and `_Sidebar.md`
@@ -191,13 +182,13 @@ Maintained by the `documenter` sub-agent (not generated by sync). Sync is a dumb
 
 ## The `documenter` sub-agent
 
-**Canonical spec lives in crickets.** The `documenter` sub-agent is crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin ([`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md)). agentm's duplicate four-mode copy was retired toward it in the seven-section convergence ([ADR 0006](../wiki/decisions/0006-crickets-split.md) single-source). The harness now **dispatches it with the [ADR 0006](../wiki/decisions/0006-crickets-split.md) graceful-skip**: when crickets is installed the documenter performs the structural wiki write; when it is absent the harness suggests installing crickets and skips the write — never hard-fails. Scope, tools, and guardrails are defined in that canonical spec — this section is the integration surface.
+**Canonical spec lives in crickets.** The `documenter` sub-agent is crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin ([`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md)). agentm's duplicate four-mode copy was retired toward it (crickets-split single-source). The harness now **dispatches it with the crickets-split graceful-skip**: when crickets is installed the documenter performs the structural wiki write; when it is absent the harness suggests installing crickets and skips the write — never hard-fails. Scope, tools, and guardrails are defined in that canonical spec — this section is the integration surface.
 
 **Write scope:** `wiki/**` and `.harness/project.json`. Nothing else in the repo.
 
 **Invoked at phase boundaries only. Never during `/work`'s implement step.**
 
-**Preview-before-write + per-repo override (carried over unchanged).** Every documenter write — per-repo or cross-repo — emits a unified diff and waits for explicit operator approval (a per-write gate, not per-batch), and honors a per-repo `.diataxis-conventions.md` override when present in the target repo root. Both are specified in [ADR 0004 Amendment 2026-05-27](../wiki/decisions/0004-diataxis-documentation-spec.md#amendment-2026-05-27); the seven-section convergence leaves this I/O contract intact.
+**Preview-before-write + per-repo override (carried over unchanged).** Every documenter write — per-repo or cross-repo — emits a unified diff and waits for explicit operator approval (a per-write gate, not per-batch), and honors a per-repo `.diataxis-conventions.md` override when present in the target repo root. Both are long-standing parts of the `documentation` convention; the six-section frame leaves this I/O contract intact.
 
 | Phase | When | Goal | Write targets |
 |---|---|---|---|
@@ -205,8 +196,8 @@ Maintained by the `documenter` sub-agent (not generated by sync). Sync is a dumb
 | `/plan` | After `PLAN.md` written | Create pending how-to pages for each user-visible task; reserve `explanation/<slug>.md` Status pages for architectural changes. Add rows to `reference/` for new commands / flags / keys. | `how-to/` · `reference/` · `explanation/` |
 | `/work` | After gates green, before commit | Flip pending → implemented on matching how-to / Feature pages. Fill `## Steps` from the diff. Update `reference/` tables. Never add rationale to a how-to. | `how-to/` · `reference/` · `explanation/` |
 | `/review` | — | Not invoked. Reviewer may note stale docs secondarily. | — |
-| `/release` | After gates green | Full-pass sweep across all seven sections. Create missing pages. Add ADRs at `decisions/`. Update `Home`/`_Sidebar`. Append to `reference/Completed-Features.md`. Block release on unresolved questions. | all sections |
-| `/bugfix` | Post-fix | Update `reference/Known-Issues.md` if a gotcha emerged. Add ADR at `decisions/` if the fix implies a design-decision change. | `reference/` · `decisions/` |
+| `/release` | After gates green | Full-pass sweep across all six sections. Create missing pages. Record any load-bearing decisions in the governing design's amendment log (`designs/`). Update `Home`/`_Sidebar`. Append to `reference/Completed-Features.md`. Block release on unresolved questions. | all sections |
+| `/bugfix` | Post-fix | Update `reference/Known-Issues.md` if a gotcha emerged. Amend the governing design (its `## Amendment log`) if the fix changes a design decision. | `reference/` · `designs/` |
 
 Humans may edit any wiki file anytime. Docsub respects existing content and asks before deprecating, moving, or deleting pages.
 
@@ -266,18 +257,18 @@ Only populated if the user opts into project creation at `/setup`. Absent otherw
 - **Auto-generated sidebar.** Docsub owns `_Sidebar.md` — a deliberate, curated nav beats alphabetical autogen.
 - **Docs alongside code in `/work`'s implement step.** Biases the implementer toward confirming the plan. Phase-bounded only.
 - **LLM-as-judge for doc quality.** `/release`'s docsub pass is adversarial-framed ("find what wasn't documented") but not a quality score.
-- **Ad-hoc sections beyond the seven** (a "glossary" or "changelog" section). The seven-section taxonomy ([ADR 0004 Amendment 2026-06-11](../wiki/decisions/0004-diataxis-documentation-spec.md#amendment-2026-06-11)) is the contract; glossaries live under `reference/`, changelogs under `reference/Completed-Features.md`.
-- **A hardcoded template count.** Page, Status, ADR, and How-to cover the common shapes; section-specific templates follow crickets' canonical `wiki-maintenance` set rather than a fixed number the sub-agent must memorize.
+- **Ad-hoc sections beyond the six** (a "glossary" or "changelog" section). The six-section taxonomy (the crickets conventions [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) domain) is the contract; glossaries live under `reference/`, changelogs under `reference/Completed-Features.md`.
+- **A hardcoded template count.** Page, Status, Decision-record, and How-to cover the common shapes; section-specific templates follow crickets' canonical `wiki-maintenance` set rather than a fixed number the sub-agent must memorize.
 
 ## Migrating an existing install
 
-Projects installed from an earlier harness version have the old four-mode subdir layout (`tutorials/` · `how-to/` · `reference/` · `explanation/`), and older ones the pre-[ADR 0004](../wiki/decisions/0004-diataxis-documentation-spec.md) audience-based layout. Migration to the seven-section frame is a one-shot, preview-first, non-destructive conversion provided by crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin — `/diataxis migrate` (**graceful-skip**: when crickets is not installed there is no migration command — agentm no longer ships its own four-mode migration skill, fully retired in the V5 docs slim toward crickets' canonical converter).
+Projects installed from an earlier harness version have the old four-mode subdir layout (`tutorials/` · `how-to/` · `reference/` · `explanation/`), and older ones a pre-Diátaxis audience-based layout. Migration to the six-section frame is a one-shot, preview-first, non-destructive conversion provided by crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin — `/diataxis migrate` (**graceful-skip**: when crickets is not installed there is no migration command — agentm no longer ships its own four-mode migration skill, fully retired in the V5 docs slim toward crickets' canonical converter).
 
 The migration:
 
 - Refuses to run on a dirty tree or a wiki that already has `wiki/.diataxis`.
-- Classifies every page by heading shape (How-to / Reference / Architecture / Design / Explanation / ADR / Operational) using deterministic rules; section-mixed pages are flagged for human split, never auto-moved.
+- Classifies every page by heading shape (How-to / Reference / Architecture / Design / Explanation / Operational) using deterministic rules; section-mixed pages are flagged for human split, never auto-moved.
 - Prints a preview (MOVES / LINK REWRITES / NEEDS HUMAN SPLIT / DELETIONS), prompts `Apply? [y/N]`, then uses `git mv` so blame is preserved.
 - Leaves the result staged but uncommitted — the human reviews and commits.
 
-After migration, `scripts/check-wiki.py --strict` (the blocking seven-section lint) activates automatically via the `wiki/.diataxis` marker.
+After migration, `scripts/check-wiki.py --strict` (the blocking six-section lint) activates automatically via the `wiki/.diataxis` marker.

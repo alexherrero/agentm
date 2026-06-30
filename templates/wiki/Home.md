@@ -1,6 +1,6 @@
 # Project Wiki
 
-Welcome to this project's wiki — human-and-agent-readable documentation for this codebase. The sections below follow the seven-section taxonomy ([ADR 0004](https://github.com/alexherrero/agentm/blob/main/wiki/decisions/0004-diataxis-documentation-spec.md)): each page is written for a single reader intent — doing, looking up, understanding, or recording a decision — and never mixes intents.
+Welcome to this project's wiki — human-and-agent-readable documentation for this codebase. The sections below follow the six-section taxonomy (the crickets [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) convention): each page is written for a single reader intent — doing, looking up, or understanding — and never mixes intents.
 
 > [!NOTE]
 > This page is maintained by crickets' `wiki-maintenance:documenter` sub-agent (when crickets is installed) at phase boundaries. Humans may edit it directly; the sub-agent preserves human edits. `Home` is curated — it surfaces the pages a reader acts on, not every page; the [sidebar](_Sidebar) is the complete sitemap.
@@ -24,9 +24,9 @@ Explanation pages capture intent, rationale, and trade-offs — the *why*, not t
 
 - [First explanation](First-Explanation) — the story behind this project.
 
-## 📐 Designs · 🧭 Decisions
+## 📐 Designs
 
-Design docs ("Why we built X") live under `designs/`; Architecture Decision Records live under `decisions/`. Both are seeded empty — see [README](README) for how they get populated.
+Design docs ("Why we built X") live under `designs/`; load-bearing decisions are recorded in each design's `## Amendment log`. Seeded empty — see [README](README) for how they get populated.
 
 ## Conventions
 

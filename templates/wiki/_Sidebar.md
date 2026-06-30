@@ -16,7 +16,3 @@
 ### 💡 Explanation
 
 - [First explanation](First-Explanation)
-
-### 🧭 Decisions
-
-- _Seeded empty — add ADRs here (see `decisions/README.md`)._

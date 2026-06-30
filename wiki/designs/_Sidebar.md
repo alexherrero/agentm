@@ -27,4 +27,3 @@
   - [Memory index](agentm-memory-index)
 - [The persona tier](persona-tier)
 ### 💡 [Explanation](Explanation)
-- [Decisions (archived)](Decisions)

@@ -48,7 +48,6 @@ expected=(
   wiki/how-to/First-How-To.md
   wiki/reference/First-Reference.md
   wiki/explanation/First-Explanation.md
-  wiki/decisions/README.md
   wiki/designs/README.md
   AGENTS.md
   CLAUDE.md
