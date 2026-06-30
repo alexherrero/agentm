@@ -8,6 +8,20 @@ A modern coding agent can produce a working feature inside a single long convers
 
 None of those are model problems — they don't get better with a bigger model. They're scaffolding problems, and they get better with better scaffolding. AgentM *is* that scaffolding: a phase-gated workflow plus an on-disk state layout that any `AGENTS.md`-aware agent can follow the same way.
 
+## Why AgentM, against a bare agent
+
+The same scaffolding gaps, seen as the difference a bare agent and an AgentM-backed one show in daily use:
+
+| | Vanilla Claude Code | Claude Code + AgentM |
+|---|---|---|
+| **Session continuity** | Memory ends with the session; the next prompt starts blank | Vault-backed; new sessions auto-recall the entries relevant to where you left off |
+| **Per-phase auto-context** | You re-explain conventions every time, or rely on a static `CLAUDE.md` | Each phase (`/setup` `/plan` `/work` `/review` `/release`) recalls phase-scoped entries within a token budget |
+| **Evidence-tracked task closeouts** | Tasks close when the agent says they're done | `evidence-tracker` hook blocks `[ ] → [x]` flips in `PLAN.md` unless the agent actually read the spec/test files first |
+| **Paired-release coordination** | Manual cross-repo coordination per release | Locked release-order convention + URL-linked sibling release notes + paired CI verification on both repos |
+| **Cross-project memory** | Each project's `CLAUDE.md` lives in isolation | Vault holds operator-wide conventions + per-project sub-trees; the same locked decisions surface across every project you work in |
+
+AgentM doesn't replace Claude Code — it gives it persistence, structure, and the kind of accumulating context that turns a fresh session into a continuation.
+
 ## The shape: phases with hard boundaries
 
 The development lifecycle is split into discrete phases, each with one job and an exit gate. You don't write code in the plan phase, and you don't merge in the work phase.
