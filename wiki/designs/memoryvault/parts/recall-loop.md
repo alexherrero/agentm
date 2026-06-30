@@ -30,7 +30,7 @@ This part ships the **read loop** — the two hooks that inject MemoryVault cont
 
 **Recall engine** (called by both hooks; also exposable as `/memory search` for manual semantic queries):
 
-1. **Embed the query** — local `sentence-transformers` (BGE-large default; ~1.3GB checkpoint cached at `~/.cache/crickets/sentence-transformers/`; PyTorch MPS on Apple Silicon for acceleration) as of v0.9.2 (see [ADR 0001's 2026-05-20 amendment](../../decisions/0001-crickets-purpose.md#amendment-2026-05-20)). Synchronous call; on time-budget overrun, fall back to grep-only.
+1. **Embed the query** — local `sentence-transformers` (BGE-large default; ~1.3GB checkpoint cached at `~/.cache/crickets/sentence-transformers/`; PyTorch MPS on Apple Silicon for acceleration) as of v0.9.2 (see [local-only embeddings decision, 2026-05-20 — crickets-hld](https://github.com/alexherrero/crickets/wiki/crickets-hld)). Synchronous call; on time-budget overrun, fall back to grep-only.
 2. **Vec search** — query sqlite-vec for top-K nearest entries by cosine similarity. Returns `(path, similarity_score)`.
 3. **Grep + frontmatter search** in parallel — scan entry titles + tags + first-line content for keyword matches; filter by frontmatter (`status: active` only by default; respect `group` filter if query specifies; respect `--include-inbox` flag for `_inbox/` access).
 4. **Merge** — union the two result sets; rank by `similarity_score × 0.7 + keyword_match_count × 0.3`; dedup.
@@ -38,7 +38,7 @@ This part ships the **read loop** — the two hooks that inject MemoryVault cont
 
 Filtering invariants: recall never surfaces `status: superseded` entries by default; `_inbox/` excluded unless `--include-inbox` flag set; `_archive/` always excluded.
 
-**Local-only as of v0.9.2** ([ADR 0001 amendment](../../decisions/0001-crickets-purpose.md#amendment-2026-05-20)) — no API path remains. `sentence-transformers` + BGE-large is the production mode; `AGENT_TOOLKIT_EMBEDDING_MODEL` env var swaps in a smaller model for low-spec hosts. If sentence-transformers is unavailable (not installed, or PyTorch MPS issue), recall degrades to grep+frontmatter-only.
+**Local-only as of v0.9.2** ([local-only embeddings decision, 2026-05-20 — crickets-hld](https://github.com/alexherrero/crickets/wiki/crickets-hld)) — no API path remains. `sentence-transformers` + BGE-large is the production mode; `AGENT_TOOLKIT_EMBEDDING_MODEL` env var swaps in a smaller model for low-spec hosts. If sentence-transformers is unavailable (not installed, or PyTorch MPS issue), recall degrades to grep+frontmatter-only.
 
 ## Dependencies
 
@@ -51,7 +51,7 @@ Filtering invariants: recall never surfaces `status: superseded` entries by defa
 3. **Recall returns top-K relevant entries** — seed a fixture vault with ~20 entries on varied topics; submit queries with both keyword-match and paraphrase semantics; verify top-K returns the expected matches per the rubric (semantic queries should pull paraphrase matches that grep alone would miss).
 4. **Time budgets respected** — SessionStart completes in <500ms; UserPromptSubmit completes in <300ms; on overrun, hook logs warning + proceeds with partial results rather than blocking.
 5. **`status: superseded` filtered by default** — create an entry, evolve it; verify recall returns only the new entry (not the superseded one).
-6. **Offline-capable recall works** — verify recall succeeds with network disconnected once BGE-large model is cached locally (v0.9.2 is local-only by default — see [ADR 0001 amendment](../../decisions/0001-crickets-purpose.md#amendment-2026-05-20); no API path exists to fall back to).
+6. **Offline-capable recall works** — verify recall succeeds with network disconnected once BGE-large model is cached locally (v0.9.2 is local-only by default — see [local-only embeddings decision, 2026-05-20 — crickets-hld](https://github.com/alexherrero/crickets/wiki/crickets-hld); no API path exists to fall back to).
 7. **Local-embedding failure → grep fallback** — simulate sentence-transformers missing; verify recall degrades to grep+frontmatter-only rather than failing entirely.
 8. **Smoke install verifies hooks land** — `smoke-install-bash.sh` + `.ps1` extended to verify both hook scripts install at the 2 host destinations.
 9. **All 3 OS CI workflows green** on the commit that lands this part.
