@@ -4,7 +4,7 @@ Universal instructions for AI coding agents working in a project using `agentm`.
 
 ## What this harness is
 
-A phase-gated workflow with on-disk state — single-threaded, one phase per session, with context carried between sessions on disk rather than in the conversation. Since the V5 unbundling ([ADR 0011](wiki/decisions/0011-v5-unbundling-dev-loop.md)) the phase loop itself (Setup · Plan · Work · Review · Release · Bugfix) is provided by the companion crickets **developer-workflows** / **code-review** plugins; `agentm` owns the durable state substrate and the memory engine those phases run on. The plugins are optional — a bare `agentm` is the memory engine alone.
+A phase-gated workflow with on-disk state — single-threaded, one phase per session, with context carried between sessions on disk rather than in the conversation. Since the V5 unbundling the phase loop itself (Setup · Plan · Work · Review · Release · Bugfix) is provided by the companion crickets **developer-workflows** / **code-review** plugins; `agentm` owns the durable state substrate and the memory engine those phases run on. The plugins are optional — a bare `agentm` is the memory engine alone.
 
 ## Phases (hard boundaries)
 
@@ -82,7 +82,7 @@ These entrypoints are provided by the crickets **developer-workflows** plugin �
 
 ## Personal customizations
 
-Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo (since v2.0.0 / [ADR 0006](wiki/decisions/0006-crickets-split.md)); since the V5 unbundling ([ADR 0011](wiki/decisions/0011-v5-unbundling-dev-loop.md)) the phase loop lives there too. Install both repos as siblings (e.g. `~/Antigravity/agentm/`, `~/Antigravity/crickets/`) to get the full set. The developer-workflows `/release` and `/work` phases reference `ship-release` (also from crickets) as a graceful-skip suggestion — neither requires the other to exist.
+Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo (since v2.0.0); since the V5 unbundling the phase loop lives there too. Install both repos as siblings (e.g. `~/Antigravity/agentm/`, `~/Antigravity/crickets/`) to get the full set. The developer-workflows `/release` and `/work` phases reference `ship-release` (also from crickets) as a graceful-skip suggestion — neither requires the other to exist.
 
 ## Core principles (why the harness looks like this)
 
