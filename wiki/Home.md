@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alexherrero/agentm/main/assets/agent-m/banner-1600.png" alt="Agent M — The structural backend harness you wished you had">
+  <img src="https://raw.githubusercontent.com/alexherrero/agentm/main/assets/agent-m/banner-1600.png" alt="AgentM — The structural backend harness you wished you had">
 </p>
 
 <p align="center"><em>The agent harness that gives you the assistant you want — part Star Trek Computer, part J.A.R.V.I.S.</em></p>
@@ -13,14 +13,14 @@
 
 <p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentm/wiki/Compatibility">see compatibility</a></sub></p>
 
-**Agent M** is a phase-gated agent harness with a persistent memory layer. The harness gives the dev loop hard boundaries — Setup · Plan · Work · Review · Release · Bugfix — so an agent executes one phase at a time against on-disk state instead of freestyling the whole lifecycle. The MemoryVault gives it a durable, file-based memory that carries your preferences, project state, and learned lessons across sessions and across projects. Imagine the workflows you saw in the movies: you talk to your agent, it remembers your projects and your notes, and it improves automatically as you work — no knowledge graph to hand-maintain. Agent M has grown across the paired releases of `agentm` (this harness) and [`crickets`](https://github.com/alexherrero/crickets) (the toolkit of skills, hooks, and sub-agents that ride on top).
+**AgentM** is a phase-gated agent harness with a persistent memory layer. The harness gives the dev loop hard boundaries — Setup · Plan · Work · Review · Release · Bugfix — so an agent executes one phase at a time against on-disk state instead of freestyling the whole lifecycle. The MemoryVault gives it a durable, file-based memory that carries your preferences, project state, and learned lessons across sessions and across projects. Imagine the workflows you saw in the movies: you talk to your agent, it remembers your projects and your notes, and it improves automatically as you work — no knowledge graph to hand-maintain. AgentM has grown across the paired releases of `agentm` (this harness) and [`crickets`](https://github.com/alexherrero/crickets) (the toolkit of skills, hooks, and sub-agents that ride on top).
 
 > [!NOTE]
 > This wiki documents the `agentm` repo for contributors. Projects that *install* the harness get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) scaffolded into them instead — see the [Foundations HLD](agentm-foundations-hld) for why the two are kept separate.
 
 ## 📚 Get started
 
-Agent M is two sibling repos plus a vault folder. Clone both, point the vault at your sync setup, and the harness is operational.
+AgentM is two sibling repos plus a vault folder. Clone both, point the vault at your sync setup, and the harness is operational.
 
 - [Tutorial — your first harness install](01-First-Install) — fresh clone to a healthy installed scratch project in ~5 minutes.
 - [Install the harness into a project](Install-Into-Project) — add the scaffold to an existing repo.
@@ -67,10 +67,10 @@ The structural component map — six components, each a folder under **Architect
 
 ## 🧩 Major designs
 
-The high-level designs behind Agent M's memory layer — the full HLDs, where the design started and where it's going. → **[Browse all designs](Designs)**
+The high-level designs behind AgentM's memory layer — the full HLDs, where the design started and where it's going. → **[Browse all designs](Designs)**
 
 - [MemoryVault](memoryvault) — permanent agent memory: [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining).
-- [AgentM HLD](agentm-hld) — where Agent M started (the V1→V8 Evolution arc), the V5 memory-OS baseline, and the four pillars it's built on. *(The standalone Agent-Memory-Evolution / Device-Wide / Memory-OS V5 HLDs were vault-archived 2026-06-24; their framing now lives here + in [Foundations](agentm-foundations-hld).)*
+- [AgentM HLD](agentm-hld) — where AgentM started (the V1→V8 Evolution arc), the V5 memory-OS baseline, and the four pillars it's built on. *(The standalone Agent-Memory-Evolution / Device-Wide / Memory-OS V5 HLDs were vault-archived 2026-06-24; their framing now lives here + in [Foundations](agentm-foundations-hld).)*
 
 ## 💡 Why it works the way it does
 

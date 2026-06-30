@@ -1,7 +1,7 @@
 <!-- mode: index -->
 # Reference
 
-Lookup-oriented technical detail for the Agent M harness — CLI flags, config schemas, detection rules, lint checks, and the shipped-work log. These pages document *what is*, exactly; the [How-to](How-To) pages cover *how to do* a task and [Architecture](Architecture) covers *how it's built*.
+Lookup-oriented technical detail for the AgentM harness — CLI flags, config schemas, detection rules, lint checks, and the shipped-work log. These pages document *what is*, exactly; the [How-to](How-To) pages cover *how to do* a task and [Architecture](Architecture) covers *how it's built*.
 
 ## Install & layout
 

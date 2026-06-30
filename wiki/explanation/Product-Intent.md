@@ -1,12 +1,12 @@
 # Product intent
 
-What Agent M is, who it's for, and the shape of the problem it solves — the "why this repo exists" page, readable in five minutes. The deeper reasoning lives in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md) and the design amendment logs under [Designs](Designs).
+What AgentM is, who it's for, and the shape of the problem it solves — the "why this repo exists" page, readable in five minutes. The deeper reasoning lives in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md) and the design amendment logs under [Designs](Designs).
 
 ## The problem is scaffolding, not the model
 
 A modern coding agent can produce a working feature inside a single long conversation. What it usually *can't* do in that same conversation is stop before scope creeps, run deterministic gates before declaring success, leave a successor enough state to pick up cleanly, review its own work adversarially instead of rubber-stamping, and keep the docs honest after the code ships.
 
-None of those are model problems — they don't get better with a bigger model. They're scaffolding problems, and they get better with better scaffolding. Agent M *is* that scaffolding: a phase-gated workflow plus an on-disk state layout that any `AGENTS.md`-aware agent can follow the same way.
+None of those are model problems — they don't get better with a bigger model. They're scaffolding problems, and they get better with better scaffolding. AgentM *is* that scaffolding: a phase-gated workflow plus an on-disk state layout that any `AGENTS.md`-aware agent can follow the same way.
 
 ## The shape: phases with hard boundaries
 

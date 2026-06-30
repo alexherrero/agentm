@@ -1,6 +1,6 @@
 # Compatibility
 
-Hosts and surfaces Agent M is verified to run with.
+Hosts and surfaces AgentM is verified to run with.
 
 ## Supported hosts
 
@@ -23,7 +23,7 @@ The single aggregate `CI` badge in the README + wiki Home rolls up all three OS 
 
 ## Sibling repo
 
-Agent M pairs with **[Crickets (`crickets`)](https://github.com/alexherrero/crickets)** — the customization surface (skills, hooks, sub-agents, bundles, MCP servers, slash commands). Crickets is tested on the same OS matrix; both repos ship paired releases per the [Foundations HLD](agentm-foundations-hld).
+AgentM pairs with **[Crickets (`crickets`)](https://github.com/alexherrero/crickets)** — the customization surface (skills, hooks, sub-agents, bundles, MCP servers, slash commands). Crickets is tested on the same OS matrix; both repos ship paired releases per the [Foundations HLD](agentm-foundations-hld).
 
 ## Out-of-scope hosts
 

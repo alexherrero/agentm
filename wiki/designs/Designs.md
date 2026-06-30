@@ -1,7 +1,7 @@
 <!-- mode: index -->
 # Designs
 
-The high-level design docs behind Agent M — its memory layer and the harness tooling around it — the full HLDs for what shipped and what's in flight, where the design started and where it's going. The [Architecture](Architecture) pillar overviews link *down* into these for the deep detail.
+The high-level design docs behind AgentM — its memory layer and the harness tooling around it — the full HLDs for what shipped and what's in flight, where the design started and where it's going. The [Architecture](Architecture) pillar overviews link *down* into these for the deep detail.
 
 ## MemoryVault
 

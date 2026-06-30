@@ -1,7 +1,7 @@
 <!-- mode: index -->
 # How-to
 
-Task-focused recipes for running the Agent M harness — from a first install through tuning the memory layer and keeping the vault healthy. New here? Start with the tutorial, then come back for the specific task you're on.
+Task-focused recipes for running the AgentM harness — from a first install through tuning the memory layer and keeping the vault healthy. New here? Start with the tutorial, then come back for the specific task you're on.
 
 ## Start here
 
