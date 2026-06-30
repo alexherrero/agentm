@@ -2,7 +2,7 @@
   <img src="https://raw.githubusercontent.com/alexherrero/agentm/main/assets/agent-m/banner-1600.png" alt="AgentM — The structural backend harness you wished you had">
 </p>
 
-<p align="center"><em>The agent harness that gives you the assistant you want — part Star Trek Computer, part J.A.R.V.I.S.</em></p>
+<p align="center"><em>The agent harness that remembers your work — so you get the assistant you actually wanted.</em></p>
 
 <p align="center">
   <a href="https://github.com/alexherrero/agentm/actions/workflows/ci-all.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentm/ci-all.yml?branch=main&style=for-the-badge&label=CI&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="CI"></a>
@@ -13,75 +13,40 @@
 
 <p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentm/wiki/Compatibility">see compatibility</a></sub></p>
 
-**AgentM** is a phase-gated agent harness with a persistent memory layer. The harness gives the dev loop hard boundaries — Setup · Plan · Work · Review · Release · Bugfix — so an agent executes one phase at a time against on-disk state instead of freestyling the whole lifecycle. The MemoryVault gives it a durable, file-based memory that carries your preferences, project state, and learned lessons across sessions and across projects. Imagine the workflows you saw in the movies: you talk to your agent, it remembers your projects and your notes, and it improves automatically as you work — no knowledge graph to hand-maintain. AgentM has grown across the paired releases of `agentm` (this harness) and [`crickets`](https://github.com/alexherrero/crickets) (the toolkit of skills, hooks, and sub-agents that ride on top).
+**AgentM** is built to learn how you work — and, in time, to know it better than you do. It helps you remember: the decisions, the open threads, the conventions, the step you always forget before a release. It knows **how** the work should be done — it is opinionated, with a sound answer ready even for the things you didn't think to ask. And when it hits something it doesn't know, it works it out and keeps what it learns for the next time.
+
+Said differently, AgentM combines a custom harness with persistent memory and self-improvement — it dreams and learns between sessions. Its customization system extends those abilities through plugins that enable long-running, nuanced development workflows, automated project management, and more. And its opinion system can layer in personas focused on a specific kind of work, so you can leave them to it while you focus on the task at hand.
+
+AgentM works best paired with [`crickets`](https://github.com/alexherrero/crickets) — the toolkit of plugins (capabilities, skills, hooks, and sub-agents) that make it even more useful.
+
+## 🚀 Get started
+
+AgentM installs alongside your coding agent — Claude Code or Antigravity — so you can be up and running in a few minutes. [See requirements](Compatibility).
+
+Install AgentM and crickets with the recommended configuration and a Google Drive vault:
+
+```bash
+# Point the vault at a Google Drive folder named "Agent" (the recommended default)
+export MEMORY_VAULT_PATH="<your-google-drive>/Agent"
+
+# Install AgentM for every project on this machine (user scope) + verification hooks
+bash ~/agentm/install.sh --hooks --scope user
+
+# Add the crickets plugins (Claude Code + Antigravity)
+curl -fsSL https://raw.githubusercontent.com/alexherrero/crickets/main/bootstrap.sh | bash
+```
+
+More on the available configurations [here](Supported-Configurations).
+
+## 📖 Learn more
+
+The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there is to know about AgentM. A few links to get you started.
+
+- [Why we built it](Explanation) — the problem, the solution and the reason.
+- [Architecture](Architecture) — how it's made.
+- [Reference](Reference) — fields, flags, schemas and more.
+
+---
 
 > [!NOTE]
-> This wiki documents the `agentm` repo for contributors. Projects that *install* the harness get [`templates/wiki/`](https://github.com/alexherrero/agentm/tree/main/templates/wiki) scaffolded into them instead — see the [Foundations HLD](agentm-foundations-hld) for why the two are kept separate.
-
-## 📚 Get started
-
-AgentM is two sibling repos plus a vault folder. Clone both, point the vault at your sync setup, and the harness is operational.
-
-- [Tutorial — your first harness install](01-First-Install) — fresh clone to a healthy installed scratch project in ~5 minutes.
-- [Install the harness into a project](Install-Into-Project) — add the scaffold to an existing repo.
-- [Run without a vault](Run-Without-A-Vault) — operate the harness with no MemoryVault configured (repo-local state).
-
-## 🔧 What do you want to do?
-
-| What | How-to |
-|---|---|
-| 🧱 **Stand up a project** — detect → propose → approve → persist the per-project config | [Configure a new project](Configure-A-New-Project) |
-| ⬆️ **Pull a newer harness** into a project that already has one | [Update an installed harness](Update-Installed-Harness) |
-| 🚀 **Cut a release** — tag, changelog, GitHub release | [Cut a release](Cut-A-Release) |
-| 🧠 **Tune the memory** — recall budgets, save modes, confidence thresholds per phase | [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases) · [Tune auto-orchestration](Tune-Auto-Orchestration) |
-| 🩺 **Keep the vault healthy** — lint it, find missing note links | [Audit the vault](Audit-The-Vault) · [Find missing note links](Find-Missing-Note-Links) |
-| 🌐 **Read the vault from any agent** — Claude.ai · Gemini · ChatGPT · Antigravity | [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) |
-| 🖥️ **Keep state per-repo** — when to stay `--scope project` | [Use per-project install](Use-Per-Project-Install) |
-| 🔌 **Expose the vault as an MCP server** — Claude Code · Cursor · Goose · Claude Desktop | [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server) |
-
-## 📖 Look up a detail
-
-For contributors running the harness:
-
-- [Compatibility](Compatibility) — supported hosts (Claude Code · Antigravity) + OS matrix + the adapter contract.
-- [Installer CLI](Installer-CLI) — flags, prerequisites, and the ownership table for `install.sh` / `install.ps1`.
-- [CI gates](CI-Gates) — what each CI workflow proves and the script behind it.
-- [Completed features](Completed-Features) — the reverse-chronological log of shipped work.
-- [Memory MCP tools](Memory-MCP-Tools) — four-tool MCP surface: parameters, pagination, soft-delete contract, error codes.
-
-> [!NOTE]
-> **Latest release — [v5.9.1](https://github.com/alexherrero/agentm/releases/tag/v5.9.1) (2026-06-19):** Vault-path hygiene patch — new `check-no-hardcoded-vault-path` CI gate (22nd gate) bans absolute vault-path literals from non-test tracked files; `AGENTS.md` locks the resolve-don't-recall convention in prose. ([CI gates reference](CI-Gates))
-
-→ Full field-level detail lives under **Reference** in the sidebar.
-
-## 🏛️ How it's built
-
-The structural component map — six components, each a folder under **Architecture** in the sidebar. → **[Browse the architecture](Architecture)**
-
-- [AgentMemory](AgentMemory) — the MemoryVault substrate: durable, file-based memory across sessions and projects.
-- [Device-Wide Substrate](Device-Wide-Substrate) — how the harness and its memory span every project on the machine.
-- [Phases](Phases) — the phase-gated workflow with hard boundaries and on-disk state.
-- [Orchestration and Auto-Detection](Orchestration-And-Auto-Detection) — auto-wiring the right phase + context by detecting a project's shape.
-- [Host adapters](Host-Adapters) — adapting to each host (Claude Code · Antigravity 2.0 · Antigravity CLI).
-- [Toolkit interface ↔ crickets](Toolkit-Interface) — the seam with the sibling toolkit: what each owns, how they compose.
-
-## 🧩 Major designs
-
-The high-level designs behind AgentM's memory layer — the full HLDs, where the design started and where it's going. → **[Browse all designs](Designs)**
-
-- [MemoryVault](memoryvault) — permanent agent memory: [write-primitives](write-primitives) · [recall-loop](recall-loop) · [reflection-and-recovery](reflection-and-recovery) · [idea-ledger](idea-ledger) · [seed-pass](seed-pass) · [discovery-mining](discovery-mining).
-- [AgentM HLD](agentm-hld) — where AgentM started (the V1→V8 Evolution arc), the V5 memory-OS baseline, and the four pillars it's built on. *(The standalone Agent-Memory-Evolution / Device-Wide / Memory-OS V5 HLDs were vault-archived 2026-06-24; their framing now lives here + in [Foundations](agentm-foundations-hld).)*
-
-## 💡 Why it works the way it does
-
-- [Product intent](Product-Intent) — what problem the harness solves and for whom.
-- [Auto-detect + auto-configure](Auto-Detect-Configure) — why first-session config proposes-then-approves and lives in `project.json`.
-- [How the pieces fit](How-The-Pieces-Fit) — the narrative of how phases, adapters, templates, and scripts interact.
-- [GitHub Projects integration](GitHub-Projects-Integration) — why and how the harness writes to ProjectsV2.
-- [Auto-orchestration](Auto-Orchestration) — why the memory skills became a push surface that never nags.
-- [Single-repo state mode](Single-Repo-State-Mode) — how the harness degrades to repo-local state when no vault is reachable.
-- [Memory↔process seam](Memory-Process-Seam) — why a process reads memory through a one-way, read-only client instead of reaching into the engine.
-
-## 📐 Design decisions
-
-Load-bearing calls live in each design's amendment log — the "why X, and why not Y" trail, with re-audit triggers. → **[Browse all designs](Designs)**
+> **Latest release: [v5.10.0](https://github.com/alexherrero/agentm/releases/tag/v5.10.0).** Your plans, roadmap, and progress now show up at the start of every session, whether you keep them on this device or in a synced vault. Earlier versions could miss them when the vault was synced.
