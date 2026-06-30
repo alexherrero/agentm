@@ -6,6 +6,7 @@ Lookup-oriented technical detail for the AgentM harness — CLI flags, config sc
 ## Install & layout
 
 - **[Installer CLI](Installer-CLI)** — flags, prerequisites, and the ownership table for `install.sh` / `install.ps1`.
+- **[Supported configurations](Supported-Configurations)** — install scope, vault storage, and state-mode choices, with pointers to each.
 - **[Migration tool](Migration-Tool)** — `migrate-to-user-scope.{sh,ps1}`, the 4-state matrix, and the `.agentm-migrate-record.json` schema.
 - **[Repo layout](Repo-Layout)** — the top-level directory map and the adapter parity table.
 - **[Compatibility](Compatibility)** — supported hosts, the OS matrix, and the adapter contract.

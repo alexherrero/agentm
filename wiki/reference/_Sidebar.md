@@ -3,6 +3,7 @@
 ### 🔧 [How-to](How-To)
 ### 📖 [Reference](Reference)
 - [Installer CLI](Installer-CLI)
+- [Supported configurations](Supported-Configurations)
 - [Detection rules](Detection-Rules)
 - [Project config](Project-Config)
 - [Migration tool](Migration-Tool)
