@@ -1,20 +1,20 @@
 <!-- mode: index -->
 # Explanation
 
-Background and rationale — *why* the harness works the way it does. These pages give the reasoning behind the design; load-bearing calls live in each design's amendment log under [Designs](Designs), and the structural map is under [Architecture](Architecture).
+These pages explain *why* AgentM works the way it does — the choices, reasoning, trade-offs, and what each choice represents. If you are looking for technical specifications, see [Reference](Reference). For high-level design, see [Architecture](Architecture).
 
 ## What's here
 
-- **[Product intent](Product-Intent)** — what problem the harness solves and for whom.
-- **[Auto-detect + auto-configure](Auto-Detect-Configure)** — why first-session config proposes-then-approves, and why it lives in `project.json`.
-- **[How the pieces fit](How-The-Pieces-Fit)** — the narrative of how phases, adapters, templates, and scripts interact.
-- **[GitHub Projects integration](GitHub-Projects-Integration)** — why and how the harness writes to ProjectsV2.
-- **[Auto-orchestration](Auto-Orchestration)** — why the memory skills became a push surface, and how the briefing + idle chain + phase dispatch never nag.
-- **[Single-repo state mode](Single-Repo-State-Mode)** — how the harness degrades gracefully to repo-local state when no vault is reachable.
-- **[Memory↔process seam](Memory-Process-Seam)** — why a process talks to the engine through a small stable client, and why that dependency is one-directional.
-- **[Memory↔storage seam](Storage-Seam-Concepts)** — why the engine reads and writes through verbs that hand back an opaque locator, never a filesystem path, why the default backend is bare markdown on-device, and why the synced vault is a *wrap* over existing state that moves no data (V5-1 parts 1–4).
-- **[Soft composition and hard composition](Soft-Composition)** — why `enhances:` and `requires:` are disjoint, what the capability resolver does, and why it is "vocabulary, not wire."
+- **[Product intent](Product-Intent)** — why we created AgentM, and who it is for.
+- **[How the pieces fit](How-The-Pieces-Fit)** — how the phases, adapters, templates, and scripts work together.
+- **[Memory↔storage seam](Storage-Seam-Concepts)** — why the engine uses an interface for generalized storage access, and why the default store is plain markdown.
+- **[Memory↔process seam](Memory-Process-Seam)** — why a process reaches the engine through a client, and why that dependency is one way.
+- **[Soft composition and hard composition](Soft-Composition)** — why in plugins `enhances:` and `requires:` stay separate, and what the capability resolver does.
+- **[Auto-detect + Auto-configure](Auto-Detect-Configure)** — why the first session proposes a config and waits for your approval, and why it lives in `project.json`.
+- **[Auto-orchestration](Auto-Orchestration)** — why the memory skills became something automatic instead of explicitly requested, and how the briefing, idle work, and phase dispatch stay quiet until they are needed.
+- **[Single-repo state mode](Single-Repo-State-Mode)** — why AgentM falls back to repo-local state when there is no vault accessible.
+- **[GitHub Projects integration](GitHub-Projects-Integration)** — why and how the harness mirrors your work onto a GitHub board.
 
 ## See also
 
-[Designs](Designs) · [Architecture](Architecture) · [Home](Home)
+[Designs](Designs) · [Architecture](Architecture) · [Reference](Reference) · [Home](Home)
