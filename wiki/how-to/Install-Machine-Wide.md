@@ -4,7 +4,7 @@
 > **Goal:** Install AgentM the recommended way — once for every project on your machine — with the verification hooks and a Google Drive–backed vault, so your memory and customizations follow you across projects and devices.
 > **Prereqs:** a coding agent (Claude Code or Antigravity) and a local clone of the [agentm repo](https://github.com/alexherrero/agentm). Optional but recommended: a Google Drive folder to hold the vault.
 
-This is the recommended setup, and the one the [home page](Home) points to. Under **user scope**, AgentM's customizations install into `~/.claude/` and apply to every project you open, rather than to a single repo — so you set it up once. Your memory vault lives in a Google Drive folder, so it syncs across your devices. For the exceptions where you'd deliberately scope the install to one project instead, see [Use per-project install](Use-Per-Project-Install).
+This is the recommended setup. Under **user scope**, AgentM's customizations install into `~/.claude/` and apply to every project you open, rather than to a single repo — so you set it up once. Your memory vault lives in a Google Drive folder, so it syncs across your devices. For the exceptions where you'd deliberately scope the install to one project instead, see [Use per-project install](Use-Per-Project-Install).
 
 ## Prerequisites
 
@@ -36,12 +36,14 @@ This is the recommended setup, and the one the [home page](Home) points to. Unde
    curl -fsSL https://raw.githubusercontent.com/alexherrero/crickets/main/bootstrap.sh | bash
    ```
 
-4. **Confirm it's wired up.** Open a project with your agent and check that the vault resolves and the backend is selected — the [audit the vault](Audit-The-Vault) how-to walks that health check.
+4. **Open a fresh session and run the doctor.** Start a new session with your agent so the new user-scope config loads, then run the **doctor** to get a report of how everything's wired up — the vault path, the active backend, the hooks, and anything that needs attention. (For a deeper vault-only pass, see [audit the vault](Audit-The-Vault).)
 
 ## Troubleshooting
 
-- **The vault path isn't picked up.** Make sure `MEMORY_VAULT_PATH` points at the real Drive folder and that the folder exists. The install persists it during a `--scope user` run; if you set it afterward, re-run the install or set it with `agentm_config --vault-path <path>`.
-- **You want just one project, not the whole machine.** That's the per-project exception — use `--scope project <target>` instead. See [Use per-project install](Use-Per-Project-Install).
+| Symptom | Fix |
+|---|---|
+| The vault path isn't picked up | Make sure `MEMORY_VAULT_PATH` points at the real Drive folder and that it exists. The install persists it during a `--scope user` run; if you set it afterward, re-run the install or set it with `agentm_config --vault-path <path>`. |
+| You want just one project, not the whole machine | That's the per-project exception — use `--scope project <target>` instead. See [Use per-project install](Use-Per-Project-Install). |
 
 ## Related
 
