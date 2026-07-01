@@ -1,40 +1,40 @@
 <!-- mode: index -->
 # Reference
 
-Lookup-oriented technical detail for the AgentM harness — CLI flags, config schemas, detection rules, lint checks, and the shipped-work log. These pages document *what is*, exactly; the [How-to](How-To) pages cover *how to do* a task and [Architecture](Architecture) covers *how it's built*.
+Look up the exact details of the AgentM harness — the install flags, config schemas, detection rules, vault checks, and the log of shipped work. These pages tell you *what things are*; the [How-to](How-To) pages cover *how to do* a task, and [Architecture](Architecture) covers *how it's built*.
 
 ## Install & layout
 
-- **[Installer CLI](Installer-CLI)** — flags, prerequisites, and the ownership table for `install.sh` / `install.ps1`.
-- **[Supported configurations](Supported-Configurations)** — install scope, vault storage, and state-mode choices, with pointers to each.
-- **[Migration tool](Migration-Tool)** — `migrate-to-user-scope.{sh,ps1}`, the 4-state matrix, and the `.agentm-migrate-record.json` schema.
-- **[Repo layout](Repo-Layout)** — the top-level directory map and the adapter parity table.
-- **[Compatibility](Compatibility)** — supported hosts, the OS matrix, and the adapter contract.
+- **[Installer CLI](Installer-CLI)** — the flags and prerequisites for `install.sh` / `install.ps1`, and which files each one owns.
+- **[Supported configurations](Supported-Configurations)** — the install-scope, vault-storage, and state-mode choices, with a pointer to each.
+- **[Migration tool](Migration-Tool)** — the tool that moves an older per-project install to user scope, and what it records.
+- **[Repo layout](Repo-Layout)** — the top-level directory map, and how the host adapters line up.
+- **[Compatibility](Compatibility)** — the supported hosts and operating systems.
 
 ## Detection & config
 
-- **[Detection rules](Detection-Rules)** — the built-in rules and what each attaches a rationale to.
-- **[Project config](Project-Config)** — the `project.json` enablement-block schema.
-- **[Auto-orchestration config](Auto-Orchestration-Config)** — every config key + default (toggles · thresholds · cooldowns) and the `auto-orchestration-state.json` shape.
+- **[Detection rules](Detection-Rules)** — the built-in rules that spot what a project needs, and why each one fires.
+- **[Project config](Project-Config)** — the `project.json` schema that turns features on and off.
+- **[Auto-orchestration config](Auto-Orchestration-Config)** — every setting behind auto-orchestration (the toggles, thresholds, and cooldowns) and its default.
 
 ## Memory & vault
 
-- **[AgentMemory context payload](AgentMemory-Context-Payload)** — the canonical paste-anywhere payload's sections.
-- **[Vault lint checks](Vault-Lint-Checks)** — the read-only `vault_lint.py` checks: id · severity · what each checks · suggested-fix shape.
-- **[Note relatedness signals](Note-Relatedness-Signals)** — the signals + thresholds `notes_link_discovery.py` scores on.
-- **[Vault write protocol](Vault-Write-Protocol)** — the lock path, content-hash CAS, atomic-writer, and the pin-offline / partitioning operator habits for N≥2 concurrent writers.
-- **[Process seam](Process-Seam)** — the read-only client a *process* calls instead of reaching into the engine: the three functions, their signatures, and degrade contracts.
-- **[Storage seam](Storage-Seam)** — the verbs the engine calls instead of touching files: the seven-verb `StorageBackend` contract, the `Locator`/`Info`/`Capabilities` types, and its two concrete backends — `DeviceLocalBackend` (plain markdown) and `VaultBackend` (the synced vault wrap) — held to one conformance contract (V5-1 parts 1–4).
+- **[AgentMemory context payload](AgentMemory-Context-Payload)** — the paste-anywhere memory payload, and what's in it.
+- **[Vault lint checks](Vault-Lint-Checks)** — the read-only checks the vault audit runs, and what each one looks for.
+- **[Note relatedness signals](Note-Relatedness-Signals)** — the signals used to suggest links between notes.
+- **[Vault write protocol](Vault-Write-Protocol)** — how the vault stays safe when more than one session writes at once, and the habits that help.
+- **[Process seam](Process-Seam)** — the small read-only interface another process uses to reach memory, instead of calling the engine directly.
+- **[Storage seam](Storage-Seam)** — the interface the engine uses to read and write storage, and its two backends: the plain device-local store and the synced vault.
 
 ## Plugin capabilities
 
-- **[Capability resolver](Capability-Resolver)** — the `capability_available` / `capability_resolve` / `build_registry` public API, the four reason codes, the Claude Code and Antigravity read paths, merge semantics, and the CLI shim exit codes.
-- **[Design governance](Design-Governance)** — the AG-track `governs:`/`area:`/`scope:`/`shape:`/`kind:` frontmatter convention and the `governs_resolver.py` API + CLI exit-code contract the crickets grounding-hooks bridge targets.
+- **[Capability resolver](Capability-Resolver)** — how the harness works out which capabilities are available, on each host.
+- **[Design governance](Design-Governance)** — the frontmatter convention that ties a design to what it governs, and the resolver behind it.
 
 ## CI & shipped work
 
-- **[CI gates](CI-Gates)** — what each CI workflow proves and the script behind it.
-- **[Completed features](Completed-Features)** — the reverse-chronological log of shipped work.
+- **[CI gates](CI-Gates)** — what each CI workflow proves, and the script behind it.
+- **[Completed features](Completed-Features)** — the log of shipped work, newest first.
 
 ## See also
 

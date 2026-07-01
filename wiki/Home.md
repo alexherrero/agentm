@@ -36,7 +36,7 @@ bash ~/agentm/install.sh --hooks --scope user
 curl -fsSL https://raw.githubusercontent.com/alexherrero/crickets/main/bootstrap.sh | bash
 ```
 
-More on the available configurations [here](Supported-Configurations).
+Step-by-step, with the vault and hooks explained: [Install machine-wide (recommended)](Install-Machine-Wide). More on the available configurations [here](Supported-Configurations).
 
 ## 📖 Learn more
 
