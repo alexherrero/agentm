@@ -272,6 +272,12 @@ def rule_e_reference_shape(p: Path, mode: str | None, lines: list[str],
                            issues: list[Issue]) -> None:
     if mode != "reference":
         return
+    # The combined plugin-page standard (## Architecture + ## Reference two-parent
+    # shape) leads with architecture context, then puts the reference tables under
+    # ## Reference — a first-class layout, exempt from the open-with-a-table rule.
+    h2s = {title.strip().lower() for _ln, lvl, title in heads if lvl == 2}
+    if {"architecture", "reference"} <= h2s:
+        return
     h1_line = next((ln for ln, lvl, _ in heads if lvl == 1), 1)
     window = lines[h1_line:h1_line + 25]
     has_table = any(TABLE_ROW_RE.match(ln) for ln in window)
