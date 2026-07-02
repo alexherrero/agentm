@@ -4,7 +4,7 @@ Contributions are welcome. Fork the repo, work on a branch, and open a pull requ
 
 - **Get your bearings.** The [Reference](https://github.com/alexherrero/agentm/wiki/Reference) covers the flags, schemas, and repo layout.
 - **Test locally before you push.** Run `bash scripts/check-all.sh` — the details are in [How to test locally](#how-to-test-locally) below.
-- **Keep secrets and personal data out.** This is a public repo, so a PII scan runs in CI and blocks anything it finds. See [CI gates](https://github.com/alexherrero/agentm/wiki/CI-Gates) for what the scan covers and how to run it yourself.
+- **Keep secrets and personal data out.** This is a public repo, so a PII scan runs in CI and blocks anything it finds. See [PII Guardrail](https://github.com/alexherrero/agentm/wiki/PII) for what's blocked and how to run the check yourself.
 - **What CI does with your PR.** Every push runs three per-OS workflows (Linux, macOS, Windows) in parallel; all of them need to be green before a PR can merge.
 - **Review turnaround.** Expect a first review within about a week.
 

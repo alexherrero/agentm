@@ -44,6 +44,7 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 | Page | What it covers |
 |---|---|
 | [CI gates](CI-Gates) | What each CI workflow proves, and the script behind it. |
+| [PII Guardrail](PII) | What to keep out of the public repo, and how the scan enforces it. |
 | [Completed features](Completed-Features) | The log of shipped work, newest first. |
 
 ## See also

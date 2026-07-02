@@ -8,6 +8,7 @@
 - [Project config](Project-Config)
 - [Migration tool](Migration-Tool)
 - [CI gates](CI-Gates)
+- [PII Guardrail](PII)
 - [Repo layout](Repo-Layout)
 - [Vault lint checks](Vault-Lint-Checks)
 - [Note relatedness signals](Note-Relatedness-Signals)
