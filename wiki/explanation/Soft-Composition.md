@@ -1,7 +1,9 @@
 <!-- mode: explanation -->
 # Soft composition and hard composition
 
-agentm and crickets use two distinct composition models for plugins. Conflating them is the most common source of confusion when reading the `enhances:` or `requires:` fields.
+Why plugins keep `enhances:` and `requires:` in two separate fields, and what the capability resolver actually does when a plugin asks whether another is around.
+
+The two fields stay separate because the resolver was built as a deliberately simple checker, not a dependency solver. It does one thing: given a capability name, look it up in a registry of what's installed and answer yes or no. That single choice decides where everything has to go. A dependency the plugin genuinely can't run without has to be a hard `requires:` — the host installer is the only thing that can promise it's present, so the host enforces it. Everything the resolver handles is therefore optional by definition, which is exactly what `enhances:` means: the enhancement is nice to have, and when it's missing the plugin quietly falls back to standalone behavior. The tempting shortcut is to let the resolver chase a mandatory or transitive dependency too, and collapse the two fields into one. We didn't, because a solver would have to fail the plugin when a required piece is absent — and failing installs is the host's contract with the user, not the substrate's. So the resolver stays a static, fail-safe registry lookup keyed on capability: no install-time enforcement, no error when something's unmet, just a boolean the caller can branch on. The rest of this page fills in each half.
 
 ## Hard composition: `requires:` (the host's job)
 
