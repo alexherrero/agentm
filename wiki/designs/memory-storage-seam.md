@@ -74,6 +74,8 @@ When the configured backend **cannot be produced**, `select_backend` raises `Sto
 
 ### 3. Backend-aware harness state
 
+**The V5-3 cutover, in one line (this is the canonical statement other pages point to):** in V5-3 (v5.5.0) the kernel's memory read path went device-local only — `phase_recall` now returns `""` and `resolve_documenter_context` now returns `None` — and the built-in vault backend was deleted from `harness_memory.py`, so the vault is no longer in the kernel's call path. It survives as the `obsidian-vault` plugin, selected by name when configured. State I/O is the one thing that stayed backend-aware, described next; ADR 0020 reversed the original device-local-only decision for it (see §2b and the amendment log).
+
 `harness_state_dir`, `read_state_file`, and `write_state_file` are **backend-aware**. A single private helper, `_state_backend_target(resolution)`, encodes the routing rule:
 
 - **Synced backend active** (`resolution["backend"].capabilities.sync is True` + `project_locator` present) → state targets `<vault>/projects/<slug>/_harness/<file>` via the backend verbs.

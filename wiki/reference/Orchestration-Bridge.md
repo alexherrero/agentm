@@ -8,7 +8,7 @@ The orchestration bridge — `phase_dispatch()` in [`scripts/harness_memory.py`]
 |---|---|
 | **Entry point** | `phase_dispatch(*, phase, project_root=None, dry_run=False)` |
 | **CLI** | `python3 scripts/harness_memory.py phase-dispatch <phase> [--project-root DIR] [--dry-run]` |
-| **Valid phases** | `post-work`, `post-release` (locked in `_BRIDGE_PHASES` at line 1576) |
+| **Valid phases** | `post-work`, `post-release` (locked in the `_BRIDGE_PHASES` frozenset in `harness_memory.py`) |
 | **Return** | `int` — always `0` (non-blocking, graceful-skip) |
 
 > [!IMPORTANT]

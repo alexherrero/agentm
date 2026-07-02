@@ -180,7 +180,6 @@ V5-6 closes the third and final leg of the V5 de-vaulting arc (data plane V5-3 �
 ### Related
 
 - [ADR 0019 — V5-6 routing-plane de-vaulting](memory-storage-seam) — the three-leg arc, locked design calls, load-bearing assumptions.
-- [Seam-De-Vaulting-V5-6](../explanation/Seam-De-Vaulting-V5-6) — intent, design, and full implementation trace.
 - [Storage seam § Routing layer](Storage-Seam#routing-layer-v5-6) — quick-reference tables for the three de-vaulted mechanisms.
 - [Single-repo state mode](../explanation/Single-Repo-State-Mode) — `state_mode: vault` alias callout.
 - [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
