@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v5.10.0](https://github.com/alexherrero/agentm/releases/tag/v5.10.0).** Your plans, roadmap, and progress now show up at the start of every session, whether you keep them on this device or in a synced vault. Earlier versions could miss them when the vault was synced.
+> **Latest release: [v5.11.0](https://github.com/alexherrero/agentm/releases/tag/v5.11.0).** AgentM is now dual-licensed — code under Apache-2.0, documentation and prompts under CC-BY-4.0 — with a trademark policy for the name. Its full architecture is written up as living designs in the wiki, and release-cutting now comes from crickets' `ship-release` skill.
 
 ---
 

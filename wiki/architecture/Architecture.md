@@ -39,4 +39,4 @@ Everything inherits the shared [Foundations](agentm-foundations-hld), and the [A
 ## Recent changes
 
 > [!NOTE]
-> **Latest: the architecture's designs were reviewed and locked (2026-06-28).** Every high-level design and its sub-designs were finalized — the diagrams standardized to one house style, and each decision recorded in its own design's history. See [Designs](Designs) for the full set.
+> **Latest: the design set is complete and published ([v5.11.0](https://github.com/alexherrero/agentm/releases/tag/v5.11.0), 2026-07-01).** Every high-level design and its sub-designs are now living designs in the wiki, each decision recorded in its own design's history — the standalone ADR model is retired. See [Designs](Designs) for the full set.
