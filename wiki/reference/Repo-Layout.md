@@ -25,7 +25,7 @@ agentm/
 ├── README.md                  # the pitch + install instructions
 ├── AGENTS.md                  # universal agent entry point
 ├── CLAUDE.md                  # Claude Code entry (links back to AGENTS.md)
-├── CHANGELOG.md               # Keep-a-Changelog format; written by ship-release
+├── CHANGELOG.md               # Keep-a-Changelog format; written by crickets' ship-release skill
 ├── LICENSE                    # Apache-2.0 (code)
 ├── LICENSE-CONTENT            # CC-BY-4.0 (docs, prompts, prose)
 ├── NOTICE                     # Apache attribution notice + license map
@@ -77,7 +77,7 @@ A third directory, `adapters/gemini/`, remains in the tree but is **not a suppor
 
 **Canonical sub-agents** (`harness/agents/`): `adapt-evaluator`, `memory-idea-researcher` — the memory-engine pair. The review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter` are crickets-provided (code-review / developer-workflows / wiki-maintenance plugins) since the V5 unbundling (the [AgentM HLD](agentm-hld)).
 
-**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `ship-release`, `wiki-author`. Wiki authoring's `diataxis-author` is provided by crickets' `wiki-maintenance` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`.
+**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `wiki-author`. `ship-release` is provided by crickets' `releasing-conventions` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`. Wiki authoring's `diataxis-author` is provided the same way by crickets' `wiki-maintenance` plugin.
 
 ## Related
 

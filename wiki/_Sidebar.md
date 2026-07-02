@@ -5,7 +5,6 @@
 - [Install into a project](Install-Into-Project)
 - [Configure a new project](Configure-A-New-Project)
 - [Update an installed harness](Update-Installed-Harness)
-- [Cut a release](Cut-A-Release)
 - [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases)
 - [Use per-project install](Use-Per-Project-Install)
 - [Audit the vault](Audit-The-Vault)

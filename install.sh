@@ -655,11 +655,14 @@ cp_user_walk "$HARNESS_ROOT/templates/wiki" "wiki"
 # harness/agents/<file>.md, dispatching each based on its supported_hosts
 # field. These compound customizations are agentm-native (in harness/) —
 # originally imported from crickets in v4.0.0 (plan #18 DC #28) and since
-# owned by agentm: the memory / design / ship-release skills, the memory +
+# owned by agentm: the memory / design skills, the memory +
 # session hooks (memory-recall-*, memory-reflect-*, harness-context-session-start),
 # and the memory-idea-researcher + adapt-evaluator sub-agents. (The
 # conflict-merger-session-start hook re-homed to the crickets obsidian-vault
-# plugin in V5-2 task 2 — vault-specific machinery left the kernel.)
+# plugin in V5-2 task 2 — vault-specific machinery left the kernel. The
+# ship-release skill re-homed the other direction: its local copy retired
+# 2026-07-01, folded into crickets' releasing-conventions skill of the same
+# name, which now covers both discipline and mechanics.)
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +
 # supported_hosts: <list>). The legacy agentm single-file skill (doctor.md)

@@ -35,7 +35,7 @@ The development lifecycle is split into discrete phases, each with one job and a
 | `/release` | Pre-merge gate: clean tree, full suite, feature flags flipped truthfully. | A verified-ready state; no push. |
 | `/bugfix` | A Report → Analyze → Fix → Verify *pipeline* for bugs, used instead of `/plan` + `/work`. | A fix committed with a regression test. |
 
-`/bugfix` is a pipeline rather than a phase, but it sits alongside the five phases as the sixth command an operator reaches for. A separate skill, [`ship-release`](https://github.com/alexherrero/agentm/blob/main/harness/skills/ship-release.md), cuts a tagged GitHub release *after* `/release` passes — semver sized from the conventional-commit prefixes since the last tag.
+`/bugfix` is a pipeline rather than a phase, but it sits alongside the five phases as the sixth command an operator reaches for. A separate crickets skill, [`ship-release`](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions), cuts a tagged GitHub release *after* `/release` passes — semver sized from the conventional-commit prefixes since the last tag.
 
 ## Who it's for
 

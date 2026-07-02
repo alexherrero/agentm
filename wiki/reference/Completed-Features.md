@@ -877,4 +877,4 @@ The `/bugfix` Issues lifecycle shipped in v0.8.2; this plan closed the symmetric
 
 - [GitHub-Projects-Integration](GitHub-Projects-Integration) — feature design + implementation.
 - [ADR 0003: ProjectsV2 ownership and linking](agentm-foundations-hld) — the two-call create-plus-link decision.
-- [Cut-A-Release](Cut-A-Release) — the procedure that invokes `ship-release`.
+- [Releasing Conventions](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions) — the procedure that invokes `ship-release`.

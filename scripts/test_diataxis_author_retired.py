@@ -111,7 +111,7 @@ class TestDiataxisAuthorRetired(unittest.TestCase):
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn(name, text, f"{rel} should still mention {name}")
             # The harness-shipped compound list must no longer carry it.
-            harness_list = "design, memory, ship-release"
+            harness_list = "design, memory"
             self.assertIn(
                 harness_list,
                 text,

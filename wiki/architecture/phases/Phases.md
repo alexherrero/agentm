@@ -31,7 +31,7 @@ The canonical spec for each lives in the crickets **developer-workflows** plugin
 Detail:
 
 - [How the pieces fit](How-The-Pieces-Fit) · [Product intent](Product-Intent) — why the workflow is shaped this way.
-- [Use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) · [Cut a release](Cut-A-Release) — phase recipes.
+- [Use auto-context in harness phases](Use-Auto-Context-In-Harness-Phases) — phase recipes. Cutting a release is the crickets [Releasing Conventions](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions) skill's job, not agentm's.
 - [Phase-gated workflow design](agentm-hld) — the founding decision.
 
 [Architecture](Architecture) · [Explanation](Explanation) · [Home](Home)

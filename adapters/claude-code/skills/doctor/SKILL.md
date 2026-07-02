@@ -36,7 +36,7 @@ Expected name sets:
 |---|---|---|
 | `$ROOT/commands/*.md` | — (`recent-wiki-changes` optional, V4 #30 plan 2 / v4.4.0+) | `bugfix, plan, release, review, setup, work` (crickets developer-workflows — moved out of agentm in the V5 dev-loop slim) |
 | `$ROOT/agents/*.md` | `adapt-evaluator, memory-idea-researcher` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / developer-workflows); `diataxis-evaluator, documenter, evaluator` (crickets wiki-maintenance) |
-| `$ROOT/skills/*/` | `doctor, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, memory, ship-release` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber` (crickets — `diataxis-author` absorbs the retired four-mode `migrate-to-diataxis` migration) |
+| `$ROOT/skills/*/` | `doctor, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, memory` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber, ship-release` (crickets — `diataxis-author` absorbs the retired four-mode `migrate-to-diataxis` migration; `ship-release` fully crickets-owned since 2026-07-01) |
 
 The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — sub-agents *and* skills both live under `.agents/skills/*/` (the same Required name sets apply); on **Gemini** the required skills come from the shared `.agents/skills/*/` delivery. The dev-loop surfaces (phase commands + review agents) are crickets-provided on every host — `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, never FAIL.
 
@@ -113,7 +113,9 @@ Pass: returns an executable artifact (failing test or file:line pointer), not pr
 
 ### 3. `ship-release --dry-run`
 
-Invoke the `ship-release` skill with `--dry-run`.
+**Graceful-skip if not installed.** `ship-release` is crickets-owned. If the skill isn't present in any host's skill paths, report **skip** (*"ship-release skill not found — install crickets to enable this probe"*), never FAIL.
+
+If installed, invoke the `ship-release` skill with `--dry-run`.
 
 Pass: prints a proposed `vX.Y.Z` and notes; `git tag --list` unchanged; `git status` still clean.
 

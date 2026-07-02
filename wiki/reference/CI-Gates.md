@@ -89,7 +89,7 @@ It deliberately omits the heavier `smoke-install` + `gitleaks` (slow / external 
 
 ## Related
 
-- [How to cut a release](Cut-A-Release) — CI must be green before invoking `ship-release`.
+- [Releasing Conventions](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions) — CI must be green before invoking `ship-release`.
 - [How to refresh an installed harness](Update-Installed-Harness) — what `--update` touches vs. leaves alone.
 - [Vault write protocol](Vault-Write-Protocol) — the protocol the `check-vault-lock-parity` gate keeps byte-identical across its two copies.
 - [Foundations HLD](agentm-foundations-hld) — the installer-boundary rule the gates enforce.
