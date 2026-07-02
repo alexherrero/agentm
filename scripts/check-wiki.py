@@ -37,12 +37,17 @@ Rules (hard = blocking under --strict; soft = always warn-only):
         tutorial ≤ 1200 words
         how-to   ≤ 600 words
         explanation ≤ 2000 words
-        reference: unbounded                                  [soft]
+        reference: unbounded here (rule p adds a prose-word ceiling)  [soft]
   (l) The repo-root README.md, governed as a wiki-adjacent page when
       include_readme is on (the default): every relative-path markdown
       link resolves to an existing file under the repo root. Opt out
       with --no-readme or {"include_readme": false} in
       <repo-root>/.diataxis.json.                             [hard]
+  (p) Shape axis — a reference page should be lookup-shaped, an explanation
+      page should read as prose. Warns when an explanation is table-dominated
+      (a fact-dump; fenced diagrams / code don't count) or a reference is mostly
+      prose / over a prose-word ceiling. The combined plugin-reference hybrid
+      (## Architecture + ## Reference) is exempt.                       [soft]
 
 Usage:
   python3 scripts/check-wiki.py               # warn, exit 0
@@ -75,6 +80,14 @@ MODE_DIRS = tuple(_FOLDER_MODE)
 STRUCTURAL_BASENAMES = {"Home", "_Sidebar", "_Footer", "README"}
 WORD_CAPS = {"tutorial": 1200, "how-to": 600, "explanation": 2000}
 BANNED_HOWTO_HEADINGS = {"rationale", "why", "background", "context"}
+
+# Shape axis (rule p) — soft warns. A reference page should be lookup-shaped
+# (tables / quick-ref); an explanation page should read as prose. Thresholds are
+# calibrated against the live wikis so only a genuine misfile warns.
+REFERENCE_WORD_CAP = 900        # prose words on a reference page (word_count already excludes tables/fences)
+EXPLANATION_TABLE_MAX = 0.50    # explanation with >50% table lines (of table+prose) → warn (fenced diagrams/code don't count against it)
+REFERENCE_LOOKUP_MIN = 0.12     # reference with <12% table/code lines → warn (reference-as-narrative)
+SHAPE_MIN_LINES = 12            # skip pages too small to judge a shape
 
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.+?)\s*$")
 NOTE_BLOCK_START_RE = re.compile(r"^>\s*\[!NOTE\]\s*$", re.IGNORECASE)
@@ -187,6 +200,38 @@ def extract_wiki_links(text: str) -> list[tuple[int, str, str]]:
     return out
 
 
+def content_shape(lines: list[str]) -> tuple[int, int, int]:
+    """(table_lines, fence_lines, prose_lines), ignoring blanks and headings.
+    Tables are lookup; fenced blocks are code or diagrams (neutral — an
+    explanation may legitimately illustrate with them); everything else is prose."""
+    table = fence = prose = 0
+    in_fence = False
+    for line in lines:
+        if FENCE_RE.match(line):
+            in_fence = not in_fence
+            fence += 1
+            continue
+        if in_fence:
+            fence += 1
+            continue
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        if TABLE_ROW_RE.match(line):
+            table += 1
+        else:
+            prose += 1
+    return table, fence, prose
+
+
+def is_combined_plugin_page(heads: list[tuple[int, int, str]]) -> bool:
+    """The combined plugin-reference shape — a reference page with both an
+    ## Architecture and a ## Reference H2 (prose context + lookup tables). A
+    deliberate prose+table hybrid, exempt from the reference shape warnings."""
+    h2s = {title.strip().lower() for _ln, lvl, title in heads if lvl == 2}
+    return {"architecture", "reference"} <= h2s
+
+
 def word_count(text: str) -> int:
     """Rough word count, ignoring fenced code blocks and table rows."""
     kept: list[str] = []
@@ -272,11 +317,10 @@ def rule_e_reference_shape(p: Path, mode: str | None, lines: list[str],
                            issues: list[Issue]) -> None:
     if mode != "reference":
         return
-    # The combined plugin-page standard (## Architecture + ## Reference two-parent
-    # shape) leads with architecture context, then puts the reference tables under
-    # ## Reference — a first-class layout, exempt from the open-with-a-table rule.
-    h2s = {title.strip().lower() for _ln, lvl, title in heads if lvl == 2}
-    if {"architecture", "reference"} <= h2s:
+    # The combined plugin-page standard (## Architecture + ## Reference) leads with
+    # architecture context, then puts the reference tables under ## Reference — a
+    # first-class hybrid, exempt from the open-with-a-table rule.
+    if is_combined_plugin_page(heads):
         return
     h1_line = next((ln for ln, lvl, _ in heads if lvl == 1), 1)
     window = lines[h1_line:h1_line + 25]
@@ -388,6 +432,45 @@ def rule_k_word_count(p: Path, mode: str | None, text: str,
              soft=True)
 
 
+def rule_p_shape(p: Path, mode: str | None, lines: list[str], text: str,
+                 heads: list[tuple[int, int, str]], issues: list[Issue]) -> None:
+    """Shape axis (rule p) — a reference page should be lookup-shaped, an
+    explanation page should read as prose. Soft warns that turn the shape
+    contract from author discipline into a machine check. The combined
+    plugin-reference hybrid is exempt from the reference warnings."""
+    if mode not in ("reference", "explanation"):
+        return
+    table, fence, prose = content_shape(lines)
+
+    if mode == "explanation":
+        # explanation-as-lookup: dominated by TABLES (a fact-dump). Fenced diagrams
+        # and code examples are fine in an explanation, so they don't count.
+        denom = table + prose
+        if denom >= SHAPE_MIN_LINES and table / denom > EXPLANATION_TABLE_MAX:
+            emit(issues, p, 1, "p",
+                 f"explanation page is {round(table / denom * 100)}% tables — an "
+                 "explanation should read as prose; move the lookup material to a "
+                 "reference page", soft=True)
+        return
+
+    # mode == "reference"
+    if is_combined_plugin_page(heads):
+        return
+    lookup = table + fence
+    total = lookup + prose
+    if total >= SHAPE_MIN_LINES and lookup / total < REFERENCE_LOOKUP_MIN:
+        emit(issues, p, 1, "p",
+             f"reference page is {round(prose / total * 100)}% prose — a reference "
+             "should be lookup-shaped (tables / quick-ref); move the narrative to "
+             "an explanation page", soft=True)
+    prose_words = word_count(text)
+    if prose_words > REFERENCE_WORD_CAP:
+        emit(issues, p, 1, "p",
+             f"reference page has {prose_words} words of prose (soft ceiling "
+             f"{REFERENCE_WORD_CAP}) — a reference should be terse; move the "
+             "narrative to an explanation page or split", soft=True)
+
+
 # ── repo-root doc governance (rule l) ───────────────────────────────────────
 
 EXTERNAL_LINK_PREFIXES = ("http://", "https://", "mailto:", "tel:", "#")
@@ -476,6 +559,7 @@ def collect_issues(wiki_root: Path) -> list[Issue]:
             rule_d_howto_shape(p, mode, heads, lines, issues)
             rule_e_reference_shape(p, mode, lines, heads, issues)
             rule_k_word_count(p, mode, text, issues)
+            rule_p_shape(p, mode, lines, text, heads, issues)
 
         out_stems = {page for _, _, page in extract_wiki_links(text)}
         link_graph[p.stem] = out_stems
