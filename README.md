@@ -76,18 +76,13 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 
 ## Contributing
 
-Self-tested on every push by three per-OS workflows (Linux, Mac, Windows) running in parallel. Run the same deterministic battery locally with `bash scripts/check-all.sh`. Details and the full invariant list in [CONTRIBUTING.md](CONTRIBUTING.md).
+Contributions are welcome. Fork the repo, work on a branch, and open a pull request — here's what makes it land smoothly:
+
+- **Get your bearings.** The [Reference](https://github.com/alexherrero/agentm/wiki/Reference) covers the flags, schemas, and repo layout; [CONTRIBUTING.md](CONTRIBUTING.md) has the full invariant list your change will be held to.
+- **Run the checks before you push.** `bash scripts/check-all.sh` runs the same deterministic battery CI does — the unit suite plus every gate.
+- **What CI does with your PR.** Every push runs three per-OS workflows (Linux, macOS, Windows) in parallel; all of them need to be green before a PR can merge. The [CI gates](https://github.com/alexherrero/agentm/wiki/CI-Gates) page lists what runs and what each one proves.
+- **Review turnaround.** Expect a first review within about a week.
 
 ## License
 
-AgentM is multi-licensed so each layer carries the license that fits it:
-
-| Layer | What it covers | License |
-|---|---|---|
-| **Code** | `.py`, `.sh`, `.ps1`, and configuration logic | [Apache-2.0](LICENSE) |
-| **Content** | docs, prompts, agent instructions, skill / command / workflow definitions, wiki, and other prose (`.md`) | [CC-BY-4.0](LICENSE-CONTENT) |
-| **Names & logos** | the "agentm" / "AgentM" name and brand artwork | Trademark — see [TRADEMARK.md](TRADEMARK.md) |
-
-**Boundary rule:** prompt or instruction text embedded as a string literal inside a code file (e.g. a prompt inside a `.py` script) is **content** (CC-BY-4.0), even though it lives in a code file.
-
-Both licenses permit commercial use and derivative works; both require attribution. See [NOTICE](NOTICE) for the attribution string.
+Multi-licensed so each layer carries the license that fits it: code under [Apache-2.0](LICENSE), content — docs, prompts, prose, and other `.md` — under [CC-BY-4.0](LICENSE-CONTENT), and the "AgentM" name and brand under [trademark](TRADEMARK.md). Prompt text embedded in a code file counts as content, even though it lives there. Both licenses allow commercial use and derivative works with attribution — see [NOTICE](NOTICE) for the attribution string.
