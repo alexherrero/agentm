@@ -36,7 +36,7 @@ This part ships the **write loop** — the reflection logic that mines conversat
    - **3-category mine** (writes to MemoryVault): scan for Successful Workflows, User Preferences, Fixes & Workarounds. Each candidate gets a confidence rating per the heuristic in step 3.
    - **Idea-candidate mine** (writes to user-vault `Ideas.md` + deep research in `_idea-incubator/`): scan for follow-ups, future project ideas, research candidates. Each candidate gets a 2-sentence summary + the agent does deep research. (The actual idea-ledger writing is handled by the `idea-ledger` part — this part just produces the candidates.)
 3. **Tri-modal routing** for 3-category candidates per the locked heuristic:
-   - **HIGH** = explicit user signal during session (user said "always X" / user manually corrected the agent / user locked a design call) → auto-save via `/memory save`.
+   - **HIGH** = explicit user signal during session (user said "I prefer X" / user manually corrected the agent / user locked a design call) → auto-save via `/memory save`. *(Corrected from the original "always X" / "never Y" wording — that bare pattern was demoted out of the HIGH lane by the R0.3 source-filter fix, since it fires on ordinary discussion, not just operator directives.)*
    - **MEDIUM** = pattern-inferred (agent noticed pattern 3+ times) → interactive review prompt with approve / edit / reject / skip / **supersede-existing-X** options. Controlled by `memory.review_mode: interactive (default) | silent`.
    - **LOW** = single-instance inference → write to `MemoryVault/personal-private/_inbox/<slug>.md` for batch review later.
 

@@ -92,6 +92,12 @@ jobs:
         # (VERIFY_VEC_INDEX_FAULT=1 is a manual/local regression check, same
         # convention as VERIFY_MEMORY_FAULT in verify-memory-roundtrip.sh).
         run: bash scripts/verify-vec-index.sh
+      - name: verify-reflection (tri-lane routing, machine-source filter)
+        # R1.5 / agentmExperience#2 (R0.3 fix): a genuine operator preference
+        # classifies HIGH and auto-saves; a subagents/-path transcript never
+        # contributes to the vault even carrying the same still-HIGH pattern,
+        # across all three --route-mode values.
+        run: bash scripts/verify-reflection.sh
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         # Drives /setup→/plan→/work→/release deterministic seams against a
         # fixture project, once vault-resident + once repo-local (Hardening I #45).
