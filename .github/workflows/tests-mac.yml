@@ -34,7 +34,7 @@ jobs:
         run: bash scripts/check-no-pii.sh --all
       - name: check-personas (requires ⊆ substrate + no-always-load)
         run: python3 scripts/check-personas.py
-      - name: check-governs-index (governs:/area: overlap + unknown-area)
+      - name: "check-governs-index (governs:/area: overlap + unknown-area)"
         run: python3 scripts/check-governs-index.py
       - name: check-hook-config-parity (4 hook _resolve_vault_path copies)
         run: bash scripts/check-hook-config-parity.sh
