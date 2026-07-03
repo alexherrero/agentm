@@ -107,6 +107,10 @@ jobs:
         # three dead-recall-surface fates (memory_recall + recall_here
         # retired; documenter_context's V5-3 stub contract locked).
         run: python3 scripts/verify-mcp-surface.py
+      - name: health-score-determinism (scorecard byte-identical across two runs)
+        # R1.8 Task 1: the health scorecard aggregator must be deterministic —
+        # two runs against the same fixture input produce byte-identical markdown.
+        run: python3 scripts/health/health_score.py --check-determinism --path scripts/health/fixtures/sample-records.jsonl
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         # Drives /setup→/plan→/work→/release deterministic seams against a
         # fixture project, once vault-resident + once repo-local (Hardening I #45).

@@ -1,0 +1,5 @@
+{"suite": "hook-resolution", "axis": "memory persist+recall", "check": "plugin-key-resolves", "pass": true, "weight": 1.0}
+{"suite": "state-routing", "axis": "memory persist+recall", "check": "never-demote", "pass": true, "weight": 1.0}
+{"suite": "vec-index", "axis": "memory freshness+experience", "check": "drain-round-trip", "pass": true, "weight": 1.0}
+{"suite": "mcp-surface", "axis": "capability function", "check": "append-search-forget", "pass": true, "weight": 1.0}
+{"suite": "ci-consistency", "axis": "verification honesty", "check": "both-places-rule", "pass": true, "weight": 1.0}
