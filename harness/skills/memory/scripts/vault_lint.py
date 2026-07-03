@@ -580,6 +580,9 @@ def main(argv: Optional[list] = None) -> int:
     p.add_argument("--audit", action="store_true",
                    help="write a grouped operator-review report (to --out or <vault>/_meta/vault-lint-<date>.md)")
     p.add_argument("--out", default=None, help="audit report output path (with --audit)")
+    p.add_argument("--check-freshness", action="store_true",
+                   help="report the vec-index freshness ratio (R1.4) — surfaces a dead drain "
+                        "(agentmExperience#0) without a full lint pass")
     args = p.parse_args(argv)
     try:
         vault = _resolve_vault(args.vault)
@@ -589,6 +592,31 @@ def main(argv: Optional[list] = None) -> int:
     if not vault.is_dir():
         print(f"vault_lint: vault not found: {vault}", file=sys.stderr)
         return 2
+
+    if args.check_freshness:
+        # Same directory as vec_index.py (the memory skill's scripts/); a bare
+        # import resolves via sys.path[0] set to this file's directory,
+        # matching every other same-dir import already in this skill.
+        import vec_index
+        inv = vec_index.find_drifted_entries(vault)
+        up_to_date, drifted, not_indexed = len(inv["up_to_date"]), len(inv["drifted"]), len(inv["not_indexed"])
+        total = up_to_date + drifted + not_indexed
+        ratio = (up_to_date / total) if total else 1.0
+        if args.format == "json":
+            print(json.dumps({
+                "up_to_date": up_to_date, "drifted": drifted, "not_indexed": not_indexed,
+                "ratio": ratio,
+            }))
+        else:
+            print(f"vault-lint freshness: {up_to_date}/{total} up-to-date (ratio {ratio:.2f}) "
+                  f"— {drifted} drifted, {not_indexed} not-indexed")
+            if total and ratio < 0.8:
+                print("  WARN: freshness below floor (0.80) — the vec-index drain may be dead. "
+                      "Run `python3 vec_index.py full-sync --rebuild` then `... drain` to catch up.")
+        # Advisory, like the rest of this tool (exit 0 always) — the printed
+        # WARN is the visibility fix; this never fails a build on its own.
+        return 0
+
     model, findings = lint_vault(vault, args.scope)
 
     if args.audit:

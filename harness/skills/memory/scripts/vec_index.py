@@ -907,6 +907,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     if args.cmd == "drain":
+        # R1.4: unlike the read-only walkers in this module (which gracefully
+        # report empty/absent on a missing vault by design), a vanished vault
+        # mid-drain is a distinct failure a stub {"processed": 0, ...} would
+        # mask as "nothing pending" — the caller has no way to tell that apart
+        # from a genuinely empty queue. Fail loud instead of returning a
+        # stale-looking snapshot.
+        if not vault.is_dir():
+            print(f"ERROR: vault path does not exist: {vault}", file=sys.stderr)
+            return 1
         stats = drain_queue(vault, mode=args.mode)
         print(json.dumps(stats))
         return 0

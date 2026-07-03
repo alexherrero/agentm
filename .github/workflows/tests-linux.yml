@@ -85,6 +85,13 @@ jobs:
         # the never-demote guard (explicit storage.backend=vault + a broken
         # vault path must fail loud, never silently write repo-local).
         run: bash scripts/verify-state-routing.sh
+      - name: verify-vec-index (drain pipeline e2e, freshness invariant)
+        # R1.4 / agentmExperience#0: save→queue→drain(stub)→index round-trip,
+        # entry_meta row assertions (SKIPPED if sqlite-vec unavailable, never
+        # dropped), and the freshness invariant. CI runs WITHOUT the fault
+        # (VERIFY_VEC_INDEX_FAULT=1 is a manual/local regression check, same
+        # convention as VERIFY_MEMORY_FAULT in verify-memory-roundtrip.sh).
+        run: bash scripts/verify-vec-index.sh
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         # Drives /setup→/plan→/work→/release deterministic seams against a
         # fixture project, once vault-resident + once repo-local (Hardening I #45).

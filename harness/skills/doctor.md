@@ -90,6 +90,8 @@ Then:
    - `--live` adds a **synthetic SessionStart probe** (best-effort, DC-3): feed `{"session_id":"doctor-probe","cwd":"<agentm clone>"}` to each registered SessionStart hook on stdin; confirm `harness-context-session-start` emits a non-empty `[agentm] Project state…` block; skip gracefully if a hook can't run standalone.
    - **The probe also asserts `memory-recall-session-start` emits non-empty stdout WHEN the configured vault has any `<vault>/personal-private/_always-load/*.md` entries.** Exit 0 with empty stdout in that condition is **`[FAIL] memory-recall-session-start exits 0 but emits nothing despite N always-load entries in vault — script-path or vault-path resolution silently failing`** — the silent-broken shape (V4.7 / agentm-hooks regression). If the vault has zero always-load entries, empty stdout is correctly OK.
 
+7. **Vec-index freshness (R1.4 / agentmExperience#0).** When a vault is reachable, run `python3 <agentm>/harness/skills/memory/scripts/vault_lint.py --vault <vault> --check-freshness --format json`. Parse the printed `ratio`. `[OK]` if `ratio >= 0.80` or the vault has zero indexable entries yet. `[WARN] vec-index freshness N% (<up_to_date>/<total> entries) — the drain may be dead; run vec_index.py full-sync --rebuild then drain` otherwise. Never `[FAIL]` — this is a visibility signal (the drain being behind is recoverable, not a broken install), so it surfaces on a routine `/doctor` run within a day of going stale rather than requiring a dedicated live probe.
+
 ## `--live` probes
 
 Run in order. First failure stops the battery for that adapter (the rest will only produce noise if the foundation is broken).

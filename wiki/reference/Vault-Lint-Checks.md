@@ -12,6 +12,7 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | Does the lint ever edit the vault? | No. Read-only / surface-only (DC-1). It reports + suggests; the operator applies. Auto-fix is deferred to V5-5. |
 | Where does the schema come from? | `save.py` — the lint imports its validators + `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` so the two can't drift (DC-2). |
 | How do I run a full audit report? | See [Audit the vault](Audit-The-Vault). |
+| How do I check vec-index freshness? | `python3 harness/skills/memory/scripts/vault_lint.py --check-freshness` (or `--format json`). |
 | Related pages | [Audit the vault](Audit-The-Vault) |
 
 ## Checks
@@ -31,6 +32,17 @@ Nine checks run over every agent-shaped entry. Severities: `error` (off-spec —
 | `supersede-integrity` | error / warn | `supersedes:` resolves to a real entry (error if dangling); the superseded entry is no longer `active` (warn if still `active`). | Fix the reference / set the target's status to `superseded`. |
 
 Anchor files (`_index`, `_summary`) are exempt from the kebab `slug` check. Bespoke shapes — the idea-incubator `_summary.md` + `Ideas.md` — are skipped entirely (DC-4); a dedicated lint for them is a follow-up. Scheduled / unattended runs are deferred to V6.
+
+## Vault-wide freshness check
+
+`--check-freshness` is a different shape of check from the table above: a single vault-wide ratio, not a per-entry finding. It computes the vec-index freshness ratio via `vec_index.find_drifted_entries()` — `up_to_date / (up_to_date + drifted + not_indexed)` — and reports it in either output format:
+
+- `--format json` — `{"up_to_date": .., "drifted": .., "not_indexed": .., "ratio": ..}`
+- `--format text` — a one-line summary
+
+Below a ratio of `0.80` it prints a WARN suggesting `full-sync --rebuild` then `drain` to catch the index back up. Like every other `vault_lint.py` mode, it is advisory — the process exits `0` regardless of the ratio; a behind index is recoverable, not broken.
+
+It is also wired into `doctor`'s default-mode structural checks (item 7 in `harness/skills/doctor.md`) so a drifted index surfaces within a day on the operator's own machine without a manual run.
 
 ## Related
 
