@@ -719,5 +719,57 @@ class TestWriterTwoRouting(unittest.IsolatedAsyncioTestCase):
                          f"deleted_at is not ISO-8601 UTC: {deleted_at!r}")
 
 
+@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
+class TestMemoryForgetConcurrency(unittest.IsolatedAsyncioTestCase):
+    """R1.7: concurrent memory_forget calls on the SAME entry must never
+    corrupt the vault. memory_forget's read-modify-write (read content ->
+    flip status -> vault_lock.atomic_write) has no read-modify-write mutex of
+    its own -- concurrent callers can race on *which* write wins (last-write
+    wins is fine; that's not the property under test), but atomic_write's
+    temp-then-fsync-then-rename means the file itself can never end up
+    torn/partial, and no stray .tmp should survive a completed run."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self._vault = _make_vault(Path(self._tmp.name))
+        os.environ["MEMORY_VAULT_PATH"] = str(self._vault)
+
+    def tearDown(self):
+        os.environ.pop("MEMORY_VAULT_PATH", None)
+        self._tmp.cleanup()
+
+    async def test_concurrent_forget_calls_leave_a_valid_deleted_entry(self):
+        import asyncio
+
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            appended = await client.call_tool("memory_append", {
+                "content": "concurrency-race target",
+                "kind": "reference",
+                "title": "concurrency-race",
+            })
+            entry_id = appended.data["id"]
+
+            results = await asyncio.gather(
+                *[client.call_tool("memory_forget", {"id": entry_id}) for _ in range(8)],
+                return_exceptions=True,
+            )
+
+        # No stray .tmp remnants from any racing atomic_write.
+        tmp_remnants = list(self._vault.rglob("*.tmp"))
+        self.assertEqual(tmp_remnants, [], f"torn-write remnants: {tmp_remnants}")
+
+        # The file must still parse cleanly and end up deleted — whichever
+        # concurrent call's write actually landed last.
+        content = (self._vault / entry_id).read_text(encoding="utf-8")
+        fm = _parse_frontmatter(content)
+        self.assertEqual(fm.get("status"), "deleted")
+
+        # No unhandled exception besides the tool's own (expected) results.
+        for r in results:
+            if isinstance(r, Exception):
+                raise r
+
+
 if __name__ == "__main__":
     unittest.main()
