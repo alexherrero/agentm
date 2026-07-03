@@ -75,6 +75,11 @@ jobs:
         # idea-ledger · staged-adapt · both nudges) against a throwaway scratch
         # vault (testInfra#1: was check-all.sh-only, invisible to CI).
         run: bash scripts/verify-orchestration-briefing.sh
+      - name: verify-hook-resolution (dual-key vault_path read, 4 hooks)
+        # Regression guard for the hook config dual-key read (R1.2 / agentmEngine#0):
+        # a scratch HOME with .agentm-config.json carrying ONLY the plugin-namespaced
+        # vault key must still resolve for all four memory hooks.
+        run: bash scripts/verify-hook-resolution.sh
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         # Drives /setup→/plan→/work→/release deterministic seams against a
         # fixture project, once vault-resident + once repo-local (Hardening I #45).

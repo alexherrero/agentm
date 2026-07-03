@@ -62,6 +62,7 @@ gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --al
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
 gate "verify-v4 (push-surface integration)"    bash scripts/verify-v4.sh
 gate "verify-orchestration-briefing (PM-half · briefing + nudge signals)" bash scripts/verify-orchestration-briefing.sh
+gate "verify-hook-resolution (dual-key vault_path read, 4 hooks)" bash scripts/verify-hook-resolution.sh
 gate "verify-phases (lifecycle e2e · both modes)" bash scripts/verify-phases.sh
 gate "verify-memory-roundtrip (engine e2e)"    bash scripts/verify-memory-roundtrip.sh
 
