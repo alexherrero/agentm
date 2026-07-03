@@ -47,6 +47,16 @@ jobs:
         # End-to-end check of the auto-orchestration surface against a throwaway
         # scratch vault (bash-native; Windows skips, like the other .sh gates).
         run: bash scripts/verify-v4.sh
+      - name: check-vault-lock-parity (vendored vault_lock)
+        # The two copies of the vault-write protocol — scripts/vault_lock.py and
+        # its vendored twin harness/skills/memory/scripts/vault_lock.py — must
+        # stay sha256-identical (testInfra#0: was check-all.sh-only, invisible to CI).
+        run: bash scripts/check-vault-lock-parity.sh
+      - name: verify-orchestration-briefing (PM-half integration check)
+        # PM-owned orchestration signals (briefing · HIGH watchlist · incubator ·
+        # idea-ledger · staged-adapt · both nudges) against a throwaway scratch
+        # vault (testInfra#1: was check-all.sh-only, invisible to CI).
+        run: bash scripts/verify-orchestration-briefing.sh
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         run: bash scripts/verify-phases.sh
       - name: Memory-engine round-trip e2e (verify-memory-roundtrip.sh)
