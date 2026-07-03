@@ -107,6 +107,20 @@ class _SeamFixture(unittest.TestCase):
     def _unset_vault(self) -> None:
         os.environ.pop("MEMORY_VAULT_PATH", None)
 
+    def _dl_select(self):
+        """Patch select_backend → DeviceLocalBackend for present-vault tests.
+
+        With MEMORY_VAULT_PATH set, select_backend resolves the vault backend and
+        (post-R0.4 fail-loud) raises on CI where the obsidian-vault plugin is
+        absent. These tests exercise seam mechanics, not backend selection —
+        the propagation behavior has its own dedicated coverage.
+        """
+        import storage_device_local as _sdl
+        return unittest.mock.patch(
+            "backend_selection.select_backend",
+            return_value=_sdl.DeviceLocalBackend(self.root / "device_local"),
+        )
+
     def _seed_always_load(self, body: str = "- a test convention\n") -> None:
         """Give `phase_recall` something to return: one always-load entry."""
         al = self.vault / "personal" / "_always-load"
@@ -164,12 +178,14 @@ class OfferSaveHere(_SeamFixture):
 
     def test_phase_passed_through_onto_candidate(self) -> None:
         self._set_vault()
-        out = seam.offer_save_here(self._ctx(phase="review"), {"body": "b"})
+        with self._dl_select():
+            out = seam.offer_save_here(self._ctx(phase="review"), {"body": "b"})
         self.assertEqual(out[0]["phase"], "review")
 
     def test_non_dict_candidate_wrapped_as_body(self) -> None:
         self._set_vault()
-        out = seam.offer_save_here(self._ctx(), "free-text candidate")
+        with self._dl_select():
+            out = seam.offer_save_here(self._ctx(), "free-text candidate")
         self.assertEqual(out[0]["body"], "free-text candidate")
         self.assertEqual(out[0]["project"], _SLUG)
 
@@ -177,7 +193,8 @@ class OfferSaveHere(_SeamFixture):
         # Enrichment copies — the caller's dict is never mutated in place.
         self._set_vault()
         cand = {"kind": "decision", "slug": "x", "body": "b"}
-        seam.offer_save_here(self._ctx(), cand)
+        with self._dl_select():
+            seam.offer_save_here(self._ctx(), cand)
         self.assertNotIn("project", cand)
         self.assertNotIn("target", cand)
 
@@ -323,11 +340,12 @@ class SeamIsReadOnly(_SeamFixture):
 
             # Present memory — exercise every function.
             self._set_vault()
-            seam.offer_save_here(
-                self._ctx(phase="work"), {"kind": "decision", "slug": "x", "body": "b"}
-            )
-            seam.state_path(self._ctx(), "plan")
-            seam.state_path(self._ctx(), "progress")
+            with self._dl_select():
+                seam.offer_save_here(
+                    self._ctx(phase="work"), {"kind": "decision", "slug": "x", "body": "b"}
+                )
+                seam.state_path(self._ctx(), "plan")
+                seam.state_path(self._ctx(), "progress")
 
             # Absent memory — the degrade paths.
             self._unset_vault()
@@ -374,10 +392,11 @@ class CLIShim(_SeamFixture):
         self._set_vault()
         body = self.root / "body.txt"
         body.write_text("a decision body", encoding="utf-8")
-        rc, out, _ = self._run(
-            "offer-save-here", "--cwd", str(self.repo),
-            "--kind", "decision", "--slug", "x", "--body-file", str(body),
-        )
+        with self._dl_select():
+            rc, out, _ = self._run(
+                "offer-save-here", "--cwd", str(self.repo),
+                "--kind", "decision", "--slug", "x", "--body-file", str(body),
+            )
         self.assertEqual(rc, 0)
         data = json.loads(out)
         self.assertEqual(len(data), 1)

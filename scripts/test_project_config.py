@@ -223,7 +223,16 @@ class TestRegisterIntegration(unittest.TestCase):
             os.environ["MEMORY_VAULT_PATH"] = str(vault)
             hm._reset_warn_state()
             try:
-                pc.register(repo, registered_via="auto-detect")
+                # select_backend resolves vault here (MEMORY_VAULT_PATH set) and
+                # post-R0.4 raises on plugin-less CI; this test exercises the
+                # local-mode write routing, not backend selection — patch it.
+                import unittest.mock
+                import storage_device_local as _sdl
+                with unittest.mock.patch(
+                    "backend_selection.select_backend",
+                    return_value=_sdl.DeviceLocalBackend(root / "device_local"),
+                ):
+                    pc.register(repo, registered_via="auto-detect")
             finally:
                 if old_env is None:
                     os.environ.pop("MEMORY_VAULT_PATH", None)
