@@ -80,6 +80,11 @@ jobs:
         # a scratch HOME with .agentm-config.json carrying ONLY the plugin-namespaced
         # vault key must still resolve for all four memory hooks.
         run: bash scripts/verify-hook-resolution.sh
+      - name: verify-state-routing (backend x project-mode matrix, never-demote)
+        # R1.3 / agentmEngine#1: the backend x project-mode routing matrix +
+        # the never-demote guard (explicit storage.backend=vault + a broken
+        # vault path must fail loud, never silently write repo-local).
+        run: bash scripts/verify-state-routing.sh
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         # Drives /setup→/plan→/work→/release deterministic seams against a
         # fixture project, once vault-resident + once repo-local (Hardening I #45).

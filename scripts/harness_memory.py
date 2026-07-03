@@ -1869,4 +1869,20 @@ def main(argv: Optional[list[str]] = None) -> int:
 
 
 if __name__ == "__main__":
+    # R1.3 / verify-state-routing.sh discovery: when this file is executed
+    # directly (`python3 harness_memory.py ...` — the CLI invocation pattern
+    # used throughout the repo), Python registers this running module as
+    # `__main__`, NOT as `harness_memory`. `backend_selection.py`'s top-level
+    # `import harness_memory` then imports a SEPARATE module instance under
+    # that name — same source, different class objects. An exception raised
+    # from that second instance (e.g. `StorageBackendNotInstalledError`) no
+    # longer `isinstance`-matches this module's own except clauses, so
+    # `resolve_project()`'s never-demote guard (V5-3 LC-6 / agentmEngine#1)
+    # silently falls through to its broad `except Exception: backend = None`
+    # — reintroducing the exact silent-demotion bug the guard exists to
+    # prevent, but only when invoked as a script. Aliasing sys.modules here
+    # (the standard fix for this class of dual-import) makes any later
+    # `import harness_memory` reuse this already-running instance instead of
+    # re-executing the file, so exception identity holds across the boundary.
+    sys.modules.setdefault("harness_memory", sys.modules["__main__"])
     sys.exit(main())
