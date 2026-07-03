@@ -39,8 +39,11 @@ jobs:
         # enable_load_extension). The e2e self-skips that sub-check if the
         # backend can't load, so this install is an enhancement, never a hard
         # dep. sentence-transformers is deliberately NOT installed (1.3GB+; the
-        # e2e uses stub embed mode).
-        run: pip install pyyaml sqlite-vec
+        # e2e uses stub embed mode). fastmcp lets verify-mcp-surface.py + the
+        # auto-discovered test_memory_mcp_tools.py actually run instead of
+        # gracefully skipping — R1.6, this was previously never installed
+        # anywhere, so those MCP contract checks silently never ran.
+        run: pip install pyyaml sqlite-vec fastmcp
       - name: Validate adapter frontmatter / TOML / JSON
         run: python3 scripts/validate-adapters.py
       - name: Check cross-references + hook-fragment schema parity
@@ -98,6 +101,12 @@ jobs:
         # contributes to the vault even carrying the same still-HIGH pattern,
         # across all three --route-mode values.
         run: bash scripts/verify-reflection.sh
+      - name: verify-mcp-surface (append/search/forget round-trip, dead-surface fate)
+        # R1.6 / agentmEngine#2: an in-process FastMCP client drives the real
+        # append->search->forget round-trip, soft-delete semantics, and the
+        # three dead-recall-surface fates (memory_recall + recall_here
+        # retired; documenter_context's V5-3 stub contract locked).
+        run: python3 scripts/verify-mcp-surface.py
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         # Drives /setup→/plan→/work→/release deterministic seams against a
         # fixture project, once vault-resident + once repo-local (Hardening I #45).
