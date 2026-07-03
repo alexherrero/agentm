@@ -112,6 +112,20 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+# Always-load priority tiers (R0.8 / voice#0). `priority:` frontmatter maps
+# to a sort rank consumed before the token budget: `high` first, unset/
+# unrecognized in the middle, `low` last — so a large low-priority entry
+# can't crowd out smaller higher-priority ones by alphabetical luck alone.
+_ALWAYS_LOAD_PRIORITY_RANK = {"high": 0, "low": 2}
+_ALWAYS_LOAD_DEFAULT_PRIORITY_RANK = 1
+
+
+def _always_load_priority_rank(fm: dict[str, str]) -> int:
+    """Map an always-load entry's `priority:` frontmatter to a sort rank."""
+    value = (fm.get("priority") or "").strip().lower()
+    return _ALWAYS_LOAD_PRIORITY_RANK.get(value, _ALWAYS_LOAD_DEFAULT_PRIORITY_RANK)
+
+
 def _resolve_token_budget(arg_value: int | None) -> int:
     """Resolve token budget: --token-budget arg → RECALL_TOKEN_BUDGET env → default.
 
@@ -133,11 +147,14 @@ def _apply_token_budget(
     slugs: list[str],
     token_budget: int,
 ) -> tuple[list[str], list[str], int]:
-    """Truncate blocks to the token budget (highest-salience first).
+    """Fit blocks into the token budget (highest-salience/priority first).
 
-    Walks blocks in order (caller must pass them salience-ordered, highest
-    first). Stops when adding the next block would exceed `token_budget`.
-    Returns (kept_blocks, kept_slugs, omitted_count).
+    Walks blocks in order (caller must pass them pre-ordered, highest
+    priority/salience first). R0.8 / voice#0: an oversized block is SKIPPED,
+    not a hard stop — smaller entries later in the order can still fit after
+    a large one overflows, rather than the entire tail being dropped at the
+    first entry that doesn't fit. Returns (kept_blocks, kept_slugs,
+    omitted_count); output order matches the input order (not a repack).
 
     If token_budget <= 0, returns all blocks unchanged (0 = unlimited).
     """
@@ -149,7 +166,7 @@ def _apply_token_budget(
     for block, slug in zip(blocks, slugs):
         est = _estimate_tokens(block)
         if tokens_used + est > token_budget:
-            break
+            continue  # this one doesn't fit — a smaller later entry still might
         kept_blocks.append(block)
         kept_slugs.append(slug)
         tokens_used += est
@@ -258,11 +275,13 @@ def session_start(
         return 0
 
     # Glob *.md (top-level only; _always-load/ is flat by convention — see
-    # save.py's --always-load routing comment).
+    # save.py's --always-load routing comment). This alphabetical order is
+    # only the READ order for the time-budget walk below; the order entries
+    # are token-budgeted in is priority-first (R0.8 / voice#0) — see the
+    # sort after the read loop.
     candidates = sorted(always_load_dir.glob("*.md"))
 
-    loaded_slugs: list[str] = []
-    blocks: list[str] = []
+    parsed_entries: list[tuple[str, dict[str, str], str]] = []  # (slug, fm, body)
     # A non-positive budget is interpreted as "deadline already exceeded".
     # Forces immediate overrun + partial-results path regardless of
     # platform-specific monotonic clock resolution (Windows + some
@@ -299,15 +318,33 @@ def session_start(
         # have been flagged superseded without being moved).
         if fm.get("status") == "superseded":
             continue
-        slug = md_path.stem
-        blocks.append(_format_entry_for_injection(slug, fm, body))
-        loaded_slugs.append(slug)
+        parsed_entries.append((md_path.stem, fm, body))
 
-    # Apply token budget: always-load entries are sorted alphabetically
-    # (deterministic, no per-query salience). Truncate tail if budget exceeded.
+    # Priority-first ordering (R0.8 / voice#0): `priority: low` entries (the
+    # heavy voice-style files) sort last, `priority: high` first, everything
+    # else in the middle tier — alphabetical is the tiebreaker within a tier,
+    # so ordering stays deterministic. This MUST run before the token budget
+    # below: without it, a large low-priority entry that alphabetically
+    # sorts early crowds out smaller higher-priority entries that sort
+    # later — the exact failure this fixes (19 of 37 entries dropped,
+    # including pii-guardrails-public-repo + vault-memory-overrides-default).
+    parsed_entries.sort(key=lambda e: (_always_load_priority_rank(e[1]), e[0]))
+    loaded_slugs = [slug for slug, _fm, _body in parsed_entries]
+    blocks = [
+        _format_entry_for_injection(slug, fm, body)
+        for slug, fm, body in parsed_entries
+    ]
+
+    # Apply token budget: entries are now priority-ordered (see above).
+    # Fit as many as possible within budget (skip-and-continue — see
+    # _apply_token_budget); this is no longer a "highest N survive, tail
+    # dropped" truncation, it's a best-fit pass over the priority order.
     blocks, loaded_slugs, token_budget_omitted = _apply_token_budget(
         blocks, loaded_slugs, token_budget
     )
+    omitted_slugs = [
+        slug for slug, _fm, _body in parsed_entries if slug not in loaded_slugs
+    ]
 
     # Output assembly. Header gives the agent a clear "this is MemoryVault content" marker.
     if blocks or token_budget_omitted > 0:
@@ -329,7 +366,8 @@ def session_start(
             print(
                 f"> [!NOTE] recall truncated: {token_budget_omitted} always-load "
                 f"entries omitted to stay within token budget "
-                f"(budget={token_budget:,} tokens estimated)",
+                f"(budget={token_budget:,} tokens estimated): "
+                f"{', '.join(omitted_slugs)}",
                 file=stdout,
             )
 
