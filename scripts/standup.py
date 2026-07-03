@@ -137,7 +137,15 @@ def _main() -> None:
     if args.harness_dir:
         harness_dir = Path(args.harness_dir)
     else:
-        harness_dir = hm.harness_state_dir()
+        harness_dir = hm.harness_state_dir(hm.resolve_project({"cwd": Path.cwd()}))
+        if harness_dir is None:
+            print(
+                "standup: could not resolve a _harness/ directory for this "
+                "project (no synced backend, no device-local project root) — "
+                "pass --harness-dir explicitly",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
 
     rows = build_standup(harness_dir)
 

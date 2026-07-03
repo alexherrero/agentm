@@ -225,7 +225,15 @@ def _main() -> None:
     if args.harness_dir:
         harness_dir = Path(args.harness_dir)
     else:
-        harness_dir = hm.harness_state_dir()
+        harness_dir = hm.harness_state_dir(hm.resolve_project({"cwd": Path.cwd()}))
+        if harness_dir is None:
+            print(
+                "merge_order: could not resolve a _harness/ directory for this "
+                "project (no synced backend, no device-local project root) — "
+                "pass --harness-dir explicitly",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
 
     try:
         order = build_merge_order(harness_dir, use_git=not args.no_git)
