@@ -62,10 +62,21 @@ if str(_SCRIPTS_DIR) not in sys.path:
 # doc's "Notes for the implementing /work session" — defer fancy detection
 # to follow-up if simple heuristic too noisy).
 
-# HIGH-confidence: explicit user preference statements ("always X" / "I prefer X")
+# HIGH-confidence: explicit user preference statements ("always X" / "I prefer X").
+#
+# The bare always/never pattern (below) is demoted out of the HIGH lane at
+# candidate-creation time (R0.3 / agentmExperience#2) — it fires on any
+# sentence containing "always"/"never" in any user-role message, and in
+# practice the overwhelming majority of matches are mid-sentence discussion
+# ("was never touched", "it always crashes") or quoted document prose, not an
+# operator directive. Demoted candidates still route through the tri-modal
+# system (MEDIUM → _inbox/ in auto mode) rather than being dropped, so a real
+# "always X" / "never Y" directive still reaches the operator for triage.
+_BARE_ALWAYS_NEVER_RATIONALE = "explicit always/never directive"
+
 _PREFERENCE_PATTERNS: list[tuple[re.Pattern, str]] = [
     (re.compile(r"\b(?:always|never)\s+\w+(?:\s+\w+){0,5}", re.IGNORECASE),
-     "explicit always/never directive"),
+     _BARE_ALWAYS_NEVER_RATIONALE),
     (re.compile(r"\bI\s+(?:prefer|want|need|like|expect|require)\b[^.!?\n]{0,80}",
                 re.IGNORECASE),
      "explicit preference statement"),
@@ -318,7 +329,10 @@ def mine_transcript(transcript_path: Path) -> dict:
                 else:
                     seen_memory[key] = Candidate(
                         category="preferences",
-                        confidence="HIGH",
+                        confidence=(
+                            "MEDIUM" if rationale == _BARE_ALWAYS_NEVER_RATIONALE
+                            else "HIGH"
+                        ),
                         slug=slug,
                         title=match.strip()[:80],
                         body=f"User stated: {excerpt}",
@@ -762,7 +776,15 @@ def _resolve_projects_root(arg_path: str | None) -> Path:
 
 
 def _discover_transcripts(projects_root: Path) -> list[Path]:
-    """Find every .jsonl transcript under projects_root recursively.
+    """Find every operator-session .jsonl transcript under projects_root.
+
+    Excludes machine-generated transcripts that are not operator conversation:
+    any path with a `subagents` component (subagent transcripts + nested
+    workflow journals), any path with a `wf_*` component (workflow run dirs),
+    and any `journal.jsonl` filename. Mining these as user statements is the
+    R0.3 source of the HIGH-lane junk-slug pollution — a subagent prompt or a
+    quoted design doc saying "always X" is not the operator stating a
+    preference.
 
     Returns a sorted list of absolute paths. Deterministic ordering (by
     relative path) so batch boundaries are stable across runs.
@@ -771,8 +793,16 @@ def _discover_transcripts(projects_root: Path) -> list[Path]:
         return []
     found: list[Path] = []
     for p in projects_root.rglob("*.jsonl"):
-        if p.is_file():
-            found.append(p.resolve())
+        if not p.is_file():
+            continue
+        parts = p.parts
+        if "subagents" in parts:
+            continue
+        if any(part.startswith("wf_") for part in parts):
+            continue
+        if p.name == "journal.jsonl":
+            continue
+        found.append(p.resolve())
     return sorted(found)
 
 
