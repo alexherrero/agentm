@@ -113,8 +113,8 @@ mcp = FastMCP(
     auth=_StaticBearerAuth(_mcp_token) if _mcp_token else None,
 )
 
-# Register the four memory tools (memory_search, memory_recall,
-# memory_append, memory_forget) on the server.
+# Register the three memory tools (memory_search, memory_append,
+# memory_forget) on the server. (A fourth, memory_recall, was retired — R0.9.)
 try:
     from memory_mcp_tools import register_tools as _register_tools
     _register_tools(mcp)

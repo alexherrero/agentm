@@ -5,9 +5,6 @@
 (the crickets developer-workflows phases today; the V5-9 MCP server tomorrow)
 calls instead of reaching into the memory engine. These tests pin its contract:
 
-  - `recall_here`     — phase+project recall string; ``""`` when memory is absent;
-                        an unknown phase degrades to the "work" default, never raises;
-                        the reserved ``query`` arg is a documented no-op.
   - `offer_save_here` — advisory-only ([LC-2]): returns enriched save *candidates*
                         and **never persists**. Proven by the no-writes assertion.
   - `state_path`      — vault-backed when memory is present; **degrades to repo-local
@@ -15,9 +12,13 @@ calls instead of reaching into the memory engine. These tests pin its contract:
                         corrupt/dangling ``active-plan`` marker **propagates loudly**
                         (V5-10 Risk #7) rather than degrading.
 
+R0.9 (agentmEngine#2): a third function, `recall_here`, was retired (dead — it
+delegated to a V5-3 stub that always returned "", no live crickets caller).
+`RecallHereRetired` pins that it stays gone.
+
 The load-bearing test is `SeamIsReadOnly`: every engine write entry point is
 monkeypatched to raise if called, and a filesystem content snapshot is asserted
-byte-identical before/after exercising all three functions — making "the seam is
+byte-identical before/after exercising both functions — making "the seam is
 read-only" an executable claim, not a comment.
 
 Run directly:
@@ -121,50 +122,12 @@ class _SeamFixture(unittest.TestCase):
         return ctx
 
 
-class RecallHere(_SeamFixture):
-    """`recall_here` — recall string, absent degrade, phase guard, query no-op."""
+class RecallHereRetired(_SeamFixture):
+    """R0.9: `recall_here` was retired (dead — delegated to a V5-3 stub that
+    always returned "", no live crickets caller). Pin that it stays gone."""
 
-    def test_absent_vault_returns_empty_string(self) -> None:
-        self.assertEqual(seam.recall_here(self._ctx(phase="work")), "")
-
-    def test_present_vault_returns_empty_v5_3(self) -> None:
-        # V5-3: phase_recall always returns ""; vault data in context is handled
-        # by the V5-9 MCP memory server, not by the kernel's recall path.
-        self._set_vault()
-        self._seed_always_load()
-        out = seam.recall_here(self._ctx(phase="work"))
-        self.assertEqual(out, "")
-
-    def test_unknown_phase_degrades_to_work_never_raises_v5_3(self) -> None:
-        # An unknown phase must not raise — it should degrade gracefully to "".
-        # V5-3: both known and unknown phases return "" (vault backend removed).
-        self._set_vault()
-        self._seed_always_load()
-        work = seam.recall_here(self._ctx(phase="work"))
-        bogus = seam.recall_here(self._ctx(phase="not-a-real-phase"))
-        self.assertEqual(work, "")
-        self.assertEqual(bogus, "")
-
-    def test_missing_phase_defaults_to_work_v5_3(self) -> None:
-        # V5-3: all modes return ""; phase defaulting to "work" still works.
-        self._set_vault()
-        self._seed_always_load()
-        out = seam.recall_here(self._ctx())  # context carries no phase
-        self.assertEqual(out, "")
-
-    def test_reserved_query_is_a_noop(self) -> None:
-        # `query` is reserved/forward-compat — it must neither filter nor error.
-        self._set_vault()
-        self._seed_always_load()
-        without = seam.recall_here(self._ctx(phase="work"))
-        with_query = seam.recall_here(
-            self._ctx(phase="work"), query="some semantic search terms"
-        )
-        self.assertEqual(with_query, without)
-
-    def test_none_context_does_not_raise(self) -> None:
-        # No context → process cwd; memory absent → "". Never raises on None.
-        self.assertEqual(seam.recall_here(None), "")
+    def test_recall_here_not_present(self) -> None:
+        self.assertFalse(hasattr(seam, "recall_here"))
 
 
 class OfferSaveHere(_SeamFixture):
@@ -360,7 +323,6 @@ class SeamIsReadOnly(_SeamFixture):
 
             # Present memory — exercise every function.
             self._set_vault()
-            seam.recall_here(self._ctx(phase="work"))
             seam.offer_save_here(
                 self._ctx(phase="work"), {"kind": "decision", "slug": "x", "body": "b"}
             )
@@ -369,7 +331,6 @@ class SeamIsReadOnly(_SeamFixture):
 
             # Absent memory — the degrade paths.
             self._unset_vault()
-            seam.recall_here(self._ctx(phase="work"))
             seam.offer_save_here(self._ctx(), {"body": "b"})
             seam.state_path(self._ctx(), "plan")
 
@@ -394,18 +355,14 @@ class CLIShim(_SeamFixture):
             rc = seam.main(list(argv))
         return rc, out.getvalue(), err.getvalue()
 
-    def test_recall_here_absent_exits_zero_empty(self) -> None:
-        rc, out, _ = self._run("recall-here", "--cwd", str(self.repo), "--phase", "work")
-        self.assertEqual(rc, 0)
-        self.assertEqual(out, "")
-
-    def test_recall_here_present_exits_zero_empty_v5_3(self) -> None:
-        # V5-3: phase_recall always returns ""; vault context via V5-9 MCP server.
-        self._set_vault()
-        self._seed_always_load()
-        rc, out, _ = self._run("recall-here", "--cwd", str(self.repo), "--phase", "work")
-        self.assertEqual(rc, 0)
-        self.assertEqual(out, "")
+    def test_recall_here_subcommand_retired(self) -> None:
+        # argparse rejects the unknown subcommand via parser.error() -> SystemExit(2).
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            with self.assertRaises(SystemExit) as ctx:
+                seam.main(["recall-here", "--cwd", str(self.repo), "--phase", "work"])
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("invalid choice", err.getvalue())
 
     def test_state_path_emits_path_exit_zero(self) -> None:
         self._local_mode()

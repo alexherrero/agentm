@@ -3,12 +3,18 @@
 
 A small, **read-only**, **graceful-no-op** view that a *process* (the crickets
 developer-workflows phases today; the V5-9 MCP server + plugins tomorrow) calls
-instead of reaching into the memory engine's internals. It exports three
+instead of reaching into the memory engine's internals. It exports two
 functions over the DC-7-frozen public memory API:
 
-    recall_here(context, *, query=None, limit=None) -> str
     offer_save_here(context, candidate)             -> list[dict]
     state_path(context, which)                      -> Path
+
+R0.9 (agentmEngine#2): a third function, recall_here, was retired — it
+delegated to harness_memory.phase_recall(), which has returned "" for every
+call since the V5-3 vault-backend removal. No live crickets consumer called
+it (crickets' documenter sub-agent uses harness_memory.py's own
+documenter-context CLI verb instead, a separate live surface this retirement
+does not touch).
 
 Design contract (parent design `v5-4-process-seam`, Locked design calls):
 
@@ -28,20 +34,19 @@ Design contract (parent design `v5-4-process-seam`, Locked design calls):
   is enforced by ``check-process-seam-import-direction.sh``.
 
 Frozen-API anchoring: every call routes through ``harness_memory``'s *public*
-surface (``resolve_project`` / ``phase_recall`` / ``resolve_active_plan`` /
-``harness_state_dir`` / ``is_available``). It never touches engine internals and
-never widens the engine's surface — a consumer that needs something the frozen
-API lacks is a separate engine change, not a seam widening.
+surface (``resolve_project`` / ``resolve_active_plan`` / ``harness_state_dir`` /
+``is_available``). It never touches engine internals and never widens the
+engine's surface — a consumer that needs something the frozen API lacks is a
+separate engine change, not a seam widening.
 
-The shared ``context`` dict (all three functions):
+The shared ``context`` dict (both functions):
 
     {"cwd": <project root>,   # optional; defaults to the process cwd
-     "phase": <dev-loop phase>,  # optional; recall_here only, default "work"
+     "phase": <dev-loop phase>,  # optional; offer_save_here only, passed through
      "plan": <named-plan slug>}  # optional; state_path only (named-plan awareness)
 
 Run directly for the shell shim:
 
-    python3 scripts/process_seam.py recall-here --phase work
     python3 scripts/process_seam.py state-path plan
     python3 scripts/process_seam.py offer-save-here --kind decision --slug foo --body-file -
 """
@@ -59,11 +64,6 @@ if str(_HERE) not in sys.path:
 
 import harness_memory as _hm  # noqa: E402
 
-# The dev-loop phase a context-oriented recall defaults to when the caller does
-# not name one. "work" is the loop's primary phase and the seam's main caller;
-# an unknown/absent phase degrades here rather than raising (graceful-no-op).
-_DEFAULT_PHASE = "work"
-
 # Which `which` tokens state_path() accepts, mapped to the resolved (plan,
 # progress) pair index from `resolve_active_plan`.
 _STATE_WHICH = ("plan", "progress")
@@ -73,54 +73,6 @@ def _project_root(context: Optional[dict]) -> Path:
     """The context's project root (``cwd`` key), defaulting to the process cwd."""
     ctx = context or {}
     return Path(ctx.get("cwd", Path.cwd()))
-
-
-def recall_here(
-    context: Optional[dict],
-    *,
-    query: Optional[str] = None,
-    limit: Optional[int] = None,
-) -> str:
-    """Recall memory context relevant to the current working context.
-
-    Resolves the context (cwd → project slug), then calls the engine's public
-    ``recall`` (``phase_recall``) scoped to that project. Returns the budgeted
-    markdown recall summary.
-
-    Args:
-        context: the shared context dict; ``cwd`` selects the project root,
-            ``phase`` (one of the dev-loop phases) selects the recall scope
-            (default ``"work"``).
-        query: **reserved / forward-compat.** The frozen public recall is a
-            phase+project read with no free-text/semantic query; that capability
-            arrives with the V6 vector index. Accepted today so callers can be
-            written against the final signature, but it is a no-op until the
-            engine gains semantic recall — passing it neither errors nor filters.
-        limit: recall budget in tokens (maps to ``phase_recall``'s ``budget``);
-            ``None`` uses the phase default.
-
-    Read-only — never triggers reflect/evolve, never writes.
-
-    No-op degrade: no engine or no vault configured → ``""`` (empty string),
-    never an exception.
-    """
-    ctx = context or {}
-    phase = ctx.get("phase") or _DEFAULT_PHASE
-    if phase not in _hm._VALID_PHASES:
-        # Never raise on an unknown phase — degrade to the default scope.
-        phase = _DEFAULT_PHASE
-
-    # `query` is intentionally unused (reserved; see docstring).
-    _ = query
-
-    resolution = _hm.resolve_project(ctx)
-    slug = resolution.get("slug")
-
-    # `phase_recall` is itself graceful (returns "" when the vault is absent);
-    # the explicit guard keeps the degrade contract local + testable.
-    if not _hm.is_available():
-        return ""
-    return _hm.phase_recall(phase, slug, budget=limit)
 
 
 def offer_save_here(context: Optional[dict], candidate: Any) -> list[dict]:
@@ -217,17 +169,11 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="process_seam",
         description=(
             "Read-only, graceful-no-op memory↔process client seam (V5-4). "
-            "Shells out to the same recall_here / offer_save_here / state_path "
+            "Shells out to the same offer_save_here / state_path "
             "functions the in-process Python API exposes."
         ),
     )
     sub = parser.add_subparsers(dest="cmd", required=True)
-
-    p_recall = sub.add_parser("recall-here", help="emit recall context for the cwd's project")
-    p_recall.add_argument("--cwd", default=None, help="project root (default: cwd)")
-    p_recall.add_argument("--phase", default=None, help=f"dev-loop phase (default: {_DEFAULT_PHASE})")
-    p_recall.add_argument("--query", default=None, help="reserved / forward-compat; no-op today")
-    p_recall.add_argument("--limit", type=int, default=None, help="recall budget in tokens")
 
     p_state = sub.add_parser("state-path", help="resolve the active PLAN/progress path")
     p_state.add_argument("which", choices=list(_STATE_WHICH))
@@ -256,15 +202,6 @@ def _read_body(body_file: str) -> str:
 
 def main(argv: Optional[list[str]] = None) -> int:
     args = _build_parser().parse_args(argv)
-
-    if args.cmd == "recall-here":
-        context = {"cwd": args.cwd} if args.cwd else {}
-        if args.phase:
-            context["phase"] = args.phase
-        out = recall_here(context, query=args.query, limit=args.limit)
-        if out:
-            sys.stdout.write(out if out.endswith("\n") else out + "\n")
-        return 0
 
     if args.cmd == "state-path":
         context = {"cwd": args.cwd} if args.cwd else {}

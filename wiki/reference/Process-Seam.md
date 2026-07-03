@@ -1,12 +1,14 @@
 # Process seam reference
 
-The memory↔process client seam ([`scripts/process_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/process_seam.py)) — a small, **read-only**, **graceful-no-op** view a *process* (the crickets developer-workflows phases today; the V5-9 MCP server tomorrow) calls instead of reaching into the memory engine's internals. It exports three functions composed only from the DC-7-frozen public memory readers (`resolve_project`, `phase_recall`, `resolve_active_plan`, `harness_state_dir`, `is_available`) — never a write path. The importable Python module is the contract ([LC-1]); the `python -m` entrypoint is a convenience shim for non-Python shell callers.
+The memory↔process client seam ([`scripts/process_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/process_seam.py)) — a small, **read-only**, **graceful-no-op** view a *process* (the crickets developer-workflows phases today; the V5-9 MCP server tomorrow) calls instead of reaching into the memory engine's internals. It exports two functions composed only from the DC-7-frozen public memory readers (`resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`) — never a write path. The importable Python module is the contract ([LC-1]); the `python -m` entrypoint is a convenience shim for non-Python shell callers.
+
+> [!NOTE]
+> **R0.9 (agentmEngine#2):** a third function, `recall_here`, was retired — it delegated to `harness_memory.phase_recall()`, which has returned `""` for every call since the V5-3 vault-backend removal. No live crickets consumer called it (crickets' documenter sub-agent uses `harness_memory.py`'s own `documenter-context` CLI verb instead, a separate live surface this retirement did not touch).
 
 ## ⚡ Quick Reference
 
 | Function | Signature | Returns | Memory absent → |
 |---|---|---|---|
-| `recall_here` | `recall_here(context, *, query=None, limit=None)` | `str` — budgeted recall markdown | `""` (never raises) |
 | `offer_save_here` | `offer_save_here(context, candidate)` | `list[dict]` — `[enriched_candidate]` (advisory; never persists) | `[]` |
 | `state_path` | `state_path(context, which)` | `Path` — active PLAN/progress path | repo-local `<project_root>/.harness/<file>` (never `None`) |
 
@@ -15,31 +17,13 @@ The memory↔process client seam ([`scripts/process_seam.py`](https://github.com
 
 ## The shared `context` dict
 
-All three functions take a `context` dict (or `None`). Keys are optional:
+Both functions take a `context` dict (or `None`). Keys are optional:
 
 | Key | Used by | Meaning | Default |
 |---|---|---|---|
-| `cwd` | all three | project root | the process cwd |
-| `phase` | `recall_here`, passed through by `offer_save_here` | dev-loop phase scoping the recall | `"work"` |
+| `cwd` | both | project root | the process cwd |
+| `phase` | passed through by `offer_save_here` | dev-loop phase, attached to the candidate if present | (none) |
 | `plan` | `state_path` | named-plan slug (`"foo"` → `PLAN-foo.md` / `progress-foo.md`) | the active/default plan |
-
-## `recall_here(context, *, query=None, limit=None)`
-
-Recall memory context relevant to the current working context. Resolves `cwd` → project slug, then calls the engine's public `phase_recall` scoped to that project, returning the budgeted markdown summary.
-
-| Parameter | Type | Detail |
-|---|---|---|
-| `context` | `dict \| None` | `cwd` selects the project root; `phase` selects the recall scope. |
-| `query` | `str \| None` | **Reserved / forward-compat.** The frozen public recall is a phase+project read with no free-text/semantic query; that arrives with the V6 vector index. Accepted today so callers can be written against the final signature, but it is a documented **no-op** — passing it neither errors nor filters. |
-| `limit` | `int \| None` | Recall budget in tokens (maps to `phase_recall`'s `budget`); `None` uses the phase default. |
-
-| Condition | Result |
-|---|---|
-| Memory present | Budgeted recall markdown for the resolved phase + project. |
-| Memory / vault absent | `""` (empty string). |
-| Unknown / absent `phase` | Degrades to `"work"` scope — **never raises**. |
-
-Valid phases are the dev-loop set: `setup`, `plan`, `work`, `review`, `release`, `bugfix`, `documenter`. Any other value degrades to `"work"`.
 
 ## `offer_save_here(context, candidate)`
 
@@ -78,16 +62,14 @@ Resolve the harness state path for `which` in the current context. Wraps `resolv
 
 ## `python -m` entrypoint
 
-A thin shell shim ([LC-1]) exposing the same three functions to non-Python hosts. Always exits `0` on the graceful-no-op paths so a process never wedges on a memory-absent seam.
+A thin shell shim ([LC-1]) exposing the same two functions to non-Python hosts. Always exits `0` on the graceful-no-op paths so a process never wedges on a memory-absent seam.
 
 | Subcommand | Flags | Emits |
 |---|---|---|
-| `recall-here` | `--cwd`, `--phase`, `--query`, `--limit` | the recall markdown on stdout (nothing on the empty degrade) |
 | `state-path` | `which` (positional: `plan`/`progress`), `--cwd`, `--plan` | the resolved path on stdout |
 | `offer-save-here` | `--cwd`, `--phase`, `--kind` (req), `--slug` (req), `--body-file` (`-` = stdin), `--confidence`, `--confidence-reason` | the advisory candidate list as indented JSON |
 
 ```bash
-python3 scripts/process_seam.py recall-here --phase work
 python3 scripts/process_seam.py state-path plan
 python3 scripts/process_seam.py offer-save-here --kind decision --slug foo --body-file -
 ```

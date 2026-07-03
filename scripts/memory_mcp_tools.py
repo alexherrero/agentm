@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """MCP tool implementations for the agentm memory engine.
 
-Registers four tools on a FastMCP instance:
+Registers three tools on a FastMCP instance:
   memory_search  — semantic + keyword search with deleted-entry filtering
-  memory_recall  — budgeted, phase-aware entry bundle (phase_recall differentiator)
   memory_append  — write a new entry with idempotency-key deduplication
   memory_forget  — soft-delete (status flip + deleted_at; file NEVER unlinked)
 
-Call register_tools(mcp) to attach all four tools to a FastMCP server instance.
+R0.9 (agentmEngine#2): a fourth tool, memory_recall, was retired — it
+delegated to harness_memory.phase_recall(), which has returned "" for every
+call since the V5-3 vault-backend removal (context is provided by the crickets
+consumers via harness_memory.py's own documenter-context CLI verb instead, a
+separate live surface this retirement does not touch). No live crickets
+consumer called memory_recall.
+
+Call register_tools(mcp) to attach all three tools to a FastMCP server instance.
 This module has no side effects at import time — safe for in-process test clients.
 
 Requires Python >=3.10.  Imports: harness_memory, vault_lock (in scripts/ on
@@ -196,30 +202,6 @@ def register_tools(mcp) -> None:
             })
 
         return {"results": results, "total": len(results), "cursor": None}
-
-    @mcp.tool()
-    def memory_recall(
-        context: str,
-        phase: str,
-        project: Optional[str] = None,
-        budget_tokens: int = 4000,
-    ) -> str:
-        """Return a budgeted, phase-aware memory bundle.
-
-        Uses phase_recall() to assemble the highest-priority entries for the
-        given phase + project, trimmed to budget_tokens.  Each entry in the
-        bundle carries authority (durable/volatile), volatility
-        (stable/changing), and provenance (source path) annotations.
-
-        context is accepted for API symmetry with future streaming use; it is
-        not used in v1 dispatch.
-        """
-        _require_vault()
-        return harness_memory.phase_recall(
-            phase=phase,
-            project=project,
-            budget=budget_tokens,
-        )
 
     @mcp.tool()
     def memory_append(

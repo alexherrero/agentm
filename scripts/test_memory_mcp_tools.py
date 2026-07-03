@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract tests for the four MCP memory tools — no live daemon required.
+"""Contract tests for the three MCP memory tools — no live daemon required.
 
 Tests run against a temporary vault (a fresh tempdir) injected via the
 MEMORY_VAULT_PATH env var so harness_memory.vault_path() resolves it.
@@ -8,9 +8,11 @@ FastMCP's in-memory transport (FastMCPTransport) is used — no HTTP binding.
 Contracts verified:
   1. memory_forget: soft-delete — file present + status=deleted + deleted_at
   2. memory_append: idempotency — same key twice → one entry, deduplicated=True
-  3. memory_recall: returns a string (may be empty if vault has no always-load)
-  4. memory_search: deleted-exclude contract + include_deleted override
-  5. tools/list: four tools, snake_case names, each with description + schema
+  3. memory_search: deleted-exclude contract + include_deleted override
+  4. tools/list: three tools, snake_case names, each with description + schema
+
+R0.9 (agentmEngine#2): the fourth tool, memory_recall, was retired (dead —
+delegated to a V5-3 stub that always returned "", no live crickets caller).
 
 Run directly:
   cd scripts && python3 -m unittest test_memory_mcp_tools
@@ -194,44 +196,6 @@ class TestMemoryAppendIdempotency(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
-class TestMemoryRecall(unittest.IsolatedAsyncioTestCase):
-    """memory_recall returns a string (may be empty on a vault with no entries)."""
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self._vault = _make_vault(Path(self._tmp.name))
-        os.environ["MEMORY_VAULT_PATH"] = str(self._vault)
-
-    def tearDown(self):
-        os.environ.pop("MEMORY_VAULT_PATH", None)
-        self._tmp.cleanup()
-
-    async def test_recall_returns_string(self):
-        """memory_recall always returns a string (empty vault → empty string)."""
-        transport = FastMCPTransport(_srv.mcp)
-        async with Client(transport) as client:
-            result = await client.call_tool("memory_recall", {
-                "context": "test context",
-                "phase": "plan",
-                "budget_tokens": 1000,
-            })
-        # memory_recall returns a string; .data may be the string directly.
-        val = result.data
-        self.assertIsInstance(val, str, f"Expected str, got {type(val)}: {val!r}")
-
-    async def test_recall_respects_budget_tokens(self):
-        """memory_recall honours the budget_tokens parameter (no exception raised)."""
-        transport = FastMCPTransport(_srv.mcp)
-        async with Client(transport) as client:
-            result = await client.call_tool("memory_recall", {
-                "context": "context",
-                "phase": "work",
-                "budget_tokens": 100,
-            })
-        self.assertIsNotNone(result)
-
-
-@unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
 class TestMemorySearchDeletedFilter(unittest.IsolatedAsyncioTestCase):
     """memory_search deleted-exclude contract."""
 
@@ -293,12 +257,12 @@ class TestMemorySearchDeletedFilter(unittest.IsolatedAsyncioTestCase):
 class TestToolsListSchema(unittest.IsolatedAsyncioTestCase):
     """tools/list: four tools, snake_case names, each with description + schema."""
 
-    async def test_exactly_four_tools(self):
-        """tools/list returns exactly four tools."""
+    async def test_exactly_three_tools(self):
+        """tools/list returns exactly three tools (R0.9: memory_recall retired)."""
         transport = FastMCPTransport(_srv.mcp)
         async with Client(transport) as client:
             tools = await client.list_tools()
-        self.assertEqual(len(tools), 4, f"Expected 4 tools, got {len(tools)}: {[t.name for t in tools]}")
+        self.assertEqual(len(tools), 3, f"Expected 3 tools, got {len(tools)}: {[t.name for t in tools]}")
 
     async def test_all_names_are_snake_case(self):
         """All tool names are snake_case (no dots)."""
@@ -319,13 +283,21 @@ class TestToolsListSchema(unittest.IsolatedAsyncioTestCase):
                             f"Tool {t.name!r} has no description")
 
     async def test_expected_tool_names_present(self):
-        """The four required tool names are present."""
+        """The three required tool names are present."""
         transport = FastMCPTransport(_srv.mcp)
         async with Client(transport) as client:
             tools = await client.list_tools()
         names = {t.name for t in tools}
-        for required in ("memory_search", "memory_recall", "memory_append", "memory_forget"):
+        for required in ("memory_search", "memory_append", "memory_forget"):
             self.assertIn(required, names, f"Required tool {required!r} not in tools/list")
+
+    async def test_memory_recall_retired(self):
+        """R0.9: memory_recall must not be re-introduced."""
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            tools = await client.list_tools()
+        names = {t.name for t in tools}
+        self.assertNotIn("memory_recall", names)
 
 
 @unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
@@ -658,7 +630,7 @@ class TestAppendPathTraversal(unittest.IsolatedAsyncioTestCase):
 
 @unittest.skipUnless(_HAS_DEPS, "fastmcp / deps not installed — skip MCP tool tests")
 class TestVaultSourceResolution(unittest.IsolatedAsyncioTestCase):
-    """All four tools must fail loud when the vault is not configured.
+    """All three tools must fail loud when the vault is not configured.
 
     harness_memory.vault_path() reads a hardcoded ~/.claude/.agentm-config.json
     with no env override, so we patch the function directly to return None rather
@@ -678,10 +650,6 @@ class TestVaultSourceResolution(unittest.IsolatedAsyncioTestCase):
     async def test_search_fails_loud_without_vault(self):
         """memory_search raises when vault is not configured."""
         await self._call_expect_fail("memory_search", {"query": "anything"})
-
-    async def test_recall_fails_loud_without_vault(self):
-        """memory_recall raises when vault is not configured (verifies task-1 fix)."""
-        await self._call_expect_fail("memory_recall", {"context": "x", "phase": "plan"})
 
     async def test_append_fails_loud_without_vault(self):
         """memory_append raises when vault is not configured."""

@@ -37,19 +37,19 @@ class TestMemoryMcpServerSkeleton(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(_srv.mcp, FastMCP)
         self.assertEqual(_srv.mcp.name, "agentm-memory")
 
-    async def test_tools_list_has_four_tools(self):
-        """tools/list returns exactly four tools after Part 2 registration."""
+    async def test_tools_list_has_three_tools(self):
+        """tools/list returns exactly three tools (R0.9: memory_recall retired)."""
         transport = FastMCPTransport(_srv.mcp)
         async with Client(transport) as client:
             tools = await client.list_tools()
-        self.assertEqual(len(tools), 4, f"Expected 4 tools, got {len(tools)}: {[t.name for t in tools]}")
+        self.assertEqual(len(tools), 3, f"Expected 3 tools, got {len(tools)}: {[t.name for t in tools]}")
 
     async def test_mcp_server_round_trip(self):
         """In-memory client completes a full initialize + list_tools round-trip."""
         transport = FastMCPTransport(_srv.mcp)
         async with Client(transport) as client:
             tools = await client.list_tools()
-            # Part 2: four tools registered.  Response must be a list (not an error).
+            # Response must be a list (not an error).
             self.assertIsInstance(tools, list)
 
     def test_build_app_returns_starlette_app(self):

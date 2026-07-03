@@ -6,9 +6,11 @@
 | Tool | Required | Optional | Returns |
 |---|---|---|---|
 | `memory_search` | `query: str` | `top_k`, `include_deleted`, `cursor` | Array of memory objects |
-| `memory_recall` | `phases: list[str]` | `budget_tokens`, `idempotency_key` | Bundled markdown string |
 | `memory_append` | `title: str`, `body: str` | `tags`, `idempotency_key` | `{id, status: "active"}` |
 | `memory_forget` | `id: str` | — | `{id, status: "deleted", deleted_at}` |
+
+> [!NOTE]
+> A fourth tool, `memory_recall`, was retired (R0.9 / agentmEngine#2) — it delegated to a V5-3 stub that always returned an empty bundle regardless of input, and had no live caller.
 
 All tools require `Authorization: Bearer <token>` on the request. The server binds `127.0.0.1:7821`; tool names use snake_case (no dots — compatibility with OpenAI-family hosts).
 
@@ -28,22 +30,6 @@ Search the vault by semantic similarity.
 **Returns:** array ordered by descending similarity score. Each entry: `{id, title, body, score, tags, status, created_at, updated_at}`.
 
 **Pagination:** if more results exist, the response includes `next_cursor`. Pass it back as `cursor` to page forward. An absent or null `next_cursor` means the result set is exhausted.
-
----
-
-## `memory_recall`
-
-Retrieve a budgeted context bundle for one or more harness phases.
-
-| Param | Type | Default | Notes |
-|---|---|---|---|
-| `phases` | `list[str]` | required | Phase names to bundle (e.g. `["work", "review"]`) |
-| `budget_tokens` | `int` | `4096` | Token ceiling for the returned bundle |
-| `idempotency_key` | `str \| null` | `null` | Client key; server deduplicates within a session |
-
-**Returns:** a single markdown string containing the most relevant memories for the requested phases, trimmed to `budget_tokens`. The server selects and orders entries by phase-relevance score, dropping lower-scoring entries until the bundle fits the budget.
-
-**Idempotency:** repeated calls with the same `idempotency_key` return the cached bundle without re-scoring. Omit the key for fresh scoring on each call.
 
 ---
 

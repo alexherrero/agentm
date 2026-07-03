@@ -6,13 +6,14 @@ Why a *process* — a dev-loop phase, an MCP server — talks to the memory engi
 
 The V5 unbundling moved the phase loop (Setup · Plan · Work · Review · Release · Bugfix) out of agentm and into the companion crickets plugins, leaving agentm as the durable-state substrate and memory engine those phases run on. That split created a question it did not answer: *how* does a phase — now living in a different repo — read recall context or resolve where `PLAN.md` lives?
 
-The tempting answer is "import `harness_memory` and call whatever you need." That couples every consumer to the engine's private shape: a phase would reach for an internal helper, the engine would refactor it, and the phase would break — across a repo boundary, where the breakage is hardest to see coming. The seam is the deliberate alternative. It is a single small client (`scripts/process_seam.py`) exposing exactly three operations a process actually needs:
+The tempting answer is "import `harness_memory` and call whatever you need." That couples every consumer to the engine's private shape: a phase would reach for an internal helper, the engine would refactor it, and the phase would break — across a repo boundary, where the breakage is hardest to see coming. The seam is the deliberate alternative. It is a single small client (`scripts/process_seam.py`) exposing exactly two operations a process actually needs:
 
-- **recall here** — "given where I'm working, what does memory know?"
 - **offer save here** — "here's something I might save; tell me where it would go" (advisory only — it never saves).
 - **state path here** — "where does this project's `PLAN.md` / `progress.md` live?"
 
-Every one of those composes only the engine's *frozen public readers* (the DC-7 surface: `resolve_project`, `phase_recall`, `resolve_active_plan`, `harness_state_dir`, `is_available`). A consumer that needs something the frozen API lacks is a separate engine change, not a quiet widening of the seam. The engine keeps the freedom to refactor everything behind that public surface; the process only ever sees the seam.
+(A third operation, **recall here**, was retired in R0.9 — it delegated to a V5-3 stub that always returned empty; no live crickets consumer called it.)
+
+Every one of those composes only the engine's *frozen public readers* (the DC-7 surface: `resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`). A consumer that needs something the frozen API lacks is a separate engine change, not a quiet widening of the seam. The engine keeps the freedom to refactor everything behind that public surface; the process only ever sees the seam.
 
 ## Why the dependency is one-directional
 
@@ -44,7 +45,6 @@ The seam is built so a memory-absent install still works. agentm must run on mac
 
 So **every function degrades** rather than raising on the absent-memory path:
 
-- `recall_here` returns `""` when no engine or vault is configured — and an unknown or absent phase degrades to the `"work"` scope rather than raising.
 - `offer_save_here` returns `[]` when memory is absent or there's nothing to offer.
 - `state_path` degrades to repo-local `<project_root>/.harness/<file>` ([LC-3]) — never `None` — so a vault-less repo still resolves its plan and progress files.
 

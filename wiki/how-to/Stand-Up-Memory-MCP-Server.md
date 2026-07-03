@@ -5,7 +5,7 @@
 > **Goal:** Connect desktop MCP hosts (Claude Code, Cursor, Goose, Claude Desktop) to your MemoryVault through a single local HTTP daemon.
 > **Prereqs:** agentm installed (`install.sh` complete), vault configured, Python 3.11+, `uv` available.
 
-The daemon exposes four tools — `memory_search`, `memory_recall`, `memory_append`, `memory_forget` — to every host that speaks MCP while routing all writes through one process. See [Memory MCP tools](Memory-MCP-Tools) for full signatures and the soft-delete contract.
+The daemon exposes three tools — `memory_search`, `memory_append`, `memory_forget` — to every host that speaks MCP while routing all writes through one process. See [Memory MCP tools](Memory-MCP-Tools) for full signatures and the soft-delete contract.
 
 ## Steps
 
