@@ -460,9 +460,23 @@ def resolve_project(context: Optional[dict] = None) -> dict:
     # result from a top-level import (backend_selection imports harness_memory).
     try:
         import backend_selection as _bs  # noqa: E402
-        backend = _bs.select_backend()
     except Exception:
+        # backend_selection itself unavailable — the genuinely unconfigured
+        # device-local case; silent None is correct here.
         backend = None
+    else:
+        try:
+            backend = _bs.select_backend()
+        except (StorageBackendNotInstalledError, _bs.StorageSelectionError):
+            # V5-3 fail-loud guard (LC-6): an explicitly-configured backend
+            # that can't be produced must never silently demote to
+            # device-local — propagate so the caller (a phase / hook /
+            # writer) surfaces it instead of quietly writing to the wrong
+            # place. This is the exact bug agentmEngine#1 named: the prior
+            # bare `except Exception` swallowed both error types here.
+            raise
+        except Exception:
+            backend = None
 
     if backend is None:
         return {

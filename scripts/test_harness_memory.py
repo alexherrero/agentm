@@ -1091,6 +1091,39 @@ class TestResolveProject(unittest.TestCase):
         self.assertIsNone(resolution["backend"])
         self.assertEqual(resolution["layout"], "none")
 
+    def test_storage_backend_not_installed_propagates(self) -> None:
+        """R0.4 / agentmEngine#1: an explicitly-configured backend that can't be
+        produced must propagate, never silently demote to backend=None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp)
+            (project_root / ".harness").mkdir()
+            (project_root / ".harness" / "project.json").write_text(
+                '{"vault_project": "my-project"}', encoding="utf-8"
+            )
+            with mock.patch(
+                "backend_selection.select_backend",
+                side_effect=hm.StorageBackendNotInstalledError("vault configured but unreachable"),
+            ):
+                with self.assertRaises(hm.StorageBackendNotInstalledError):
+                    hm.resolve_project({"cwd": project_root})
+
+    def test_storage_selection_error_propagates(self) -> None:
+        """R0.4 / agentmEngine#1: same never-demote guard for StorageSelectionError
+        (e.g. a configured third-party backend whose plugin isn't installed)."""
+        import backend_selection as _bs
+        with tempfile.TemporaryDirectory() as tmp:
+            project_root = Path(tmp)
+            (project_root / ".harness").mkdir()
+            (project_root / ".harness" / "project.json").write_text(
+                '{"vault_project": "my-project"}', encoding="utf-8"
+            )
+            with mock.patch(
+                "backend_selection.select_backend",
+                side_effect=_bs.StorageSelectionError("configured backend's plugin is not installed"),
+            ):
+                with self.assertRaises(_bs.StorageSelectionError):
+                    hm.resolve_project({"cwd": project_root})
+
     def test_resolves_new_layout(self) -> None:
         """Vault backend has projects/<slug>/ → layout='new', project_locator.key='projects/fixture'."""
         with tempfile.TemporaryDirectory() as tmp:
