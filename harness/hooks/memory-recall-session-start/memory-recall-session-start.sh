@@ -117,7 +117,7 @@ try:
     d = json.load(open(sys.argv[1]))
 except Exception:
     sys.exit(0)
-print(d.get("vault_path") or "")
+print(d.get("plugins.obsidian-vault.vault_path") or d.get("vault_path") or "")
 ' "$cfg" 2>/dev/null || true)"
         if [[ -n "$v" ]]; then printf '%s\n' "$v"; return 0; fi
     fi
