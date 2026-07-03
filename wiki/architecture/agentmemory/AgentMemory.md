@@ -11,7 +11,7 @@ The vault is a directory tree, not a database. Entries live under a few well-kno
 
 | Region | Holds | Loaded |
 |---|---|---|
-| `personal-private/_always-load/` | standing preferences, conventions, durable fixes | every session start |
+| `personal/_always-load/` | standing preferences, conventions, durable fixes | every session start |
 | `projects/<name>/` | per-project goals, plans, progress | on demand, by project |
 | `_meta/` | audit reports, embeddings cache, orchestration state | by the tooling, not the agent |
 

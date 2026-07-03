@@ -13,7 +13,7 @@
    python3 harness/skills/memory/scripts/vault_lint.py --format json
    ```
 
-   Narrow the corpus with `--scope` (`all` · `always-load` · `projects` · `personal-private`; default `all`). Point at a specific vault with `--vault PATH` if `MEMORY_VAULT_PATH` is unset.
+   Narrow the corpus with `--scope` (`all` · `always-load` · `projects` · `personal`; default `all`). Point at a specific vault with `--vault PATH` if `MEMORY_VAULT_PATH` is unset.
 
 2. **Write the audit report.** Add `--audit` to write a grouped operator-review report instead of printing:
 

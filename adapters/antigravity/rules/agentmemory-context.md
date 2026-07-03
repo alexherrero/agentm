@@ -4,7 +4,7 @@ trigger: always_on
 
 # AgentMemory — my durable memory vault
 
-You have access to my durable memory: a Google-Drive-synced Obsidian vault named **`AgentMemory/`**. It holds my conventions, projects, decisions, and recent context. **Before you answer from your own knowledge, read the relevant parts of this vault** — it is the authoritative source for how I work and what I'm working on.
+You have access to my durable memory: a Google-Drive-synced Obsidian vault. It holds my conventions, projects, decisions, and recent context. **Before you answer from your own knowledge, read the relevant parts of this vault** — it is the authoritative source for how I work and what I'm working on.
 
 ## Where the vault is
 
@@ -17,7 +17,7 @@ A self-describing copy of these instructions lives at `<vault>/_meta/how-to-use-
 
 ## Folder map — what's where
 
-- **`personal-private/_always-load/`** — my global conventions + preferences (dev-flow rules, commit conventions, ADR/changelog shapes, voice/brand). **Read these first, every session.**
+- **`personal/_always-load/`** — my global conventions + preferences (dev-flow rules, commit conventions, ADR/changelog shapes, voice/brand). **Read these first, every session.**
 - **`projects/<slug>/`** — per-project context: `_index.md` (anchor + current state), `decisions/` (locked design calls — don't re-litigate), `open-questions/` (unresolved), `_harness/` (the project's roadmap / plan / progress).
 - **`external/<slug>/`** — third-party projects I'm **reviewing or mentoring, not building** (e.g. a relative's app). Same internal shape as `projects/` (`_index.md` + `decisions/` + `_harness/`), but deliberately kept **out of `projects/`** because I don't own this work — the `_index.md` "Relationship" block says whose it is and why it's here.
 - **`_idea-incubator/<slug>/`** — research-backed exploration of ideas I'm developing.
@@ -26,7 +26,7 @@ A self-describing copy of these instructions lives at `<vault>/_meta/how-to-use-
 
 ## How to read it (priority order)
 
-1. **Always-load first** — load everything in `personal-private/_always-load/`; durable rules that apply to every answer.
+1. **Always-load first** — load everything in `personal/_always-load/`; durable rules that apply to every answer.
 2. **Project context** — if the question concerns a project, read that project's `projects/<slug>/_index.md` + `decisions/` before answering.
 3. **Query by topic** — search the vault for the subject *before* falling back to your own general knowledge. If the vault says something, it wins.
 

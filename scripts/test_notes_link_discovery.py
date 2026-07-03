@@ -128,25 +128,32 @@ class TestRelatedPairSurfaced(unittest.TestCase):
 
 
 class TestAgentMemoryExcluded(unittest.TestCase):
-    def test_agentmemory_entry_never_in_corpus(self):
-        # (c) an AgentMemory/-style entry is excluded even if it shares terms.
-        with _Vault() as v:
-            _write(v, "Church/baptism.md",
+    def test_agent_vault_entry_never_in_corpus(self):
+        # (c) the agent's own vault subfolder is excluded even if it shares
+        # terms — R0.10: the exclusion is now derived at runtime from the
+        # `vault` argument's own directory name (was a hardcoded "AgentMemory"
+        # literal, the retired pre-V5-3 vault root name), so this fixture
+        # nests the vault ONE LEVEL below the Obsidian root (as it is in
+        # production — e.g. `<Obsidian>/Agent/` alongside sibling personal
+        # notes) rather than flattening vault == Obsidian root.
+        with _Vault() as obsidian_root:
+            _write(obsidian_root, "Church/baptism.md",
                    "Baptism is a covenant ordinance renewed weekly by the sacrament.")
-            _write(v, "Church/confirmation.md",
+            _write(obsidian_root, "Church/confirmation.md",
                    "Confirmation is a covenant ordinance conferring the sacrament gift.")
             # An agent entry that shares the SAME distinctive vocabulary — must
             # still never appear as a source or target (hard domain boundary).
-            _write(v, "AgentMemory/personal/agent-note.md",
+            _write(obsidian_root, "Agent/personal/agent-note.md",
                    "Covenant ordinance sacrament covenant ordinance sacrament.",
                    fm={"kind": "convention", "status": "active", "created": "2026-05-29"})
-            notes, sugg = nld.discover(v, min_score=0.05, top=40)
+            vault = obsidian_root / "Agent"
+            notes, sugg = nld.discover(vault, min_score=0.05, top=40)
             rels = {n.rel for n in notes}
-            self.assertNotIn("AgentMemory/personal/agent-note", rels,
-                             "AgentMemory entry leaked into the corpus")
+            self.assertNotIn("personal/agent-note", rels,
+                             "agent vault entry leaked into the corpus")
             for s in sugg:
-                self.assertNotIn("AgentMemory", s.a_rel)
-                self.assertNotIn("AgentMemory", s.b_rel)
+                self.assertNotIn("agent-note", s.a_rel)
+                self.assertNotIn("agent-note", s.b_rel)
 
     def test_obsidian_config_dir_excluded(self):
         with _Vault() as v:

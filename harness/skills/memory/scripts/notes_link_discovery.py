@@ -57,9 +57,13 @@ if str(_HERE) not in sys.path:
 import vault_lint  # noqa: E402  (reuse _obsidian_root + parse_frontmatter — same skill dir)
 
 # Directories that are NOT operator personal notes — excluded from the corpus.
-# `AgentMemory/` is the agent's own vault (the hard domain boundary, DC-2);
-# `.obsidian/` is Obsidian's config; `.trash` is Obsidian's soft-delete bin.
-_EXCLUDE_DIRS = frozenset({"AgentMemory", ".obsidian", ".trash", ".git"})
+# The agent's own vault (the hard domain boundary, DC-2) is excluded by name
+# in `build_corpus` below, derived from the live `vault` argument at runtime
+# rather than hardcoded here — the pre-V5-3 vault root was named `AgentMemory`,
+# renamed to `Agent`; a hardcoded literal would silently stop excluding the
+# vault (and start treating it as operator personal notes) on any future
+# rename. `.obsidian/` is Obsidian's config; `.trash` is Obsidian's soft-delete bin.
+_EXCLUDE_DIRS = frozenset({".obsidian", ".trash", ".git"})
 
 # Defaults — tuned against the live 397-note dogfood (task 2).
 _DEFAULT_MIN_SCORE = 0.18
@@ -244,13 +248,16 @@ def _resolve_link(target: str) -> tuple:
 
 
 def build_corpus(vault: Path) -> list:
-    """Walk the Obsidian root, parse every personal note (excluding AgentMemory/
-    + Obsidian config), return a list[Note]. Read-only."""
-    root = vault_lint._obsidian_root(Path(vault))
+    """Walk the Obsidian root, parse every personal note (excluding the
+    agent's own vault directory + Obsidian config), return a list[Note].
+    Read-only."""
+    vault = Path(vault)
+    root = vault_lint._obsidian_root(vault)
+    exclude_dirs = _EXCLUDE_DIRS | {vault.resolve().name}
     notes = []
     for dirpath, dirnames, filenames in os.walk(root):
         # Prune excluded dirs in-place so os.walk doesn't descend into them.
-        dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_DIRS]
+        dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
         for fn in filenames:
             if not fn.endswith(".md"):
                 continue
