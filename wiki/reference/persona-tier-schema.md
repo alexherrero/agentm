@@ -28,7 +28,7 @@ Every file under `personas/*.md` must open with a YAML frontmatter block delimit
 | `kind` | yes | string | Must be exactly `"persona"`. |
 | `name` | yes | string | Slug identifying this persona (e.g. `rememberer`). |
 | `requires` | yes | list[string] | Hard substrate deps. Every entry must be the stem of a file in `scripts/` (`<stem>.py` or `<stem>.sh`). Empty list is valid. |
-| `enhances` | yes | list[string] | Soft capability deps. Any capability name is accepted; unmet entries are not errors. See [Soft-Composition](../explanation/Soft-Composition). |
+| `enhances` | yes | list[string] | Soft capability deps. Any capability name is accepted; unmet entries are not errors. See [Soft-Composition](Soft-Composition). |
 | `always_load` | no | bool | Must be absent or `false`. Setting to `true` is a gate violation (see the [persona-tier design](persona-tier)). Both spellings (`always_load` and `always-load`) are checked. |
 
 ### Example: the degenerate persona (`personas/rememberer.md`)
@@ -66,7 +66,7 @@ The `requires: [queue_status_lite]` entry passes `check-personas` because `scrip
 
 ## `check-personas` gate
 
-**Script:** [`scripts/check-personas.py`](../../scripts/check-personas.py)
+**Script:** `scripts/check-personas.py`
 
 **Invocation:**
 
@@ -78,7 +78,7 @@ python3 scripts/check-personas.py [--root DIR]
 
 ### Assertions
 
-The gate enforces two invariants (both in `_check_one()` at [scripts/check-personas.py#L71](../../scripts/check-personas.py#L71)):
+The gate enforces two invariants (both in the `_check_one()` function in `scripts/check-personas.py`):
 
 1. **`requires ⊆ substrate-native`** — each `requires:` entry must match `scripts/<entry>.py` or `scripts/<entry>.sh`. This mechanically prevents personas from hard-depending on crickets capabilities (no file under `scripts/` exists for them).
 
@@ -100,7 +100,7 @@ The gate enforces two invariants (both in `_check_one()` at [scripts/check-perso
 
 ### Unit tests
 
-[`scripts/test_check_personas.py`](../../scripts/test_check_personas.py) — 11 tests across four classes:
+`scripts/test_check_personas.py` — 11 tests across four classes:
 
 | Class | Tests |
 |---|---|
@@ -111,7 +111,7 @@ The gate enforces two invariants (both in `_check_one()` at [scripts/check-perso
 
 ## Related
 
-- [Soft-Composition](../explanation/Soft-Composition) — `enhances:` field that personas reuse for optional composition.
+- [Soft-Composition](Soft-Composition) — `enhances:` field that personas reuse for optional composition.
 - [Persona tier design](persona-tier) — design decisions: DC-2 (positive-match kind), DC-3 (enhances: reuse), DC-4 (no-always-load invariant).
 - [Capability-Resolver](Capability-Resolver) — the resolver that backs `enhances:` lookups.
 - [CI-Gates](CI-Gates) — where `check-personas` appears in the gate battery.

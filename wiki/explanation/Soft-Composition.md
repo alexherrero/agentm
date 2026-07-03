@@ -36,11 +36,11 @@ V5-9 (MCP negotiation) will sit on top of this vocabulary, not replace it. The r
 ## Personas and `enhances:`
 
 > [!NOTE]
-> **Status: implemented (V5-12)** — The `kind: persona` primitive reuses `enhances:` for its optional composition. A persona lists capabilities it can exploit in `enhances:`, subject to the same soft-dep semantics described above: unmet entries are not errors, the persona falls back to standalone behavior. The `check-personas` gate does **not** validate `enhances:` entries — soft deps may name any capability (confirmed in [`scripts/check-personas.py`](../../scripts/check-personas.py), which only asserts `requires ⊆ substrate-native` and no-always-load). See [persona-tier-schema reference](persona-tier-schema).
+> **Status: implemented (V5-12)** — The `kind: persona` primitive reuses `enhances:` for its optional composition. A persona lists capabilities it can exploit in `enhances:`, subject to the same soft-dep semantics described above: unmet entries are not errors, the persona falls back to standalone behavior. The `check-personas` gate does **not** validate `enhances:` entries — soft deps may name any capability (confirmed in the `check-personas.py` gate, which only asserts `requires ⊆ substrate-native` and no-always-load). See [persona-tier-schema reference](persona-tier-schema).
 
 ## Related
 
-- [Capability resolver reference](../reference/Capability-Resolver) — the API.
+- [Capability resolver reference](Capability-Resolver) — the API.
 - [Persona tier schema](persona-tier-schema) — the `kind: persona` manifest fields and `check-personas` gate (V5-12).
 - [AgentM HLD — Capability discovery](agentm-hld) — the design decisions.
 - [Persona tier design](persona-tier) — design decisions for the persona primitive; DC-3 covers `enhances:` reuse.

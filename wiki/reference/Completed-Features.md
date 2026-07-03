@@ -181,7 +181,7 @@ V5-6 closes the third and final leg of the V5 de-vaulting arc (data plane V5-3 �
 
 - [ADR 0019 — V5-6 routing-plane de-vaulting](memory-storage-seam) — the three-leg arc, locked design calls, load-bearing assumptions.
 - [Storage seam § Routing layer](Storage-Seam#routing-layer-v5-6) — quick-reference tables for the three de-vaulted mechanisms.
-- [Single-repo state mode](../explanation/Single-Repo-State-Mode) — `state_mode: vault` alias callout.
+- [Single-repo state mode](Single-Repo-State-Mode) — `state_mode: vault` alias callout.
 - [v5.7.0](https://github.com/alexherrero/agentm/releases/tag/v5.7.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md).
 
 ---
@@ -498,7 +498,7 @@ The **paired-release-as-documentation pattern** continues from v2.4.0 + v2.4.1: 
 - **Doesn't ship a new harness ADR** (the discovery + mining decision lives in toolkit-side ADR 0007).
 - **Doesn't process HTML sources** — `discover_skills.py` is markdown-only; HTML pages get cached as raw HTML, diff still works but downstream candidate parsing assumes markdown structure.
 - **Doesn't ship the `/memory search` body** — that stub remains for a future task to wire `recall.py query` into the skill UX.
-- **Doesn't ship cross-surface AgentMemory protocol** — that's [ROADMAP item #22](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) (queued post-#7b).
+- **Doesn't ship cross-surface AgentMemory protocol** — that's ROADMAP item #22 (local `.harness/ROADMAP.md`) (queued post-#7b).
 
 ### Tracked as
 
@@ -511,7 +511,7 @@ Single-commit harness release. No new feature entries in `features.json` (discov
 - [crickets MemoryVault design doc](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault.md) — Document History row 11 captures the discovery + mining additive layer
 - [`adapt-evaluator` sub-agent](https://github.com/alexherrero/agentm/blob/main/harness/agents/adapt-evaluator.md) — read-only Pass 2 worker with write allowlist scoped to `_skill-watchlist/` (shipped in crickets; moved to agentm in V4 #23)
 - [Use-The-Memory-Skill how-to](https://github.com/alexherrero/crickets/blob/main/wiki/how-to/Use-The-Memory-Skill.md) — `## Discovery + mining (plan #7b)` section with worked invocations for all 5 new sub-commands
-- [ROADMAP item #7b](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) — the roadmap entry closed by this release (MemoryVault parent design now fully shipped — both #7a + #7b are Completed)
+- ROADMAP item #7b (local `.harness/ROADMAP.md`) — the roadmap entry closed by this release (MemoryVault parent design now fully shipped — both #7a + #7b are Completed)
 - [v2.4.2](https://github.com/alexherrero/agentm/releases/tag/v2.4.2) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md)
 
 ## 2026-05-20 — v2.4.1: Local-only embeddings (paired with toolkit v0.9.2)
@@ -537,7 +537,7 @@ The **paired-release-as-documentation pattern** continues from v2.4.0: substanti
 - Doesn't change scripts, validators, or tests on harness side.
 - Doesn't ship a new harness ADR (the embedding-mode decision lives in toolkit-side ADR 0001's 2026-05-20 amendment).
 - Doesn't auto-migrate existing 384-d vec-indexes — operators see a graceful-skip warning on first invocation with the new toolkit + a clear `python3 vec_index.py rebuild --vault-path <path>` command (toolkit-side handling).
-- Doesn't ship Antigravity 2.0 / Antigravity CLI host support — that's [ROADMAP item #17](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) (queued post-#7a).
+- Doesn't ship Antigravity 2.0 / Antigravity CLI host support — that's ROADMAP item #17 (local `.harness/ROADMAP.md`) (queued post-#7a).
 
 ### Tracked as
 
@@ -548,7 +548,7 @@ Single-commit harness release. No new feature entries in `features.json` (embedd
 - [crickets v0.9.2](https://github.com/alexherrero/crickets/releases/tag/v0.9.2) — paired release; 8 commits across plan #18 tasks 1-7
 - [crickets ADR 0001's 2026-05-20 amendment](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0001-crickets-purpose.md#amendment-2026-05-20) — full decision rationale + 4 load-bearing assumptions with re-audit triggers
 - [crickets MemoryVault design doc](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault.md) — design doc body rewritten in-place across 12 substantive references; Document History row 10 captures the rewrite
-- [ROADMAP item #18](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) — the roadmap entry inserted mid-flight 2026-05-20 that triggered this plan
+- ROADMAP item #18 (local `.harness/ROADMAP.md`) — the roadmap entry inserted mid-flight 2026-05-20 that triggered this plan
 - [v2.4.1](https://github.com/alexherrero/agentm/releases/tag/v2.4.1) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md)
 
 ## 2026-05-17 — v2.4.0: Gemini-CLI host removal (paired with toolkit v0.9.0)
@@ -584,7 +584,7 @@ Single-commit harness release. No new feature entries in `features.json` (host-s
 - [crickets v0.9.0](https://github.com/alexherrero/crickets/releases/tag/v0.9.0) — paired release; 5 commits doing the substantive sweep
 - [crickets ADR 0006 — Gemini-CLI host removal](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0006-gemini-cli-host-removal.md) — full decision rationale + 4 load-bearing assumptions
 - [crickets ADR 0001 + 0002 amendments (2026-05-17)](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/decisions/0001-crickets-purpose.md#amendment-2026-05-17) — preserve original text + audit trail; same pattern as ADR 0004's 2026-05-16 amendment
-- [ROADMAP item #15](https://github.com/alexherrero/agentm/blob/main/.harness/ROADMAP.md) — the roadmap entry that triggered this plan (added 2026-05-16 during plan #7a part 1 task 1 ship)
+- ROADMAP item #15 (local `.harness/ROADMAP.md`) — the roadmap entry that triggered this plan (added 2026-05-16 during plan #7a part 1 task 1 ship)
 - [v2.4.0](https://github.com/alexherrero/agentm/releases/tag/v2.4.0) — release notes, [CHANGELOG.md](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md)
 
 ## 2026-05-16 — v2.3.1: `/plan` external-review-handoff option (paired with toolkit v0.8.1)
@@ -869,8 +869,8 @@ The `/bugfix` Issues lifecycle shipped in v0.8.2; this plan closed the symmetric
 
 **Tracked as:**
 
-- [`feat-gh-projects-integration`](https://github.com/alexherrero/agentm/blob/main/.harness/features.json) (currently `passes: false` — gated on dogfood observation)
-- [`feat-documenter-subagent`](https://github.com/alexherrero/agentm/blob/main/.harness/features.json) (this sweep is the dogfood of the spec)
+- `feat-gh-projects-integration` (local `.harness/features.json`) (currently `passes: false` — gated on dogfood observation)
+- `feat-documenter-subagent` (local `.harness/features.json`) (this sweep is the dogfood of the spec)
 
 **Related pages:**
 
