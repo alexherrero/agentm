@@ -1,6 +1,6 @@
 # Note relatedness signals reference
 
-The signals `notes_link_discovery.py` scores when it looks for related-but-unlinked pairs among your **personal** notes (the corpus outside `AgentMemory/` + `.obsidian/`). The audit never mutates a personal note — it surfaces candidate links for operator review (A3). Suggestions are strictly personal↔personal; an `AgentMemory/` entry is never a source or a target (DC-2).
+The signals `notes_link_discovery.py` scores when it looks for related-but-unlinked pairs among your **personal** notes (the corpus outside the vault root + `.obsidian/`). The audit never mutates a personal note — it surfaces candidate links for operator review (A3). Suggestions are strictly personal↔personal; a vault-root entry is never a source or a target (DC-2).
 
 ## ⚡ Quick Reference
 
@@ -8,7 +8,7 @@ The signals `notes_link_discovery.py` scores when it looks for related-but-unlin
 |---|---|
 | What runs the audit? | `harness/skills/memory/scripts/notes_link_discovery.py` (the relatedness engine + report writer). |
 | How do I see suggestions? | `python3 harness/skills/memory/scripts/notes_link_discovery.py --format text` (or `--format json`). |
-| Which notes are in the corpus? | Personal notes only — the Obsidian vault **excluding `AgentMemory/`, `.obsidian/`, `.trash`, `.git`** (DC-2). |
+| Which notes are in the corpus? | Personal notes only — the Obsidian vault **excluding the vault root folder, `.obsidian/`, `.trash/`, `.git/`** (DC-2). |
 | What are the two signals? | **TF-IDF** content overlap (lexical) + **embedding** cosine (semantic, opt-in via `--embeddings`). Folder + date proximity are weak context. |
 | Does the audit ever edit a note? | Not by default — read-only / surface-only (DC-1). The opt-in `--apply` flag is the one exception: it writes the safe suggestions into a marked `## Related` section, backup-first + idempotent (you directed it; A3 satisfied). |
 | Where do outputs live? | Report → `<vault>/_meta/notes-links-<date>.md`; embedding cache → `<vault>/_meta/notes-embeddings.json`. Both under the agent-controlled vault, never beside a personal note, never the AgentMemory `vec-index.db`. |

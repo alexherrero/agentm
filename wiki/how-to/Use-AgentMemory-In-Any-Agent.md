@@ -32,7 +32,7 @@ Prereq for the Google-Drive surfaces: the vault is synced to Google Drive, and y
 
 Best path: give Claude Desktop a **local filesystem MCP server** pointed at the vault — it then navigates the vault like Claude Code (full traversal, no Drive dependency).
 
-1. **Add a filesystem MCP server.** In Claude Desktop's connector/MCP settings, add a standard **filesystem** server scoped to your vault directory (`$MEMORY_VAULT_PATH` / the `AgentMemory/` folder).
+1. **Add a filesystem MCP server.** In Claude Desktop's connector/MCP settings, add a standard **filesystem** server scoped to your vault directory (`$MEMORY_VAULT_PATH` / your vault folder).
 2. **Paste [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19)** into a Claude **Project's** instructions (or the desktop custom instructions).
 3. **Dogfood** (see below).
 

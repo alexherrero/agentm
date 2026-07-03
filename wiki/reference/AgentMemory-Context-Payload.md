@@ -19,8 +19,8 @@ The required sections of the payload, in order, as they appear in [`templates/ag
 
 | Section (heading in template) | Covers |
 |---|---|
-| Intro (`# Using my Agent Memory`) | Names the vault (`AgentMemory/`, a GDrive-synced Obsidian vault); states read-the-vault-before-own-memory and the read-only stance up front. |
-| Where the vault is, on your surface | Per-surface path resolution: Claude.ai / ChatGPT → GDrive connector + pinned `AgentMemory/`; Gemini → native Workspace/Drive access; Antigravity → installer-configured path; Claude Code / local → `MEMORY_VAULT_PATH`, falling back to `.agentm-config.json::vault_path` when the env var is unset (SessionStart hooks do not receive `MEMORY_VAULT_PATH` on user-scope installs, so vault-aware hooks resolve via `env → .agentm-config.json::vault_path → none`). |
+| Intro (`# Using my Agent Memory`) | Names the vault (your vault root, a GDrive-synced Obsidian vault); states read-the-vault-before-own-memory and the read-only stance up front. |
+| Where the vault is, on your surface | Per-surface path resolution: Claude.ai / ChatGPT → GDrive connector + pinned vault root; Gemini → native Workspace/Drive access; Antigravity → installer-configured path; Claude Code / local → `MEMORY_VAULT_PATH`, falling back to `.agentm-config.json::vault_path` when the env var is unset (SessionStart hooks do not receive `MEMORY_VAULT_PATH` on user-scope installs, so vault-aware hooks resolve via `env → .agentm-config.json::vault_path → none`). |
 | Folder map — what's where | `personal/_always-load/` (global conventions, read first), `projects/<slug>/` (`_index.md` / `decisions/` / `open-questions/` / `_harness/`), `external/<slug>/` (third-party projects under review/mentoring — same shape, kept out of `projects/`), `_idea-incubator/<slug>/`, `_inbox/`, `_meta/`. |
 | How to read it (priority order) | 1) always-load first → 2) project context (`_index.md` + `decisions/`) → 3) query by topic; vault wins over the model's general knowledge. |
 | Reading entries correctly | Markdown + YAML frontmatter; core trio `kind` + `status` + `created`; kebab-case slugs/tags; `status: active` vs `superseded`; follow `[[wikilinks]]`. |
