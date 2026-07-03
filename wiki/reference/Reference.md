@@ -31,6 +31,9 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 | [Vault write protocol](Vault-Write-Protocol) | How the vault stays safe when more than one session writes at once, and the habits that help. |
 | [Process seam](Process-Seam) | The small read-only interface another process uses to reach memory, instead of calling the engine directly. |
 | [Storage seam](Storage-Seam) | The interface the engine uses to read and write storage, and its two backends: the device-local store and the synced vault. |
+| [Orchestration bridge](Orchestration-Bridge) | The read-only bridge that surfaces orchestration state to another process. |
+| [Queue status lite](Queue-Status-Lite) | The read-only coordinator dashboard that lists every active plan and its status. |
+| [Memory MCP tools](Memory-MCP-Tools) | The memory-engine tool surface exposed over MCP. |
 
 ## Plugin capabilities
 
@@ -38,6 +41,7 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 |---|---|
 | [Capability resolver](Capability-Resolver) | How the harness works out which capabilities are available, on each host. |
 | [Design governance](Design-Governance) | The frontmatter convention that ties a design to what it governs, and the resolver behind it. |
+| [Persona tier schema](persona-tier-schema) | The `kind: persona` manifest fields and the `check-personas` gate that enforces them. |
 
 ## CI & shipped work
 

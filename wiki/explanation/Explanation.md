@@ -14,6 +14,7 @@ These pages explain *why* AgentM works the way it does — the choices, reasonin
 - **[Auto-orchestration](Auto-Orchestration)** — why the memory skills became something automatic instead of explicitly requested, and how the briefing, idle work, and phase dispatch stay quiet until they are needed.
 - **[Single-repo state mode](Single-Repo-State-Mode)** — why AgentM falls back to repo-local state when there is no vault accessible.
 - **[GitHub Projects integration](GitHub-Projects-Integration)** — why and how the harness mirrors your work onto a GitHub board.
+- **[Named plans](Named-Plans)** — why the harness can hold more than one active plan in a single shared vault.
 
 ## See also
 
