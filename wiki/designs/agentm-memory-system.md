@@ -4,7 +4,7 @@ status: launched
 kind: design
 scope: feature
 area: agentm/memory
-governs: [scripts/harness_memory.py, harness/skills/memory/scripts/]
+governs: [harness/skills/memory/scripts/]
 parent: agentm-hld.md
 children: [memoryvault.md]
 seeded: 2026-06-20
@@ -185,6 +185,8 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 - V5-14 — storage-convergence (memory-entry seam adoption + MCP re-platform); ROADMAP-MASTER ⑤
 
 ## Amendment log
+
+**2026-07-03 — dropped `scripts/harness_memory.py` from `governs:` (R0.10 / agTrack#0 governs-overlap fix).** This design and [memory-storage-seam](memory-storage-seam.md) both stamped an exact-path `governs: scripts/harness_memory.py`, so `governs_resolver.py` resolved the file as `{"governed": false, "reason": "overlap"}` — silently treated as greenfield by grounding Hooks 1/2, the exact failure mode the resolver's fail-loud-on-tie behavior exists to surface, not paper over. `memory-storage-seam` is the more specific, storage-plane-scoped owner (it already lists `harness_memory.py` alongside `backend_selection.py`/`storage_seam.py`/etc. as one cohesive seam); this design keeps the broader `harness/skills/memory/scripts/` directory pattern, which covers the engine-facing recall/save/reflect/vec_index surface `harness_memory.py` itself is not part of. Why not the reverse (keep it here, drop it from the seam design): the seam design's governs list is the storage-routing cohort — `harness_memory.py` is the seam's own resolve_project/vault_path entry point, so it belongs with its siblings, not orphaned into the broader memory-system pillar. *Re-audit trigger:* if `harness_memory.py` is ever split into a storage-facing half and an engine-facing half, re-evaluate whether the engine half should be re-added here.
 
 **2026-06-28 — lock-down sweep (operator review).** Sized the three diagrams (`width`/`height`). Confirmed the **aging / relevance-decay / re-weighting** question is future work, not a gap — the lifecycle layer (confidence + retention decay, V6-1), consolidation tiers (V6-4), time-weighted retrieval (recency × relevance, V6-12), and dream-mode compaction (V7-2) are all queued; the designed-for framing here stands, and we hold modifying until V6/V7. Reordered this log newest-first (the 06-24 ADR-0007 fold had sat below the 06-21 authored entry). *No content change to the pillar.*
 

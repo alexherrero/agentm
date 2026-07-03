@@ -68,7 +68,7 @@ When the configured backend **cannot be produced**, `select_backend` raises `Sto
 
 **`storage_preview` mirrors `select_backend`:** the `doctor` storage check calls `storage_preview()` — never-raising, never-mutating — which reuses the resolver's code path and error messages, so the preview an operator sees is byte-identical to the runtime refusal.
 
-**Import cycle guard (§2b DC-4):** `backend_selection.py` lazy-imports `harness_memory` only at call time inside `resolve_project` / `select_backend`, never at module top-level. This is the one guarded lazy import this design permits; no other cross-seam top-level cycles are allowed.
+**Import cycle guard (§2b DC-4):** `backend_selection.py` imports `harness_memory` at module top-level (it needs `harness_memory.vault_path()` to seed the vault backend). To avoid the cycle that would create, `harness_memory.py` never imports `backend_selection` at its own top-level — `resolve_project()` imports it lazily, inside the function body, at call time. This is the one guarded lazy import this design permits; no other cross-seam top-level cycles are allowed.
 
 **Vault plugin discovery (post-V5-3):** the kernel `storage_vault.py` was deleted in V5-3 (the kernel built-in) and replaced by the crickets `obsidian-vault` plugin. `_load_vault_plugin_backend` discovers the plugin via `$OBSIDIAN_VAULT_SCRIPTS` override → sibling checkout → plugin-cache path, execs `scripts/storage_vault.py` in the plugin dir, and returns the `VaultBackend` class. The registry slot is always empty at entry (no built-in pre-registers it); the `finally` block pops whatever the plugin registered, leaving the slot empty on exit.
 
@@ -151,7 +151,7 @@ Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that
 | Tag | Resolution |
 |---|---|
 | **DC-1 → 0020** | The current truth for `harness_state_dir` / `read_state_file` / `write_state_file` is **ADR 0020**: backend-aware, not device-local-only. ADR 0018 DC-1 (device-local only) was reversed by ADR 0020. See §3 above. |
-| **DC-4 import** | "No top-level cycle; one guarded lazy import at `resolve_project`." `backend_selection.py` lazy-imports `harness_memory` only inside call bodies, never at module top-level. All other cross-seam top-level imports are forbidden. See §2 above. |
+| **DC-4 import** | "No top-level cycle; one guarded lazy import at `resolve_project`." `backend_selection.py` imports `harness_memory` at module top-level; `harness_memory.py`'s `resolve_project()` imports `backend_selection` lazily, inside the call body, to break the cycle that would otherwise create. All other cross-seam top-level imports are forbidden. See §2 above. |
 | **`state_mode`** | The canonical non-local value is `"backend"`. `"vault"` is a deprecated read-alias (normalized at read time, no file rewrite needed). See §5 above. |
 | **`storage_vault` DELETE** | The kernel `storage_vault.py` was deleted in V5-3 (this commit, 2026-06-21). The vault backend now lives exclusively in the crickets `obsidian-vault` plugin. Tests use `vault_backend_stub.VaultBackend`. See §2 ("Vault plugin discovery") above. |
 
@@ -160,6 +160,16 @@ Writing T1 takes a **separate, explicit seam call**, distinct from `write`, that
 ## Amendment log
 
 This log preserves the decision history from the six retired ADRs. Each entry records the original decision, why-not-the-alternative, re-audit triggers, and any later amendments. Entries appear **newest-first** (most recent at the top), matching the other designs; **0020** (backend-aware harness state) remains the current substantive truth for state routing.
+
+---
+
+### 2026-07-03 — import-cycle direction corrected + governs-overlap fix (R0.10 / agentmDesigns#0, agTrack#0)
+
+Two corrections, landed in the same commit:
+
+**Import direction (agentmDesigns#0).** §2 and §2b stated `backend_selection.py` "lazy-imports `harness_memory` only at call time... never at module top-level" — backwards. The live code (`backend_selection.py:63`) top-level-imports `harness_memory` unconditionally (it needs `harness_memory.vault_path()` to seed the vault backend); the guarded lazy import runs the other direction — `harness_memory.py`'s `resolve_project()` imports `backend_selection` inside its own function body, at call time, specifically to avoid the cycle a top-level import there would create. Corrected both mentions (§2's "Import cycle guard" note and §2b's DC-4 row) to name the actual direction. *Re-audit trigger:* if either module's import structure changes, re-verify this note against the live `import` lines rather than trusting it as documentation.
+
+**Governs-overlap (agTrack#0).** [agentm-memory-system](agentm-memory-system.md) had also stamped `governs: scripts/harness_memory.py`, so `governs_resolver.py` resolved the file as `{"governed": false, "reason": "overlap"}`. This design keeps `scripts/harness_memory.py` (it already governs the file's storage-seam siblings — `backend_selection.py`, `storage_seam.py`, etc. — as one cohesive cohort); agentm-memory-system dropped the duplicate stamp, keeping only its broader `harness/skills/memory/scripts/` directory pattern (see that design's own amendment log entry, same date). *Re-audit trigger:* if `harness_memory.py` is ever split into a storage-facing half and an engine-facing half, re-evaluate whether the engine half should move to agentm-memory-system's governs list.
 
 ---
 

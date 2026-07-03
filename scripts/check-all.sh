@@ -56,6 +56,7 @@ gate "check-process-seam-import-direction (memory never imports the process)" ba
 gate "check-storage-seam-no-path-leak (no Path crosses the seam)" "$PY" scripts/check-storage-seam-no-path-leak.py
 gate "check-capability-resolver-one-way (resolver never imports plugin code)" "$PY" scripts/check-capability-resolver-one-way.py
 gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/check-personas.py
+gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict

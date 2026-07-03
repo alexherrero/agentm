@@ -4,7 +4,7 @@ status: launched
 kind: design
 scope: feature
 area: agentm/model-effort-routing
-governs: [personas/*.md, scripts/check-personas.py]
+governs: []
 parent: agentm-hld.md
 seeded: 2026-06-23
 approved: 2026-06-23
@@ -107,6 +107,8 @@ The tier is the portable unit; each host renders it through the chart. Claude Co
 - **Principle + policy:** [agentm foundations HLD](agentm-foundations-hld.md) (P9 · match the model to the work) · [`efficient` opinion](agentm-opinions-and-gates.md) (the model-routing lever)
 - **Binding + enforcement + feed:** [personas](agentm-personas.md) (the `tier:` axis) · [development-lifecycle](https://github.com/alexherrero/crickets/wiki/crickets-development-lifecycle) (agent-def frontmatter) · [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit) (the cost trend) · [`content-refresh`](https://github.com/alexherrero/crickets/wiki/crickets-maintenance) (chart re-pin)
 - **Up:** [agentm HLD](agentm-hld.md) · [composition](https://github.com/alexherrero/crickets/wiki/crickets-composition)
+
+**2026-07-03 — dropped `governs:` (was `personas/*.md, scripts/check-personas.py`), area-only until the `tier:` axis has its own file (R0.10 / agentmDesigns#1 governs-overlap fix).** This design and [personas](agentm-personas.md) both stamped `scripts/check-personas.py` in `governs:`, so `governs_resolver.py` resolved the file as `{"governed": false, "reason": "overlap"}` — silently greenfield to grounding Hooks 1/2. `check-personas.py` validates the persona manifest as it stands *today* (requires ⊆ substrate, no-always-load) — none of that is the `tier:` axis this design adds; the file belongs to [personas](agentm-personas.md) until a `tier:` validator exists as its own script. Rather than fight over the one file, this design drops `governs:` entirely and stays **area-only** (still reachable via `area: agentm/model-effort-routing` for area-taxonomy lookups) — the cross-cutting `tier:` axis has no code surface of its own yet; the `[PENDING-IMPL]` items in Risks are exactly that gap. Why not keep the glob and let personas drop instead: `check-personas.py` checks persona-manifest structure, not model/effort tiers — the file's real owner is the persona design, not this one. *Re-audit trigger:* when the `tier:` manifest field + its validator script ship (see Risks), add `governs: [scripts/check-<tier-validator>.py]` here.
 
 **2026-06-28 — lock-down sweep (operator review).** Replaced the mermaid diagram with a hand-authored SVG ([`agentm-model-effort-routing.svg`](diagrams/agentm-model-effort-routing.svg), house style, sized) — the first of the mermaid→SVG conversions. Reordered the amendment entries newest-first. Locked as a v5–v8 guidepost.
 
