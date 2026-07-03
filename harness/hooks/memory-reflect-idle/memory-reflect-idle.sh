@@ -197,9 +197,36 @@ fi
 # bulk sqlite query). Non-blocking — surfaces drift count to stderr per
 # the existing idle-pass transparency convention. Operators with drift
 # accumulation run `vec_index.py full-sync --rebuild` to enqueue.
+# Extension-capable Python resolution (R0.2 / agentmEngine#4-adjacent):
+# the vec-index backend needs `sqlite3.Connection.enable_load_extension`,
+# which Apple's macOS system Python disables — a bare `python3` there means
+# vec_index.py always hits its own graceful-skip, silently, even when
+# sqlite-vec is pip-installed. Precedence: $AGENT_TOOLKIT_PYTHON override >
+# python3 (if capable) > common Homebrew/pyenv locations. Falls back to bare
+# `python3` if none qualify — vec_index.py's own graceful-skip still applies,
+# so this is purely additive (no new failure mode).
+_resolve_extension_capable_python() {
+    local candidates=()
+    if [[ -n "${AGENT_TOOLKIT_PYTHON:-}" ]]; then
+        candidates+=("$AGENT_TOOLKIT_PYTHON")
+    fi
+    candidates+=(python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 "$HOME/.pyenv/shims/python3")
+    local c
+    for c in "${candidates[@]}"; do
+        if command -v "$c" >/dev/null 2>&1; then
+            if "$c" -c "import sqlite3, sys; sys.exit(0 if hasattr(sqlite3.Connection, 'enable_load_extension') else 1)" 2>/dev/null; then
+                printf '%s\n' "$c"
+                return 0
+            fi
+        fi
+    done
+    printf '%s\n' "python3"
+}
+VEC_PYTHON="$(_resolve_extension_capable_python)"
+
 VEC_INDEX_PY="$(_resolve_memory_script vec_index.py 2>/dev/null)" || VEC_INDEX_PY=""
 if [[ -n "$VEC_INDEX_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
-    drift_json=$(python3 "$VEC_INDEX_PY" --vault-path "$MEMORY_VAULT_PATH" full-sync 2>/dev/null || echo '{}')
+    drift_json=$("$VEC_PYTHON" "$VEC_INDEX_PY" --vault-path "$MEMORY_VAULT_PATH" full-sync 2>/dev/null || echo '{}')
     if [[ -n "$drift_json" ]]; then
         drift_summary=$(python3 -c "
 import json, sys
@@ -216,6 +243,18 @@ except Exception:
             echo "[memory-reflect-idle] vec-index drift sweep: $drift_summary (run \`python3 $VEC_INDEX_PY full-sync --rebuild\` to enqueue for re-embed)" >&2
         fi
     fi
+fi
+
+# ── Embedding-queue drain (R0.2 / agentmExperience#0) ─────────────────────
+# Pre-fix, nothing in the production code path ever called `drain_queue` —
+# the queue grew unboundedly and the device-local index stayed empty. Fire
+# a drain pass here, detached (backgrounded) so a slow local-model embed
+# never blocks the idle hook's other work. Same graceful-skip guards as the
+# full-sync sweep above: requires MEMORY_VAULT_PATH + vec_index.py;
+# internally no-ops if sqlite-vec / the embedding backend is unavailable
+# (queue entries stay pending for a future drain).
+if [[ -n "$VEC_INDEX_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
+    ( "$VEC_PYTHON" "$VEC_INDEX_PY" --vault-path "$MEMORY_VAULT_PATH" drain >/dev/null 2>&1 & ) 2>/dev/null || true
 fi
 
 exit 0

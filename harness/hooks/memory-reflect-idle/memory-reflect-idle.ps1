@@ -123,4 +123,19 @@ if ((Test-Path $VecIndexPy) -and $VaultEnv) {
     }
 }
 
+# ── Embedding-queue drain (R0.2 / agentmExperience#0) ─────────────────────
+# Pre-fix, nothing in the production code path ever called `drain_queue` —
+# the queue grew unboundedly and the device-local index stayed empty. Fire
+# a drain pass detached (Start-Process, non-blocking) so a slow local-model
+# embed never blocks the idle hook. Same graceful-skip guard as the
+# full-sync sweep above: requires MEMORY_VAULT_PATH + vec_index.py;
+# internally no-ops if sqlite-vec / the embedding backend is unavailable.
+if ((Test-Path $VecIndexPy) -and $VaultEnv) {
+    try {
+        Start-Process -FilePath $Py -ArgumentList @($VecIndexPy, "--vault-path", $VaultEnv, "drain") -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
+    } catch {
+        # Non-fatal — the hook never blocks on the drain launch.
+    }
+}
+
 exit 0

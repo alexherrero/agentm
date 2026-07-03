@@ -4,8 +4,9 @@
 # Stores per-entry embeddings in <vault>/_meta/vec-index.db via the
 # sqlite-vec SQLite extension. Provides upsert/delete/query ops + a
 # JSONL-based queue that save.py / evolve.py append to (queue drain
-# happens via this module's `drain_queue` function — called from the
-# idle-time hook or manually via `python3 vec_index.py drain`).
+# happens via this module's `drain_queue` function — wired into the
+# memory-reflect-idle hook as a detached call (R0.2), or manually via
+# `python3 vec_index.py drain`).
 #
 # Two-tier architecture:
 #   1. Queue layer (vault-local; always works): save.py / evolve.py
@@ -779,7 +780,6 @@ def drain_queue(vault_path: Path | str, *, mode: str | None = None) -> dict:
     for record in entries:
         op = record.get("op")
         rel_path = record.get("path")
-        text = record.get("text", "")
         if op == "delete":
             try:
                 delete_entry(vault, rel_path)
@@ -789,6 +789,21 @@ def drain_queue(vault_path: Path | str, *, mode: str | None = None) -> dict:
                 unprocessed.append(record)
             continue
         if op == "upsert":
+            # agentmExperience#3: re-validate against the live file rather
+            # than trusting the queued snapshot, which can be stale (or the
+            # entry can have been deleted/renamed) by the time drain runs.
+            live_path = _resolve_entry_path(vault, rel_path)
+            if not live_path.is_file():
+                # Source no longer exists — convert to a delete rather than
+                # embedding a stale (possibly junk) snapshot.
+                try:
+                    delete_entry(vault, rel_path)
+                    stats["processed"] += 1
+                except Exception:  # pragma: no cover
+                    stats["errors"] += 1
+                    unprocessed.append(record)
+                continue
+            text = _extract_embed_text_from_file(live_path)
             try:
                 embedding = embed_text(text, mode=mode)
             except EmbeddingUnavailable:
