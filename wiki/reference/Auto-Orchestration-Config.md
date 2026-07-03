@@ -1,12 +1,12 @@
 # Auto-orchestration config reference
 
-The two files that drive the memory push-surface: the operator-tunable config at `<vault>/personal-private/auto-orchestration-config.md` (toggles, thresholds, cooldowns — auto-seeded with defaults, re-seed never clobbers operator edits) and the runtime state at `<vault>/_meta/auto-orchestration-state.json` (last-fire-per-chain timestamps plus the last-shown snapshot for the shifted-since-last-shown check). All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). For the why, see [Auto-orchestration](Auto-Orchestration); to edit the config, see [Tune auto-orchestration](Tune-Auto-Orchestration).
+The two files that drive the memory push-surface: the operator-tunable config at `<vault>/personal/auto-orchestration-config.md` (toggles, thresholds, cooldowns — auto-seeded with defaults, re-seed never clobbers operator edits) and the runtime state at `<vault>/_meta/auto-orchestration-state.json` (last-fire-per-chain timestamps plus the last-shown snapshot for the shifted-since-last-shown check). All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). For the why, see [Auto-orchestration](Auto-Orchestration); to edit the config, see [Tune auto-orchestration](Tune-Auto-Orchestration).
 
 ## ⚡ Quick Reference
 
 | Question | Answer |
 |---|---|
-| Where is the operator config? | `<vault>/personal-private/auto-orchestration-config.md` — auto-seeded, operator-editable. |
+| Where is the operator config? | `<vault>/personal/auto-orchestration-config.md` — auto-seeded, operator-editable. |
 | Where is the runtime state? | `<vault>/_meta/auto-orchestration-state.json` — `last_fire` timestamps + `last_shown` snapshot. |
 | Does a re-seed overwrite my edits? | No. `seed_config` is idempotent and never clobbers an existing file. |
 | What are the four config groups? | Emission toggles · briefing thresholds · nudge thresholds · chain cooldowns. |
@@ -82,4 +82,4 @@ The bounded steps the idle chain runs in order. The whole chain is gated by `ena
 
 - [Auto-orchestration](Auto-Orchestration) — what these knobs change and why the surface never nags.
 - [Tune auto-orchestration](Tune-Auto-Orchestration) — the recipe for editing the config.
-- [AgentMemory context payload](AgentMemory-Context-Payload) — the vault folder map (`_inbox/`, `_idea-incubator/`, `_meta/`, `personal-private/`) these files reference.
+- [AgentMemory context payload](AgentMemory-Context-Payload) — the vault folder map (`_inbox/`, `_idea-incubator/`, `_meta/`, `personal/`) these files reference.
