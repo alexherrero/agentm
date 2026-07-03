@@ -38,7 +38,7 @@
 
 **AgentM** is built to learn how you work — and, in time, to know it better than you do. It helps you remember: the decisions, the open threads, the conventions, the step you always forget before a release. It knows **how** the work should be done — it is opinionated, with a sound answer ready even for the things you didn't think to ask. And when it hits something it doesn't know, it works it out and keeps what it learns for the next time.
 
-Said differently, AgentM combines a custom harness with persistent memory and self-improvement — it dreams and learns between sessions. Its customization system extends those abilities through plugins that enable long-running, nuanced development workflows, automated project management, and more. And its opinion system can layer in personas focused on a specific kind of work, so you can leave them to it while you focus on the task at hand.
+Said differently, AgentM combines a custom harness with persistent memory and self-improvement — it dreams and learns between sessions. Its customization system extends those abilities through plugins that enable long-running, nuanced development workflows, automated project management, and more. Its opinion system is designed to layer in personas focused on a specific kind of work — activation is the next build slice.
 
 AgentM works best paired with [`crickets`](https://github.com/alexherrero/crickets) — the toolkit of plugins (capabilities, skills, hooks, and sub-agents) that make it even more useful.
 

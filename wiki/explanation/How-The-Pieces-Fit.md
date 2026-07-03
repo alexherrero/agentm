@@ -2,26 +2,27 @@
 
 How the phases, adapters, templates, scripts, and this wiki interact — the narrative behind the on-disk map. For the map itself see [Repo layout](Repo-Layout); for *why* the phase gates and the doc convention exist, see the [AgentM HLD](agentm-hld) and the [Foundations HLD](agentm-foundations-hld).
 
-## Canonical specs → adapters → target project
+## Two sources of truth → adapters → target project
 
-The phase specs in `harness/` are the single source of truth. Each adapter is a thin shim that *points* at a canonical spec rather than restating it.
+Since the V5 unbundling there are two canonical sources, not one: crickets' developer-workflows plugin owns the phase specs (`/plan` · `/work` · `/review` · `/release` · `/bugfix`); this repo's `harness/agents/*.md` and `harness/skills/*.md` own the memory-engine sub-agents and skills (`adapt-evaluator`, `memory-idea-researcher`, `doctor`, `memory`, `design`, `wiki-author`). Each adapter is a thin shim that *points* at whichever canonical spec it needs rather than restating it.
 
 ```
-         ┌──────────────────────────────────────────┐
-         │   crickets developer-workflows plugin    │
-         │     (phase specs — source of truth)      │
-         │   harness/agents/*.md                    │
-         │   harness/skills/*.md                    │
-         └────────┬─────────────────────────┬────────┘
-                  │ referenced-by            │ referenced-by
-                  ▼                          ▼
-         ┌──────────────────┐      ┌──────────────────┐
-         │  adapters/       │      │  wiki/           │
-         │  claude-code/    │      │  (THIS repo's    │
-         │  antigravity/    │      │   own docs only) │
-         └────────┬─────────┘      └──────────────────┘
-                  │ copied-by
-                  ▼
+         ┌────────────────────────────┐   ┌────────────────────────────┐
+         │  crickets                  │   │  agentm                    │
+         │  developer-workflows       │   │  harness/agents/*.md       │
+         │  (phase specs — source     │   │  harness/skills/*.md       │
+         │   of truth for /plan etc.) │   │  (memory-engine — source   │
+         │                            │   │   of truth for sub-agents  │
+         │                            │   │   and skills)              │
+         └──────────────┬─────────────┘   └──────────────┬─────────────┘
+                         │ referenced-by                  │ referenced-by
+                         ▼                                ▼
+                  ┌──────────────────────────────────────────┐
+                  │  adapters/                                │
+                  │  claude-code/  antigravity/                │
+                  └────────────────────┬───────────────────────┘
+                                       │ copied-by
+                                       ▼
          ┌───────────────────────────────────────────┐
          │  install.sh / install.ps1                  │
          │  reads ONLY from templates/ + adapters/    │
@@ -38,7 +39,7 @@ The phase specs in `harness/` are the single source of truth. Each adapter is a 
          └───────────────────────────────────────────┘
 ```
 
-**Why it holds together:** every adapter file is expected to cite a `harness/<phases|agents|skills>/` path, and [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter points at a spec that doesn't exist. That's what keeps the two supported adapters — [Claude Code and Antigravity](Compatibility) — in lockstep: they are pointers at the same canonical text, not parallel rewrites. Adding a host is a matter of writing pointers, not re-authoring the workflow.
+**Why it holds together:** every adapter file is expected to cite either a crickets developer-workflows phase-spec path or an agentm `harness/<agents|skills>/` path, and [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter points at a spec that doesn't exist. That's what keeps the two supported adapters — [Claude Code and Antigravity](Compatibility) — in lockstep: they are pointers at the same canonical text, not parallel rewrites. Adding a host is a matter of writing pointers, not re-authoring the workflow.
 
 ## The installer boundary
 

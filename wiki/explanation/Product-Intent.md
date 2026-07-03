@@ -6,7 +6,7 @@ What AgentM is, who it's for, and the shape of the problem it solves — the "wh
 
 A modern coding agent can produce a working feature inside a single long conversation. What it usually *can't* do in that same conversation is stop before scope creeps, run deterministic gates before declaring success, leave a successor enough state to pick up cleanly, review its own work adversarially instead of rubber-stamping, and keep the docs honest after the code ships.
 
-None of those are model problems — they don't get better with a bigger model. They're scaffolding problems, and they get better with better scaffolding. AgentM *is* that scaffolding: a phase-gated workflow plus an on-disk state layout that any `AGENTS.md`-aware agent can follow the same way.
+None of those are model problems — they don't get better with a bigger model. They're scaffolding problems, and they get better with better scaffolding. AgentM *is* that scaffolding's substrate: a durable on-disk state layout plus a memory engine that any `AGENTS.md`-aware agent can follow the same way. Since the V5 unbundling, the phase-gated workflow itself (`/plan` · `/work` · `/review` · `/release` · `/bugfix`) ships from the companion crickets developer-workflows plugin, running on top of this substrate — a bare AgentM install is the memory engine alone.
 
 ## Why AgentM, against a bare agent
 
@@ -24,7 +24,7 @@ AgentM doesn't replace Claude Code — it gives it persistence, structure, and t
 
 ## The shape: phases with hard boundaries
 
-The development lifecycle is split into discrete phases, each with one job and an exit gate. You don't write code in the plan phase, and you don't merge in the work phase.
+The development lifecycle crickets' developer-workflows plugin provides is split into discrete phases, each with one job and an exit gate. You don't write code in the plan phase, and you don't merge in the work phase.
 
 | Phase | Job | Ends with |
 |---|---|---|
