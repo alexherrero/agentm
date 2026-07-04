@@ -77,3 +77,23 @@ Today this covers 5 of the 8 families above (memory persist+recall,
 plan-adherence+drift, capability function, memory freshness+experience,
 safety/recoverability) — verification honesty, efficiency, and docs+voice
 health have no contributing suite yet.
+
+## The designed-vs-built ledger (R2.6)
+
+```bash
+python3 scripts/health/designed_vs_built.py                          # markdown report
+python3 scripts/health/designed_vs_built.py --format json            # machine-readable
+python3 scripts/health/designed_vs_built.py --jsonl-out records.jsonl  # feeds the scorecard
+```
+
+Walks `wiki/designs/*.md` in both agentm and crickets (the crickets sibling
+is optional — a missing checkout degrades to an agentm-only report with a
+warning, never a failure) and classifies each design's governed capability
+into `built` / `designed-not-built` / `wiki-tracked`, replacing the
+unenumerated "103 designed-not-built items" headline with a re-derivable,
+per-capability count. `status: launched` is never treated as a built signal
+on its own — a `wiki-tracked` design still needs its `governs:` target to
+exist on disk. `--jsonl-out` emits one `capability function`-axis check
+record per ledger item (`built` items pass live; everything else is a dark
+check), consumable by `health_score.py` the same way any other suite's
+`--jsonl-out` is.
