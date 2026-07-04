@@ -7,7 +7,7 @@
 
 The vault is a folder of markdown, so you can read and edit it with any text editor, the CLI, or a chat connector. Obsidian is an optional app on top of that folder: it adds a linked-notes view — graph, live backlinks, and Dataview dashboards — that makes a growing vault easier to navigate. The memory engine already writes the frontmatter and `[[wikilinks]]` Obsidian reads, so most of the value is there the moment you open the folder.
 
-Obsidian sits on top of whichever transport you chose — git or Drive — and works the same either way: it reads the files, the transport moves them. It stays optional, so reach for it when the graph and dashboards help, and use a plain editor when that's enough (see [Running without Obsidian](#running-without-obsidian)). This page provides setup instructions for Obsidian with your vault.
+Obsidian sits on top of whichever transport you chose — git or Drive — and works the same either way: it reads the files, the transport moves them. It stays optional, so reach for it when the graph and dashboards help, and use a plain editor when that's enough (see [Running without Obsidian](#running-without-obsidian)).
 
 ## Prerequisites
 

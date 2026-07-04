@@ -1,6 +1,6 @@
 # Orchestration bridge reference
 
-The orchestration bridge — `phase_dispatch()` in [`scripts/harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py) — is the single write-capable entry point a plugin uses to fire an auto-orchestration chain through the kernel. It is the V5-5 `[LC-3]` counterpart to the read-only process seam: the seam crosses the memory↔process boundary for reads; the bridge crosses it for writes (always through the kernel, never directly to the state file).
+`phase_dispatch()` in [`scripts/harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py) is the orchestration bridge. It is the single write-capable entry point a plugin uses to fire an auto-orchestration chain through the kernel. It is the V5-5 `[LC-3]` counterpart to the read-only process seam: the seam crosses the memory↔process boundary for reads, and the bridge crosses it for writes, always through the kernel and never directly to the state file.
 
 ## ⚡ Quick Reference
 

@@ -1,6 +1,6 @@
 # Capability resolver reference
 
-The plugin-capability registry + resolver ([`scripts/capability_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/capability_resolver.py)) — the runtime half of crickets' `enhances:` soft-composition. It aggregates installed plugins' declared `capabilities:` keys into a per-host registry and answers "is this capability available, optionally at a version range?" Stdlib-only; never imports plugin code; gracefully degrades on any missing or corrupt file.
+[`scripts/capability_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/capability_resolver.py) is the plugin-capability registry and resolver — the runtime half of crickets' `enhances:` soft-composition. It aggregates installed plugins' declared `capabilities:` keys into a per-host registry and answers "is this capability available, optionally at a version range?" It is stdlib-only, never imports plugin code, and degrades gracefully on any missing or corrupt file.
 
 ## ⚡ Quick Reference
 
@@ -24,7 +24,7 @@ The plugin-capability registry + resolver ([`scripts/capability_resolver.py`](ht
 
 ### `capability_available(name, *, version=None, registry=None) → bool`
 
-The boolean surface — the primary interface for callers that only need `True`/`False`.
+`capability_available` is the boolean surface — the primary interface for callers that only need `True`/`False`.
 
 | Parameter | Type | Detail |
 |---|---|---|
@@ -36,7 +36,7 @@ Never raises. Returns `False` on any internal error (LC-4: unavailable is the sa
 
 ### `capability_resolve(name, *, version=None, registry=None) → dict`
 
-Richer form for callers that need to log or branch on the reason.
+`capability_resolve` is the richer form, for callers that need to log or branch on the reason.
 
 ```python
 {
@@ -51,7 +51,7 @@ Same parameters as `capability_available`. Never raises.
 
 ### `build_registry(root=None) → dict[str, ProviderEntry]`
 
-Low-level builder. Returns the raw capability → provider map. `root` overrides the user home directory — used by tests with a temp directory instead of the live `~`. Returns `{}` on any I/O error.
+`build_registry` is the low-level builder: it returns the raw capability → provider map. `root` overrides the user home directory — used by tests with a temp directory instead of the live `~`. Returns `{}` on any I/O error.
 
 `ProviderEntry` is a frozen dataclass:
 

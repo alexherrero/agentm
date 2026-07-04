@@ -13,7 +13,7 @@ The tempting answer is "import `harness_memory` and call whatever you need." Tha
 
 (A third operation, **recall here**, was retired in R0.9 — it delegated to a V5-3 stub that always returned empty; no live crickets consumer called it.)
 
-Every one of those composes only the engine's *frozen public readers* (the DC-7 surface: `resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`). A consumer that needs something the frozen API lacks is a separate engine change, not a quiet widening of the seam. The engine keeps the freedom to refactor everything behind that public surface; the process only ever sees the seam.
+Every one of those composes only the engine's *frozen public readers* (the DC-7 surface: `resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`). A consumer that needs something the frozen API lacks needs a separate engine change — it can't quietly widen the seam. The engine keeps the freedom to refactor everything behind that public surface; the process only ever sees the seam.
 
 ## Why the dependency is one-directional
 

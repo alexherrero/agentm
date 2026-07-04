@@ -1,6 +1,6 @@
 # Design governance reference — `governs:` frontmatter + resolver
 
-The AG-track substrate for grounding the loop (design-doc §6): a small frontmatter convention on living designs plus a resolver ([`scripts/governs_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/governs_resolver.py)) that answers *"which living design governs this file or area?"* by reading the local repo's `wiki/designs/` frontmatter. The crickets `find_governing_design.py` bridge targets this module's contract, exactly as `find_capability.py` targets [`capability_resolver.py`](Capability-Resolver). Stdlib-only; never imports design or plugin code; fails safe to `greenfield` on any absence.
+This is the AG-track substrate for grounding the loop (design-doc §6): a small frontmatter convention on living designs, plus a resolver ([`scripts/governs_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/governs_resolver.py)) that answers *"which living design governs this file or area?"* by reading the local repo's `wiki/designs/` frontmatter. The crickets `find_governing_design.py` bridge targets this module's contract, exactly as `find_capability.py` targets [`capability_resolver.py`](Capability-Resolver). It is stdlib-only, never imports design or plugin code, and fails safe to `greenfield` on any absence.
 
 ## ⚡ Quick Reference
 
@@ -40,7 +40,7 @@ Every living design under `wiki/designs/` carries machine-readable altitude + ow
 
 ### The `area:` vocabulary (two-level `<root>/<domain>`)
 
-A controlled vocabulary — one **owning design** per area; other designs in the area are children pointing up. agentm-side values:
+This is a controlled vocabulary: one **owning design** per area, with other designs in the area as children pointing up. agentm-side values:
 
 | Root | Areas |
 |---|---|

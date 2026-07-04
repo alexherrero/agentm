@@ -74,7 +74,7 @@ python3 scripts/process_seam.py state-path plan
 python3 scripts/process_seam.py offer-save-here --kind decision --slug foo --body-file -
 ```
 
-The importable module is the first-class contract; the entrypoint is a convenience shim, **not** a first-class CLI.
+The Python module is the contract; the entrypoint is only a convenience for shell callers.
 
 ## Related
 

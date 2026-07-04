@@ -1,6 +1,6 @@
 # Auto-orchestration config reference
 
-The two files that drive the memory push-surface: the operator-tunable config at `<vault>/personal/auto-orchestration-config.md` (toggles, thresholds, cooldowns — auto-seeded with defaults, re-seed never clobbers operator edits) and the runtime state at `<vault>/_meta/auto-orchestration-state.json` (last-fire-per-chain timestamps plus the last-shown snapshot for the shifted-since-last-shown check). All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). For the why, see [Auto-orchestration](Auto-Orchestration); to edit the config, see [Tune auto-orchestration](Tune-Auto-Orchestration).
+Two files drive the memory push-surface: the operator-tunable config at `<vault>/personal/auto-orchestration-config.md` (toggles, thresholds, cooldowns — auto-seeded with defaults, re-seed never clobbers operator edits) and the runtime state at `<vault>/_meta/auto-orchestration-state.json` (last-fire-per-chain timestamps plus the last-shown snapshot for the shifted-since-last-shown check). All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). For the why, see [Auto-orchestration](Auto-Orchestration); to edit the config, see [Tune auto-orchestration](Tune-Auto-Orchestration).
 
 ## ⚡ Quick Reference
 
@@ -28,7 +28,7 @@ Each `enable_*` toggle turns one emission off entirely (a `false` value short-ci
 
 ## Briefing thresholds
 
-The counts that decide whether the SessionStart briefing reports a section. A signal surfaces only at or above its threshold.
+These counts decide whether the SessionStart briefing reports a section. A signal surfaces only at or above its threshold.
 
 | Key | Controls | Default |
 |---|---|---|
@@ -39,7 +39,7 @@ The counts that decide whether the SessionStart briefing reports a section. A si
 
 ## Nudge thresholds
 
-The thresholds applied inside the two nudge counters before a nudge surfaces.
+These thresholds apply inside the two nudge counters before a nudge surfaces.
 
 | Key | Controls | Default |
 |---|---|---|
@@ -48,7 +48,7 @@ The thresholds applied inside the two nudge counters before a nudge surfaces.
 
 ## Chain cooldowns
 
-The minimum window (hours) between fires of each chain, honored by `should_fire(chain, now)`. A non-positive value means "always eligible".
+This is the minimum window (hours) between fires of each chain, honored by `should_fire(chain, now)`. A non-positive value means "always eligible".
 
 | Key | Controls | Default |
 |---|---|---|
@@ -58,7 +58,7 @@ The minimum window (hours) between fires of each chain, honored by `should_fire(
 
 ## Idle-chain steps
 
-The bounded steps the idle chain runs in order. The whole chain is gated by `enable_idle_chain` + the `idle_chain` cooldown — there is no per-step config toggle. Each underlying script self-no-ops when its input is empty.
+The idle chain runs these bounded steps in order. The whole chain is gated by `enable_idle_chain` + the `idle_chain` cooldown — there is no per-step config toggle. Each underlying script self-no-ops when its input is empty.
 
 | Step | What it runs | Bound |
 |---|---|---|
@@ -71,7 +71,7 @@ The bounded steps the idle chain runs in order. The whole chain is gated by `ena
 
 ## State file shape
 
-`<vault>/_meta/auto-orchestration-state.json` — written exclusively by `auto_orchestration.py:save_state()` (V5-5 LC-2 single-writer invariant). No other script writes this file directly; sibling orchestration scripts call through `ao.save_state()`. Not tracked by git. JSON with two top-level objects.
+`auto_orchestration.py:save_state()` writes `<vault>/_meta/auto-orchestration-state.json` exclusively (V5-5 LC-2 single-writer invariant); no other script writes this file directly, and sibling orchestration scripts call through `ao.save_state()` instead. It is not tracked by git, and it holds JSON with two top-level objects.
 
 | Field | Type | Meaning |
 |---|---|---|

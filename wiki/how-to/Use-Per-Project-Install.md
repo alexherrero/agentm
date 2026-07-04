@@ -4,7 +4,7 @@
 > **Goal:** Install agentm into a project's `.claude/` directory (per-project scope) instead of the default user-scope `~/.claude/` install, and document why you chose that.
 > **Prereqs:** `bash` 4+ (or `pwsh` 7+ on Windows), `git`, `python3`. Agentm v4.5.0+ (so the install-state.json mode field exists).
 
-Agentm's default-recommended scope is `--scope user` (installs into `~/.claude/` so customizations stay synced across every project on the machine). The [migration tool](Migration-Tool) exists specifically to move pre-V4.3 per-project installs into user scope. This page documents the three cases where you should deliberately keep `--scope project` instead.
+Agentm's default-recommended scope is `--scope user` (installs into `~/.claude/` so customizations stay synced across every project on the machine). The [migration tool](Migration-Tool) exists specifically to move pre-V4.3 per-project installs into user scope. Three cases justify deliberately keeping `--scope project` instead.
 
 ## When per-project scope is the right choice
 
@@ -14,7 +14,7 @@ Agentm's default-recommended scope is `--scope user` (installs into `~/.claude/`
 | **Shared dev environments** | Multi-user host (e.g. shared dev box; cloud workspace) where each user has their own `~/.claude/` but the project's customizations should be the same for everyone. | Run migration on the personal dev host, NOT the shared box. Document the choice in the project's README. |
 | **Multi-developer dotfiles patterns** | Team checks `.claude/` into git so every team member gets the same agentm config on clone. | Don't migrate. Use `bash install.sh --scope project <target>` explicitly per the steps below. |
 
-Reference: locked DC-10 from plan #22 (V4 #30 plan 1 of 3) — `--scope project` mode is preserved as a legitimate first-class install path.
+Reference: locked DC-10 from plan #22 (V4 #30 plan 1 of 3) — `--scope project` mode is preserved as a legitimate, fully supported install path.
 
 ## Steps
 
@@ -63,7 +63,7 @@ Reference: locked DC-10 from plan #22 (V4 #30 plan 1 of 3) — `--scope project`
 
 ## Per-project + user-scope on the same machine
 
-You can have BOTH: `~/.claude/` populated for general agentm work + `<project>/.claude/` populated for a specific repo that needs scope-project semantics. The two don't conflict — Claude Code resolves customizations from the per-project `.claude/` first, falling back to `~/.claude/`. If you want both:
+You can have both: `~/.claude/` populated for general agentm work, and `<project>/.claude/` populated for a specific repo that needs scope-project semantics. The two don't conflict — Claude Code resolves customizations from the per-project `.claude/` first, falling back to `~/.claude/`. If you want both:
 
 1. Run `~/agentm/install.sh --scope user` once (typically on first-machine setup) to get `~/.claude/`.
 2. Run `~/agentm/install.sh --scope project /path/to/specific-repo` for each repo that needs per-project mode.

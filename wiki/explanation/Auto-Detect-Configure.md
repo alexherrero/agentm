@@ -6,11 +6,11 @@ Why the first conversation in a repo the harness hasn't seen configures *itself*
 
 Before this work, opening a fresh repo meant remembering to run a manual setup script to tell the harness which skills and hooks the project should use. The friction was real: most repos never got configured, so per-project enablement never had teeth. The promise of the device-wide install arc was that the harness should configure itself on first contact — and this closes it.
 
-The experience now: open an unconfigured code project and a single quiet line offers to set it up. Say "configure this project" (or run `/setup --detect`) and you get a scannable proposal — every skill and hook, each with one plain-language reason it's relevant to *this* repo — and a three-way choice: take it all, customize, or skip. Approve, and a durable enablement block lands in `project.json` so every later phase can resolve this repo's shape without asking again. The operator stays in control; the harness just removes the "where do I start" tax.
+Now, opening an unconfigured code project surfaces a single quiet line offering to set it up. Say "configure this project" (or run `/setup --detect`) and you get a scannable proposal — every skill and hook, each with one plain-language reason it's relevant to *this* repo — and a three-way choice: take it all, customize, or skip. Approve, and a durable enablement block lands in `project.json` so every later phase can resolve this repo's shape without asking again. The operator stays in control; the harness just removes the "where do I start" tax.
 
 ## How the flow is shaped
 
-Three cooperating pieces, deliberately separated so the interactive part stays agent-driven and the deterministic part stays testable:
+Three cooperating pieces make this work, kept deliberately separate so the interactive part stays agent-driven and the deterministic part stays testable:
 
 ```
 SessionStart hook ──nudge──▶ operator says "configure" / runs /setup --detect
@@ -25,7 +25,7 @@ SessionStart hook ──nudge──▶ operator says "configure" / runs /setup -
                           project_config.register(cwd) ── writes project.json + repo_registry
 ```
 
-The load-bearing calls, and why each is what it is:
+Here are the calls that matter, and why each is what it is:
 
 - **Enablement config lives in `project.json`, not `features.json`.** `features.json` is the governed verification ledger (the `passes: true|false` contract); enablement is a different concern with a different lifecycle. Co-mingling them would let a registration write touch the ledger. The block is *additive* alongside the existing `vault_project` / `github` / `env` keys.
 - **The nudge extends the existing SessionStart hook, not a new one.** It rides the hook's "nothing resolved" else-branch, preserving the original inject-vault-paths behaviour rather than duplicating it.

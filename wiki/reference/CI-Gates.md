@@ -1,6 +1,6 @@
 # CI gates reference
 
-Every gate that runs on `push` to `main` and on every `pull_request:`, with the invariant each one proves and the script behind it. Three per-OS workflows run in parallel. Run the deterministic subset locally in one command before every commit:
+This page lists every gate that runs on `push` to `main` and on every `pull_request:`, with the invariant each one proves and the script behind it. Three per-OS workflows run in parallel. Run the deterministic subset locally in one command before every commit:
 
 ```bash
 bash scripts/check-all.sh

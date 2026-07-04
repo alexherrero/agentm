@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # GitHub Projects board sync (agentm side)
 
-The board-sync integration lets every phase command file "remember for later" work to a GitHub Project without leaving the session. This page covers the part agentm owns — the config agentm reads, when phases emit an update, and how the whole thing stays a silent no-op when it isn't wired up. The plugin internals (templates, the write path, the type taxonomy, the drift gate) live in the crickets [github-projects reference](https://github.com/alexherrero/crickets/wiki/GitHub-Projects).
+The board-sync integration lets every phase command file "remember for later" work to a GitHub Project without leaving the session. agentm owns the config it reads, when phases emit an update, and how the whole thing stays a silent no-op when it isn't wired up. The plugin internals (templates, the write path, the type taxonomy, the drift gate) live in the crickets [github-projects reference](https://github.com/alexherrero/crickets/wiki/GitHub-Projects).
 
 ## ⚡ Quick reference
 

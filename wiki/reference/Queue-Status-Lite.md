@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # Queue status lite
 
-The read-only coordinator dashboard: list every active plan in a project's `_harness/` with its status and the head of its progress log. Deterministic, no writes, no claim arbitration — the human is the arbiter. The *why* is [Named plans](Named-Plans); this page is the lookup.
+`/queue-status-lite` is the read-only coordinator dashboard: it lists every active plan in a project's `_harness/`, along with its status and the head of its progress log. It is deterministic, makes no writes, and arbitrates no claims — the human stays the arbiter. The *why* is [Named plans](Named-Plans); this page is the lookup.
 
 ## ⚡ Quick Reference
 

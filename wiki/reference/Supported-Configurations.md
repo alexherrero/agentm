@@ -38,4 +38,4 @@ See [Single-repo state mode](Single-Repo-State-Mode).
 
 ## Hosts
 
-Claude Code and Antigravity are both first-class. See [Compatibility](Compatibility).
+Claude Code and Antigravity are both fully supported. See [Compatibility](Compatibility).

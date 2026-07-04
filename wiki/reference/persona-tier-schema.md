@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Status: implemented** — V5-12 shipped the primitive (tasks 1–3): gate (`scripts/check-personas.py`), degenerate persona (`personas/rememberer.md`), CI on Linux/macOS/Windows. V5-11 shipped the first real composed persona (`personas/team-coordinator.md`): `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`.
 
-The `kind: persona` manifest primitive and the `check-personas` static gate.
+This page documents the `kind: persona` manifest primitive and the `check-personas` static gate.
 
 ## ⚡ Quick Reference
 

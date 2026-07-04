@@ -1,6 +1,6 @@
 # Detection rules reference
 
-The 9 built-in rules the detection engine scans an unconfigured repo against. Each rule is a deterministic, side-effect-free check that, when matched, attaches a *rationale* to a skill or hook in the proposed config. Rules do not gate which skills/hooks are present — the proposed config is default-all-enabled; rules only surface why each is relevant to this repo. Run via `python3 scripts/detect_project.py <cwd> --format json|text`.
+The detection engine scans an unconfigured repo against 9 built-in rules. Each rule is a deterministic, side-effect-free check that, when matched, attaches a *rationale* to a skill or hook in the proposed config. Rules do not gate which skills/hooks are present — the proposed config is default-all-enabled; rules only surface why each is relevant to this repo. Run via `python3 scripts/detect_project.py <cwd> --format json|text`.
 
 ## ⚡ Quick Reference
 
@@ -15,7 +15,7 @@ The 9 built-in rules the detection engine scans an unconfigured repo against. Ea
 
 ## The 9 rules
 
-Evaluated in registry order. `R-harness` runs first so a bypass short-circuits before the rest. Each rule is a side-effect-free `Path -> Optional[RuleMatch]`; a match overlays its rationale + `rule_id` onto the named targets in the already-default-enabled proposal.
+The rules run in registry order. `R-harness` runs first so a bypass short-circuits before the rest. Each rule is a side-effect-free `Path -> Optional[RuleMatch]`; a match overlays its rationale + `rule_id` onto the named targets in the already-default-enabled proposal.
 
 | Rule | Detects | Attaches rationale to | Notes |
 |---|---|---|---|

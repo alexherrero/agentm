@@ -4,7 +4,7 @@ Why the memory skills became a *push* surface instead of a *pull* one — and ho
 
 ## The gap it closes
 
-The memory skills — recall, reflect, discover-skills, adapt-skills, the watchlist — were already powerful, but you had to *remember* to use them. Pending work piled up unseen: an inbox over threshold, watchlist patterns waiting for review, incubator ideas that never got researched, stale idea-ledger entries that should have been collected. The skills sat there until you thought to ask.
+The memory skills — recall, reflect, discover-skills, adapt-skills, the watchlist — already did real work, but you had to *remember* to use them. Pending work piled up unseen: an inbox over threshold, watchlist patterns waiting for review, incubator ideas that never got researched, stale idea-ledger entries that should have been collected. The skills sat there until you thought to ask.
 
 Auto-orchestration closes that gap on three surfaces, and the *posture* is the whole point — it is plumbing and nudges, never an autonomous actor:
 
@@ -19,8 +19,8 @@ Every surface is non-blocking and graceful-skips on any failure, so a broken scr
 Each loop's *trigger* — the *when* — lives with the owner of that boundary; the *memory operations* and *cadence state* stay kernel-resident (single-writer: only `auto_orchestration.py` writes the state file). Three owners:
 
 - **Kernel** — config/state core, the idle chain, and all memory operations (reflect, discover, adapt, index). Always agentm-resident.
-- **Developer plugin** (`crickets/developer-workflows`) — the phase-boundary trigger. The formalized bridge entry point is `phase_dispatch()` in `scripts/harness_memory.py` (V5-5/LC-3); the plugin calls in through it rather than re-implementing the orchestration logic.
-- **PM plugin** (`crickets/github-projects`) — the session-start briefing and nudge trigger. The briefing is **currently kernel-resident and working** (the kernel `memory-recall-session-start` hook); relocating it into the `github-projects` plugin is a planned optimization, not a blocker. The failure mode is *non-relocation*, never a broken briefing.
+- **Developer plugin** (`crickets/developer-workflows`) — the phase-boundary trigger. It calls in through the `phase_dispatch()` bridge described [above](#the-gap-it-closes) rather than re-implementing the orchestration logic.
+- **PM plugin** (`crickets/github-projects`) — the session-start briefing and nudge trigger. The briefing is **currently kernel-resident and working** (the kernel `memory-recall-session-start` hook); relocating it into the `github-projects` plugin is a planned optimization. The failure mode there would only be non-relocation, not a broken briefing.
 
 ## The load-bearing design calls
 
@@ -28,12 +28,12 @@ Each loop's *trigger* — the *when* — lives with the owner of that boundary; 
 - **Full scope shipped, nothing autonomous deferred.** The state + config core, the briefing, the SessionStart wiring, the idle chain, the phase-integration dispatch, and both nudges all landed.
 - **Everything is harness-native.** The scripts, hooks, and phase wiring all live in `agentm` — there is no crickets crossover and no paired release; the push-surface ships entirely from the harness.
 - **Pass-2 is not a hook step.** A hook fires outside the agent loop and cannot dispatch a sub-agent, so the idle chain stops after *staging* Pass-1 candidates and surfaces the count. The evaluator hand-off happens via phase-dispatch or a nudge, where sub-agent dispatch is legitimate and operator-gated.
-- **Never blocks, never nags.** Every surface exits clean on any failure; cooldowns and the shifted-since-last-shown check guard notification fatigue. The idle chain is bounded by construction — each step no-ops on empty input, reflect caps at five unseen sessions per pass, adapt runs with a hard limit, and a fired chain is launched detached so its results surface on the *next* briefing rather than stalling the current boot.
-- **The permeable boundary holds.** The system never auto-adopts a skill, never auto-forks to the toolkit, and never writes outside the contract without an operator gate.
+- **Stays out of the way.** Every surface exits clean on any failure, so a broken script never blocks a session or wedges a phase; cooldowns and the shifted-since-last-shown check guard notification fatigue. The idle chain is bounded by construction — each step no-ops on empty input, reflect caps at five unseen sessions per pass, adapt runs with a hard limit, and a fired chain is launched detached so its results surface on the *next* briefing rather than stalling the current boot.
+- **The permeable boundary holds.** Every skill adoption, every toolkit fork, and every write outside the contract still waits for an operator gate.
 
 ## The named risk
 
-**Notification fatigue** is the risk that only calibrates under real use — the cooldowns, the shifted-since-last-shown guard, and the operator-tunable thresholds are the mitigations, but the real acceptance gate is the dogfood on the operator's own vault, not deterministic tests alone. If a step proves too costly to auto-fire, it gets demoted to a SessionStart "you could run X" nudge.
+**Notification fatigue** is the risk that only calibrates under real use. The cooldowns, the shifted-since-last-shown guard, and the operator-tunable thresholds are the mitigations, but the real acceptance gate is dogfooding on the operator's own vault — deterministic tests alone can't calibrate it. If a step proves too costly to auto-fire, it gets demoted to a SessionStart "you could run X" nudge.
 
 ## Related
 

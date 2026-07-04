@@ -6,8 +6,6 @@
 
 Once [crickets](https://github.com/alexherrero/crickets) is sibling-cloned next to agentm and `MEMORY_VAULT_PATH` is set, every harness phase auto-loads relevant MemoryVault context at its natural start, and offers to save durable items at its natural end — without you having to invoke `/memory search` or `/memory save` manually.
 
-This page covers: what loads/saves at each phase boundary, the env vars that tune the behavior, and how to troubleshoot when something feels off.
-
 ## Prerequisites
 
 1. **MemoryVault installed** (v4.0.0+: shipped with agentm at `harness/skills/memory/`; in v3.x and earlier it lived at `crickets/skills/memory/` and the harness loaded it via sibling-clone resolution). For v3.x compatibility, the harness's 3-tier resolver checks `agentm/harness/skills/memory/scripts/save.py` first, then falls back to the legacy `crickets/skills/memory/scripts/save.py` sibling path, then to `HARNESS_MEMORY_TOOLKIT_PATH` env override.

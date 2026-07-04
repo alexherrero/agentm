@@ -1,6 +1,6 @@
 # Project config reference
 
-`.harness/project.json` is the per-project config file. It already carries `vault_project`, `github`, and `env`; task 2 of V4 #32 adds an additive *enablement block* (`type`, `skills`, `hooks`, `registered_at`, `registered_via`, `operator_overrides`, `last_redetect_at`) that records this repo's detected/approved configuration. The verification ledger (`features.json` `passes`) is a separate file and is untouched.
+`.harness/project.json` is the per-project config file. It carries `vault_project`, `github`, and `env`, plus an additive *enablement block* (`type`, `skills`, `hooks`, `registered_at`, `registered_via`, `operator_overrides`, `last_redetect_at`) that records this repo's detected/approved configuration. The verification ledger (`features.json` `passes`) is a separate file and stays untouched.
 
 ## ⚡ Quick Reference
 

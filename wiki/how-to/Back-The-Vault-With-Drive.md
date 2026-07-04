@@ -10,7 +10,7 @@
 
 By default a vault lives only on the machine that created it — it isn't backed up, and it isn't synced anywhere. To back it up and reach it from your other devices, you enable one transport: **Google Drive or git.** This page is the Google Drive route.
 
-Drive's appeal is effortless sync: drop the vault in your Drive folder and every signed-in device sees the changes, with nothing to run and smooth mobile access. The cost is that Drive keeps no real history; if that matters, a git-backed vault is the alternative (manual today, turnkey once [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git) ships) — a short summary of what you trade is in [Drive's trade-offs](#drives-trade-offs-and-keeping-git-alongside) below.
+Drive's appeal is that sync needs no setup: drop the vault in your Drive folder and every signed-in device sees the changes, with nothing to run and normal mobile access through the Drive app. The cost is that Drive keeps no real history; if that matters, a git-backed vault is the alternative (manual today, turnkey once [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git) ships) — a short summary of what you trade is in [Drive's trade-offs](#drives-trade-offs-and-keeping-git-alongside) below.
 
 Obsidian itself is a separate, optional add-on that sits on top of *either* a Drive- or git-backed vault — see [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault). This page only sets up the Drive transport.
 

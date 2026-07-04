@@ -9,7 +9,7 @@ Hosts and surfaces AgentM is verified to run with.
 | **Claude Code** (Anthropic CLI / IDE extension) | [`adapters/claude-code/`](https://github.com/alexherrero/agentm/tree/main/adapters/claude-code) | `/setup` `/plan` `/work` `/review` `/release` `/bugfix` | ✅ first-class — primary development surface, CI-verified on every push |
 | **Antigravity** (Google IDE + Antigravity CLI) | [`adapters/antigravity/`](https://github.com/alexherrero/agentm/tree/main/adapters/antigravity) | Equivalent entrypoints invoked via `AGENTS.md`-aware prompts | ✅ first-class — CI-verified on every push |
 
-Both adapters are thin shims for agentm's own surfaces — its always-on rules and utility skills. The phase loop those commands invoke ships in the crickets **developer-workflows** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)); agentm no longer vendors the phase specs. Adding a host = adding an adapter dir + verifying the canonical specs still apply; no harness rewrite needed.
+Both adapters are thin shims for agentm's own surfaces — its always-on rules and utility skills. The phase loop those commands invoke ships in the crickets **developer-workflows** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)); agentm no longer vendors the phase specs. Adding a host means adding an adapter directory and verifying the canonical specs still apply; it needs no harness rewrite.
 
 ## Supported operating systems
 
@@ -19,7 +19,7 @@ Both adapters are thin shims for agentm's own surfaces — its always-on rules a
 | macOS (`macos-latest`) | [`.github/workflows/tests-mac.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-mac.yml) | Every push + every PR |
 | Windows (`windows-latest`, PowerShell 7+) | [`.github/workflows/tests-windows.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-windows.yml) | Every push + every PR |
 
-The single aggregate `CI` badge in the README + wiki Home rolls up all three OS workflows into one status. Diagnostic drill-down: click the badge → Actions tab → pick the OS that's failing.
+The single aggregate `CI` badge in the README and wiki Home rolls up all three OS workflows into one status. To drill into a failure, click the badge, open the Actions tab, and pick the OS that's failing.
 
 ## Vault storage & sync
 

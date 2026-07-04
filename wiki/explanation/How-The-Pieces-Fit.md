@@ -39,7 +39,7 @@ Since the V5 unbundling there are two canonical sources, not one: crickets' deve
          └───────────────────────────────────────────┘
 ```
 
-**Why it holds together:** every adapter file is expected to cite either a crickets developer-workflows phase-spec path or an agentm `harness/<agents|skills>/` path, and [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter points at a spec that doesn't exist. That's what keeps the two supported adapters — [Claude Code and Antigravity](Compatibility) — in lockstep: they are pointers at the same canonical text, not parallel rewrites. Adding a host is a matter of writing pointers, not re-authoring the workflow.
+This holds together because every adapter file is expected to cite either a crickets developer-workflows phase-spec path or an agentm `harness/<agents|skills>/` path, and [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter points at a spec that doesn't exist. That's what keeps the two supported adapters — [Claude Code and Antigravity](Compatibility) — in lockstep: they are pointers at the same canonical text, not parallel rewrites. Adding a host is a matter of writing pointers rather than re-authoring the workflow.
 
 ## The installer boundary
 
