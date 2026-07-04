@@ -93,6 +93,13 @@ jobs:
         # R1.8 Task 1: the health scorecard aggregator must be deterministic —
         # two runs against the same fixture input produce byte-identical markdown.
         run: python3 scripts/health/health_score.py --check-determinism --path scripts/health/fixtures/sample-records.jsonl
+      - name: validate-audit-coverage (5 in-scope mythos-readiness blockers detectable)
+        # R1.8 Task 3: proves the regression net catches what the audit caught
+        # by hand, for the 5 of 11 verified blockers with code presence in
+        # this repo (the other 6 are crickets-repo code or doc/content
+        # staleness — out of an agentm verify script's reach; see the
+        # script's own header for the full breakdown).
+        run: bash scripts/health/validate-audit-coverage.sh
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         run: bash scripts/verify-phases.sh
       - name: Memory-engine round-trip e2e (verify-memory-roundtrip.sh)
