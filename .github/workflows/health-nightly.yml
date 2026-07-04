@@ -7,6 +7,13 @@ name: "[H] Health Nightly"
 # too slow or too dependency-heavy for every push (real-embedding recall,
 # a live MCP daemon round-trip over real HTTP, fault-injection negatives,
 # a cold-install dogfood pass — see scripts/health/run-heavy-tier.sh).
+#
+# R1.8 Task 5 added a macOS conformance leg (health-nightly-macos) — same
+# heavy tier, macos-latest runner, reports its JSONL as a build artifact only
+# (ubuntu-latest stays the sole scorecard writer, so the two legs can't race
+# on the commit/push). Task 5 also folds scripts/health/dark-checks.jsonl
+# (the static registry of designed-not-built capabilities) into the scorecard
+# render, so those checks render in their own "Dark checks" section.
 
 on:
   schedule:
@@ -17,6 +24,31 @@ permissions:
   contents: write  # the auto-commit step needs to push the scorecard + history
 
 jobs:
+  # macOS runs the heavy tier as a conformance leg only (R1.8 Task 5) — it
+  # reports JSONL as an artifact but never commits the scorecard itself.
+  # ubuntu-latest stays the single writer to wiki/reference/Health-Scorecard.md
+  # + scripts/health/history.jsonl, so two OS legs racing to commit/push in
+  # parallel can't collide.
+  health-nightly-macos:
+    name: health-nightly (macos conformance)
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies (fast-tier + heavy-tier)
+        run: pip3 install pyyaml sqlite-vec fastmcp sentence-transformers
+      - name: Run the heavy tier
+        run: bash scripts/health/run-heavy-tier.sh > /tmp/heavy-tier-macos.jsonl
+      - name: Upload the macOS heavy-tier JSONL for inspection
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-heavy-tier-macos
+          path: /tmp/heavy-tier-macos.jsonl
+          retention-days: 14
+
   health-nightly:
     name: health-nightly
     runs-on: ubuntu-latest
@@ -37,7 +69,7 @@ jobs:
         run: bash scripts/health/run-heavy-tier.sh > /tmp/heavy-tier.jsonl
       - name: Render the scorecard + append a history row
         run: |
-          cat /tmp/fast-tier.jsonl /tmp/heavy-tier.jsonl \
+          cat /tmp/fast-tier.jsonl /tmp/heavy-tier.jsonl scripts/health/dark-checks.jsonl \
             | python3 scripts/health/health_score.py --history \
             > wiki/reference/Health-Scorecard.md.new
           # Preserve the page's explanatory header (everything before the

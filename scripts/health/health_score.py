@@ -135,12 +135,18 @@ def compute_scorecard(records: list[dict]) -> dict:
 
     unknown_axes = sorted(set(by_axis) - set(FAMILY_WEIGHTS))
     health_index = round(weighted_sum / weight_total, 2) if weight_total > 0 else 0.0
+    dark_checks = [
+        {"axis": r.get("axis", ""), "suite": r.get("suite", ""), "check": r.get("check", "")}
+        for r in records
+        if _is_dark(r)
+    ]
 
     return {
         "families": families,
         "health_index": health_index,
         "unknown_axes": unknown_axes,
         "total_records": len(records),
+        "dark_checks": dark_checks,
     }
 
 
@@ -179,6 +185,19 @@ def render_markdown(scorecard: dict, *, headline: str = "green") -> str:
             "> Unrecognized axis name(s) not in the locked family-weight table "
             f"(excluded from Health Index): {', '.join(scorecard['unknown_axes'])}"
         )
+    if scorecard.get("dark_checks"):
+        lines.append("")
+        lines.append("## Dark checks (designed, not built)")
+        lines.append("")
+        lines.append(
+            "Not counted for or against the Health Index — visible so a family's "
+            "true future shape stays legible before its capability ships."
+        )
+        lines.append("")
+        lines.append("| Axis | Suite | Check |")
+        lines.append("|---|---|---|")
+        for d in scorecard["dark_checks"]:
+            lines.append(f"| {d['axis']} | {d['suite']} | {d['check']} |")
     lines.append("")
     return "\n".join(lines) + "\n"
 

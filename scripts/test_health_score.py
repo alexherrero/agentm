@@ -100,6 +100,37 @@ class TestReadRecords(unittest.TestCase):
             Path(path).unlink()
 
 
+class TestDarkChecksRendering(unittest.TestCase):
+    def test_dark_check_appears_in_distinct_section_not_as_failure(self):
+        records = [_rec("memory persist+recall", "a", True)]
+        dark = [{"suite": "dark-registry", "axis": "capability function", "check": "runner", "pass": None, "dark": True, "weight": 1.0}]
+        sc = health_score.compute_scorecard(records + dark)
+        md = health_score.render_markdown(sc)
+        self.assertIn("## Dark checks (designed, not built)", md)
+        self.assertIn("runner", md)
+        # a dark check must not depress the family's live Score/Checks count
+        capability_row = [f for f in sc["families"] if f["axis"] == "capability function"][0]
+        self.assertEqual(capability_row["live_count"], 0)
+        self.assertEqual(capability_row["dark_count"], 1)
+
+    def test_no_dark_section_when_no_dark_checks(self):
+        records = [_rec("memory persist+recall", "a", True)]
+        md = health_score.render_markdown(health_score.compute_scorecard(records))
+        self.assertNotIn("Dark checks", md)
+
+    def test_dark_checks_registry_file_loads_and_renders(self):
+        registry = _HERE / "health" / "dark-checks.jsonl"
+        dark_records = health_score.read_records(str(registry))
+        self.assertGreaterEqual(len(dark_records), 5)
+        for r in dark_records:
+            self.assertTrue(r.get("dark"))
+            self.assertIsNone(r.get("pass"))
+        sc = health_score.compute_scorecard(dark_records)
+        self.assertEqual(sc["health_index"], 0.0)  # no live records, no family scored
+        md = health_score.render_markdown(sc)
+        self.assertIn("## Dark checks (designed, not built)", md)
+
+
 class TestDeterminism(unittest.TestCase):
     def test_two_runs_produce_identical_markdown(self):
         records = [_rec("memory persist+recall", "a", True), _rec("efficiency", "b", False)]

@@ -93,6 +93,8 @@ Red-on-Windows but green-on-POSIX almost always indicates a path-separator or pw
 
 `[H] Health Nightly` (`.github/workflows/health-nightly.yml`, R1.8 Task 4) runs daily at 06:00 UTC plus on manual `workflow_dispatch`. It layers the heavier checks that are too slow or dependency-heavy for every push — real-embedding recall (no stub mode), a live MCP daemon round-trip over real HTTP, a report of every `VERIFY_*_FAULT=1` mode's outcome, and a cold-install dogfood pass — on top of the same fast tier this page documents, then commits the result to [Health scorecard](Health-Scorecard).
 
+R1.8 Task 5 added a `health-nightly-macos` job (`macos-latest`) that runs the same heavy tier as a conformance leg: it uploads its JSONL output as a build artifact (`health-heavy-tier-macos`, 14-day retention) but never writes the scorecard or pushes — `health-nightly` (`ubuntu-latest`) stays the sole writer of `wiki/reference/Health-Scorecard.md` and `scripts/health/history.jsonl`, so the two OS legs can't race on the commit. Task 5 also folds the static `scripts/health/dark-checks.jsonl` registry (5 designed-not-built capabilities) into the render pipeline, so the scorecard carries a "Dark checks" section listing them separately from the scored families.
+
 This workflow **never blocks a merge**. The fast tier above (`tests-linux.yml`/`tests-mac.yml`) is the only merge gate, so the nightly run can go red without stopping development.
 
 ## Running the gate set locally
