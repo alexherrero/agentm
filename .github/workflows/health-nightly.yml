@@ -1,0 +1,55 @@
+name: "[H] Health Nightly"
+
+# R1.8 Task 4 — the first `on: schedule` workflow in either repo. ADVISORY
+# ONLY: this workflow never blocks a merge. The fast tier in
+# tests-linux.yml/tests-mac.yml is the merge gate; this is the
+# health-monitoring tier layered on top, running the heavier checks that are
+# too slow or too dependency-heavy for every push (real-embedding recall,
+# a live MCP daemon round-trip over real HTTP, fault-injection negatives,
+# a cold-install dogfood pass — see scripts/health/run-heavy-tier.sh).
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 06:00 UTC daily
+  workflow_dispatch: {}   # manual trigger for testing / on-demand runs
+
+permissions:
+  contents: write  # the auto-commit step needs to push the scorecard + history
+
+jobs:
+  health-nightly:
+    name: health-nightly
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies (fast-tier + heavy-tier)
+        # sentence-transformers (1.3GB+) is deliberately NOT installed in the
+        # fast-tier CI workflows — this is the one place it's worth the cost,
+        # since it's the only tier that exercises real (non-stub) embeddings.
+        run: pip install pyyaml sqlite-vec fastmcp sentence-transformers
+      - name: Run the fast tier
+        run: bash scripts/health/run-fast-tier.sh > /tmp/fast-tier.jsonl
+      - name: Run the heavy tier
+        run: bash scripts/health/run-heavy-tier.sh > /tmp/heavy-tier.jsonl
+      - name: Render the scorecard + append a history row
+        run: |
+          cat /tmp/fast-tier.jsonl /tmp/heavy-tier.jsonl \
+            | python3 scripts/health/health_score.py --history \
+            > wiki/reference/Health-Scorecard.md.new
+          # Preserve the page's explanatory header (everything before the
+          # "---" divider); replace only the auto-generated scorecard body.
+          awk '/^---$/{print; exit} {print}' wiki/reference/Health-Scorecard.md > /tmp/header.md
+          cat /tmp/header.md wiki/reference/Health-Scorecard.md.new > wiki/reference/Health-Scorecard.md
+          rm -f wiki/reference/Health-Scorecard.md.new
+      - name: Commit the updated scorecard (advisory — never blocks a merge)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add wiki/reference/Health-Scorecard.md scripts/health/history.jsonl
+          git diff --cached --quiet && echo "no scorecard changes to commit" && exit 0
+          git commit -m "chore(health): nightly scorecard refresh [skip ci]"
+          git push

@@ -89,6 +89,12 @@ gh run view <run-id> --log-failed             # drill into the failing step
 
 Red-on-Windows but green-on-POSIX almost always indicates a path-separator or pwsh-host assumption regression. Red-on-all is usually a canonical-spec or adapter-parity drift — try `bash scripts/check-parity.sh` locally.
 
+## The nightly health tier (advisory, never a merge gate)
+
+`[H] Health Nightly` (`.github/workflows/health-nightly.yml`, R1.8 Task 4) runs daily at 06:00 UTC plus on manual `workflow_dispatch`. It layers the heavier checks that are too slow or dependency-heavy for every push — real-embedding recall (no stub mode), a live MCP daemon round-trip over real HTTP, a report of every `VERIFY_*_FAULT=1` mode's outcome, and a cold-install dogfood pass — on top of the same fast tier this page documents, then commits the result to [Health scorecard](Health-Scorecard).
+
+This workflow **never blocks a merge**. The fast tier above (`tests-linux.yml`/`tests-mac.yml`) is the only merge gate, so the nightly run can go red without stopping development.
+
 ## Running the gate set locally
 
 One command runs the deterministic battery — 31 gates: unit tests + every `check-*` gate + the nine integration checks (`verify-v4`, `verify-orchestration-briefing`, `verify-hook-resolution`, `verify-state-routing`, `verify-vec-index`, `verify-reflection`, `verify-mcp-surface`, `verify-phases`, `verify-memory-roundtrip`) — prints a PASS/FAIL table, and exits non-zero on any failure:
