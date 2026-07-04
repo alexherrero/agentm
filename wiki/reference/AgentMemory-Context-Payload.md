@@ -1,6 +1,6 @@
 # AgentMemory context payload reference
 
-The canonical "how-to-use-AgentMemory" payload at `templates/agentmemory-context.md` — the single source of truth the operator pastes into each agent surface (Claude.ai custom instructions, a Gemini Gem's system instructions, the Antigravity rule). A self-describing copy lives at `<vault>/_meta/how-to-use-agentmemory.md` so an agent that reaches the vault finds its own usage instructions. Read-only (v1): agents read + query the vault; they never write — capture = suggest an entry for the operator to paste into Obsidian by hand.
+The AgentMemory context payload is the one "how to use my memory" brief you paste into each agent surface — Claude.ai custom instructions, a Gemini Gem's system instructions, the Antigravity rule. The canonical copy lives in the repo at `templates/agentmemory-context.md`. A self-describing twin sits at `<vault>/_meta/how-to-use-agentmemory.md`, so an agent that reaches the vault finds its own usage instructions waiting. In v1 the payload is read-only: agents read and query the vault but never write to it. When an agent wants to capture something, it suggests a paste-ready entry and you file it in Obsidian by hand.
 
 ## ⚡ Quick Reference
 
