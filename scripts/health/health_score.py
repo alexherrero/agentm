@@ -211,12 +211,14 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def append_history_row(scorecard: dict, *, ts: float | None = None) -> dict:
+def append_history_row(scorecard: dict, *, ts: int | None = None) -> dict:
     row = {
         "agentm_sha": _git_sha(),
         "fixture_pack_version": FIXTURE_PACK_VERSION,
         "rule_pack_version": RULE_PACK_VERSION,
-        "ts": ts if ts is not None else time.time(),
+        # Integer epoch seconds, not a float: a fractional tail can coincidentally
+        # match the phone-us regex in check-no-pii.sh.
+        "ts": ts if ts is not None else int(time.time()),
         "health_index": scorecard["health_index"],
         "families": {f["axis"]: f["score"] for f in scorecard["families"]},
     }
