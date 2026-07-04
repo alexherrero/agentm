@@ -12,22 +12,30 @@ dark-checks registry are documented in
 see [CI gates](CI-Gates) for the full nightly-tier breakdown.
 
 ---
+# Health Scorecard 🟢
 
-## ⚡ Quick Reference
-
-*No nightly run has populated this page yet — this is the initial scaffold
-committed at R1.8 Task 4. The first scheduled or manually-triggered run of
-`health-nightly.yml` replaces everything below this line.*
-
-**Health Index: (pending first run)**
+**Health Index: 97.7/100**
 
 | Family | Weight | Score | Checks | Dark |
 |---|---:|---:|---:|---:|
-| memory persist+recall | 25 | — | — | — |
-| plan-adherence+drift | 15 | — | — | — |
-| verification honesty | 15 | — | — | — |
-| capability function | 15 | — | — | — |
-| memory freshness+experience | 10 | — | — | — |
-| efficiency | 10 | — | — | — |
-| docs+voice health | 5 | — | — | — |
-| safety/recoverability | 5 | — | — | — |
+| memory persist+recall | 25 | 93.55 | 31 | 1 |
+| plan-adherence+drift | 15 | 100.00 | 39 | 0 |
+| verification honesty | 15 | 0.00 | 0 | 0 |
+| capability function | 15 | 100.00 | 28 | 3 |
+| memory freshness+experience | 10 | 100.00 | 18 | 1 |
+| efficiency | 10 | 0.00 | 0 | 0 |
+| docs+voice health | 5 | 0.00 | 0 | 0 |
+| safety/recoverability | 5 | 100.00 | 9 | 0 |
+
+## Dark checks (designed, not built)
+
+Not counted for or against the Health Index — visible so a family's true future shape stays legible before its capability ships.
+
+| Axis | Suite | Check |
+|---|---|---|
+| memory freshness+experience | dark-registry | dreaming: reflection-driven idle-cycle consolidation (agentm-experience-and-dreaming.md) — designed, not built |
+| capability function | dark-registry | runner: sandboxed multi-step task execution surface — designed, not built |
+| capability function | dark-registry | opinion runtime: policy-opinion evaluation at activation time — designed, not built |
+| capability function | dark-registry | persona activation: per-persona model+effort routing binding at activation (agentm-model-effort-routing.md) — designed, not built |
+| memory persist+recall | dark-registry | kind-scoped recall: recall filtered/ranked by memory kind — designed, not built |
+
