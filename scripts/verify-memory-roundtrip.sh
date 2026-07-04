@@ -36,11 +36,18 @@ S="$REPO/harness/skills/memory/scripts"
 PY="${PYTHON:-python3}"
 command -v "$PY" >/dev/null 2>&1 || { echo "verify-memory-roundtrip: $PY not found" >&2; exit 2; }
 
+# R1.8 Task 2: JSONL check-record emission (health scorecard) — no-ops
+# unless --jsonl-out <path> or $HEALTH_JSONL_OUT is set.
+HEALTH_SUITE="verify-memory-roundtrip"
+HEALTH_AXIS="memory persist+recall"
+source "$HERE/health/jsonl_emit.sh"
+resolve_jsonl_out "$@"
+
 PASS=0; FAIL=0; SKIP=0
 RESULTS=()
-pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); }
-fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); }
-skip() { RESULTS+=("  SKIP  $1"$'\n'"          ↳ $2"); SKIP=$((SKIP+1)); }
+pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); emit_jsonl_check "$1" 1; }
+fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); emit_jsonl_check "$1" 0; }
+skip() { RESULTS+=("  SKIP  $1"$'\n'"          ↳ $2"); SKIP=$((SKIP+1)); emit_jsonl_check "$1" null; }
 
 assert_contains() {
   if printf '%s' "$2" | grep -qF -- "$3"; then pass "$1"

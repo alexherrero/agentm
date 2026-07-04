@@ -45,6 +45,7 @@ Exit:    0 iff every check passes (or the whole suite gracefully skips).
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shutil
 import sys
@@ -81,17 +82,36 @@ PASS = 0
 FAIL = 0
 RESULTS: list[str] = []
 
+# R1.8 Task 2: JSONL check-record emission (health scorecard) — no-ops
+# unless --jsonl-out <path> or $HEALTH_JSONL_OUT is set. Bash siblings
+# resolve this via scripts/health/jsonl_emit.sh; same contract here.
+HEALTH_SUITE = "verify-mcp-surface"
+HEALTH_AXIS = "capability function"
+JSONL_OUT = os.environ.get("HEALTH_JSONL_OUT") or None
+if "--jsonl-out" in sys.argv:
+    JSONL_OUT = sys.argv[sys.argv.index("--jsonl-out") + 1]
+
+
+def _emit_jsonl_check(desc: str, passed: bool) -> None:
+    if not JSONL_OUT:
+        return
+    record = {"suite": HEALTH_SUITE, "axis": HEALTH_AXIS, "check": desc, "pass": passed, "weight": 1.0}
+    with open(JSONL_OUT, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps(record) + "\n")
+
 
 def ok(desc: str) -> None:
     global PASS
     RESULTS.append(f"  PASS  {desc}")
     PASS += 1
+    _emit_jsonl_check(desc, True)
 
 
 def bad(desc: str, detail: str) -> None:
     global FAIL
     RESULTS.append(f"  FAIL  {desc}\n          ↳ {detail}")
     FAIL += 1
+    _emit_jsonl_check(desc, False)
 
 
 def make_vault(root: Path) -> Path:

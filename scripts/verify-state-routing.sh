@@ -42,10 +42,17 @@ S="$REPO/harness/skills/memory/scripts"
 PY="${PYTHON:-python3}"
 command -v "$PY" >/dev/null 2>&1 || { echo "verify-state-routing: $PY not found" >&2; exit 2; }
 
+# R1.8 Task 2: JSONL check-record emission (health scorecard) — no-ops
+# unless --jsonl-out <path> or $HEALTH_JSONL_OUT is set.
+HEALTH_SUITE="verify-state-routing"
+HEALTH_AXIS="safety/recoverability"
+source "$HERE/health/jsonl_emit.sh"
+resolve_jsonl_out "$@"
+
 PASS=0; FAIL=0
 RESULTS=()
-pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); }
-fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); }
+pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); emit_jsonl_check "$1" 1; }
+fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); emit_jsonl_check "$1" 0; }
 
 assert_equals() {
   if [ "$2" = "$3" ]; then pass "$1"; else fail "$1" "want '[$3]'  got '[$2]'"; fi

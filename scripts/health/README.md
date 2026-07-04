@@ -60,8 +60,20 @@ cat some-records.jsonl | python3 scripts/health/health_score.py --history
 cat some-records.jsonl | python3 scripts/health/health_score.py --check-determinism
 ```
 
-The full pipeline (once verify scripts emit `--jsonl-out`, R1.8 Task 2):
+The full pipeline (R1.8 Task 2 — all nine `verify-*` suites now emit `--jsonl-out` records; confirmed end-to-end at Health Index 100.0/100 on a fully patched system):
 
 ```bash
 bash scripts/health/run-fast-tier.sh | python3 scripts/health/health_score.py
 ```
+
+`run-fast-tier.sh` runs all nine suites against a shared `--jsonl-out` scratch
+file: each suite's own PASS/FAIL/SKIP table still prints to stderr
+unsuppressed, only the collected JSONL records go to stdout, and a suite
+exiting non-zero does not abort the batch — every suite gets a chance to
+contribute records regardless of its own exit code (`check-all.sh` remains
+the gate; this script only reports health).
+
+Today this covers 5 of the 8 families above (memory persist+recall,
+plan-adherence+drift, capability function, memory freshness+experience,
+safety/recoverability) — verification honesty, efficiency, and docs+voice
+health have no contributing suite yet.
