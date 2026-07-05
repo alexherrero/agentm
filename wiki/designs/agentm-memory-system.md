@@ -43,7 +43,7 @@ The components:
 
 agentm classifies every memory on **three independent axes**: by **kind** (what sort of thing it is), by **durability** (does it survive the session?), and by **ownership** (whose space is it?). Kind drives *retrieval*; durability and ownership drive *placement*.
 
-**By kind.** Every entry declares a **`kind`** — open-ended but conventional: `preference` · `workflow` · `fix` · `domain-reference` · `idea` · `skill-pointer`. Kind is load-bearing: it picks the storage group an entry is written to, and it scopes which entries a phase pulls into its recall budget (a `/work` pass recalls different kinds than a `/plan` pass). Kind is how a caller asks for *the right sort of memory* rather than a flat search over everything.
+**By kind.** Every entry declares a **`kind`** — open-ended but conventional: `preference` · `workflow` · `fix` · `domain-reference` · `idea` · `skill-pointer`. Kind is central: it picks the storage group an entry is written to, and it scopes which entries a phase pulls into its recall budget (a `/work` pass recalls different kinds than a `/plan` pass). Kind is how a caller asks for *the right sort of memory* rather than a flat search over everything.
 
 **By durability + ownership.** Two planes:
 
@@ -104,7 +104,7 @@ The content rule is **engagement, not encyclopedia**: an entry captures *why it 
 
 ### How storage is served — one port, every caller through it
 
-Everything agentm remembers reaches disk through a single **storage port** — the seam. The discipline is load-bearing: *there is exactly one way to storage, and every caller goes through it.* Read bottom-to-top — three layers, each with one job:
+Everything agentm remembers reaches disk through a single **storage port** — the seam. The discipline is strict: *there is exactly one way to storage, and every caller goes through it.* Read bottom-to-top — three layers, each with one job:
 
 1. **The storage seam — the one port.** The only layer that talks to a concrete store. `device-local` and `obsidian-vault` are interchangeable adapters; **more can be added** by implementing the same contract. Nothing above knows whether bytes land on the local filesystem or a synced vault — that ignorance is the point of a port.
 2. **The memory engine — the one set of verbs.** `save` · `recall` · `forget` + the cross-cutting logic, every verb reaching the store *through* the seam.
@@ -114,7 +114,7 @@ Everything agentm remembers reaches disk through a single **storage port** — t
 
 The MCP server **belongs above the seam, as a client of it** — never underneath (that would force a daemon onto the simple local case and invert the layering; V5-0 put the mutex + content-hash CAS into the storage *primitives* precisely so the system needs no daemon). The seam, selector, device-local backend, and MCP shim are genericizable → **agentm substrate**; the `obsidian-vault` backend implements the contract one-way up → a **crickets backing plugin**.
 
-The **MCP server** carries five load-bearing design choices:
+The **MCP server** carries five key design choices:
 - **Singleton streamable-HTTP** — one daemon, many sessions (`Mcp-Session-Id`), collapsing the host fan-out to a single writer alongside the CLI. Not stdio: stdio spawns one server per client, giving N OS processes on `vault_mutex` — safe but not single-writer.
 - **Three snake_case tools**: `memory_search` · `memory_append` · `memory_forget`. Not dot-names: OpenAI-family MCP hosts reject them. (A fourth, `memory_recall`, was retired — R0.9, see the amendment log.)
 - **Soft-delete**: `memory_forget` flips `status → deleted` + stamps `deleted_at`; the file is never unlinked. Not hard-delete: GDrive sync resurrects a hard-deleted file from propagation cache.
@@ -127,7 +127,7 @@ The **MCP server** carries five load-bearing design choices:
 
 The goal is concurrency-safe writes: when two sessions save to the same synced backend at once, both land and neither corrupts the other. A memory reaches disk through the V5-0 write protocol — a single `atomic_write` (temp → `fsync` → rename), guarded by an advisory **per-backend mutex** (a `mkdir` lock with an mtime heartbeat + stale-takeover, living *outside* the synced store) and, for replace-style files, a **content-hash compare-and-swap** that re-reads inside the lock before committing. Coordination lives in these *primitives*, not a daemon. *(Honest boundary: this is grounded at the seam — the `backend.write` body that composes these for the vault lives in the `obsidian-vault` plugin.)*
 
-**Supersession is archive-then-replace, not overwrite.** A new entry that evolves an old one flips the old to `status: superseded` and sets a `supersedes:` back-link from the new — so the history is an **auditable link-chain**, not a lost update or a numeric confidence score.
+**Supersession is archive-then-replace.** A new entry that evolves an old one flips the old to `status: superseded` and sets a `supersedes:` back-link from the new, so the history is an **auditable link-chain**.
 
 **Archive, decay, and prune.** Supersession is one road into the archive; the other is **decay** — an entry that goes cold over time is retired to its tier's `_archive/` rather than left to bloat recall. Two arms run today: heat curation demotes a cold always-load entry to its group root, and `/memory evolve` archives a superseded entry. The fuller lifecycle — access-reinforced decay, consolidation tiers (episodic → semantic → procedural), the phase-close crystallization digest, and a whole-corpus dreaming pass that compacts supersession chains — is **designed-for**, framed in V6/V7. Two prerequisites gate any *autonomous* archive: the **revert-log plus a `derived-from` provenance edge** (so undoing a consolidated entry also undoes what was derived from it), and a **staging gate** — an autonomous job proposes archival to a staging inbox and the operator confirms via the digest before anything goes cold (`_dream-staging/`, the pre-approval inbox, is a separate place from `_archive/`, the cold store). Prune resolves to archive; there is no hard delete.
 

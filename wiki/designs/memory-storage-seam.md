@@ -221,7 +221,7 @@ Two corrections, landed in the same commit:
 
 ### 2026-06-18 — ADR 0018: V5-3 storage cutover
 
-**Decisions:** (DC-1 — reversed by ADR 0020, see §3 and the §2b block) make state functions device-local only *(reversed)*. (DC-2) `phase_recall → ""` (context now V5-9 MCP). (DC-3) `resolve_documenter_context → None`. (DC-4) `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault accessible — load-bearing fail-loud guard. (DC-5) `$MEMORY_VAULT_PATH` env override is a graceful-skip (per-session escape hatch, not a durable commitment). (DC-6) Routing/index layer retained (`resolve_project`, `_vault_projects_dir`, `repo_registry`, etc. — probes for vault identity, not state reads). (DC-7) `personal-private/` → `personal/` rename shipped in lockstep with V5-3.
+**Decisions:** (DC-1 — reversed by ADR 0020, see §3 and the §2b block) make state functions device-local only *(reversed)*. (DC-2) `phase_recall → ""` (context now V5-9 MCP). (DC-3) `resolve_documenter_context → None`. (DC-4) `vault_path()` raises `StorageBackendNotInstalledError` when `storage.backend=vault` + no vault accessible — a central fail-loud guard. (DC-5) `$MEMORY_VAULT_PATH` env override is a graceful-skip (per-session escape hatch, not a durable commitment). (DC-6) Routing/index layer retained (`resolve_project`, `_vault_projects_dir`, `repo_registry`, etc. — probes for vault identity, not state reads). (DC-7) `personal-private/` → `personal/` rename shipped in lockstep with V5-3.
 
 **Why DC-4 in `vault_path()`, not only in `select_backend()`:** the guard fires on every call path that reaches vault resolution, not only through explicit selection. Also avoids circular import (`harness_memory.py` does not import `backend_selection.py`).
 
@@ -231,7 +231,7 @@ Two corrections, landed in the same commit:
 
 **Re-audit triggers:** V5-9 MCP server is removed (restore a minimal recall path in the kernel); any installer auto-writes `storage.backend=vault` without ensuring a vault path; a harness state dir move (update `harness_state_dir` and callers); a proposal to write state through the routing layer (route through the seam instead).
 
-**Cross-design pointer:** ADR 0018 DC-7's `personal-private/` → `personal/` rename fires ADR 0010's first load-bearing assumption re-audit trigger — see [Foundations HLD — Vault internal taxonomy](agentm-foundations-hld).
+**Cross-design pointer:** ADR 0018 DC-7's `personal-private/` → `personal/` rename fires ADR 0010's first key-assumption re-audit trigger — see [Foundations HLD — Vault internal taxonomy](agentm-foundations-hld).
 
 ---
 

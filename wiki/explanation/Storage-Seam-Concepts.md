@@ -22,7 +22,7 @@ The vocabulary mirrors [fsspec](https://filesystem-spec.readthedocs.io/)'s metho
 
 ## Why the engine never holds a path
 
-The verbs operate on, and return, the seam's own `Locator` type — **never** a `pathlib.Path`. This is the load-bearing rule of the whole seam.
+The verbs operate on, and return, the seam's own `Locator` type — **never** a `pathlib.Path`. This is the central rule of the whole seam.
 
 A `Locator` is an opaque, backend-relative key. It exposes only namespace operations (`child`, `name`, `parts`) — never filesystem I/O. All reading and writing goes back through the verbs. So the engine, which only ever holds `Locator` values, learns *no filesystem assumption*: it cannot accidentally `open()` a locator, cannot join it against a disk path, cannot tell whether the bytes behind it live on this device or somewhere else. That is exactly the property that lets a backend be swapped without the engine noticing — the seam's entire reason to exist.
 
@@ -59,7 +59,7 @@ Three small types travel with the verbs, each kept lean by design:
 
 And the v1 currency is **text** — `read` returns `str`, `write` takes `str` — because the engine's state is markdown. A bytes channel is a named future extension, not a v1 obligation. This keeps the contract small enough to be obviously correct, which matters disproportionately for a module four more parts will build against.
 
-One more property the contract only *declares*, deferring the work: a filesystem backend's `write` is specified to compose the existing [vault write protocol](Vault-Write-Protocol) (the V5-0 `atomic_write` + content-hash CAS + `vault_mutex`) rather than reinventing write-safety. The abstract contract here states the shape — "the write is durable and atomic, and the returned locator round-trips through `read`" — but the actual composition lands with the concrete backends in parts 2 and 4, not in this abstract ABC.
+One more property the contract only *declares*, deferring the work: a filesystem backend's `write` is specified to compose the existing [vault write protocol](Vault-Write-Protocol) (the V5-0 `atomic_write` + content-hash CAS + `vault_mutex`) rather than reinventing write-safety. The abstract contract here states the shape — "the write is durable and atomic, and the returned locator round-trips through `read`" — but the actual composition lands with the concrete backends in parts 2 and 4.
 
 ## The three tiers, and why the index never syncs
 
