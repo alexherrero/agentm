@@ -45,6 +45,7 @@ UNIT_WRAPPED = {
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",
     "check-process-seam-import-direction.sh": "test_process_seam.py",
+    "check-slop.py": "test_check_slop.py",
     "check-storage-seam-no-path-leak.py": "test_storage_seam.py",
     "check-workflow-parity.sh": "test_check_workflow_parity.py",
     "check-worktree-slug.sh": "test_worktree_slug_probe.py",
