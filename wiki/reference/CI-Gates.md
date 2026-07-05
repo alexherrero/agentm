@@ -6,6 +6,8 @@ This page lists every gate that runs on `push` to `main` and on every `pull_requ
 bash scripts/check-all.sh
 ```
 
+A push whose full diff is confined to `wiki/**` and/or `*.md` files skips all three OS workflows plus `[T] CI All` (`paths-ignore` on each workflow's `push`/`pull_request` triggers) — a diff mixing even one non-doc file with any number of doc files still runs the full matrix.
+
 ## ⚡ Quick Reference
 
 | Workflow | Runs on | Jobs |
