@@ -2,20 +2,28 @@
 # validate-audit-coverage.sh — proves the regression net catches what the
 # mythos-readiness audit caught by hand (R1.8 Task 3).
 #
-# SCOPE (operator-confirmed 2026-07-03): the audit's ledger names 11 verified
-# blockers total. Only 5 have any code presence in THIS repo:
+# SCOPE (operator-confirmed 2026-07-03; updated 2026-07-05 — PLAN-r2-ledger-
+# and-dist task 7): the audit's ledger names 11 verified blockers total. Only
+# 5 have any code presence in THIS repo, and this script covers exactly those:
 #   agTrack#0, agentmEngine#0, agentmEngine#1, agentmExperience#0, voice#0
-# The other 6 are out of reach for an agentm-repo verify script:
-#   cricketsPluginsA#0, cricketsPluginsA#1, cricketsPluginsB#0  — crickets-repo
-#     code bugs (find_capability.py, finalize_unit.py, pricing.py); no
-#     presence in agentm to fault-inject.
+# The other 6 are out of reach for an agentm-repo verify script — but 3 of
+# them now have dashboard visibility from the OTHER side of the seam:
+#   cricketsPluginsA#0, cricketsPluginsA#1, cricketsPluginsB#0 — crickets-repo
+#     code bugs (find_capability.py, finalize_unit.py, pricing.py) that
+#     already had fixes + regression tests (R0.5/R0.6/R0.7); this script
+#     still can't fault-inject them (no presence in agentm), but crickets'
+#     own scripts/health/run-crickets-fast-tier.sh now emits a `capability
+#     function` check record per blocker (--jsonl-out wired into
+#     test_find_capability.py, test_finalize_unit.py, test_token_audit.py) —
+#     consumable cross-repo the same way this script's own records are.
 #   roadmapMaster#0, wikiAgentm#0, wikiCrickets#0 — documentation/content
 #     staleness (a vault ROADMAP file, an agentm wiki page, a crickets wiki
 #     page), not runtime code defects; there is no "fault-injection mode"
 #     concept for a stale sentence, and no corresponding PASS/FAIL check
-#     record the health-score schema could represent.
+#     record the health-score schema could represent. Residual out-of-scope
+#     count: 3 (not 6).
 # This script covers the 5 in-scope blockers and explicitly reports the
-# other 6 as out of scope — never silently omitted.
+# residual 3 as out of scope — never silently omitted.
 #
 # Detection mechanism differs per blocker (documented per-check below,
 # not force-fit into one shape):
@@ -52,7 +60,7 @@ RESULTS=()
 pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); }
 fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); }
 
-echo "validate-audit-coverage: 5 of 11 audit blockers are in agentm-repo scope; 6 out of scope (see header)." >&2
+echo "validate-audit-coverage: 5 of 11 audit blockers are in agentm-repo scope; 3 of the other 6 now have dashboard visibility via crickets' own suite; 3 residual out of scope (see header)." >&2
 
 # ── agentmEngine#0: hook dual-key read — live fault toggle produces red ───
 HR_OUT="$(VERIFY_HOOK_RESOLUTION_FAULT=1 bash "$SCRIPTS_DIR/verify-hook-resolution.sh" 2>&1)"; HR_RC=$?
@@ -162,5 +170,5 @@ fi
 echo
 if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi
 echo
-echo "validate-audit-coverage: $PASS passed, $FAIL failed (5 in-scope blockers; 6 out of agentm-repo scope — see header)"
+echo "validate-audit-coverage: $PASS passed, $FAIL failed (5 in-scope blockers; 3 residual out of agentm-repo scope — see header)"
 [ "$FAIL" -eq 0 ]
