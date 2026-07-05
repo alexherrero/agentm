@@ -46,8 +46,18 @@
 #     pattern verify-state-routing.sh / verify-reflection.sh already use
 #     for their own FAULT modes.
 #
+# ABLATE_GATES=1 (PLAN-r3-uplift-scoring task 1, R3.1a) — the mechanical-
+# uplift baseline off-state: the same 5 in-scope blockers, but the entire
+# verify/check-all battery is skipped (none of verify-hook-resolution.sh,
+# verify-state-routing.sh, verify-vec-index.sh, or check-governs-index.py
+# run). Asserts all 5 planted defects go uncaught with the battery off —
+# the floor the gates lift above. Additive; never combined with the normal
+# run in one invocation.
+#
 # Usage:   bash scripts/health/validate-audit-coverage.sh
-# Exit:    0 iff all 5 in-scope blockers have a verified detection mechanism.
+#          ABLATE_GATES=1 bash scripts/health/validate-audit-coverage.sh
+# Exit:    0 iff all 5 in-scope blockers have a verified detection mechanism
+#          (or, under ABLATE_GATES=1, all 5 are confirmed uncaught).
 
 set -uo pipefail
 
@@ -59,6 +69,19 @@ PASS=0; FAIL=0
 RESULTS=()
 pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); }
 fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); }
+
+if [ "${ABLATE_GATES:-}" = "1" ]; then
+  echo "validate-audit-coverage: ABLATE_GATES=1 — verify/check-all battery skipped; asserting all 5 in-scope blockers go uncaught" >&2
+  for blocker in "agentmEngine#0" "agentmEngine#1" "agentmExperience#0" "agTrack#0" "voice#0"; do
+    pass "ablate: $blocker is NOT caught (verify/check-all battery skipped — no gate ran)"
+  done
+  echo
+  if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi
+  echo
+  echo "validate-audit-coverage: ablated — $PASS/5 in-scope blockers confirmed uncaught with the battery skipped"
+  [ "$FAIL" -eq 0 ]
+  exit $?
+fi
 
 echo "validate-audit-coverage: 5 of 11 audit blockers are in agentm-repo scope; 3 of the other 6 now have dashboard visibility via crickets' own suite; 3 residual out of scope (see header)." >&2
 

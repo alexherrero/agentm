@@ -15,6 +15,14 @@
 # This gate was RED until the drain-command existence check landed in this
 # same task (vec_index.py's `drain` branch: `if not vault.is_dir(): ... return 1`).
 #
+# ABLATE_VECTORS=1 (PLAN-r3-uplift-scoring task 1, R3.1a) — the mechanical-
+# uplift baseline off-state: same N-entry fixture corpus as the on-state, but
+# `drain` is deliberately never called, so recall.py's vec search finds no
+# index to query and falls back to keyword-only (grep) search. Asserts the
+# keyword-only path still surfaces a seeded entry — proving the floor the
+# vector index sits above, not a red/broken state. Additive to
+# VERIFY_VEC_INDEX_FAULT; the two are never combined in one run.
+#
 # Hermetic: `--mode stub` never calls a real embedding API. The vec-index
 # backend (sqlite-vec) needs a Python whose sqlite3 supports
 # enable_load_extension; when unavailable this script's index-row assertions
@@ -30,6 +38,7 @@
 #
 # Usage:   bash scripts/verify-vec-index.sh
 #          VERIFY_VEC_INDEX_FAULT=1 bash scripts/verify-vec-index.sh
+#          ABLATE_VECTORS=1 bash scripts/verify-vec-index.sh
 # Exit:    0 iff every (non-skipped) check passes.
 
 set -uo pipefail
@@ -63,6 +72,7 @@ assert_contains() {
 }
 
 FAULT="${VERIFY_VEC_INDEX_FAULT:-}"
+ABLATE="${ABLATE_VECTORS:-}"
 
 V="$(mktemp -d)"
 cleanup() { rm -rf "$V" 2>/dev/null || true; }
@@ -83,6 +93,15 @@ if [ "$FAULT" = "1" ]; then
   assert_equals   "fault: drain exits non-zero when the vault has vanished mid-queue" \
     "$([ "$RC" -ne 0 ] && echo yes || echo no)" "yes"
   assert_contains "fault: drain's error names the missing vault path" "$DRAIN_OUT" "does not exist"
+elif [ "$ABLATE" = "1" ]; then
+  # ── ablate: same fixture corpus, drain never called → vec search finds no
+  # index → recall.py falls back to keyword-only (grep) search ────────────
+  for i in $(seq 1 "$N"); do
+    printf 'deployment runbook staging gate entry number %d\n' "$i" \
+      | mem save.py reference "deploy-runbook-$i" --tags "ops,deploy" --body-file - >/dev/null
+  done
+  QUERY_OUT="$(mem recall.py query "deployment runbook staging gate" -k 5 --mode stub 2>/dev/null)"
+  assert_contains "ablate: keyword-only search surfaces a seeded entry (vector index bypassed — drain skipped)" "$QUERY_OUT" "deploy-runbook-"
 else
   # ── A. save N entries → queue grows by N ────────────────────────────────
   for i in $(seq 1 "$N"); do

@@ -29,11 +29,20 @@
 # is a faithful trigger for the historical junk-slug pollution the filter
 # exists to prevent.
 #
+# ABLATE_REFLECTION=1 (PLAN-r3-uplift-scoring task 1, R3.1a) — the mechanical-
+# uplift baseline off-state: runs the same tri-lane fixture as the on-state
+# but omits `--execute` (reflect.py's own dry-run default), so reflection
+# writes are suppressed. Asserts zero carryover between sessions — even the
+# genuine operator preference never lands in the vault when writes are
+# ablated. Additive to VERIFY_REFLECTION_FAULT; the two are never combined
+# in one run.
+#
 # Hermetic: MEMORY_TRANSCRIPT_ROOT points at a scratch dir; MEMORY_VAULT_PATH
 # at a scratch vault. No network, no real ~/.claude/projects/ read.
 #
 # Usage:   bash scripts/verify-reflection.sh
 #          VERIFY_REFLECTION_FAULT=1 bash scripts/verify-reflection.sh
+#          ABLATE_REFLECTION=1 bash scripts/verify-reflection.sh
 # Exit:    0 iff every check passes.
 
 set -uo pipefail
@@ -110,6 +119,7 @@ write_transcript "$OP_TRANSCRIPT" "$OPERATOR_PREF" "${JUNK_LINES[@]}"
 write_transcript "$MACHINE_TRANSCRIPT" "$MACHINE_BAIT" "$MACHINE_BAIT" "$MACHINE_BAIT"
 
 FAULT="${VERIFY_REFLECTION_FAULT:-}"
+ABLATE="${ABLATE_REFLECTION:-}"
 
 if [ "$FAULT" = "1" ]; then
   # ── fault: the pre-filter corpus — mine the machine transcript directly ──
@@ -121,6 +131,15 @@ confidences = sorted(c.confidence for c in r['memory_candidates'])
 print(','.join(confidences))
 " 2>&1)"
   assert_contains "fault: unfiltered machine-source bait classifies HIGH (fixture is faithful)" "$OUT" "HIGH"
+elif [ "$ABLATE" = "1" ]; then
+  # ── ablate: same tri-lane fixture, writes suppressed (no --execute) ──────
+  for mode in auto silent interactive; do
+    V="$(mktemp -d)"
+    env MEMORY_VAULT_PATH="$V" "$PY" "$S/reflect.py" corpus \
+      --projects-root "$ROOT" --vault-path "$V" --route-mode "$mode" >/dev/null 2>&1
+    assert_absent_in_tree "ablate: [$mode] zero carryover — nothing lands in the vault with writes suppressed" "$V" "kebab-case"
+    rm -rf "$V"
+  done
 else
   # ── 1. classification: genuine HIGH vs the always/never junk corpus ──────
   MINE_OUT="$("$PY" -c "
