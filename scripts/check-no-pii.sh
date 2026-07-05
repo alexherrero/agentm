@@ -127,6 +127,36 @@ is_allowed() {
     return 1
 }
 
+# ── combined regex (one-time build) ──────────────────────────────────────
+# One grep per file instead of one grep per (file, pattern) pair — the old
+# per-pattern loop spawned a binary-check + 9 pattern greps per file, which
+# is cheap on Linux/Mac fork() but an order of magnitude more expensive per
+# spawn under Windows Git-Bash/MSYS2 (measured: this script alone was 226s
+# on Windows vs 24s on Mac for an identical commit on crickets' copy — CI
+# wall-time diet investigation, 2026-07-05, PLAN-ci-walltime-diet task 1).
+# `-I` folds the old separate binary-file probe into this same single grep.
+# Classification (which KIND matched) still runs per-match, not per-file,
+# via classify_kind below — matches are rare, so that subprocess cost stays
+# negligible.
+COMBINED_REGEX=""
+for entry in "${PATTERNS[@]}"; do
+    regex="${entry#*|}"
+    COMBINED_REGEX="${COMBINED_REGEX:+$COMBINED_REGEX|}($regex)"
+done
+
+classify_kind() {
+    local match="$1" entry kind regex
+    for entry in "${PATTERNS[@]}"; do
+        kind="${entry%%|*}"
+        regex="${entry#*|}"
+        if grep -qE "$regex" <<<"$match" 2>/dev/null; then
+            printf '%s' "$kind"
+            return
+        fi
+    done
+    printf 'unknown'
+}
+
 # ── scan ──────────────────────────────────────────────────────────────────
 findings=0
 
@@ -134,22 +164,14 @@ while IFS= read -r file; do
     [[ -z "$file" ]] && continue
     [[ ! -f "$file" ]] && continue
     is_self_skip "$file" && continue
-    # Skip binary files (heuristic: grep -I succeeds on text)
-    if ! grep -Iq "" "$file" 2>/dev/null; then
-        continue
-    fi
 
-    for entry in "${PATTERNS[@]}"; do
-        kind="${entry%%|*}"
-        regex="${entry#*|}"
-        # -n line numbers, -E extended regex, -o only match
-        while IFS=: read -r lineno match; do
-            [[ -z "$lineno" ]] && continue
-            is_allowed "$match" && continue
-            echo "$file:$lineno: $kind match: $match" >&2
-            findings=$((findings + 1))
-        done < <(grep -nEo "$regex" "$file" 2>/dev/null || true)
-    done
+    while IFS=: read -r lineno match; do
+        [[ -z "$lineno" ]] && continue
+        is_allowed "$match" && continue
+        kind="$(classify_kind "$match")"
+        echo "$file:$lineno: $kind match: $match" >&2
+        findings=$((findings + 1))
+    done < <(grep -nEoI "$COMBINED_REGEX" "$file" 2>/dev/null || true)
 done < <(get_files)
 
 if [[ $findings -gt 0 ]]; then
