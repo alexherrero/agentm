@@ -100,6 +100,13 @@ jobs:
         # staleness — out of an agentm verify script's reach; see the
         # script's own header for the full breakdown).
         run: bash scripts/health/validate-audit-coverage.sh
+      - name: run-ablation-baseline (mechanical uplift, on/off per subsystem)
+        # PLAN-r3-uplift-scoring task 2 (R3.1b): runs each of the four R3.1a
+        # subsystems' verify script on/off, scores both through health_score.py,
+        # emits an ablation record. Deterministic, no live model calls — the
+        # evidence-tracker record gracefully skips here (no crickets sibling
+        # checkout in this repo's CI); its own gate lives in crickets check-all.sh.
+        run: bash scripts/health/run-ablation-baseline.sh
       - name: Phase-lifecycle e2e, both state modes (verify-phases.sh)
         run: bash scripts/verify-phases.sh
       - name: Memory-engine round-trip e2e (verify-memory-roundtrip.sh)

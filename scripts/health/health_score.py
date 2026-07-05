@@ -11,6 +11,15 @@ Dark checks (R1.8 Task 5 — designed-not-built capabilities) use:
 
     {"suite": str, "axis": str, "check": str, "pass": null, "dark": true, "weight": float}
 
+Ablation records (PLAN-r3-uplift-scoring Task 2 / R3.1b — mechanical-uplift
+baselines) use a separate schema, read from `--ablation-records` and never
+merged into the scored `records` list:
+
+    {"subsystem": str, "axis": str, "score_on": float, "score_off": float, "uplift": float}
+
+Rendered as their own additive "Mechanical uplift" section — like dark
+checks, never folded into the family-weighted Health Index.
+
 `axis` is one of the eight locked family names below — v1 has no separate
 axis→family rollup; a check's axis IS its family.
 
@@ -165,7 +174,7 @@ def _regression_headline(scorecard: dict, baseline: dict | None) -> str:
     return "green"
 
 
-def render_markdown(scorecard: dict, *, headline: str = "green") -> str:
+def render_markdown(scorecard: dict, *, headline: str = "green", ablation_records: list[dict] | None = None) -> str:
     lines = []
     marker = "🔴" if headline == "red" else "🟢"
     lines.append(f"# Health Scorecard {marker}")
@@ -198,6 +207,24 @@ def render_markdown(scorecard: dict, *, headline: str = "green") -> str:
         lines.append("|---|---|---|")
         for d in scorecard["dark_checks"]:
             lines.append(f"| {d['axis']} | {d['suite']} | {d['check']} |")
+    if ablation_records:
+        lines.append("")
+        lines.append("## Mechanical uplift")
+        lines.append("")
+        lines.append(
+            "How much each subsystem contributes vs a bare baseline (on-state "
+            "score minus its own ABLATE_* off-state score). Additive — never "
+            "counted for or against the Health Index; a dead or noisy "
+            "subsystem shows up here as lost uplift, not a shifted average."
+        )
+        lines.append("")
+        lines.append("| Subsystem | Axis | Score (on) | Score (off) | Uplift |")
+        lines.append("|---|---|---:|---:|---:|")
+        for a in ablation_records:
+            lines.append(
+                f"| {a['subsystem']} | {a['axis']} | {a['score_on']:.2f} | "
+                f"{a['score_off']:.2f} | {a['uplift']:.2f} |"
+            )
     lines.append("")
     return "\n".join(lines) + "\n"
 
@@ -232,6 +259,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Aggregate verify-suite JSONL into the health scorecard.")
     p.add_argument("--path", default=None, help="read JSONL from this file instead of stdin")
     p.add_argument("--dark-checks", default=None, help="path to a JSONL file of dark (designed-not-built) check records to merge in")
+    p.add_argument("--ablation-records", default=None, help="path to a JSONL file of mechanical-uplift ablation records (subsystem/axis/score_on/score_off/uplift) — rendered additively, never scored")
     p.add_argument("--history", action="store_true", help="append a row to scripts/health/history.jsonl")
     p.add_argument("--check-determinism", action="store_true", help="run twice against the same input; exit non-zero if outputs differ")
     p.add_argument("--format", choices=("markdown", "json"), default="markdown")
@@ -248,8 +276,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"health_score: --check-determinism: {e}", file=sys.stderr)
             return 2
         dark = read_records(args.dark_checks) if args.dark_checks else []
-        out1 = render_markdown(compute_scorecard(records + dark))
-        out2 = render_markdown(compute_scorecard(records + dark))
+        ablation = read_records(args.ablation_records) if args.ablation_records else []
+        out1 = render_markdown(compute_scorecard(records + dark), ablation_records=ablation)
+        out2 = render_markdown(compute_scorecard(records + dark), ablation_records=ablation)
         if out1 != out2:
             print("health_score: --check-determinism: two runs at the same input produced different output", file=sys.stderr)
             return 1
@@ -269,13 +298,24 @@ def main(argv: list[str] | None = None) -> int:
 
     scorecard = compute_scorecard(records)
 
+    ablation_records: list[dict] = []
+    if args.ablation_records:
+        try:
+            ablation_records = read_records(args.ablation_records)
+        except ValueError as e:
+            print(f"health_score: --ablation-records: {e}", file=sys.stderr)
+            return 2
+
     if args.history:
         append_history_row(scorecard)
 
     if args.format == "json":
-        print(json.dumps(scorecard, indent=2, sort_keys=True))
+        out = dict(scorecard)
+        if ablation_records:
+            out["ablation_records"] = ablation_records
+        print(json.dumps(out, indent=2, sort_keys=True))
     else:
-        print(render_markdown(scorecard), end="")
+        print(render_markdown(scorecard, ablation_records=ablation_records), end="")
     return 0
 
 

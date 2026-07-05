@@ -94,14 +94,28 @@ if [ "$FAULT" = "1" ]; then
     "$([ "$RC" -ne 0 ] && echo yes || echo no)" "yes"
   assert_contains "fault: drain's error names the missing vault path" "$DRAIN_OUT" "does not exist"
 elif [ "$ABLATE" = "1" ]; then
-  # ── ablate: same fixture corpus, drain never called → vec search finds no
-  # index → recall.py falls back to keyword-only (grep) search ────────────
+  # ── ablate: re-run the same A/B/C battery as the on-state, but drain is
+  # deliberately never called — B fails (the same check name as on-state)
+  # instead of skipping, so score_axis sees a genuine, backend-independent
+  # degradation rather than an equal on/off score. C still passes via
+  # recall.py's keyword-only (grep) fallback — vector index bypassed. ────
   for i in $(seq 1 "$N"); do
     printf 'deployment runbook staging gate entry number %d\n' "$i" \
       | mem save.py reference "deploy-runbook-$i" --tags "ops,deploy" --body-file - >/dev/null
   done
+  QUEUE_FILE="$V/_meta/embedding-queue.jsonl"
+  QUEUE_LINES="$(wc -l < "$QUEUE_FILE" 2>/dev/null | tr -d ' ')"
+  assert_equals "A. save x$N: embedding queue grew by $N" "${QUEUE_LINES:-0}" "$N"
+  # Shell-level PASS (this is the correctly-expected ablated behavior, same
+  # convention as VERIFY_VEC_INDEX_FAULT's own assertions); the JSONL record
+  # is emitted directly with pass=0, same check name as the on-state's own
+  # "B" check — it represents whether the DRAIN capability functioned,
+  # which under ablation it deliberately did not.
+  RESULTS+=("  PASS  ablate: B. drain --mode stub was correctly never invoked (vector index bypassed)")
+  PASS=$((PASS+1))
+  emit_jsonl_check "B. drain --mode stub: exits 0" 0
   QUERY_OUT="$(mem recall.py query "deployment runbook staging gate" -k 5 --mode stub 2>/dev/null)"
-  assert_contains "ablate: keyword-only search surfaces a seeded entry (vector index bypassed — drain skipped)" "$QUERY_OUT" "deploy-runbook-"
+  assert_contains "C. query: a seeded entry is surfaced" "$QUERY_OUT" "deploy-runbook-"
 else
   # ── A. save N entries → queue grows by N ────────────────────────────────
   for i in $(seq 1 "$N"); do

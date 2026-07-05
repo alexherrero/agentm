@@ -131,6 +131,40 @@ class TestDarkChecksRendering(unittest.TestCase):
         self.assertIn("## Dark checks (designed, not built)", md)
 
 
+class TestMechanicalUpliftRendering(unittest.TestCase):
+    """PLAN-r3-uplift-scoring task 2 (R3.1b) — ablation records render as
+    their own additive section, never folded into the Health Index."""
+
+    def _ablation(self):
+        return [
+            {"subsystem": "vectors", "axis": "memory freshness+experience", "score_on": 100.0, "score_off": 66.67, "uplift": 33.33},
+            {"subsystem": "gates", "axis": "capability function", "score_on": 100.0, "score_off": 0.0, "uplift": 100.0},
+        ]
+
+    def test_ablation_section_appears_with_uplift_values(self):
+        records = [_rec("memory persist+recall", "a", True)]
+        sc = health_score.compute_scorecard(records)
+        md = health_score.render_markdown(sc, ablation_records=self._ablation())
+        self.assertIn("## Mechanical uplift", md)
+        self.assertIn("vectors", md)
+        self.assertIn("33.33", md)
+        self.assertIn("100.00", md)
+
+    def test_no_ablation_section_when_absent(self):
+        records = [_rec("memory persist+recall", "a", True)]
+        md = health_score.render_markdown(health_score.compute_scorecard(records))
+        self.assertNotIn("Mechanical uplift", md)
+
+    def test_ablation_records_never_change_health_index(self):
+        records = [_rec("memory persist+recall", "a", True), _rec("efficiency", "b", False)]
+        sc = health_score.compute_scorecard(records)
+        index_without = sc["health_index"]
+        # Rendering with ablation records present must not alter the scorecard
+        # dict itself — compute_scorecard never sees ablation records at all.
+        health_score.render_markdown(sc, ablation_records=self._ablation())
+        self.assertEqual(sc["health_index"], index_without)
+
+
 class TestDeterminism(unittest.TestCase):
     def test_two_runs_produce_identical_markdown(self):
         records = [_rec("memory persist+recall", "a", True), _rec("efficiency", "b", False)]
@@ -171,6 +205,54 @@ class TestMainCLI(unittest.TestCase):
         finally:
             sys.stdin = stdin_backup
         self.assertEqual(rc, 0)
+
+    def test_ablation_records_flag_renders_section_and_json(self):
+        import tempfile
+        ablation = [{"subsystem": "vectors", "axis": "memory freshness+experience", "score_on": 100.0, "score_off": 66.67, "uplift": 33.33}]
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps(ablation[0]) + "\n")
+            path = f.name
+        try:
+            buf = io.StringIO()
+            stdin_backup = sys.stdin
+            sys.stdin = io.StringIO(json.dumps(_rec("memory persist+recall", "a", True)) + "\n")
+            try:
+                with redirect_stdout(buf):
+                    rc = health_score.main(["--ablation-records", path])
+            finally:
+                sys.stdin = stdin_backup
+            self.assertEqual(rc, 0)
+            self.assertIn("Mechanical uplift", buf.getvalue())
+
+            buf2 = io.StringIO()
+            sys.stdin = io.StringIO(json.dumps(_rec("memory persist+recall", "a", True)) + "\n")
+            try:
+                with redirect_stdout(buf2):
+                    rc2 = health_score.main(["--ablation-records", path, "--format", "json"])
+            finally:
+                sys.stdin = stdin_backup
+            self.assertEqual(rc2, 0)
+            out = json.loads(buf2.getvalue())
+            self.assertEqual(out["ablation_records"][0]["subsystem"], "vectors")
+        finally:
+            Path(path).unlink()
+
+    def test_check_determinism_with_ablation_records_is_byte_identical(self):
+        import tempfile
+        ablation = [{"subsystem": "vectors", "axis": "memory freshness+experience", "score_on": 100.0, "score_off": 66.67, "uplift": 33.33}]
+        with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False) as f:
+            f.write(json.dumps(ablation[0]) + "\n")
+            path = f.name
+        try:
+            stdin_backup = sys.stdin
+            sys.stdin = io.StringIO(json.dumps(_rec("memory persist+recall", "a", True)) + "\n")
+            try:
+                rc = health_score.main(["--check-determinism", "--ablation-records", path])
+            finally:
+                sys.stdin = stdin_backup
+            self.assertEqual(rc, 0)
+        finally:
+            Path(path).unlink()
 
 
 if __name__ == "__main__":

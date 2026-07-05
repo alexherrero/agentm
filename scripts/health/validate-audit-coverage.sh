@@ -65,15 +65,29 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(cd "$HERE/.." && pwd)"
 PY="${PYTHON:-python3}"
 
+# PLAN-r3-uplift-scoring task 2: JSONL check-record emission (health
+# scorecard) — no-ops unless --jsonl-out <path> or $HEALTH_JSONL_OUT is set.
+HEALTH_SUITE="validate-audit-coverage"
+HEALTH_AXIS="capability function"
+source "$HERE/jsonl_emit.sh"
+resolve_jsonl_out "$@"
+
 PASS=0; FAIL=0
 RESULTS=()
-pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); }
-fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); }
+pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); emit_jsonl_check "$1" 1; }
+fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); emit_jsonl_check "$1" 0; }
 
 if [ "${ABLATE_GATES:-}" = "1" ]; then
   echo "validate-audit-coverage: ABLATE_GATES=1 — verify/check-all battery skipped; asserting all 5 in-scope blockers go uncaught" >&2
+  # NB: the shell-level assertion ("confirmed uncaught") succeeding is
+  # reported as PASS in RESULTS/PASS below, but the JSONL record's `pass`
+  # field encodes whether the underlying CAPABILITY functions — which, with
+  # the battery ablated, it does not. Emitting `1` here would invert the
+  # mechanical-uplift signal (score_off would read as high, not low).
   for blocker in "agentmEngine#0" "agentmEngine#1" "agentmExperience#0" "agTrack#0" "voice#0"; do
-    pass "ablate: $blocker is NOT caught (verify/check-all battery skipped — no gate ran)"
+    RESULTS+=("  PASS  ablate: $blocker is NOT caught (verify/check-all battery skipped — no gate ran)")
+    PASS=$((PASS+1))
+    emit_jsonl_check "ablate: $blocker is NOT caught (verify/check-all battery skipped — no gate ran)" 0
   done
   echo
   if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi

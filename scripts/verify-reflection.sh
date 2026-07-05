@@ -132,12 +132,35 @@ print(','.join(confidences))
 " 2>&1)"
   assert_contains "fault: unfiltered machine-source bait classifies HIGH (fixture is faithful)" "$OUT" "HIGH"
 elif [ "$ABLATE" = "1" ]; then
-  # ── ablate: same tri-lane fixture, writes suppressed (no --execute) ──────
+  # ── ablate: re-run the same tri-lane discovery, but omit --execute
+  # (reflect.py's own dry-run default) — writes are suppressed. Discovery
+  # still counts the transcript (dry-run doesn't change what's found, only
+  # whether it's written), so that check is unchanged; the genuine
+  # degradation is the operator's preference no longer landing in the vault
+  # — same check name as the on-state's own, emitted with pass=0 directly
+  # (the shell-level report still reads PASS: this is the correctly-
+  # expected ablated behavior, same convention as VERIFY_REFLECTION_FAULT).
   for mode in auto silent interactive; do
     V="$(mktemp -d)"
-    env MEMORY_VAULT_PATH="$V" "$PY" "$S/reflect.py" corpus \
-      --projects-root "$ROOT" --vault-path "$V" --route-mode "$mode" >/dev/null 2>&1
-    assert_absent_in_tree "ablate: [$mode] zero carryover — nothing lands in the vault with writes suppressed" "$V" "kebab-case"
+    CORPUS_OUT="$(env MEMORY_VAULT_PATH="$V" "$PY" "$S/reflect.py" corpus \
+      --projects-root "$ROOT" --vault-path "$V" --route-mode "$mode" 2>&1)"
+    TOTAL="$("$PY" -c "
+import json,sys
+try: print(json.loads('''$CORPUS_OUT'''.splitlines()[-1] if False else '''$CORPUS_OUT''').get('total_transcripts'))
+except Exception:
+    import re
+    m = re.search(r'\"total_transcripts\":\s*(\d+)', '''$CORPUS_OUT''')
+    print(m.group(1) if m else 'ERR')
+" 2>/dev/null)"
+    assert_equals "2. [$mode] discovery finds exactly 1 transcript (subagents/ excluded)" "${TOTAL:-ERR}" "1"
+    assert_absent_in_tree "2. [$mode] machine-source bait never lands anywhere in the vault" "$V" "recursive-descent"
+    if grep -rqF "kebab-case" "$V" 2>/dev/null; then
+      fail "2. [$mode] operator's genuine preference IS saved to the vault" "expected absent under ABLATE_REFLECTION=1 — found it"
+    else
+      RESULTS+=("  PASS  ablate: [$mode] zero carryover — operator's genuine preference is NOT saved with writes suppressed")
+      PASS=$((PASS+1))
+      emit_jsonl_check "2. [$mode] operator's genuine preference IS saved to the vault" 0
+    fi
     rm -rf "$V"
   done
 else
