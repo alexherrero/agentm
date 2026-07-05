@@ -12,7 +12,13 @@ name: "[T] CI All"
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - 'wiki/**'
+      - '**/*.md'
   pull_request:
+    paths-ignore:
+      - 'wiki/**'
+      - '**/*.md'
 
 jobs:
   aggregate:
