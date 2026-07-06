@@ -279,7 +279,7 @@ def register_tools(mcp) -> None:
                 f"save_entry wrote outside the vault root — rejected: {written}"
             )
         return {
-            "id": str(written.relative_to(vault)),
+            "id": written.relative_to(vault).as_posix(),
             "slug": slug,
             "deduplicated": False,
         }

@@ -697,6 +697,28 @@ class TestWriterTwoRouting(unittest.IsolatedAsyncioTestCase):
         # Confirm it's strictly inside the vault root (no repo-path escape).
         entry_path.resolve().relative_to(self._vault.resolve())  # raises ValueError on escape
 
+    async def test_append_id_uses_posix_separators(self):
+        """memory_append's returned id must use forward slashes, even on Windows.
+
+        Every other part of the MCP surface (memory_search results, the id
+        parameter memory_forget expects) treats ids as POSIX-style relative
+        paths. Path.relative_to() alone yields OS-native separators, which on
+        Windows would emit backslashes and break that contract silently.
+        """
+        import memory_mcp_tools
+        transport = FastMCPTransport(_srv.mcp)
+        async with Client(transport) as client:
+            res = await client.call_tool("memory_append", {
+                "content": "posix id proof",
+                "kind": "feedback",
+                "title": "posix-id-test",
+                "project": "demo-project",
+            })
+        entry_id = res.data["id"]
+        self.assertNotIn("\\", entry_id, f"id contains a backslash: {entry_id!r}")
+        self.assertIn("/", entry_id, f"id has no path separator at all: {entry_id!r}")
+        self.assertEqual(entry_id, Path(entry_id).as_posix())
+
     def test_seam_backend_in_mcp_tools_import(self):
         """DeviceLocalBackend is imported in memory_mcp_tools (proves memory_forget's
         write routes through the storage seam, which composes vault_lock's atomic_write
