@@ -157,8 +157,8 @@ class TestAdopt(unittest.TestCase):
         """Sanity check against the real repo tree — a manifest with no
         activation axes declared still adopts cleanly (backward compat)."""
         repo_root = Path(__file__).resolve().parent.parent
-        # rememberer.md is real and always present per test_check_personas.py.
-        result = pr.adopt("rememberer", "interactive", root=repo_root)
+        # brain.md is real and always present per test_check_personas.py.
+        result = pr.adopt("brain", "interactive", root=repo_root)
         self.assertTrue(result["adopted"], result["violations"])
 
 

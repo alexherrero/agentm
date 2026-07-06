@@ -167,6 +167,8 @@ Fully reversible. The tier is additive: removing `personas/`, the `kind: persona
 
 ## Amendment log
 
+**2026-07-06 — `rememberer.md` → `brain.md` rename closed.** The manifest file rename this tier's prose already assumed throughout is done — `personas/rememberer.md` is now `personas/brain.md` (frontmatter `name:` included), with test fixtures and reference pages updated to match. The four-new-manifest-axes item (below) stays open.
+
 **2026-07-06 — build-part 3 ships; all four parts now as-built (AG Wave B leader 4/5).** The on-demand load + surfacing path this tier left `[PENDING-IMPL]` since V5-11 is built — see the [persona activation](agentm-persona-activation) design (`persona_resolve.py`'s `adopt()` pipeline, `persona_compile.py`'s per-host launch compile, `install.sh`'s persona-walk). The Planner (TPM) manifest can now actually be activated. **Two items stay open, and are explicitly NOT this design's doing:** the `rememberer.md` → `brain.md` file rename this tier's own prose already assumes throughout, and adding the four new manifest axes to the two existing personas — both are code work, not documentation, so neither happened in this wiki-authorship pass.
 
 **2026-06-28 — lock-down sweep (operator review).** Removed the redundant `## Document History` table (the AG convention is amendment-log-only; its build status lives in the launched NOTE, its rationale in the folded ADR 0016 below, granular history in git). No content change to the tier contract. Locked as a v5–v8 guidepost.

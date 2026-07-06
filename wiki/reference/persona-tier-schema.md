@@ -1,7 +1,7 @@
 # Persona tier — schema and gate reference
 
 > [!NOTE]
-> **Status: implemented** — V5-12 shipped the primitive (tasks 1–3): gate (`scripts/check-personas.py`), degenerate persona (`personas/rememberer.md`), CI on Linux/macOS/Windows. V5-11 shipped the first real composed persona (`personas/team-coordinator.md`): `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`.
+> **Status: implemented** — V5-12 shipped the primitive (tasks 1–3): gate (`scripts/check-personas.py`), degenerate persona (`personas/brain.md`), CI on Linux/macOS/Windows. V5-11 shipped the first real composed persona (`personas/team-coordinator.md`): `requires: [queue_status_lite]`, `enhances: [developer-workflows, github-projects]`.
 
 This page documents the `kind: persona` manifest primitive and the `check-personas` static gate.
 
@@ -26,17 +26,17 @@ Every file under `personas/*.md` must open with a YAML frontmatter block delimit
 | Field | Required | Type | Notes |
 |---|---|---|---|
 | `kind` | yes | string | Must be exactly `"persona"`. |
-| `name` | yes | string | Slug identifying this persona (e.g. `rememberer`). |
+| `name` | yes | string | Slug identifying this persona (e.g. `brain`). |
 | `requires` | yes | list[string] | Hard substrate deps. Every entry must be the stem of a file in `scripts/` (`<stem>.py` or `<stem>.sh`). Empty list is valid. |
 | `enhances` | yes | list[string] | Soft capability deps. Any capability name is accepted; unmet entries are not errors. See [Soft-Composition](Soft-Composition). |
 | `always_load` | no | bool | Must be absent or `false`. Setting to `true` is a gate violation (see the [persona-tier design](persona-tier)). Both spellings (`always_load` and `always-load`) are checked. |
 
-### Example: the degenerate persona (`personas/rememberer.md`)
+### Example: the degenerate persona (`personas/brain.md`)
 
 ```yaml
 ---
 kind: persona
-name: rememberer
+name: brain
 requires: []
 enhances: []
 description: >
@@ -104,7 +104,7 @@ The gate enforces two invariants (both in the `_check_one()` function in `script
 
 | Class | Tests |
 |---|---|
-| `TestPass` | rememberer-like, valid substrate requires, no personas dir, empty dir, real tree |
+| `TestPass` | brain-like, valid substrate requires, no personas dir, empty dir, real tree |
 | `TestRejectNonSubstrateRequires` | crickets capability rejected, unknown name rejected |
 | `TestRejectAlwaysLoad` | `always_load` underscore rejected, `always-load` hyphen rejected |
 | `TestMiscValidation` | wrong `kind:` rejected, `.sh` stem accepted |

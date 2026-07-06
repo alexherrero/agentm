@@ -2,7 +2,7 @@
 """Unit tests for check-personas.py.
 
 Covers Task 2 verification:
-  - Valid persona (rememberer-like, empty requires) passes.
+  - Valid persona (brain-like, empty requires) passes.
   - Persona with a non-substrate requires: entry is REJECTED.
   - Persona with always_load: true is REJECTED.
   - Real tree (the actual personas/ directory) passes.
@@ -53,10 +53,10 @@ def _make_root(tmp: str, personas: dict[str, str],
     return tmp
 
 
-_REMEMBERER_LIKE = """\
+_BRAIN_LIKE = """\
 ---
 kind: persona
-name: rememberer
+name: brain
 requires: []
 enhances: []
 ---
@@ -116,10 +116,10 @@ Valid: requires entries exist in scripts/ as .py files.
 
 class TestPass(unittest.TestCase):
 
-    def test_rememberer_like_passes(self):
+    def test_brain_like_passes(self):
         """A persona with empty requires and no always-load passes."""
         with tempfile.TemporaryDirectory() as t:
-            root = _make_root(t, {"rememberer.md": _REMEMBERER_LIKE})
+            root = _make_root(t, {"brain.md": _BRAIN_LIKE})
             rc = _main(["check-personas.py", "--root", root])
         self.assertEqual(rc, 0)
 
