@@ -49,10 +49,12 @@ _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "kind", "status", "created", "updated", "tags", "group", "slug",
-    "always_load", "supersedes", "heat_pin",
+    "fingerprint", "always_load", "supersedes", "heat_pin",
 )
 # Required fields = every field except the optional ones.
-_OPTIONAL_FIELDS = frozenset({"supersedes", "heat_pin"})
+# `fingerprint` is written only by callers that pass one (the diagnostics
+# recall ladder, wave-c-diagnostics) -- optional alongside supersedes/heat_pin.
+_OPTIONAL_FIELDS = frozenset({"fingerprint", "supersedes", "heat_pin"})
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
 )
@@ -97,12 +99,17 @@ def _build_frontmatter(
     tags: list[str],
     always_load: bool,
     supersedes: str | None,
+    fingerprint: str | None = None,
 ) -> str:
     """Build the locked-order YAML frontmatter for a memory entry.
 
     Field order is locked for deterministic diffs:
-      kind / status / created / updated / tags / group / slug / always_load /
-      supersedes (omitted if None).
+      kind / status / created / updated / tags / group / slug / fingerprint
+      (omitted if None) / always_load / supersedes (omitted if None).
+
+    `fingerprint` is the V6-11 recall-ladder join key (agentm-memory-index.md;
+    wave-c-diagnostics): omitted unless a caller passes one, so every existing
+    entry kind's frontmatter is unaffected.
     """
     today = _today_iso()
     # Build the tags list inline (`[]` if empty, `[a, b, c]` otherwise).
@@ -116,8 +123,10 @@ def _build_frontmatter(
         f"tags: {tags_yaml}",
         f"group: {group}",
         f"slug: {slug}",
-        f"always_load: {'true' if always_load else 'false'}",
     ]
+    if fingerprint:
+        lines.append(f"fingerprint: {fingerprint}")
+    lines.append(f"always_load: {'true' if always_load else 'false'}")
     if supersedes:
         lines.append(f"supersedes: {supersedes}")
     lines.append("---")
@@ -134,6 +143,7 @@ def save_entry(
     always_load: bool = False,
     tags: list[str] | None = None,
     supersedes: str | None = None,
+    fingerprint: str | None = None,
 ) -> Path:
     """Write a memory entry to the vault. Returns the absolute path written.
 
@@ -197,6 +207,7 @@ def save_entry(
         tags=tags,
         always_load=always_load,
         supersedes=supersedes,
+        fingerprint=fingerprint,
     )
     # Ensure body ends with single trailing newline.
     body_stripped = body.rstrip("\n")
@@ -282,6 +293,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="path to entry this one supersedes (sets supersedes: frontmatter)",
     )
     parser.add_argument(
+        "--fingerprint",
+        default=None,
+        help="V6-11 recall-ladder join key (sets fingerprint: frontmatter)",
+    )
+    parser.add_argument(
         "--body-file",
         default="-",
         help=(
@@ -334,6 +350,7 @@ def main(argv: list[str] | None = None) -> int:
             always_load=args.always_load,
             tags=tags,
             supersedes=args.supersedes,
+            fingerprint=args.fingerprint,
         )
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
