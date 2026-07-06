@@ -38,7 +38,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from vault_lock import atomic_write, vault_mutex  # noqa: E402
+from vault_lock import vault_mutex  # noqa: E402
+from storage_device_local import DeviceLocalBackend  # noqa: E402
 
 try:
     import yaml  # PyYAML is already a toolkit dep via validate-manifests.py
@@ -262,23 +263,31 @@ def evolve_entry(
     }
     new_content = _compose_entry(new_fm, new_body)
 
-    # V5-0: serialize the WHOLE archive→new-entry(→unlink) sequence under ONE
-    # per-vault advisory mutex so a concurrent writer can't interleave between
-    # the archive write and the new-entry write (a single acquisition, not two).
-    # Every target is per-slug / create-style — the archive path is collision-
-    # unique (see _compute_archive_path) and the entry is this slug's own file —
-    # so mutex-only, NO CAS (DC-2: per-slug entry files are partitioned by
-    # ownership). atomic_write creates parent dirs + lands each file via
-    # temp(same dir)→fsync→rename; bytes-mode keeps LF byte-exact.
+    # V5-0 + V5-14: serialize the WHOLE archive→new-entry(→unlink) sequence
+    # under ONE per-vault advisory mutex so a concurrent writer can't
+    # interleave between the archive write and the new-entry write (a single
+    # acquisition, not two). Every target is per-slug / create-style — the
+    # archive path is collision-unique (see _compute_archive_path) and the
+    # entry is this slug's own file — so mutex-only, NO CAS (DC-2: per-slug
+    # entry files are partitioned by ownership). Both writes route through
+    # the storage seam's `write` verb (agentm-memory-index.md /
+    # agentm-memory-system.md) — same V5-0 primitives underneath
+    # (temp(same dir)→fsync→rename, bytes-mode), routed through a seam verb
+    # rather than calling atomic_write directly. The rename-path unlink
+    # (below) is deliberately NOT routed through the seam — it's not one of
+    # save/recall/forget (memory_forget is a soft-delete status flip, never
+    # an unlink, per the MCP contract); this is evolve's own in-place-rename
+    # bookkeeping, out of V5-14's scope.
+    backend = DeviceLocalBackend(root=vault)
     with vault_mutex(vault):
         # Archive first (additive), then the new entry.
-        atomic_write(archive_path, archive_content)
+        backend.write(backend.resolve(*archive_path.relative_to(vault).parts), archive_content)
         if new_path == old:
             # In-place: overwrite the old path with the new entry.
-            atomic_write(new_path, new_content)
+            backend.write(backend.resolve(*new_path.relative_to(vault).parts), new_content)
         else:
             # Renamed: write the new path, then delete the old.
-            atomic_write(new_path, new_content)
+            backend.write(backend.resolve(*new_path.relative_to(vault).parts), new_content)
             old.unlink()
 
     # Enqueue async vec-index ops (task 4):

@@ -16,8 +16,16 @@ consumer called memory_recall.
 Call register_tools(mcp) to attach all three tools to a FastMCP server instance.
 This module has no side effects at import time — safe for in-process test clients.
 
-Requires Python >=3.10.  Imports: harness_memory, vault_lock (in scripts/ on
-PYTHONPATH), PyYAML, and the memory toolkit via importlib.util.
+Requires Python >=3.10.  Imports: harness_memory, storage_device_local (the
+seam's device-local StorageBackend — in scripts/ on PYTHONPATH), PyYAML, and
+the memory toolkit via importlib.util.
+
+V5-14 (agentm-memory-index.md / agentm-memory-system.md): every write this
+module makes routes through `DeviceLocalBackend`'s seam verbs rather than
+calling `vault_lock.atomic_write` directly — MCP is a client of the seam,
+never a backend of it (the sole exception left outside this module's own
+scope: `_save.save_entry` and `recall.query`, called below, already route
+through the seam themselves as of the same V5-14 change).
 """
 from __future__ import annotations
 
@@ -32,7 +40,7 @@ from typing import Optional
 import yaml
 
 import harness_memory
-import vault_lock
+from storage_device_local import DeviceLocalBackend
 
 # ── toolkit loader ────────────────────────────────────────────────────────────
 
@@ -94,8 +102,15 @@ def _idem_tag(key: str) -> str:
 
 
 def _find_by_idem_tag(vault: Path, tag: str) -> Optional[dict]:
-    """Walk the vault for an entry carrying `tag`.  Returns path dict or None."""
-    for md in vault.rglob("*.md"):
+    """Walk the vault for an entry carrying `tag`.  Returns path dict or None.
+
+    V5-14: routed through `recall._iter_entry_paths` (already seam-routed —
+    see recall.py) rather than a raw `vault.rglob`. This narrows the walk to
+    skip `_archive/` (which the raw rglob didn't), a deliberate, defensible
+    refinement: an idempotency-tag lookup has no reason to match an already-
+    archived/superseded entry.
+    """
+    for md in _recall._iter_entry_paths(vault, include_inbox=True):
         try:
             content = md.read_text(errors="replace")
         except OSError:
@@ -309,6 +324,16 @@ def register_tools(mcp) -> None:
             fm["delete_reason"] = reason
 
         new_content = _replace_frontmatter(content, fm)
-        vault_lock.atomic_write(entry_path, new_content)
+        # V5-14: the soft-delete write routes through the seam's `write`
+        # verb (same V5-0 primitives underneath) rather than calling
+        # vault_lock.atomic_write directly — MCP is a client of the seam,
+        # never a backend of it. Locator built from `id` directly (already
+        # validated above as vault-relative) rather than re-deriving it from
+        # `entry_path.relative_to(vault)` — entry_path was resolved (symlinks
+        # followed) above but `vault` was not, so on a host where the vault
+        # sits under a symlinked path (e.g. macOS's /tmp -> /private/tmp)
+        # that relative_to call raises spuriously.
+        backend = DeviceLocalBackend(root=vault)
+        backend.write(backend.resolve(*Path(id).parts), new_content)
 
         return {"id": id, "status": "deleted", "already_deleted": False}

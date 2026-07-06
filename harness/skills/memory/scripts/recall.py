@@ -465,31 +465,44 @@ def _iter_entry_paths(
     Does NOT filter by frontmatter `status` (that happens at match time).
     Walks `<vault>/**` so all groups (`personal/`, `work-public/`,
     future per-group dirs) are covered uniformly.
+
+    V5-14 (agentm-memory-index.md / agentm-memory-system.md): the walk
+    routes through the storage seam's `list`/`info` verbs
+    (`DeviceLocalBackend`, recursing manually — the seam's `list` is one
+    directory level, not a recursive walk) rather than a raw `os.walk`.
+    Still returns `Path` objects (Locator -> `vault.joinpath(*parts)`) so
+    every downstream caller (`_grep_search`, deadline checks, `.relative_to`)
+    is unchanged — the seam-routing is internal to this function.
     """
     out: list[Path] = []
     if not vault.exists():
         return out
-    # _iter_entry_paths doesn't take a deadline itself — callers do per-file
-    # deadline checks during read. The walk is bounded by filesystem speed
-    # (typically microseconds per dirent on local FS / Obsidian-vault on
-    # Google Drive can be slower → another reason callers must check
-    # deadline per-file rather than relying on this list to be cheap).
-    for dirpath, dirnames, filenames in os.walk(vault):
-        # Prune excluded subdirs in-place (os.walk respects mutation).
-        pruned: list[str] = []
-        for d in dirnames:
-            if d in _EXCLUDE_DIR_NAMES:
+    from storage_device_local import DeviceLocalBackend  # noqa: E402 (lazy, mirrors _vec_search's pattern)
+    backend = DeviceLocalBackend(root=vault)
+
+    def _walk(locator) -> None:
+        try:
+            children = backend.list(locator)
+        except Exception:
+            return
+        for child in children:
+            name = child.name
+            try:
+                info = backend.info(child)
+            except FileNotFoundError:
                 continue
-            if d == _INBOX_DIR_NAME and not include_inbox:
-                continue
-            if d.startswith("."):
-                continue
-            pruned.append(d)
-        dirnames[:] = pruned
-        for fname in filenames:
-            if not fname.endswith(".md"):
-                continue
-            out.append(Path(dirpath) / fname)
+            if info.is_dir:
+                if name in _EXCLUDE_DIR_NAMES:
+                    continue
+                if name == _INBOX_DIR_NAME and not include_inbox:
+                    continue
+                if name.startswith("."):
+                    continue
+                _walk(child)
+            elif name.endswith(".md"):
+                out.append(vault.joinpath(*child.parts))
+
+    _walk(backend.resolve())
     return out
 
 
@@ -518,6 +531,11 @@ def _grep_search(
     if not query_tokens:
         return {}
     results: dict[str, int] = {}
+    # V5-14: reads route through the seam's `read` verb rather than a raw
+    # Path.read_text — same bytes-mode utf-8 decode DeviceLocalBackend.read
+    # always did underneath, just called through the seam.
+    from storage_device_local import DeviceLocalBackend  # noqa: E402
+    backend = DeviceLocalBackend(root=vault)
     for md_path in _iter_entry_paths(vault, include_inbox=include_inbox):
         if deadline is not None and time.monotonic() >= deadline:
             break
@@ -526,7 +544,7 @@ def _grep_search(
         # a non-UTF-8 editor or a cross-platform sync corrupted the encoding).
         # Skip the entry rather than crash the whole walk.
         try:
-            content = md_path.read_text(encoding="utf-8")
+            content = backend.read(backend.resolve(*md_path.relative_to(vault).parts))
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)

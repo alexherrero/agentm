@@ -33,7 +33,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from vault_lock import atomic_write, vault_mutex  # noqa: E402
+from vault_lock import vault_mutex  # noqa: E402
+from storage_device_local import DeviceLocalBackend  # noqa: E402
 
 # Validation regexes (must match the skill body's documented contracts).
 _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
@@ -201,17 +202,22 @@ def save_entry(
     body_stripped = body.rstrip("\n")
     content = fm + "\n" + body_stripped + "\n"
 
-    # V5-0: route the per-slug entry write through the one per-vault advisory
-    # mutex + the canonical atomic writer. The mutex gives torn-write safety
-    # when two writers race the same target's <name>.tmp path; atomic_write
-    # lands the bytes via temp(same dir)→fsync→rename. Bytes-mode (str encoded
-    # utf-8, no newline translation) keeps LF-only line endings byte-exact
-    # across Mac/Linux/Windows — the V4 Windows-CI fix the bare write_bytes
-    # here used to own, now owned by atomic_write. This is a per-slug CREATE
-    # (the FileExistsError guard above forbids overwrite), so mutex-only — no
-    # CAS (DC-2: per-slug entry files are partitioned by ownership).
+    # V5-0 + V5-14: route the per-slug entry write through the one per-vault
+    # advisory mutex + the storage seam's `write` verb (agentm-memory-index.md
+    # / agentm-memory-system.md — entries now reach disk through the same
+    # StorageBackend contract harness state already used, not a raw
+    # atomic_write call). `DeviceLocalBackend(root=vault).write()` composes
+    # the identical V5-0 primitives (temp(same dir)→fsync→rename, bytes-mode)
+    # as before — same bytes on disk, routed through a seam verb instead of
+    # calling the primitive directly. The mutex gives torn-write safety when
+    # two writers race the same target's <name>.tmp path. This is a per-slug
+    # CREATE (the FileExistsError guard above forbids overwrite), so
+    # mutex-only — no CAS (DC-2: per-slug entry files are partitioned by
+    # ownership).
+    backend = DeviceLocalBackend(root=vault)
+    locator = backend.resolve(*target.relative_to(vault).parts)
     with vault_mutex(vault):
-        atomic_write(target, content)
+        backend.write(locator, content)
 
     # Enqueue async embedding + vec-index upsert (task 4).
     # File write is complete; queueing is fast + synchronous + never raises

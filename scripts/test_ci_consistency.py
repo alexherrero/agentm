@@ -47,6 +47,7 @@ UNIT_WRAPPED = {
     "check-opinion-honesty.py": "test_check_opinion_honesty.py",
     "check-opinion-resolver-one-way.py": "test_check_opinion_resolver_one_way.py",
     "check-process-seam-import-direction.sh": "test_process_seam.py",
+    "check-storage-seam-vendor-parity.sh": "test_check_storage_seam_vendor_parity.py",
     "check-slop.py": "test_check_slop.py",
     "check-storage-seam-no-path-leak.py": "test_storage_seam.py",
     "check-workflow-parity.sh": "test_check_workflow_parity.py",

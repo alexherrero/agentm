@@ -690,11 +690,18 @@ class TestWriterTwoRouting(unittest.IsolatedAsyncioTestCase):
         # Confirm it's strictly inside the vault root (no repo-path escape).
         entry_path.resolve().relative_to(self._vault.resolve())  # raises ValueError on escape
 
-    def test_vault_lock_in_mcp_tools_import(self):
-        """vault_lock is imported in memory_mcp_tools (proves memory_forget uses the lock lib)."""
+    def test_seam_backend_in_mcp_tools_import(self):
+        """DeviceLocalBackend is imported in memory_mcp_tools (proves memory_forget's
+        write routes through the storage seam, which composes vault_lock's atomic_write
+        internally). Updated for V5-14 (agentm-memory-index.md): the write path moved
+        from a direct `vault_lock.atomic_write` call to `DeviceLocalBackend.write()` —
+        the same underlying primitive, reached through the seam's verb instead of
+        called directly. The prior assertion (a bare `vault_lock` import) checked the
+        pre-V5-14 wiring; this checks the same intent (the concurrency-safe write
+        floor is wired in) against the new contract."""
         import memory_mcp_tools
-        self.assertIn("vault_lock", memory_mcp_tools.__dict__,
-                      "vault_lock not imported in memory_mcp_tools — write path not wired")
+        self.assertIn("DeviceLocalBackend", memory_mcp_tools.__dict__,
+                      "DeviceLocalBackend not imported in memory_mcp_tools — seam-routed write path not wired")
 
     async def test_forget_write_is_atomic(self):
         """After memory_forget, the file is a complete parseable YAML with status=deleted + valid deleted_at."""
