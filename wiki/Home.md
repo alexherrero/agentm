@@ -49,4 +49,4 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 ---
 
 > [!NOTE]
-> **Latest release: [v5.11.0](https://github.com/alexherrero/agentm/releases/tag/v5.11.0).** AgentM is now dual-licensed — code under Apache-2.0, documentation and prompts under CC-BY-4.0 — with a trademark policy for the name. Its full architecture is written up as living designs in the wiki, and release-cutting now comes from crickets' `ship-release` skill.
+> **Latest release: [v5.12.0](https://github.com/alexherrero/agentm/releases/tag/v5.12.0).** The runner, an opinion registry, richer memory metadata with filtered recall, persona activation, and storage-seam convergence all land together — the full Architecture-Governance Wave B.
