@@ -24,4 +24,12 @@ regexes = [
 paths = [
     # The gitleaks config itself
     '''\.gitleaks\.toml''',
+    # Deliberately constructs secret-shaped fixtures (fake GitHub PAT, fake
+    # OpenAI-style key) to test privacy_scrub.scrub_pii()'s redaction —
+    # found live 2026-07-06 running PLAN-per-plan-ci's nightly main-HEAD
+    # backstop for the first time: the PR-scoped pii-guardrails job's gitleaks
+    # scan never happened to touch this file's line in a recent diff, but the
+    # nightly job's full-history scan (gitleaks-action's own workflow_dispatch/
+    # schedule behavior) does, and flagged the ghp_ fixture as a real secret.
+    '''scripts/test_privacy_scrub\.py''',
 ]
