@@ -4,7 +4,9 @@ status: launched
 kind: design
 scope: feature
 area: agentm/runner
-governs: []
+governs:
+  - scripts/runner/**
+  - scripts/agentm-runner.sh
 parent: agentm-hld.md
 seeded: 2026-06-26
 approved: 2026-06-26
@@ -42,7 +44,7 @@ output:    <vault path | digest>                    # where results land; the ru
 gate:      <optional>                             # only run if a condition holds, e.g. ≥N new entries since last run
 ```
 
-The runner reads every manifest each cycle, decides which jobs are due (`schedule` + last-run + `lookback` + any `gate`), runs them within `budget`, and routes `output` by the target's ownership tier (T3 free · T2 reported in the digest · T1 never a job target). [PENDING-IMPL — the schema ships with the runner; the documenter flips this to as-built when `scripts/runner/` lands.]
+The runner reads every manifest each cycle, decides which jobs are due (`schedule` + last-run + `lookback` + any `gate`), runs them within `budget`, and routes `output` by the target's ownership tier (T3 free · T2 reported in the digest · T1 never a job target). **As-built (2026-07-06):** the schema, the due-decision cycle, dry-run-until-promoted, ownership-tier write routing, and the throttle-pause-stop watchdog all ship in `scripts/runner/` — see Migrations. The host-trigger wiring (Claude Desktop / Antigravity Scheduled Tasks, OS cron) still needs a hands-on Antigravity 2.0 verification pass before its own status flips (Risks).
 
 ### Who runs on it (the consumers, one-way-up)
 
@@ -102,10 +104,10 @@ Background jobs spend tokens unattended, so two rules govern the spend:
 
 ## Migrations
 
-- **Downgrade the consumers' status language** from "designed" to "blocked on the runner" until it ships, so no design reads as independently buildable when it depends on an unbuilt substrate.
-- **Name the single-cycle idiom as a `conventions` shape** (cooldown-gated, cursor-backed, idempotent, opt-in, surface-don't-adopt) and point diagnostics / research / wiki-drift at it.
-- **Lift the V6-11 spec** into `wiki/designs/` (sibling task; the runner only references it).
-- **Re-assess `crickets/wiki/reference/Antigravity-Limitations.md` row #1** (the "no installable trigger path for a shipped plugin" gap) against Antigravity 2.0 Scheduled Tasks — the operator-facing feature now exists; confirm hands-on whether a *shipped plugin* can install a scheduled task, and update the row.
+- **Done (2026-07-06).** The runner shipped (`scripts/runner/`) — a consumer design blocked on the runner *existing* is unblocked; what remains for forward learning, dreaming, diagnostics, and research is each consumer's own build, not this substrate. Their `[PENDING-IMPL]` markers stay (nothing about them shipped), but the framing changes: read "blocked on the runner" as closed, not as still-open.
+- **Name the single-cycle idiom as a `conventions` shape** (cooldown-gated, cursor-backed, idempotent, opt-in, surface-don't-adopt) and point diagnostics / research / wiki-drift at it — done; see [crickets-conventions](https://github.com/alexherrero/crickets/wiki/crickets-conventions) § The single-cycle shape.
+- **Done.** Lifted the V6-11 spec into `wiki/designs/` — see [agentm-memory-index](agentm-memory-index), authored + finalized 2026-06-26, ahead of this bullet ever needing to act on it.
+- **Still open.** Re-assess `crickets/wiki/reference/Antigravity-Limitations.md` row #1 (the "no installable trigger path for a shipped plugin" gap) against Antigravity 2.0 Scheduled Tasks — needs a hands-on check against the real Antigravity app, which no session so far has had access to. Do not flip that row until someone actually verifies it.
 
 ## Risks & open questions
 
@@ -127,6 +129,8 @@ Background jobs spend tokens unattended, so two rules govern the spend:
 - the wiki-watch cycle (crickets) — the single-cycle idiom the runner generalizes.
 
 ## Amendment log
+
+**2026-07-06 — core build lands (AG Wave B leader 1/5).** `scripts/runner/` ships: the job-manifest schema + loader (`manifest.py`), the due-decision cycle with orphan-start crash recovery (`cycle.py`), local per-job state (`state.py`), dry-run-until-promoted, T2/T3 ownership-tier write routing through `vault_lock.py` as the third writer, a daily-USD budget ceiling, and a throttle-pause-stop watchdog (`watchdog.py`) — plus `scripts/agentm-runner.sh`, the uniform entry point all three triggers (host scheduled task, on-demand, OS cron) invoke identically. 22 tests. `governs:` now points at `scripts/runner/**`. Two items stay open: the host-trigger hands-on Antigravity verification (no session so far has had access to the app), and naming the single-cycle idiom as a `conventions` shape in crickets (done same day, see Migrations). Re-audit trigger: flip the host-trigger row once someone verifies it hands-on.
 
 **2026-06-28 — lock-down sweep (operator review).** All standing fixes clean (diagram sized; no mermaid; no ADR mentions; log already newest-first). Confirmed the DBOS reversal (rides the host scheduler; reverses locked-decision #4; no resident daemon) and the tiered `vault_lock` write discipline. The ROADMAP-MASTER scheduler→runner / “rides DBOS” reconciliation stays a queued roadmap-session followup. No content change. Locked as a v5–v8 guidepost.
 

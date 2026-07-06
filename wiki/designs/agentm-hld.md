@@ -57,7 +57,7 @@ Each pillar, and the components that make it real:
 
 ### Memory — what it has learned
 
-The durable record: everything agentm knows, kept on disk so it survives a session ending. This is the largest pillar and the ground the other three stand on. Its discipline is **one port** — every caller reaches storage the same way, through a single seam. *(As-built caveat: two write paths — direct entry writes and the MCP server — still reach around the seam; routing them through it is the designed **V5-14** convergence, not yet built.)*
+The durable record: everything agentm knows, kept on disk so it survives a session ending. This is the largest pillar and the ground the other three stand on. Its discipline is **one port** — every caller reaches storage the same way, through a single seam. *(As-built: **V5-14** shipped 2026-07-06 — memory entries and the MCP server now route through the seam too, closing the two write paths that used to reach around it.)*
 
 **Components:**
 - **Memory engine** — the verbs (`save` · `recall` · `forget`) and the cross-cutting logic that lives exactly once (idempotency, content-hash CAS, soft-delete, token-budgeted recall, link integrity).
@@ -73,7 +73,7 @@ The durable record: everything agentm knows, kept on disk so it survives a sessi
 
 **Where it touches crickets:** the `obsidian-vault` backend ships as a crickets plugin, depending one-way *up* on the seam; harness-state is shared with crickets' phase tools; and the availability-query is the runtime half of crickets' `enhances:` composition.
 
-*Detail — the seam contract, the write protocol, the recall loop, the storage-serving layers, the memory layers, and the V5-14 as-built/target gap — in the [Memory System design](agentm-memory-system.md).*
+*Detail — the seam contract, the write protocol, the recall loop, the storage-serving layers, and the memory layers — in the [Memory System design](agentm-memory-system.md).*
 
 ### Experience — what's worked before, and what's worth knowing
 
@@ -190,6 +190,8 @@ The component-level sources now live in each pillar's child design (linked above
 
 ## Amendment log
 
+**2026-07-06 — AG Wave B lands four of five substrate leaders.** Flipped the **one-port** caveat to as-built (V5-14 shipped — memory entries + the MCP server now route through the seam) and reconciled the Honesty-calls line: the runner, the Opinion registry, and persona activation shipped alongside V5-14. Forward learning is the sole item still designed, not built, from the original five. See [Runner](agentm-runner.md), [Opinion Registry](agentm-opinion-registry.md), [Persona Activation](agentm-persona-activation.md), [Memory System](agentm-memory-system.md) for per-component detail.
+
 **2026-06-28 — lock-down sweep (operator review).** Sized the two diagrams (`width`/`height` so they render large); reworked the **References** persona-tier line to point at the living design rather than the retired ADR number; reordered this log newest-first. *Presentation + citation hygiene — no change to the four-pillar model.*
 
 **2026-06-28 — AG critique revisions (R7 · W4 · scheduler→runner).** Softened the **Growth** framing so memory-accumulation reads as today's truth and opinion-sharpening as the explicit designed next step (ruling 7 / critique §4). Added the **one-port** as-built caveat — direct entry writes + the MCP server still reach around the seam (the V5-14 convergence is designed, not built; W4). Renamed the agentm background-job primitive **scheduler → runner** through the Memory/Experience prose, pointing to the [Runner design](agentm-runner.md) (the host's scheduler stays the cron that fires it); the historical 2026-06-20 entry keeps its original wording. *Re-audit triggers:* flip the V5-14 + runner flags to as-built as each ships.
@@ -216,4 +218,4 @@ Authored 2026-06-19 from the ratified Overview (design-doc Appendix B) and a rea
 
 The review rounds settled the model. **Opinions** = four named, abstract surfaces a tool requests by name — what *done* looks like (the check battery is its implementation), what *good* looks like (adversarial review), what's *efficient* (a budget with a quality floor), and *how we engineer* (the phase discipline + the plan→design→architecture sizing ladder). **Experience** = **backward** (reflection from past sessions) + **forward** (scheduled, opt-in learning from approved sources), with a **scheduler**. **Personas** = a full model: a persona declares a stance + composition + the Opinions it leans on + its launch modes (sub-agent / interactive / loop / goal), and may be adopted explicitly or automatically; **Memory** is the pseudo-persona beneath all; the Coordinator is renamed **Planner**; the roster includes the **Architect/Designer split by scope**. **"Role" is retired** — a role *is* a persona, while crickets provides tools + packages — resolving design-doc §9.6.
 
-**Honesty calls:** forward learning, the scheduler, the request-by-name Opinion registry, the persona roster + adoption modes, and the MCP-server-as-seam-client storage convergence (**V5-14**) are **designed, not built**. **Approved 2026-06-20**; children content-final 2026-06-24 + lifted AG Phase 3. **Re-audit triggers:** flip each designed component to as-built as it ships; give every child its own voice/structure pass.
+**Honesty calls:** at approval (2026-06-20), forward learning, the scheduler (renamed runner), the request-by-name Opinion registry, the persona roster + adoption modes, and the MCP-server-as-seam-client storage convergence (**V5-14**) were **designed, not built**. **As of 2026-07-06 (AG Wave B), four of the five shipped:** the runner, the Opinion registry, persona activation (the roster's build-part 3 — on-demand load + the six-step `adopt()` pipeline + per-host launch compile), and V5-14 storage convergence. **Forward learning is the one still designed, not built.** Children content-final 2026-06-24 + lifted AG Phase 3. **Re-audit triggers:** flip forward learning to as-built when it ships; give every child its own voice/structure pass.
