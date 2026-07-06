@@ -322,10 +322,24 @@ class TestSchemaPin(unittest.TestCase):
         )
         keys = [line.split(":", 1)[0] for line in fm.splitlines()
                 if ":" in line and not line.startswith("---")]
-        # heat_pin is an optional field written by the heat policy only,
-        # not emitted by _build_frontmatter(); compare against the policy-writer subset.
-        expected = tuple(f for f in save.FRONTMATTER_FIELD_ORDER if f != "heat_pin")
+        # heat_pin is written by the heat policy only, and fingerprint only by
+        # callers that pass one (wave-c-diagnostics) -- neither is emitted by
+        # this default call; compare against the subset that always is.
+        expected = tuple(
+            f for f in save.FRONTMATTER_FIELD_ORDER if f not in ("heat_pin", "fingerprint")
+        )
         self.assertEqual(tuple(keys), expected)
+
+    def test_build_frontmatter_emits_fingerprint_when_provided(self):
+        fm = save._build_frontmatter(
+            kind="failure-incident", group="personal", slug="s", tags=[],
+            always_load=False, supersedes=None, fingerprint="abc123",
+        )
+        keys = [line.split(":", 1)[0] for line in fm.splitlines()
+                if ":" in line and not line.startswith("---")]
+        expected = tuple(f for f in save.FRONTMATTER_FIELD_ORDER if f not in ("heat_pin", "supersedes"))
+        self.assertEqual(tuple(keys), expected)
+        self.assertIn("fingerprint: abc123", fm)
 
 
 if __name__ == "__main__":

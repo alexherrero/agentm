@@ -19,6 +19,42 @@ if str(_SKILL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SKILL_SCRIPTS))
 
 import save  # noqa: E402
+import vec_index  # noqa: E402
+
+
+class TestFailureIncidentFingerprint(unittest.TestCase):
+    """wave-c-diagnostics task 4: save_entry(fingerprint=...) is the first real
+    writer for V6-11's entry_meta.fingerprint column (agentm-memory-index.md)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name) / "vault"
+        self.vault.mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_fingerprint_lands_in_frontmatter(self):
+        target = save.save_entry(
+            self.vault, "failure-incident", "crash-report",
+            "ValueError in classify", group="personal", fingerprint="abc123",
+        )
+        self.assertIn("fingerprint: abc123", target.read_text(encoding="utf-8"))
+
+    def test_fingerprint_round_trips_through_extract_meta(self):
+        target = save.save_entry(
+            self.vault, "failure-incident", "crash-report",
+            "ValueError in classify", group="personal", fingerprint="abc123",
+        )
+        meta = vec_index._extract_meta_from_file(target)
+        self.assertEqual(meta["fingerprint"], "abc123")
+
+    def test_fingerprint_omitted_when_not_provided(self):
+        target = save.save_entry(
+            self.vault, "failure-incident", "crash-report",
+            "ValueError in classify", group="personal",
+        )
+        self.assertNotIn("fingerprint:", target.read_text(encoding="utf-8"))
 
 
 class TestFailureIncidentScrub(unittest.TestCase):
