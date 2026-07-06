@@ -31,14 +31,17 @@ class TestFailureIncidentScrub(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_failure_incident_write_is_scrubbed(self):
+        # "alexherrero" is the allowlisted public GitHub handle
+        # (check-no-pii.sh) — keeps this fixture out of the PII pre-push
+        # scan while still exercising the real /Users/<name>/ path shape.
         target = save.save_entry(
             self.vault, "failure-incident", "crash-report",
-            "traceback: alex@example.com hit /Users/alex/project/file.py",
+            "traceback: alex@example.com hit /Users/alexherrero/project/file.py",
             group="personal",
         )
         content = target.read_text(encoding="utf-8")
         self.assertNotIn("alex@example.com", content)
-        self.assertNotIn("/Users/alex/project", content)
+        self.assertNotIn("/Users/alexherrero/project", content)
         self.assertIn("[REDACTED-EMAIL]", content)
         self.assertIn("[REDACTED-PATH]", content)
 

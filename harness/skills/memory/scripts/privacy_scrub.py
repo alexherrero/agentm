@@ -44,9 +44,11 @@ _PATTERNS: tuple[tuple[str, re.Pattern], ...] = (
     ("API-KEY", re.compile(r"\bgh[a-z]_[A-Za-z0-9]{20,}\b")),
     ("API-KEY", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}\b")),
     ("API-KEY", re.compile(r"\bAKIA[A-Z0-9]{16}\b")),
-    # US phone numbers: (555) 123-4567 / 555-123-4567 / 555.123.4567. No
-    # leading \b before the optional "(" — a `(` is non-word, so `\b` never
-    # matches at a whitespace-then-"(" boundary (both sides are \W).
+    # US phone numbers: parenthesized, hyphenated, or dot-separated area code
+    # (NANP's reserved 555-0123 fictional exchange is the test/doc example
+    # convention). No leading \b before the optional "(" — a `(` is
+    # non-word, so `\b` never matches at a whitespace-then-"(" boundary
+    # (both sides are \W).
     ("PHONE", re.compile(r"(?:\(\d{3}\)\s?|\b\d{3}[-.])\d{3}[-.]\d{4}\b")),
 )
 

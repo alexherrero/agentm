@@ -26,13 +26,16 @@ class TestScrubPii(unittest.TestCase):
         self.assertIn("[REDACTED-EMAIL]", out)
 
     def test_mac_personal_path_redacted(self):
-        out = privacy_scrub.scrub_pii("traceback at /Users/alex/project/file.py line 12")
-        self.assertNotIn("/Users/alex", out)
+        # "alexherrero" is the allowlisted public GitHub handle (check-no-pii.sh)
+        # — using it keeps this fixture out of the PII pre-push scan while
+        # still exercising the real /Users/<name>/ path shape.
+        out = privacy_scrub.scrub_pii("traceback at /Users/alexherrero/project/file.py line 12")
+        self.assertNotIn("/Users/alexherrero", out)
         self.assertIn("[REDACTED-PATH]", out)
 
     def test_windows_personal_path_redacted(self):
-        out = privacy_scrub.scrub_pii(r"file C:\Users\alex\project\file.py")
-        self.assertNotIn(r"C:\Users\alex", out)
+        out = privacy_scrub.scrub_pii(r"file C:\Users\alexherrero\project\file.py")
+        self.assertNotIn(r"C:\Users\alexherrero", out)
         self.assertIn("[REDACTED-PATH]", out)
 
     def test_openai_key_shape_redacted(self):
@@ -45,11 +48,14 @@ class TestScrubPii(unittest.TestCase):
         self.assertIn("[REDACTED-API-KEY]", out)
 
     def test_aws_key_shape_redacted(self):
-        out = privacy_scrub.scrub_pii("AKIAABCDEFGHIJKLMNOP")
+        # The standard AWS-docs example access key (ends "EXAMPLE" — the
+        # check-no-pii.sh allowlist pattern for AWS key examples).
+        out = privacy_scrub.scrub_pii("AKIAIOSFODNN7EXAMPLE")
         self.assertIn("[REDACTED-API-KEY]", out)
 
     def test_phone_number_redacted(self):
-        out = privacy_scrub.scrub_pii("call (555) 123-4567 now")
+        # NANP's reserved 555-01XX fictional exchange — never a real number.
+        out = privacy_scrub.scrub_pii("call (555) 555-0123 now")
         self.assertIn("[REDACTED-PHONE]", out)
 
     def test_clean_text_passes_through_unchanged(self):
@@ -60,9 +66,9 @@ class TestScrubPii(unittest.TestCase):
         self.assertEqual(privacy_scrub.scrub_pii(""), "")
 
     def test_multiple_findings_all_redacted(self):
-        out = privacy_scrub.scrub_pii("alex@example.com at /Users/alex/repo")
+        out = privacy_scrub.scrub_pii("alex@example.com at /Users/alexherrero/repo")
         self.assertNotIn("@", out)
-        self.assertNotIn("/Users/alex", out)
+        self.assertNotIn("/Users/alexherrero", out)
 
 
 if __name__ == "__main__":
