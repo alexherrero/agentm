@@ -4,7 +4,12 @@ status: launched
 kind: design
 scope: feature
 area: agentm/opinion-registry
-governs: []
+governs:
+  - scripts/opinion_resolver.py
+  - scripts/agentm-opinion.sh
+  - scripts/check-opinion-resolver-one-way.py
+  - scripts/check-opinion-honesty.py
+  - opinions/**
 parent: agentm-hld.md
 seeded: 2026-06-26
 approved: 2026-06-26
@@ -203,6 +208,8 @@ Plus **`test_opinion_resolver.py`**, copying `test_governs_resolver.py` (served 
 ## Amendment log
 
 *Newest first. Collapses to one ≤2-paragraph entry at finalization; git holds the granular history.*
+
+- **2026-07-06 — built (AG Wave B leader 2/5).** `scripts/opinion_resolver.py` + `scripts/agentm-opinion.sh`, mirroring `governs_resolver.py`'s shape (pure frontmatter scan, never-raise, four reasons: served/base-only/no-opinion/error). The nine coded bases ship as `opinions/*.md` thin stubs. Two enforcement gates: `check-opinion-resolver-one-way.py` (AST, no plugin imports) and `check-opinion-honesty.py` (no orphan persona `opinions:` references — scoped to the unambiguous persona-manifest field only; a capability/skill `requires:`/`enhances:` opinion reference stays undetectable until that grammar is co-designed with persona activation, per Risks). The crickets-side `OPINION_NAMES` drift the readiness ledger flagged (agentmDesigns#9 / agentmExperience#6) is fixed in that repo. `governs:` now points at the resolver, the CLI, both gates, and `opinions/**`.
 
 - **2026-06-28 — lock-down sweep (operator review).** Reviewed in the final AG design sweep — SVG already sized, no mermaid / ADR / grounding issues, the log already newest-first; nothing to change. Locked as a v5–v8 guidepost.
 - **2026-06-26 — authored, reviewed, and finalized.** The Bucket-A substrate sub-design specifying the request-by-name registry the [opinions pillar](agentm-opinions-and-gates) leaves as `[PENDING-IMPL]` — a dependency-leader that gates the per-capability opinion wirings and the persona roster's "Leans on" column. The registry is a resolver in agentm (`opinion_resolver.py` + `agentm-opinion.sh`) built to mirror the existing `governs_resolver.py`: it scans `opinions/<name>.md` entries as data, resolves a name to the base ⊕ learned-supplement composite (via the `style_resolver` fold), reasons `served`/`base-only`/`no-opinion`/`error`, and never raises; crickets reaches it one-way through the capability bridge. It defines the first opinion-entry schema and binds through the existing persona `opinions:` axis + composition `requires:`/`enhances:` edges, kept honest by an AST one-way gate + the reconciled naming guard + an orphan-reference lint.

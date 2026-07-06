@@ -10,7 +10,7 @@ approved: 2026-06-21
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21) · locked 2026-06-28 (final AG design sweep).** child-design — the Opinions pillar, parent [agentm HLD](agentm-hld.md). One `[PENDING-IMPL]` (the compose-and-serve path) awaits implementation; `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3).
+> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21) · locked 2026-06-28 (final AG design sweep).** child-design — the Opinions pillar, parent [agentm HLD](agentm-hld.md). The compose-and-serve path this pillar left `[PENDING-IMPL]` **shipped 2026-07-06** — see the [opinion registry](agentm-opinion-registry) design, which governs `opinion_resolver.py`; `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3).
 
 # AgentM Opinions Design
 
@@ -53,7 +53,7 @@ Three things agentm already has carry this, so there is nothing new to invent:
 - **The base ⊕ overlay fold** is the pattern agentm's style system already uses — a base guide composed with a learned overlay (`style_resolver.py`); opinions compose the same way.
 - **The supplement's storage, recall, and learning** is the memory engine ([Memory System](agentm-memory-system.md)).
 
-**`[PENDING-IMPL]`** — wire the `opinion` lookup + the base ⊕ supplement fold onto those seams (documenter); today the base opinions are hardwired into the tools (e.g. `code-review` embeds *good*) and the stored supplement layer isn't built. The migration is the Opinion slice (design-doc Forward plan, Phase 3 → 4).
+**Built (2026-07-06).** The `opinion` lookup + the base ⊕ supplement fold ship in `opinion_resolver.py` (see the [opinion registry](agentm-opinion-registry) design) — `opinion_resolve(name)` returns `served` / `base-only` / `no-opinion` / `error`, never raising. The nine coded bases ship as `opinions/<name>.md` stubs; the wirings that let a tool call `opinion_resolve` instead of its own hardwired copy flip one at a time as each consumer's own slice builds (the Opinion slice, design-doc Forward plan, Phase 3 → 4).
 
 ### The opinions today
 
@@ -82,7 +82,7 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 ## Risks & open questions
 
-- **The compose-and-serve path is designed, not built** — today each base opinion is hardwired into its tool (e.g. `code-review` embeds *good*); there is no stored supplement layer and no fold/lookup. The work: make the coded bases addressable opinions, add the stored supplement layer (in agentm's memory, whichever backend), and fold them on request through the existing bridge + style-overlay + memory seams. That code is specified by the [opinion registry](agentm-opinion-registry) design, which *governs* `opinion_resolver.py` once built; this pillar stays discipline/area-only. Marked `[PENDING-IMPL]` above.
+- **The compose-and-serve path shipped 2026-07-06.** The coded bases are addressable opinions (`opinions/*.md` stubs), the stored supplement layer folds on request through `opinion_resolver.py` (a resolver pattern mirroring `governs_resolver.py` — pure, one-way, never-raise). That code is specified by, and governed by, the [opinion registry](agentm-opinion-registry) design; this pillar stays discipline/area-only. **What's left:** each hardwired consumer (`code-review` embedding *good*, etc.) still flips to calling `opinion_resolve` one at a time as its own slice builds — the registry existing doesn't retrofit every caller at once.
 - **Opinion versioning** — when a standard shifts (a new check joins the *done* battery), how do callers that cached the old standard adapt? Open.
 - **The Experience → Opinions sharpening loop** — which experience signals sharpen which opinion, how often, and what keeps a bad signal from corrupting a standard — is designed, not specified.
 - **Re-audit triggers:** flip the request-by-name API to as-built when the registry ships; specify the sharpening loop when forward learning lands.
@@ -96,6 +96,8 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 ## Amendment log
 
+**2026-07-06 — compose-and-serve `[PENDING-IMPL]` flipped to as-built (AG Wave B leader 2/5).** The request-by-name registry this pillar left open ships in `opinion_resolver.py` + `agentm-opinion.sh`, governed by the [opinion registry](agentm-opinion-registry) design. This pillar's own content (the nine-opinion catalog, the "opinions today" table) needed no change — it already named all nine as of the 2026-06-26 amendment. What's left is per-consumer: each hardwired tool flips to `opinion_resolve` one at a time. *Re-audit trigger:* note when the last hardwired consumer flips.
+
 **2026-06-28 — lock-down sweep (operator review).** Sized the diagram (`width`/`height`); confirmed the nine-opinion catalog + the request-by-name model. Log already newest-first. Locked as a v5–v8 guidepost.
 
 **2026-06-26 — catalog expanded to nine; the resolver mechanism homed in its own design.** The opinions catalog grows from four to nine: added *recoverable* (the reversibility doctrine, provided by `developer-safety`), *private* (the leak floor, provided by `privacy`), *ready* (the launch-readiness gate), *simple* (the simplest-thing-that-works standard), and *worth-knowing* (the relevance bar the Researcher persona leans on). `recoverable` and `private` are promoted from sub-standards folded into other opinions to peer opinions; *voice* stays a prose-style overlay in `style_resolver`, not a catalog opinion. The request-by-name mechanism this pillar left as `[PENDING-IMPL]` is now specified by the new **[opinion registry](agentm-opinion-registry)** child design, which governs `opinion_resolver.py`; this pillar stays discipline/area-only. **Re-audit trigger:** revisit the catalog when a new surface is authored; flip the compose-and-serve `[PENDING-IMPL]` to as-built when the registry ships.
@@ -106,4 +108,4 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 Migrated from the agentm HLD and reframed through operator review into the Opinions pillar: opinions are what make agentm **opinionated** — a coded base (checked-in, the seed) **extended by a learned supplement in agentm's memory** (whichever storage backend it's connected to, device-local or the vault), folded into a **composite** served to a tool **by name**. The four named opinions (done / good / efficient / how-we-engineer) are listed like capabilities — shape only; each standard lives in its own opinion. The system reuses three existing seams — the capability-resolution bridge (by-name lookup), the style system's base⊕overlay compose (`style_resolver.py`), and the memory engine (the supplement) — rather than a new registry or recall.
 
-Content-final. The compose-and-serve path is **designed, not built** (today the bases are hardwired into the tools; no stored supplement layer yet) — marked `[PENDING-IMPL]`; `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3). **Re-audit triggers:** flip the compose/lookup to as-built when the Opinion slice ships; specify the Experience → Opinions sharpening loop when forward learning lands; settle opinion versioning.
+Content-final. The compose-and-serve path **shipped 2026-07-06** (see the [opinion registry](agentm-opinion-registry) design); `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3). **Re-audit triggers:** flip each hardwired consumer to `opinion_resolve` as its own slice builds; specify the Experience → Opinions sharpening loop when forward learning lands; settle opinion versioning.

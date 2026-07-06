@@ -4,7 +4,8 @@ status: launched
 kind: design
 scope: feature
 area: agentm/memory-index
-governs: []
+governs:
+  - harness/skills/memory/scripts/vec_index.py
 parent: agentm-hld.md
 seeded: 2026-06-26
 approved: 2026-06-26

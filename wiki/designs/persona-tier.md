@@ -9,7 +9,7 @@ parent: agentm-hld.md
 # The persona tier
 
 > [!NOTE]
-> **Status:** launched — build parts 1–2 + 4 shipped (V5-11, commit [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3)); **part 3 (on-demand load + surfacing path) is `[PENDING-IMPL]`**; ADR 0016 folded into the Amendment log below (2026-06-24).
+> **Status:** launched — all four build parts shipped. Parts 1–2 + 4 (V5-11, commit [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3)); **part 3 (on-demand load + surfacing path) shipped 2026-07-06** — see the [persona activation](agentm-persona-activation) design. ADR 0016 folded into the Amendment log below (2026-06-24).
 > **Position in arc:** refinement of [AgentM HLD](agentm-hld) (the V5 "unbundling" HLD).
 > **Method:** the locked 10-section design template (the V5-11 design method).
 > **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16; sequenced after V5-10, ahead of V5-11 as its substrate (V5-11's Planner (TPM) is this tier's first *real* persona = build-part 4).
@@ -68,7 +68,7 @@ Trigger shape is unchanged: `check-personas` runs where the other `check-*` gate
 
 **The gate is the enforcement.** `check-personas` asserts two things for every file under `personas/`: that each `requires:` entry resolves to an agentm-native primitive (never a crickets capability), and that no persona manifest lands in the always-load set (so a dormant persona never inflates the per-call token floor — [#46](https://github.com/alexherrero/agentm/issues/46)). The first holds *agentm-no-hard-dep-on-crickets*; the second holds the token floor; soft `enhances:` is unrestricted. It mirrors `check-capability-resolver-one-way.py` and `check-process-seam-import-direction.sh` — a one-way dependency assertion, statically checkable, added to the gate battery.
 
-**Load is on demand `[PENDING-IMPL]`.** Design: a persona body loads only when the persona is activated, reusing the existing on-demand memory-load path — not the always-load floor. The brain is the implicit always-on degenerate persona; everything else is dormant until invoked. A persona may be *surfaced* through a sub-agent at activation; even so, it stays a durable classification, not ephemeral fan-out. The surfacing mechanism is specified by the [persona activation](agentm-persona-activation) design (build-part 3), not yet built.
+**Load is on demand — built 2026-07-06.** Design: a persona body loads only when the persona is activated, reusing the existing on-demand memory-load path — not the always-load floor. The brain is the implicit always-on degenerate persona; everything else is dormant until invoked. A persona may be *surfaced* through a sub-agent at activation; even so, it stays a durable classification, not ephemeral fan-out. The surfacing mechanism is specified — and now built — by the [persona activation](agentm-persona-activation) design (build-part 3): `persona_resolve.py`'s `adopt()` pipeline + `persona_compile.py`'s per-host launch compile.
 
 **The naming question (deferred).** agentm **keeps "persona"** for this tier. The collision is on the crickets side — it calls its four coordinator roles "personas" loosely, though it mostly already says "role" — so the rename moves *there*: crickets' looser "persona" usage becomes "**role**", freeing the term for the tier that earns it (a standing-concern identity that composes, distinct from a thin role that wraps one phase command). The pass is doc-only and rides **V5-6** (the identity rewrite) — see Re-verification below for why it is zero-code.
 
@@ -118,7 +118,7 @@ This design treats the pre-audit as a pre-audit; the key assumptions were re-che
 - **`check-personas` is a permanent new gate surface** to keep wired into `check-all.sh` + CI. Small but real.
 - **The persona/role term is unsettled until V5-6.** Docs carry "persona" in the interim; a later doc-only sweep may rename. Risk: a reader meets two terms across the V5-6 boundary. Mitigation: DC-6 in the Amendment log (the former ADR 0016) records the deferral explicitly.
 - **Tier confusion.** Operators may mis-file a capability as a persona or vice-versa. Mitigation: the one-sentence inverted-dependency test (DC-1) and the brain as a worked example; `check-personas` catches the most damaging error (a crickets hard-dep) automatically.
-- **Surfacing path `[PENDING-IMPL]`.** How an activated persona's body reaches the agent (injected context vs. on-demand sub-agent) is specified by the [persona activation](agentm-persona-activation) design (`build-part 3`), not yet built. The Planner (TPM) manifest (`personas/team-coordinator.md`) therefore exists as a seed that cannot yet be activated.
+- **Surfacing path — built 2026-07-06.** How an activated persona's body reaches the agent (injected context vs. on-demand sub-agent) is specified, and now built, by the [persona activation](agentm-persona-activation) design (`build-part 3`). The Planner (TPM) manifest (`personas/team-coordinator.md`) can now be activated — the github-projects Planner build itself (Wave D) is a separate, still-open piece.
 
 ## Quality Attributes
 
@@ -146,7 +146,7 @@ Default part split follows the Detailed Design subsections — buildable indepen
 
 1. **`kind: persona` primitive + `personas/` directory** (S) — the schema + one example (the brain manifest).
 2. **`check-personas` gate** (M) — `requires ⊆ substrate` assertion, wired into `check-all.sh` + CI, with tests.
-3. **On-demand load + surfacing path** (M) `[PENDING-IMPL]` — activation → body load, reusing the memory-load path; resolve the surfacing-path open item.
+3. **On-demand load + surfacing path** (M) — **built 2026-07-06** — activation → body load, reusing the memory-load path; the surfacing-path open item resolved by the [persona activation](agentm-persona-activation) design.
 4. **First real persona** (M, V5-11) — the Planner (TPM) manifest composing dev-loop/board capabilities. Gated behind 1–3.
 
 ### Documentation Plan
@@ -166,6 +166,8 @@ Additive, no flag day — each part lands behind its own gate. The brain persona
 Fully reversible. The tier is additive: removing `personas/`, the `kind: persona` handling (a skipped kind today), and `check-personas` returns the tree to its pre-tier state with no data migration. The memory engine is untouched, so a rollback cannot regress it.
 
 ## Amendment log
+
+**2026-07-06 — build-part 3 ships; all four parts now as-built (AG Wave B leader 4/5).** The on-demand load + surfacing path this tier left `[PENDING-IMPL]` since V5-11 is built — see the [persona activation](agentm-persona-activation) design (`persona_resolve.py`'s `adopt()` pipeline, `persona_compile.py`'s per-host launch compile, `install.sh`'s persona-walk). The Planner (TPM) manifest can now actually be activated. **Two items stay open, and are explicitly NOT this design's doing:** the `rememberer.md` → `brain.md` file rename this tier's own prose already assumes throughout, and adding the four new manifest axes to the two existing personas — both are code work, not documentation, so neither happened in this wiki-authorship pass.
 
 **2026-06-28 — lock-down sweep (operator review).** Removed the redundant `## Document History` table (the AG convention is amendment-log-only; its build status lives in the launched NOTE, its rationale in the folded ADR 0016 below, granular history in git). No content change to the tier contract. Locked as a v5–v8 guidepost.
 

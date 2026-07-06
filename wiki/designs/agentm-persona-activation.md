@@ -4,21 +4,23 @@ status: launched
 kind: design
 scope: feature
 area: agentm/personas
-governs: []
+governs:
+  - scripts/persona_resolve.py
+  - scripts/persona_compile.py
 parent: agentm-hld.md
 seeded: 2026-06-26
 approved: 2026-06-26
 ---
 
-> **Persona activation is how agentm puts on a persona — the Engineer, the Reviewer, the Planner — and gives it the right model, standards, and tools for the job.** The pieces a persona is made of are designed and mostly built; this is the part that switches one on, and it's the last piece still missing — parent [agentm HLD](agentm-hld).
+> **Persona activation is how agentm puts on a persona — the Engineer, the Reviewer, the Planner — and gives it the right model, standards, and tools for the job.** **Built 2026-07-06** (`scripts/persona_resolve.py` + `scripts/persona_compile.py`) — parent [agentm HLD](agentm-hld).
 
 # AgentM Persona Activation Design
 
 ## Objective
 
-A persona is a hat the agent wears for a job — the Engineer, the Reviewer, the Planner — each borrowing tools from the toolbox without owning them. The [persona tier](persona-tier) design already built the parts a persona is made of: the persona file format, the check that validates it, the always-on **brain** (the memory engine that sits under every persona), and a first Planner persona. What's missing is the step that puts a persona on while the agent is running — picking it, loading it, and giving it its model, standards, and tools. This design is that step.
+A persona is a hat the agent wears for a job — the Engineer, the Reviewer, the Planner — each borrowing tools from the toolbox without owning them. The [persona tier](persona-tier) design already built the parts a persona is made of: the persona file format, the check that validates it, the always-on **brain** (the memory engine that sits under every persona), and a first Planner persona. The step that puts a persona on while the agent is running — picking it, loading it, and giving it its model, standards, and tools — is this design, and it shipped 2026-07-06.
 
-Today the persona files sit on disk but nothing turns one on — the Planner persona is a file that "cannot yet be activated." Several neighboring designs lean on this step without building it: the [opinions](agentm-opinions-and-gates) design hands off where a persona's standards get loaded, [model + effort routing](agentm-model-effort-routing) hands off where its model gets set, and persona-tier leaves its own load-and-show step for later. Enough waits on it that it has to come first — the full persona roster, automatic switching, and the Planner that keeps the github-projects board up to date.
+**As-built:** `persona_resolve.py`'s `adopt(name, mode)` runs select → gate → load → resolve-bindings → compose (steps 1-5 of the six below); `persona_compile.py` + `install.sh`'s persona-walk realize step 6 (the per-host launch) for the sub-agent mode. The Planner persona can now actually be activated. Several neighboring designs still lean on pieces of their own: [model + effort routing](agentm-model-effort-routing)'s own tier-scale build is separate (this design's `tier:` binding calls its declared resolver contract regardless), and automatic switching stays research-open (below).
 
 ## Overview
 
@@ -129,9 +131,9 @@ Extend `check-personas.py` (the built gate — exit 0/1/2, in `check-all.sh` + C
 
 ## Migrations
 
-- **At lift (docs):** repoint [persona tier](persona-tier)'s build-part-3 `[PENDING-IMPL]` to name this design as its specification; add a `persona-activation` seeding row under the `agentm/personas` area in the area-taxonomy (no new area — it joins persona-tier there).
-- **At build:** rename the persona file `personas/brain.md` → `personas/brain.md` (with its test fixture and the reference pages that name it); extend `check-personas.py` for the four axes; write the adoption path (`persona_resolve` / `adopt`); teach `install.sh` to dispatch `personas/`; add the four axes to the two existing manifests (the brain, `team-coordinator`) and author the rest of the roster as it lands.
-- **Status honesty:** as activation ships, flip persona-tier's build-part-3 and the neighbor `[PENDING-IMPL]` markers to as-built; until then, the Planner seed and the ≥4-deep board depth stay hand-maintained.
+- **Done.** Repointed [persona tier](persona-tier)'s build-part-3 `[PENDING-IMPL]` to name this design as its specification (2026-07-06); the `persona-activation` seeding row + the real `governs:` glob are stamped in the area-taxonomy (no new area — it joins persona-tier there).
+- **Partly done at build:** extended `check-personas.py` for the four axes; wrote the adoption path (`persona_resolve.py` / `adopt`); taught `install.sh` to dispatch `personas/`. **Still open:** renaming the persona file `personas/rememberer.md` → `personas/brain.md` (with its test fixture and the reference pages that name it — this design's own prose already calls it "the brain" throughout) and adding the four new axes to the two existing manifests (`rememberer`/brain, `team-coordinator`) — neither is a docs change, so neither happened in this wiki-authorship pass; both stay open code work.
+- **Status honesty — done.** Persona-tier's build-part-3 and the neighbor `[PENDING-IMPL]` markers flip to as-built in this same pass. The Planner seed and the ≥4-deep board depth still stay hand-maintained until the github-projects Planner (TPM) build lands (Wave D) — activation makes the Planner *activatable*, it does not make board-depth maintenance automatic.
 
 ## Risks & open questions
 
@@ -165,6 +167,7 @@ Extend `check-personas.py` (the built gate — exit 0/1/2, in `check-all.sh` + C
 
 *Newest first. Collapses to one ≤2-paragraph entry at finalization; git holds the granular history.*
 
+- **2026-07-06 — built (AG Wave B leader 4/5).** `scripts/persona_resolve.py` (the `adopt()` pipeline: select → gate → load → resolve-bindings → compose) + `scripts/persona_compile.py` (per-host launch: Claude Code agent-def, Antigravity `SKILL.md`) + `install.sh`'s persona-walk block ship. `check-personas.py` extended for the four manifest axes. `governs:` now points at both new scripts. **Design-fidelity correction found during build:** `requires:` is NOT re-resolved through `capability_resolver.py` as this design's Dependencies section originally implied — it's validated at the gate only (an agentm `scripts/` stem, ADR 0016 DC-4's existing invariant); only `enhances:` binds through the capability resolver. Two items stay open, deliberately out of this build's scope: the `rememberer.md` → `brain.md` rename, and adding the four axes to the two existing persona manifests.
 - **2026-06-28 — lock-down sweep (operator review).** All standing fixes clean (diagram sized; no mermaid; no ADR mentions; log already newest-first). Confirmed the selection policy (explicit + workflow-step; auto-detection research-open) and the resolver-shape build (pure · one-way · never-raise; per-host agent-launch). No content change. Locked as a v5–v8 guidepost.
 
 - **2026-06-26 — authored, reviewed, and finalized.** The fourth Bucket-A substrate sub-design (after runner, reporting, and the opinion registry), specifying persona-tier's build-part 3 — the step that puts a persona on at runtime: it picks a persona, loads its file on demand, sets its model + standards + tools through their own resolvers, composes the brain beneath, and runs it in its mode. Built to the resolver shape agentm already has (pure, one-way, never-raise); uses each host's own agent-launch (Claude Code agent-def + `Task`; Antigravity `SKILL.md` + `start_subagent`); extends the built `check-personas` gate for four new manifest axes (`tier:` / `opinions:` / `modes:` / `triggers:`). **Operator calls:** selection = explicit + workflow-step (auto-detection research-open) plus the five-part selection policy (phase-authoritative · explicit-wins · brain-only default · operator-switching-only · one-stance-with-the-brain-beneath); Memory beneath automatic; bindings one-way + never-raise; activation is build-part 3 (the primitive + gate stay with persona-tier); no per-host adapter; hybrid adoption (install-time compile + runtime `adopt()`); the always-on persona is named **the brain**. *Re-audit:* flip persona-tier build-part-3 + neighbor `[PENDING-IMPL]` at ship; design in-session detection before promoting auto-detection.
