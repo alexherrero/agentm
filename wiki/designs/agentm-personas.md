@@ -132,7 +132,7 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 ## References
 
-- `personas/` — `rememberer.md` (the pseudo-persona, renaming to `brain.md`), `team-coordinator.md` (today's Planner seed)
+- `personas/` — `brain.md` (the pseudo-persona), `team-coordinator.md` (today's Planner seed)
 - `scripts/check-personas.py` — the `requires ⊆ substrate` + no-always-load gate
 - `scripts/capability_resolver.py` — the `enhances:` runtime resolver a persona composes through
 - [persona-tier](persona-tier.md) (the locked tier design — reconciled to point here for the discriminator)
@@ -140,6 +140,7 @@ The state a persona acts on is **not** in the manifest — it comes from Memory 
 
 ## Amendment log
 
+- **2026-07-06 — manifest rename landed.** `personas/rememberer.md` → `personas/brain.md` (frontmatter `name:` field included), closing the pending rename this design and [persona-tier](persona-tier.md) / [persona-activation](agentm-persona-activation.md) had flagged as open code work. Test fixtures (`test_persona_resolve.py`, `test_check_personas.py`) and reference pages (`persona-tier-schema.md`, `Completed-Features.md`) updated to match; `check-personas.py` needed no change (it has no hardcoded persona names).
 - **2026-06-28 — lock-down sweep (operator review).** Dropped the three `former ADR 0016` citations (body · Dependencies · References) — the persona-tier design holds that decision in its own amendment log (item-3 hygiene). Everything else was already compliant from the 06-27 re-promote (both SVGs sized, log newest-first). Locked as a v5–v8 guidepost.
 - **2026-06-27 — re-review compression (operator).** The 2026-06-26 discriminator fold over-weighted this abbreviated design (~40% of the body) and triplicated the gate. Compressed the discriminator to its core — the live test, the in-order classification, the decision-tree SVG, and a tightened note that the test is a human call enforced only by the build-time gate (§The persona gate stays the single home for the gate mechanics; `persona-tier` holds the rest of the detail). Fixed three nits: `(shape: persona)` → `(kind: persona)` in §manifest; the References seed file named `rememberer.md` (renaming to `brain.md`, pending); the Goal launch-mode qualified as riding the host's run (the [goal contract](agentm-goal-contract)), since agentm ships no `/goal` command. No content lost.
 - **2026-06-26 — made this the canonical home of the persona/tool discriminator.** Expanded the discriminator section into the full test: the live test (cross-capability judgment), the mechanical floor (the inverted dependency direction / `requires:` ⊆ substrate, gate-enforced), the in-order classification rule + a decision-tree diagram, **how the check runs** (`check-personas.py` is a build-time lint run by `check-all.sh` + CI — not a runtime resolver; the judgment test is the author's call at placement), the two rejected near-miss axes, the surrounding vocabulary (skill · sub-agent · role · opinion · substrate), the homing rule, and resist-the-persona-zoo. [persona-tier](persona-tier) is reconciled to point here (closing its one-directional "arbitrates" supersession); the HLD, the design-doc spine, and persona-activation point here for the rule. *Re-audit:* land the role-retirement rename in crickets; do the manifest `rememberer`→`brain` rename.
