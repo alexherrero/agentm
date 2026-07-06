@@ -100,8 +100,15 @@ class TestGrepSearchWithFilter(unittest.TestCase):
         self._tmp.cleanup()
 
     def _write(self, rel: str, frontmatter: str, body: str = "widget content") -> None:
+        # write_bytes (not write_text) — avoids write_text's universal-newline
+        # translation (LF -> CRLF on Windows; write_text's `newline=` kwarg
+        # needs Python 3.10+, so bytes-mode is also the portable fix).
+        # recall.py reads via backend.read(), bytes-mode with no translation
+        # (this codebase's LF-only convention, matching atomic_write's own
+        # discipline) — a CRLF fixture would make `_parse_frontmatter`'s
+        # `"---\n"` boundary check silently miss the frontmatter block.
         p = self.vault / rel
-        p.write_text(f"---\n{frontmatter}\n---\n{body}", encoding="utf-8")
+        p.write_bytes(f"---\n{frontmatter}\n---\n{body}".encode("utf-8"))
 
     def test_filter_narrows_grep_results_by_project(self):
         self._write(
@@ -150,15 +157,13 @@ class TestQueryFilterIntegration(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_query_with_filter_expr_narrows_results(self):
-        (self.vault / "projects" / "agentm" / "decisions" / "match.md").write_text(
-            "---\nkind: reference\nstatus: active\ntags: []\n"
-            "group: projects/agentm/decisions\n---\nwidget content here",
-            encoding="utf-8",
+        (self.vault / "projects" / "agentm" / "decisions" / "match.md").write_bytes(
+            ("---\nkind: reference\nstatus: active\ntags: []\n"
+             "group: projects/agentm/decisions\n---\nwidget content here").encode("utf-8")
         )
-        (self.vault / "personal" / "reference" / "nomatch.md").write_text(
-            "---\nkind: reference\nstatus: active\ntags: []\n"
-            "group: personal/reference\n---\nwidget content here too",
-            encoding="utf-8",
+        (self.vault / "personal" / "reference" / "nomatch.md").write_bytes(
+            ("---\nkind: reference\nstatus: active\ntags: []\n"
+             "group: personal/reference\n---\nwidget content here too").encode("utf-8")
         )
         results = recall.query(
             vault=self.vault, query_text="widget content", filter_expr="project=agentm",

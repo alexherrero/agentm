@@ -82,7 +82,20 @@ class DeviceLocalBackend(StorageBackend):
     def __init__(self, root: Path | str | None = None) -> None:
         self._root = Path(root) if root is not None else _default_root()
         # Created on first use — constructing the backend is that first use.
-        self._root.mkdir(parents=True, exist_ok=True)
+        # V5-14: multiple callers now construct a DeviceLocalBackend against
+        # the SAME already-existing root concurrently (e.g. concurrent
+        # save_entry calls). mkdir(exist_ok=True) is safe under POSIX
+        # concurrent contention (FileExistsError is caught internally), but
+        # Windows' CreateDirectory can return ERROR_ACCESS_DENIED instead of
+        # ERROR_ALREADY_EXISTS in a race window, which surfaces to Python as
+        # PermissionError, not FileExistsError, and exist_ok only swallows
+        # the latter. Tolerate it too, but only when the directory already
+        # exists (a genuine permission problem must still raise).
+        try:
+            self._root.mkdir(parents=True, exist_ok=True)
+        except PermissionError:
+            if not self._root.is_dir():
+                raise
 
     @property
     def root(self) -> Path:

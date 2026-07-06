@@ -118,7 +118,7 @@ def _find_by_idem_tag(vault: Path, tag: str) -> Optional[dict]:
         fm = _parse_frontmatter(content)
         if tag in (fm.get("tags") or []):
             return {
-                "id": str(md.relative_to(vault)),
+                "id": md.relative_to(vault).as_posix(),
                 "slug": fm.get("slug", md.stem),
             }
     return None
