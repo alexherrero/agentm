@@ -1,0 +1,37 @@
+name: "[N] Nightly Main-HEAD Backstop"
+
+# PLAN-per-plan-ci task 3 (agentm half). The full 3-OS matrix + `ci-all` now
+# gate on `pull_request`, not `push` to `main` (worktree-native flow,
+# 2026-07-06) — a push-triggered CI run against `main` HEAD no longer
+# happens on its own. This is the backstop that fills that gap: reruns the
+# same battery each PR already ran, against `main` HEAD, independent of any
+# PR activity.
+#
+# ADVISORY ONLY — never a required check, never blocks a merge (mirrors
+# health-nightly.yml's own "advisory, never blocks" framing). Offset from
+# health-nightly.yml's own 06:00 UTC slot so the two don't contend for
+# runner capacity on the same schedule.
+#
+# health-nightly.yml wires this run's conclusion into its own scorecard
+# render (a `verification honesty` axis record) — see that workflow's
+# "Fold in the nightly CI-matrix signal" step, added the same day.
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 07:00 UTC daily
+  workflow_dispatch: {}   # manual trigger for testing / on-demand runs
+
+jobs:
+  linux:
+    name: nightly (linux)
+    uses: ./.github/workflows/tests-linux.yml
+    secrets: inherit
+
+  mac:
+    name: nightly (mac)
+    uses: ./.github/workflows/tests-mac.yml
+    secrets: inherit
+
+  windows:
+    name: nightly (windows)
+    uses: ./.github/workflows/tests-windows.yml
+    secrets: inherit

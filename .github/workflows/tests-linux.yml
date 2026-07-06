@@ -14,12 +14,17 @@ on:
       - 'wiki/**'
       - '**/*.md'
   pull_request: {}
+  workflow_call:
+    inputs:
+      full_battery:
+        type: boolean
+        default: true
 
 jobs:
   install-smoke:
     name: install-smoke
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - name: Install jq
@@ -32,7 +37,7 @@ jobs:
   adapter-parity:
     name: adapter-parity
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-parity.sh
@@ -40,7 +45,7 @@ jobs:
   validate:
     name: validate
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -162,7 +167,7 @@ jobs:
   lib-parity:
     name: lib-parity
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - name: Verify lib/install/ matches committed checksums
@@ -171,7 +176,7 @@ jobs:
   pii-guardrails:
     name: pii-guardrails
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
         with:
@@ -199,7 +204,7 @@ jobs:
     # .github/workflows/.
     name: dogfood-workflows
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - name: Every templated workflow is active at repo root, byte-identical
