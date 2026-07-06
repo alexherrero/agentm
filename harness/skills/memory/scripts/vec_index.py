@@ -206,12 +206,41 @@ def _open_index(vault: Path) -> sqlite3.Connection | None:
         "  rowid INTEGER PRIMARY KEY,"
         "  path TEXT UNIQUE NOT NULL,"
         "  updated_at TEXT NOT NULL,"
-        "  indexed_at INTEGER NOT NULL DEFAULT 0"
+        "  indexed_at INTEGER NOT NULL DEFAULT 0,"
+        + _V6_11_COLUMN_DDL +
         ")"
     )
     _migrate_pre_v37(conn)
+    _migrate_v6_11(conn)
+    _ensure_v6_11_indexes(conn)
     conn.commit()
     return conn
+
+
+# -----------------------------------------------------------------------------
+# V6-11: extended entry_meta metadata table (agentm-memory-index.md,
+# AG Wave B leader 3/5). Additive only — the built table starts at four
+# columns (rowid, path, updated_at, indexed_at); these seven are new.
+# `group_name` (not `group` — a SQL keyword). `fingerprint` is a real column,
+# the diagnostics recall ladder's future join key — NULL until a writer
+# populates it (no consumer exists yet; the column is the contract).
+# -----------------------------------------------------------------------------
+
+_V6_11_COLUMNS: tuple[str, ...] = (
+    "kind", "status", "slug", "project", "created", "tags", "group_name", "fingerprint",
+)
+_V6_11_COLUMN_DDL = (
+    "  kind TEXT,"
+    "  status TEXT,"
+    "  slug TEXT,"
+    "  project TEXT,"
+    "  created TEXT,"
+    "  tags TEXT,"
+    "  group_name TEXT,"
+    "  fingerprint TEXT"
+)
+# The three columns the hybrid --filter path (recall.py) indexes for.
+_V6_11_INDEXED_COLUMNS: tuple[str, ...] = ("kind", "project", "status")
 
 
 def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
@@ -251,6 +280,106 @@ def _migrate_pre_v37(conn: sqlite3.Connection) -> bool:
     return True
 
 
+def _migrate_v6_11(conn: sqlite3.Connection) -> bool:
+    """V6-11 schema migration: add the eight extended-metadata columns to
+    `entry_meta` if absent (agentm-memory-index.md).
+
+    Additive only, one `ALTER TABLE ADD COLUMN` per missing column, guarded
+    by `_has_column` — mirrors `_migrate_pre_v37` exactly. Existing rows get
+    NULL in every new column; they backfill on the next `full_sync --rebuild`
+    → `drain`, the same natural path pre-v37 rows use for `indexed_at`.
+
+    Idempotent. Returns True if any column was added; False if already
+    migrated. Caller commits.
+    """
+    added = False
+    for column in _V6_11_COLUMNS:
+        if _has_column(conn, "entry_meta", column):
+            continue
+        conn.execute(f"ALTER TABLE entry_meta ADD COLUMN {column} TEXT")
+        added = True
+    if added:
+        print(
+            "[vec_index] migrated entry_meta to V6-11 (extended metadata columns). "
+            "Existing rows have NULL metadata; they backfill on next full_sync --rebuild -> drain.",
+            file=sys.stderr,
+        )
+    return added
+
+
+def _ensure_v6_11_indexes(conn: sqlite3.Connection) -> None:
+    """CREATE INDEX IF NOT EXISTS on the three columns the hybrid --filter
+    path (recall.py) filters on. Idempotent; safe to call every open."""
+    for column in _V6_11_INDEXED_COLUMNS:
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_entry_meta_{column} ON entry_meta({column})"
+        )
+
+
+def _extract_meta_from_file(file_path: Path) -> dict:
+    """Extract the V6-11 metadata columns from a memory entry's frontmatter.
+
+    Stdlib-only inline parse (mirrors `_extract_embed_text_from_file` —
+    avoid importing yaml, ADR 0001). Best-effort: an unreadable or
+    frontmatter-less file returns a dict of `None`s (never raises) so a
+    metadata-extraction failure never blocks the embedding it's riding
+    alongside.
+
+    `project` is derived, not read directly — the frontmatter has no
+    `project:` field (see `save.py`'s `FRONTMATTER_FIELD_ORDER`); a `group:`
+    value of the vault's `projects/<slug>/...` shape yields `project=<slug>`,
+    everything else (personal/, incubator/, …) yields `project=None`.
+    `fingerprint` has no writer yet (the diagnostics recall ladder that
+    would set it is unbuilt) — read only if a future writer adds the key;
+    absent today on every entry, which is the correct, honest state.
+    """
+    empty = {c: None for c in _V6_11_COLUMNS}
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return empty
+    if not text.startswith("---\n"):
+        return empty
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return empty
+    fm_text = text[4:end]
+
+    meta = dict(empty)
+    meta["slug"] = file_path.stem
+    group_value: str | None = None
+    tags: list[str] = []
+    for line in fm_text.splitlines():
+        line = line.strip()
+        if ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        key = key.strip()
+        val = val.strip().strip("'\"")
+        if key == "kind":
+            meta["kind"] = val
+        elif key == "status":
+            meta["status"] = val
+        elif key == "slug":
+            meta["slug"] = val
+        elif key == "created":
+            meta["created"] = val
+        elif key == "group":
+            group_value = val
+        elif key == "fingerprint":
+            meta["fingerprint"] = val
+        elif key == "tags":
+            if val.startswith("[") and val.endswith("]"):
+                tags = [t.strip().strip("'\"") for t in val[1:-1].split(",") if t.strip()]
+
+    meta["group_name"] = group_value
+    meta["tags"] = json.dumps(tags)
+    if group_value and group_value.startswith("projects/"):
+        parts = group_value.split("/")
+        meta["project"] = parts[1] if len(parts) >= 2 and parts[1] else None
+    return meta
+
+
 def upsert_entry(vault_path: Path | str, entry_relative: str, embedding: list[float]) -> bool:
     """Insert or update an entry's embedding in the vec-index.
 
@@ -273,6 +402,10 @@ def upsert_entry(vault_path: Path | str, entry_relative: str, embedding: list[fl
         emb_blob = json.dumps(embedding)
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         now_epoch = int(time.time())  # V4 #37: cheap integer for drift-comparison
+        # V6-11: read the source file's frontmatter for the extended metadata
+        # columns in the same pass — best-effort, never blocks the embed.
+        meta = _extract_meta_from_file(_resolve_entry_path(vault, entry_relative))
+        meta_values = tuple(meta[c] for c in _V6_11_COLUMNS)
         if row:
             rowid = row[0]
             conn.execute(
@@ -280,17 +413,21 @@ def upsert_entry(vault_path: Path | str, entry_relative: str, embedding: list[fl
                 (emb_blob, rowid),
             )
             conn.execute(
-                "UPDATE entry_meta SET updated_at = ?, indexed_at = ? WHERE rowid = ?",
-                (now_iso, now_epoch, rowid),
+                "UPDATE entry_meta SET updated_at = ?, indexed_at = ?, "
+                + ", ".join(f"{c} = ?" for c in _V6_11_COLUMNS) +
+                " WHERE rowid = ?",
+                (now_iso, now_epoch) + meta_values + (rowid,),
             )
         else:
             cursor = conn.execute(
                 "INSERT INTO entries(embedding) VALUES (?)", (emb_blob,)
             )
             rowid = cursor.lastrowid
+            columns = "rowid, path, updated_at, indexed_at, " + ", ".join(_V6_11_COLUMNS)
+            placeholders = ", ".join(["?"] * (4 + len(_V6_11_COLUMNS)))
             conn.execute(
-                "INSERT INTO entry_meta(rowid, path, updated_at, indexed_at) VALUES (?, ?, ?, ?)",
-                (rowid, entry_relative, now_iso, now_epoch),
+                f"INSERT INTO entry_meta({columns}) VALUES ({placeholders})",
+                (rowid, entry_relative, now_iso, now_epoch) + meta_values,
             )
         conn.commit()
         return True
@@ -696,9 +833,11 @@ def rebuild_index(vault_path: Path | str) -> dict:
         "  rowid INTEGER PRIMARY KEY,"
         "  path TEXT UNIQUE NOT NULL,"
         "  updated_at TEXT NOT NULL,"
-        "  indexed_at INTEGER NOT NULL DEFAULT 0"
+        "  indexed_at INTEGER NOT NULL DEFAULT 0,"
+        + _V6_11_COLUMN_DDL +
         ")"
     )
+    _ensure_v6_11_indexes(conn)
     conn.commit()
     conn.close()
 

@@ -154,6 +154,24 @@ def save_entry(
     tags = tags or []
     _validate_tags(tags)
 
+    # V6-11 (agentm-memory-index.md): `failure-incident` is a reserved `kind`
+    # value whose content is untrusted and potentially PII-bearing (a
+    # stack trace, an error log excerpt) — a mandatory scrub the write
+    # cannot skip, a persistence-boundary guard. Refuses loudly rather than
+    # writing unscrubbed if the scrubber is somehow unavailable (it's a
+    # pure-stdlib sibling module, so this should never actually fire; the
+    # refuse-loud path exists so a future refactor can't silently reintroduce
+    # an unscrubbed write path).
+    if kind == "failure-incident":
+        try:
+            from privacy_scrub import scrub_pii  # type: ignore
+        except ImportError as e:
+            raise RuntimeError(
+                f"failure-incident write refused: privacy_scrub unavailable "
+                f"({e}) — the mandatory scrub cannot be skipped"
+            ) from e
+        body = scrub_pii(body)
+
     # Compute target path. --always-load overrides --group: routes to
     # personal/_always-load/<slug>.md regardless of group.
     if always_load:

@@ -499,6 +499,7 @@ def _grep_search(
     *,
     deadline: float | None = None,
     include_inbox: bool = False,
+    filter_criteria: dict[str, str] | None = None,
 ) -> dict[str, int]:
     """Scan vault entries for keyword matches.
 
@@ -506,6 +507,10 @@ def _grep_search(
     is the count of DISTINCT query tokens that appear (as substring) in the
     entry's searchable text (slug + tags + title + first 500 chars of body).
     Entries with `status: superseded` are filtered out.
+
+    `filter_criteria` (from `parse_filter`) applies the same `--filter`
+    predicate the SQL path uses — the grep fallback's equivalent of the
+    joined `WHERE` clause, since a grep walk has no SQL to join against.
 
     If `deadline` is set and elapsed past it, the walk stops early and
     returns partial results (degraded-graceful).
@@ -527,6 +532,8 @@ def _grep_search(
         fm, body = _parse_frontmatter(content)
         if fm.get("status") == "superseded":
             continue
+        if filter_criteria and not _entry_matches_filter(fm, filter_criteria):
+            continue
         slug = md_path.stem
         tags = fm.get("tags", "")
         # Searchable text: slug + tags + first 500 chars of body. Keeps
@@ -538,6 +545,142 @@ def _grep_search(
             rel = md_path.relative_to(vault).as_posix()
             results[rel] = score
     return results
+
+
+# -----------------------------------------------------------------------------
+# V6-11 hybrid --filter path (agentm-memory-index.md): a `--filter` expression
+# compiles to one SQL WHERE over the entry_meta metadata table, joined with
+# the vector MATCH, in a single query — replacing the grep-over-frontmatter
+# pass for the filtered case. Grep stays the graceful fallback when
+# sqlite-vec is absent, applying the same criteria as it walks.
+# -----------------------------------------------------------------------------
+
+class FilterError(ValueError):
+    """A `--filter` expression is malformed or names an unknown key."""
+
+
+# Filter key -> entry_meta column. `tag` is special-cased (checks membership
+# in the JSON-array `tags` column, not an equality match).
+_FILTER_FIELD_MAP: dict[str, str] = {
+    "kind": "kind", "project": "project", "status": "status", "group": "group_name",
+}
+
+
+def parse_filter(expr: str | None) -> dict[str, str]:
+    """"tag=security AND project=sherwood" -> {"tag": "security", "project":
+    "sherwood"}. AND-only (per the design's own example); `{}` for an empty
+    expression. Raises `FilterError` on a malformed clause or an unknown key
+    — fail loud at parse time, not silently drop half the filter."""
+    if not expr or not expr.strip():
+        return {}
+    criteria: dict[str, str] = {}
+    for clause in re.split(r"(?i)\s+AND\s+", expr.strip()):
+        clause = clause.strip()
+        if not clause:
+            continue
+        if "=" not in clause:
+            raise FilterError(f"malformed filter clause: {clause!r} (expected key=value)")
+        key, _, value = clause.partition("=")
+        key = key.strip().lower()
+        value = value.strip().strip("'\"")
+        if key != "tag" and key not in _FILTER_FIELD_MAP:
+            raise FilterError(
+                f"unknown filter key: {key!r} (supported: tag, "
+                + ", ".join(_FILTER_FIELD_MAP) + ")"
+            )
+        criteria[key] = value
+    return criteria
+
+
+def _derive_project(group_value: str) -> str | None:
+    """Mirrors vec_index._extract_meta_from_file's derivation — duplicated
+    (not imported) because the two live in different script directories and
+    this is three lines, not worth the cross-dir coupling."""
+    if not group_value or not group_value.startswith("projects/"):
+        return None
+    parts = group_value.split("/")
+    return parts[1] if len(parts) >= 2 and parts[1] else None
+
+
+def _entry_matches_filter(fm: dict[str, str], criteria: dict[str, str]) -> bool:
+    """Apply `criteria` (from `parse_filter`) to a grep-walked entry's
+    frontmatter — the fallback path's equivalent of the SQL WHERE."""
+    for key, value in criteria.items():
+        if key == "tag":
+            if f'"{value}"' not in fm.get("tags", "") and value not in fm.get("tags", ""):
+                return False
+        elif key == "project":
+            if _derive_project(fm.get("group", "")) != value:
+                return False
+        else:
+            field = "group" if key == "group" else key
+            if fm.get(field) != value:
+                return False
+    return True
+
+
+def _vec_search_filtered(
+    vault: Path,
+    query_text: str,
+    criteria: dict[str, str],
+    *,
+    k: int,
+    deadline: float | None = None,
+    mode: str | None = None,
+    stderr=sys.stderr,
+) -> dict[str, float]:
+    """Like `_vec_search`, but the SQL joins `entry_meta` and applies
+    `criteria` as an additional `WHERE` — one query, not a post-filter."""
+    try:
+        from embed import EmbeddingUnavailable, embed_text  # type: ignore
+        from vec_index import _open_index  # type: ignore
+    except ImportError:
+        return {}
+
+    if deadline is not None and time.monotonic() >= deadline:
+        return {}
+    try:
+        embedding = embed_text(query_text, mode=mode)
+    except EmbeddingUnavailable as e:
+        print(f"[recall.query] embedding unavailable: {e}", file=stderr)
+        return {}
+    except Exception as e:  # noqa: BLE001 — degraded-graceful catch-all
+        print(f"[recall.query] embedding raised {type(e).__name__}: {e}", file=stderr)
+        return {}
+    if deadline is not None and time.monotonic() >= deadline:
+        return {}
+
+    conn = _open_index(vault)
+    if conn is None:
+        return {}
+    try:
+        emb_blob = json.dumps(embedding)
+        where_parts: list[str] = []
+        params: list = [emb_blob, k]
+        for key, value in criteria.items():
+            if key == "tag":
+                where_parts.append("entry_meta.tags LIKE ?")
+                params.append(f'%"{value}"%')
+            else:
+                where_parts.append(f"entry_meta.{_FILTER_FIELD_MAP[key]} = ?")
+                params.append(value)
+        where_sql = (" AND " + " AND ".join(where_parts)) if where_parts else ""
+        sql = (
+            "SELECT entries.rowid, distance, entry_meta.path FROM entries "
+            "JOIN entry_meta ON entries.rowid = entry_meta.rowid "
+            "WHERE embedding MATCH ? AND k = ?" + where_sql + " ORDER BY distance"
+        )
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        except sqlite3.OperationalError as e:
+            print(f"[recall.query] filtered vec search SQL error: {e}", file=stderr)
+            return {}
+        results: dict[str, float] = {}
+        for _rowid, distance, path in rows:
+            results[path] = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+        return results
+    finally:
+        conn.close()
 
 
 def _vec_search(
@@ -720,6 +863,7 @@ def query(
     include_inbox: bool = False,
     deadline: float | None = None,
     mode: str | None = None,
+    filter_expr: str | None = None,
     stderr=sys.stderr,
 ) -> list[dict]:
     """Run the 5-step recall engine.
@@ -743,21 +887,37 @@ def query(
 
     Degraded-graceful: if vec search fails, returns grep-only results
     (still scored via the merge formula with sim=0 for all entries).
+
+    `filter_expr` (V6-11 hybrid recall, agentm-memory-index.md): a
+    `tag=security AND project=sherwood`-shaped expression. When present, the
+    vec half runs as one SQL query joining `entry_meta`'s `WHERE` with the
+    vector `MATCH` (replacing the grep-over-frontmatter pass for the
+    filtered case); the grep half (still run as the graceful fallback when
+    sqlite-vec is unavailable) applies the same criteria as it walks.
+    Raises `FilterError` on a malformed expression — fail loud at parse
+    time, before either search runs.
     """
     if dedup_paths is None:
         dedup_paths = set()
     if not query_text or not query_text.strip():
         return []
     query_tokens = _tokenize(query_text)
+    criteria = parse_filter(filter_expr)
 
     # Vec search first — typically dominates the time budget (network /
     # model-load latency on the embed call). Done before grep so we can
     # short-circuit on budget overrun and still return grep results
     # (grep is fast — typical <50ms on <100 entries).
-    vec_results = _vec_search(
-        vault, query_text, k=max(k * 2, 10),
-        deadline=deadline, mode=mode, stderr=stderr,
-    )
+    if criteria:
+        vec_results = _vec_search_filtered(
+            vault, query_text, criteria, k=max(k * 2, 10),
+            deadline=deadline, mode=mode, stderr=stderr,
+        )
+    else:
+        vec_results = _vec_search(
+            vault, query_text, k=max(k * 2, 10),
+            deadline=deadline, mode=mode, stderr=stderr,
+        )
 
     # V4 #37: per-hit drift check. Each vec result's source file mtime is
     # compared against the row's indexed_at; drifted hits enqueue for
@@ -777,6 +937,7 @@ def query(
     # left rather than blocking.
     grep_results = _grep_search(
         vault, query_tokens, deadline=deadline, include_inbox=include_inbox,
+        filter_criteria=criteria,
     )
 
     # Merge: union of paths; score = sim × 0.7 + keyword × 0.3.
@@ -1045,6 +1206,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                    help="include _inbox/ entries in the search (default: excluded)")
     q.add_argument("--mode", choices=["local", "stub"], default=None,
                    help="embedding mode override (default: local; see embed.py for details)")
+    q.add_argument("--filter", dest="filter_expr", default=None,
+                   help="hybrid filter, e.g. 'tag=security AND project=sherwood' "
+                        "(supported keys: tag, kind, project, status, group)")
 
     hp = sub.add_parser(
         "heat-policy",
@@ -1102,14 +1266,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         query_text = sys.stdin.read() if args.query_text == "-" else args.query_text
         deadline = time.monotonic() + (args.budget_ms / 1000.0)
-        results = query(
-            vault=vault,
-            query_text=query_text,
-            k=args.k,
-            include_inbox=args.include_inbox,
-            deadline=deadline,
-            mode=args.mode,
-        )
+        try:
+            results = query(
+                vault=vault,
+                query_text=query_text,
+                k=args.k,
+                include_inbox=args.include_inbox,
+                deadline=deadline,
+                mode=args.mode,
+                filter_expr=args.filter_expr,
+            )
+        except FilterError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
+            return 1
         # JSON-Lines output for scriptability.
         for r in results:
             print(json.dumps(r))
