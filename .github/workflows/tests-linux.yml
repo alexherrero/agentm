@@ -1,20 +1,25 @@
 name: "[T] Linux Tests"
 
+# Worktree-native flow (ratified 2026-07-06): the full battery now gates on
+# pull_request, not push to main — main only ever merges a PR whose required
+# checks already passed. pull_request deliberately carries no paths-ignore
+# (a required check that a trigger-level filter can skip would block a
+# docs-only PR's merge forever); the docs/wiki diet returns as a job-level
+# no-op under PLAN-per-plan-ci. push keeps its diet — it now runs only the
+# light `syntax` job below (every other job is pull_request-only).
 on:
   push:
     branches: [main]
     paths-ignore:
       - 'wiki/**'
       - '**/*.md'
-  pull_request:
-    paths-ignore:
-      - 'wiki/**'
-      - '**/*.md'
+  pull_request: {}
 
 jobs:
   install-smoke:
     name: install-smoke
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - name: Install jq
@@ -27,6 +32,7 @@ jobs:
   adapter-parity:
     name: adapter-parity
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-parity.sh
@@ -34,6 +40,7 @@ jobs:
   validate:
     name: validate
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -155,6 +162,7 @@ jobs:
   lib-parity:
     name: lib-parity
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - name: Verify lib/install/ matches committed checksums
@@ -163,6 +171,7 @@ jobs:
   pii-guardrails:
     name: pii-guardrails
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -190,6 +199,7 @@ jobs:
     # .github/workflows/.
     name: dogfood-workflows
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       - name: Every templated workflow is active at repo root, byte-identical

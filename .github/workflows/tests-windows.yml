@@ -1,20 +1,25 @@
 name: "[T] Windows Tests"
 
+# Worktree-native flow (ratified 2026-07-06): gates on pull_request, not push
+# to main (main only merges a PR whose required checks already passed).
+# pull_request carries no paths-ignore — a required check a trigger-level
+# filter could skip would block a docs-only PR's merge forever; the diet
+# returns as a job-level no-op under PLAN-per-plan-ci. push runs nothing here
+# (no light-weight subset of this job exists); tests-linux.yml's `syntax`
+# job is the one light check that still runs on push.
 on:
   push:
     branches: [main]
     paths-ignore:
       - 'wiki/**'
       - '**/*.md'
-  pull_request:
-    paths-ignore:
-      - 'wiki/**'
-      - '**/*.md'
+  pull_request: {}
 
 jobs:
   install-smoke:
     name: install-smoke
     runs-on: windows-latest
+    if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
       # windows-latest ships pwsh 7+ and Python preinstalled.

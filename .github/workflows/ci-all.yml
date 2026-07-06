@@ -9,16 +9,13 @@ name: "[T] CI All"
 # check suites on a ref, including ones from apps we don't control. Badging
 # this single workflow gives us a clean aggregate that we DO control.
 
+# Worktree-native flow (ratified 2026-07-06): the aggregate only matters for
+# gating a PR merge, so it's pull_request-only now — no push trigger, no
+# paths-ignore (a required check a trigger-level filter could skip would
+# block a docs-only PR's merge forever; the diet returns as a job-level
+# no-op under PLAN-per-plan-ci).
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - 'wiki/**'
-      - '**/*.md'
-  pull_request:
-    paths-ignore:
-      - 'wiki/**'
-      - '**/*.md'
+  pull_request: {}
 
 jobs:
   aggregate:
