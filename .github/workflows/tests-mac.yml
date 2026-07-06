@@ -14,12 +14,17 @@ on:
       - 'wiki/**'
       - '**/*.md'
   pull_request: {}
+  workflow_call:
+    inputs:
+      full_battery:
+        type: boolean
+        default: true
 
 jobs:
   install-smoke:
     name: install-smoke
     runs-on: macos-latest
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       # macos-latest ships jq, python3, and pwsh 7+ preinstalled.

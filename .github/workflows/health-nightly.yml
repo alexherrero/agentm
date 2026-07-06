@@ -67,9 +67,25 @@ jobs:
         run: bash scripts/health/run-fast-tier.sh > /tmp/fast-tier.jsonl
       - name: Run the heavy tier
         run: bash scripts/health/run-heavy-tier.sh > /tmp/heavy-tier.jsonl
+      - name: Fold in the nightly CI-matrix signal (PLAN-per-plan-ci task 3)
+        # nightly-main.yml (the full 3-OS matrix rerun against main HEAD,
+        # independent of any PR — the backstop the pull_request-only CI
+        # trigger move needed) reports its own conclusion via a separate
+        # scheduled workflow, not this job. Reads its most recent completed
+        # run and folds it in as one record so both nightly signals land in
+        # the same scorecard, per the plan's own task 3.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          conclusion=$(gh run list --repo "${{ github.repository }}" \
+            --workflow nightly-main.yml --status completed --limit 1 \
+            --json conclusion --jq '.[0].conclusion // "unknown"')
+          if [ "$conclusion" = "success" ]; then pass=true; else pass=false; fi
+          echo "{\"suite\": \"nightly-ci-matrix\", \"axis\": \"verification honesty\", \"check\": \"nightly main-HEAD full-matrix backstop (tests-linux/mac/windows rerun independent of any PR)\", \"pass\": $pass, \"weight\": 1.0}" \
+            > /tmp/nightly-ci-matrix.jsonl
       - name: Render the scorecard + append a history row
         run: |
-          cat /tmp/fast-tier.jsonl /tmp/heavy-tier.jsonl scripts/health/dark-checks.jsonl \
+          cat /tmp/fast-tier.jsonl /tmp/heavy-tier.jsonl /tmp/nightly-ci-matrix.jsonl scripts/health/dark-checks.jsonl \
             | python3 scripts/health/health_score.py --history \
             > wiki/reference/Health-Scorecard.md.new
           # Preserve the page's explanatory header (everything before the
