@@ -439,7 +439,14 @@ class TestSecurityOriginValidation(unittest.TestCase):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
             from starlette.testclient import TestClient
-        return TestClient(_srv.build_app(), raise_server_exceptions=False)
+        # base_url="http://localhost": Starlette's TestClient defaults to
+        # Host: testserver, which a strict DNS-rebinding Host check (fastmcp's
+        # own, layered under the MCP SDK, independent of this module's
+        # _OriginValidator) doesn't recognize as safe regardless of the
+        # Origin header sent — causing every request to 403, not just the
+        # ones this suite means to reject. Pinning the client's Host to a
+        # recognized value matches how a real localhost deployment presents.
+        return TestClient(_srv.build_app(), base_url="http://localhost", raise_server_exceptions=False)
 
     def _mcp_init_body(self):
         import json
@@ -524,7 +531,7 @@ class TestSecurityBearerAuth(unittest.TestCase):
             from starlette.testclient import TestClient
         auth_mcp = FreshMCP(name="test-auth", auth=srv._StaticBearerAuth(self._TEST_TOKEN))
         _rt(auth_mcp)
-        return TestClient(srv.build_app(_mcp=auth_mcp), raise_server_exceptions=False)
+        return TestClient(srv.build_app(_mcp=auth_mcp), base_url="http://localhost", raise_server_exceptions=False)
 
     def _mcp_init_body(self):
         import json
