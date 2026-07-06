@@ -840,6 +840,36 @@ if [[ -d "$HARNESS_ROOT/harness/agents" ]]; then
     done
 fi
 
+# Walk personas/ — the per-host launch compile (agentm-persona-activation.md
+# build-part 3). Unlike the generic compound-agents walk above, a persona's
+# output isn't a byte-copy: persona_compile.py resolves its tier:/opinions:/
+# enhances: bindings and remaps triggers: -> description, tier: -> model:
+# before writing the host-native file. Every persona is compiled for both
+# hosts (no supported_hosts: opt-in — the sub-agent-as-skill wrap already
+# covers Antigravity's lack of a first-class sub-agent slot); a
+# gate-failing manifest is skipped with a warning, never installed partial.
+if [[ -d "$HARNESS_ROOT/personas" ]] && command -v python3 >/dev/null 2>&1; then
+    for _am_f in "$HARNESS_ROOT/personas"/*.md; do
+        [[ -f "$_am_f" ]] || continue
+        _am_kind="$(_am_get_field "$_am_f" kind)"
+        [[ "$_am_kind" == "persona" ]] || continue
+        _am_name="$(basename "$_am_f" .md)"
+        echo "==> compiling persona: $_am_name"
+        if ! python3 "$HARNESS_ROOT/scripts/persona_compile.py" \
+                --host claude-code --name "$_am_name" --root "$HARNESS_ROOT" \
+                --out ".claude/agents/$_am_name.md" 2>/tmp/persona_compile_err.$$; then
+            echo "    WARN: persona '$_am_name' failed to compile for claude-code: $(cat /tmp/persona_compile_err.$$)" >&2
+            rm -f /tmp/persona_compile_err.$$
+            continue
+        fi
+        rm -f /tmp/persona_compile_err.$$
+        python3 "$HARNESS_ROOT/scripts/persona_compile.py" \
+            --host antigravity --name "$_am_name" --root "$HARNESS_ROOT" \
+            --out ".agents/skills/$_am_name/SKILL.md" \
+            || echo "    WARN: persona '$_am_name' failed to compile for antigravity" >&2
+    done
+fi
+
 unset _am_d _am_f _am_manifest _am_kind _am_name _am_hosts
 
 # ── .github/workflows/wiki-sync.yml — managed (refreshed on --update) ───────

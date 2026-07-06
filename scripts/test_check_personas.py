@@ -236,5 +236,83 @@ enhances: []
         self.assertEqual(rc, 0)
 
 
+class TestActivationAxes(unittest.TestCase):
+    """agentm-persona-activation.md's four new manifest axes — shape only."""
+
+    def _persona(self, extra_frontmatter: str) -> str:
+        return (
+            "---\nkind: persona\nname: p\nrequires: []\nenhances: []\n"
+            + extra_frontmatter + "\n---\nstance\n"
+        )
+
+    def test_valid_tier_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("tier: T2")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 0)
+
+    def test_invalid_tier_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("tier: T9")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 1)
+
+    def test_valid_modes_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("modes: [sub-agent, interactive]")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 0)
+
+    def test_invalid_mode_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("modes: [not-a-real-mode]")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 1)
+
+    def test_empty_modes_list_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("modes: []")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 1)
+
+    def test_valid_triggers_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("triggers: [review-phase]")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 0)
+
+    def test_empty_string_trigger_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona('triggers: [""]')})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 1)
+
+    def test_valid_opinions_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("opinions: [good, done]")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 0)
+
+    def test_opinions_not_a_list_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("opinions: good")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 1)
+
+    def test_opinions_shape_only_unresolvable_name_still_passes(self):
+        """An opinions: entry that names no real opinions/*.md entry is NOT
+        this gate's concern (resolution stays a runtime, graceful check) —
+        only shape (list of non-empty strings) is enforced here."""
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("opinions: [nonexistent-opinion-name]")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 0)
+
+    def test_all_four_axes_together_passes(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona(
+                "tier: T1\nmodes: [sub-agent, loop]\n"
+                "triggers: [review-phase]\nopinions: [good]"
+            )})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 0)
+
+    def test_axes_absent_still_passes(self):
+        """None of the four axes is required — a persona with only the
+        three built fields still passes (backward compatible)."""
+        with tempfile.TemporaryDirectory() as t:
+            root = _make_root(t, {"p.md": self._persona("")})
+            self.assertEqual(_main(["check-personas.py", "--root", root]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()
