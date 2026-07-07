@@ -73,6 +73,17 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 *(The phase discipline is agentm's; the phase commands are crickets' — the discipline-vs-tools split; see Dependencies. The full standard behind each opinion lives in its entry. **`efficient`'s model-routing lever is specified in [model + effort routing](agentm-model-effort-routing.md)** — the model × effort tier scale + persona→tier map that turns "cheap as the job allows" into a concrete model + effort pick.)*
 
+### How the supplement grows: the accumulate loop — spec landed, implementation deferred
+
+**Condensed twin of the fuller section in the [Experience design](agentm-experience-and-dreaming.md#the-experience--opinions-accumulate-loop--spec-landed-implementation-deferred)** (`PLAN-wave-e-experience` task 3, 2026-07-07, operator-approved go/no-go; landed verbatim from `ACCUMULATE-LOOP-SPEC-DRAFT.md`). The one-sentence design: the accumulate loop is the style-learning loop generalized from voice to standards — the same edit-driven, operator-gated capture the wiki system already proved, with a recurrence gate in front and the coded base as an unoverridable floor behind.
+
+- **Route, don't invent.** No new pipeline — a routing rule inside the existing capture paths (reflection, edit-driven capture, the watchlist) targets an opinion supplement when a candidate is standard-shaped. Deterministic-first classification; the LLM assists only at MEDIUM confidence.
+- **The signal → opinion map:** `/review` corrections → `good` · gate/battery misses → `done` · token-audit findings → `efficient` · process/retro lessons → `how-we-engineer` · recoverability incidents → `recoverable` · PII findings → `private`. Voice/prose lessons are explicitly excluded — they stay in the style overlay, never double-captured here.
+- **Three anti-corruption guards:** a recurrence gate (two distinct sessions before auto-append; one occurrence parks in the opinion's inbox lane); extend-never-override (a supplement that contradicts its base surfaces as a proposed base change, never serves silently — the coded base stays authoritative); provenance-or-it-didn't-happen (every entry carries session/commit/incident refs and a supersedes chain, tracked by a dashboard supplement-health check).
+- **Cadence:** capture continuous, promotion recurrence-gated or operator-confirmed (never time-scheduled), maintenance delegated to dreaming's whole-corpus pass — same wave, named owner, no second mechanism.
+
+**`[PENDING-IMPL]`** — the routing rule, the signal map, and the three guards are all unbuilt; this is the spec a follow-on plan implements against. No change to the compose-and-serve model above — the accumulate loop is entirely how the supplement *fills*, not how it's served.
+
 ## Dependencies
 
 - **crickets touches by request, not by wiring.** A tool names the opinion it needs and runs its implementation: `/review` asks for *good* (runs the adversarial pass); `/release` and `/work` ask for *done* (run the check battery); any tool can ask for *efficient* or a process opinion. The crickets side of the wiring is the [composition design](https://github.com/alexherrero/crickets/wiki/crickets-composition).
@@ -84,8 +95,8 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 - **The compose-and-serve path shipped 2026-07-06.** The coded bases are addressable opinions (`opinions/*.md` stubs), the stored supplement layer folds on request through `opinion_resolver.py` (a resolver pattern mirroring `governs_resolver.py` — pure, one-way, never-raise). That code is specified by, and governed by, the [opinion registry](agentm-opinion-registry) design; this pillar stays discipline/area-only. **What's left:** each hardwired consumer (`code-review` embedding *good*, etc.) still flips to calling `opinion_resolve` one at a time as its own slice builds — the registry existing doesn't retrofit every caller at once.
 - **Opinion versioning** — when a standard shifts (a new check joins the *done* battery), how do callers that cached the old standard adapt? Open.
-- **The Experience → Opinions sharpening loop** — which experience signals sharpen which opinion, how often, and what keeps a bad signal from corrupting a standard — is designed, not specified.
-- **Re-audit triggers:** flip the request-by-name API to as-built when the registry ships; specify the sharpening loop when forward learning lands.
+- **The Experience → Opinions accumulate loop is now specified; the implementation is deferred.** `PLAN-wave-e-experience` task 3 landed the routing rule, the signal→opinion map, and the three anti-corruption guards (see the section above; full version in the [Experience design](agentm-experience-and-dreaming.md)). No code implements it yet — a follow-on plan builds the routing, the map, and the guards.
+- **Re-audit triggers:** flip the request-by-name API to as-built when the registry ships; flip the accumulate loop's `[PENDING-IMPL]` once the follow-on implementation plan lands.
 
 ## References
 
@@ -93,8 +104,11 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 - **Stored supplement (the learned layer):** agentm's memory — whichever backend it's connected to (device-local or the vault, via the seam); e.g. the learned conventions in `personal/_always-load/` (`docs-prose-style.md`)
 - **The base ⊕ overlay precedent:** crickets `wiki-maintenance` `diataxis-author` — `style_resolver.py` composing `style/base-style-guide.md` with a learned overlay; opinions reuse this compose shape
 - **The by-name seam:** `find_capability.py` → `capability_resolver.py` — the one-way bridge a thin `opinion` lookup rides
+- **The accumulate loop's full spec:** the [Experience design](agentm-experience-and-dreaming.md) § The Experience → Opinions accumulate loop; original source draft at vault `_harness/designs/architecture-governance/ACCUMULATE-LOOP-SPEC-DRAFT.md`
 
 ## Amendment log
+
+**2026-07-07 — the Experience → Opinions accumulate loop spec landed, condensed twin, design amendment only (`PLAN-wave-e-experience` task 3, SPEC-FIRST).** Lands the condensed twin of `ACCUMULATE-LOOP-SPEC-DRAFT.md`'s contract here (full version in the [Experience design](agentm-experience-and-dreaming.md), the amendment's primary home) — the operator explicitly approved a go/no-go on the draft before this landing. New subsection "How the supplement grows: the accumulate loop" added after the opinions table: route-don't-invent, the signal→opinion map, the three anti-corruption guards (recurrence gate, extend-never-override, provenance-or-it-didn't-happen), and the cadence (continuous capture, gated promotion, maintenance delegated to dreaming's whole-corpus pass — no second mechanism). Landed verbatim, no redesign. **No code ships in this task** — the routing rule, signal map, and guards are all `[PENDING-IMPL]`, deferred to a follow-on plan. This closes the "designed, not specified" gap the 2026-06-21/2026-06-24 entries below both named as open. *Re-audit trigger:* flip this note's `[PENDING-IMPL]` once the follow-on implementation plan lands.
 
 **2026-07-06 — compose-and-serve `[PENDING-IMPL]` flipped to as-built (AG Wave B leader 2/5).** The request-by-name registry this pillar left open ships in `opinion_resolver.py` + `agentm-opinion.sh`, governed by the [opinion registry](agentm-opinion-registry) design. This pillar's own content (the nine-opinion catalog, the "opinions today" table) needed no change — it already named all nine as of the 2026-06-26 amendment. What's left is per-consumer: each hardwired tool flips to `opinion_resolve` one at a time. *Re-audit trigger:* note when the last hardwired consumer flips.
 

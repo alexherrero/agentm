@@ -1,0 +1,47 @@
+# forward-learning.yaml — the forward-learning pipeline's scheduled job
+# manifest (AG Wave E, PLAN-wave-e-experience task 1).
+#
+# Per agentm-runner.md's job-manifest contract — the as-built schema is
+# scripts/runner/manifest.py, which this file follows (mirrors
+# templates/jobs/dream.yaml's own precedent from the sibling
+# PLAN-wave-e-dreaming plan, same wave).
+#
+# .harness/jobs/ is gitignored (per-project runtime state, same as every
+# other .harness/* file — see .gitignore), so this templates/ copy is the
+# tracked, shipped source. Register it by copying to
+# .harness/jobs/forward-learning.yaml in a repo that runs the agentm runner
+# (scripts/agentm-runner.sh). No capability has an install-time auto-
+# seeding step for runner jobs yet (dreaming's dream.yaml was the first;
+# this is the second) — wiring install.sh is a separate, not-yet-decided
+# follow-up, same as noted there.
+#
+# Cadence: "daily" per the design's consumer table (agentm-runner.md —
+# "Forward learning (experience): scan operator-approved sources since a
+# watermark, mine ideas, surface to the watchlist | daily").
+schedule: daily
+lookback: 3d
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
+# Relies on MEMORY_VAULT_PATH already being set in the runner's own
+# environment, same as every other vault-reading script in this repo.
+command: python3 ../harness/skills/memory/scripts/forward_learning.py
+
+# Watchlist writes land under personal/_watchlist/ — new, agent-surfaced
+# findings the operator has not yet reviewed, i.e. T3 (the agent's own
+# memory), not T2 (operator-curated). Nothing is ever auto-adopted.
+tier: T3
+
+# No `budget:` — the thin v1 pipeline (forward_learning.py) makes zero LLM
+# calls; it's a deterministic rubric over fetched content (stdlib urllib,
+# no network dependency beyond the fetch itself). A token budget will
+# matter once the Pass-2 semantic judge (mirroring adapt-evaluator) graduates
+# this from a single deterministic pass — add one then, not speculatively.
+
+# Opt-in by design (per the experience design's own framing: "the source
+# list and the cadence are operator-controlled"), and stays dry_run: true
+# until an operator has both configured real approved sources
+# (_meta/forward-learning-sources.json — absent by default, meaning this
+# job finds nothing even if registered) AND explicitly decided to promote
+# it live. Promoting to false is a separate, explicit decision — never an
+# automatic consequence of this manifest existing.
+dry_run: true
