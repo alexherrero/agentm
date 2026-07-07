@@ -63,6 +63,9 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 _AGENTM_ROOT = _HERE.parent
 
+sys.path.insert(0, str(_HERE))
+import sibling_repo_root  # noqa: E402
+
 # The chart's own pinned model-id strings (agentm-model-effort-routing.md
 # line 66), named as content-refresh checklist items. `new_ref == old_ref`
 # at rest -- this is the standing list of "things a model release could
@@ -108,7 +111,9 @@ def find_content_refresh() -> Path | None:
         candidates.append(
             Path(os.path.expanduser(env_dir)) / "src" / "maintenance" / "scripts" / "content_refresh.py"
         )
-    candidates.append(_AGENTM_ROOT.parent / "crickets" / "src" / "maintenance" / "scripts" / "content_refresh.py")
+    root = sibling_repo_root.sibling_layout_root(_HERE)
+    if root is not None:
+        candidates.append(root / "crickets" / "src" / "maintenance" / "scripts" / "content_refresh.py")
     for c in candidates:
         if c.is_file():
             return c
