@@ -57,6 +57,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import json
 import sys
 import time
 import uuid
@@ -456,10 +457,36 @@ def _render_proposal_file(index: int, p: Proposal) -> str:
     return "\n".join(lines)
 
 
+def _render_manifest(digest: DreamDigest, staged_at: float) -> str:
+    """The machine-readable sibling of digest.md — task 3's confirm flow
+    reads this (not the human-facing digest/proposal markdown, which embeds
+    content in prose/code-fences and is not reliably re-parseable) to get
+    each proposal's exact mutation data back out."""
+    return json.dumps(
+        {
+            "run_id": digest.run_id,
+            "staged_at": staged_at,
+            "proposals": [
+                {
+                    "index": i,
+                    "stage": p.stage,
+                    "kind": p.kind,
+                    "paths": p.paths,
+                    "summary": p.summary,
+                    "mutations": [[str(path), content] for path, content in p.mutations],
+                }
+                for i, p in enumerate(digest.proposals, start=1)
+            ],
+        },
+        indent=2,
+    )
+
+
 def _stage_digest_and_staging(vault_path: Path, digest: DreamDigest) -> Path:
     staging_dir = vault_path / "_dream-staging" / digest.run_id
     digest_path = staging_dir / "digest.md"
     atomic_write(digest_path, _render_digest(digest))
+    atomic_write(staging_dir / "proposals.json", _render_manifest(digest, time.time()))
     for i, p in enumerate(digest.proposals, start=1):
         if not p.mutations:
             continue
