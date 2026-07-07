@@ -76,7 +76,16 @@ class TestBM25Search(unittest.TestCase):
         self._tmp.cleanup()
 
     def _write(self, name: str, body: str) -> None:
-        (self.vault / "personal" / "reference" / f"{name}.md").write_text(body, encoding="utf-8")
+        # write_bytes, not write_text: write_text translates "\n" -> the OS
+        # native newline on Windows (CRLF), which breaks _parse_frontmatter's
+        # literal "\n---\n" boundary check for any fixture containing real
+        # frontmatter — the exact false-negative this suite's Windows CI run
+        # caught (a "status: superseded" entry stopped being excluded because
+        # the frontmatter delimiter no longer matched). Production writes
+        # (vault_lock.atomic_write) are bytes-mode, LF-only, by design; this
+        # matches that convention instead of Python's platform-dependent
+        # text-mode translation.
+        (self.vault / "personal" / "reference" / f"{name}.md").write_bytes(body.encode("utf-8"))
 
     def test_stemming_matches_suffixed_forms(self):
         # Query "running" should match a document containing "runs" via the
@@ -131,8 +140,8 @@ class TestAbstractionAltitude(unittest.TestCase):
         # beyond the body and confound the comparison) — the only intended
         # difference between the two entries is anchor-vs-not.
         content = "widget subsystem overview and quirks"
-        (self.vault / "personal" / "reference" / "_index.md").write_text(content, encoding="utf-8")
-        (self.vault / "personal" / "reference" / "zzznote.md").write_text(content, encoding="utf-8")
+        (self.vault / "personal" / "reference" / "_index.md").write_bytes(content.encode("utf-8"))
+        (self.vault / "personal" / "reference" / "zzznote.md").write_bytes(content.encode("utf-8"))
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
         by_path = {r["path"]: r for r in results}
         self.assertIn("personal/reference/_index.md", by_path)
@@ -155,8 +164,8 @@ class TestFallbackCascade(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_hybrid_tier_when_both_signals_present(self):
-        (self.vault / "personal" / "reference" / "a.md").write_text(
-            "widget subsystem details", encoding="utf-8",
+        (self.vault / "personal" / "reference" / "a.md").write_bytes(
+            b"widget subsystem details",
         )
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
         self.assertTrue(results)
@@ -171,11 +180,16 @@ class TestFallbackCascade(unittest.TestCase):
         self.assertGreater(r["keyword"], 0.0)
 
     def test_sqlite_only_fallback_when_no_ranked_signal_but_filter_matches(self):
-        (self.vault / "personal" / "reference" / "a.md").write_text(
-            "---\nkind: convention\nstatus: active\ncreated: 2026-01-01\n"
-            "updated: 2026-01-01\ntags: []\ngroup: personal\nslug: a\n"
-            "always_load: false\n---\n\ncompletely unrelated filler text\n",
-            encoding="utf-8",
+        # write_bytes (LF-only), not write_text — see TestBM25Search._write's
+        # comment for why: this entry's real "---\n"-delimited frontmatter
+        # must survive byte-for-byte for _parse_frontmatter's status/kind
+        # filtering to work on every OS.
+        (self.vault / "personal" / "reference" / "a.md").write_bytes(
+            (
+                "---\nkind: convention\nstatus: active\ncreated: 2026-01-01\n"
+                "updated: 2026-01-01\ntags: []\ngroup: personal\nslug: a\n"
+                "always_load: false\n---\n\ncompletely unrelated filler text\n"
+            ).encode("utf-8"),
         )
         # A query with zero token overlap with the entry (so both vec-stub
         # similarity for this query and BM25 score land at/near nothing
@@ -208,19 +222,19 @@ class TestTimeWeightedRetrieval(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_stale_volatile_entry_ranks_below_fresh_equally_relevant_entry(self):
+        # write_bytes (LF-only), not write_text — real "---\n"-delimited
+        # frontmatter must survive byte-for-byte on every OS.
         content = "widget subsystem overview and quirks"
-        (self.vault / "personal" / "reference" / "stale-note.md").write_text(
+        (self.vault / "personal" / "reference" / "stale-note.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2020-01-01\nupdated: 2020-01-01\n"
             "tags: []\ngroup: personal\nslug: stale-note\nalways_load: false\n---\n\n"
-            + content + "\n",
-            encoding="utf-8",
-        )
-        (self.vault / "personal" / "reference" / "fresh-note.md").write_text(
+            + content + "\n"
+        ).encode("utf-8"))
+        (self.vault / "personal" / "reference" / "fresh-note.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
             "tags: []\ngroup: personal\nslug: fresh-note\nalways_load: false\n---\n\n"
-            + content + "\n",
-            encoding="utf-8",
-        )
+            + content + "\n"
+        ).encode("utf-8"))
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
         by_path = {r["path"]: r for r in results}
         self.assertIn("personal/reference/stale-note.md", by_path)
@@ -236,12 +250,11 @@ class TestTimeWeightedRetrieval(unittest.TestCase):
 
     def test_durable_entry_ignores_staleness_entirely(self):
         content = "widget subsystem overview and quirks"
-        (self.vault / "personal" / "reference" / "old-decision.md").write_text(
+        (self.vault / "personal" / "reference" / "old-decision.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2020-01-01\nupdated: 2020-01-01\n"
             "tags: []\ngroup: personal\nslug: old-decision\nalways_load: false\n"
-            "lifecycle_tier: durable\n---\n\n" + content + "\n",
-            encoding="utf-8",
-        )
+            "lifecycle_tier: durable\n---\n\n" + content + "\n"
+        ).encode("utf-8"))
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
         by_path = {r["path"]: r for r in results}
         self.assertEqual(by_path["personal/reference/old-decision.md"]["decay_score"], 1.0)
@@ -262,7 +275,7 @@ class TestChunkedBM25MaxPassage(unittest.TestCase):
     def test_finds_relevant_passage_past_the_old_500_char_window(self):
         filler = ("This paragraph is unrelated filler content padding the entry. " * 10)
         buried = "\n\n".join([filler] * 3) + "\n\nquokka migration patterns discussed here in depth.\n\n" + filler
-        (self.vault / "personal" / "reference" / "long-entry.md").write_text(buried, encoding="utf-8")
+        (self.vault / "personal" / "reference" / "long-entry.md").write_bytes(buried.encode("utf-8"))
         results = recall._bm25_search(self.vault, ["quokka", "migration"])
         self.assertIn("personal/reference/long-entry.md", results)
 

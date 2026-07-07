@@ -47,14 +47,16 @@ _FILLER_SOURCES = [f"personal/insight/filler-{n}.md" for n in range(1, 6)]
 
 
 def _write_entry(vault: Path, rel: str, body: str) -> None:
+    # write_bytes (LF-only), not write_text — see test_consolidate.py's
+    # identical helper for why (Windows CI caught the CRLF-vs-frontmatter
+    # bug this avoids).
     path = vault / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    path.write_bytes((
         "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
         "tags: []\ngroup: personal\nslug: " + Path(rel).stem + "\nalways_load: false\n---\n\n"
-        + body + "\n",
-        encoding="utf-8",
-    )
+        + body + "\n"
+    ).encode("utf-8"))
 
 
 def _build_fixture(vault: Path) -> None:

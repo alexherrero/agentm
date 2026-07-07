@@ -35,14 +35,17 @@ from crystallize import parse_digest, DIGEST_KIND as DIGEST_KIND_DIR  # noqa: E4
 
 
 def _write_entry(vault: Path, rel: str, body: str) -> None:
+    # write_bytes (LF-only), not write_text — real "---\n"-delimited
+    # frontmatter must survive byte-for-byte on every OS (write_text
+    # translates "\n" to the OS native newline on Windows, breaking
+    # _parse_frontmatter's literal boundary check there).
     path = vault / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    path.write_bytes((
         "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
         "tags: []\ngroup: personal\nslug: " + Path(rel).stem + "\nalways_load: false\n---\n\n"
-        + body + "\n",
-        encoding="utf-8",
-    )
+        + body + "\n"
+    ).encode("utf-8"))
 
 
 class TestFindRecurringTargets(unittest.TestCase):

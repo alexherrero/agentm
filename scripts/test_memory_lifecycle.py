@@ -194,7 +194,10 @@ class TestAccessDrivenReset(unittest.TestCase):
         # thing vault_lint.build_model() does) without calling into lifecycle.py.
         note_path = self.vault / rel
         note_path.parent.mkdir(parents=True, exist_ok=True)
-        note_path.write_text("---\nkind: convention\n---\n\nbody\n", encoding="utf-8")
+        # write_bytes (LF-only), not write_text — real "---\n"-delimited
+        # frontmatter must survive byte-for-byte on every OS (write_text
+        # translates "\n" to the OS native newline on Windows).
+        note_path.write_bytes(b"---\nkind: convention\n---\n\nbody\n")
         _ = note_path.read_text(encoding="utf-8")  # the "lint walk" touch
 
         score_after_raw_touch = compute_decay_score(
@@ -217,18 +220,18 @@ class TestRecallPayloadIntegration(unittest.TestCase):
         self.vault = Path(self.tmp.name) / "vault"
         (self.vault / "personal" / "insight").mkdir(parents=True)
         (self.vault / "projects" / "agentm" / "decisions").mkdir(parents=True)
-        (self.vault / "personal" / "insight" / "widget-notes.md").write_text(
+        # write_bytes (LF-only), not write_text — real "---\n"-delimited
+        # frontmatter must survive byte-for-byte on every OS.
+        (self.vault / "personal" / "insight" / "widget-notes.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
             "tags: [widget]\ngroup: personal\nslug: widget-notes\nalways_load: false\n---\n\n"
-            "Notes about the widget subsystem and its quirks.\n",
-            encoding="utf-8",
-        )
-        (self.vault / "projects" / "agentm" / "decisions" / "widget-call.md").write_text(
+            "Notes about the widget subsystem and its quirks.\n"
+        ).encode("utf-8"))
+        (self.vault / "projects" / "agentm" / "decisions" / "widget-call.md").write_bytes((
             "---\nkind: convention\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
             "tags: [widget]\ngroup: personal\nslug: widget-call\nalways_load: false\n---\n\n"
-            "Decided the widget subsystem uses approach B, not approach A.\n",
-            encoding="utf-8",
-        )
+            "Decided the widget subsystem uses approach B, not approach A.\n"
+        ).encode("utf-8"))
 
     def tearDown(self):
         self.tmp.cleanup()
