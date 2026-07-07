@@ -87,7 +87,7 @@ The host loop pursues the objective but is blind to whether the success check is
 - **The done-check is uneditable by the running agent.** The running agent reads the success criterion and cannot rewrite it — the same rule that forbids a runner editing a test to make it pass.
 - **Completion routes through `/review`.** A goal reports done only after a cold [Reviewer](agentm-personas) sub-agent confirms it.
 
-The done-check binds the runner; the cold `/review` rides the persona-activation sub-agent dispatch. Until that chain ships, both are a design contract the runner build must honor, not yet a runtime guard.
+The done-check binds the runner; the cold `/review` rides the persona-activation sub-agent dispatch. Until that chain ships, both are a design contract the runner build must honor, not yet a runtime guard — except for the Decide step itself (loop step 7 below), which now enforces both invariants mechanically in isolation: see the amendment log.
 
 ### The boundary
 
@@ -149,6 +149,8 @@ The done-check binds the runner; the cold `/review` rides the persona-activation
 ## Amendment log
 
 *Newest first. Collapses to one ≤2-paragraph entry at finalization; git holds the granular history.*
+
+- **2026-07-07 — Decide step (loop step 7) ships in isolation (AG Wave E, PLAN-wave-e-scheduled-surfaces task 3).** `scripts/goal_contract.py` implements the Decide step alone — not the full seven-step loop — plus the done-check integrity check it depends on: `snapshot_done_check` / `done_check_tampered` fingerprint the done-check (the `done` opinion or an operator `--accept` test) at goal start and re-check it at decide time, and `decide(...)` returns `done` only when the done-check is untampered **and** gates are green **and** `cold_review_confirmed=True` is passed in explicitly — it can never reach `done` from green gates alone. This is the first concrete, testable form of both locked anti-gaming invariants (uneditable done-check; completion routes through `/review`), enforced as tamper-detection-and-refusal rather than OS-level prevention, mirroring AGENTS.md rule 5's treatment of a test the agent might weaken. **Still not built:** the other six loop steps (limit check, safety pre-check, plan/act, verify, persist) — the design still points these at `/work`'s own machinery — and nothing yet wires this module into an actual host loop (Claude's `/goal`, Antigravity's Agent Manager). Nothing yet *dispatches* a cold `/review` sub-agent and feeds its result into `cold_review_confirmed`; this module only enforces that the gate can't be bypassed once that signal exists, not how the signal gets produced. The runner + persona-activation chain this section names remains unshipped. Verified by `scripts/test_goal_contract.py` (6 tests: tamper detection, tampered-rejected-first, green-gates-alone-insufficient, gates-not-green-insufficient, positive path).
 
 - **2026-06-28 — lock-down sweep (operator review).** All standing fixes clean (diagram sized; no mermaid; no ADR mentions; log already newest-first). Confirmed rides-the-host-engine + adds-only-the-contract (no `/goal` command; token budget removed) and the locked anti-gaming invariants (uneditable done-check + cold `/review`). The two open-for-review items (STUCK = pause-resumable; default persona Engineer/T1) and the Maintainer over-list reconcile stay flagged for the runner/activation build. No content change. Locked as a v5–v8 guidepost.
 
