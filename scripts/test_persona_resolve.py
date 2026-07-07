@@ -162,5 +162,63 @@ class TestAdopt(unittest.TestCase):
         self.assertTrue(result["adopted"], result["violations"])
 
 
+class TestRealRosterAdoptsInEachDeclaredMode(unittest.TestCase):
+    """Wave D persona-roster manifests (PLAN-wave-d-personas task 2) — each
+    of the 9 new manifests adopts cleanly through at least one of its own
+    declared `modes:` entries, gates on tier, loads, resolves bindings, and
+    composes without error. Exercises the real repo tree, not a fixture —
+    a regression here means a shipped manifest stopped adopting."""
+
+    _ROSTER = (
+        "architect", "designer", "tech-lead", "engineer", "reviewer",
+        "operator", "troubleshooter", "researcher", "maintainer",
+    )
+
+    def test_each_new_persona_adopts_via_its_own_first_declared_mode(self):
+        repo_root = Path(__file__).resolve().parent.parent
+        check_personas = pr._load_check_personas()
+        for name in self._ROSTER:
+            with self.subTest(persona=name):
+                manifest_path = repo_root / "personas" / f"{name}.md"
+                fm = check_personas._parse_frontmatter(manifest_path)
+                self.assertIsNotNone(fm, f"{name}.md: unparseable frontmatter")
+                modes = fm.get("modes") or []
+                self.assertTrue(modes, f"{name}.md: modes: must be non-empty")
+                mode = modes[0]
+
+                result = pr.adopt(name, mode, root=repo_root)
+
+                self.assertTrue(result["adopted"], (name, result["violations"]))
+                self.assertEqual(result["reason"], "adopted")
+                self.assertEqual(result["mode"], mode)
+                self.assertTrue(result["stance"], f"{name}.md: empty stance body")
+                # tier: is declared on every new-roster manifest -> the tier
+                # binding must resolve (never None for a valid T0-T4 value).
+                self.assertIsNotNone(
+                    result["tier_binding"],
+                    f"{name}.md: tier: declared but resolve_tier() returned None",
+                )
+                self.assertIn("model", result["tier_binding"])
+                self.assertIn("effort", result["tier_binding"])
+                # opinions: — every declared opinion gets a binding entry
+                # (degrade-gracefully is fine; absence of the key is not).
+                for opinion in (fm.get("opinions") or []):
+                    self.assertIn(opinion, result["opinion_bindings"])
+                # enhances: — every declared capability gets a binding entry.
+                for cap in (fm.get("enhances") or []):
+                    self.assertIn(cap, result["capability_bindings"])
+
+    def test_reviewer_is_sub_agent_only_and_adopts_cold(self):
+        """The reviewer's one locked mode (agentm-persona-activation.md:
+        'The Reviewer runs cold on the sub-agent path, for adversarial
+        independence') adopts cleanly and declares no other mode."""
+        repo_root = Path(__file__).resolve().parent.parent
+        check_personas = pr._load_check_personas()
+        fm = check_personas._parse_frontmatter(repo_root / "personas" / "reviewer.md")
+        self.assertEqual(fm.get("modes"), ["sub-agent"])
+        result = pr.adopt("reviewer", "sub-agent", root=repo_root)
+        self.assertTrue(result["adopted"])
+
+
 if __name__ == "__main__":
     unittest.main()

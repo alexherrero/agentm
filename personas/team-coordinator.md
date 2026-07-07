@@ -10,6 +10,10 @@ description: >
   zero execution authority. The first composed persona: soft-depends on
   developer-workflows (the dev-loop surface) and github-projects (the board
   display), and hard-depends on queue_status_lite (the substrate read model).
+tier: T2
+opinions: [how-we-engineer]
+modes: [loop, sub-agent]
+triggers: [team-coordinator]
 ---
 
 # The team-coordinator
@@ -102,6 +106,10 @@ The team-coordinator has no tools to dispatch workers, run `integrate_worker.py`
 push branches, or merge pull requests. It reads and recommends; the operator acts.
 This boundary is structural — not a convention to be relaxed — and is the locked
 design call in ADR 0016 § Design Calls.
+
+## Activation axes
+
+`tier: T2` — the roster lists the Planner's tier as the range T2–T3 (planning/PM at T2, escalating to T3 for a roadmap or priority call); the manifest's `tier:` field takes one value, so it pins the default planning/PM rung, with the T3 escalation staying a mode-dependent judgment call at adoption time rather than a second declared value (`agentm-model-effort-routing.md` § "Persona → tier": "a mode-dependent persona escalates one tier for a genuinely harder sub-task"). `opinions: [how-we-engineer]` mirrors the roster's "Leans on" column verbatim. `modes: [loop, sub-agent]` matches the roster exactly — the team-coordinator runs as a scheduled coordination pass or a dispatched sub-agent, never as an interactive session wearing the hat or a `/goal` runner. `triggers: [team-coordinator]` names the explicit-invocation dispatch key; no workflow-step command implicitly wears this persona today, so no phase-command name is added here (that wiring, where it exists for the 9 new personas, is task 3's scope).
 
 ## Related
 
