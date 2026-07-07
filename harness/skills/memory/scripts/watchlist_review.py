@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 # watchlist_review.py — /memory watchlist review command (plan #7b task 5).
 #
-# Walks `<vault>/personal/_skill-watchlist/<source-slug>/<pattern-slug>.md`
-# entries; presents each to the operator with promote / dismiss / defer
+# Walks two watchlist roots' `<source-slug>/<pattern-slug>.md` entries as
+# ONE review surface: `<vault>/personal/_skill-watchlist/` (adapt-don't-
+# import candidate skills, the original consumer) and
+# `<vault>/personal/_watchlist/` (AG Wave E experience-plan task 1's
+# generalized forward-learning findings — ideas/patterns/references from
+# operator-approved sources, written by `forward_learning.py`). Same entry
+# shape, same review verbs — "the broader loop generalizes this same
+# shape" (`wiki/designs/agentm-experience-and-dreaming.md`), so one CLI
+# reviews both rather than a second review surface being invented.
+# Presents each entry to the operator with promote / dismiss / defer
 # options. Pattern mirrors `ideas_promote.py`'s GC flow (keep / archive /
 # delete) — same interactive-prompt + non-TTY-default-to-keep semantics.
 #
@@ -10,10 +18,15 @@
 #   - promote → frontmatter `status: promoted` + `promoted_at` timestamp.
 #     Entry stays in place but is marked "ready for operator's manual
 #     authoring of crickets/skills/<x>/" (the adapt-don't-import
-#     contract: only the operator forks, never the agent).
-#   - dismiss → entry moves to `_skill-watchlist/_archive/<source-slug>/`
+#     contract: only the operator forks, never the agent) — for a
+#     `_watchlist/` (forward-learning) entry, "promoted" instead just means
+#     the operator has accepted the finding; adoption still happens by
+#     hand, never auto-adopted anywhere in this pipeline.
+#   - dismiss → entry moves to <its own root>/_archive/<source-slug>/
 #     with collision-safe naming; `dismissed_at` timestamp added.
-#     Preserves audit trail without cluttering active watchlist.
+#     Preserves audit trail without cluttering active watchlist. Archives
+#     into whichever root (`_skill-watchlist` or `_watchlist`) the entry
+#     actually came from — the two pools never cross-mix.
 #   - defer → frontmatter `status: deferred` + `deferred_until: <iso-date>`
 #     + `defer_reason` field. Entry stays in place; future list operations
 #     can filter `deferred_until` to surface only re-eligible entries.
@@ -61,8 +74,16 @@ def _watchlist_root(vault: Path) -> Path:
     return vault / "personal" / "_skill-watchlist"
 
 
-def _archive_root(vault: Path) -> Path:
-    return _watchlist_root(vault) / "_archive"
+def _general_watchlist_root(vault: Path) -> Path:
+    """The AG Wave E experience-plan sibling of `_skill-watchlist` — the
+    forward-learning pipeline's ideas/patterns/references (generalized
+    beyond skills; `forward_learning.py` is the sole writer). Same entry
+    shape, same review verbs; this CLI scans both roots as one surface."""
+    return vault / "personal" / "_watchlist"
+
+
+def _watchlist_roots(vault: Path) -> list[Path]:
+    return [_watchlist_root(vault), _general_watchlist_root(vault)]
 
 
 def _utcnow_iso() -> str:
@@ -100,27 +121,29 @@ def _parse_frontmatter(path: Path) -> dict[str, str]:
 
 
 def list_watchlist_entries(vault: Path) -> list[dict]:
-    """Walk _skill-watchlist/<source-slug>/*.md (excluding _archive/).
+    """Walk every watchlist root's <source-slug>/*.md (excluding _archive/)
+    — both `_skill-watchlist` (adapt-don't-import) and `_watchlist` (the
+    generalized forward-learning findings), one review surface for both.
 
     Returns sorted list of {path, source_slug, pattern_slug, frontmatter}.
     """
-    root = _watchlist_root(vault)
-    if not root.exists():
-        return []
     out: list[dict] = []
-    for source_dir in sorted(root.iterdir()):
-        if not source_dir.is_dir() or source_dir.name == "_archive":
+    for root in _watchlist_roots(vault):
+        if not root.exists():
             continue
-        for entry in sorted(source_dir.glob("*.md")):
-            if not entry.is_file():
+        for source_dir in sorted(root.iterdir()):
+            if not source_dir.is_dir() or source_dir.name == "_archive":
                 continue
-            fm = _parse_frontmatter(entry)
-            out.append({
-                "path": str(entry),
-                "source_slug": source_dir.name,
-                "pattern_slug": entry.stem,
-                "frontmatter": fm,
-            })
+            for entry in sorted(source_dir.glob("*.md")):
+                if not entry.is_file():
+                    continue
+                fm = _parse_frontmatter(entry)
+                out.append({
+                    "path": str(entry),
+                    "source_slug": source_dir.name,
+                    "pattern_slug": entry.stem,
+                    "frontmatter": fm,
+                })
     return out
 
 
@@ -191,11 +214,15 @@ def promote_entry(entry_path: Path) -> dict:
 
 
 def dismiss_entry(vault: Path, entry_path: Path) -> dict:
-    """Move entry to _archive/<source-slug>/ with collision-safe naming."""
+    """Move entry to <its own watchlist root>/_archive/<source-slug>/ with
+    collision-safe naming. Derived from the entry's own root (not a single
+    hardcoded root) so an entry from either `_skill-watchlist` or the
+    generalized `_watchlist` archives into its own pool, never cross-mixed."""
     if not entry_path.exists():
         return {"action": "error", "reason": f"entry not found: {entry_path}"}
     source_slug = entry_path.parent.name
-    archive_dir = _archive_root(vault) / source_slug
+    watchlist_root = entry_path.parent.parent  # <root>/<source_slug>/<entry>.md
+    archive_dir = watchlist_root / "_archive" / source_slug
     archive_dir.mkdir(parents=True, exist_ok=True)
     target = archive_dir / entry_path.name
     n = 1
@@ -357,8 +384,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="memory-watchlist",
         description=(
-            "Review pending entries in _skill-watchlist/ — promote (mark "
-            "ready for operator's manual fork to crickets/skills/), "
+            "Review pending entries in _skill-watchlist/ and _watchlist/ — "
+            "promote (mark accepted; adoption still happens by hand), "
             "dismiss (archive), defer (snooze for N days). Non-TTY stdin "
             "defaults to skip (never silent action; same contract as "
             "ideas_promote.py gc)."
@@ -395,6 +422,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 def _entry_path_from_slugs(
     vault: Path, source_slug: str, pattern_slug: str,
 ) -> Path:
+    """Resolve a (source_slug, pattern_slug) pair to its entry path, trying
+    each watchlist root in turn. Falls back to the skill-watchlist path
+    (pre-existing behavior, byte-identical for callers who never touch the
+    generalized root) when the entry exists in neither — same not-found
+    shape `promote_entry`/`dismiss_entry`/`defer_entry` already handle."""
+    for root in _watchlist_roots(vault):
+        candidate = root / source_slug / f"{pattern_slug}.md"
+        if candidate.exists():
+            return candidate
     return _watchlist_root(vault) / source_slug / f"{pattern_slug}.md"
 
 
