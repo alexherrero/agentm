@@ -152,6 +152,30 @@ class TestPass(unittest.TestCase):
                          "Real personas/ directory failed check-personas gate — "
                          "check personas/*.md for invalid requires: or always_load.")
 
+    def test_real_manifests_carry_all_four_activation_axes(self):
+        """agentm-persona-activation.md:135 named this 'still open': neither
+        brain.md nor team-coordinator.md carried tier:/opinions:/modes:/
+        triggers: before the Wave D retrofit. Assert the axes are present
+        AND non-empty on both real manifests (a gate-vacuous pass — e.g. an
+        absent field, which the shape-only gate accepts — would not catch
+        the regression this test guards against)."""
+        repo_root = _HERE.parent
+        for name in ("brain", "team-coordinator"):
+            path = repo_root / "personas" / f"{name}.md"
+            fm = _mod._parse_frontmatter(path)
+            self.assertIsNotNone(fm, f"{name}.md: unparseable frontmatter")
+            self.assertIn("tier", fm, f"{name}.md: missing tier:")
+            self.assertTrue(fm["tier"], f"{name}.md: tier: is empty")
+            self.assertIn("modes", fm, f"{name}.md: missing modes:")
+            self.assertTrue(fm["modes"], f"{name}.md: modes: is empty")
+            # opinions: and triggers: may legitimately be an empty list
+            # (brain leans on no Opinion and answers no trigger — it composes
+            # automatically beneath every adoption rather than being adopted
+            # itself) — assert *presence* (the field is declared), not
+            # non-emptiness, for these two.
+            self.assertIn("opinions", fm, f"{name}.md: missing opinions:")
+            self.assertIn("triggers", fm, f"{name}.md: missing triggers:")
+
 
 class TestRejectNonSubstrateRequires(unittest.TestCase):
     """Acceptance criterion (a): reject a persona whose requires names a non-substrate capability."""
