@@ -20,7 +20,7 @@ Each loop's *trigger* — the *when* — lives with the owner of that boundary; 
 
 - **Kernel** — config/state core, the idle chain, and all memory operations (reflect, discover, adapt, index). Always agentm-resident.
 - **Developer plugin** (`crickets/developer-workflows`) — the phase-boundary trigger. It calls in through the `phase_dispatch()` bridge described [above](#the-gap-it-closes) rather than re-implementing the orchestration logic.
-- **PM plugin** (`crickets/github-projects`) — the session-start briefing and nudge trigger. The briefing is **currently kernel-resident and working** (the kernel `memory-recall-session-start` hook); relocating it into the `github-projects` plugin is a planned optimization. The failure mode there would only be non-relocation, not a broken briefing.
+- **PM plugin** (`crickets/github-projects`) — the session-start briefing and nudge trigger. The briefing is **currently kernel-resident and working** (the kernel `memory-recall-session-start` hook); relocating it into the `github-projects` plugin is a planned optimization, staged as a concrete crickets-side plan (`PLAN-relocate-pm-briefing-trigger.md`, 2026-07-07) rather than executed. The failure mode there would only be non-relocation, not a broken briefing.
 
 ## The load-bearing design calls
 
