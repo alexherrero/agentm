@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v5.13.0] — 2026-07-06 — Minor: AG Wave D persona roster — 9 new manifests, activation-axes retrofit, content-refresh's first consumer
+
+**MINOR.** The persona roster from `agentm-personas.md` goes from 2 authored manifests to 11: the four activation axes (`tier:`/`opinions:`/`modes:`/`triggers:`) are retrofitted onto `brain` and `team-coordinator`, and the 9 remaining designed-only rows (Architect, Designer, Tech-Lead, Engineer, Reviewer, Operator, Troubleshooter/SRE, Researcher, Maintainer) are authored for the first time. A fresh-session re-audit confirms agent-def `effort:` frontmatter is a real, currently-documented dispatch-time binding — closing the P12 Task 2b open question. `content-refresh` (already shipped in crickets) gets its first named consumer: a re-pin entrypoint for the model-effort-routing chart's pinned model-id strings.
+
+### Added
+
+- **9 new `kind: persona` manifests** (`personas/{architect,designer,tech-lead,engineer,reviewer,operator,troubleshooter,researcher,maintainer}.md`). Each carries the four activation axes matching the roster table in `agentm-personas.md` — `tier:` per its declared T0-T4 rung, `opinions:` mirroring its "Leans on" column (verified against real `opinions/*.md` names), `enhances:` mapping its "Composes" column to real crickets capability names (verified against each plugin's `group.yaml`), and `modes:` matching its declared launch-mode set exactly, including the Reviewer's single locked `sub-agent`-only mode for cold adversarial independence.
+- **`scripts/model_effort_routing_refresh.py`** — the agentm-side re-pin entrypoint for `agentm-model-effort-routing.md`'s five pinned model-id strings, delegating into crickets' already-shipped `content_refresh.py` engine via the same sibling-checkout pattern `check-slop.py` already uses. Bypasses the not-yet-built weekly model-drift-detector scheduler, per design — this is the consumer contract only.
+
+### Changed
+
+- **`brain.md` and `team-coordinator.md` gain the four activation axes** (`tier:`/`opinions:`/`modes:`/`triggers:`) that `agentm-persona-activation.md:135` had named as the one still-open item from the Wave B build.
+- **`agentm-model-effort-routing.md`'s stale doc-drift citation is corrected** — the design's "still name `claude-sonnet-4-6`" claim about three crickets agent-defs is now verified stale; all three already carry `model: claude-sonnet-5`. A new amendment-log entry records the fresh-session `effort:`-binding re-audit outcome (confirmed BINDS, per Claude Code's own current subagent-frontmatter documentation).
+
+### Internal
+
+- **`test_check_personas.py`** gains a real-manifest assertion that `brain`/`team-coordinator` carry non-vacuous activation axes (not just gate-shape-valid).
+- **`test_persona_resolve.py`** gains a real-tree test adopting each of the 9 new personas through its own first-declared mode, plus a dedicated Reviewer cold-sub-agent-only assertion.
+- **`test_model_effort_routing_refresh.py`** covers the mechanical re-pin path, the judgment-bound new-model surfacing path, a real-tree checklist/chart-citation sanity check, and the missing-sibling-checkout loud-failure path.
+- **Workflow-step automatic-adoption (plan task 3) is deferred, not shipped.** `agentm-persona-activation.md`'s own locked design call states the phase-command prose itself is the source of truth for a workflow step (`triggers:` feeds only sub-agent routing, never a competing workflow-step selector) — the actual wiring is a crickets-side change to `/plan.md`/`/work.md`/`/review.md`/`/bugfix.md`, outside this release's repo scope. The four new manifests' `triggers:` already carry the intended workflow-step names (`plan-phase`, `work-phase`, `review-phase`, `bugfix-phase`) for whichever side picks this up next.
+
 ## [v5.12.0] — 2026-07-06 — Minor: AG Wave B lands — runner, opinions, memory metadata, persona activation, storage convergence
 
 **MINOR.** All five Architecture-Governance Wave B leader features ship in this release: the AgentM runner core, the request-by-name Opinion registry, extended memory metadata with a hybrid `--filter` recall path, the persona-tier activation pipeline, and storage convergence routing entries and MCP through the storage seam. Alongside them, per-plan CI hardens with a nightly main-HEAD full-matrix backstop, a batch of Windows portability fixes surfaces bugs actual CI runs caught that local `check-all.sh` couldn't (fastmcp isn't installed locally), and the always-on persona's manifest file catches up to the name its designs have used since late June.

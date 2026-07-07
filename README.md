@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v5.12.0](https://github.com/alexherrero/agentm/releases/tag/v5.12.0).** The runner, an opinion registry, richer memory metadata with filtered recall, persona activation, and storage-seam convergence all land together — the full Architecture-Governance Wave B.
+> **Latest release: [v5.13.0](https://github.com/alexherrero/agentm/releases/tag/v5.13.0).** The persona roster grows from 2 to 11 authored manifests, with a re-audited effort-routing binding and content-refresh's first named consumer — Architecture-Governance Wave D.
 
 ---
 
