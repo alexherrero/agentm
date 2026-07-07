@@ -39,3 +39,20 @@ Not counted for or against the Health Index — visible so a family's true futur
 | capability function | dark-registry | persona activation: per-persona model+effort routing binding at activation (agentm-model-effort-routing.md) — designed, not built |
 | memory persist+recall | dark-registry | kind-scoped recall: recall filtered/ranked by memory kind — designed, not built |
 
+## Operator `/status`
+
+`python3 scripts/status.py [--path <history.jsonl>]` prints the Health Index,
+the per-family breakdown, and the dark-check count for the **last recorded
+run** in `scripts/health/history.jsonl` — the same ledger `health_score.py
+--history` appends to above. It is a consumer, never a second scorer: every
+number it prints is read back from a row `health_score.py` already computed
+and wrote, never recomputed (PLAN-wave-e-scheduled-surfaces task 5;
+ROADMAP-MASTER.md:121, ratified verbatim: "Wave-E's Operator `/status` + the
+reporting digest consume R's scorecard rather than re-deriving one").
+
+History rows written before this field existed don't carry a dark count;
+`status.py` prints "Dark checks: not recorded for this run" for those rather
+than guessing. If no history has been recorded yet, it exits non-zero with a
+pointer to `bash scripts/health/run-fast-tier.sh | python3
+scripts/health/health_score.py --history`.
+
