@@ -43,6 +43,9 @@ run_suite "verify-reflection"               bash "$SCRIPTS_DIR/verify-reflection
 run_suite "verify-dreaming"                 bash "$SCRIPTS_DIR/verify-dreaming.sh"
 run_suite "verify-mcp-surface"              "$PY" "$SCRIPTS_DIR/verify-mcp-surface.py"
 run_suite "verify-phases"                   bash "$SCRIPTS_DIR/verify-phases.sh"
+run_suite "eval-v6-graph"                    "$PY" "$HERE/eval_v6_graph.py"
+run_suite "eval-v6-retrieval"                "$PY" "$HERE/eval_v6_retrieval.py"
+run_suite "eval-v6-consolidate"              "$PY" "$HERE/eval_v6_consolidate.py"
 run_suite "verify-memory-roundtrip"         bash "$SCRIPTS_DIR/verify-memory-roundtrip.sh"
 
 cat "$JSONL_TMP"

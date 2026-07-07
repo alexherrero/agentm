@@ -1,0 +1,188 @@
+{
+  "$schema_note": "V6-3 human-gold query set (V6-20 eval), pre-registered before the V6-2 graph is built (FABLE R4). AI-drafted v0, pending operator spot-check \u2014 see README.md.",
+  "entries": [
+    {
+      "id": "q01",
+      "query": "What is the #25 external-thinking re-audit gate, and when does it 'land' \u2014 at the pre-audit or the re-audit?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md"
+      ],
+      "rationale": "design-doc.md's own \u00a7 Re-audit gate states verbatim: '#25 is a standing re-audit gate... it lands when the re-audit... runs, not the pre-audit.'"
+    },
+    {
+      "id": "q02",
+      "query": "What is FABLE-PRE-VERDICT and why was it written ahead of the re-audit rather than during it?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/FABLE-PRE-VERDICT.md"
+      ],
+      "rationale": "The memo's own header states it was rendered 2026-07-06 because the operator's frontier-model access was about to lapse before Wave E staged."
+    },
+    {
+      "id": "q03",
+      "query": "Why is GBrain's published BrainBench benchmark (P@5 49.1% / R@5 97.9%) not trusted at face value?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md",
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/FABLE-PRE-VERDICT.md"
+      ],
+      "rationale": "Both docs state the numbers are self-reported, N=1, on a 240-page synthetic Opus-generated corpus with self-derived queries and only an internal ablation \u2014 'replicate the method, discard the figures.'"
+    },
+    {
+      "id": "q04",
+      "query": "What verb vocabulary does agentm's V6-2 knowledge graph use for typed edges, and where does it come from?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md"
+      ],
+      "rationale": "design-doc.md's V6-2 synthesis names the verbs seeded from the gist (uses, depends-on, contradicts, caused, fixed, supersedes) plus agentm's own (decided-in, implements, references) \u2014 not GBrain's VC-shaped vocabulary."
+    },
+    {
+      "id": "q05",
+      "query": "Is multi-hop graph traversal fused into V6-3's RRF retrieval at launch?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/FABLE-PRE-VERDICT.md",
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md"
+      ],
+      "rationale": "FABLE R2 rules it ships as a separate V6-19 browse/discovery verb, not a third RRF stream, until edge precision is measured and clears a floor."
+    },
+    {
+      "id": "q06",
+      "query": "What is the governing safety constraint that every storage/backend design in the V5 arc must not violate?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v5-1-storage-seam/design-doc.md",
+        "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md"
+      ],
+      "rationale": "Both cite 'never-orphan-the-vault' (+ never-orphan-the-operator, vault-as-canonical-context) as the governing safety constraint, repeated verbatim across the V5 storage design family."
+    },
+    {
+      "id": "q07",
+      "query": "What does V5-3 (storage cutover) actually delete, rename, and lock, relative to V5-1's seam?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md"
+      ],
+      "rationale": "The design-doc states plainly: 'V5-3 deletes the built-in, renames the vault, and locks the index-safety invariant,' building on V5-1's seam and V5-2's backing plugin."
+    },
+    {
+      "id": "q08",
+      "query": "What's the difference between backing the vault with vault-git versus vault-drive, and are they mutually exclusive?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/vault-backing/vault-git.md",
+        "projects/agentm/_harness/designs/vault-backing/vault-drive.md",
+        "projects/agentm/_harness/designs/vault-backing/_index.md"
+      ],
+      "rationale": "vault-git.md states 'Mutually exclusive with vault-drive \u2014 one transport per folder'; vault-drive.md frames Drive as discouraged/invisible to tooling versus git's tooled propose-via-PR path."
+    },
+    {
+      "id": "q09",
+      "query": "What does the autonomous-write contract's A3 scope actually cover, and what resolves it?",
+      "expected_notes": [
+        "projects/agentm/decisions/autonomous-write-contract.md"
+      ],
+      "rationale": "Direct source of the A3 scoped-to-personal-notes autonomous-write resolution, cited repeatedly across the audit and MCP-server designs as the real write-authz boundary."
+    },
+    {
+      "id": "q10",
+      "query": "What did the MemoryOS/Tencent architecture scan conclude about heat-based tiered memory, and was it adopted?",
+      "expected_notes": [
+        "projects/agentm/decisions/memory-os-architecture-scan.md"
+      ],
+      "rationale": "The scan explicitly lists heat-based tiered-memory as 'Deliberately not adopted' \u2014 over-engineering for a solo-operator vault \u2014 with only the floor-policy half kept at #46."
+    },
+    {
+      "id": "q11",
+      "query": "What is the LLM Wiki v2 gist's source-watch baseline, and what would trigger a fresh look at it?",
+      "expected_notes": [
+        "projects/agentm/decisions/llm-wiki-v2-design-cautions.md"
+      ],
+      "rationale": "The doc names the 2026-06-05 snapshot as the diff anchor and explicitly names two re-audit triggers: a new top-level technique cluster, or a concrete confidence-decay/crystallization-trigger algorithm."
+    },
+    {
+      "id": "q12",
+      "query": "Why was the V5-11 PM chief-of-staff design pulled forward, and what does it depend on?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v5-11-pm-chief-of-staff/design-doc.md",
+        "projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc.md"
+      ],
+      "rationale": "V5-11's design-doc names V5-10's coordinator-team foundation as the thing it 'can't ship before.'"
+    },
+    {
+      "id": "q13",
+      "query": "What does the V5 acceleration plan assume must already be in place before it applies?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v5-acceleration-plan.md"
+      ],
+      "rationale": "Its opening line states it 'assumes the coordinator-directed team work (building now) is in place' \u2014 i.e. V5-10."
+    },
+    {
+      "id": "q14",
+      "query": "What is the mechanical uplift measurement R3 shipped, and is it a merge gate?",
+      "expected_notes": [
+        "<vault>/_harness/PLAN.archive.20260705-r3-uplift-scoring.md"
+      ],
+      "rationale": "The archived R3 plan states explicitly it 'is not a merge gate \u2014 the mechanical rows are always-on reporting inside the existing deterministic tier.'"
+    },
+    {
+      "id": "q15",
+      "query": "Why was the live-uplift probe (Tasks 3-4 of R3) built and then reverted the same day?",
+      "expected_notes": [
+        "<vault>/_harness/PLAN.archive.20260705-r3-uplift-scoring.md"
+      ],
+      "rationale": "The plan's own Task 4 status note + Locked design calls record an operator mid-plan descope call, with checkers.py removed as designed-but-unconsumed code."
+    },
+    {
+      "id": "q16",
+      "query": "What are the four ABLATE_* flags R3 added, and what does each simulate?",
+      "expected_notes": [
+        "<vault>/_harness/PLAN.archive.20260705-r3-uplift-scoring.md"
+      ],
+      "rationale": "Task 1's Status note lists ABLATE_VECTORS / ABLATE_EVIDENCE_TRACKER / ABLATE_REFLECTION / ABLATE_GATES verbatim with what each ablates."
+    },
+    {
+      "id": "q17",
+      "query": "What is the sequencing gate that had to be satisfied before Wave E (V6) could open?",
+      "expected_notes": [
+        "<vault>/_harness/PLAN-wave-e-v6-index.md",
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md"
+      ],
+      "rationale": "PLAN-wave-e-v6-index.md's own header states 'R3 -> Wave E / V6 (gated on the eval harness R builds). Satisfied - R3 shipped and archived 2026-07-05.'"
+    },
+    {
+      "id": "q18",
+      "query": "What edge-extraction property has never been measured by any source discussing GBrain's knowledge graph, and why does that matter?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md"
+      ],
+      "rationale": "design-doc.md's V6-2 row states explicitly: 'no source measures edge-extraction precision/recall \u2014 only downstream retrieval... make edge-P/R a first-class V6-20 metric.'"
+    },
+    {
+      "id": "q19",
+      "query": "Why does the design decline to promote the gist's numeric confidence-decay score to V6-1's lifecycle state?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md"
+      ],
+      "rationale": "The 'V6-1 - why ADAPT, not ADOPT' subsection: no source actually parameterizes the illustrative 0.85 constant, and link-chains carry supersession more honestly than an unparameterized decaying float."
+    },
+    {
+      "id": "q20",
+      "query": "What does 'authority-by-volatility' mean for how the recall payload should present durable vs. volatile memory?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/v6-25-external-thinking-audit/design-doc.md"
+      ],
+      "rationale": "Tension #6's resolution: durable conventions read as authoritative, volatile facts read as verify-first \u2014 a projection of V6-1's per-note tier/status field, not a separate mechanism."
+    },
+    {
+      "id": "q21",
+      "query": "Why is Tencent's DB-Agent-Memory considered the most useful of the MemoryOS-family scans for the planned V6 build?",
+      "expected_notes": [
+        "projects/agentm/decisions/memory-os-architecture-scan.md"
+      ],
+      "rationale": "The scan's addendum calls it 'the most useful for our planned build \u2014 a concrete DB-memory impl with published benchmarks,' unlike the community memory-os project which had none at scan time."
+    },
+    {
+      "id": "q22",
+      "query": "What does the vault-obsidian how-to require as a prerequisite before setting up Obsidian on the vault?",
+      "expected_notes": [
+        "projects/agentm/_harness/designs/vault-backing/vault-obsidian.md"
+      ],
+      "rationale": "States the vault must already be backed by a transport \u2014 vault-git or vault-drive \u2014 before Obsidian is layered on top."
+    }
+  ]
+}

@@ -106,6 +106,7 @@ SELF_SKIP_PATHS=(
     'templates/hooks/pre-push'
     'CONTRIBUTING.md'
     'lib/install/.checksums.txt'   # generated SHA256 file; hex substrings false-positive on phone-us regex
+    'scripts/health/fixtures/v6-eval/edge-fixture-v0.json'   # per-entry source_sha256_12 hex hashes; same false-positive class
 )
 
 is_self_skip() {
