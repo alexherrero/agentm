@@ -47,7 +47,7 @@ Backward learning can only sharpen what the agent has already seen; forward lear
 
 ### Dreaming — designed
 
-Memory's "sleep": a scheduled, whole-corpus consolidation pass — dedup, contradiction triage, compression, insight-generation — producing a derived insights layer. The design is locked; there's no implementation, and its own prerequisite (a revert-log primitive) is unbuilt. The planned path is a thin manual `/dream` first, scheduled later (on the runner above).
+Memory's "sleep": a scheduled, whole-corpus consolidation pass — dedup, contradiction triage, compression, insight-generation — producing a derived insights layer. The design is locked; the pipeline itself has no implementation yet, but its prerequisite — a revert-log primitive — now exists (`harness/skills/memory/scripts/revert_log.py`, built 2026-07-07). The planned path is a thin manual `/dream` first, scheduled later (on the runner above).
 
 **`[PENDING-IMPL]`** — build the revert-log primitive, then `/dream`, then the scheduled pass; flip to as-built as each lands (documenter).
 
@@ -71,18 +71,20 @@ Everything routes through the existing memory engine — no new store; heat cura
 
 - **Forward learning and dreaming are designed, not built** — the two directions are lopsided today (backward shipped, forward is a sketch). Marked `[PENDING-IMPL]` above. **The runner they'll schedule on is built (2026-07-06)** — no longer part of this gap.
 - **The accumulate → Opinions loop is unspecified** — which experience signals sharpen which opinion, how often, and what keeps a bad signal from corrupting a standard.
-- **Dreaming's prerequisite** — a revert-log primitive must exist before whole-corpus consolidation is safe to run.
+- **Dreaming's prerequisite is now met** — the revert-log primitive exists (`harness/skills/memory/scripts/revert_log.py`, `PLAN-wave-e-dreaming` task 1); the remaining gap is `/dream` itself, then the scheduled pass built on top of it.
 - **Re-audit triggers:** flip forward-learning / dreaming to as-built as each ships; specify the accumulate loop when forward learning lands.
 
 ## References
 
-- `harness/skills/memory/scripts/` — `heat_policy.py` (promote/demote/pin), `reflect.py` (transcript mining), `ideas_incubator.py`, `adapt_skills.py`, `watchlist_review.py`
+- `harness/skills/memory/scripts/` — `heat_policy.py` (promote/demote/pin), `reflect.py` (transcript mining), `ideas_incubator.py`, `adapt_skills.py`, `watchlist_review.py`, `revert_log.py` (dreaming's append-only undo journal; tested by `scripts/test_revert_log.py`)
 - `harness/hooks/` — `memory-reflect-stop`, `memory-reflect-idle` (the backward triggers)
 - `harness/agents/` — `memory-idea-researcher`, `adapt-evaluator` (read-only memory-engine sub-agents)
 - vault `decisions/research-dream-mode-design.md` — the locked-but-unbuilt dreaming design
 - `~/.claude/CLAUDE.md` (opusplan) + the heat policy — the token-cost lever behind curation
 
 ## Amendment log
+
+**2026-07-07 — dreaming's prerequisite landed: the revert-log primitive (`PLAN-wave-e-dreaming` task 1).** `harness/skills/memory/scripts/revert_log.py` ships an append-only, per-run undo journal for the dreaming pipeline's content-touching writes (dedup/merge/supersede/compress), tested by `scripts/test_revert_log.py` (11 passing tests). Public API: `RevertLog(vault_path, *, log_root=None, lock_root=None, timeout=10.0, stale=10.0)`, `RevertLog.record_and_apply(run_id, stage, mutations) -> entry_id`, `RevertLog.revert(run_id, entry_id=None)`. The journal lives on a local, non-synced path (`~/.cache/agentm/dream/revert-log/<run_id>.jsonl`, `XDG_CACHE_HOME`-honoring) — never in the synced vault — and reuses the existing `vault_lock.py` primitives rather than inventing new locking. This is only the prerequisite: the Dreaming section's `[PENDING-IMPL]` marker stays as-is, since `/dream` and the scheduled consolidation pass are still unbuilt. *Re-audit trigger:* flip Dreaming's `[PENDING-IMPL]` to as-built once `/dream` and the scheduled pass ship on top of this primitive.
 
 **2026-07-06 — the runner's own `[PENDING-IMPL]` flipped to as-built (see the [Runner design](agentm-runner.md)).** Reconciled this pillar's prose to match: removed "runner" from the shared "designed, not built" framing (the LAUNCHED note, the diagram caption, the runner bullet, Risks, the re-audit triggers) since it no longer applies — forward learning and dreaming remain designed, not built, on their own merits, not because the runner they'd schedule on is missing. This is the re-audit the 2026-06-28 entry below named.
 
