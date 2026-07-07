@@ -33,6 +33,7 @@ from lifecycle import (  # noqa: E402
     lifecycle_tier_for,
     record_recall_access,
 )
+import save  # noqa: E402
 
 
 def _fm(**overrides) -> dict:
@@ -230,6 +231,44 @@ class TestRecallPayloadIntegration(unittest.TestCase):
         if decisions_result is not None:
             self.assertEqual(decisions_result["lifecycle_tier"], "durable")
             self.assertEqual(decisions_result["decay_score"], 1.0)
+
+
+class TestSaveEntryCLISurface(unittest.TestCase):
+    """The --lifecycle-tier flag on /memory save (the CLI surface save.py
+    exposes for this field, matching --supersedes/--fingerprint's pattern)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name) / "vault"
+        self.vault.mkdir(parents=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_cli_flag_parses(self):
+        args = save._parse_args([
+            "convention", "a-durable-note",
+            "--lifecycle-tier", "durable",
+        ])
+        self.assertEqual(args.lifecycle_tier, "durable")
+
+    def test_cli_flag_omitted_defaults_to_none(self):
+        args = save._parse_args(["convention", "a-note"])
+        self.assertIsNone(args.lifecycle_tier)
+
+    def test_cli_flag_rejects_invalid_choice(self):
+        with self.assertRaises(SystemExit):
+            save._parse_args([
+                "convention", "a-note", "--lifecycle-tier", "immortal",
+            ])
+
+    def test_save_entry_writes_lifecycle_tier_frontmatter(self):
+        path = save.save_entry(
+            self.vault, "convention", "a-durable-note", "Body text.\n",
+            lifecycle_tier="durable",
+        )
+        content = path.read_text(encoding="utf-8")
+        self.assertIn("lifecycle_tier: durable", content)
 
 
 if __name__ == "__main__":

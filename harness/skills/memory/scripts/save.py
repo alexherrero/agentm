@@ -317,6 +317,16 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="V6-11 recall-ladder join key (sets fingerprint: frontmatter)",
     )
     parser.add_argument(
+        "--lifecycle-tier",
+        default=None,
+        choices=("durable", "volatile"),
+        help=(
+            "V6-1 lifecycle classification (sets lifecycle_tier: frontmatter). "
+            "Omit to default to volatile-decay behavior; kind: failure-incident "
+            "and decisions/-path entries are always durable regardless."
+        ),
+    )
+    parser.add_argument(
         "--body-file",
         default="-",
         help=(
@@ -370,6 +380,7 @@ def main(argv: list[str] | None = None) -> int:
             tags=tags,
             supersedes=args.supersedes,
             fingerprint=args.fingerprint,
+            lifecycle_tier=args.lifecycle_tier,
         )
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
