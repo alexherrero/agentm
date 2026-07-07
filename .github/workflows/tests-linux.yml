@@ -119,6 +119,15 @@ jobs:
         # contributes to the vault even carrying the same still-HIGH pattern,
         # across all three --route-mode values.
         run: bash scripts/verify-reflection.sh
+      - name: verify-dreaming (stage->confirm->revert-log e2e, no-silent-apply-on-timeout)
+        # PLAN-wave-e-dreaming task 4: a manual /dream run against a seeded
+        # corpus stages a dedup proposal without mutating any source file;
+        # confirm() applies it through revert_log and the same RevertLog can
+        # undo it (proves apply routes through the journal, not a direct
+        # write); an expired proposal's confirm() raises and never applies
+        # (no silent apply on timeout); the shipped job manifest
+        # (templates/jobs/dream.yaml) parses and stays dry_run: true.
+        run: bash scripts/verify-dreaming.sh
       - name: verify-mcp-surface (append/search/forget round-trip, dead-surface fate)
         # R1.6 / agentmEngine#2: an in-process FastMCP client drives the real
         # append->search->forget round-trip, soft-delete semantics, and the

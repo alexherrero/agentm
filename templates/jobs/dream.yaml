@@ -1,0 +1,49 @@
+# dream.yaml — the dreaming pipeline's scheduled job manifest
+# (AG Wave E, PLAN-wave-e-dreaming task 4).
+#
+# Per agentm-runner.md's job-manifest contract — the as-built schema is
+# scripts/runner/manifest.py, which this file follows (the design doc's own
+# illustrative schema sketch uses slightly different field names, e.g.
+# `run:`/`output:`/a bare `budget: <int>`; the as-built loader is the
+# canonical contract, so this manifest matches manifest.py, not the sketch).
+#
+# .harness/jobs/ is gitignored (per-project runtime state, same as every
+# other .harness/* file — see .gitignore), so this templates/ copy is the
+# tracked, shipped source. Register it by copying to .harness/jobs/dream.yaml
+# in a repo that runs the agentm runner (scripts/agentm-runner.sh). No
+# capability has an install-time auto-seeding step for runner jobs yet —
+# this is the first one shipped; wiring `install.sh` to copy it
+# automatically is a separate, not-yet-decided follow-up.
+#
+# Cadence: "activity-gated (~weekly)" per the design's consumer table
+# (agentm-runner.md — "Dreaming: whole-corpus consolidation... the heaviest
+# job"). The runner's `gate:` field is parsed by manifest.py but not yet
+# evaluated by scripts/runner/cycle.py (as-built) — no real activity-gating
+# exists yet — so `schedule: weekly` + a two-cycle `lookback` is the
+# calibration-era substitute until the runner grows real gate evaluation.
+schedule: weekly
+lookback: 14d
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
+# Relies on MEMORY_VAULT_PATH already being set in the runner's own
+# environment, same as every other vault-reading script in this repo.
+command: python3 ../harness/skills/memory/scripts/dream.py
+
+# Insight-candidate writes land under _dream/insights/ — new, agent-
+# generated derived content, i.e. T3 (the agent's own memory), not T2
+# (operator-curated). The proposal-only stages (dedup/contradiction/
+# compression) never write to an existing entry at all.
+tier: T3
+
+# No `budget:` — the thin v1 pipeline (dream.py, dream_confirm.py) makes
+# zero LLM calls; it's stdlib-only deterministic heuristics (difflib
+# similarity, frontmatter pattern matching). A token budget will matter once
+# qualification/insight-generation graduate to an LLM-backed pass (the
+# vault design's v2 graduation horizon) — add one then, not speculatively.
+
+# Stays true until task 2's calibration evidence (the vault design's locked
+# call #6 — the dogfood evidence a later autonomy-graduation decision needs)
+# is explicitly recorded as sufficient in PLAN-wave-e-dreaming's close-out.
+# Promoting to false is a separate, explicit decision — never an automatic
+# consequence of this manifest existing (the plan's own Constraints).
+dry_run: true
