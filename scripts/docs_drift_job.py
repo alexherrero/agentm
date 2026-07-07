@@ -42,6 +42,9 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 _AGENTM_ROOT = _HERE.parent
 
+sys.path.insert(0, str(_HERE))
+import sibling_repo_root  # noqa: E402
+
 
 def find_crickets_wiki_watch_cycle() -> Path | None:
     env_dir = os.environ.get("CRICKETS_REPO_ROOT", "").strip()
@@ -50,9 +53,9 @@ def find_crickets_wiki_watch_cycle() -> Path | None:
         candidates.append(
             Path(os.path.expanduser(env_dir)) / "src" / "wiki" / "scripts" / "wiki_watch_cycle.py"
         )
-    candidates.append(
-        _AGENTM_ROOT.parent / "crickets" / "src" / "wiki" / "scripts" / "wiki_watch_cycle.py"
-    )
+    root = sibling_repo_root.sibling_layout_root(_HERE)
+    if root is not None:
+        candidates.append(root / "crickets" / "src" / "wiki" / "scripts" / "wiki_watch_cycle.py")
     for c in candidates:
         if c.is_file():
             return c
