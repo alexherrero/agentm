@@ -51,7 +51,10 @@ class _CrystallizeTestBase(unittest.TestCase):
         self.vault.mkdir()
 
     def _snapshot(self) -> set:
-        return {str(p.relative_to(self.vault)) for p in self.vault.rglob("*") if p.is_file()}
+        # .as_posix() normalizes to forward slashes -- rglob'd paths carry
+        # native separators (backslashes on Windows), and this snapshot's
+        # entries get compared against forward-slash-literal expectations.
+        return {p.relative_to(self.vault).as_posix() for p in self.vault.rglob("*") if p.is_file()}
 
 
 class RedTestFixtureExplorationTests(_CrystallizeTestBase):
