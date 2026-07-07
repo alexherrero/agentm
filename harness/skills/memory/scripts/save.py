@@ -49,12 +49,15 @@ _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "kind", "status", "created", "updated", "tags", "group", "slug",
-    "fingerprint", "always_load", "supersedes", "heat_pin",
+    "fingerprint", "always_load", "supersedes", "lifecycle_tier", "heat_pin",
 )
 # Required fields = every field except the optional ones.
 # `fingerprint` is written only by callers that pass one (the diagnostics
 # recall ladder, wave-c-diagnostics) -- optional alongside supersedes/heat_pin.
-_OPTIONAL_FIELDS = frozenset({"fingerprint", "supersedes", "heat_pin"})
+# `lifecycle_tier` (V6-1, agentm-memory-index.md) is likewise optional: absent
+# means "volatile" by default (lifecycle.py applies kind/path-based overrides
+# for the decay-exempt categories regardless of this field being set).
+_OPTIONAL_FIELDS = frozenset({"fingerprint", "supersedes", "lifecycle_tier", "heat_pin"})
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
 )
@@ -100,16 +103,24 @@ def _build_frontmatter(
     always_load: bool,
     supersedes: str | None,
     fingerprint: str | None = None,
+    lifecycle_tier: str | None = None,
 ) -> str:
     """Build the locked-order YAML frontmatter for a memory entry.
 
     Field order is locked for deterministic diffs:
       kind / status / created / updated / tags / group / slug / fingerprint
-      (omitted if None) / always_load / supersedes (omitted if None).
+      (omitted if None) / always_load / supersedes (omitted if None) /
+      lifecycle_tier (omitted if None).
 
     `fingerprint` is the V6-11 recall-ladder join key (agentm-memory-index.md;
     wave-c-diagnostics): omitted unless a caller passes one, so every existing
     entry kind's frontmatter is unaffected.
+
+    `lifecycle_tier` (V6-1, agentm-memory-index.md) is `"durable"` or
+    `"volatile"`; omitted unless a caller passes one — absence defaults to
+    volatile decay behavior in lifecycle.py, with kind/path-based overrides
+    for the decay-exempt categories (error-history, architecture-decisions)
+    applying regardless of whether this field is set.
     """
     today = _today_iso()
     # Build the tags list inline (`[]` if empty, `[a, b, c]` otherwise).
@@ -129,6 +140,8 @@ def _build_frontmatter(
     lines.append(f"always_load: {'true' if always_load else 'false'}")
     if supersedes:
         lines.append(f"supersedes: {supersedes}")
+    if lifecycle_tier:
+        lines.append(f"lifecycle_tier: {lifecycle_tier}")
     lines.append("---")
     return "\n".join(lines) + "\n"
 
@@ -144,6 +157,7 @@ def save_entry(
     tags: list[str] | None = None,
     supersedes: str | None = None,
     fingerprint: str | None = None,
+    lifecycle_tier: str | None = None,
 ) -> Path:
     """Write a memory entry to the vault. Returns the absolute path written.
 
@@ -164,6 +178,10 @@ def save_entry(
     _validate_group(group)
     tags = tags or []
     _validate_tags(tags)
+    if lifecycle_tier is not None and lifecycle_tier not in ("durable", "volatile"):
+        raise ValueError(
+            f"lifecycle_tier {lifecycle_tier!r}: must be 'durable' or 'volatile' (or omitted)"
+        )
 
     # V6-11 (agentm-memory-index.md): `failure-incident` is a reserved `kind`
     # value whose content is untrusted and potentially PII-bearing (a
@@ -208,6 +226,7 @@ def save_entry(
         always_load=always_load,
         supersedes=supersedes,
         fingerprint=fingerprint,
+        lifecycle_tier=lifecycle_tier,
     )
     # Ensure body ends with single trailing newline.
     body_stripped = body.rstrip("\n")

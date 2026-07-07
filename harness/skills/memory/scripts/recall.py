@@ -979,7 +979,27 @@ def query(
         })
     # Sort by combined desc, tiebreak by sim desc then path asc.
     merged.sort(key=lambda r: (-r["combined"], -r["sim"], r["path"]))
-    return merged[:k]
+    top = merged[:k]
+
+    # V6-1 (agentm-memory-index.md): tag the final top-k with lifecycle state
+    # (durable/volatile tier + decay score). Bounded to at most k frontmatter
+    # reads — done here, after trimming, rather than for every candidate in
+    # `all_paths`, to keep the read-count small under the recall time budget.
+    try:
+        import lifecycle  # type: ignore
+    except ImportError:
+        lifecycle = None  # type: ignore
+    if lifecycle is not None:
+        for r in top:
+            try:
+                content = (vault / r["path"]).read_text(encoding="utf-8")
+                fm, _ = _parse_frontmatter(content)
+            except (OSError, UnicodeDecodeError):
+                fm = {}
+            r["lifecycle_tier"] = lifecycle.lifecycle_tier_for(fm, r["path"])
+            r["decay_score"] = lifecycle.compute_decay_score(vault, r["slug"], fm, r["path"])
+
+    return top
 
 
 def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
@@ -997,6 +1017,8 @@ def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
     )
     if tags and tags not in {"[]", ""}:
         header += f", tags: {tags}"
+    if "lifecycle_tier" in result:
+        header += f", tier: {result['lifecycle_tier']}"
     header += ")"
     return f"{header}\n\n{body.strip()}"
 
@@ -1081,6 +1103,10 @@ def prompt_submit(
         from heat_policy import record_hit as _record_recall_hit  # type: ignore
     except ImportError:
         _record_recall_hit = None
+    try:
+        from lifecycle import record_recall_access as _record_lifecycle_access  # type: ignore
+    except ImportError:
+        _record_lifecycle_access = None
     for result in results:
         md_path = vault / result["path"]
         try:
@@ -1093,6 +1119,12 @@ def prompt_submit(
         # Record the on-demand hit for heat tracking (best-effort).
         if _record_recall_hit is not None:
             _record_recall_hit(vault, result["slug"])
+        # V6-1: genuine recall access resets the volatile-tier decay clock
+        # (best-effort, no-op for decay-exempt entries). This is the ONLY
+        # call site — a lint walk, index rebuild, or dreaming pass must
+        # never reach this function.
+        if _record_lifecycle_access is not None:
+            _record_lifecycle_access(vault, result["slug"], fm, result["path"])
 
     # Apply token budget: results are highest-salience first → truncation
     # drops the least-relevant tail entries, never the top hits.
