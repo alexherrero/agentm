@@ -217,6 +217,39 @@ class CycleIdempotencyTests(unittest.TestCase):
             self.assertEqual(len(lines), 2)
 
 
+class HealthPassJobManifestTests(unittest.TestCase):
+    """Locks the schema shape of `.harness/jobs/health-pass.yaml` (AG Wave E
+    task 1, agentm-runner.md). The manifest itself is gitignored (`.harness/`
+    is machine-local, per repo convention) so it can't be asserted against
+    directly in a portable test — this fixture mirrors its exact content so a
+    regression in `manifest.py`'s parsing of this job shape still fails loud."""
+
+    _HEALTH_PASS_FIELDS = dict(
+        schedule="daily",
+        lookback="24h",
+        command="bash health/run-fast-tier.sh | python3 health/health_score.py --history",
+        tier="T2",
+        dry_run=True,
+    )
+
+    def test_health_pass_manifest_shape_loads(self):
+        with TemporaryDirectory() as td:
+            jobs_dir = Path(td) / "jobs"
+            _write_job(jobs_dir, "health-pass", **self._HEALTH_PASS_FIELDS)
+            jobs = manifest.load_manifests(jobs_dir)
+            self.assertEqual(len(jobs), 1)
+            job = jobs[0]
+            self.assertEqual(job.name, "health-pass")
+            self.assertEqual(job.interval_seconds, 86400)  # daily
+            self.assertEqual(job.lookback_seconds, 86400)  # 24h — catches one missed daily run
+            self.assertEqual(job.tier, "T2")  # curated: appends the tracked scripts/health/history.jsonl
+            self.assertTrue(job.dry_run)  # ships dry-run; the operator promotes it
+            self.assertEqual(
+                job.command,
+                "bash health/run-fast-tier.sh | python3 health/health_score.py --history",
+            )
+
+
 class WatchdogTests(unittest.TestCase):
     def test_healthy_by_default(self):
         with TemporaryDirectory() as td:
