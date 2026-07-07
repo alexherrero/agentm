@@ -17,11 +17,22 @@ Covers (plan task 3 verification):
   - confirming twice raises (no accidental double-apply)
   - confirming an unknown index raises
   - a non-expired pending proposal stays pending until confirmed
+  - two REAL concurrent confirm() calls (different proposal indices, same
+    run, real threads) both land in state.json — no lost update. An
+    adversarial review caught a genuine race here: confirm()'s state.json
+    read-modify-write wasn't serialized against itself, so two concurrent
+    callers could interleave their load/save and silently drop one
+    confirmation even though its mutation had already applied to disk
+    (which also defeated the AlreadyConfirmedError one-shot guard and could
+    cause a second record_and_apply to journal already-mutated content as
+    its "pre-image"). Fixed by _confirm_lock — a mutex separate from
+    revert_log's own, held across confirm()'s entire body.
 """
 from __future__ import annotations
 
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -143,6 +154,54 @@ class DoubleConfirmAndUnknownProposalTests(_DreamConfirmTestBase):
             dc.confirm(self.vault, "no-such-run", 1, self.revert_log)
         with self.assertRaises(dc.UnknownRunError):
             dc.list_pending(self.vault, "no-such-run")
+
+
+class ConcurrentConfirmTests(_DreamConfirmTestBase):
+    """Regression test for the adversarial-review finding: confirm()'s
+    state.json read-modify-write must be serialized against itself, or two
+    concurrent confirms silently lose a confirmation even though its
+    mutation already applied to disk."""
+
+    def _stage_two_independent_dedup_proposals(self, run_id: str):
+        self._write("a1.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today.\n")
+        self._write("a2.md", "---\nkind: fix\n---\nThe quick brown fox jumps over the lazy dog today!\n")
+        self._write("b1.md", "---\nkind: fix\n---\nPack my box with five dozen liquor jugs now.\n")
+        self._write("b2.md", "---\nkind: fix\n---\nPack my box with five dozen liquor jugs now!\n")
+        digest = dream.run_dream(self.vault, run_id=run_id)
+        self.assertGreaterEqual(len(digest.proposals), 2, "fixture must produce >=2 independent proposals")
+        return digest
+
+    def test_two_concurrent_confirms_both_land_no_lost_update(self) -> None:
+        self._stage_two_independent_dedup_proposals("run-concurrent")
+
+        results = {}
+
+        def worker(index: int) -> None:
+            try:
+                entry_id = dc.confirm(self.vault, "run-concurrent", index, self.revert_log)
+                results[index] = ("ok", entry_id)
+            except Exception as e:  # pragma: no cover - failure path only
+                results[index] = ("error", e)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in (1, 2)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        self.assertEqual(results[1][0], "ok", results[1])
+        self.assertEqual(results[2][0], "ok", results[2])
+
+        statuses = {p.index: p.status for p in dc.list_pending(self.vault, "run-concurrent")}
+        self.assertEqual(statuses[1], "confirmed")
+        self.assertEqual(statuses[2], "confirmed")
+
+        # A second confirm on either index must still be rejected — the
+        # one-shot guard survives the concurrent window.
+        with self.assertRaises(dc.AlreadyConfirmedError):
+            dc.confirm(self.vault, "run-concurrent", 1, self.revert_log)
+        with self.assertRaises(dc.AlreadyConfirmedError):
+            dc.confirm(self.vault, "run-concurrent", 2, self.revert_log)
 
 
 def _read_manifest_staged_at(vault_path: Path, run_id: str) -> float:
