@@ -190,7 +190,16 @@ def compute_decay_score(
     Decay-exempt entries always score 1.0 (durable tiers ignore access —
     FABLE R1). Volatile entries decay exponentially from the last genuine
     recall access (sidecar `last_access`), falling back to frontmatter
-    `created` if never accessed, with half-life `DECAY_HALF_LIFE_DAYS`.
+    `updated` (then `created`, if `updated` is absent) with half-life
+    `DECAY_HALF_LIFE_DAYS`.
+
+    `updated`, not `created`, is the right fallback anchor: an entry that
+    was substantively edited today is fresh regardless of how old its
+    original creation date is — falling back to `created` would penalize a
+    frequently-maintained reference doc for staleness it doesn't have,
+    purely because it has never yet had a genuine recall access recorded
+    (a cold-start bias task 6's own eval caught: it silently demoted an
+    accurate, same-day-edited hit out of the top-5 entirely).
 
     `now` is injectable for tests (ISO date string YYYY-MM-DD).
     """
@@ -202,7 +211,7 @@ def compute_decay_score(
 
     data = _load_sidecar(vault)
     entry = data.get("entries", {}).get(slug, {})
-    anchor = entry.get("last_access") or fm.get("created")
+    anchor = entry.get("last_access") or fm.get("updated") or fm.get("created")
     if not anchor:
         return 1.0  # No basis to compute decay — treat as fresh.
     try:

@@ -194,5 +194,78 @@ class TestFallbackCascade(unittest.TestCase):
         self.assertIn("personal/reference/a.md", paths)
 
 
+class TestTimeWeightedRetrieval(unittest.TestCase):
+    """V6-12 (task 6): decay_score multiplies the ranking score for every
+    candidate, not just a post-hoc top-k label — a stale volatile entry
+    should rank below an equally-relevant fresher one."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name) / "vault"
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_stale_volatile_entry_ranks_below_fresh_equally_relevant_entry(self):
+        content = "widget subsystem overview and quirks"
+        (self.vault / "personal" / "reference" / "stale-note.md").write_text(
+            "---\nkind: insight\nstatus: active\ncreated: 2020-01-01\nupdated: 2020-01-01\n"
+            "tags: []\ngroup: personal\nslug: stale-note\nalways_load: false\n---\n\n"
+            + content + "\n",
+            encoding="utf-8",
+        )
+        (self.vault / "personal" / "reference" / "fresh-note.md").write_text(
+            "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
+            "tags: []\ngroup: personal\nslug: fresh-note\nalways_load: false\n---\n\n"
+            + content + "\n",
+            encoding="utf-8",
+        )
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        by_path = {r["path"]: r for r in results}
+        self.assertIn("personal/reference/stale-note.md", by_path)
+        self.assertIn("personal/reference/fresh-note.md", by_path)
+        self.assertLess(
+            by_path["personal/reference/stale-note.md"]["decay_score"],
+            by_path["personal/reference/fresh-note.md"]["decay_score"],
+        )
+        self.assertGreater(
+            by_path["personal/reference/fresh-note.md"]["combined"],
+            by_path["personal/reference/stale-note.md"]["combined"],
+        )
+
+    def test_durable_entry_ignores_staleness_entirely(self):
+        content = "widget subsystem overview and quirks"
+        (self.vault / "personal" / "reference" / "old-decision.md").write_text(
+            "---\nkind: insight\nstatus: active\ncreated: 2020-01-01\nupdated: 2020-01-01\n"
+            "tags: []\ngroup: personal\nslug: old-decision\nalways_load: false\n"
+            "lifecycle_tier: durable\n---\n\n" + content + "\n",
+            encoding="utf-8",
+        )
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        by_path = {r["path"]: r for r in results}
+        self.assertEqual(by_path["personal/reference/old-decision.md"]["decay_score"], 1.0)
+
+
+class TestChunkedBM25MaxPassage(unittest.TestCase):
+    """V6-10 (task 6): a relevant passage buried past the old fixed
+    500-char search window is now found via chunked max-passage scoring."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name) / "vault"
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_finds_relevant_passage_past_the_old_500_char_window(self):
+        filler = ("This paragraph is unrelated filler content padding the entry. " * 10)
+        buried = "\n\n".join([filler] * 3) + "\n\nquokka migration patterns discussed here in depth.\n\n" + filler
+        (self.vault / "personal" / "reference" / "long-entry.md").write_text(buried, encoding="utf-8")
+        results = recall._bm25_search(self.vault, ["quokka", "migration"])
+        self.assertIn("personal/reference/long-entry.md", results)
+
+
 if __name__ == "__main__":
     unittest.main()

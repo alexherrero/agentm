@@ -645,11 +645,25 @@ def _bm25_search(
         return {}
     stemmed_query = [_stem(t) for t in query_tokens]
 
+    try:
+        import chunking  # type: ignore
+    except ImportError:
+        chunking = None  # type: ignore
+
     from storage_device_local import DeviceLocalBackend  # noqa: E402
     backend = DeviceLocalBackend(root=vault)
 
-    doc_term_counts: dict[str, dict[str, int]] = {}
-    doc_lengths: dict[str, int] = {}
+    # V6-10 (task 6): chunk-level term counts, scored per-chunk and
+    # aggregated per-doc by max-passage (the doc's BM25 score is its best
+    # chunk's score) — replaces the old fixed `body[:500]` window, which
+    # silently missed any relevant passage past the first 500 characters
+    # of a long entry (task 5's eval traced real recall gaps to exactly
+    # this). Document frequency (df) below is still doc-level (does ANY
+    # chunk of this doc contain the term), the standard IDF semantics —
+    # only the per-doc term-frequency scoring is now chunk-max'd.
+    doc_chunk_counts: dict[str, list[dict[str, int]]] = {}
+    doc_chunk_lengths: dict[str, list[int]] = {}
+    all_chunk_lengths: list[int] = []
     for md_path in _iter_entry_paths(vault, include_inbox=include_inbox):
         if deadline is not None and time.monotonic() >= deadline:
             break
@@ -664,43 +678,75 @@ def _bm25_search(
             continue
         slug = md_path.stem
         tags = fm.get("tags", "")
-        searchable = (slug + " " + tags + " " + body[:500]).lower()
-        doc_tokens = [_stem(t) for t in re.split(r"[^a-z0-9]+", searchable) if len(t) >= _MIN_TOKEN_LEN]
-        if not any(t in doc_tokens for t in stemmed_query):
+        prefix = (slug + " " + tags + " ").lower()
+        chunks = chunking.chunk_text(body) if chunking is not None else [body[:500]]
+
+        chunk_counts_list: list[dict[str, int]] = []
+        chunk_lengths_list: list[int] = []
+        doc_has_any_query_term = False
+        for chunk in chunks:
+            chunk_tokens = [
+                _stem(t) for t in re.split(r"[^a-z0-9]+", (prefix + chunk).lower())
+                if len(t) >= _MIN_TOKEN_LEN
+            ]
+            if any(t in chunk_tokens for t in stemmed_query):
+                doc_has_any_query_term = True
+            counts: dict[str, int] = {}
+            for t in chunk_tokens:
+                counts[t] = counts.get(t, 0) + 1
+            chunk_counts_list.append(counts)
+            chunk_lengths_list.append(len(chunk_tokens))
+
+        if not doc_has_any_query_term:
             continue  # only score candidates that share at least one stemmed term
         rel = md_path.relative_to(vault).as_posix()
-        counts: dict[str, int] = {}
-        for t in doc_tokens:
-            counts[t] = counts.get(t, 0) + 1
-        doc_term_counts[rel] = counts
-        doc_lengths[rel] = len(doc_tokens)
+        doc_chunk_counts[rel] = chunk_counts_list
+        doc_chunk_lengths[rel] = chunk_lengths_list
+        # avgdl scope matches the pre-chunking implementation: computed over
+        # the CANDIDATE set only (documents sharing >=1 stemmed query term),
+        # not the whole corpus — a whole-corpus avgdl would be dominated by
+        # the vault's many short single-paragraph notes, incorrectly
+        # penalizing longer, more substantive candidates' chunk lengths
+        # relative to a denominator they were never being compared against
+        # before (caught by this task's own eval: it silently regressed
+        # exactly the long-document case chunking was built to help).
+        all_chunk_lengths.extend(chunk_lengths_list)
 
-    if not doc_term_counts:
+    if not doc_chunk_counts:
         return {}
 
-    avgdl = sum(doc_lengths.values()) / len(doc_lengths)
-    n_docs = len(doc_term_counts)
+    avgdl = sum(all_chunk_lengths) / len(all_chunk_lengths) if all_chunk_lengths else 1.0
+    n_docs = len(doc_chunk_counts)
 
-    # Document frequency per stemmed query term, over this candidate set.
+    # Document frequency per stemmed query term: how many DOCUMENTS (not
+    # chunks) contain the term in at least one chunk — standard IDF.
     df: dict[str, int] = {}
     for term in set(stemmed_query):
-        df[term] = sum(1 for counts in doc_term_counts.values() if term in counts)
+        df[term] = sum(
+            1 for chunk_list in doc_chunk_counts.values()
+            if any(term in counts for counts in chunk_list)
+        )
 
     results: dict[str, float] = {}
-    for rel, counts in doc_term_counts.items():
-        dl = doc_lengths[rel] or 1
-        score = 0.0
-        for term in stemmed_query:
-            tf = counts.get(term, 0)
-            if tf == 0:
-                continue
-            n_t = df.get(term, 0)
-            # BM25 IDF (Robertson-Sparck-Jones, +1 smoothing to stay
-            # non-negative when n_t is close to n_docs on a tiny candidate set).
-            idf = math.log((n_docs - n_t + 0.5) / (n_t + 0.5) + 1.0)
-            score += idf * (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / avgdl))
-        if score > 0:
-            results[rel] = score
+    for rel, chunk_counts_list in doc_chunk_counts.items():
+        chunk_lengths_list = doc_chunk_lengths[rel]
+        best_score = 0.0
+        for counts, dl in zip(chunk_counts_list, chunk_lengths_list):
+            dl = dl or 1
+            score = 0.0
+            for term in stemmed_query:
+                tf = counts.get(term, 0)
+                if tf == 0:
+                    continue
+                n_t = df.get(term, 0)
+                # BM25 IDF (Robertson-Sparck-Jones, +1 smoothing to stay
+                # non-negative when n_t is close to n_docs on a tiny set).
+                idf = math.log((n_docs - n_t + 0.5) / (n_t + 0.5) + 1.0)
+                score += idf * (tf * (BM25_K1 + 1)) / (tf + BM25_K1 * (1 - BM25_B + BM25_B * dl / avgdl))
+            if score > best_score:
+                best_score = score
+        if best_score > 0:
+            results[rel] = best_score
     return results
 
 
@@ -1174,6 +1220,18 @@ def query(
         if Path(path).stem in _ALTITUDE_ANCHOR_SLUGS:
             fused[path] = fused[path] + _ALTITUDE_BOOST
 
+    # V6-12 (task 6, time-weighted retrieval): decay_score multiplies the
+    # fused RRF score for every candidate, not just a post-hoc top-k tag —
+    # a stale volatile-tier note should rank lower than an equally-relevant
+    # fresh one. Read once per candidate (bounded by the fused candidate
+    # set BM25/vec already narrowed down to, not the whole corpus) rather
+    # than per top-k result, since lifecycle now has to influence *which*
+    # entries make the top-k, not just how they're labeled after.
+    try:
+        import lifecycle  # type: ignore
+    except ImportError:
+        lifecycle = None  # type: ignore
+
     all_paths = set(fused.keys())
     merged: list[dict] = []
     for path in all_paths:
@@ -1181,38 +1239,35 @@ def query(
             continue
         sim = vec_results.get(path, 0.0)
         keyword = bm25_results.get(path, 0.0)
-        combined = fused[path]
         slug = Path(path).stem
-        merged.append({
+
+        lifecycle_tier = None
+        decay_score = 1.0
+        if lifecycle is not None:
+            try:
+                content = (vault / path).read_text(encoding="utf-8")
+                fm, _ = _parse_frontmatter(content)
+            except (OSError, UnicodeDecodeError):
+                fm = {}
+            lifecycle_tier = lifecycle.lifecycle_tier_for(fm, path)
+            decay_score = lifecycle.compute_decay_score(vault, slug, fm, path)
+
+        combined = fused[path] * decay_score
+
+        entry = {
             "path": path,
             "slug": slug,
             "sim": sim,
             "keyword": keyword,
             "combined": combined,
-        })
+        }
+        if lifecycle_tier is not None:
+            entry["lifecycle_tier"] = lifecycle_tier
+            entry["decay_score"] = decay_score
+        merged.append(entry)
     # Sort by combined desc, tiebreak by sim desc then path asc.
     merged.sort(key=lambda r: (-r["combined"], -r["sim"], r["path"]))
-    top = merged[:k]
-
-    # V6-1 (agentm-memory-index.md): tag the final top-k with lifecycle state
-    # (durable/volatile tier + decay score). Bounded to at most k frontmatter
-    # reads — done here, after trimming, rather than for every candidate in
-    # `all_paths`, to keep the read-count small under the recall time budget.
-    try:
-        import lifecycle  # type: ignore
-    except ImportError:
-        lifecycle = None  # type: ignore
-    if lifecycle is not None:
-        for r in top:
-            try:
-                content = (vault / r["path"]).read_text(encoding="utf-8")
-                fm, _ = _parse_frontmatter(content)
-            except (OSError, UnicodeDecodeError):
-                fm = {}
-            r["lifecycle_tier"] = lifecycle.lifecycle_tier_for(fm, r["path"])
-            r["decay_score"] = lifecycle.compute_decay_score(vault, r["slug"], fm, r["path"])
-
-    return top
+    return merged[:k]
 
 
 def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:

@@ -127,6 +127,29 @@ class TestDecayScore(unittest.TestCase):
         score = compute_decay_score(self.vault, "no-dates", fm, rel, now="2026-06-01")
         self.assertEqual(score, 1.0)
 
+    def test_updated_preferred_over_created_when_no_access_recorded(self):
+        # Task 6 fix: an entry substantively edited today is fresh
+        # regardless of how old its original `created` date is — falling
+        # back to `created` when `updated` is more recent would penalize a
+        # frequently-maintained reference doc for staleness it doesn't
+        # have. Caught by this task's own real-vault eval: it silently
+        # demoted an accurate, same-day-edited hit out of the top-5.
+        fm = _fm(created="2020-01-01", updated="2026-06-01")
+        rel = "personal/insight/maintained-doc.md"
+        # "now" equals `updated`, not `created` -- should be fully fresh.
+        score = compute_decay_score(self.vault, "maintained-doc", fm, rel, now="2026-06-01")
+        self.assertEqual(score, 1.0)
+
+    def test_falls_back_to_created_when_updated_absent(self):
+        fm = _fm(created="2026-01-01")  # no `updated` key at all.
+        rel = "personal/insight/some-note.md"
+        import datetime
+        later = (
+            datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=DECAY_HALF_LIFE_DAYS)
+        ).isoformat()
+        score = compute_decay_score(self.vault, "some-note", fm, rel, now=later)
+        self.assertAlmostEqual(score, 0.5, places=6)
+
 
 class TestAccessDrivenReset(unittest.TestCase):
 
