@@ -34,13 +34,18 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 _AGENTM_ROOT = _HERE.parent
 
+sys.path.insert(0, str(_HERE))
+import sibling_repo_root  # noqa: E402
+
 
 def find_crickets_check_slop() -> Path | None:
     env_dir = os.environ.get("CRICKETS_REPO_ROOT", "").strip()
     candidates = []
     if env_dir:
         candidates.append(Path(os.path.expanduser(env_dir)) / "scripts" / "check-slop.py")
-    candidates.append(_AGENTM_ROOT.parent / "crickets" / "scripts" / "check-slop.py")
+    root = sibling_repo_root.sibling_layout_root(_HERE)
+    if root is not None:
+        candidates.append(root / "crickets" / "scripts" / "check-slop.py")
     for c in candidates:
         if c.is_file():
             return c
