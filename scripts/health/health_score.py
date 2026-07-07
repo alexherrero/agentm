@@ -238,7 +238,16 @@ def _git_sha() -> str:
         return "unknown"
 
 
-def append_history_row(scorecard: dict, *, ts: int | None = None) -> dict:
+def append_history_row(scorecard: dict, *, ts: int | None = None,
+                        path: Path | None = None) -> dict:
+    """Append one row to the history ledger (`HISTORY_PATH` unless `path` is
+    given — tests use `path` to avoid dirtying the tracked ledger).
+
+    `dark_count` (added for the Operator `/status` surface, PLAN-wave-e-
+    scheduled-surfaces task 5) is the total dark-check count across all
+    families in THIS scorecard — additive to the row shape, not a rescore;
+    `/status` reads it back rather than recomputing it from raw records.
+    """
     row = {
         "agentm_sha": _git_sha(),
         "fixture_pack_version": FIXTURE_PACK_VERSION,
@@ -248,11 +257,32 @@ def append_history_row(scorecard: dict, *, ts: int | None = None) -> dict:
         "ts": ts if ts is not None else int(time.time()),
         "health_index": scorecard["health_index"],
         "families": {f["axis"]: f["score"] for f in scorecard["families"]},
+        "dark_count": sum(f["dark_count"] for f in scorecard["families"]),
     }
-    HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(HISTORY_PATH, "a", encoding="utf-8") as fh:
+    out_path = path if path is not None else HISTORY_PATH
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
     return row
+
+
+def read_latest_history_row(path: Path | None = None) -> dict | None:
+    """The most recently appended history row, or None if the ledger is
+    absent/empty. Read-only; never recomputes a score — this is the read
+    side of `append_history_row`, for a consumer (the Operator `/status`
+    surface) that wants the last-known scorecard without re-deriving it."""
+    in_path = path if path is not None else HISTORY_PATH
+    if not in_path.is_file():
+        return None
+    last_line = None
+    with open(in_path, "r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if line:
+                last_line = line
+    if last_line is None:
+        return None
+    return json.loads(last_line)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
