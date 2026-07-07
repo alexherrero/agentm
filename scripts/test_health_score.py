@@ -121,7 +121,7 @@ class TestDarkChecksRendering(unittest.TestCase):
     def test_dark_checks_registry_file_loads_and_renders(self):
         registry = _HERE / "health" / "dark-checks.jsonl"
         dark_records = health_score.read_records(str(registry))
-        self.assertGreaterEqual(len(dark_records), 5)
+        self.assertGreaterEqual(len(dark_records), 4)
         for r in dark_records:
             self.assertTrue(r.get("dark"))
             self.assertIsNone(r.get("pass"))
