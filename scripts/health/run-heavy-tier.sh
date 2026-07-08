@@ -6,7 +6,7 @@
 # can be `cat`-concatenated with run-fast-tier.sh's output before piping into
 # health_score.py.
 #
-# Four checks, each gracefully degrading (SKIPPED, not silently dropped) when
+# Six checks, each gracefully degrading (SKIPPED, not silently dropped) when
 # the heavier dependency it needs isn't installed — this script must be safe
 # to run in the fast-tier CI environment too (it just won't have much to say
 # there), not only in the nightly job that installs the extra deps:
@@ -28,6 +28,22 @@
 #      scripts/smoke-install-bash.sh (a fresh scratch HOME + target project,
 #      already the established hermetic cold-install proof; this task does
 #      not reinvent it).
+#   5. Dashboard honest-dark on a bare install (ROADMAP-TAIL-ADJUDICATIONS.md
+#      B3, added AA4 2026-07-08) — a bare install has no telemetry events and
+#      no fast/heavy-tier records of its own yet, so two renderers must never
+#      fabricate a score from that emptiness: (a) the observability console
+#      over an aggregator rollup built from zero events must render $0.0000 /
+#      "no data yet" placeholders, never crash and never a non-zero number;
+#      (b) the Health-Scorecard given ONLY the static dark-checks registry
+#      (zero live records, the true bare-install shape) must not render a
+#      numeric Health Index that reads as "everything failed" — a fabricated
+#      0.00/100 is indistinguishable from a real all-red run to a stranger
+#      reading it cold.
+#   6. Fan-out/budget gates fail CLOSED with no config (same B3 ruling) — a
+#      stranger's clone ships no `.harness/budget.yaml`; the runner's fleet
+#      budget ceiling must default to a safe conservative cap in that case
+#      (fail closed), not skip the gate entirely (fail open, today's
+#      `_read_daily_ceiling` -> None behavior disables the check outright).
 #
 # Usage:   bash scripts/health/run-heavy-tier.sh
 # Exit:    0 always (this is a reporting script, like run-fast-tier.sh — the
@@ -148,6 +164,129 @@ if bash "$SCRIPTS_DIR/smoke-install-bash.sh" >/dev/null 2>&1; then
   emit "run-heavy-tier" "capability function" "cold-install dogfood: smoke-install-bash.sh (fresh HOME, hooks resolve)" 1
 else
   emit "run-heavy-tier" "capability function" "cold-install dogfood: smoke-install-bash.sh (fresh HOME, hooks resolve)" 0
+fi
+
+# ── 5. dashboard honest-dark on a bare install (B3) ────────────────────────
+echo "run-heavy-tier: [5/6] dashboard honest-dark on a bare install…" >&2
+BARE_CHECK_SCRIPT="$(mktemp).py"
+# Written to a scratch file rather than a heredoc nested inside $(...) --
+# bash 3.2 (macOS's default /bin/bash, still the health-nightly-macos leg's
+# shell) misparses a quoted heredoc's apostrophes when it's nested inside a
+# command substitution, even though the heredoc body itself is inert text.
+cat > "$BARE_CHECK_SCRIPT" <<'PYEOF'
+import sys, tempfile, json
+from pathlib import Path
+
+try:
+    from runner import aggregator
+    from health import observability_console as oc
+    from health import health_score as hs
+except ImportError as e:
+    print(f"console:SKIP scorecard:SKIP ({e})")
+    sys.exit(0)
+
+# (a) observability console over a rollup built from zero telemetry events
+# (the aggregator's own bare-install shape) with no operator budget config.
+console_ok = False
+try:
+    with tempfile.TemporaryDirectory() as d:
+        db = f"{d}/rollup.db"
+        aggregator.build_rollup([], db)
+        data = oc.compute_console_data(db, budget_config=None)
+        html = oc.render_html(data)
+        console_ok = (
+            data["total_spend_usd"] == 0
+            and data["plan_count"] == 0
+            and html.count("no data yet") == 4
+            and "$0.0000" in html
+        )
+except Exception:
+    console_ok = False
+
+# (b) Health-Scorecard given ONLY the static dark-checks registry (zero live
+# records — the true bare-install shape, before any tier has ever run).
+scorecard_ok = False
+try:
+    dark_path = Path("scripts/health/dark-checks.jsonl")
+    dark_records = hs.read_records(str(dark_path))
+    scorecard = hs.compute_scorecard(dark_records)
+    live_total = sum(f["live_count"] for f in scorecard["families"])
+    rendered = hs.render_markdown(scorecard)
+    # Honest-dark requires: with zero live records anywhere, the rendered
+    # page must not present the fabricated-looking "Health Index: 0.00/100"
+    # headline (indistinguishable from a real all-red run to a cold reader).
+    scorecard_ok = live_total == 0 and "Health Index: 0.0/100" not in rendered
+except Exception:
+    scorecard_ok = False
+
+print(f"console:{'PASS' if console_ok else 'FAIL'} scorecard:{'PASS' if scorecard_ok else 'FAIL'}")
+PYEOF
+BARE_RESULT="$(PYTHONPATH="$SCRIPTS_DIR" "$PY" "$BARE_CHECK_SCRIPT")"
+rm -f "$BARE_CHECK_SCRIPT"
+echo "run-heavy-tier: bare-install dashboard result: $BARE_RESULT" >&2
+if echo "$BARE_RESULT" | grep -q "console:PASS"; then
+  emit "run-heavy-tier" "capability function" "bare-install dashboard: observability console renders \$0.0000/no-data-yet, never a crash or a fabricated number" 1
+elif echo "$BARE_RESULT" | grep -q "console:SKIP"; then
+  emit "run-heavy-tier" "capability function" "bare-install dashboard: observability console renders \$0.0000/no-data-yet, never a crash or a fabricated number" null
+else
+  emit "run-heavy-tier" "capability function" "bare-install dashboard: observability console renders \$0.0000/no-data-yet, never a crash or a fabricated number" 0
+fi
+if echo "$BARE_RESULT" | grep -q "scorecard:PASS"; then
+  emit "run-heavy-tier" "verification honesty" "bare-install dashboard: Health-Scorecard with zero live records never renders a fabricated 0.00/100 Health Index" 1
+elif echo "$BARE_RESULT" | grep -q "scorecard:SKIP"; then
+  emit "run-heavy-tier" "verification honesty" "bare-install dashboard: Health-Scorecard with zero live records never renders a fabricated 0.00/100 Health Index" null
+else
+  emit "run-heavy-tier" "verification honesty" "bare-install dashboard: Health-Scorecard with zero live records never renders a fabricated 0.00/100 Health Index" 0
+fi
+
+# ── 6. fan-out/budget gates fail CLOSED with no config (B3) ───────────────
+echo "run-heavy-tier: [6/6] fan-out/budget gates fail closed with no config…" >&2
+GATE_CHECK_SCRIPT="$(mktemp).py"
+cat > "$GATE_CHECK_SCRIPT" <<'PYEOF'
+import sys, tempfile, json
+from pathlib import Path
+
+try:
+    from runner import cycle
+except ImportError as e:
+    print(f"gate:SKIP ({e})")
+    sys.exit(0)
+
+try:
+    with tempfile.TemporaryDirectory() as td:
+        jobs_dir = Path(td) / "jobs"
+        state_root = Path(td) / "state"
+        harness_dir = Path(td) / "harness"
+        jobs_dir.mkdir(parents=True)
+        harness_dir.mkdir(parents=True)
+        # NO budget.yaml written — a stranger's clone ships no operator
+        # config at all. A job reports a large cost each run.
+        (jobs_dir / "expensive.yaml").write_text(
+            "schedule: daily\nlookback: 6h\n"
+            'command: "echo {\\"total_cost_usd\\": 100.0}"\n'
+            "tier: T3\ndry_run: false\n",
+            encoding="utf-8",
+        )
+        r1 = cycle.run_cycle(jobs_dir, now=1000.0, state_root=state_root, harness_dir=harness_dir)
+        r2 = cycle.run_cycle(jobs_dir, now=200000.0, state_root=state_root, harness_dir=harness_dir)
+        # Fail CLOSED means: even with zero operator config, a fleet that has
+        # already reported large spend gets throttled by a safe default
+        # ceiling on the next due run, not left ungated.
+        gate_ok = bool(r2.budget_ceiling_hit) and not r2.outcomes[0].ran
+except Exception:
+    gate_ok = False
+
+print(f"gate:{'PASS' if gate_ok else 'FAIL'}")
+PYEOF
+GATE_RESULT="$(PYTHONPATH="$SCRIPTS_DIR" "$PY" "$GATE_CHECK_SCRIPT")"
+rm -f "$GATE_CHECK_SCRIPT"
+echo "run-heavy-tier: fail-closed gate result: $GATE_RESULT" >&2
+if echo "$GATE_RESULT" | grep -q "gate:PASS"; then
+  emit "run-heavy-tier" "safety/recoverability" "no-config gate: runner fleet-budget ceiling fails CLOSED (safe default) with no .harness/budget.yaml, not open" 1
+elif echo "$GATE_RESULT" | grep -q "gate:SKIP"; then
+  emit "run-heavy-tier" "safety/recoverability" "no-config gate: runner fleet-budget ceiling fails CLOSED (safe default) with no .harness/budget.yaml, not open" null
+else
+  emit "run-heavy-tier" "safety/recoverability" "no-config gate: runner fleet-budget ceiling fails CLOSED (safe default) with no .harness/budget.yaml, not open" 0
 fi
 
 echo "run-heavy-tier: done" >&2
