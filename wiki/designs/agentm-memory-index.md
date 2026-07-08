@@ -69,7 +69,7 @@ Add a `--filter` path to `recall.py query`: an expression like `tag=security AND
 
 `kind` is already a free-form kebab-case taxonomy (a path segment + a display header), so the two new kinds are **reserved values of the existing `kind` taxonomy**:
 
-- **`session-cost`** — **vestigial as of 2026-07-07.** Reserved for [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit)'s session-cost capture, but the Autonomy arc's [observability design](agentm-autonomy.md) retargets that capture off the vault onto a device-local telemetry ledger; nothing writes this kind once `PLAN-observability-ledger` lands the move.
+- **`session-cost`** — **vestigial (delivered 2026-07-07).** Reserved for [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit)'s session-cost capture; the Autonomy arc's [observability design](agentm-autonomy.md) has now retargeted that capture off the vault onto a device-local telemetry ledger (`PLAN-observability-ledger`, both repo halves merged) — nothing writes this kind anymore. The vault entries already written stay as historical record; no data migration was needed.
 - **`failure-incident`** — the kind the [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics) recall ladder writes. Its write carries a **mandatory privacy scrub**, because failure context is untrusted and PII-bearing — a persistence-boundary guard the write cannot skip.
 
 The **`fingerprint`** is a real column — a join/lookup key the diagnostics ladder matches on.
@@ -88,7 +88,7 @@ The [memory system](agentm-memory-system) reserves a `DerivedMaintenance` extens
 
 - **extends the built index** — `vec_index.py` (the table + drain + rebuild) and `recall.py` (the query path).
 - **rides the [memory system](agentm-memory-system)'s local-index tier** (device-local, never synced); a future `DerivedMaintenance` implementer (the extension point memory-system reserves).
-- **feeds [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics)** (the `failure-incident` kind + the `fingerprint` recall ladder); the `session-cost` kind is vestigial (see below) — [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit) no longer consumes it once `PLAN-observability-ledger` lands.
+- **feeds [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics)** (the `failure-incident` kind + the `fingerprint` recall ladder); the `session-cost` kind is vestigial (see below) — [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit) no longer consumes it, now that `PLAN-observability-ledger` has landed.
 - **composes [privacy](https://github.com/alexherrero/crickets/wiki/crickets-privacy)** — the mandatory scrub on a `failure-incident` write.
 - Points up at the [agentm HLD](agentm-hld) §Memory; the recall loop + tiers are the [memory system](agentm-memory-system).
 
@@ -126,6 +126,8 @@ The [memory system](agentm-memory-system) reserves a `DerivedMaintenance` extens
 ## Amendment log
 
 *Newest first. Collapses to one ≤2-paragraph entry at finalization; git holds the granular history.*
+
+**2026-07-07 — `session-cost` retarget delivered (AA3, `PLAN-observability-ledger` agentm half).** Flips the AA2 entry below from "stops being written once the plan lands" to as-built: both repo halves have merged (crickets' writer/reader repoint, agentm's runner-hosted SQLite aggregator over the resulting event log), so `session-cost` is now confirmed vestigial rather than merely scheduled to become so. Left as a reserved value (no data migration needed — the vault entries already written stay as historical record) rather than removed from the taxonomy.
 
 **2026-07-07 — `session-cost` kind marked vestigial (AA2).** The Autonomy arc's [observability design](agentm-autonomy.md) retargets token-audit's session-cost capture off the vault onto a device-local telemetry ledger; this kind stops being written once `PLAN-observability-ledger` lands the move. Left as a reserved value (no data migration needed — the vault entries already written stay as historical record) rather than removed from the taxonomy.
 
