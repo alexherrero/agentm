@@ -159,6 +159,134 @@ class PostFleetRunSummaryTests(unittest.TestCase):
         outcomes = bs.post_fleet_run_summary([_Fake("p-1")], config_path=self.config, runner=runner)
         self.assertEqual(len(outcomes), 1)
 
+    def test_tier_is_threaded_through_from_dict_items(self):
+        with mock.patch.object(bs, "set_item_tier", return_value=True) as mock_set:
+            bs.post_fleet_run_summary(
+                [{"name": "p-1", "tier": "T1-Execute"}], config_path=self.config, runner=_fake_runner(),
+            )
+            mock_set.assert_called_once_with("p-1", "T1-Execute", config_path=self.config)
+
+    def test_tier_is_threaded_through_from_attr_objects(self):
+        class _Fake:
+            def __init__(self, name, tier):
+                self.name = name
+                self.tier = tier
+        with mock.patch.object(bs, "set_item_tier", return_value=True) as mock_set:
+            bs.post_fleet_run_summary([_Fake("p-1", "T3-Architect")], config_path=self.config, runner=_fake_runner())
+            mock_set.assert_called_once_with("p-1", "T3-Architect", config_path=self.config)
+
+    def test_missing_tier_never_calls_set_item_tier(self):
+        with mock.patch.object(bs, "set_item_tier") as mock_set:
+            bs.post_fleet_run_summary([{"name": "p-1"}], config_path=self.config, runner=_fake_runner())
+            mock_set.assert_not_called()
+
+
+class SetItemTierGracefulSkipTests(unittest.TestCase):
+    def setUp(self):
+        bs._reset_cache_for_tests()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.config = self.tmp / "project.json"
+        self.config.write_text("{}", encoding="utf-8")
+
+    def tearDown(self):
+        bs._reset_cache_for_tests()
+        self._tmp.cleanup()
+
+    def test_unresolvable_crickets_yields_false(self):
+        empty_home = self.tmp / "empty_home"
+        empty_home.mkdir()
+        with mock.patch.object(Path, "home", return_value=empty_home):
+            with mock.patch.dict("os.environ", {"CRICKETS_SCRIPTS_DIR": ""}):
+                result = bs.set_item_tier("p-1", "T1-Execute", config_path=self.config)
+        self.assertFalse(result)
+
+    def test_missing_items_file_yields_false(self):
+        with mock.patch.object(bs, "load_project_model_module", return_value=object()):
+            result = bs.set_item_tier("p-1", "T1-Execute", config_path=self.config)
+        self.assertFalse(result)
+
+
+class SetItemTierRealBridgeTests(unittest.TestCase):
+    """Real-bridge: skipped when no crickets sibling checkout is reachable."""
+
+    @classmethod
+    def setUpClass(cls):
+        bs._reset_cache_for_tests()
+        if bs.load_project_model_module() is None:
+            raise unittest.SkipTest("crickets sibling checkout unavailable -- real-bridge test skipped")
+
+    @classmethod
+    def tearDownClass(cls):
+        bs._reset_cache_for_tests()
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.config = self.tmp / "project.json"
+        self.items_path = self.tmp / "board-items.json"
+        self.config.write_text('{"items_source": "%s"}' % str(self.items_path), encoding="utf-8")
+        self.items_path.write_text(
+            '{"items": [{"id": "p-1", "type": "idea", "title": "a task"}]}',
+            encoding="utf-8",
+        )
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_sets_track_field_and_persists(self):
+        result = bs.set_item_tier("p-1", "T1-Execute", config_path=self.config)
+        self.assertTrue(result)
+        import json
+        data = json.loads(self.items_path.read_text(encoding="utf-8"))
+        item = next(i for i in data["items"] if i["id"] == "p-1")
+        self.assertEqual(item["track"], "T1-Execute")
+
+    def test_unknown_item_id_yields_false(self):
+        result = bs.set_item_tier("no-such-item", "T1-Execute", config_path=self.config)
+        self.assertFalse(result)
+
+    def test_other_item_fields_are_preserved(self):
+        bs.set_item_tier("p-1", "T1-Execute", config_path=self.config)
+        import json
+        data = json.loads(self.items_path.read_text(encoding="utf-8"))
+        item = next(i for i in data["items"] if i["id"] == "p-1")
+        self.assertEqual(item["title"], "a task")
+        self.assertEqual(item["type"], "idea")
+
+
+class PostDispatchProgressTierTests(unittest.TestCase):
+    """Hermetic: proves post_dispatch_progress's tier param calls
+    set_item_tier before invoking the (faked) post subprocess."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.config = self.tmp / "project.json"
+        self.config.write_text("{}", encoding="utf-8")
+        self._script_patcher = mock.patch.object(bs, "find_project_sync_script", return_value=Path("/fake/project_sync.py"))
+        self._script_patcher.start()
+
+    def tearDown(self):
+        self._script_patcher.stop()
+        self._tmp.cleanup()
+
+    def test_tier_none_never_calls_set_item_tier(self):
+        with mock.patch.object(bs, "set_item_tier") as mock_set:
+            bs.post_dispatch_progress("p-1", summary="x", config_path=self.config, runner=_fake_runner())
+            mock_set.assert_not_called()
+
+    def test_tier_given_calls_set_item_tier_first(self):
+        with mock.patch.object(bs, "set_item_tier", return_value=True) as mock_set:
+            bs.post_dispatch_progress("p-1", summary="x", config_path=self.config, tier="T1-Execute", runner=_fake_runner())
+            mock_set.assert_called_once_with("p-1", "T1-Execute", config_path=self.config)
+
+    def test_set_item_tier_failure_does_not_block_the_post(self):
+        with mock.patch.object(bs, "set_item_tier", return_value=False):
+            runner = _fake_runner(returncode=0)
+            result = bs.post_dispatch_progress("p-1", summary="x", config_path=self.config, tier="T1-Execute", runner=runner)
+        self.assertTrue(result["posted"])
+
 
 class RealDryRunAgainstAgentmProjectJsonTests(unittest.TestCase):
     """Integration-style: a real (--dry-run, no actual GitHub write) call
