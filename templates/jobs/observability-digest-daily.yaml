@@ -1,0 +1,25 @@
+# observability-digest-daily.yaml — the daily rung of the observability
+# ledger's digest ladder (PLAN-observability-console task 2).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored; register by copying this template to
+# .harness/jobs/observability-digest-daily.yaml. See dream.yaml's own note
+# on install-time auto-seeding (not yet wired).
+#
+# Siblings: observability-digest-3day.yaml (72h), observability-digest-
+# weekly.yaml (7d), observability-digest-monthly.yaml (trend-only, reads
+# the digest-history ledger rather than the rollup directly).
+schedule: daily
+lookback: 24h
+command: >-
+  python3 -m health.inbox_digest --cadence daily
+  --db-path ~/.cache/agentm/telemetry/rollup.db
+  --vault-path "$MEMORY_VAULT_PATH"
+
+# Writes a vault _inbox/ note — T2 (operator-curated surface), same tier as
+# the health-pass job's tracked history append.
+tier: T2
+
+# Stays true until the operator confirms a real digest note reads well in
+# the vault (the plan's own manual-dogfood acceptance criterion).
+dry_run: true

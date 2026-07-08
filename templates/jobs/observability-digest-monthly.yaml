@@ -1,0 +1,15 @@
+# observability-digest-monthly.yaml — the monthly rung of the observability
+# ledger's digest ladder (PLAN-observability-console task 2). Unlike its
+# three siblings, this cadence reads the digest-history ledger the other
+# rungs append to (a trend across daily/3day/weekly entries) rather than
+# the rollup's by_window table directly — see inbox_digest.run_digest()'s
+# own cadence branch. See observability-digest-daily.yaml's header note for
+# the shared registration/tier/dry-run rationale.
+schedule: 30d
+lookback: 72h
+command: >-
+  python3 -m health.inbox_digest --cadence monthly
+  --db-path ~/.cache/agentm/telemetry/rollup.db
+  --vault-path "$MEMORY_VAULT_PATH"
+tier: T2
+dry_run: true

@@ -43,7 +43,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
 
 
-def _read_rollup(db_path: "str | Path") -> dict:
+def read_rollup(db_path: "str | Path") -> dict:
     """Read every row from the rollup's four tables. Raises `ValueError` if
     the db file or an expected table is missing — a setup error the caller
     should surface, not swallow (mirrors `health_score.read_records`)."""
@@ -90,7 +90,7 @@ def compute_console_data(db_path: "str | Path", *, budget_config: "str | Path | 
     """Aggregate the rollup into the console's render-ready shape. Pure
     (given the same rollup content, always the same output) — no wall-clock
     reads beyond what's already baked into the rollup's own rows."""
-    rollup = _read_rollup(db_path)
+    rollup = read_rollup(db_path)
 
     by_plan = sorted(rollup["by_plan"], key=lambda r: r["plan"])
     by_model = sorted(rollup["by_model"], key=lambda r: r["model"])
