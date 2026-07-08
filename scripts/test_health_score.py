@@ -130,6 +130,32 @@ class TestDarkChecksRendering(unittest.TestCase):
         md = health_score.render_markdown(sc)
         self.assertIn("## Dark checks (designed, not built)", md)
 
+    def test_bare_install_never_renders_fabricated_zero_score(self):
+        # ROADMAP-TAIL-ADJUDICATIONS.md B3 / AA4 2026-07-08 fix: zero live
+        # records anywhere (a true bare install -- only dark records, or no
+        # records at all) must never render as a numeric "0.0/100" headline
+        # with a red/green marker, which reads as a completed all-red run
+        # rather than "nothing has run yet".
+        registry = _HERE / "health" / "dark-checks.jsonl"
+        dark_records = health_score.read_records(str(registry))
+        sc = health_score.compute_scorecard(dark_records)
+        self.assertEqual(sc["live_total"], 0)
+        md = health_score.render_markdown(sc)
+        self.assertNotIn("Health Index: 0.0/100", md)
+        self.assertNotIn("🟢", md)
+        self.assertNotIn("🔴", md)
+        self.assertIn("not yet measured", md)
+
+    def test_a_real_zero_score_still_renders_numerically(self):
+        # Distinct from the bare-install case: a live record that actually
+        # failed must still show as a real 0.0/100, not get swallowed by
+        # the bare-install branch.
+        records = [_rec("memory persist+recall", "a", False)]
+        sc = health_score.compute_scorecard(records)
+        self.assertEqual(sc["live_total"], 1)
+        md = health_score.render_markdown(sc)
+        self.assertIn("Health Index: 0.0/100", md)
+
 
 class TestMechanicalUpliftRendering(unittest.TestCase):
     """PLAN-r3-uplift-scoring task 2 (R3.1b) — ablation records render as

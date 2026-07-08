@@ -200,6 +200,30 @@ class CycleIdempotencyTests(unittest.TestCase):
             self.assertFalse(report.outcomes[0].ran)
             self.assertEqual(report.outcomes[0].skipped_reason, "budget-ceiling")
 
+    def test_budget_gate_fails_closed_with_no_config(self):
+        # ROADMAP-TAIL-ADJUDICATIONS.md B3 / AA4 2026-07-08 fix: a stranger's
+        # clone ships no .harness/budget.yaml at all -- the fleet ceiling
+        # must still default to a safe cap and gate a fleet that has already
+        # reported large spend, not skip the check entirely (the fail-open
+        # bug this test guards against regressing).
+        with TemporaryDirectory() as td:
+            jobs_dir = Path(td) / "jobs"
+            state_root = Path(td) / "state"
+            harness_dir = Path(td) / "harness"
+            harness_dir.mkdir()  # exists, but no budget.yaml inside it
+            _write_job(jobs_dir, "expensive", schedule="daily", lookback="6h",
+                       command="true", tier="T3", dry_run=False)
+            # Seed prior spend directly (no real subprocess needed) well
+            # above any sane default ceiling.
+            state.mark_done("expensive", now=500.0, cost_usd=100.0, state_root=state_root)
+
+            # 90000s later: past the daily (86400s) interval, still inside
+            # the 6h lookback window -- squarely "due", not "missed".
+            report = cycle.run_cycle(jobs_dir, now=90000.0, state_root=state_root, harness_dir=harness_dir)
+            self.assertTrue(report.budget_ceiling_hit)
+            self.assertFalse(report.outcomes[0].ran)
+            self.assertEqual(report.outcomes[0].skipped_reason, "budget-ceiling")
+
     def test_t2_report_survives_concurrent_style_append(self):
         # T2 reports route through vault_lock.atomic_write; two sequential
         # cycles should both land, proving the write path doesn't clobber.

@@ -52,19 +52,33 @@ class CycleReport:
     budget_ceiling_hit: bool = False
 
 
-def _read_daily_ceiling(harness_dir: Optional[Path]) -> Optional[float]:
-    """`.harness/budget.yaml`'s `daily_usd_ceiling`, or None if unconfigured."""
+# Fail-CLOSED default (ROADMAP-TAIL-ADJUDICATIONS.md B3; AA4 2026-07-08
+# finding + fix): a stranger's clone ships no `.harness/budget.yaml`, and
+# `_read_daily_ceiling` must never let that absence mean "no ceiling at
+# all" -- the runner design's own token contract ("A hard budget ceiling",
+# wiki/designs/agentm-runner.md) already assumes one always applies. This
+# is a conservative single-operator daily-USD cap, deliberately low; an
+# operator who wants a different number writes `budget.yaml` and it
+# overrides this default exactly as it always has.
+_DEFAULT_DAILY_USD_CEILING = 5.0
+
+
+def _read_daily_ceiling(harness_dir: Optional[Path]) -> float:
+    """`.harness/budget.yaml`'s `daily_usd_ceiling`, or
+    `_DEFAULT_DAILY_USD_CEILING` if unconfigured/missing/unparseable --
+    never `None` (a `None` ceiling used to mean "skip the gate entirely",
+    the fail-open bug this default closes)."""
     if harness_dir is None or yaml is None:
-        return None
+        return _DEFAULT_DAILY_USD_CEILING
     p = Path(harness_dir) / "budget.yaml"
     if not p.is_file():
-        return None
+        return _DEFAULT_DAILY_USD_CEILING
     try:
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
     except yaml.YAMLError:
-        return None
+        return _DEFAULT_DAILY_USD_CEILING
     daily = data.get("daily_usd_ceiling") if isinstance(data, dict) else None
-    return float(daily) if daily is not None else None
+    return float(daily) if daily is not None else _DEFAULT_DAILY_USD_CEILING
 
 
 def _spend_so_far(state_root: Optional[Path]) -> float:
@@ -197,8 +211,9 @@ def run_cycle(
     exit code is captured in its own outcome, not propagated."""
     now = now if now is not None else time.time()
     jobs = manifest_mod.load_manifests(jobs_dir)
+    # ceiling is never None (fail-CLOSED default) -- spend is always tracked.
     ceiling = _read_daily_ceiling(harness_dir)
-    spend = _spend_so_far(state_root) if ceiling is not None else 0.0
+    spend = _spend_so_far(state_root)
 
     report = CycleReport()
     for job in jobs:
@@ -217,7 +232,7 @@ def run_cycle(
         if not due:
             report.outcomes.append(JobOutcome(name=job.name, ran=False, skipped_reason=reason))
             continue
-        if ceiling is not None and spend >= ceiling and not job.dry_run:
+        if spend >= ceiling and not job.dry_run:
             # Pre-flight check the fleet ceiling before a real (non-dry-run)
             # run starts — an over-budget run never starts (throttle rung).
             report.budget_ceiling_hit = True
