@@ -22,6 +22,7 @@ children:
   - agentm-runner.md
   - agentm-goal-contract.md
   - agentm-memory-index.md
+  - agentm-autonomy.md
 ---
 
 > [!NOTE]
@@ -173,6 +174,7 @@ The component-level sources now live in each pillar's child design (linked above
 - [Runner](agentm-runner.md) — the standalone background-job executor: rides the hosts' built-in scheduled tasks, routes writes by ownership tier, reports to the digest
 - [Goal contract](agentm-goal-contract.md) — the contract a persona rides the host's autonomous run under: done-determination, anti-gaming, the convergence bound, the four exits
 - [Memory index](agentm-memory-index.md) — the V6-11 SQLite metadata table for hybrid SQL+vector recall, plus the build-from-source (cold-start) path
+- [Autonomy — observability ledger and console](agentm-autonomy.md) — the Autonomy arc's telemetry substrate: a device-local spend ledger, a deterministic console, and a digest ladder; evolved from the budget-governor draft after enforcement was dropped in favor of the subscription window's own rate limit
 
 **Anchors**
 - design-doc **Appendix B** — the ratified agentm Overview this HLD expands (the input spec, not a sibling HLD)
@@ -189,6 +191,8 @@ The component-level sources now live in each pillar's child design (linked above
 - **V8 — Collective memory, multi-agent concurrency (speculative tail):** a multi-agent dispatcher over one shared vault (queue/lease coordination, briefing/unblock flows, worktree-per-claim).
 
 ## Amendment log
+
+**2026-07-07 — Autonomy arc seeds a new cross-cutting child (AA2).** Added **[Autonomy — observability ledger and console](agentm-autonomy.md)** to `children:` and the References child block — a device-local telemetry ledger + deterministic console for the Autonomy arc, evolved from the arc's front-loaded budget-governor draft after operator review dropped its enforcement machinery in favor of the subscription plan's own window rate limit. Why not a fifth pillar: same reasoning as model+effort routing — it is cross-cutting infrastructure (a `run-start` event field, a runner job, a console page), not a stance the person holds.
 
 **2026-07-06 — AG Wave B lands four of five substrate leaders.** Flipped the **one-port** caveat to as-built (V5-14 shipped — memory entries + the MCP server now route through the seam) and reconciled the Honesty-calls line: the runner, the Opinion registry, and persona activation shipped alongside V5-14. Forward learning is the sole item still designed, not built, from the original five. See [Runner](agentm-runner.md), [Opinion Registry](agentm-opinion-registry.md), [Persona Activation](agentm-persona-activation.md), [Memory System](agentm-memory-system.md) for per-component detail.
 

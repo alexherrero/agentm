@@ -69,7 +69,7 @@ Add a `--filter` path to `recall.py query`: an expression like `tag=security AND
 
 `kind` is already a free-form kebab-case taxonomy (a path segment + a display header), so the two new kinds are **reserved values of the existing `kind` taxonomy**:
 
-- **`session-cost`** — a recall-eligible kind that [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit)'s session-cost capture writes and the dreaming session-cost review reads.
+- **`session-cost`** — **vestigial as of 2026-07-07.** Reserved for [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit)'s session-cost capture, but the Autonomy arc's [observability design](agentm-autonomy.md) retargets that capture off the vault onto a device-local telemetry ledger; nothing writes this kind once `PLAN-observability-ledger` lands the move.
 - **`failure-incident`** — the kind the [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics) recall ladder writes. Its write carries a **mandatory privacy scrub**, because failure context is untrusted and PII-bearing — a persistence-boundary guard the write cannot skip.
 
 The **`fingerprint`** is a real column — a join/lookup key the diagnostics ladder matches on.
@@ -88,7 +88,7 @@ The [memory system](agentm-memory-system) reserves a `DerivedMaintenance` extens
 
 - **extends the built index** — `vec_index.py` (the table + drain + rebuild) and `recall.py` (the query path).
 - **rides the [memory system](agentm-memory-system)'s local-index tier** (device-local, never synced); a future `DerivedMaintenance` implementer (the extension point memory-system reserves).
-- **feeds [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics)** (the `failure-incident` kind + the `fingerprint` recall ladder) and **[token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit)** (the `session-cost` kind).
+- **feeds [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics)** (the `failure-incident` kind + the `fingerprint` recall ladder); the `session-cost` kind is vestigial (see below) — [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit) no longer consumes it once `PLAN-observability-ledger` lands.
 - **composes [privacy](https://github.com/alexherrero/crickets/wiki/crickets-privacy)** — the mandatory scrub on a `failure-incident` write.
 - Points up at the [agentm HLD](agentm-hld) §Memory; the recall loop + tiers are the [memory system](agentm-memory-system).
 
@@ -120,12 +120,14 @@ The [memory system](agentm-memory-system) reserves a `DerivedMaintenance` extens
 - **Lifted from:** the queued V6 plan (`_harness/ROADMAP-AgentMemoryV6.md` — the V6-11 metadata-table spec)
 - **Extends (built):** `harness/skills/memory/scripts/vec_index.py` (the four-column `entry_meta` + `entries` + drain + rebuild) · `recall.py` (the five-step loop + the `sim × 0.85 + keyword × 0.05` merge)
 - **Composes:** [memory system](agentm-memory-system) (the recall loop + tiers + the local-index tier + the `DerivedMaintenance` reservation) · [storage seam](memory-storage-seam) (the read/write verbs + ownership tiers) · [privacy](https://github.com/alexherrero/crickets/wiki/crickets-privacy) (the failure-incident scrub)
-- **Consumers:** [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics) (the `failure-incident` + `fingerprint` recall ladder) · [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit) (the `session-cost` kind) · the [runner](agentm-runner) health-check report
+- **Consumers:** [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics) (the `failure-incident` + `fingerprint` recall ladder) · the [runner](agentm-runner) health-check report. `session-cost` is vestigial — see the kinds section above.
 - **Up:** [agentm HLD](agentm-hld) §Memory · [memory system](agentm-memory-system) (the V6 indexed-recall trajectory)
 
 ## Amendment log
 
 *Newest first. Collapses to one ≤2-paragraph entry at finalization; git holds the granular history.*
+
+**2026-07-07 — `session-cost` kind marked vestigial (AA2).** The Autonomy arc's [observability design](agentm-autonomy.md) retargets token-audit's session-cost capture off the vault onto a device-local telemetry ledger; this kind stops being written once `PLAN-observability-ledger` lands the move. Left as a reserved value (no data migration needed — the vault entries already written stay as historical record) rather than removed from the taxonomy.
 
 - **2026-07-06 — built (AG Wave B leader 3/5).** `_migrate_v6_11` (additive `ALTER TABLE ADD COLUMN`, guarded, mirrors the existing `_migrate_pre_v37` pattern) + `_ensure_v6_11_indexes` + `_extract_meta_from_file` (frontmatter → the eight columns, `project` derived from `group:`) ship in `vec_index.py`; `upsert_entry` populates them. The hybrid `--filter` path ships in `recall.py` (`parse_filter` / `_entry_matches_filter` / `_vec_search_filtered`) — a single SQL `WHERE` joined with the vector `MATCH`, grep-fallback preserved. `session-cost` and `failure-incident` are recognized `kind` values; the latter's mandatory privacy scrub ships as a self-contained `privacy_scrub.py` (agentm-native regex redaction — composing crickets' `privacy` capability directly would invert the one-way capability bridge, since agentm must never import crickets code). `governs:` now points at `vec_index.py`. **Operator-facing CLI subcommands (`/memory search --tag --project`, `/memory list --kind --updated-since`) are not built** — those are a thin wrapper layer above `recall.py query --filter`, which works end-to-end. *Re-audit trigger:* reconcile onto `DerivedMaintenance` when the seam path is implemented (unchanged from the 2026-06-26 entry below); confirm the operator-facing CLI wrapper if/when it's authored.
 
