@@ -1,0 +1,33 @@
+# observability-aggregator.yaml — the observability ledger's rollup job
+# (PLAN-observability-ledger, agentm half, task 1).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored (per-project runtime state, same as every
+# other .harness/* file — see .gitignore), so this templates/ copy is the
+# tracked, shipped source. Register it by copying to
+# .harness/jobs/observability-aggregator.yaml in a repo that runs the agentm
+# runner (scripts/agentm-runner.sh). No capability has an install-time
+# auto-seeding step for runner jobs yet (see dream.yaml's own note) — wiring
+# install.sh to copy runner-job templates automatically is a separate,
+# not-yet-decided follow-up.
+schedule: daily
+lookback: 24h
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
+# Reads crickets' telemetry event log (~/.agentm/telemetry/, or
+# $AGENTM_TELEMETRY_DIR) and rebuilds the SQLite rollup at
+# ~/.cache/agentm/telemetry/rollup.db (or --db-path). Requires a crickets
+# sibling checkout to reuse analyzer._compute_windows() — $CRICKETS_SCRIPTS_DIR
+# overrides the conventional ~/Antigravity/crickets/src/tokens/scripts/ path.
+command: python3 -m runner.aggregator
+
+# The rollup is fully rebuilt from the event log on every run (delete +
+# recreate, never an incremental upsert) — read-derived, not curated
+# content, so T3 (the agent's own store), same tier as dream.yaml's
+# insight-candidate writes.
+tier: T3
+
+# Stays true until the operator confirms the rollup's shape is right for a
+# real accumulated event log (the plan's own manual-dogfood acceptance
+# criterion). Promoting to false is a separate, explicit decision.
+dry_run: true

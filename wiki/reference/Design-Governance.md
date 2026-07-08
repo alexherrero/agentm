@@ -45,7 +45,7 @@ This is a controlled vocabulary: one **owning design** per area, with other desi
 | Root | Areas |
 |---|---|
 | `shared/` | `shared/foundations` (area-only — governs no code) |
-| `agentm/` | `agentm/architecture` · `agentm/memory` · `agentm/storage` · `agentm/experience` · `agentm/opinions` · `agentm/personas` · `agentm/capability-resolution` · `agentm/model-effort-routing` · `agentm/phase-contract` · `agentm/mcp` · `agentm/vault-taxonomy` |
+| `agentm/` | `agentm/architecture` · `agentm/memory` · `agentm/storage` · `agentm/experience` · `agentm/opinions` · `agentm/personas` · `agentm/capability-resolution` · `agentm/model-effort-routing` · `agentm/phase-contract` · `agentm/mcp` · `agentm/vault-taxonomy` · `agentm/runner` · `agentm/autonomy` |
 | `crickets/` | `crickets/architecture` + one per capability (`crickets/development-lifecycle`, `crickets/wiki`, …) |
 | `governance/` | `governance` (the AG machinery: design-doc, this index, the grounding hooks, the ADR model) |
 
