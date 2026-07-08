@@ -42,7 +42,7 @@ _KNOWN_AREAS = frozenset({
     "agentm/architecture", "agentm/memory", "agentm/memory-index",
     "agentm/storage", "agentm/experience", "agentm/opinions",
     "agentm/opinion-registry", "agentm/personas", "agentm/model-effort-routing",
-    "agentm/runner",
+    "agentm/runner", "agentm/autonomy",
     "agentm/capability-resolution", "agentm/phase-contract", "agentm/mcp",
     "agentm/vault-taxonomy",
     "crickets/architecture", "crickets/build-system", "crickets/composition",
