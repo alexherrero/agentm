@@ -95,6 +95,7 @@ class DispatchResult:
     model_alias: "str | None"
     model_id: str
     effort: str
+    tier: str
     tier_source: str
     cwd: str
     returncode: int
@@ -110,23 +111,24 @@ class DispatchResult:
 _FALLBACK_MODEL_ID = "claude-sonnet-5"
 _FALLBACK_EFFORT = "medium"
 _FALLBACK_MODEL_ALIAS = "sonnet"
+_FALLBACK_TIER = "T1-Execute"
 _FALLBACK_TIER_SOURCE = "UNCLASSIFIED-DEFAULT"
 
 
 def resolve_dispatch_classification(item: WorkItem) -> dict:
-    """Resolve `{model_id, effort, tier_source, model_alias}` for a work
-    item via crickets' `classify_work_type()`. Never guesses: falls back to
-    the classifier's own fixed `UNCLASSIFIED-DEFAULT` shape when crickets
-    itself can't be resolved."""
+    """Resolve `{model_id, effort, tier, tier_source, model_alias}` for a
+    work item via crickets' `classify_work_type()`. Never guesses: falls
+    back to the classifier's own fixed `UNCLASSIFIED-DEFAULT` shape when
+    crickets itself can't be resolved."""
     classify = load_classify_module()
     if classify is None:
         return {
-            "model_id": _FALLBACK_MODEL_ID, "effort": _FALLBACK_EFFORT,
+            "model_id": _FALLBACK_MODEL_ID, "effort": _FALLBACK_EFFORT, "tier": _FALLBACK_TIER,
             "tier_source": _FALLBACK_TIER_SOURCE, "model_alias": _FALLBACK_MODEL_ALIAS,
         }
     c = classify.classify_work_type(role_name=item.role_name, declared=item.declared)
     alias = classify.agent_tool_alias(c.model_id)
-    return {"model_id": c.model_id, "effort": c.effort, "tier_source": c.tier_source, "model_alias": alias}
+    return {"model_id": c.model_id, "effort": c.effort, "tier": c.tier, "tier_source": c.tier_source, "model_alias": alias}
 
 
 def dispatch_name(item: WorkItem) -> str:
@@ -167,7 +169,7 @@ def dispatch(item: WorkItem, *, claude_bin: str = "claude", runner=subprocess.ru
     return DispatchResult(
         name=dispatch_name(item), plan=item.plan, task=item.task,
         model_alias=classification["model_alias"], model_id=classification["model_id"],
-        effort=classification["effort"], tier_source=classification["tier_source"],
+        effort=classification["effort"], tier=classification["tier"], tier_source=classification["tier_source"],
         cwd=str(cwd), returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr,
     )
 

@@ -40,7 +40,7 @@ def _fake_runner(returncode=0, stdout="", stderr=""):
 class BuildDispatchCommandTests(unittest.TestCase):
     def test_command_shape(self):
         item = dp.WorkItem(plan="myplan", task="1", prompt="do the thing")
-        classification = {"model_id": "claude-sonnet-5", "effort": "medium", "tier_source": "ROLE-MATCH", "model_alias": "sonnet"}
+        classification = {"model_id": "claude-sonnet-5", "effort": "medium", "tier": "T1-Execute", "tier_source": "ROLE-MATCH", "model_alias": "sonnet"}
         cmd = dp.build_dispatch_command(item, classification)
         self.assertEqual(cmd, [
             "claude", "--bg", "--model", "sonnet", "--effort", "medium",
@@ -49,7 +49,7 @@ class BuildDispatchCommandTests(unittest.TestCase):
 
     def test_falls_back_to_model_id_when_no_alias(self):
         item = dp.WorkItem(plan="p", task="1", prompt="x")
-        classification = {"model_id": "opusplan", "effort": "medium", "tier_source": "FRONTMATTER", "model_alias": None}
+        classification = {"model_id": "opusplan", "effort": "medium", "tier": "T1-Execute", "tier_source": "FRONTMATTER", "model_alias": None}
         cmd = dp.build_dispatch_command(item, classification)
         self.assertIn("opusplan", cmd)
 
@@ -115,7 +115,10 @@ class DispatchEndToEndStubbedTests(unittest.TestCase):
 
     def test_dispatch_writes_marker_and_calls_runner(self):
         runner = _fake_runner(returncode=0, stdout="", stderr="")
-        item = dp.WorkItem(plan="myplan", task="2", prompt="do it", cwd=str(self.tmp), declared={"model": "claude-sonnet-5", "effort": "medium"})
+        item = dp.WorkItem(
+            plan="myplan", task="2", prompt="do it", cwd=str(self.tmp),
+            declared={"model": "claude-sonnet-5", "effort": "medium", "tier": "T1-Execute"},
+        )
         result = dp.dispatch(item, runner=runner)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.plan, "myplan")
@@ -123,6 +126,7 @@ class DispatchEndToEndStubbedTests(unittest.TestCase):
         self.assertEqual((self.tmp / ".harness" / "active-plan").read_text(encoding="utf-8"), "myplan\n")
         self.assertEqual(len(runner.calls), 1)
         self.assertEqual(runner.calls[0]["kwargs"]["cwd"], str(self.tmp))
+        self.assertEqual(result.tier, "T1-Execute")  # carried through for handoff-pack labeling (task 4)
 
     def test_dispatch_surfaces_nonzero_returncode(self):
         runner = _fake_runner(returncode=1, stdout="", stderr="boom")
