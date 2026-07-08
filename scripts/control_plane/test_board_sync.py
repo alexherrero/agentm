@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
@@ -37,8 +38,12 @@ def _fake_runner(returncode=0, stdout="", stderr=""):
 
 
 class FindProjectSyncScriptTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if bs.find_project_sync_script() is None:
+            raise unittest.SkipTest("crickets sibling checkout unavailable -- real-bridge test skipped")
+
     def test_resolves_real_sibling_checkout(self):
-        # The real crickets sibling checkout exists on this machine.
         script = bs.find_project_sync_script()
         self.assertIsNotNone(script)
         self.assertTrue(script.is_file())
@@ -58,13 +63,20 @@ class BoardSyncAvailableTests(unittest.TestCase):
 
 
 class PostDispatchProgressTests(unittest.TestCase):
+    """Hermetic: `find_project_sync_script()` is stubbed so these never
+    depend on a real crickets sibling checkout being reachable -- only the
+    `runner` (also faked) would ever touch a real process."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
         self.config = self.tmp / "project.json"
         self.config.write_text("{}", encoding="utf-8")
+        self._script_patcher = mock.patch.object(bs, "find_project_sync_script", return_value=Path("/fake/project_sync.py"))
+        self._script_patcher.start()
 
     def tearDown(self):
+        self._script_patcher.stop()
         self._tmp.cleanup()
 
     def test_missing_config_is_a_clean_skip(self):
@@ -117,13 +129,18 @@ class PostDispatchProgressTests(unittest.TestCase):
 
 
 class PostFleetRunSummaryTests(unittest.TestCase):
+    """Hermetic for the same reason as PostDispatchProgressTests above."""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
         self.config = self.tmp / "project.json"
         self.config.write_text("{}", encoding="utf-8")
+        self._script_patcher = mock.patch.object(bs, "find_project_sync_script", return_value=Path("/fake/project_sync.py"))
+        self._script_patcher.start()
 
     def tearDown(self):
+        self._script_patcher.stop()
         self._tmp.cleanup()
 
     def test_one_outcome_per_dispatched_item(self):

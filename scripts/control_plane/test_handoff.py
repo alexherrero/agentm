@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Tests for scripts/control_plane/handoff.py (PLAN-autonomy-control-plane
-task 4)."""
+task 4). Real-bridge tests (against the actual crickets sibling checkout)
+are isolated into their own classes with a setUpClass skip guard -- CI runs
+on a clean runner that doesn't clone crickets as a sibling of agentm, so
+these must degrade to "skipped", never "failed", the same way crickets'
+own real-bridge tests already do."""
 from __future__ import annotations
 
 import json
@@ -40,18 +44,12 @@ class DispatchResultLabelTests(unittest.TestCase):
         self.assertEqual(label["effort"], "medium")
 
 
-class LoadHandoffPackModuleTests(unittest.TestCase):
+class LoadHandoffPackModuleGracefulSkipTests(unittest.TestCase):
     def setUp(self):
         hf._reset_cache_for_tests()
 
     def tearDown(self):
         hf._reset_cache_for_tests()
-
-    def test_resolves_real_sibling_checkout(self):
-        module = hf.load_handoff_pack_module()
-        self.assertIsNotNone(module)
-        self.assertTrue(hasattr(module, "build_handoff_pack"))
-        self.assertTrue(hasattr(module, "label_matches_schema"))
 
     def test_unresolvable_crickets_yields_none(self):
         with tempfile.TemporaryDirectory() as td:
@@ -62,13 +60,30 @@ class LoadHandoffPackModuleTests(unittest.TestCase):
                     self.assertIsNone(hf.load_handoff_pack_module())
 
 
-class DispatchResultToHandoffEntryTests(unittest.TestCase):
-    def setUp(self):
+class _RealCricketsHandoffBridgeTestCase(unittest.TestCase):
+    """Shared skip guard for every test class below that needs the real
+    crickets handoff_pack.py sibling checkout."""
+
+    @classmethod
+    def setUpClass(cls):
+        hf._reset_cache_for_tests()
+        if hf.load_handoff_pack_module() is None:
+            raise unittest.SkipTest("crickets sibling checkout unavailable -- real-bridge test skipped")
+
+    @classmethod
+    def tearDownClass(cls):
         hf._reset_cache_for_tests()
 
-    def tearDown(self):
-        hf._reset_cache_for_tests()
 
+class LoadHandoffPackModuleRealBridgeTests(_RealCricketsHandoffBridgeTestCase):
+    def test_resolves_real_sibling_checkout(self):
+        module = hf.load_handoff_pack_module()
+        self.assertIsNotNone(module)
+        self.assertTrue(hasattr(module, "build_handoff_pack"))
+        self.assertTrue(hasattr(module, "label_matches_schema"))
+
+
+class DispatchResultToHandoffEntryTests(_RealCricketsHandoffBridgeTestCase):
     def test_real_bridge_produces_a_handoff_entry_with_matching_label(self):
         result = _FakeResult(name="myplan-1", tier="T1-Execute", model_id="claude-sonnet-5", effort="medium")
         entry = hf.dispatch_result_to_handoff_entry(result, prompt_text="do the thing")
@@ -76,6 +91,14 @@ class DispatchResultToHandoffEntryTests(unittest.TestCase):
         self.assertEqual(entry.title, "myplan-1")
         self.assertEqual(entry.prompt_text, "do the thing")
         self.assertEqual(entry.label(), hf.dispatch_result_label(result))
+
+
+class DispatchResultToHandoffEntryGracefulSkipTests(unittest.TestCase):
+    def setUp(self):
+        hf._reset_cache_for_tests()
+
+    def tearDown(self):
+        hf._reset_cache_for_tests()
 
     def test_unresolvable_crickets_yields_none(self):
         with tempfile.TemporaryDirectory() as td:
@@ -89,14 +112,12 @@ class DispatchResultToHandoffEntryTests(unittest.TestCase):
         self.assertIsNone(entry)
 
 
-class BuildFleetHandoffPackTests(unittest.TestCase):
+class BuildFleetHandoffPackTests(_RealCricketsHandoffBridgeTestCase):
     def setUp(self):
-        hf._reset_cache_for_tests()
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
 
     def tearDown(self):
-        hf._reset_cache_for_tests()
         self._tmp.cleanup()
 
     def test_real_pack_written_and_downstream_reader_parses_without_special_casing(self):
@@ -120,6 +141,17 @@ class BuildFleetHandoffPackTests(unittest.TestCase):
         self.assertIn("summary.md", prompts_json["snapshotted_files"])
         self.assertTrue((dest / "PROMPTS.md").is_file())
 
+
+class BuildFleetHandoffPackGracefulSkipTests(unittest.TestCase):
+    def setUp(self):
+        hf._reset_cache_for_tests()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        hf._reset_cache_for_tests()
+        self._tmp.cleanup()
+
     def test_unresolvable_crickets_yields_none_not_a_crash(self):
         with tempfile.TemporaryDirectory() as td:
             empty_home = Path(td) / "empty_home"
@@ -130,17 +162,15 @@ class BuildFleetHandoffPackTests(unittest.TestCase):
         self.assertIsNone(result)
 
 
-class DispatchIntegrationTests(unittest.TestCase):
+class DispatchIntegrationTests(_RealCricketsHandoffBridgeTestCase):
     """Proves a real dispatch.DispatchResult (not the test's _FakeResult
     stand-in) round-trips through the same label path."""
 
     def setUp(self):
         dp._reset_cache_for_tests()
-        hf._reset_cache_for_tests()
 
     def tearDown(self):
         dp._reset_cache_for_tests()
-        hf._reset_cache_for_tests()
 
     def test_real_dispatch_result_label_matches_schema(self):
         def fake_runner(cmd, **kwargs):
@@ -151,9 +181,9 @@ class DispatchIntegrationTests(unittest.TestCase):
             return _P()
 
         with tempfile.TemporaryDirectory() as td:
-            item2 = dp.WorkItem(plan="p", task="1", prompt="x", cwd=td,
-                                 declared={"model": "claude-sonnet-5", "effort": "medium", "tier": "T1-Execute"})
-            result = dp.dispatch(item2, runner=fake_runner)
+            item = dp.WorkItem(plan="p", task="1", prompt="x", cwd=td,
+                                declared={"model": "claude-sonnet-5", "effort": "medium", "tier": "T1-Execute"})
+            result = dp.dispatch(item, runner=fake_runner)
         label = hf.dispatch_result_label(result)
         handoff_module = hf.load_handoff_pack_module()
         self.assertTrue(handoff_module.label_matches_schema(label))

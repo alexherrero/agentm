@@ -18,15 +18,31 @@ if str(_HERE) not in sys.path:
 import grade as g  # noqa: E402
 
 
-class DeclareRunStartTests(unittest.TestCase):
-    def setUp(self):
+class DeclareRunStartConstantTests(unittest.TestCase):
+    def test_default_grade_is_g_ship(self):
+        self.assertEqual(g.DEFAULT_GRADE, "G-ship")
+
+
+class RealCricketsEventLogBridgeTests(unittest.TestCase):
+    """Real-bridge: skipped when no crickets sibling checkout is reachable
+    (e.g. a clean CI runner that doesn't also clone crickets)."""
+
+    @classmethod
+    def setUpClass(cls):
         g._reset_cache_for_tests()
+        if g.load_event_log_module() is None:
+            raise unittest.SkipTest("crickets sibling checkout unavailable -- real-bridge test skipped")
+
+    @classmethod
+    def tearDownClass(cls):
+        g._reset_cache_for_tests()
+
+    def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = Path(self._tmp.name)
         self.telemetry_root = self.tmp / "telemetry"
 
     def tearDown(self):
-        g._reset_cache_for_tests()
         self._tmp.cleanup()
 
     def test_run_start_event_carries_declared_grade(self):
@@ -37,9 +53,6 @@ class DeclareRunStartTests(unittest.TestCase):
         self.assertEqual(record["event"], "run-start")
         self.assertEqual(record["tags"]["grade"], "G-ship")
         self.assertEqual(record["session_id"], "s1")
-
-    def test_default_grade_is_g_ship(self):
-        self.assertEqual(g.DEFAULT_GRADE, "G-ship")
 
     def test_event_lands_in_the_real_telemetry_file(self):
         g.declare_run_start("myplan", root=self.tmp, telemetry_root=self.telemetry_root)
@@ -55,6 +68,18 @@ class DeclareRunStartTests(unittest.TestCase):
         (harness / "active-plan").write_text("myplan\n", encoding="utf-8")
         record = g.declare_run_start("myplan", root=self.tmp, telemetry_root=self.telemetry_root)
         self.assertEqual(record["tags"]["plan"], "myplan")
+
+
+class DeclareRunStartGracefulSkipTests(unittest.TestCase):
+    def setUp(self):
+        g._reset_cache_for_tests()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.telemetry_root = self.tmp / "telemetry"
+
+    def tearDown(self):
+        g._reset_cache_for_tests()
+        self._tmp.cleanup()
 
     def test_unresolvable_crickets_yields_none_not_a_crash(self):
         empty_home = self.tmp / "empty_home"

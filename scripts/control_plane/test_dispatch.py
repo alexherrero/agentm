@@ -89,6 +89,21 @@ class ResolveDispatchClassificationTests(unittest.TestCase):
         self.assertEqual(c["model_id"], dp._FALLBACK_MODEL_ID)
         self.assertEqual(c["tier_source"], dp._FALLBACK_TIER_SOURCE)
 
+
+class RealCricketsClassificationBridgeTests(unittest.TestCase):
+    """Real-bridge: skipped when no crickets sibling checkout is reachable
+    (e.g. a clean CI runner that doesn't also clone crickets)."""
+
+    @classmethod
+    def setUpClass(cls):
+        dp._reset_cache_for_tests()
+        if dp.load_classify_module() is None:
+            raise unittest.SkipTest("crickets sibling checkout unavailable -- real-bridge test skipped")
+
+    @classmethod
+    def tearDownClass(cls):
+        dp._reset_cache_for_tests()
+
     def test_real_crickets_role_match_resolves(self):
         # Real bridge: 'explorer' is a known ROLE_TO_WORK_TYPE key.
         item = dp.WorkItem(plan="p", task="1", prompt="x", role_name="explorer")

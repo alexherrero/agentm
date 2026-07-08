@@ -54,7 +54,10 @@ class N1Report:
     handoff_manifest: "dict | None" = None
 
 
-def run_n1_sequence(config: N1Config, *, dispatcher=dp.dispatch, board_runner=None) -> N1Report:
+def run_n1_sequence(
+    config: N1Config, *, dispatcher=dp.dispatch, board_runner=None,
+    grade_declarer=gr.declare_run_start, handoff_builder=hf.build_fleet_handoff_pack,
+) -> N1Report:
     """Run the N1 sequence for real: declare the launch grade, dispatch
     every work item, reflect each dispatch on the board, and build a
     handoff pack for the batch. Morning-report / digest / console
@@ -62,8 +65,13 @@ def run_n1_sequence(config: N1Config, *, dispatcher=dp.dispatch, board_runner=No
     this function's job ends at dispatch + board + handoff, the same
     boundary `PLAN-observability-console`'s own modules already own for
     reporting.
+
+    `grade_declarer` / `handoff_builder` default to the real crickets-
+    backed functions (`grade.declare_run_start` / `handoff.
+    build_fleet_handoff_pack`) -- override only for hermetic unit tests
+    that must not depend on a crickets sibling checkout being reachable.
     """
-    grade_event = gr.declare_run_start(
+    grade_event = grade_declarer(
         config.plan, grade=config.grade, root=config.cwd, telemetry_root=config.telemetry_root,
     )
 
@@ -78,7 +86,7 @@ def run_n1_sequence(config: N1Config, *, dispatcher=dp.dispatch, board_runner=No
             [{"name": r.name, "status": "dispatched"} for r in dispatch_results], **kwargs,
         )
 
-    handoff_manifest = hf.build_fleet_handoff_pack(
+    handoff_manifest = handoff_builder(
         dispatch_results, {}, Path(config.cwd) / "_n1_handoff",
     )
 
