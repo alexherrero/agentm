@@ -144,6 +144,7 @@ def compute_scorecard(records: list[dict]) -> dict:
 
     unknown_axes = sorted(set(by_axis) - set(FAMILY_WEIGHTS))
     health_index = round(weighted_sum / weight_total, 2) if weight_total > 0 else 0.0
+    live_total = sum(f["live_count"] for f in families)
     dark_checks = [
         {"axis": r.get("axis", ""), "suite": r.get("suite", ""), "check": r.get("check", "")}
         for r in records
@@ -153,6 +154,12 @@ def compute_scorecard(records: list[dict]) -> dict:
     return {
         "families": families,
         "health_index": health_index,
+        # True only for a genuine bare install (only dark/designed-not-built
+        # records exist, nothing has actually run yet) -- distinct from a
+        # real 0/100 (which has live_total > 0, every live check failing).
+        # render_markdown uses this to avoid fabricating a numeric score
+        # (AA4 2026-07-08 finding + fix, ROADMAP-TAIL-ADJUDICATIONS.md B3).
+        "live_total": live_total,
         "unknown_axes": unknown_axes,
         "total_records": len(records),
         "dark_checks": dark_checks,
@@ -176,11 +183,25 @@ def _regression_headline(scorecard: dict, baseline: dict | None) -> str:
 
 def render_markdown(scorecard: dict, *, headline: str = "green", ablation_records: list[dict] | None = None) -> str:
     lines = []
-    marker = "🔴" if headline == "red" else "🟢"
-    lines.append(f"# Health Scorecard {marker}")
-    lines.append("")
-    lines.append(f"**Health Index: {scorecard['health_index']}/100**")
-    lines.append("")
+    live_total = scorecard.get("live_total")
+    if live_total is None:
+        live_total = sum(f["live_count"] for f in scorecard["families"])
+    if live_total == 0:
+        # Bare install: no live check has ever run (only dark/designed-not-
+        # built records exist, if any). A numeric "0.0/100" + a red/green
+        # marker reads as a real, completed run -- indistinguishable from
+        # an actual all-failing scorecard to a stranger reading it cold.
+        # Render honestly as unmeasured instead of fabricating a score.
+        lines.append("# Health Scorecard ⚪")
+        lines.append("")
+        lines.append("**Health Index: not yet measured (0 checks have run)**")
+        lines.append("")
+    else:
+        marker = "🔴" if headline == "red" else "🟢"
+        lines.append(f"# Health Scorecard {marker}")
+        lines.append("")
+        lines.append(f"**Health Index: {scorecard['health_index']}/100**")
+        lines.append("")
     lines.append("| Family | Weight | Score | Checks | Dark |")
     lines.append("|---|---:|---:|---:|---:|")
     for f in scorecard["families"]:

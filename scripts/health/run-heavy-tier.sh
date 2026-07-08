@@ -247,7 +247,7 @@ import sys, tempfile, json
 from pathlib import Path
 
 try:
-    from runner import cycle
+    from runner import cycle, state
 except ImportError as e:
     print(f"gate:SKIP ({e})")
     sys.exit(0)
@@ -260,15 +260,19 @@ try:
         jobs_dir.mkdir(parents=True)
         harness_dir.mkdir(parents=True)
         # NO budget.yaml written — a stranger's clone ships no operator
-        # config at all. A job reports a large cost each run.
+        # config at all.
         (jobs_dir / "expensive.yaml").write_text(
-            "schedule: daily\nlookback: 6h\n"
-            'command: "echo {\\"total_cost_usd\\": 100.0}"\n'
-            "tier: T3\ndry_run: false\n",
+            "schedule: daily\nlookback: 6h\ncommand: 'true'\ntier: T3\ndry_run: false\n",
             encoding="utf-8",
         )
-        r1 = cycle.run_cycle(jobs_dir, now=1000.0, state_root=state_root, harness_dir=harness_dir)
-        r2 = cycle.run_cycle(jobs_dir, now=200000.0, state_root=state_root, harness_dir=harness_dir)
+        # Seed prior spend directly (no real subprocess/shell-quoting
+        # needed) well above any sane default ceiling.
+        state.mark_done("expensive", now=500.0, cost_usd=100.0, state_root=state_root)
+        # 90000s later: past the daily (86400s) interval, still inside the
+        # 6h lookback window -- squarely "due", not "missed-beyond-lookback"
+        # (which would re-anchor the schedule and skip the ceiling check
+        # entirely for an unrelated reason).
+        r2 = cycle.run_cycle(jobs_dir, now=90000.0, state_root=state_root, harness_dir=harness_dir)
         # Fail CLOSED means: even with zero operator config, a fleet that has
         # already reported large spend gets throttled by a safe default
         # ceiling on the next due run, not left ungated.

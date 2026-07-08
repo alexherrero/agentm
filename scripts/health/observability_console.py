@@ -70,9 +70,13 @@ def read_rollup(db_path: "str | Path") -> dict:
 
 
 def _read_window_ceiling(budget_config: "str | Path | None") -> "float | None":
-    """`window_usd_ceiling` from a budget config (mirrors `runner.cycle.
-    _read_daily_ceiling`'s own optional-config degrade: missing config or
-    missing key -> None, never an error)."""
+    """`window_usd_ceiling` from a budget config -- missing config or
+    missing key -> None, never an error. Unlike `runner.cycle.
+    _read_daily_ceiling` (a gate, which fails CLOSED to a safe default on
+    missing config), this is purely informational -- the console's
+    window-utilization display has nothing sensible to default to when no
+    ceiling was ever configured, so it stays None/unknown rather than
+    fabricating one."""
     if budget_config is None or yaml is None:
         return None
     p = Path(budget_config)
