@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Tests for scripts/control_plane/n1_run.py (PLAN-autonomy-control-plane
+task 6 orchestration wiring — NOT the acceptance demo itself, which
+requires a real unattended overnight run; see this plan's own progress log
+for why that's parked rather than simulated here).
+
+The main test class is fully hermetic (fake grade-declarer, fake handoff-
+builder, fake dispatcher/board-runner) so it runs on a clean CI runner
+with no crickets sibling checkout. A separate, skip-guarded class proves
+the same orchestration against the real crickets-backed functions when a
+sibling checkout is reachable."""
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+from unittest import mock
+
+_HERE = Path(__file__).resolve().parent
+if str(_HERE) not in sys.path:
+    sys.path.insert(0, str(_HERE))
+
+import n1_run as n1  # noqa: E402
+import dispatch as dp  # noqa: E402
+import grade as gr  # noqa: E402
+import handoff as hf  # noqa: E402
+import board_sync as bs  # noqa: E402
+
+
+class _FakeCompletedProcess:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def _fake_dispatcher(item, **kwargs):
+    return dp.DispatchResult(
+        name=dp.dispatch_name(item), plan=item.plan, task=item.task,
+        model_alias="sonnet", model_id="claude-sonnet-5", effort="medium", tier="T1-Execute",
+        tier_source="FRONTMATTER", cwd=str(item.cwd), returncode=0, stdout="", stderr="",
+    )
+
+
+def _fake_board_runner(returncode=0):
+    calls = []
+
+    def runner(cmd, **kwargs):
+        calls.append(cmd)
+        return _FakeCompletedProcess(returncode)
+
+    runner.calls = calls
+    return runner
+
+
+def _fake_grade_declarer(plan, *, grade, root, telemetry_root):
+    return {"event": "run-start", "tags": {"plan": plan, "grade": grade}}
+
+
+def _fake_handoff_builder(results, session_outputs, dest_dir):
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    manifest = {"prompts": [{"title": r.name} for r in results], "snapshotted_files": sorted(session_outputs)}
+    (dest_dir / "prompts.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return manifest
+
+
+class RunN1SequenceTests(unittest.TestCase):
+    """Fully hermetic -- fakes every crickets-backed collaborator."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.telemetry_root = self.tmp / "telemetry"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, config, **overrides):
+        kwargs = dict(dispatcher=_fake_dispatcher, grade_declarer=_fake_grade_declarer, handoff_builder=_fake_handoff_builder)
+        kwargs.update(overrides)
+        return n1.run_n1_sequence(config, **kwargs)
+
+    def test_dispatches_every_work_item(self):
+        items = [
+            dp.WorkItem(plan="n1", task="1", prompt="do a", cwd=str(self.tmp)),
+            dp.WorkItem(plan="n1", task="2", prompt="do b", cwd=str(self.tmp)),
+        ]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root)
+        report = self._run(config)
+        self.assertEqual(len(report.dispatch_results), 2)
+        self.assertEqual({r.task for r in report.dispatch_results}, {"1", "2"})
+
+    def test_grade_event_declared(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root, grade="G-ship")
+        report = self._run(config)
+        self.assertIsNotNone(report.grade_event)
+        self.assertEqual(report.grade_event["tags"]["grade"], "G-ship")
+
+    def test_no_board_outcomes_without_a_project_config(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root)
+        report = self._run(config)
+        self.assertEqual(report.board_outcomes, [])
+
+    def test_board_outcomes_one_per_dispatched_item(self):
+        config_path = self.tmp / "project.json"
+        config_path.write_text("{}", encoding="utf-8")
+        items = [
+            dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp)),
+            dp.WorkItem(plan="n1", task="2", prompt="y", cwd=str(self.tmp)),
+        ]
+        config = n1.N1Config(
+            plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root,
+            project_config_path=config_path, dry_run_board=True,
+        )
+        runner = _fake_board_runner(returncode=0)
+        # board_sync.post_dispatch_progress resolves project_sync.py before
+        # ever reaching the (already-faked) runner -- stub that resolution
+        # too so this stays hermetic without a real crickets sibling.
+        with mock.patch.object(bs, "find_project_sync_script", return_value=Path("/fake/project_sync.py")):
+            report = self._run(config, board_runner=runner)
+        self.assertEqual(len(report.board_outcomes), 2)
+        self.assertEqual(len(runner.calls), 2)
+        for cmd in runner.calls:
+            self.assertIn("--dry-run", cmd)
+
+    def test_handoff_manifest_built_for_the_batch(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root)
+        report = self._run(config)
+        self.assertIsNotNone(report.handoff_manifest)
+        self.assertEqual(len(report.handoff_manifest["prompts"]), 1)
+        dest = self.tmp / "_n1_handoff"
+        self.assertTrue((dest / "prompts.json").is_file())
+
+    def test_empty_work_items_is_a_clean_run(self):
+        config = n1.N1Config(plan="n1", work_items=[], cwd=self.tmp, telemetry_root=self.telemetry_root)
+        report = self._run(config)
+        self.assertEqual(report.dispatch_results, [])
+        self.assertIsNotNone(report.grade_event)
+
+
+class RealCricketsN1BridgeTests(unittest.TestCase):
+    """Real-bridge: exercises the actual grade.declare_run_start +
+    handoff.build_fleet_handoff_pack (dispatcher/board still faked --
+    those need a real claude --bg / gh call, out of scope for a unit
+    test). Skipped when no crickets sibling checkout is reachable."""
+
+    @classmethod
+    def setUpClass(cls):
+        gr._reset_cache_for_tests()
+        hf._reset_cache_for_tests()
+        if gr.load_event_log_module() is None or hf.load_handoff_pack_module() is None:
+            raise unittest.SkipTest("crickets sibling checkout unavailable -- real-bridge test skipped")
+
+    @classmethod
+    def tearDownClass(cls):
+        gr._reset_cache_for_tests()
+        hf._reset_cache_for_tests()
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+        self.telemetry_root = self.tmp / "telemetry"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_real_grade_and_handoff_pack_produced(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root, grade="G-ship")
+        report = n1.run_n1_sequence(config, dispatcher=_fake_dispatcher)
+        self.assertIsNotNone(report.grade_event)
+        self.assertEqual(report.grade_event["event"], "run-start")
+        self.assertEqual(report.grade_event["tags"]["grade"], "G-ship")
+        self.assertIsNotNone(report.handoff_manifest)
+
+
+if __name__ == "__main__":
+    unittest.main()
