@@ -1,0 +1,12 @@
+# observability-digest-weekly.yaml — the weekly rung of the observability
+# ledger's digest ladder (PLAN-observability-console task 2). See
+# observability-digest-daily.yaml's own header note for the shared
+# registration/tier/dry-run rationale.
+schedule: weekly
+lookback: 48h
+command: >-
+  python3 -m health.inbox_digest --cadence weekly
+  --db-path ~/.cache/agentm/telemetry/rollup.db
+  --vault-path "$MEMORY_VAULT_PATH"
+tier: T2
+dry_run: true
