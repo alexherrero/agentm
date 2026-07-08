@@ -24,6 +24,7 @@
   - [The persona tier](persona-tier)
   - [Model + effort routing](agentm-model-effort-routing)
   - [Runner](agentm-runner)
+  - [Autonomy](agentm-autonomy)
   - [Goal contract](agentm-goal-contract)
   - [Memory index](agentm-memory-index)
 ### 💡 [Explanation](Explanation)
