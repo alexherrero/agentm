@@ -65,3 +65,14 @@ Any future change to these files (including the operator's spot-check correction
 separately-hashed version (`-v1`, etc.) — never a silent edit of `v0`. That is what makes the
 "pre-registered before the graph existed" claim checkable later: task 4/5 can point at these exact
 hashes as what they were evaluated against.
+
+## Running with the vector stream enabled
+
+`eval_v6_retrieval.py`'s vector similarity path (`recall._vec_search()`) needs `sqlite-vec`'s
+extension-loading support, which the stock macOS `python3` binary lacks entirely
+(`sqlite3.Connection` has no `enable_load_extension`). Run the eval under a Homebrew-built
+interpreter instead (`/opt/homebrew/bin/python3.13` confirmed working, `vec_version()` returns
+`v0.1.9`) to get a real vector-inclusive comparison instead of the fallback path silently
+degrading past it. See the 2026-07-08 amendment-log entry in
+[agentm-memory-system.md](../../../../wiki/designs/agentm-memory-system.md) for the numbers this
+produced.
