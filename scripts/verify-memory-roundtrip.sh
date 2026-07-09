@@ -93,6 +93,22 @@ assert_exists "save: entry under personal/reference/" "$ENTRY"
 RECALL="$(mem recall.py query "deployment runbook staging gate" -k 5 --mode stub 2>/dev/null)"
 assert_contains "recall: saved entry surfaced by content" "$RECALL" "deploy-runbook"
 
+# ── C2. kind-scoped recall: --filter kind=<kind> narrows to that kind only ──
+# (AA5 consolidation task C3: flips the stale dark-checks.jsonl "kind-scoped
+# recall" entry to a live check -- recall.py's parse_filter/_entry_matches_
+# filter already support this; nothing here was previously exercised as a
+# --jsonl-out record.) A second entry of a DIFFERENT kind, sharing the same
+# distinctive phrase, proves the filter narrows by kind rather than content.
+SECOND_BODY="This howto also mentions the deployment runbook staging gate procedure, but it is not the reference entry."
+printf '%s\n' "$SECOND_BODY" | mem save.py howto rotate-api-keys --tags "security" --body-file - >/dev/null 2>&1
+KIND_FILTERED="$(mem recall.py query "deployment runbook staging gate" -k 5 --mode stub --filter "kind=reference" 2>/dev/null)"
+if printf '%s' "$KIND_FILTERED" | grep -qF -- "deploy-runbook" && ! printf '%s' "$KIND_FILTERED" | grep -qF -- "rotate-api-keys"; then
+  pass "recall: --filter kind=reference includes the matching kind and excludes the other kind"
+else
+  fail "recall: --filter kind=reference includes the matching kind and excludes the other kind" \
+       "got: $(printf '%s' "$KIND_FILTERED" | tr '\n' '~' | cut -c1-200)"
+fi
+
 # ── D. reflect: a synthetic transcript is processed + routed ────────────────
 printf '%s\n%s\n' \
   '{"type":"user","message":{"role":"user","content":"remember the deploy staging gate"}}' \
