@@ -589,6 +589,9 @@ def main() -> int:
                     default=True,
                     help="Skip governing the repo-root README.md (default: governed; "
                          "rule l checks its relative links resolve).")
+    ap.add_argument("--jsonl-out", default=None,
+                    help="append a {suite,axis,check,pass,weight} record "
+                         "(docs+voice health axis, AA5 C7)")
     args = ap.parse_args()
 
     if not args.root.is_dir():
@@ -614,9 +617,17 @@ def main() -> int:
     )
     print(summary, file=sys.stderr)
 
-    if args.strict and hard:
-        return 1
-    return 0
+    exit_code = 1 if (args.strict and hard) else 0
+
+    if args.jsonl_out:
+        record = {
+            "suite": "check-wiki", "axis": "docs+voice health",
+            "check": "structural-cleanliness", "pass": exit_code == 0, "weight": 5,
+        }
+        with open(args.jsonl_out, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
+
+    return exit_code
 
 
 if __name__ == "__main__":
