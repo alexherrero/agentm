@@ -6,7 +6,7 @@
 # can be `cat`-concatenated with run-fast-tier.sh's output before piping into
 # health_score.py.
 #
-# Six checks, each gracefully degrading (SKIPPED, not silently dropped) when
+# Seven checks, each gracefully degrading (SKIPPED, not silently dropped) when
 # the heavier dependency it needs isn't installed — this script must be safe
 # to run in the fast-tier CI environment too (it just won't have much to say
 # there), not only in the nightly job that installs the extra deps:
@@ -44,6 +44,16 @@
 #      budget ceiling must default to a safe conservative cap in that case
 #      (fail closed), not skip the gate entirely (fail open, today's
 #      `_read_daily_ceiling` -> None behavior disables the check outright).
+#   7. Real-telemetry rollup idempotency (AA5 consolidation task C3,
+#      AA5-REENTRY-VERDICT.md §2 item 4) — the one genuinely data-conditioned
+#      efficiency check: reads THIS MACHINE's actual `~/.agentm/telemetry`
+#      event log (no synthetic fixture, unlike verify-efficiency.py's
+#      fast-tier checks). A fresh CI runner has zero real events (confirmed:
+#      no crickets-sibling checkout in any workflow, so the real analyzer
+#      can't even resolve there) -- honest-dark on that emptiness, never a
+#      fabricated pass/fail, per the same AA4 pattern check 5 already
+#      established. When real events exist (a dogfooding operator machine),
+#      it rebuilds the rollup twice and asserts idempotency for real.
 #
 # Usage:   bash scripts/health/run-heavy-tier.sh
 # Exit:    0 always (this is a reporting script, like run-fast-tier.sh — the
@@ -291,6 +301,70 @@ elif echo "$GATE_RESULT" | grep -q "gate:SKIP"; then
   emit "run-heavy-tier" "safety/recoverability" "no-config gate: runner fleet-budget ceiling fails CLOSED (safe default) with no .harness/budget.yaml, not open" null
 else
   emit "run-heavy-tier" "safety/recoverability" "no-config gate: runner fleet-budget ceiling fails CLOSED (safe default) with no .harness/budget.yaml, not open" 0
+fi
+
+# ── 7. real-telemetry rollup idempotency (data-conditioned, honest-dark) ──
+echo "run-heavy-tier: [7/7] real-telemetry rollup idempotency…" >&2
+TELEMETRY_CHECK_SCRIPT="$(mktemp).py"
+cat > "$TELEMETRY_CHECK_SCRIPT" <<'PYEOF'
+import sqlite3
+import sys
+import tempfile
+from pathlib import Path
+
+try:
+    from runner import aggregator
+except ImportError as e:
+    print(f"telemetry:IMPORT_SKIP ({e})")
+    sys.exit(0)
+
+events = aggregator.load_events()
+if not events:
+    print("telemetry:DARK (no real events on this machine yet)")
+    sys.exit(0)
+
+
+def _dump(db_path):
+    conn = sqlite3.connect(str(db_path))
+    try:
+        out = {}
+        for table, cols in (
+            ("by_plan", ("plan", "cost_usd", "event_count")),
+            ("by_task", ("plan", "task", "cost_usd", "event_count")),
+            ("by_model", ("model", "cost_usd", "event_count")),
+            ("by_window", ("window_start", "cost_usd", "event_count")),
+        ):
+            out[table] = conn.execute(f"SELECT {', '.join(cols)} FROM {table} ORDER BY {cols[0]}").fetchall()
+        return out
+    finally:
+        conn.close()
+
+
+try:
+    with tempfile.TemporaryDirectory() as d:
+        db1, db2 = Path(d) / "r1.db", Path(d) / "r2.db"
+        aggregator.build_rollup(events, db1)  # analyzer=None -> real crickets resolution
+        aggregator.build_rollup(events, db2)
+        ok = _dump(db1) == _dump(db2)
+except RuntimeError as e:
+    # Real events exist but the crickets analyzer can't resolve -- a genuine
+    # setup failure, not an empty-telemetry case, so this is FAIL, not dark.
+    print(f"telemetry:SETUP_FAIL ({e})")
+    sys.exit(0)
+except Exception:
+    ok = False
+
+print(f"telemetry:{'PASS' if ok else 'FAIL'}")
+PYEOF
+TELEMETRY_RESULT="$(PYTHONPATH="$SCRIPTS_DIR" "$PY" "$TELEMETRY_CHECK_SCRIPT")"
+rm -f "$TELEMETRY_CHECK_SCRIPT"
+echo "run-heavy-tier: real-telemetry result: $TELEMETRY_RESULT" >&2
+if echo "$TELEMETRY_RESULT" | grep -q "telemetry:PASS"; then
+  emit "run-heavy-tier" "efficiency" "real-telemetry rollup: rebuild-idempotency holds against this machine's actual event log" 1
+elif echo "$TELEMETRY_RESULT" | grep -q "telemetry:DARK\|telemetry:IMPORT_SKIP"; then
+  emit "run-heavy-tier" "efficiency" "real-telemetry rollup: rebuild-idempotency holds against this machine's actual event log" null
+else
+  emit "run-heavy-tier" "efficiency" "real-telemetry rollup: rebuild-idempotency holds against this machine's actual event log" 0
 fi
 
 echo "run-heavy-tier: done" >&2

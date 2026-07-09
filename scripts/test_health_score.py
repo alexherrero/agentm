@@ -119,16 +119,24 @@ class TestDarkChecksRendering(unittest.TestCase):
         self.assertNotIn("Dark checks", md)
 
     def test_dark_checks_registry_file_loads_and_renders(self):
+        # Count is NOT asserted here -- the registry is a living ledger of
+        # designed-not-built capabilities (scripts/health/README.md's
+        # "owning_plan" convention, AA5 consolidation task C3): it legitimately
+        # shrinks to zero when every entry is flipped live or deleted as
+        # stale, and grows again when a new capability is designed but not
+        # yet built. This test only guards the real file's shape -- that it
+        # loads without error and every record it does contain is a
+        # well-formed dark check. The "renders in its own distinct section"
+        # rendering behavior is proven with a synthetic record in
+        # test_dark_check_appears_in_distinct_section_not_as_failure above,
+        # so it doesn't need the real (possibly-empty) file to hold it.
         registry = _HERE / "health" / "dark-checks.jsonl"
         dark_records = health_score.read_records(str(registry))
-        self.assertGreaterEqual(len(dark_records), 3)
         for r in dark_records:
             self.assertTrue(r.get("dark"))
             self.assertIsNone(r.get("pass"))
         sc = health_score.compute_scorecard(dark_records)
         self.assertEqual(sc["health_index"], 0.0)  # no live records, no family scored
-        md = health_score.render_markdown(sc)
-        self.assertIn("## Dark checks (designed, not built)", md)
 
     def test_bare_install_never_renders_fabricated_zero_score(self):
         # ROADMAP-TAIL-ADJUDICATIONS.md B3 / AA4 2026-07-08 fix: zero live

@@ -47,6 +47,7 @@ run_suite "eval-v6-graph"                    "$PY" "$HERE/eval_v6_graph.py"
 run_suite "eval-v6-retrieval"                "$PY" "$HERE/eval_v6_retrieval.py"
 run_suite "eval-v6-consolidate"              "$PY" "$HERE/eval_v6_consolidate.py"
 run_suite "verify-memory-roundtrip"         bash "$SCRIPTS_DIR/verify-memory-roundtrip.sh"
+run_suite "verify-efficiency"                "$PY" "$HERE/verify-efficiency.py"
 
 cat "$JSONL_TMP"
 exit 0
