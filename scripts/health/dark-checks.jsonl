@@ -1,3 +1,0 @@
-{"suite": "dark-registry", "axis": "capability function", "check": "runner: sandboxed multi-step task execution surface — designed, not built", "pass": null, "dark": true, "weight": 1.0}
-{"suite": "dark-registry", "axis": "capability function", "check": "opinion runtime: policy-opinion evaluation at activation time — designed, not built", "pass": null, "dark": true, "weight": 1.0}
-{"suite": "dark-registry", "axis": "memory persist+recall", "check": "kind-scoped recall: recall filtered/ranked by memory kind — designed, not built", "pass": null, "dark": true, "weight": 1.0}

@@ -9,7 +9,14 @@ Record schema (locked in PLAN-r1-regression-net.md's Locked design calls):
 
 Dark checks (R1.8 Task 5 — designed-not-built capabilities) use:
 
-    {"suite": str, "axis": str, "check": str, "pass": null, "dark": true, "weight": float}
+    {"suite": str, "axis": str, "check": str, "pass": null, "dark": true, "weight": float,
+     "owning_plan": str}
+
+`owning_plan` names the plan responsible for flipping the entry to a live
+check (or deleting it, if already covered another way) at that plan's
+close-out -- see scripts/health/README.md's Schema section. Not read by
+this module (the registry's own consumers don't need it); it's a
+convention enforced by plan-close-out discipline, not by code here.
 
 Ablation records (PLAN-r3-uplift-scoring Task 2 / R3.1b — mechanical-uplift
 baselines) use a separate schema, read from `--ablation-records` and never
