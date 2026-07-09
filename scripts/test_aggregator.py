@@ -14,9 +14,11 @@ analyzer.py to exist at either path.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 import sqlite3
+import sys
 import unittest
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -25,6 +27,7 @@ from tempfile import TemporaryDirectory
 from unittest import mock
 
 from runner import aggregator
+from control_plane import dispatch as dp
 
 
 @dataclass
@@ -308,6 +311,92 @@ class RealCricketsBridgeTests(unittest.TestCase):
             self.assertEqual(windows[0][2], 2)
             self.assertAlmostEqual(windows[1][1], 3.0, places=6)
             self.assertEqual(windows[1][2], 1)
+
+
+class DispatchAttributionEndToEndTests(unittest.TestCase):
+    """Acceptance test for PLAN-observability-residue-trio task 1: a tagged
+    test dispatch produces a non-empty `by_task` rollup. Chains agentm's
+    real `dispatch.dispatch()` (writes the active-plan/active-task markers)
+    -> crickets' real `session_cost_writer.capture_session_cost()` (reads
+    those markers via `event_log.resolve_attribution_tags()`, appends a
+    tagged event) -> agentm's real `aggregator.build_rollup()` (folds the
+    tagged event into `by_task`). Skipped without a crickets sibling
+    checkout -- this is a real cross-repo integration, not a fixture."""
+
+    @classmethod
+    def setUpClass(cls):
+        aggregator._reset_cache_for_tests()
+        if aggregator.load_analyzer_module() is None:
+            raise unittest.SkipTest("crickets sibling checkout unavailable -- e2e attribution test skipped")
+        env_dir = os.environ.get("CRICKETS_SCRIPTS_DIR", "").strip()
+        cls._tokens_dir = Path(env_dir) if env_dir else Path.home() / "Antigravity" / "crickets" / "src" / "tokens" / "scripts"
+        cls.session_cost_writer = cls._load_crickets_module("session_cost_writer")
+
+    @classmethod
+    def tearDownClass(cls):
+        aggregator._reset_cache_for_tests()
+
+    @classmethod
+    def _load_crickets_module(cls, name: str):
+        spec = importlib.util.spec_from_file_location(f"crickets_{name}_e2e", cls._tokens_dir / f"{name}.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        return module
+
+    @staticmethod
+    def _fixture_transcript(tmp: Path) -> Path:
+        line = json.dumps({
+            "type": "assistant",
+            "timestamp": "2026-07-08T10:00:00Z",
+            "message": {
+                "model": "claude-sonnet-5",
+                "usage": {
+                    "input_tokens": 100, "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": 0, "output_tokens": 50,
+                },
+            },
+        })
+        p = tmp / "session.jsonl"
+        p.write_text(line + "\n", encoding="utf-8")
+        return p
+
+    def test_tagged_dispatch_produces_a_nonempty_by_task_rollup(self):
+        with TemporaryDirectory() as td:
+            d = Path(td)
+            dispatch_cwd = d / "dispatch-cwd"
+            dispatch_cwd.mkdir()
+            telemetry_root = d / "telemetry"
+            db_path = d / "rollup.db"
+
+            runner = lambda cmd, **kwargs: mock.Mock(returncode=0, stdout="", stderr="")  # noqa: E731
+            item = dp.WorkItem(
+                plan="e2e-attribution", task="1", prompt="x", cwd=str(dispatch_cwd),
+                declared={"model": "claude-sonnet-5", "effort": "medium", "tier": "T1-Execute"},
+            )
+            dp.dispatch(item, runner=runner)
+
+            written = self.session_cost_writer.capture_session_cost(
+                self._fixture_transcript(dispatch_cwd), session_id="s1",
+                root=dispatch_cwd, telemetry_root=telemetry_root,
+            )
+            self.assertTrue(written, "session_cost_writer wrote no events -- fixture transcript unreadable?")
+            self.assertEqual(written[0]["tags"]["plan"], "e2e-attribution")
+            self.assertEqual(written[0]["tags"]["task"], "1")
+
+            events = aggregator.load_events(telemetry_root)
+            aggregator.build_rollup(events, db_path)
+
+            conn = sqlite3.connect(str(db_path))
+            try:
+                rows = conn.execute(
+                    "SELECT event_count FROM by_task WHERE plan = ? AND task = ?",
+                    ("e2e-attribution", "1"),
+                ).fetchall()
+            finally:
+                conn.close()
+            self.assertEqual(len(rows), 1)
+            self.assertGreater(rows[0][0], 0)
 
 
 class MainCliTests(unittest.TestCase):

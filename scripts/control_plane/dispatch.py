@@ -11,12 +11,14 @@ uses — persona-declared -> role-name match -> `UNCLASSIFIED-DEFAULT`,
 never a silent guess, never `claude-fable-5`), resolved the same
 sibling-clone way `session_cost_writer.py` resolves agentm's `save.py`.
 
-Plan/task attribution rides the worktree-local `.harness/active-plan`
-marker `event_log.resolve_attribution_tags()` already reads (built by
-`PLAN-observability-ledger`) -- this module WRITES that marker into the
-dispatch cwd before spawning; it never re-implements the stamping itself.
-No host schema carries a plan-ID field (confirmed live, task 1's own
-re-verification), so the marker is the only channel.
+Plan/task attribution rides the worktree-local `.harness/active-plan` and
+`.harness/active-task` markers `event_log.resolve_attribution_tags()`
+already reads (the plan marker built by `PLAN-observability-ledger`, the
+task marker by `PLAN-observability-residue-trio` task 1) -- this module
+WRITES both markers into the dispatch cwd before spawning; it never
+re-implements the stamping itself. No host schema carries a plan-ID or
+task-ID field (confirmed live, task 1's own re-verification), so the
+markers are the only channel.
 """
 from __future__ import annotations
 
@@ -141,6 +143,15 @@ def _write_active_plan_marker(cwd: Path, plan_slug: str) -> None:
     (harness_dir / "active-plan").write_text(f"{plan_slug}\n", encoding="utf-8")
 
 
+def _write_active_task_marker(cwd: Path, task_slug: str) -> None:
+    """Sibling of `_write_active_plan_marker` (`PLAN-observability-residue-
+    trio` task 1) — gives crickets' `event_log.resolve_attribution_tags()`
+    a `task` value to read, the way `active-plan` already gives it `plan`."""
+    harness_dir = cwd / ".harness"
+    harness_dir.mkdir(parents=True, exist_ok=True)
+    (harness_dir / "active-task").write_text(f"{task_slug}\n", encoding="utf-8")
+
+
 def build_dispatch_command(item: WorkItem, classification: dict, *, claude_bin: str = "claude") -> list[str]:
     """The exact `claude --bg ...` argv for this work item. Pure — no I/O,
     easy to assert against in tests without spawning a real process."""
@@ -156,13 +167,14 @@ def build_dispatch_command(item: WorkItem, classification: dict, *, claude_bin: 
 
 def dispatch(item: WorkItem, *, claude_bin: str = "claude", runner=subprocess.run) -> DispatchResult:
     """Spawn one work item as a `claude --bg` background session (Agent
-    View). Writes the active-plan marker into the dispatch cwd first, so
-    the harness's own attribution stamping picks up `plan` automatically
-    once the dispatched session's Stop hook fires — this function never
-    writes a ledger event itself.
+    View). Writes the active-plan and active-task markers into the dispatch
+    cwd first, so the harness's own attribution stamping picks up `plan`
+    and `task` automatically once the dispatched session's Stop hook fires
+    — this function never writes a ledger event itself.
     """
     cwd = Path(item.cwd) if item.cwd is not None else Path.cwd()
     _write_active_plan_marker(cwd, item.plan)
+    _write_active_task_marker(cwd, item.task)
     classification = resolve_dispatch_classification(item)
     cmd = build_dispatch_command(item, classification, claude_bin=claude_bin)
     proc = runner(cmd, cwd=str(cwd), capture_output=True, text=True)
