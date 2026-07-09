@@ -71,6 +71,19 @@ class WriteActivePlanMarkerTests(unittest.TestCase):
         self.assertEqual((self.tmp / ".harness" / "active-plan").read_text(encoding="utf-8"), "myplan\n")
 
 
+class WriteActiveTaskMarkerTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_marker_written(self):
+        dp._write_active_task_marker(self.tmp, "3")
+        self.assertEqual((self.tmp / ".harness" / "active-task").read_text(encoding="utf-8"), "3\n")
+
+
 class ResolveDispatchClassificationTests(unittest.TestCase):
     def setUp(self):
         dp._reset_cache_for_tests()
@@ -139,6 +152,7 @@ class DispatchEndToEndStubbedTests(unittest.TestCase):
         self.assertEqual(result.plan, "myplan")
         self.assertEqual(result.task, "2")
         self.assertEqual((self.tmp / ".harness" / "active-plan").read_text(encoding="utf-8"), "myplan\n")
+        self.assertEqual((self.tmp / ".harness" / "active-task").read_text(encoding="utf-8"), "2\n")
         self.assertEqual(len(runner.calls), 1)
         self.assertEqual(runner.calls[0]["kwargs"]["cwd"], str(self.tmp))
         self.assertEqual(result.tier, "T1-Execute")  # carried through for handoff-pack labeling (task 4)
