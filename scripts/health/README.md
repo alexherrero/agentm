@@ -15,6 +15,14 @@ Dark checks (designed-not-built capabilities — R1.8 Task 5) use `"pass": null,
 "dark": true` instead of a boolean `pass`. They render as a distinct count per
 family and never reduce that family's denominator.
 
+Every entry in `dark-checks.jsonl` also names its owning plan — an
+`"owning_plan": "<slug>"` field. That plan's close-out is responsible for
+flipping the entry to a live check (or deleting it, if the battery already
+covers the capability another way) before the plan is marked done. This is
+the fix for a real staleness: three entries sat marked "designed, not built"
+long after all three had shipped (AA5-REENTRY-VERDICT.md §1 D4, 2026-07-08) —
+naming the owning plan up front is what makes close-out catch it next time.
+
 ## Families (locked weights)
 
 | Family (`axis` value) | Weight |
