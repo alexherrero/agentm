@@ -17,6 +17,7 @@
 - [Back the vault with Google Drive](Back-The-Vault-With-Drive)
 - [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault)
 - [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server)
+- [Persist a morning report](Persist-A-Morning-Report)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)
 ### 🧩 [Designs](Designs)

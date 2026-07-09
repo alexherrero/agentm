@@ -4,6 +4,8 @@ task 4). Four fixture scenarios, one per ending cause, per the plan's own
 verification wording."""
 from __future__ import annotations
 
+import contextlib
+import io
 import sqlite3
 import sys
 import tempfile
@@ -148,6 +150,33 @@ class MainCliTests(unittest.TestCase):
             "--db-path", str(self.db_path), "--park-dir", str(park_dir),
         ])
         self.assertEqual(rc, 0)
+
+    def test_main_without_out_writes_no_file_and_stdout_is_unchanged(self):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = mr.main(["--plan", "myplan", "--ending-cause", "plan-finished", "--db-path", str(self.db_path)])
+        self.assertEqual(rc, 0)
+        expected = mr.render_morning_report(
+            mr.compute_morning_report("plan-finished", plan_slug="myplan", db_path=self.db_path)
+        )
+        self.assertEqual(buf.getvalue(), expected + '{"total_cost_usd": 0.0}\n')
+        self.assertEqual(list(self.tmp.glob("*.md")), [])
+
+    def test_main_with_out_writes_the_same_content_stdout_gets(self):
+        out_path = self.tmp / "reports" / "morning.md"
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = mr.main([
+                "--plan", "myplan", "--ending-cause", "plan-finished",
+                "--db-path", str(self.db_path), "--out", str(out_path),
+            ])
+        self.assertEqual(rc, 0)
+        expected = mr.render_morning_report(
+            mr.compute_morning_report("plan-finished", plan_slug="myplan", db_path=self.db_path)
+        )
+        self.assertTrue(out_path.is_file())
+        self.assertEqual(out_path.read_text(encoding="utf-8"), expected)
+        self.assertIn(expected, buf.getvalue())
 
 
 if __name__ == "__main__":

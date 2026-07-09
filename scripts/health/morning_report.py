@@ -107,6 +107,7 @@ def main(argv: "list[str] | None" = None) -> int:
     ap.add_argument("--ending-cause", required=True, choices=ENDING_CAUSES)
     ap.add_argument("--db-path", required=True)
     ap.add_argument("--park-dir", default=None, help="if given and ending-cause is window-exhausted, read the park state from here")
+    ap.add_argument("--out", default=None, help="also write the rendered report to this path (stdout output is unchanged either way)")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
     park_state = None
@@ -123,7 +124,12 @@ def main(argv: "list[str] | None" = None) -> int:
         print(f"morning_report: {e}", file=sys.stderr)
         return 2
 
-    print(render_morning_report(data), end="")
+    page = render_morning_report(data)
+    print(page, end="")
+    if args.out:
+        out_path = Path(args.out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(page, encoding="utf-8")
     print(json.dumps({"total_cost_usd": 0.0}))
     return 0
 
