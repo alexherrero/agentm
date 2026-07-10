@@ -1,7 +1,7 @@
 # Kind-taxonomy registry + frontmatter validator reference
 
 > [!NOTE]
-> **Status: partial** — `PLAN-v6-15-v6-18-typed-object-moc` (governed by [AgentM Memory Index](../designs/agentm-memory-index)) ships this reference across four sub-deliverables. Task 1, the registry (`kind_registry.py`), is **implemented**. Task 2, the validator (`frontmatter_validator.py`), is **implemented**. Task 3, the MOC generator, and task 4, the `check-all.sh` wiring, are **pending** — not yet built. See the per-section status notes below.
+> **Status: partial** — `PLAN-v6-15-v6-18-typed-object-moc` (governed by [AgentM Memory Index](../designs/agentm-memory-index)) ships this reference across four sub-deliverables. Task 1, the registry (`kind_registry.py`), is **implemented**. Task 2, the validator (`frontmatter_validator.py`), is **implemented**. Task 3, the [MOC generator](MOC-Generator), is also **implemented** (its own reference page). Only task 4, the `check-all.sh` wiring, remains **pending** — not yet built. See the per-section status notes below.
 
 `kind_registry.py` formalizes the vault's existing free-form `kind:` frontmatter taxonomy into a recognized-set catalog + a read-only audit CLI. `frontmatter_validator.py` adds a check-only validator on top of it — the same read-only, report-not-mutate shape as [`vault_lint.py`](Vault-Lint-Checks), scoped narrowly to the `kind` value and the universal required fields rather than the full nine-check frontmatter sweep.
 
