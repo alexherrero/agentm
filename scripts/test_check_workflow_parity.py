@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Positive + negative tests for scripts/check-workflow-parity.sh.
+"""Positive + negative tests for scripts/check-vendored-parity.sh's `workflow` mode.
+
+Was scripts/check-workflow-parity.sh (a standalone script) — CONS-1 merged it into
+one of check-vendored-parity.sh's five modes. Same invariant, same fixture shapes,
+just invoked as `check-vendored-parity.sh workflow [--root DIR]` instead of a bare
+script.
 
 The gate locks the dogfood self-consumption invariant: every workflow agentm ships
 as a template under templates/.github/workflows/ must be active at .github/workflows/,
@@ -31,7 +36,8 @@ import unittest
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
-_GATE = _HERE / "check-workflow-parity.sh"
+_GATE = _HERE / "check-vendored-parity.sh"
+_MODE = "workflow"
 
 # Two synthetic workflow bodies — the gate only byte-compares, so the content need not
 # be valid YAML; distinct bodies just make the multi-file loop and the diff meaningful.
@@ -56,7 +62,7 @@ _WF_B = (
 
 
 def _run_gate(root: Path | None = None) -> subprocess.CompletedProcess:
-    cmd = ["bash", str(_GATE)]
+    cmd = ["bash", str(_GATE), _MODE]
     if root is not None:
         cmd += ["--root", str(root)]
     return subprocess.run(cmd, capture_output=True, text=True)

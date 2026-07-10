@@ -47,7 +47,7 @@ jobs:
       # makes find(1) unreliable; Linux + Mac cover .sh parse).
       - name: Verify lib/install/ checksums
         shell: bash
-        run: bash scripts/check-lib-parity.sh
+        run: bash scripts/check-vendored-parity.sh lib
       - name: Run check-no-pii.sh
         shell: bash
         run: bash scripts/check-no-pii.sh --all
@@ -55,9 +55,9 @@ jobs:
         run: python scripts/check-personas.py
       - name: "check-governs-index (governs:/area: overlap + unknown-area)"
         run: python scripts/check-governs-index.py
-      - name: check-hook-config-parity (4 hook _resolve_vault_path copies)
+      - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         shell: bash
-        run: bash scripts/check-hook-config-parity.sh
+        run: bash scripts/check-vendored-parity.sh hook-config
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where

@@ -415,28 +415,42 @@ class CLIShim(_SeamFixture):
 
 
 # -----------------------------------------------------------------------------
-# Task 2 — the check-process-seam-import-direction.sh gate via subprocess (POSIX)
+# Task 2 — the check-one-way-imports.py back-edge rules via subprocess
+#
+# Was check-process-seam-import-direction.sh (a standalone bash script) —
+# CONS-1 converged it onto Python, merging it into check-one-way-imports.py
+# alongside the opinion/capability resolver rules. Same three invariants
+# (process-seam back-edge, LC-8 storage_vault, LC-8 bridge), same fixture
+# shapes; invoked with sys.executable instead of bash. The AST-based port
+# also naturally handles the process_seam_helper false-positive case (an AST
+# import node's module name is compared for exact equality, not a substring
+# match), so the old regex's dedicated word-boundary class is no longer needed.
 # -----------------------------------------------------------------------------
 
-_IMPORT_GATE = _HERE / "check-process-seam-import-direction.sh"
+_IMPORT_GATE = _HERE / "check-one-way-imports.py"
 
 
-def _run_import_gate(root: Path | None = None) -> subprocess.CompletedProcess:
-    cmd = ["bash", str(_IMPORT_GATE)]
+def _run_import_gate(root: Path | None = None, rule: str | None = None) -> subprocess.CompletedProcess:
+    cmd = [sys.executable, str(_IMPORT_GATE)]
     if root is not None:
         cmd += ["--root", str(root)]
+    if rule is not None:
+        cmd += ["--rule", rule]
     return subprocess.run(cmd, capture_output=True, text=True)
 
 
-@unittest.skipIf(os.name == "nt", "bash gate — POSIX only")
 class ImportDirectionGate(unittest.TestCase):
     """The LC-4 one-way invariant — *memory never imports the process*.
 
-    Subprocess tests against `check-process-seam-import-direction.sh`. The import
-    verb is assembled at runtime so this file never carries the contiguous string
-    the gate greps for (it's an excluded ``test_*.py`` regardless, but this keeps
-    the fixtures unambiguous). Fixtures land under ``scripts/`` — one of the gate's
-    scanned automation surfaces — pointed at via ``--root``.
+    Subprocess tests against check-one-way-imports.py's back-edge rules
+    (process-seam / lc8-storage-vault / lc8-bridge). The import verb is
+    assembled at runtime so this file never carries the contiguous string
+    the gate scans for (it's an excluded ``test_*.py`` regardless, but this
+    keeps the fixtures unambiguous). Fixtures land under ``scripts/`` — one
+    of the gate's scanned automation surfaces — pointed at via ``--root``.
+
+    No longer POSIX-only (was bash-driven, skipped on Windows) — the merged
+    gate is a `sys.executable` invocation, which works on every CI OS.
     """
 
     IMPORT = "import " + "process_seam"                  # the bare-import back-edge
@@ -453,14 +467,14 @@ class ImportDirectionGate(unittest.TestCase):
     def test_gate_passes_on_live_repo(self) -> None:
         # The live repo's only seam importers are excluded by construction: its own
         # `test_*.py` suite and the module itself. So the real tree is one-way → rc 0.
-        proc = _run_import_gate()
+        proc = _run_import_gate(rule="process-seam")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_gate_passes_on_clean_fixture(self) -> None:
         (self.root / "scripts" / "engine.py").write_text(
             "import harness_memory as hm\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="process-seam")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_gate_fails_on_engine_back_edge(self) -> None:
@@ -468,7 +482,7 @@ class ImportDirectionGate(unittest.TestCase):
         (self.root / "scripts" / "harness_memory.py").write_text(
             f"{self.IMPORT}\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="process-seam")
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("harness_memory.py", proc.stderr)
 
@@ -476,7 +490,7 @@ class ImportDirectionGate(unittest.TestCase):
         (self.root / "scripts" / "phase_runner.py").write_text(
             f"{self.FROM}\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="process-seam")
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("phase_runner.py", proc.stderr)
 
@@ -485,7 +499,7 @@ class ImportDirectionGate(unittest.TestCase):
         (self.root / "scripts" / "test_seam_thing.py").write_text(
             f"{self.IMPORT}\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="process-seam")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_gate_ignores_the_seam_module_itself(self) -> None:
@@ -494,16 +508,16 @@ class ImportDirectionGate(unittest.TestCase):
         (self.root / "scripts" / "process_seam.py").write_text(
             f"{self.IMPORT}\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="process-seam")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_false_positive_guard_process_seam_helper(self) -> None:
-        # `process_seam_helper` is a different module — the regex's trailing
-        # word-boundary class must not mistake it for a seam import.
+        # `process_seam_helper` is a different module — the AST module-name
+        # equality check must not mistake it for a seam import.
         (self.root / "scripts" / "engine.py").write_text(
             f"{self.IMPORT}_helper\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="process-seam")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_gate_missing_root_is_setup_error(self) -> None:
@@ -516,7 +530,7 @@ class ImportDirectionGate(unittest.TestCase):
         (self.root / "scripts" / "harness_memory.py").write_text(
             "import " + "storage_vault\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="lc8-storage-vault")
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("harness_memory.py", proc.stderr)
 
@@ -525,7 +539,7 @@ class ImportDirectionGate(unittest.TestCase):
         (self.root / "scripts" / "repo_registry.py").write_text(
             "from " + "storage_vault import VaultBackend\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="lc8-storage-vault")
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("repo_registry.py", proc.stderr)
 
@@ -535,7 +549,7 @@ class ImportDirectionGate(unittest.TestCase):
         (self.root / "scripts" / "some_other_module.py").write_text(
             "import " + "storage_vault\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="lc8-storage-vault")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
     def test_bridge_lc8_fails_on_toolkit_back_edge(self) -> None:
@@ -546,7 +560,7 @@ class ImportDirectionGate(unittest.TestCase):
         (toolkit_dir / "auto_orchestration.py").write_text(
             "import " + "harness_memory\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="lc8-bridge")
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("harness_memory", proc.stderr)
 
@@ -557,7 +571,7 @@ class ImportDirectionGate(unittest.TestCase):
         (toolkit_dir / "orchestration_phase.py").write_text(
             "from " + "harness_memory import phase_dispatch\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="lc8-bridge")
         self.assertEqual(proc.returncode, 1, proc.stdout)
         self.assertIn("orchestration_phase.py", proc.stderr)
 
@@ -569,7 +583,7 @@ class ImportDirectionGate(unittest.TestCase):
         (toolkit_dir / "test_auto_orchestration.py").write_text(
             "import " + "harness_memory\n", encoding="utf-8"
         )
-        proc = _run_import_gate(self.root)
+        proc = _run_import_gate(self.root, rule="lc8-bridge")
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
 

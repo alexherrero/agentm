@@ -48,15 +48,15 @@ jobs:
         shell: pwsh
         run: pwsh -NoProfile -File scripts/check-syntax.ps1
       - name: Verify lib/install/ checksums
-        run: bash scripts/check-lib-parity.sh
+        run: bash scripts/check-vendored-parity.sh lib
       - name: Run check-no-pii.sh
         run: bash scripts/check-no-pii.sh --all
       - name: check-personas (requires ⊆ substrate + no-always-load)
         run: python3 scripts/check-personas.py
       - name: "check-governs-index (governs:/area: overlap + unknown-area)"
         run: python3 scripts/check-governs-index.py
-      - name: check-hook-config-parity (4 hook _resolve_vault_path copies)
-        run: bash scripts/check-hook-config-parity.sh
+      - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
+        run: bash scripts/check-vendored-parity.sh hook-config
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where
@@ -66,11 +66,11 @@ jobs:
         # End-to-end check of the auto-orchestration surface against a throwaway
         # scratch vault (bash-native; Windows skips, like the other .sh gates).
         run: bash scripts/verify-v4.sh
-      - name: check-vault-lock-parity (vendored vault_lock)
+      - name: check-vendored-parity (vault-lock mode)
         # The two copies of the vault-write protocol — scripts/vault_lock.py and
         # its vendored twin harness/skills/memory/scripts/vault_lock.py — must
         # stay sha256-identical (testInfra#0: was check-all.sh-only, invisible to CI).
-        run: bash scripts/check-vault-lock-parity.sh
+        run: bash scripts/check-vendored-parity.sh vault-lock
       - name: verify-orchestration-briefing (PM-half integration check)
         # PM-owned orchestration signals (briefing · HIGH watchlist · incubator ·
         # idea-ledger · staged-adapt · both nudges) against a throwaway scratch
