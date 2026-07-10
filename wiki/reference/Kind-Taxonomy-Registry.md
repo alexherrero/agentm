@@ -1,7 +1,7 @@
 # Kind-taxonomy registry + frontmatter validator reference
 
 > [!NOTE]
-> **Status: partial** — `PLAN-v6-15-v6-18-typed-object-moc` (governed by [AgentM Memory Index](../designs/agentm-memory-index)) ships this reference across four sub-deliverables. Task 1, the registry (`kind_registry.py`), is **implemented**. Task 2, the validator (`frontmatter_validator.py`), is **implemented**. Task 3, the [MOC generator](MOC-Generator), is also **implemented** (its own reference page). Only task 4, the `check-all.sh` wiring, remains **pending** — not yet built. See the per-section status notes below.
+> **Status: implemented** — `PLAN-v6-15-v6-18-typed-object-moc` (governed by [AgentM Memory Index](../designs/agentm-memory-index)) ships this reference across four sub-deliverables, all shipped. Task 1, the registry (`kind_registry.py`). Task 2, the validator (`frontmatter_validator.py`). Task 3, the [MOC generator](MOC-Generator) (its own reference page). Task 4, the advisory `check-kind-taxonomy` step in `check-all.sh`. See the per-section status notes below.
 
 `kind_registry.py` formalizes the vault's existing free-form `kind:` frontmatter taxonomy into a recognized-set catalog + a read-only audit CLI. `frontmatter_validator.py` adds a check-only validator on top of it — the same read-only, report-not-mutate shape as [`vault_lint.py`](Vault-Lint-Checks), scoped narrowly to the `kind` value and the universal required fields rather than the full nine-check frontmatter sweep.
 
@@ -75,7 +75,7 @@ The [MOC generator](MOC-Generator) (task 3, V6-18) depends on this registry to l
 
 ## Advisory kind-taxonomy check in check-all.sh (task 4)
 
-A `check-kind-taxonomy` step is planned for `scripts/check-all.sh`, running the task-1 `audit()` against `$MEMORY_VAULT_PATH` when it's set — graceful-skip (exit 0) when unset, the same pattern other vault-dependent checks use. Like the existing `check-slop.py --report wiki` step, it is **report-only, never a failing gate**: the real vault's 47-value mess can't be a hard PASS/FAIL yet without an operator judgment call on normalization, so violations print as a report and the step's own exit code stays 0 regardless of findings. See [CI Gates](CI-Gates) for the gate table entry once this lands.
+A `check-kind-taxonomy` step (`scripts/check-kind-taxonomy.sh`) is wired into `scripts/check-all.sh`, running the task-1 `audit()` against `$MEMORY_VAULT_PATH` when it's set — graceful-skip (exit 0) when unset or not a directory, the same pattern other vault-dependent checks use. Like the existing `check-slop.py --report wiki` step, it is **report-only, never a failing gate**: the real vault's 47-value mess can't be a hard PASS/FAIL yet without an operator judgment call on normalization (parked as [agentm issue #273](https://github.com/alexherrero/agentm/issues/273)), so violations print as a report and the step's own exit code stays 0 regardless of findings — confirmed by `scripts/test_check_kind_taxonomy.py`'s subprocess-driven tests (unset path, nonexistent path, clean vault, and a vault with real violations all exit 0). See [CI Gates](CI-Gates) for the gate table entry.
 
 ## Related
 
