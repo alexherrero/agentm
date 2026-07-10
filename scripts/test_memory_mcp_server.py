@@ -87,12 +87,18 @@ class TestMemoryMcpServerSkeleton(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(cm.exception.code, 0)
 
     def test_probe_check_liveness_returns_bool(self):
-        """check_liveness() returns False when no daemon is running on an unused port."""
-        import memory_mcp_probe as probe
+        """check_liveness() returns False when no daemon is running on an unused port.
+
+        Was `memory_mcp_probe.check_liveness()` (bare-bool return) — that module
+        duplicated this same liveness check and was retired (CONS-1). The
+        canonical liveness probe now lives in `memory_mcp_doctor.py`, which
+        returns a `(passed, message)` tuple instead of a bare bool.
+        """
+        import memory_mcp_doctor as doctor
 
         # Use an unlikely-to-be-bound port so the test never blocks.
-        result = probe.check_liveness(host="127.0.0.1", port=19999)
-        self.assertFalse(result)
+        live, _msg = doctor.check_liveness(url="http://127.0.0.1:19999", timeout=0.5)
+        self.assertFalse(live)
 
 
 if __name__ == "__main__":

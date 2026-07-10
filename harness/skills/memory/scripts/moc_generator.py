@@ -105,9 +105,19 @@ def build_kind_groups(vault_path: Path | str) -> dict[str, list[tuple[str, str, 
     return groups
 
 
+_HOME_BACKLINK_URL = "https://github.com/alexherrero/agentm/wiki/Home"
+
+
 def _render_moc(kind: str, entries: list[tuple[str, str, dict]]) -> str:
     label = kind if is_known(kind) else f"{kind} (unrecognized kind)"
-    lines = [f"# MOC — {label}", "", f"{len(entries)} entries, newest-first by `created`.", ""]
+    lines = [
+        f"# MOC — {label}",
+        "",
+        f"[← wiki Home]({_HOME_BACKLINK_URL})",
+        "",
+        f"{len(entries)} entries, newest-first by `created`.",
+        "",
+    ]
     for rel_path, _created, fm in entries:
         lines.append(f"- [[{_wikilink_target(Path(rel_path), fm)}]]")
     return "\n".join(lines) + "\n"

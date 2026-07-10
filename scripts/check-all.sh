@@ -38,25 +38,32 @@ gate() {
   fi
 }
 
+# gate_skip "<name>" "<reason>"  — record a named gate as skipped (not a
+# failure) when its prerequisite tool isn't on this machine. Keeps the gate
+# named/countable in the printed table without forcing every machine to have
+# every optional tool installed.
+gate_skip() {
+  RESULTS+=("  SKIP  $1 — $2")
+}
+
 echo "check-all: running the local gate battery…" >&2
 
 gate "unit tests (scripts/test_*.py)"          bash -c "cd scripts && $PY -m unittest discover -p 'test_*.py'"
 gate "check-syntax (bash -n every .sh)"        bash scripts/check-syntax.sh
+if command -v pwsh >/dev/null 2>&1; then
+  gate "check-syntax.ps1 (PowerShell AST parse every .ps1)" pwsh -NoProfile -File scripts/check-syntax.ps1
+else
+  gate_skip "check-syntax.ps1 (PowerShell AST parse every .ps1)" "pwsh not on this machine (CI runs it on all 3 OS matrices)"
+fi
 gate "check-references"                        "$PY" scripts/check-references.py
 gate "validate-adapters"                       "$PY" scripts/validate-adapters.py
 gate "check-parity (adapter sets)"             bash scripts/check-parity.sh
-gate "check-lib-parity (lib/install checksums)" bash scripts/check-lib-parity.sh
-gate "check-vault-lock-parity (vendored vault_lock)" bash scripts/check-vault-lock-parity.sh
-gate "check-storage-seam-vendor-parity (vendored storage_seam + storage_device_local)" bash scripts/check-storage-seam-vendor-parity.sh
-gate "check-hook-config-parity (4 hook _resolve_vault_path copies)" bash scripts/check-hook-config-parity.sh
-gate "check-workflow-parity (templated workflows byte-identical)" bash scripts/check-workflow-parity.sh
+gate "check-vendored-parity (lib + vault-lock + storage-seam + hook-config + workflow)" bash scripts/check-vendored-parity.sh
 gate "check-multi-plan-naming (named-plan contract)" bash scripts/check-multi-plan-naming.sh
 gate "check-worktree-slug (slug == origin basename)" bash scripts/check-worktree-slug.sh
 gate "check-no-auto-worktree (no agentm auto-spawn)" bash scripts/check-no-auto-worktree.sh
-gate "check-process-seam-import-direction (memory never imports the process)" bash scripts/check-process-seam-import-direction.sh
+gate "check-one-way-imports (process-seam + LC-8 back-edges + opinion/capability resolvers, never import plugin/process code)" "$PY" scripts/check-one-way-imports.py
 gate "check-storage-seam-no-path-leak (no Path crosses the seam)" "$PY" scripts/check-storage-seam-no-path-leak.py
-gate "check-capability-resolver-one-way (resolver never imports plugin code)" "$PY" scripts/check-capability-resolver-one-way.py
-gate "check-opinion-resolver-one-way (opinion resolver never imports plugin code)" "$PY" scripts/check-opinion-resolver-one-way.py
 gate "check-opinion-honesty (no orphan Opinion references)" "$PY" scripts/check-opinion-honesty.py
 gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/check-personas.py
 gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py

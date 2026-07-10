@@ -40,20 +40,24 @@ GATE_FILE_RE = re.compile(r"[\w./*-]+\.(?:py|sh|ps1)\b")
 # below to actually reference the gate — an allowlist entry whose wrapper no
 # longer mentions the gate is exactly the silent-rot this test exists to prevent.
 UNIT_WRAPPED = {
-    "check-capability-resolver-one-way.py": "test_check_capability_resolver_one_way.py",
+    # CONS-1: check-capability-resolver-one-way.py, check-opinion-resolver-one-way.py,
+    # and check-process-seam-import-direction.sh were merged into
+    # check-one-way-imports.py (one gate, three retargeted wrapper tests — any of
+    # the three still mentions the merged gate by name).
+    "check-one-way-imports.py": "test_process_seam.py",
     "check-kind-taxonomy.sh": "test_check_kind_taxonomy.py",
     "check-multi-plan-naming.sh": "test_check_multi_plan_naming.py",
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",
     "check-opinion-honesty.py": "test_check_opinion_honesty.py",
-    "check-opinion-resolver-one-way.py": "test_check_opinion_resolver_one_way.py",
-    "check-process-seam-import-direction.sh": "test_process_seam.py",
-    "check-storage-seam-vendor-parity.sh": "test_check_storage_seam_vendor_parity.py",
     "check-slop.py": "test_check_slop.py",
     "check-storage-seam-no-path-leak.py": "test_storage_seam.py",
-    "check-workflow-parity.sh": "test_check_workflow_parity.py",
     "check-worktree-slug.sh": "test_worktree_slug_probe.py",
 }
+# Note: check-vendored-parity.sh (CONS-1 merge of check-lib-parity.sh,
+# check-vault-lock-parity.sh, check-storage-seam-vendor-parity.sh,
+# check-hook-config-parity.sh, check-workflow-parity.sh) is NOT in this
+# allowlist — it's a direct tests-linux.yml step, so rule 1 finds it there.
 
 
 def battery_gate_lines():
