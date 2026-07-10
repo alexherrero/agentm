@@ -1,7 +1,7 @@
 # MOC generator reference
 
 > [!NOTE]
-> **Status: implemented** — shipped in `harness/skills/memory/scripts/moc_generator.py` (`PLAN-v6-15-v6-18-typed-object-moc` task 3, V6-18), governed by [AgentM Memory Index](../designs/agentm-memory-index). Covered by 11 tests in `scripts/test_moc_generator.py` (`TestBuildKindGroups`, `TestGenerate`).
+> **Status: implemented** — shipped in `harness/skills/memory/scripts/moc_generator.py` (`PLAN-v6-15-v6-18-typed-object-moc` task 3, V6-18), governed by [AgentM Memory Index](../designs/agentm-memory-index). Covered by 12 tests in `scripts/test_moc_generator.py` (`TestBuildKindGroups`, `TestGenerate`).
 
 > [!IMPORTANT]
 > **Not yet run against the real vault.** Unlike task 1/2's read-only audits, `generate()` actually writes new files — one page per distinct `kind`, roughly 40 at the real vault's current kind-frequency spread — into `<vault>/_moc/`. That's a visible side effect inside the operator's personal Obsidian vault, so it was deliberately left for the operator to trigger via the CLI rather than run silently as part of this build task. See [Running it for the first time](#running-it-for-the-first-time) below.
@@ -41,11 +41,15 @@ A rendered page looks like:
 ```markdown
 # MOC — fix
 
+[← wiki Home](https://github.com/alexherrero/agentm/wiki/Home)
+
 2 entries, newest-first by `created`.
 
 - [[new-slug]]
 - [[old-slug]]
 ```
+
+The Home-backlink (CONS-1) is a plain markdown link, not an Obsidian wikilink — the vault has no "Home" note of its own to link to, so each generated MOC page instead orients the operator back to the project's actual documentation entry point.
 
 An unrecognized kind's header instead reads `# MOC — made-up-kind (unrecognized kind)` (`_render_moc`, `moc_generator.py:109`), using the [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()`.
 

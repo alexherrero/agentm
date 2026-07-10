@@ -94,6 +94,18 @@ class TestGenerate(unittest.TestCase):
             self.assertIn("[[old-slug]]", content)
             self.assertLess(content.index("[[new-slug]]"), content.index("[[old-slug]]"))
 
+    def test_page_contains_home_backlink(self):
+        # CONS-1: each generated MOC page links back to the project's wiki
+        # Home so an operator browsing the vault has a way back to the docs
+        # entry point (the vault itself has no "Home" note of its own).
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
+            mg.generate(vault)
+            content = (vault / "_moc" / "fix.md").read_text(encoding="utf-8")
+            self.assertIn(mg._HOME_BACKLINK_URL, content)
+            self.assertIn(f"]({mg._HOME_BACKLINK_URL})", content)
+
     def test_idempotent_regeneration_is_byte_identical(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
