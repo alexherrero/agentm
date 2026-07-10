@@ -41,6 +41,7 @@ GATE_FILE_RE = re.compile(r"[\w./*-]+\.(?:py|sh|ps1)\b")
 # longer mentions the gate is exactly the silent-rot this test exists to prevent.
 UNIT_WRAPPED = {
     "check-capability-resolver-one-way.py": "test_check_capability_resolver_one_way.py",
+    "check-kind-taxonomy.sh": "test_check_kind_taxonomy.py",
     "check-multi-plan-naming.sh": "test_check_multi_plan_naming.py",
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",

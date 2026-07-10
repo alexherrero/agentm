@@ -77,6 +77,7 @@ gate "validate-audit-coverage (5 in-scope mythos-readiness blockers detectable)"
 gate "run-ablation-baseline (mechanical uplift, on/off per subsystem)" bash scripts/health/run-ablation-baseline.sh
 gate "verify-phases (lifecycle e2e · both modes)" bash scripts/verify-phases.sh
 gate "verify-memory-roundtrip (engine e2e)"    bash scripts/verify-memory-roundtrip.sh
+gate "check-kind-taxonomy (advisory, report-only — V6-15)" bash scripts/check-kind-taxonomy.sh
 
 echo
 if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi
