@@ -5,6 +5,37 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v5.14.0] — 2026-07-09 — Minor: Autonomy arc lands — observability ledger + console + control plane
+
+**MINOR.** The Autonomy arc (recast V8) ships end to end: a device-local telemetry ledger with a scheduled runner aggregator, a static observability console (dashboard, digest ladder, window-park artifact, morning report), and a control plane on top (substrate decision, dispatch, board+handoff wiring, launch-time grade statement) closed out by a real N1 acceptance run. Alongside it, AG Wave E closes out — the V6 retrieval engine (typed-edge graph, RRF hybrid retrieval, chunking, time-weighted decay, consolidation), the dreaming arc, and the experience pipeline all land — and an AA5 consolidation pass reconciles personas/opinions to as-built, lights the efficiency health-axis, and re-measures the V6 retrieval stack with the vector stream actually live, honestly reversing a previously-shipped baseline number. Pairs with [crickets v3.26.0](https://github.com/alexherrero/crickets/releases/tag/v3.26.0), which ships the crickets half of the observability ledger and the board tracking-model decision.
+
+### Added
+
+- **Observability ledger** (`da23e7e`, #249; crickets #174) — a device-local spend/run event log folded on a schedule into a SQLite rollup by plan/task/model/window (`scripts/runner/aggregator.py`).
+- **Observability console** (`7963a7c`, #250) — a static dashboard, a digest ladder into the vault `_inbox/`, a window-park artifact for a mid-run rate-limit stop, and a morning report naming what a run did, spent, and why it ended.
+- **Observability residue trio** (`ec2ebe5`, #258) — attribution tags on ledger events, `morning_report.py --out` persistence, and digest dogfood.
+- **Autonomy control plane** (`8f5eb9e`, `7d0c808`, #251/#252) — `scripts/control_plane/`: `dispatch.py`, `board_sync.py`, `grade.py`, `handoff.py`, `n1_run.py`. Resolves the fleet-substrate decision (Agent View, not Agent Teams, re-verified live against Claude Code 2.1.193) and runs a real N1 acceptance demo (two live Agent View background sessions, $0.4607 spend, matched against the raw event log).
+- **AG Wave E — V6 retrieval engine** (#247) — deterministic typed-edge knowledge graph (`graph.py`), RRF hybrid retrieval replacing the old weighted-sum merge, paragraph-aware chunking + time-weighted decay scoring, and episodic-to-semantic consolidation (`consolidate.py`).
+- **AG Wave E — dreaming arc** (#244) — a revert-log primitive, a thin `/dream` pass, a confirm/expire cycle, and a scheduled job wiring it onto the runner.
+- **AG Wave E — experience pipeline** (#246) — forward-learning's approved-source screen, crystallization, and the accumulate-loop spec.
+- **AG Wave E — scheduled surfaces** (#243) — the runner substrate (job manifest, due-decision cycle, dry-run-until-promoted, throttle-pause-stop watchdog) the above jobs register against, plus the goal contract's anti-gaming Decide-step guard.
+- **feat(personas): workflow-step persona resolver** (#240) — the four new manifests' `triggers:` now carry the intended workflow-step names.
+
+### Changed
+
+- **Board tracking model decided** (#254; crickets #175) — `board_sync.py` repurposes the board's `Track` field for dispatch tier rather than adding a by-agent axis, since no agent-identity concept exists in the dispatch substrate to track by.
+- **Vector-inclusive re-measurement of the V6 retrieval stack** (#265) reverses the previously-shipped vector-less baseline — the eval sandbox couldn't load `sqlite-vec` at all before (a stock-Python limitation, not a `sqlite-vec` problem); re-running the pinned eval with the vector stream actually live is a genuine, honest regression against this project's own merge gate (`accuracy_regressed=True`), recorded in [agentm-memory-system.md](wiki/designs/agentm-memory-system.md)'s amendment log rather than smoothed over.
+- **Efficiency health-axis lit + dark-check registry cleaned** (#257).
+- **Silent-dark family of checks closed out** — verification honesty plus docs/voice health (#264).
+- **Personas + opinion-registry reconciled to as-built** (G12 AG close-out sweep) — all 11 roster manifests confirmed shipped.
+
+### Internal
+
+- **fix: runner budget gate fails closed + scorecard never fabricates a bare-install score** (#256).
+- **fix(scripts): resolve crickets sibling checkout worktree-aware** (#245); **route `docs_drift_job`'s crickets-sibling lookup through `sibling_repo_root`** (#248); **add `agentm/autonomy` to `check-governs-index`'s area taxonomy**.
+- **health(nightly): extend cold-install job with B3's two acceptance criteria** (#255); append the G12 Lane-2 close-out scorecard run (Health Index 100.0/100).
+- **Two stale merged-PR worktrees cleaned up** (`v6-c8-vector-remeasure`, `efficiency-health-axis`) — the same `check-all.sh` false-positive class flagged as a known follow-up in v5.12.0's entry below (`test_diataxis_author_retired.py`'s file-walker doesn't exclude nested `.claude/worktrees/` checkouts); still not root-fixed, tracked as a follow-up.
+
 ## [v5.13.0] — 2026-07-06 — Minor: AG Wave D persona roster — 9 new manifests, activation-axes retrofit, content-refresh's first consumer
 
 **MINOR.** The persona roster from `agentm-personas.md` goes from 2 authored manifests to 11: the four activation axes (`tier:`/`opinions:`/`modes:`/`triggers:`) are retrofitted onto `brain` and `team-coordinator`, and the 9 remaining designed-only rows (Architect, Designer, Tech-Lead, Engineer, Reviewer, Operator, Troubleshooter/SRE, Researcher, Maintainer) are authored for the first time. A fresh-session re-audit confirms agent-def `effort:` frontmatter is a real, currently-documented dispatch-time binding — closing the P12 Task 2b open question. `content-refresh` (already shipped in crickets) gets its first named consumer: a re-pin entrypoint for the model-effort-routing chart's pinned model-id strings.

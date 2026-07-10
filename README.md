@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v5.13.0](https://github.com/alexherrero/agentm/releases/tag/v5.13.0).** The persona roster grows from 2 to 11 authored manifests, with a re-audited effort-routing binding and content-refresh's first named consumer — Architecture-Governance Wave D.
+> **Latest release: [v5.14.0](https://github.com/alexherrero/agentm/releases/tag/v5.14.0).** The Autonomy arc lands end to end — an observability ledger and console track what an unattended run costs and produces, and a control plane launches and supervises it. AG Wave E and an AA5 consolidation pass close out alongside it.
 
 ---
 
