@@ -32,6 +32,7 @@ def _run(env_overrides: dict) -> subprocess.CompletedProcess:
     )
 
 
+@unittest.skipIf(os.name == "nt", "bash gate — POSIX only")
 class TestCheckKindTaxonomyAlwaysExitsZero(unittest.TestCase):
     def test_unset_vault_path_skips_and_exits_zero(self):
         result = _run({})
