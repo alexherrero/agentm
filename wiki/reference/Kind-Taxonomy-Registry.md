@@ -1,9 +1,9 @@
 # Kind-taxonomy registry + frontmatter validator reference
 
 > [!NOTE]
-> **Status: partial** — `PLAN-v6-15-v6-18-typed-object-moc` (governed by [AgentM Memory Index](../designs/agentm-memory-index)) ships this reference in two sub-deliverables. Task 1, the registry (`kind_registry.py`), is **implemented**. Task 2, the validator, is **pending** — not yet built. See the per-section status notes below.
+> **Status: partial** — `PLAN-v6-15-v6-18-typed-object-moc` (governed by [AgentM Memory Index](../designs/agentm-memory-index)) ships this reference across four sub-deliverables. Task 1, the registry (`kind_registry.py`), is **implemented**. Task 2, the validator (`frontmatter_validator.py`), is **implemented**. Task 3, the MOC generator, and task 4, the `check-all.sh` wiring, are **pending** — not yet built. See the per-section status notes below.
 
-`kind_registry.py` formalizes the vault's existing free-form `kind:` frontmatter taxonomy into a recognized-set catalog + a read-only audit CLI. `frontmatter_validator.py` (task 2, pending) will add a check-only validator on top of it — the same read-only, report-not-mutate shape as [`vault_lint.py`](Vault-Lint-Checks), scoped narrowly to the `kind` value and the universal required fields rather than the full nine-check frontmatter sweep.
+`kind_registry.py` formalizes the vault's existing free-form `kind:` frontmatter taxonomy into a recognized-set catalog + a read-only audit CLI. `frontmatter_validator.py` adds a check-only validator on top of it — the same read-only, report-not-mutate shape as [`vault_lint.py`](Vault-Lint-Checks), scoped narrowly to the `kind` value and the universal required fields rather than the full nine-check frontmatter sweep.
 
 ## ⚡ Quick Reference
 
@@ -11,10 +11,10 @@
 |---|---|
 | What enumerates known `kind` values? | `harness/skills/memory/scripts/kind_registry.py` — `known_kinds()` (`kind_registry.py:67`) + `is_known(kind)` (`kind_registry.py:72`). |
 | Is the registry a closed enum? | No. It's a recognized-set catalog over a free-form field — an unrecognized `kind` is flagged, never rejected. |
-| What will check a single note's frontmatter? | `frontmatter_validator.py`'s `validate(note_path)` (or a function in the same module — TBD at implementation). **Pending — task 2, not built.** |
-| Does either script ever rewrite a file? | `kind_registry.py`: no — `audit()` (`kind_registry.py:95`) is read-only by contract, confirmed by `test_audit_never_writes_to_the_vault` in `scripts/test_kind_registry.py:68`. `frontmatter_validator.py` is expected to match this contract once built (task 2). |
+| What checks a single note's frontmatter? | `frontmatter_validator.py`'s `validate(note_path)` (`frontmatter_validator.py:67`) — returns a list of violation strings, empty means clean. |
+| Does either script ever rewrite a file? | No — both are read-only by contract. `kind_registry.py`'s `audit()` (`kind_registry.py:95`) is confirmed by `test_audit_never_writes_to_the_vault` in `scripts/test_kind_registry.py:68`; `frontmatter_validator.py`'s `validate()` / `validate_vault()` are confirmed by `test_validate_never_writes_to_the_file` and `test_validate_vault_never_writes_to_any_file` in `scripts/test_frontmatter_validator.py`. |
 | How do I run an audit? | `python3 harness/skills/memory/scripts/kind_registry.py audit <vault_path>` — works from any working directory; the `vault` argument is passed straight to `pathlib.Path()` with no cwd-relative resolution (`kind_registry.py:164-165`). |
-| How will I check one note or the whole vault? | `python3 harness/skills/memory/scripts/frontmatter_validator.py --check <path>` / `--check-vault <vault_path>` (task 2, pending). |
+| How do I check one note or the whole vault? | `python3 harness/skills/memory/scripts/frontmatter_validator.py --check <path>` (one note) / `--check-vault <vault_path>` (walks `personal/` + `projects/`, excluding the DC-4 dirs) (`frontmatter_validator.py:120-149`). |
 | Is this wired into CI as a hard gate? | No — advisory/report-only. See [Advisory kind-taxonomy check](#advisory-kind-taxonomy-check-in-check-allsh) below. |
 | Related pages | [Audit the vault](../how-to/Audit-The-Vault) · [Vault lint checks](Vault-Lint-Checks) · [AgentM Memory Index](../designs/agentm-memory-index) |
 
@@ -25,7 +25,7 @@
 
 `kind_registry.py` (`kind_registry.py:1`) is a stdlib-only module. `KNOWN_KINDS` (`kind_registry.py:33-46`, a `frozenset[str]`) is seeded from two sources: reserved values shipped code already references (`failure-incident`, `session-cost`, `crystallized`), and a frequency audit of the real vault's `personal/` + `projects/` trees taken at authoring time (2026-07-10). Near-duplicate values are kept as **separate, distinct entries deliberately** — for example both `convention` and `conventions` are known kinds — because canonicalizing near-synonyms is an explicit operator judgment call parked as its own backlog item, [agentm issue #273](https://github.com/alexherrero/agentm/issues/273), not decided by this module.
 
-`REQUIRED_UNIVERSAL_FIELDS` (`kind_registry.py:53-55`, a `tuple[str, ...]`: `kind, status, created, updated, tags, group, slug`) also exists in this module but is **not yet consumed by anything here** — it's staged for task 2's validator to import.
+`REQUIRED_UNIVERSAL_FIELDS` (`kind_registry.py:59-65`, a `tuple[str, ...]`: `kind, status, created, updated, tags, group, slug`) also exists in this module; it is now consumed directly by `frontmatter_validator.validate()` (task 2, see below).
 
 Shipped surface:
 
@@ -42,26 +42,32 @@ The two kinds reserved by [AgentM Memory Index](../designs/agentm-memory-index) 
 ## Validator (task 2)
 
 > [!NOTE]
-> **Status: pending** — no `frontmatter_validator.py` file exists yet anywhere in the repo. Not started.
+> **Status: implemented** — shipped in `harness/skills/memory/scripts/frontmatter_validator.py`, covered by 13 tests in `scripts/test_frontmatter_validator.py` (`TestValidateSingleNote`, `TestValidateVault`).
 
-A `validate(note_path)` function (module TBD — either `kind_registry.py` itself or a sibling `frontmatter_validator.py`) will check a single note's frontmatter:
+`validate(note_path)` (`frontmatter_validator.py:67`, signature `validate(note_path: Path | str) -> list[str]`) checks one note's frontmatter and returns a list of violation strings (empty = clean). It never writes to `note_path`:
 
-- `kind` is a known value (via `kind_registry.is_known`, `kind_registry.py:72`), or is explicitly flagged unrecognized rather than silently accepted.
-- `kind` is valid kebab-case (via `kind_registry.is_kebab`, `kind_registry.py:62`).
-- The universal required fields are present. `kind_registry.py` already stages `REQUIRED_UNIVERSAL_FIELDS` (`kind_registry.py:53-55`) for this — a standalone tuple, not re-imported from `save.py`, mirroring `graph.py`'s standalone-module convention in this `scripts/` dir. Task 2 is expected to consume it, per `save.py`'s own `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` contract (`harness/skills/memory/scripts/save.py:50`) — the same schema source `vault_lint.py`'s `required-field` and `kebab-case` checks already import, so this validator can't drift from either.
+- `kind` is a known value (via `kind_registry.is_known`, `kind_registry.py:72`), flagged as `"kind {kind!r} is not a recognized kind (unrecognized, not rejected)"` rather than silently accepted or hard-rejected.
+- `kind` is valid kebab-case (via `kind_registry.is_kebab`, `kind_registry.py:62`), flagged as `"kind {kind!r} is not valid kebab-case"` when malformed.
+- The universal required fields are present, checked against `kind_registry.REQUIRED_UNIVERSAL_FIELDS` (`kind_registry.py:59-65`, imported directly rather than re-derived) — one `"missing required field \`{field_name}\`"` violation per absent field.
+- A note with no frontmatter block at all (text doesn't open with a `---` delimiter pair) returns `["no frontmatter block found"]` via a minimal stdlib-only `_parse_frontmatter()` (`frontmatter_validator.py:38-64`) that mirrors `vault_lint.py`'s parse contract (key: raw-value pairs, no nested structures, no PyYAML).
 
-Planned CLI wrapper: `--check <path>` (one note) / `--check-vault <vault_path>` (the whole vault), reporting violations to stdout. Like `vault_lint.py`, it is never expected to write to the file it checks — task 2's own verification is a red test proving exactly that.
+`validate_vault(vault_path, *, scope_dirs=("personal", "projects"))` (`frontmatter_validator.py:95`, signature `validate_vault(vault_path: Path | str, *, scope_dirs=_DEFAULT_SCOPE_DIRS) -> dict[str, list[str]]`) walks every `*.md` file under the vault's scope dirs and returns `{rel_path: [violations]}` for notes with at least one violation — clean notes are omitted entirely. It skips `_archive/` dirs and `PLAN.archive.*` files, matching `kind_registry.py`'s `audit()` walk.
+
+**DC-4 exclusion dirs.** `_EXCLUDE_DIRS` (`frontmatter_validator.py:35`, a `frozenset`: `_idea-incubator, _meta, _harness, _inbox, _dream-staging`) mirrors `vault_lint.py`'s own `_EXCLUDE_DIRS` exactly (the DC-4 convention). These subdirectories carry non-memory-entry content — harness state, dev-loop infra, staging areas — that was never meant to satisfy the universal frontmatter contract. This exclusion is load-bearing: the first draft's walk didn't apply it, and a real-vault run flooded ~1800 false `"no frontmatter block found"` violations against plain harness state files like `projects/<repo>/_harness/PLAN.md` and `progress.md`, which carry no frontmatter at all by design. `test_excludes_harness_meta_inbox_dream_staging_dirs` in `scripts/test_frontmatter_validator.py:119-132` is the regression test for that bug.
+
+CLI (`frontmatter_validator.py:120-153`): `--check <path>` validates one note and prints its violations (exit 1) or `<path>: clean` (exit 0); `--check-vault <vault_path>` runs `validate_vault()` over the whole vault and prints `<rel_path>:` + violation lines per dirty note, or `clean: no violations found` (exit 0) when nothing is flagged. The two flags are mutually exclusive and one is required.
 
 ## How this differs from `vault_lint.py`
 
-| | `vault_lint.py` | `kind_registry.py` (shipped) + `frontmatter_validator.py` (pending) |
+| | `vault_lint.py` | `kind_registry.py` + `frontmatter_validator.py` (both shipped) |
 |---|---|---|
 | Scope | Nine checks across the full frontmatter shape (field order, dates, wikilinks, supersede integrity, etc.) | `kind` value + the universal required-field trio only |
-| `kind` handling | Assumes `kind` is already valid; doesn't catalog known values | The catalog itself — known vs. unrecognized, kebab-case malformed (shipped: `known_kinds()`, `is_known()`, `is_kebab()`) |
-| Mutation | Read-only, report-only | Read-only, report-only (same contract; confirmed for `kind_registry.py` by `test_audit_never_writes_to_the_vault`) |
-| Schema source | Imports `save.py`'s `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` | `kind_registry.py` keeps its own standalone `REQUIRED_UNIVERSAL_FIELDS` tuple (no import-time dependency on `save.py`); task 2's validator is expected to consume it |
+| `kind` handling | Assumes `kind` is already valid; doesn't catalog known values | The catalog itself — known vs. unrecognized, kebab-case malformed (`known_kinds()`, `is_known()`, `is_kebab()`), consumed directly by `frontmatter_validator.validate()` |
+| Mutation | Read-only, report-only | Read-only, report-only (same contract; confirmed for `kind_registry.py` by `test_audit_never_writes_to_the_vault`, and for `frontmatter_validator.py` by `test_validate_never_writes_to_the_file` / `test_validate_vault_never_writes_to_any_file`) |
+| Schema source | Imports `save.py`'s `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` | `kind_registry.py` keeps its own standalone `REQUIRED_UNIVERSAL_FIELDS` tuple (no import-time dependency on `save.py`); `frontmatter_validator.py` imports it directly |
+| Exclusion dirs | N/A | `_EXCLUDE_DIRS` (`frontmatter_validator.py:35`) mirrors `vault_lint.py`'s own `_EXCLUDE_DIRS` exactly (DC-4): `_idea-incubator, _meta, _harness, _inbox, _dream-staging` |
 
-Once both exist, [Audit the vault](../how-to/Audit-The-Vault) is the natural place to point operators at whichever tool answers "is this note's `kind` legitimate" versus "is this note's frontmatter shape correct."
+[Audit the vault](../how-to/Audit-The-Vault) is the natural place to point operators at whichever tool answers "is this note's `kind` legitimate" versus "is this note's frontmatter shape correct."
 
 ## Downstream consumer
 
