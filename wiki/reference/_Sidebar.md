@@ -27,6 +27,8 @@
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 - [Memory MCP tools](Memory-MCP-Tools)
+- [Kind-taxonomy registry](Kind-Taxonomy-Registry)
+- [MOC generator](MOC-Generator)
 ### 🏛️ [Architecture](Architecture)
 ### 🧩 [Designs](Designs)
 ### 💡 [Explanation](Explanation)
