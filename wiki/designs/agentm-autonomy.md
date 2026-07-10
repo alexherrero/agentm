@@ -112,7 +112,7 @@ In an interactive session the gate keeps its shipped behavior: it asks the opera
 - **The Antigravity half of the capability audit rests on third-party coverage.** Re-run it when Google's own docs come up.
 - **The shared dashboard needs a publish gate designed at pickup**: aggregates only, personal detail scrubbed, access locked down.
 - **Email delivery is undecided** — connector choice deferred until the digest notes prove worth pushing.
-- Everything in the Design section is `[PENDING-IMPL]` — built by `PLAN-observability-ledger` and `PLAN-observability-console`, staged in the vault queues.
+- **The Design section is now as-built, not pending.** The event log, the rollup, the console, and the digest ladder all shipped — `PLAN-observability-ledger` (the aggregator) and `PLAN-observability-console` (the dashboard, digest ladder, park artifact, morning report) both landed, and the control-plane plan wired dispatch + the launch-time grade statement on top. See the amendment log for the shipped detail and the real N1 acceptance run. What's still genuinely open is narrower: the shared/published dashboard (named above), email delivery (named above), and the Antigravity half of the capability audit.
 
 ## References
 
