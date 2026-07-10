@@ -46,6 +46,10 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Architecture](Architecture) — how it's made.
 - [Reference](Reference) — fields, flags, schemas and more.
 
+## 🗂️ Browse by kind
+
+The memory vault itself is browsable by kind, not just by folder — every note groups into a generated Map of Content (MOC) alongside its siblings of the same kind (`fix`, `pattern`, `decision`, and dozens more), so you can scan every entry of a kind without a search. See [MOC generator](MOC-Generator) for how the pages are built, and [Kind-taxonomy registry](Kind-Taxonomy-Registry) for the kinds it recognizes.
+
 ---
 
 > [!NOTE]
