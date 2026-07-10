@@ -14,6 +14,13 @@ name: "[H] Health Nightly"
 # on the commit/push). Task 5 also folds scripts/health/dark-checks.jsonl
 # (the static registry of designed-not-built capabilities) into the scorecard
 # render, so those checks render in their own "Dark checks" section.
+#
+# CONS-1: the scorecard refresh lands via a PR (merge-on-green, auto-merge),
+# never a direct push to protected `main` — a bare `git push` to `main` here
+# was failing every night since `main` requires a passing PR, not a bare
+# push. A rolling branch (`health-nightly-scorecard`) is force-pushed each
+# run (bot-owned, single-purpose, safe to reset from current `main` every
+# time) and its PR is created once, then left to auto-merge on green.
 
 on:
   schedule:
@@ -21,7 +28,8 @@ on:
   workflow_dispatch: {}   # manual trigger for testing / on-demand runs
 
 permissions:
-  contents: write  # the auto-commit step needs to push the scorecard + history
+  contents: write        # push the rolling scorecard-refresh branch
+  pull-requests: write   # open/read the scorecard-refresh PR + arm auto-merge
 
 jobs:
   # macOS runs the heavy tier as a conformance leg only (R1.8 Task 5) — it
@@ -93,11 +101,26 @@ jobs:
           awk '/^---$/{print; exit} {print}' wiki/reference/Health-Scorecard.md > /tmp/header.md
           cat /tmp/header.md wiki/reference/Health-Scorecard.md.new > wiki/reference/Health-Scorecard.md
           rm -f wiki/reference/Health-Scorecard.md.new
-      - name: Commit the updated scorecard (advisory — never blocks a merge)
+      - name: Open/refresh the scorecard PR (advisory — never blocks a merge; lands via auto-merge on green, not a direct push to main)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add wiki/reference/Health-Scorecard.md scripts/health/history.jsonl
           git diff --cached --quiet && echo "no scorecard changes to commit" && exit 0
-          git commit -m "chore(health): nightly scorecard refresh [skip ci]"
-          git push
+
+          BRANCH="health-nightly-scorecard"
+          git checkout -B "$BRANCH"
+          git commit -m "chore(health): nightly scorecard refresh"
+          git push --force origin "$BRANCH"
+
+          PR_NUM=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if [ -z "$PR_NUM" ]; then
+            gh pr create --repo "${{ github.repository }}" --base main --head "$BRANCH" \
+              --title "chore(health): nightly scorecard refresh" \
+              --body "Automated nightly refresh of the health scorecard + history log (fast tier + heavy tier + the static dark-checks registry, rendered via \`scripts/health/health_score.py\`). This workflow is advisory-only and never blocks anyone else's merge — auto-merge is armed so this PR lands once the repo's normal required checks pass, same as any other PR (CONS-1: replaces the direct push to \`main\` that was failing every night)."
+          else
+            echo "PR #$PR_NUM already open for $BRANCH — the force-push above updated it in place."
+          fi
+          gh pr merge --repo "${{ github.repository }}" "$BRANCH" --auto --squash

@@ -71,7 +71,7 @@ PATTERNS=(
     'email|[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     'personal-path-mac|/Users/[a-zA-Z][a-zA-Z0-9_-]+/'
     'personal-path-linux|/home/[a-zA-Z][a-zA-Z0-9_-]+/'
-    'personal-path-windows|C:\\\\Users\\\\[a-zA-Z][a-zA-Z0-9_-]+'
+    'personal-path-windows|C:\\{1,2}Users\\{1,2}[a-zA-Z][a-zA-Z0-9_-]+'
     'openai-key|sk-[a-zA-Z0-9_-]{20,}'
     'github-token|gh[psuro]_[a-zA-Z0-9_-]{20,}'
     'gitlab-token|glpat-[a-zA-Z0-9_-]{20,}'
@@ -87,6 +87,16 @@ ALLOWLIST_PATTERNS=(
     '555-01[0-9]{2}'                    # NANP reserved phone-number prefix
     'sk-abc123def456ghi789jkl'          # documentation example
     'AKIA[A-Z0-9]{0,15}EXAMPLE'         # documentation example
+)
+
+# Line-level allowlist: applied to the WHOLE LINE a match sits on, for cases
+# where the surrounding context proves the match harmless. Kept separate from
+# ALLOWLIST_PATTERNS (match-level) so broad context patterns can't mask a real
+# finding that merely shares a line with allowlisted text. Adopted from
+# crickets' canonical copy (CONS-1 — crickets is the source of truth for this
+# gate's detection logic).
+LINE_ALLOWLIST_PATTERNS=(
+    'uses: [A-Za-z0-9_./-]+@[0-9a-f]{40}'  # SHA-pinned GitHub Actions (public refs; digit runs inside a SHA can mimic a phone number)
 )
 
 # ── file collection ───────────────────────────────────────────────────────
@@ -122,6 +132,16 @@ is_allowed() {
     local match="$1"
     for allow in "${ALLOWLIST_PATTERNS[@]}"; do
         if echo "$match" | grep -qE "$allow"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+is_line_allowed() {
+    local line="$1"
+    for allow in "${LINE_ALLOWLIST_PATTERNS[@]}"; do
+        if echo "$line" | grep -qE "$allow"; then
             return 0
         fi
     done
@@ -169,6 +189,7 @@ while IFS= read -r file; do
     while IFS=: read -r lineno match; do
         [[ -z "$lineno" ]] && continue
         is_allowed "$match" && continue
+        is_line_allowed "$(sed -n "${lineno}p" "$file")" && continue
         kind="$(classify_kind "$match")"
         echo "$file:$lineno: $kind match: $match" >&2
         findings=$((findings + 1))

@@ -8,8 +8,9 @@ verify-efficiency.py's discipline (AA5 C3). Because every check's input is
 synthetic and fully known, every record this suite emits is live
 (`pass: true/false`) -- never dark.
 
-Three checks (the battery-integrity-shaped checks named in the AA5 C7 brief
-and locked in PLAN-c7-silent-dark-families.md's Locked design calls):
+Four checks (the battery-integrity-shaped checks named in the AA5 C7 brief
+and locked in PLAN-c7-silent-dark-families.md's Locked design calls, plus a
+CONS-1 addition):
 
   1. scorecard-determinism -- health_score.py's own --check-determinism
      behavior (already gated directly by check-all.sh) is exercised here too,
@@ -23,6 +24,16 @@ and locked in PLAN-c7-silent-dark-families.md's Locked design calls):
   3. gate-results-parse-and-agree -- health_score.py's read_records() must
      parse a well-formed batch cleanly and must raise on a malformed line,
      exactly as scripts/health/README.md's Schema section documents.
+  4. battery-lists-agree (CONS-1) -- run-fast-tier.sh's declared suites and
+     check-all.sh's declared gates are two independently hand-maintained
+     lists that happen to overlap heavily (most fast-tier suites are also a
+     blocking check-all.sh gate). Nothing enforced that the overlap couldn't
+     silently drift until this check: every fast-tier suite label must
+     resolve to a same-stem gate script in check-all.sh, unless it's in the
+     explicit FAST_TIER_ONLY allowlist below (scorecard-only suites not yet
+     promoted to a blocking gate). A label falling out of both would mean a
+     suite got quietly demoted from "run and possibly fail the battery" to
+     "just feeds the scorecard" with nobody deciding that on purpose.
 
 Usage:   python3 scripts/health/verify-battery-integrity.py
          python3 scripts/health/verify-battery-integrity.py --jsonl-out records.jsonl
@@ -38,6 +49,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SCRIPTS_DIR = HERE.parent
 RUN_FAST_TIER = HERE / "run-fast-tier.sh"
+CHECK_ALL = SCRIPTS_DIR / "check-all.sh"
 sys.path.insert(0, str(HERE))
 
 import health_score as hs  # noqa: E402
@@ -46,6 +58,16 @@ AXIS = "verification honesty"
 WEIGHT_EACH = 5.0
 
 _RUN_SUITE_RE = re.compile(r'run_suite\s+"([^"]+)"')
+_GATE_SCRIPT_RE = re.compile(r'[\w./-]+\.(?:py|sh|ps1)\b')
+
+# Fast-tier suites that are scorecard-only by design -- newer evaluation
+# axes (eval-v6-*), the efficiency check, and this very suite -- none of
+# these are (yet) a blocking check-all.sh gate. Anything else declared by
+# run-fast-tier.sh must resolve to a same-stem gate script in check-all.sh.
+FAST_TIER_ONLY = frozenset({
+    "eval-v6-graph", "eval-v6-retrieval", "eval-v6-consolidate",
+    "verify-efficiency", "verify-battery-integrity",
+})
 
 
 def declared_suite_labels() -> list[str]:
@@ -55,6 +77,20 @@ def declared_suite_labels() -> list[str]:
     §1 D4)."""
     text = RUN_FAST_TIER.read_text(encoding="utf-8")
     return _RUN_SUITE_RE.findall(text)
+
+
+def declared_gate_script_stems() -> set[str]:
+    """The script-name stems (no extension) that check-all.sh's `gate
+    "<name>" <command...>` lines reference, parsed from the script itself --
+    the same never-hand-duplicated discipline as declared_suite_labels()."""
+    stems: set[str] = set()
+    for line in CHECK_ALL.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith('gate "'):
+            continue
+        for token in _GATE_SCRIPT_RE.findall(stripped):
+            stems.add(Path(token).stem)
+    return stems
 
 
 def check_scorecard_determinism() -> tuple[bool, str]:
@@ -126,10 +162,24 @@ def check_gate_results_parse_and_agree() -> tuple[bool, str]:
     return True, "well-formed batch parses cleanly; malformed line raises ValueError"
 
 
+def check_battery_lists_agree() -> tuple[bool, str]:
+    labels = declared_suite_labels()
+    gate_stems = declared_gate_script_stems()
+    missing = [label for label in labels if label not in FAST_TIER_ONLY and label not in gate_stems]
+    if missing:
+        return False, (
+            f"run-fast-tier.sh suite(s) missing from check-all.sh's gates and not in "
+            f"FAST_TIER_ONLY: {missing!r} -- either add a check-all.sh gate for the "
+            f"suite, or add it to FAST_TIER_ONLY if it's deliberately scorecard-only"
+        )
+    return True, f"{len(labels)} fast-tier suites reconciled against {len(gate_stems)} check-all.sh gate scripts"
+
+
 CHECKS = [
     ("scorecard-determinism", check_scorecard_determinism),
     ("no-skipped-suites", check_no_skipped_suites),
     ("gate-results-parse-and-agree", check_gate_results_parse_and_agree),
+    ("battery-lists-agree", check_battery_lists_agree),
 ]
 
 
