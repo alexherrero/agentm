@@ -36,7 +36,5 @@ Not counted for or against the Health Index — visible so a family's true futur
 | docs+voice health | check-slop | voice-vocabulary-drift |
 | efficiency | run-heavy-tier | real-telemetry rollup: rebuild-idempotency holds against this machine's actual event log |
 | capability function | dark-registry | maintenance + research plugin libraries (crickets) — library-only, pending FRIDAY (FIN-2a fold) |
-| efficiency | dark-registry | fanout_cost_gate.py (crickets src/tokens/) — built, not yet wired as the coordinator-dispatch fleet pre-flight |
-| capability function | dark-registry | docs_drift_job.py + the five observability job templates — built, not yet registered as scheduled runner jobs |
 | plan-adherence+drift | dark-registry | goal_contract.py + runner/cli.py + n1_run.py — built, not yet exercised by a real overnight proving-window run |
 

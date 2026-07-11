@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -87,12 +88,25 @@ def main(argv: list[str] | None = None) -> int:
               "($CRICKETS_REPO_ROOT or ../crickets) — skipping (report-only, no block)")
         return 0
     mod = _load_crickets_module(crickets_script)
-    return mod.main([
-        "run",
-        "--repo", args.repo,
-        *(["--slug", args.slug] if args.slug else []),
-        *(["--no-cooldown"] if args.no_cooldown else []),
-    ])
+    # Call run_cycle() directly rather than mod.main() -- crickets' own CLI
+    # entry point returns "1 if report.skipped else 0" deliberately, tuned
+    # for its OWN interactive /wiki-watch use (a human wants to see "nothing
+    # happened" as a distinct exit code). A scheduled-job consumer has a
+    # different contract: "skipped" (disabled, cooldown, unregistered, no
+    # commits) is a normal, expected outcome, not a failure -- this
+    # delegator's own docstring already promises "graceful-skip (exit 0)...
+    # never treats 'not opted in' as a failure," so it must derive its own
+    # exit code from the report rather than forward crickets' CLI-tuned one.
+    # A genuine error (bad repo path, a real exception inside run_cycle)
+    # still propagates as an uncaught exception -- a distinctly different,
+    # correctly non-zero exit, not something this needs to special-case.
+    import time
+    report = mod.run_cycle(
+        args.repo, slug=args.slug, now=time.time(),
+        respect_cooldown=not args.no_cooldown,
+    )
+    print(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    return 0
 
 
 if __name__ == "__main__":
