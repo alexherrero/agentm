@@ -87,7 +87,7 @@ The whole harness is scaffolding shaped around how one model behaves. When the m
 *Grounded in [`harness/principles.md` § "Re-audit the harness on every model bump"](#references).*
 
 **P9 · Match the model to the work.**
-A powerful model doing simple work spends the day's budget for nothing. So the heavy model is saved for planning and judgment, a lighter one runs the long mechanical stretches, and memory loads only what's warm enough to earn its cost. Done right, it's the difference between running for an hour and running all day.
+A capable model doing simple work spends the day's budget for nothing. So the heavy model is saved for planning and judgment, a lighter one runs the long mechanical stretches, and memory loads only what's warm enough to earn its cost. Done right, it's the difference between running for an hour and running all day.
 *Grounded in [`heat_policy.py` — the warm-set heat lever](#references).*
 
 *A note on the list:* "work in phases" isn't among these nine — running work in phases is how the person operates, so it lives in the [agentm HLD](agentm-hld.md), not in the shared foundation.

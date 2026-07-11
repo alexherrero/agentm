@@ -37,7 +37,7 @@ Opinions are a **queryable knowledge surface** — a tool names what it needs an
 
 ## Design
 
-Opinions are what make agentm **opinionated**: a standard for things like *done* / *good* / *efficient* / *how-we-engineer* (the full catalog is below) that the agent **ships with, in code**, and then **grows in agentm's memory as it learns**. The design folds this into existing seams — a coded base, a vault supplement, composed on request and served by name — rather than standing up a new store or recall path. The named opinions are listed at the end; this section is the system that holds and serves them.
+Opinions are what make agentm **opinionated**: a standard for things like *done* / *good* / *efficient* / *how-we-engineer* (the full catalog is below) that the agent **ships with, in code**, and then **grows in agentm's memory as it learns**. The design folds this into existing seams — a coded base, a vault supplement, composed on request and served by name — building entirely on the store and recall path that already exist. The named opinions are listed at the end; this section is the system that holds and serves them.
 
 ### Where opinions live: a coded base, extended in agentm's memory
 
@@ -120,6 +120,6 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 **2026-06-21 — authored, reviewed, and finalized.**
 
-Migrated from the agentm HLD and reframed through operator review into the Opinions pillar: opinions are what make agentm **opinionated** — a coded base (checked-in, the seed) **extended by a learned supplement in agentm's memory** (whichever storage backend it's connected to, device-local or the vault), folded into a **composite** served to a tool **by name**. The four named opinions (done / good / efficient / how-we-engineer) are listed like capabilities — shape only; each standard lives in its own opinion. The system reuses three existing seams — the capability-resolution bridge (by-name lookup), the style system's base⊕overlay compose (`style_resolver.py`), and the memory engine (the supplement) — rather than a new registry or recall.
+Migrated from the agentm HLD and reframed through operator review into the Opinions pillar: opinions are what make agentm **opinionated** — a coded base (checked-in, the seed) **extended by a learned supplement in agentm's memory** (whichever storage backend it's connected to, device-local or the vault), folded into a **composite** served to a tool **by name**. The four named opinions (done / good / efficient / how-we-engineer) are listed like capabilities — shape only; each standard lives in its own opinion. The system reuses three existing seams — the capability-resolution bridge (by-name lookup), the style system's base⊕overlay compose (`style_resolver.py`), and the memory engine (the supplement) — with no new registry or recall path required.
 
 Content-final. The compose-and-serve path **shipped 2026-07-06** (see the [opinion registry](agentm-opinion-registry) design); `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3). **Re-audit triggers:** flip each hardwired consumer to `opinion_resolve` as its own slice builds; specify the Experience → Opinions sharpening loop when forward learning lands; settle opinion versioning.

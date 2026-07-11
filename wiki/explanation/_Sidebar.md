@@ -15,3 +15,4 @@
 - [Memory↔storage seam](Storage-Seam-Concepts)
 - [Named plans](Named-Plans) ⏳
 - [Soft composition and hard composition](Soft-Composition)
+- [Health scorecard](Health-Scorecard)

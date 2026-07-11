@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alexherrero/agentm/main/assets/agent-m/banner-1600.png" alt="AgentM — The structural backend harness you wished you had">
+  <img src="https://raw.githubusercontent.com/alexherrero/agentm/main/assets/agent-m/banner-1600.png" alt="AgentM — the agent harness you wished you had">
 </p>
 
 <p align="center"><em>The agent harness that remembers your work — so you get the assistant you actually wanted.</em></p>
@@ -48,7 +48,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 
 ## 🗂️ Browse by kind
 
-The memory vault itself is browsable by kind, not just by folder — every note groups into a generated Map of Content (MOC) alongside its siblings of the same kind (`fix`, `pattern`, `decision`, and dozens more), so you can scan every entry of a kind without a search. See [MOC generator](MOC-Generator) for how the pages are built, and [Kind-taxonomy registry](Kind-Taxonomy-Registry) for the kinds it recognizes.
+The memory vault itself is browsable by kind — every note groups into a generated Map of Content (MOC) alongside its siblings of the same kind (`fix`, `pattern`, `decision`, and dozens more), so you can scan every entry of a kind without a search. See [MOC generator](MOC-Generator) for how the pages are built, and [Kind-taxonomy registry](Kind-Taxonomy-Registry) for the kinds it recognizes.
 
 ---
 

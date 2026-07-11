@@ -94,7 +94,7 @@ Everything routes through the existing memory engine — no new store; heat cura
 
 **Why not the alternatives:** a dedicated learning pipeline duplicates three shipped capture paths for zero new signal; LLM-judged auto-promotion violates deterministic-first exactly where corruption matters most; supplement-overrides-base inverts operator-voice-wins and would let two bad sessions rewrite a shipped standard.
 
-**Re-audit triggers (carried forward from the draft):** when dreaming's consolidation ships live (not just dry-run), confirm it actually sweeps supplements — else schedule a lint; if any opinion's inbox lane exceeds ~20 untriaged entries, the recurrence threshold is too loose for that signal source; revisit the extend-never-override ceiling only if a supplement-vs-base contradiction recurs ≥3 times (that's the base being wrong, not the loop).
+**Re-audit triggers (carried forward from the draft):** when dreaming's consolidation starts writing live instead of only previewing (dry-run), confirm it actually sweeps supplements — else schedule a lint; if any opinion's inbox lane exceeds ~20 untriaged entries, the recurrence threshold is too loose for that signal source; revisit the extend-never-override ceiling only if a supplement-vs-base contradiction recurs ≥3 times (that's the base being wrong, not the loop).
 
 **`[PENDING-IMPL]`** — none of Stages 1–3's routing rule, signal-map, or anti-corruption guards are built. That implementation is deferred to a follow-on plan; this section is its contract.
 

@@ -83,7 +83,7 @@ All five #7a parts:
 
 - This is plan #7b's single part. It's large in scope (3 sub-components) but each sub-component is bounded. Consider whether to ship as one PR or three smaller PRs — the user's call when starting the implementing session.
 - The personal-skills indexer is the simplest sub-component (file walks + writes); ship it first to validate the indexer pattern, then layer transcript-mining and internet-scan on top.
-- The internet skill-scan source whitelist is **load-bearing for not-flooding-the-watchlist**. Start narrow (Anthropic Cookbook + 1-2 specific awesome-lists) and expand based on actual signal quality.
+- The internet skill-scan source whitelist is **load-bearing**: without it, the watchlist floods. Start narrow (Anthropic Cookbook + 1-2 specific awesome-lists) and expand based on actual signal quality.
 - The adapt-don't-import principle is the architectural commitment that protects against agent-driven skill bloat in `crickets/`. The agent should NEVER author `crickets/skills/<x>/SKILL.md` files autonomously — only the user does that, after reviewing a watchlist entry. Bake this hard rule into the implementing skill body.
 - Transcript-mining for historical sessions will likely produce thousands of candidates. The tri-modal routing means most will land in `_inbox/` for batch review — plan for inbox-management UX (`/memory inbox --bulk-review` or similar) before kicking off the historical pass.
 - Plan #7b ships after #7a is dogfooded — so by the time this part is implemented, the user has 1-2 weeks of real recall-quality feedback. Use that data to tune any defaults in this part (cadence, confidence thresholds, source whitelist).

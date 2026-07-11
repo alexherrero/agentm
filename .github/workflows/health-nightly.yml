@@ -34,7 +34,7 @@ permissions:
 jobs:
   # macOS runs the heavy tier as a conformance leg only (R1.8 Task 5) — it
   # reports JSONL as an artifact but never commits the scorecard itself.
-  # ubuntu-latest stays the single writer to wiki/reference/Health-Scorecard.md
+  # ubuntu-latest stays the single writer to wiki/explanation/Health-Scorecard.md
   # + scripts/health/history.jsonl, so two OS legs racing to commit/push in
   # parallel can't collide.
   health-nightly-macos:
@@ -95,19 +95,19 @@ jobs:
         run: |
           cat /tmp/fast-tier.jsonl /tmp/heavy-tier.jsonl /tmp/nightly-ci-matrix.jsonl scripts/health/dark-checks.jsonl \
             | python3 scripts/health/health_score.py --history \
-            > wiki/reference/Health-Scorecard.md.new
+            > wiki/explanation/Health-Scorecard.md.new
           # Preserve the page's explanatory header (everything before the
           # "---" divider); replace only the auto-generated scorecard body.
-          awk '/^---$/{print; exit} {print}' wiki/reference/Health-Scorecard.md > /tmp/header.md
-          cat /tmp/header.md wiki/reference/Health-Scorecard.md.new > wiki/reference/Health-Scorecard.md
-          rm -f wiki/reference/Health-Scorecard.md.new
+          awk '/^---$/{print; exit} {print}' wiki/explanation/Health-Scorecard.md > /tmp/header.md
+          cat /tmp/header.md wiki/explanation/Health-Scorecard.md.new > wiki/explanation/Health-Scorecard.md
+          rm -f wiki/explanation/Health-Scorecard.md.new
       - name: Open/refresh the scorecard PR (advisory — never blocks a merge; lands via auto-merge on green, not a direct push to main)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add wiki/reference/Health-Scorecard.md scripts/health/history.jsonl
+          git add wiki/explanation/Health-Scorecard.md scripts/health/history.jsonl
           git diff --cached --quiet && echo "no scorecard changes to commit" && exit 0
 
           BRANCH="health-nightly-scorecard"
