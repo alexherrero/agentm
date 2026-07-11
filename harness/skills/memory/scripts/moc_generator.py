@@ -113,6 +113,16 @@ def _render_moc(kind: str, entries: list[tuple[str, str, dict]]) -> str:
     lines = [
         f"# MOC — {label}",
         "",
+        # Two distinct backlinks, not a duplicate: [[Home]] is the vault's
+        # own navigational root (Obsidian wikilink, resolves in-vault by
+        # filename regardless of path) -- added 2026-07-11 (Consolidation
+        # arc exit-gate follow-up) after E5's vault-connectivity review
+        # found Home.md and _moc/ never cross-referenced each other at all,
+        # in either direction. The wiki-Home link (CONS-1, 2026-07-10) is a
+        # separate, still-valid pointer to the *project's* docs entry point
+        # on GitHub -- a different destination for a different orientation
+        # need, not something this replaces.
+        "[[Home]]",
         f"[← wiki Home]({_HOME_BACKLINK_URL})",
         "",
         f"{len(entries)} entries, newest-first by `created`.",

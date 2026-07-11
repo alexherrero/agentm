@@ -97,7 +97,12 @@ class TestGenerate(unittest.TestCase):
     def test_page_contains_home_backlink(self):
         # CONS-1: each generated MOC page links back to the project's wiki
         # Home so an operator browsing the vault has a way back to the docs
-        # entry point (the vault itself has no "Home" note of its own).
+        # entry point. (This comment previously claimed "the vault has no
+        # Home note of its own" -- that was wrong; corrected 2026-07-11,
+        # Consolidation arc exit-gate follow-up. The vault DOES have its own
+        # Home.md root, which is exactly why the separate [[Home]] backlink
+        # below exists -- this URL backlink is a different, still-valid
+        # pointer to the project's GitHub-wiki docs, not the vault root.)
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
             _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
@@ -105,6 +110,20 @@ class TestGenerate(unittest.TestCase):
             content = (vault / "_moc" / "fix.md").read_text(encoding="utf-8")
             self.assertIn(mg._HOME_BACKLINK_URL, content)
             self.assertIn(f"]({mg._HOME_BACKLINK_URL})", content)
+
+    def test_page_contains_vault_home_wikilink(self):
+        # Consolidation arc exit-gate follow-up (2026-07-11): E5's vault-
+        # connectivity review found Home.md and _moc/ never cross-
+        # referenced each other in either direction. Home.md now links into
+        # _moc/ directly; this is the other direction -- every generated
+        # MOC page links back to the vault's own [[Home]] root, distinct
+        # from the pre-existing wiki-Home URL backlink above.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
+            mg.generate(vault)
+            content = (vault / "_moc" / "fix.md").read_text(encoding="utf-8")
+            self.assertIn("[[Home]]", content)
 
     def test_idempotent_regeneration_is_byte_identical(self):
         with tempfile.TemporaryDirectory() as tmp:
