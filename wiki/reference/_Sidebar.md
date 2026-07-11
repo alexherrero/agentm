@@ -9,7 +9,6 @@
 - [GitHub Projects sync](GitHub-Projects-Sync)
 - [Migration tool](Migration-Tool)
 - [CI gates](CI-Gates)
-- [Health scorecard](Health-Scorecard)
 - [PII Guardrail](PII)
 - [Repo layout](Repo-Layout)
 - [Vault lint checks](Vault-Lint-Checks)

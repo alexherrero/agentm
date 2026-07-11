@@ -15,6 +15,7 @@ These pages explain *why* AgentM works the way it does — the choices behind it
 - **[Single-repo state mode](Single-Repo-State-Mode)** — why AgentM falls back to repo-local state when there is no vault accessible.
 - **[GitHub Projects integration](GitHub-Projects-Integration)** — why and how the harness mirrors your work onto a GitHub board.
 - **[Named plans](Named-Plans)** — why the harness can hold more than one active plan in a single shared vault.
+- **[Health scorecard](Health-Scorecard)** — the nightly health-tier scorecard's own reasoning: why it's advisory-only, and why a dark check counts for neither the family score nor against it.
 
 ## See also
 

@@ -48,7 +48,6 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 | Page | What it covers |
 |---|---|
 | [CI gates](CI-Gates) | What each CI workflow proves, and the script behind it. |
-| [Health scorecard](Health-Scorecard) | The nightly health-tier scorecard — advisory metrics, never a merge gate — plus the Operator `/status` CLI that reads back the last recorded run. |
 | [GitHub Projects sync](GitHub-Projects-Sync) | The board-sync surface agentm exposes — the config it reads, when phases emit updates, and the graceful-skip. |
 | [PII Guardrail](PII) | What to keep out of the public repo, and how the scan enforces it. |
 | [Completed features](Completed-Features) | The log of shipped work, newest first. |
