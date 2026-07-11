@@ -141,6 +141,15 @@ def build_rollup(events: list[dict], db_path: "str | Path", *, analyzer=None) ->
     upsert -- so two calls with the same events produce an identical
     rollup. Raises `RuntimeError` if crickets' analyzer can't be resolved
     (no silent, mathematically-wrong window bucketing).
+
+    `session-cost` events are cumulative per (session_id, model), not
+    deltas -- the Stop hook re-emits a fresh total on every turn, not once
+    at session close. by_plan/by_task/by_model therefore aggregate only
+    the latest capture per (session_id, model) pair (that value already IS
+    the total); by_window instead attributes the delta since each pair's
+    own previous capture to the window containing the current event, so a
+    session spanning multiple 5h windows lands its cost in the windows it
+    was actually incurred in.
     """
     analyzer = analyzer if analyzer is not None else load_analyzer_module()
     if analyzer is None:
@@ -151,7 +160,40 @@ def build_rollup(events: list[dict], db_path: "str | Path", *, analyzer=None) ->
         )
 
     session_cost = [e for e in events if e.get("event") == "session-cost"]
-    ordered = sorted(session_cost, key=lambda e: (e.get("ts") or "", e.get("model") or ""))
+
+    # The Stop hook fires once per turn, not once per session close -- each
+    # firing re-analyzes the full transcript and re-emits the CUMULATIVE
+    # cost-so-far for that (session_id, model) pair, not a delta since the
+    # last capture. Naively summing every event therefore overcounts a
+    # session in direct proportion to how many turns (Stop firings) it had.
+    chrono = sorted(session_cost, key=lambda e: (e.get("ts") or "", e.get("model") or ""))
+
+    # by_plan/by_task/by_model want a running TOTAL per (session_id, model):
+    # the latest-timestamped event's cost_usd already IS that total, so
+    # keeping only the latest per pair (discarding earlier, superseded
+    # captures) gives the correct contribution with no double-counting.
+    _latest_by_session_model: dict[tuple, dict] = {}
+    for e in chrono:
+        key = (e.get("session_id") or "", e.get("model") or "")
+        _latest_by_session_model[key] = e  # chrono order -> last write wins = latest
+    ordered = sorted(_latest_by_session_model.values(), key=lambda e: (e.get("ts") or "", e.get("model") or ""))
+
+    # by_window wants cost attributed to the window it was actually
+    # incurred in. A long session can span several 5h windows; taking only
+    # the latest capture (as above) would dump its ENTIRE total into
+    # whichever window its last Stop firing happened to land in. Instead,
+    # walk each (session_id, model)'s captures in chronological order and
+    # attribute the DELTA since its own previous capture to the window
+    # containing the current event's own timestamp.
+    _prev_cost_by_session_model: dict[tuple, float] = {}
+    window_events: list[dict] = []
+    for e in chrono:
+        key = (e.get("session_id") or "", e.get("model") or "")
+        cost = float(e.get("cost_usd") or 0.0)
+        delta = cost - _prev_cost_by_session_model.get(key, 0.0)
+        _prev_cost_by_session_model[key] = cost
+        if delta != 0.0:
+            window_events.append({**e, "cost_usd": delta})
 
     db_path = Path(db_path)
     if db_path.exists():
@@ -213,7 +255,7 @@ def build_rollup(events: list[dict], db_path: "str | Path", *, analyzer=None) ->
             cost, count = by_model[model]
             conn.execute("INSERT INTO by_model VALUES (?, ?, ?)", (model, cost, count))
 
-        for w in _windows_for(ordered, analyzer):
+        for w in _windows_for(window_events, analyzer):
             conn.execute(
                 "INSERT INTO by_window VALUES (?, ?, ?)",
                 (w.start_ts, w.total_cost_usd, w.message_count),

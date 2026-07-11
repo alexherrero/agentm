@@ -110,9 +110,9 @@ class _FakeAnalyzer:
 _ANALYZER = _FakeAnalyzer()
 
 
-def _event(ts, model, cost, *, plan, task):
+def _event(ts, model, cost, *, plan, task, session_id):
     return {
-        "ts": ts, "schema_version": 1, "device": "verify-efficiency", "session_id": "s1",
+        "ts": ts, "schema_version": 1, "device": "verify-efficiency", "session_id": session_id,
         "parent_id": None, "event": "session-cost", "model": model,
         "tokens_by_kind": {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0},
         "cost_usd": cost, "tags": {"plan": plan, "task": task, "arc": None, "grade": None},
@@ -120,11 +120,15 @@ def _event(ts, model, cost, *, plan, task):
 
 
 # Fixed synthetic corpus: two plans, three models, spanning two 5h windows.
+# Each event is its own distinct session (build_rollup dedups/deltas by
+# (session_id, model) since the Stop hook re-emits a cumulative total per
+# turn, not a delta -- this corpus tests plan/task/model/window arithmetic
+# across separate charges, not that same-session mechanism).
 _EVENTS = [
-    _event("2026-07-07T00:00:00Z", "claude-sonnet-5", 1.5, plan="p1", task="1"),
-    _event("2026-07-07T01:00:00Z", "claude-sonnet-5", 2.5, plan="p1", task="2"),
-    _event("2026-07-07T02:00:00Z", "claude-opus-4-8", 4.0, plan="p2", task="1"),
-    _event("2026-07-07T06:00:00Z", "claude-haiku-4-5", 0.5, plan="p2", task="1"),
+    _event("2026-07-07T00:00:00Z", "claude-sonnet-5", 1.5, plan="p1", task="1", session_id="s1"),
+    _event("2026-07-07T01:00:00Z", "claude-sonnet-5", 2.5, plan="p1", task="2", session_id="s2"),
+    _event("2026-07-07T02:00:00Z", "claude-opus-4-8", 4.0, plan="p2", task="1", session_id="s3"),
+    _event("2026-07-07T06:00:00Z", "claude-haiku-4-5", 0.5, plan="p2", task="1", session_id="s4"),
 ]
 
 _EXPECTED_BY_PLAN = {"p1": (4.0, 2), "p2": (4.5, 2)}
