@@ -144,6 +144,77 @@ class RunN1SequenceTests(unittest.TestCase):
         self.assertIsNotNone(report.grade_event)
 
 
+class CliTests(unittest.TestCase):
+    """n1_run.py's CLI (CONS-7 task 6): argument parsing + work-items-file
+    loading + report serialization. `run_n1_sequence` itself is mocked here
+    (already covered end-to-end by `RunN1SequenceTests` above) so these stay
+    hermetic and never risk a real `claude --bg` dispatch."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_work_items(self, items) -> Path:
+        path = self.tmp / "work-items.json"
+        path.write_text(json.dumps({"work_items": items}), encoding="utf-8")
+        return path
+
+    def test_load_work_items_builds_workitem_objects(self):
+        path = self._write_work_items([{"plan": "n1", "task": "1", "prompt": "do a"}])
+        items = n1._load_work_items(path)
+        self.assertEqual(len(items), 1)
+        self.assertIsInstance(items[0], dp.WorkItem)
+        self.assertEqual(items[0].plan, "n1")
+
+    def test_load_work_items_missing_file_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            n1._load_work_items(self.tmp / "nope.json")
+
+    def test_load_work_items_malformed_shape_raises_value_error(self):
+        path = self.tmp / "bad.json"
+        path.write_text(json.dumps({"not_work_items": []}), encoding="utf-8")
+        with self.assertRaises(ValueError):
+            n1._load_work_items(path)
+
+    def test_load_work_items_bad_field_raises_value_error(self):
+        path = self._write_work_items([{"plan": "n1", "not_a_real_field": "x"}])
+        with self.assertRaises(ValueError):
+            n1._load_work_items(path)
+
+    def test_main_builds_config_and_prints_json_report(self):
+        path = self._write_work_items([{"plan": "n1", "task": "1", "prompt": "x", "cwd": str(self.tmp)}])
+        fake_report = n1.N1Report(grade_event={"event": "run-start"})
+        with mock.patch.object(n1, "run_n1_sequence", return_value=fake_report) as run_mock, \
+                mock.patch("builtins.print") as print_mock:
+            rc = n1.main(["--plan", "n1", "--work-items", str(path), "--cwd", str(self.tmp)])
+        self.assertEqual(rc, 0)
+        run_mock.assert_called_once()
+        called_config = run_mock.call_args[0][0]
+        self.assertEqual(called_config.plan, "n1")
+        self.assertEqual(len(called_config.work_items), 1)
+        self.assertTrue(called_config.dry_run_board)  # --live-board not passed -> stays dry-run
+        printed = print_mock.call_args[0][0]
+        parsed = json.loads(printed)
+        self.assertEqual(parsed["grade_event"]["event"], "run-start")
+
+    def test_main_live_board_flag_disables_dry_run(self):
+        path = self._write_work_items([{"plan": "n1", "task": "1", "prompt": "x"}])
+        fake_report = n1.N1Report(grade_event=None)
+        with mock.patch.object(n1, "run_n1_sequence", return_value=fake_report) as run_mock, \
+                mock.patch("builtins.print"):
+            n1.main(["--plan", "n1", "--work-items", str(path), "--live-board"])
+        called_config = run_mock.call_args[0][0]
+        self.assertFalse(called_config.dry_run_board)
+
+    def test_main_bad_work_items_file_returns_2_not_a_traceback(self):
+        with mock.patch("builtins.print"):
+            rc = n1.main(["--plan", "n1", "--work-items", str(self.tmp / "missing.json")])
+        self.assertEqual(rc, 2)
+
+
 class RealCricketsN1BridgeTests(unittest.TestCase):
     """Real-bridge: exercises the actual grade.declare_run_start +
     handoff.build_fleet_handoff_pack (dispatcher/board still faked --
