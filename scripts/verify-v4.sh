@@ -77,7 +77,7 @@ assert_contains "idle: bounded (--max-batches)"                 "$IDLE" '"--max-
 assert_contains "idle: bounded (--limit)"                       "$IDLE" '"--limit"'
 
 # ── G-seed: minimal inbox signal so emit-gating check has content ────────────
-mkdir -p "$SV/_inbox"; for i in $(seq 1 10); do echo x > "$SV/_inbox/e$i.md"; done
+mkdir -p "$SV/personal/_inbox"; for i in $(seq 1 10); do echo x > "$SV/personal/_inbox/e$i.md"; done
 
 # ── G. emit gating (shifted-guard + cooldown) + atomic state ────────────────
 # (run last — these mutate the scratch STATE file)

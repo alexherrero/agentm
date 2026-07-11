@@ -9,7 +9,8 @@ the cooldown allows — the anti-fatigue guard from auto_orchestration.py. The
 after the always-load recall.
 
 Signals (each defensive — absent/empty/malformed source → 0, never raises):
-  - inbox          : count of <vault>/_inbox/*.md (operator-curatable staging)
+  - inbox          : count of <vault>/personal/_inbox/*.md (operator-curatable
+                     staging)
   - watchlist_high : _skill-watchlist entries with evaluator_classification HIGH
                      + status pending-review (awaiting `/memory watchlist`)
   - incubator      : count of _idea-incubator/<slug>/ dirs (ideas in research)
@@ -40,7 +41,7 @@ _SKIP_INBOX = {"_index.md", "readme.md", "_readme.md"}
 
 # ── signal counters (each returns int; never raises) ────────────────────────
 def count_inbox(vault: Path) -> int:
-    d = Path(vault) / "_inbox"
+    d = Path(vault) / "personal" / "_inbox"
     if not d.is_dir():
         return 0
     try:
@@ -95,7 +96,7 @@ def count_watchlist_high_pending(vault: Path) -> int:
 
 
 def count_incubator_pending(vault: Path) -> int:
-    root = Path(vault) / "personal" / "_idea-incubator"
+    root = Path(vault) / "_idea-incubator"
     if not root.is_dir():
         return 0
     try:

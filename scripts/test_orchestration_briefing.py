@@ -47,13 +47,13 @@ def _promoted_entry(vault: Path, source: str, slug: str, promoted_at: str) -> No
 
 
 def _inbox_entry(vault: Path, name: str) -> None:
-    d = vault / "_inbox"
+    d = vault / "personal" / "_inbox"
     d.mkdir(parents=True, exist_ok=True)
     (d / name).write_text("x", encoding="utf-8")
 
 
 def _incubator(vault: Path, slug: str) -> None:
-    (vault / "personal" / "_idea-incubator" / slug).mkdir(parents=True, exist_ok=True)
+    (vault / "_idea-incubator" / slug).mkdir(parents=True, exist_ok=True)
 
 
 class TestCounters(unittest.TestCase):
@@ -74,6 +74,14 @@ class TestCounters(unittest.TestCase):
         _inbox_entry(self.vault, "notes.txt")  # not .md, excluded by glob
         self.assertEqual(ob.count_inbox(self.vault), 2)
 
+    def test_inbox_ignores_root_level_inbox(self) -> None:
+        # Real vault layout is personal/_inbox; confirms this doesn't also
+        # (or instead) read a root-level <vault>/_inbox.
+        d = self.vault / "_inbox"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "a.md").write_text("x", encoding="utf-8")
+        self.assertEqual(ob.count_inbox(self.vault), 0)
+
     def test_watchlist_high_pending_only(self) -> None:
         _watchlist_entry(self.vault, "src", "p1", "HIGH", "pending-review")    # counts
         _watchlist_entry(self.vault, "src", "p2", "HIGH", "promoted")          # not pending
@@ -90,6 +98,12 @@ class TestCounters(unittest.TestCase):
         _incubator(self.vault, "idea-two")
         _incubator(self.vault, "_archive")  # excluded
         self.assertEqual(ob.count_incubator_pending(self.vault), 2)
+
+    def test_incubator_ignores_personal_nested(self) -> None:
+        # Real vault layout is root-level _idea-incubator; confirms this
+        # doesn't also (or instead) read <vault>/personal/_idea-incubator.
+        (self.vault / "personal" / "_idea-incubator" / "idea-one").mkdir(parents=True)
+        self.assertEqual(ob.count_incubator_pending(self.vault), 0)
 
     def test_idea_ledger_stale(self) -> None:
         ideas = self.vault / "Ideas.md"
