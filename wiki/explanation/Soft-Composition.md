@@ -15,7 +15,7 @@ Hard deps are the host's job. agentm reads the `requires:` field to document it 
 
 A plugin that *optionally* uses another plugin's capabilities lists them in `enhances:`. Unlike `requires:`, an unmet `enhances:` is not an error — the dependent plugin falls back to its standalone behavior. An `enhances:` entry may carry a version range (`>= 1.2`) to express "I need at least this version for the enhancement to be safe."
 
-**`enhances ∩ requires = ∅`.** A capability that is truly required must be in `requires:` (hard dep, host-enforced). A capability in `enhances:` is by definition optional — if it is not optional, it is in the wrong field. This invariant is enforced by design: agentm's resolver is a single-range check (LC-3), not a solver, so it is structurally incapable of resolving transitive or mandatory deps.
+**`enhances ∩ requires = ∅`.** A capability that is required must be in `requires:` (hard dep, host-enforced). A capability in `enhances:` is by definition optional — if it is not optional, it is in the wrong field. This invariant is enforced by design: agentm's resolver is a single-range check (LC-3), not a solver, so it is structurally incapable of resolving transitive or mandatory deps.
 
 ## The runtime: `capability_available()`
 

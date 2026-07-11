@@ -1,7 +1,7 @@
 <!-- mode: index -->
 # Explanation
 
-These pages explain *why* AgentM works the way it does — the choices, the reasoning, and the trade-offs. If you are looking for technical specifications, see [Reference](Reference). For high-level design, see [Architecture](Architecture).
+These pages explain *why* AgentM works the way it does — the choices behind it and the trade-offs each one accepts. If you are looking for technical specifications, see [Reference](Reference). For high-level design, see [Architecture](Architecture).
 
 ## What's here
 
