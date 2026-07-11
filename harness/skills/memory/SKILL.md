@@ -28,6 +28,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | Manually trigger the internet skill-discovery scan (cadence-checked by default via the idle hook) | `/memory discover-skills` |
 | Run the adapt-don't-import workflow over discovered patterns (Python rubric → enriched JSONs → LLM sub-agent judgment → watchlist entries) | `/memory adapt-skills` |
 | Review pending entries in `_skill-watchlist/` — promote / dismiss / defer | `/memory watchlist` |
+| See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
 
 Auto-recall happens via the [SessionStart + UserPromptSubmit hooks](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md) — operators don't invoke a recall command directly. Reflection happens automatically via Stop + idle hooks too; the manual `/memory reflect` is for one-off runs against arbitrary transcripts.
 
@@ -983,6 +984,25 @@ On `f` (defer): a secondary prompt asks for `defer until (YYYY-MM-DD; blank = de
 - **Don't run `review` in batch / non-interactive contexts.** Default-to-skip is the safety net; if you actually want batch action, use the specific-slug subcommands (`promote` / `dismiss` / `defer`) which are deterministic + scriptable.
 - **Don't auto-promote based on rubric_score alone.** The whole point of the watchlist is the operator's judgment on top of the rubric — auto-promotion bypasses the adapt-don't-import architectural guarantee.
 - **Don't `rm -rf` the `_archive/` directory.** It's the audit trail for "we considered this and dismissed it" — useful when the same pattern resurfaces from a different source later (cross-citation count goes up).
+
+### `/memory heat-policy`
+
+Evaluates the heat-based always-load curation policy: entries in `_always-load/` with zero recall hits across enough recorded sessions are demotion candidates; entries elsewhere that have gotten hot enough are promotion candidates. Part G of ROADMAP #46, canonical implementation at `skills/memory/scripts/heat_policy.py` (`run_policy()`), exposed as a `recall.py` sub-command — this row closes the gap E6's dashboard inventory found: the verb has existed and worked since Part G shipped, but was never listed here.
+
+#### Invocation
+
+```
+python3 harness/skills/memory/scripts/recall.py heat-policy [--apply] [--vault-path <path>]
+python3 harness/skills/memory/scripts/recall.py heat-pin <slug> [--vault-path <path>]
+```
+
+- **`heat-policy`** — dry-run by default: reports demotion/promotion candidates to stderr without moving anything. Pass `--apply` to actually move files (patches `always_load` frontmatter + relocates the entry). A safety floor (`MIN_ALWAYS_LOAD`) always keeps a minimum number of always-load entries regardless of how many candidates qualify; `heat_pin: true` entries are never demoted.
+- **`heat-pin <slug>`** — pins a specific entry to always-load (`heat_pin: true`), restoring it if a prior run had demoted it. Use this for an entry you want kept warm regardless of recall frequency.
+
+#### Failure modes (graceful)
+
+- **Not enough recorded sessions yet** → reports `too_early: true` in the result; no demotions considered until the cold-session floor is met.
+- **No vault resolved** → same resolution failure as every other `recall.py` sub-command (`--vault-path` / `MEMORY_VAULT_PATH`).
 
 ### `/memory search`
 

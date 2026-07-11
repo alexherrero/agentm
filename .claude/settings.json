@@ -1,3 +1,7 @@
 {
-  "includeCoAuthoredBy": false
+  "includeCoAuthoredBy": false,
+  "statusLine": {
+    "type": "command",
+    "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/status_line_meter.py"
+  }
 }

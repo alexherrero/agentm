@@ -1,0 +1,43 @@
+# n1-overnight.yaml — the N1 night-shift sequence's scheduled job manifest
+# (CONS-7, Consolidation arc Wave 2 — finishing PLAN-autonomy-control-plane
+# task 6's orchestration wiring with a durable trigger; run_n1_sequence()
+# itself is unchanged, this is only the missing scheduling surface).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored (per-project runtime state, same as every
+# other .harness/* file — see .gitignore), so this templates/ copy is the
+# tracked, shipped source. Register it by copying to
+# .harness/jobs/n1-overnight.yaml in a repo that runs the agentm runner
+# (scripts/agentm-runner.sh).
+#
+# Cadence: nightly, matching the "night-shift" framing this sequence was
+# designed under (PLAN-autonomy-control-plane task 6's own name for it).
+schedule: daily
+lookback: 24h
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
+# `--work-items` resolves a per-project, operator-authored manifest of the
+# night's dispatched work (`.harness/n1-work-items.json`, shaped
+# `{"work_items": [{"plan": ..., "task": ..., "prompt": ...}, ...]}`) —
+# n1_run.py dispatches arbitrary fleet work, so (unlike dream.yaml /
+# forward-learning.yaml, which self-determine their own scope from vault
+# state alone) it cannot self-determine *what* to run without one. A
+# missing or malformed work-items file is a clean, named CLI error (exit 2),
+# not a raw traceback — see n1_run.py's own `_load_work_items()`.
+command: >-
+  python3 -m control_plane.n1_run --plan overnight
+  --work-items ../.harness/n1-work-items.json
+  --project-config ../.harness/project.json
+
+# This manifest's own tier describes the board-reflection write the
+# sequence performs (T2, an operator-curated surface) — matching the
+# digest jobs' own tier. The dispatched work items each carry their own
+# tier via the fleet dispatch classification; that's a separate axis.
+tier: T2
+
+# Stays true until an operator has both authored a real, real-content
+# .harness/n1-work-items.json for a specific night AND explicitly decided
+# to run the sequence live. Promoting to false here — or separately passing
+# --live-board for real board writes — is never an automatic consequence of
+# this manifest existing; both are the operator's own explicit calls.
+dry_run: true
