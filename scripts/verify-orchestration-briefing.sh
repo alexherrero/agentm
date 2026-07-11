@@ -74,7 +74,7 @@ echo "verify-orchestration-briefing: scratch vault = $SV"
 # ── B. briefing signals (read-only render) ──────────────────────────────────
 assert_equals  "briefing: empty vault renders nothing" "$(render)" ""
 
-mkdir -p "$SV/_inbox"; for i in $(seq 1 10); do echo x > "$SV/_inbox/e$i.md"; done
+mkdir -p "$SV/personal/_inbox"; for i in $(seq 1 10); do echo x > "$SV/personal/_inbox/e$i.md"; done
 assert_contains "briefing: inbox over threshold surfaces"       "$(render)" "10 inbox entries to sort"
 
 mkdir -p "$SV/personal/_skill-watchlist/src"
@@ -82,7 +82,7 @@ printf -- '---\nstatus: pending-review\nevaluator_classification: HIGH\n---\nb\n
   > "$SV/personal/_skill-watchlist/src/p1.md"
 assert_contains "briefing: HIGH skill-watchlist surfaces"       "$(render)" "1 HIGH skill-watchlist"
 
-mkdir -p "$SV/personal/_idea-incubator/an-idea"
+mkdir -p "$SV/_idea-incubator/an-idea"
 assert_contains "briefing: incubator idea surfaces"             "$(render)" "1 incubator idea"
 
 # ── C. staged-adapt signal (v4.13.1) surfaces + clears on evaluation ────────
