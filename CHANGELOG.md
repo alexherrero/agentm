@@ -5,6 +5,40 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v7.0.0] — 2026-07-10 — Major: the version catches up — this repo contains the finished V6 and V7 eras
+
+**MAJOR.** This release does not ship one new feature — it corrects a version number that had fallen years behind the work. Per the Consolidation arc's versioning-repair ruling (Ruling 4 of the `CONSOLIDATION-VERDICT.md`, ratified 2026-07-10), this repo contains the finished V6 era (the memory engine: retrieval, the knowledge graph, dreaming, the experience pipeline) and the finished V7 era (self-maintenance: the scheduled-job substrate, dream mode, auto-maintenance) — both complete, but shipped disguised inside a run of v5.x tags because the harness's own release cadence never tracked the roadmap's own era numbering. From this release forward, agentm's major version number equals the roadmap era it has completed. **v8.0.0 (the Autonomy era) is deliberately not cut here** — its code shipped already, in v5.14.0, but the operator's own standard is that the version is earned by proven adoption, not by code merely existing, and that proof is the job of this arc's still-open proving window; v8.0.0 cuts at arc exit if that proof holds. v9 opens whenever FRIDAY ships. Alongside the version correction, this release carries everything merged since v5.14.0: two pre-arc items (#270, #274) and three of the Consolidation arc's own Wave 1/2 lanes plus one follow-up fix (#279, #280, #281, #282) — all listed below.
+
+### The roadmap-era ↔ release-tag decoder
+
+This mapping reflects the roadmap-era reconciliation completed during this same Consolidation arc's versioning-repair pass. A full combined-timeline rebuild of `wiki/reference/Completed-Features.md` (Ruling 5) publishes the equivalent decoder as its own page — see that page for the definitive, ongoing version once it lands.
+
+| Roadmap era | What shipped | Tag(s) it shipped inside |
+|---|---|---|
+| **V6** — "Memory that maintains itself" (core) | Typed-edge knowledge graph, RRF hybrid retrieval, paragraph-aware chunking, time-weighted decay, episodic→semantic consolidation | [v5.14.0](https://github.com/alexherrero/agentm/releases/tag/v5.14.0) (AG Wave E) |
+| **V6-11** | Extended `entry_meta` + hybrid `--filter` recall path | [v5.12.0](https://github.com/alexherrero/agentm/releases/tag/v5.12.0) (AG Wave B leader 3/5) |
+| **V6-15 / V6-18** | Typed-object schema registry + browse-first MOC generator | **This release** — PR #274 was previously unreleased; v7.0.0 is its first tag |
+| **V7** — scheduled-sidecar framework | The AG Wave-B runner (job manifest, due-decision cycle, dry-run-until-promoted, throttle-pause-stop watchdog) | [v5.12.0](https://github.com/alexherrero/agentm/releases/tag/v5.12.0) |
+| **V7** — dream mode + the revert-log | The dreaming arc (revert-log primitive, `/dream`, confirm/expire cycle, scheduled job) | [v5.14.0](https://github.com/alexherrero/agentm/releases/tag/v5.14.0) |
+| **V7** — the external-scan | The forward-learning coda (approved-source pipeline, crystallization) | [v5.14.0](https://github.com/alexherrero/agentm/releases/tag/v5.14.0) |
+| **V7** — auto-maintenance / security vuln-watch sidecar | crickets' maintenance primitives + the Planner (TPM) persona / `cve-security-patch` | crickets-side — no agentm tag |
+| **V8 / Autonomy** (code shipped, era not yet declared complete) | Observability ledger + console, control plane, board-tracking-model decision | [v5.14.0](https://github.com/alexherrero/agentm/releases/tag/v5.14.0) — **v8.0.0 waits for the proving window**, per the ladder |
+
+### Added
+
+- **V6-15 / V6-18 — typed-object schema registry + browse-first MOC generator** (`395fc17`, `cd5bee4`, `904a24c`, #274). A kind-taxonomy audit + schema registry (`kind_registry.py`, 13 tests), a check-only frontmatter validator (`frontmatter_validator.py`, 13 tests) that excludes the vault's internal state directories, and a browse-first MOC generator with a `Home.md` "Browse by kind" backlink section.
+- **CONS-7 — the Console v1** (`6e3ed4a`, #280). A new `/console` skill (`harness/skills/console/`) composing five existing, already-shipped observability surfaces — the health index, queue-status-lite, the board-drift detector, the spend rollup, and memory activity — behind one terminal-first report, plus an `--html` mode. Builds nothing new underneath; finishes wiring that was already designed but never turned on.
+
+### Changed
+
+- **CONS-1 — agentm slim** (`a3d3f9f`, #279). `bash scripts/check-all.sh` goes from 38 named local gates to 33 without weakening any gate's protection: five vendored-parity gates merge into one parametrized `check-vendored-parity.sh`, three one-way import-direction checks merge into one, and seven confirmed-dead scripts are deleted (`list-plans.sh`/`.ps1`, `memory_mcp_probe.py`, `rename-vault-personal-projects.{sh,ps1}`, `rename-vault-root.sh`, `migrate-adr.py`) along with their companion tests.
+- **CONS-3 — agentm prose restoration** (`c1c7613`, #281). `check-slop.py` now blocks at warning-tier and above in `check-all.sh` (previously report-only), wired with `--wiki-root wiki` so the per-repo overlay hook resolves. The surviving `load-bearing`/`first-class` term-of-art usage gets a documented carve-out in the existing rule-pack overlay rather than a false positive.
+
+### Fixed
+
+- **Retire-invariant guard tests ignore stale worktree checkouts** (`d692870`, #270). The three regression tests guarding against retired code reappearing now enumerate the tree via `git ls-files` instead of a hardcoded exclusion list, so a stale `.claude/worktrees/` checkout left behind after a merge — routine under the worktree-native flow — can no longer false-fail the full gate battery by matching the guard's own retired-path text in its docstring.
+- **`orchestration_briefing.py` vault-path mismatch for inbox/incubator counters** (`7f85605`, #282). `count_inbox()` was reading `<vault>/_inbox` instead of the real `<vault>/personal/_inbox`; `count_incubator_pending()` had the opposite-direction mismatch, reading `personal/_idea-incubator` instead of the real root-level `_idea-incubator`. Both silently undercounted in production, so the SessionStart pending-state briefing undercounted these signals. Corrected, with negative-direction regression tests added.
+
 ## [v5.14.0] — 2026-07-09 — Minor: Autonomy arc lands — observability ledger + console + control plane
 
 **MINOR.** The Autonomy arc (recast V8) ships end to end: a device-local telemetry ledger with a scheduled runner aggregator, a static observability console (dashboard, digest ladder, window-park artifact, morning report), and a control plane on top (substrate decision, dispatch, board+handoff wiring, launch-time grade statement) closed out by a real N1 acceptance run. Alongside it, AG Wave E closes out — the V6 retrieval engine (typed-edge graph, RRF hybrid retrieval, chunking, time-weighted decay, consolidation), the dreaming arc, and the experience pipeline all land — and an AA5 consolidation pass reconciles personas/opinions to as-built, lights the efficiency health-axis, and re-measures the V6 retrieval stack with the vector stream actually live, honestly reversing a previously-shipped baseline number. Pairs with [crickets v3.26.0](https://github.com/alexherrero/crickets/releases/tag/v3.26.0), which ships the crickets half of the observability ledger and the board tracking-model decision.
