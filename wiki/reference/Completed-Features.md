@@ -11,8 +11,9 @@ This page is the combined build timeline for agentm and its sibling toolkit [cri
 
 | Date | Feature (plain English) | Release | Roadmap id |
 |---|---|---|---|
-| 2026-07-10 | V6-15 typed-object schema-registry (kind audit, frontmatter validator) + V6-18 browse-first MOC generator | agentm PR #274 (unreleased) | V6-15 / V6-18 |
-| 2026-07-10 | `plan_goal` KeyError fix on a plan-less progress entry | crickets PR #180 (unreleased) | V8 (bugfix) |
+| 2026-07-10 | Version numbers catch up to the work: agentm jumps v5.14.0 → v7.0.0 (declaring the V6 and V7 eras complete, publishing this page's own mapping table in the release notes); crickets cuts v3.27.0 (the Consolidation arc's repo-slimming, prose-restoration, and process-codification lanes) | agentm v7.0.0 + crickets v3.27.0 | Consolidation arc, ruling 4 |
+| 2026-07-10 | V6-15 typed-object schema-registry (kind audit, frontmatter validator) + V6-18 browse-first MOC generator | agentm v7.0.0 (PR #274) | V6-15 / V6-18 |
+| 2026-07-10 | `plan_goal` KeyError fix on a plan-less progress entry | crickets v3.27.0 (PR #180) | V8 (bugfix) |
 | 2026-07-09 | Real-vault lint triage (587→561 findings after fixes), PARA/Zettel design-call note, Obsidian graph colorize by `kind` | vault-only, no repo tag | #16 / #34 |
 | 2026-07-09 | Autonomy arc lands end-to-end; AG Wave E closes out; AA5 consolidation pass | agentm v5.14.0 | V8, V6, AG close-out |
 | 2026-07-09 | AG Waves C+D formally close out; crickets half of the Autonomy arc lands | crickets v3.26.0 | AG close-out |
@@ -97,9 +98,10 @@ Semver and the roadmap's version line (V4 → V5 → V6 → V7 → FRIDAY → V8
 | Hardening I (#44–#46) | Single-repo-first-class, end-to-end test matrix, token-efficiency-by-default | v4.15.0, v5.9.1 | v3.24.0 (voice gate, CI matrices) |
 | V5 — "the unbundling" | Storage-agnostic memory OS + plugin host; the dev loop moves to crickets | v5.0.0 → v5.9.0 (core), v5.12.0 (V5-14 storage convergence) | v3.1.0 → v3.22.0 |
 | Architecture-Governance (AG, cross-cutting) | Classification spine, ADR retirement into living designs, the grounded review/plan loop, altitude structure | v5.11.0 (design lift) → v5.13.0 (Wave B/D) | v3.23.0 → v3.26.0 (Wave A/C/D) |
-| V6 — "Memory that maintains itself" | Typed-edge knowledge graph, RRF hybrid retrieval, consolidation, the typed-object schema registry | v5.14.0 (core engine); PR #274 unreleased (V6-15/V6-18) | — |
+| V6 — "Memory that maintains itself" | Typed-edge knowledge graph, RRF hybrid retrieval, consolidation, the typed-object schema registry | v5.14.0 (core engine), v7.0.0 (V6-15/V6-18) | — |
 | V7 — "Memory that works while you sleep" | Absorbed into AG — shipped disguised as the runner, the dreaming arc, and the maintenance primitives | v5.12.0 (runner), v5.14.0 (dreaming) | v3.26.0 (maintenance primitives) |
-| V8 / the Autonomy arc — "A team of agents, one memory" | Observability ledger + console, the thin control plane, the board tracking-model decision | v5.14.0 | v3.26.0 |
+| V8 / the Autonomy arc — "A team of agents, one memory" | Observability ledger + console, the thin control plane, the board tracking-model decision (code shipped; era declared complete pending the Consolidation arc's proving window) | v5.14.0 | v3.26.0 |
+| Consolidation (process, not a roadmap era) | The version ladder itself catches up: agentm's major version now equals its completed roadmap era; this page rebuilt as the combined timeline; ROADMAP-MASTER.md rewritten era-by-era; all 13 window release bodies + 56 window PRs rewritten plain-English | v7.0.0 | v3.27.0 |
 | FRIDAY | Held — gate substantively met 2026-07-07, operator ruled hold 2026-07-08; not started | — | — |
 
 **Reading this honestly:** three separate roadmap eras — the last slice of AG, the entire V6 engine, and the whole V8/Autonomy arc — all landed inside the single agentm `v5.14.0` "Minor" release (eleven distinct features, one tag). That compression is exactly why this table exists: the semver number alone tells you almost nothing about which roadmap milestones a release actually completed.
