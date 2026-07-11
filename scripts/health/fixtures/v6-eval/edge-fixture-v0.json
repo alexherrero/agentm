@@ -15,23 +15,23 @@
       "rationale": "cited as 'the governing safety constraint' the design must not violate"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "never-orphan-the-vault",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "cited as 'the governing safety constraint' the design must not violate"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "never-orphan-the-vault",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "cited as 'the governing safety constraint' the design must not violate"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-seam-devaulting/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-seam-devaulting/design-doc.md",
       "source_sha256_12": "baa0c0ff2b92",
       "target": "never-orphan-the-vault",
       "is_edge": true,
@@ -39,16 +39,16 @@
       "rationale": "cited as 'the governing safety constraint' the design must not violate"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "never-orphan-the-vault",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "cited as 'the governing safety constraint' the design must not violate"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "never-orphan-the-operator",
       "is_edge": true,
       "edge_type": "depends-on",
@@ -63,7 +63,7 @@
       "rationale": "cited alongside never-orphan-the-vault as a hard governing constraint"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-seam-devaulting/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-seam-devaulting/design-doc.md",
       "source_sha256_12": "baa0c0ff2b92",
       "target": "never-orphan-the-operator",
       "is_edge": true,
@@ -71,8 +71,8 @@
       "rationale": "cited alongside never-orphan-the-vault as a hard governing constraint"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "never-orphan-the-operator",
       "is_edge": true,
       "edge_type": "depends-on",
@@ -87,16 +87,16 @@
       "rationale": "the always-load constraint the design must preserve"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "vault-as-canonical-context",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "the always-load constraint the design must preserve"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "vault-as-canonical-context",
       "is_edge": true,
       "edge_type": "depends-on",
@@ -111,7 +111,7 @@
       "rationale": "the always-load constraint the design must preserve"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-seam-devaulting/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-seam-devaulting/design-doc.md",
       "source_sha256_12": "baa0c0ff2b92",
       "target": "vault-as-canonical-context",
       "is_edge": true,
@@ -119,8 +119,8 @@
       "rationale": "the always-load constraint the design must preserve"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "vault-as-canonical-context",
       "is_edge": true,
       "edge_type": "depends-on",
@@ -135,31 +135,31 @@
       "rationale": "the doc conforms to this template/convention ('Design-doc shape:')"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "projects/crickets/conventions/design-doc-shape",
       "is_edge": true,
       "edge_type": "implements",
       "rationale": "the doc conforms to this template/convention ('Design-doc shape:')"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "projects/crickets/conventions/design-doc-shape",
       "is_edge": true,
       "edge_type": "implements",
       "rationale": "the doc conforms to this template/convention ('Design-doc shape:')"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "projects/crickets/conventions/design-doc-shape",
       "is_edge": true,
       "edge_type": "implements",
       "rationale": "the doc conforms to this template/convention ('Design-doc shape:')"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-8-capability-discovery/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-8-capability-discovery/design-doc.md",
       "source_sha256_12": "341ca092b817",
       "target": "projects/crickets/conventions/design-doc-shape",
       "is_edge": true,
@@ -215,24 +215,24 @@
       "rationale": "'the floor it builds on'"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "research-concurrent-vault-writes",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "'the floor it composes' with"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "research-concurrent-vault-writes",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "'the floor it preserves'"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "research-concurrent-vault-writes",
       "is_edge": true,
       "edge_type": "depends-on",
@@ -247,7 +247,7 @@
       "rationale": "'the floor it builds on'"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-acceleration-plan.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
       "source_sha256_12": "d71146fa32f4",
       "target": "research-concurrent-vault-writes",
       "is_edge": true,
@@ -279,16 +279,16 @@
       "rationale": "'silent prior art (named here'"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "silent-source-influences",
       "is_edge": true,
       "edge_type": "references",
       "rationale": "'silent prior art'"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "silent-source-influences",
       "is_edge": true,
       "edge_type": "references",
@@ -335,31 +335,31 @@
       "rationale": "cited alongside memory-os-architecture-scan as evidence"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "projects/agentm/_harness/designs/v5-1-storage-seam/design-doc",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "the seam this backend is reached through"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "projects/agentm/_harness/designs/v5-1-storage-seam/design-doc",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "V5-3 completes what V5-1's seam enables"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "'the table row this closes' \u2014 V5-2's backing plugin is the cutover's trigger"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-seam-devaulting/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-seam-devaulting/design-doc.md",
       "source_sha256_12": "baa0c0ff2b92",
       "target": "projects/agentm/_harness/designs/v5-1-storage-seam/design-doc",
       "is_edge": true,
@@ -367,7 +367,7 @@
       "rationale": "generalization of V5-1's seam across both backends"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-seam-devaulting/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-seam-devaulting/design-doc.md",
       "source_sha256_12": "baa0c0ff2b92",
       "target": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc",
       "is_edge": true,
@@ -375,23 +375,23 @@
       "rationale": "consumes the conformance suite V5-3 shipped"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "projects/agentm/_harness/designs/v5-1-storage-seam/design-doc",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "wires capability requests against V5-1's descriptor"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc",
       "is_edge": true,
       "edge_type": "depends-on",
       "rationale": "the read-don't-write rule V5-3 sets up"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-8-capability-discovery/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-8-capability-discovery/design-doc.md",
       "source_sha256_12": "341ca092b817",
       "target": "projects/agentm/_harness/designs/v5-4-process-seam/design-doc",
       "is_edge": true,
@@ -415,7 +415,7 @@
       "rationale": "relocate + de-dupe against verify-phases.sh, don't rewrite"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-narrative-shed/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-narrative-shed/design-doc.md",
       "source_sha256_12": "ecb507c57bee",
       "target": "projects/agentm/_harness/designs/v5-5-orchestration-split/design-doc",
       "is_edge": true,
@@ -431,7 +431,7 @@
       "rationale": "'the foundation it builds on' \u2014 can't ship before it"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-acceleration-plan.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
       "source_sha256_12": "d71146fa32f4",
       "target": "projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc",
       "is_edge": true,
@@ -439,7 +439,7 @@
       "rationale": "the plan 'assumes' this is in place"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-acceleration-plan.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
       "source_sha256_12": "d71146fa32f4",
       "target": "projects/agentm/_harness/designs/v5-11-pm-chief-of-staff/design-doc",
       "is_edge": true,
@@ -807,23 +807,23 @@
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "roadmap-research-R08-storage-and-local-first",
       "is_edge": true,
       "edge_type": "references",
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "roadmap-research-R08-storage-and-local-first",
       "is_edge": true,
       "edge_type": "references",
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-seam-devaulting/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-seam-devaulting/design-doc.md",
       "source_sha256_12": "baa0c0ff2b92",
       "target": "roadmap-research-R08-storage-and-local-first",
       "is_edge": true,
@@ -831,15 +831,15 @@
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "roadmap-research-R07-plugin-ecosystem",
       "is_edge": true,
       "edge_type": "references",
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-8-capability-discovery/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-8-capability-discovery/design-doc.md",
       "source_sha256_12": "341ca092b817",
       "target": "roadmap-research-R07-plugin-ecosystem",
       "is_edge": true,
@@ -967,7 +967,7 @@
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/persona-tier/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/persona-tier/design-doc.md",
       "source_sha256_12": "719c76b3c4c5",
       "target": "RESEARCH-FINDINGS-personas-vs-capabilities-20260616",
       "is_edge": true,
@@ -975,7 +975,7 @@
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/persona-tier/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/persona-tier/design-doc.md",
       "source_sha256_12": "719c76b3c4c5",
       "target": "projects/agentm/_harness/designs/v5-11-pm-chief-of-staff/design-doc",
       "is_edge": true,
@@ -983,7 +983,7 @@
       "rationale": "cited as grounding/cross-reference"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/persona-tier/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/persona-tier/design-doc.md",
       "source_sha256_12": "719c76b3c4c5",
       "target": "projects/agentm/_harness/designs/v5-6-narrative-shed/design-doc",
       "is_edge": true,
@@ -999,23 +999,23 @@
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-2-obsidian-vault/design-doc.md",
-      "source_sha256_12": "3fb50beca5f5",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-2-obsidian-vault/design-doc.md",
+      "source_sha256_12": "ce963b632a78",
       "target": "projects/agentm/_harness/ROADMAP-AgentMemoryV5",
       "is_edge": true,
       "edge_type": "references",
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "projects/agentm/_harness/ROADMAP-AgentMemoryV5",
       "is_edge": true,
       "edge_type": "references",
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-narrative-shed/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-narrative-shed/design-doc.md",
       "source_sha256_12": "ecb507c57bee",
       "target": "projects/agentm/_harness/ROADMAP-AgentMemoryV5",
       "is_edge": true,
@@ -1023,7 +1023,7 @@
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-seam-devaulting/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-seam-devaulting/design-doc.md",
       "source_sha256_12": "baa0c0ff2b92",
       "target": "projects/agentm/_harness/ROADMAP-AgentMemoryV5",
       "is_edge": true,
@@ -1031,15 +1031,15 @@
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-7-config-model/design-doc.md",
-      "source_sha256_12": "f26565bff0fe",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-7-config-model/design-doc.md",
+      "source_sha256_12": "4bbc10f4713e",
       "target": "projects/agentm/_harness/ROADMAP-AgentMemoryV5",
       "is_edge": true,
       "edge_type": "references",
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-8-capability-discovery/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-8-capability-discovery/design-doc.md",
       "source_sha256_12": "341ca092b817",
       "target": "projects/agentm/_harness/ROADMAP-AgentMemoryV5",
       "is_edge": true,
@@ -1063,7 +1063,7 @@
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-acceleration-plan.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
       "source_sha256_12": "d71146fa32f4",
       "target": "projects/agentm/_harness/ROADMAP-AgentMemoryV5",
       "is_edge": true,
@@ -1103,7 +1103,7 @@
       "rationale": "roadmap row this design occupies"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-acceleration-plan.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
       "source_sha256_12": "d71146fa32f4",
       "target": "projects/agentm/_harness/ROADMAP-MASTER",
       "is_edge": true,
@@ -1127,7 +1127,7 @@
       "rationale": "an unmetered heartbeat loop reproducing the 421M-token incident motivates extending this policy"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-6-narrative-shed/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-6-narrative-shed/design-doc.md",
       "source_sha256_12": "ecb507c57bee",
       "target": "agent-m-crickets-branding",
       "is_edge": true,
@@ -1175,7 +1175,7 @@
       "rationale": "illustrative entity-resolution example, not a real note link"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/persona-tier/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/persona-tier/design-doc.md",
       "source_sha256_12": "719c76b3c4c5",
       "target": "\"$_am_kind\" == \"skill\"",
       "is_edge": false,
@@ -1191,8 +1191,8 @@
       "rationale": "backtick-quoted literal describing the `[[wikilinks]]` syntax itself, not a link target"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md",
-      "source_sha256_12": "d0c203dd181f",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+      "source_sha256_12": "1bc79b3689df",
       "target": "wikilinks",
       "is_edge": false,
       "edge_type": null,
@@ -1215,7 +1215,7 @@
       "rationale": "backtick-quoted literal contrasting bare `[[wikilinks]]` with typed links, not a link target"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v4-device-wide/05-state-migration.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v4-device-wide/05-state-migration.md",
       "source_sha256_12": "d5583241a899",
       "target": "personal-projects/<slug>/...",
       "is_edge": false,
@@ -1223,7 +1223,7 @@
       "rationale": "path-pattern placeholder in a migration rule illustration, not a real note link"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v4-device-wide/05-state-migration.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v4-device-wide/05-state-migration.md",
       "source_sha256_12": "d5583241a899",
       "target": "projects/<slug>/...",
       "is_edge": false,
@@ -1255,7 +1255,7 @@
       "rationale": "shares the harness-state resolver \u2014 explicit 'soft dependency, reconciled by order'"
     },
     {
-      "source_path": "projects/agentm/_harness/designs/v5-8-capability-discovery/design-doc.md",
+      "source_path": "projects/agentm/_harness/archive/designs/v5-8-capability-discovery/design-doc.md",
       "source_sha256_12": "341ca092b817",
       "target": "projects/agentm/_harness/designs/v5-9-mcp-server/design-doc",
       "is_edge": true,
