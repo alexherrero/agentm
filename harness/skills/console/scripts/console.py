@@ -222,12 +222,14 @@ _CURATED_SKIP_DIRS = {"_inbox", "_skill-watchlist", "_watchlist", "_archive"}
 def count_inbox(vault: Path) -> int:
     """Real vault layout: `<vault>/personal/_inbox/*.md`.
 
-    NOTE: `harness/skills/memory/scripts/orchestration_briefing.py`'s own
-    `count_inbox()` looks at `<vault>/_inbox` (no `personal/` segment) --
-    confirmed by direct inspection to be a pre-existing mismatch against the
-    live vault layout, not touched here (out of scope for this plan; see
-    PLAN-cons-7-console-v1.md's Notes). This function reads the real path
-    directly so the console doesn't silently propagate that miscount."""
+    NOTE: `harness/skills/memory/scripts/orchestration_briefing.py` carries
+    its own independent `count_inbox()` -- historically it read `<vault>/
+    _inbox` (no `personal/` segment), a mismatch against the live vault
+    layout that this function deliberately avoided by reading the real path
+    directly. That mismatch has since been fixed there too, so the two
+    implementations are now duplicates that happen to agree; this one is
+    left as-is rather than importing the other, to keep console.py's own
+    dependency footprint self-contained."""
     d = vault / "personal" / "_inbox"
     if not d.is_dir():
         return 0
@@ -240,9 +242,10 @@ def count_inbox(vault: Path) -> int:
 def count_incubator(vault: Path) -> int:
     """Real vault layout: `<vault>/_idea-incubator/<slug>/` (root-level).
 
-    NOTE: `orchestration_briefing.py`'s own `count_incubator_pending()` looks
-    at `<vault>/personal/_idea-incubator` -- the opposite-direction mismatch
-    of `count_inbox`'s, same pre-existing bug, not touched here."""
+    NOTE: `orchestration_briefing.py`'s own `count_incubator_pending()` used
+    to look at `<vault>/personal/_idea-incubator` -- the opposite-direction
+    mismatch of `count_inbox`'s, now fixed there as well. Same historical
+    duplicate-that-now-agrees situation; see `count_inbox`'s NOTE above."""
     d = vault / "_idea-incubator"
     if not d.is_dir():
         return 0
