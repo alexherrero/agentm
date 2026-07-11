@@ -18,8 +18,10 @@ calls to run the sequence for real — it is not a simulation layer.
 """
 from __future__ import annotations
 
+import argparse
+import json
 import sys
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -94,3 +96,90 @@ def run_n1_sequence(
         grade_event=grade_event, dispatch_results=dispatch_results,
         board_outcomes=board_outcomes, handoff_manifest=handoff_manifest,
     )
+
+
+# ── CLI (CONS-7 task 6: a durable trigger for the overnight path -- finishing
+# already-shipped orchestration, not new behavior; `run_n1_sequence` above is
+# unchanged) ──────────────────────────────────────────────────────────────────
+def _load_work_items(path: "str | Path") -> list:
+    """Load `dp.WorkItem`s from a JSON file shaped
+    `{"work_items": [{"plan": ..., "task": ..., "prompt": ..., ...}, ...]}`.
+    Raises `ValueError` (not a bare JSON/KeyError) on a malformed manifest --
+    a scheduled job should fail loud and namable, not with a raw traceback."""
+    p = Path(path)
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise ValueError(f"n1_run: unreadable work-items file {p}: {e}") from e
+    items_raw = raw.get("work_items") if isinstance(raw, dict) else None
+    if not isinstance(items_raw, list):
+        raise ValueError(f"n1_run: {p} must contain a top-level {{'work_items': [...]}} object")
+    items = []
+    for i, entry in enumerate(items_raw):
+        if not isinstance(entry, dict):
+            raise ValueError(f"n1_run: work_items[{i}] in {p} is not an object")
+        try:
+            items.append(dp.WorkItem(**entry))
+        except TypeError as e:
+            raise ValueError(f"n1_run: work_items[{i}] in {p} has an invalid field: {e}") from e
+    return items
+
+
+def _report_to_dict(report: N1Report) -> dict:
+    return {
+        "grade_event": report.grade_event,
+        "dispatch_results": [asdict(r) for r in report.dispatch_results],
+        "board_outcomes": report.board_outcomes,
+        "handoff_manifest": report.handoff_manifest,
+    }
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="n1_run",
+        description=(
+            "Run the N1 night-shift sequence for real: declare the launch "
+            "grade, dispatch every work item, reflect each on the board, "
+            "and build a handoff pack for the batch."
+        ),
+    )
+    p.add_argument("--plan", required=True, help="the plan slug this run belongs to")
+    p.add_argument(
+        "--work-items", required=True,
+        help="path to a JSON file: {\"work_items\": [{\"plan\":..,\"task\":..,\"prompt\":..}, ...]}",
+    )
+    p.add_argument("--cwd", default=".", help="dispatch cwd (default: the current directory)")
+    p.add_argument("--telemetry-root", default=None)
+    p.add_argument("--project-config", default=None, help="path to .harness/project.json for board reflection")
+    p.add_argument("--grade", default=gr.DEFAULT_GRADE)
+    p.add_argument(
+        "--live-board", action="store_true",
+        help="post real board updates instead of the default dry-run preview",
+    )
+    return p
+
+
+def main(argv: "list[str] | None" = None) -> int:
+    args = build_arg_parser().parse_args(argv if argv is not None else sys.argv[1:])
+    try:
+        work_items = _load_work_items(args.work_items)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    config = N1Config(
+        plan=args.plan,
+        work_items=work_items,
+        cwd=args.cwd,
+        telemetry_root=args.telemetry_root,
+        project_config_path=args.project_config,
+        grade=args.grade,
+        dry_run_board=not args.live_board,
+    )
+    report = run_n1_sequence(config)
+    print(json.dumps(_report_to_dict(report), indent=2, default=str))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
