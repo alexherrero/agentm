@@ -14,18 +14,18 @@ see [CI gates](CI-Gates) for the full nightly-tier breakdown.
 ---
 # Health Scorecard 🟢
 
-**Health Index: 97.7/100**
+**Health Index: 97.97/100**
 
 | Family | Weight | Score | Checks | Dark |
 |---|---:|---:|---:|---:|
-| memory persist+recall | 25 | 93.55 | 31 | 1 |
-| plan-adherence+drift | 15 | 100.00 | 39 | 0 |
-| verification honesty | 15 | 0.00 | 0 | 0 |
-| capability function | 15 | 100.00 | 28 | 3 |
-| memory freshness+experience | 10 | 100.00 | 18 | 1 |
-| efficiency | 10 | 0.00 | 0 | 0 |
-| docs+voice health | 5 | 0.00 | 0 | 0 |
-| safety/recoverability | 5 | 100.00 | 9 | 0 |
+| memory persist+recall | 25 | 93.94 | 33 | 0 |
+| plan-adherence+drift | 15 | 100.00 | 39 | 1 |
+| verification honesty | 15 | 100.00 | 6 | 0 |
+| capability function | 15 | 96.55 | 29 | 2 |
+| memory freshness+experience | 10 | 100.00 | 29 | 0 |
+| efficiency | 10 | 100.00 | 7 | 2 |
+| docs+voice health | 5 | 100.00 | 1 | 1 |
+| safety/recoverability | 5 | 100.00 | 10 | 0 |
 
 ## Dark checks (designed, not built)
 
@@ -33,26 +33,10 @@ Not counted for or against the Health Index — visible so a family's true futur
 
 | Axis | Suite | Check |
 |---|---|---|
-| memory freshness+experience | dark-registry | dreaming: reflection-driven idle-cycle consolidation (agentm-experience-and-dreaming.md) — designed, not built |
-| capability function | dark-registry | runner: sandboxed multi-step task execution surface — designed, not built |
-| capability function | dark-registry | opinion runtime: policy-opinion evaluation at activation time — designed, not built |
-| capability function | dark-registry | persona activation: per-persona model+effort routing binding at activation (agentm-model-effort-routing.md) — designed, not built |
-| memory persist+recall | dark-registry | kind-scoped recall: recall filtered/ranked by memory kind — designed, not built |
-
-## Operator `/status`
-
-`python3 scripts/status.py [--path <history.jsonl>]` prints the Health Index,
-the per-family breakdown, and the dark-check count for the **last recorded
-run** in `scripts/health/history.jsonl` — the same ledger `health_score.py
---history` appends to above. It is a consumer, never a second scorer: every
-number it prints is read back from a row `health_score.py` already computed
-and wrote, never recomputed (PLAN-wave-e-scheduled-surfaces task 5;
-ROADMAP-MASTER.md:121, ratified verbatim: "Wave-E's Operator `/status` + the
-reporting digest consume R's scorecard rather than re-deriving one").
-
-History rows written before this field existed don't carry a dark count;
-`status.py` prints "Dark checks: not recorded for this run" for those rather
-than guessing. If no history has been recorded yet, it exits non-zero with a
-pointer to `bash scripts/health/run-fast-tier.sh | python3
-scripts/health/health_score.py --history`.
+| docs+voice health | check-slop | voice-vocabulary-drift |
+| efficiency | run-heavy-tier | real-telemetry rollup: rebuild-idempotency holds against this machine's actual event log |
+| capability function | dark-registry | maintenance + research plugin libraries (crickets) — library-only, pending FRIDAY (FIN-2a fold) |
+| efficiency | dark-registry | fanout_cost_gate.py (crickets src/tokens/) — built, not yet wired as the coordinator-dispatch fleet pre-flight |
+| capability function | dark-registry | docs_drift_job.py + the five observability job templates — built, not yet registered as scheduled runner jobs |
+| plan-adherence+drift | dark-registry | goal_contract.py + runner/cli.py + n1_run.py — built, not yet exercised by a real overnight proving-window run |
 
