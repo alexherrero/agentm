@@ -3,5 +3,19 @@
   "statusLine": {
     "type": "command",
     "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/status_line_meter.py"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/session-cost-capture.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
   }
 }
