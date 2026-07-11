@@ -1,0 +1,59 @@
+# docs-drift.yaml — the docs-drift detection job manifest
+# (PLAN-wave-e-scheduled-surfaces task 2, agentm-runner.md).
+#
+# Per agentm-runner.md's job-manifest contract — the as-built schema is
+# scripts/runner/manifest.py. .harness/jobs/ is gitignored (per-project
+# runtime state), so this templates/ copy is the tracked, shipped source.
+# Register it by copying to .harness/jobs/docs-drift.yaml in a repo that
+# runs the agentm runner (scripts/agentm-runner.sh). No capability has an
+# install-time auto-seeding step for runner jobs yet — wiring install.sh is
+# a separate, not-yet-decided follow-up, same as every sibling template.
+#
+# Scope-drop correction (Consolidation arc, CONS-9 exit-gate census,
+# 2026-07-11): docs_drift_job.py shipped fully built (PLAN-wave-e-
+# scheduled-surfaces task 2, v5.14.0) but this template was never written —
+# the verdict's high-level ruling named "ruling 7" as this item's owner,
+# CONS-7's actual executed brief only ever listed the 5 observability
+# templates, and the gap sat unnoticed until the exit-gate orphan census
+# traced it. This closes that drop.
+#
+# Cadence: "daily" — no cadence was ever locked in a design doc for this
+# specific job (checked wiki/designs/, agentm-runner.md, the archived
+# wave-e plan; none names one), so this follows every sibling job
+# template's own default rather than inventing a faster one. The
+# underlying engine (crickets' wiki_watch_cycle.py, W1) carries its own
+# 15-minute cooldown gate for tighter loops (its own SKILL.md documents
+# driving it via /loop or a tight cron line) — that's a safety floor
+# against over-firing, not a requirement to schedule this job any tighter
+# than daily; a once-a-day agentm-runner cycle is a sensible, conservative
+# starting cadence, revisit if it proves too slow in practice.
+schedule: daily
+lookback: 24h
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention,
+# same as every sibling template). docs_drift_job.py's own --repo defaults
+# to "." (cwd) — explicit ".." here points it at the real repo root, one
+# level up from scripts/, so it scans agentm's own tree for doc-worthy
+# drift, not scripts/ itself.
+command: python3 docs_drift_job.py --repo ..
+
+# Report-only by the underlying engine's own design ("this job only ever
+# reports, it never authors" — docs_drift_job.py's own docstring); the
+# actual PR-authoring dispatch is wiki-watch's own SKILL-level job, a
+# separate agent-level step this bare cron job cannot take. Tier T2
+# (operator-curated surface), not T3 — this locks the exact shape
+# test_docs_drift_job.py's HealthPassSiblingDocsDriftManifestTests already
+# committed to when it was written alongside the script (before this
+# template itself dropped out of scope): a drift candidate is exactly the
+# kind of thing the operator reviews before it becomes a PR, the same
+# reasoning that makes the digest jobs T2 rather than the aggregator's T3.
+tier: T2
+
+# Graceful no-op until crickets is a sibling checkout AND this repo opts
+# into wiki-watch (device toggle in .agentm-config.json + a per-repo
+# .harness/wiki-watch.json marker — both absent by default, so registering
+# this job finds nothing to report even when dry_run flips false). Stays
+# dry_run: true pending the same operator-supervised first run every other
+# job in this file went through before promotion — never an automatic
+# consequence of this manifest existing.
+dry_run: true

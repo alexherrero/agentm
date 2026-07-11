@@ -1,4 +1,2 @@
 {"suite": "dark-registry", "axis": "capability function", "check": "maintenance + research plugin libraries (crickets) — library-only, pending FRIDAY (FIN-2a fold)", "pass": null, "dark": true, "weight": 1.0, "owning_plan": "FRIDAY-F1"}
-{"suite": "dark-registry", "axis": "efficiency", "check": "fanout_cost_gate.py (crickets src/tokens/) — built, not yet wired as the coordinator-dispatch fleet pre-flight", "pass": null, "dark": true, "weight": 1.0, "owning_plan": "CONS-8"}
-{"suite": "dark-registry", "axis": "capability function", "check": "docs_drift_job.py + the five observability job templates — built, not yet registered as scheduled runner jobs", "pass": null, "dark": true, "weight": 1.0, "owning_plan": "CONS-7"}
 {"suite": "dark-registry", "axis": "plan-adherence+drift", "check": "goal_contract.py + runner/cli.py + n1_run.py — built, not yet exercised by a real overnight proving-window run", "pass": null, "dark": true, "weight": 1.0, "owning_plan": "CONS-9"}

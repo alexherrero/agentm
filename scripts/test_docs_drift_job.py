@@ -67,6 +67,21 @@ class TestGracefulSkip(unittest.TestCase):
         finally:
             job.find_crickets_wiki_watch_cycle = original
 
+    def test_engine_reports_skipped_still_exits_zero(self):
+        # Regression test (Consolidation arc CONS-9 exit-gate scope-drop fix,
+        # 2026-07-11): the sibling IS found, and the real crickets engine
+        # genuinely reports skipped=True (this device has wiki-watch
+        # disabled, the real default) -- main() must still exit 0. Before
+        # the fix, main() forwarded mod.main()'s own CLI exit code
+        # verbatim, which crickets' wiki_watch_cycle.py deliberately returns
+        # as 1 on any skip (tuned for its own interactive /wiki-watch use,
+        # not this delegator's documented "graceful-skip (exit 0)" contract).
+        found = job.find_crickets_wiki_watch_cycle()
+        if found is None:
+            self.skipTest("crickets sibling checkout not present in this environment")
+        rc = job.main(["--repo", ".."])
+        self.assertEqual(rc, 0)
+
 
 class TestDelegation(unittest.TestCase):
     """Exercises the real crickets engine (skips if the sibling isn't checked
