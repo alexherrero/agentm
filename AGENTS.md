@@ -54,6 +54,12 @@ Why this matters: an absolute path like `/Users/<name>/Library/CloudStorage/Goog
 
 `check-no-hardcoded-vault-path` ([CI-Gates reference](wiki/reference/CI-Gates.md)) enforces this at the repo level: it fails if any non-test tracked file embeds `…/Library/CloudStorage/…` as an absolute literal or the retired pre-V5-3 vault root name `…/Obsidian/AgentMemory`.
 
+### Close-out archiving — writes to `archive/`, not a flat path
+
+When a plan closes out (the last task goes `[x]`, `/release` runs its close-out step), the completed `PLAN.md` and the rest of that close-out's done artifacts move into an `archive/` subdirectory of the active working directory — `archive/PLAN.archive.YYYYMMDD-<slug>.md`, not a flat `PLAN.archive.YYYYMMDD-<slug>.md` sitting directly alongside the still-active files. The same applies to any other project working directory this harness maintains close-out state in (a vault-backed `_harness/` per V4 #26 included) — done work moves one level deeper into its own `archive/`, so the eyeline at the top level stays a small, current set of active files rather than accumulating every past plan flat alongside them.
+
+This is close-out bookkeeping, not a new phase step — it's the existing archive-on-completion behavior (see the crickets `development-lifecycle` phase spec's own close-out constraint), with the destination corrected to a real subdirectory. Never stop to ask approval to archive; it's recoverable bookkeeping like the rest of close-out.
+
 ## Directory layout (in a project that installs this harness)
 
 ```
@@ -64,6 +70,7 @@ your-project/
 │   ├── progress.md         # append-only log of what was done, when, what's next
 │   ├── init.sh             # one-shot script to boot the dev environment
 │   ├── known-migrations.md # per-project recipes for dependabot-fixer skill
+│   ├── archive/            # completed plans + done close-out artifacts — PLAN.archive.YYYYMMDD-<slug>.md lives here, not flat in .harness/
 │   └── scripts/            # shell helpers — cross-review.{sh,ps1} (Gemini shell-out), etc.
 ├── AGENTS.md               # this file (or a pointer to it)
 ├── CLAUDE.md               # Claude Code entry point — points back here

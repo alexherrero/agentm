@@ -603,8 +603,9 @@ The skill writes to the **target project's** `.harness/` directory (cwd-rooted; 
 
 ```bash
 # After the active plan completes (Status: done):
-# 1. Archive the completed plan per the dev-flow convention
-mv .harness/PLAN.md .harness/PLAN.archive.YYYYMMDD-<part-slug>.md
+# 1. Archive the completed plan per the dev-flow convention (archive/, not a flat .harness/ path — Consolidation arc ruling 6)
+mkdir -p .harness/archive
+mv .harness/PLAN.md .harness/archive/PLAN.archive.YYYYMMDD-<part-slug>.md
 
 # 2. Promote the next queued plan to active
 mv .harness/designs/<doc-slug>/queued-plans/<next-part-slug>.PLAN.md .harness/PLAN.md
