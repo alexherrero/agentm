@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "era": "2026-07",
+  "source": "Consolidation arc CONS-3 (Ruling 2 -- the prose restoration): agentm's per-repo overlay, resolved via rule_pack.py's existing --wiki-root scope. Re-declares two shipped rule ids to record a reviewed, honest term-of-art carve-out rather than an implicit one -- severity is unchanged from the shipped pack (both are already suggestion-tier, which never fails --strict), so this file documents a decision, it does not relax the gate.",
+  "rules": [
+    {
+      "id": "voice-a4-load-bearing",
+      "severity": "suggestion",
+      "kind": "word",
+      "pattern": "load-bearing",
+      "hint": "agentm-ratified term-of-art carve-out (CONSOLIDATION-VERDICT.md, Ruling 2, 2026-07-10): this codebase uses \"load-bearing\" precisely to name a real structural dependency (a design's own load-bearing assumption, a gate protecting a live invariant), not AI-tell peacocking. Genuine slop uses of the word still get reworded by the CONS-3 sweep (task 4) -- this carve-out covers the surviving, reviewed technical uses only.",
+      "weight": 1,
+      "source-url": "CONSOLIDATION-VERDICT.md#2-the-prose-restoration",
+      "floor_eligible": true
+    },
+    {
+      "id": "voice-a4-first-class",
+      "severity": "suggestion",
+      "kind": "word",
+      "pattern": "first-class",
+      "hint": "agentm-ratified term-of-art carve-out (CONSOLIDATION-VERDICT.md, Ruling 2, 2026-07-10): this codebase uses \"first-class\" precisely in technical/design prose (a first-class capability, a first-class citizen of a resolver), not AI-tell peacocking. Genuine slop uses of the word still get reworded by the CONS-3 sweep (task 4) -- this carve-out covers the surviving, reviewed technical uses only.",
+      "weight": 1,
+      "source-url": "CONSOLIDATION-VERDICT.md#2-the-prose-restoration",
+      "floor_eligible": true
+    }
+  ]
+}

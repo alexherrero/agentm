@@ -70,7 +70,7 @@ gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
-gate "check-slop (--strict)"                    "$PY" scripts/check-slop.py --strict wiki
+gate "check-slop (--strict)"                    "$PY" scripts/check-slop.py --strict --wiki-root wiki wiki
 gate "verify-v4 (push-surface integration)"    bash scripts/verify-v4.sh
 gate "verify-orchestration-briefing (PM-half · briefing + nudge signals)" bash scripts/verify-orchestration-briefing.sh
 gate "verify-hook-resolution (dual-key vault_path read, 4 hooks)" bash scripts/verify-hook-resolution.sh
