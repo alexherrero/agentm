@@ -45,6 +45,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Why we built it](Explanation) — the problem, the solution and the reason.
 - [Architecture](Architecture) — how it's made.
 - [Reference](Reference) — fields, flags, schemas and more.
+- [What we built, when](Completed-Features) — the combined build timeline for AgentM and crickets, plus the roadmap-era-to-release-tag decoder.
 
 ## 🗂️ Browse by kind
 
