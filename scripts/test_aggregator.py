@@ -93,9 +93,9 @@ class _FakeAnalyzer:
 _ANALYZER = _FakeAnalyzer()
 
 
-def _event(ts, model, cost, *, event="session-cost", plan=None, task=None):
+def _event(ts, model, cost, *, event="session-cost", plan=None, task=None, session_id="s1"):
     return {
-        "ts": ts, "schema_version": 1, "device": "devbox", "session_id": "s1",
+        "ts": ts, "schema_version": 1, "device": "devbox", "session_id": session_id,
         "parent_id": None, "event": event, "model": model,
         "tokens_by_kind": {"input": 0, "cache_write": 0, "cache_read": 0, "output": 0},
         "cost_usd": cost, "tags": {"plan": plan, "task": task, "arc": None, "grade": None},
@@ -150,11 +150,14 @@ class BuildRollupTests(unittest.TestCase):
             aggregator._reset_cache_for_tests()
 
     def test_aggregates_by_plan_task_model(self):
+        # Distinct session_id per event -- this test's intent is "separate
+        # sessions' charges sum correctly by plan/task/model," not the
+        # same-session dedup mechanism (covered by its own test below).
         events = [
-            _event("2026-07-07T10:00:00Z", "claude-sonnet-5", 1.0, plan="p1", task="1"),
-            _event("2026-07-07T10:05:00Z", "claude-sonnet-5", 2.0, plan="p1", task="1"),
-            _event("2026-07-07T10:10:00Z", "claude-opus-4-8", 3.0, plan="p1", task="2"),
-            _event("2026-07-07T10:15:00Z", "claude-opus-4-8", 4.0, plan="p2", task="1"),
+            _event("2026-07-07T10:00:00Z", "claude-sonnet-5", 1.0, plan="p1", task="1", session_id="s1"),
+            _event("2026-07-07T10:05:00Z", "claude-sonnet-5", 2.0, plan="p1", task="1", session_id="s2"),
+            _event("2026-07-07T10:10:00Z", "claude-opus-4-8", 3.0, plan="p1", task="2", session_id="s3"),
+            _event("2026-07-07T10:15:00Z", "claude-opus-4-8", 4.0, plan="p2", task="1", session_id="s4"),
         ]
         with TemporaryDirectory() as td:
             db_path = Path(td) / "rollup.db"
@@ -176,6 +179,52 @@ class BuildRollupTests(unittest.TestCase):
             self.assertEqual(by_model["claude-sonnet-5"][1], 2)
             self.assertAlmostEqual(by_model["claude-opus-4-8"][0], 7.0, places=6)
             self.assertEqual(by_model["claude-opus-4-8"][1], 2)
+
+    def test_repeated_captures_of_the_same_session_dedup_to_latest_not_summed(self):
+        # The Stop hook fires once per turn, not once per session close --
+        # each firing re-emits the CUMULATIVE total-so-far for that
+        # (session_id, model) pair, not a delta. Three captures of the same
+        # long-running session must contribute ONE total (the latest),
+        # never the sum of all three (which would overcount by ~3x).
+        events = [
+            _event("2026-07-07T10:00:00Z", "claude-sonnet-5", 5.0, plan="p1", task="1", session_id="s1"),
+            _event("2026-07-07T11:00:00Z", "claude-sonnet-5", 12.0, plan="p1", task="1", session_id="s1"),
+            _event("2026-07-07T12:00:00Z", "claude-sonnet-5", 20.0, plan="p1", task="1", session_id="s1"),
+        ]
+        with TemporaryDirectory() as td:
+            db_path = Path(td) / "rollup.db"
+            aggregator.build_rollup(events, db_path, analyzer=_ANALYZER)
+            rows = self._query_all(db_path)
+            by_plan = dict((r[0], (r[1], r[2])) for r in rows["by_plan"])
+            by_model = dict((r[0], (r[1], r[2])) for r in rows["by_model"])
+            self.assertAlmostEqual(by_plan["p1"][0], 20.0, places=6)
+            self.assertEqual(by_plan["p1"][1], 1)
+            self.assertAlmostEqual(by_model["claude-sonnet-5"][0], 20.0, places=6)
+            self.assertEqual(by_model["claude-sonnet-5"][1], 1)
+
+    def test_window_attribution_splits_one_sessions_delta_across_windows_it_spanned(self):
+        # A single long session captured 3 times, spanning a window
+        # boundary (>=5h between the first and last capture). Each
+        # window's contribution must be the DELTA incurred during that
+        # window, not the session's whole cumulative total dumped into
+        # whichever window the last capture happened to land in.
+        events = [
+            _event("2026-07-07T00:00:00Z", "a", 3.0, session_id="s1"),   # window 1: +3.0
+            _event("2026-07-07T02:00:00Z", "a", 7.0, session_id="s1"),   # window 1: +4.0 more (total 7.0)
+            _event("2026-07-07T06:00:00Z", "a", 9.0, session_id="s1"),   # window 2: +2.0 (7.0 -> 9.0)
+        ]
+        with TemporaryDirectory() as td:
+            db_path = Path(td) / "rollup.db"
+            aggregator.build_rollup(events, db_path, analyzer=_ANALYZER)
+            rows = self._query_all(db_path)
+            self.assertEqual(len(rows["by_window"]), 2)
+            first_window, second_window = rows["by_window"]
+            self.assertAlmostEqual(first_window[1], 7.0, places=6)  # 3.0 + 4.0
+            self.assertAlmostEqual(second_window[1], 2.0, places=6)  # 9.0 - 7.0
+            # by_model still reflects the correct grand total (the latest capture).
+            by_model = dict((r[0], (r[1], r[2])) for r in rows["by_model"])
+            self.assertAlmostEqual(by_model["a"][0], 9.0, places=6)
+            self.assertEqual(by_model["a"][1], 1)
 
     def test_events_with_no_plan_tag_skip_by_plan_and_by_task_but_count_in_by_model(self):
         events = [_event("2026-07-07T10:00:00Z", "claude-sonnet-5", 1.0, plan=None, task=None)]
@@ -201,10 +250,14 @@ class BuildRollupTests(unittest.TestCase):
             self.assertEqual(by_plan["p1"][1], 1)
 
     def test_windows_bucket_across_five_hours(self):
+        # Distinct session_id per event -- this test's intent is "events at
+        # different timestamps bucket into windows correctly," independent
+        # of the same-session delta-attribution mechanism (covered by its
+        # own test below).
         events = [
-            _event("2026-07-07T00:00:00Z", "a", 1.0),
-            _event("2026-07-07T02:00:00Z", "a", 1.0),   # same window
-            _event("2026-07-07T06:00:00Z", "a", 1.0),   # new window (>=5h later)
+            _event("2026-07-07T00:00:00Z", "a", 1.0, session_id="s1"),
+            _event("2026-07-07T02:00:00Z", "a", 1.0, session_id="s2"),   # same window
+            _event("2026-07-07T06:00:00Z", "a", 1.0, session_id="s3"),   # new window (>=5h later)
         ]
         with TemporaryDirectory() as td:
             db_path = Path(td) / "rollup.db"
@@ -293,10 +346,13 @@ class RealCricketsBridgeTests(unittest.TestCase):
         aggregator._reset_cache_for_tests()
 
     def test_real_analyzer_windows_match_hand_computed_sums(self):
+        # Distinct session_id per event -- proves window bucketing against
+        # the real crickets analyzer, independent of the same-session
+        # delta-attribution mechanism (covered separately in BuildRollupTests).
         events = [
-            _event("2026-07-07T00:00:00Z", "claude-sonnet-5", 1.0, plan="p1", task="1"),
-            _event("2026-07-07T02:00:00Z", "claude-sonnet-5", 1.5, plan="p1", task="1"),
-            _event("2026-07-07T06:00:00Z", "claude-opus-4-8", 3.0, plan="p1", task="2"),
+            _event("2026-07-07T00:00:00Z", "claude-sonnet-5", 1.0, plan="p1", task="1", session_id="s1"),
+            _event("2026-07-07T02:00:00Z", "claude-sonnet-5", 1.5, plan="p1", task="1", session_id="s2"),
+            _event("2026-07-07T06:00:00Z", "claude-opus-4-8", 3.0, plan="p1", task="2", session_id="s3"),
         ]
         with TemporaryDirectory() as td:
             db_path = Path(td) / "rollup.db"
