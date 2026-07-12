@@ -6,14 +6,27 @@
 import pattern as `test_dream.py` / `test_dream_confirm.py` /
 `test_watchlist_review.py`).
 
-Covers the operator's own 2026-07-11 verification list:
+Covers the operator's original 2026-07-11 verification list, PLUS the
+second-pass confirm-gate retirement (also 2026-07-11 -- the operator
+personally confirmed the entire 635-proposal/1,565-entry first-run
+backlog with zero errors, then ruled "moving forward no need to confirm
+gate the inbox"):
   - the cutover-marker logic correctly classifies pre-existing vs.
-    post-cutover entries (`CutoverMarkerTests`)
-  - the first pass over a fixture backlog never auto-applies anything,
-    regardless of disposition (`FirstPassNeverAutoAppliesTests`)
-  - a post-cutover entry's expire proposal DOES auto-apply after its TTL,
-    while promote/merge proposals on OTHER post-cutover entries do NOT
-    (`PostCutoverAutoApplyTests`)
+    post-cutover entries -- still real, now purely informational
+    (`CutoverMarkerTests`)
+  - a mixed-disposition first pass over a fixture backlog now auto-applies
+    EVERY proposal, fully revertible (`BacklogAutoAppliesByDefaultTests`,
+    supersedes the old confirm-gated-first-pass test)
+  - promote- and merge-eligible dispositions on pre-existing-backlog-shaped
+    entries (no `created` field) auto-apply without confirmation
+    (`BacklogPromoteAndMergeAutoApplyTests`)
+  - post-cutover expire, promote, and merge proposals ALL auto-apply
+    together in the same run -- no sibling proposal is left pending on
+    account of its disposition (`PostCutoverAutoApplyTests`)
+  - the 255-survivor scenario: a no-`created` entry left at `status: inbox`
+    from a prior run (the "kept" side of an earlier merge) gets triaged
+    and auto-applied on a later run instead of staying stuck forever
+    (`SurvivorRetriageTests`)
   - promote reuses the real curated-destination convention
     (`save._build_frontmatter` / `save.save_entry()`'s path+frontmatter
     shape) (`PromoteReusesCanonicalConventionTests`)
@@ -21,6 +34,10 @@ Covers the operator's own 2026-07-11 verification list:
     same threshold, same merge shape) (`MergeReusesDedupLogicTests`)
   - the CLI's staging/confirm/revert flow round-trips correctly, and the
     reject path stops a re-proposal on the next scan (`ReviewFlowTests`)
+  - the manual `--list` / `--confirm` / `--reject` CLI paths still work
+    for inspecting or intervening on a specific proposal by hand, and
+    `--no-auto-apply` still proposes without applying anything
+    (`ManualCliPathsTests`)
 """
 from __future__ import annotations
 
@@ -30,6 +47,7 @@ import sys
 import tempfile
 import time
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -128,14 +146,19 @@ class CutoverMarkerTests(_InboxTriageTestBase):
 
 
 # -----------------------------------------------------------------------------
-# First pass over the backlog never auto-applies anything
+# A mixed-disposition first pass auto-applies everything (2026-07-11,
+# second pass -- supersedes the old confirm-gated-first-pass contract:
+# the operator personally confirmed the entire first-run backlog with zero
+# errors, then retired the confirm-gate going forward).
 # -----------------------------------------------------------------------------
 
-class FirstPassNeverAutoAppliesTests(_InboxTriageTestBase):
-    def test_first_pass_stages_every_disposition_but_auto_applies_none(self) -> None:
+class BacklogAutoAppliesByDefaultTests(_InboxTriageTestBase):
+    def test_first_pass_over_a_mixed_backlog_auto_applies_every_disposition(self) -> None:
         # A merge pair, an occurrence-reinforced promote candidate, and a
         # stale unreinforced entry -- one of each disposition, all with no
-        # `created` field (the real legacy-backlog shape).
+        # `created` field (the real legacy-backlog shape). Under the
+        # retired confirm-gate, ALL of these used to stay pending forever;
+        # now they all auto-apply, fully revertible.
         self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
         self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
         self._write_inbox("c", kind="preferences", occurrences=5, body="Always use tabs not spaces.")
@@ -147,25 +170,47 @@ class FirstPassNeverAutoAppliesTests(_InboxTriageTestBase):
         )
 
         self.assertGreaterEqual(len(digest.proposals), 3)
-        self.assertEqual(batch.items, [], "the very first run must never auto-apply anything")
+        self.assertEqual(
+            len(batch.items), len(digest.proposals),
+            "confirm-gating is retired -- every proposal this run must auto-apply, first pass included",
+        )
 
         pending = dc.list_pending(self.vault, digest.run_id)
         self.assertTrue(pending, "every proposal must exist")
         for p in pending:
-            self.assertEqual(p.status, "pending", f"proposal #{p.index} ({p.stage}) must stay pending on the first pass")
+            self.assertEqual(p.status, "confirmed", f"proposal #{p.index} ({p.stage}) must have auto-applied")
 
-        # Every proposal this run staged under the backlog-only stage, or
-        # a stage that never auto-applies regardless of age.
-        stages = {p.stage for p in digest.proposals}
-        self.assertNotIn(it.AUTO_APPLY_ELIGIBLE_STAGE, stages, "no entry here has a created field, so nothing is post-cutover")
+        # Every disposition this pipeline proposes is represented, and all
+        # of them -- including the backlog-era expire stage, which never
+        # used to auto-apply -- are in the applied set.
+        applied_stages = {item["stage"] for item in batch.items}
+        self.assertIn(it.MERGE_STAGE, applied_stages)
+        self.assertIn(it.PROMOTE_STAGE, applied_stages)
+        self.assertIn(
+            it.BACKLOG_EXPIRE_STAGE, applied_stages,
+            "no entry here has a created field, so its expire proposal stages as backlog -- and must still auto-apply",
+        )
+
+        # Every applied mutation is still fully revertible, individually,
+        # via the same RevertLog instance -- reversibility is unchanged,
+        # only the gate in front of it is gone.
+        for item in batch.items:
+            self.revert_log.revert(digest.run_id, item["entry_id"])
+        for slug in ("a", "b", "c", "d"):
+            self.assertEqual(
+                self._status(self._inbox_dir() / f"{slug}.md"), "inbox",
+                "revert must restore every entry's original status",
+            )
 
 
 # -----------------------------------------------------------------------------
-# Post-cutover: expire auto-applies, promote/merge on other entries do not
+# Post-cutover: expire, promote, and merge ALL auto-apply together now --
+# no sibling proposal is left pending on account of its disposition
+# (2026-07-11, second pass).
 # -----------------------------------------------------------------------------
 
 class PostCutoverAutoApplyTests(_InboxTriageTestBase):
-    def test_expire_auto_applies_while_sibling_promote_and_merge_stay_pending(self) -> None:
+    def test_expire_promote_and_merge_all_auto_apply_together(self) -> None:
         now0 = time.time()
         cutover_at = it.ensure_cutover_marker(self.vault, now=now0)
         self.assertIsNotNone(cutover_at)
@@ -195,19 +240,31 @@ class PostCutoverAutoApplyTests(_InboxTriageTestBase):
         self.assertIn(it.MERGE_STAGE, by_stage)
         self.assertIn(it.PROMOTE_STAGE, by_stage)
 
-        # Exactly the expire proposal auto-applied.
+        # All three dispositions auto-applied together -- disposition kind
+        # (and the entry's cutover era) no longer decides eligibility.
         applied_stages = {item["stage"] for item in batch.items}
-        self.assertEqual(applied_stages, {it.AUTO_APPLY_ELIGIBLE_STAGE})
+        self.assertEqual(applied_stages, {it.AUTO_APPLY_ELIGIBLE_STAGE, it.MERGE_STAGE, it.PROMOTE_STAGE})
+        self.assertEqual(len(batch.items), len(digest.proposals))
         self.assertEqual(self._status(self._inbox_dir() / "stale.md"), "expired")
+        # dream._stage_dedup's merge mutation: the hub (dup1, alphabetically
+        # first) keeps `status: inbox` in its own frontmatter -- only its
+        # body changes to absorb dup2's content; dup2 (the match) is the
+        # one that gets patched `status: superseded`.
+        self.assertEqual(self._status(self._inbox_dir() / "dup2.md"), "superseded")
+        dup1_body = (self._inbox_dir() / "dup1.md").read_text(encoding="utf-8")
+        self.assertIn("merge testing purposes today!", dup1_body, "the merge mutation must have applied (body absorbed dup2's content)")
+        self.assertEqual(self._status(self._inbox_dir() / "reinforced.md"), "promoted")
 
-        # Merge + promote proposals on the OTHER post-cutover entries stay pending.
-        pending_by_stage = {p.stage: p.status for p in dc.list_pending(self.vault, digest.run_id)}
-        self.assertEqual(pending_by_stage[it.MERGE_STAGE], "pending")
-        self.assertEqual(pending_by_stage[it.PROMOTE_STAGE], "pending")
-        self.assertEqual(self._status(self._inbox_dir() / "dup1.md"), "inbox")
-        self.assertEqual(self._status(self._inbox_dir() / "reinforced.md"), "inbox")
+        # Nothing is left pending.
+        pending = dc.list_pending(self.vault, digest.run_id)
+        for p in pending:
+            self.assertEqual(p.status, "confirmed")
 
-    def test_backlog_expire_never_auto_applies_even_past_ttl(self) -> None:
+    def test_backlog_expire_now_auto_applies_past_ttl_too(self) -> None:
+        # Supersedes the old "backlog expire never auto-applies" contract:
+        # a pre-existing-backlog-shaped entry (no `created` field) is
+        # exactly the shape the operator's second ruling targeted --
+        # it must auto-apply now, not stay confirm-gated forever.
         now0 = time.time()
         it.ensure_cutover_marker(self.vault, now=now0)
         self._write_inbox("old", body="No created field at all -- pre-existing backlog.")
@@ -216,10 +273,11 @@ class PostCutoverAutoApplyTests(_InboxTriageTestBase):
         digest, batch = it.run_inbox_triage_and_auto_apply(
             self.vault, now=now1, revert_log=self.revert_log, lock_root=self.lock_root,
         )
-        self.assertEqual(batch.items, [])
         stages = {p.stage for p in digest.proposals}
         self.assertIn(it.BACKLOG_EXPIRE_STAGE, stages)
-        self.assertNotIn(it.AUTO_APPLY_ELIGIBLE_STAGE, stages)
+        applied_stages = {item["stage"] for item in batch.items}
+        self.assertIn(it.BACKLOG_EXPIRE_STAGE, applied_stages, "backlog-era expire must auto-apply under the retired confirm-gate")
+        self.assertEqual(self._status(self._inbox_dir() / "old.md"), "expired")
 
 
 # -----------------------------------------------------------------------------
@@ -324,6 +382,85 @@ class MergeReusesDedupLogicTests(_InboxTriageTestBase):
 
 
 # -----------------------------------------------------------------------------
+# Pre-existing-backlog-shaped promote/merge candidates auto-apply too
+# (2026-07-11, second pass) -- the operator's ruling is explicit that this
+# is NOT limited to expire: "moving forward no need to confirm gate the
+# inbox" retires the gate for every disposition, on every entry, backlog
+# era included.
+# -----------------------------------------------------------------------------
+
+class BacklogPromoteAndMergeAutoApplyTests(_InboxTriageTestBase):
+    def test_backlog_shaped_promote_candidate_auto_applies_without_confirmation(self) -> None:
+        # No `created` field -- the real legacy-backlog shape.
+        self._write_inbox("h", kind="workflow", occurrences=4, body="Always run tests before pushing.")
+        digest, batch = it.run_inbox_triage_and_auto_apply(
+            self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        self.assertEqual(len(digest.proposals), 1)
+        self.assertEqual(digest.proposals[0].stage, it.PROMOTE_STAGE)
+        self.assertEqual(len(batch.items), 1, "a backlog-shaped promote candidate must auto-apply, no confirm call")
+
+        canonical = self.vault / "personal" / "workflow" / "h.md"
+        self.assertTrue(canonical.exists(), "promote must have applied with zero operator action")
+        self.assertEqual(self._status(self._inbox_dir() / "h.md"), "promoted")
+
+    def test_backlog_shaped_merge_pair_auto_applies_without_confirmation(self) -> None:
+        # No `created` field on either side of the pair.
+        self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
+        self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
+        digest, batch = it.run_inbox_triage_and_auto_apply(
+            self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        merges = [p for p in digest.proposals if p.stage == it.MERGE_STAGE]
+        self.assertEqual(len(merges), 1)
+        self.assertEqual(len(batch.items), 1, "a backlog-shaped merge pair must auto-apply, no confirm call")
+        self.assertEqual(batch.items[0]["stage"], it.MERGE_STAGE)
+        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "superseded")
+
+
+# -----------------------------------------------------------------------------
+# The 255-survivor scenario: an entry left at `status: inbox` by a PRIOR
+# run (the "kept" side of an earlier merge, never itself given a
+# disposition) must be triaged and auto-applied on a LATER run, not stuck
+# forever the way the retired confirm-gate would have left it.
+# -----------------------------------------------------------------------------
+
+class SurvivorRetriageTests(_InboxTriageTestBase):
+    def test_a_previously_kept_merge_survivor_gets_triaged_and_auto_applied_on_a_later_run(self) -> None:
+        # Simulate the 255-survivor shape from the real first supervised
+        # pass: an entry with no `created` field (pre-existing-backlog
+        # shaped) that was never itself resolved by an earlier run --
+        # exactly like the survivor side of a confirmed merge cluster,
+        # still sitting at `status: inbox`.
+        self._write_inbox("survivor", body="A hunch that survived an earlier merge round, untouched since.")
+
+        now0 = time.time()
+        digest, batch = it.run_inbox_triage_and_auto_apply(
+            self.vault, now=now0, revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        # Alone in the pool, unreinforced, no `created` field -- it's
+        # proposed for expire under the backlog era label.
+        self.assertEqual(len(digest.proposals), 1)
+        self.assertEqual(digest.proposals[0].stage, it.BACKLOG_EXPIRE_STAGE)
+        self.assertEqual(
+            len(batch.items), 1,
+            "the survivor must be triaged and auto-applied on this run, not left stuck forever",
+        )
+        self.assertEqual(self._status(self._inbox_dir() / "survivor.md"), "expired")
+
+        # A SECOND survivor written after the first run resolved -- proves
+        # this isn't a one-shot fluke; every subsequent run keeps clearing
+        # the backlog the same way.
+        self._write_inbox("survivor-2", body="A second hunch, same shape, arriving later.")
+        digest2, batch2 = it.run_inbox_triage_and_auto_apply(
+            self.vault, run_id="second-run", now=now0 + 1, revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        self.assertEqual(len(digest2.proposals), 1)
+        self.assertEqual(len(batch2.items), 1)
+        self.assertEqual(self._status(self._inbox_dir() / "survivor-2.md"), "expired")
+
+
+# -----------------------------------------------------------------------------
 # The review CLI's staging/confirm/revert/reject flow round-trips
 # -----------------------------------------------------------------------------
 
@@ -397,6 +534,122 @@ class ReviewFlowTests(_InboxTriageTestBase):
         stdin2 = _TTYStringIO("c\n")
         stats2 = it.review_inbox_triage(self.vault, "run-2-stale", self.revert_log, stdin=stdin2, stdout=io.StringIO())
         self.assertEqual(stats2["total"], 0, "a proposal whose path is no longer status: inbox must never be re-offered")
+
+
+# -----------------------------------------------------------------------------
+# `--no-auto-apply` still proposes without applying anything -- the
+# explicit opt-out for someone who wants to inspect proposals before they
+# apply, still correct against the new auto-apply-by-default contract.
+# -----------------------------------------------------------------------------
+
+class NoAutoApplyStillProposesOnlyTests(_InboxTriageTestBase):
+    def test_no_auto_apply_flag_proposes_without_applying_any_disposition(self) -> None:
+        self._write_inbox("h", kind="workflow", occurrences=4, body="Always run tests before pushing.")
+        self._write_inbox("z", body="An unreinforced hunch, far past any TTL.")
+
+        rc = it.main([
+            "--vault-path", str(self.vault), "--no-auto-apply", "--non-interactive",
+            "--log-root", str(self.log_root), "--lock-root", str(self.lock_root),
+        ])
+        self.assertEqual(rc, 0)
+
+        run_id = it._most_recent_run_id(self.vault)
+        self.assertIsNotNone(run_id)
+        pending = dc.list_pending(self.vault, run_id)
+        self.assertTrue(pending)
+        for p in pending:
+            self.assertEqual(p.status, "pending", "--no-auto-apply must leave every proposal pending")
+
+        # Nothing applied -- neither the promote nor the expire mutation.
+        self.assertFalse((self.vault / "personal" / "workflow" / "h.md").exists())
+        self.assertEqual(self._status(self._inbox_dir() / "h.md"), "inbox")
+        self.assertEqual(self._status(self._inbox_dir() / "z.md"), "inbox")
+
+        digest_text = (self.vault / "_dream-staging" / run_id / "digest.md").read_text(encoding="utf-8")
+        self.assertNotIn("AUTO-APPLIED", digest_text)
+
+
+# -----------------------------------------------------------------------------
+# The manual `--list` / `--confirm` / `--reject` CLI paths -- kept working
+# on purpose (per the operator's brief: someone might still want to
+# inspect or intervene on a specific proposal by hand later).
+# -----------------------------------------------------------------------------
+
+class ManualCliPathsTests(_InboxTriageTestBase):
+    def test_list_confirm_reject_round_trip_via_the_cli(self) -> None:
+        self._write_inbox("h", kind="workflow", occurrences=4, body="Always run tests before pushing.")
+        self._write_inbox("z", body="An unreinforced hunch, far past any TTL.")
+
+        # Scan only (--no-auto-apply) so both proposals are still pending
+        # for the manual paths to act on.
+        rc = it.main([
+            "--vault-path", str(self.vault), "--no-auto-apply", "--non-interactive",
+            "--log-root", str(self.log_root), "--lock-root", str(self.lock_root),
+        ])
+        self.assertEqual(rc, 0)
+        run_id = it._most_recent_run_id(self.vault)
+        self.assertIsNotNone(run_id)
+
+        # --list: scriptable JSON dump of pending proposals, no prompts.
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = it.main(["--vault-path", str(self.vault), "--list", "--run-id", run_id])
+        self.assertEqual(rc, 0)
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(len(payload), 2)
+        self.assertTrue(all(p["status"] == "pending" for p in payload))
+
+        # --confirm one proposal directly.
+        confirm_entry = next(p for p in payload if p["stage"] == it.PROMOTE_STAGE)
+        buf_confirm = io.StringIO()
+        with redirect_stdout(buf_confirm):
+            rc = it.main([
+                "--vault-path", str(self.vault), "--confirm", str(confirm_entry["index"]), "--run-id", run_id,
+                "--log-root", str(self.log_root), "--lock-root", str(self.lock_root),
+            ])
+        self.assertEqual(rc, 0)
+        confirm_result = json.loads(buf_confirm.getvalue())
+        self.assertEqual(confirm_result["action"], "confirmed")
+        self.assertTrue((self.vault / "personal" / "workflow" / "h.md").exists())
+
+        # --reject the other proposal directly.
+        reject_entry = next(p for p in payload if p["stage"] != it.PROMOTE_STAGE)
+        buf_reject = io.StringIO()
+        with redirect_stdout(buf_reject):
+            rc = it.main([
+                "--vault-path", str(self.vault), "--reject", str(reject_entry["index"]), "--run-id", run_id,
+                "--log-root", str(self.log_root), "--lock-root", str(self.lock_root),
+            ])
+        self.assertEqual(rc, 0)
+        reject_result = json.loads(buf_reject.getvalue())
+        self.assertEqual(reject_result["action"], "rejected")
+        self.assertEqual(self._status(self._inbox_dir() / "z.md"), "triage_rejected")
+
+        # A subsequent --list against the same run reflects both resolutions.
+        buf2 = io.StringIO()
+        with redirect_stdout(buf2):
+            rc = it.main(["--vault-path", str(self.vault), "--list", "--run-id", run_id])
+        self.assertEqual(rc, 0)
+        payload2 = json.loads(buf2.getvalue())
+        statuses = {p["index"]: p["status"] for p in payload2}
+        self.assertEqual(statuses[confirm_entry["index"]], "confirmed")
+        # The rejected proposal's own manifest entry status is unaffected
+        # by --reject (reject is a direct frontmatter patch outside
+        # dream_confirm's state machine) -- what changed is the SOURCE
+        # entry's frontmatter, asserted above.
+
+    def test_confirm_and_reject_require_run_id(self) -> None:
+        buf = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(buf):
+            rc = it.main(["--vault-path", str(self.vault), "--confirm", "1"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--confirm requires --run-id", buf.getvalue())
+
+        buf2 = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(buf2):
+            rc = it.main(["--vault-path", str(self.vault), "--reject", "1"])
+        self.assertEqual(rc, 1)
+        self.assertIn("--reject requires --run-id", buf2.getvalue())
 
 
 if __name__ == "__main__":
