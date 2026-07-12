@@ -280,6 +280,16 @@ def _utcnow_iso(now: float | None = None) -> str:
     return datetime.fromtimestamp(now, tz=timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _rel(path: Path, vault_path: Path) -> str:
+    """Vault-relative path as a forward-slash string, regardless of host
+    OS -- `Path.relative_to()` alone renders backslash-separated on
+    Windows, which would leak into frontmatter values (`derived_from`,
+    `promoted_to`) and digest prose as a platform-dependent string. Mirrors
+    `save.py`'s own `str(target.relative_to(vault)).replace(os.sep, "/")`
+    convention for its vec-index enqueue path."""
+    return str(Path(path).relative_to(vault_path)).replace(os.sep, "/")
+
+
 # -----------------------------------------------------------------------------
 # Minimal frontmatter helpers -- same per-module idiom `dream.py` documents
 # ("not centralized anywhere in this codebase today, so this module follows
@@ -412,7 +422,7 @@ def _build_promote_proposal(vault_path: Path, cluster_paths: list, loaded: dict,
     # instrumentation.
     clean_body = body.split("\n## Mining metadata", 1)[0].rstrip("\n") + "\n"
 
-    derived_from = sorted(str(p.relative_to(vault_path)) for p in cluster_paths)
+    derived_from = sorted(_rel(p, vault_path) for p in cluster_paths)
     fm_block = save_module._build_frontmatter(
         kind=kind, group="personal", slug=slug, tags=[], always_load=False,
         supersedes=None, derived_from=derived_from,
@@ -425,7 +435,7 @@ def _build_promote_proposal(vault_path: Path, cluster_paths: list, loaded: dict,
         _p_fm, _p_body, p_raw = loaded[p]
         patched = _patch_frontmatter(p_raw, {
             "status": "promoted",
-            "promoted_to": str(canonical_path.relative_to(vault_path)),
+            "promoted_to": _rel(canonical_path, vault_path),
             "promoted_at": now_iso,
         })
         mutations.append((p, patched))
@@ -433,7 +443,7 @@ def _build_promote_proposal(vault_path: Path, cluster_paths: list, loaded: dict,
     plural = "y" if len(cluster_paths) == 1 else "ies"
     summary = (
         f"{len(cluster_paths)} inbox entr{plural} ({reason}) -- propose promote to "
-        f"{canonical_path.relative_to(vault_path)}"
+        f"{_rel(canonical_path, vault_path)}"
     )
     return Proposal(
         stage=PROMOTE_STAGE, kind="promote",
@@ -497,7 +507,7 @@ def _build_expire_proposal(vault_path: Path, path: Path, fm: dict, raw: str, *,
     is_backlog = _is_pre_existing_backlog(fm, cutover_at)
     stage = BACKLOG_EXPIRE_STAGE if is_backlog else AUTO_APPLY_ELIGIBLE_STAGE
     patched = _patch_frontmatter(raw, {"status": "expired", "expired_at": _utcnow_iso(now)})
-    rel = path.relative_to(vault_path)
+    rel = _rel(path, vault_path)
     era = "pre-existing backlog -- confirm-gated" if is_backlog else "created after the triage cutover -- auto-apply eligible"
     summary = f"{rel} untouched past {ttl_days:.0f}d TTL ({era}) -- propose archival"
     return Proposal(stage=stage, kind="archive", paths=[str(path)], summary=summary, mutations=[(path, patched)])
