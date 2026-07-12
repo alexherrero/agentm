@@ -79,6 +79,11 @@ Then:
 
    Also confirm bash-installed commands are bash-shell (not pwsh). The pre-V4 #39 behavior — treating an absent `hooks` block as "opt-in, OK" — was a **false-clean**: it masked the exact regression where hook dirs were installed but never registered.
 
+7. **Machinery integrity (Consolidation follow-ups batch).** Shell out to `python3 <agentm-repo>/scripts/machinery_doctor.py` (only meaningful inside an agentm dev checkout — `[SKIP] not an agentm dev checkout` otherwise). This asks a different question than the checks above: not "is agentm's harness distribution installed," but "is THIS repo's own dev-loop machinery — its Stop hook, its scheduled runner jobs, its cross-repo bridges — actually wired on this machine right now," the exact class of gap that let the session-cost-capture hook and crickets' cross-review Gemini fallback sit merged-but-never-installed / silently-degraded for weeks. Report the script's own summary line (`N OK, N WARN, N FAIL, N UNVERIFIED`) plus every non-OK row verbatim:
+   - `[WARN]` rows (an optional git hook not installed, a shipped job template not yet registered) never escalate to FAIL — expected on a fresh clone.
+   - `[FAIL]` rows are real: e.g. `.claude/settings.json`'s `Stop` block no longer references `session-cost-capture.sh`, or does but the script file went missing.
+   - `[UNVERIFIED]` rows (with an `owner:`) mean this repo alone can't confirm a cross-repo piece (no crickets sibling reachable) — surface plainly, never drop.
+
 Report a pass/fail table. Exit here unless `--live` was passed.
 
 ## `--live` probes
@@ -166,6 +171,7 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
     storage           [OK]  selected backend 'vault' (existing vault_path) — registered; seeded from <vault>
     host wiring       [OK]  AGENTS.md + CLAUDE.md
     hooks             [OK]  6 hooks wired (memory-recall-session-start, harness-context-session-start, …)
+    machinery         [OK]  3 OK, 12 WARN, 0 FAIL, 0 UNVERIFIED (python3 scripts/machinery_doctor.py)
 
   live probes (--live):
     explorer          [SKIP] crickets developer-workflows not installed

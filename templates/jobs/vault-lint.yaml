@@ -1,0 +1,57 @@
+# vault-lint.yaml — the MemoryVault lint's scheduled job manifest
+# (Consolidation follow-ups batch, machinery-integrity lane, piece 1).
+#
+# vault_lint.py (harness/skills/memory/scripts/vault_lint.py, V4 #33) has
+# shipped its `--audit` report mode since that plan's task 2, but nothing
+# ever registered it as an actual scheduled job — it has only ever been run
+# by hand. This is the first registration.
+#
+# Per agentm-runner.md's job-manifest contract — the as-built schema is
+# scripts/runner/manifest.py, which this file follows. .harness/jobs/ is
+# gitignored (per-project runtime state, same as every other .harness/*
+# file), so this templates/ copy is the tracked, shipped source. Register it
+# by copying to .harness/jobs/vault-lint.yaml in a repo that runs the agentm
+# runner (scripts/agentm-runner.sh). No capability has an install-time
+# auto-seeding step for runner jobs yet — wiring install.sh is a separate,
+# not-yet-decided follow-up, same as every sibling template.
+#
+# Cadence: "weekly" — a lint audit over the whole vault is a low-urgency,
+# operator-review surface (the same shape as a dependency audit), not a
+# time-sensitive detector; weekly matches the cadence dream.yaml settled on
+# for its own whole-corpus pass, and keeps the audit report's date-stamped
+# filename (`_meta/vault-lint-<date>.md`) from accumulating a new file every
+# day for a report nobody reads that often.
+schedule: weekly
+lookback: 7d
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention,
+# same as every sibling template). `--audit` writes the grouped
+# operator-review report to vault_lint.py's own default path
+# (`<vault>/_meta/vault-lint-<date>.md`, via `default_report_path`) — no
+# `--out` override needed here. Relies on `MEMORY_VAULT_PATH` already being
+# set in the runner's own environment, same as every other vault-reading
+# script in this repo (see dream.yaml's own note).
+command: python3 ../harness/skills/memory/scripts/vault_lint.py --audit
+
+# The audit report lands under `_meta/` — a dated, always-advisory operator
+# read (findings + suggested fixes, nothing auto-applied), the same shape
+# docs-drift.yaml's drift candidates take. That's T2 (operator-curated
+# surface), not T3: the report is something an operator reviews, not new
+# agent-authored memory content.
+tier: T2
+
+# Judgment call (documented, not silent): unlike docs-drift.yaml and
+# dream.yaml — which both stay `dry_run: true` pending a future,
+# separately-decided operator promotion — this ships `dry_run: false`
+# (live) in the same change that registers it. vault_lint.py's own
+# docstring is explicit that the tool "is strictly read-only — it never
+# writes to a memory entry or mutates the vault" and its `--audit` mode's
+# only side effect is (re)writing one dated markdown file under `_meta/`,
+# always fully overwritten, never incremental — there is no calibration
+# window to sit through the way dream.py's auto-apply mutations or
+# docs-drift's PR-adjacent reporting need one. `scripts/test_vault_lint_job.py`
+# exercises the exact registered command end-to-end against a fixture vault
+# (mirroring test_dream_job.py's live-cycle proof) to confirm it runs clean
+# before this shipped as live rather than merely asserting the manifest
+# parses.
+dry_run: false
