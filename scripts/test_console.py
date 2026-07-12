@@ -1,20 +1,25 @@
 #!/usr/bin/env python3
 """Unit tests for harness/skills/console/scripts/console.py (CONS-7,
-Consolidation arc Wave 2 -- CONSOLIDATION-VERDICT.md Ruling 7).
+Consolidation arc Wave 2 -- CONSOLIDATION-VERDICT.md Ruling 7; extended by
+the Consolidation follow-ups batch's machinery-integrity lane, pieces 3-5).
 
 Covers: repo/vault resolution, each section's graceful-degradation path
 (injected fake subprocess runner -- never a real network/subprocess call),
 the memory-activity helpers against a hermetic tmp-vault fixture (exercised
 against the REAL heat_policy.py / watchlist_review.py sibling modules --
 no fakes needed there, since those are pure-stdlib and already hermetic),
-and the terminal/HTML renderers.
+the machinery/vault-doctor/vault-lint/dreaming freshness sections (each
+exercised live/dark/last-fired), the rich-view-link footer, and the
+terminal/HTML renderers.
 
 Run: python3 scripts/test_console.py
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -74,8 +79,42 @@ class SectionDegradationTests(unittest.TestCase):
         self.assertIn("no scorecard history", out)
 
     def test_health_success_passes_through_stdout(self):
+        # /fake has no scripts/health/history.jsonl -- the freshness line
+        # degrades to "unknown" rather than being silently omitted (this is
+        # the honest-dark contract this section grew in piece 3a).
         out = c.section_health(Path("/fake"), runner=_fake_runner(returncode=0, stdout="Health Index: 88.00\n"))
-        self.assertEqual(out, "Health Index: 88.00")
+        self.assertIn("Health Index: 88.00", out)
+        self.assertIn("Last nightly run: unknown", out)
+
+    def test_health_appends_last_run_freshness_from_history_jsonl(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            health_dir = repo_root / "scripts" / "health"
+            health_dir.mkdir(parents=True)
+            now = time.time()
+            row = {"ts": now - 3600, "health_index": 88.0}
+            (health_dir / "history.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+            out = c.section_health(
+                repo_root, runner=_fake_runner(returncode=0, stdout="Health Index: 88.00\n"), now=now
+            )
+            self.assertIn("Health Index: 88.00", out)
+            self.assertIn("Last nightly run:", out)
+            self.assertIn("ago)", out)
+            self.assertNotIn("unknown", out)
+
+    def test_read_health_history_ts_picks_last_row(self):
+        with tempfile.TemporaryDirectory() as td:
+            repo_root = Path(td)
+            health_dir = repo_root / "scripts" / "health"
+            health_dir.mkdir(parents=True)
+            (health_dir / "history.jsonl").write_text(
+                json.dumps({"ts": 1000}) + "\n" + json.dumps({"ts": 2000}) + "\n", encoding="utf-8"
+            )
+            self.assertEqual(c._read_health_history_ts(repo_root), 2000.0)
+
+    def test_read_health_history_ts_none_when_absent(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertIsNone(c._read_health_history_ts(Path(td)))
 
     def test_plans_none_repo_root(self):
         self.assertIn("n/a", c.section_plans(None))
@@ -103,6 +142,30 @@ class SectionDegradationTests(unittest.TestCase):
 
     def test_memory_none_vault(self):
         self.assertIn("n/a", c.section_memory(None))
+
+    def test_machinery_none_repo_root(self):
+        self.assertIn("n/a", c.section_machinery(None))
+
+    def test_machinery_runner_missing_script(self):
+        out = c.section_machinery(Path("/nonexistent"), runner=_raising_runner(FileNotFoundError("no such file")))
+        self.assertIn("n/a", out)
+
+    def test_machinery_unparseable_output(self):
+        out = c.section_machinery(Path("/fake"), runner=_fake_runner(returncode=0, stdout="not json"))
+        self.assertIn("n/a", out)
+
+    def test_vault_doctor_no_crickets_sibling(self):
+        import os
+        old = os.environ.get("CRICKETS_SCRIPTS_DIR")
+        os.environ["CRICKETS_SCRIPTS_DIR"] = "/definitely/not/a/real/path"
+        try:
+            out = c.section_vault_doctor(None)
+            self.assertIn("n/a", out)
+        finally:
+            if old is None:
+                os.environ.pop("CRICKETS_SCRIPTS_DIR", None)
+            else:
+                os.environ["CRICKETS_SCRIPTS_DIR"] = old
 
 
 class MemoryActivityTests(unittest.TestCase):
@@ -165,6 +228,198 @@ class MemoryActivityTests(unittest.TestCase):
         self.assertIn("0 entries", out)
 
 
+class MachinerySectionTests(unittest.TestCase):
+    """`section_machinery` composes over `machinery_doctor.py --format json`
+    -- exercised with a fake runner returning canned JSON, never a real
+    subprocess call."""
+
+    def _payload(self, **overrides):
+        base = {
+            "checks": [
+                {"name": "stop-hook:x.sh", "status": "OK", "detail": "wired", "last_fired": None, "owner": None},
+            ],
+            "summary": {"OK": 1, "WARN": 0, "FAIL": 0, "UNVERIFIED": 0},
+        }
+        base.update(overrides)
+        return base
+
+    def test_all_ok_summary_line_no_detail_rows(self):
+        out = c.section_machinery(Path("/fake"), runner=_fake_runner(returncode=0, stdout=json.dumps(self._payload())))
+        self.assertIn("1 OK, 0 WARN, 0 FAIL, 0 UNVERIFIED", out)
+        self.assertNotIn("[OK]", out)  # concerning-row detail only prints for FAIL/UNVERIFIED
+
+    def test_fail_row_detail_included(self):
+        payload = self._payload(
+            checks=[{"name": "stop-hook:x.sh", "status": "FAIL", "detail": "script missing", "last_fired": None, "owner": None}],
+            summary={"OK": 0, "WARN": 0, "FAIL": 1, "UNVERIFIED": 0},
+        )
+        out = c.section_machinery(Path("/fake"), runner=_fake_runner(returncode=0, stdout=json.dumps(payload)))
+        self.assertIn("1 FAIL", out)
+        self.assertIn("[FAIL] stop-hook:x.sh: script missing", out)
+
+    def test_unverified_row_detail_included(self):
+        payload = self._payload(
+            checks=[{"name": "cross-review-marker", "status": "UNVERIFIED", "detail": "no sibling", "last_fired": None, "owner": "crickets"}],
+            summary={"OK": 0, "WARN": 0, "FAIL": 0, "UNVERIFIED": 1},
+        )
+        out = c.section_machinery(Path("/fake"), runner=_fake_runner(returncode=0, stdout=json.dumps(payload)))
+        self.assertIn("[UNVERIFIED] cross-review-marker: no sibling", out)
+
+
+class VaultDoctorSectionTests(unittest.TestCase):
+    """`section_vault_doctor` resolves a crickets sibling before it ever
+    reaches the injected runner (mirrors `section_board_drift`'s own
+    resolution-then-run shape) -- exercised hermetically by pointing
+    `$CRICKETS_SCRIPTS_DIR` at a synthetic fixture tree (the CI runner has
+    no real crickets checkout, so this must never depend on one)."""
+
+    def _fixture_crickets_root(self, tmp: Path) -> Path:
+        root = tmp / "crickets"
+        (root / "src" / "github-projects").mkdir(parents=True)
+        script_dir = root / "src" / "obsidian-vault" / "scripts"
+        script_dir.mkdir(parents=True)
+        (script_dir / "doctor_vault.py").write_text("# fixture placeholder\n", encoding="utf-8")
+        return root
+
+    def test_live_output_reformatted_with_timestamp(self):
+        import os
+
+        canned = (
+            "[doctor_vault] obsidian-vault backing-plugin health:\n"
+            "  [OK] vault-path  looks fine\n"
+            "  [OK] backend     looks fine\n"
+        )
+        old = os.environ.get("CRICKETS_SCRIPTS_DIR")
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["CRICKETS_SCRIPTS_DIR"] = str(self._fixture_crickets_root(Path(td)))
+            try:
+                out = c.section_vault_doctor(
+                    Path("/fake-vault"), runner=_fake_runner(returncode=0, stdout=canned), now=1_700_000_000.0
+                )
+            finally:
+                if old is None:
+                    os.environ.pop("CRICKETS_SCRIPTS_DIR", None)
+                else:
+                    os.environ["CRICKETS_SCRIPTS_DIR"] = old
+        self.assertIn("Vault doctor (live check,", out)
+        self.assertIn("vault-path", out)
+        self.assertNotIn("[doctor_vault]", out)  # header line stripped, rows kept
+
+    def test_no_crickets_sibling_degrades_to_n_a(self):
+        import os
+
+        old = os.environ.get("CRICKETS_SCRIPTS_DIR")
+        os.environ["CRICKETS_SCRIPTS_DIR"] = "/definitely/not/a/real/path"
+        try:
+            out = c.section_vault_doctor(Path("/fake-vault"))
+            self.assertIn("n/a", out)
+        finally:
+            if old is None:
+                os.environ.pop("CRICKETS_SCRIPTS_DIR", None)
+            else:
+                os.environ["CRICKETS_SCRIPTS_DIR"] = old
+
+
+class VaultLintSectionTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_none_vault(self):
+        self.assertIn("n/a", c.section_vault_lint(None))
+
+    def test_dark_when_no_report(self):
+        out = c.section_vault_lint(self.vault)
+        self.assertIn("dark", out)
+        self.assertIn("vault-lint.yaml", out)
+
+    def test_picks_latest_report_and_extracts_summary(self):
+        meta = self.vault / "_meta"
+        meta.mkdir()
+        (meta / "vault-lint-2026-07-01.md").write_text(
+            "# MemoryVault lint audit -- 2026-07-01\n\n**Summary:** 1 error across 5 entries.\n",
+            encoding="utf-8",
+        )
+        (meta / "vault-lint-2026-07-10.md").write_text(
+            "# MemoryVault lint audit -- 2026-07-10\n\n**Summary:** 0 error · 2 warn · 0 info across 9 entries (0 skipped).\n",
+            encoding="utf-8",
+        )
+        out = c.section_vault_lint(self.vault, now=time.time())
+        self.assertIn("vault-lint-2026-07-10.md", out)
+        self.assertIn("0 error", out)
+        self.assertIn("2 warn", out)
+        self.assertNotIn("vault-lint-2026-07-01.md", out)
+
+
+class DreamExpireSectionTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+        (self.vault / "_meta").mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_pointer(self, **fields):
+        (self.vault / "_meta" / "dream-auto-expired-latest.json").write_text(json.dumps(fields), encoding="utf-8")
+
+    def test_none_vault(self):
+        self.assertIn("n/a", c.section_dream_expire(None))
+
+    def test_dark_when_pointer_absent(self):
+        out = c.section_dream_expire(self.vault)
+        self.assertIn("dark", out)
+        self.assertIn("dream.yaml", out)
+
+    def test_present_with_items_includes_count_and_revert(self):
+        now = time.time()
+        self._write_pointer(
+            run_id="20260711-abcd1234", applied_at=now - 3600, stages=["compression"], batch_cap=25, count=2,
+            items=[{"index": 1, "entry_id": "e1"}],
+            revert={"how": "RevertLog(vault_path).revert('20260711-abcd1234', entry_id)", "run_id": "20260711-abcd1234"},
+        )
+        out = c.section_dream_expire(self.vault, now=now)
+        self.assertIn("20260711-abcd1234", out)
+        self.assertIn("2 item(s)", out)
+        self.assertIn("revert:", out)
+        self.assertIn("RevertLog", out)
+
+    def test_empty_batch_reports_zero_not_dark(self):
+        now = time.time()
+        self._write_pointer(
+            run_id="run-empty", applied_at=now, stages=["compression"], batch_cap=25, count=0, items=[],
+            revert={"how": "n/a", "run_id": "run-empty"},
+        )
+        out = c.section_dream_expire(self.vault, now=now)
+        self.assertIn("0 item(s)", out)
+        self.assertNotIn("dark", out)
+
+    def test_malformed_pointer_degrades_gracefully(self):
+        (self.vault / "_meta" / "dream-auto-expired-latest.json").write_text("not json", encoding="utf-8")
+        out = c.section_dream_expire(self.vault)
+        self.assertIn("n/a", out)
+
+
+class RichViewLineTests(unittest.TestCase):
+    def test_not_yet_rendered(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "console.html"
+            out = c.rich_view_line(path)
+            self.assertIn("not yet rendered", out)
+            self.assertIn(str(path), out)
+
+    def test_rendered_reports_age(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "console.html"
+            path.write_text("<html></html>", encoding="utf-8")
+            out = c.rich_view_line(path)
+            self.assertIn("last rendered", out)
+            self.assertIn(str(path), out)
+
+
 class RenderTests(unittest.TestCase):
     def _report(self):
         return {
@@ -173,19 +428,36 @@ class RenderTests(unittest.TestCase):
             "board_drift": "check_project_sync: PASS",
             "spend": "Spend: $1.2300 total across 3 plan(s) ($0.4100/plan)",
             "memory": "Inbox: 2 unreviewed entries",
+            "machinery": "Machinery: 3 OK, 0 WARN, 0 FAIL, 0 UNVERIFIED",
+            "vault_doctor": "Vault doctor (live check, now):\n  [OK] vault-path fine",
+            "vault_lint": "Vault lint: 0 error · 0 warn · 0 info (report: vault-lint-2026-07-10.md, rendered now)",
+            "dream_expire": "Dreaming auto-expire: last cycle (run x, now) auto-expired 0 item(s) -- nothing to revert",
         }
 
     def test_render_terminal_contains_all_sections(self):
         text = c.render_terminal(self._report())
-        for heading in ("Health", "Plans", "Board drift", "Spend", "Memory activity"):
+        for heading in (
+            "Health", "Plans", "Board drift", "Spend", "Memory activity",
+            "Machinery", "Vault doctor", "Vault lint", "Dreaming",
+        ):
             self.assertIn(heading, text)
         for value in self._report().values():
             self.assertIn(value, text)
 
+    def test_render_terminal_always_ends_with_rich_view_line(self):
+        with tempfile.TemporaryDirectory() as td:
+            html_path = Path(td) / "console.html"
+            text = c.render_terminal(self._report(), html_path=html_path)
+            self.assertIn("Rich view:", text)
+            self.assertIn(str(html_path), text)
+
     def test_render_html_contains_all_sections(self):
         html = c.render_html_report(self._report(), repo_root=None)
         self.assertIn("<title>AgentM Console</title>", html)
-        for heading in ("Health", "Plans", "Board drift", "Spend", "Memory activity"):
+        for heading in (
+            "Health", "Plans", "Board drift", "Spend", "Memory activity",
+            "Machinery", "Vault doctor", "Vault lint", "Dreaming",
+        ):
             self.assertIn(f"<h2>{heading}</h2>", html)
         self.assertIn("Health Index: 90.00", html)
 

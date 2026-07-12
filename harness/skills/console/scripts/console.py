@@ -14,11 +14,24 @@ surface that already exists and is independently invocable on its own --
                        refreshed on demand by scripts/runner/aggregator.py
     Memory activity -> harness/skills/memory/scripts/{recall.py heat-policy,
                        watchlist_review.py} + direct vault directory counts
+    Machinery       -> scripts/machinery_doctor.py (Consolidation follow-ups
+                       batch, machinery-integrity lane, piece 3)
+    Vault doctor    -> crickets' src/obsidian-vault/scripts/doctor_vault.py
+    Vault lint      -> harness/skills/memory/scripts/vault_lint.py's --audit
+                       report under <vault>/_meta/ (piece 1's scheduled job)
+    Dreaming        -> <vault>/_meta/dream-auto-expired-latest.json, the
+                       stable pointer dream.py's auto-apply wrapper writes
+                       every cycle (piece 5)
 
 Read-only report: never mutates repo, vault, or board state. Every section
 degrades to a one-line "n/a: <reason>" instead of raising whenever a dev-only
 surface (health/spend/board-drift) is absent -- e.g. this isn't agentm's own
-dev checkout, or a crickets sibling isn't reachable.
+dev checkout, or a crickets sibling isn't reachable. Freshness-bearing
+sections (health, vault doctor, vault lint, dreaming) follow an
+honest-dark convention -- a check that has genuinely never run says so
+plainly ("dark" / "never run") rather than being omitted, matching
+scripts/health/dark-checks.jsonl's own verified-live / explicit-dark /
+never-silently-absent shape.
 
 Usage:
     python3 console.py                          # terminal report
@@ -29,9 +42,13 @@ from __future__ import annotations
 import argparse
 import html as html_lib
 import io
+import json
 import os
+import re
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent  # harness/skills/console/scripts/ (or the installed equivalent)
@@ -104,6 +121,23 @@ def resolve_vault_path() -> "Path | None":
     return None
 
 
+# ── freshness formatting (shared by health / vault-doctor / vault-lint /
+#    dreaming sections -- the "last-fired timestamp" half of honest-dark) ────
+def _format_age(ts: float, *, now: "float | None" = None) -> str:
+    """`<UTC timestamp> (<relative age> ago)` -- e.g. `2026-07-10 06:03Z
+    (18.4h ago)`. `now` is injectable for deterministic tests."""
+    now = now if now is not None else time.time()
+    when = datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+    delta = max(0.0, now - ts)
+    if delta < 3600:
+        age = f"{int(delta // 60)}m ago"
+    elif delta < 86400:
+        age = f"{delta / 3600:.1f}h ago"
+    else:
+        age = f"{delta / 86400:.1f}d ago"
+    return f"{when} ({age})"
+
+
 # ── subprocess helper (injectable for hermetic tests) ────────────────────────
 def _run(cmd: list, *, cwd: "Path | None" = None, timeout: int = 30, runner=subprocess.run):
     """Best-effort subprocess run. Returns (returncode, stdout, stderr); on any
@@ -117,7 +151,34 @@ def _run(cmd: list, *, cwd: "Path | None" = None, timeout: int = 30, runner=subp
 
 
 # ── sections: health / plans / board drift / spend ───────────────────────────
-def section_health(repo_root: "Path | None", *, runner=subprocess.run) -> str:
+def _read_health_history_ts(repo_root: Path) -> "float | None":
+    """The nightly health-scorecard's last-recorded `ts` (epoch seconds),
+    read directly from `scripts/health/history.jsonl`'s last row -- a plain
+    file read rather than importing health_score.py, so a malformed or
+    missing ledger degrades to None instead of an import-time surprise."""
+    path = repo_root / "scripts" / "health" / "history.jsonl"
+    if not path.is_file():
+        return None
+    last_line = None
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    last_line = line
+    except OSError:
+        return None
+    if last_line is None:
+        return None
+    try:
+        row = json.loads(last_line)
+    except json.JSONDecodeError:
+        return None
+    ts = row.get("ts") if isinstance(row, dict) else None
+    return float(ts) if isinstance(ts, (int, float)) else None
+
+
+def section_health(repo_root: "Path | None", *, runner=subprocess.run, now: "float | None" = None) -> str:
     if repo_root is None:
         return "Health: n/a (not an agentm dev checkout)"
     rc, out, err = _run([sys.executable, "scripts/status.py"], cwd=repo_root, runner=runner)
@@ -128,7 +189,15 @@ def section_health(repo_root: "Path | None", *, runner=subprocess.run) -> str:
             "Health: no scorecard history yet -- run `bash scripts/health/run-fast-tier.sh "
             "| python3 scripts/health/health_score.py --history` at least once"
         )
-    return out.strip() or "Health: (empty report)"
+    text = out.strip() or "Health: (empty report)"
+    ts = _read_health_history_ts(repo_root)
+    if ts is None:
+        # Honest-dark: status.py above printed a real row (rc == 0), so this
+        # is a genuinely unexpected shape (a ts-less legacy row, or the
+        # ledger vanishing between the two reads) rather than "never run" --
+        # said plainly rather than silently omitted.
+        return text + "\nLast nightly run: unknown (no ts on the latest history.jsonl row)"
+    return text + f"\nLast nightly run: {_format_age(ts, now=now)}"
 
 
 def section_plans(repo_root: "Path | None", *, runner=subprocess.run) -> str:
@@ -357,6 +426,144 @@ def section_memory(vault: "Path | None") -> str:
     return "\n".join(lines)
 
 
+# ── section: machinery integrity (Consolidation follow-ups batch, piece 3) ──
+def section_machinery(repo_root: "Path | None", *, runner=subprocess.run) -> str:
+    """Composes over `scripts/machinery_doctor.py` (piece 2) rather than
+    re-deriving its checks -- the console's job is to surface the summary
+    + every non-OK row, not to re-implement the inventory."""
+    if repo_root is None:
+        return "Machinery: n/a (not an agentm dev checkout)"
+    rc, out, err = _run(
+        [sys.executable, "scripts/machinery_doctor.py", "--format", "json"], cwd=repo_root, runner=runner
+    )
+    if rc is None:
+        return f"Machinery: n/a ({err})"
+    try:
+        payload = json.loads(out)
+    except (json.JSONDecodeError, TypeError):
+        return "Machinery: n/a (unparseable machinery_doctor.py output)"
+    summary = payload.get("summary", {}) if isinstance(payload, dict) else {}
+    checks = payload.get("checks", []) if isinstance(payload, dict) else []
+    line = (
+        f"Machinery: {summary.get('OK', 0)} OK, {summary.get('WARN', 0)} WARN, "
+        f"{summary.get('FAIL', 0)} FAIL, {summary.get('UNVERIFIED', 0)} UNVERIFIED"
+    )
+    concerning = [c for c in checks if isinstance(c, dict) and c.get("status") in ("FAIL", "UNVERIFIED")]
+    if concerning:
+        detail_lines = [f"  [{c.get('status')}] {c.get('name')}: {c.get('detail')}" for c in concerning]
+        line += "\n" + "\n".join(detail_lines)
+    return line
+
+
+# ── section: vault doctor (Consolidation follow-ups batch, piece 3b) ────────
+def section_vault_doctor(vault: "Path | None", *, runner=subprocess.run, now: "float | None" = None) -> str:
+    """A live check, run fresh every console invocation (unlike vault-lint's
+    dated report below) -- `doctor_vault.py` has no persisted run history of
+    its own, so "when it ran" is honestly "just now, by this console call,"
+    not a stale cached timestamp."""
+    crickets_root = find_crickets_root()
+    if crickets_root is None:
+        return "Vault doctor: n/a (no crickets sibling checkout -- obsidian-vault plugin not reachable)"
+    script = crickets_root / "src" / "obsidian-vault" / "scripts" / "doctor_vault.py"
+    if not script.is_file():
+        return "Vault doctor: n/a (obsidian-vault plugin not found in the crickets checkout)"
+    args = [sys.executable, str(script)]
+    if vault is not None:
+        args += ["--vault-path", str(vault)]
+    rc, out, err = _run(args, runner=runner)
+    if rc is None:
+        return f"Vault doctor: n/a ({err})"
+    lines = [ln for ln in out.splitlines() if ln.strip() and not ln.startswith("[doctor_vault]")]
+    body = "\n".join(f"  {ln.strip()}" for ln in lines) if lines else "  (no output)"
+    now = now if now is not None else time.time()
+    checked = datetime.fromtimestamp(now, tz=timezone.utc).strftime("%Y-%m-%d %H:%MZ")
+    return f"Vault doctor (live check, {checked}):\n{body}"
+
+
+# ── section: vault lint (Consolidation follow-ups batch, piece 1 + 3b) ──────
+_VAULT_LINT_SUMMARY_RE = re.compile(r"\*\*Summary:\*\*\s*(.+)")
+
+
+def _extract_vault_lint_summary(path: Path) -> str:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return "(unreadable report)"
+    m = _VAULT_LINT_SUMMARY_RE.search(text)
+    return m.group(1).strip() if m else "(summary line not found in report)"
+
+
+def section_vault_lint(vault: "Path | None", *, now: "float | None" = None) -> str:
+    if vault is None:
+        return "Vault lint: n/a (no vault resolved)"
+    meta_dir = vault / "_meta"
+    reports = sorted(meta_dir.glob("vault-lint-*.md")) if meta_dir.is_dir() else []
+    if not reports:
+        return (
+            "Vault lint: dark -- no vault-lint-*.md report under _meta/ yet "
+            "(the weekly job may not be registered on this machine or has never fired; "
+            "see templates/jobs/vault-lint.yaml)"
+        )
+    latest = reports[-1]
+    summary = _extract_vault_lint_summary(latest)
+    try:
+        mtime = latest.stat().st_mtime
+    except OSError:
+        mtime = None
+    when = _format_age(mtime, now=now) if mtime is not None else "unknown"
+    return f"Vault lint: {summary} (report: {latest.name}, rendered {when})"
+
+
+# ── section: dreaming auto-expire (Consolidation follow-ups batch, piece 5) ─
+def section_dream_expire(vault: "Path | None", *, now: "float | None" = None) -> str:
+    """Reads the stable, always-overwritten pointer `dream.py`'s auto-apply
+    wrapper writes every cycle (`_meta/dream-auto-expired-latest.json`).
+    Honest-dark on every edge: no vault, no pointer file (job never run),
+    or an unreadable/malformed pointer all say so plainly rather than
+    omitting the line or raising."""
+    if vault is None:
+        return "Dreaming auto-expire: n/a (no vault resolved)"
+    pointer = vault / "_meta" / "dream-auto-expired-latest.json"
+    if not pointer.is_file():
+        return (
+            "Dreaming auto-expire: dark -- no _meta/dream-auto-expired-latest.json yet "
+            "(the dreaming job may not be registered on this machine or has never fired; "
+            "see templates/jobs/dream.yaml)"
+        )
+    try:
+        data = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return f"Dreaming auto-expire: n/a (unreadable pointer at {pointer}: {e})"
+    if not isinstance(data, dict):
+        return f"Dreaming auto-expire: n/a (pointer at {pointer} is not a JSON object)"
+    run_id = data.get("run_id", "?")
+    count = data.get("count", 0)
+    applied_at = data.get("applied_at")
+    when = _format_age(applied_at, now=now) if isinstance(applied_at, (int, float)) else "unknown"
+    revert = data.get("revert", {}) if isinstance(data.get("revert"), dict) else {}
+    how = revert.get("how", "see revert_log.py (no CLI) with this pointer's run_id")
+    if not count:
+        return f"Dreaming auto-expire: last cycle (run {run_id}, {when}) auto-expired 0 item(s) -- nothing to revert"
+    return (
+        f"Dreaming auto-expire: last cycle (run {run_id}, {when}) auto-expired {count} item(s) "
+        f"-- revert: {how}"
+    )
+
+
+# ── section: rich (HTML) view pointer (Consolidation follow-ups batch,
+#    piece 4) -- printed at the end of every terminal run, not a mode the
+#    operator has to remember exists ─────────────────────────────────────
+def rich_view_line(output_path: "Path | None" = None) -> str:
+    path = output_path if output_path is not None else default_html_output_path()
+    if not path.is_file():
+        return f"Rich view: not yet rendered -- run `python3 console.py --html` to generate {path}"
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return f"Rich view: {path} (last-rendered time unavailable)"
+    return f"Rich view: {path} (last rendered {_format_age(mtime)})"
+
+
 # ── report assembly ───────────────────────────────────────────────────────────
 def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, *, runner=subprocess.run) -> dict:
     return {
@@ -365,19 +572,31 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
         "board_drift": section_board_drift(repo_root, runner=runner),
         "spend": section_spend(repo_root, runner=runner),
         "memory": section_memory(vault),
+        "machinery": section_machinery(repo_root, runner=runner),
+        "vault_doctor": section_vault_doctor(vault, runner=runner),
+        "vault_lint": section_vault_lint(vault),
+        "dream_expire": section_dream_expire(vault),
     }
 
 
-def render_terminal(report: dict) -> str:
+def render_terminal(report: dict, *, html_path: "Path | None" = None) -> str:
     lines = ["AgentM Console", "=" * len("AgentM Console"), ""]
     for title, key in (
         ("Health", "health"), ("Plans", "plans"),
         ("Board drift", "board_drift"), ("Spend", "spend"),
-        ("Memory activity", "memory"),
+        ("Memory activity", "memory"), ("Machinery", "machinery"),
+        ("Vault doctor", "vault_doctor"), ("Vault lint", "vault_lint"),
+        ("Dreaming", "dream_expire"),
     ):
+        if key not in report:
+            continue
         lines.append(f"-- {title} --")
         lines.append(report[key])
         lines.append("")
+    # Piece 4: the rich HTML view link/path is always one command away --
+    # printed at the end of every terminal run, not a mode the operator has
+    # to remember exists.
+    lines.append(rich_view_line(html_path))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -431,6 +650,10 @@ def render_html_report(report: dict, repo_root: "Path | None", *, runner=subproc
 <section><h2>Board drift</h2><pre>{esc(report['board_drift'])}</pre></section>
 <section><h2>Spend</h2>{_spend_html_fragment(repo_root, runner=runner)}</section>
 <section><h2>Memory activity</h2><pre>{esc(report['memory'])}</pre></section>
+<section><h2>Machinery</h2><pre>{esc(report.get('machinery', ''))}</pre></section>
+<section><h2>Vault doctor</h2><pre>{esc(report.get('vault_doctor', ''))}</pre></section>
+<section><h2>Vault lint</h2><pre>{esc(report.get('vault_lint', ''))}</pre></section>
+<section><h2>Dreaming</h2><pre>{esc(report.get('dream_expire', ''))}</pre></section>
 
 </body>
 </html>

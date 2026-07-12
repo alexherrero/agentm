@@ -92,6 +92,14 @@ Then:
 
 7. **Vec-index freshness (R1.4 / agentmExperience#0).** When a vault is reachable, run `python3 <agentm>/harness/skills/memory/scripts/vault_lint.py --vault <vault> --check-freshness --format json`. Parse the printed `ratio`. `[OK]` if `ratio >= 0.80` or the vault has zero indexable entries yet. `[WARN] vec-index freshness N% (<up_to_date>/<total> entries) — the drain may be dead; run vec_index.py full-sync --rebuild then drain` otherwise. Never `[FAIL]` — this is a visibility signal (the drain being behind is recoverable, not a broken install), so it surfaces on a routine `/doctor` run within a day of going stale rather than requiring a dedicated live probe.
 
+8. **Machinery integrity (Consolidation follow-ups batch, machinery-integrity lane).** The prior checks all ask "is agentm's own harness distribution installed correctly"; this one asks the operator's own question — "how do we know all these structures are working consistently right now?" — over this repo's *own* dev-loop machinery (its Stop hook, its scheduled runner jobs, its cross-repo bridges), the exact class of thing that sat merged-but-never-installed for weeks in two separate confirmed incidents (the session-cost-capture hook in this repo; crickets' cross-review Gemini-fallback degrading silently). Run `python3 <agentm>/scripts/machinery_doctor.py` (only meaningful from inside an agentm dev checkout — skip with `[SKIP] not an agentm dev checkout` otherwise) and map each printed row by its status:
+   - `[OK]` → report as-is; include the `(last fired …)` timestamp when the row carries one — a structure installed but never observed to fire is a different, less-reassuring state than one with a recent timestamp, even though both currently read `[OK]`/`[WARN]` correctly.
+   - `[WARN]` → report as-is, never escalate to FAIL. Covers: a manually-installed dev-safety git hook (`commit-msg`, `prepare-commit-msg`) not present on this machine, and a shipped runner-job template not yet copied into `.harness/jobs/` — both are legitimate, expected states on a fresh clone or an opt-in-only job, not regressions.
+   - `[FAIL]` → report as-is. This is the row shape that would have caught both confirmed incidents: the Stop-hook wiring check FAILs if `.claude/settings.json`'s `Stop` block doesn't reference `session-cost-capture.sh`, or if it does but the script file is missing on disk — the exact "merged but never installed"/"installed then silently broken" shapes.
+   - `[UNVERIFIED]` (with an `owner:`) → report as-is; never silently drop the row. Surfaces the cross-repo pieces (the crickets coordination-check suite, the cross-review degradation marker) this repo alone can't independently confirm when no crickets sibling checkout is reachable.
+
+   `--live` adds nothing further here — the script's own checks are already cheap, structural, read-only reads (no sub-agent dispatch), so there's no separate live tier to gate behind the flag.
+
 ## `--live` probes
 
 Run in order. First failure stops the battery for that adapter (the rest will only produce noise if the foundation is broken).
@@ -237,6 +245,10 @@ doctor: <adapter> — <PASS|FAIL>
     hooks             [OK]  6 hooks wired (memory-recall-session-start, harness-context-session-start, …)
                             # FAIL example (V4 #39): "6 hooks installed on disk but not
                             # wired in settings.json — install.sh fragment merge did not run"
+    machinery         [OK]  3 OK, 12 WARN, 0 FAIL, 0 UNVERIFIED (python3 scripts/machinery_doctor.py)
+                            # FAIL example (the confirmed incident this check exists for):
+                            # "stop-hook:session-cost-capture.sh [FAIL] settings.json has no
+                            # Stop hook referencing session-cost-capture.sh — re-run the wiring step"
 
   live probes (--live):
     explorer          [SKIP] crickets developer-workflows not installed — probe needs the explorer sub-agent
