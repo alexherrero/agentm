@@ -40,18 +40,16 @@ command: python3 ../harness/skills/memory/scripts/vault_lint.py --audit
 # agent-authored memory content.
 tier: T2
 
-# Judgment call (documented, not silent): unlike docs-drift.yaml and
-# dream.yaml — which both stay `dry_run: true` pending a future,
-# separately-decided operator promotion — this ships `dry_run: false`
-# (live) in the same change that registers it. vault_lint.py's own
-# docstring is explicit that the tool "is strictly read-only — it never
-# writes to a memory entry or mutates the vault" and its `--audit` mode's
-# only side effect is (re)writing one dated markdown file under `_meta/`,
-# always fully overwritten, never incremental — there is no calibration
-# window to sit through the way dream.py's auto-apply mutations or
-# docs-drift's PR-adjacent reporting need one. `scripts/test_vault_lint_job.py`
-# exercises the exact registered command end-to-end against a fixture vault
-# (mirroring test_dream_job.py's live-cycle proof) to confirm it runs clean
-# before this shipped as live rather than merely asserting the manifest
-# parses.
-dry_run: false
+# Stays true, matching docs-drift.yaml and dream.yaml's own registration —
+# every scheduled job in this arc ships dry-run-first with a supervised
+# first live run before the flip, not as an automatic consequence of the
+# manifest existing. An earlier version of this file shipped `dry_run: false`
+# from the start (reasoning: vault_lint.py's `--audit` mode is read-only
+# apart from rewriting one dated report file, so there seemed to be no
+# calibration window comparable to dream.py's auto-apply mutations) — that
+# was a real, unilateral departure from the established pattern, corrected
+# once flagged. `scripts/test_vault_lint_job.py` still proves the exact
+# registered command runs clean end-to-end against a fixture vault (the
+# evidence a future promotion decision needs); it just no longer asserts
+# the *shipped* template runs live.
+dry_run: true

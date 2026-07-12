@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Tests for `templates/jobs/vault-lint.yaml` (Consolidation follow-ups
-batch, machinery-integrity lane, piece 1) — vault_lint.py's `--audit` mode
-had shipped since V4 #33 but was never registered as a scheduled runner
-job. This locks the manifest's shape (mirrors
-HealthPassSiblingDocsDriftManifestTests in test_docs_drift_job.py) and
+"""Tests for `templates/jobs/vault-lint.yaml` — vault_lint.py's `--audit`
+mode had shipped since V4 #33 but was never registered as a scheduled
+runner job. This locks the manifest's shape (mirrors
+HealthPassSiblingDocsDriftManifestTests in test_docs_drift_job.py), proves
+the shipped `dry_run: true` template never executes the command on a due
+cycle (mirrors StaysInDryRunTests in test_dream_job.py), and separately
 proves the exact registered command runs clean end-to-end against a
-fixture vault (mirrors test_dream_job.py's live-cycle proof) — the
-evidence backing this template's `dry_run: false` judgment call.
+fixture vault when dry_run is overridden for evidence-gathering only —
+the shipped template itself stays dry-run pending a future, explicitly
+recorded promotion decision, same as every sibling job template.
 
 Run: `cd scripts && python3 -m unittest test_vault_lint_job -v`
 Auto-discovered by `python3 -m unittest discover -p 'test_*.py'` (check-all.sh).
@@ -44,7 +46,7 @@ class ManifestParsesTests(unittest.TestCase):
         self.assertEqual(job.lookback, "7d")
         self.assertEqual(job.tier, "T2")
         self.assertEqual(job.command, "python3 ../harness/skills/memory/scripts/vault_lint.py --audit")
-        self.assertFalse(job.dry_run, "this template ships live -- see its own dry_run comment")
+        self.assertTrue(job.dry_run, "shipped manifest must stay in dry-run, matching every sibling job template")
 
     def test_t1_tier_is_rejected_for_this_job_shape(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -55,13 +57,36 @@ class ManifestParsesTests(unittest.TestCase):
                 manifest.load_manifests(jobs_dir)
 
 
-class LiveRunProducesCleanAuditTests(unittest.TestCase):
-    """Runs the exact registered command (rewritten only to point `--vault`
-    at a scratch fixture vault instead of relying on $MEMORY_VAULT_PATH,
-    since the runner cycle here isn't running from the real `scripts/` cwd
-    against a real device env) through `runner.cycle.run_cycle`, proving
-    the live (`dry_run: false`) wiring actually executes cleanly end-to-end
-    and produces the audit report at its documented default path."""
+class StaysInDryRunTests(unittest.TestCase):
+    """The shipped manifest (dry_run: true) never executes the command on a
+    due cycle -- mirrors StaysInDryRunTests in test_dream_job.py."""
+
+    def test_due_dry_run_job_never_executes_the_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            jobs_dir = root / "jobs"
+            jobs_dir.mkdir()
+            (jobs_dir / "vault-lint.yaml").write_text(
+                _TEMPLATE_PATH.read_text(encoding="utf-8"), encoding="utf-8"
+            )
+
+            report = cycle.run_cycle(
+                jobs_dir, now=1_000_000.0, state_root=root / "state", report_path=root / "digest.jsonl"
+            )
+
+            self.assertEqual(len(report.outcomes), 1)
+            outcome = report.outcomes[0]
+            self.assertTrue(outcome.dry_run)
+            self.assertFalse(outcome.ran)
+
+
+class SameShapeAsManualRunTests(unittest.TestCase):
+    """Proves the exact registered command runs clean end-to-end against a
+    fixture vault when dry_run is overridden False for this test only (the
+    shipped template itself stays dry_run: true per StaysInDryRunTests
+    above) -- mirrors SameShapeAsManualRunTests in test_dream_job.py. This
+    is the evidence a future, explicit promotion decision would need, not
+    proof the shipped manifest runs live today."""
 
     def test_registered_command_runs_and_writes_audit_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -78,7 +103,7 @@ class LiveRunProducesCleanAuditTests(unittest.TestCase):
             jobs_dir = root / "jobs"
             jobs_dir.mkdir()
             template = _TEMPLATE_PATH.read_text(encoding="utf-8")
-            live_manifest = template.replace(
+            live_manifest = template.replace("dry_run: true", "dry_run: false").replace(
                 "command: python3 ../harness/skills/memory/scripts/vault_lint.py --audit",
                 f'command: python3 "{_SKILL_SCRIPTS / "vault_lint.py"}" --audit --vault "{vault}"',
             )
