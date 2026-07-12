@@ -28,6 +28,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | Manually trigger the internet skill-discovery scan (cadence-checked by default via the idle hook) | `/memory discover-skills` |
 | Run the adapt-don't-import workflow over discovered patterns (Python rubric → enriched JSONs → LLM sub-agent judgment → watchlist entries) | `/memory adapt-skills` |
 | Review pending entries in `_skill-watchlist/` — promote / dismiss / defer | `/memory watchlist` |
+| Bulk-triage the `_inbox/` backlog — promote (reinforced) / merge (near-duplicate) / expire (stale) | `/memory inbox --bulk-review` |
 | See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
 
 Auto-recall happens via the [SessionStart + UserPromptSubmit hooks](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md) — operators don't invoke a recall command directly. Reflection happens automatically via Stop + idle hooks too; the manual `/memory reflect` is for one-off runs against arbitrary transcripts.
@@ -554,7 +555,7 @@ Atomic writes via tempfile + rename — Ctrl-C mid-write can't leave a half-writ
 
 - **Don't run `corpus --execute` without first running dry-run.** First-pass scope is unpredictable; the dry-run estimate keeps the operator in control of how much `_inbox/` churn they're committing to.
 - **Don't run `corpus` against `~/.claude/projects/` without setting `--max-batches` for the first execute run.** Even with the dry-run preview, scout-mode (e.g. `--max-batches 1 --batch-size 5`) is the safer escalation — process 5 sessions, eyeball the inbox output, decide whether to continue.
-- **Don't combine `corpus` with `interactive` route-mode.** Historical-pass volume means hundreds of prompts. The hook-style `auto` mode (default) routes MEDIUM → `_inbox/` for later batch triage via `/memory inbox --bulk-review` (separate follow-up; until that lands, operators triage `_inbox/` manually via Obsidian).
+- **Don't combine `corpus` with `interactive` route-mode.** Historical-pass volume means hundreds of prompts. The hook-style `auto` mode (default) routes MEDIUM → `_inbox/` for later batch triage via `/memory inbox --bulk-review` (see its own section below).
 
 #### Canonical Python implementation
 
@@ -984,6 +985,59 @@ On `f` (defer): a secondary prompt asks for `defer until (YYYY-MM-DD; blank = de
 - **Don't run `review` in batch / non-interactive contexts.** Default-to-skip is the safety net; if you actually want batch action, use the specific-slug subcommands (`promote` / `dismiss` / `defer`) which are deterministic + scriptable.
 - **Don't auto-promote based on rubric_score alone.** The whole point of the watchlist is the operator's judgment on top of the rubric — auto-promotion bypasses the adapt-don't-import architectural guarantee.
 - **Don't `rm -rf` the `_archive/` directory.** It's the audit trail for "we considered this and dismissed it" — useful when the same pattern resurfaces from a different source later (cross-citation count goes up).
+
+### `/memory inbox`
+
+Bulk-triage `<vault>/personal/_inbox/` — the long-promised follow-up named as far back as the original MemoryVault design docs, never built until now. Reflection routes MEDIUM/LOW-confidence candidates here and stops; nothing moves them out of `status: inbox` on its own. `/memory inbox --bulk-review` scans every still-untriaged entry and proposes exactly one of three dispositions per entry, canonical implementation at `skills/memory/scripts/inbox_triage.py`:
+
+- **promote** — an entry reinforced by repeated occurrence (`mining_occurrences` at or above a threshold) or a real content match across 3+ inbox entries graduates to the same canonical destination reflect.py's own HIGH-confidence path writes to (`<vault>/personal/<kind>/<slug>.md`).
+- **merge** — a near-duplicate PAIR (similarity above threshold, not part of a larger reinforcing cluster) is proposed for merge — reuses `dream.py`'s own `difflib`-based dedup stage against the inbox pool, not a second similarity implementation.
+- **expire** — stale and unreinforced past a TTL (default 90 days since the entry's own `created` timestamp) is proposed for in-place archival (`status: expired` — never a physical delete or move).
+
+Every proposal stages through the exact `_dream-staging/<run_id>/` contract dreaming already built (`dream_confirm.py`'s `list_pending` / `confirm` / `auto_apply_batch` run unmodified against an inbox-triage run).
+
+**Auto-apply is now the default (operator ruling, 2026-07-11, second pass).** The first-ever run shipped confirm-gated: every disposition proposed against the pre-existing backlog — 1,565 notes across 635 proposals — stayed pending for an explicit human confirm, regardless of kind. The operator personally reviewed and confirmed that entire first-run backlog with zero errors, then directed that confirm-gating retire going forward. **Every disposition — promote, merge, and expire alike — now auto-applies by default**, regardless of whether the source entry predates or postdates the first-run **cutover marker** (`_meta/inbox-triage-cutover.json`, stamped once, never overwritten). The cutover marker still exists and still labels which era an expire proposal's source entry belongs to (`inbox_expire` vs `inbox_expire_backlog`), but that label is now informational only — it no longer gates whether a proposal applies. Pass `--no-auto-apply` to fall back to propose-only (nothing applies until an explicit `--confirm`).
+
+#### Invocation shape
+
+```
+python3 ~/Antigravity/crickets/skills/memory/scripts/inbox_triage.py \
+  --vault-path <path> \
+  [--bulk-review | --list | --confirm <index> --run-id <id> | --reject <index> --run-id <id>] \
+  [--run-id <id>] [--non-interactive] [--no-auto-apply] \
+  [--batch-cap <n>] [--expire-ttl-days <n>] [--promote-occurrence-threshold <n>]
+```
+
+| Flag | Use case |
+|---|---|
+| `--bulk-review` (default) | Scan (+ auto-apply every eligible proposal — promote/merge/expire alike), then interactively review whatever's still pending (only ever the batch-cap remainder) — `[c]onfirm / [r]eject / [s]kip` per proposal. Non-TTY stdin defaults every prompt to skip (never silent action — same contract `watchlist_review.py` already established). |
+| `--list` | JSON dump of pending proposals for the most recent run (or `--run-id`) — index/stage/kind/paths/summary/status. |
+| `--confirm <index> --run-id <id>` | Confirm one proposal directly (scriptable, no prompt) — for inspecting/applying a specific proposal by hand. |
+| `--reject <index> --run-id <id>` | Reject one proposal directly — patches every path it touches `status: triage_rejected`, so a later fresh scan never re-proposes it. |
+| `--run-id <id>` (with `--bulk-review`) | Resume reviewing an existing run instead of starting a fresh scan. |
+| `--non-interactive` | Scan (+ auto-apply) only; skip the review loop — for hooks/scripting. |
+| `--no-auto-apply` | Propose only; skip the confirm-free auto-apply step entirely, for every disposition — everything stays pending for an explicit `--confirm` / interactive review. |
+
+#### Action semantics (locked)
+
+- **confirm** → applies the proposal's mutations through `revert_log.RevertLog.record_and_apply` — never a direct write. Fully undoable via `RevertLog(vault_path).revert(run_id, entry_id)`.
+- **reject** → every path the proposal touches gets `status: triage_rejected` + a timestamp, a direct frontmatter patch (matches `watchlist_review.py`'s own promote/dismiss/defer precedent of annotating outside the revert-log). Stops the entry from being re-proposed by a later scan.
+- **skip** (default for non-TTY + unrecognized input) → no change; the proposal stays pending for a later review pass.
+- Auto-applied proposals — promote, merge, and expire alike — need no operator action at all — they already applied through the identical `record_and_apply` path a manual confirm uses, and are just as revertible. A proposal only stays pending past a run if the run's `--batch-cap` was smaller than the number of eligible proposals, or `--no-auto-apply` was passed.
+
+#### Failure modes (graceful)
+
+- **No pending proposals** → `[inbox-triage] no pending proposals` to stderr; exit 0.
+- **Non-TTY stdin** → defaults every prompt to skip; emits `interactive review requested but stdin is not a TTY; defaulting all prompts to skip (never silent action)`; exit 0.
+- **Promote collision** (the canonical destination already exists) → the entry is skipped this run, never overwritten — same guard `save.save_entry()`'s own `FileExistsError` enforces, checked up front since the staged mutation bypasses that call.
+- **A proposal's source file was already resolved** (a different, overlapping proposal was confirmed first, or the entry was rejected) → silently dropped from the review walk rather than re-offered or erroring.
+- **`--confirm` / `--reject` without `--run-id`** → exit 1 with the specific flag that needs it.
+
+#### Anti-patterns
+
+- **Don't raise `--expire-ttl-days` or `--promote-occurrence-threshold` to make a run "quieter."** A large digest over real content is the intended shape when the backlog is large, not a bug.
+- **Don't reach for `--no-auto-apply` as the normal mode.** Auto-apply is the default as of 2026-07-11's second ruling; `--no-auto-apply` is an explicit opt-out for someone who specifically wants to inspect proposals before they apply, not the standing posture.
+- **Don't run `--bulk-review` in batch / non-interactive contexts expecting to hand-pick dispositions.** It already auto-applies everything eligible; use `--confirm` / `--reject` with an explicit `--run-id` + index only when you want to intervene on one specific proposal.
 
 ### `/memory heat-policy`
 
