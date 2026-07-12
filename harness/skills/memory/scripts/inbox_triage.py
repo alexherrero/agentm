@@ -37,29 +37,33 @@ reused byte-for-byte — `list_pending` / `confirm` / `expire_stale` /
 an inbox-triage run; nothing in `dream_confirm.py` changes for this
 module to exist).
 
-**The one rule that's genuinely new here (operator ruling, 2026-07-11):**
-inbox entries have a real backlog problem dreaming's general corpus never
-had — 1,565 pre-existing notes that have sat untouched for months. Every
-disposition this module proposes against that PRE-EXISTING BACKLOG stays
-confirm-gated, full stop, regardless of kind — an irreversible-feeling
-first pass over untouched real content deserves a human read once. Only
-entries CREATED AFTER this mechanism's first-ever run are eligible for the
-same auto-apply-on-expire treatment `dream_confirm.AUTO_APPLY_STAGES`
-already grants dreaming's own `compression` stage — and even then, ONLY
-for expire; promote and merge stay confirm-gated regardless of entry age,
-matching the "promote/link stay gated" rule the same 2026-07-11 ruling set
-for the general corpus.
+**The confirm-gate rule, and its retirement (operator ruling, 2026-07-11,
+two passes same day):** this module originally shipped with every
+disposition proposed against the PRE-EXISTING BACKLOG — 1,565 notes that
+existed before this mechanism's first-ever run — confirm-gated, full stop,
+regardless of kind; only post-cutover **expire** proposals auto-applied
+(reusing `dream_confirm.AUTO_APPLY_STAGES`/`auto_apply_batch()`'s pattern
+of a stage set passed explicitly per call, never touching dream.py's own
+`AUTO_APPLY_STAGES` default). That first pass ran exactly as designed: the
+operator personally reviewed and confirmed all 635 staged proposals across
+1,565 entries, zero errors. On the strength of that supervised pass, the
+operator then directed that confirm-gating retire going forward — **every
+disposition (promote/merge/expire) now auto-applies by default**,
+regardless of whether the source entry predates or postdates the cutover
+stamp. See the amendment log in
+`wiki/designs/agentm-experience-and-dreaming.md` for the full history of
+both rulings.
 
-The backlog/new boundary is a **cutover marker** — `_meta/inbox-triage-
-cutover.json`, stamped once on this mechanism's first-ever run and never
-overwritten again. An entry's own `created` frontmatter timestamp (added
-to `reflect.py`'s inbox writer alongside this module — the pre-existing
-1,565-note backlog never carried the field at all, so its mere ABSENCE is
-itself part of the classification signal, not just its value) is compared
-against that stamp: no `created` field, or `created` at-or-before the
-stamp, means pre-existing backlog; `created` strictly after the stamp
-means it was captured after this mechanism first ran. See
-`ensure_cutover_marker` / `_is_pre_existing_backlog` below.
+The **cutover marker** (`_meta/inbox-triage-cutover.json`, stamped once on
+this mechanism's first-ever run and never overwritten again) and the
+per-entry pre-existing/post-cutover classification
+(`_is_pre_existing_backlog`, keyed off an entry's `created` frontmatter
+timestamp — absent on the entire original backlog, since `reflect.py`'s
+inbox writer only grew the field alongside this module) both still exist,
+but are now purely INFORMATIONAL: they label which era a proposal's
+source entry belongs to (surfaced in an expire proposal's stage name and
+its digest summary line) without gating whether anything auto-applies.
+See `ensure_cutover_marker` / `_is_pre_existing_backlog` below.
 
 Public surface:
 
@@ -75,10 +79,10 @@ Public surface:
                                      batch_cap=None, log_root=None,
                                      lock_root=None)
         -> (InboxTriageDigest, dream_confirm.AutoAppliedBatch)
-        Runs the scan above, then auto-applies every pending post-cutover
-        `expire` proposal through `dream_confirm.auto_apply_batch` (stage
-        `"inbox_expire"` only — never `"inbox_promote"` / `"inbox_merge"` /
-        `"inbox_expire_backlog"`).
+        Runs the scan above, then auto-applies EVERY pending proposal —
+        promote, merge, and expire alike, pre-existing-backlog or
+        post-cutover alike (`ALL_AUTO_APPLY_STAGES`) — through
+        `dream_confirm.auto_apply_batch`.
 
     review_inbox_triage(vault_path, run_id, revert_log, *, interactive=True,
                          stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr,
@@ -141,6 +145,7 @@ __all__ = [
     "MERGE_STAGE",
     "AUTO_APPLY_ELIGIBLE_STAGE",
     "BACKLOG_EXPIRE_STAGE",
+    "ALL_AUTO_APPLY_STAGES",
     "main",
 ]
 
@@ -166,13 +171,26 @@ DEFAULT_PROMOTE_OCCURRENCE_THRESHOLD = 3
 # Stage-name vocabulary. `dream_confirm.auto_apply_batch()` filters purely
 # on `proposal.stage in stages` -- passing a stage set explicitly (never
 # touching the shared `dream_confirm.AUTO_APPLY_STAGES` frozenset, which
-# stays `{"compression"}` for dream.py's own general-corpus runs) is what
-# lets ONLY post-cutover expire proposals auto-apply while promote/merge/
-# backlog-expire proposals -- staged under different names -- never do.
+# stays `{"compression"}` for dream.py's own general-corpus runs) keeps
+# this module's own auto-apply eligibility fully independent of dream.py's.
+#
+# All four stage names below auto-apply by default now (operator ruling,
+# 2026-07-11, second pass -- the confirm-gate this vocabulary originally
+# encoded is retired; see the module docstring's amendment note).
+# `AUTO_APPLY_ELIGIBLE_STAGE` / `BACKLOG_EXPIRE_STAGE` keep their distinct
+# names purely as INFORMATIONAL era metadata on an expire proposal (which
+# side of the cutover stamp its source entry falls on) -- the distinction
+# is no longer behavioral; both are in `ALL_AUTO_APPLY_STAGES` below.
 PROMOTE_STAGE = "inbox_promote"
 MERGE_STAGE = "inbox_merge"
-AUTO_APPLY_ELIGIBLE_STAGE = "inbox_expire"       # post-cutover expire only
-BACKLOG_EXPIRE_STAGE = "inbox_expire_backlog"    # pre-existing backlog expire -- never auto-applied
+AUTO_APPLY_ELIGIBLE_STAGE = "inbox_expire"       # post-cutover expire (era label only)
+BACKLOG_EXPIRE_STAGE = "inbox_expire_backlog"    # pre-existing-backlog expire (era label only)
+
+# Every stage this module ever proposes auto-applies by default now --
+# promote/merge/expire alike, regardless of the source entry's era. This
+# is the stage set `run_inbox_triage_and_auto_apply` passes to
+# `dream_confirm.auto_apply_batch(stages=...)`.
+ALL_AUTO_APPLY_STAGES = frozenset({PROMOTE_STAGE, MERGE_STAGE, AUTO_APPLY_ELIGIBLE_STAGE, BACKLOG_EXPIRE_STAGE})
 
 _META_DIR_NAME = "_meta"
 _CUTOVER_MARKER_NAME = "inbox-triage-cutover.json"
@@ -246,7 +264,15 @@ def _is_pre_existing_backlog(fm: dict, cutover_at: str) -> bool:
     `_save_candidate_to_inbox` can ever carry `created`, and that amendment
     landed in the same change as this module). ISO-8601 UTC timestamps in
     the fixed `_utcnow_iso()` shape sort lexicographically, so a plain
-    string comparison is exact -- no datetime parsing, no exception path."""
+    string comparison is exact -- no datetime parsing, no exception path.
+
+    INFORMATIONAL ONLY as of 2026-07-11's second ruling -- this used to
+    gate auto-apply eligibility (pre-existing backlog stayed confirm-gated
+    forever); it no longer does. Its sole remaining caller,
+    `_build_expire_proposal`, uses the return value purely to pick an
+    expire proposal's era-label stage name (`AUTO_APPLY_ELIGIBLE_STAGE` vs
+    `BACKLOG_EXPIRE_STAGE`) and summary text -- both stages are in
+    `ALL_AUTO_APPLY_STAGES` and auto-apply identically."""
     created = fm.get("created")
     if not created:
         return True
@@ -508,7 +534,7 @@ def _build_expire_proposal(vault_path: Path, path: Path, fm: dict, raw: str, *,
     stage = BACKLOG_EXPIRE_STAGE if is_backlog else AUTO_APPLY_ELIGIBLE_STAGE
     patched = _patch_frontmatter(raw, {"status": "expired", "expired_at": _utcnow_iso(now)})
     rel = _rel(path, vault_path)
-    era = "pre-existing backlog -- confirm-gated" if is_backlog else "created after the triage cutover -- auto-apply eligible"
+    era = "pre-existing backlog" if is_backlog else "created after the triage cutover"
     summary = f"{rel} untouched past {ttl_days:.0f}d TTL ({era}) -- propose archival"
     return Proposal(stage=stage, kind="archive", paths=[str(path)], summary=summary, mutations=[(path, patched)])
 
@@ -613,8 +639,9 @@ def _render_digest(digest: InboxTriageDigest, *, auto_applied=None) -> str:
         f"# Inbox triage digest — run {digest.run_id}",
         "",
         f"Cutover: {digest.cutover_at} (entries with no `created` field, or with "
-        "`created` at or before this stamp, are the pre-existing backlog -- every "
-        "disposition on them stays confirm-gated, regardless of kind).",
+        "`created` at or before this stamp, are the pre-existing backlog -- an "
+        "informational era label only; every disposition, promote/merge/expire "
+        "alike, auto-applies regardless of era as of 2026-07-11).",
         f"Inbox pool scanned: {digest.corpus_stats['entry_count']} still-untriaged "
         f"entries, {digest.corpus_stats['total_bytes']} bytes.",
         "",
@@ -623,7 +650,7 @@ def _render_digest(digest: InboxTriageDigest, *, auto_applied=None) -> str:
     auto_applied_by_index = {}
     if auto_applied is not None:
         auto_applied_by_index = {item["index"]: item for item in auto_applied.items}
-        lines.append("## Auto-applied this run (post-cutover expire only -- no confirm required)")
+        lines.append("## Auto-applied this run (no confirm required)")
         lines.append("")
         if not auto_applied.items:
             lines.append(
@@ -657,12 +684,14 @@ def _render_digest(digest: InboxTriageDigest, *, auto_applied=None) -> str:
         if i in auto_applied_by_index:
             item = auto_applied_by_index[i]
             lines.append(
-                f"- **AUTO-APPLIED** (post-cutover expire — no confirm required): entry `{item['entry_id']}`; "
+                f"- **AUTO-APPLIED** (no confirm required): entry `{item['entry_id']}`; "
                 f"undo via `RevertLog.revert({digest.run_id!r}, {item['entry_id']!r})`"
             )
         else:
             lines.append(
-                "- staged — NOT applied; operator confirmation required "
+                "- staged — not yet applied this cycle (scan-only run, or this "
+                "cycle's batch cap was reached); it will auto-apply on a later "
+                "run, or confirm it now via "
                 f"(`dream_confirm.confirm(vault_path, {digest.run_id!r}, {i}, revert_log)`, or "
                 "`/memory inbox --bulk-review --run-id ... --confirm " + str(i) + "`)"
             )
@@ -721,9 +750,10 @@ def _stage_digest_and_staging(vault_path: Path, digest: InboxTriageDigest, *, st
 
 
 # -----------------------------------------------------------------------------
-# Auto-apply -- post-cutover expire only, through dream_confirm's own
-# auto_apply_batch (no change to dream_confirm.py or its AUTO_APPLY_STAGES
-# default -- our own stage set is passed explicitly per call).
+# Auto-apply -- every disposition (promote/merge/expire), through
+# dream_confirm's own auto_apply_batch (no change to dream_confirm.py or
+# its AUTO_APPLY_STAGES default -- our own stage set is passed explicitly
+# per call).
 # -----------------------------------------------------------------------------
 
 def run_inbox_triage_and_auto_apply(
@@ -733,12 +763,19 @@ def run_inbox_triage_and_auto_apply(
     revert_log=None, batch_cap: int | None = None,
     log_root: Path | str | None = None, lock_root: Path | str | None = None,
 ):
-    """Runs `run_inbox_triage()` (unchanged), then auto-applies every
-    pending proposal staged under `AUTO_APPLY_ELIGIBLE_STAGE`
-    (`"inbox_expire"` -- post-cutover expire only) through
-    `dream_confirm.auto_apply_batch`. Promote, merge, and pre-existing-
-    backlog expire proposals are left exactly as `run_inbox_triage()`
-    staged them -- pending, awaiting an explicit confirm.
+    """Runs `run_inbox_triage()` (unchanged), then auto-applies EVERY
+    pending proposal -- promote, merge, and expire alike, pre-existing-
+    backlog or post-cutover alike (`ALL_AUTO_APPLY_STAGES`) -- through
+    `dream_confirm.auto_apply_batch`. The confirm-gate this function
+    originally enforced (only post-cutover expire auto-applied; everything
+    else stayed pending for an explicit confirm) retired 2026-07-11,
+    second pass, once the operator personally reviewed and confirmed the
+    entire 635-proposal/1,565-entry first-run backlog with zero errors. A
+    proposal can still be left pending after this call -- not because of
+    its disposition or the source entry's era, but only if the run's
+    `batch_cap` is smaller than the number of eligible proposals; the
+    remainder stays pending for the next cycle or an explicit manual
+    `confirm()`.
 
     Returns `(digest, auto_applied_batch)`."""
     vault_path = Path(vault_path)
@@ -753,7 +790,7 @@ def run_inbox_triage_and_auto_apply(
     cap = batch_cap if batch_cap is not None else dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP
     batch = dream_confirm.auto_apply_batch(
         vault_path, digest.run_id, revert_log,
-        stages=frozenset({AUTO_APPLY_ELIGIBLE_STAGE}),
+        stages=ALL_AUTO_APPLY_STAGES,
         batch_cap=cap, now=now, lock_root=lock_root,
     )
 
@@ -899,9 +936,10 @@ def main(argv: list | None = None) -> int:
         description=(
             "Bulk-triage the MemoryVault _inbox/ backlog -- promote (reinforced), "
             "merge (near-duplicate), or expire (stale) each still-untriaged entry. "
-            "Every proposal against the pre-existing backlog stays confirm-gated; "
-            "only post-cutover expire proposals auto-apply. See "
-            "`/memory inbox --bulk-review` in SKILL.md."
+            "Every proposal auto-applies by default -- promote/merge/expire alike, "
+            "regardless of whether the entry predates the triage cutover -- pass "
+            "--no-auto-apply to propose only. See `/memory inbox --bulk-review` in "
+            "SKILL.md."
         )
     )
     parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_VAULT_PATH env var)")
@@ -920,7 +958,7 @@ def main(argv: list | None = None) -> int:
     )
     parser.add_argument(
         "--no-auto-apply", action="store_true",
-        help="propose only -- skip the confirm-free post-cutover expire auto-apply step",
+        help="propose only -- skip the confirm-free auto-apply step for every disposition",
     )
     parser.add_argument("--batch-cap", type=int, default=None)
     parser.add_argument("--expire-ttl-days", type=float, default=DEFAULT_EXPIRE_TTL_DAYS)
@@ -998,7 +1036,7 @@ def main(argv: list | None = None) -> int:
         run_id = digest.run_id
         print(
             f"inbox-triage run {run_id}: {len(digest.proposals)} proposal(s), "
-            f"{len(batch.items)} auto-applied (post-cutover expire) -- digest at {digest.digest_path}"
+            f"{len(batch.items)} auto-applied -- digest at {digest.digest_path}"
         )
 
     if args.non_interactive:

@@ -996,7 +996,7 @@ Bulk-triage `<vault>/personal/_inbox/` — the long-promised follow-up named as 
 
 Every proposal stages through the exact `_dream-staging/<run_id>/` contract dreaming already built (`dream_confirm.py`'s `list_pending` / `confirm` / `auto_apply_batch` run unmodified against an inbox-triage run).
 
-**The confirm-gate rule (operator ruling, 2026-07-11).** A first-run **cutover marker** (`_meta/inbox-triage-cutover.json`, stamped once, never overwritten) separates the pre-existing backlog from anything captured afterward. Every disposition proposed against the pre-existing backlog — 1,565 notes at the time this shipped — stays confirm-gated, full stop, regardless of kind: an irreversible-feeling first pass over untouched real content deserves a human read once. Only entries **created after** the cutover stamp are eligible for auto-apply, and even then **only for expire** — promote and merge always stay confirm-gated, matching the same "promote/link stay gated" rule already established for the general dreaming corpus's compression auto-apply.
+**Auto-apply is now the default (operator ruling, 2026-07-11, second pass).** The first-ever run shipped confirm-gated: every disposition proposed against the pre-existing backlog — 1,565 notes across 635 proposals — stayed pending for an explicit human confirm, regardless of kind. The operator personally reviewed and confirmed that entire first-run backlog with zero errors, then directed that confirm-gating retire going forward. **Every disposition — promote, merge, and expire alike — now auto-applies by default**, regardless of whether the source entry predates or postdates the first-run **cutover marker** (`_meta/inbox-triage-cutover.json`, stamped once, never overwritten). The cutover marker still exists and still labels which era an expire proposal's source entry belongs to (`inbox_expire` vs `inbox_expire_backlog`), but that label is now informational only — it no longer gates whether a proposal applies. Pass `--no-auto-apply` to fall back to propose-only (nothing applies until an explicit `--confirm`).
 
 #### Invocation shape
 
@@ -1010,20 +1010,20 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/inbox_triage.py \
 
 | Flag | Use case |
 |---|---|
-| `--bulk-review` (default) | Scan (+ auto-apply post-cutover expire proposals), then interactively review every remaining pending proposal — `[c]onfirm / [r]eject / [s]kip` per proposal. Non-TTY stdin defaults every prompt to skip (never silent action — same contract `watchlist_review.py` already established). |
+| `--bulk-review` (default) | Scan (+ auto-apply every eligible proposal — promote/merge/expire alike), then interactively review whatever's still pending (only ever the batch-cap remainder) — `[c]onfirm / [r]eject / [s]kip` per proposal. Non-TTY stdin defaults every prompt to skip (never silent action — same contract `watchlist_review.py` already established). |
 | `--list` | JSON dump of pending proposals for the most recent run (or `--run-id`) — index/stage/kind/paths/summary/status. |
-| `--confirm <index> --run-id <id>` | Confirm one proposal directly (scriptable, no prompt). |
+| `--confirm <index> --run-id <id>` | Confirm one proposal directly (scriptable, no prompt) — for inspecting/applying a specific proposal by hand. |
 | `--reject <index> --run-id <id>` | Reject one proposal directly — patches every path it touches `status: triage_rejected`, so a later fresh scan never re-proposes it. |
 | `--run-id <id>` (with `--bulk-review`) | Resume reviewing an existing run instead of starting a fresh scan. |
 | `--non-interactive` | Scan (+ auto-apply) only; skip the review loop — for hooks/scripting. |
-| `--no-auto-apply` | Propose only; skip the confirm-free post-cutover expire step entirely. |
+| `--no-auto-apply` | Propose only; skip the confirm-free auto-apply step entirely, for every disposition — everything stays pending for an explicit `--confirm` / interactive review. |
 
 #### Action semantics (locked)
 
 - **confirm** → applies the proposal's mutations through `revert_log.RevertLog.record_and_apply` — never a direct write. Fully undoable via `RevertLog(vault_path).revert(run_id, entry_id)`.
 - **reject** → every path the proposal touches gets `status: triage_rejected` + a timestamp, a direct frontmatter patch (matches `watchlist_review.py`'s own promote/dismiss/defer precedent of annotating outside the revert-log). Stops the entry from being re-proposed by a later scan.
 - **skip** (default for non-TTY + unrecognized input) → no change; the proposal stays pending for a later review pass.
-- Auto-applied post-cutover **expire** proposals need no operator action at all — they already applied through the identical `record_and_apply` path a manual confirm uses, and are just as revertible.
+- Auto-applied proposals — promote, merge, and expire alike — need no operator action at all — they already applied through the identical `record_and_apply` path a manual confirm uses, and are just as revertible. A proposal only stays pending past a run if the run's `--batch-cap` was smaller than the number of eligible proposals, or `--no-auto-apply` was passed.
 
 #### Failure modes (graceful)
 
@@ -1035,9 +1035,9 @@ python3 ~/Antigravity/crickets/skills/memory/scripts/inbox_triage.py \
 
 #### Anti-patterns
 
-- **Don't raise `--expire-ttl-days` or `--promote-occurrence-threshold` to make the first pass "quieter."** A large first-pass digest over untouched real content is the intended shape, not a bug — every one of those proposals still needs an explicit confirm.
-- **Don't add `inbox_promote` / `inbox_merge` to an auto-apply stage set.** The operator's ruling is explicit and narrow: only post-cutover `inbox_expire` auto-applies, regardless of how confident a promote/merge proposal looks.
-- **Don't run `--bulk-review` in batch / non-interactive contexts expecting dispositions to apply.** Use `--confirm` / `--reject` with an explicit `--run-id` + index for scriptable, deterministic action.
+- **Don't raise `--expire-ttl-days` or `--promote-occurrence-threshold` to make a run "quieter."** A large digest over real content is the intended shape when the backlog is large, not a bug.
+- **Don't reach for `--no-auto-apply` as the normal mode.** Auto-apply is the default as of 2026-07-11's second ruling; `--no-auto-apply` is an explicit opt-out for someone who specifically wants to inspect proposals before they apply, not the standing posture.
+- **Don't run `--bulk-review` in batch / non-interactive contexts expecting to hand-pick dispositions.** It already auto-applies everything eligible; use `--confirm` / `--reject` with an explicit `--run-id` + index only when you want to intervene on one specific proposal.
 
 ### `/memory heat-policy`
 
