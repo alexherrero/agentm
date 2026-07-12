@@ -30,6 +30,7 @@ Covers (plan task 3 verification):
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import threading
@@ -69,6 +70,24 @@ class _DreamConfirmTestBase(unittest.TestCase):
         dedup = [p for p in digest.proposals if p.stage == "dedup"]
         self.assertEqual(len(dedup), 1, "fixture must produce exactly one dedup proposal")
         return a, b, digest
+
+    def _stage_a_compression_chain_run(self, run_id: str):
+        """A supersession chain of 3 (c1 <- c2 <- c3), the exact fixture
+        shape `test_dream.py`'s own compression tests use -- the one
+        stage-kind the 2026-07-11 operator ruling flips to confirm-free
+        auto-apply (dedup/contradiction-triage are unaffected, see
+        `AUTO_APPLY_STAGES`'s own docstring in dream_confirm.py)."""
+        c1 = self._write(
+            "chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md")
+        )
+        c2 = self._write(
+            "chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md")
+        )
+        c3 = self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
+        digest = dream.run_dream(self.vault, run_id=run_id)
+        compression = [p for p in digest.proposals if p.stage == "compression"]
+        self.assertEqual(len(compression), 1, "fixture must produce exactly one compression proposal")
+        return c1, c2, c3, digest
 
 
 class ConfirmAppliesThroughRevertLogTests(_DreamConfirmTestBase):
@@ -202,6 +221,118 @@ class ConcurrentConfirmTests(_DreamConfirmTestBase):
             dc.confirm(self.vault, "run-concurrent", 1, self.revert_log)
         with self.assertRaises(dc.AlreadyConfirmedError):
             dc.confirm(self.vault, "run-concurrent", 2, self.revert_log)
+
+
+class AutoApplyExpireTests(_DreamConfirmTestBase):
+    """The 2026-07-11 operator ruling: expire (compression) auto-applies
+    with no confirm() call; promote (dedup) and link (contradiction-
+    triage) are UNCHANGED and must still require an explicit confirm()."""
+
+    def test_compression_auto_applies_with_no_confirm_call(self) -> None:
+        c1, c2, c3, digest = self._stage_a_compression_chain_run("run-auto-1")
+        pre = {p: p.read_bytes() for p in (c1, c2, c3)}
+
+        batch = dc.auto_apply_batch(self.vault, digest.run_id, self.revert_log)
+
+        self.assertEqual(len(batch.items), 1)
+        self.assertEqual(batch.items[0]["stage"], "compression")
+        self.assertIn("entry_id", batch.items[0])
+
+        # The mutation really landed — no dream_confirm.confirm() call was
+        # ever made by this test, only auto_apply_batch().
+        self.assertNotEqual(c1.read_bytes(), pre[c1])
+
+        # It's provably through the revert log, not a direct write: the
+        # SAME RevertLog instance can undo it.
+        self.revert_log.revert(digest.run_id, entry_id=batch.items[0]["entry_id"])
+        self.assertEqual(c1.read_bytes(), pre[c1])
+        self.assertEqual(c2.read_bytes(), pre[c2])
+        self.assertEqual(c3.read_bytes(), pre[c3])
+
+        # list_pending now reports it confirmed — a later manual confirm()
+        # on the same index correctly raises AlreadyConfirmedError rather
+        # than double-applying.
+        pending = dc.list_pending(self.vault, digest.run_id)
+        compression_status = [p.status for p in pending if p.stage == "compression"][0]
+        self.assertEqual(compression_status, "confirmed")
+        with self.assertRaises(dc.AlreadyConfirmedError):
+            dc.confirm(self.vault, digest.run_id, batch.items[0]["index"], self.revert_log)
+
+    def test_dedup_promote_is_not_auto_applied(self) -> None:
+        """Regression test: dedup ('promote') must never be swept up by
+        auto_apply_batch — it stays pending, exactly as before this
+        ruling, requiring an explicit confirm() call."""
+        a, b, digest = self._stage_a_dedup_run("run-auto-2")
+        pre_a, pre_b = a.read_bytes(), b.read_bytes()
+
+        batch = dc.auto_apply_batch(self.vault, digest.run_id, self.revert_log)
+
+        self.assertEqual(batch.items, [], "dedup ('promote') must never auto-apply")
+        self.assertEqual(a.read_bytes(), pre_a)
+        self.assertEqual(b.read_bytes(), pre_b)
+
+        pending = dc.list_pending(self.vault, digest.run_id)
+        self.assertEqual(pending[0].status, "pending")
+        # Still requires the human path — this must succeed unchanged.
+        entry_id = dc.confirm(self.vault, digest.run_id, 1, self.revert_log)
+        self.assertIsInstance(entry_id, str)
+
+    def test_contradiction_triage_link_is_not_auto_applied(self) -> None:
+        """Regression test: contradiction-triage ('link') never carries
+        mutations (advisory-only, unchanged) — auto_apply_batch must not
+        touch it or mark it confirmed."""
+        self._write("con-a.md", "---\nslug: contradiction\nkind: preference\n---\nUse tabs for indentation.\n")
+        self._write("con-b.md", "---\nslug: contradiction\nkind: preference\n---\nUse spaces for indentation.\n")
+        digest = dream.run_dream(self.vault, run_id="run-auto-3")
+        contra = [p for p in digest.proposals if p.stage == "contradiction_triage"]
+        self.assertEqual(len(contra), 1)
+
+        batch = dc.auto_apply_batch(self.vault, "run-auto-3", self.revert_log)
+        self.assertEqual(batch.items, [])
+
+        pending = dc.list_pending(self.vault, "run-auto-3")
+        self.assertEqual(pending[0].status, "pending")
+
+    def test_batch_cap_limits_auto_apply_per_cycle(self) -> None:
+        # Two independent supersession chains in one run.
+        self._write("a1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix a3.\n".format(self.vault / "a2.md"))
+        self._write("a2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix a2.\n".format(self.vault / "a3.md"))
+        self._write("a3.md", "---\nkind: fix\n---\nFix a1.\n")
+        self._write("b1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix b3.\n".format(self.vault / "b2.md"))
+        self._write("b2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix b2.\n".format(self.vault / "b3.md"))
+        self._write("b3.md", "---\nkind: fix\n---\nFix b1.\n")
+        digest = dream.run_dream(self.vault, run_id="run-cap")
+        compression = [p for p in digest.proposals if p.stage == "compression"]
+        self.assertEqual(len(compression), 2, "fixture must produce two independent compression proposals")
+
+        batch = dc.auto_apply_batch(self.vault, "run-cap", self.revert_log, batch_cap=1)
+        self.assertEqual(len(batch.items), 1, "batch_cap=1 must apply exactly one, leaving the other pending")
+
+        pending = dc.list_pending(self.vault, "run-cap")
+        statuses = sorted(p.status for p in pending if p.stage == "compression")
+        self.assertEqual(statuses, ["confirmed", "pending"])
+
+    def test_zero_item_batch_still_returns_a_record(self) -> None:
+        self._stage_a_dedup_run("run-zero")
+        batch = dc.auto_apply_batch(self.vault, "run-zero", self.revert_log)
+        self.assertEqual(batch.items, [])
+        self.assertEqual(batch.run_id, "run-zero")
+        self.assertEqual(batch.stages, dc.AUTO_APPLY_STAGES)
+
+    def test_render_auto_applied_json_shape_and_revert_pointer(self) -> None:
+        _, _, _, digest = self._stage_a_compression_chain_run("run-render")
+        batch = dc.auto_apply_batch(self.vault, digest.run_id, self.revert_log)
+        payload = json.loads(dc.render_auto_applied_json(batch))
+
+        self.assertEqual(payload["run_id"], digest.run_id)
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["stages"], ["compression"])
+        self.assertEqual(payload["batch_cap"], dc.DEFAULT_AUTO_APPLY_BATCH_CAP)
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertIn("entry_id", payload["items"][0])
+        self.assertIn("paths", payload["items"][0])
+        self.assertIn(digest.run_id, payload["revert"]["how"])
+        self.assertIn("RevertLog", payload["revert"]["how"])
 
 
 def _read_manifest_staged_at(vault_path: Path, run_id: str) -> float:

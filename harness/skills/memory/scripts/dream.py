@@ -73,6 +73,7 @@ from vault_lock import atomic_write  # noqa: E402
 
 __all__ = [
     "run_dream",
+    "run_dream_and_auto_apply",
     "Proposal",
     "InsightCandidate",
     "DreamDigest",
@@ -408,7 +409,17 @@ def _stage_qualification(insight_candidates: list) -> None:
 # Stage 7 — digest + staging
 # -----------------------------------------------------------------------------
 
-def _render_digest(digest: DreamDigest) -> str:
+def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
+    """`auto_applied` (an optional `dream_confirm.AutoAppliedBatch`) marks
+    which proposals this run already applied automatically — the
+    dreaming pipeline's confirm-free "expire" action (2026-07-11 operator
+    ruling: compression-stage proposals only; dedup/contradiction-triage
+    always still show as staged, awaiting an explicit
+    `dream_confirm.confirm()` call). `run_dream()` itself calls this with
+    `auto_applied=None` (nothing has auto-applied yet at that point in the
+    pipeline); `run_dream_and_auto_apply()` re-renders with the real batch
+    once it's known, so the on-disk `digest.md` never misreports an
+    already-applied item as still awaiting confirmation."""
     lines = [
         f"# Dream digest — run {digest.run_id}",
         "",
@@ -421,19 +432,58 @@ def _render_digest(digest: DreamDigest) -> str:
             lines.append(f"- `{c.path}`")
         lines.append("")
 
+    auto_applied_by_index = {}
+    if auto_applied is not None:
+        auto_applied_by_index = {item["index"]: item for item in auto_applied.items}
+        lines.append("## Auto-expired this run (applied automatically — no confirm required)")
+        lines.append("")
+        if not auto_applied.items:
+            lines.append(
+                f"None this run (stages watched: {', '.join(sorted(auto_applied.stages)) or 'none'}; "
+                f"batch cap {auto_applied.batch_cap})."
+            )
+        else:
+            lines.append(
+                f"{len(auto_applied.items)} proposal(s) auto-applied "
+                f"(batch cap {auto_applied.batch_cap}; stages: {', '.join(sorted(auto_applied.stages))}):"
+            )
+            lines.append("")
+            for item in auto_applied.items:
+                lines.append(f"- #{item['index']} {item['stage']}/{item['kind']}: {item['summary']}")
+                lines.append(
+                    f"  revert: `RevertLog(vault_path).revert({digest.run_id!r}, {item['entry_id']!r})` "
+                    f"— entry `{item['entry_id']}`"
+                )
+            lines.append("")
+            lines.append(
+                f"Full record: `_dream-staging/{digest.run_id}/auto-expired.json` "
+                "(also mirrored at `_meta/dream-auto-expired-latest.json`)."
+            )
+        lines.append("")
+
     if not digest.proposals:
         lines.append("## Proposals")
         lines.append("")
         lines.append("None this run.")
         return "\n".join(lines) + "\n"
 
-    lines.append("## Proposals (staged — NOT applied; operator confirmation required)")
+    lines.append("## Proposals")
     lines.append("")
     for i, p in enumerate(digest.proposals, start=1):
         lines.append(f"### {i}. {p.stage} — {p.kind}")
         lines.append(f"- paths: {', '.join(p.paths)}")
         lines.append(f"- {p.summary}")
-        if p.mutations:
+        if i in auto_applied_by_index:
+            item = auto_applied_by_index[i]
+            lines.append(
+                f"- **AUTO-APPLIED** (expire — no confirm required): entry `{item['entry_id']}`; "
+                f"undo via `RevertLog.revert({digest.run_id!r}, {item['entry_id']!r})`"
+            )
+        elif p.mutations:
+            lines.append(
+                "- staged — NOT applied; operator confirmation required "
+                f"(`dream_confirm.confirm(vault_path, {digest.run_id!r}, {i}, revert_log)`)"
+            )
             lines.append(
                 f"- revert pointer (on confirm): run `{digest.run_id}`, stage `{p.stage}` "
                 f"— apply via `revert_log.RevertLog.record_and_apply({digest.run_id!r}, {p.stage!r}, mutations)`, "
@@ -534,6 +584,73 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
 
 
 # -----------------------------------------------------------------------------
+# Auto-apply — the "expire" action's confirm-free apply path (2026-07-11
+# operator ruling: see wiki/designs/agentm-experience-and-dreaming.md's
+# amendment log). `run_dream()` above is untouched — it still only ever
+# proposes; this wrapper is the additive layer that immediately confirms
+# the compression-stage proposals through `dream_confirm.auto_apply_batch`
+# once `run_dream()` has staged them. `dedup` and `contradiction_triage`
+# proposals are left exactly as `run_dream()` staged them — pending,
+# awaiting an explicit operator `dream_confirm.confirm()` call.
+# -----------------------------------------------------------------------------
+
+def run_dream_and_auto_apply(
+    vault_path: Path,
+    *,
+    run_id: str | None = None,
+    revert_log=None,
+    batch_cap: int | None = None,
+    log_root: Path | str | None = None,
+    lock_root: Path | str | None = None,
+):
+    """Run `run_dream()` (unchanged), then auto-apply its compression-stage
+    proposals through `dream_confirm.auto_apply_batch` — no operator
+    confirm required for those. Dedup and contradiction-triage proposals
+    stay staged in `_dream-staging/<run_id>/`, exactly as `run_dream()`
+    left them.
+
+    Re-renders `digest.md` with the auto-applied batch reflected (see
+    `_render_digest`'s `auto_applied` param), and writes the
+    machine-readable per-run `_dream-staging/<run_id>/auto-expired.json`
+    plus the stable, run-id-free `_meta/dream-auto-expired-latest.json`
+    pointer — the latter is what a later reader (e.g. a console/dashboard
+    surface) reads without needing to already know the run id, and it is
+    overwritten every cycle (including a zero-item one) so it never goes
+    stale.
+
+    `revert_log` defaults to a fresh `RevertLog(vault_path, log_root=
+    log_root, lock_root=lock_root)` (the CLI's own default; `log_root`/
+    `lock_root` default to `None`, i.e. `RevertLog`'s own real
+    `~/.cache/agentm/dream/revert-log/` — a test passes a scratch dir for
+    either, or injects a whole `revert_log` instance directly, exactly
+    like `dream_confirm`'s own existing tests do). Ignored if `revert_log`
+    is given explicitly. `batch_cap` defaults to
+    `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP`.
+
+    Returns `(digest, auto_applied_batch)`.
+    """
+    import dream_confirm  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+    from revert_log import RevertLog  # noqa: E402
+
+    vault_path = Path(vault_path)
+    digest = run_dream(vault_path, run_id=run_id)
+
+    if revert_log is None:
+        revert_log = RevertLog(vault_path, log_root=log_root, lock_root=lock_root)
+    cap = batch_cap if batch_cap is not None else dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP
+    batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap)
+
+    staging_dir = vault_path / "_dream-staging" / digest.run_id
+    atomic_write(staging_dir / "digest.md", _render_digest(digest, auto_applied=batch))
+
+    payload = dream_confirm.render_auto_applied_json(batch)
+    atomic_write(staging_dir / "auto-expired.json", payload)
+    atomic_write(vault_path / "_meta" / "dream-auto-expired-latest.json", payload)
+
+    return digest, batch
+
+
+# -----------------------------------------------------------------------------
 # CLI
 # -----------------------------------------------------------------------------
 
@@ -550,6 +667,28 @@ def main(argv: list | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the thin manual /dream pass.")
     parser.add_argument("--vault-path", help="MemoryVault root (overrides MEMORY_VAULT_PATH env var)")
     parser.add_argument("--run-id", help="Override the generated run id")
+    parser.add_argument(
+        "--batch-cap", type=int, default=None,
+        help="max compression-stage ('expire') proposals to auto-apply this run "
+             "(default: dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP)",
+    )
+    parser.add_argument(
+        "--no-auto-apply", action="store_true",
+        help="propose only (run_dream's old behavior) -- skip the confirm-free "
+             "expire auto-apply step entirely; every proposal, including "
+             "compression, stays pending for a manual dream_confirm.confirm() call",
+    )
+    parser.add_argument(
+        "--log-root", default=None,
+        help="override RevertLog's journal directory (default: "
+             "~/.cache/agentm/dream/revert-log/, XDG_CACHE_HOME-honoring). "
+             "Mainly for tests -- never needed in normal use.",
+    )
+    parser.add_argument(
+        "--lock-root", default=None,
+        help="override the revert-log's lock directory (default: vault_lock's "
+             "own default). Mainly for tests -- never needed in normal use.",
+    )
     args = parser.parse_args(argv)
 
     vault = _resolve_vault_path(args.vault_path)
@@ -557,10 +696,23 @@ def main(argv: list | None = None) -> int:
         print("ERROR: no vault path resolved (set --vault-path or MEMORY_VAULT_PATH)", file=sys.stderr)
         return 1
 
-    digest = run_dream(vault, run_id=args.run_id)
+    if args.no_auto_apply:
+        digest = run_dream(vault, run_id=args.run_id)
+        print(
+            f"dream run {digest.run_id}: {len(digest.proposals)} proposal(s), "
+            f"{len(digest.insight_candidates)} insight candidate(s) — digest at {digest.digest_path} "
+            "(--no-auto-apply: nothing auto-applied, all proposals pending)"
+        )
+        return 0
+
+    digest, batch = run_dream_and_auto_apply(
+        vault, run_id=args.run_id, batch_cap=args.batch_cap,
+        log_root=args.log_root, lock_root=args.lock_root,
+    )
     print(
         f"dream run {digest.run_id}: {len(digest.proposals)} proposal(s), "
-        f"{len(digest.insight_candidates)} insight candidate(s) — digest at {digest.digest_path}"
+        f"{len(digest.insight_candidates)} insight candidate(s), "
+        f"{len(batch.items)} auto-applied (expire) — digest at {digest.digest_path}"
     )
     return 0
 

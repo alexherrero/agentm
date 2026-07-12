@@ -84,9 +84,49 @@ __all__ = [
     "UnknownProposalError",
     "ExpiredProposalError",
     "AlreadyConfirmedError",
+    "AUTO_APPLY_STAGES",
+    "DEFAULT_AUTO_APPLY_BATCH_CAP",
+    "AutoAppliedBatch",
+    "auto_apply_batch",
+    "render_auto_applied_json",
 ]
 
 DEFAULT_TTL_DAYS = 30.0
+
+# The dreaming pipeline's "expire" action (operator ruling, 2026-07-11 --
+# see wiki/designs/agentm-experience-and-dreaming.md's amendment log): a
+# batch of proposals whose stage is in this set applies automatically, no
+# per-batch operator confirm required. Only `compression` qualifies --
+# supersession-chain compaction acts on notes that ALREADY carry an
+# author/prior-cycle-declared `supersedes:` link (never a freshly-inferred
+# relationship), it never deletes a source (only marks the non-head chain
+# members `compacted_into`, retiring them from independent-note status),
+# and every mutation still runs through `revert_log.record_and_apply` --
+# so it is exactly "retire it, reversible via the undo/revert log," the
+# ruling's own words for the one action allowed to skip the gate.
+#
+# `dedup` (merge -- a freshly-inferred similarity match, `kind="merge"`)
+# and `contradiction_triage` (keep_both -- flags a relationship for the
+# operator to resolve, `kind="keep_both"`) are the ruling's "promote" and
+# "link" -- they are DELIBERATELY NOT in this set and must keep requiring
+# an explicit `confirm()` call. Do not add either to `AUTO_APPLY_STAGES`
+# without a fresh, separate operator ruling -- this is a narrow, specific
+# flip, not a general autonomy expansion.
+AUTO_APPLY_STAGES = frozenset({"compression"})
+
+# Standing batch bound for one auto-apply cycle (2026-07-11 cadence
+# review). The proving-window's temporary <=100 cap was sized for a short
+# calibration period on a then-tiny corpus; the standing number is set
+# against the vault's real measured shape instead: the dreaming corpus
+# `dream.py` actually scans (the whole vault minus `_inbox`/`_meta`/
+# `_harness`/etc.) held 366 entries with only 2 carrying a `supersedes:`
+# link at review time -- nowhere near the >=3-chain floor `compression`
+# requires, so today's real auto-apply volume is ~0 per cycle. 25 leaves
+# generous headroom to clear any realistic weekly backlog while capping
+# worst-case blast radius at well under 10% of the current corpus (100
+# would have been over a quarter of it) -- see the amendment log for the
+# full rationale and the inbox growth data behind it.
+DEFAULT_AUTO_APPLY_BATCH_CAP = 25
 
 
 class DreamConfirmError(RuntimeError):
@@ -120,6 +160,20 @@ class PendingProposal:
     summary: str
     mutations: list
     status: str  # "pending" | "confirmed" | "expired"
+
+
+@dataclass
+class AutoAppliedBatch:
+    """One cycle's confirm-free "expire" apply -- the record `auto_apply_batch`
+    returns and `render_auto_applied_json` serializes. `items` is empty (not
+    omitted) when nothing qualified this run, so a reader always finds a
+    current record rather than a stale one from a prior cycle."""
+
+    run_id: str
+    applied_at: float
+    stages: frozenset
+    batch_cap: int
+    items: list  # each: {"index", "stage", "kind", "paths", "summary", "entry_id"}
 
 
 def _staging_dir(vault_path: Path, run_id: str) -> Path:
@@ -296,3 +350,97 @@ def confirm(
         state[str(index)]["entry_id"] = entry_id
         _save_state(vault_path, run_id, state)
         return entry_id
+
+
+def auto_apply_batch(
+    vault_path: Path,
+    run_id: str,
+    revert_log: RevertLog,
+    *,
+    batch_cap: int = DEFAULT_AUTO_APPLY_BATCH_CAP,
+    stages: frozenset = AUTO_APPLY_STAGES,
+    now: float | None = None,
+    lock_root: Path | str | None = None,
+) -> AutoAppliedBatch:
+    """Automatically confirm+apply every still-pending proposal in `run_id`
+    whose stage is in `stages` (default `AUTO_APPLY_STAGES` -- today just
+    `{"compression"}`, the dreaming pipeline's "expire" action per the
+    2026-07-11 operator ruling). Applies through the exact same `confirm()`
+    path a human calls by hand -- same TTL check, same one-shot guard, same
+    `revert_log.record_and_apply` -- so an auto-applied item is provably
+    indistinguishable, in the revert log, from a manually-confirmed one.
+
+    Applies at most `batch_cap` qualifying proposals per call, lowest-index
+    (oldest) first; any remainder stays `pending` for a later cycle or a
+    manual `confirm()` -- this is what keeps one run from ever touching
+    more than `batch_cap` notes at once.
+
+    `promote` (dedup/merge) and `link` (contradiction-triage/keep_both) are
+    NOT in `stages` by default and this function must never be called with
+    them added without a fresh, separate operator ruling -- see
+    `AUTO_APPLY_STAGES`'s own docstring.
+
+    Returns an `AutoAppliedBatch` describing exactly what applied (empty
+    `items` if nothing qualified) -- always a real record, never `None`, so
+    the digest and the auto-expired-batch log always have something
+    current to report, even on a zero-item cycle."""
+    now = now if now is not None else time.time()
+    pending = [
+        p for p in list_pending(vault_path, run_id, now=now)
+        if p.status == "pending" and p.stage in stages
+    ]
+    pending.sort(key=lambda p: p.index)
+
+    items: list = []
+    for p in pending[:batch_cap]:
+        entry_id = confirm(vault_path, run_id, p.index, revert_log, now=now, lock_root=lock_root)
+        items.append({
+            "index": p.index,
+            "stage": p.stage,
+            "kind": p.kind,
+            "paths": p.paths,
+            "summary": p.summary,
+            "entry_id": entry_id,
+        })
+
+    return AutoAppliedBatch(
+        run_id=run_id,
+        applied_at=now,
+        stages=frozenset(stages),
+        batch_cap=batch_cap,
+        items=items,
+    )
+
+
+def render_auto_applied_json(batch: AutoAppliedBatch) -> str:
+    """The machine-readable record of one auto-apply cycle -- written to
+    both `_dream-staging/<run_id>/auto-expired.json` (the per-run detail,
+    sibling to `digest.md`/`proposals.json`/`state.json`) and
+    `_meta/dream-auto-expired-latest.json` (the stable, run-id-free
+    pointer a later reader -- e.g. a console/dashboard surface -- reads
+    without enumerating `_dream-staging/*/`). Same content both places;
+    the "latest" file is fully overwritten every cycle, including a
+    zero-item one, so it never goes stale."""
+    return json.dumps(
+        {
+            "run_id": batch.run_id,
+            "applied_at": batch.applied_at,
+            "stages": sorted(batch.stages),
+            "batch_cap": batch.batch_cap,
+            "count": len(batch.items),
+            "items": batch.items,
+            "revert": {
+                "how": (
+                    "Python API (revert_log.py has no CLI): "
+                    "from revert_log import RevertLog; "
+                    "RevertLog(vault_path).revert(" + json.dumps(batch.run_id) + ", entry_id) "
+                    "reverts one item (use its own entry_id from `items[]` below); "
+                    "RevertLog(vault_path).revert(" + json.dumps(batch.run_id) + ") "
+                    "with no entry_id reverts every stage of this run, in reverse order."
+                ),
+                "run_id": batch.run_id,
+            },
+        },
+        indent=2,
+        sort_keys=True,
+    )
