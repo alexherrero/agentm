@@ -10,6 +10,7 @@ Run: `cd scripts && python3 -m unittest test_machinery_doctor -v`
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -137,6 +138,7 @@ class GitHookInstalledTests(unittest.TestCase):
             c = md.check_git_hook_installed(repo, "commit-msg")
             self.assertEqual(c.status, "OK")
 
+    @unittest.skipIf(os.name == "nt", "chmod executable-bit semantics are POSIX-only; Windows has no equivalent permission model")
     def test_warn_when_installed_but_not_executable(self):
         with tempfile.TemporaryDirectory() as td:
             repo = Path(td)
