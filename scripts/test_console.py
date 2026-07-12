@@ -267,16 +267,57 @@ class MachinerySectionTests(unittest.TestCase):
 
 
 class VaultDoctorSectionTests(unittest.TestCase):
+    """`section_vault_doctor` resolves a crickets sibling before it ever
+    reaches the injected runner (mirrors `section_board_drift`'s own
+    resolution-then-run shape) -- exercised hermetically by pointing
+    `$CRICKETS_SCRIPTS_DIR` at a synthetic fixture tree (the CI runner has
+    no real crickets checkout, so this must never depend on one)."""
+
+    def _fixture_crickets_root(self, tmp: Path) -> Path:
+        root = tmp / "crickets"
+        (root / "src" / "github-projects").mkdir(parents=True)
+        script_dir = root / "src" / "obsidian-vault" / "scripts"
+        script_dir.mkdir(parents=True)
+        (script_dir / "doctor_vault.py").write_text("# fixture placeholder\n", encoding="utf-8")
+        return root
+
     def test_live_output_reformatted_with_timestamp(self):
+        import os
+
         canned = (
             "[doctor_vault] obsidian-vault backing-plugin health:\n"
             "  [OK] vault-path  looks fine\n"
             "  [OK] backend     looks fine\n"
         )
-        out = c.section_vault_doctor(Path("/fake-vault"), runner=_fake_runner(returncode=0, stdout=canned), now=1_700_000_000.0)
+        old = os.environ.get("CRICKETS_SCRIPTS_DIR")
+        with tempfile.TemporaryDirectory() as td:
+            os.environ["CRICKETS_SCRIPTS_DIR"] = str(self._fixture_crickets_root(Path(td)))
+            try:
+                out = c.section_vault_doctor(
+                    Path("/fake-vault"), runner=_fake_runner(returncode=0, stdout=canned), now=1_700_000_000.0
+                )
+            finally:
+                if old is None:
+                    os.environ.pop("CRICKETS_SCRIPTS_DIR", None)
+                else:
+                    os.environ["CRICKETS_SCRIPTS_DIR"] = old
         self.assertIn("Vault doctor (live check,", out)
         self.assertIn("vault-path", out)
         self.assertNotIn("[doctor_vault]", out)  # header line stripped, rows kept
+
+    def test_no_crickets_sibling_degrades_to_n_a(self):
+        import os
+
+        old = os.environ.get("CRICKETS_SCRIPTS_DIR")
+        os.environ["CRICKETS_SCRIPTS_DIR"] = "/definitely/not/a/real/path"
+        try:
+            out = c.section_vault_doctor(Path("/fake-vault"))
+            self.assertIn("n/a", out)
+        finally:
+            if old is None:
+                os.environ.pop("CRICKETS_SCRIPTS_DIR", None)
+            else:
+                os.environ["CRICKETS_SCRIPTS_DIR"] = old
 
 
 class VaultLintSectionTests(unittest.TestCase):
