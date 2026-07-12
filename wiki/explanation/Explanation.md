@@ -3,6 +3,21 @@
 
 These pages explain *why* AgentM works the way it does — the choices behind it and the trade-offs each one accepts. If you are looking for technical specifications, see [Reference](Reference). For high-level design, see [Architecture](Architecture).
 
+## What AgentM is
+
+AgentM gives your coding agent a permanent memory. It writes what it learns — about you, and about each project — as plain Markdown notes in a folder you own, brings the right notes back at the right moment, and looks after the collection over time so it gets better instead of messier. Every note is a file: readable, editable, yours, with no hidden database behind it. The agent curates that collection, but you hold the vetoes — nothing durable gets written, linked, or forgotten without you somewhere in the loop.
+
+## The life of a memory
+
+A note moves through six stages between the moment it's noticed and the moment it's quietly retired:
+
+1. **Capture** — reflection notices something durable in a session. A confident, clear-cut signal saves straight to a curated note; a hunch lands in an inbox for you to confirm or drop. See [Experience & Dreaming](agentm-experience-and-dreaming).
+2. **Index** — the note is embedded into the vector index and linked to its neighbors by typed edges (`uses`, `fixed`, `supersedes`, and six more), so recall can follow a relationship, not just match text. See [Memory index](agentm-memory-index).
+3. **Recall** — every prompt searches the vault by meaning and by keyword, on top of a small always-load floor of standing rules that never has to be searched for.
+4. **Heat** — notes that keep getting used float up toward that always-load floor; notes nobody's touched cool back down. Forgetting is a managed policy here, not an accident.
+5. **Sleep** — between sessions, dreaming looks over the inbox and proposes promotions, links, and expirations. Every proposal is undo-backed, and none of them apply without you confirming.
+6. **Watch** — `/console`, the session-start digest (see [Auto-orchestration](Auto-Orchestration)), and the nightly [health score](Health-Scorecard) keep the collection's shape visible, so drift shows up before it becomes a problem.
+
 ## What's here
 
 - **[Product intent](Product-Intent)** — why we created AgentM, and who it is for.
