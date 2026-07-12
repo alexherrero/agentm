@@ -41,6 +41,7 @@ import os
 import re
 import sys
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 
 # save_entry / evolve_entry live in this same scripts/ dir; lazy-imported
@@ -501,6 +502,22 @@ def _resolve_route_mode(arg_mode: str | None) -> str:
     return ROUTE_MODE_AUTO
 
 
+def _utcnow_iso() -> str:
+    """Second-precision UTC timestamp, e.g. `2026-07-11T18:42:05+00:00`.
+
+    Inbox-bulk-review (`inbox_triage.py`) needs a real per-entry creation
+    timestamp to tell "existing backlog" from "captured after the triage
+    mechanism first ran" (its cutover-marker rule) — the pre-existing
+    1,565-note backlog never carried this field at all, so its mere
+    presence is itself part of the signal (see `inbox_triage.py`'s
+    `_is_pre_existing_backlog`). Full ISO-8601 datetime, not `save.py`'s
+    bare `created: YYYY-MM-DD` date convention — the cutover marker is a
+    point in time, not a calendar day, so same-day precision matters here
+    in a way it doesn't for `save_entry()`'s canonical entries.
+    """
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
 def _save_candidate_to_inbox(
     candidate: Candidate, vault: Path, *, stderr=sys.stderr
 ) -> Path | None:
@@ -552,10 +569,20 @@ def _save_candidate_to_inbox(
     # Write a minimal frontmatter + body. Inbox entries are triage targets,
     # not full canonical entries — they don't need the full save.py frontmatter
     # shape (kind/status/created/updated/tags/group/slug/always_load).
+    #
+    # `created` (added alongside `inbox_triage.py`, the bulk-review pass):
+    # the ONE field this minimal shape borrows from save.py's canonical
+    # convention, and the only durable per-entry timestamp an inbox entry
+    # carries — reflect.py never updates an inbox entry after this initial
+    # write, so it doubles as "when was this captured" for good. The
+    # pre-existing backlog has no such field at all (this is the first
+    # write of it); `inbox_triage.py`'s cutover-marker rule reads that
+    # absence as its own signal that an entry predates the mechanism.
     fm = (
         "---\n"
         f"kind: {candidate.category}\n"
         "status: inbox\n"
+        f"created: {_utcnow_iso()}\n"
         f"slug: {target.stem}\n"
         f"mining_confidence: {candidate.confidence}\n"
         f"mining_rationale: {json.dumps(candidate.rationale)}\n"
@@ -760,7 +787,8 @@ def route_candidates(
 #     each session (not each batch) — finer-grained resume.
 #   - MEDIUM-confidence candidates route to _inbox/ by default (auto mode)
 #     since historical-pass volume makes interactive routing impractical.
-#     Operator triages later via inbox-bulk-review (separate follow-up).
+#     Operator triages later via `/memory inbox --bulk-review`
+#     (`inbox_triage.py`, built 2026-07-11).
 
 _STATE_SCHEMA_VERSION = 1
 
