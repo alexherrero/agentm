@@ -21,18 +21,50 @@
 # evaluated by scripts/runner/cycle.py (as-built) — no real activity-gating
 # exists yet — so `schedule: weekly` + a two-cycle `lookback` is the
 # calibration-era substitute until the runner grows real gate evaluation.
+#
+# Cadence review (2026-07-11, Consolidation-arc follow-up, paired with the
+# expire auto-apply flip below): the arc's proving window ran this pass
+# more often (an alternate-day cadence) with a temporary <=100-note batch
+# cap for fast calibration feedback -- that was explicitly a proving-window
+# artifact, not a decided standing config. Reviewed against the real vault:
+# `_inbox/` (upstream of this corpus) holds ~1,565 notes growing at a noisy
+# ~13/day baseline (one-time bulk-mining spike aside); the corpus this job
+# actually scans (the whole vault minus `_inbox`/`_meta`/`_harness`/etc.,
+# per dream.py's own _EXCLUDE_DIRS) is far smaller at 366 entries, only 2
+# of which carry a `supersedes:` link -- nowhere near the >=3-chain floor
+# `compression` (the auto-applying "expire" stage) requires, so real
+# auto-apply volume is ~0/cycle today. Weekly stays the standing cadence:
+# there is no organic pressure for anything tighter, and a slower cadence
+# than the proving window's is fine now that dream.py auto-applies the low-
+# risk "expire" stage on its own instead of waiting on an operator's batch
+# review. See `--batch-cap` below for the batch bound this review also set.
 schedule: weekly
 lookback: 14d
 
 # Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
 # Relies on MEMORY_VAULT_PATH already being set in the runner's own
 # environment, same as every other vault-reading script in this repo.
-command: python3 ../harness/skills/memory/scripts/dream.py
+# `--batch-cap 25` (explicit, not just the script's own default, so a
+# future default change doesn't silently alter this manifest's committed
+# behavior) bounds compression-stage ("expire") auto-apply to at most 25
+# notes per cycle -- generous headroom over today's ~0/cycle real volume,
+# while capping worst-case blast radius well under 10% of the 366-entry
+# corpus this job scans (the proving window's temporary <=100 cap would
+# have been over a quarter of it). dedup and contradiction-triage
+# proposals are UNCHANGED -- they still stage to `_dream-staging/` and
+# wait on an explicit `dream_confirm.confirm()` call; only the
+# compression/"expire" stage auto-applies, per the operator's 2026-07-11
+# ruling (wiki/designs/agentm-experience-and-dreaming.md's amendment log).
+command: python3 ../harness/skills/memory/scripts/dream.py --batch-cap 25
 
 # Insight-candidate writes land under _dream/insights/ — new, agent-
 # generated derived content, i.e. T3 (the agent's own memory), not T2
-# (operator-curated). The proposal-only stages (dedup/contradiction/
-# compression) never write to an existing entry at all.
+# (operator-curated). Dedup and contradiction-triage remain proposal-only
+# (never write to an existing entry without an operator's confirm());
+# compression is the one stage that now writes on its own (the auto-
+# applying "expire" action above) — still T3, since every write it makes
+# still lands through revert_log.record_and_apply, the same auditable,
+# revertible path every other T3 write in this job already used.
 tier: T3
 
 # No `budget:` — the thin v1 pipeline (dream.py, dream_confirm.py) makes

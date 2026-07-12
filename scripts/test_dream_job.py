@@ -100,7 +100,16 @@ class SameShapeAsManualRunTests(unittest.TestCase):
     """Proves the job-command wiring is correct: WHEN the job does run
     (dry_run overridden False for this test — the shipped template itself
     stays dry_run: true per StaysInDryRunTests above), it produces the same
-    digest shape as task 2's direct `dream.run_dream()` call."""
+    digest shape as task 2's manual-run surface.
+
+    The manual-run reference is `dream.run_dream_and_auto_apply()`, not the
+    older bare `dream.run_dream()` — the job's shipped `command:` invokes
+    `dream.py`'s CLI, and that CLI's default entry point auto-applies
+    compression ("expire") proposals as of the 2026-07-11 operator ruling
+    (`--no-auto-apply` opts back into the old propose-only shape). Both
+    sides use a scratch `RevertLog` (via `--log-root`/`--lock-root` on the
+    job side, `revert_log=` on the manual side) so neither ever touches the
+    real `~/.cache` during the test."""
 
     def _seed_fixture_corpus(self, vault: Path) -> None:
         (vault / "a.md").write_text(
@@ -111,14 +120,23 @@ class SameShapeAsManualRunTests(unittest.TestCase):
         )
 
     def test_job_invoked_command_matches_manual_run_shape(self) -> None:
+        from revert_log import RevertLog  # noqa: E402  (same cross-dir import pattern as test_dream_confirm.py)
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
 
-            # Manual run (task 2's own surface) — the reference shape.
+            # Manual run (task 2's surface, now via the auto-apply wrapper
+            # dream.py's CLI itself calls by default) — the reference shape.
             manual_vault = root / "manual-vault"
             manual_vault.mkdir()
             self._seed_fixture_corpus(manual_vault)
-            manual_digest = dream.run_dream(manual_vault, run_id="manual-run")
+            manual_revert_log = RevertLog(
+                manual_vault, log_root=root / "manual-scratch" / "revert-log",
+                lock_root=root / "manual-scratch" / "locks",
+            )
+            manual_digest, _manual_batch = dream.run_dream_and_auto_apply(
+                manual_vault, run_id="manual-run", revert_log=manual_revert_log,
+            )
             manual_shape = _shape(manual_digest.digest_path.read_text(encoding="utf-8"))
 
             # Job-invoked run — same corpus shape, executed via the runner's
@@ -131,9 +149,11 @@ class SameShapeAsManualRunTests(unittest.TestCase):
             jobs_dir = root / "jobs"
             jobs_dir.mkdir()
             template = _TEMPLATE_PATH.read_text(encoding="utf-8")
+            job_scratch = root / "job-scratch"
             live_manifest = template.replace("dry_run: true", "dry_run: false").replace(
-                "command: python3 ../harness/skills/memory/scripts/dream.py",
-                f'command: python3 "{_DREAM_PY}" --vault-path "{job_vault}"',
+                "command: python3 ../harness/skills/memory/scripts/dream.py --batch-cap 25",
+                f'command: python3 "{_DREAM_PY}" --vault-path "{job_vault}" --batch-cap 25 '
+                f'--log-root "{job_scratch / "revert-log"}" --lock-root "{job_scratch / "locks"}"',
             )
             (jobs_dir / "dream.yaml").write_text(live_manifest, encoding="utf-8")
 
