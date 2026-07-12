@@ -36,9 +36,9 @@
 
 <p align="center"><sub>Works with Claude Code + Antigravity — <a href="https://github.com/alexherrero/agentm/wiki/Compatibility">see compatibility</a></sub></p>
 
-**AgentM** is built to learn how you work — and, in time, to know it better than you do. It helps you remember: the decisions, the open threads, the conventions, the step you always forget before a release. It knows **how** the work should be done — it is opinionated, with a sound answer ready even for the things you didn't think to ask. And when it hits something it doesn't know, it works it out and keeps what it learns for the next time.
+**AgentM** gives your coding agent a permanent memory. It writes what it learns — about you, and about each project — as plain Markdown notes in a folder you own: no hidden database, nothing you can't read or edit yourself. Memory splits into two tenants — personal notes on how you like to work, and a per-project record of decisions and open threads — so a fresh session can pick up exactly where the last one left off. It brings the right notes back at the right moment, and looks after the collection over time so it gets better instead of messier.
 
-Said differently, AgentM combines a custom harness with persistent memory and self-improvement — it dreams and learns between sessions. Its customization system extends those abilities through plugins that enable long-running, nuanced development workflows, automated project management, and more. Its opinion system is designed to layer in personas focused on a specific kind of work — activation is the next build slice.
+Said differently, AgentM pairs a phase-gated harness with that memory and a self-improvement pass — it dreams and learns between sessions. Its customization system extends those abilities through plugins that enable long-running, nuanced development workflows, automated project management, and more. Its opinion system is designed to layer in personas focused on a specific kind of work — activation is the next build slice.
 
 AgentM works best paired with [`crickets`](https://github.com/alexherrero/crickets) — the toolkit of plugins (capabilities, skills, hooks, and sub-agents) that make it even more useful.
 
