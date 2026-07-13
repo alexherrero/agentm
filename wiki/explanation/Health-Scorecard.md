@@ -21,9 +21,9 @@ see [CI gates](CI-Gates) for the full nightly-tier breakdown.
 | memory persist+recall | 25 | 93.94 | 33 | 0 |
 | plan-adherence+drift | 15 | 100.00 | 39 | 1 |
 | verification honesty | 15 | 100.00 | 6 | 0 |
-| capability function | 15 | 96.55 | 29 | 2 |
+| capability function | 15 | 96.55 | 29 | 1 |
 | memory freshness+experience | 10 | 100.00 | 29 | 0 |
-| efficiency | 10 | 100.00 | 7 | 2 |
+| efficiency | 10 | 100.00 | 7 | 1 |
 | docs+voice health | 5 | 100.00 | 1 | 1 |
 | safety/recoverability | 5 | 100.00 | 10 | 0 |
 
