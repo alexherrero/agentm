@@ -110,13 +110,20 @@ class RenderDigestBodyTests(unittest.TestCase):
             {"date": "2026-07-01", "cadence": "daily", "cost_usd": 1.0, "event_count": 1},
             {"date": "2026-07-02", "cadence": "daily", "cost_usd": 2.0, "event_count": 1},
         ]
-        body = idg.render_digest_body("monthly", None, now=_NOW, trend_rows=trend)
+        # F3: the total is a disjoint by_window slice, independent of the
+        # trend rows shown above it -- passed in separately, deliberately
+        # NOT 3.0 (what naively summing the trend rows would give), so this
+        # test would fail if the total ever silently reverted to that sum.
+        total_slice = {"cost_usd": 9.0, "event_count": 5, "window_count": 3}
+        body = idg.render_digest_body("monthly", None, now=_NOW, trend_rows=trend, total_slice=total_slice)
         self.assertIn("2026-07-01", body)
         self.assertIn("2026-07-02", body)
-        self.assertIn("$3.0000", body)  # total
+        self.assertIn("$9.0000", body)
+        self.assertNotIn("$3.0000", body)
 
     def test_monthly_body_with_no_history_is_graceful(self):
-        body = idg.render_digest_body("monthly", None, now=_NOW, trend_rows=[])
+        zero_slice = {"cost_usd": 0.0, "event_count": 0, "window_count": 0}
+        body = idg.render_digest_body("monthly", None, now=_NOW, trend_rows=[], total_slice=zero_slice)
         self.assertIn("No digest history recorded yet", body)
 
 
@@ -133,9 +140,10 @@ class WriteDigestNoteTests(unittest.TestCase):
     def test_writes_note_with_expected_frontmatter(self):
         target = idg.write_digest_note(self.vault, "daily", "body text\n", now=_NOW)
         self.assertIsNotNone(target)
+        self.assertEqual(target.parent, self.vault / "_briefs")
         content = target.read_text(encoding="utf-8")
-        self.assertIn("kind: telemetry", content)
-        self.assertIn("status: inbox", content)
+        self.assertIn("kind: brief", content)
+        self.assertIn("status: active", content)
         self.assertIn("digest_cadence: daily", content)
         self.assertIn("body text", content)
 
@@ -143,7 +151,7 @@ class WriteDigestNoteTests(unittest.TestCase):
         t1 = idg.write_digest_note(self.vault, "daily", "first\n", now=_NOW)
         t2 = idg.write_digest_note(self.vault, "daily", "second\n", now=_NOW)
         self.assertEqual(t1, t2)
-        files = list((self.vault / "personal" / "_inbox").glob("*digest-daily*"))
+        files = list((self.vault / "_briefs").glob("*digest-daily*"))
         self.assertEqual(len(files), 1)
         self.assertIn("first", files[0].read_text(encoding="utf-8"))  # not overwritten
 
@@ -175,12 +183,28 @@ class RunDigestEndToEndTests(unittest.TestCase):
         history = idg.read_all_history(self.history_path)
         self.assertEqual(len(history), 1)
 
-    def test_monthly_cadence_reads_history_not_rollup_directly(self):
+    def test_monthly_cadence_shows_the_history_trend_even_with_an_empty_rollup(self):
         idg.append_digest_history("daily", {"cost_usd": 1.0, "event_count": 1, "window_count": 1}, now=_NOW, history_path=self.history_path)
-        _make_rollup(self.db_path)  # empty rollup -- monthly must still show the history-based trend
+        _make_rollup(self.db_path)  # empty rollup -- the trend table still comes from history, not rollup
         target = idg.run_digest("monthly", self.db_path, self.vault, now=_NOW, history_path=self.history_path)
         content = target.read_text(encoding="utf-8")
-        self.assertIn("$1.0000", content)
+        self.assertIn("$1.0000", content)  # the daily trend row
+        self.assertIn("Total spend, last 30 days: $0.0000", content)  # disjoint total, empty rollup -> zero
+
+    def test_monthly_total_does_not_multiply_across_overlapping_cadences(self):
+        # F3 regression: one real 5h window's spend, recorded into the
+        # history ledger by all three shorter cadences on the same day (as
+        # genuinely happens in production -- daily/3day/weekly all fire and
+        # all see the same underlying window). The old code summed all three
+        # history rows for a monthly total of $30; the fix re-slices
+        # by_window directly, so the total must read the true $10 once.
+        _make_rollup(self.db_path, window_rows=[("2026-07-07T10:00:00Z", 10.0, 4)])
+        for cadence in ("daily", "3day", "weekly"):
+            idg.append_digest_history(cadence, {"cost_usd": 10.0, "event_count": 4, "window_count": 1}, now=_NOW, history_path=self.history_path)
+        target = idg.run_digest("monthly", self.db_path, self.vault, now=_NOW, history_path=self.history_path)
+        content = target.read_text(encoding="utf-8")
+        self.assertIn("Total spend, last 30 days: $10.0000", content)
+        self.assertNotIn("$30.0000", content)
 
     def test_missing_rollup_is_a_clean_noop(self):
         target = idg.run_digest("daily", self.tmp / "nope.db", self.vault, now=_NOW, history_path=self.history_path)
@@ -205,7 +229,7 @@ class MainCliTests(unittest.TestCase):
             "--history-path", str(self.tmp / "hist.jsonl"),
         ])
         self.assertEqual(rc, 0)
-        self.assertTrue(list((self.vault / "personal" / "_inbox").glob("*.md")))
+        self.assertTrue(list((self.vault / "_briefs").glob("*.md")))
 
 
 if __name__ == "__main__":
