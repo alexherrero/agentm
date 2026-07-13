@@ -67,7 +67,7 @@ The resolver aggregates two host state directories independently and merges them
 
 | Host | Enabled-set source | Capability source |
 |---|---|---|
-| Claude Code | `~/.claude/plugins/installed_plugins.json` | `<installLocation>/.claude-plugin/marketplace.json` → `plugins[*].capabilities[]` |
+| Claude Code | `~/.claude/plugins/installed_plugins.json` (enabled set) + `~/.claude/plugins/known_marketplaces.json` (resolves each marketplace's `installLocation`) | `<installLocation>/.claude-plugin/marketplace.json` → `plugins[*].capabilities[]` |
 | Antigravity | `~/.gemini/config/import_manifest.json` | `~/.gemini/config/plugins/<name>/capabilities.json` sidecar (emitted by the crickets Antigravity generator since V5-8) |
 
 Both paths are **optional** — a missing or corrupt file at any step returns an empty partial registry, and the merger silently skips the absent host. On a machine with only Claude Code, the Antigravity path contributes nothing, and vice versa.
@@ -156,6 +156,6 @@ Versions with fewer components are zero-padded before comparison: `1.2` is treat
 
 ## Related
 
-- [CI gates](CI-Gates) — the test gate (`scripts/test_capability_resolver.py`, 32 tests) runs in `check-all.sh`.
+- [CI gates](CI-Gates) — the test gate (`scripts/test_capability_resolver.py`, 39 tests) runs in `check-all.sh`.
 - [Auto-orchestration](Auto-Orchestration) — the runtime that will consume `capability_available` to gate enhances-declared skill dispatch.
 - [AgentM HLD — V5 unbundling](agentm-hld) — the decision that established plugins as the soft-composition surface.

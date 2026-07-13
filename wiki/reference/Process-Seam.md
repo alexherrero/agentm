@@ -79,6 +79,6 @@ The Python module is the contract; the entrypoint is only a convenience for shel
 ## Related
 
 - [Memory↔process seam](Memory-Process-Seam) — why the seam exists, the one-way dependency, and the graceful-no-op philosophy.
-- [CI gates](CI-Gates) — the `check-process-seam-import-direction` gate that enforces the one-way edge.
+- [CI gates](CI-Gates) — the `check-one-way-imports` gate's `process-seam` rule that enforces the one-way edge (CONS-1 merged the former standalone `check-process-seam-import-direction.sh` into this config-driven Python checker).
 - [AgentMemory context payload](AgentMemory-Context-Payload) — the read-only memory contract the seam composes over.
 - [AgentM HLD — V5 unbundling](agentm-hld) — the decision that introduced the seam concept.

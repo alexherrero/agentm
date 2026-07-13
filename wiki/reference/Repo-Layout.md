@@ -25,14 +25,18 @@ agentm/
 ├── README.md                  # the pitch + install instructions
 ├── AGENTS.md                  # universal agent entry point
 ├── CLAUDE.md                  # Claude Code entry (links back to AGENTS.md)
+├── CONTRIBUTING.md             # contribution guidelines
 ├── CHANGELOG.md               # Keep-a-Changelog format; written by crickets' ship-release skill
 ├── LICENSE                    # Apache-2.0 (code)
 ├── LICENSE-CONTENT            # CC-BY-4.0 (docs, prompts, prose)
 ├── NOTICE                     # Apache attribution notice + license map
 ├── TRADEMARK.md               # brand policy for the "agentm" name
+├── requirements.txt            # Python deps for scripts/ + harness/
 ├── harness/                   # canonical specs (source of truth)
 │   ├── agents/                # canonical sub-agent specs (see roster below)
-│   ├── skills/                # canonical skill specs (see roster below)
+│   ├── skills/                # canonical skill specs (see roster below) — design, doctor, memory, wiki-author, console
+│   ├── hooks/                 # canonical hook specs (harness-context, memory-recall x2, memory-reflect x2)
+│   ├── plugins/                # example-plugin — a reference plugin skeleton
 │   ├── principles.md          # the design calls behind the harness
 │   ├── documentation.md       # the wiki + GitHub Projects/Issues convention
 │   ├── hooks.md               # hook design (PostToolUse / PreCompact / SessionStart)
@@ -44,6 +48,10 @@ agentm/
 │   └── gemini/                # dropped host (v2.4.0) — vestigial dir, see Compatibility
 ├── lib/                       # shared install plumbing (byte-identical to crickets/lib/)
 │   └── install/               # cp_managed, cp_user, ensure_boundary_src, sync_managed_parents
+├── install/                    # host-specific install artifacts (e.g. com.agentm.memory-server.plist, macOS launchd)
+├── opinions/                   # the request-by-name Opinion registry (9 named opinion docs)
+├── personas/                   # persona manifests (architect, brain, designer, engineer, maintainer, …)
+├── assets/                     # brand/logo assets
 ├── templates/                 # what install.sh drops into a target project
 │   ├── PLAN.md, features.json, progress.md, init.sh, verify.{sh,ps1}
 │   ├── hooks/                 # hook scripts + settings-fragment JSON (bash + pwsh)
@@ -52,7 +60,7 @@ agentm/
 ├── scripts/                   # test infra — NEVER propagated by install.sh
 │   ├── smoke-install-{bash.sh,pwsh.ps1}
 │   ├── check-parity.sh, check-references.py, check-wiki.py
-│   ├── check-lib-parity.sh    # byte-identity gate for lib/install/
+│   ├── check-vendored-parity.sh # CONS-1 merge of the former check-lib-parity.sh + 4 siblings; `lib` mode is lib/install/'s byte-identity gate
 │   ├── check-no-pii.sh        # PII regex scanner (gitleaks also gates CI)
 │   ├── sync-lib.sh            # one-shot lib/install/ sync agentm → ../crickets
 │   └── validate-adapters.py
@@ -77,7 +85,7 @@ A third directory, `adapters/gemini/`, remains in the tree but is **not a suppor
 
 **Canonical sub-agents** (`harness/agents/`): `adapt-evaluator`, `memory-idea-researcher` — the memory-engine pair. The review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter` are crickets-provided (code-review / developer-workflows / wiki-maintenance plugins) since the V5 unbundling (the [AgentM HLD](agentm-hld)).
 
-**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `wiki-author`. `ship-release` is provided by crickets' `releasing-conventions` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`. Wiki authoring's `diataxis-author` is provided the same way by crickets' `wiki-maintenance` plugin.
+**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `wiki-author`, `console`. `ship-release` is provided by crickets' `releasing-conventions` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`. Wiki authoring's `diataxis-author` is provided the same way by crickets' `wiki-maintenance` plugin.
 
 ## Related
 

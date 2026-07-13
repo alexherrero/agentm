@@ -1,13 +1,13 @@
 # Design governance reference — `governs:` frontmatter + resolver
 
-This is the AG-track substrate for grounding the loop (design-doc §6): a small frontmatter convention on living designs, plus a resolver ([`scripts/governs_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/governs_resolver.py)) that answers *"which living design governs this file or area?"* by reading the local repo's `wiki/designs/` frontmatter. The crickets `find_governing_design.py` bridge targets this module's contract, exactly as `find_capability.py` targets [`capability_resolver.py`](Capability-Resolver). It is stdlib-only, never imports design or plugin code, and fails safe to `greenfield` on any absence.
+This is the AG-track substrate for grounding the loop (design-doc §6): a small frontmatter convention on living designs, plus a resolver ([`scripts/governs_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/governs_resolver.py)) that answers *"which living design governs this file or area?"* by reading the local repo's `wiki/designs/` frontmatter. The crickets `agentm_bridge.py` bridge (its `governing-design` verb) targets this module's contract, exactly as its `capability` verb targets [`capability_resolver.py`](Capability-Resolver). It is stdlib-only, never imports design or plugin code, and fails safe to `greenfield` on any absence.
 
 ## ⚡ Quick Reference
 
 | Function / command | Signature | Returns | Absent / error → |
 |---|---|---|---|
 | `resolve_governing_design` | `resolve_governing_design(target, *, root=None, include_proposed=False) → dict` | `{governed, design, area, reason}` | `{governed: False, …, reason: "greenfield"}` (never raises) |
-| `designs_in` | `designs_in(area, *, root=None, include_proposed=False) → list[str]` | sorted design paths whose `area:` == `area` (the area-keyed lookup for SessionStart inject / index) | `[]` (never raises) |
+| `designs_in` | `designs_in(area, *, root=None, include_proposed=False) → list[str]` | sorted design paths whose `area:` == `area` (the area-keyed lookup; planned consumer for SessionStart inject / index, not yet wired) | `[]` (never raises) |
 | `build_index` | `build_index(root=None, *, include_proposed=False) → list[GovernsEntry]` | one entry per `governs:` pattern of each launched design (area-only designs get one empty-pattern entry) | `[]` (never raises) |
 | CLI | `python3 scripts/governs_resolver.py [--json] [--root DIR] [--include-proposed] <file-or-area>` | exit 0 (governed) / 1 (greenfield/overlap) / 2 (usage) | exit 1 |
 | Shim | `scripts/agentm-governs.sh <file-or-area>` | same exit codes as the CLI | exit 1 |
@@ -22,7 +22,7 @@ This is the AG-track substrate for grounding the loop (design-doc §6): a small 
 | `1` | `"error"` | An internal error occurred; treated as not-governed (fail-safe). | empty (note to stderr) |
 | `2` | — | Usage error (no target given). | usage to stderr |
 
-`--json` prints the full result dict to stdout instead of the bare path; the exit code is unchanged. This is the surface the crickets C3 bridge (`find_governing_design.py`) discovers by path-fallback and shells out to, graceful-skipping when agentm is absent.
+`--json` prints the full result dict to stdout instead of the bare path; the exit code is unchanged. This is the surface the crickets C3 bridge (`agentm_bridge.py`'s `governing-design` verb) discovers by path-fallback and shells out to, graceful-skipping when agentm is absent.
 
 ## The frontmatter convention
 
@@ -36,7 +36,7 @@ Every living design under `wiki/designs/` carries machine-readable altitude + ow
 | `kind:` | any artifact | artifact type: `design` \| `research` | no (metadata; keeps `research/` separate from `design`) |
 | `shape:` | **primitives only** | Axis-A SHAPE: `skill · hook · agent · slash-command · persona · script · service` | no |
 
-> **`shape:` is not stamped on design docs.** It is the Pillar-1 SHAPE axis for *host-loaded primitives* (a skill, a hook, an agent def). A design document is not a host-loaded primitive, so it carries no honest `shape:` value — the key is defined here for the primitives the spine classifies, never overloaded onto `kind:`. See the [AgentM HLD](agentm-hld) classification spine.
+> **`shape:` is not stamped on design docs.** It is the Pillar-1 SHAPE axis for *host-loaded primitives* (a skill, a hook, an agent def). A design document is not a host-loaded primitive, so it carries no honest `shape:` value — the key is defined here for the primitives the spine classifies, never overloaded onto `kind:`. See design-doc §4 (classification spine) — not yet published as a standalone linkable page in this repo.
 
 ### The `area:` vocabulary (two-level `<root>/<domain>`)
 
@@ -45,7 +45,7 @@ This is a controlled vocabulary: one **owning design** per area, with other desi
 | Root | Areas |
 |---|---|
 | `shared/` | `shared/foundations` (area-only — governs no code) |
-| `agentm/` | `agentm/architecture` · `agentm/memory` · `agentm/storage` · `agentm/experience` · `agentm/opinions` · `agentm/personas` · `agentm/capability-resolution` · `agentm/model-effort-routing` · `agentm/phase-contract` · `agentm/mcp` · `agentm/vault-taxonomy` · `agentm/runner` · `agentm/autonomy` |
+| `agentm/` | `agentm/architecture` · `agentm/memory` · `agentm/memory-index` · `agentm/storage` · `agentm/experience` · `agentm/opinions` · `agentm/opinion-registry` · `agentm/personas` · `agentm/capability-resolution` · `agentm/model-effort-routing` · `agentm/phase-contract` · `agentm/mcp` · `agentm/vault-taxonomy` · `agentm/runner` · `agentm/autonomy` |
 | `crickets/` | `crickets/architecture` + one per capability (`crickets/development-lifecycle`, `crickets/wiki`, …) |
 | `governance/` | `governance` (the AG machinery: design-doc, this index, the grounding hooks, the ADR model) |
 

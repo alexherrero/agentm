@@ -14,7 +14,7 @@ How the memory engine writes a Drive-synced vault safely when two or more agent 
 | Durability barrier | plain `fsync`, **not** `F_FULLFSYNC` | the cloud copy is the backstop; we need each snapshot *internally consistent*, not crash-durable (DC-5) |
 | Scope | one machine, N≥2 writers | cross-device exclusion is impossible on Drive — locks are local-only by design |
 
-Implementation: `scripts/vault_lock.py` (`atomic_write`, `content_hash`, `vault_mutex`), vendored byte-identically into `harness/skills/memory/scripts/vault_lock.py` and held identical by the `check-vault-lock-parity` gate.
+Implementation: `scripts/vault_lock.py` (`atomic_write`, `content_hash`, `vault_mutex`), vendored byte-identically into `harness/skills/memory/scripts/vault_lock.py` and held identical by `check-vendored-parity`'s `vault-lock` mode (CONS-1 merged the former standalone `check-vault-lock-parity.sh` into this one config-driven gate).
 
 ## What acquires the lock
 
