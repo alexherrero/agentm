@@ -51,9 +51,18 @@ tier: T2
 
 # Graceful no-op until crickets is a sibling checkout AND this repo opts
 # into wiki-watch (device toggle in .agentm-config.json + a per-repo
-# .harness/wiki-watch.json marker — both absent by default, so registering
-# this job finds nothing to report even when dry_run flips false). Stays
-# dry_run: true pending the same operator-supervised first run every other
-# job in this file went through before promotion — never an automatic
-# consequence of this manifest existing.
+# .harness/wiki-watch.json marker — both enabled on this machine 2026-07-12,
+# proving-ledger L2). Stays dry_run: true pending the same
+# operator-supervised first run every other job in this file went through
+# before promotion — never an automatic consequence of this manifest
+# existing.
+#
+# Flip-to-live condition (L2, named 2026-07-12 — no threshold was wired
+# anywhere before this): 3 consecutive clean dry-runs (each run reports
+# zero unexpected errors — a candidate list is fine, a crash or a
+# mis-resolved repo path is not). No code currently counts this
+# automatically; the operator (or whichever session reviews
+# .harness/jobs/docs-drift.yaml's dry-run output) confirms the 3rd clean
+# run before flipping this line to false, same manual-promotion pattern as
+# vault-lint.yaml and dream.yaml.
 dry_run: true
