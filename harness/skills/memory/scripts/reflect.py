@@ -519,7 +519,7 @@ def _utcnow_iso() -> str:
 
 
 def _save_candidate_to_inbox(
-    candidate: Candidate, vault: Path, *, stderr=sys.stderr
+    candidate: Candidate, vault: Path, *, source: str | None = None, stderr=sys.stderr
 ) -> Path | None:
     """Save a candidate to MemoryVault/personal/_inbox/<slug>.md.
 
@@ -527,6 +527,11 @@ def _save_candidate_to_inbox(
     operator runs `/memory evolve` to resolve). Writes the candidate's body
     with a header containing category + confidence + rationale + excerpts
     (full instrumentation for later operator triage).
+
+    `source` (L1, ledger ruling 8): an optional origin tag, e.g.
+    "machine-session" — written into frontmatter so a bulk-review pass can
+    batch machine-originated captures separately from the operator's own.
+    Unset by default (an interactive operator session carries no tag).
     """
     try:
         from save import save_entry  # type: ignore  # noqa
@@ -578,12 +583,14 @@ def _save_candidate_to_inbox(
     # pre-existing backlog has no such field at all (this is the first
     # write of it); `inbox_triage.py`'s cutover-marker rule reads that
     # absence as its own signal that an entry predates the mechanism.
+    source_line = f"source: {source}\n" if source else ""
     fm = (
         "---\n"
         f"kind: {candidate.category}\n"
         "status: inbox\n"
         f"created: {_utcnow_iso()}\n"
         f"slug: {target.stem}\n"
+        f"{source_line}"
         f"mining_confidence: {candidate.confidence}\n"
         f"mining_rationale: {json.dumps(candidate.rationale)}\n"
         f"mining_occurrences: {candidate.occurrences}\n"
@@ -667,12 +674,21 @@ def _prompt_user_for_candidate(
     return "inbox"
 
 
+# L1 (ledger ruling 8): first-cut per-session inbox cap for machine-sourced
+# reflection -- coordinator/worker sessions were burying the operator's own
+# captures at hundreds/day, far above dreaming's weekly cap of 25. Untuned
+# default; revisit once real machine-session inbox volume exists post-cap.
+DEFAULT_MACHINE_SESSION_MAX_INBOX = 10
+
+
 def route_candidates(
     memory_candidates: list[Candidate],
     idea_candidates: list[Candidate],
     *,
     vault: Path,
     mode: str = ROUTE_MODE_AUTO,
+    source: str | None = None,
+    max_inbox: int | None = None,
     stdin=sys.stdin,
     stdout=sys.stdout,
     stderr=sys.stderr,
@@ -684,6 +700,16 @@ def route_candidates(
         idea_candidates: ditto idea_candidates
         vault: MemoryVault root (where save.py writes)
         mode: 'auto' | 'silent' | 'interactive' (see module-level docstring)
+        source: optional origin tag (e.g. "machine-session") written into
+            every inboxed entry's frontmatter (L1, ruling 8). HIGH/silent-
+            mode canonical saves are never tagged -- the tag exists so a
+            bulk-review pass can batch inbox floods by origin, and canonical
+            saves are never flood candidates.
+        max_inbox: optional cap on total inbox writes this call (LOW +
+            auto-mode-MEDIUM + interactive-fallback + ideas, combined --
+            whatever would otherwise land in `personal/_inbox/`). Candidates
+            that would exceed the cap are counted in `stats["capped"]`
+            instead of written. None (default) = no cap, unchanged behavior.
 
     Returns stats dict:
         {
@@ -693,13 +719,29 @@ def route_candidates(
             "skipped": N,          # interactive-mode-MEDIUM user-skipped
             "inboxed": N,          # LOW + auto-mode-MEDIUM + interactive-fallback
             "ideas_inboxed": N,    # all idea candidates → _inbox/idea/<slug>.md
+            "capped": N,           # would-be inbox writes skipped past max_inbox
             "errors": N,           # save errors (e.g. slug collision)
         }
     """
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
-        "skipped": 0, "inboxed": 0, "ideas_inboxed": 0, "errors": 0,
+        "skipped": 0, "inboxed": 0, "ideas_inboxed": 0, "capped": 0, "errors": 0,
     }
+    inbox_writes_so_far = 0
+
+    def _inbox(c: Candidate) -> bool:
+        """Write to inbox unless max_inbox is set and already reached.
+        Returns True if written, False if capped (never raises)."""
+        nonlocal inbox_writes_so_far
+        if max_inbox is not None and inbox_writes_so_far >= max_inbox:
+            stats["capped"] += 1
+            return False
+        if _save_candidate_to_inbox(c, vault, source=source, stderr=stderr):
+            inbox_writes_so_far += 1
+            return True
+        stats["errors"] += 1
+        return False
+
     # If interactive mode but stdin is not a TTY, fall back to auto (hook-safe).
     if mode == ROUTE_MODE_INTERACTIVE and not stdin.isatty():
         print(
@@ -735,31 +777,23 @@ def route_candidates(
                 elif action == "skip":
                     stats["skipped"] += 1
                 else:  # inbox
-                    if _save_candidate_to_inbox(c, vault, stderr=stderr):
+                    if _inbox(c):
                         stats["inboxed"] += 1
-                    else:
-                        stats["errors"] += 1
                 continue
             # Default route mode: MEDIUM → inbox
-            if _save_candidate_to_inbox(c, vault, stderr=stderr):
+            if _inbox(c):
                 stats["inboxed"] += 1
-            else:
-                stats["errors"] += 1
             continue
         # LOW → inbox unconditionally
-        if _save_candidate_to_inbox(c, vault, stderr=stderr):
+        if _inbox(c):
             stats["inboxed"] += 1
-        else:
-            stats["errors"] += 1
 
     # Idea candidates always → _inbox/ (idea-ledger persistence is plan #7a
     # part 4's scope; for v1 ideas go to inbox where the future ledger can
     # pick them up).
     for c in idea_candidates:
-        if _save_candidate_to_inbox(c, vault, stderr=stderr):
+        if _inbox(c):
             stats["ideas_inboxed"] += 1
-        else:
-            stats["errors"] += 1
 
     return stats
 
@@ -1134,6 +1168,20 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         help="MemoryVault root (used when --route is set). Resolves from "
              "--vault-path → MEMORY_VAULT_PATH env. Required for --route.",
     )
+    parser.add_argument(
+        "--source", default=None,
+        help="L1/ruling 8: origin tag written into every inboxed entry's "
+             "frontmatter, e.g. 'machine-session'. Resolves from --source "
+             "flag → AGENTM_SESSION_SOURCE env → unset (no tag).",
+    )
+    parser.add_argument(
+        "--max-inbox", type=int, default=None,
+        help="L1/ruling 8: cap total inbox writes this call (combined "
+             "memory-inbox + idea-inbox). Only applied when --source (or "
+             "AGENTM_SESSION_SOURCE) resolves to 'machine-session' and this "
+             f"flag is unset defaults to {DEFAULT_MACHINE_SESSION_MAX_INBOX}; "
+             "pass 0 or a negative number for no cap even in that case.",
+    )
     return parser.parse_args(argv)
 
 
@@ -1283,8 +1331,20 @@ def main(argv: list[str] | None = None) -> int:
         # operator only emitted one pass, only route that pass.
         memory_to_route = result["memory_candidates"] if not args.idea_only else []
         idea_to_route = result["idea_candidates"] if not args.memory_only else []
+        # L1/ruling 8: source resolves --source → AGENTM_SESSION_SOURCE env
+        # → unset. The cap only ever applies for source == "machine-session"
+        # (an interactive operator session is never capped) — --max-inbox
+        # defaults to DEFAULT_MACHINE_SESSION_MAX_INBOX in that case unless
+        # explicitly overridden (0 or negative disables it even then).
+        source = args.source or os.environ.get("AGENTM_SESSION_SOURCE", "").strip() or None
+        max_inbox = args.max_inbox
+        if source == "machine-session" and max_inbox is None:
+            max_inbox = DEFAULT_MACHINE_SESSION_MAX_INBOX
+        elif max_inbox is not None and max_inbox <= 0:
+            max_inbox = None
         stats = route_candidates(
             memory_to_route, idea_to_route, vault=vault, mode=route_mode,
+            source=source, max_inbox=max_inbox,
         )
         # Routing stats as a final JSON-Lines record on stdout (after the
         # candidate records). Operator scripts + hooks can parse this to

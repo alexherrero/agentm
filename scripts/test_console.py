@@ -354,6 +354,39 @@ class VaultLintSectionTests(unittest.TestCase):
         self.assertNotIn("vault-lint-2026-07-01.md", out)
 
 
+class BriefSectionTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_none_vault(self):
+        self.assertIn("n/a", c.section_brief(None))
+
+    def test_dark_when_no_briefs(self):
+        out = c.section_brief(self.vault)
+        self.assertIn("dark", out)
+        self.assertIn("_briefs", out)
+
+    def test_picks_latest_by_filename_and_extracts_title(self):
+        briefs = self.vault / "_briefs"
+        briefs.mkdir()
+        (briefs / "20260711-digest-daily.md").write_text(
+            "---\nkind: brief\n---\n\n# Observability digest — daily (spend and run summary)\n",
+            encoding="utf-8",
+        )
+        (briefs / "20260712-digest-daily.md").write_text(
+            "---\nkind: brief\n---\n\n# Observability digest — daily (spend and run summary)\n",
+            encoding="utf-8",
+        )
+        out = c.section_brief(self.vault, now=time.time())
+        self.assertIn("20260712-digest-daily.md", out)
+        self.assertNotIn("20260711-digest-daily.md", out)
+        self.assertIn("Observability digest", out)
+
+
 class DreamExpireSectionTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

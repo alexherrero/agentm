@@ -13,10 +13,12 @@ Writes two things:
   - a JSON state file on disk (`<park_dir>/<plan>-park-state.json`) --
     machine-readable, read back by anything that wants to know a run is
     parked without re-parsing the human note
-  - a human-readable park note into the vault's `_inbox/` (the same
-    B1-ratified contract `inbox_digest.py` writes to) naming where it
-    stopped, when, and the exact resume command -- morning resume is one
-    paste, by the operator.
+  - a human-readable park note into the vault's `_briefs/` (the same home
+    `inbox_digest.py` writes to, L1/F2 fix -- a `kind: telemetry`,
+    `_inbox/`-routed note like this one used to be would hit the exact same
+    auto-apply-expires-it-before-morning bug the digest notes did) naming
+    where it stopped, when, and the exact resume command -- morning resume
+    is one paste, by the operator.
 """
 from __future__ import annotations
 
@@ -100,22 +102,23 @@ def _park_note_slug(plan_slug: str, now: datetime) -> str:
 
 
 def write_park_note(vault_path: "str | Path", state: dict, *, now: "datetime | None" = None) -> "Path | None":
-    """Write the park note into `<vault>/personal/_inbox/`. Returns None if
+    """Write the park note into `<vault>/_briefs/`. Returns None if
     the vault directory doesn't exist (graceful-skip, matching
     `inbox_digest.write_digest_note`'s own contract)."""
     now = now if now is not None else datetime.now(timezone.utc)
     vault = Path(vault_path)
     if not vault.is_dir():
         return None
-    inbox_dir = vault / "personal" / "_inbox"
-    inbox_dir.mkdir(parents=True, exist_ok=True)
+    briefs_dir = vault / "_briefs"
+    briefs_dir.mkdir(parents=True, exist_ok=True)
     slug = _park_note_slug(state["plan"], now)
-    target = inbox_dir / f"{slug}.md"
+    target = briefs_dir / f"{slug}.md"
 
     fm = (
         "---\n"
-        "kind: telemetry\n"
-        "status: inbox\n"
+        "kind: brief\n"
+        "status: active\n"
+        f"created: {now.strftime('%Y-%m-%d')}\n"
         f"slug: {slug}\n"
         f"park_reason: {state['reason']}\n"
         f"park_plan: {state['plan']}\n"
