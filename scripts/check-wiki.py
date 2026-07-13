@@ -471,6 +471,45 @@ def rule_p_shape(p: Path, mode: str | None, lines: list[str], text: str,
              "narrative to an explanation page or split", soft=True)
 
 
+# L6 (proving ledger, F12): the mandated top-note shape is Status + date +
+# 1-2 plain sentences — a short framing summary, not a running changelog.
+# Nothing capped its length before this; agentm-experience-and-dreaming.md
+# grew to 188 words (five stacked "X is now built" status updates) before
+# anyone noticed. 60 words is generous headroom over what a compliant note
+# actually looks like (the design corpus's other genuinely-short notes sit
+# well under 40) while still catching real bloat; soft (WARN), matching
+# every other length check in this file, so a legitimately dense one-time
+# status stamp is a signal to review, not a hard block.
+#
+# Scoped to explanation (designs/) only — the ledger's own ask names
+# "design top-note normalization" specifically. tutorial/how-to note blocks
+# carry rule_b's required Goal/Time/Prereqs fields, a structurally
+# different, legitimately-longer shape this cap would false-positive on
+# (checked live: Choose-A-Storage-Backend.md's Goal+Prereqs content alone
+# runs well past 60 words with zero bloat). reference pages can carry the
+# same accumulated-narration bug (found live on Storage-Seam.md, fixed in
+# the same sweep this rule's own PR ships) but stay out of this rule's
+# scope for now, matching the ledger's explicit "design" wording — a
+# deliberate, narrower-than-possible first cut, not an oversight.
+TOPNOTE_WORD_CAP = 60
+
+
+def rule_q_topnote_length(p: Path, mode: str | None, lines: list[str], issues: list[Issue]) -> None:
+    if is_structural(p) or mode != "explanation":
+        return
+    blk = find_note_block(lines)
+    if blk is None:
+        return
+    start, body = blk
+    count = word_count(body)
+    if count > TOPNOTE_WORD_CAP:
+        emit(issues, p, start, "q",
+             f"top-note is {count} words (soft ceiling {TOPNOTE_WORD_CAP}) — "
+             "the mandated shape is Status + date + 1-2 plain sentences; move "
+             "accumulated status narration to the page's own amendment log",
+             soft=True)
+
+
 # ── repo-root doc governance (rule l) ───────────────────────────────────────
 
 EXTERNAL_LINK_PREFIXES = ("http://", "https://", "mailto:", "tel:", "#")
@@ -560,6 +599,7 @@ def collect_issues(wiki_root: Path) -> list[Issue]:
             rule_e_reference_shape(p, mode, lines, heads, issues)
             rule_k_word_count(p, mode, text, issues)
             rule_p_shape(p, mode, lines, text, heads, issues)
+            rule_q_topnote_length(p, mode, lines, issues)
 
         out_stems = {page for _, _, page in extract_wiki_links(text)}
         link_graph[p.stem] = out_stems

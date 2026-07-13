@@ -12,7 +12,7 @@ approved: 2026-06-21
 ---
 
 > [!NOTE]
-> **LAUNCHED (lifted 2026-06-24, AG Phase 3; originally approved 2026-06-21) · locked 2026-06-28 (final AG design sweep).** child-design — the Memory pillar, parent [agentm HLD](agentm-hld.md); inherits the [Foundations HLD](agentm-foundations-hld.md) by reference. The largest pillar — the ground the other three stand on. `status: launched` (lifted into tracked `wiki/designs/` 2026-06-24, AG Phase 3); the seam content has migrated to the launched `memory-storage-seam` design.
+> **LAUNCHED** (approved 2026-06-21, lifted 2026-06-24, locked 2026-06-28). Child design of [agentm HLD](agentm-hld.md) — the Memory pillar, the largest of the four and the ground the other three stand on. See the amendment log below for build history.
 
 # AgentM Memory System
 

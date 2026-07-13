@@ -8,7 +8,7 @@ parent: memory-storage-seam.md
 ---
 
 > [!NOTE]
-> **Proposed** (lifted to tracked `wiki/designs/` 2026-06-28). A full design under the [Memory↔Storage Seam](memory-storage-seam) in the `agentm/storage` area; it governs no code yet, so it stays out of the governing-design resolver until a transport ships. The two how-to deliverables are [Back the vault with Google Drive](Back-The-Vault-With-Drive) and [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault); the git transport is the crickets [vault-git](https://github.com/alexherrero/crickets/wiki/crickets-vault-git) plugin.
+> **Proposed** (2026-06-28). Full design under the [Memory↔Storage Seam](memory-storage-seam), governing no code yet — the two how-to deliverables are [Back the vault with Google Drive](Back-The-Vault-With-Drive) and [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault).
 
 # Vault Storage & Presentation Design
 
