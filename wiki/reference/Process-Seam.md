@@ -3,7 +3,7 @@
 The memory↔process client seam ([`scripts/process_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/process_seam.py)) — a small, **read-only**, **graceful-no-op** view a *process* (the crickets developer-workflows phases today; the V5-9 MCP server tomorrow) calls instead of reaching into the memory engine's internals. It exports two functions composed only from the DC-7-frozen public memory readers (`resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`) — never a write path. The importable Python module is the contract ([LC-1]); the `python -m` entrypoint is a convenience shim for non-Python shell callers.
 
 > [!NOTE]
-> **R0.9 (agentmEngine#2):** a third function, `recall_here`, was retired — it delegated to `harness_memory.phase_recall()`, which has returned `""` for every call since the V5-3 vault-backend removal. No live crickets consumer called it (crickets' documenter sub-agent uses `harness_memory.py`'s own `documenter-context` CLI verb instead, a separate live surface this retirement did not touch).
+> **R0.9 (agentmEngine#2):** a third function, `recall_here`, was retired — dead since the V5-3 vault-backend removal made it always return `""`, with no live caller (crickets' documenter sub-agent uses `harness_memory.py`'s own `documenter-context` CLI verb instead).
 
 ## ⚡ Quick Reference
 

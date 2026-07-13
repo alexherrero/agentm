@@ -2,7 +2,7 @@
 # Named plans (multi-plan state)
 
 > [!NOTE]
-> **Status:** implemented. The substrate shipped under "V5-10 part 1 — Multi-plan state" (the local, gitignored `.harness/PLAN.md`): the round-trip lock, `resolve_active_plan`, the `check-multi-plan-naming` gate, and the named-plan-aware session-start hooks and `doctor` are all in `main`. The crickets developer-workflows half shipped the `--name <slug>` flag across `/work`, `/plan`, and `/review` on 2026-06-12, and the `.harness/active-plan` marker writer shipped in developer-workflows v3.7.0 on 2026-06-13, when `spawn_worker.py` began writing `<worktree>/.harness/active-plan` for `resolve_active_plan` to read back. **Update (2026-07-06):** `spawn_worker.py` is retired — crickets' [worktree-native flow](https://github.com/alexherrero/crickets/releases/tag/v3.25.0) moved worktree creation to the installed host's own primitive (Claude Code `EnterWorktree`; Antigravity New-Worktree-Mode), with a much smaller `worktree_marker.py` now the marker writer. The marker's own format is unchanged (still the bare slug `resolve_active_plan` reads back), so nothing on this page's substrate side needed to change — validated end-to-end via a real throwaway plan in this repo the same day.
+> **Status: implemented** (2026-06-13, updated 2026-07-06). The multi-plan-state substrate — the round-trip lock, `resolve_active_plan`, the `check-multi-plan-naming` gate — ships in `main`; crickets' developer-workflows plugin writes the `.harness/active-plan` marker this page's reader consumes. See Build history below for the rollout + the 2026-07-06 worktree-native update.
 
 Named plans let the harness hold more than one active plan in the same shared vault. Each named plan lives in its own `PLAN-<name>.md` with a matching `progress-<name>.md`, alongside the unnamed pair a solo session already uses. A resolution model then binds every session to exactly one plan — the one it owns. This is the substrate the coordinator-directed worker team stands on: give each worker its own plan file, and the team never collides on harness state.
 
@@ -115,6 +115,12 @@ This slice stops at a deliberate boundary:
 - It defines **no role agent-defs** (researcher / project-manager / tech-lead / worker) — also later.
 - It does **not** retire the `worktrees-never-auto` convention — that changes behavior for concurrent sessions and lands with the worktree component, not here.
 - It does **not** arbitrate claims or leases between workers. The read-model ([Queue status lite](Queue-Status-Lite)) is informational only; **the human is the arbiter**.
+
+## Build history
+
+The substrate shipped under "V5-10 part 1 — Multi-plan state" (the local, gitignored `.harness/PLAN.md`): the round-trip lock, `resolve_active_plan`, the `check-multi-plan-naming` gate, and the named-plan-aware session-start hooks and `doctor` all landed together. The crickets developer-workflows half shipped the `--name <slug>` flag across `/work`, `/plan`, and `/review` on 2026-06-12, and the `.harness/active-plan` marker writer shipped in developer-workflows v3.7.0 on 2026-06-13, when `spawn_worker.py` began writing `<worktree>/.harness/active-plan` for `resolve_active_plan` to read back.
+
+**2026-07-06 update.** `spawn_worker.py` is retired — crickets' [worktree-native flow](https://github.com/alexherrero/crickets/releases/tag/v3.25.0) moved worktree creation to the installed host's own primitive (Claude Code `EnterWorktree`; Antigravity New-Worktree-Mode), with a much smaller `worktree_marker.py` now the marker writer. The marker's own format is unchanged (still the bare slug `resolve_active_plan` reads back), so nothing on this page's substrate side needed to change — validated end-to-end via a real throwaway plan the same day.
 
 ## Related
 
