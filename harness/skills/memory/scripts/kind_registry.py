@@ -33,6 +33,11 @@ _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
 KNOWN_KINDS: frozenset[str] = frozenset({
     # Reserved values (agentm-memory-index.md, shipped code).
     "failure-incident", "session-cost", "crystallized",
+    # L1 (proving ledger): the Morning Brief's own kind -- _briefs/ entries,
+    # distinct from "telemetry" (still used for other digest-adjacent
+    # records) so a brief is never mistaken for inbox-triage-eligible
+    # content.
+    "brief",
     # Real-vault frequency audit (2026-07-10), validly-kebab entries only.
     "preferences", "preference", "workflow", "workflow-pattern", "idea",
     "fix", "research", "research-synthesis", "research-index",

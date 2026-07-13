@@ -125,7 +125,8 @@ def read_recent_history(history_path: "Path | None", *, now: datetime, lookback_
 
 
 def render_digest_body(cadence: str, slice_data: "dict | None", *, now: datetime,
-                        trend_rows: "list[dict] | None" = None) -> str:
+                        trend_rows: "list[dict] | None" = None,
+                        total_slice: "dict | None" = None) -> str:
     """Render the digest note's markdown body. Deterministic given its inputs."""
     label = _CADENCE_LABELS[cadence]
     lines = [f"# Observability digest — {cadence} ({label})", ""]
@@ -141,9 +142,18 @@ def render_digest_body(cadence: str, slice_data: "dict | None", *, now: datetime
             lines.append("|---|---|---:|---:|")
             for r in rows:
                 lines.append(f"| {r['date']} | {r['cadence']} | ${r['cost_usd']:.4f} | {r['event_count']} |")
-            total = sum(r["cost_usd"] for r in rows)
-            lines.append("")
-            lines.append(f"**Total across recorded digests this window: ${total:.4f}**")
+        # F3 fix: daily/3day/weekly history rows cover overlapping windows
+        # (a 3day row's cost is a superset of that day's daily row's cost,
+        # etc.) -- summing rows above would multiply-count the same spend,
+        # the same bug class as #284's turn-multiplication. The total is
+        # instead a fresh disjoint-window slice straight off `by_window`
+        # (each row a unique 5h bucket, so a 30-day lookback here can never
+        # double-count), independent of which of the three cadences happened
+        # to run and get recorded on a given day.
+        assert total_slice is not None
+        lines.append("")
+        lines.append(f"**Total spend, last 30 days: ${total_slice['cost_usd']:.4f}** "
+                      f"({total_slice['window_count']} 5h windows, {total_slice['event_count']} events)")
     else:
         assert slice_data is not None
         lines.append(f"- Spend: ${slice_data['cost_usd']:.4f}")
@@ -159,27 +169,35 @@ def digest_slug(cadence: str, now: datetime) -> str:
 
 
 def write_digest_note(vault_path: "str | Path", cadence: str, body: str, *, now: datetime) -> "Path | None":
-    """Write the digest note to `<vault>/personal/_inbox/<slug>.md` (the
-    B1-ratified contract). Idempotent per day: if today's note for this
-    cadence already exists, its path is returned unchanged -- never a second
-    file, never a numeric-suffix collision (unlike the mining inbox's raw-
-    capture convention, a digest slug is meant to be stable per day).
+    """Write the digest note to `<vault>/_briefs/<slug>.md` (L1, ledger
+    finding F2 fix). Previously landed in `personal/_inbox/` under
+    `kind: telemetry`, `status: inbox` -- auto-apply triage read that as
+    inbox noise and expired every digest within hours of creation (all
+    three 07-11 notes were gone by the next morning). `_briefs/` is a
+    dedicated, non-triage home: `kind: brief`, `status: active`, never
+    touched by inbox_triage.py or dream_confirm's staging machinery, since
+    neither ever walks this directory.
+
+    Idempotent per day: if today's note for this cadence already exists,
+    its path is returned unchanged -- never a second file, never a
+    numeric-suffix collision (a digest slug is meant to be stable per day).
     Returns None if the vault directory doesn't exist (graceful-skip).
     """
     vault = Path(vault_path)
     if not vault.is_dir():
         return None
-    inbox_dir = vault / "personal" / "_inbox"
-    inbox_dir.mkdir(parents=True, exist_ok=True)
+    briefs_dir = vault / "_briefs"
+    briefs_dir.mkdir(parents=True, exist_ok=True)
     slug = digest_slug(cadence, now)
-    target = inbox_dir / f"{slug}.md"
+    target = briefs_dir / f"{slug}.md"
     if target.is_file():
         return target
 
     fm = (
         "---\n"
-        "kind: telemetry\n"
-        "status: inbox\n"
+        "kind: brief\n"
+        "status: active\n"
+        f"created: {now.strftime('%Y-%m-%d')}\n"
         f"slug: {slug}\n"
         f"digest_cadence: {cadence}\n"
         f"digest_date: {now.strftime('%Y-%m-%d')}\n"
@@ -208,7 +226,8 @@ def run_digest(cadence: str, db_path: "str | Path", vault_path: "str | Path", *,
 
     if cadence == "monthly":
         trend_rows = read_recent_history(history_path, now=now, lookback_seconds=30 * 86400)
-        body = render_digest_body(cadence, None, now=now, trend_rows=trend_rows)
+        total_slice = compute_window_slice(rollup["by_window"], now=now, lookback_seconds=30 * 86400)
+        body = render_digest_body(cadence, None, now=now, trend_rows=trend_rows, total_slice=total_slice)
     else:
         lookback = _CADENCE_LOOKBACK_SECONDS[cadence]
         slice_data = compute_window_slice(rollup["by_window"], now=now, lookback_seconds=lookback)

@@ -123,7 +123,7 @@ class NoSilentApplyOnTimeoutTests(_DreamConfirmTestBase):
         a, b, digest = self._stage_a_dedup_run("run-expire")
         pre_a, pre_b = a.read_bytes(), b.read_bytes()
 
-        staged_at = digest_staged_at = _read_manifest_staged_at(self.vault, "run-expire")
+        staged_at = _read_manifest_staged_at(self.vault, "run-expire")
         far_future = staged_at + (dc.DEFAULT_TTL_DAYS + 1) * 86400
 
         with self.assertRaises(dc.ExpiredProposalError):
@@ -340,6 +340,86 @@ def _read_manifest_staged_at(vault_path: Path, run_id: str) -> float:
 
     manifest_path = vault_path / "_dream-staging" / run_id / "proposals.json"
     return json.loads(manifest_path.read_text(encoding="utf-8"))["staged_at"]
+
+
+class CleanupAppliedBatchesTests(_DreamConfirmTestBase):
+    """L1/F5: applied batches were never cleaned up -- the staging TTL only
+    ever marked proposals expired, nothing ever deleted a directory."""
+
+    def test_batch_with_a_still_pending_proposal_is_never_removed(self) -> None:
+        a, b, digest = self._stage_a_dedup_run("run-pending")
+        staged_at = _read_manifest_staged_at(self.vault, "run-pending")
+        staging_dir = dc._staging_dir(self.vault, "run-pending")
+        self.assertTrue(staging_dir.is_dir())
+
+        # Well within the 30-day TTL -- genuinely still pending, not yet
+        # resolved either way. Cleanup must never touch a live batch.
+        removed = dc.cleanup_applied_batches(
+            self.vault, now=staged_at + 1 * 86400,
+        )
+        self.assertEqual(removed, [])
+        self.assertTrue(staging_dir.is_dir())
+
+    def test_confirmed_batch_within_revert_grace_period_is_kept(self) -> None:
+        a, b, digest = self._stage_a_dedup_run("run-fresh")
+        staged_at = _read_manifest_staged_at(self.vault, "run-fresh")
+        dc.confirm(self.vault, "run-fresh", 1, self.revert_log, now=staged_at)
+
+        removed = dc.cleanup_applied_batches(
+            self.vault, now=staged_at + 1 * 86400,  # 1 day after confirm, well inside 14d grace
+        )
+        self.assertEqual(removed, [])
+        self.assertTrue(dc._staging_dir(self.vault, "run-fresh").is_dir())
+
+    def test_confirmed_batch_past_revert_grace_period_is_removed(self) -> None:
+        a, b, digest = self._stage_a_dedup_run("run-stale")
+        staged_at = _read_manifest_staged_at(self.vault, "run-stale")
+        dc.confirm(self.vault, "run-stale", 1, self.revert_log, now=staged_at)
+        staging_dir = dc._staging_dir(self.vault, "run-stale")
+        self.assertTrue(staging_dir.is_dir())
+
+        removed = dc.cleanup_applied_batches(
+            self.vault, now=staged_at + 15 * 86400,  # past the 14d default grace
+        )
+        self.assertEqual(removed, ["run-stale"])
+        self.assertFalse(staging_dir.exists())
+
+    def test_revert_log_survives_cleanup_undo_still_works(self) -> None:
+        """The load-bearing safety property: deleting the staging directory
+        must never compromise RevertLog's own independent journal."""
+        a, b, digest = self._stage_a_dedup_run("run-undo-after-cleanup")
+        staged_at = _read_manifest_staged_at(self.vault, "run-undo-after-cleanup")
+        pre_a = a.read_bytes()
+        dc.confirm(self.vault, "run-undo-after-cleanup", 1, self.revert_log, now=staged_at)
+        self.assertNotEqual(a.read_bytes(), pre_a)  # the merge actually mutated a.md
+
+        removed = dc.cleanup_applied_batches(
+            self.vault, now=staged_at + 15 * 86400,
+        )
+        self.assertEqual(removed, ["run-undo-after-cleanup"])
+
+        self.revert_log.revert("run-undo-after-cleanup")
+        self.assertEqual(a.read_bytes(), pre_a)  # undo still works with the staging dir gone
+
+    def test_fully_expired_batch_with_nothing_ever_confirmed_is_removed(self) -> None:
+        a, b, digest = self._stage_a_dedup_run("run-never-confirmed")
+        staged_at = _read_manifest_staged_at(self.vault, "run-never-confirmed")
+        staging_dir = dc._staging_dir(self.vault, "run-never-confirmed")
+
+        # Past ttl_days (30) + revert_ttl_days (14): nothing was ever
+        # confirmed, so the anchor is staged_at + ttl_days.
+        removed = dc.cleanup_applied_batches(
+            self.vault, now=staged_at + 45 * 86400,
+        )
+        self.assertEqual(removed, ["run-never-confirmed"])
+        self.assertFalse(staging_dir.exists())
+
+    def test_malformed_staging_dir_is_skipped_not_raised(self) -> None:
+        bogus = self.vault / "_dream-staging" / "not-a-real-run"
+        bogus.mkdir(parents=True)
+        removed = dc.cleanup_applied_batches(self.vault, now=1e12)
+        self.assertEqual(removed, [])
+        self.assertTrue(bogus.is_dir())  # left alone, not deleted
 
 
 if __name__ == "__main__":
