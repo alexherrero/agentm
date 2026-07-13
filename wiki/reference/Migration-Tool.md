@@ -34,7 +34,7 @@ migrate-to-user-scope.ps1 [-Apply | -Rollback | -Cleanup] [OTHER OPTIONS] [-Targ
 | `--no-register` | `-NoRegister` | Skip the auto-registry step at end of `--apply`. By default the migration tool auto-calls `python3 scripts/repo_registry.py register <slug> --root <target>` so the repo shows up in [`/list-plans`](Use-Auto-Context-In-Harness-Phases) + other cross-repo views. Pass `--no-register` for explicit opt-out (e.g. for ephemeral test targets). |
 | `--registry-slug NAME` | `-RegistrySlug NAME` | Override the slug used for auto-registration. Default: inferred from `<target>/.harness/project.json`'s `vault_project` or `slug` field, with fallback to `basename <target>`. |
 | `--agentm PATH` | `-AgentmPath PATH` | Override the agentm source-clone path. Default: `~/Antigravity/agentm`. Useful for non-default dev setups. |
-| `--crickets PATH` | `-CricketsPath PATH` | Override the crickets source-clone path. Default: `~/Antigravity/crickets`. |
+| `--crickets PATH` | `-CricketsPath PATH` | **Non-functional.** The wrapper scripts forward this flag, but `lib/install/python/install_migrate.py`'s argument parser defines no `--crickets` option — passing it makes `install_migrate.py` exit with an argparse "unrecognized arguments" error. Only an `--agentm` clone is ever detected; there is no crickets source-clone detection in the current implementation. |
 | `--yes`, `-y` | `-Yes` | Skip interactive confirmation prompts. Use for CI / scripted invocations. |
 | `--ci-override` | `-CiOverride` | Allow the migration tool to run when `$CI=true` env detected. Default behavior refuses to run inside CI (CI runners use per-project installs by design per [Use-Per-Project-Install](Use-Per-Project-Install)). |
 | `--help`, `-h` | `Get-Help <script>` | Print the header help block. |
@@ -48,9 +48,9 @@ The migration tool detects 4 starting states for any given target. The current s
 | State | Detection | Default behavior |
 |---|---|---|
 | **`no-claude`** | No `<target>/.claude/{skills,hooks,agents,commands}/` content. | Graceful no-op exit 0; suggests `bash install.sh --scope user <target>` for fresh installs. Bypassed when `--rollback` or `--cleanup` is set. |
-| **`pre-v4.3`** | `.claude/` content present + no `.claude/.agentm-install-state.json`. | Primary migrate path — classify + apply works directly. |
-| **`explicit-project`** | `.agentm-install-state.json` present with `mode=project`. | Requires explicit confirmation prompt before applying (the `mode=project` setting may be intentional per [Use-Per-Project-Install](Use-Per-Project-Install)). Skipped under `--yes`. |
-| **`already-user`** | `.agentm-install-state.json` present with `mode=user`. | Graceful no-op exit 0; "already user-scope; nothing to migrate." Bypassed when `--rollback` or `--cleanup` is set. |
+| **`pre-v4.3`** | `.claude/` content present + no `.claude/.agentm-config.json` (or legacy `.claude/.agentm-install-state.json` on pre-v4.5.1 installs). | Primary migrate path — classify + apply works directly. |
+| **`explicit-project`** | `.agentm-config.json` (or legacy `.agentm-install-state.json`) present with `mode=project`. | Requires explicit confirmation prompt before applying (the `mode=project` setting may be intentional per [Use-Per-Project-Install](Use-Per-Project-Install)). Skipped under `--yes`. |
+| **`already-user`** | `.agentm-config.json` (or legacy `.agentm-install-state.json`) present with `mode=user`. | Graceful no-op exit 0; "already user-scope; nothing to migrate." Bypassed when `--rollback` or `--cleanup` is set. |
 
 ## Classification matrix
 
@@ -75,8 +75,7 @@ Lives at `<target>/.agentm-migrate-record.json` (NOT under `.claude/` — surviv
   "target_root": "/path/to/project",
   "migrated_at": "2026-05-27T18:00:00Z",
   "source_clones_used": {
-    "agentm":  "~/Antigravity/agentm",
-    "crickets": "~/Antigravity/crickets"
+    "agentm":  "~/Antigravity/agentm"
   },
   "registered_slug": "myproject",
   "actions": [
