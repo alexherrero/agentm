@@ -876,6 +876,14 @@ unset _am_d _am_f _am_manifest _am_kind _am_name _am_hosts
 mkdir -p .github/workflows
 cp_managed "$HARNESS_ROOT/templates/.github/workflows/wiki-sync.yml" ".github/workflows/wiki-sync.yml"
 
+# scripts/wiki_publish_transform.py — the publish-time transform the workflow
+# above invokes (F10/F11 fix: strips frontmatter, rewrites relative asset
+# links to raw-asset URLs). Ships at repo-root scripts/ — unlike the rest of
+# scripts/, which is agentm's own internal source and never copied out — so
+# it travels with the workflow into every project that installs this harness.
+mkdir -p scripts
+cp_managed "$HARNESS_ROOT/templates/scripts/wiki_publish_transform.py" "scripts/wiki_publish_transform.py"
+
 # ── user files: top-level entrypoints (never overwrite) ─────────────────────
 
 if [[ ! -e AGENTS.md ]]; then
