@@ -45,6 +45,14 @@ Obsidian sits on top of whichever transport you chose — git or Drive — and w
 
    Fix what it flags, or ask the agent to.
 
+## One vault inside another
+
+Obsidian's vault and the memory engine's vault don't have to be the same folder. Obsidian treats whichever folder you opened as the vault — the one holding `.obsidian`. The engine's vault is the folder your storage config points at ([Choose a storage backend](Choose-A-Storage-Backend)); when the installer probes for one, it looks for the `_meta/repos.json` marker, not for `.obsidian`. So the engine's folder can sit as a subtree inside a bigger Obsidian vault, and the boundary stays strict.
+
+Everything beside that subtree — personal notes, other projects — shows up in Obsidian's sidebar, search, and graph, but the engine ignores it: no reads, no writes, no indexing, no counts. Doctor checks, lint totals, and recall all scope to the engine's folder alone.
+
+For a 1:1 view — a sidebar and graph that match what the engine sees — open the engine's folder as its own Obsidian vault (*Open folder as vault* → select it). The cost is a second `.obsidian` profile to configure (steps 2–5) and a vault switch to reach your other notes.
+
 ## Running without Obsidian
 
 Obsidian is optional — the vault is plain markdown, so every workflow stands on its own without it:
