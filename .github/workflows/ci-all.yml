@@ -42,6 +42,15 @@ jobs:
           # `gh run list --commit github.sha` matches nothing and times out.
           # Use the PR head SHA on pull_request; fall back to github.sha on push.
           SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          # L7 follow-up: a bot-pushed branch carries BOTH a stale
+          # pull_request-triggered run (action_required, GITHUB_TOKEN pushes
+          # can't clear that gate) and health-nightly.yml's own
+          # workflow_dispatch run for the same SHA — `--commit` alone can
+          # match either one non-deterministically. Filter by this run's own
+          # trigger kind so we always poll our sibling, not the stale one
+          # (caught live: the first proof-run's poll picked up a stale
+          # action_required tests-mac run instead of the real dispatch).
+          EVENT: ${{ github.event_name }}
         run: |
           set -e
           WORKFLOWS="tests-linux tests-mac tests-windows"
@@ -54,6 +63,7 @@ jobs:
                 --repo "$REPO" \
                 --workflow "${wf}.yml" \
                 --commit "$SHA" \
+                --event "$EVENT" \
                 --limit 1 \
                 --json status \
                 --jq '.[0].status // "missing"')
@@ -85,6 +95,7 @@ jobs:
               --repo "$REPO" \
               --workflow "${wf}.yml" \
               --commit "$SHA" \
+              --event "$EVENT" \
               --limit 1 \
               --json conclusion \
               --jq '.[0].conclusion')
