@@ -26,7 +26,7 @@ jobs:
   install-smoke:
     name: install-smoke
     runs-on: windows-latest
-    if: github.event_name == 'pull_request' || inputs.full_battery
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       # windows-latest ships pwsh 7+ and Python preinstalled.

@@ -18,6 +18,13 @@ on:
     # a bot-pushed branch — GitHub gates pull_request-triggered required
     # checks behind action_required when the triggering push is GITHUB_TOKEN,
     # not a human; workflow_dispatch is exempt from that suppression.
+    # L7 follow-up: workflow_dispatch carries no `inputs.full_battery` (only
+    # workflow_call declares that input) — every job below is gated `if:
+    # github.event_name == 'pull_request' || ... || inputs.full_battery`, so
+    # a first-cut dispatch silently skipped the whole battery except this
+    # file's ungated jobs (caught live: the manual proof-run's tests-mac/
+    # tests-windows dispatches both came back "skipped", not "success").
+    # Each gate now also matches `workflow_dispatch` explicitly.
   workflow_call:
     inputs:
       full_battery:
@@ -28,7 +35,7 @@ jobs:
   install-smoke:
     name: install-smoke
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || inputs.full_battery
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - name: Install jq
@@ -41,7 +48,7 @@ jobs:
   adapter-parity:
     name: adapter-parity
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || inputs.full_battery
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - run: bash scripts/check-parity.sh
@@ -49,7 +56,7 @@ jobs:
   validate:
     name: validate
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || inputs.full_battery
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -180,7 +187,7 @@ jobs:
   lib-parity:
     name: lib-parity
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || inputs.full_battery
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - name: Verify lib/install/ matches committed checksums
@@ -189,7 +196,7 @@ jobs:
   pii-guardrails:
     name: pii-guardrails
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || inputs.full_battery
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
         with:
@@ -217,7 +224,7 @@ jobs:
     # .github/workflows/.
     name: dogfood-workflows
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || inputs.full_battery
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
     steps:
       - uses: actions/checkout@v4
       - name: Every templated workflow is active at repo root, byte-identical
