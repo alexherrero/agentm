@@ -168,6 +168,32 @@ def main(argv: list[str] | None = None) -> int:
     # the whole point of including traps) and find a majority of the
     # labeled true edges (recall > 0.5 — a sane floor for a v0 cascade,
     # not a claim of production-readiness).
+    # L7 fail-loud: a missing fixture file silently shrinks the labeled
+    # sample (files_missing was reported but nothing gated on it — see PR
+    # #287, where an archive move dropped 9 fixture paths and the sample
+    # shrank from 145 to 95 true edges with no visible signal). Any missing
+    # file makes the measurement untrustworthy, independent of whether the
+    # shrunk sample still happens to clear the recall bar — fail explicit,
+    # don't let a smaller denominator pass silently.
+    if result["files_missing"] > 0:
+        _emit_jsonl(
+            args.jsonl_out,
+            f"V6-2 typed-edge extraction: {result['files_missing']} fixture "
+            f"file(s) referenced by edge-fixture-v0.json are missing from the "
+            f"vault — the labeled sample shrank from its true size and this "
+            f"run's recall/trap numbers are not trustworthy (see fixture "
+            f"paths above)",
+            False,
+        )
+        print(
+            f"[eval-v6-graph] ERROR: {result['files_missing']} fixture file(s) "
+            "missing — the fixture has drifted from the vault (e.g. an "
+            "archive move). Fix the fixture's source_path entries; a shrunk "
+            "sample cannot be trusted to reflect the real recall/trap rate.",
+            file=sys.stderr,
+        )
+        return 0
+
     passed = result["trap_leaked_as_edges"] == 0 and result["recall"] > 0.5
     _emit_jsonl(
         args.jsonl_out,

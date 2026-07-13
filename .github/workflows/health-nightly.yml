@@ -30,6 +30,9 @@ on:
 permissions:
   contents: write        # push the rolling scorecard-refresh branch
   pull-requests: write   # open/read the scorecard-refresh PR + arm auto-merge
+  actions: write         # L7: dispatch the required check workflows ourselves
+    # (see the merge step below) — GITHUB_TOKEN pushes don't trigger their
+    # pull_request runs, so nothing else will ever run them for this branch.
 
 jobs:
   # macOS runs the heavy tier as a conformance leg only (R1.8 Task 5) — it
@@ -60,7 +63,9 @@ jobs:
   health-nightly:
     name: health-nightly
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60  # L7: was 30 — now also dispatches + waits on the
+      # real required-check workflows before merging (up to ~25min inside
+      # ci-all.yml's own poll), see the merge step below.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -119,8 +124,44 @@ jobs:
           if [ -z "$PR_NUM" ]; then
             gh pr create --repo "${{ github.repository }}" --base main --head "$BRANCH" \
               --title "chore(health): nightly scorecard refresh" \
-              --body "Automated nightly refresh of the health scorecard + history log (fast tier + heavy tier + the static dark-checks registry, rendered via \`scripts/health/health_score.py\`). This workflow is advisory-only and never blocks anyone else's merge — auto-merge is armed so this PR lands once the repo's normal required checks pass, same as any other PR (CONS-1: replaces the direct push to \`main\` that was failing every night)."
+              --body "Automated nightly refresh of the health scorecard + history log (fast tier + heavy tier + the static dark-checks registry, rendered via \`scripts/health/health_score.py\`). This workflow is advisory-only and never blocks anyone else's merge — it dispatches the required check workflows itself and merges once they pass (CONS-1: replaces the direct push to \`main\` that was failing every night; L7: replaces waiting on --auto, which never resolved for a GITHUB_TOKEN-authored push — see health-nightly.yml's comments)."
           else
             echo "PR #$PR_NUM already open for $BRANCH — the force-push above updated it in place."
           fi
-          gh pr merge --repo "${{ github.repository }}" "$BRANCH" --auto --squash
+
+          # L7: GitHub gates pull_request-triggered required-check runs
+          # behind action_required/zero-jobs when the triggering push is
+          # GITHUB_TOKEN rather than a human (confirmed empirically 2026-07-12
+          # against PR #295 — same commit shape succeeds when a human touches
+          # the branch, stalls forever when only the bot pushes). --auto was
+          # waiting on a check that would never post. Dispatch the real check
+          # workflows ourselves against the new commit instead.
+          NEW_SHA=$(git rev-parse HEAD)
+          for wf in tests-linux.yml tests-mac.yml tests-windows.yml ci-all.yml; do
+            gh workflow run "$wf" --repo "${{ github.repository }}" --ref "$BRANCH"
+          done
+          sleep 10  # let GitHub register the dispatches before we poll for them
+
+          CI_RUN_ID=""
+          for attempt in $(seq 1 10); do
+            CI_RUN_ID=$(gh run list --repo "${{ github.repository }}" --workflow ci-all.yml \
+              --branch "$BRANCH" --json databaseId,headSha,event \
+              --jq "[.[] | select(.headSha == \"$NEW_SHA\" and .event == \"workflow_dispatch\")][0].databaseId // empty")
+            [ -n "$CI_RUN_ID" ] && break
+            echo "  waiting for the dispatched ci-all.yml run to register (attempt $attempt/10)..."
+            sleep 10
+          done
+
+          if [ -z "$CI_RUN_ID" ]; then
+            echo "Could not find the dispatched ci-all.yml run — arming --auto as a fallback (it will merge if the pull_request-triggered check ever posts)."
+            gh pr merge --repo "${{ github.repository }}" "$BRANCH" --auto --squash
+            exit 0
+          fi
+
+          echo "Waiting on dispatched ci-all.yml run $CI_RUN_ID for $NEW_SHA..."
+          gh run watch "$CI_RUN_ID" --repo "${{ github.repository }}" --exit-status
+
+          if ! gh pr merge --repo "${{ github.repository }}" "$BRANCH" --squash; then
+            echo "Direct merge failed (checks may not have propagated to the PR yet) — arming --auto as a fallback."
+            gh pr merge --repo "${{ github.repository }}" "$BRANCH" --auto --squash
+          fi

@@ -98,6 +98,15 @@ class TestGateAndParse(unittest.TestCase):
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
 
+    def test_archive_dir_skipped(self):
+        # L7: vault_lint.py was the one walker (unlike recall.py /
+        # frontmatter_validator.py) that still descended into _archive/.
+        with _Vault() as v:
+            _write(v, "personal/_archive/old.md", _clean("old"))
+            _write(v, "projects/_archive/proj/notes/z.md", _clean("z"))
+            model, findings = _lint(v)
+            self.assertEqual(len(model.entries), 0)
+
 
 class TestChecks(unittest.TestCase):
     def test_required_field_missing(self):

@@ -16,6 +16,13 @@ name: "[T] CI All"
 # no-op under PLAN-per-plan-ci).
 on:
   pull_request: {}
+  workflow_dispatch: {}  # L7: dispatchable against a bot-pushed branch, whose
+    # pull_request-triggered run (and the 3 OS workflows it polls for) never
+    # fires — GitHub gates pull_request runs triggered by GITHUB_TOKEN behind
+    # action_required with zero jobs. workflow_dispatch is exempt from that
+    # suppression; health-nightly.yml dispatches this + the 3 OS workflows
+    # directly against its rolling branch instead of relying on --auto to
+    # wait for a check that will never post.
 
 jobs:
   aggregate:

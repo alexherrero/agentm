@@ -14,6 +14,10 @@ on:
       - 'wiki/**'
       - '**/*.md'
   pull_request: {}
+  workflow_dispatch: {}  # L7: lets health-nightly.yml force a real run against
+    # a bot-pushed branch — GitHub gates pull_request-triggered required
+    # checks behind action_required when the triggering push is GITHUB_TOKEN,
+    # not a human; workflow_dispatch is exempt from that suppression.
   workflow_call:
     inputs:
       full_battery:

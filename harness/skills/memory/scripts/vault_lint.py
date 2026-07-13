@@ -49,8 +49,10 @@ import save  # noqa: E402  (schema source of truth — same skill dir)
 # `_idea-incubator` is deferred to a follow-up (DC-4, bespoke shape); `_meta`
 # holds machine files (repos.json, cursors); `_harness` holds per-project plan
 # state (PLAN.md/progress.md — not entries); `_inbox`/`_dream-staging` are
-# transient staging areas.
-_EXCLUDE_DIRS = frozenset({"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging"})
+# transient staging areas. `_archive` (any depth) holds retired entries —
+# recall.py and frontmatter_validator.py already skip it; L7 closes the gap
+# where vault_lint.py was the one walker still descending into it.
+_EXCLUDE_DIRS = frozenset({"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive"})
 
 # Core frontmatter trio that marks a file as an agent-shaped entry (DC-3).
 _CORE_TRIO = ("kind", "status", "created")
