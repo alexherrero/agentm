@@ -61,6 +61,7 @@ applies... the digest carries it for the operator to confirm").
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 import time
 from dataclasses import dataclass
@@ -89,9 +90,22 @@ __all__ = [
     "AutoAppliedBatch",
     "auto_apply_batch",
     "render_auto_applied_json",
+    "DEFAULT_REVERT_TTL_DAYS",
+    "cleanup_applied_batches",
 ]
 
 DEFAULT_TTL_DAYS = 30.0
+
+# L1/F5 (ledger finding: applied batches were never cleaned up -- a run's
+# _dream-staging/<run_id>/ directory persisted indefinitely, staging TTL
+# only ever marks proposals expired, never deletes anything). This is a
+# SEPARATE, untuned first-cut window: how long a fully-resolved batch's
+# staging directory sticks around after its last live application, before
+# `cleanup_applied_batches` removes it. RevertLog's own journal
+# (~/.cache/agentm/dream/revert-log/<run_id>.jsonl) is independent of this
+# directory and is never touched by cleanup -- undo stays possible after
+# the staging dir is gone; only the review/audit copy goes.
+DEFAULT_REVERT_TTL_DAYS = 14.0
 
 # The dreaming pipeline's "expire" action (operator ruling, 2026-07-11 --
 # see wiki/designs/agentm-experience-and-dreaming.md's amendment log): a
@@ -348,6 +362,11 @@ def confirm(
 
         state.setdefault(str(index), {})["confirmed"] = True
         state[str(index)]["entry_id"] = entry_id
+        # L1/F5: the only per-index timestamp `cleanup_applied_batches`
+        # needs -- when this proposal was actually applied, so the
+        # revert-TTL clock (how long the staging dir sticks around after
+        # the last live application) has a real anchor.
+        state[str(index)]["confirmed_at"] = now
         _save_state(vault_path, run_id, state)
         return entry_id
 
@@ -444,3 +463,77 @@ def render_auto_applied_json(batch: AutoAppliedBatch) -> str:
         indent=2,
         sort_keys=True,
     )
+
+
+def cleanup_applied_batches(
+    vault_path: Path,
+    *,
+    ttl_days: float = DEFAULT_TTL_DAYS,
+    revert_ttl_days: float = DEFAULT_REVERT_TTL_DAYS,
+    now: float | None = None,
+) -> list:
+    """Delete `_dream-staging/<run_id>/` for every batch that is BOTH fully
+    resolved (no proposal still `pending` -- everything is `confirmed` or
+    `expired`) AND past its revert grace period. Returns the list of
+    `run_id`s removed.
+
+    L1/F5: staging directories persisted indefinitely before this -- the
+    TTL only ever marked proposals expired, nothing ever deleted anything.
+    Safe by construction: `RevertLog`'s own journal
+    (~/.cache/agentm/dream/revert-log/) is a completely separate, local,
+    byte-fidelity record of every applied mutation -- it is never read from
+    or written to by this function, so undo capability is unaffected by
+    what this cleans up.
+
+    The grace-period anchor is the latest `confirmed_at` timestamp across
+    the batch's proposals (when the last live application happened); a
+    batch where nothing was ever confirmed (fully auto-expired, nothing
+    qualified for auto-apply) anchors on `staged_at + ttl_days` instead --
+    the moment the last proposal in it could have gone stale.
+
+    Best-effort per batch: a manifest/state read failure or an OS error
+    during removal skips that run_id rather than raising, so one malformed
+    or concurrently-touched staging dir never blocks cleanup of the rest.
+    """
+    now = now if now is not None else time.time()
+    staging_root = Path(vault_path) / "_dream-staging"
+    if not staging_root.is_dir():
+        return []
+
+    removed = []
+    for entry in sorted(staging_root.iterdir()):
+        if not entry.is_dir():
+            continue
+        run_id = entry.name
+        try:
+            manifest = _load_manifest(vault_path, run_id)
+            state = _load_state(vault_path, run_id)
+        except (DreamConfirmError, OSError, json.JSONDecodeError):
+            continue
+
+        state.setdefault("_manifest_staged_at", manifest["staged_at"])
+        pending_exists = False
+        confirmed_ats = []
+        for e in manifest["proposals"]:
+            index = e["index"]
+            status = _proposal_status(e, index, state, ttl_days=ttl_days, now=now)
+            if status == "pending":
+                pending_exists = True
+                break
+            per_index = state.get(str(index), {})
+            if per_index.get("confirmed") and "confirmed_at" in per_index:
+                confirmed_ats.append(per_index["confirmed_at"])
+        if pending_exists:
+            continue
+
+        anchor = max(confirmed_ats) if confirmed_ats else state["_manifest_staged_at"] + ttl_days * 86400
+        if now - anchor <= revert_ttl_days * 86400:
+            continue
+
+        try:
+            shutil.rmtree(entry)
+        except OSError:
+            continue
+        removed.append(run_id)
+
+    return removed

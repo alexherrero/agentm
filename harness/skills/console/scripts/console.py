@@ -514,6 +514,38 @@ def section_vault_lint(vault: "Path | None", *, now: "float | None" = None) -> s
     return f"Vault lint: {summary} (report: {latest.name}, rendered {when})"
 
 
+# ── section: latest brief (L1, ledger ruling 7 -- "seen" delivery home) ────
+_H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
+
+
+def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
+    """Reads `<vault>/_briefs/*.md` (`inbox_digest.py` / `window_park.py`'s
+    shared write target, L1/F2 fix) and reports the most recent one by
+    filename -- slugs are `YYYYMMDD-...`, so lexicographic sort is
+    chronological. This is the one section `render_terminal`/
+    `render_html_report` put first: the Morning Brief needs to actually be
+    seen, not one more entry a triage pass could bury."""
+    if vault is None:
+        return "Latest brief: n/a (no vault resolved)"
+    briefs_dir = vault / "_briefs"
+    briefs = sorted(briefs_dir.glob("*.md")) if briefs_dir.is_dir() else []
+    if not briefs:
+        return "Latest brief: dark -- no _briefs/*.md yet (no digest or park job has fired on this machine)"
+    latest = briefs[-1]
+    try:
+        text = latest.read_text(encoding="utf-8")
+    except OSError:
+        text = ""
+    m = _H1_RE.search(text)
+    title = m.group(1).strip() if m else latest.stem
+    try:
+        mtime = latest.stat().st_mtime
+    except OSError:
+        mtime = None
+    when = _format_age(mtime, now=now) if mtime is not None else "unknown"
+    return f"Latest brief: {title} (file: {latest.name}, {when})"
+
+
 # ── section: dreaming auto-expire (Consolidation follow-ups batch, piece 5) ─
 def section_dream_expire(vault: "Path | None", *, now: "float | None" = None) -> str:
     """Reads the stable, always-overwritten pointer `dream.py`'s auto-apply
@@ -567,6 +599,7 @@ def rich_view_line(output_path: "Path | None" = None) -> str:
 # ── report assembly ───────────────────────────────────────────────────────────
 def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, *, runner=subprocess.run) -> dict:
     return {
+        "brief": section_brief(vault),
         "health": section_health(repo_root, runner=runner),
         "plans": section_plans(repo_root, runner=runner),
         "board_drift": section_board_drift(repo_root, runner=runner),
@@ -582,6 +615,7 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
 def render_terminal(report: dict, *, html_path: "Path | None" = None) -> str:
     lines = ["AgentM Console", "=" * len("AgentM Console"), ""]
     for title, key in (
+        ("Latest brief", "brief"),
         ("Health", "health"), ("Plans", "plans"),
         ("Board drift", "board_drift"), ("Spend", "spend"),
         ("Memory activity", "memory"), ("Machinery", "machinery"),
@@ -645,6 +679,7 @@ def render_html_report(report: dict, repo_root: "Path | None", *, runner=subproc
 <body>
 <h1>AgentM Console</h1>
 
+<section><h2>Latest brief</h2><pre>{esc(report.get('brief', ''))}</pre></section>
 <section><h2>Health</h2><pre>{esc(report['health'])}</pre></section>
 <section><h2>Plans</h2><pre>{esc(report['plans'])}</pre></section>
 <section><h2>Board drift</h2><pre>{esc(report['board_drift'])}</pre></section>
