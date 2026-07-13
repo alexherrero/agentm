@@ -8,6 +8,21 @@ name: "[W] Update Wiki"
 # _Header special files are excluded. Gracefully skips when the wiki is
 # disabled on the repo.
 #
+# Two jobs:
+#   lint-wiki   — runs scripts/check-wiki.py --strict on push AND
+#                 pull_request, so wiki breakage is caught before it merges
+#                 (mirrors crickets' wiki-sync.yml lint-then-publish shape).
+#   update-wiki — publishes, but only `needs: lint-wiki` (a structurally
+#                 broken wiki never publishes) and only on the default
+#                 branch. Runs scripts/wiki_publish_transform.py on the
+#                 freshly-rsynced checkout, after rsync and before commit,
+#                 to fix two GitHub-Wiki-only rendering gaps that don't
+#                 show up in a git checkout: raw YAML frontmatter displaying
+#                 above the H1, and tree-relative asset links (images, PDFs)
+#                 404ing once pages are served at flat wiki URLs. Then
+#                 smoke-checks the just-published Home page and one
+#                 rewritten asset URL before declaring success.
+#
 # Harness-authored; refreshed on install.sh --update. The full
 # convention spec lives at:
 # https://github.com/alexherrero/agentm/blob/main/harness/documentation.md
@@ -16,18 +31,36 @@ on:
   push:
     paths:
       - 'wiki/**'
+      - 'scripts/check-wiki.py'
+      - 'scripts/wiki_publish_transform.py'
+  pull_request:
+    paths:
+      - 'wiki/**'
+      - 'scripts/check-wiki.py'
+      - 'scripts/wiki_publish_transform.py'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  lint-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint wiki/ structure
+        run: python3 scripts/check-wiki.py --strict --root wiki
+
   update-wiki:
+    needs: lint-wiki
     # Only run on pushes to the repo's default branch. Filtering here
     # (rather than in `on.push.branches`) lets the workflow follow
     # default-branch renames automatically.
     if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -81,6 +114,13 @@ jobs:
           # Mirror: add / edit / rename / delete. Preserve subdirs.
           rsync -a --delete --exclude='.git' wiki/ wiki-repo/
 
+          # Publish-time transform (F10/F11): strip YAML frontmatter (GitHub
+          # Wiki doesn't render it — it's load-bearing in-repo, so it can
+          # only be removed here, not at source) and rewrite relative,
+          # non-.md asset links (images, PDFs) to raw-asset URLs (GitHub
+          # Wiki serves pages at flat URLs, so a tree-relative link 404s).
+          python3 scripts/wiki_publish_transform.py wiki-repo --repo "$REPO"
+
           cd wiki-repo
           git add -A
           if git diff --cached --quiet; then
@@ -92,3 +132,41 @@ jobs:
               -c user.name='github-actions[bot]' \
               commit -m "sync: ${SHA:0:7}"
           git push origin HEAD:master
+
+      - name: Verify published pages render
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          check_url() {
+            local url="$1" label="$2" attempt
+            for attempt in 1 2 3; do
+              if curl -sfL -o /dev/null "$url"; then
+                echo "OK ($label): $url"
+                return 0
+              fi
+              echo "  attempt $attempt failed for $url, retrying..."
+              sleep 3
+            done
+            echo "::error::$label did not return 200 after 3 attempts: $url"
+            return 1
+          }
+
+          # 1) The wiki's Home page (github.com/.../wiki redirects there).
+          check_url "https://github.com/${REPO}/wiki" "wiki Home"
+
+          # 2) A page carrying at least one rewritten raw-asset URL, plus
+          # the raw asset URL itself — smoke-checks the F11 fix end to end
+          # using whatever the transform actually produced (no hardcoded
+          # filenames to go stale).
+          page_with_asset=$(grep -rl 'raw\.githubusercontent\.com/wiki/' wiki-repo --include='*.md' | head -1 || true)
+          if [[ -z "$page_with_asset" ]]; then
+            echo "::notice::No page with a rewritten asset URL found — skipping asset-link smoke check."
+            exit 0
+          fi
+          page_name="$(basename "$page_with_asset" .md)"
+          check_url "https://github.com/${REPO}/wiki/${page_name}" "sample page ($page_name)"
+
+          asset_url=$(grep -oE 'https://raw\.githubusercontent\.com/wiki/[^) "'"'"']+' "$page_with_asset" | head -1)
+          check_url "$asset_url" "raw asset"

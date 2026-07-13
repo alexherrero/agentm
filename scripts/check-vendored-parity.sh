@@ -23,6 +23,11 @@
 #                  not imported cross-tree).
 #   storage-seam — same DC-9 vendoring pattern, two pairs:
 #                  storage_seam.py + storage_device_local.py.
+#   wiki-publish-transform — scripts/wiki_publish_transform.py (agentm's own
+#                  dogfooded copy, invoked by .github/workflows/wiki-sync.yml)
+#                  is byte-identical to templates/scripts/wiki_publish_transform.py
+#                  (the copy install.sh vendors into every installed project,
+#                  alongside its templated wiki-sync.yml).
 #   hook-config  — the four memory hooks' `_resolve_vault_path() { ... }`
 #                  function bodies are byte-identical (extracted verbatim,
 #                  diffed against the first hook's copy).
@@ -45,7 +50,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-MODES=(lib vault-lock storage-seam hook-config workflow)
+MODES=(lib vault-lock wiki-publish-transform storage-seam hook-config workflow)
 
 _sha_cmd() {
   # SHA-256 tool: prefer sha256sum (Linux/coreutils, Git Bash on Windows),
@@ -145,6 +150,18 @@ mode_vault_lock() {
   local rc=$?
   if [[ "$rc" -eq 0 ]]; then
     echo "check-vendored-parity[vault-lock]: clean (both vault_lock.py copies are sha256-identical)"
+  fi
+  return "$rc"
+}
+
+# ── wiki-publish-transform: single canonical/vendored pair ──────────────────
+mode_wiki_publish_transform() {
+  local CANON="$REPO_ROOT/scripts/wiki_publish_transform.py"
+  local VENDORED="$REPO_ROOT/templates/scripts/wiki_publish_transform.py"
+  _pair_check "wiki-publish-transform" "$CANON" "$VENDORED"
+  local rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    echo "check-vendored-parity[wiki-publish-transform]: clean (both wiki_publish_transform.py copies are sha256-identical)"
   fi
   return "$rc"
 }
@@ -294,6 +311,7 @@ main() {
     case "$mode" in
       lib)          mode_lib ;;
       vault-lock)   mode_vault_lock ;;
+      wiki-publish-transform) mode_wiki_publish_transform ;;
       storage-seam) mode_storage_seam ;;
       hook-config)  mode_hook_config ;;
       workflow)     mode_workflow "$@" ;;
