@@ -144,10 +144,15 @@ def _stem(token: str) -> str:
 _ALWAYS_LOAD_REL = Path("personal") / "_always-load"
 
 # Directories excluded from recall walks. _archive/ is always excluded
-# (audit-trail content, never surfaced to the agent). _inbox/ is excluded
-# by default but can be opted in via --include-inbox (raw unfiltered
-# capture; surfacing in recall would inject low-quality candidate noise).
-_EXCLUDE_DIR_NAMES = {"_archive"}
+# (audit-trail content, never surfaced to the agent). _dream-staging/ is
+# always excluded too (L1/F4 fix: dream.py already excludes it from its own
+# source walk, but recall.py had no matching entry -- a bulk-review batch's
+# proposal files, each embedding a full copy of a real note's content,
+# were keyword-recall candidates until this line closed the gap). _inbox/
+# is excluded by default but can be opted in via --include-inbox (raw
+# unfiltered capture; surfacing in recall would inject low-quality
+# candidate noise).
+_EXCLUDE_DIR_NAMES = {"_archive", "_dream-staging"}
 _INBOX_DIR_NAME = "_inbox"
 
 # Tokenization for grep search: split on non-alphanumeric, lowercase, drop
@@ -512,7 +517,8 @@ def _iter_entry_paths(
     """Walk vault, yield all *.md entry paths (subject to filtering invariants).
 
     Excludes:
-      - `_archive/` subtrees (always — audit-trail content).
+      - `_archive/` and `_dream-staging/` subtrees (always — audit-trail /
+        staging content, never surfaced to the agent).
       - `_inbox/` subtrees unless `include_inbox=True`.
       - Hidden directories (dirnames starting with `.`).
 
@@ -1399,6 +1405,16 @@ def prompt_submit(
     blocks, loaded_slugs, token_budget_omitted = _apply_token_budget(
         raw_blocks, raw_slugs, token_budget
     )
+
+    # L1 (ledger ruling 6): one per-recall counter event, query hashed (never
+    # raw text) + the slugs actually surfaced after truncation. Best-effort,
+    # this function's sole call site — same discipline as the heat/lifecycle
+    # recordings above.
+    try:
+        from recall_counter import record_recall as _record_recall_event  # type: ignore
+        _record_recall_event(prompt, loaded_slugs)
+    except ImportError:
+        pass
 
     # Output assembly: only print stdout when we have hits or a truncation notice.
     if blocks or token_budget_omitted > 0:

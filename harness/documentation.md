@@ -210,9 +210,10 @@ Humans may edit any wiki file anytime. Docsub respects existing content and asks
 Harness-ships `.github/workflows/wiki-sync.yml`:
 
 - `name:` `[W] Update Wiki`
-- Trigger: `push` on the repo's default branch, `paths: ['wiki/**']`.
-- Job: `update-wiki`
-- Step: shell-based, no third-party action. Clones `${REPO}.wiki.git`, fails loudly on basename collisions, `rsync -a --delete` mirror, commit + push to the wiki's `master` branch.
+- Trigger: `push` and `pull_request` on `paths: ['wiki/**', 'scripts/check-wiki.py', 'scripts/wiki_publish_transform.py']`, plus `workflow_dispatch`.
+- Jobs: `lint-wiki` (runs `scripts/check-wiki.py --strict` on every push and PR) → `update-wiki` (`needs: lint-wiki`; publish only, only on the default branch).
+- Step: shell-based, no third-party action. Clones `${REPO}.wiki.git`, fails loudly on basename collisions, `rsync -a --delete` mirror, then `scripts/wiki_publish_transform.py` (GitHub Wiki doesn't render YAML frontmatter, so it's stripped at publish time; tree-relative asset links don't resolve against the wiki's flat page URLs, so they're rewritten to `raw.githubusercontent.com/wiki/...`) before commit + push to the wiki's `master` branch.
+- A final `curl`-based smoke step confirms the Home page and one rewritten asset URL actually 200 before the run is declared green.
 - Uses default `GITHUB_TOKEN` with `permissions: contents: write`.
 - **Graceful skip** if wiki is disabled or repo isn't on GitHub. The `wiki/` folder remains authoritative locally.
 
@@ -250,6 +251,7 @@ Only populated if the user opts into project creation at `/setup`. Absent otherw
 
 - `templates/wiki/` → target's `wiki/` (user-owned, walked per-file so partial human-created wikis get missing scaffold files filled in without overwriting).
 - `templates/.github/workflows/wiki-sync.yml` → target's `.github/workflows/wiki-sync.yml` (managed; refreshed on `--update`).
+- `templates/scripts/wiki_publish_transform.py` → target's `scripts/wiki_publish_transform.py` (managed; the script the workflow above invokes — kept byte-identical to agentm's own copy by `check-vendored-parity.sh`'s `wiki-publish-transform` mode).
 
 **Installer boundary:** `install.sh` copies from `$HARNESS_ROOT/templates/` only. This repo's own `wiki/` folder (documentation for agentm itself) is never propagated to target projects.
 

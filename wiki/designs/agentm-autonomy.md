@@ -11,7 +11,7 @@ approved: 2026-07-07
 ---
 
 > [!NOTE]
-> **LAUNCHED (2026-07-07, AA2).** child-design — the Autonomy arc's telemetry substrate: a device-local spend ledger, a deterministic console, and a digest ladder into the vault. A **cross-cutting** design, agentm-anchored, the same way [model + effort routing](agentm-model-effort-routing.md) is — points *up* at the [agentm HLD](agentm-hld.md), touches no single pillar. Evolved from the Autonomy arc's front-loaded budget-governor draft (`<vault>/_harness/designs/post-ag-frontload/BUDGET-GOVERNOR-DESIGN-DRAFT.md`, superseded) after operator review dropped its enforcement.
+> **LAUNCHED** (2026-07-07). The Autonomy arc's telemetry substrate — a device-local spend ledger, a deterministic console, and a digest ladder into the vault. Cross-cutting, agentm-anchored, points up at the [agentm HLD](agentm-hld.md) rather than one pillar. See the amendment log below for build history.
 
 # Autonomy — observability ledger and console
 

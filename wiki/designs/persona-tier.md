@@ -9,10 +9,9 @@ parent: agentm-hld.md
 # The persona tier
 
 > [!NOTE]
-> **Status:** launched — all four build parts shipped. Parts 1–2 + 4 (V5-11, commit [7966ac3](https://github.com/alexherrero/agentm/commit/7966ac3)); **part 3 (on-demand load + surfacing path) shipped 2026-07-06** — see the [persona activation](agentm-persona-activation) design. ADR 0016 folded into the Amendment log below (2026-06-24).
+> **Status:** launched — all four build parts shipped (2026-07-06). See the amendment log below for build history.
 > **Position in arc:** refinement of [AgentM HLD](agentm-hld) (the V5 "unbundling" HLD).
-> **Method:** the locked 10-section design template (the V5-11 design method).
-> **Roadmap:** **V5-12** (agentm kernel, ROADMAP-MASTER bucket ⑤) — slotted 2026-06-16; sequenced after V5-10, ahead of V5-11 as its substrate (V5-11's Planner (TPM) is this tier's first *real* persona = build-part 4).
+> **Roadmap:** V5-12 (agentm kernel, ROADMAP-MASTER bucket ⑤).
 
 ## Context
 

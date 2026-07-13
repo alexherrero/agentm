@@ -58,7 +58,7 @@ fi
 gate "check-references"                        "$PY" scripts/check-references.py
 gate "validate-adapters"                       "$PY" scripts/validate-adapters.py
 gate "check-parity (adapter sets)"             bash scripts/check-parity.sh
-gate "check-vendored-parity (lib + vault-lock + storage-seam + hook-config + workflow)" bash scripts/check-vendored-parity.sh
+gate "check-vendored-parity (lib + vault-lock + wiki-publish-transform + storage-seam + hook-config + workflow)" bash scripts/check-vendored-parity.sh
 gate "check-multi-plan-naming (named-plan contract)" bash scripts/check-multi-plan-naming.sh
 gate "check-worktree-slug (slug == origin basename)" bash scripts/check-worktree-slug.sh
 gate "check-no-auto-worktree (no agentm auto-spawn)" bash scripts/check-no-auto-worktree.sh
