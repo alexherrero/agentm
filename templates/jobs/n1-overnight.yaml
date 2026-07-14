@@ -24,10 +24,15 @@ lookback: 24h
 # state alone) it cannot self-determine *what* to run without one. A
 # missing or malformed work-items file is a clean, named CLI error (exit 2),
 # not a raw traceback — see n1_run.py's own `_load_work_items()`.
+# `--cwd ..` is required, not cosmetic: a work item with no `cwd` of its own
+# dispatches under this flag's value (n1_run.py's own fallback since V8
+# proving Phase 3, 2026-07-13); omitting it left every dispatched session
+# rooted at `scripts/` instead of the project root, confirmed live.
 command: >-
   python3 -m control_plane.n1_run --plan overnight
   --work-items ../.harness/n1-work-items.json
   --project-config ../.harness/project.json
+  --cwd ..
 
 # This manifest's own tier describes the board-reflection write the
 # sequence performs (T2, an operator-curated surface) — matching the
