@@ -21,7 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -72,12 +72,22 @@ def run_n1_sequence(
     backed functions (`grade.declare_run_start` / `handoff.
     build_fleet_handoff_pack`) -- override only for hermetic unit tests
     that must not depend on a crickets sibling checkout being reachable.
+
+    A work item with no `cwd` of its own dispatches under `config.cwd` --
+    never `dispatch()`'s own bare `Path.cwd()` fallback, which silently
+    resolves to wherever *this process* happens to be running from (e.g.
+    `scripts/`, the runner's own invocation convention) rather than the
+    project root a fleet-dispatched session actually needs to operate in.
+    Confirmed live (V8 proving Phase 3, 2026-07-13): an n1-overnight run
+    invoked from `scripts/` per that convention dispatched both real work
+    items rooted at `scripts/` instead of the repo root before this fix.
     """
     grade_event = grade_declarer(
         config.plan, grade=config.grade, root=config.cwd, telemetry_root=config.telemetry_root,
     )
 
-    dispatch_results = [dispatcher(item) for item in config.work_items]
+    items = [item if item.cwd is not None else replace(item, cwd=str(config.cwd)) for item in config.work_items]
+    dispatch_results = [dispatcher(item) for item in items]
 
     board_outcomes = []
     if config.project_config_path is not None:
