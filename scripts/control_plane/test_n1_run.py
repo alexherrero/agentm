@@ -93,6 +93,25 @@ class RunN1SequenceTests(unittest.TestCase):
         self.assertEqual(len(report.dispatch_results), 2)
         self.assertEqual({r.task for r in report.dispatch_results}, {"1", "2"})
 
+    def test_work_item_with_no_cwd_dispatches_under_config_cwd(self):
+        # V8 proving Phase 3, 2026-07-13 -- confirmed live: a work item with
+        # no cwd of its own used to fall through to dispatch()'s bare
+        # Path.cwd() (wherever *this process* happens to be running from,
+        # e.g. scripts/ per the runner's own invocation convention), not
+        # the project root a fleet-dispatched session actually needs.
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=None)]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root)
+        report = self._run(config)
+        self.assertEqual(report.dispatch_results[0].cwd, str(self.tmp))
+
+    def test_work_item_with_its_own_cwd_is_not_overridden(self):
+        own = self.tmp / "own-subdir"
+        own.mkdir()
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(own))]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root)
+        report = self._run(config)
+        self.assertEqual(report.dispatch_results[0].cwd, str(own))
+
     def test_grade_event_declared(self):
         items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
         config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root, grade="G-ship")
