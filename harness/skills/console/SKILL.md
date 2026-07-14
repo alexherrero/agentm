@@ -24,7 +24,7 @@ Both modes are read-only: nothing here mutates the repo, the vault, or the GitHu
 
 ## What each section composes (and where to look if a section says "n/a")
 
-- **Health** — `scripts/status.py`, which reads `scripts/health/health_score.py`'s `history.jsonl`. Says "n/a" outside an agentm dev checkout, or if no scorecard has ever been recorded (run `bash scripts/health/run-fast-tier.sh | python3 scripts/health/health_score.py --history` once).
+- **Health** — `scripts/status.py`, which reads `scripts/health/health_score.py`'s health-history ledger (the vault, when one resolves, else a device-local fallback — `resolve_history_path()`). Says "n/a" outside an agentm dev checkout, or if no scorecard has ever been recorded (run `bash scripts/health/run-fast-tier.sh | python3 scripts/health/health_score.py --history` once).
 - **Plans** — `scripts/queue_status_lite.py`, the coordinator's read-only glance over every active `_harness/` plan.
 - **Board drift** — crickets' `src/github-projects/scripts/check_project_sync.py` (a sibling crickets checkout is required; the plugin's own `.harness/project.json` must resolve a `github.repo`). Says "n/a" if no crickets sibling is found, or reports the detector's own graceful-skip line if this repo isn't board-synced.
 - **Spend** — `scripts/runner/aggregator.py` refreshes the SQLite rollup (best-effort; a missing crickets sibling means no refresh, not a failure) and `scripts/health/observability_console.py` reads it.

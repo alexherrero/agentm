@@ -45,8 +45,8 @@ excluded from the Health Index and surfaced as a warning on the scorecard.
 Any family scoring 3+ points below its last green run, or any blocker-tier
 check going red, flips the scorecard headline red. Comparisons are only valid
 within the same `(fixture_pack_version, rule_pack_version)` bucket — bumping
-either version starts a new baseline (`scripts/health/history.jsonl` never
-edits a prior row).
+either version starts a new baseline (the health-history ledger never edits
+a prior row).
 
 ## Running it
 
@@ -60,8 +60,14 @@ cat some-records.jsonl | python3 scripts/health/health_score.py --format json
 # Merge in dark checks (unbuilt capabilities):
 cat some-records.jsonl | python3 scripts/health/health_score.py --dark-checks scripts/health/dark-checks.jsonl
 
-# Append a history.jsonl row for this run:
+# Append a row to the health-history ledger for this run (the vault, when
+# one resolves -- <vault>/_meta/health/history.jsonl -- else a device-local
+# fallback for vault-less installs; see health_score.resolve_history_path()):
 cat some-records.jsonl | python3 scripts/health/health_score.py --history
+
+# Also render an HTML report (default ~/.cache/agentm/telemetry/scorecard.html,
+# a sibling of console.html; --html-output overrides):
+cat some-records.jsonl | python3 scripts/health/health_score.py --html
 
 # Determinism gate (also wired into check-all.sh): two runs at the same
 # input must produce byte-identical output.

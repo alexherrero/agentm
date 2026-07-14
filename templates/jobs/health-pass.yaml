@@ -1,0 +1,32 @@
+# health-pass.yaml — the local health-scorecard job manifest (V8 proving
+# Lane S, 2026-07-13: ledger ruling 3 retargets the nightly scorecard from a
+# CI commit-back to a locally-produced, always-fresh artifact). Test-locked
+# shape: scripts/test_runner.py's HealthPassJobManifestTests.
+#
+# Runs the fast tier only (the heavy tier stays CI-only — it needs deps this
+# device doesn't carry, e.g. sentence-transformers/fastmcp, and several of
+# its checks fork subprocess daemons not meant for a background cron tick),
+# pipes the records into health_score.py, which (a) appends one row to the
+# vault-resolved history ledger (`--history` — `health_score.
+# resolve_history_path()`: `<vault>/_meta/health/history.jsonl` when a vault
+# resolves, else a device-local fallback) and (b) renders the HTML report to
+# the fixed device path `~/.cache/agentm/telemetry/scorecard.html` (`--html`
+# — sibling of console.html, same convention). CI's health-nightly.yml keeps
+# running BOTH tiers on every scheduled/dispatched run as the clean-runner
+# regression signal, rendered to a build artifact only, never committed —
+# this job is the localized, always-current half `/console` and the morning
+# brief link.
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored (per-project runtime state, same as every
+# other .harness/* file), so this templates/ copy is the tracked, shipped
+# source. Register it by copying to .harness/jobs/health-pass.yaml in a repo
+# that runs the agentm runner (scripts/agentm-runner.sh).
+schedule: daily
+lookback: 24h
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
+command: bash health/run-fast-tier.sh | python3 health/health_score.py --history --html
+
+tier: T2
+dry_run: true
