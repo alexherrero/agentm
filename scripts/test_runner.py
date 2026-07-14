@@ -242,16 +242,17 @@ class CycleIdempotencyTests(unittest.TestCase):
 
 
 class HealthPassJobManifestTests(unittest.TestCase):
-    """Locks the schema shape of `.harness/jobs/health-pass.yaml` (AG Wave E
-    task 1, agentm-runner.md). The manifest itself is gitignored (`.harness/`
-    is machine-local, per repo convention) so it can't be asserted against
+    """Locks the schema shape of `.harness/jobs/health-pass.yaml`
+    (templates/jobs/health-pass.yaml, registered V8 proving Lane S,
+    2026-07-13). The manifest itself is gitignored (`.harness/` is
+    machine-local, per repo convention) so it can't be asserted against
     directly in a portable test — this fixture mirrors its exact content so a
     regression in `manifest.py`'s parsing of this job shape still fails loud."""
 
     _HEALTH_PASS_FIELDS = dict(
         schedule="daily",
         lookback="24h",
-        command="bash health/run-fast-tier.sh | python3 health/health_score.py --history",
+        command="bash health/run-fast-tier.sh | python3 health/health_score.py --history --html",
         tier="T2",
         dry_run=True,
     )
@@ -266,11 +267,11 @@ class HealthPassJobManifestTests(unittest.TestCase):
             self.assertEqual(job.name, "health-pass")
             self.assertEqual(job.interval_seconds, 86400)  # daily
             self.assertEqual(job.lookback_seconds, 86400)  # 24h — catches one missed daily run
-            self.assertEqual(job.tier, "T2")  # curated: appends the tracked scripts/health/history.jsonl
+            self.assertEqual(job.tier, "T2")  # curated: appends the vault-resolved health-history ledger
             self.assertTrue(job.dry_run)  # ships dry-run; the operator promotes it
             self.assertEqual(
                 job.command,
-                "bash health/run-fast-tier.sh | python3 health/health_score.py --history",
+                "bash health/run-fast-tier.sh | python3 health/health_score.py --history --html",
             )
 
 

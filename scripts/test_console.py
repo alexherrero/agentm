@@ -79,23 +79,33 @@ class SectionDegradationTests(unittest.TestCase):
         self.assertIn("no scorecard history", out)
 
     def test_health_success_passes_through_stdout(self):
-        # /fake has no scripts/health/history.jsonl -- the freshness line
-        # degrades to "unknown" rather than being silently omitted (this is
-        # the honest-dark contract this section grew in piece 3a).
-        out = c.section_health(Path("/fake"), runner=_fake_runner(returncode=0, stdout="Health Index: 88.00\n"))
+        # An explicit resolve_fn pointing at a definitely-absent path --
+        # the freshness line degrades to "unknown" rather than being
+        # silently omitted (this is the honest-dark contract this section
+        # grew in piece 3a). Without an injected resolve_fn this would fall
+        # through to health_score.resolve_history_path() -- which, once the
+        # real module is cached in sys.modules by another test file in the
+        # same process, reads this machine's REAL health-history ledger
+        # regardless of the fake /fake repo_root, since the vault it
+        # resolves is genuinely global rather than scoped per repo_root.
+        missing = Path("/fake/nonexistent-history.jsonl")
+        out = c.section_health(
+            Path("/fake"), runner=_fake_runner(returncode=0, stdout="Health Index: 88.00\n"),
+            resolve_fn=lambda: missing,
+        )
         self.assertIn("Health Index: 88.00", out)
         self.assertIn("Last nightly run: unknown", out)
 
     def test_health_appends_last_run_freshness_from_history_jsonl(self):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
-            health_dir = repo_root / "scripts" / "health"
-            health_dir.mkdir(parents=True)
+            history_path = repo_root / "history.jsonl"
             now = time.time()
             row = {"ts": now - 3600, "health_index": 88.0}
-            (health_dir / "history.jsonl").write_text(json.dumps(row) + "\n", encoding="utf-8")
+            history_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
             out = c.section_health(
-                repo_root, runner=_fake_runner(returncode=0, stdout="Health Index: 88.00\n"), now=now
+                repo_root, runner=_fake_runner(returncode=0, stdout="Health Index: 88.00\n"), now=now,
+                resolve_fn=lambda: history_path,
             )
             self.assertIn("Health Index: 88.00", out)
             self.assertIn("Last nightly run:", out)
@@ -105,16 +115,29 @@ class SectionDegradationTests(unittest.TestCase):
     def test_read_health_history_ts_picks_last_row(self):
         with tempfile.TemporaryDirectory() as td:
             repo_root = Path(td)
-            health_dir = repo_root / "scripts" / "health"
-            health_dir.mkdir(parents=True)
-            (health_dir / "history.jsonl").write_text(
+            history_path = repo_root / "history.jsonl"
+            history_path.write_text(
                 json.dumps({"ts": 1000}) + "\n" + json.dumps({"ts": 2000}) + "\n", encoding="utf-8"
             )
-            self.assertEqual(c._read_health_history_ts(repo_root), 2000.0)
+            self.assertEqual(
+                c._read_health_history_ts(repo_root, resolve_fn=lambda: history_path), 2000.0
+            )
 
     def test_read_health_history_ts_none_when_absent(self):
         with tempfile.TemporaryDirectory() as td:
-            self.assertIsNone(c._read_health_history_ts(Path(td)))
+            missing = Path(td) / "history.jsonl"
+            self.assertIsNone(c._read_health_history_ts(Path(td), resolve_fn=lambda: missing))
+
+    def test_health_history_path_honors_injected_resolve_fn(self):
+        # The real production path (health_score.resolve_history_path() via
+        # a real repo_root import) is covered by health_score's own tests;
+        # this only proves the injection seam itself is honored, avoiding
+        # any dependence on sys.modules/sys.path caching state shared with
+        # other test files in the same process.
+        with tempfile.TemporaryDirectory() as td:
+            sentinel = Path(td) / "sentinel.jsonl"
+            got = c._health_history_path(Path("/unused"), resolve_fn=lambda: sentinel)
+            self.assertEqual(got, sentinel)
 
     def test_plans_none_repo_root(self):
         self.assertIn("n/a", c.section_plans(None))

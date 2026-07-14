@@ -9,37 +9,32 @@ name: "[H] Health Nightly"
 # a cold-install dogfood pass — see scripts/health/run-heavy-tier.sh).
 #
 # R1.8 Task 5 added a macOS conformance leg (health-nightly-macos) — same
-# heavy tier, macos-latest runner, reports its JSONL as a build artifact only
-# (ubuntu-latest stays the sole scorecard writer, so the two legs can't race
-# on the commit/push). Task 5 also folds scripts/health/dark-checks.jsonl
-# (the static registry of designed-not-built capabilities) into the scorecard
-# render, so those checks render in their own "Dark checks" section.
+# heavy tier, macos-latest runner, reports its JSONL as a build artifact.
+# Task 5 also folds scripts/health/dark-checks.jsonl (the static registry of
+# designed-not-built capabilities) into the scorecard render, so those checks
+# render in their own "Dark checks" section.
 #
-# CONS-1: the scorecard refresh lands via a PR (merge-on-green, auto-merge),
-# never a direct push to protected `main` — a bare `git push` to `main` here
-# was failing every night since `main` requires a passing PR, not a bare
-# push. A rolling branch (`health-nightly-scorecard`) is force-pushed each
-# run (bot-owned, single-purpose, safe to reset from current `main` every
-# time) and its PR is created once, then left to auto-merge on green.
+# V8 proving Lane S (2026-07-13, ledger ruling 3): this workflow no longer
+# commits or pushes anything — the entire branch/PR/workflow_dispatch/
+# --admin merge machinery that used to land the scorecard refresh on
+# protected `main` is retired (operator ruling: "why are we checking
+# anything in for this?"). CI's job now is purely the clean-runner
+# regression signal: run both tiers, render the scorecard, upload it (HTML +
+# raw JSONL) as a build artifact. The scorecard an operator actually reads
+# day to day is produced locally instead, by the `health-pass` runner job
+# (templates/jobs/health-pass.yaml) appending to the vault-resolved history
+# ledger and rendering `~/.cache/agentm/telemetry/scorecard.html` — see
+# wiki/explanation/Health-Scorecard.md.
 
 on:
   schedule:
     - cron: '0 6 * * *'  # 06:00 UTC daily
   workflow_dispatch: {}   # manual trigger for testing / on-demand runs
 
-permissions:
-  contents: write        # push the rolling scorecard-refresh branch
-  pull-requests: write   # open/read the scorecard-refresh PR + arm auto-merge
-  actions: write         # L7: dispatch the required check workflows ourselves
-    # (see the merge step below) — GITHUB_TOKEN pushes don't trigger their
-    # pull_request runs, so nothing else will ever run them for this branch.
-
 jobs:
   # macOS runs the heavy tier as a conformance leg only (R1.8 Task 5) — it
-  # reports JSONL as an artifact but never commits the scorecard itself.
-  # ubuntu-latest stays the single writer to wiki/explanation/Health-Scorecard.md
-  # + scripts/health/history.jsonl, so two OS legs racing to commit/push in
-  # parallel can't collide.
+  # reports JSONL as an artifact, same as ubuntu-latest's own scorecard
+  # artifact below; neither leg writes anything but a build artifact.
   health-nightly-macos:
     name: health-nightly (macos conformance)
     runs-on: macos-latest
@@ -63,9 +58,7 @@ jobs:
   health-nightly:
     name: health-nightly
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # L7: was 30 — now also dispatches + waits on the
-      # real required-check workflows before merging (up to ~25min inside
-      # ci-all.yml's own poll), see the merge step below.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -96,93 +89,16 @@ jobs:
           if [ "$conclusion" = "success" ]; then pass=true; else pass=false; fi
           echo "{\"suite\": \"nightly-ci-matrix\", \"axis\": \"verification honesty\", \"check\": \"nightly main-HEAD full-matrix backstop (tests-linux/mac/windows rerun independent of any PR)\", \"pass\": $pass, \"weight\": 1.0}" \
             > /tmp/nightly-ci-matrix.jsonl
-      - name: Render the scorecard + append a history row
+      - name: Render the scorecard artifacts (HTML + the combined raw JSONL) — no commit, no push
         run: |
           cat /tmp/fast-tier.jsonl /tmp/heavy-tier.jsonl /tmp/nightly-ci-matrix.jsonl scripts/health/dark-checks.jsonl \
-            | python3 scripts/health/health_score.py --history \
-            > wiki/explanation/Health-Scorecard.md.new
-          # Preserve the page's explanatory header (everything before the
-          # "---" divider); replace only the auto-generated scorecard body.
-          awk '/^---$/{print; exit} {print}' wiki/explanation/Health-Scorecard.md > /tmp/header.md
-          cat /tmp/header.md wiki/explanation/Health-Scorecard.md.new > wiki/explanation/Health-Scorecard.md
-          rm -f wiki/explanation/Health-Scorecard.md.new
-      - name: Open/refresh the scorecard PR (advisory — never blocks a merge; lands via auto-merge on green, not a direct push to main)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add wiki/explanation/Health-Scorecard.md scripts/health/history.jsonl
-          git diff --cached --quiet && echo "no scorecard changes to commit" && exit 0
-
-          BRANCH="health-nightly-scorecard"
-          git checkout -B "$BRANCH"
-          git commit -m "chore(health): nightly scorecard refresh"
-          git push --force origin "$BRANCH"
-
-          PR_NUM=$(gh pr list --repo "${{ github.repository }}" --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
-          if [ -z "$PR_NUM" ]; then
-            gh pr create --repo "${{ github.repository }}" --base main --head "$BRANCH" \
-              --title "chore(health): nightly scorecard refresh" \
-              --body "Automated nightly refresh of the health scorecard + history log (fast tier + heavy tier + the static dark-checks registry, rendered via \`scripts/health/health_score.py\`). This workflow is advisory-only and never blocks anyone else's merge — it dispatches the required check workflows itself and merges once they pass (CONS-1: replaces the direct push to \`main\` that was failing every night; L7: replaces waiting on --auto, which never resolved for a GITHUB_TOKEN-authored push — see health-nightly.yml's comments)."
-          else
-            echo "PR #$PR_NUM already open for $BRANCH — the force-push above updated it in place."
-          fi
-
-          # L7: GitHub gates pull_request-triggered required-check runs
-          # behind action_required/zero-jobs when the triggering push is
-          # GITHUB_TOKEN rather than a human (confirmed empirically 2026-07-12
-          # against PR #295 — same commit shape succeeds when a human touches
-          # the branch, stalls forever when only the bot pushes). --auto was
-          # waiting on a check that would never post. Dispatch the real check
-          # workflows ourselves against the new commit instead.
-          NEW_SHA=$(git rev-parse HEAD)
-          for wf in tests-linux.yml tests-mac.yml tests-windows.yml ci-all.yml; do
-            gh workflow run "$wf" --repo "${{ github.repository }}" --ref "$BRANCH"
-          done
-          sleep 10  # let GitHub register the dispatches before we poll for them
-
-          CI_RUN_ID=""
-          for attempt in $(seq 1 10); do
-            CI_RUN_ID=$(gh run list --repo "${{ github.repository }}" --workflow ci-all.yml \
-              --branch "$BRANCH" --json databaseId,headSha,event \
-              --jq "[.[] | select(.headSha == \"$NEW_SHA\" and .event == \"workflow_dispatch\")][0].databaseId // empty")
-            [ -n "$CI_RUN_ID" ] && break
-            echo "  waiting for the dispatched ci-all.yml run to register (attempt $attempt/10)..."
-            sleep 10
-          done
-
-          if [ -z "$CI_RUN_ID" ]; then
-            echo "Could not find the dispatched ci-all.yml run — arming --auto as a fallback (it will merge if the pull_request-triggered check ever posts)."
-            gh pr merge --repo "${{ github.repository }}" "$BRANCH" --auto --squash
-            exit 0
-          fi
-
-          echo "Waiting on dispatched ci-all.yml run $CI_RUN_ID for $NEW_SHA..."
-          gh run watch "$CI_RUN_ID" --repo "${{ github.repository }}" --exit-status
-
-          # L7 follow-up (confirmed live against PR #295, 2026-07-12): even
-          # after the dispatched "aggregate" check-run genuinely succeeds,
-          # the SAME force-push also still auto-creates the old
-          # pull_request-triggered check-suites for tests-linux/mac/windows/
-          # ci-all (still action_required — GITHUB_TOKEN pushes can't clear
-          # that gate either). Their presence poisons this commit's overall
-          # statusCheckRollup to null, and branch protection reports the PR
-          # BLOCKED ("the base branch policy prohibits the merge") despite
-          # the real required "aggregate" context reading success on direct
-          # query. --auto never resolves this (the stale suites never
-          # complete on their own), so fall back to --admin: the required
-          # context has already been positively confirmed green by the
-          # `gh run watch --exit-status` line above, so this is a bypass of
-          # a known-poisoned rollup computation, not a bypass of the actual
-          # requirement. (A push identity that isn't GITHUB_TOKEN, e.g. a
-          # PAT-backed secret, would avoid the stale suites entirely and is
-          # the real root-cause fix — that requires an operator-provisioned
-          # secret this workflow can't create for itself.)
-          if ! gh pr merge --repo "${{ github.repository }}" "$BRANCH" --squash; then
-            echo "Direct merge failed (rollup likely poisoned by the stale action_required suites) — retrying with --admin, since aggregate was independently confirmed green above."
-            if ! gh pr merge --repo "${{ github.repository }}" "$BRANCH" --squash --admin; then
-              echo "Admin merge also failed (GITHUB_TOKEN may lack bypass rights on this repo) — arming --auto as a last resort; it will only resolve if a human touches the branch or the rollup clears on its own."
-              gh pr merge --repo "${{ github.repository }}" "$BRANCH" --auto --squash
-            fi
-          fi
+            > /tmp/health-records.jsonl
+          cat /tmp/health-records.jsonl | python3 scripts/health/health_score.py --html-output /tmp/scorecard.html
+      - name: Upload the scorecard + raw records as build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-scorecard-ubuntu
+          path: |
+            /tmp/scorecard.html
+            /tmp/health-records.jsonl
+          retention-days: 14

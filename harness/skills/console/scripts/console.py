@@ -151,12 +151,35 @@ def _run(cmd: list, *, cwd: "Path | None" = None, timeout: int = 30, runner=subp
 
 
 # ── sections: health / plans / board drift / spend ───────────────────────────
-def _read_health_history_ts(repo_root: Path) -> "float | None":
-    """The nightly health-scorecard's last-recorded `ts` (epoch seconds),
-    read directly from `scripts/health/history.jsonl`'s last row -- a plain
-    file read rather than importing health_score.py, so a malformed or
-    missing ledger degrades to None instead of an import-time surprise."""
-    path = repo_root / "scripts" / "health" / "history.jsonl"
+def _health_history_path(repo_root: Path, *, resolve_fn=None) -> Path:
+    """`health_score.resolve_history_path()`, imported from the repo's own
+    `scripts/health/` -- the vault-resolved location (device-local fallback
+    for vault-less installs) since V8 proving Lane S, 2026-07-13. Falls back
+    to the pre-localization repo path if the module can't be imported (e.g.
+    a stale/partial checkout), so this stays best-effort like every other
+    console.py section. `resolve_fn` is injectable (tests pass one to avoid
+    the real health_score module -- possibly already cached in sys.modules
+    by another test file -- winning over a fixture's fake repo_root)."""
+    if resolve_fn is not None:
+        return resolve_fn()
+    health_dir = repo_root / "scripts" / "health"
+    if str(health_dir) not in sys.path:
+        sys.path.insert(0, str(health_dir))
+    try:
+        import health_score as hs  # type: ignore
+
+        return hs.resolve_history_path()
+    except Exception:
+        return repo_root / "scripts" / "health" / "history.jsonl"
+
+
+def _read_health_history_ts(repo_root: Path, *, resolve_fn=None) -> "float | None":
+    """The health-scorecard's last-recorded `ts` (epoch seconds), read
+    directly from the resolved history ledger's last row -- a plain file
+    read rather than calling health_score.read_latest_history_row(), so a
+    malformed or missing ledger degrades to None instead of a raised
+    exception."""
+    path = _health_history_path(repo_root, resolve_fn=resolve_fn)
     if not path.is_file():
         return None
     last_line = None
@@ -178,7 +201,7 @@ def _read_health_history_ts(repo_root: Path) -> "float | None":
     return float(ts) if isinstance(ts, (int, float)) else None
 
 
-def section_health(repo_root: "Path | None", *, runner=subprocess.run, now: "float | None" = None) -> str:
+def section_health(repo_root: "Path | None", *, runner=subprocess.run, now: "float | None" = None, resolve_fn=None) -> str:
     if repo_root is None:
         return "Health: n/a (not an agentm dev checkout)"
     rc, out, err = _run([sys.executable, "scripts/status.py"], cwd=repo_root, runner=runner)
@@ -190,7 +213,7 @@ def section_health(repo_root: "Path | None", *, runner=subprocess.run, now: "flo
             "| python3 scripts/health/health_score.py --history` at least once"
         )
     text = out.strip() or "Health: (empty report)"
-    ts = _read_health_history_ts(repo_root)
+    ts = _read_health_history_ts(repo_root, resolve_fn=resolve_fn)
     if ts is None:
         # Honest-dark: status.py above printed a real row (rc == 0), so this
         # is a genuinely unexpected shape (a ts-less legacy row, or the
@@ -596,6 +619,32 @@ def rich_view_line(output_path: "Path | None" = None) -> str:
     return f"Rich view: {path} (last rendered {_format_age(mtime)})"
 
 
+def scorecard_html_line(repo_root: "Path | None") -> str:
+    """Points at the health scorecard's own fixed-path HTML render (V8
+    proving Lane S, 2026-07-13) -- a sibling of console.html, produced by
+    the local runner's daily health-pass job (`health_score.py --html`),
+    never by console.py itself."""
+    if repo_root is None:
+        default_path = Path.home() / ".cache" / "agentm" / "telemetry" / "scorecard.html"
+    else:
+        health_dir = repo_root / "scripts" / "health"
+        if str(health_dir) not in sys.path:
+            sys.path.insert(0, str(health_dir))
+        try:
+            import health_score as hs  # type: ignore
+
+            default_path = hs.default_html_output_path()
+        except Exception:
+            default_path = Path.home() / ".cache" / "agentm" / "telemetry" / "scorecard.html"
+    if not default_path.is_file():
+        return f"Scorecard (rich HTML): not yet rendered -- the local runner's daily health-pass job writes {default_path}"
+    try:
+        mtime = default_path.stat().st_mtime
+    except OSError:
+        return f"Scorecard (rich HTML): {default_path} (last-rendered time unavailable)"
+    return f"Scorecard (rich HTML): {default_path} (last rendered {_format_age(mtime)})"
+
+
 # ── report assembly ───────────────────────────────────────────────────────────
 def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, *, runner=subprocess.run) -> dict:
     return {
@@ -612,7 +661,7 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
     }
 
 
-def render_terminal(report: dict, *, html_path: "Path | None" = None) -> str:
+def render_terminal(report: dict, *, html_path: "Path | None" = None, repo_root: "Path | None" = None) -> str:
     lines = ["AgentM Console", "=" * len("AgentM Console"), ""]
     for title, key in (
         ("Latest brief", "brief"),
@@ -631,6 +680,7 @@ def render_terminal(report: dict, *, html_path: "Path | None" = None) -> str:
     # printed at the end of every terminal run, not a mode the operator has
     # to remember exists.
     lines.append(rich_view_line(html_path))
+    lines.append(scorecard_html_line(repo_root))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -689,6 +739,7 @@ def render_html_report(report: dict, repo_root: "Path | None", *, runner=subproc
 <section><h2>Vault doctor</h2><pre>{esc(report.get('vault_doctor', ''))}</pre></section>
 <section><h2>Vault lint</h2><pre>{esc(report.get('vault_lint', ''))}</pre></section>
 <section><h2>Dreaming</h2><pre>{esc(report.get('dream_expire', ''))}</pre></section>
+<section><h2>Scorecard</h2><pre>{esc(scorecard_html_line(repo_root))}</pre></section>
 
 </body>
 </html>
@@ -724,7 +775,7 @@ def main(argv: "list[str] | None" = None) -> int:
         out_path.write_text(render_html_report(report, repo_root), encoding="utf-8")
         print(f"console: wrote {out_path}")
         return 0
-    print(render_terminal(report))
+    print(render_terminal(report, repo_root=repo_root))
     return 0
 
 

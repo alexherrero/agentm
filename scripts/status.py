@@ -3,11 +3,12 @@
 task 5; ROADMAP-MASTER.md:121, ratified verbatim: "Wave-E's Operator `/status`
 + the reporting digest consume R's scorecard rather than re-deriving one.").
 
-Reads the last row of `scripts/health/history.jsonl` (health_score.py's own
-persisted ledger) and prints the Health Index, the per-family breakdown, and
-the dark-check count — on demand, no new scoring logic. This is a consumer,
-never a second scorer: every number printed here is read back from a row
-health_score.py already computed and wrote; nothing is recomputed.
+Reads the last row of the health-history ledger (health_score.py's own
+persisted ledger, `resolve_history_path()` — the vault when one resolves,
+else a device-local fallback) and prints the Health Index, the per-family
+breakdown, and the dark-check count — on demand, no new scoring logic. This
+is a consumer, never a second scorer: every number printed here is read back
+from a row health_score.py already computed and wrote; nothing is recomputed.
 
 Run directly: `cd scripts && python3 status.py`
 """

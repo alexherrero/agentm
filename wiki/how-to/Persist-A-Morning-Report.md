@@ -3,7 +3,7 @@
 > [!NOTE]
 > **Status: implemented** — shipped by `PLAN-observability-residue-trio.md#task-2` (agentm `_harness/`).
 > **Goal:** Write an overnight run's morning report to a file on disk instead of only printing it to stdout, so it can be re-derived or archived after the terminal session that produced it is gone.
-> **Prereqs:** A populated observability rollup (`aggregator.default_db_path()` or a `--db-path` you pass explicitly) with at least one event for the plan you're reporting on. See [Health scorecard](Health-Scorecard) for the sibling `scripts/health/` CLI family this script belongs to.
+> **Prereqs:** A populated observability rollup (`aggregator.default_db_path()` or a `--db-path` you pass explicitly) with at least one event for the plan you're reporting on. See [CI gates](CI-Gates) § The nightly health tier for the sibling `scripts/health/` CLI family this script belongs to.
 
 `scripts/health/morning_report.py` renders why an overnight run ended — plan finished, gates green, an escalation parked, or the window ran out — with the plan's spend attached (`wiki/designs/agentm-autonomy.md` § When the window runs out). The `--out` flag adds a second, on-disk copy of the same markdown without changing stdout behavior.
 
@@ -22,5 +22,6 @@
 
 ## See also
 
-- [Health scorecard](Health-Scorecard) — the sibling auto-generated page from the same `scripts/health/` family.
+- [Health scorecard](Health-Scorecard) — the sibling `scripts/health/` surface, explains where the scorecard lives and how it's produced.
+- [CI gates](CI-Gates) § The nightly health tier — the reference page for the tier this script's data comes from.
 - `wiki/designs/agentm-autonomy.md` § When the window runs out — the design line this flag closes out ("The morning report names why the run ended... with the spend attached").

@@ -44,6 +44,7 @@ Usage:
     <producer> | python3 scripts/health/health_score.py [--path FILE]
                                                           [--dark-checks FILE]
                                                           [--history]
+                                                          [--html] [--html-output FILE]
                                                           [--check-determinism]
 Exit:
     0  scorecard rendered (or determinism check passed)
@@ -53,7 +54,9 @@ Exit:
 from __future__ import annotations
 
 import argparse
+import html as html_lib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -61,7 +64,6 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent.parent
-HISTORY_PATH = HERE / "history.jsonl"
 
 # Locked family weights (PLAN-r1-regression-net.md's Locked design calls).
 # Keys are the exact `axis` string a check record carries.
@@ -80,6 +82,49 @@ FAMILY_WEIGHTS: dict[str, float] = {
 # "History row immutability") — scores only compare within the same bucket.
 FIXTURE_PACK_VERSION = "v1"
 RULE_PACK_VERSION = "v1"
+
+
+def _default_vault_path_fn() -> "Path | None":
+    """`harness_memory.vault_path()`, resolved the same way every other
+    localized surface in this arc does (see console.py's own
+    `resolve_vault_path()`) — a thin, injectable seam so
+    `resolve_history_path()` doesn't have to import at module scope."""
+    scripts_dir = HERE.parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    import harness_memory as hm  # type: ignore
+
+    return hm.vault_path()
+
+
+def resolve_history_path(*, vault_path_fn=None) -> Path:
+    """Where the health-history ledger lives: `<vault>/_meta/health/
+    history.jsonl` when a vault resolves, else a device-local fallback for
+    vault-less installs (V8 proving Lane S, 2026-07-13 — the ledger stops
+    being a tracked repo file so a CI runner never has to commit it back).
+    `vault_path_fn` is injectable for hermetic tests; defaults to the real
+    `harness_memory.vault_path()`.
+    """
+    vault_path_fn = vault_path_fn if vault_path_fn is not None else _default_vault_path_fn
+    try:
+        vault = vault_path_fn()
+    except Exception:
+        vault = None
+    if vault is not None:
+        return Path(vault) / "_meta" / "health" / "history.jsonl"
+    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    if env:
+        p = Path(env).expanduser()
+        if p.is_dir():
+            return p / "_meta" / "health" / "history.jsonl"
+    return Path.home() / ".cache" / "agentm" / "telemetry" / "health-history.jsonl"
+
+
+def default_html_output_path() -> Path:
+    """Sibling of console.py's `default_html_output_path()` — same
+    `~/.cache/agentm/telemetry/` convention, so `/console` and the morning
+    brief can link a fixed, predictable path."""
+    return Path.home() / ".cache" / "agentm" / "telemetry" / "scorecard.html"
 
 
 def read_records(path: str | None) -> list[dict]:
@@ -257,6 +302,88 @@ def render_markdown(scorecard: dict, *, headline: str = "green", ablation_record
     return "\n".join(lines) + "\n"
 
 
+def render_html(scorecard: dict, *, headline: str = "green", ablation_records: list[dict] | None = None) -> str:
+    """Sibling of `render_markdown` — same data, an HTML page instead of a
+    Markdown fragment, styled to match console.py's `render_html_report`
+    (V8 proving Lane S, 2026-07-13: the fixed device-path rich view)."""
+    esc = html_lib.escape
+    live_total = scorecard.get("live_total")
+    if live_total is None:
+        live_total = sum(f["live_count"] for f in scorecard["families"])
+    if live_total == 0:
+        title = "Health Scorecard ⚪"
+        headline_html = "<p><strong>Health Index: not yet measured (0 checks have run)</strong></p>"
+    else:
+        marker = "\U0001f534" if headline == "red" else "\U0001f7e2"
+        title = f"Health Scorecard {marker}"
+        headline_html = f"<p><strong>Health Index: {scorecard['health_index']}/100</strong></p>"
+
+    family_rows = "\n".join(
+        f"<tr><td>{esc(f['axis'])}</td><td>{f['weight']}</td><td>{f['score']:.2f}</td>"
+        f"<td>{f['live_count']}</td><td>{f['dark_count']}</td></tr>"
+        for f in scorecard["families"]
+    )
+
+    warning_html = ""
+    if scorecard["unknown_axes"]:
+        warning_html = (
+            "<p><strong>Warning:</strong> unrecognized axis name(s) not in the locked "
+            f"family-weight table (excluded from Health Index): {esc(', '.join(scorecard['unknown_axes']))}</p>"
+        )
+
+    dark_html = ""
+    if scorecard.get("dark_checks"):
+        dark_rows = "\n".join(
+            f"<tr><td>{esc(d['axis'])}</td><td>{esc(d['suite'])}</td><td>{esc(d['check'])}</td></tr>"
+            for d in scorecard["dark_checks"]
+        )
+        dark_html = f"""<section><h2>Dark checks (designed, not built)</h2>
+<p>Not counted for or against the Health Index — visible so a family's true future shape stays legible before its capability ships.</p>
+<table><tr><th>Axis</th><th>Suite</th><th>Check</th></tr>
+{dark_rows}
+</table></section>"""
+
+    ablation_html = ""
+    if ablation_records:
+        ablation_rows = "\n".join(
+            f"<tr><td>{esc(a['subsystem'])}</td><td>{esc(a['axis'])}</td>"
+            f"<td>{a['score_on']:.2f}</td><td>{a['score_off']:.2f}</td><td>{a['uplift']:.2f}</td></tr>"
+            for a in ablation_records
+        )
+        ablation_html = f"""<section><h2>Mechanical uplift</h2>
+<table><tr><th>Subsystem</th><th>Axis</th><th>Score (on)</th><th>Score (off)</th><th>Uplift</th></tr>
+{ablation_rows}
+</table></section>"""
+
+    return f"""<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>AgentM Health Scorecard</title>
+<style>
+  body {{ font-family: -apple-system, sans-serif; max-width: 900px; margin: 2em auto; color: #222; }}
+  h1 {{ font-size: 1.4em; }}
+  h2 {{ font-size: 1.1em; margin-top: 2em; }}
+  section {{ margin-bottom: 1.5em; }}
+  table {{ border-collapse: collapse; width: 100%; margin-top: 0.5em; }}
+  th, td {{ text-align: left; padding: 0.3em 0.6em; border-bottom: 1px solid #ddd; }}
+  th {{ background: #f5f5f5; }}
+</style>
+</head>
+<body>
+<h1>{esc(title)}</h1>
+{headline_html}
+<table><tr><th>Family</th><th>Weight</th><th>Score</th><th>Checks</th><th>Dark</th></tr>
+{family_rows}
+</table>
+{warning_html}
+{dark_html}
+{ablation_html}
+</body>
+</html>
+"""
+
+
 def _git_sha() -> str:
     try:
         return subprocess.run(
@@ -268,8 +395,8 @@ def _git_sha() -> str:
 
 def append_history_row(scorecard: dict, *, ts: int | None = None,
                         path: Path | None = None) -> dict:
-    """Append one row to the history ledger (`HISTORY_PATH` unless `path` is
-    given — tests use `path` to avoid dirtying the tracked ledger).
+    """Append one row to the history ledger (`resolve_history_path()` unless
+    `path` is given — tests pass `path` to avoid touching the real ledger).
 
     `dark_count` (added for the Operator `/status` surface, PLAN-wave-e-
     scheduled-surfaces task 5) is the total dark-check count across all
@@ -287,7 +414,7 @@ def append_history_row(scorecard: dict, *, ts: int | None = None,
         "families": {f["axis"]: f["score"] for f in scorecard["families"]},
         "dark_count": sum(f["dark_count"] for f in scorecard["families"]),
     }
-    out_path = path if path is not None else HISTORY_PATH
+    out_path = path if path is not None else resolve_history_path()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
@@ -299,7 +426,7 @@ def read_latest_history_row(path: Path | None = None) -> dict | None:
     absent/empty. Read-only; never recomputes a score — this is the read
     side of `append_history_row`, for a consumer (the Operator `/status`
     surface) that wants the last-known scorecard without re-deriving it."""
-    in_path = path if path is not None else HISTORY_PATH
+    in_path = path if path is not None else resolve_history_path()
     if not in_path.is_file():
         return None
     last_line = None
@@ -318,7 +445,9 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--path", default=None, help="read JSONL from this file instead of stdin")
     p.add_argument("--dark-checks", default=None, help="path to a JSONL file of dark (designed-not-built) check records to merge in")
     p.add_argument("--ablation-records", default=None, help="path to a JSONL file of mechanical-uplift ablation records (subsystem/axis/score_on/score_off/uplift) — rendered additively, never scored")
-    p.add_argument("--history", action="store_true", help="append a row to scripts/health/history.jsonl")
+    p.add_argument("--history", action="store_true", help="append a row to the resolved health-history ledger (resolve_history_path())")
+    p.add_argument("--html", action="store_true", help="also render an HTML report to --html-output (default: ~/.cache/agentm/telemetry/scorecard.html)")
+    p.add_argument("--html-output", default=None, help="HTML output path (implies --html)")
     p.add_argument("--check-determinism", action="store_true", help="run twice against the same input; exit non-zero if outputs differ")
     p.add_argument("--format", choices=("markdown", "json"), default="markdown")
     return p.parse_args(argv)
@@ -366,6 +495,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.history:
         append_history_row(scorecard)
+
+    if args.html or args.html_output:
+        out_path = Path(args.html_output) if args.html_output else default_html_output_path()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(render_html(scorecard, ablation_records=ablation_records), encoding="utf-8")
+        print(f"health_score: wrote {out_path}", file=sys.stderr)
 
     if args.format == "json":
         out = dict(scorecard)

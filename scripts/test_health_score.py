@@ -199,6 +199,83 @@ class TestMechanicalUpliftRendering(unittest.TestCase):
         self.assertEqual(sc["health_index"], index_without)
 
 
+class TestResolveHistoryPath(unittest.TestCase):
+    """V8 proving Lane S, 2026-07-13: the ledger stops being a tracked repo
+    file — resolve_history_path() picks the vault when one resolves, else a
+    device-local fallback, mirroring console.py's resolve_vault_path()."""
+
+    def test_uses_vault_when_resolved(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            got = health_score.resolve_history_path(vault_path_fn=lambda: vault)
+            self.assertEqual(got, vault / "_meta" / "health" / "history.jsonl")
+
+    def test_falls_back_to_device_cache_when_no_vault(self):
+        got = health_score.resolve_history_path(vault_path_fn=lambda: None)
+        self.assertEqual(got, Path.home() / ".cache" / "agentm" / "telemetry" / "health-history.jsonl")
+
+    def test_falls_back_when_resolver_raises(self):
+        def _boom():
+            raise RuntimeError("no vault configured")
+        got = health_score.resolve_history_path(vault_path_fn=_boom)
+        self.assertEqual(got, Path.home() / ".cache" / "agentm" / "telemetry" / "health-history.jsonl")
+
+    def test_append_and_read_round_trip_through_the_resolver(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)
+            fn = lambda: vault  # noqa: E731
+            records = [_rec("memory persist+recall", "a", True)]
+            sc = health_score.compute_scorecard(records)
+            resolved = health_score.resolve_history_path(vault_path_fn=fn)
+            health_score.append_history_row(sc, ts=123, path=resolved)
+            row = health_score.read_latest_history_row(path=health_score.resolve_history_path(vault_path_fn=fn))
+            self.assertEqual(row["ts"], 123)
+
+
+class TestRenderHtml(unittest.TestCase):
+    def test_contains_health_index_and_family_table(self):
+        records = [_rec("memory persist+recall", "a", True)]
+        sc = health_score.compute_scorecard(records)
+        out = health_score.render_html(sc)
+        self.assertIn("Health Index: 100.0/100", out)
+        self.assertIn("memory persist+recall", out)
+        self.assertIn("<table>", out)
+
+    def test_bare_install_never_renders_fabricated_zero_score(self):
+        registry = _HERE / "health" / "dark-checks.jsonl"
+        dark_records = health_score.read_records(str(registry))
+        sc = health_score.compute_scorecard(dark_records)
+        out = health_score.render_html(sc)
+        self.assertIn("not yet measured", out)
+        self.assertNotIn("Health Index: 0.0/100", out)
+
+    def test_dark_checks_render_in_their_own_section(self):
+        records = [_rec("memory persist+recall", "a", True)]
+        dark = [{"suite": "dark-registry", "axis": "capability function", "check": "runner", "pass": None, "dark": True, "weight": 1.0}]
+        sc = health_score.compute_scorecard(records + dark)
+        out = health_score.render_html(sc)
+        self.assertIn("Dark checks", out)
+        self.assertIn("runner", out)
+
+    def test_html_flag_writes_file(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            out_path = Path(td) / "scorecard.html"
+            buf = io.StringIO()
+            stdin_backup = sys.stdin
+            sys.stdin = io.StringIO(json.dumps(_rec("memory persist+recall", "a", True)) + "\n")
+            try:
+                with redirect_stdout(buf):
+                    rc = health_score.main(["--html-output", str(out_path)])
+            finally:
+                sys.stdin = stdin_backup
+            self.assertEqual(rc, 0)
+            self.assertTrue(out_path.is_file())
+            self.assertIn("Health Index", out_path.read_text(encoding="utf-8"))
+
+
 class TestDeterminism(unittest.TestCase):
     def test_two_runs_produce_identical_markdown(self):
         records = [_rec("memory persist+recall", "a", True), _rec("efficiency", "b", False)]
