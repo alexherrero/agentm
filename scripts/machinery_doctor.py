@@ -289,12 +289,15 @@ def check_crickets_sibling() -> Check:
 
 
 def check_cross_review_visible_degradation(crickets_root: Optional[Path]) -> Check:
-    """Confirms the fix from crickets PR #189 is present: a Gemini
+    """Confirms the fix from crickets PR #189 is present: an agy (Gemini)
     fallback in `cross-review.sh` prints a `CROSS-REVIEW-DEGRADED` stdout
-    marker instead of degrading silently. This repo can't independently
-    exercise the fallback (that needs a crickets checkout + the
-    adversarial-reviewer-cross agent), so this only confirms the marker
-    text ships — a source-presence check, not a live-behavior probe."""
+    marker instead of degrading silently — the transport moved from the
+    standalone `gemini` CLI to `agy` in V8 proving Lane G (2026-07-13), the
+    marker text and this check's source-presence probe are unchanged. This
+    repo can't independently exercise the fallback (that needs a crickets
+    checkout + the adversarial-reviewer-cross agent), so this only confirms
+    the marker text ships — a source-presence check, not a live-behavior
+    probe."""
     name = "cross-review-degradation-marker"
     owner = "crickets code-review plugin"
     if crickets_root is None:
@@ -309,10 +312,11 @@ def check_cross_review_visible_degradation(crickets_root: Optional[Path]) -> Che
     if "CROSS-REVIEW-DEGRADED" in text:
         return Check(
             name, "OK",
-            "cross-review.sh emits a visible CROSS-REVIEW-DEGRADED marker on a Gemini fallback "
-            "(crickets PR #189) — a degraded run self-reports, it does not silently pass",
+            "cross-review.sh emits a visible CROSS-REVIEW-DEGRADED marker on an agy (Gemini) fallback "
+            "(crickets PR #189, retargeted to agy in V8 proving Lane G) — a degraded run self-reports, "
+            "it does not silently pass",
         )
-    return Check(name, "FAIL", "cross-review.sh has no visible degradation marker — a Gemini fallback would be silent")
+    return Check(name, "FAIL", "cross-review.sh has no visible degradation marker — an agy fallback would be silent")
 
 
 def check_crickets_coordination_suite(crickets_root: Optional[Path]) -> Check:
