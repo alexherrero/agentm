@@ -1,5 +1,27 @@
 {
   "includeCoAuthoredBy": false,
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Edit",
+      "Write",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(python3 *)",
+      "Bash(bash *)",
+      "Bash(ls *)",
+      "Bash(grep *)",
+      "Bash(find *)",
+      "Bash(cat *)",
+      "Bash(wc *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(mkdir *)",
+      "Bash(cd *)"
+    ]
+  },
   "statusLine": {
     "type": "command",
     "command": "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/status_line_meter.py"
