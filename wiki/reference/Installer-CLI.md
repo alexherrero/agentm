@@ -17,7 +17,7 @@ Command-line reference for `install.sh` (POSIX) and `install.ps1` (Windows / Pow
 ## Synopsis
 
 ```
-install.sh [--hooks] [--update] [--scope user|project] [--local-state] <target-project-path>
+install.sh [--hooks] [--update] [--scope user|project] [--local-state] [--mcp-server] <target-project-path>
 install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-project-path>
 ```
 
@@ -26,10 +26,11 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | Flag (bash) | Flag (pwsh) | Effect |
 |---|---|---|
 | `--hooks` | `-Hooks` | Copy hook scripts into `.harness/hooks/` and merge PostToolUse / PreCompact / SessionStart entries into `.claude/settings.json`. Requires `jq` on POSIX; pwsh uses native JSON cmdlets. |
-| `--update` | `-Update` | **True sync** (v1.0.0+): wipe the harness-authored dirs (`.claude/{commands,agents,skills}`, `.agents/{rules,workflows,skills}`, `.gemini/{commands,agents}`, `.harness/{scripts,hooks}`) and recreate from source. Orphan paths from older versions (e.g. the legacy `.agent/` tree, or `.codex/`) are auto-removed. Leaves user-owned files (`.harness/PLAN.md`, `progress.md`, `verify.sh`, `init.sh`, `known-migrations.md`, `AGENTS.md`, `CLAUDE.md`, `wiki/**`) alone. Writes `.harness/.version`. |
+| `--update` | `-Update` | **True sync** (v1.0.0+): wipe the harness-authored dirs (`.claude/{commands,agents,skills,hooks}`, `.agents/{rules,workflows,skills}`, `.gemini/{commands,agents}`, `.harness/{scripts,hooks}`) and recreate from source. Orphan paths from older versions (e.g. the legacy `.agent/` tree, or `.codex/`) are auto-removed. Leaves user-owned files (`.harness/PLAN.md`, `progress.md`, `verify.sh`, `init.sh`, `known-migrations.md`, `AGENTS.md`, `CLAUDE.md`, `wiki/**`) alone. Writes `.harness/.version`. |
 | `--scope user\|project` | `-Scope user\|project` | Install scope (default `project`). `--scope user` installs customizations to `~/.claude/` (target path not required) and also merges the AgentMemory payload into `~/.gemini/GEMINI.md` when `~/.gemini/` exists — the Antigravity global channel, so the vault rule applies across every workspace. `--scope project` installs into `<target>/.claude/` as usual. |
 | `--local-state` | `-LocalState` | Opt this machine into single-repo (vault-less) state: writes `"state_mode": "local"` to the on-host `.agentm-config.json` and skips vault auto-detection, so every phase write lands under `<repo>/.harness/` with no vault required. Flip an existing install with `agentm_config.py --state-mode` (below). See [Single-repo state mode](Single-Repo-State-Mode). |
-| `-h`, `--help` | `-Help` | Print the header comment block from the installer and exit. |
+| `--mcp-server` | *(bash only)* | Generate a launchd plist for the memory MCP daemon. macOS only. |
+| `-h`, `--help` | *(no pwsh equivalent)* | `install.sh -h`/`--help` prints the header comment block from the installer and exits. `install.ps1` has no help flag — passing one fails PowerShell parameter binding. |
 
 ## Config CLI — `agentm_config.py`
 
@@ -38,11 +39,11 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | Operation | Effect |
 |---|---|
 | `--vault-path <path>` | Set the vault path (validates the dir exists). Writes `plugins.obsidian-vault.vault_path` + `storage.backend=vault` on the on-host `.agentm-config.json` (V5-7 config-plane, tasks 1+2 shipped). `--get vault_path` reads the plugin-namespaced key first, then falls back to the legacy flat `vault_path` key. `--unset vault_path` removes both keys. Backs `harness_memory.py::vault_path()` when `$MEMORY_VAULT_PATH` is unset. |
-| `--state-mode <local\|vault>` | Set `state_mode` — the device-level run mode. `local` opts a vault-less machine into repo-local state; `vault` switches back. Idempotent; mutually exclusive with `--vault-path`. See [Single-repo state mode](Single-Repo-State-Mode). |
+| `--state-mode <local\|backend>` | Set `state_mode` — the device-level run mode. `local` opts a vault-less machine into repo-local state; `backend` switches back. `vault` is still accepted but is a deprecated alias — the code normalizes it to `backend` on write (LC-5). Idempotent; mutually exclusive with `--vault-path`. See [Single-repo state mode](Single-Repo-State-Mode). |
 | `--get <field>` | Read a single field to stdout; `rc=0` if present, `rc=1` (silent) if absent. |
 | `--list` | Dump the full config as JSON. |
 | `--unset <field>` | Clear a single field. |
-| `--storage-backend <name>` | Set `storage.backend` — the named [storage backend](Storage-Seam#backend-selection-part-5) the memory engine selects (`device-local`, `vault`, or a plugin-provided name). Stored under the literal flat key `"storage.backend"` ([`agentm_config.py#L151`](https://github.com/alexherrero/agentm/blob/main/scripts/agentm_config.py#L151)), so it round-trips through `--get storage.backend` / `--unset storage.backend`. Idempotent. Validates **non-empty only** — it does **not** check the backend is registered, so an as-yet-uninstalled backend stays configurable; the resolver's fail-loud guard handles a missing plugin at resolve time (the polished install-the-plugin error lands in part-5 task 3). Unset → the resolver picks from the existing config (fresh → `device-local`; an existing `vault_path` → `vault`). See [Choose a storage backend](Choose-A-Storage-Backend). |
+| `--storage-backend <name>` | Set `storage.backend` — the named [storage backend](Storage-Seam#backend-selection-part-5) the memory engine selects (`device-local`, `vault`, or a plugin-provided name). Stored under the literal flat key `"storage.backend"` ([`agentm_config.py#L60`](https://github.com/alexherrero/agentm/blob/main/scripts/agentm_config.py#L60)), so it round-trips through `--get storage.backend` / `--unset storage.backend`. Idempotent. Validates **non-empty only** — it does **not** check the backend is registered, so an as-yet-uninstalled backend stays configurable; the resolver's fail-loud guard handles a missing plugin at resolve time (the polished install-the-plugin error lands in part-5 task 3). Unset → the resolver picks from the existing config (fresh → `device-local`; an existing `vault_path` → `vault`). See [Choose a storage backend](Choose-A-Storage-Backend). |
 
 ## Prerequisites
 
@@ -61,7 +62,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 | `.harness/PLAN.md`, `progress.md`, `features.json`, `init.sh`, `verify.{sh,ps1}`, `known-migrations.md` | User | Skip-if-exists; never overwritten |
 | `.harness/scripts/` (telemetry, cross-review) | Harness | Overwritten |
 | `.harness/hooks/` | Harness | Overwritten (only with `--hooks`) |
-| `.claude/commands/`, `.claude/agents/`, `.claude/skills/` | Harness | Overwritten |
+| `.claude/commands/`, `.claude/agents/`, `.claude/skills/`, `.claude/hooks/` | Harness | Overwritten |
 | `.agents/` (Antigravity adapter tree) | Harness | Overwritten on `--update` (wipe-and-recreate from source — see Update-Installed-Harness) |
 | `.gemini/` (vestigial dropped-host adapter — Gemini CLI, dropped v2.4.0; still emitted pending reconciliation, see [Compatibility](Compatibility)) | Harness | Overwritten on `--update` |
 | `AGENTS.md`, `CLAUDE.md` | User (skip-if-exists) | Left alone |

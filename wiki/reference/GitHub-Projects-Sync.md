@@ -10,9 +10,9 @@ The board-sync integration lets every phase command file "remember for later" wo
 | Where does the linkage live? | The `github` block on `.harness/project.json` — see [Project config](Project-Config). |
 | What does agentm read from it? | `owner`, `number`, `url`, `repo`. |
 | What writes it? | The `/setup` opt-in, once — it runs `gh project create` then `gh project link` and records the result. |
-| Which phases emit board updates? | `/plan`, `/work`, `/review`, `/release` (and `/bugfix` on the Issues side). |
-| What triggers a proposal? | Deferred work — out-of-scope items, adjacent bugs noticed while building, deferred review findings, release-cycle themes. |
-| Does anything write to GitHub without asking? | No. Every write is preview-and-ask — the operator sees the exact title and body first. |
+| Which phases emit board updates? | `/plan`, `/work`, `/release` (and `/bugfix` on the Issues side). `/review` reports, it doesn't touch the board. |
+| What triggers a proposal? | Deferred work — out-of-scope items noticed in `/plan`, adjacent bugs/refactors/coverage gaps noticed while building in `/work`, cross-session themes in `/release`. |
+| Does anything write to GitHub without asking? | The one-time `/setup` project linkage is preview-and-ask. Per-item deferrals during `/plan`/`/work`/`/release` are not — they're deterministic and idempotent, so the recoverability gate treats them as announce-then-proceed, the same as any other recoverable action. |
 | What happens when it isn't set up? | Silent skip. No `project.json`, no `gh`, or nothing to defer → no prompt, no error. |
 
 ## The `github` block agentm reads
@@ -34,22 +34,21 @@ The linkage is created once, at `/setup`, and only if the operator says yes. On 
 
 ## How the phase commands emit updates
 
-Each phase proposes deferred work from a different signal, with a soft cap that flags scope-creep rather than blocking. The proposal is always previewed and confirmed before any `gh` call runs.
+Each phase proposes deferred work from a different signal. There's no numeric soft cap on any phase — every out-of-scope/deferred item it notices gets recorded onto the board as a `Backlog-item` or `Idea`, unconditionally.
 
-| Phase | What triggers a proposal | Soft reminder |
-|---|---|---|
-| `/plan` | Items in the plan's `## Out of scope` that read as deferred, not rejected | more than 5 proposals → rethink whether some are in-scope tasks |
-| `/work` | Adjacent bugs, refactors, or coverage gaps noticed while implementing — not task follow-ups | more than 3 → probably scope-creeping, not deferring |
-| `/review` | Findings the operator elects to defer rather than block on | no hard cap — five real deferrals, propose five |
-| `/release` | Cross-session themes that emerged from this release cycle | higher bar — a theme is a pattern, not a single item |
+| Phase | What triggers a proposal |
+|---|---|
+| `/plan` | Items in the plan's `## Out of scope` that read as deferred, not rejected |
+| `/work` | Adjacent bugs, refactors, or coverage gaps noticed while implementing — not task follow-ups |
+| `/release` | Cross-session themes that emerged from this release cycle |
 
-`/bugfix` is the parallel surface: it carries bugs through a full lifecycle as GitHub Issues, not as single Project items. The two surfaces are parallel, not overlapping — Projects for deferred work, Issues for bugs.
+`/review` reports findings; it does not write to the board at all. `/bugfix` is the parallel surface: it carries bugs through a full lifecycle as GitHub Issues, not as single Project items. The two surfaces are parallel, not overlapping — Projects for deferred work, Issues for bugs.
 
 The same wiring lands identically on both supported hosts, [Claude Code and Antigravity](Compatibility), so the behavior travels with the operator.
 
-## Preview-and-ask, always
+## Announce-then-proceed, not preview-and-ask, for per-item writes
 
-No `gh project item-create` ever runs without the operator first seeing the exact title and body and confirming. A `gh` call without that confirmation is a contract violation. The opt-in at `/setup` is a one-time decision to *have* a board; it is not standing permission to write to it unattended.
+Per-item board writes during `/plan`/`/work`/`/release` are deterministic and idempotent, so they follow the recoverability gate's usual posture for that class of action: announce what's being recorded, then proceed — not stop and wait for confirmation. The write itself runs `gh issue create` + `gh project item-add`, never a raw `gh project item-create`. The one-time `/setup` project-linkage step is the genuinely preview-and-ask decision here: it is a one-time choice to *have* a board at all, not standing permission for every later write — but once that choice is made, the per-item writes it enables don't re-ask each time.
 
 ## Graceful-skip behavior
 

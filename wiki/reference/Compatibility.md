@@ -6,8 +6,8 @@ Hosts and surfaces AgentM is verified to run with.
 
 | Host | Adapter dir | Phase commands | Status |
 |---|---|---|---|
-| **Claude Code** (Anthropic CLI / IDE extension) | [`adapters/claude-code/`](https://github.com/alexherrero/agentm/tree/main/adapters/claude-code) | `/setup` `/plan` `/work` `/review` `/release` `/bugfix` | ✅ first-class — primary development surface, CI-verified on every push |
-| **Antigravity** (Google IDE + Antigravity CLI) | [`adapters/antigravity/`](https://github.com/alexherrero/agentm/tree/main/adapters/antigravity) | Equivalent entrypoints invoked via `AGENTS.md`-aware prompts | ✅ first-class — CI-verified on every push |
+| **Claude Code** (Anthropic CLI / IDE extension) | [`adapters/claude-code/`](https://github.com/alexherrero/agentm/tree/main/adapters/claude-code) | `/setup` `/plan` `/work` `/review` `/release` `/bugfix` | ✅ first-class — primary development surface, CI-verified on every PR |
+| **Antigravity** (Google IDE + Antigravity CLI) | [`adapters/antigravity/`](https://github.com/alexherrero/agentm/tree/main/adapters/antigravity) | Equivalent entrypoints invoked via `AGENTS.md`-aware prompts | ✅ first-class — CI-verified on every PR |
 
 Both adapters are thin shims for agentm's own surfaces — its always-on rules and utility skills. The phase loop those commands invoke ships in the crickets **developer-workflows** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)); agentm no longer vendors the phase specs. Adding a host means adding an adapter directory and verifying the canonical specs still apply; it needs no harness rewrite.
 
@@ -15,9 +15,9 @@ Both adapters are thin shims for agentm's own surfaces — its always-on rules a
 
 | OS | Tested via | Frequency |
 |---|---|---|
-| Linux (`ubuntu-latest`) | [`.github/workflows/tests-linux.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) | Every push + every PR |
-| macOS (`macos-latest`) | [`.github/workflows/tests-mac.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-mac.yml) | Every push + every PR |
-| Windows (`windows-latest`, PowerShell 7+) | [`.github/workflows/tests-windows.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-windows.yml) | Every push + every PR |
+| Linux (`ubuntu-latest`) | [`.github/workflows/tests-linux.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-linux.yml) | Every PR (a plain push runs only the lightweight `syntax` job) |
+| macOS (`macos-latest`) | [`.github/workflows/tests-mac.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-mac.yml) | Every PR (worktree-native flow, ratified 2026-07-06 — a plain push runs nothing here) |
+| Windows (`windows-latest`, PowerShell 7+) | [`.github/workflows/tests-windows.yml`](https://github.com/alexherrero/agentm/blob/main/.github/workflows/tests-windows.yml) | Every PR (worktree-native flow, ratified 2026-07-06 — a plain push runs nothing here) |
 
 The single aggregate `CI` badge in the README and wiki Home rolls up all three OS workflows into one status. To drill into a failure, click the badge, open the Actions tab, and pick the OS that's failing.
 
