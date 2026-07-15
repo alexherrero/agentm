@@ -21,7 +21,7 @@
 | **Non-blocking** | Always returns 0. A failed orchestration chain never wedges a phase. |
 | **Graceful-skip** | Returns 0 with no side-effects when the vault is absent or the memory toolkit is not installed. |
 | **Kernel-single-writer** | All state writes go through `ao.save_state()` inside the kernel, never through the bridge. |
-| **One-way direction** | Plugins call in; the kernel never calls back out through the bridge ([LC-8]). The toolkit scripts (`harness/skills/memory/scripts/`) must not import `harness_memory` — enforced by the `check-process-seam-import-direction` gate. |
+| **One-way direction** | Plugins call in; the kernel never calls back out through the bridge ([LC-8]). The toolkit scripts (`harness/skills/memory/scripts/`) must not import `harness_memory` — enforced by the `check-one-way-imports` gate's `lc8-bridge` rule (CONS-1 merged the former standalone `check-process-seam-import-direction` script into this config-driven checker). |
 
 ## `phase_dispatch(*, phase, project_root=None, dry_run=False)`
 
@@ -72,5 +72,5 @@ The CLI `choices=` mirrors `_BRIDGE_PHASES`, so only valid phase names are accep
 - [Auto-orchestration](Auto-Orchestration) — why the push surface exists and the three trigger owners (V5-5 section).
 - [Process seam](Process-Seam) — the read-only sibling for memory↔process reads.
 - [Memory↔process seam](Memory-Process-Seam) — the one-way dependency philosophy this bridge extends to writes.
-- [CI gates](CI-Gates) — `check-process-seam-import-direction` (enforces the one-way LC-8 direction, V5-5 bridge extension) and `verify-phases` (session-marker scenario integration checks).
+- [CI gates](CI-Gates) — `check-one-way-imports`'s `lc8-bridge` rule (enforces the one-way LC-8 direction, V5-5 bridge extension; CONS-1 merged the former standalone `check-process-seam-import-direction` script into this checker) and `verify-phases` (session-marker scenario integration checks).
 - [AgentM HLD — V5 unbundling](agentm-hld) — the unbundling that prompted this bridge (DC-1 deferred slice).

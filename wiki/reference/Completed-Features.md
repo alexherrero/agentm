@@ -5,7 +5,7 @@
 
 This page is the combined build timeline for agentm and its sibling toolkit [crickets](https://github.com/alexherrero/crickets) — one row per shipped feature, in the order it landed, so "what did we build, when" has a single answer instead of a scattered one. Read the table top-to-bottom for the story; read the mapping section below it to see which release tag actually carries a given roadmap era, since several major roadmap milestones — the whole V6 memory engine, most of V7, and the bulk of V8/Autonomy — shipped disguised inside ordinary "Minor" point releases rather than getting their own major version bump. The authoritative version history stays [`CHANGELOG.md`](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md) (agentm) and its [crickets counterpart](https://github.com/alexherrero/crickets/blob/main/CHANGELOG.md); this page exists so you can understand what shipped and why without reading every commit.
 
-**Coverage note.** Every row from 2026-06-18 forward (agentm v5.9.1 / crickets v3.20.0 onward) covers both repos at feature granularity — this is the window a dedicated release-archaeology pass (E4, 2026-07-10) drafted feature-by-feature from the git/PR history of both repos. Rows before that date come from agentm's own release history one release at a time; crickets' releases before its v3.20.0 aren't independently itemized here, because no feature-level source covers that earlier window yet. If crickets' pre-window history gets its own archaeology pass later, its rows can backfill above the line without disturbing anything below it.
+**Coverage note.** Every row from 2026-06-18 forward (agentm v5.6.0 / crickets v3.20.0 onward) covers both repos at feature granularity — this is the window a dedicated release-archaeology pass (E4, 2026-07-10) drafted feature-by-feature from the git/PR history of both repos. Rows before that date come from agentm's own release history one release at a time; crickets' releases before its v3.20.0 aren't independently itemized here, because no feature-level source covers that earlier window yet. If crickets' pre-window history gets its own archaeology pass later, its rows can backfill above the line without disturbing anything below it.
 
 ## Timeline
 
@@ -57,7 +57,7 @@ This page is the combined build timeline for agentm and its sibling toolkit [cri
 | 2026-07-01 | agentm relicenses to Apache-2.0/CC-BY-4.0 with a trademark policy; local `ship-release` retires in favor of crickets' unified skill | agentm v5.11.0 | AG governance |
 | 2026-07-01 | 13 new living designs lifted; all 20 agentm ADRs fold into amendment logs; wiki taxonomy narrows from seven sections to six | agentm v5.11.0 | AG Phase 1-4 |
 | 2026-06-19 | `auto_orchestration` splits into its three natural trigger owners with no behavior change | agentm v5.9.0 | V5-5 |
-| 2026-06-19 | `resolve_plan.py` migrates to the designed process-seam bridge instead of an informal reach-in | crickets v3.22.0 | V5-4 |
+| 2026-06-18 | `resolve_plan.py` migrates to the designed process-seam bridge instead of an informal reach-in | crickets v3.22.0 | V5-4 |
 | 2026-06-19 | The `vault_path` config key migrates fully into the `obsidian-vault` plugin's own settings | agentm v5.8.0 | V5-7 |
 | 2026-06-19 | CI gate blocking hardcoded vault-path literals from re-entering the codebase | agentm v5.9.1 | Hardening I |
 | 2026-06-18 | Capability-request matching lands: a backend can now refuse to serve a capability it doesn't have, rather than silently degrading | agentm v5.6.0 | V5-7 |

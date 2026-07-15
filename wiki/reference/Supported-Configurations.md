@@ -34,7 +34,7 @@ See [Single-repo state mode](Single-Repo-State-Mode).
 
 ## Verification hooks
 
-`--hooks` *(recommended)* wires typecheck / lint / test to run on Write and Edit. Optional. Details in [Installer CLI](Installer-CLI).
+`--hooks` *(recommended)* installs the PostToolUse verification hook wired to run on Write and Edit — but the shipped `verify.sh` template ships with every check commented out, and has no test-running branch at all (typecheck/lint/vet are the example checks; full-suite tests are explicitly left to `/review` or CI). Customize `verify.sh` to activate it. Optional. Details in [Installer CLI](Installer-CLI).
 
 ## Hosts
 

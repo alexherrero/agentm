@@ -21,7 +21,7 @@ Three layers keep personal information out, from the interactive to the absolute
 |---|---|---|
 | **`pii-scrubber` skill** | the agent-facing interactive layer, from the sibling [crickets](https://github.com/alexherrero/crickets) install | An agent runs it before a commit or push: it shows findings by `file:line`, offers redactions, and loops until clean. |
 | **Pre-push git hook** | `templates/hooks/pre-push` — copy it in once: `cp templates/hooks/pre-push .git/hooks/ && chmod +x .git/hooks/pre-push` | On every `git push`. Scans the push range (or the whole tree for a new branch) and blocks the push before it leaves your machine. |
-| **CI gate** (`pii-guardrails`) | `check-no-pii.sh --all` + `gitleaks`, in the Linux CI job | Every push and PR, server-side. A hit blocks the merge — the backstop you can't skip. |
+| **CI gate** (`pii-guardrails`) | `check-no-pii.sh --all` + `gitleaks`, in the Linux CI job | Every PR (and manual `workflow_dispatch`/full-battery runs), server-side — a plain push to `main` runs only the lightweight `syntax` job under the worktree-native flow (ratified 2026-07-06). A hit on a PR blocks the merge — the backstop you can't skip there. |
 
 ## How to test locally
 
