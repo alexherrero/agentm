@@ -9,7 +9,6 @@
       "Write",
       "Bash(git *)",
       "Bash(gh *)",
-      "Bash(gh pr merge:*)",
       "Bash(python3 *)",
       "Bash(bash *)",
       "Bash(ls *)",
