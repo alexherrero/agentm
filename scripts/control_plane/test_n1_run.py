@@ -162,6 +162,92 @@ class RunN1SequenceTests(unittest.TestCase):
         self.assertEqual(report.dispatch_results, [])
         self.assertIsNotNone(report.grade_event)
 
+    # ── goal-contract wiring (proving-ledger item 19) ───────────────────────
+    # goal_contract.decide() had never had a caller outside its own test.
+    # These prove n1_run is now that caller: no self-certification, and a
+    # gamed done-check (tampered after the goal-start snapshot) is rejected
+    # even when everything else about the run looks green.
+
+    def _done_check(self, body="#!/bin/sh\nexit 0\n"):
+        path = self.tmp / "accept-test.sh"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_no_decision_without_a_done_check_configured(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root)
+        report = self._run(config)
+        self.assertIsNone(report.decision)
+
+    def test_green_dispatch_alone_never_reaches_done_without_cold_review(self):
+        # No self-certification: every dispatch succeeds (gates_green=True)
+        # but cold_review_confirmed defaults to False -- decision must stay
+        # "continue", never "done".
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(
+            plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root,
+            done_check_path=self._done_check(),
+        )
+        report = self._run(config)
+        self.assertEqual(report.decision.exit, "continue")
+
+    def test_done_when_dispatch_green_and_cold_review_confirmed(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(
+            plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root,
+            done_check_path=self._done_check(), cold_review_confirmed=True,
+        )
+        report = self._run(config)
+        self.assertEqual(report.decision.exit, "done")
+
+    def test_gamed_self_certification_via_a_tampered_done_check_is_rejected(self):
+        # The scenario the design's anti-gaming invariant exists for: the
+        # done-check gets weakened *during* the run (after n1_run's own
+        # goal-start snapshot, before decide()). Even with every dispatch
+        # green and cold_review_confirmed=True, this must not reach "done".
+        done_check = self._done_check(body="#!/bin/sh\nexit 1\n")
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(
+            plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root,
+            done_check_path=done_check, cold_review_confirmed=True,
+        )
+
+        real_dispatcher = _fake_dispatcher
+
+        def dispatcher_that_games_the_done_check(item, **kwargs):
+            # Simulate the running agent weakening its own success
+            # criterion mid-run, after the goal-start snapshot was taken.
+            done_check.write_text("#!/bin/sh\nexit 0\n# gamed\n", encoding="utf-8")
+            return real_dispatcher(item, **kwargs)
+
+        report = self._run(config, dispatcher=dispatcher_that_games_the_done_check)
+        self.assertEqual(report.decision.exit, "needs-operator-decision")
+        self.assertIn("cannot edit its own done-check", report.decision.reason)
+
+    def test_dispatch_failure_never_reaches_done_even_with_cold_review(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(
+            plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root,
+            done_check_path=self._done_check(), cold_review_confirmed=True,
+        )
+
+        def failing_dispatcher(item, **kwargs):
+            r = _fake_dispatcher(item, **kwargs)
+            return dp.DispatchResult(**{**r.__dict__, "returncode": 1})
+
+        report = self._run(config, dispatcher=failing_dispatcher)
+        self.assertEqual(report.decision.exit, "continue")
+
+    def test_cli_report_serializes_the_decision(self):
+        items = [dp.WorkItem(plan="n1", task="1", prompt="x", cwd=str(self.tmp))]
+        config = n1.N1Config(
+            plan="n1", work_items=items, cwd=self.tmp, telemetry_root=self.telemetry_root,
+            done_check_path=self._done_check(), cold_review_confirmed=True,
+        )
+        report = self._run(config)
+        as_dict = n1._report_to_dict(report)
+        self.assertEqual(as_dict["decision"]["exit"], "done")
+
 
 class CliTests(unittest.TestCase):
     """n1_run.py's CLI (CONS-7 task 6): argument parsing + work-items-file

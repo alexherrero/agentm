@@ -7,14 +7,26 @@ Ties together every module this plan and `PLAN-observability-console`
 built into one orchestration: dispatch fleet work through Agent View
 (`dispatch.py`), reflect state changes on the board (`board_sync.py`),
 carry the machine-readable tier/model label (`handoff.py`), declare the
-launch-time grade (`grade.py`), and — when the run ends, however it ends —
-produce the morning report (`health.morning_report`) and let the digest
-ladder (`health.inbox_digest`) and console (`health.observability_console`)
-read the same rollup.
+launch-time grade (`grade.py`), consult the goal contract's Decide step
+(`goal_contract.py`) for the run-level done determination, and — when the
+run ends, however it ends — produce the morning report
+(`health.morning_report`) and let the digest ladder (`health.inbox_digest`)
+and console (`health.observability_console`) read the same rollup.
 
 **This module is real orchestration, not a demo harness.** `run_n1_sequence()`
 below is what an operator (or an unattended overnight session) actually
 calls to run the sequence for real — it is not a simulation layer.
+
+**Goal-contract wiring (proving-ledger item 19):** `goal_contract.decide()`
+had never had a caller outside its own test. This module is now that
+caller — the first real one. When `config.done_check_path` is set, the
+done-check is fingerprinted *before* dispatch (goal start) and re-checked
+at decide time (after dispatch), and `report.decision` comes from
+`decide()`, never from the dispatcher self-certifying success. Dispatch
+returncodes stand in for `gates_green` here — this run's own deterministic
+signal, same as `/work`'s gate battery elsewhere. `cold_review_confirmed`
+defaults to `False`: without an explicit external confirmation the
+contract can never reach "done" on its own, by design.
 """
 from __future__ import annotations
 
@@ -25,9 +37,10 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-HEALTH_DIR = HERE.parent / "health"
+SCRIPTS_DIR = HERE.parent
+HEALTH_DIR = SCRIPTS_DIR / "health"
 
-for _p in (HERE, HEALTH_DIR):
+for _p in (HERE, SCRIPTS_DIR, HEALTH_DIR):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
@@ -35,6 +48,7 @@ import dispatch as dp  # noqa: E402
 import board_sync as bs  # noqa: E402
 import handoff as hf  # noqa: E402
 import grade as gr  # noqa: E402
+import goal_contract as gc  # noqa: E402
 
 
 @dataclass
@@ -46,6 +60,14 @@ class N1Config:
     project_config_path: "str | Path | None" = None
     grade: str = gr.DEFAULT_GRADE
     dry_run_board: bool = True
+    # Goal-contract wiring (proving-ledger item 19). done_check_path is the
+    # run's success criterion (the `done` opinion script, or an operator
+    # --accept test) -- when set, the run consults goal_contract.decide()
+    # for its own done determination instead of self-certifying on green
+    # dispatch results. cold_review_confirmed must come from an actual cold
+    # /review dispatch upstream of this call; it is never derived here.
+    done_check_path: "str | Path | None" = None
+    cold_review_confirmed: bool = False
 
 
 @dataclass
@@ -54,6 +76,7 @@ class N1Report:
     dispatch_results: list = field(default_factory=list)
     board_outcomes: list = field(default_factory=list)
     handoff_manifest: "dict | None" = None
+    decision: "gc.Decision | None" = None
 
 
 def run_n1_sequence(
@@ -81,7 +104,17 @@ def run_n1_sequence(
     Confirmed live (V8 proving Phase 3, 2026-07-13): an n1-overnight run
     invoked from `scripts/` per that convention dispatched both real work
     items rooted at `scripts/` instead of the repo root before this fix.
+
+    When `config.done_check_path` is set, the done-check is fingerprinted
+    here, before dispatch runs -- goal start, per the design -- and
+    re-checked at decide time below, after dispatch has run. That ordering
+    is what makes the tamper check meaningful: a snapshot taken after
+    dispatch would just fingerprint whatever the run already produced.
     """
+    done_check_snapshot = None
+    if config.done_check_path is not None:
+        done_check_snapshot = gc.snapshot_done_check(config.done_check_path)
+
     grade_event = grade_declarer(
         config.plan, grade=config.grade, root=config.cwd, telemetry_root=config.telemetry_root,
     )
@@ -102,9 +135,24 @@ def run_n1_sequence(
         dispatch_results, {}, Path(config.cwd) / "_n1_handoff",
     )
 
+    # Decide step (goal_contract.decide()): the run-level done determination
+    # comes from the contract's own check, never from this dispatcher
+    # self-certifying on green returncodes. No done-check configured means
+    # no contract to consult -- decision stays None rather than guessing.
+    decision = None
+    if config.done_check_path is not None:
+        gates_green = bool(dispatch_results) and all(r.returncode == 0 for r in dispatch_results)
+        decision = gc.decide(
+            gates_green=gates_green,
+            done_check_path=config.done_check_path,
+            done_check_snapshot=done_check_snapshot,
+            cold_review_confirmed=config.cold_review_confirmed,
+        )
+
     return N1Report(
         grade_event=grade_event, dispatch_results=dispatch_results,
         board_outcomes=board_outcomes, handoff_manifest=handoff_manifest,
+        decision=decision,
     )
 
 
@@ -141,6 +189,7 @@ def _report_to_dict(report: N1Report) -> dict:
         "dispatch_results": [asdict(r) for r in report.dispatch_results],
         "board_outcomes": report.board_outcomes,
         "handoff_manifest": report.handoff_manifest,
+        "decision": asdict(report.decision) if report.decision is not None else None,
     }
 
 
@@ -166,6 +215,23 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--live-board", action="store_true",
         help="post real board updates instead of the default dry-run preview",
     )
+    p.add_argument(
+        "--done-check", default=None,
+        help=(
+            "path to this run's success criterion (the `done` opinion script, "
+            "or an operator --accept test); when set, the run-level done "
+            "determination is decided by goal_contract.decide() instead of "
+            "being left unstated"
+        ),
+    )
+    p.add_argument(
+        "--cold-review-confirmed", action="store_true",
+        help=(
+            "pass only after an actual cold /review sub-agent has confirmed "
+            "this run -- the contract never self-certifies, so omitting this "
+            "flag caps the decision at 'continue' even with green dispatch results"
+        ),
+    )
     return p
 
 
@@ -185,6 +251,8 @@ def main(argv: "list[str] | None" = None) -> int:
         project_config_path=args.project_config,
         grade=args.grade,
         dry_run_board=not args.live_board,
+        done_check_path=args.done_check,
+        cold_review_confirmed=args.cold_review_confirmed,
     )
     report = run_n1_sequence(config)
     print(json.dumps(_report_to_dict(report), indent=2, default=str))
