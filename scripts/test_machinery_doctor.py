@@ -292,6 +292,80 @@ class CrossRepoChecksTests(unittest.TestCase):
             self.assertEqual(c.status, "FAIL")
 
 
+class UnattendedMergeGateTests(unittest.TestCase):
+    """check_unattended_merge_gate: the V8-proving item-19 gate. Reads the
+    *global* settings.json via an injected path (never the real ~/.claude one),
+    and keys off whether the n1-overnight job is registered in .harness/jobs/."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        self.settings = self.repo / "global-settings.json"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _register_job(self) -> None:
+        jobs = self.repo / ".harness" / "jobs"
+        jobs.mkdir(parents=True, exist_ok=True)
+        (jobs / f"{md._UNATTENDED_DISPATCH_JOB}.yaml").write_text("schedule: daily\n", encoding="utf-8")
+
+    def _write_settings(self, perms: dict) -> None:
+        self.settings.write_text(json.dumps({"permissions": perms}), encoding="utf-8")
+
+    def test_ok_when_no_job_registered(self):
+        # No .harness/jobs/n1-overnight.yaml — the gate isn't exercised here.
+        c = md.check_unattended_merge_gate(self.repo, settings_path=self.settings)
+        self.assertEqual(c.status, "OK")
+        self.assertIn("no unattended-dispatch job registered", c.detail)
+
+    def test_warn_when_registered_but_settings_absent(self):
+        self._register_job()
+        c = md.check_unattended_merge_gate(self.repo, settings_path=self.settings)
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("is absent", c.detail)
+
+    def test_warn_when_registered_but_settings_invalid_json(self):
+        self._register_job()
+        self.settings.write_text("{not json", encoding="utf-8")
+        c = md.check_unattended_merge_gate(self.repo, settings_path=self.settings)
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("invalid JSON", c.detail)
+
+    def test_warn_when_rule_in_ask(self):
+        self._register_job()
+        self._write_settings({"allow": ["Bash(gh *)"], "ask": [md._GH_PR_MERGE_RULE]})
+        c = md.check_unattended_merge_gate(self.repo, settings_path=self.settings)
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("`ask`", c.detail)
+        self.assertIn("deny>ask>allow", c.detail)
+
+    def test_ok_when_rule_in_allow_not_ask(self):
+        self._register_job()
+        self._write_settings({"allow": [md._GH_PR_MERGE_RULE], "ask": ["Bash(rm:*)"]})
+        c = md.check_unattended_merge_gate(self.repo, settings_path=self.settings)
+        self.assertEqual(c.status, "OK")
+        self.assertIn("allowed at global scope", c.detail)
+
+    def test_warn_when_rule_in_deny(self):
+        self._register_job()
+        self._write_settings({"allow": [md._GH_PR_MERGE_RULE], "deny": [md._GH_PR_MERGE_RULE]})
+        c = md.check_unattended_merge_gate(self.repo, settings_path=self.settings)
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("`deny`", c.detail)
+
+    def test_warn_when_rule_in_neither(self):
+        self._register_job()
+        self._write_settings({"allow": ["Bash(gh *)"], "ask": ["Bash(rm:*)"]})
+        c = md.check_unattended_merge_gate(self.repo, settings_path=self.settings)
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("neither", c.detail)
+
+    def test_default_settings_path_is_user_scope(self):
+        # Sanity: the resolver points at the user-scope file, not a repo file.
+        self.assertEqual(md.global_claude_settings_path(), Path.home() / ".claude" / "settings.json")
+
+
 class SummarizeAndRenderTests(unittest.TestCase):
     def test_summarize_counts_each_status(self):
         checks = [

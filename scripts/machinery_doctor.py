@@ -277,6 +277,117 @@ def job_names(repo: Path) -> list:
     return sorted(p.stem for p in jobs_dir.glob("*.yaml"))
 
 
+# ── unattended merge-gate (V8-proving item 19) ──────────────────────────────
+_UNATTENDED_DISPATCH_JOB = "n1-overnight"
+_GH_PR_MERGE_RULE = "Bash(gh pr merge:*)"
+
+
+def global_claude_settings_path() -> Path:
+    """The *user-scope* Claude Code config — where the unattended-merge
+    permission gate lives. Deliberately distinct from the repo-scope
+    `<repo>/.claude/settings.json` the Stop-hook check reads: this gate is a
+    property of the machine's global permission floor, not this project. Only
+    read here, never written — provisioning it is the operator's dev-setup
+    dotfiles' job (which owns the global `permissions` block); agentm detects."""
+    return Path.home() / ".claude" / "settings.json"
+
+
+def _permission_lists(settings_path: Path) -> Optional[dict]:
+    """{'allow': [...], 'ask': [...], 'deny': [...]} from a Claude Code
+    settings.json, or None if unreadable/invalid. Missing lists → []."""
+    try:
+        data = json.loads(settings_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    perms = data.get("permissions", {})
+    if not isinstance(perms, dict):
+        perms = {}
+    out = {}
+    for key in ("allow", "ask", "deny"):
+        val = perms.get(key, [])
+        out[key] = val if isinstance(val, list) else []
+    return out
+
+
+def check_unattended_merge_gate(
+    repo: Path, *, settings_path: Optional[Path] = None,
+) -> Check:
+    """Does the unattended merge-on-green step have a clear permission path?
+
+    The V8-proving N1 retest (vault PROVING-LEDGER item 19, 2026-07-15) drove a
+    real unattended dispatch all the way to `gh pr merge`, then stalled: the
+    operator's *global* `~/.claude/settings.json` carried `Bash(gh pr merge:*)`
+    in its `ask` list, and Claude Code resolves permissions `deny > ask > allow`
+    — so an `ask` entry beats any `allow` at any scope. The fix is a *move*
+    (ask → allow) in the global file, which only the global-config owner (the
+    operator's dev-setup dotfiles) provisions; agentm's role is to make the gap
+    *visible* here, never to write the global file. See
+    wiki/designs/agentm-autonomy.md's amendment log (2026-07-15) for the full
+    ruling and the why-not-agentm-owns-it reasoning.
+
+    Only meaningful when this machine actually runs the unattended-dispatch job
+    — a checkout with no `n1-overnight` registered in `.harness/jobs/` (the CI
+    case, since `.harness/` is gitignored) never exercises the gate, so this is
+    a clean OK there, not a warning.
+
+    ⚠️ The `deny > ask > allow` precedence is a load-bearing assumption. If it
+    ever changes so a narrower scoped `allow` can override a broader global
+    `ask`, the remedy (and the whole where-to-provision ruling) should be
+    re-audited — see the design's re-audit trigger."""
+    name = "unattended-merge-gate"
+    registered = repo / ".harness" / "jobs" / f"{_UNATTENDED_DISPATCH_JOB}.yaml"
+    if not registered.is_file():
+        return Check(
+            name, "OK",
+            f"no unattended-dispatch job registered ({_UNATTENDED_DISPATCH_JOB}.yaml "
+            "absent from .harness/jobs/) — the merge gate isn't exercised on this machine",
+        )
+    path = settings_path if settings_path is not None else global_claude_settings_path()
+    remedy = (
+        f"run `bash {repo}/scripts/enable-unattended-merge.sh` to move it to `allow` "
+        "(the operator's dev-setup link-configs.sh provisions this automatically on their machines)"
+    )
+    if not path.is_file():
+        return Check(
+            name, "WARN",
+            f"{_UNATTENDED_DISPATCH_JOB} is registered but {path} is absent — can't confirm "
+            f"`gh pr merge` won't block an unattended run. {remedy}",
+        )
+    perms = _permission_lists(path)
+    if perms is None:
+        return Check(
+            name, "WARN",
+            f"{_UNATTENDED_DISPATCH_JOB} is registered but {path} is unreadable/invalid JSON "
+            f"— can't confirm the merge gate. {remedy}",
+        )
+    rule = _GH_PR_MERGE_RULE
+    if rule in perms["deny"]:
+        return Check(
+            name, "WARN",
+            f"`{rule}` is in the global `deny` list — an unattended merge-on-green run is "
+            f"blocked at the merge step. {remedy}",
+        )
+    if rule in perms["ask"]:
+        return Check(
+            name, "WARN",
+            f"`{rule}` is in the global `ask` list, which beats any `allow` (deny>ask>allow) — "
+            f"an unattended merge-on-green run blocks at the merge step. {remedy}",
+        )
+    if rule in perms["allow"]:
+        return Check(
+            name, "OK",
+            f"`{rule}` is allowed at global scope and not gated by ask/deny — "
+            "an unattended merge-on-green run won't block at the merge step",
+        )
+    return Check(
+        name, "WARN",
+        f"`{rule}` is in neither `allow` nor `ask` at global scope — default prompt mode blocks "
+        f"an unattended merge at the merge step. {remedy}",
+    )
+
+
 def check_crickets_sibling() -> Check:
     root = find_crickets_root()
     if root is None:
@@ -366,6 +477,7 @@ def run_inventory(
     ]
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))
+    checks.append(check_unattended_merge_gate(repo))
     crickets_check = check_crickets_sibling()
     checks.append(crickets_check)
     crickets_root = find_crickets_root()
