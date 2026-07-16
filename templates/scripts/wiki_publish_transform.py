@@ -40,6 +40,18 @@ from pathlib import Path
 # Non-greedy, first-occurrence-only leading frontmatter block.
 FRONTMATTER_RE = re.compile(r"\A---\n.*?\n---\n", re.DOTALL)
 
+# Real, rewritable wiki assets this transform has ever actually needed to
+# handle (diagrams and images embedded in a design page). A bare, extension-
+# less relative href — e.g. `[Design governance](Design-Governance)` — is
+# GitHub Wiki's OTHER page-link convention (same flat-namespace routing as
+# the `.md`-suffixed form, just without the suffix) and is pervasive
+# throughout this wiki; it must never be treated as an asset path. Confirmed
+# live 2026-07-16: an unqualified "any non-.md relative href is an asset"
+# rule rewrote `(Design-Governance)` inside agentm-hld.md into a broken
+# raw.githubusercontent.com URL, since it has no extension to exempt it —
+# caught by wiki-sync's own post-publish smoke check.
+ASSET_EXTENSIONS = {".svg", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".pdf"}
+
 # A fenced code block delimiter line (``` or ~~~) — toggles fence state.
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
@@ -62,13 +74,13 @@ def _raw_asset_url(owner: str, repo: str, page_path: Path, href: str,
                     wiki_root: Path) -> str | None:
     """Resolve a relative asset href against the page's own directory and
     return the GitHub Wiki raw-asset URL, or None if it doesn't need
-    rewriting (already absolute, a .md page link, or escapes the wiki
-    tree)."""
+    rewriting (already absolute, a page link — .md-suffixed or bare — or
+    escapes the wiki tree)."""
     href_no_frag = href.split("#", 1)[0]
     if not href_no_frag or _is_external(href):
         return None
-    if href_no_frag.lower().endswith(".md"):
-        return None  # wiki-internal page link — GH's own routing handles it
+    if Path(href_no_frag).suffix.lower() not in ASSET_EXTENSIONS:
+        return None  # wiki-internal page link (.md or bare) — GH's own routing handles it
 
     base = wiki_root if href_no_frag.startswith("/") else page_path.parent
     target = (base / href_no_frag.lstrip("/")).resolve()
