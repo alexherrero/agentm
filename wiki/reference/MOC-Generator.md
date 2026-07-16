@@ -1,12 +1,12 @@
 # MOC generator reference
 
 > [!NOTE]
-> **Status: implemented** — shipped in `harness/skills/memory/scripts/moc_generator.py` (`PLAN-v6-15-v6-18-typed-object-moc` task 3, V6-18), governed by [AgentM Memory System](../designs/agentm-memory-system). Covered by 13 tests in `scripts/test_moc_generator.py` (`TestBuildKindGroups`, `TestGenerate`).
+> **Status: implemented** — You can find this shipped in `harness/skills/memory/scripts/moc_generator.py` (`PLAN-v6-15-v6-18-typed-object-moc` task 3, V6-18). [AgentM Memory System](../designs/agentm-memory-system) governs this. 13 tests in `scripts/test_moc_generator.py` (`TestBuildKindGroups`, `TestGenerate`) cover this.
 
 > [!IMPORTANT]
-> **Not yet run against the real vault.** Unlike task 1/2's read-only audits, `generate()` actually writes new files — one page per distinct `kind`, roughly 40 at the real vault's current kind-frequency spread — into `<vault>/_moc/`. That's a visible side effect inside the operator's personal Obsidian vault, so it was deliberately left for the operator to trigger via the CLI rather than run silently as part of this build task. See [Running it for the first time](#running-it-for-the-first-time) below.
+> **Not yet run against the real vault.** You have not run this against the real vault yet. Unlike task 1/2's read-only audits, `generate()` writes new files. It writes one page per distinct `kind` into `<vault>/_moc/`. This totals roughly 40 files at the real vault's current kind-frequency spread. This is a visible side effect inside your personal Obsidian vault. You trigger this via the CLI. You do not run it silently as part of this build task. See [Running it for the first time](#running-it-for-the-first-time) below.
 
-`moc_generator.py` builds browse-first MOCs (Maps of Content) over the vault — one generated Markdown page per `kind`, each listing wikilinks to every note of that kind, so an operator can browse a kind's entries in Obsidian without a search. It depends on the [kind-taxonomy registry](Kind-Taxonomy-Registry) (task 1) to label each group known vs. unrecognized.
+`moc_generator.py` builds browse-first MOCs (Maps of Content) over the vault. You get one generated Markdown page per `kind`. Each page lists wikilinks to every note of that kind. This lets you browse a kind's entries in Obsidian without a search. It depends on the [kind-taxonomy registry](Kind-Taxonomy-Registry) (task 1) to label each group known vs. unrecognized.
 
 ## ⚡ Quick Reference
 
@@ -34,7 +34,7 @@
 
 ## Wikilink target and page shape
 
-Each bullet links to the bare slug, matching the real vault's own existing MOC convention at `personal/preferences/_index.md` — `[[slug]]`, not a full relative path (`_wikilink_target`, `moc_generator.py:80-86`). The target is the note's `slug:` frontmatter value, falling back to the file's stem if `slug` is absent.
+Each bullet links to the bare slug. This matches the real vault's existing MOC convention at `personal/preferences/_index.md`. It uses `[[slug]]` rather than a full relative path (`_wikilink_target`, `moc_generator.py:80-86`). The target is the note's `slug:` frontmatter value. It falls back to the file's stem if `slug` is absent.
 
 A rendered page looks like:
 
@@ -49,26 +49,26 @@ A rendered page looks like:
 - [[old-slug]]
 ```
 
-The Home-backlink (CONS-1) is a plain markdown link, not an Obsidian wikilink — the vault has no "Home" note of its own to link to, so each generated MOC page instead orients the operator back to the project's actual documentation entry point.
+The Home-backlink (CONS-1) is a plain markdown link instead of an Obsidian wikilink. The vault has no "Home" note of its own to link to. Each generated MOC page orients you back to the project's actual documentation entry point instead.
 
-An unrecognized kind's header instead reads `# MOC — made-up-kind (unrecognized kind)` (`_render_moc`, `moc_generator.py:112`), using the [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()`.
+An unrecognized kind's header instead reads `# MOC — made-up-kind (unrecognized kind)` (`_render_moc`, `moc_generator.py:112`). This uses the [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()`.
 
 ## Walk roots — deliberately wider than the validator's (task 2)
 
-`_WALK_SUBDIRS` (`moc_generator.py:28`) is `("personal", "projects", "_idea-incubator")` — matching `vec_index.py`'s `full_sync` walk exactly. This is a deliberate difference from `frontmatter_validator.py`'s narrower DC-4-exempt walk (task 2, which excludes `_idea-incubator` among other dirs): browse-first MOCs should cover everything the memory engine actually indexes, incubator included. `test_includes_idea_incubator` in `scripts/test_moc_generator.py:56-64` is the regression test for this.
+`_WALK_SUBDIRS` (`moc_generator.py:28`) is `("personal", "projects", "_idea-incubator")`. This matches `vec_index.py`'s `full_sync` walk exactly. This is a deliberate difference from `frontmatter_validator.py`'s narrower DC-4-exempt walk (task 2, which excludes `_idea-incubator` among other dirs). Browse-first MOCs cover everything the memory engine actually indexes. This includes the incubator. `test_includes_idea_incubator` in `scripts/test_moc_generator.py:56-64` is the regression test for this.
 
-The walk also skips any path with an `_archive` or `_moc` path segment (`_walk_notes`, `moc_generator.py:56-65`), so a regeneration never folds its own prior output back in as a source note, and skips `PLAN.archive.*` files, mirroring `kind_registry.py`'s own walk excludes.
+The walk also skips any path with an `_archive` or `_moc` path segment (`_walk_notes`, `moc_generator.py:56-65`). This prevents a regeneration from folding its own prior output back in as a source note. It also skips `PLAN.archive.*` files. This mirrors `kind_registry.py`'s own walk excludes.
 
 ## Malformed kinds are skipped, not flagged
 
-`generate()` calls `is_kebab(kind)` (from `kind_registry.py`) per group and silently omits any group whose kind fails the kebab-case shape check — no page is written, and no error is raised (`moc_generator.py:153`). A MOC filename must itself be a legal kebab-case name, and a malformed kind has no other legitimate slot to file under. Flagging a malformed value for a human to fix is `kind_registry.py`'s `audit()` job (task 1), not this generator's. `test_malformed_kind_is_skipped_not_crashed` in `scripts/test_moc_generator.py:149-162` confirms both the empty return and that `_moc/` itself is never created when every group is malformed.
+`generate()` calls `is_kebab(kind)` (from `kind_registry.py`) per group. It silently omits any group whose kind fails the kebab-case shape check. No page is written. No error is raised (`moc_generator.py:153`). A MOC filename must itself be a legal kebab-case name. A malformed kind has no other legitimate slot to file under. Flagging a malformed value for a human to fix is `kind_registry.py`'s `audit()` job (task 1), not this generator's. `test_malformed_kind_is_skipped_not_crashed` in `scripts/test_moc_generator.py:149-162` confirms both the empty return and that `_moc/` itself is never created when every group is malformed.
 
-An **unrecognized** (valid kebab-case, just not in `KNOWN_KINDS`) kind is different — it still gets a page, just labeled `(unrecognized kind)` in the header. `test_unrecognized_kind_still_gets_a_page` (`scripts/test_moc_generator.py:164-171`) is the regression test for that distinction.
+An **unrecognized** (valid kebab-case, just not in `KNOWN_KINDS`) kind is different. It still gets a page. It gets labeled `(unrecognized kind)` in the header. `test_unrecognized_kind_still_gets_a_page` (`scripts/test_moc_generator.py:164-171`) is the regression test for that distinction.
 
 ## Running it for the first time
 
 > [!IMPORTANT]
-> This has not yet been run against the real vault. `generate()` writes real files — creating roughly 40 new pages under `<vault>/_moc/` is a visible, non-trivial change to the operator's personal Obsidian vault, and running it is the operator's own call to make, not something to trigger silently as part of a build task.
+> You have not yet run this against the real vault. `generate()` writes real files. Creating roughly 40 new pages under `<vault>/_moc/` is a visible, non-trivial change to your personal Obsidian vault. Running it is your call to make. You should not trigger it silently as part of a build task.
 
 To run it:
 
@@ -76,16 +76,16 @@ To run it:
 python3 harness/skills/memory/scripts/moc_generator.py --vault <path-to-vault>
 ```
 
-This prints a summary line (`wrote N MOC page(s) under <vault>/_moc`) followed by one line per kind page written. Re-running is safe at any time — regeneration only overwrites the `_moc/*.md` pages this module owns and never touches a source note (see the idempotency row in the Quick Reference above).
+This prints a summary line (`wrote N MOC page(s) under <vault>/_moc`). This is followed by one line per kind page written. Re-running is safe at any time. Regeneration only overwrites the `_moc/*.md` pages this module owns. It never touches a source note (see the idempotency row in the Quick Reference above).
 
 ## Scope boundaries (this plan)
 
-- **CLI-invokable only.** No hook wiring, no scheduled/automatic regeneration. A follow-up once the generator proves useful in practice.
-- **No pagination.** High-frequency kinds (`preferences` alone was 993 notes at the plan's frequency audit) will produce a single long MOC page with no pagination design — a named follow-up, not solved here.
-- **Read-only over source notes.** The generator can overwrite its own `_moc/*.md` output; it never mutates a note it's cataloging.
+- **CLI-invokable only.** You get no hook wiring, no scheduled regeneration, and no automatic regeneration. You will do a follow-up once the generator proves useful in practice.
+- **No pagination.** High-frequency kinds (`preferences` alone was 993 notes at the plan's frequency audit) produce a single long MOC page with no pagination design. This is a named follow-up. You do not solve it here.
+- **Read-only over source notes.** The generator can overwrite its own `_moc/*.md` output. It never mutates a note it catalogs.
 
 ## Related
 
-- [Kind-taxonomy registry](Kind-Taxonomy-Registry) — the known/unrecognized-kind labeling this generator depends on.
-- [AgentM Memory System](../designs/agentm-memory-system) — the governing design (V6-18).
-- [Audit the vault](../how-to/Audit-The-Vault) — the sibling read-only vault tool pattern this generator follows.
+- [Kind-taxonomy registry](Kind-Taxonomy-Registry) — This generator depends on this registry for known/unrecognized-kind labeling.
+- [AgentM Memory System](../designs/agentm-memory-system) — This is the governing design (V6-18).
+- [Audit the vault](../how-to/Audit-The-Vault) — This generator follows this sibling read-only vault tool pattern.

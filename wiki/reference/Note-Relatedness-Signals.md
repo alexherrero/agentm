@@ -1,6 +1,6 @@
 # Note relatedness signals reference
 
-The signals `notes_link_discovery.py` scores when it looks for related-but-unlinked pairs among your **personal** notes (the corpus outside the vault root + `.obsidian/`). The audit never mutates a personal note — it surfaces candidate links for operator review (A3). Suggestions are strictly personal↔personal; a vault-root entry is never a source or a target (DC-2).
+The `notes_link_discovery.py` script scores signals. It finds related-but-unlinked pairs among your **personal** notes. This corpus includes everything outside the vault root and `.obsidian/`. The audit never mutates a personal note. It surfaces candidate links for you to review (A3). Suggestions are strictly personal↔personal. A vault-root entry is never a source or a target (DC-2).
 
 ## ⚡ Quick Reference
 
@@ -17,7 +17,7 @@ The signals `notes_link_discovery.py` scores when it looks for related-but-unlin
 
 ## Signals
 
-The personal-notes corpus has no usable graph signal — only a handful of ~390 notes carry tags, one has a `[[wikilink]]`, and frontmatter is just `title` / `created` / `updated`. So tags, links, and frontmatter fields are **dead signals** here; relatedness is content-based.
+Your personal-notes corpus lacks a usable graph signal. Only a handful of the ~390 notes carry tags. Only one note contains a `[[wikilink]]`. The frontmatter only holds `title`, `created`, and `updated`. Tags, links, and frontmatter fields are **dead signals** here. The script calculates relatedness entirely from the content.
 
 | Signal | Role | Notes |
 |---|---|---|
@@ -37,8 +37,8 @@ The personal-notes corpus has no usable graph signal — only a handful of ~390 
 | `--embed-min-score` | `0.70` | Embedding cosine floor (BGE similarity runs hot — ~0.3–0.5 even for unrelated prose — so the semantic threshold sits well above the lexical one). |
 | `--top` | `40` | Per-signal shortlist cap (`0` = all). Keeps the report a high-signal shortlist, not noise. |
 
-The corpus is ~390 notes (≈76k candidate pairs); the TF-IDF inverted index compares only term-sharing notes, a document-frequency band drops per-note noise and ubiquitous boilerplate, and the embedding pass is a bounded O(n²) cosine over cached vectors. The report deduplicates: a pair found by both signals appears once (in the TF-IDF section, flagged `✓ also semantically related`); the embedding section lists only the pairs TF-IDF missed.
+The corpus contains ~390 notes. This creates ≈76k candidate pairs. The TF-IDF inverted index compares only term-sharing notes. A document-frequency band drops per-note noise and ubiquitous boilerplate. The embedding pass runs a bounded O(n²) cosine over cached vectors. The report deduplicates matches. A pair found by both signals appears only once. It displays in the TF-IDF section. The report flags it with `✓ also semantically related`. The embedding section lists only the pairs TF-IDF missed.
 
 ## Related
 
-- [Find missing note links](Find-Missing-Note-Links) — the operator recipe that runs the audit and reads the report.
+- [Find missing note links](Find-Missing-Note-Links) — You use this operator recipe to run the audit and read the report.

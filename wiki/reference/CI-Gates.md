@@ -1,12 +1,12 @@
 # CI gates reference
 
-This page lists every gate in the deterministic battery, with the invariant each one proves and the script behind it. Three per-OS workflows run in parallel. Run the deterministic subset locally in one command before every commit:
+This page lists every gate in the deterministic battery. It explains the invariant each gate proves and identifies the script behind it. Three per-OS workflows run in parallel. Run the deterministic subset locally in one command before you commit:
 
 ```bash
 bash scripts/check-all.sh
 ```
 
-**Worktree-native flow (ratified 2026-07-06): the full battery gates on `pull_request`, not on a plain `push` to `main`.** `main` only ever merges a PR whose required checks already passed. A plain push to `main` runs almost nothing: `tests-linux.yml`'s one ungated job (`syntax` — `bash -n` + AST-parsing every `.ps1`) runs unconditionally, but every other job in all three per-OS workflows — including `tests-mac.yml`'s and `tests-windows.yml`'s sole job, `install-smoke` — gates on `github.event_name == 'pull_request'` (or `workflow_dispatch` / the nightly's `workflow_call`). `[T] CI All` (the aggregate badge workflow) carries no `push` trigger at all anymore — `pull_request`-only. `pull_request` itself deliberately carries no `paths-ignore` (a trigger-level filter that could skip a required check would block a docs-only PR's merge forever); the docs/wiki diet instead returns as a job-level no-op.
+**Worktree-native flow (ratified 2026-07-06): the full battery gates on `pull_request`, not on a plain `push` to `main`.** The `main` branch only merges a PR after its required checks pass. A plain push to `main` runs almost nothing. In `tests-linux.yml`, the single `syntax` job (`bash -n` and AST-parsing every `.ps1`) runs unconditionally. Every other job in all three per-OS workflows gates on `github.event_name == 'pull_request'`, `workflow_dispatch`, or the nightly `workflow_call`. This includes the `install-smoke` job in both `tests-mac.yml` and `tests-windows.yml`. The `[T] CI All` aggregate badge workflow carries no `push` trigger at all. It runs only on `pull_request`. The `pull_request` trigger itself carries no `paths-ignore` filter. A trigger-level filter that skips a required check would block the merge of a docs-only PR forever. The docs/wiki diet returns as a job-level no-op instead.
 
 ## ⚡ Quick Reference
 
@@ -59,7 +59,7 @@ bash scripts/check-all.sh
 
 ## `verify-v4.sh` — kernel-contracts integration check
 
-Checks the V4 #23 kernel-owned auto-orchestration contracts. Runs the real scripts via their CLIs against a throwaway scratch vault and asserts deterministic outputs — the integration complement to the per-function unit suite. Trimmed to 85 lines at V5-5 / LC-9 when the PM-half and Developer-half were extracted.
+This script checks the V4 #23 kernel-owned auto-orchestration contracts. It runs the real scripts via their CLIs against a throwaway scratch vault and asserts deterministic outputs. It acts as the integration complement to the per-function unit suite. We trimmed it to 85 lines at V5-5 / LC-9 when we extracted the PM-half and Developer-half.
 
 | Property | Detail |
 |---|---|
@@ -71,7 +71,7 @@ Checks the V4 #23 kernel-owned auto-orchestration contracts. Runs the real scrip
 
 ## `verify-orchestration-briefing.sh` — PM-half integration check
 
-Checks the PM-owned orchestration signals extracted from `verify-v4.sh` at V5-5 / LC-9. Will travel to the crickets PM-trigger plan when that ships; runs agentm-side until then.
+This script checks the PM-owned orchestration signals extracted from `verify-v4.sh` at V5-5 / LC-9. It will travel to the crickets PM-trigger plan when that ships. It runs agentm-side until then.
 
 | Property | Detail |
 |---|---|
@@ -90,33 +90,33 @@ gh run list --workflow "[T] Windows Tests"   --limit 3
 gh run view <run-id> --log-failed             # drill into the failing step
 ```
 
-Red-on-Windows but green-on-POSIX almost always indicates a path-separator or pwsh-host assumption regression. Red-on-all is usually a canonical-spec or adapter-parity drift — try `bash scripts/check-parity.sh` locally.
+A red run on Windows but a green run on POSIX indicates a path-separator or pwsh-host assumption regression. A red run across all operating systems indicates a canonical-spec or adapter-parity drift. Try running `bash scripts/check-parity.sh` locally to verify.
 
 ## The nightly health tier (advisory, never a merge gate)
 
-`[H] Health Nightly` (`.github/workflows/health-nightly.yml`, R1.8 Task 4) runs daily at 06:00 UTC plus on manual `workflow_dispatch`. It layers the heavier checks that are too slow or dependency-heavy for every push — real-embedding recall (no stub mode), a live MCP daemon round-trip over real HTTP, a report of every `VERIFY_*_FAULT=1` mode's outcome, and a cold-install dogfood pass — on top of the same fast tier this page documents, then renders the scorecard and uploads it (HTML + the raw JSONL records) as a build artifact (`health-scorecard-ubuntu`, 14-day retention). It never commits or pushes (V8 proving Lane S, 2026-07-13 — the branch/PR/`workflow_dispatch`/`--admin` merge machinery this job used to run is retired entirely); CI's job is purely the clean-runner regression signal.
+The `[H] Health Nightly` workflow (`.github/workflows/health-nightly.yml`, R1.8 Task 4) runs daily at 06:00 UTC and on manual `workflow_dispatch`. It layers heavier checks on top of the fast tier this page documents. These heavier checks are too slow or dependency-heavy to run on every push. They include real-embedding recall (no stub mode), a live MCP daemon round-trip over real HTTP, a report of every `VERIFY_*_FAULT=1` mode's outcome, and a cold-install dogfood pass. The job renders the scorecard and uploads it (HTML and the raw JSONL records) as a build artifact named `health-scorecard-ubuntu` with a 14-day retention. It never commits or pushes. The V8 proving Lane S on 2026-07-13 retired the branch/PR/`workflow_dispatch`/`--admin` merge machinery this job used to run. The job acts purely as a clean-runner regression signal.
 
-R1.8 Task 5 added a `health-nightly-macos` job (`macos-latest`) that runs the same heavy tier as a conformance leg, uploading its own JSONL output as a build artifact (`health-heavy-tier-macos`, 14-day retention). Task 5 also folds the static `scripts/health/dark-checks.jsonl` registry (5 designed-not-built capabilities) into the render pipeline, so the scorecard carries a "Dark checks" section listing them separately from the scored families.
+R1.8 Task 5 added a `health-nightly-macos` job (`macos-latest`). This job runs the same heavy tier as a conformance leg. It uploads its own JSONL output as a build artifact named `health-heavy-tier-macos` with a 14-day retention. Task 5 also folds the static `scripts/health/dark-checks.jsonl` registry (5 designed-not-built capabilities) into the render pipeline. The scorecard carries a "Dark checks" section that lists them separately from the scored families.
 
-The scorecard an operator actually reads day to day isn't this CI artifact — it's produced locally, by the `health-pass` runner job (`templates/jobs/health-pass.yaml`, a daily `agentm-runner.sh` tick) appending to the vault-resolved history ledger and rendering `~/.cache/agentm/telemetry/scorecard.html`, which `/console` and the morning brief link. See [Health scorecard](Health-Scorecard) for that half.
+You do not read this CI artifact day to day. A local `health-pass` runner job (`templates/jobs/health-pass.yaml`, a daily `agentm-runner.sh` tick) appends to the vault-resolved history ledger and renders `~/.cache/agentm/telemetry/scorecard.html`. The `/console` and the morning brief link to this local file. See [Health scorecard](Health-Scorecard) for details on that half.
 
-**AA4 (2026-07-08) — the ⑫ Hardening-II cold-install acceptance, per the B3 ruling in `ROADMAP-TAIL-ADJUDICATIONS.md`.** The cold-install dogfood step grew two more checks rather than a separate job: (5) **dashboard honest-dark on a bare install** — an observability-console render over a rollup built from zero telemetry events, and a Health-Scorecard render over only the static dark-checks registry (zero live records), neither of which may fabricate a number where nothing has actually run yet; (6) **fan-out/budget gates fail CLOSED with no config** — a scratch `.harness/` with no `budget.yaml` must still throttle a fleet that has reported large spend, not skip the ceiling check outright. As-built today: check 5's observability-console half passes; its Health-Scorecard half and check 6 both FAIL (`render_markdown` shows a fabricated-looking `Health Index: 0.0/100` 🟢 headline on zero live records; `runner/cycle.py`'s `_read_daily_ceiling` returns `None` on a missing `budget.yaml`, which disables the ceiling gate rather than applying a safe default) — both filed as queued bugfix plans, not fixed inline (an acceptance pass reports findings; it doesn't fix them).
+**AA4 (2026-07-08) — the ⑫ Hardening-II cold-install acceptance, per the B3 ruling in `ROADMAP-TAIL-ADJUDICATIONS.md`.** We added two more checks to the cold-install dogfood step rather than creating a separate job. (5) **dashboard honest-dark on a bare install** — an observability-console render over a rollup built from zero telemetry events, and a Health-Scorecard render over only the static dark-checks registry (zero live records). Neither check may fabricate a number when nothing has actually run yet. (6) **fan-out/budget gates fail CLOSED with no config** — a scratch `.harness/` with no `budget.yaml` must still throttle a fleet that reports large spend. It must not skip the ceiling check outright. As built today, check 5's observability-console half passes. Its Health-Scorecard half and check 6 both FAIL. The `render_markdown` function shows a fabricated `Health Index: 0.0/100` 🟢 headline on zero live records. The `runner/cycle.py` `_read_daily_ceiling` function returns `None` on a missing `budget.yaml`. This disables the ceiling gate rather than applying a safe default. We filed both as queued bugfix plans instead of fixing them inline. An acceptance pass reports findings; it doesn't fix them.
 
-This workflow **never blocks a merge**. The fast tier above (`tests-linux.yml`/`tests-mac.yml`) is the only merge gate, so the nightly run can go red without stopping development.
+This workflow **never blocks a merge**. The fast tier above (`tests-linux.yml`/`tests-mac.yml`) serves as the only merge gate. The nightly run can go red without stopping development.
 
 ## Running the gate set locally
 
-One command runs the deterministic battery — unit tests + every `check-*` gate + the integration checks (`verify-v4`, `verify-orchestration-briefing`, `verify-hook-resolution`, `verify-state-routing`, `verify-vec-index`, `verify-reflection`, `verify-dreaming`, `verify-mcp-surface`, `verify-phases`, `verify-memory-roundtrip`) + `run-ablation-baseline` — prints a PASS/FAIL table, and exits non-zero on any failure. `scripts/check-all.sh` itself is the living source of truth for the exact gate count (a restated number here just drifts as gates merge or land); count the `gate "<name>" ...` lines in the script if you need the current figure:
+One command runs the deterministic battery. It executes unit tests, every `check-*` gate, the integration checks (`verify-v4`, `verify-orchestration-briefing`, `verify-hook-resolution`, `verify-state-routing`, `verify-vec-index`, `verify-reflection`, `verify-dreaming`, `verify-mcp-surface`, `verify-phases`, `verify-memory-roundtrip`), and `run-ablation-baseline`. It prints a PASS/FAIL table and exits non-zero on any failure. The `scripts/check-all.sh` script acts as the living source of truth for the exact gate count. A restated number here drifts as gates merge or land. Count the `gate "<name>" ...` lines in the script if you need the current figure:
 
 ```bash
 bash scripts/check-all.sh
 ```
 
-It deliberately omits the heavier `smoke-install` + `gitleaks` (slow / external tooling) that CI runs on every push — run those directly if you need them: `bash scripts/smoke-install-bash.sh` (POSIX) / `pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1` (Windows). `check-all.sh` is the maintained source of truth for the local battery — add a `gate` line as the project grows.
+The script deliberately omits the heavier `smoke-install` and `gitleaks` checks. CI runs those slower external tools on every push. Run them directly if you need them: `bash scripts/smoke-install-bash.sh` (POSIX) or `pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1` (Windows). The `check-all.sh` script acts as the maintained source of truth for the local battery. Add a `gate` line to it as the project grows.
 
 ## Related
 
-- [Releasing Conventions](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions) — CI must be green before invoking `ship-release`.
+- [Releasing Conventions](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions) — CI must be green before you invoke `ship-release`.
 - [How to refresh an installed harness](Update-Installed-Harness) — what `--update` touches vs. leaves alone.
 - [Vault write protocol](Vault-Write-Protocol) — the protocol the `check-vendored-parity` gate's `vault-lock` mode keeps byte-identical across its two copies.
 - [Foundations HLD](agentm-foundations-hld) — the installer-boundary rule the gates enforce.

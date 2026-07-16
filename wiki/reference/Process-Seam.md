@@ -1,9 +1,9 @@
 # Process seam reference
 
-The memory↔process client seam ([`scripts/process_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/process_seam.py)) — a small, **read-only**, **graceful-no-op** view a *process* (the crickets developer-workflows phases today; the V5-9 MCP server tomorrow) calls instead of reaching into the memory engine's internals. It exports two functions composed only from the DC-7-frozen public memory readers (`resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`) — never a write path. The importable Python module is the contract ([LC-1]); the `python -m` entrypoint is a convenience shim for non-Python shell callers.
+The memory↔process client seam ([`scripts/process_seam.py`](https://github.com/alexherrero/agentm/blob/main/scripts/process_seam.py)) gives you a small, **read-only**, **graceful-no-op** view. You call this seam from a *process* (like the crickets developer-workflows phases today, or the V5-9 MCP server tomorrow). You use it instead of reaching into the memory engine's internals. It exports two functions. It composes these functions only from the DC-7-frozen public memory readers (`resolve_project`, `resolve_active_plan`, `harness_state_dir`, `is_available`). It never uses a write path. The importable Python module forms the contract ([LC-1]). The `python -m` entrypoint gives you a convenience shim for non-Python shell callers.
 
 > [!NOTE]
-> **R0.9 (agentmEngine#2):** a third function, `recall_here`, was retired — dead since the V5-3 vault-backend removal made it always return `""`, with no live caller (crickets' documenter sub-agent uses `harness_memory.py`'s own `documenter-context` CLI verb instead).
+> **R0.9 (agentmEngine#2):** A third function, `recall_here`, was retired. It went dead when the V5-3 vault-backend removal made it always return `""`. It has no live caller. The crickets' documenter sub-agent uses `harness_memory.py`'s own `documenter-context` CLI verb instead.
 
 ## ⚡ Quick Reference
 
@@ -13,11 +13,11 @@ The memory↔process client seam ([`scripts/process_seam.py`](https://github.com
 | `state_path` | `state_path(context, which)` | `Path` — active PLAN/progress path | repo-local `<project_root>/.harness/<file>` (never `None`) |
 
 > [!IMPORTANT]
-> **Read-only invariant.** The seam performs no writes. It imports the engine's public readers and never imports or calls any write path — that is what makes "the seam is read-only" literally true. `offer_save_here` is **advisory** ([LC-2]): it returns save *candidates*; persistence stays on the existing `/memory save` path (`harness_memory.offer_save` / the `offer-save` CLI verb).
+> **Read-only invariant.** The seam performs no writes. It imports the engine's public readers. It never imports or calls any write path. This makes "the seam is read-only" literally true. The `offer_save_here` function is **advisory** ([LC-2]). It returns save *candidates*. Persistence stays on the existing `/memory save` path (`harness_memory.offer_save` / the `offer-save` CLI verb).
 
 ## The shared `context` dict
 
-Both functions take a `context` dict (or `None`). Keys are optional:
+You pass a `context` dict (or `None`) to both functions. The keys are optional:
 
 | Key | Used by | Meaning | Default |
 |---|---|---|---|
@@ -27,7 +27,7 @@ Both functions take a `context` dict (or `None`). Keys are optional:
 
 ## `offer_save_here(context, candidate)`
 
-Surface what *could* be saved from this context — without saving it ([LC-2]). Enriches the candidate (copy, never mutate) with the resolved project slug + vault target so the caller can invoke the existing `/memory save` path.
+You use this to surface what *could* be saved from this context. You do this without saving it ([LC-2]). The function enriches the candidate with the resolved project slug and the vault target. It copies the candidate. It never mutates it. This lets you invoke the existing `/memory save` path.
 
 | Parameter | Type | Detail |
 |---|---|---|
@@ -39,11 +39,11 @@ Surface what *could* be saved from this context — without saving it ([LC-2]). 
 | Memory present and a project resolves | `[enriched_candidate]` — the candidate plus `project` (slug), an optional passed-through `phase`, and `target` (the vault path as a string, or `None`). |
 | Memory / vault absent, no project resolves, or `candidate` empty | `[]`. |
 
-It **never persists** — it imports and calls no write path. Save-worthiness is the caller's (or the engine's reflection's) call, deliberately not judged here.
+It **never persists** data. It imports no write path. It calls no write path. You (the caller) or the engine's reflection judge save-worthiness. The seam deliberately avoids judging this.
 
 ## `state_path(context, which)`
 
-Resolve the harness state path for `which` in the current context. Wraps `resolve_project` + `resolve_active_plan` (so V5-10 named-plan awareness is free) + `harness_state_dir`.
+You use this to resolve the harness state path for `which` in the current context. It wraps `resolve_project`, `resolve_active_plan`, and `harness_state_dir`. This gives you V5-10 named-plan awareness for free.
 
 | Parameter | Type | Detail |
 |---|---|---|
@@ -58,11 +58,11 @@ Resolve the harness state path for `which` in the current context. Wraps `resolv
 | `.harness/active-plan` marker present but dangling / names an unsafe slug | Propagates `harness_memory.ActivePlanError` / `ValueError` — **not** swallowed. |
 
 > [!WARNING]
-> The corrupt-marker case is a deliberate loud-fail safety property (V5-10 Risk #7), distinct from the absent-memory degrade. Silently degrading there could mis-bind the worker to another plan, so the seam lets the exception propagate rather than falling back to repo-local.
+> The corrupt-marker case acts as a deliberate loud-fail safety property (V5-10 Risk #7). It stays distinct from the absent-memory degrade. You could mis-bind the worker to another plan if it silently degraded there. The seam lets the exception propagate. It does not fall back to repo-local.
 
 ## `python -m` entrypoint
 
-A thin shell shim ([LC-1]) exposing the same two functions to non-Python hosts. Always exits `0` on the graceful-no-op paths so a process never wedges on a memory-absent seam.
+This acts as a thin shell shim ([LC-1]). You use it to expose the same two functions to non-Python hosts. It always exits `0` on the graceful-no-op paths. This ensures your process never wedges on a memory-absent seam.
 
 | Subcommand | Flags | Emits |
 |---|---|---|
@@ -74,11 +74,11 @@ python3 scripts/process_seam.py state-path plan
 python3 scripts/process_seam.py offer-save-here --kind decision --slug foo --body-file -
 ```
 
-The Python module is the contract; the entrypoint is only a convenience for shell callers.
+The Python module forms the contract. The entrypoint gives you a convenience for shell callers.
 
 ## Related
 
-- [Memory↔process seam](Memory-Process-Seam) — why the seam exists, the one-way dependency, and the graceful-no-op philosophy.
-- [CI gates](CI-Gates) — the `check-one-way-imports` gate's `process-seam` rule that enforces the one-way edge (CONS-1 merged the former standalone `check-process-seam-import-direction.sh` into this config-driven Python checker).
-- [AgentMemory context payload](AgentMemory-Context-Payload) — the read-only memory contract the seam composes over.
-- [AgentM HLD — V5 unbundling](agentm-hld) — the decision that introduced the seam concept.
+- [Memory↔process seam](Memory-Process-Seam) — This explains why the seam exists. It details the one-way dependency. It outlines the graceful-no-op philosophy.
+- [CI gates](CI-Gates) — This shows the `check-one-way-imports` gate's `process-seam` rule. This rule enforces the one-way edge. (CONS-1 merged the former standalone `check-process-seam-import-direction.sh` into this config-driven Python checker).
+- [AgentMemory context payload](AgentMemory-Context-Payload) — This defines the read-only memory contract the seam composes over.
+- [AgentM HLD — V5 unbundling](agentm-hld) — This records the decision that introduced the seam concept.

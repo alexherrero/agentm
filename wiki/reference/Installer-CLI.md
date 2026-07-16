@@ -1,6 +1,6 @@
 # Installer CLI reference
 
-Command-line reference for `install.sh` (POSIX) and `install.ps1` (Windows / PowerShell 7+).
+This is your command-line reference for `install.sh` (POSIX) and `install.ps1` (Windows / PowerShell 7+).
 
 ## ⚡ Quick Reference
 
@@ -34,7 +34,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 
 ## Config CLI — `agentm_config.py`
 
-`scripts/agentm_config.py` is the operator-facing way to read and set fields on the on-host `.agentm-config.json` (the single config file — the vault holds data, config is on-host only) without re-running the installer. Resolves the install prefix from `AGENTM_INSTALL_PREFIX`, else `~/.claude/`.
+You use `scripts/agentm_config.py` to read and set fields on the on-host `.agentm-config.json`. This is your single config file. The vault holds data. The config lives only on the host. You do not need to re-run the installer. The script resolves the install prefix from `AGENTM_INSTALL_PREFIX`. If that is unset, it defaults to `~/.claude/`.
 
 | Operation | Effect |
 |---|---|
@@ -71,7 +71,7 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 
 ## Phase commands
 
-The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **not** shipped by the agentm installer — it lives in the crickets **developer-workflows** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)). agentm no longer vendors the phase specs; the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`) those phases run against.
+The agentm installer does **not** ship the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`). You will find this loop in the crickets **developer-workflows** plugin. You can read about the V5 unbundling in the [AgentM HLD](agentm-hld). The agentm repository no longer vendors the phase specs. Instead, the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`). Your phases run against this substrate.
 
 ## Exit codes
 
@@ -92,7 +92,7 @@ The phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) is **no
 
 ## Related
 
-- [Tutorial 1: Your first harness install](01-First-Install) — end-to-end walkthrough.
-- [How to install into an existing project](Install-Into-Project) — recipe for production use.
-- [Foundations HLD](agentm-foundations-hld) — why the installer boundary exists.
-- [Memory-storage seam — On-host state-mode config](memory-storage-seam) — why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.
+- [Tutorial 1: Your first harness install](01-First-Install) — Read this end-to-end walkthrough.
+- [How to install into an existing project](Install-Into-Project) — Follow this recipe for production use.
+- [Foundations HLD](agentm-foundations-hld) — Learn why the installer boundary exists.
+- [Memory-storage seam — On-host state-mode config](memory-storage-seam) — Understand why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.

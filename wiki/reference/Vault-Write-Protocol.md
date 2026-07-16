@@ -1,6 +1,6 @@
 # Vault write protocol
 
-How the memory engine writes a Drive-synced vault safely when two or more agent sessions run at once, and the three operator habits that keep it safe. The *why* is the [Memory-storage seam design](memory-storage-seam); this page is the lookup.
+The memory engine writes a Drive-synced vault safely when two or more agent sessions run at once. You must follow three operator habits to keep it safe. The *why* is the [Memory-storage seam design](memory-storage-seam). This page is the lookup.
 
 ## ⚡ Quick Reference
 
@@ -14,26 +14,26 @@ How the memory engine writes a Drive-synced vault safely when two or more agent 
 | Durability barrier | plain `fsync`, **not** `F_FULLFSYNC` | the cloud copy is the backstop; we need each snapshot *internally consistent*, not crash-durable (DC-5) |
 | Scope | one machine, N≥2 writers | cross-device exclusion is impossible on Drive — locks are local-only by design |
 
-Implementation: `scripts/vault_lock.py` (`atomic_write`, `content_hash`, `vault_mutex`), vendored byte-identically into `harness/skills/memory/scripts/vault_lock.py` and held identical by `check-vendored-parity`'s `vault-lock` mode (CONS-1 merged the former standalone `check-vault-lock-parity.sh` into this one config-driven gate).
+Implementation occurs in `scripts/vault_lock.py`. This script provides `atomic_write`, `content_hash`, and `vault_mutex`. The file is vendored byte-identically into `harness/skills/memory/scripts/vault_lock.py`. The `vault-lock` mode of `check-vendored-parity` holds the files identical. CONS-1 merged the former standalone `check-vault-lock-parity.sh` into this one config-driven gate.
 
 ## What acquires the lock
 
-- **Shared-vault writes** — `PLAN.md` / `progress.md` / `features.json`, the repo registry, and every `/memory save` / `/memory evolve` entry — acquire the one per-vault mutex.
-- **Replace-style shared files** additionally pass a **content-hash CAS** (`expected_hash`): the write re-reads and re-hashes inside the lock and aborts with `ConcurrentModificationError` if the content changed under it. Callers re-read and retry.
-- **Repo-local state** (`.harness/` in a checkout, the promotion cursor) takes the atomic writer for the `fsync` but **no mutex** — it is partitioned by construction, never in the synced vault.
+- **Shared-vault writes** acquire the one per-vault mutex. These include `PLAN.md` / `progress.md` / `features.json`, the repo registry, and every `/memory save` / `/memory evolve` entry.
+- **Replace-style shared files** additionally pass a **content-hash CAS** (`expected_hash`). The write re-reads and re-hashes the file inside the lock. The write aborts with `ConcurrentModificationError` if the content changed under it. Callers then re-read and retry.
+- **Repo-local state** (`.harness/` in a checkout, the promotion cursor) takes the atomic writer for the `fsync` but **no mutex**. It is partitioned by construction. It is never in the synced vault.
 
 ## Operator habits that keep it safe
 
-1. **Pin the vault "Available offline."** In Google Drive / Finder, mark the vault root *Available offline* so its files are always materialized. A *dataless* read (Drive streaming a file on demand) can stall an agent — in the worst case an `EDEADLK` hang (R4 rule 5; the real `claude-code#40783` bite). Pinning removes the stall.
-2. **Don't leave an agent-owned file open and dirty in Obsidian.** Obsidian's auto-merge / "file changed on disk" popup is an out-of-band writer the mutex cannot see — it can clobber an agent write or resurrect stale bytes (Hazard #2). Close `PLAN.md` / `progress.md` in Obsidian before a `/work` session, or let the agent own them while it runs.
-3. **Name cross-cutting captures uniquely under `_inbox/`.** Use `<timestamp>-<pid>-<slug>.md` so two sessions writing the inbox at once land disjoint files instead of racing one name. This is the ownership-partitioning convention that keeps real contention ≈0 — different writers touch different files.
+1. **Pin the vault "Available offline."** You mark the vault root *Available offline* in Google Drive / Finder. This ensures its files are always materialized. A *dataless* read (Drive streaming a file on demand) can stall an agent. In the worst case, it causes an `EDEADLK` hang. This is R4 rule 5 and the real `claude-code#40783` bite. Pinning removes the stall.
+2. **Don't leave an agent-owned file open and dirty in Obsidian.** Obsidian's auto-merge / "file changed on disk" popup is an out-of-band writer. The mutex cannot see this writer. It can clobber an agent write. It can also resurrect stale bytes (Hazard #2). You close `PLAN.md` / `progress.md` in Obsidian before a `/work` session. Alternatively, you let the agent own them while it runs.
+3. **Name cross-cutting captures uniquely under `_inbox/`.** You use `<timestamp>-<pid>-<slug>.md`. This ensures two sessions writing the inbox at once land disjoint files. They avoid racing one name. This ownership-partitioning convention keeps real contention ≈0. Different writers touch different files.
 
 ## When a conflict still happens
 
-The `conflict-merger-session-start` hook sweeps the vault on session boot and **surfaces** (never deletes) four Drive conflict-naming families — `(conflicted copy …)`, `[Conflict]`, `Copy of …`, and `… (N).ext` (numbered duplicates, flagged only when the un-numbered base co-exists) — plus the DriveFS `lost_and_found/` dump that Drive never notifies about. Each is reported with its inferred base for hand-merge in Obsidian or via `diff`. A surfaced conflict in a vault-backed harness file means: merge it, then re-run `/work` from the affected repo.
+The `conflict-merger-session-start` hook sweeps the vault on session boot. It **surfaces** (never deletes) four Drive conflict-naming families. These families are `(conflicted copy …)`, `[Conflict]`, `Copy of …`, and `… (N).ext`. It only flags numbered duplicates when the un-numbered base co-exists. The hook also surfaces the DriveFS `lost_and_found/` dump. Drive never notifies about this dump. Each conflict is reported with its inferred base. You hand-merge them in Obsidian or via `diff`. A surfaced conflict in a vault-backed harness file requires action. You merge it. Then you re-run `/work` from the affected repo.
 
 ## See also
 
-- [Memory-storage seam — The vault-write protocol](memory-storage-seam) — the full rationale, the five R4 rules, and the re-audit triggers.
-- [Run without a vault](Run-Without-A-Vault) — the repo-local state mode, which is partitioned and needs no mutex.
+- [Memory-storage seam — The vault-write protocol](memory-storage-seam) — You find the full rationale, the five R4 rules, and the re-audit triggers here.
+- [Run without a vault](Run-Without-A-Vault) — You use the repo-local state mode here. It is partitioned. It needs no mutex.
 - [CI gates](CI-Gates) · [How-to](How-To) · [Reference](Reference) · [Home](Home)

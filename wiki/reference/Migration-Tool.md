@@ -1,6 +1,6 @@
 # Migration tool reference
 
-Command-line reference for `migrate-to-user-scope.sh` (POSIX) and `migrate-to-user-scope.ps1` (Windows / PowerShell 7+). Shipped in agentm v4.5.0 as the closing piece of ROADMAP-V4 item #30 (Global install — default to user scope).
+You can use this command-line reference for `migrate-to-user-scope.sh` (POSIX) and `migrate-to-user-scope.ps1` (Windows / PowerShell 7+). agentm shipped this tool in v4.5.0. It closes ROADMAP-V4 item #30 (Global install — default to user scope).
 
 ## ⚡ Quick Reference
 
@@ -20,7 +20,7 @@ migrate-to-user-scope.sh [OPTIONS] [TARGET]
 migrate-to-user-scope.ps1 [-Apply | -Rollback | -Cleanup] [OTHER OPTIONS] [-Target TARGET]
 ```
 
-`TARGET` defaults to `$PWD` when omitted. The migration tool is **always idempotent + reversible**: rerunning an apply is a no-op; rollback undoes a prior apply step-by-step.
+You can omit `TARGET`. The tool defaults to `$PWD`. The migration tool is **always idempotent + reversible**. Rerunning an apply is a no-op. Rollback undoes a prior apply step-by-step.
 
 ## Flags
 
@@ -39,11 +39,11 @@ migrate-to-user-scope.ps1 [-Apply | -Rollback | -Cleanup] [OTHER OPTIONS] [-Targ
 | `--ci-override` | `-CiOverride` | Allow the migration tool to run when `$CI=true` env detected. Default behavior refuses to run inside CI (CI runners use per-project installs by design per [Use-Per-Project-Install](Use-Per-Project-Install)). |
 | `--help`, `-h` | `Get-Help <script>` | Print the header help block. |
 
-`--apply`, `--rollback`, and `--cleanup` are **mutually exclusive**. Passing more than one is a usage error.
+`--apply`, `--rollback`, and `--cleanup` are **mutually exclusive**. You will trigger a usage error if you pass more than one.
 
 ## State matrix
 
-The migration tool detects 4 starting states for any given target. The current state is printed in the banner output of every invocation.
+The migration tool detects 4 starting states for any given target. It prints the current state in the banner output of every invocation.
 
 | State | Detection | Default behavior |
 |---|---|---|
@@ -54,7 +54,7 @@ The migration tool detects 4 starting states for any given target. The current s
 
 ## Classification matrix
 
-For each entry under `<target>/.claude/{skills,hooks,agents,commands}/`, the tool emits exactly one of:
+The tool emits exactly one classification for each entry under `<target>/.claude/{skills,hooks,agents,commands}/`. You will see one of these:
 
 | Classification | Detection | `--apply` action | `--apply --force` action |
 |---|---|---|---|
@@ -63,11 +63,11 @@ For each entry under `<target>/.claude/{skills,hooks,agents,commands}/`, the too
 | **`operator_edited`** | Exists in source-clone mapping but SHA differs (operator made local edits). | **Skip with warn** — protected by default. | Migrate anyway; back up to `.agentm-migrate-backup/<rel_path>`. |
 | **`unrecognized`** | No source-clone mapping entry (operator's own customization or stale artifact). | No-op (operator content sacred). | Same. |
 
-Dir bundles (skill bundles, hook bundles) are hashed via SHA256 of sorted `(rel_path, file_sha256)` pairs. Dotfile-noise (`.DS_Store`, `.git/`, editor `.swp`) is filtered from the hash input — macOS Finder won't trick the tool into false `operator_edited` classifications.
+The tool hashes dir bundles (skill bundles, hook bundles) using the SHA256 of sorted `(rel_path, file_sha256)` pairs. It filters dotfile-noise (`.DS_Store`, `.git/`, editor `.swp`) from the hash input. macOS Finder will not trick the tool into false `operator_edited` classifications.
 
 ## `.agentm-migrate-record.json` schema (v1)
 
-Lives at `<target>/.agentm-migrate-record.json` (NOT under `.claude/` — survives the `--cleanup` step). Drives rollback semantics.
+This file lives at `<target>/.agentm-migrate-record.json`. It does NOT live under `.claude/`. It survives the `--cleanup` step. It drives rollback semantics.
 
 ```json
 {
@@ -136,8 +136,8 @@ Action kinds:
 
 ## Related
 
-- [Use-Per-Project-Install](Use-Per-Project-Install) — when to deliberately keep `--scope project` and not run the migration tool
-- [Install-Into-Project](Install-Into-Project) — the default install workflow
-- [Installer-CLI](Installer-CLI) — `install.sh` flag reference
-- [Memory-storage seam design](memory-storage-seam) — the dev-setup invisibility policy (a load-bearing assumption it preserves)
-- `lib/install/python/install_migrate.py` — the primitive that powers all four modes
+- [Use-Per-Project-Install](Use-Per-Project-Install) — Read this to learn when you should deliberately keep `--scope project` and avoid running the migration tool.
+- [Install-Into-Project](Install-Into-Project) — This covers the default install workflow.
+- [Installer-CLI](Installer-CLI) — This provides the `install.sh` flag reference.
+- [Memory-storage seam design](memory-storage-seam) — This details the dev-setup invisibility policy. The migration tool preserves this load-bearing assumption.
+- `lib/install/python/install_migrate.py` — This script provides the primitive that powers all four modes.

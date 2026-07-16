@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # Repo layout
 
-The top-level layout of agentm on disk. For *why* this shape, see [How the pieces fit](How-The-Pieces-Fit), the [AgentM HLD](agentm-hld), and the [Foundations HLD](agentm-foundations-hld).
+This page shows the top-level layout of agentm on disk. You can read [How the pieces fit](How-The-Pieces-Fit) to understand *why* the project uses this shape. The [AgentM HLD](agentm-hld) and the [Foundations HLD](agentm-foundations-hld) also explain these design choices.
 
 ## ⚡ Quick Reference
 
@@ -74,23 +74,23 @@ agentm/
 
 ## The supported adapters
 
-Since the V5 unbundling (the [AgentM HLD](agentm-hld)) each adapter ships only agentm's *own* surfaces — the phase-gated dev loop and the review sub-agents moved to the crickets developer-workflows / code-review plugins, so there is nothing to parity-check there (their absence is pinned by `scripts/test_devloop_slim_retired.py`). [`scripts/check-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-parity.sh) asserts what remains matches across hosts.
+Each adapter ships only agentm's *own* surfaces. This changed in the V5 unbundling. You can read about this in the [AgentM HLD](agentm-hld). The phase-gated dev loop moved to the crickets developer-workflows plugin. The review sub-agents moved to the crickets code-review plugin. You do not need to parity-check those features here. The `scripts/test_devloop_slim_retired.py` script pins their absence. You can run [`scripts/check-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-parity.sh) to assert that the remaining features match across hosts.
 
 | Adapter | Ships (agentm's own surfaces) |
 |---|---|
 | `adapters/claude-code/` | the `recent-wiki-changes` utility command (`.claude/commands/`) · the `doctor` skill (`.claude/skills/doctor/`) |
 | `adapters/antigravity/` | the always-on rules — operating contract + vault context (`.agents/rules/{harness,agentmemory-context}.md`); the `workflows/` + `skills/` dirs were removed in the slim |
 
-A third directory, `adapters/gemini/`, remains in the tree but is **not a supported host** — Gemini CLI was dropped in v2.4.0 ([Compatibility](Compatibility)). Its removal is pending reconciliation.
+A third directory, `adapters/gemini/`, remains in the tree. This is **not a supported host**. Agentm dropped the Gemini CLI in v2.4.0. You can read about this in [Compatibility](Compatibility). The project keeps this directory pending reconciliation.
 
-**Canonical sub-agents** (`harness/agents/`): `adapt-evaluator`, `memory-idea-researcher` — the memory-engine pair. The review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter` are crickets-provided (code-review / developer-workflows / wiki-maintenance plugins) since the V5 unbundling (the [AgentM HLD](agentm-hld)).
+**Canonical sub-agents** (`harness/agents/`): These are `adapt-evaluator` and `memory-idea-researcher`. They act as the memory-engine pair. The crickets plugins provide the review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter`. These plugins are code-review, developer-workflows, and wiki-maintenance. This separation happened in the V5 unbundling. You can read the [AgentM HLD](agentm-hld) for more details.
 
-**Canonical skills** (`harness/skills/`): `design`, `doctor`, `memory`, `wiki-author`, `console`. `ship-release` is provided by crickets' `releasing-conventions` plugin (graceful-skip if crickets is not paired), recommended by name like `dependabot-fixer` / `pii-scrubber`. Wiki authoring's `diataxis-author` is provided the same way by crickets' `wiki-maintenance` plugin.
+**Canonical skills** (`harness/skills/`): These include `design`, `doctor`, `memory`, `wiki-author`, and `console`. The crickets `releasing-conventions` plugin provides `ship-release`. Agentm gracefully skips this if you do not pair crickets. Agentm recommends it by name. This matches the recommendation style for `dependabot-fixer` and `pii-scrubber`. The crickets `wiki-maintenance` plugin provides `diataxis-author` for wiki authoring in the exact same way.
 
 ## Related
 
-- [How the pieces fit](How-The-Pieces-Fit) — how phases / adapters / templates / scripts interact.
-- [Installer CLI](Installer-CLI) — flags and the owned-vs-managed tree.
-- [CI gates](CI-Gates) — what each workflow proves.
-- [Compatibility](Compatibility) — the supported hosts and dropped hosts.
-- [Foundations HLD — Documentation convention](agentm-foundations-hld) — why this wiki is never installed into target projects.
+- [How the pieces fit](How-The-Pieces-Fit) shows how phases, adapters, templates, and scripts interact.
+- [Installer CLI](Installer-CLI) explains flags and the owned-vs-managed tree.
+- [CI gates](CI-Gates) lists what each workflow proves.
+- [Compatibility](Compatibility) lists the supported hosts and dropped hosts.
+- [Foundations HLD — Documentation convention](agentm-foundations-hld) explains why you never install this wiki into target projects.
