@@ -174,15 +174,26 @@ def _emit_report(report_path: Optional[Path], job: manifest_mod.JobManifest,
 # A launchd-invoked process gets no LANG/LC_ALL (the plist sets only PATH),
 # so CPython's PEP 538 startup coercion writes LC_CTYPE=C.UTF-8 into its own
 # os.environ, which subprocess.run() then passes straight to the child
-# shell. macOS's system bash mis-tokenizes a `$var` immediately followed by
-# multibyte punctuation under that locale (confirmed live 2026-07-15: it
-# fuses the punctuation's lead byte into the variable name), corrupting
-# stderr bytes enough that decoding raises inside communicate(). en_US.UTF-8
-# is confirmed installed and doesn't trigger the mis-tokenization -- explicit
-# LC_ALL/LANG here overrides the coercion outright rather than relying on
-# inherited env that may already be poisoned.
+# shell. macOS's system bash (3.2.57, the stock GPLv2-era build Apple still
+# ships) mis-tokenizes a `$var` immediately followed by multibyte
+# punctuation under ANY UTF-8-aware locale -- confirmed live 2026-07-15/16
+# against the real failure shape (`local label="$1"` inside a function,
+# under `set -u`, exactly run-fast-tier.sh:31's own pattern): both the
+# PEP-538-coerced C.UTF-8 *and* an explicit en_US.UTF-8 reproduce the same
+# "unbound variable" mis-tokenization, they just differ in whether Python's
+# own decode of the corrupted stderr bytes happens to raise (C.UTF-8: often
+# does, producing the opaque exit_code=-1 this module used to swallow) --
+# en_US.UTF-8 alone does NOT fix the underlying job failure, it only changes
+# which bytes get corrupted. `LC_ALL=C` is the one setting confirmed NOT to
+# trigger the mis-tokenization at all (byte-oriented, no multibyte ctype
+# classification for bash to get wrong) -- verified against the exact
+# run-fast-tier.sh:31 shape live. `encoding="utf-8"` on subprocess.run()
+# still decodes whatever bytes the child actually produces correctly; C
+# only changes how *bash* classifies bytes for tokenization, not what
+# encoding the job's own real output (health_score.py's UTF-8 markdown,
+# emoji included) is written in.
 def _child_env() -> dict:
-    return dict(os.environ, LANG="en_US.UTF-8", LC_ALL="en_US.UTF-8")
+    return dict(os.environ, LANG="C", LC_ALL="C")
 
 
 def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Path],

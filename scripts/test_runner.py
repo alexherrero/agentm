@@ -178,12 +178,31 @@ class CycleIdempotencyTests(unittest.TestCase):
         # run-fast-tier.sh:31's exact `$label…` pattern. Uncaught, that
         # exception used to fall into cycle.py's bare `except Exception`
         # and surface as an undiagnosable exit_code=-1.
+        #
+        # The command below is the REAL failure shape, not a simplified
+        # stand-in: a `local` variable inside a function, under `set -u`,
+        # immediately followed by multibyte punctuation -- exactly
+        # run-fast-tier.sh's own `run_suite() { local label="$1"; ...;
+        # echo "...$label…"; }`. A top-level (non-local, no `set -u`)
+        # variable does NOT reproduce this -- it silently mis-renders
+        # instead of raising "unbound variable", which is why the original
+        # version of this test (a bare `label="x"; echo "$label…"`) passed
+        # even against the broken `en_US.UTF-8` fix that shipped in #316
+        # and didn't actually resolve the real job's failure. Re-verified
+        # 2026-07-16: only `LC_ALL=C` (byte-oriented, no multibyte ctype
+        # classification) avoids the mis-tokenization for this shape --
+        # en_US.UTF-8 reproduces the same "unbound variable" failure C.UTF-8
+        # does, just via a different corrupted byte.
         from unittest import mock
         with TemporaryDirectory() as td:
             jobs_dir = Path(td) / "jobs"
             state_root = Path(td) / "state"
             report_path = Path(td) / "digest.jsonl"
-            command = 'label="x"; echo "run: $label…" >&2; echo ok'
+            command = (
+                'set -u; '
+                'f() { local label="$1"; shift; echo "run: $label…" >&2; }; '
+                'f x; echo ok'
+            )
             _write_job(jobs_dir, "j", schedule="daily", lookback="6h",
                        command=command, tier="T3", dry_run=False)
 
