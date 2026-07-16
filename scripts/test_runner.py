@@ -165,6 +165,9 @@ class CycleIdempotencyTests(unittest.TestCase):
             self.assertFalse(r2.outcomes[0].ran)
             self.assertEqual(r2.outcomes[0].skipped_reason, "not-due")
 
+    @unittest.skipUnless(os.name == "posix",
+                          "reproduces a bash ctype mis-tokenization; "
+                          "job.command runs under cmd.exe on Windows, not bash")
     def test_survives_child_locale_coercion(self):
         # A launchd-invoked process (no LANG/LC_ALL in its plist) gets
         # LC_CTYPE=C.UTF-8 written into os.environ by CPython's PEP 538
