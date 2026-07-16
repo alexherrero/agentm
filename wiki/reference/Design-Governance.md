@@ -1,6 +1,6 @@
 # Design governance reference — `governs:` frontmatter + resolver
 
-This is the AG-track substrate for grounding the loop (design-doc §6): a small frontmatter convention on living designs, plus a resolver ([`scripts/governs_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/governs_resolver.py)) that answers *"which living design governs this file or area?"* by reading the local repo's `wiki/designs/` frontmatter. The crickets `agentm_bridge.py` bridge (its `governing-design` verb) targets this module's contract, exactly as its `capability` verb targets [`capability_resolver.py`](Capability-Resolver). It is stdlib-only, never imports design or plugin code, and fails safe to `greenfield` on any absence.
+This gives you the AG-track substrate for grounding the loop (design-doc §6). You define a small frontmatter convention on living designs. You use a resolver at [`scripts/governs_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/governs_resolver.py). The resolver answers *"which living design governs this file or area?"*. It reads the `wiki/designs/` frontmatter in your local repo. The crickets `agentm_bridge.py` bridge targets this module's contract with its `governing-design` verb. This works exactly like its `capability` verb targets [`capability_resolver.py`](Capability-Resolver). You only need the standard library. You never import design or plugin code. You fail safe to `greenfield` on any absence.
 
 ## ⚡ Quick Reference
 
@@ -22,11 +22,11 @@ This is the AG-track substrate for grounding the loop (design-doc §6): a small 
 | `1` | `"error"` | An internal error occurred; treated as not-governed (fail-safe). | empty (note to stderr) |
 | `2` | — | Usage error (no target given). | usage to stderr |
 
-`--json` prints the full result dict to stdout instead of the bare path; the exit code is unchanged. This is the surface the crickets C3 bridge (`agentm_bridge.py`'s `governing-design` verb) discovers by path-fallback and shells out to, graceful-skipping when agentm is absent.
+You pass `--json` to print the full result dict to stdout instead of the bare path. The exit code remains unchanged. The crickets C3 bridge discovers this surface by path-fallback. It shells out to it using `agentm_bridge.py`'s `governing-design` verb. It graceful-skips when agentm is absent.
 
 ## The frontmatter convention
 
-Every living design under `wiki/designs/` carries machine-readable altitude + ownership. A reader (and the resolver) sees what a design governs without opening it.
+You add machine-readable altitude and ownership to every living design under `wiki/designs/`. A reader sees what a design governs without opening it. The resolver sees this too.
 
 | Key | Domain | Values | Used by the resolver? |
 |---|---|---|---|
@@ -36,11 +36,11 @@ Every living design under `wiki/designs/` carries machine-readable altitude + ow
 | `kind:` | any artifact | artifact type: `design` \| `research` | no (metadata; keeps `research/` separate from `design`) |
 | `shape:` | **primitives only** | Axis-A SHAPE: `skill · hook · agent · slash-command · persona · script · service` | no |
 
-> **`shape:` is not stamped on design docs.** It is the Pillar-1 SHAPE axis for *host-loaded primitives* (a skill, a hook, an agent def). A design document is not a host-loaded primitive, so it carries no honest `shape:` value — the key is defined here for the primitives the spine classifies, never overloaded onto `kind:`. See design-doc §4 (classification spine) — not yet published as a standalone linkable page in this repo.
+> **`shape:` is not stamped on design docs.** It is the Pillar-1 SHAPE axis for *host-loaded primitives* (a skill, a hook, an agent def). A design document is not a host-loaded primitive. It carries no honest `shape:` value. You define the key here for the primitives the spine classifies. You never overload it onto `kind:`. See design-doc §4 (classification spine). This is not yet published as a standalone linkable page in this repo.
 
 ### The `area:` vocabulary (two-level `<root>/<domain>`)
 
-This is a controlled vocabulary: one **owning design** per area, with other designs in the area as children pointing up. agentm-side values:
+You use a controlled vocabulary. You assign one **owning design** per area. You point other designs in the area up as children. You use these agentm-side values:
 
 | Root | Areas |
 |---|---|
@@ -49,22 +49,22 @@ This is a controlled vocabulary: one **owning design** per area, with other desi
 | `crickets/` | `crickets/architecture` + one per capability (`crickets/development-lifecycle`, `crickets/wiki`, …) |
 | `governance/` | `governance` (the AG machinery: design-doc, this index, the grounding hooks, the ADR model) |
 
-An `area:` not in the vocabulary should fail a valid-area lint (the honesty lints mirror the capability lints; the lints themselves are a follow-on to this resolver). The canonical source is the AG `area-taxonomy.md` spec.
+An `area:` outside the vocabulary should fail a valid-area lint. The honesty lints mirror the capability lints. The lints themselves are a follow-on to this resolver. You read the canonical source in the AG `area-taxonomy.md` spec.
 
 ### Status filter
 
-Only `status: launched` designs participate in resolution by default (the live truth the SessionStart paths-only inject also filters on). `status: proposed` designs are excluded unless `include_proposed=True` / `--include-proposed` is passed. The status enum is two states — `proposed → launched` (design-doc §9.5).
+Only `status: launched` designs participate in resolution by default. The SessionStart paths-only inject also filters on this live truth. You exclude `status: proposed` designs. You include them only if you pass `include_proposed=True` or `--include-proposed`. You use a two-state status enum. The states are `proposed → launched` (design-doc §9.5).
 
 ## Resolution semantics
 
-1. **Area-name input** — if `target` exactly equals a known `area:` value, return that area's design (e.g. `shared/foundations` → the Foundations HLD, even though it governs no file). Area-only roots are reachable here but never match a path.
-2. **Path input** — otherwise treat `target` as a repo-relative path and find the **most-specific** matching `governs:` glob:
-   - exact file match (`target == pattern`),
-   - directory prefix (`target` under `pattern + "/"`),
-   - glob (`fnmatch`, incl. `scripts/**`).
-   - **Longest matching pattern wins.** A more-specific child (e.g. `memory-storage-seam` governing `scripts/storage_seam.py`) wins over the broad `agentm/architecture` fallback (`scripts/**`) — this is the area-walk-up: a file with no specific owner lands on its area's broad-fallback glob.
-   - **An exact-specificity tie between *different* designs is `overlap` (fail-loud), never a guess** — the no-overlap rule was violated; narrow one glob. (Multiple globs from the *same* design at equal specificity is fine.)
-3. **No match** → `greenfield` (exit 1). As children lift in Phase 3 and stamp narrower `governs:` globs, resolution refines automatically — no resolver change needed.
+1. **Area-name input** — You check if `target` exactly equals a known `area:` value. You return that area's design if it matches. For example, `shared/foundations` returns the Foundations HLD even though it governs no file. You reach area-only roots here. You never match them to a path.
+2. **Path input** — You treat `target` as a repo-relative path otherwise. You find the **most-specific** matching `governs:` glob.
+   - You match the exact file (`target == pattern`).
+   - You match the directory prefix (`target` under `pattern + "/"`).
+   - You match the glob (`fnmatch`, incl. `scripts/**`).
+   - **Longest matching pattern wins.** A more-specific child wins over the broad `agentm/architecture` fallback (`scripts/**`). For example, `memory-storage-seam` governing `scripts/storage_seam.py` wins. This is the area-walk-up. A file with no specific owner lands on its area's broad-fallback glob.
+   - **An exact-specificity tie between *different* designs is `overlap` (fail-loud), never a guess**. You fail loud because the no-overlap rule was violated. You narrow one glob. Multiple globs from the *same* design at equal specificity are fine.
+3. **No match** → You return `greenfield` (exit 1). Children lift in Phase 3. They stamp narrower `governs:` globs. Resolution refines automatically. You need no resolver change.
 
 ## Public API
 
@@ -85,20 +85,20 @@ Only `status: launched` designs participate in resolution by default (the live t
 | `root` | `Path \| None` | Repo-root override (tests inject a temp dir). Defaults to the parent of `scripts/`. |
 | `include_proposed` | `bool` | Also index `status: proposed` designs. Default `False` (launched only). |
 
-Never raises — any internal error collapses to `{governed: False, design: None, area: None, reason: "error"}` (fail-safe, mirroring `capability_resolve`).
+You never raise an exception. You collapse any internal error to `{governed: False, design: None, area: None, reason: "error"}`. You fail safe. You mirror `capability_resolve`.
 
 ### `build_index(root=None, *, include_proposed=False) → list[GovernsEntry]`
 
-Low-level scan of `wiki/designs/**/*.md`, one `GovernsEntry(pattern, design, area, status)` per pattern a qualifying design declares in `governs:`. Returns `[]` on any I/O error.
+You perform a low-level scan of `wiki/designs/**/*.md`. You yield one `GovernsEntry(pattern, design, area, status)` per pattern. The qualifying design declares these in `governs:`. You return `[]` on any I/O error.
 
 ## Design constraints
 
-Mirrors [`capability_resolver.py`](Capability-Resolver), all non-negotiable:
+You mirror [`capability_resolver.py`](Capability-Resolver). All constraints are non-negotiable:
 
-- **One-directional** — reads frontmatter as *data*; never imports design or plugin code (designs are markdown — nothing to import).
-- **Fail-safe** — `greenfield` is the safe default; never raises on absence.
-- **Bounded** — a single index scan of `wiki/designs/`; no arbitrary-tree recursion, no network, no third-party deps.
-- **Stdlib-only** — frontmatter is parsed by a minimal in-module reader (no PyYAML).
+- **One-directional** — You read frontmatter as *data*. You never import design or plugin code. Designs are markdown. You have nothing to import.
+- **Fail-safe** — You use `greenfield` as the safe default. You never raise on absence.
+- **Bounded** — You run a single index scan of `wiki/designs/`. You use no arbitrary-tree recursion. You use no network. You use no third-party deps.
+- **Stdlib-only** — You parse frontmatter with a minimal in-module reader. You do not use PyYAML.
 
 ## See also
 

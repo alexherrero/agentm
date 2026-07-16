@@ -1,6 +1,6 @@
 # Orchestration bridge reference
 
-`phase_dispatch()` in [`scripts/harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py) is the orchestration bridge. It is the single write-capable entry point a plugin uses to fire an auto-orchestration chain through the kernel. It is the V5-5 `[LC-3]` counterpart to the read-only process seam: the seam crosses the memory↔process boundary for reads, and the bridge crosses it for writes, always through the kernel and never directly to the state file.
+`phase_dispatch()` in [`scripts/harness_memory.py`](https://github.com/alexherrero/agentm/blob/main/scripts/harness_memory.py) is the orchestration bridge. You use this single write-capable entry point from a plugin. It fires an auto-orchestration chain through the kernel. It is the V5-5 `[LC-3]` counterpart to the read-only process seam. The seam crosses the memory↔process boundary for reads. The bridge crosses it for writes. The bridge routes writes through the kernel. You never write directly to the state file.
 
 ## ⚡ Quick Reference
 
@@ -12,7 +12,7 @@
 | **Return** | `int` — always `0` (non-blocking, graceful-skip) |
 
 > [!IMPORTANT]
-> **Write-capable, kernel-single-writer.** The bridge fires a chain that writes the auto-orchestration state file, but that write happens **inside the kernel** (`orchestration_phase.py` → `auto_orchestration.ao.save_state()`). The bridge never touches `auto-orchestration-state.json` directly. The kernel is the sole writer ([LC-2]).
+> **Write-capable, kernel-single-writer.** The bridge fires a chain. This chain writes the auto-orchestration state file. The write happens **inside the kernel** (`orchestration_phase.py` → `auto_orchestration.ao.save_state()`). The bridge never touches `auto-orchestration-state.json` directly. The kernel is the sole writer ([LC-2]).
 
 ## Contract properties
 
@@ -25,7 +25,7 @@
 
 ## `phase_dispatch(*, phase, project_root=None, dry_run=False)`
 
-Fire a named phase chain through the kernel core.
+You fire a named phase chain through the kernel core.
 
 | Parameter | Type | Detail |
 |---|---|---|
@@ -43,7 +43,7 @@ Fire a named phase chain through the kernel core.
 
 ### `post-work` chain
 
-Fires after a `/work` phase session ends. The chain discovers the session's start-marker file (`.harness/session-id-<id>.start`):
+This chain fires after a `/work` phase session ends. The chain discovers the session's start-marker file (`.harness/session-id-<id>.start`):
 
 | Marker state | Result |
 |---|---|
@@ -53,7 +53,7 @@ Fires after a `/work` phase session ends. The chain discovers the session's star
 
 ### `post-release` chain
 
-Fires after a `/release` phase session ends. Runs `index_skills.py` then `discover_skills.py` to refresh the skill surfaces.
+This chain fires after a `/release` phase session ends. It runs `index_skills.py`. It then runs `discover_skills.py`. These runs refresh the skill surfaces.
 
 ## CLI
 
@@ -65,12 +65,12 @@ python3 scripts/harness_memory.py phase-dispatch post-work --project-root . --dr
 python3 scripts/harness_memory.py phase-dispatch post-release --project-root .
 ```
 
-The CLI `choices=` mirrors `_BRIDGE_PHASES`, so only valid phase names are accepted at the argument-parser layer.
+The CLI `choices=` setting mirrors `_BRIDGE_PHASES`. The argument-parser layer only accepts valid phase names.
 
 ## Related
 
-- [Auto-orchestration](Auto-Orchestration) — why the push surface exists and the three trigger owners (V5-5 section).
-- [Process seam](Process-Seam) — the read-only sibling for memory↔process reads.
-- [Memory↔process seam](Memory-Process-Seam) — the one-way dependency philosophy this bridge extends to writes.
-- [CI gates](CI-Gates) — `check-one-way-imports`'s `lc8-bridge` rule (enforces the one-way LC-8 direction, V5-5 bridge extension; CONS-1 merged the former standalone `check-process-seam-import-direction` script into this checker) and `verify-phases` (session-marker scenario integration checks).
-- [AgentM HLD — V5 unbundling](agentm-hld) — the unbundling that prompted this bridge (DC-1 deferred slice).
+- [Auto-orchestration](Auto-Orchestration) — This explains why the push surface exists. You find the three trigger owners in the V5-5 section.
+- [Process seam](Process-Seam) — This is the read-only sibling for memory↔process reads.
+- [Memory↔process seam](Memory-Process-Seam) — The bridge extends this one-way dependency philosophy to writes.
+- [CI gates](CI-Gates) — The `check-one-way-imports` gate includes the `lc8-bridge` rule. This rule enforces the one-way LC-8 direction. This is a V5-5 bridge extension. CONS-1 merged the former standalone `check-process-seam-import-direction` script into this checker. You run `verify-phases` for session-marker scenario integration checks.
+- [AgentM HLD — V5 unbundling](agentm-hld) — This unbundling prompted this bridge. It represents a DC-1 deferred slice.

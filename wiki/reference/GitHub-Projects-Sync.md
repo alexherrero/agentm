@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # GitHub Projects board sync (agentm side)
 
-The board-sync integration lets every phase command file "remember for later" work to a GitHub Project without leaving the session. agentm owns the config it reads, when phases emit an update, and how the whole thing stays a silent no-op when it isn't wired up. The plugin internals (templates, the write path, the type taxonomy, the drift gate) live in the crickets [github-projects reference](https://github.com/alexherrero/crickets/wiki/GitHub-Projects).
+The board-sync integration lets every phase command file "remember for later" work to a GitHub Project without leaving the session. The agentm engine owns the config it reads. It controls when phases emit an update. It also guarantees the flow stays a silent no-op when you have not wired it up. The plugin internals (templates, the write path, the type taxonomy, the drift gate) live in the crickets [github-projects reference](https://github.com/alexherrero/crickets/wiki/GitHub-Projects).
 
 ## ⚡ Quick reference
 
@@ -26,15 +26,15 @@ The linkage between this repo and its GitHub Project is a single block on `.harn
 | `url` | string | The Project URL — link bases are built from it. |
 | `repo` | string | The repo the Project's issues live under. |
 
-The block is additive and sits beside the enablement keys; the enablement merge-writer preserves it verbatim. The whole schema is documented in [Project config](Project-Config). The *presence* of this block is the signal every downstream phase uses to decide whether to run the board sync at all — its absence means skip.
+This block is additive. It sits beside the enablement keys. The enablement merge-writer preserves it verbatim. The entire schema is documented in [Project config](Project-Config). The *presence* of this block signals every downstream phase to run the board sync. Its absence tells them to skip it.
 
 ## How opt-in writes the block
 
-The linkage is created once, at `/setup`, and only if the operator says yes. On yes, the agent runs the two-step ProjectsV2 dance — `gh project create` then `gh project link`. Both steps are needed because ProjectsV2 has no repo-owned form: to make a project show up under the repo you link a user- or org-owned project to it. On success the flow records `{owner, number, url, repo}` onto `project.json`. An operator who declines gets no project and no config, and every phase below then skips silently.
+The linkage is created once at `/setup`. It only happens if you say yes. On yes, the agent runs a two-step ProjectsV2 sequence. It runs `gh project create`. Then it runs `gh project link`. Both steps are required. ProjectsV2 has no repo-owned form. You must link a user-owned or org-owned project to your repo to make it show up there. On success, the flow records `{owner, number, url, repo}` onto `project.json`. If you decline, you get no project and no config. Every phase below will then skip silently.
 
 ## How the phase commands emit updates
 
-Each phase proposes deferred work from a different signal. There's no numeric soft cap on any phase — every out-of-scope/deferred item it notices gets recorded onto the board as a `Backlog-item` or `Idea`, unconditionally.
+Each phase proposes deferred work from a different signal. You will not hit a numeric soft cap on any phase. Every out-of-scope or deferred item it notices gets recorded onto the board. These are recorded as a `Backlog-item` or an `Idea` unconditionally.
 
 | Phase | What triggers a proposal |
 |---|---|
@@ -42,23 +42,25 @@ Each phase proposes deferred work from a different signal. There's no numeric so
 | `/work` | Adjacent bugs, refactors, or coverage gaps noticed while implementing — not task follow-ups |
 | `/release` | Cross-session themes that emerged from this release cycle |
 
-`/review` reports findings; it does not write to the board at all. `/bugfix` is the parallel surface: it carries bugs through a full lifecycle as GitHub Issues, not as single Project items. The two surfaces are parallel, not overlapping — Projects for deferred work, Issues for bugs.
+The `/review` phase reports findings. It does not write to the board at all. The `/bugfix` phase acts as the parallel surface. It carries bugs through a full lifecycle as GitHub Issues, not as single Project items. The two surfaces are parallel and do not overlap. You use Projects for deferred work. You use Issues for bugs.
 
-The same wiring lands identically on both supported hosts, [Claude Code and Antigravity](Compatibility), so the behavior travels with the operator.
+The same wiring lands identically on both supported hosts, [Claude Code and Antigravity](Compatibility). The behavior travels with you.
 
 ## Announce-then-proceed, not preview-and-ask, for per-item writes
 
-Per-item board writes during `/plan`/`/work`/`/release` are deterministic and idempotent, so they follow the recoverability gate's usual posture for that class of action: announce what's being recorded, then proceed — not stop and wait for confirmation. The write itself runs `gh issue create` + `gh project item-add`, never a raw `gh project item-create`. The one-time `/setup` project-linkage step is the genuinely preview-and-ask decision here: it is a one-time choice to *have* a board at all, not standing permission for every later write — but once that choice is made, the per-item writes it enables don't re-ask each time.
+Per-item board writes during `/plan`/`/work`/`/release` are deterministic and idempotent. They follow the recoverability gate's usual posture for that class of action. The agent will announce what it is recording. Then it will proceed. It will not stop and wait for your confirmation. The write itself runs `gh issue create` followed by `gh project item-add`. It never runs a raw `gh project item-create`. 
+
+The `/setup` project-linkage step acts as the genuine preview-and-ask decision here. It is a one-time choice to *have* a board at all. It is not standing permission for every later write. Once you make that choice, the per-item writes it enables do not re-ask you each time.
 
 ## Graceful-skip behavior
 
-Every phase's board-sync block opens with the same check, and skips with no prompt when any of these hold:
+Every phase's board-sync block opens with the same check. It skips with no prompt when any of these conditions hold:
 
-- **No `project.json`** (or no `github` block on it) — the repo was never opted in.
-- **No `gh` on the PATH** — the CLI the sync needs isn't installed.
-- **Nothing deferred this session** — a phase with nothing to propose doesn't ask.
+- **No `project.json`** (or no `github` block on it) — you never opted the repo in.
+- **No `gh` on the PATH** — you do not have the needed CLI installed.
+- **Nothing deferred this session** — a phase with nothing to propose does not ask.
 
-Skip means quiet: no error, no nag, no behavior change for an operator who never wanted a board. The board sync is opt-in first and silent by default.
+Skip means quiet. You see no error. You see no nag. You experience no behavior change if you never wanted a board. The board sync is opt-in first. It is silent by default.
 
 ## Related
 

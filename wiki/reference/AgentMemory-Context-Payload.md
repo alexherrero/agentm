@@ -1,6 +1,6 @@
 # AgentMemory context payload reference
 
-The AgentMemory context payload is the one "how to use my memory" brief you paste into each agent surface — Claude.ai custom instructions, a Gemini Gem's system instructions, the Antigravity rule. The canonical copy lives in the repo at `templates/agentmemory-context.md`. A self-describing twin sits at `<vault>/_meta/how-to-use-agentmemory.md`, so an agent that reaches the vault finds its own usage instructions waiting. Read/write posture is surface-scoped (DC-2): chat surfaces read and query the vault but never write to it; filesystem agents you actually run (Claude Code, Antigravity) may write. On a read-only surface, when an agent wants to capture something, it suggests a paste-ready entry and you file it in Obsidian by hand.
+The AgentMemory context payload is the "how to use my memory" brief. You paste it into each agent surface. These surfaces include Claude.ai custom instructions. They include a Gemini Gem's system instructions. They include the Antigravity rule. The canonical copy lives in the repo at `templates/agentmemory-context.md`. A self-describing twin sits at `<vault>/_meta/how-to-use-agentmemory.md`. An agent that reaches the vault finds its own usage instructions waiting. The read/write posture is surface-scoped (DC-2). Chat surfaces read and query the vault. They never write to it. Filesystem agents you run (Claude Code, Antigravity) may write. On a read-only surface, an agent suggests a paste-ready entry when it wants to capture something. You file it in Obsidian by hand.
 
 ## ⚡ Quick Reference
 
@@ -15,7 +15,7 @@ The AgentMemory context payload is the one "how to use my memory" brief you past
 
 ## Payload sections
 
-The required sections of the payload, in order, as they appear in [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md).
+The payload contains required sections. They appear in order. They appear exactly as written in [`templates/agentmemory-context.md`](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md).
 
 | Section (heading in template) | Covers |
 |---|---|
@@ -28,4 +28,4 @@ The required sections of the payload, in order, as they appear in [`templates/ag
 
 ## Related
 
-- [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — the setup recipe for every surface (Claude.ai · Gemini · ChatGPT · Antigravity).
+- [Use AgentMemory in any agent](Use-AgentMemory-In-Any-Agent) — This is the setup recipe for every surface (Claude.ai · Gemini · ChatGPT · Antigravity).

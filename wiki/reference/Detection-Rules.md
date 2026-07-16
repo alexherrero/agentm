@@ -1,6 +1,6 @@
 # Detection rules reference
 
-The detection engine scans an unconfigured repo against 9 built-in rules. Each rule is a deterministic, side-effect-free check that, when matched, attaches a *rationale* to a skill or hook in the proposed config. Rules do not gate which skills/hooks are present — the proposed config is default-all-enabled; rules only surface why each is relevant to this repo. Run via `python3 scripts/detect_project.py <cwd> --format json|text`.
+The engine scans your unconfigured repo against 9 built-in rules. Each rule is a deterministic check. It produces no side effects. A matched rule attaches a *rationale* to a skill or hook in the proposed config. Rules do not gate your skills or hooks. The proposed config is default-all-enabled. Rules only surface why each target matters to your repo. You run this via `python3 scripts/detect_project.py <cwd> --format json|text`.
 
 ## ⚡ Quick Reference
 
@@ -15,7 +15,7 @@ The detection engine scans an unconfigured repo against 9 built-in rules. Each r
 
 ## The 9 rules
 
-The rules run in registry order. `R-harness` runs first so a bypass short-circuits before the rest. Each rule is a side-effect-free `Path -> Optional[RuleMatch]`; a match overlays its rationale + `rule_id` onto the named targets in the already-default-enabled proposal.
+The engine runs the rules in registry order. `R-harness` runs first. A bypass short-circuits before the rest. Each rule evaluates a side-effect-free `Path -> Optional[RuleMatch]`. A match overlays its rationale and `rule_id` onto the named targets. The targets sit in your already-default-enabled proposal.
 
 | Rule | Detects | Attaches rationale to | Notes |
 |---|---|---|---|
@@ -31,6 +31,6 @@ The rules run in registry order. `R-harness` runs first so a bypass short-circui
 
 ## Related
 
-- [Configure a new project](Configure-A-New-Project) — the operator recipe that consumes these rules.
-- [Project config](Project-Config) — where matched rationale is persisted (the `project.json` enablement block).
-- [Auto-detect + auto-configure](Auto-Detect-Configure) — why detection proposes rather than gates.
+- [Configure a new project](Configure-A-New-Project) — You use this operator recipe to consume these rules.
+- [Project config](Project-Config) — You persist your matched rationale here in the `project.json` enablement block.
+- [Auto-detect + auto-configure](Auto-Detect-Configure) — You learn here why detection proposes rather than gates.

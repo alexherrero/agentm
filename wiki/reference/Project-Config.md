@@ -1,6 +1,6 @@
 # Project config reference
 
-`.harness/project.json` is the per-project config file. It carries `vault_project`, `github`, and `env`, plus an additive *enablement block* (`type`, `skills`, `hooks`, `registered_at`, `registered_via`, `operator_overrides`, `last_redetect_at`) that records this repo's detected/approved configuration. The verification ledger (`features.json` `passes`) is a separate file and stays untouched.
+You configure each project in `.harness/project.json`. This file holds `vault_project`, `github`, and `env`. It also adds an *enablement block*. This block includes `type`, `skills`, `hooks`, `registered_at`, `registered_via`, `operator_overrides`, and `last_redetect_at`. It records your repo's detected and approved configuration. You keep the verification ledger in a separate file. You leave `features.json` and its `passes` untouched.
 
 ## ⚡ Quick Reference
 
@@ -15,7 +15,7 @@
 
 ## Enablement block schema
 
-The 7 keys `build_enablement_block` emits and `merge_enablement` overwrites. Everything else on `project.json` survives the merge verbatim.
+The `build_enablement_block` function emits 7 keys. The `merge_enablement` function overwrites these keys. You preserve everything else in `project.json` verbatim during the merge.
 
 | Field | Type | Default | Meaning |
 |---|---|---|---|
@@ -39,7 +39,7 @@ The 7 keys `build_enablement_block` emits and `merge_enablement` overwrites. Eve
 
 ## Pre-existing keys (unchanged)
 
-_The enablement block is additive — these keys are preserved by the merge-writer._
+_You add the enablement block. The merge-writer preserves these existing keys._
 
 | Key | Meaning |
 |---|---|
@@ -49,7 +49,7 @@ _The enablement block is additive — these keys are preserved by the merge-writ
 
 ## Related
 
-- [Detection rules](Detection-Rules) — what populates `rationale` / `rule_id` in the `skills` / `hooks` maps.
-- [Configure a new project](Configure-A-New-Project) — the flow that writes this block.
-- [Repo layout](Repo-Layout) — where `.harness/project.json` sits on disk.
-- [Auto-detect + auto-configure](Auto-Detect-Configure) — why config lives here and not in `features.json` (DC-1).
+- [Detection rules](Detection-Rules) — You populate `rationale` and `rule_id` in the `skills` and `hooks` maps here.
+- [Configure a new project](Configure-A-New-Project) — You write this block using this flow.
+- [Repo layout](Repo-Layout) — You store `.harness/project.json` on disk here.
+- [Auto-detect + auto-configure](Auto-Detect-Configure) — You see why config lives here and not in `features.json` (DC-1).

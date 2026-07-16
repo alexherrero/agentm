@@ -1,6 +1,6 @@
 # Capability resolver reference
 
-[`scripts/capability_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/capability_resolver.py) is the plugin-capability registry and resolver — the runtime half of crickets' `enhances:` soft-composition. It aggregates installed plugins' declared `capabilities:` keys into a per-host registry and answers "is this capability available, optionally at a version range?" It is stdlib-only, never imports plugin code, and degrades gracefully on any missing or corrupt file.
+[`scripts/capability_resolver.py`](https://github.com/alexherrero/agentm/blob/main/scripts/capability_resolver.py) is your plugin-capability registry and resolver. It provides the runtime half of crickets' `enhances:` soft-composition. It aggregates the `capabilities:` keys from installed plugins into a per-host registry. You use it to answer the question, "is this capability available, optionally at a version range?" It uses only the standard library. It never imports plugin code. It handles missing or corrupt files by degrading gracefully.
 
 ## ⚡ Quick Reference
 
@@ -24,7 +24,7 @@
 
 ### `capability_available(name, *, version=None, registry=None) → bool`
 
-`capability_available` is the boolean surface — the primary interface for callers that only need `True`/`False`.
+`capability_available` is your boolean surface. Use this primary interface when you only need `True` or `False`.
 
 | Parameter | Type | Detail |
 |---|---|---|
@@ -32,11 +32,11 @@
 | `version` | `str \| None` | Version-range constraint (e.g. `">= 1.2"`). When `None`, any installed version satisfies. Evaluated by `satisfies()` — see [Version matching](#version-matching) below. |
 | `registry` | `dict \| None` | Pre-built registry from `build_registry()`. When `None`, builds on each call. Inject when calling in a loop to avoid repeated I/O. |
 
-Never raises. Returns `False` on any internal error (LC-4: unavailable is the safe default).
+This function never raises an exception. It returns `False` on any internal error. This implements LC-4. Unavailable is your safe default.
 
 ### `capability_resolve(name, *, version=None, registry=None) → dict`
 
-`capability_resolve` is the richer form, for callers that need to log or branch on the reason.
+`capability_resolve` provides your richer return form. Use this when you need to log or branch on the reason.
 
 ```python
 {
@@ -47,11 +47,11 @@ Never raises. Returns `False` on any internal error (LC-4: unavailable is the sa
 }
 ```
 
-Same parameters as `capability_available`. Never raises.
+This takes the same parameters as `capability_available`. It never raises an exception.
 
 ### `build_registry(root=None) → dict[str, ProviderEntry]`
 
-`build_registry` is the low-level builder: it returns the raw capability → provider map. `root` overrides the user home directory — used by tests with a temp directory instead of the live `~`. Returns `{}` on any I/O error.
+`build_registry` is your low-level builder. It returns the raw capability-to-provider map. The `root` parameter overrides your home directory. Tests use this with a temp directory instead of your live `~`. It returns `{}` on any I/O error.
 
 `ProviderEntry` is a frozen dataclass:
 
@@ -63,25 +63,25 @@ Same parameters as `capability_available`. Never raises.
 
 ## Host read paths
 
-The resolver aggregates two host state directories independently and merges them (Claude Code entries win when both claim the same capability).
+The resolver aggregates two host state directories independently. It then merges them. Claude Code entries win when both claim the same capability.
 
 | Host | Enabled-set source | Capability source |
 |---|---|---|
 | Claude Code | `~/.claude/plugins/installed_plugins.json` (enabled set) + `~/.claude/plugins/known_marketplaces.json` (resolves each marketplace's `installLocation`) | `<installLocation>/.claude-plugin/marketplace.json` → `plugins[*].capabilities[]` |
 | Antigravity | `~/.gemini/config/import_manifest.json` | `~/.gemini/config/plugins/<name>/capabilities.json` sidecar (emitted by the crickets Antigravity generator since V5-8) |
 
-Both paths are **optional** — a missing or corrupt file at any step returns an empty partial registry, and the merger silently skips the absent host. On a machine with only Claude Code, the Antigravity path contributes nothing, and vice versa.
+Both paths are **optional**. A missing or corrupt file at any step returns an empty partial registry. The merger then silently skips the absent host. The Antigravity path contributes nothing on a machine with only Claude Code. The reverse is also true.
 
 > [!NOTE]
-> The resolver is one-directional: it reads manifests as data. It never imports plugin code, never writes to any host state, and never raises to the caller regardless of what it finds.
+> The resolver is one-directional. It reads manifests as data. It never imports plugin code. It never writes to any host state. It never raises an exception to your caller, regardless of what it finds.
 
 ## Merge semantics
 
-When both hosts declare a provider for the same capability:
+The following rules apply when both hosts declare a provider for the same capability:
 
 1. **Installed provider wins over not-installed.** An enabled Claude Code plugin beats a declared-but-not-installed Antigravity sidecar.
-2. **Claude Code wins over Antigravity when both are installed.** In co-installed setups the two are expected to be identical; CC takes priority as the tie-breaker.
-3. **First declarant wins within each host.** If two plugins on the same host declare the same capability, whichever appears first in the manifest order wins.
+2. **Claude Code wins over Antigravity when both are installed.** You expect the two to be identical in co-installed setups. CC takes priority as your tie-breaker.
+3. **First declarant wins within each host.** The first plugin appearing in the manifest order wins if two plugins on the same host declare the same capability.
 
 ## CLI shim
 
@@ -96,7 +96,7 @@ python3 scripts/capability_resolver.py <capability> <version-range>
 | `1` | Capability unavailable |
 | `2` | Usage error (wrong number of arguments) |
 
-This is the entry point wired by the `agentm capability` shim (Task 3). The importable module is the primary contract; the CLI is a convenience shim for shell callers.
+This is your entry point wired by the `agentm capability` shim (Task 3). The importable module is your primary contract. The CLI gives your shell callers a convenience shim.
 
 ## Design constraints (V5-8)
 
@@ -109,13 +109,13 @@ This is the entry point wired by the `agentm capability` shim (Task 3). The impo
 
 ## Version matching
 
-Version range evaluation is implemented in [`scripts/capability_version_match.py`](https://github.com/alexherrero/agentm/blob/main/scripts/capability_version_match.py) (stdlib-only). The public API is a single function:
+[`scripts/capability_version_match.py`](https://github.com/alexherrero/agentm/blob/main/scripts/capability_version_match.py) implements your version range evaluation. It uses only the standard library. The public API is a single function:
 
 ```python
 satisfies(installed_version: str | None, range_str: str) -> bool
 ```
 
-Returns `True` when `installed_version` satisfies the constraint expressed in `range_str`. Returns `False` — never raises — on any malformed input, a `None` version, or a compound specifier (LC-4 graceful degrade).
+It returns `True` when `installed_version` satisfies the constraint expressed in `range_str`. It returns `False` on any malformed input, a `None` version, or a compound specifier. It never raises an exception. This implements your LC-4 graceful degrade.
 
 ### Supported operators
 
@@ -131,26 +131,26 @@ Returns `True` when `installed_version` satisfies the constraint expressed in `r
 
 ### Compatible release (`~=`) semantics
 
-`~= X.Y` expands to `>= X.Y AND < (X+1)`, meaning "any release of the same major version starting at X.Y or later". For example:
+`~= X.Y` expands to `>= X.Y AND < (X+1)`. This means "any release of the same major version starting at X.Y or later". For example:
 
 | Range | Satisfies | Does not satisfy |
 |---|---|---|
 | `~= 1.2` | `1.2`, `1.3`, `1.9.99` | `2.0`, `1.1` |
 | `~= 2.0` | `2.0`, `2.5` | `3.0`, `1.9` |
 
-This follows PEP 440's compatible release clause exactly.
+This strictly follows PEP 440's compatible release clause.
 
 ### Version padding
 
-Versions with fewer components are zero-padded before comparison: `1.2` is treated as `1.2.0` and compared component-wise as integers.
+The script zero-pads versions with fewer components before comparison. It treats `1.2` as `1.2.0`. It then compares them component-wise as integers.
 
 ### Graceful degrade (LC-4)
 
-`satisfies()` returns `False` (never raises) for:
+`satisfies()` returns `False` and never raises an exception for:
 
 - `None` installed version — provider's version is undeclared in its manifest.
 - Malformed version string — cannot be parsed as dot-separated integers.
-- Compound specifier — range strings containing `,` (PEP 440 `a, b` multi-constraint form). The resolver is a single-check, not a solver; compound specifiers are rejected whole.
+- Compound specifier — range strings containing `,` (PEP 440 `a, b` multi-constraint form). The resolver acts as a single-check, not a solver. It rejects compound specifiers entirely.
 
 `capability_resolve` uses the `"version-mismatch"` reason code when `satisfies()` returns `False` for an installed provider.
 

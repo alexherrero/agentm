@@ -1,6 +1,6 @@
 # Auto-orchestration config reference
 
-Two files drive the memory push-surface: the operator-tunable config at `<vault>/personal/auto-orchestration-config.md` (toggles, thresholds, cooldowns — auto-seeded with defaults, re-seed never clobbers operator edits) and the runtime state at `<vault>/_meta/auto-orchestration-state.json` (last-fire-per-chain timestamps plus the last-shown snapshot for the shifted-since-last-shown check). All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). For the why, see [Auto-orchestration](Auto-Orchestration); to edit the config, see [Tune auto-orchestration](Tune-Auto-Orchestration).
+Two files drive the memory push-surface. You tune the config at `<vault>/personal/auto-orchestration-config.md`. It holds toggles, thresholds, and cooldowns. It auto-seeds with defaults. Re-seeding never clobbers your edits. The system stores runtime state at `<vault>/_meta/auto-orchestration-state.json`. This state holds last-fire-per-chain timestamps. It also holds the last-shown snapshot for the shifted-since-last-shown check. All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). See [Auto-orchestration](Auto-Orchestration) for the why. See [Tune auto-orchestration](Tune-Auto-Orchestration) to edit the config.
 
 ## ⚡ Quick Reference
 
@@ -16,7 +16,7 @@ Two files drive the memory push-surface: the operator-tunable config at `<vault>
 
 ## Emission toggles
 
-Each `enable_*` toggle turns one emission off entirely (a `false` value short-circuits that chain before any work). Set with `true` / `false`.
+Each `enable_*` toggle turns one emission off entirely. A `false` value short-circuits that chain before any work. You set these with `true` or `false`.
 
 | Key | Controls | Default |
 |---|---|---|
@@ -48,7 +48,7 @@ These thresholds apply inside the two nudge counters before a nudge surfaces.
 
 ## Chain cooldowns
 
-This is the minimum window (hours) between fires of each chain, honored by `should_fire(chain, now)`. A non-positive value means "always eligible".
+This is the minimum window in hours between fires of each chain. The `should_fire(chain, now)` check honors it. A non-positive value means "always eligible".
 
 | Key | Controls | Default |
 |---|---|---|
@@ -58,7 +58,7 @@ This is the minimum window (hours) between fires of each chain, honored by `shou
 
 ## Idle-chain steps
 
-The idle chain runs these bounded steps in order. The whole chain is gated by `enable_idle_chain` + the `idle_chain` cooldown — there is no per-step config toggle. Each underlying script self-no-ops when its input is empty.
+The idle chain runs these bounded steps in order. The `enable_idle_chain` toggle and the `idle_chain` cooldown gate the whole chain. You cannot toggle steps individually. Each underlying script self-no-ops when you give it empty input.
 
 | Step | What it runs | Bound |
 |---|---|---|
@@ -67,11 +67,11 @@ The idle chain runs these bounded steps in order. The whole chain is gated by `e
 | `adapt-pass1` | `adapt_skills.py --limit 3` — stage Pass-1 candidate JSONs | `--limit 3` |
 
 > [!NOTE]
-> Pass-2 (the `adapt-evaluator` sub-agent) is **not** an idle-chain step. A hook fires outside the agent loop and cannot dispatch a sub-agent, so the chain stages Pass-1 candidates and surfaces the staged count (`staged_candidates` in the run result); the Pass-2 hand-off lands via phase-dispatch / nudge where dispatch is operator-gated.
+> Pass-2 (the `adapt-evaluator` sub-agent) is **not** an idle-chain step. A hook fires outside the agent loop. It cannot dispatch a sub-agent. The chain stages Pass-1 candidates instead. It surfaces the staged count (`staged_candidates` in the run result). The Pass-2 hand-off lands via phase-dispatch or nudge. You gate dispatch there.
 
 ## State file shape
 
-`auto_orchestration.py:save_state()` writes `<vault>/_meta/auto-orchestration-state.json` exclusively (V5-5 LC-2 single-writer invariant); no other script writes this file directly, and sibling orchestration scripts call through `ao.save_state()` instead. It is not tracked by git, and it holds JSON with two top-level objects.
+`auto_orchestration.py:save_state()` writes `<vault>/_meta/auto-orchestration-state.json` exclusively. This enforces the V5-5 LC-2 single-writer invariant. No other script writes this file directly. Sibling orchestration scripts call through `ao.save_state()` instead. Git does not track it. It holds JSON with two top-level objects.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -80,6 +80,6 @@ The idle chain runs these bounded steps in order. The whole chain is gated by `e
 
 ## Related
 
-- [Auto-orchestration](Auto-Orchestration) — what these knobs change and why the surface never nags.
-- [Tune auto-orchestration](Tune-Auto-Orchestration) — the recipe for editing the config.
-- [AgentMemory context payload](AgentMemory-Context-Payload) — the vault folder map (`_inbox/`, `_idea-incubator/`, `_meta/`, `personal/`) these files reference.
+- [Auto-orchestration](Auto-Orchestration) explains what these knobs change. It shows why the surface never nags.
+- [Tune auto-orchestration](Tune-Auto-Orchestration) provides the recipe for editing the config.
+- [AgentMemory context payload](AgentMemory-Context-Payload) details the vault folder map. These files reference the `_inbox/`, `_idea-incubator/`, `_meta/`, and `personal/` paths.

@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # PII Guardrail
 
-AgentM is a public repo, so personal information has to stay out of it — real email addresses, personal file paths, API keys, phone numbers, and private names. The guardrail keeps them out in layers: safe stand-ins as you write, an on-demand scan before you commit, a hard block before every push, and a final scan in CI. This page is what to avoid and how to check.
+AgentM is a public repo. You must keep personal information out of it. This includes real email addresses, personal file paths, API keys, phone numbers, and private names. A layered guardrail protects your code. You use safe stand-ins while you write. You run an on-demand scan before you commit. A hard block stops you before every push. A final scan runs in CI. This page lists what to avoid and shows you how to check.
 
 ## What not to commit
 
@@ -15,7 +15,7 @@ AgentM is a public repo, so personal information has to stay out of it — real 
 
 ## The layers
 
-Three layers keep personal information out, from the interactive to the absolute:
+Three layers keep personal information out. They range from interactive checks to absolute blocks.
 
 | Layer | What it is | When it fires |
 |---|---|---|
@@ -34,14 +34,14 @@ gitleaks detect --source . --config .gitleaks.toml    # the secret scan
 
 ## False positives
 
-If the scanner flags a genuine false positive — a doc example that *looks* like PII but isn't:
+The scanner may flag a false positive. This happens when a doc example *looks* like PII but is not.
 
-1. **Rephrase to dodge the match** — `alice@example.com`, `555-0100`, `<API_KEY>`. This is almost always the right fix.
-2. **Allowlist** if the value legitimately must look real (for example, when testing the scanner itself): add it to `ALLOWLIST_PATTERNS=` in `scripts/check-no-pii.sh`, or to `[allowlist].regexes` / `.paths` in `.gitleaks.toml`, with a comment saying why — and note the reason in the commit message. There is no silent suppression.
+1. **Rephrase to dodge the match.** Use `alice@example.com`, `555-0100`, or `<API_KEY>`. This is the right fix.
+2. **Allowlist** the value if it must look real. You might need this when you test the scanner itself. Add the value to `ALLOWLIST_PATTERNS=` in `scripts/check-no-pii.sh`. You can also add it to `[allowlist].regexes` or `.paths` in `.gitleaks.toml`. Add a comment explaining your reason. Note the reason in your commit message. The scanner has no silent suppression.
 
 ## See also
 
-- [CI gates](CI-Gates) — the `pii-guardrails` gate that backstops the scan.
-- [Repo layout](Repo-Layout) — where the guardrail scripts and hooks live.
+- [CI gates](CI-Gates) — The `pii-guardrails` gate backstops the scan.
+- [Repo layout](Repo-Layout) — The guardrail scripts and hooks live here.
 
 [Reference](Reference) · [Architecture](Architecture) · [Home](Home)
