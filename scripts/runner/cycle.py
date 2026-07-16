@@ -15,6 +15,7 @@ repo's test convention (`cd scripts && python -m unittest discover`) and the
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -170,6 +171,20 @@ def _emit_report(report_path: Optional[Path], job: manifest_mod.JobManifest,
             f.write(line)
 
 
+# A launchd-invoked process gets no LANG/LC_ALL (the plist sets only PATH),
+# so CPython's PEP 538 startup coercion writes LC_CTYPE=C.UTF-8 into its own
+# os.environ, which subprocess.run() then passes straight to the child
+# shell. macOS's system bash mis-tokenizes a `$var` immediately followed by
+# multibyte punctuation under that locale (confirmed live 2026-07-15: it
+# fuses the punctuation's lead byte into the variable name), corrupting
+# stderr bytes enough that decoding raises inside communicate(). en_US.UTF-8
+# is confirmed installed and doesn't trigger the mis-tokenization -- explicit
+# LC_ALL/LANG here overrides the coercion outright rather than relying on
+# inherited env that may already be poisoned.
+def _child_env() -> dict:
+    return dict(os.environ, LANG="en_US.UTF-8", LC_ALL="en_US.UTF-8")
+
+
 def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Path],
              report_path: Optional[Path]) -> JobOutcome:
     if job.tier not in manifest_mod.VALID_TIERS:  # structurally unreachable post-load-validation
@@ -185,7 +200,10 @@ def _run_one(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[
 
     state_mod.mark_start(job.name, now=now, state_root=state_root)
     try:
-        proc = subprocess.run(job.command, shell=True, capture_output=True, text=True)
+        proc = subprocess.run(
+            job.command, shell=True, capture_output=True, text=True,
+            encoding="utf-8", errors="replace", env=_child_env(),
+        )
         exit_code = proc.returncode
         cost = _parse_reported_cost(proc.stdout)
     except Exception:

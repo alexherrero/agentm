@@ -8,6 +8,7 @@ Auto-discovered by `python3 -m unittest discover -p 'test_*.py'` (check-all.sh).
 from __future__ import annotations
 
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -163,6 +164,36 @@ class CycleIdempotencyTests(unittest.TestCase):
             self.assertEqual(len(r2.outcomes), 1)
             self.assertFalse(r2.outcomes[0].ran)
             self.assertEqual(r2.outcomes[0].skipped_reason, "not-due")
+
+    @unittest.skipUnless(os.name == "posix",
+                          "reproduces a bash ctype mis-tokenization; "
+                          "job.command runs under cmd.exe on Windows, not bash")
+    def test_survives_child_locale_coercion(self):
+        # A launchd-invoked process (no LANG/LC_ALL in its plist) gets
+        # LC_CTYPE=C.UTF-8 written into os.environ by CPython's PEP 538
+        # startup coercion. macOS system bash mis-tokenizes a `$var`
+        # immediately followed by multibyte punctuation under that locale,
+        # corrupting stderr bytes enough that decoding raises inside
+        # subprocess.communicate() -- reproduced live 2026-07-15 via
+        # run-fast-tier.sh:31's exact `$label…` pattern. Uncaught, that
+        # exception used to fall into cycle.py's bare `except Exception`
+        # and surface as an undiagnosable exit_code=-1.
+        from unittest import mock
+        with TemporaryDirectory() as td:
+            jobs_dir = Path(td) / "jobs"
+            state_root = Path(td) / "state"
+            report_path = Path(td) / "digest.jsonl"
+            command = 'label="x"; echo "run: $label…" >&2; echo ok'
+            _write_job(jobs_dir, "j", schedule="daily", lookback="6h",
+                       command=command, tier="T3", dry_run=False)
+
+            poisoned = {k: v for k, v in os.environ.items()
+                        if k not in ("LANG", "LC_ALL", "LC_CTYPE")}
+            poisoned["LC_CTYPE"] = "C.UTF-8"
+            with mock.patch.dict("os.environ", poisoned, clear=True):
+                report = cycle.run_cycle(jobs_dir, now=1000.0, state_root=state_root,
+                                          report_path=report_path)
+            self.assertEqual(report.outcomes[0].exit_code, 0)
 
     def test_dry_run_job_writes_nothing_but_reports(self):
         with TemporaryDirectory() as td:
