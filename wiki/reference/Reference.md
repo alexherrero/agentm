@@ -51,6 +51,7 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 | [GitHub Projects sync](GitHub-Projects-Sync) | The board-sync surface agentm exposes — the config it reads, when phases emit updates, and the graceful-skip. |
 | [PII Guardrail](PII) | What to keep out of the public repo, and how the scan enforces it. |
 | [Completed features](Completed-Features) | The log of shipped work, newest first. |
+| [Known issues](Known-Issues) | Fixed gotchas worth knowing before you hit them — non-obvious repro conditions, environmental dependencies, surprising interactions. |
 
 ## See also
 

@@ -25,6 +25,7 @@
 - [Persona tier schema](persona-tier-schema)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
+- [Known issues](Known-Issues)
 - [Memory MCP tools](Memory-MCP-Tools)
 - [Kind-taxonomy registry](Kind-Taxonomy-Registry)
 - [MOC generator](MOC-Generator)

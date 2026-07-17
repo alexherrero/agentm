@@ -42,6 +42,7 @@
 - [Persona tier schema](persona-tier-schema)
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
+- [Known issues](Known-Issues)
 - [Memory MCP tools](Memory-MCP-Tools)
 ### 🏛️ [Architecture](Architecture)
 - [AgentMemory](AgentMemory)
