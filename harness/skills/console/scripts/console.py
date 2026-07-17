@@ -97,10 +97,47 @@ def _memory_scripts_dir() -> "Path | None":
     return candidate if candidate.is_dir() else None
 
 
+def _agentm_install_prefix() -> Path:
+    """$AGENTM_INSTALL_PREFIX -> ~/.claude -- mirrors harness_memory's own
+    convention (and doctor_vault.py's copy of it)."""
+    raw = os.environ.get("AGENTM_INSTALL_PREFIX", "").strip()
+    if raw:
+        return Path(os.path.expanduser(raw))
+    return Path.home() / ".claude"
+
+
+def _read_config_vault_path() -> "Path | None":
+    """Inline read of `<install-prefix>/.agentm-config.json`'s vault_path --
+    the same tiny read doctor_vault.py's `_resolve_vault_path()` does, for
+    the same reason: this must resolve even when no agentm dev checkout is
+    reachable to import harness_memory from. Checks the plugin-namespaced
+    key first, falls back to the legacy flat key (mirrors
+    harness_memory._read_config_vault_path's read order without needing the
+    import)."""
+    config_path = _agentm_install_prefix() / ".agentm-config.json"
+    if not config_path.is_file():
+        return None
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    raw = data.get("plugins.obsidian-vault.vault_path") or data.get("vault_path")
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    p = Path(os.path.expanduser(raw.strip()))
+    return p if p.is_dir() else None
+
+
 def resolve_vault_path() -> "Path | None":
     """Reuse harness_memory.vault_path() when this is an agentm dev checkout
-    (the canonical resolver); fall back to $MEMORY_VAULT_PATH directly
-    otherwise -- same resolution order every other memory script honors."""
+    (the canonical resolver, since it also carries the fail-loud
+    storage.backend=vault guard); otherwise fall back to the same
+    $MEMORY_VAULT_PATH env / on-device .agentm-config.json read every
+    install-side script (doctor_vault.py, the memory hooks) already uses --
+    so memory-activity/vault-doctor/vault-lint/dreaming resolve the same
+    vault from any repo, not just an agentm dev checkout."""
     repo_root = find_repo_root()
     if repo_root is not None:
         scripts_dir = repo_root / "scripts"
@@ -118,7 +155,7 @@ def resolve_vault_path() -> "Path | None":
     if env:
         p = Path(env).expanduser()
         return p if p.is_dir() else None
-    return None
+    return _read_config_vault_path()
 
 
 # ── freshness formatting (shared by health / vault-doctor / vault-lint /
