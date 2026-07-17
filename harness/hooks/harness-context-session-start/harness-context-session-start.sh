@@ -148,4 +148,27 @@ else
     fi
 fi
 
+# ── Observability session brief (autonomy Delivery → the workhorse line) ──────
+# One VISIBLE line: the latest digest headline + how long ago the last cycle
+# ran, or the deadman "no digest in N days — ladder stalled" when the digest
+# ladder has gone quiet. Emitted HERE — a small-output, operator-visible hook,
+# the same surface as the "[agentm] Project state" line above — rather than
+# appended to the memory-recall hook's multi-KB always-load dump, which the host
+# collapses into a single unread <persisted-output> blob (2026-07-17 visibility
+# fix: the design's Delivery channel rests on a line that never actually
+# appeared, because the only briefing lived on that invisible surface). The
+# script self-resolves the vault + telemetry paths, anti-fatigues itself, and is
+# graceful on every edge (missing vault, never-run ladder, GDrive stall). It
+# lives next to the digest/park writers whose delivered notes it reads.
+SESSION_BRIEF="$(dirname "$RESOLVER")/health/session_brief.py"
+if [[ -f "$SESSION_BRIEF" ]]; then
+    BRIEF_TIMEOUT=""
+    if command -v gtimeout >/dev/null 2>&1; then
+        BRIEF_TIMEOUT="gtimeout 2"
+    elif command -v timeout >/dev/null 2>&1; then
+        BRIEF_TIMEOUT="timeout 2"
+    fi
+    $BRIEF_TIMEOUT python3 "$SESSION_BRIEF" 2>/dev/null || true
+fi
+
 exit 0
