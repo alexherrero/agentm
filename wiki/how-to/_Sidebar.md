@@ -19,6 +19,7 @@
 - [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server)
 - [Persist a morning report](Persist-A-Morning-Report)
 - [Enable on-device notifications](Enable-On-Device-Notifications)
+- [Enable email digest delivery](Enable-Email-Digest-Delivery)
 - [Archive a finished project](Archive-A-Finished-Project)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)

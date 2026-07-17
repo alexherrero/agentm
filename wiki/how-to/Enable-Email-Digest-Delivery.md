@@ -1,55 +1,71 @@
 # How to enable the daily digest email
 
 > [!NOTE]
-> **Status: implemented** — shipped by `PLAN-proactive-delivery.md#task-4` (FRIDAY ladder feature 1, task 4 of 5).
-> **Goal:** Opt in to a once-daily email carrying the same digest the SessionStart brief line shows, for a read away from the machine.
-> **Prereqs:** A first-party SMTP relay or on-device mail agent you control — this channel never talks to a third-party push service. A resolvable vault with at least one digest-ladder cycle already run (see [Persist a morning report](Persist-A-Morning-Report) for the sibling `scripts/health/` family). **Not yet wired to the runner** — task 5 of the same plan schedules this automatically; until it ships, you invoke it yourself.
+> **Status: implemented** — shipped by `PLAN-proactive-delivery.md#task-4` (FRIDAY ladder feature 1, task 4 of 5); the runner-job manifest referenced in step 6 shipped in task 5 of the same plan.
+> **Goal:** Opt in to a daily email with the same digest the SessionStart brief displays, so you can read it away from your machine.
+> **Prereqs:** You need a first-party SMTP relay or on-device mail agent you control. This channel never communicates with third-party push services. You also need a resolvable vault with at least one digest-ladder cycle already run (see [Persist a morning report](Persist-A-Morning-Report)).
 
-`scripts/health/session_email.py` is the opt-in, once-daily email channel from `wiki/designs/agentm-autonomy.md`'s [Delivery subsection](agentm-autonomy#delivery--getting-it-in-front-of-you). It reads the same digest ladder the SessionStart line and the on-device notification already read, so the email matches what you'd see elsewhere.
+`scripts/health/session_email.py` is the daily email delivery channel. It implements the design described in [Delivery](agentm-autonomy#delivery--getting-it-in-front-of-you). The channel reads the same digest ladder as the SessionStart line and on-device notifications. This ensures the email content matches what you see elsewhere.
 
 ## Steps
 
-1. **Set both config keys.** The channel requires **both** — either alone reads as unconfigured and the channel silently no-ops:
+Configure and run the daily digest email by following these steps:
+
+1. **Set both config keys.** The channel requires both keys to function. If you configure only one key, the channel silently disables itself:
 
    ```bash
    python3 scripts/agentm_config.py --email-to you@example.com
    python3 scripts/agentm_config.py --email-smtp-url smtp://relay@localhost:587
    ```
 
-   These write `plugins.autonomy.email_to` and `plugins.autonomy.email_smtp_url` (`cmd_set_email_to`, `scripts/agentm_config.py:238`; `cmd_set_email_smtp_url`, `scripts/agentm_config.py:262`; keys declared at `scripts/agentm_config.py:78-79`). Confirm with `--get plugins.autonomy.email_to` / `--get plugins.autonomy.email_smtp_url`. The `smtp://` URL takes the form `smtp://[user@]host[:port]` — the optional `user@` becomes the `From` address; port defaults to `25` when omitted.
+   These write `plugins.autonomy.email_to` and `plugins.autonomy.email_smtp_url` in your configuration. Confirm the settings by running `--get plugins.autonomy.email_to` or `--get plugins.autonomy.email_smtp_url`. The `smtp://` URL uses the form `smtp://[user@]host[:port]`. The optional `user@` prefix sets the `From` address, and the port defaults to `25`.
 
-2. **Run the emailer.** Nothing schedules this yet (see the Prereqs note above), so invoke it directly:
+2. **Run the emailer.** Until you register the runner job, invoke the script directly:
 
    ```bash
    python3 scripts/health/session_email.py
    ```
 
-   `main()` (`session_email.py:181`) calls `run()` (`session_email.py:148`), which checks both keys are set first (`email_config()`, `session_email.py:53-74`), resolves the vault via `session_brief.resolve_vault()` (`session_email.py:160`), and no-ops silently on any missing piece — unconfigured, no vault, or no digest ever run.
+   The script verifies both config keys, resolves your vault, and exits silently if any requirement is missing.
 
-3. **What it sends.** `email_body()` (`session_email.py:106-121`) calls `session_brief.latest_digest()` — the newest delivered digest note, whichever cadence landed most recently. This is a deliberate difference from `session_notify.py`, which calls `build_brief()`: an email has no session-boot moment to gate staleness against, so it just wants the newest digest, stale or not — the SessionStart line's own deadman logic already covers "the ladder went quiet." `_send_smtp()` (`session_email.py:124-145`) builds the message with stdlib's `email.message.EmailMessage` and sends it via `smtplib.SMTP` — the operator's own configured host is the only destination this ever talks to, never a third-party relay.
+3. **Understand the message content.** The email contains the latest delivered digest note from the most recent cycle. Unlike on-device notifications, the email does not check for staleness. It always sends the newest digest. The script builds the message using the Python standard library and sends it directly to your configured SMTP host.
 
-4. **Once-a-day, not once-per-hours.** A calendar-day state file at `~/.cache/agentm/telemetry/email-state.json` (`default_state_path()`, `session_email.py:77-78`) records `last_sent_date` (`_record_sent()`, `session_email.py:95-103`), checked by `_already_sent_today()` (`session_email.py:87-92`). A second call the same day is a no-op regardless of how many times you (or a scheduler, once task 5 lands) invoke the script. An SMTP failure never records the day as sent, so the next invocation retries rather than silently skipping a day.
+4. **Observe the daily limit.** The script tracks delivery in `~/.cache/agentm/telemetry/email-state.json`. It will only send one email per calendar day. Subsequent invocations on the same day do not trigger another email. If the SMTP send fails, the script does not record the attempt, and the next run will retry.
 
-5. **Turn it back off.** Unset either key and the channel graceful-skips:
+5. **Disable the channel.** Unset either configuration key to stop email delivery:
 
    ```bash
    python3 scripts/agentm_config.py --unset plugins.autonomy.email_to
    ```
 
+6. **Automate delivery with the runner.** You can schedule the email using the provided job manifest. Copy the template to your local harness directory:
+
+   ```bash
+   cp templates/jobs/observability-email-daily.yaml .harness/jobs/observability-email-daily.yaml
+   ```
+
+   The local runner picks up the job on its next daily tick. The runner will not send any emails until you set both configuration keys.
+
 ## Verify
 
-- `test_configured_sends` and `test_unconfigured_never_sends` (`RunEndToEndTests`, `scripts/health/test_session_email.py:156-170`) prove the both-keys-required gate end to end.
-- `test_same_day_rerun_does_not_resend` and `test_new_day_resends` (`scripts/health/test_session_email.py:172-193`) prove the calendar-day anti-fatigue behavior.
-- `test_smtp_failure_does_not_record_sent` (`scripts/health/test_session_email.py:195-204`) proves a failed send doesn't consume the day's attempt.
-- `test_subject_and_body_from_latest_digest` (`scripts/health/test_session_email.py:118-124`) proves the email body matches the latest delivered digest.
+Run these tests in `scripts/health/test_session_email.py` to confirm the behavior of the email channel:
+
+- `test_unconfigured_never_sends` and `test_configured_sends` verify that the channel requires both configuration keys.
+- `test_same_day_rerun_does_not_resend` and `test_new_day_resends` verify the calendar-day delivery limit.
+- `test_smtp_failure_does_not_record_sent` verifies that a failed send does not consume the attempt.
+- `test_subject_and_body_from_latest_digest` verifies that the email body matches the latest digest.
 
 ## Troubleshooting
 
-- **Nothing sends and no error appears.** By design — `run()` swallows every exception and every graceful-skip case returns `False` silently (`session_email.py:154-178`), so a missing key, a missing vault, or an SMTP failure all look identical: nothing happens. Check both `python3 scripts/agentm_config.py --get plugins.autonomy.email_to` and `--get plugins.autonomy.email_smtp_url` first.
-- **Only one of the two keys is set.** `email_config()` returns `None` unless both are present and non-empty (`session_email.py:70-74`) — a recipient with no relay, or a relay with no recipient, is treated as fully unconfigured, not a partial state worth sending from.
-- **SMTP connection errors.** `_send_smtp()` catches `smtplib.SMTPException`, `OSError`, and `ValueError` (an unparseable URL) and returns `False` rather than raising (`session_email.py:144-145`) — the runner cycle this rides is never blocked by a mail-relay outage.
+Refer to these solutions when troubleshooting email delivery:
+
+- **Nothing sends and no error appears.** By design, the script swallows exceptions and exits silently when keys are missing, the vault is unresolved, or SMTP fails. Confirm both config keys are set using the `agentm_config.py --get` commands.
+- **Only one of the two keys is set.** The script requires both recipient and SMTP relay configurations. It treats a single configured key as unconfigured and does not send.
+- **SMTP connection errors.** The script catches SMTP connection exceptions and returns `False` instead of raising an error. This ensures a mail-relay outage does not block your runner execution.
 
 ## See also
+
+Refer to these related topics for more details:
 
 - [Autonomy — Delivery](agentm-autonomy#delivery--getting-it-in-front-of-you) — the design this channel implements, and the amendment log entry with the full build detail.
 - [Installer CLI](Installer-CLI) — the `--notify-enabled` / `--email-to` / `--email-smtp-url` config-key reference row.
