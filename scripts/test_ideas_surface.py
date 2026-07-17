@@ -10,10 +10,12 @@ Run directly:
 """
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _SKILL_SCRIPTS = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
@@ -61,6 +63,60 @@ class TestAppendIdeaToSurface(unittest.TestCase):
     def test_empty_title_raises(self):
         with self.assertRaises(ValueError):
             ideas_surface.append_idea_to_surface("  ", "a summary", ideas_path=self.ideas_path, mode="silent")
+
+
+class TestResolveIdeasPathDefault(unittest.TestCase):
+    """Pins the default Ideas.md derivation: the real Obsidian vault root is
+    the PARENT of the resolved MemoryVault path, not vault_path() itself
+    (which resolves to the `Agent/` subfolder) — and never a cached
+    `~/Obsidian/Ideas.md` literal."""
+
+    def setUp(self):
+        self._saved = {
+            k: os.environ.pop(k, None)
+            for k in ("IDEAS_SURFACE_PATH", "MEMORY_VAULT_PATH")
+        }
+
+    def tearDown(self):
+        for k, v in self._saved.items():
+            if v is not None:
+                os.environ[k] = v
+            else:
+                os.environ.pop(k, None)
+
+    def test_default_derives_from_vault_parent(self):
+        fake_vault = Path("/fake/Obsidian/Agent")
+        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=fake_vault):
+            result = ideas_surface._resolve_ideas_path(None)
+        self.assertEqual(result, Path("/fake/Obsidian/Ideas.md"))
+
+    def test_explicit_arg_wins_over_vault_derivation(self):
+        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=Path("/fake/Obsidian/Agent")):
+            result = ideas_surface._resolve_ideas_path("/explicit/Ideas.md")
+        self.assertEqual(result, Path("/explicit/Ideas.md"))
+
+    def test_env_override_wins_over_vault_derivation(self):
+        os.environ["IDEAS_SURFACE_PATH"] = "/env/Ideas.md"
+        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=Path("/fake/Obsidian/Agent")):
+            result = ideas_surface._resolve_ideas_path(None)
+        self.assertEqual(result, Path("/env/Ideas.md"))
+
+    def test_unresolvable_vault_raises_instead_of_falling_back(self):
+        with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=None):
+            with self.assertRaises(FileNotFoundError):
+                ideas_surface._resolve_ideas_path(None)
+
+    def test_append_idea_writes_to_derived_default_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td) / "Obsidian" / "Agent"
+            vault.mkdir(parents=True)
+            with mock.patch.object(ideas_surface, "_resolve_vault_root", return_value=vault):
+                result = ideas_surface.append_idea_to_surface(
+                    "A Cool Idea", "A one-sentence pitch.", mode="silent",
+                )
+            expected = vault.parent / "Ideas.md"
+            self.assertEqual(result, expected)
+            self.assertTrue(expected.is_file())
 
 
 if __name__ == "__main__":

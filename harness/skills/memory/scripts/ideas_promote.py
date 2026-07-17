@@ -11,7 +11,8 @@
 #        project dir at the canonical location).
 #      - Recalculates vec-index entries for the moved files (paths
 #        changed, so old keys are stale + new keys need upsert).
-#      - Annotates the corresponding ~/Obsidian/Ideas.md section with
+#      - Annotates the corresponding Ideas.md section (real Obsidian vault
+#        root, one directory above the resolved MemoryVault path) with
 #        `→ promoted YYYY-MM-DD to projects/<slug>/` (requires
 #        A3 permeable-boundary confirmation; reuses the same helper).
 #
@@ -61,14 +62,55 @@ def _resolve_vault_path(arg: str | None) -> Path:
     )
 
 
-def _resolve_ideas_path(arg: str | None) -> Path:
-    """Ideas.md path: arg → IDEAS_SURFACE_PATH env → default ~/Obsidian/Ideas.md."""
+def _resolve_vault_root() -> Path | None:
+    """Resolve the MemoryVault root at runtime via $MEMORY_VAULT_PATH —
+    never a cached literal. Same convention every sibling script in this
+    package honors. Used only as a fallback when `_resolve_ideas_path`
+    isn't handed an already-resolved vault (see `promote_idea`, which
+    passes its own resolved `vault` so the Ideas.md default can't diverge
+    from the vault actually used for the promotion).
+
+    Deliberately does NOT import harness_memory: kernel toolkit scripts
+    under harness/skills/memory/scripts/ are invoked as subprocesses by the
+    harness_memory bridge and must never import it back (V5-5 LC-8 bridge
+    extension, enforced by scripts/check-one-way-imports.py's lc8-bridge
+    rule). The bridge — or any other caller — is responsible for resolving
+    `harness_memory.vault_path()` (the canonical resolver; AGENTS.md §
+    Vault-path convention) and exporting it as $MEMORY_VAULT_PATH before
+    invoking this script.
+    """
+    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    if env:
+        p = Path(env).expanduser()
+        return p if p.is_dir() else None
+    return None
+
+
+def _resolve_ideas_path(arg: str | None, vault: Path | None = None) -> Path:
+    """Ideas.md path: arg → IDEAS_SURFACE_PATH env → parent of `vault`.
+
+    `vault` is the already-resolved MemoryVault root when the caller has
+    one (e.g. `promote_idea`'s own resolved vault); when omitted, falls
+    back to independently resolving it via `_resolve_vault_root`.
+
+    Raises FileNotFoundError if none of arg / $IDEAS_SURFACE_PATH / `vault`
+    / the independent vault resolution succeed — never falls back to a
+    cached path literal.
+    """
     if arg:
         return Path(arg).expanduser()
     env = os.environ.get("IDEAS_SURFACE_PATH", "").strip()
     if env:
         return Path(env).expanduser()
-    return Path.home() / "Obsidian" / "Ideas.md"
+    if vault is None:
+        vault = _resolve_vault_root()
+    if vault is None:
+        raise FileNotFoundError(
+            "No Ideas.md path resolved. Set --ideas-path, $IDEAS_SURFACE_PATH, "
+            "or $MEMORY_VAULT_PATH (Ideas.md defaults to the parent directory "
+            "of the resolved vault path)."
+        )
+    return vault.parent / "Ideas.md"
 
 
 def _parse_index_frontmatter(index_path: Path) -> dict:
@@ -280,8 +322,9 @@ def promote_idea(
     new_prefix = f"personal/projects/{slug}/"
     vec_stats = _vec_index_reflect_move(vault, old_prefix, new_prefix)
 
-    # Annotate Ideas.md section.
-    ideas_md = _resolve_ideas_path(str(ideas_path) if ideas_path else None)
+    # Annotate Ideas.md section. Pass the already-resolved `vault` so the
+    # default can't diverge from the vault actually used for the promotion.
+    ideas_md = _resolve_ideas_path(str(ideas_path) if ideas_path else None, vault=vault)
     if not ideas_md.exists():
         ideas_annotation = "no_ideas_file"
     else:
@@ -429,7 +472,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     p_promote.add_argument("slug", help="incubator slug to promote")
     p_promote.add_argument("--vault-path", default=None, help="MemoryVault root")
     p_promote.add_argument("--ideas-path", default=None,
-                           help="override Ideas.md path (default $IDEAS_SURFACE_PATH or ~/Obsidian/Ideas.md)")
+                           help=(
+                               "override Ideas.md path (default: $IDEAS_SURFACE_PATH, "
+                               "else the parent directory of --vault-path / the "
+                               "resolved vault path)"
+                           ))
     p_promote.add_argument("--mode", choices=["silent", "interactive", "auto"],
                            default=None,
                            help="permeable-boundary mode for Ideas.md annotation (default: $MEMORY_REVIEW_MODE or interactive)")
