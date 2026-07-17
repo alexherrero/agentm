@@ -311,7 +311,11 @@ def section_runner_jobs(repo_root: "Path | None", *, state_root: "Path | None" =
         return f"Runner jobs: n/a ({e})"
     try:
         jobs = rmanifest.load_manifests(repo_root / ".harness" / "jobs")
-    except rmanifest.ManifestError as e:
+    except (rmanifest.ManifestError, OSError) as e:
+        # OSError (e.g. a directory matching *.yaml/*.yml under .harness/jobs/,
+        # which load_manifests() doesn't itself guard against) alongside the
+        # expected ManifestError -- this section must degrade like every
+        # other one in this file, never raise past gather_report().
         return f"Runner jobs: n/a ({e})"
     real_jobs = [j for j in jobs if not j.dry_run]
     if not real_jobs:

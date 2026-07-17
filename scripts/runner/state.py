@@ -78,7 +78,16 @@ def mark_missed(job_name: str, *, now: Optional[float] = None, state_root: Optio
     field). Preserves the prior marker's `last_real_run` -- a re-anchor never
     advances it, so a reader can always tell how long it's actually been
     since the job's command last ran, no matter how many silent re-anchors
-    have happened since."""
+    have happened since.
+
+    A marker written before this field existed has no `last_real_run` key
+    at all -- `prior.get("last_real_run", prior.get("last_run"))` falls
+    back to its `last_run` in that case (the best-available reading, and no
+    less precise than that marker already was pre-fix), rather than
+    `.get("last_real_run")` alone, which would read as `None` (a key that's
+    *present* with value `None`, meaning "genuinely never run", and a key
+    that's *absent*, meaning "written before this existed", must not be
+    conflated -- only the latter falls back)."""
     prior = read_marker(job_name, state_root=state_root)
     p = _marker_path(job_name, state_root)
     p.write_text(
@@ -86,7 +95,7 @@ def mark_missed(job_name: str, *, now: Optional[float] = None, state_root: Optio
             "status": "done",
             "last_run": now if now is not None else time.time(),
             "last_cost_usd": 0.0,
-            "last_real_run": prior.get("last_real_run"),
+            "last_real_run": prior.get("last_real_run", prior.get("last_run")),
             "missed": True,
         }),
         encoding="utf-8",

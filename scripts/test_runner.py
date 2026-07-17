@@ -171,6 +171,38 @@ class DueDecisionTests(unittest.TestCase):
             self.assertEqual(state.last_real_run_epoch(marker), 3000.0)
             self.assertEqual(state.last_run_epoch(marker), 3000.0)
 
+    def test_a_miss_against_a_legacy_pre_field_marker_falls_back_to_last_run(self):
+        # /review finding (2026-07-17): every marker on disk at the instant
+        # this field ships was written by the OLD mark_done -- status/
+        # last_run/last_cost_usd only, no last_real_run key at all. The
+        # first mark_missed() against one of those (cycle.is_due's re-anchor
+        # firing on exactly the kind of long-overdue job this feature exists
+        # to catch) must not read that absent key as "genuinely never run" --
+        # it must fall back to the legacy marker's own last_run.
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            legacy = root / "j.json"
+            legacy.write_text(json.dumps({"status": "done", "last_run": 1000.0, "last_cost_usd": 0.02}),
+                               encoding="utf-8")
+            state.mark_missed("j", now=2_000_000.0, state_root=root)
+            marker = state.read_marker("j", state_root=root)
+            self.assertEqual(state.last_real_run_epoch(marker), 1000.0)
+            self.assertTrue(state.was_last_advance_a_miss(marker))
+
+    def test_repeated_misses_do_not_re_clobber_the_legacy_fallback_with_none(self):
+        # A SECOND mark_missed (no real run in between) must not read the
+        # first mark_missed's own last_real_run (already correctly 1000.0
+        # via the legacy fallback above) and somehow lose it.
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            legacy = root / "j.json"
+            legacy.write_text(json.dumps({"status": "done", "last_run": 1000.0, "last_cost_usd": 0.02}),
+                               encoding="utf-8")
+            state.mark_missed("j", now=2_000_000.0, state_root=root)
+            state.mark_missed("j", now=3_000_000.0, state_root=root)
+            marker = state.read_marker("j", state_root=root)
+            self.assertEqual(state.last_real_run_epoch(marker), 1000.0)
+
     def test_a_job_that_has_never_really_run_reports_no_last_real_run(self):
         with TemporaryDirectory() as td:
             root = Path(td)

@@ -342,6 +342,16 @@ class RunnerJobsSectionTests(unittest.TestCase):
         self.assertIn("1.0h ago", out)
         self.assertNotIn("OVERDUE", out)
 
+    def test_degrades_on_a_directory_matching_the_yaml_glob(self):
+        # load_manifests() globs *.yaml/*.yml and reads each match as a
+        # file with no is_file() guard -- a directory entry (editor
+        # artifact, bad mkdir) raises IsADirectoryError, an OSError that
+        # ManifestError alone doesn't cover. This section must degrade like
+        # every other one in console.py, never raise past gather_report().
+        (self.jobs_dir / "oops.yaml").mkdir()
+        out = c.section_runner_jobs(self.repo_root, state_root=self.state_root)
+        self.assertIn("n/a", out)
+
     def test_missed_reanchor_flags_overdue_and_reports_the_prior_real_run(self):
         from runner import state as rstate
 
