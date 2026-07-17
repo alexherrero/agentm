@@ -662,6 +662,36 @@ class TestAutonomyDeliveryConfig(unittest.TestCase):
                 ac.main(["--notify-enabled", "true", "--email-to", "me@example.com"])
         self.assertEqual(ctx.exception.code, 2)
 
+    # -- --email-from (optional verified sending address) --------------------
+
+    def test_set_email_from_writes_field_rc0(self) -> None:
+        rc, out, err = self._run("--email-from", "digest@example.com")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config[ac._AUTONOMY_EMAIL_FROM_KEY], "digest@example.com")
+        self.assertEqual(out.strip(), "plugins.autonomy.email_from = digest@example.com")
+
+    def test_set_email_from_refuses_empty(self) -> None:
+        rc, _, err = self._run("--email-from", "   ")
+        self.assertEqual(rc, 2)
+        self.assertIn("non-empty", err)
+        self.assertFalse((self.prefix / ".agentm-config.json").is_file())
+
+    def test_email_from_absent_by_default(self) -> None:
+        rc, out, err = self._run("--get", "plugins.autonomy.email_from")
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
+
+    def test_email_from_round_trips_via_get_and_unset(self) -> None:
+        self._run("--email-from", "digest@example.com")
+        rc, out, _ = self._run("--get", "plugins.autonomy.email_from")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "digest@example.com")
+        rc, _, _ = self._run("--unset", "plugins.autonomy.email_from")
+        self.assertEqual(rc, 0)
+        rc, _, _ = self._run("--get", "plugins.autonomy.email_from")
+        self.assertEqual(rc, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

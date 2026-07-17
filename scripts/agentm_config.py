@@ -23,6 +23,9 @@ Operations:
                                             #   (plugins.autonomy.email_to)
     agentm_config.py --email-smtp-url <url> # first-party SMTP/mail-agent target
                                             #   (plugins.autonomy.email_smtp_url)
+    agentm_config.py --email-from <address> # optional verified sending address
+                                            #   (plugins.autonomy.email_from; some relays
+                                            #   require this distinct from the auth username)
     agentm_config.py --get vault_path      # read plugins.obsidian-vault.vault_path (with
                                             #   legacy vault_path fallback); rc=0 if present
     agentm_config.py --list                # dump full config as JSON
@@ -77,6 +80,11 @@ _PLUGIN_VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
 _AUTONOMY_NOTIFY_ENABLED_KEY = "plugins.autonomy.notify_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
+#: Optional — the verified sending address for relays (e.g. Resend) that
+#: require a domain-verified From distinct from the SMTP auth username.
+#: Absent → the sender falls back to email_to (mail-to-self, fine for a
+#: local/on-device relay with no domain-verification requirement).
+_AUTONOMY_EMAIL_FROM_KEY = "plugins.autonomy.email_from"
 
 
 def _resolve_install_prefix(cli_arg: Optional[str] = None) -> Path:
@@ -259,6 +267,31 @@ def cmd_set_email_to(prefix: Path, address: str) -> int:
     return 0
 
 
+def cmd_set_email_from(prefix: Path, address: str) -> int:
+    """Set the verified sending address (`plugins.autonomy.email_from`).
+
+    Optional. Some relays (Resend and similar transactional-email services)
+    require a domain-verified From distinct from the SMTP auth username —
+    this field carries that address. Absent, the sender falls back to
+    email_to. Validates a non-empty string only. Idempotent.
+    """
+    address = address.strip()
+    if not address:
+        print(
+            "[agentm_config] refusing to set email_from: address must be a non-empty string",
+            file=sys.stderr,
+        )
+        return 2
+    config = _read_config(prefix) or {}
+    if config.get(_AUTONOMY_EMAIL_FROM_KEY) == address:
+        return 0
+    config[_AUTONOMY_EMAIL_FROM_KEY] = address
+    written = _write_config(prefix, config)
+    print(f"{_AUTONOMY_EMAIL_FROM_KEY} = {address}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_set_email_smtp_url(prefix: Path, url: str) -> int:
     """Set the first-party SMTP/mail-agent target (`plugins.autonomy.email_smtp_url`).
 
@@ -377,6 +410,8 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",
                     help="set plugins.autonomy.email_smtp_url — the first-party SMTP/mail-agent target")
+    op.add_argument("--email-from", metavar="ADDRESS",
+                    help="set plugins.autonomy.email_from — the verified sending address (optional; some relays require this distinct from the SMTP auth username)")
     op.add_argument("--get", metavar="FIELD", help="read single field to stdout")
     op.add_argument("--list", action="store_true", help="dump full config as JSON")
     op.add_argument("--unset", metavar="FIELD", help="clear a field")
@@ -400,6 +435,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_email_to(prefix, args.email_to)
     if args.email_smtp_url is not None:
         return cmd_set_email_smtp_url(prefix, args.email_smtp_url)
+    if args.email_from is not None:
+        return cmd_set_email_from(prefix, args.email_from)
     if args.get is not None:
         return cmd_get(prefix, args.get)
     if args.list:

@@ -60,7 +60,25 @@ class EmailConfigTests(unittest.TestCase):
             "plugins.autonomy.email_to": "me@example.com",
             "plugins.autonomy.email_smtp_url": "smtp://relay@localhost:587",
         })
-        self.assertEqual(se.email_config(self.prefix), ("me@example.com", "smtp://relay@localhost:587"))
+        self.assertEqual(
+            se.email_config(self.prefix), ("me@example.com", "smtp://relay@localhost:587", None))
+
+    def test_from_absent_by_default(self):
+        self._write(**{
+            "plugins.autonomy.email_to": "me@example.com",
+            "plugins.autonomy.email_smtp_url": "smtp://relay@localhost:587",
+        })
+        _, _, from_addr = se.email_config(self.prefix)
+        self.assertIsNone(from_addr)
+
+    def test_from_present_returned(self):
+        self._write(**{
+            "plugins.autonomy.email_to": "me@example.com",
+            "plugins.autonomy.email_smtp_url": "smtp://relay@localhost:587",
+            "plugins.autonomy.email_from": "digest@example.com",
+        })
+        _, _, from_addr = se.email_config(self.prefix)
+        self.assertEqual(from_addr, "digest@example.com")
 
     def test_empty_string_email_to_is_none(self):
         self._write(**{
@@ -101,6 +119,67 @@ class SendSmtpTests(unittest.TestCase):
 
     def test_false_when_host_unparseable(self):
         ok = se._send_smtp("not-a-url", "me@example.com", "subj", "body")
+        self.assertFalse(ok)
+
+    def test_starttls_attempted_on_non_465_port(self):
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            se._send_smtp("smtp://relay@localhost:587", "me@example.com", "subj", "body")
+        server.starttls.assert_called_once()
+
+    def test_starttls_unsupported_is_swallowed(self):
+        import smtplib
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            server.starttls.side_effect = smtplib.SMTPNotSupportedError("no TLS")
+            ok = se._send_smtp("smtp://relay@localhost:587", "me@example.com", "subj", "body")
+        self.assertTrue(ok)
+        server.send_message.assert_called_once()
+
+    def test_ssl_used_on_port_465_no_starttls(self):
+        with mock.patch("smtplib.SMTP_SSL") as ssl_cls, mock.patch("smtplib.SMTP") as plain_cls:
+            server = ssl_cls.return_value.__enter__.return_value
+            ok = se._send_smtp("smtp://relay@localhost:465", "me@example.com", "subj", "body")
+        self.assertTrue(ok)
+        ssl_cls.assert_called_once_with("localhost", 465, timeout=10)
+        plain_cls.assert_not_called()
+        server.starttls.assert_not_called()
+
+    def test_login_called_when_password_present(self):
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            se._send_smtp("smtp://resend:re_apikey123@example.com:587", "me@example.com", "subj", "body")
+        server.login.assert_called_once_with("resend", "re_apikey123")
+
+    def test_no_login_when_password_absent(self):
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            se._send_smtp("smtp://localhost:587", "me@example.com", "subj", "body")
+        server.login.assert_not_called()
+
+    def test_from_addr_used_as_sender_when_given(self):
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            se._send_smtp(
+                "smtp://resend:re_apikey123@example.com:587", "me@example.com", "subj", "body",
+                from_addr="digest@example.com",
+            )
+        sent_msg = server.send_message.call_args[0][0]
+        self.assertEqual(sent_msg["From"], "digest@example.com")
+
+    def test_from_addr_falls_back_to_to_addr_when_absent(self):
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            se._send_smtp("smtp://localhost:587", "me@example.com", "subj", "body")
+        sent_msg = server.send_message.call_args[0][0]
+        self.assertEqual(sent_msg["From"], "me@example.com")
+
+    def test_false_on_auth_failure(self):
+        import smtplib
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            server.login.side_effect = smtplib.SMTPAuthenticationError(535, b"bad creds")
+            ok = se._send_smtp("smtp://resend:wrong@example.com:587", "me@example.com", "subj", "body")
         self.assertFalse(ok)
 
 

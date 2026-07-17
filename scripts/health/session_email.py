@@ -39,6 +39,7 @@ import session_brief  # noqa: E402 — reuse the canonical digest reader, don't 
 
 _EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
+_EMAIL_FROM_KEY = "plugins.autonomy.email_from"
 
 
 def _agentm_install_prefix() -> Path:
@@ -50,10 +51,14 @@ def _agentm_install_prefix() -> Path:
     return Path.home() / ".claude"
 
 
-def email_config(install_prefix: "Path | None" = None) -> "tuple[str, str] | None":
-    """Read (`email_to`, `email_smtp_url`) from `.agentm-config.json`.
-    Returns None unless BOTH are present and non-empty — either one absent
-    means the channel is unconfigured and graceful-skips. Never raises."""
+def email_config(install_prefix: "Path | None" = None) -> "tuple[str, str, str | None] | None":
+    """Read (`email_to`, `email_smtp_url`, `email_from`) from
+    `.agentm-config.json`. Returns None unless BOTH `email_to` and
+    `email_smtp_url` are present and non-empty — either one absent means the
+    channel is unconfigured and graceful-skips. `email_from` is optional
+    (some relays, e.g. Resend, require a domain-verified From distinct from
+    the SMTP auth username; absent, the sender falls back to `email_to`).
+    Never raises."""
     if install_prefix is None:
         install_prefix = _agentm_install_prefix()
     config_path = install_prefix / ".agentm-config.json"
@@ -71,7 +76,9 @@ def email_config(install_prefix: "Path | None" = None) -> "tuple[str, str] | Non
         return None
     if not isinstance(smtp_url, str) or not smtp_url.strip():
         return None
-    return to_addr.strip(), smtp_url.strip()
+    from_addr = data.get(_EMAIL_FROM_KEY)
+    from_addr = from_addr.strip() if isinstance(from_addr, str) and from_addr.strip() else None
+    return to_addr.strip(), smtp_url.strip(), from_addr
 
 
 def default_state_path() -> Path:
@@ -121,25 +128,56 @@ def email_body(vault: Path) -> "tuple[str, str] | None":
     return subject, "\n".join(body_lines)
 
 
-def _send_smtp(smtp_url: str, to_addr: str, subject: str, body: str) -> bool:
+def _send_smtp(
+    smtp_url: str, to_addr: str, subject: str, body: str, *, from_addr: "str | None" = None,
+) -> bool:
     """Send via the configured first-party SMTP relay/mail agent. Parses
-    `smtp://[user@]host[:port]`. Returns True iff the send completed
-    without raising. Never a third-party push service — the operator's own
-    URL is the only destination this ever talks to."""
+    `smtp://[user[:password]@]host[:port]` — credentials are the operator's
+    own, for their own configured relay (e.g. a transactional-email service
+    account they hold, like Resend), never a third-party push service; the
+    operator's own URL is the only destination this ever talks to.
+
+    Auth + TLS: when the URL carries a password, logs in after establishing
+    a secure channel — implicit TLS (`SMTP_SSL`) on port 465, otherwise
+    `STARTTLS` (attempted opportunistically; a plain relay that offers no
+    STARTTLS still proceeds unencrypted, matching an on-device mail agent
+    with no TLS story). A URL with no password sends unauthenticated, for a
+    local/on-device relay that needs none.
+
+    `from_addr` (optional) is the domain-verified sending address some
+    relays require distinct from the auth username; falls back to `to_addr`
+    (mail-to-self) when absent.
+
+    Returns True iff the send completed without raising."""
     try:
         parsed = urlparse(smtp_url)
         host = parsed.hostname
         if not host:
             return False
         port = parsed.port or 25
-        from_addr = parsed.username or to_addr
+        username = parsed.username
+        password = parsed.password
+        sender = from_addr or to_addr
         msg = EmailMessage()
         msg["Subject"] = subject
-        msg["From"] = from_addr
+        msg["From"] = sender
         msg["To"] = to_addr
         msg.set_content(body)
-        with smtplib.SMTP(host, port, timeout=10) as server:
-            server.send_message(msg)
+
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=10) as server:
+                if password:
+                    server.login(username or sender, password)
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=10) as server:
+                try:
+                    server.starttls()
+                except smtplib.SMTPNotSupportedError:
+                    pass
+                if password:
+                    server.login(username or sender, password)
+                server.send_message(msg)
         return True
     except (smtplib.SMTPException, OSError, ValueError):
         return False
@@ -155,7 +193,7 @@ def run(
         cfg = email_config(install_prefix)
         if cfg is None:
             return False
-        to_addr, smtp_url = cfg
+        to_addr, smtp_url, from_addr = cfg
         if vault is None:
             vault = session_brief.resolve_vault()
         if vault is None:
@@ -170,7 +208,7 @@ def run(
         if built is None:
             return False
         subject, body = built
-        sent = _send_smtp(smtp_url, to_addr, subject, body)
+        sent = _send_smtp(smtp_url, to_addr, subject, body, from_addr=from_addr)
         if sent:
             _record_sent(state_path, today)
         return sent
