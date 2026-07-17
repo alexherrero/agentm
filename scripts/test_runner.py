@@ -400,6 +400,13 @@ class HealthPassJobManifestTests(unittest.TestCase):
             )
 
 
+@unittest.skipUnless(os.name == "posix",
+                      "agentm-runner.sh is a bash/launchd artifact with no Windows "
+                      "counterpart (no agentm-runner.ps1, no cron/launchd equivalent "
+                      "wired yet) -- mirrors this file's own "
+                      "CycleIdempotencyTests.test_survives_child_locale_coercion "
+                      "posix-only precedent, for the same underlying reason: bash "
+                      "isn't the shell CI's Windows runner executes job commands under.")
 class RunnerEntrypointTests(unittest.TestCase):
     """End-to-end regression coverage for scripts/agentm-runner.sh itself --
     the actual launchd entry point, not just the cycle.py/manifest.py
