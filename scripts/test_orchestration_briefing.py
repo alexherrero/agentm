@@ -56,6 +56,14 @@ def _incubator(vault: Path, slug: str) -> None:
     (vault / "_idea-incubator" / slug).mkdir(parents=True, exist_ok=True)
 
 
+def _digest_brief(vault: Path, date_slug: str, cadence: str = "daily") -> None:
+    d = vault / "_briefs"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{date_slug}-digest-{cadence}.md").write_text(
+        "---\nkind: brief\n---\n\n# Observability digest\n", encoding="utf-8",
+    )
+
+
 class TestCounters(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -119,6 +127,29 @@ class TestCounters(unittest.TestCase):
             self.assertEqual(ob.count_idea_ledger_stale(_NOW, 6), 1)
         finally:
             del os.environ["IDEAS_SURFACE_PATH"]
+
+    def test_digest_stale_days_zero_when_never_configured(self) -> None:
+        # A vault that never had the digest ladder wired up must not nag --
+        # this is a deadman check on a ladder that WAS running, not a
+        # "you should turn this on" prompt.
+        self.assertEqual(ob.count_digest_stale_days(self.vault, _NOW), 0)
+
+    def test_digest_stale_days_counts_from_the_newest_digest(self) -> None:
+        _digest_brief(self.vault, "20260528", cadence="daily")  # 4 days before _NOW
+        _digest_brief(self.vault, "20260530", cadence="weekly")  # 2 days before _NOW -- newer
+        self.assertEqual(ob.count_digest_stale_days(self.vault, _NOW), 2)
+
+    def test_digest_stale_days_zero_when_fresh(self) -> None:
+        _digest_brief(self.vault, "20260601")  # same day as _NOW
+        self.assertEqual(ob.count_digest_stale_days(self.vault, _NOW), 0)
+
+    def test_digest_stale_days_a_fresh_park_note_does_not_mask_a_stale_digest(self) -> None:
+        # _briefs/ is shared with the park job (console.py's own docstring);
+        # a same-day park note must not read as evidence the digest ladder
+        # is healthy.
+        _digest_brief(self.vault, "20260525")  # 7 days before _NOW -- stale
+        (self.vault / "_briefs" / "20260601-park-something.md").write_text("x", encoding="utf-8")
+        self.assertEqual(ob.count_digest_stale_days(self.vault, _NOW), 7)
 
     def test_staged_adapt_counts_only_unevaluated(self) -> None:
         # v4.13.1: staged Pass-1 candidates WITHOUT a watchlist entry = awaiting
@@ -253,6 +284,18 @@ class TestRender(unittest.TestCase):
         self.assertIn("3 skill candidates staged for adapt-evaluation", out)
         self.assertIn("/memory adapt-skills", out)
 
+    def test_renders_digest_stale_days(self) -> None:
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0,
+                   "digest_stale_days": 4}
+        out = ob.build_briefing(signals, self._cfg())
+        self.assertIn("observability digest ladder: no digest in 4d — stalled", out)
+        self.assertIn("/console", out)
+
+    def test_digest_stale_days_below_threshold_suppressed(self) -> None:
+        signals = {"inbox": 0, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0,
+                   "digest_stale_days": 1}
+        self.assertEqual(ob.build_briefing(signals, self._cfg(digest_ladder_stale_days_threshold=2)), "")
+
     def test_inbox_below_threshold_suppressed(self) -> None:
         signals = {"inbox": 5, "watchlist_high": 0, "incubator": 0, "idea_ledger": 0}
         self.assertEqual(ob.build_briefing(signals, self._cfg(inbox_threshold=10)), "")
@@ -358,6 +401,16 @@ class TestEmit(unittest.TestCase):
         self.assertIn("staged for adapt-evaluation", out)
         self.assertEqual(ao.load_state(self.vault)["last_shown"],
                          {"watchlist_high": 1, "staged_adapt": 1})
+
+    def test_digest_stale_days_rides_briefing(self) -> None:
+        # setUp seeds a HIGH pending entry; a stalled digest ladder rides the
+        # same briefing block + shifted-state guard.
+        _digest_brief(self.vault, "20260525")  # 7 days before _NOW -- stale
+        out = ob.emit_briefing(self.vault, _NOW)
+        self.assertIn("no digest in 7d", out)
+        self.assertIn("HIGH skill-watchlist", out)  # consolidated, one block
+        st = ao.load_state(self.vault)
+        self.assertEqual(st["last_shown"], {"watchlist_high": 1, "digest_stale_days": 7})
 
     def test_promote_suggest_toggle_off_suppresses(self) -> None:
         ideas = self.vault / "Ideas.md"

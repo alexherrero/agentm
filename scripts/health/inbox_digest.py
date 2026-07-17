@@ -181,8 +181,14 @@ def write_digest_note(vault_path: "str | Path", cadence: str, body: str, *, now:
     Idempotent per day: if today's note for this cadence already exists,
     its path is returned unchanged -- never a second file, never a
     numeric-suffix collision (a digest slug is meant to be stable per day).
-    Returns None if the vault directory doesn't exist (graceful-skip).
+    Returns None if the vault directory doesn't exist, or if `vault_path`
+    is empty/falsy (2026-07-17 finding: an unset `$MEMORY_VAULT_PATH`
+    upstream expands to "", and `Path("")` resolves to cwd -- which always
+    "is a directory", so a bare `.is_dir()` check silently treats cwd as
+    the vault instead of correctly reading "no vault" -- graceful-skip).
     """
+    if not vault_path:
+        return None
     vault = Path(vault_path)
     if not vault.is_dir():
         return None

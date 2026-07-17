@@ -9,9 +9,14 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
+import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+import yaml
 
 from runner import cycle, manifest, state, watchdog
 
@@ -137,6 +142,76 @@ class DueDecisionTests(unittest.TestCase):
             due2, reason2 = cycle.is_due(job, now=now + 1, state_root=Path(td))
             self.assertFalse(due2)
             self.assertEqual(reason2, "not-due")
+
+    def test_missed_beyond_lookback_marker_stays_distinguishable_from_a_real_run(self):
+        # 2026-07-17 honesty-surface finding: pre-fix, mark_done's marker for
+        # a re-anchor was byte-identical to a real success -- a job that
+        # never actually ran read exactly like one that did.
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            job = self._job(lookback="1h")
+            state.mark_done("j", now=1000.0, state_root=root)
+            now = 1000.0 + 86400 + (10 * 86400)
+            cycle.is_due(job, now=now, state_root=root)
+            marker = state.read_marker("j", state_root=root)
+            self.assertTrue(state.was_last_advance_a_miss(marker))
+            # last_run (the due-clock) advanced to `now` -- scheduling still works.
+            self.assertEqual(state.last_run_epoch(marker), now)
+            # last_real_run stays pinned to the prior GENUINE run, not `now`.
+            self.assertEqual(state.last_real_run_epoch(marker), 1000.0)
+
+    def test_a_real_run_after_a_miss_clears_the_flag_and_advances_last_real_run(self):
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            state.mark_done("j", now=1000.0, state_root=root)
+            state.mark_missed("j", now=2000.0, state_root=root)
+            state.mark_done("j", now=3000.0, cost_usd=0.01, state_root=root)
+            marker = state.read_marker("j", state_root=root)
+            self.assertFalse(state.was_last_advance_a_miss(marker))
+            self.assertEqual(state.last_real_run_epoch(marker), 3000.0)
+            self.assertEqual(state.last_run_epoch(marker), 3000.0)
+
+    def test_a_miss_against_a_legacy_pre_field_marker_falls_back_to_last_run(self):
+        # /review finding (2026-07-17): every marker on disk at the instant
+        # this field ships was written by the OLD mark_done -- status/
+        # last_run/last_cost_usd only, no last_real_run key at all. The
+        # first mark_missed() against one of those (cycle.is_due's re-anchor
+        # firing on exactly the kind of long-overdue job this feature exists
+        # to catch) must not read that absent key as "genuinely never run" --
+        # it must fall back to the legacy marker's own last_run.
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            legacy = root / "j.json"
+            legacy.write_text(json.dumps({"status": "done", "last_run": 1000.0, "last_cost_usd": 0.02}),
+                               encoding="utf-8")
+            state.mark_missed("j", now=2_000_000.0, state_root=root)
+            marker = state.read_marker("j", state_root=root)
+            self.assertEqual(state.last_real_run_epoch(marker), 1000.0)
+            self.assertTrue(state.was_last_advance_a_miss(marker))
+
+    def test_repeated_misses_do_not_re_clobber_the_legacy_fallback_with_none(self):
+        # A SECOND mark_missed (no real run in between) must not read the
+        # first mark_missed's own last_real_run (already correctly 1000.0
+        # via the legacy fallback above) and somehow lose it.
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            legacy = root / "j.json"
+            legacy.write_text(json.dumps({"status": "done", "last_run": 1000.0, "last_cost_usd": 0.02}),
+                               encoding="utf-8")
+            state.mark_missed("j", now=2_000_000.0, state_root=root)
+            state.mark_missed("j", now=3_000_000.0, state_root=root)
+            marker = state.read_marker("j", state_root=root)
+            self.assertEqual(state.last_real_run_epoch(marker), 1000.0)
+
+    def test_a_job_that_has_never_really_run_reports_no_last_real_run(self):
+        with TemporaryDirectory() as td:
+            root = Path(td)
+            state.mark_missed("j", now=1000.0, state_root=root)
+            marker = state.read_marker("j", state_root=root)
+            self.assertTrue(state.was_last_advance_a_miss(marker))
+            self.assertIsNone(state.last_real_run_epoch(marker))
+            # Due-clock still advanced, so scheduling is unaffected.
+            self.assertEqual(state.last_run_epoch(marker), 1000.0)
 
     def test_orphaned_start_is_retried(self):
         with TemporaryDirectory() as td:
@@ -323,6 +398,121 @@ class HealthPassJobManifestTests(unittest.TestCase):
                 job.command,
                 "bash health/run-fast-tier.sh | python3 health/health_score.py --history --html",
             )
+
+
+@unittest.skipUnless(os.name == "posix",
+                      "agentm-runner.sh is a bash/launchd artifact with no Windows "
+                      "counterpart (no agentm-runner.ps1, no cron/launchd equivalent "
+                      "wired yet) -- mirrors this file's own "
+                      "CycleIdempotencyTests.test_survives_child_locale_coercion "
+                      "posix-only precedent, for the same underlying reason: bash "
+                      "isn't the shell CI's Windows runner executes job commands under.")
+class RunnerEntrypointTests(unittest.TestCase):
+    """End-to-end regression coverage for scripts/agentm-runner.sh itself --
+    the actual launchd entry point, not just the cycle.py/manifest.py
+    internals the rest of this file exercises against. Reproduces the exact
+    invocation com.agentm.runner.plist uses (`bash agentm-runner.sh run`,
+    PATH-only environment, cwd not the repo root -- launchd sets none)
+    against an isolated fixture repo, so the two bugs this class guards
+    against fail here the same way they silently failed for real (12 days,
+    2026-07-05 through 2026-07-17: every launchd-triggered cycle completed
+    exit-0 with zero jobs discovered)."""
+
+    def setUp(self) -> None:
+        self.tmp = TemporaryDirectory()
+        self.repo_root = Path(self.tmp.name) / "repo"
+        self.scripts_dir = self.repo_root / "scripts"
+        real_scripts_dir = Path(__file__).resolve().parent
+        # Only what agentm-runner.sh + runner.cli actually need -- not the
+        # whole scripts/ tree, which would drag in unrelated sibling-import
+        # surface this test has no business depending on.
+        shutil.copytree(real_scripts_dir / "runner", self.scripts_dir / "runner")
+        shutil.copy2(real_scripts_dir / "agentm-runner.sh", self.scripts_dir / "agentm-runner.sh")
+        shutil.copy2(real_scripts_dir / "vault_lock.py", self.scripts_dir / "vault_lock.py")
+        shutil.copy2(real_scripts_dir / "vault_project.py", self.scripts_dir / "vault_project.py")
+        shutil.copy2(real_scripts_dir / "harness_memory.py", self.scripts_dir / "harness_memory.py")
+        (self.scripts_dir / "_vault_probe.py").write_text(
+            "import os, sys\n"
+            "sys.exit(0 if os.environ.get('MEMORY_VAULT_PATH') == sys.argv[1] else 1)\n",
+            encoding="utf-8",
+        )
+        self.jobs_dir = self.repo_root / ".harness" / "jobs"
+        self.jobs_dir.mkdir(parents=True)
+        self.fake_home = Path(self.tmp.name) / "home"
+        self.fake_home.mkdir()
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def _run(self, *, env_extra: "dict | None" = None) -> dict:
+        # Put this same interpreter's directory first on PATH so the
+        # subprocess's `python3` resolves to whichever one is actually
+        # running this test suite -- the ambient shell's own PATH may
+        # resolve `python3` to a different interpreter (e.g. the macOS
+        # system stub). HOME is faked so the subprocess's runner state
+        # writes (~/.cache/agentm/runner/*) never touch the real machine's
+        # state -- but PyYAML here is resolved via *user* site-packages
+        # (rooted at the real $HOME), so faking HOME would otherwise also
+        # hide it; PYTHONPATH pointed straight at yaml's own actual
+        # site-packages dir keeps it importable regardless.
+        path = f"{Path(sys.executable).parent}{os.pathsep}{os.environ.get('PATH', '/usr/bin:/bin')}"
+        env = {
+            "PATH": path,
+            "HOME": str(self.fake_home),
+            "PYTHONPATH": str(Path(yaml.__file__).resolve().parent.parent),
+        }
+        if env_extra:
+            env.update(env_extra)
+        proc = subprocess.run(
+            ["bash", str(self.scripts_dir / "agentm-runner.sh"), "run"],
+            cwd=str(self.tmp.name),  # deliberately not the repo root -- launchd sets no cwd
+            env=env, capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout)
+
+    def test_discovers_jobs_at_the_real_repo_root_not_scripts_dot_harness(self) -> None:
+        # Pre-fix: --jobs-dir defaulted to ".harness/jobs", resolved against
+        # cwd=scripts/ (the cd agentm-runner.sh does for its own sibling
+        # import) -- a directory that never exists, so load_manifests()
+        # silently returned [] every single cycle.
+        _write_job(self.jobs_dir, "probe", schedule="daily", lookback="6h",
+                   command="true", tier="T3", dry_run=False)
+        summary = self._run()
+        self.assertEqual(len(summary["outcomes"]), 1, summary)
+        self.assertEqual(summary["outcomes"][0]["job"], "probe")
+        self.assertTrue(summary["outcomes"][0]["ran"], summary)
+        self.assertEqual(summary["outcomes"][0]["exit_code"], 0, summary)
+
+    def test_exports_memory_vault_path_when_launcher_does_not_set_it(self) -> None:
+        # Pre-fix: a launchd LaunchAgent's plist sets no MEMORY_VAULT_PATH (its
+        # EnvironmentVariables block on the real machine sets only PATH), so a
+        # job command referencing "$MEMORY_VAULT_PATH" (e.g. inbox_digest.py
+        # --vault-path) silently expanded to "" -- which Path("") resolves to
+        # cwd, not "no vault".
+        vault = Path(self.tmp.name) / "vault"
+        vault.mkdir()
+        prefix = Path(self.tmp.name) / "install-prefix"
+        prefix.mkdir()
+        (prefix / ".agentm-config.json").write_text(
+            json.dumps({"plugins.obsidian-vault.vault_path": str(vault)}), encoding="utf-8",
+        )
+        _write_job(
+            self.jobs_dir, "vault-probe", schedule="daily", lookback="6h", tier="T3", dry_run=False,
+            command=f"{sys.executable} {self.scripts_dir / '_vault_probe.py'} {vault}",
+        )
+        summary = self._run(env_extra={"AGENTM_INSTALL_PREFIX": str(prefix)})
+        self.assertEqual(summary["outcomes"][0]["exit_code"], 0, summary)
+
+    def test_respects_an_already_set_memory_vault_path(self) -> None:
+        override = Path(self.tmp.name) / "override-vault"
+        override.mkdir()
+        _write_job(
+            self.jobs_dir, "vault-probe", schedule="daily", lookback="6h", tier="T3", dry_run=False,
+            command=f"{sys.executable} {self.scripts_dir / '_vault_probe.py'} {override}",
+        )
+        summary = self._run(env_extra={"MEMORY_VAULT_PATH": str(override)})
+        self.assertEqual(summary["outcomes"][0]["exit_code"], 0, summary)
 
 
 class WatchdogTests(unittest.TestCase):

@@ -114,7 +114,9 @@ def is_due(job: manifest_mod.JobManifest, *, now: float, state_root: Optional[Pa
     # (implementation call, not a locked design rule) so the job doesn't read
     # as perpetually overdue on every subsequent cycle — it becomes due again
     # after one more full interval from here, exactly as if it had just run.
-    state_mod.mark_done(job.name, now=now, state_root=state_root)
+    # `mark_missed` (not `mark_done`): the job's command never actually ran,
+    # so the marker must stay distinguishable from a real completion.
+    state_mod.mark_missed(job.name, now=now, state_root=state_root)
     return False, "missed-beyond-lookback"
 
 

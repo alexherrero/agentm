@@ -159,6 +159,14 @@ class WriteDigestNoteTests(unittest.TestCase):
         target = idg.write_digest_note(self.tmp / "no-such-vault", "daily", "x", now=_NOW)
         self.assertIsNone(target)
 
+    def test_empty_vault_path_is_a_clean_noop_not_cwd(self):
+        # 2026-07-17 finding: an unset $MEMORY_VAULT_PATH upstream expands to
+        # "" -- Path("") resolves to cwd, which always "is a directory", so a
+        # bare .is_dir() check would silently treat cwd as the vault and
+        # write a real note there instead of correctly no-op'ing.
+        target = idg.write_digest_note("", "daily", "x", now=_NOW)
+        self.assertIsNone(target)
+
     def test_slug_naming_convention(self):
         self.assertEqual(idg.digest_slug("weekly", _NOW), "20260707-digest-weekly")
 

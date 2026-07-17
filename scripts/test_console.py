@@ -289,6 +289,82 @@ class MachinerySectionTests(unittest.TestCase):
         self.assertIn("[UNVERIFIED] cross-review-marker: no sibling", out)
 
 
+class RunnerJobsSectionTests(unittest.TestCase):
+    """`section_runner_jobs` (2026-07-17 honesty-surface finding): reads real
+    job manifests + runner state markers directly (no subprocess), so these
+    tests build a fake repo_root's `.harness/jobs/*.yaml` and pass an
+    isolated `state_root` -- never the real machine's `~/.cache/agentm/
+    runner/`."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo_root = Path(self._tmp.name) / "repo"
+        self.jobs_dir = self.repo_root / ".harness" / "jobs"
+        self.jobs_dir.mkdir(parents=True)
+        self.state_root = Path(self._tmp.name) / "state"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_job(self, name, *, dry_run=False, schedule="daily", lookback="24h"):
+        (self.jobs_dir / f"{name}.yaml").write_text(
+            f"schedule: {schedule}\nlookback: {lookback}\ncommand: \"true\"\n"
+            f"tier: T3\ndry_run: {'true' if dry_run else 'false'}\n",
+            encoding="utf-8",
+        )
+
+    def test_none_repo_root(self):
+        self.assertIn("n/a", c.section_runner_jobs(None))
+
+    def test_no_jobs_registered(self):
+        out = c.section_runner_jobs(self.repo_root, state_root=self.state_root)
+        self.assertIn("none registered", out)
+
+    def test_dry_run_jobs_excluded(self):
+        self._write_job("still-dry", dry_run=True)
+        out = c.section_runner_jobs(self.repo_root, state_root=self.state_root)
+        self.assertIn("none registered", out)
+        self.assertNotIn("still-dry", out)
+
+    def test_never_run_job(self):
+        self._write_job("fresh")
+        out = c.section_runner_jobs(self.repo_root, state_root=self.state_root)
+        self.assertIn("fresh: never run for real", out)
+
+    def test_real_run_shows_age_without_overdue_flag(self):
+        from runner import state as rstate
+
+        self._write_job("healthy")
+        now = 2_000_000.0
+        rstate.mark_done("healthy", now=now - 3600, state_root=self.state_root)
+        out = c.section_runner_jobs(self.repo_root, state_root=self.state_root, now=now)
+        self.assertIn("healthy: last real run", out)
+        self.assertIn("1.0h ago", out)
+        self.assertNotIn("OVERDUE", out)
+
+    def test_degrades_on_a_directory_matching_the_yaml_glob(self):
+        # load_manifests() globs *.yaml/*.yml and reads each match as a
+        # file with no is_file() guard -- a directory entry (editor
+        # artifact, bad mkdir) raises IsADirectoryError, an OSError that
+        # ManifestError alone doesn't cover. This section must degrade like
+        # every other one in console.py, never raise past gather_report().
+        (self.jobs_dir / "oops.yaml").mkdir()
+        out = c.section_runner_jobs(self.repo_root, state_root=self.state_root)
+        self.assertIn("n/a", out)
+
+    def test_missed_reanchor_flags_overdue_and_reports_the_prior_real_run(self):
+        from runner import state as rstate
+
+        self._write_job("stalled")
+        now = 2_000_000.0
+        rstate.mark_done("stalled", now=now - (10 * 86400), state_root=self.state_root)
+        rstate.mark_missed("stalled", now=now - 60, state_root=self.state_root)  # re-anchored a minute ago
+        out = c.section_runner_jobs(self.repo_root, state_root=self.state_root, now=now)
+        self.assertIn("stalled: last real run", out)
+        self.assertIn("10.0d ago", out)  # the REAL run's age, not the re-anchor's
+        self.assertIn("OVERDUE", out)
+
+
 class VaultDoctorSectionTests(unittest.TestCase):
     """`section_vault_doctor` resolves a crickets sibling before it ever
     reaches the injected runner (mirrors `section_board_drift`'s own
