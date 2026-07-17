@@ -289,6 +289,48 @@ def _spend_data(repo_root: "Path | None", *, runner=subprocess.run) -> "dict | N
         return None
 
 
+def section_runner_jobs(repo_root: "Path | None", *, state_root: "Path | None" = None,
+                         now: "float | None" = None) -> str:
+    """Per-registered-job honesty surface (2026-07-17 finding: a launchd-
+    triggered runner cycle can go dark for days -- wrong CWD-relative job
+    discovery on this machine was one cause -- with zero visible error, and
+    separately, `cycle.py`'s lookback re-anchor writes a "status": "done"
+    marker that is byte-identical to a real completion in every field except
+    `last_real_run`/`missed`). Reports each non-dry-run registered job's last
+    GENUINE execution, flagged when the due-clock has been silently
+    re-anchored past it without one."""
+    if repo_root is None:
+        return "Runner jobs: n/a (not an agentm dev checkout)"
+    scripts_dir = repo_root / "scripts"
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    try:
+        from runner import manifest as rmanifest
+        from runner import state as rstate
+    except ImportError as e:
+        return f"Runner jobs: n/a ({e})"
+    try:
+        jobs = rmanifest.load_manifests(repo_root / ".harness" / "jobs")
+    except rmanifest.ManifestError as e:
+        return f"Runner jobs: n/a ({e})"
+    real_jobs = [j for j in jobs if not j.dry_run]
+    if not real_jobs:
+        return "Runner jobs: none registered (or all still dry-run) under .harness/jobs/"
+    now = now if now is not None else time.time()
+    lines = []
+    for job in sorted(real_jobs, key=lambda j: j.name):
+        marker = rstate.read_marker(job.name, state_root=state_root)
+        real_ts = rstate.last_real_run_epoch(marker)
+        if real_ts is None:
+            lines.append(f"  {job.name}: never run for real")
+            continue
+        line = f"  {job.name}: last real run {_format_age(real_ts, now=now)}"
+        if rstate.was_last_advance_a_miss(marker):
+            line += " -- OVERDUE (re-anchored past its lookback without running)"
+        lines.append(line)
+    return "Runner jobs:\n" + "\n".join(lines)
+
+
 def _spend_unavailable_reason(repo_root: "Path | None", *, runner=subprocess.run) -> str:
     if repo_root is None:
         return "Spend: n/a (not an agentm dev checkout)"
@@ -653,6 +695,7 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
         "plans": section_plans(repo_root, runner=runner),
         "board_drift": section_board_drift(repo_root, runner=runner),
         "spend": section_spend(repo_root, runner=runner),
+        "runner_jobs": section_runner_jobs(repo_root),
         "memory": section_memory(vault),
         "machinery": section_machinery(repo_root, runner=runner),
         "vault_doctor": section_vault_doctor(vault, runner=runner),
@@ -667,6 +710,7 @@ def render_terminal(report: dict, *, html_path: "Path | None" = None, repo_root:
         ("Latest brief", "brief"),
         ("Health", "health"), ("Plans", "plans"),
         ("Board drift", "board_drift"), ("Spend", "spend"),
+        ("Runner jobs", "runner_jobs"),
         ("Memory activity", "memory"), ("Machinery", "machinery"),
         ("Vault doctor", "vault_doctor"), ("Vault lint", "vault_lint"),
         ("Dreaming", "dream_expire"),
@@ -734,6 +778,7 @@ def render_html_report(report: dict, repo_root: "Path | None", *, runner=subproc
 <section><h2>Plans</h2><pre>{esc(report['plans'])}</pre></section>
 <section><h2>Board drift</h2><pre>{esc(report['board_drift'])}</pre></section>
 <section><h2>Spend</h2>{_spend_html_fragment(repo_root, runner=runner)}</section>
+<section><h2>Runner jobs</h2><pre>{esc(report.get('runner_jobs', ''))}</pre></section>
 <section><h2>Memory activity</h2><pre>{esc(report['memory'])}</pre></section>
 <section><h2>Machinery</h2><pre>{esc(report.get('machinery', ''))}</pre></section>
 <section><h2>Vault doctor</h2><pre>{esc(report.get('vault_doctor', ''))}</pre></section>

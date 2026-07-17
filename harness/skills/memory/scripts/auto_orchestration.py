@@ -53,6 +53,7 @@ DEFAULT_CONFIG: dict[str, object] = {
     "watchlist_high_threshold": 1,
     "incubator_pending_threshold": 1,
     "idea_ledger_stale_months": 6,
+    "digest_ladder_stale_days_threshold": 2,
     # nudge thresholds
     "promote_mention_threshold": 3,
     "stale_promotion_days": 30,

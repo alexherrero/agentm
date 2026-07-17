@@ -56,12 +56,38 @@ def mark_done(
     cost_usd: float = 0.0,
     state_root: Optional[Path] = None,
 ) -> None:
+    ts = now if now is not None else time.time()
+    p = _marker_path(job_name, state_root)
+    p.write_text(
+        json.dumps({
+            "status": "done",
+            "last_run": ts,
+            "last_cost_usd": cost_usd,
+            "last_real_run": ts,
+        }),
+        encoding="utf-8",
+    )
+
+
+def mark_missed(job_name: str, *, now: Optional[float] = None, state_root: Optional[Path] = None) -> None:
+    """Re-anchors a job's due-clock exactly like `mark_done` -- `cycle.is_due`'s
+    missed-beyond-lookback branch calls this instead, after the job's command
+    was never actually invoked (2026-07-17 finding: a launchd-triggered runner
+    that goes dark for days produces a marker byte-identical to a real
+    success, because both write "status": "done" with no other distinguishing
+    field). Preserves the prior marker's `last_real_run` -- a re-anchor never
+    advances it, so a reader can always tell how long it's actually been
+    since the job's command last ran, no matter how many silent re-anchors
+    have happened since."""
+    prior = read_marker(job_name, state_root=state_root)
     p = _marker_path(job_name, state_root)
     p.write_text(
         json.dumps({
             "status": "done",
             "last_run": now if now is not None else time.time(),
-            "last_cost_usd": cost_usd,
+            "last_cost_usd": 0.0,
+            "last_real_run": prior.get("last_real_run"),
+            "missed": True,
         }),
         encoding="utf-8",
     )
@@ -78,3 +104,21 @@ def last_run_epoch(marker: dict) -> Optional[float]:
 
 def last_cost_usd(marker: dict) -> float:
     return float(marker.get("last_cost_usd", 0.0) or 0.0) if marker.get("status") == "done" else 0.0
+
+
+def last_real_run_epoch(marker: dict) -> Optional[float]:
+    """The timestamp of the job's last genuine command execution -- distinct
+    from `last_run_epoch`, which also advances on a `mark_missed` re-anchor
+    that never actually ran the job. `None` if the job has never really run
+    (including a job that has only ever been re-anchored)."""
+    if marker.get("status") != "done":
+        return None
+    val = marker.get("last_real_run")
+    return float(val) if val is not None else None
+
+
+def was_last_advance_a_miss(marker: dict) -> bool:
+    """True if the marker's most recent due-clock advance was a `mark_missed`
+    re-anchor rather than a real completion -- the honesty flag `/console`
+    and the SessionStart briefing read to surface a silently-stalled job."""
+    return marker.get("status") == "done" and bool(marker.get("missed"))
