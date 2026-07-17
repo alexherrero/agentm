@@ -134,4 +134,18 @@ if ($namedPlans.Count -gt 0) {
         [Console]::Error.WriteLine("[harness-context] non-harness cwd or vault paths unresolved — skipped")
     }
 }
+
+# ── Observability session brief (autonomy Delivery → the workhorse line) ──
+# One VISIBLE line: the latest digest headline + how long ago the last cycle
+# ran, or the deadman "no digest in N days — ladder stalled" when the digest
+# ladder has gone quiet. Emitted HERE — the same small-output, operator-visible
+# surface as the "[agentm] Project state" line above — rather than appended to
+# the memory-recall hook's multi-KB always-load dump, which the host collapses
+# into a single unread <persisted-output> blob (2026-07-17 visibility fix). The
+# script self-resolves the vault + telemetry paths, anti-fatigues itself, and is
+# graceful on every edge. It lives next to the digest/park writers it reads.
+$sessionBrief = Join-Path (Split-Path $resolver -Parent) "health/session_brief.py"
+if (Test-Path -LiteralPath $sessionBrief) {
+    try { & $py $sessionBrief 2>$null } catch { }
+}
 exit 0
