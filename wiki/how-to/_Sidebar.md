@@ -18,6 +18,7 @@
 - [Set up Obsidian on the vault](Use-Obsidian-With-The-Vault)
 - [Stand up the memory MCP server](Stand-Up-Memory-MCP-Server)
 - [Persist a morning report](Persist-A-Morning-Report)
+- [Enable on-device notifications](Enable-On-Device-Notifications)
 - [Archive a finished project](Archive-A-Finished-Project)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)
