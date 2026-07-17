@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # ideas_surface.py — Tier-1 idea writer (Ideas.md surface-tier).
 #
-# Appends idea-candidate entries to ~/Obsidian/Ideas.md (single file at the
-# user's vault root, append-only). This is the SURFACE tier of the two-tier
-# idea-capture system per locked design call B1.i; the DEEP-research tier
-# (_idea-incubator/<slug>/) lands in task 3 of this part.
+# Appends idea-candidate entries to Ideas.md — a single file at the real
+# Obsidian vault root (the parent of the MemoryVault `Agent/` directory
+# `harness_memory.vault_path()` resolves to), append-only. This is the
+# SURFACE tier of the two-tier idea-capture system per locked design call
+# B1.i; the DEEP-research tier (_idea-incubator/<slug>/) lands in task 3 of
+# this part.
 #
 # Section format (locked in parent design):
 #
@@ -16,13 +18,14 @@
 # read-only-mostly for the user; the agent appends without touching
 # pre-existing content).
 #
-# The Ideas.md file lives OUTSIDE MemoryVault/ (at ~/Obsidian/Ideas.md by
-# default). Per the A3 permeable-write-boundary locked design call, every
-# write requires confirmation via permeable_boundary.confirm_write_outside_
-# memoryvault(). Reflection-driven writes route through the agent-initiated
-# + user-confirmed path; direct-user-invocation (future /memory idea
-# command) routes through the explicit-user-request path (still goes
-# through this helper but caller may set mode='silent' if user-initiated).
+# The Ideas.md file lives OUTSIDE MemoryVault/ — by default, one directory
+# above the resolved vault path (see `_resolve_vault_root` below). Per the
+# A3 permeable-write-boundary locked design call, every write requires
+# confirmation via permeable_boundary.confirm_write_outside_memoryvault().
+# Reflection-driven writes route through the agent-initiated + user-confirmed
+# path; direct-user-invocation (future /memory idea command) routes through
+# the explicit-user-request path (still goes through this helper but caller
+# may set mode='silent' if user-initiated).
 #
 # Plan #7a part 4 task 2 (this commit) ships ONLY the surface writer +
 # permeable boundary integration. Task 3 wires this from the reflection
@@ -46,17 +49,52 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 
-# Default Ideas.md path: ~/Obsidian/Ideas.md per parent design + B1.i.
-# Operators using a different Obsidian vault root override via the
-# IDEAS_SURFACE_PATH env var or pass --ideas-path to the CLI.
+def _resolve_vault_root() -> Path | None:
+    """Resolve the MemoryVault root at runtime via $MEMORY_VAULT_PATH —
+    never a cached literal. Same convention every sibling script in this
+    package honors (e.g. ideas_incubator.py's _resolve_vault_path).
+
+    Deliberately does NOT import harness_memory: kernel toolkit scripts
+    under harness/skills/memory/scripts/ are invoked as subprocesses by the
+    harness_memory bridge and must never import it back (V5-5 LC-8 bridge
+    extension, enforced by scripts/check-one-way-imports.py's lc8-bridge
+    rule). The bridge — or any other caller — is responsible for resolving
+    `harness_memory.vault_path()` (the canonical resolver; AGENTS.md §
+    Vault-path convention) and exporting it as $MEMORY_VAULT_PATH before
+    invoking this script.
+    """
+    env_path = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    if env_path:
+        p = Path(env_path).expanduser()
+        return p if p.is_dir() else None
+    return None
+
+
+# Default Ideas.md path per parent design + B1.i: the real Obsidian vault
+# root, one directory above the resolved MemoryVault path — NOT vault_path()
+# itself, whose `Agent/` is a subfolder of the Obsidian vault, not the vault
+# root (see AGENTS.md § Vault-path convention). Operators using a different
+# layout override via the IDEAS_SURFACE_PATH env var or --ideas-path.
 def _resolve_ideas_path(arg_path: str | None) -> Path:
-    """Resolve Ideas.md path: arg → env → default ~/Obsidian/Ideas.md."""
+    """Resolve Ideas.md path: arg → env → parent of the resolved vault path.
+
+    Raises FileNotFoundError if none of arg / $IDEAS_SURFACE_PATH /
+    $MEMORY_VAULT_PATH / harness_memory.vault_path() resolve — never falls
+    back to a cached path literal.
+    """
     if arg_path:
         return Path(arg_path).expanduser()
     env_path = os.environ.get("IDEAS_SURFACE_PATH", "").strip()
     if env_path:
         return Path(env_path).expanduser()
-    return Path.home() / "Obsidian" / "Ideas.md"
+    vault = _resolve_vault_root()
+    if vault is None:
+        raise FileNotFoundError(
+            "No Ideas.md path resolved. Set --ideas-path, $IDEAS_SURFACE_PATH, "
+            "or $MEMORY_VAULT_PATH (Ideas.md defaults to the parent directory "
+            "of the resolved vault path)."
+        )
+    return vault.parent / "Ideas.md"
 
 
 def _slugify_title(title: str, max_len: int = 40) -> str:
@@ -111,7 +149,7 @@ def append_idea_to_surface(
     stdin=None,
     stdout=None,
 ) -> Path | None:
-    """Append an idea section to ~/Obsidian/Ideas.md (or override path).
+    """Append an idea section to Ideas.md (or override path).
 
     Args:
         title: idea title (used in the section header).
@@ -123,7 +161,8 @@ def append_idea_to_surface(
             generated for the directory; passing it here keeps the
             surface + deep-tier in lockstep.
         ideas_path: override Ideas.md location. Resolves arg → env
-            (IDEAS_SURFACE_PATH) → default ~/Obsidian/Ideas.md.
+            (IDEAS_SURFACE_PATH) → the parent of the runtime-resolved
+            vault path (see `_resolve_ideas_path`).
         surfaced_at: timestamp for the section header (defaults to
             today UTC).
         mode: routes through `permeable_boundary.confirm_write_outside_
@@ -138,6 +177,8 @@ def append_idea_to_surface(
 
     Raises:
         ValueError: if title or summary are empty.
+        FileNotFoundError: if ideas_path is unset and no vault path
+            resolves either (see `_resolve_ideas_path`).
     """
     from permeable_boundary import confirm_write_outside_memoryvault  # lazy import
 
@@ -213,10 +254,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="memory-ideas-surface",
         description=(
-            "Append an idea section to ~/Obsidian/Ideas.md (the surface-tier "
-            "of the MemoryVault idea ledger). Tier-1 writer; tier-2 deep-"
-            "research lands in plan #7a part 4 task 3. Routes through the "
-            "A3 permeable-write-boundary helper — set --mode silent or "
+            "Append an idea section to Ideas.md (the surface-tier of the "
+            "MemoryVault idea ledger; defaults to the parent directory of "
+            "the resolved vault path). Tier-1 writer; tier-2 deep-research "
+            "lands in plan #7a part 4 task 3. Routes through the A3 "
+            "permeable-write-boundary helper — set --mode silent or "
             "MEMORY_REVIEW_MODE=silent for non-interactive contexts; "
             "default mode prompts via TTY (denies if no TTY)."
         ),
@@ -229,7 +271,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--ideas-path", default=None,
-        help="override Ideas.md path (default: $IDEAS_SURFACE_PATH or ~/Obsidian/Ideas.md)",
+        help=(
+            "override Ideas.md path (default: $IDEAS_SURFACE_PATH, else the "
+            "parent directory of the resolved vault path)"
+        ),
     )
     parser.add_argument(
         "--mode", choices=["silent", "interactive", "auto"], default=None,
@@ -248,7 +293,7 @@ def main(argv: list[str] | None = None) -> int:
             ideas_path=args.ideas_path,
             mode=args.mode,
         )
-    except ValueError as e:
+    except (ValueError, FileNotFoundError) as e:
         print(f"ERROR: {e}", file=sys.stderr)
         return 1
     if result is None:
