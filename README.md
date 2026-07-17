@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v8.1.0](https://github.com/alexherrero/agentm/releases/tag/v8.1.0).** The overnight loop no longer grades its own homework — an unattended run's "done" call now comes from a real, independent check instead of the run's own say-so. Alongside it: the health scorecard runs locally instead of committing itself back on a schedule, unattended dispatch can get past its permission prompts, and the reference docs read plainer.
+> **Latest release: [v8.2.0](https://github.com/alexherrero/agentm/releases/tag/v8.2.0).** The observability digest ladder had been silently discovering zero jobs from its own background scheduler since day one — fixed, and made genuinely visible with a new `/console` section and a real session-start line instead of a dump nobody read.
 
 ---
 

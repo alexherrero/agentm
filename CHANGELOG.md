@@ -5,6 +5,26 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v8.2.0] — 2026-07-17 — Minor: the observability digest ladder gets fixed, then made visible
+
+**MINOR.** This release closes out a story a design amendment opened earlier the same day: the digest ladder had been silently discovering zero jobs from its own background scheduler since the runner was first built, and even once a digest generates, nobody had a reliable way to see it. Both halves are fixed together, diagnosed independently by two sessions running in parallel and composed cleanly: [#320](https://github.com/alexherrero/agentm/pull/320) traces and fixes the runner-side root cause (plus two more real bugs two independent adversarial reviewers caught before merge), and [#321](https://github.com/alexherrero/agentm/pull/321) fixes the delivery-visibility side the design's own re-audit trigger predicted would need attention. A third, unrelated fix ([#318](https://github.com/alexherrero/agentm/pull/318)) rounds out the window: `Ideas.md`'s default path assumed the wrong storage layout for anyone on Drive-synced vault storage.
+
+### Added
+
+- **`/console` gains a "Runner jobs" section, and SessionStart gets a digest-stall deadman line** (`52b82af`, #320) — a job that's been silently re-anchored past its lookback window without actually running now reads differently from a real completion, in both places a human or a session would look.
+- **A real, visible session-start line for the digest ladder** (`29d3552`, #321) — `scripts/health/session_brief.py` reads the digest ladder's delivered artifacts and emits one line from the already-visible `harness-context-session-start` hook, instead of being buried in a multi-KB always-load dump nobody reads. Honest-quiet when the ladder never ran; an anti-fatigue cooldown means `/clear` or a same-window resume doesn't repeat it.
+- **`wiki/reference/Known-Issues.md`** — a new reference page for durable, easy-to-reintroduce gotchas, opened with the launchd-`cd`-breaks-CWD-relative-defaults lesson this release's own bug left behind.
+
+### Fixed
+
+- **The observability digest ladder had never once run from its actual background scheduler** (`52b82af`, #319/#320) — `agentm-runner.sh` `cd`s into `scripts/` for a sibling import, but `runner.cli`'s job-manifest path defaults are CWD-relative; every launchd-triggered cycle since the runner was first built (2026-07-05) silently discovered zero jobs, exit 0, no error. Not a regression from #316/#317 — it predated them by 10 days. Live-verifying the fix surfaced a second bug (no `MEMORY_VAULT_PATH` from the launchd plist, so a job could silently write into the repo checkout instead of the vault), which two independent adversarial reviewers then traced one layer deeper to the actual root cause inside `inbox_digest.py` itself. Confirmed working end-to-end on a real machine, not only in tests: a genuine digest note landed in the vault for the first time since 2026-07-13.
+- **`Ideas.md`'s default path assumed the wrong storage layout** (`8db5797`, #318) — `ideas_surface.py`/`ideas_promote.py` defaulted to `~/Obsidian/Ideas.md`, but the real ledger lives as a sibling of the vault directory itself on Drive-synced storage. Now derived from `$MEMORY_VAULT_PATH`'s parent; an unresolvable vault raises instead of silently falling back to a wrong literal.
+
+### Internal
+
+- `wiki/designs/agentm-runner.md`'s As-built note corrected — it had called the host-trigger wiring "fully wired" on a verification pass that only ever proved the trigger fires, not that a fired cycle finds any jobs.
+- 28 new regression tests land with #320 (`test_runner.py`, `test_console.py`, `test_orchestration_briefing.py`, `test_inbox_digest.py`) and 31 more with #321 (`test_session_brief.py`) — every one confirmed failing before its fix, passing after.
+
 ## [v8.1.0] — 2026-07-16 — Minor: the overnight loop stops grading its own homework
 
 **MINOR.** This release cuts the work that piled up on `main` during the V8 proving window (`PROVING-REPORT.md` residual 5) — a routine cadence cut, not a new arc. The headline is proving-ledger item 19's payload: `n1_run.py`'s unattended overnight run used to decide "done" by its own say-so; `goal_contract.decide()` now makes that call instead, and the run can never self-certify. Getting an unattended dispatch far enough to prove that also surfaced and fixed three real bugs along the way (wrong dispatch `cwd`, a permission wall with no human present to click through it, and a second permission wall one step later at the final `gh pr merge`) — the full retest narrative, including the wall each fix uncovered, is in `PROVING-LEDGER.md` item 19. Alongside it: the health scorecard moves off a nightly commit-back workflow entirely, a scoped permission allowlist unblocks unattended fleet dispatch, and every `wiki/reference/` page not already rewritten this arc got a cross-model plain-English pass (pairs with [crickets v3.29.0](https://github.com/alexherrero/crickets/releases/tag/v3.29.0)).
