@@ -158,18 +158,140 @@ def generate(vault_path: Path | str) -> list[str]:
     return written
 
 
+# -----------------------------------------------------------------------------
+# Arc-index pages (2026-07-18 arc-as-metadata convention) — one real `kind:
+# arc-index` entry per (project, arc), at `projects/<project>/arcs/<arc>.md`.
+# Unlike the fully-generated `_moc/<kind>.md` pages above, an arc-index is a
+# real memory entry a human may add a header to, so regeneration only owns
+# everything from `_ARC_MARKER` down — content above it survives untouched.
+# -----------------------------------------------------------------------------
+
+_ARC_MARKER = "<!-- BEGIN GENERATED ARC LINKS (moc_generator.py — do not edit below) -->"
+
+
+def build_arc_groups(vault_path: Path | str) -> dict[tuple[str, str], list[tuple[str, str, dict]]]:
+    """Read-only scan. Returns {(project, arc): [(rel_path_str, created, fm), …]}
+    sorted newest-first by `created`, for every entry under `projects/<project>/`
+    carrying a (kebab-case) `arc:` frontmatter field. Arc only ever appears on a
+    project-scoped entry (decisions/designs), never on personal/ or
+    _idea-incubator/ content, so this walks `projects/` alone."""
+    vault = Path(vault_path)
+    groups: dict[tuple[str, str], list[tuple[str, str, dict]]] = {}
+    root = vault / "projects"
+    if not root.is_dir():
+        return groups
+    for md in sorted(root.rglob("*.md")):
+        if any(p == "_archive" or p == _OUTPUT_DIRNAME or p == "_harness" for p in md.parts):
+            continue
+        try:
+            text = md.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        fm = _parse_frontmatter(text)
+        if fm is None or "arc" not in fm:
+            continue
+        arc = fm["arc"].strip()
+        if not arc:
+            continue
+        rel = md.relative_to(root)
+        project = rel.parts[0]
+        groups.setdefault((project, arc), []).append(
+            (str(rel).replace("\\", "/"), fm.get("created", ""), fm)
+        )
+    for key in groups:
+        groups[key].sort(key=lambda entry: entry[1], reverse=True)
+    return groups
+
+
+def _render_arc_links(project: str, arc: str, entries: list[tuple[str, str, dict]],
+                       other_projects: list[str]) -> str:
+    lines = [_ARC_MARKER, ""]
+    if other_projects:
+        pointers = ", ".join(f"`{p}`" for p in sorted(other_projects))
+        lines.append(f"Also stamped `arc: {arc}` in: {pointers}.")
+        lines.append("")
+    lines.append(f"{len(entries)} entries in `{project}`, newest-first by `created`.")
+    lines.append("")
+    for rel_path, _created, fm in entries:
+        lines.append(f"- [[{_wikilink_target(Path(rel_path), fm)}]]")
+    return "\n".join(lines) + "\n"
+
+
+def _new_arc_index_frontmatter(project: str, arc: str, today: str) -> str:
+    return (
+        "---\n"
+        "kind: arc-index\n"
+        "status: active\n"
+        f"created: {today}\n"
+        f"updated: {today}\n"
+        "tags: []\n"
+        f"arc: {arc}\n"
+        f"group: projects/{project}/arcs\n"
+        f"slug: {arc}\n"
+        "always_load: false\n"
+        "---\n\n"
+        f"# {arc} — arc index\n\n"
+    )
+
+
+def generate_arc_indexes(vault_path: Path | str, *, today: str) -> list[str]:
+    """Write/update `projects/<project>/arcs/<arc>.md` for every (project, arc)
+    pair with at least one `arc:`-stamped entry. A new file gets a locked
+    `kind: arc-index` frontmatter block + a bare `# <arc> — arc index` header;
+    an existing file keeps everything above `_ARC_MARKER` untouched (a human's
+    hand-seeded header survives) and only the generated link-list below it is
+    replaced. Returns the list of `project/arc` keys written.
+
+    Cross-repo arcs (the same arc stamped in more than one project) get a full
+    link list in EACH project that has entries — the canonical-vs-pointer
+    distinction the design names is an editorial call layered on by hand; this
+    generator's mechanical contribution is the per-project list plus an "also
+    stamped in" cross-reference line so the sibling is discoverable.
+    """
+    vault = Path(vault_path)
+    groups = build_arc_groups(vault)
+    arcs_to_projects: dict[str, set[str]] = {}
+    for (project, arc) in groups:
+        arcs_to_projects.setdefault(arc, set()).add(project)
+
+    written: list[str] = []
+    for (project, arc), entries in sorted(groups.items()):
+        other = sorted(arcs_to_projects[arc] - {project})
+        target = vault / "projects" / project / "arcs" / f"{arc}.md"
+        target.parent.mkdir(parents=True, exist_ok=True)
+        generated = _render_arc_links(project, arc, entries, other)
+        if target.is_file():
+            existing = target.read_text(encoding="utf-8")
+            idx = existing.find(_ARC_MARKER)
+            header = existing[:idx] if idx != -1 else existing.rstrip("\n") + "\n\n"
+            new_text = header + generated
+        else:
+            new_text = _new_arc_index_frontmatter(project, arc, today) + generated
+        target.write_text(new_text, encoding="utf-8")
+        written.append(f"{project}/{arc}")
+    return written
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="V6-18 browse-first MOC generator")
     parser.add_argument("--vault", required=True, help="path to the vault root")
+    parser.add_argument("--arcs", action="store_true",
+                         help="also (re)generate projects/<project>/arcs/<arc>.md arc-index pages")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str]) -> int:
+    from datetime import date
     args = _parse_args(argv)
     written = generate(args.vault)
     print(f"wrote {len(written)} MOC page(s) under {Path(args.vault) / _OUTPUT_DIRNAME}")
     for kind in written:
         print(f"  {kind}.md")
+    if args.arcs:
+        arc_written = generate_arc_indexes(args.vault, today=date.today().isoformat())
+        print(f"wrote/updated {len(arc_written)} arc-index page(s)")
+        for key in arc_written:
+            print(f"  projects/{key.split('/')[0]}/arcs/{key.split('/')[1]}.md")
     return 0
 
 

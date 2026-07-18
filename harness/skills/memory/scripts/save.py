@@ -48,7 +48,7 @@ _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 # `vault_lint.py` (V4 #33 DC-2: the lint reuses this so the two can't drift).
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
-    "kind", "status", "created", "updated", "tags", "group", "slug",
+    "kind", "status", "created", "updated", "tags", "arc", "group", "slug",
     "source_url", "source_fetched",
     "fingerprint", "always_load", "supersedes", "lifecycle_tier",
     "derived_from", "heat_pin",
@@ -64,9 +64,13 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 # sources are never deleted or superseded by consolidation, so this is a
 # comma-joined list, not a single supersedes-shaped path. Optional; absent
 # means the entry wasn't derived from anything (the common case).
+# `arc` (2026-07-18, the arc-as-metadata convention, agentm-memory-system.md):
+# names the temporal wave of work a decisions/designs entry belongs to (a
+# V5/V6/V7/V8 roadmap wave, architecture-governance, a lettered AG build wave,
+# …), validated against arc_registry.py. Optional: most entries carry no arc.
 _OPTIONAL_FIELDS = frozenset({
     "source_url", "source_fetched", "fingerprint", "supersedes",
-    "lifecycle_tier", "derived_from", "heat_pin",
+    "lifecycle_tier", "derived_from", "heat_pin", "arc",
 })
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
