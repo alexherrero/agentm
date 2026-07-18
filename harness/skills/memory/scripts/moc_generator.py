@@ -228,6 +228,7 @@ def _new_arc_index_frontmatter(project: str, arc: str, today: str) -> str:
         f"arc: {arc}\n"
         f"group: projects/{project}/arcs\n"
         f"slug: {arc}\n"
+        "always_load: false\n"
         "---\n\n"
         f"# {arc} — arc index\n\n"
     )

@@ -50,9 +50,16 @@ KNOWN_ARCS: frozenset[str] = frozenset({
     "wiki-maintenance", "wiki-maintenance-provisioning",
     "wiki-section-taxonomy", "worktree-pr-loop",
     # (b) coarse roadmap-wave labels (ROADMAP-AgentMemoryV{N}.md).
-    "v4", "v5", "v6", "v7", "v8",
+    "v3", "v4", "v5", "v6", "v7", "v8",
     # (c) lettered AG build waves — cross-repo, no design folder of their own.
     "wave-a", "wave-b", "wave-c", "wave-d", "wave-e",
+    # (d) added 2026-07-18 during the UNMATCHED backfill pass — clusters found
+    # by date-range + thematic grouping in the real vault, none with their own
+    # _harness/designs/ folder (their build history is flat PLAN.archive.*
+    # files, not a design folder). `v3` above (agentm's own early wave,
+    # predating v4) belongs to this same backfill pass.
+    "worktree-native-flow", "observability", "ci-walltime-diet",
+    "crickets-v3",
 })
 
 
