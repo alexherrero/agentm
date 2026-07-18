@@ -349,6 +349,17 @@ class TestAgentmConfig(unittest.TestCase):
         rc, _, _ = self._run("--get", "vault_path")
         self.assertEqual(rc, 1)
 
+    # Skipped on Windows: os.chmod only toggles the read-only attribute
+    # there, not POSIX owner/group/other bits — nothing meaningful to assert.
+    @unittest.skipIf(os.name == "nt", "POSIX permission bits only")
+    def test_write_config_sets_owner_only_permissions(self) -> None:
+        vault = Path(self.tmp) / "perm-vault"
+        vault.mkdir()
+        rc, _, _ = self._run("--vault-path", str(vault))
+        self.assertEqual(rc, 0)
+        mode = (self.prefix / ".agentm-config.json").stat().st_mode & 0o777
+        self.assertEqual(mode, 0o600)
+
 
 class TestStateMode(unittest.TestCase):
     """Hardening I #44 task 4: the `--state-mode` setter — the post-install /
@@ -526,6 +537,40 @@ class TestStorageBackend(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestMaskSmtpUrlPassword(unittest.TestCase):
+    """Unit tests for `_mask_smtp_url_password` — the display-only redaction
+    helper used by `--email-smtp-url`'s confirmation echo and `--list`."""
+
+    def test_masks_password_when_present(self) -> None:
+        self.assertEqual(
+            ac._mask_smtp_url_password("smtp://resend:re_apikey123@example.com:587"),
+            "smtp://resend:***@example.com:587",
+        )
+
+    def test_no_password_returned_unchanged(self) -> None:
+        self.assertEqual(
+            ac._mask_smtp_url_password("smtp://relay@localhost:587"),
+            "smtp://relay@localhost:587",
+        )
+
+    def test_no_userinfo_returned_unchanged(self) -> None:
+        self.assertEqual(
+            ac._mask_smtp_url_password("smtp://localhost:25"),
+            "smtp://localhost:25",
+        )
+
+    def test_malformed_no_scheme_returned_unchanged(self) -> None:
+        self.assertEqual(ac._mask_smtp_url_password("not-a-url"), "not-a-url")
+
+    def test_password_containing_at_sign_masked_correctly(self) -> None:
+        # rpartition on "@" ensures a password containing "@" doesn't get
+        # mis-split — the LAST "@" is the userinfo/host boundary.
+        self.assertEqual(
+            ac._mask_smtp_url_password("smtp://user:p@ss@example.com:587"),
+            "smtp://user:***@example.com:587",
+        )
+
+
 class TestAutonomyDeliveryConfig(unittest.TestCase):
     """FRIDAY feature 1 ("Reports that reach you") — the two opt-in delivery-
     channel keys: `--notify-enabled` (bool) and `--email-to` / `--email-smtp-url`
@@ -643,6 +688,33 @@ class TestAutonomyDeliveryConfig(unittest.TestCase):
         rc, _, err = self._run("--email-smtp-url", "  ")
         self.assertEqual(rc, 2)
         self.assertIn("non-empty", err)
+
+    def test_set_email_smtp_url_with_password_masks_echo_not_storage(self) -> None:
+        rc, out, err = self._run("--email-smtp-url", "smtp://resend:re_apikey123@localhost:587")
+        self.assertEqual(rc, 0, err)
+        # Terminal echo is masked...
+        self.assertNotIn("re_apikey123", out)
+        self.assertIn("resend:***@localhost:587", out)
+        # ...but the real credential is written to the config file untouched.
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config[ac._AUTONOMY_EMAIL_SMTP_URL_KEY], "smtp://resend:re_apikey123@localhost:587")
+
+    def test_list_masks_email_smtp_url_password(self) -> None:
+        self._run("--email-smtp-url", "smtp://resend:re_apikey123@localhost:587")
+        rc, out, _ = self._run("--list")
+        self.assertEqual(rc, 0)
+        self.assertNotIn("re_apikey123", out)
+        parsed = json.loads(out)
+        self.assertEqual(parsed[ac._AUTONOMY_EMAIL_SMTP_URL_KEY], "smtp://resend:***@localhost:587")
+
+    def test_get_email_smtp_url_still_returns_real_password(self) -> None:
+        # --get is a deliberate single-field fetch, unlike the broad --list
+        # dump or the --set confirmation echo — it still returns the real
+        # value, since a caller asking for this field specifically needs it.
+        self._run("--email-smtp-url", "smtp://resend:re_apikey123@localhost:587")
+        rc, out, _ = self._run("--get", ac._AUTONOMY_EMAIL_SMTP_URL_KEY)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out.strip(), "smtp://resend:re_apikey123@localhost:587")
 
     # -- coexistence with the vault-path key ---------------------------------
 

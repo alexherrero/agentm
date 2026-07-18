@@ -116,13 +116,26 @@ def _read_config(prefix: Path) -> Optional[dict]:
 
 
 def _write_config(prefix: Path, config: dict) -> Path:
-    """Write config atomically; ensure schema_version present + bumped to v2."""
+    """Write config atomically; ensure schema_version present + bumped to v2.
+
+    Sets owner-only permissions (0600) on every write — this file has
+    carried non-secret settings for most of its life, but `--email-smtp-url`
+    can now embed a live credential (an SMTP/relay password or API key), so
+    the file is tightened unconditionally rather than only when a secret
+    happens to be present. `os.chmod` is a no-op for the POSIX mode bits on
+    Windows (it only toggles the read-only attribute there); harmless, not
+    a correctness dependency on that platform.
+    """
     prefix.mkdir(parents=True, exist_ok=True)
     config = dict(config)
     config["schema_version"] = _SCHEMA_VERSION
     path = _config_path(prefix)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(tmp, 0o600)
+    except OSError:
+        pass
     tmp.replace(path)
     return path
 
@@ -292,12 +305,30 @@ def cmd_set_email_from(prefix: Path, address: str) -> int:
     return 0
 
 
+def _mask_smtp_url_password(url: str) -> str:
+    """Mask a `smtp://[user[:password]@]host[:port]` URL's password for
+    display — the config file and the writer's return value still carry the
+    real credential; only terminal/log-facing output goes through this.
+    Malformed input (no `://`, no `@`) is returned unchanged rather than
+    guessed at."""
+    if "://" not in url or "@" not in url:
+        return url
+    scheme, rest = url.split("://", 1)
+    creds, _, hostpart = rest.rpartition("@")
+    if ":" not in creds:
+        return url
+    user, _, _password = creds.partition(":")
+    return f"{scheme}://{user}:***@{hostpart}"
+
+
 def cmd_set_email_smtp_url(prefix: Path, url: str) -> int:
     """Set the first-party SMTP/mail-agent target (`plugins.autonomy.email_smtp_url`).
 
     The operator's own mail relay or on-device mail agent — never a
     third-party push service. Validates a non-empty string only. Idempotent:
-    silent no-op when unchanged.
+    silent no-op when unchanged. The confirmation echo masks any embedded
+    password (`_mask_smtp_url_password`) — the real value is still written
+    to the config file untouched; only the terminal-facing echo is redacted.
     """
     url = url.strip()
     if not url:
@@ -311,7 +342,7 @@ def cmd_set_email_smtp_url(prefix: Path, url: str) -> int:
         return 0
     config[_AUTONOMY_EMAIL_SMTP_URL_KEY] = url
     written = _write_config(prefix, config)
-    print(f"{_AUTONOMY_EMAIL_SMTP_URL_KEY} = {url}")
+    print(f"{_AUTONOMY_EMAIL_SMTP_URL_KEY} = {_mask_smtp_url_password(url)}")
     print(f"(written to {written})", file=sys.stderr)
     return 0
 
@@ -340,11 +371,23 @@ def cmd_get(prefix: Path, field: str) -> int:
 
 
 def cmd_list(prefix: Path) -> int:
-    """Dump the full config as JSON. rc=1 silent if config missing."""
+    """Dump the full config as JSON. rc=1 silent if config missing.
+
+    Masks `plugins.autonomy.email_smtp_url`'s embedded password (via
+    `_mask_smtp_url_password`) — a `--list` dump is a broad, casual view of
+    the whole config, not a deliberate single-field fetch, so a
+    credential-bearing field defaults to redacted here. Use
+    `--get plugins.autonomy.email_smtp_url` to read the real value when you
+    specifically need it.
+    """
     config = _read_config(prefix)
     if config is None:
         return 1
-    print(json.dumps(config, indent=2))
+    display = dict(config)
+    raw_smtp_url = display.get(_AUTONOMY_EMAIL_SMTP_URL_KEY)
+    if isinstance(raw_smtp_url, str):
+        display[_AUTONOMY_EMAIL_SMTP_URL_KEY] = _mask_smtp_url_password(raw_smtp_url)
+    print(json.dumps(display, indent=2))
     return 0
 
 

@@ -137,18 +137,22 @@ def _send_smtp(
     account they hold, like Resend), never a third-party push service; the
     operator's own URL is the only destination this ever talks to.
 
-    Auth + TLS: when the URL carries a password, logs in after establishing
-    a secure channel — implicit TLS (`SMTP_SSL`) on port 465, otherwise
-    `STARTTLS` (attempted opportunistically; a plain relay that offers no
-    STARTTLS still proceeds unencrypted, matching an on-device mail agent
-    with no TLS story). A URL with no password sends unauthenticated, for a
-    local/on-device relay that needs none.
+    Auth + TLS: when the URL carries a password, logs in only after a secure
+    channel is actually established — implicit TLS (`SMTP_SSL`) on port 465,
+    otherwise `STARTTLS`. **Credentials never go out over a connection that
+    didn't actually negotiate TLS**: if `STARTTLS` isn't supported (or a
+    network attacker strips it from the EHLO response — the classic
+    STARTTLS-stripping downgrade), the send refuses rather than silently
+    falling back to a plaintext `login()`. A URL with no password sends
+    unauthenticated over whatever channel is available (no credential to
+    protect), matching a local/on-device relay that needs none.
 
     `from_addr` (optional) is the domain-verified sending address some
     relays require distinct from the auth username; falls back to `to_addr`
     (mail-to-self) when absent.
 
-    Returns True iff the send completed without raising."""
+    Returns True iff the send completed without raising; False on any
+    failure, including the refuse-to-downgrade case above."""
     try:
         parsed = urlparse(smtp_url)
         host = parsed.hostname
@@ -171,11 +175,17 @@ def _send_smtp(
                 server.send_message(msg)
         else:
             with smtplib.SMTP(host, port, timeout=10) as server:
+                tls_established = False
                 try:
                     server.starttls()
+                    tls_established = True
                 except smtplib.SMTPNotSupportedError:
                     pass
                 if password:
+                    if not tls_established:
+                        # Refuse to send credentials over an unencrypted
+                        # channel — never silently downgrade auth to plaintext.
+                        return False
                     server.login(username or sender, password)
                 server.send_message(msg)
         return True
