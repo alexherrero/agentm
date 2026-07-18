@@ -17,11 +17,13 @@ Run: python3 scripts/test_console.py
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 _HERE = Path(__file__).resolve().parent
 _CONSOLE_SCRIPTS = _HERE.parent / "harness" / "skills" / "console" / "scripts"
@@ -60,6 +62,60 @@ class FindRepoRootTests(unittest.TestCase):
     def test_none_outside_a_checkout(self):
         with tempfile.TemporaryDirectory() as td:
             self.assertIsNone(c.find_repo_root(Path(td)))
+
+
+class ResolveVaultPathTests(unittest.TestCase):
+    """Outside an agentm dev checkout, resolve_vault_path() must still find
+    the vault via the on-device .agentm-config.json -- the same fallback
+    doctor_vault.py's own _resolve_vault_path() already relies on. Regression
+    coverage for the gap where /console run from a non-agentm repo left
+    vault-doctor resolving the vault fine while memory-activity/vault-lint/
+    dreaming all reported "no vault resolved", because resolve_vault_path()
+    only tried the config file when a repo_root was already found."""
+
+    def test_falls_back_to_config_plugin_key_outside_a_checkout(self):
+        with tempfile.TemporaryDirectory() as prefix_td, tempfile.TemporaryDirectory() as vault_td:
+            prefix, vault = Path(prefix_td), Path(vault_td)
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"plugins.obsidian-vault.vault_path": str(vault)}), encoding="utf-8"
+            )
+            with patch.dict(os.environ, {"AGENTM_INSTALL_PREFIX": str(prefix)}, clear=False), \
+                    patch.object(c, "find_repo_root", return_value=None):
+                os.environ.pop("MEMORY_VAULT_PATH", None)
+                self.assertEqual(c.resolve_vault_path(), vault)
+
+    def test_falls_back_to_legacy_flat_key(self):
+        with tempfile.TemporaryDirectory() as prefix_td, tempfile.TemporaryDirectory() as vault_td:
+            prefix, vault = Path(prefix_td), Path(vault_td)
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"vault_path": str(vault)}), encoding="utf-8"
+            )
+            with patch.dict(os.environ, {"AGENTM_INSTALL_PREFIX": str(prefix)}, clear=False), \
+                    patch.object(c, "find_repo_root", return_value=None):
+                os.environ.pop("MEMORY_VAULT_PATH", None)
+                self.assertEqual(c.resolve_vault_path(), vault)
+
+    def test_env_var_takes_precedence_over_config(self):
+        with tempfile.TemporaryDirectory() as prefix_td, tempfile.TemporaryDirectory() as config_vault_td, \
+                tempfile.TemporaryDirectory() as env_vault_td:
+            prefix, config_vault, env_vault = Path(prefix_td), Path(config_vault_td), Path(env_vault_td)
+            (prefix / ".agentm-config.json").write_text(
+                json.dumps({"vault_path": str(config_vault)}), encoding="utf-8"
+            )
+            with patch.dict(
+                os.environ,
+                {"AGENTM_INSTALL_PREFIX": str(prefix), "MEMORY_VAULT_PATH": str(env_vault)},
+                clear=False,
+            ), patch.object(c, "find_repo_root", return_value=None):
+                self.assertEqual(c.resolve_vault_path(), env_vault)
+
+    def test_none_when_no_config_and_no_env(self):
+        with tempfile.TemporaryDirectory() as prefix_td:
+            prefix = Path(prefix_td)  # no .agentm-config.json written
+            with patch.dict(os.environ, {"AGENTM_INSTALL_PREFIX": str(prefix)}, clear=False), \
+                    patch.object(c, "find_repo_root", return_value=None):
+                os.environ.pop("MEMORY_VAULT_PATH", None)
+                self.assertIsNone(c.resolve_vault_path())
 
 
 class SectionDegradationTests(unittest.TestCase):

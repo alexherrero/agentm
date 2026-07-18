@@ -16,12 +16,17 @@ Signals (each defensive — absent/empty/malformed source → 0, never raises):
   - incubator      : count of _idea-incubator/<slug>/ dirs (ideas in research)
   - idea_ledger    : "## YYYY-MM-DD:" entries in the Ideas surface older than the
                      configured stale-months (GC-eligible)
-  - digest_stale_days : days since the newest <vault>/_briefs/*-digest-*.md note
-                     (a deadman check on the observability digest ladder, 0 if
-                     the ladder was never configured on this vault at all)
 
 Each signal surfaces only at/above its configured threshold. If nothing is over
 threshold, the briefing is empty (and nothing is recorded/printed).
+
+The observability digest-ladder deadman is NOT one of these signals: it lives on
+the VISIBLE `harness-context-session-start` hook via `scripts/health/session_brief.py`
+(the autonomy design's "Delivery → Session-start line"). #320 briefly rode a
+`digest_stale_days` signal here too, but this whole block is tail-appended to the
+memory-recall hook's multi-KB always-load dump, which the host collapses into an
+unread `<persisted-output>` blob -- so the line was never seen. #321 moved the
+deadman to the small-output visible hook; this block no longer carries it.
 
 The whole thing is non-blocking by contract: any unexpected error is swallowed and
 yields an empty briefing, so a SessionStart hook can `|| true` around it safely.
@@ -96,55 +101,6 @@ def count_watchlist_high_pending(vault: Path) -> int:
     except OSError:
         return n
     return n
-
-
-_DIGEST_SLUG_RE = re.compile(r"^(\d{8})-digest-")
-
-
-def latest_digest_date(vault: Path) -> "datetime | None":
-    """The most recent date any `<vault>/_briefs/*-digest-*.md` note landed,
-    parsed from the filename slug (`inbox_digest.digest_slug()`'s
-    `YYYYMMDD-digest-<cadence>.md` shape) -- avoids reading every candidate
-    file's frontmatter just to find the newest one. `None` if `_briefs/`
-    doesn't exist or holds no digest note (as opposed to a park-job note,
-    which shares the same directory but not the `-digest-` slug segment)."""
-    d = Path(vault) / "_briefs"
-    if not d.is_dir():
-        return None
-    best = None
-    try:
-        for p in d.glob("*-digest-*.md"):
-            if not p.is_file():
-                continue
-            m = _DIGEST_SLUG_RE.match(p.name)
-            if not m:
-                continue
-            try:
-                dt = datetime(int(m.group(1)[0:4]), int(m.group(1)[4:6]), int(m.group(1)[6:8]), tzinfo=timezone.utc)
-            except ValueError:
-                continue
-            if best is None or dt > best:
-                best = dt
-    except OSError:
-        return best
-    return best
-
-
-def count_digest_stale_days(vault: Path, now: datetime) -> int:
-    """Days since the most recent observability digest note landed --
-    the SessionStart half of the honesty surface for a silently stalled
-    digest ladder (2026-07-17 finding: the runner that drives
-    inbox_digest.py can go dark for days with no error, no crash, and a
-    "status": "done" marker indistinguishable from success). A vault that
-    has never had the digest ladder configured at all returns 0 rather than
-    a large number -- this is a deadman check on a ladder that WAS running,
-    not a nag for an install that never opted in."""
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
-    latest = latest_digest_date(vault)
-    if latest is None:
-        return 0
-    return max(0, (now - latest).days)
 
 
 def count_incubator_pending(vault: Path) -> int:
@@ -315,7 +271,6 @@ def gather_signals(vault: Path, config: dict, now: datetime) -> dict:
         "incubator": count_incubator_pending(vault),
         "idea_ledger": count_idea_ledger_stale(now, int(config.get("idea_ledger_stale_months", 6))),
         "staged_adapt": count_staged_adapt(vault),
-        "digest_stale_days": count_digest_stale_days(vault, now),
     }
     # Nudges (task 6) — gated by their own toggles so a disabled nudge computes
     # 0 (no wasted parse) and stays out of the shifted-state snapshot.
@@ -343,8 +298,6 @@ def _over_threshold(signals: dict, config: dict) -> dict:
         out["idea_ledger"] = signals["idea_ledger"]
     if signals.get("staged_adapt", 0) >= 1:  # candidates awaiting Pass-2 eval
         out["staged_adapt"] = signals["staged_adapt"]
-    if signals.get("digest_stale_days", 0) >= int(config.get("digest_ladder_stale_days_threshold", 2)):
-        out["digest_stale_days"] = signals["digest_stale_days"]
     # Nudges (task 6) — the mention/stale thresholds are applied inside the
     # counters, and the toggle inside gather_signals, so any non-zero count here
     # is already a qualifying, enabled signal.
@@ -383,9 +336,6 @@ def build_briefing(signals: dict, config: dict) -> str:
         n = active["stale_promoted"]
         d = config.get("stale_promotion_days", 30)
         parts.append(f"{n} skill-watchlist {'pattern' if n == 1 else 'patterns'} promoted >{d}d ago without action — author or dismiss (`/memory watchlist`)")
-    if "digest_stale_days" in active:
-        n = active["digest_stale_days"]
-        parts.append(f"observability digest ladder: no digest in {n}d — stalled (`/console` for detail)")
     lines = ["# MemoryVault — pending"]
     for p in parts:
         lines.append(f"- {p}")
