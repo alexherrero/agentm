@@ -155,6 +155,20 @@ _ALWAYS_LOAD_REL = Path("personal") / "_always-load"
 _EXCLUDE_DIR_NAMES = {"_archive", "_dream-staging"}
 _INBOX_DIR_NAME = "_inbox"
 
+
+def _is_inbox_path(rel_path: str) -> bool:
+    """True if `_inbox` appears as a path component in a POSIX-style
+    relative path string (as stored in `entry_meta.path`). A defense-in-
+    depth backstop for `_vec_search`/`_vec_search_filtered`: those two
+    query the vector index directly by rowid and have no path-walk to
+    apply `_iter_entry_paths`'s own `_inbox` exclusion to (unlike
+    `_bm25_search`/`_grep_search`, which already honor `include_inbox`).
+    Found by a retroactive /review: nothing indexes `_inbox` content
+    today (`capture.py`'s writer never calls `vec_index.enqueue`), but
+    if anything ever did, an unfiltered vec-search result set would
+    surface it in ordinary semantic recall with no exclusion at all."""
+    return _INBOX_DIR_NAME in Path(rel_path).parts
+
 # Tokenization for grep search: split on non-alphanumeric, lowercase, drop
 # tokens shorter than _MIN_TOKEN_LEN. Skipping classical stopword filtering
 # in v1 — keep tokenization simple + greppable; tune via real-use feedback.
@@ -938,6 +952,8 @@ def _vec_search_filtered(
             return {}
         results: dict[str, float] = {}
         for _rowid, distance, path in rows:
+            if _is_inbox_path(path):
+                continue
             results[path] = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
         return results
     finally:
@@ -1020,6 +1036,8 @@ def _vec_search(
             if not meta_row:
                 continue
             rel_path = meta_row[0]
+            if _is_inbox_path(rel_path):
+                continue
             # Convert distance to similarity. sqlite-vec's default for vec0
             # is cosine distance in [0, 2]; similarity = 1 - distance/2
             # clamps to [0, 1]. (For L2 distance the conversion would be

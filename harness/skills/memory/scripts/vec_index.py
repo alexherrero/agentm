@@ -631,8 +631,14 @@ def find_drifted_entries(vault_path: Path | str) -> dict:
 
     for root in walk_roots:
         for md in sorted(root.rglob("*.md")):
-            # Excludes.
-            if any(p == "_archive" for p in md.parts):
+            # Excludes. `_inbox` matches recall.py's own default exclusion
+            # (`_INBOX_DIR_NAME`, checked by directory name at any depth) --
+            # a retroactive /review found this walk had no such exclusion,
+            # so an operator-run `full-sync --rebuild` (this drift report's
+            # own suggested remedy) would enqueue staged, unreviewed ingest-
+            # sweep candidates into the vector index, defeating the staging
+            # boundary the capture-phone-ingest-sweep plan depends on.
+            if any(p == "_archive" or p == "_inbox" for p in md.parts):
                 continue
             if md.name.startswith("PLAN.archive."):
                 continue

@@ -56,5 +56,24 @@ class TestIterEntryPathsExclusions(unittest.TestCase):
         self.assertNotIn("old.md", names)
 
 
+class TestIsInboxPath(unittest.TestCase):
+    """`_is_inbox_path` is the defense-in-depth backstop `_vec_search`/
+    `_vec_search_filtered` apply to their sqlite-vec result rows -- unlike
+    `_bm25_search`/`_grep_search`, those two query the index directly by
+    rowid and never walk via `_iter_entry_paths`, so they had no `_inbox`
+    exclusion of their own until a retroactive /review (capture-phone-
+    ingest-sweep plan) found the gap. Nothing indexes `_inbox` content
+    today, so this is a backstop against a future writer changing that,
+    not a currently-reachable leak on its own — but it must be correct."""
+
+    def test_inbox_path_at_any_depth_is_excluded(self):
+        self.assertTrue(recall._is_inbox_path("personal/_inbox/candidate.md"))
+        self.assertTrue(recall._is_inbox_path("personal/_inbox/ingested/typography/domain-reference/x.md"))
+
+    def test_ordinary_path_is_not_excluded(self):
+        self.assertFalse(recall._is_inbox_path("personal/domain-reference/typography.md"))
+        self.assertFalse(recall._is_inbox_path("personal/reference/inbox-notes.md"))  # "inbox" substring, not the dir
+
+
 if __name__ == "__main__":
     unittest.main()

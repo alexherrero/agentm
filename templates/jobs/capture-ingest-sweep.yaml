@@ -1,0 +1,46 @@
+# capture-ingest-sweep.yaml — the ingest sweep's scheduled job manifest
+# (capture-phone-ingest-sweep plan, FRIDAY ladder feature 4, capture part 3).
+#
+# Per agentm-runner.md's job-manifest contract — the as-built schema is
+# scripts/runner/manifest.py, which this file follows (mirrors
+# templates/jobs/forward-learning.yaml's own precedent — the closest
+# existing sibling: both autonomously fetch external content and write to
+# the vault, unattended).
+#
+# .harness/jobs/ is gitignored (per-project runtime state, same as every
+# other .harness/* file), so this templates/ copy is the tracked, shipped
+# source. Register it by copying to .harness/jobs/capture-ingest-sweep.yaml
+# in a repo that runs the agentm runner (scripts/agentm-runner.sh).
+#
+# Six duties ride this one job (fetch+stage, clip-stage, promote, the
+# act step, idea-ledger fold, timestamp re-stamp) — see ingest_sweep.py's
+# own module docstring for the full narrative. Cadence: hourly, per the
+# design's own "processed within an hour" latency promise.
+schedule: hourly
+lookback: 3h
+
+# Runs from `scripts/` as cwd (agentm-runner.sh's invocation convention).
+# Relies on MEMORY_VAULT_PATH already being set in the runner's own
+# environment, same as every other vault-reading script in this repo.
+command: python3 ../harness/skills/memory/scripts/ingest_sweep.py
+
+# Fetches attacker-influenceable external content and writes it toward
+# permanent memory (staged first, promoted after a review window — see
+# the plan's own asymmetric-trust design call). Matches
+# forward-learning.yaml's own tier for the identical reason: this writes
+# the agent's own surfaced findings, not operator-curated content, and
+# nothing is ever auto-promoted without surviving the staging window.
+tier: T3
+
+# No `budget:` — every duty here is a deterministic rubric (fetch, regex-
+# match the act-step grammar, chunk, re-stamp), zero LLM calls. Same
+# reasoning as forward-learning.yaml's own note.
+
+# New job, first ship, autonomously fetches external content — the
+# strongest fit in this repo for the "ship dry_run: true until an operator
+# has watched a real cycle" convention every other new job template
+# follows. This is not a stricter posture invented for this job alone; it
+# is the existing convention correctly applied (the queued version of this
+# plan had said dry_run: false before this correction — see the plan's own
+# Constraints section for the full reasoning).
+dry_run: true
