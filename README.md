@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v8.2.0](https://github.com/alexherrero/agentm/releases/tag/v8.2.0).** The observability digest ladder had been silently discovering zero jobs from its own background scheduler since day one — fixed, and made genuinely visible with a new `/console` section and a real session-start line instead of a dump nobody read.
+> **Latest release: [v8.3.0](https://github.com/alexherrero/agentm/releases/tag/v8.3.0).** You can now opt in to a daily on-device notification and a daily digest email — the two Delivery channels that weren't built yet — so a stalled or notable digest reaches you without opening a session.
 
 ---
 
