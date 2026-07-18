@@ -5,6 +5,33 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v8.6.0] — 2026-07-18 — Minor: capture from your phone (FRIDAY ladder feature 4 of 7)
+
+**MINOR.** The fourth shipped feature of the FRIDAY arc's agentm lane, and the last of `wiki/designs/agentm-capture.md`'s three parts — the capture trilogy is now fully shipped, and the design's status moves from `final` to `launched`. This release adds the ingest sweep (`harness/skills/memory/scripts/ingest_sweep.py`), the hourly runner job that automates the phone-capture flow end to end: it fetches forwarded links and documents sitting in `_inbox/`, runs a deterministic act step, folds ideas into the ledger, and re-stamps chat-surface timestamps. See [#333](https://github.com/alexherrero/agentm/pull/333).
+
+This is the first thing in the codebase that autonomously executes an action derived from a field flagged as a security concern one feature ago, so it shipped gated behind two explicit operator rulings (logged and resolved via `FOLLOWUPS.md` before the plan was even activated): the act step is a closed, deterministic action grammar (`tag:`/`file-under:` only) — never a model interpreting `instructions` free text; and the automated sweep's fetches stage in place on the originating candidate and promote to permanent memory only after surviving one full sweep cycle, asymmetric to explicit, human-invoked `/memory ingest`, which is unaffected and keeps writing directly.
+
+Pre-merge review — before the PR, on the highest-stakes feature in this ladder so far — found and fixed five real defects, the most consequential of which was a pre-existing gap in `recall.py`/`vec_index.py`: semantic/vector recall never respected the `_inbox` exclusion at all, only keyword recall did, so an operator running the idle hook's own suggested drift-report remedy would have enqueued staged, unreviewed content into the vector index — undermining the exact trust boundary this feature exists to build. Also found and fixed: a TOCTOU gap (5 of 7 candidate-write sites unprotected by `vault_mutex`, the same class of bug closed in `capture.py` one commit earlier in this ladder), a content-corruption bug on a body/marker collision, silently-dropped promotion failures, and a state-machine ordering bug. A sixth, Windows-only bug — `os.mkdir` raising `PermissionError` instead of `FileExistsError` for the identical lock-contention race — surfaced only on the CI Windows leg after the PR opened, confirmed as a real, pre-existing `vault_lock.py` gap (not a flaky test) and fixed in both vendored copies.
+
+### Added
+
+- **The ingest sweep** (`harness/skills/memory/scripts/ingest_sweep.py`, [#333](https://github.com/alexherrero/agentm/pull/333)) — six duties, one hourly job: fetch + stage, clip-skip, promotion via unmodified `ingest.ingest()`, the `tag:`/`file-under:` act-step dispatcher, idea-ledger fold, timestamp re-stamp, and an exact-`source_url` duplicate check for same-cycle resends.
+- **`templates/jobs/capture-ingest-sweep.yaml`** — the new job manifest, `tier: T3`, `dry_run: true` (ships dark until an operator confirms a real cycle, matching this repo's convention for every other new job — corrected from the plan's original draft).
+- **Two new how-to pages** — [Capture from your phone](https://github.com/alexherrero/agentm/wiki/Capture-From-Your-Phone) and [Ingest an article](https://github.com/alexherrero/agentm/wiki/Ingest-An-Article) (the latter closes a documentation gap from feature 3, which shipped without its own page).
+
+### Fixed
+
+- **Semantic recall never respected the `_inbox` exclusion** (`recall.py`, `vec_index.py`, [#333](https://github.com/alexherrero/agentm/pull/333)) — a pre-existing gap, not introduced by this plan, but live and consequential once this feature's staging mechanism put untrusted external content somewhere it mattered. Fixed with a new `_is_inbox_path()` backstop on both vec-search result paths, and by excluding `_inbox` from the drift-report walk that otherwise recommends indexing it.
+- **`vault_mutex` protected only 1 of 7 candidate read-modify-write call sites** — the same TOCTOU shape closed in `capture.py` one commit earlier. Every candidate-patching function now re-reads fresh and writes inside the lock.
+- **A content-corruption bug on a body/marker collision** — the original plain `"## Fetched content"` heading collided with real prose containing that string. Fixed with a start/end marker pair requiring both present as a match.
+- **Promotion failures were never surfaced** in the digest — a permanently-failing promotion retried and silently re-failed forever.
+- **A Windows-only `PermissionError`-vs-`FileExistsError` race in `vault_lock.py`'s mkdir retry loop** — caught only by the Windows CI leg, after the fix already covered every other candidate write site. Affects every `vault_mutex` caller in the codebase, not just this feature.
+
+### Internal
+
+- `wiki/designs/agentm-capture.md`'s status moves `final → launched`; its Trust Boundary section corrected to name both staging mechanisms explicitly (inbox triage for `memory_capture`, the sweep's own review window for automated fetches) rather than overclaiming one uniform mechanism.
+- 24 tests in `test_ingest_sweep.py`, plus new regression tests in `test_vec_index.py`, `test_recall_exclusions.py`, and `test_vault_lock.py` for the review-driven fixes.
+
 ## [v8.5.0] — 2026-07-18 — Minor: read and remember articles (FRIDAY ladder feature 3 of 7)
 
 **MINOR.** The third shipped feature of the FRIDAY arc's agentm lane: `wiki/designs/agentm-capture.md`'s second of three parts, "read and remember articles." This release adds `/memory ingest <url|file>`, which reads a web page or a local file and writes it straight into permanent memory — one intact full-document note plus a set of small, reading-order-linked chunk notes for retrieval, both forms always produced together, neither replacing the other. Unlike part 1's `memory_capture` (which only ever stages to `_inbox/` pending triage), ingestion writes through `save_entry()` from the start — a deliberate, differently-trusted write path for a differently-invoked door: an operator (or an agent under operator direction) explicitly names the URL or file to ingest, rather than casually forwarding a thought. Omitting `--topic` returns a title-based suggestion and writes nothing until you confirm it with `--topic` — a real confirmation step, not an auto-accept. See [#331](https://github.com/alexherrero/agentm/pull/331).
