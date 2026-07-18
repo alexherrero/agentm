@@ -54,6 +54,24 @@ class IngestBasicsTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("not a URL and not a file", result.error)
 
+    def test_raw_content_skips_fetch_and_preserves_provenance(self) -> None:
+        # The ingest sweep (capture part 3) fetches once at staging time and
+        # calls ingest() again at promotion time with the already-fetched
+        # text -- raw_content must skip read_source()/fetch_url() entirely
+        # and the caller-supplied source_url/source_fetched (the ORIGINAL
+        # fetch's provenance) must land in the frontmatter unchanged, not
+        # be re-derived from this call's own time.
+        result = ingest.ingest(
+            self.vault, "candidate-placeholder", topic="phone-test",
+            raw_content="# A Phone Capture\n\nForwarded article text.",
+            source_url="https://example.com/article",
+            source_fetched="2026-07-18T04:00:00+00:00",
+        )
+        self.assertTrue(result.success)
+        content = result.document.read_text(encoding="utf-8")
+        self.assertIn("source_url: https://example.com/article", content)
+        self.assertIn("source_fetched: 2026-07-18T04:00:00+00:00", content)
+
     def test_mid_sequence_collision_leaves_no_orphaned_notes(self) -> None:
         # Pre-create a target slug this ingest would try to write (as if a
         # prior, unrelated write already landed there) -- a retroactive

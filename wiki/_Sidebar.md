@@ -20,6 +20,8 @@
 - [Persist a morning report](Persist-A-Morning-Report)
 - [Enable on-device notifications](Enable-On-Device-Notifications)
 - [Enable email digest delivery](Enable-Email-Digest-Delivery)
+- [Ingest an article](Ingest-An-Article)
+- [Capture from your phone](Capture-From-Your-Phone)
 ### 📖 [Reference](Reference)
 - [Installer CLI](Installer-CLI)
 - [Supported configurations](Supported-Configurations)

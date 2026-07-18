@@ -224,23 +224,41 @@ def ingest(
     source: str,
     *,
     topic: "str | None" = None,
+    raw_content: "str | None" = None,
+    source_url: "str | None" = None,
+    source_fetched: "str | None" = None,
 ) -> IngestResult:
     """Ingest one URL or file: one full-document note (body = the extracted
     text, verbatim -- byte-for-byte reproducible modulo save_entry's own
     trailing-newline normalization) + N chunk notes (chunk body + a
-    reading-order nav footer + a backlink to the document), all under
-    `group: personal`, `kind: domain-reference`.
+    reading-order nav footer + a backlink to the document), `kind:
+    domain-reference`, `group: personal`.
 
     When `topic` is omitted, returns a suggestion WITHOUT writing anything
     (`needs_confirmation=True`) -- the design's "the agent suggests a
     title-based slug for you to confirm" is a real confirmation step, not
     an auto-accept; re-invoke with `--topic <slug>` (the suggestion or an
     override) to actually write.
+
+    `raw_content`, when given, skips `read_source()`/`fetch_url()` entirely
+    -- `source` becomes an opaque identifier only (used for title-slug
+    fallback and log/error messages). Used by the automated ingest sweep
+    (capture part 3): it fetches once at staging time, stores the text on
+    the originating `_inbox/` candidate, and calls this function again at
+    promotion time (a later cycle) with the already-fetched text instead
+    of re-fetching. `source_url`/`source_fetched` should be passed
+    alongside `raw_content` to preserve the ORIGINAL fetch's provenance
+    (the sweep's staging timestamp, not this call's own time) -- omitted,
+    both fields are simply absent from the written frontmatter, same as
+    an ordinary local-file ingest.
     """
-    try:
-        raw, source_url, source_fetched = read_source(source)
-    except FetchError as e:
-        return IngestResult(success=False, error=str(e))
+    if raw_content is not None:
+        raw = raw_content
+    else:
+        try:
+            raw, source_url, source_fetched = read_source(source)
+        except FetchError as e:
+            return IngestResult(success=False, error=str(e))
 
     title, text = extract_title_and_text(raw)
     if not text.strip():
