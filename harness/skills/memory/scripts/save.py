@@ -49,6 +49,7 @@ _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "kind", "status", "created", "updated", "tags", "group", "slug",
+    "source_url", "source_fetched",
     "fingerprint", "always_load", "supersedes", "lifecycle_tier",
     "derived_from", "heat_pin",
 )
@@ -63,7 +64,10 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 # sources are never deleted or superseded by consolidation, so this is a
 # comma-joined list, not a single supersedes-shaped path. Optional; absent
 # means the entry wasn't derived from anything (the common case).
-_OPTIONAL_FIELDS = frozenset({"fingerprint", "supersedes", "lifecycle_tier", "derived_from", "heat_pin"})
+_OPTIONAL_FIELDS = frozenset({
+    "source_url", "source_fetched", "fingerprint", "supersedes",
+    "lifecycle_tier", "derived_from", "heat_pin",
+})
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
 )
@@ -108,6 +112,8 @@ def _build_frontmatter(
     tags: list[str],
     always_load: bool,
     supersedes: str | None,
+    source_url: str | None = None,
+    source_fetched: str | None = None,
     fingerprint: str | None = None,
     lifecycle_tier: str | None = None,
     derived_from: list[str] | None = None,
@@ -115,9 +121,16 @@ def _build_frontmatter(
     """Build the locked-order YAML frontmatter for a memory entry.
 
     Field order is locked for deterministic diffs:
-      kind / status / created / updated / tags / group / slug / fingerprint
+      kind / status / created / updated / tags / group / slug / source_url
+      (omitted if None) / source_fetched (omitted if None) / fingerprint
       (omitted if None) / always_load / supersedes (omitted if None) /
       lifecycle_tier (omitted if None) / derived_from (omitted if None/empty).
+
+    `source_url` / `source_fetched` (the capture design's provenance
+    plumbing, `designs/friday/agentm-capture.md`) record where a captured or
+    ingested note came from and when it was fetched. Both optional — omitted
+    unless a caller passes them, so every existing entry kind's frontmatter
+    is unaffected.
 
     `fingerprint` is the V6-11 recall-ladder join key (agentm-memory-index.md;
     wave-c-diagnostics): omitted unless a caller passes one, so every existing
@@ -148,6 +161,10 @@ def _build_frontmatter(
         f"group: {group}",
         f"slug: {slug}",
     ]
+    if source_url:
+        lines.append(f"source_url: {source_url}")
+    if source_fetched:
+        lines.append(f"source_fetched: {source_fetched}")
     if fingerprint:
         lines.append(f"fingerprint: {fingerprint}")
     lines.append(f"always_load: {'true' if always_load else 'false'}")
@@ -171,6 +188,8 @@ def save_entry(
     always_load: bool = False,
     tags: list[str] | None = None,
     supersedes: str | None = None,
+    source_url: str | None = None,
+    source_fetched: str | None = None,
     fingerprint: str | None = None,
     lifecycle_tier: str | None = None,
     derived_from: list[str] | None = None,
@@ -241,6 +260,8 @@ def save_entry(
         tags=tags,
         always_load=always_load,
         supersedes=supersedes,
+        source_url=source_url,
+        source_fetched=source_fetched,
         fingerprint=fingerprint,
         lifecycle_tier=lifecycle_tier,
         derived_from=derived_from,
