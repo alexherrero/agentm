@@ -136,6 +136,33 @@ class SendSmtpTests(unittest.TestCase):
         self.assertTrue(ok)
         server.send_message.assert_called_once()
 
+    def test_login_refused_when_starttls_unsupported_and_password_present(self):
+        # Regression: STARTTLS-stripping downgrade must never fall through to
+        # a plaintext login() — credentials refuse to go out unencrypted.
+        import smtplib
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            server.starttls.side_effect = smtplib.SMTPNotSupportedError("no TLS")
+            ok = se._send_smtp(
+                "smtp://resend:re_apikey123@example.com:587", "me@example.com", "subj", "body")
+        self.assertFalse(ok)
+        server.login.assert_not_called()
+        server.send_message.assert_not_called()
+
+    def test_login_refused_when_starttls_raises_other_smtp_error(self):
+        # A STARTTLS attempt that fails for a reason OTHER than "unsupported"
+        # (e.g. a stripped/corrupted response) must not be swallowed into a
+        # plaintext-login path either — any non-success STARTTLS outcome with
+        # a password present is refuse-to-send, not just the NotSupported case.
+        import smtplib
+        with mock.patch("smtplib.SMTP") as smtp_cls:
+            server = smtp_cls.return_value.__enter__.return_value
+            server.starttls.side_effect = smtplib.SMTPException("connection reset")
+            ok = se._send_smtp(
+                "smtp://resend:re_apikey123@example.com:587", "me@example.com", "subj", "body")
+        self.assertFalse(ok)
+        server.login.assert_not_called()
+
     def test_ssl_used_on_port_465_no_starttls(self):
         with mock.patch("smtplib.SMTP_SSL") as ssl_cls, mock.patch("smtplib.SMTP") as plain_cls:
             server = ssl_cls.return_value.__enter__.return_value
