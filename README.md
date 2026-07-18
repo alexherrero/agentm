@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v8.4.0](https://github.com/alexherrero/agentm/releases/tag/v8.4.0).** A second front door into memory: `memory_capture` and `/memory capture` stage a thought, link, or idea into a review inbox instead of writing straight to permanent memory.
+> **Latest release: [v8.5.0](https://github.com/alexherrero/agentm/releases/tag/v8.5.0).** `/memory ingest <url|file>` reads a web page or file and remembers it: one intact full-document note plus reading-order-linked chunks for retrieval.
 
 ---
 

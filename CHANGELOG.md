@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v8.5.0] — 2026-07-18 — Minor: read and remember articles (FRIDAY ladder feature 3 of 7)
+
+**MINOR.** The third shipped feature of the FRIDAY arc's agentm lane: `wiki/designs/agentm-capture.md`'s second of three parts, "read and remember articles." This release adds `/memory ingest <url|file>`, which reads a web page or a local file and writes it straight into permanent memory — one intact full-document note plus a set of small, reading-order-linked chunk notes for retrieval, both forms always produced together, neither replacing the other. Unlike part 1's `memory_capture` (which only ever stages to `_inbox/` pending triage), ingestion writes through `save_entry()` from the start — a deliberate, differently-trusted write path for a differently-invoked door: an operator (or an agent under operator direction) explicitly names the URL or file to ingest, rather than casually forwarding a thought. Omitting `--topic` returns a title-based suggestion and writes nothing until you confirm it with `--topic` — a real confirmation step, not an auto-accept. See [#331](https://github.com/alexherrero/agentm/pull/331).
+
+A pre-merge adversarial review — run *before* the PR this time, not retroactively (the lesson from v8.4.0's own release, where the same step was skipped and had to run after merge) — found and fixed two real bugs before the cut: a mid-sequence slug collision could leave the document note and every chunk written before it permanently orphaned on disk while the call still reported failure, and an HTML sniff that only recognized a full-document wrapper let a bare fragment slip through as plain text, leaving raw markup in a saved note. Both fixed in the same PR, with new regression tests. A third finding — that writing straight to permanent memory here sits in tension with the design's own staged/triage trust model — is a design-level question, not a code defect; it's logged for an operator ruling before capture part 3 (the ingest sweep, which would automate the fetch) is planned, deliberately left open rather than silently resolved either direction.
+
+### Added
+
+- **`/memory ingest <url|file>`** (`harness/skills/memory/scripts/ingest.py`, [#331](https://github.com/alexherrero/agentm/pull/331)) — fetches a URL (stdlib `urllib`, no new HTTP dependency) or reads a local file, extracts a title and plain text (HTML is tag-stripped; plain text/markdown passes through unmodified), and writes a full-document note plus `chunk_text()`-derived chunk notes, all `source_url`/`source_fetched`-stamped and tagged by topic.
+- **Two local test fixtures** (`scripts/fixtures/ingest/`, [#331](https://github.com/alexherrero/agentm/pull/331)) — a markdown article and an HTML document, both exercised with no live-network dependency in CI.
+
+### Fixed
+
+- **A mid-sequence write failure could orphan permanent-memory notes** (`ingest.py`, [#331](https://github.com/alexherrero/agentm/pull/331)) — no pre-flight check and no rollback across the document-plus-chunks write sequence meant a slug collision partway through left earlier writes permanently on disk while reporting failure. Now pre-checks every target slug is free before writing anything, and rolls back whatever a call itself wrote if a later step still fails. Caught by a pre-merge `/review`, never shipped in a tagged version.
+- **An HTML-fragment sniff false negative left raw markup in saved notes** (`ingest.py`, [#331](https://github.com/alexherrero/agentm/pull/331)) — the HTML detector only recognized a full-document wrapper (`<html>`/`<body>`/`<title>`); a bare fragment fell through to the plain-text path unmodified. Now falls back to detecting any real matching open/close tag pair, verified not to false-positive on this vault's own `<placeholder>` documentation convention.
+
+### Internal
+
+- `wiki/designs/agentm-capture.md`'s Document History gains part 2's completion entry; `governs:` extended with `ingest.py`. Parts 1 and 2 are now shipped; part 3 (forwarded links + the phone path) remains open.
+- 17 new tests land across `scripts/test_ingest.py` (13 for the feature, 4 more from the pre-merge review pass).
+
 ## [v8.4.0] — 2026-07-18 — Minor: a second front door into memory (FRIDAY ladder feature 2 of 7)
 
 **MINOR.** The second shipped feature of the FRIDAY arc's agentm lane: `wiki/designs/agentm-capture.md`'s first of three parts, "the inbox front door." Until now `memory_append` was the only way to write into the vault, and it wrote straight to permanent memory — no staging, no review. This release adds `memory_capture`, a second MCP tool (plus a `/memory capture` CLI verb) that stages a thought, link, or idea into `personal/_inbox/` instead, carrying its transport, timestamp, device, kind, tags, and any operator-typed instructions, without ever touching permanent memory directly. `memory_append` is untouched — both tools coexist, and their docstrings now point at each other so an agent knows which door to use. See [#328](https://github.com/alexherrero/agentm/pull/328).
