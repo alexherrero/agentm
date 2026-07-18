@@ -219,3 +219,112 @@ def compute_decay_score(
     except ValueError:
         return 1.0  # Malformed date — fail open to fresh rather than crash.
     return math.pow(0.5, elapsed_days / DECAY_HALF_LIFE_DAYS)
+
+
+# -----------------------------------------------------------------------------
+# Stepped rank-curve retune (auto-organization part 1, task 1) — shadow-mode
+# only. Neither function below is wired into recall.py's live ranking path;
+# compute_decay_score above (recall.py's actual call site) is untouched by
+# this section. The stepped curve only becomes live once the pinned
+# retrieval eval (scripts/health/eval_v6_retrieval.py) confirms it against
+# shadow output — that promotion is a future plan's own change to
+# recall.py, not something this module does on its own.
+# -----------------------------------------------------------------------------
+
+# (elapsed_days_upper_bound, score) — checked in order, first match wins.
+# Full strength through 6mo silence, half to 1y, an eighth to 3y, a
+# sixteenth to 5y and beyond (the archive move at 5y is what actually
+# retires an entry — this curve doesn't need a further cliff past that).
+_STEPPED_BANDS: tuple[tuple[float, float], ...] = (
+    (182.0, 1.0),
+    (365.0, 0.5),
+    (1095.0, 0.125),
+    (1825.0, 0.0625),
+)
+_STEPPED_FLOOR = _STEPPED_BANDS[-1][1]  # score once past the last band's bound
+
+
+def _stepped_score(elapsed_days: float) -> float:
+    """Pure elapsed-days -> stepped decay score. No I/O, no exempt check —
+    compute_decay_score_stepped applies those the same way the exponential
+    curve does before ever calling this."""
+    for threshold, score in _STEPPED_BANDS:
+        if elapsed_days <= threshold:
+            return score
+    return _STEPPED_FLOOR
+
+
+def _resolve_elapsed_days(vault: Path, slug: str, fm: dict[str, str], now: str) -> float | None:
+    """Same last_access / updated / created anchor-resolution chain
+    compute_decay_score has always used, factored out so the stepped curve
+    resolves elapsed time identically — a shadow-mode delta between the two
+    curves must reflect the scoring formula alone, never a divergence in
+    which anchor was used. Returns None when there's no anchor or it's
+    malformed (both curves treat that as "no basis to compute decay").
+    """
+    data = _load_sidecar(vault)
+    entry = data.get("entries", {}).get(slug, {})
+    anchor = entry.get("last_access") or fm.get("updated") or fm.get("created")
+    if not anchor:
+        return None
+    try:
+        return max(0.0, _days_between(anchor, now))
+    except ValueError:
+        return None
+
+
+def compute_decay_score_stepped(
+    vault: Path,
+    slug: str,
+    fm: dict[str, str],
+    rel_path: str | Path,
+    *,
+    now: str | None = None,
+) -> float:
+    """Stepped-schedule alternative to compute_decay_score's exponential
+    curve. Same exempt gate, same anchor-resolution chain — only the
+    elapsed-days -> score mapping differs (see `_STEPPED_BANDS`).
+
+    Shadow-mode only (task 1): nothing calls this from recall.py's live
+    ranking path today. `compute_decay_score_shadow` below is what a future
+    dreaming stage uses to compare it against the live curve without
+    affecting ranking.
+    """
+    if is_decay_exempt(fm, rel_path):
+        return 1.0
+    if now is None:
+        import datetime
+        now = datetime.date.today().isoformat()
+    elapsed_days = _resolve_elapsed_days(vault, slug, fm, now)
+    if elapsed_days is None:
+        return 1.0
+    return _stepped_score(elapsed_days)
+
+
+def compute_decay_score_shadow(
+    vault: Path,
+    slug: str,
+    fm: dict[str, str],
+    rel_path: str | Path,
+    *,
+    now: str | None = None,
+) -> dict:
+    """Compute both decay curves for one entry and return the comparison —
+    never the score itself, so a caller can't accidentally wire this into
+    ranking in place of compute_decay_score.
+
+    Returns {"old": <exponential score>, "new": <stepped score>,
+    "delta": new - old, "exempt": bool}. A dreaming tidying stage (task 3)
+    calls this per entry across the corpus and logs the aggregate delta
+    (including rank-position shifts, which only make sense computed across
+    the whole corpus, not per note) — this function's job stops at the
+    single-entry comparison.
+    """
+    old = compute_decay_score(vault, slug, fm, rel_path, now=now)
+    new = compute_decay_score_stepped(vault, slug, fm, rel_path, now=now)
+    return {
+        "old": old,
+        "new": new,
+        "delta": new - old,
+        "exempt": is_decay_exempt(fm, rel_path),
+    }
