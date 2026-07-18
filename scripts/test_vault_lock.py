@@ -198,6 +198,67 @@ class VaultMutexTests(unittest.TestCase):
         lockdir = vl._lockdir_for(self.vault, self.root)
         self.assertFalse(lockdir.exists())
 
+    def test_permission_error_on_existing_lockdir_is_treated_as_contention(self) -> None:
+        # Windows can raise PermissionError (WinError 5) instead of
+        # FileExistsError for the identical mkdir-race a POSIX runner
+        # always reports as FileExistsError -- found by a real Windows CI
+        # failure (an 8-thread concurrency test in a sibling module,
+        # ingest_sweep.py, triggered it reliably; never reproduces on
+        # POSIX). This simulates that race directly: os.mkdir raises
+        # PermissionError once, while the lockdir already exists (another
+        # thread got there first) -- must retry, not propagate the error.
+        lockdir = vl._lockdir_for(self.vault, self.root)
+        lockdir.parent.mkdir(parents=True, exist_ok=True)
+        os.mkdir(lockdir)
+        os.utime(lockdir, None)  # fresh heartbeat, so the retry path (not takeover) is exercised
+
+        # Scoped to the exact lockdir path only -- pathlib.Path.mkdir()
+        # delegates to os.mkdir internally (confirmed against this Python's
+        # own pathlib source), so an unscoped patch would also intercept
+        # _acquire's earlier `lockdir.parent.mkdir(parents=True,
+        # exist_ok=True)` call, which must go through untouched here.
+        call_count = {"n": 0}
+        real_mkdir = os.mkdir
+        real_rmdir = os.rmdir
+
+        def _intercept(path, *args, **kwargs):
+            if Path(path) != lockdir:
+                return real_mkdir(path, *args, **kwargs)
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                raise PermissionError(5, "Access is denied")
+            real_rmdir(lockdir)  # the "other holder" releases before the second attempt
+            return real_mkdir(path, *args, **kwargs)
+
+        with mock.patch("os.mkdir", side_effect=_intercept):
+            with vl.vault_mutex(self.vault, lock_root=self.root, timeout=2.0, stale=10.0):
+                pass
+        self.assertGreaterEqual(call_count["n"], 1)
+
+    def test_permission_error_on_nonexistent_lockdir_still_raises(self) -> None:
+        # A genuine permission problem creating the lockdir itself -- NOT
+        # the Windows mkdir-race case -- must still raise, not be silently
+        # retried forever. The distinguishing signal _acquire uses: the
+        # race case's lockdir exists right after the error; a real
+        # permission failure's does not. Scoped to the exact lockdir path
+        # (see the sibling test's own comment) so the earlier, unrelated
+        # `lockdir.parent.mkdir(parents=True, exist_ok=True)` call
+        # succeeds normally and this genuinely exercises _acquire's own
+        # except-block check, not a different failure point entirely.
+        lockdir = vl._lockdir_for(self.vault, self.root)
+        real_mkdir = os.mkdir
+
+        def _intercept(path, *args, **kwargs):
+            if Path(path) != lockdir:
+                return real_mkdir(path, *args, **kwargs)
+            raise PermissionError(13, "Permission denied")
+
+        with mock.patch("os.mkdir", side_effect=_intercept):
+            with self.assertRaises(PermissionError):
+                with vl.vault_mutex(self.vault, lock_root=self.root, timeout=0.5, stale=10.0):
+                    pass
+        self.assertFalse(lockdir.exists())
+
     def test_stale_takeover(self) -> None:
         lockdir = vl._lockdir_for(self.vault, self.root)
         lockdir.parent.mkdir(parents=True, exist_ok=True)

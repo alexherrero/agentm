@@ -255,7 +255,22 @@ def _acquire(lockdir: Path | str, *, timeout: float, stale: float) -> None:
     while True:
         try:
             os.mkdir(lockdir)
-        except FileExistsError:
+        except (FileExistsError, PermissionError) as e:
+            # Windows can raise PermissionError (WinError 5, "Access is
+            # denied") instead of FileExistsError for the identical race --
+            # two threads' os.mkdir calls landing close enough together
+            # that the loser sees the directory mid-creation/deletion
+            # rather than cleanly already-existing. Found by CI, not
+            # reasoned about in advance: an 8-thread contention test
+            # (ingest_sweep's own concurrency regression suite) reliably
+            # triggered it on the Windows runner; the same race never
+            # surfaces on POSIX, where mkdir's FileExistsError is the only
+            # outcome. Only treat PermissionError as this same "someone
+            # else is acquiring it" signal when the directory now actually
+            # exists -- otherwise it's a genuine permission problem (e.g.
+            # the lock root itself isn't writable), which must still raise.
+            if isinstance(e, PermissionError) and not lockdir.exists():
+                raise
             age = _lock_age(lockdir)
             if age is None:
                 continue  # released between our mkdir-fail and the stat — retry now
