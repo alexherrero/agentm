@@ -7,10 +7,11 @@
 |---|---|---|---|
 | `memory_search` | `query: str` | `scope`, `project`, `kind`, `limit`, `include_deleted`, `cursor` | `{results: [...], total, cursor}` |
 | `memory_append` | `content: str`, `kind: str` | `project`, `title`, `tags`, `idempotency_key` | `{id, slug, deduplicated}` |
+| `memory_capture` | `content: str` | `kind`, `title`, `tags`, `instructions`, `source_url` | `{success: true, id, slug}` or `{success: false, error}` |
 | `memory_forget` | `id: str` | `reason` | `{id, status: "deleted", already_deleted}` |
 
 > [!NOTE]
-> You cannot use a fourth tool, `memory_recall`. It was retired in R0.9 / agentmEngine#2. It delegated to a V5-3 stub. This stub always returned an empty bundle regardless of input. It had no live caller.
+> You cannot use a fifth tool, `memory_recall`. It was retired in R0.9 / agentmEngine#2. It delegated to a V5-3 stub. This stub always returned an empty bundle regardless of input. It had no live caller.
 
 You must include `Authorization: Bearer <token>` on your request for all tools. The server binds to `127.0.0.1:7821`. Tool names use snake_case with no dots. This ensures compatibility with OpenAI-family hosts.
 
@@ -52,6 +53,27 @@ You can write a new memory entry. This operation is idempotent on `idempotency_k
 **Returns:** `{id, slug, deduplicated}`. You will not find `title`, `status`, or `created_at` in the response.
 
 You might provide an `idempotency_key` that already exists. In this case, the server returns the existing entry with `deduplicated: true`. It does not write a second copy. You will not see HTTP-status branching in the tool itself. The dedup hit is just a flag on the normal return shape. It is not a distinct 200-vs-409 response.
+
+---
+
+## `memory_capture`
+
+You can stage a candidate — a thought, a link, or an idea — for later triage. This is the second front door beside `memory_append`. It writes to `personal/_inbox/` only. It never writes to permanent memory. Use it for anything that has not been reviewed yet: a phone capture, a chat aside, a link worth remembering. Use `memory_append` instead when you already know the explicit, deliberate destination.
+
+| Param | Type | Default | Notes |
+|---|---|---|---|
+| `content` | `str` | required | The captured text |
+| `kind` | `str` | `"capture"` | `"capture"` (a thought, link, or note) or `"idea"` (routes to the ideas ledger) |
+| `title` | `str \| null` | `null` | When given, becomes the slug base. When omitted, `capture.py` generates a timestamp-based slug (`capture-<UTC timestamp>`) instead of slugging `content` |
+| `tags` | `list[str] \| null` | `null` | Optional labels |
+| `instructions` | `str \| null` | `null` | An operator-typed action to run after triage |
+| `source_url` | `str \| null` | `null` | The link this candidate is about, if any — marks it for the future ingest sweep |
+
+There is no `project` or destination parameter. `memory_capture` never chooses its own destination — only the triage/ingestion machinery promotes a candidate out of `_inbox/` later.
+
+`instructions` is a security boundary. The server stores only the string you pass in this call's own `instructions` argument, verbatim. It never parses or extracts an instruction out of `content`. A fetched article's body, or a pasted link's page text, is untrusted data — a phrase inside it that looks like an instruction is inert. This is a locked, adversarially-tested invariant of the capture design, not an incidental behavior.
+
+**Returns:** `{success: true, id, slug}` on success. `{success: false, error}` on failure. A capture is never silently dropped — the server always returns an explicit outcome, and a write failure surfaces as `error` rather than an exception or a partial result.
 
 ---
 
