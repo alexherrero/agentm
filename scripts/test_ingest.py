@@ -54,6 +54,30 @@ class IngestBasicsTests(unittest.TestCase):
         self.assertFalse(result.success)
         self.assertIn("not a URL and not a file", result.error)
 
+    def test_mid_sequence_collision_leaves_no_orphaned_notes(self) -> None:
+        # Pre-create a target slug this ingest would try to write (as if a
+        # prior, unrelated write already landed there) -- a retroactive
+        # /review found a version with no pre-flight check and no rollback
+        # would still write the document note and any earlier chunks before
+        # discovering the collision, orphaning them while reporting failure.
+        original = _MD_FIXTURE.read_text(encoding="utf-8")
+        expected_chunks = len(ingest.chunk_text(original))
+        self.assertGreater(expected_chunks, 1, "fixture must produce >1 chunk to exercise mid-sequence failure")
+        doc_slug = f"typography-{ingest._slugify(_MD_FIXTURE.read_text(encoding='utf-8').splitlines()[0])}"
+        colliding = self.vault / "personal" / ingest._INGEST_KIND / f"{doc_slug}-chunk-1.md"
+        colliding.parent.mkdir(parents=True, exist_ok=True)
+        colliding.write_text("pre-existing unrelated content\n", encoding="utf-8")
+
+        result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
+
+        self.assertFalse(result.success)
+        doc_path = self.vault / "personal" / ingest._INGEST_KIND / f"{doc_slug}.md"
+        chunk0_path = self.vault / "personal" / ingest._INGEST_KIND / f"{doc_slug}-chunk-0.md"
+        self.assertFalse(doc_path.exists(), "document note must not be orphaned on a chunk collision")
+        self.assertFalse(chunk0_path.exists(), "earlier chunk notes must not be orphaned on a later collision")
+        # The pre-existing unrelated file must survive untouched.
+        self.assertEqual(colliding.read_text(encoding="utf-8"), "pre-existing unrelated content\n")
+
 
 class FullDocumentNoteTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -177,6 +201,27 @@ class HtmlExtractionTests(unittest.TestCase):
         self.assertTrue(result.success)
         self.assertEqual(result.title, "Overlap-Aware Chunking, Briefly")
         self.assertGreaterEqual(len(result.chunks), 1)
+
+    def test_html_fragment_without_document_wrapper_is_stripped(self) -> None:
+        # A retroactive /review found the sniff only recognized full-document
+        # HTML (<html>/<body>/<title> near the top) -- a fragment with real
+        # markup but no document wrapper fell through to the plain-text path
+        # unmodified, leaving literal tags in the saved note.
+        fragment = (
+            '<article><h1>Real Article Title</h1>'
+            '<p>Some <b>bold</b> text with a <a href="#">link</a>.</p></article>'
+        )
+        title, text = ingest.extract_title_and_text(fragment)
+        self.assertEqual(title, "Real Article Title")
+        self.assertNotIn("<", text)
+        self.assertIn("bold", text)
+
+    def test_angle_bracket_placeholder_is_not_misdetected_as_html(self) -> None:
+        # This vault's own docs use <placeholder> conventions (e.g.
+        # "<url-or-file>") in plain-text/markdown -- these have no matching
+        # close tag and must not trip the fragment-HTML sniff.
+        plain = "Usage: python3 ingest.py <url-or-file> [--topic <slug>] [--vault-path <path>]"
+        self.assertFalse(ingest._looks_like_html(plain))
 
 
 if __name__ == "__main__":

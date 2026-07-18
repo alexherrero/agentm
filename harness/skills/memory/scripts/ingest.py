@@ -113,11 +113,16 @@ class _TitleAndTextExtractor(html.parser.HTMLParser):
 
     _BLOCK_TAGS = frozenset({"p", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li"})
 
+    _HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
+
     def __init__(self) -> None:
         super().__init__()
         self._title_parts: list[str] = []
+        self._heading_parts: list[str] = []
         self._text_parts: list[str] = []
         self._in_title = False
+        self._in_first_heading = False
+        self._heading_done = False
         self._skip_depth = 0
 
     def handle_starttag(self, tag: str, attrs) -> None:
@@ -126,6 +131,8 @@ class _TitleAndTextExtractor(html.parser.HTMLParser):
         elif tag == "title":
             self._in_title = True
         elif tag in self._BLOCK_TAGS:
+            if tag in self._HEADING_TAGS and not self._heading_done and not self._heading_parts:
+                self._in_first_heading = True
             self._text_parts.append("\n\n")
 
     def handle_endtag(self, tag: str) -> None:
@@ -133,16 +140,31 @@ class _TitleAndTextExtractor(html.parser.HTMLParser):
             self._skip_depth -= 1
         elif tag == "title":
             self._in_title = False
+        elif tag in self._HEADING_TAGS and self._in_first_heading:
+            self._in_first_heading = False
+            self._heading_done = True
 
     def handle_data(self, data: str) -> None:
         if self._skip_depth:
             return
-        (self._title_parts if self._in_title else self._text_parts).append(data)
+        if self._in_title:
+            self._title_parts.append(data)
+        else:
+            if self._in_first_heading:
+                self._heading_parts.append(data)
+            self._text_parts.append(data)
 
     @property
     def title(self) -> "str | None":
         t = "".join(self._title_parts).strip()
-        return t or None
+        if t:
+            return t
+        # No <title> element (a document-wrapper-less fragment, e.g. one an
+        # upstream readability extractor already trimmed to <article>) --
+        # fall back to the first heading tag's text, the de facto title in
+        # that shape of markup.
+        h = "".join(self._heading_parts).strip()
+        return h or None
 
     @property
     def text(self) -> str:
@@ -151,9 +173,23 @@ class _TitleAndTextExtractor(html.parser.HTMLParser):
         return "\n\n".join(p for p in paragraphs if p)
 
 
+_HTML_TAG_PAIR_RE = re.compile(r"<([a-zA-Z][a-zA-Z0-9-]*)(?:\s[^<>]*)?>.*?</\1\s*>", re.DOTALL)
+
+
 def _looks_like_html(text: str) -> bool:
+    """Full-document sniff (fast path) plus a fragment fallback: a real
+    matching open/close tag pair anywhere in the first 4000 chars. A
+    retroactive /review found the full-document-only check misclassified
+    HTML fragments (`<article><h1>...</h1></article>`, no `<html>`/`<body>`/
+    `<title>` wrapper) as plain text, leaving raw markup in saved notes.
+    Requires a matching close tag (not just `<word>`) so this vault's own
+    angle-bracket placeholder convention (`<url-or-file>`, `<path>`) in
+    plain-text/markdown docs never false-positives -- placeholders have no
+    closing tag to match."""
     head = text[:512].lower()
-    return "<html" in head or "<body" in head or "<title" in head
+    if "<html" in head or "<body" in head or "<title" in head:
+        return True
+    return bool(_HTML_TAG_PAIR_RE.search(text[:4000]))
 
 
 def extract_title_and_text(raw: str) -> "tuple[str | None, str]":
@@ -219,14 +255,35 @@ def ingest(
     group = "personal"
     tags = [topic]
 
+    chunks = chunk_text(text)
+    chunk_slugs = [f"{doc_slug}-chunk-{i}" for i in range(len(chunks))]
+
+    # Pre-flight: refuse to write anything if any target slug already
+    # exists, rather than discovering the collision partway through the
+    # N+1-file write sequence. A retroactive /review found the prior
+    # version had no pre-check and no rollback: a mid-sequence
+    # FileExistsError left the document note and every chunk written
+    # before it permanently orphaned on disk while reporting
+    # success=False -- the caller had no way to know memory was actually
+    # written. save_entry()'s target formula is vault/group/kind/slug.md
+    # with always_load always False here, so this mirrors it exactly.
+    vault = Path(vault_path)
+    all_slugs = [doc_slug, *chunk_slugs]
+    existing = [s for s in all_slugs if (vault / group / _INGEST_KIND / f"{s}.md").exists()]
+    if existing:
+        return IngestResult(
+            success=False,
+            error=f"slug(s) already exist, nothing written: {', '.join(existing)}",
+        )
+
+    written: list[Path] = []
     try:
         doc_path = save_entry(
             vault_path, _INGEST_KIND, doc_slug, text,
             group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
         )
+        written.append(doc_path)
 
-        chunks = chunk_text(text)
-        chunk_slugs = [f"{doc_slug}-chunk-{i}" for i in range(len(chunks))]
         chunk_paths: list[Path] = []
         for i, chunk_body in enumerate(chunks):
             nav = []
@@ -236,11 +293,22 @@ def ingest(
                 nav.append(f"[[{chunk_slugs[i + 1]}]] (next)")
             nav_line = f" · {' · '.join(nav)}" if nav else ""
             body = f"{chunk_body}\n\n---\n\nFrom [[{doc_slug}]]{nav_line}"
-            chunk_paths.append(save_entry(
+            chunk_path = save_entry(
                 vault_path, _INGEST_KIND, chunk_slugs[i], body,
                 group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
-            ))
+            )
+            written.append(chunk_path)
+            chunk_paths.append(chunk_path)
     except (FileNotFoundError, FileExistsError, ValueError) as e:
+        # The pre-flight check above closes the common case (a stale
+        # collision), but a write can still fail after it (a concurrent
+        # writer, a disk error) -- roll back whatever this call itself
+        # wrote rather than leave a partial ingest permanently on disk.
+        for p in written:
+            try:
+                p.unlink()
+            except OSError:
+                pass
         return IngestResult(success=False, error=str(e))
 
     return IngestResult(success=True, document=doc_path, chunks=chunk_paths, topic=topic, title=title)
