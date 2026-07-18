@@ -317,13 +317,20 @@ def apply_designs_move(vault: Path, project: str, arc: str, plan: Plan) -> None:
     src = vault / "projects" / project / "_harness" / "designs" / arc
     dest = vault / "projects" / project / "_harness" / "archive" / "designs" / arc
     dest.parent.mkdir(parents=True, exist_ok=True)
+    src_rel = src.relative_to(vault).as_posix()
     src.rename(dest)
     old_needle = f"_harness/designs/{arc}/"
     new_needle = f"_harness/archive/designs/{arc}/"
     for row in plan.rows:
-        if row.path == src.relative_to(vault).as_posix():
+        if row.path == src_rel:
             continue  # the folder move itself, handled above
-        md = vault / row.path
+        # A file that lived INSIDE the moved folder now sits at its new
+        # location — the rename above already relocated it, so remap before
+        # reading rather than looking for it at its pre-move path.
+        if row.path.startswith(src_rel + "/"):
+            md = dest / row.path[len(src_rel) + 1:]
+        else:
+            md = vault / row.path
         if not md.is_file():
             continue
         text = md.read_text(encoding="utf-8")
