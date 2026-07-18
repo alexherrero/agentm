@@ -146,6 +146,28 @@ class ConcurrencyTests(unittest.TestCase):
             self.assertTrue(content.startswith("---\n"))
             self.assertIn("\n---\n", content[3:])
 
+    def test_concurrent_writes_same_slug_never_clobber(self) -> None:
+        # Same slug, concurrent writers -- this is the TOCTOU case a
+        # retroactive /review caught before release: without a lock held
+        # across resolve+write, two callers can both observe the target as
+        # free and the second's atomic_write silently overwrites the
+        # first's file (both report success, one candidate is gone with no
+        # error anywhere). Every writer must survive with distinct content.
+        def _write(i):
+            return cap.capture(self.vault, f"content-{i}", slug="same-slug", now=_NOW)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            results = list(ex.map(_write, range(20)))
+
+        self.assertTrue(all(r.success for r in results))
+        paths = {r.path for r in results}
+        self.assertEqual(len(paths), 20, "every writer must land on a distinct path")
+        seen_contents = set()
+        for i, r in enumerate(results):
+            content = r.path.read_text(encoding="utf-8")
+            seen_contents.add(content)
+        self.assertEqual(len(seen_contents), 20, "no file's content was overwritten by another writer")
+
 
 if __name__ == "__main__":
     unittest.main()
