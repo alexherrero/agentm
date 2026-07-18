@@ -141,6 +141,21 @@ class TestFreshnessInvariant(unittest.TestCase):
         inv = vec_index.find_drifted_entries(self.vault)
         self.assertEqual(inv, {"drifted": [], "up_to_date": [], "not_indexed": []})
 
+    def test_inbox_entries_excluded_from_drift_report(self):
+        # A retroactive /review (capture-phone-ingest-sweep plan) found
+        # this walk excluded _archive but never _inbox -- so a staged,
+        # unreviewed ingest-sweep candidate showed up as "not_indexed,"
+        # and the idle hook's own suggested remedy (full-sync --rebuild)
+        # would enqueue it into the vector index, defeating the staging
+        # boundary that plan depends on. _inbox must never appear in any
+        # bucket, matching recall.py's own default exclusion.
+        (self.vault / "personal" / "_inbox").mkdir(parents=True)
+        (self.vault / "personal" / "_inbox" / "staged-candidate.md").write_text("fetched content", encoding="utf-8")
+        inv = vec_index.find_drifted_entries(self.vault)
+        self.assertNotIn("personal/_inbox/staged-candidate.md", inv["not_indexed"])
+        self.assertNotIn("personal/_inbox/staged-candidate.md", inv["drifted"])
+        self.assertNotIn("personal/_inbox/staged-candidate.md", inv["up_to_date"])
+
 
 class TestV6_11ExtractMeta(unittest.TestCase):
     """_extract_meta_from_file — pure frontmatter parsing, no sqlite-vec

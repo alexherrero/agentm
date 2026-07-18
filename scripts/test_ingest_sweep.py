@@ -4,6 +4,7 @@ automated half of /memory ingest, capture part 3
 (capture-phone-ingest-sweep plan)."""
 from __future__ import annotations
 
+import concurrent.futures
 import os
 import sys
 import tempfile
@@ -50,7 +51,7 @@ class StagingTests(unittest.TestCase):
         fm, body = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
         self.assertEqual(fm["status"], "ingest_staged")
         self.assertEqual(fm["staged_topic"], "the-quiet-discipline-of-paragraph-breaks")
-        self.assertIn(ingest_sweep._FETCHED_CONTENT_HEADING, body)
+        self.assertIn(ingest_sweep._FETCHED_CONTENT_START, body)
 
     def test_staged_candidate_is_recall_invisible(self) -> None:
         _new_candidate(self.vault, source_url="https://example.com/article")
@@ -144,13 +145,83 @@ class PromotionTests(unittest.TestCase):
         fm, body = ingest_sweep._parse_frontmatter(self.path.read_text(encoding="utf-8"))
         self.assertEqual(fm["status"], "ingested")
         self.assertIn("domain-reference", fm["derived_from"])
-        self.assertNotIn(ingest_sweep._FETCHED_CONTENT_HEADING, body, "the fetched-content scratch section is dropped once promoted")
+        self.assertNotIn(ingest_sweep._FETCHED_CONTENT_START, body, "the fetched-content scratch section is dropped once promoted")
 
     def test_rejected_candidate_never_promotes(self) -> None:
         raw = self.path.read_text(encoding="utf-8")
         self.path.write_text(ingest_sweep._patch_frontmatter(raw, {"status": "triage_rejected"}), encoding="utf-8")
         result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp() + 3700)
         self.assertEqual(result.promoted, [])
+
+    def test_permanently_failing_promotion_is_surfaced_not_silently_retried_forever(self) -> None:
+        # A retroactive /review found the original version discarded a
+        # promotion failure's detail entirely -- SweepResult had no field
+        # for it and the digest never mentioned it, so a permanently
+        # failing promotion (a genuine slug collision, a disk error) would
+        # retry and silently re-fail every cycle with zero visibility.
+        with mock.patch.object(
+            ingest_sweep.ingest, "ingest",
+            return_value=ingest_sweep.ingest.IngestResult(success=False, error="boom: disk full"),
+        ):
+            result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp() + 3700)
+        self.assertEqual(result.promoted, [])
+        self.assertEqual(len(result.promote_failures), 1)
+        self.assertIn("boom: disk full", result.promote_failures[0][1])
+        digest = ingest_sweep._render_digest(result)
+        self.assertIn("boom: disk full", digest)
+        # Left retryable, not stuck -- still status: ingest_staged.
+        fm, _ = ingest_sweep._parse_frontmatter(self.path.read_text(encoding="utf-8"))
+        self.assertEqual(fm["status"], "ingest_staged")
+
+
+class ContentCollisionTests(unittest.TestCase):
+    """A retroactive /review found the original plain '## Fetched content'
+    markdown heading collides with real content: any candidate whose own
+    body already contains that exact string (an article about markdown
+    syntax, a changelog, or adversarially planted text) got its body
+    corrupted at staging/promotion, since a naive first-occurrence split
+    can't distinguish the original body's own heading from the one this
+    module appends. Reproduced end to end before the fix, confirming
+    both the promoted document AND the surviving _inbox/ candidate were
+    corrupted; these tests prove the start/end-marker-pair fix closes it."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_clip_body_containing_the_old_heading_string_is_not_corrupted(self) -> None:
+        adversarial_body = (
+            "Notes on markdown structure.\n\n"
+            "Example heading syntax:\n\n"
+            "## Fetched content\n\n"
+            "This line is part of the ORIGINAL clip, not anything fetched.\n"
+        )
+        path = _new_candidate(self.vault, content=adversarial_body, source="clipper", source_url="https://example.com/clip")
+        # Pin the real filesystem mtime to match the fixture's injected
+        # `now=` -- capture()'s `now=` param only controls the frontmatter
+        # `captured:` value, not the file's actual mtime (real wall-clock
+        # at write time). A clip candidate has no `source_fetched` to mask
+        # this the way a fetched-link candidate's does, so restamp_candidate
+        # would otherwise "correct" captured: to real wall-clock time and
+        # desync it from this test's fixture clock -- a test-fixture
+        # artifact, not a production bug (a real capture's mtime and its
+        # `now=`-less `captured:` naturally agree).
+        os.utime(path, (_NOW.timestamp(), _NOW.timestamp()))
+        ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
+        fm, body = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
+        self.assertEqual(fm["status"], "ingest_staged")
+        # The full original body, including its own literal heading text,
+        # must survive intact inside the staged section.
+        self.assertIn(adversarial_body.strip(), body)
+
+        result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp() + 3700)
+        self.assertEqual(len(result.promoted), 1)
+        promoted_content = (self.vault / result.promoted[0]).read_text(encoding="utf-8")
+        self.assertIn("This line is part of the ORIGINAL clip", promoted_content)
+        self.assertIn("Notes on markdown structure", promoted_content)
 
 
 class ActStepTests(unittest.TestCase):
@@ -260,6 +331,59 @@ class RestampTests(unittest.TestCase):
         original = path.read_text(encoding="utf-8")
         ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
         self.assertEqual(path.read_text(encoding="utf-8"), original)
+
+
+class ConcurrencyTests(unittest.TestCase):
+    """A retroactive /review found vault_mutex protected only 1 of 7
+    read-modify-write call sites in this module -- the exact TOCTOU shape
+    the immediately-preceding commit in this ladder (capture.py's own
+    fix, one commit earlier) had just established the convention for.
+    These tests exercise real concurrent writers, matching test_capture.py's
+    own 8-thread precedent for the identical bug class."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def test_concurrent_act_step_calls_on_the_same_candidate_never_double_apply(self) -> None:
+        path = _new_candidate(self.vault, instructions="tag:urgent")
+
+        results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            futures = [ex.submit(ingest_sweep.apply_act_step, self.vault, path, now=_NOW.timestamp()) for _ in range(8)]
+            for f in concurrent.futures.as_completed(futures):
+                results.append(f.result())
+
+        # Exactly one thread actually applied the tag; every other thread's
+        # fresh in-lock re-check must see instructions_acted already set
+        # and skip -- not race to apply it twice or corrupt the file.
+        applied = [r for r in results if r[0] == "tag"]
+        self.assertEqual(len(applied), 1, f"expected exactly one thread to apply the action, got: {results}")
+        fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
+        self.assertEqual(fm["tags"], "[urgent]", "the tag must appear exactly once, not duplicated or corrupted")
+
+    def test_concurrent_restamp_and_act_step_do_not_clobber_each_other(self) -> None:
+        path = _new_candidate(self.vault, instructions="tag:urgent", now=datetime(2020, 1, 1, tzinfo=timezone.utc))
+
+        def _do_restamp():
+            return ingest_sweep.restamp_candidate(self.vault, path)
+
+        def _do_act():
+            return ingest_sweep.apply_act_step(self.vault, path, now=_NOW.timestamp())
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+            futures = [ex.submit(_do_restamp if i % 2 == 0 else _do_act) for i in range(8)]
+            concurrent.futures.wait(futures)
+
+        # Both mutations must have landed -- neither writer's lock-protected
+        # read-modify-write should have clobbered the other's update.
+        fm, _ = ingest_sweep._parse_frontmatter(path.read_text(encoding="utf-8"))
+        self.assertNotEqual(fm["captured"], "2020-01-01T00:00:00+00:00", "the restamp must still have landed")
+        self.assertEqual(fm["tags"], "[urgent]", "the act-step tag must still have landed")
+        self.assertIn("instructions_acted", fm)
 
 
 if __name__ == "__main__":

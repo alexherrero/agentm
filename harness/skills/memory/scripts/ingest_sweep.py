@@ -71,7 +71,22 @@ except Exception:  # pragma: no cover — degrade gracefully if the ideas surfac
     append_idea_to_surface = None  # type: ignore[assignment]
 
 _INBOX_SUBDIR = ("personal", "_inbox")
-_FETCHED_CONTENT_HEADING = "## Fetched content"
+# A retroactive /review found the original plain "## Fetched content"
+# markdown heading collides with real content: any candidate whose own
+# body already contains that exact string (an article ABOUT markdown
+# syntax, a changelog, or adversarially planted text) gets its body
+# corrupted at staging/promotion, since a naive first-occurrence split
+# can't tell "the original body's own heading" from "the one this module
+# appended." HTML comments with an internal delimiter are astronomically
+# less likely to appear in real prose than a plain markdown heading, and
+# extraction requires BOTH markers present as a matched pair, not a
+# single split point.
+_FETCHED_CONTENT_START = "<!-- ingest-sweep:fetched-content:start -->"
+_FETCHED_CONTENT_END = "<!-- ingest-sweep:fetched-content:end -->"
+_FETCHED_CONTENT_RE = re.compile(
+    re.escape(_FETCHED_CONTENT_START) + r"\n\n(.*)\n\n" + re.escape(_FETCHED_CONTENT_END),
+    re.DOTALL,
+)
 _DEFAULT_STAGING_WINDOW_SECONDS = 3600  # one sweep cycle — see the plan's own reasoning
 
 # The act step's entire vocabulary. Deliberately tiny and closed: a
@@ -87,6 +102,7 @@ class SweepResult:
     fetched: "list[str]" = field(default_factory=list)
     staged_clips: "list[str]" = field(default_factory=list)
     promoted: "list[str]" = field(default_factory=list)
+    promote_failures: "list[tuple[str, str]]" = field(default_factory=list)
     fetch_failures: "list[tuple[str, str]]" = field(default_factory=list)
     duplicates_skipped: "list[tuple[str, str]]" = field(default_factory=list)
     acted: "list[tuple[str, str]]" = field(default_factory=list)
@@ -204,7 +220,18 @@ def stage_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "
     string on failure, or the resolved topic on success. Never raises: a
     fetch failure leaves the candidate untouched at `status: inbox` with
     nothing recorded as an error on THIS pass (the digest surfaces
-    fetch_failures explicitly instead — see `run_ingest_sweep`)."""
+    fetch_failures explicitly instead — see `run_ingest_sweep`).
+
+    The (potentially slow, up to 15s) network fetch and the duplicate scan
+    both run OUTSIDE the vault lock, so one candidate's fetch never blocks
+    every other vault writer for its duration. The actual write decision
+    is re-verified fresh INSIDE the lock right before writing (a retroactive
+    /review found the original version read, fetched, and duplicate-checked
+    entirely outside any lock, then wrote — a wide TOCTOU window a
+    concurrent writer to the same candidate could clobber; the fix narrows
+    the lock to the minimum span that actually needs it, matching
+    `capture.py`'s own resolve-then-write convention rather than serializing
+    every vault writer behind a slow fetch)."""
     raw = path.read_text(encoding="utf-8")
     fm, body = _parse_frontmatter(raw)
     if fm.get("status") != "inbox":
@@ -216,10 +243,13 @@ def stage_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "
     if source_url:
         dup = _find_duplicate_by_source_url(vault, source_url, exclude=path)
         if dup is not None:
-            atomic_write(path, _patch_frontmatter(raw, {
-                "status": "ingest_duplicate",
-                "duplicate_of": dup.stem,
-            }))
+            with vault_mutex(vault):
+                fresh_raw = path.read_text(encoding="utf-8")
+                if _parse_frontmatter(fresh_raw)[0].get("status") == "inbox":
+                    atomic_write(path, _patch_frontmatter(fresh_raw, {
+                        "status": "ingest_duplicate",
+                        "duplicate_of": dup.stem,
+                    }))
             return False, f"duplicate of {dup.stem} (same source_url, resend not re-fetched)"
 
     if source == "clipper":
@@ -241,17 +271,20 @@ def stage_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "
         return False, "fetched/read content is empty"
     topic = _suggest_topic(title, path.stem)
 
-    updates = {"status": "ingest_staged", "staged_topic": topic}
-    if fetched_at:
-        updates["source_fetched"] = fetched_at
-    patched = _patch_frontmatter(raw, updates)
-    # This function only ever runs on status: inbox candidates (checked
-    # above), and the orchestration loop only calls it on status: inbox
-    # candidates too — a candidate that already carries a "## Fetched
-    # content" section is unreachable here, so no need to strip a prior one.
-    final_content = patched.rstrip("\n") + f"\n\n{_FETCHED_CONTENT_HEADING}\n\n{text}\n"
-
-    with vault_mutex(Path(path).parents[2]):
+    with vault_mutex(vault):
+        fresh_raw = path.read_text(encoding="utf-8")
+        if _parse_frontmatter(fresh_raw)[0].get("status") != "inbox":
+            # Something else (a concurrent sweep pass, an attended triage
+            # session) already moved this candidate on -- don't clobber it.
+            return False, "status changed concurrently, skipping"
+        updates = {"status": "ingest_staged", "staged_topic": topic}
+        if fetched_at:
+            updates["source_fetched"] = fetched_at
+        patched = _patch_frontmatter(fresh_raw, updates)
+        final_content = (
+            patched.rstrip("\n")
+            + f"\n\n{_FETCHED_CONTENT_START}\n\n{text}\n\n{_FETCHED_CONTENT_END}\n"
+        )
         atomic_write(path, final_content)
 
     return True, topic
@@ -280,7 +313,18 @@ def _is_past_staging_window(fm: dict, *, now_dt: datetime, window_seconds: float
 
 def promote_candidate(vault: Path, path: Path, *, now: "float | None" = None) -> "tuple[bool, str]":
     """Read the staged text back off `path` and hand it to `ingest.ingest()`
-    for the real, permanent, indexed write. Returns (promoted, detail)."""
+    for the real, permanent, indexed write. Returns (promoted, detail) --
+    `detail` is always populated, including on failure (the caller surfaces
+    it in the digest; a retroactive /review found the original version
+    discarded a failure's detail entirely, so a permanently-failing
+    promotion retried silently forever with zero operator visibility).
+
+    NOTE: `ingest.ingest()` manages its own `vault_mutex` acquisition per
+    file it writes (via `save_entry()`) -- this function must never hold
+    the same lock while calling it (`vault_mutex` is not re-entrant; a
+    nested acquire from this same process would hang until its own
+    timeout). Only this candidate's OWN final patch is lock-protected,
+    and only after `ingest.ingest()` has already fully completed."""
     raw = path.read_text(encoding="utf-8")
     fm, body = _parse_frontmatter(raw)
     if fm.get("status") != "ingest_staged":
@@ -290,9 +334,10 @@ def promote_candidate(vault: Path, path: Path, *, now: "float | None" = None) ->
     if not topic:
         return False, "staged candidate missing staged_topic"
 
-    if _FETCHED_CONTENT_HEADING not in body:
+    m = _FETCHED_CONTENT_RE.search(body)
+    if not m:
         return False, "staged candidate missing its fetched-content section"
-    staged_text = body.split(_FETCHED_CONTENT_HEADING, 1)[1].strip("\n")
+    staged_text = m.group(1)
 
     result = ingest.ingest(
         vault, fm.get("slug", path.stem), topic=topic, raw_content=staged_text,
@@ -303,16 +348,19 @@ def promote_candidate(vault: Path, path: Path, *, now: "float | None" = None) ->
 
     derived = [str(result.document.relative_to(vault)).replace(os.sep, "/")]
     derived += [str(c.relative_to(vault)).replace(os.sep, "/") for c in result.chunks]
-    updates = {
-        "status": "ingested",
-        "derived_from": "[" + ", ".join(derived) + "]",
-        "ingested_at": _utcnow_iso(now),
-    }
-    patched = _patch_frontmatter(raw, updates)
-    # The fetched-content section did its job; drop it now that the real
-    # content lives at the permanent location.
-    patched = patched.split(_FETCHED_CONTENT_HEADING, 1)[0].rstrip("\n") + "\n"
-    atomic_write(path, patched)
+
+    with vault_mutex(vault):
+        fresh_raw = path.read_text(encoding="utf-8")
+        updates = {
+            "status": "ingested",
+            "derived_from": "[" + ", ".join(derived) + "]",
+            "ingested_at": _utcnow_iso(now),
+        }
+        patched = _patch_frontmatter(fresh_raw, updates)
+        # The fetched-content section did its job; drop it now that the
+        # real content lives at the permanent location.
+        patched = _FETCHED_CONTENT_RE.sub("", patched).rstrip("\n") + "\n"
+        atomic_write(path, patched)
 
     return True, str(result.document.relative_to(vault))
 
@@ -341,7 +389,7 @@ def dispatch_instruction(instructions: "str | None") -> "tuple[str | None, str |
     return None, None
 
 
-def apply_act_step(path: Path, *, now: "float | None" = None) -> "tuple[str | None, str | None]":
+def apply_act_step(vault: Path, path: Path, *, now: "float | None" = None) -> "tuple[str | None, str | None]":
     """Returns (action, detail): action is "tag"/"file-under"/None
     (unmatched — surfaced, not executed) /"skip" (no instructions at all)."""
     raw = path.read_text(encoding="utf-8")
@@ -359,16 +407,22 @@ def apply_act_step(path: Path, *, now: "float | None" = None) -> "tuple[str | No
         # doesn't need to re-decide this (the digest line is the record).
         return None, instructions
 
-    if action == "tag":
-        existing = [t.strip() for t in fm.get("tags", "[]").strip("[]").split(",") if t.strip()]
-        if value not in existing:
-            existing.append(value)
-            raw = _patch_frontmatter(raw, {"tags": "[" + ", ".join(existing) + "]"})
-    elif action == "file-under":
-        raw = _patch_frontmatter(raw, {"staged_topic": value})
+    with vault_mutex(vault):
+        fresh_raw = path.read_text(encoding="utf-8")
+        fresh_fm, _ = _parse_frontmatter(fresh_raw)
+        if fresh_fm.get("instructions_acted"):
+            return "skip", "already acted"  # a concurrent pass beat us to it
 
-    raw = _patch_frontmatter(raw, {"instructions_acted": _utcnow_iso(now)})
-    atomic_write(path, raw)
+        if action == "tag":
+            existing = [t.strip() for t in fresh_fm.get("tags", "[]").strip("[]").split(",") if t.strip()]
+            if value not in existing:
+                existing.append(value)
+                fresh_raw = _patch_frontmatter(fresh_raw, {"tags": "[" + ", ".join(existing) + "]"})
+        elif action == "file-under":
+            fresh_raw = _patch_frontmatter(fresh_raw, {"staged_topic": value})
+
+        fresh_raw = _patch_frontmatter(fresh_raw, {"instructions_acted": _utcnow_iso(now)})
+        atomic_write(path, fresh_raw)
     return action, value
 
 
@@ -411,7 +465,9 @@ def fold_idea_candidate(vault: Path, path: Path) -> "tuple[bool, str]":
             "denied by the permeable-write-boundary gate (unattended context) -- "
             "set MEMORY_REVIEW_MODE=silent for this job to opt in, or fold manually via /memory inbox"
         )
-    atomic_write(path, _patch_frontmatter(raw, {"status": "promoted", "promoted_to": "Ideas.md"}))
+    with vault_mutex(vault):
+        fresh_raw = path.read_text(encoding="utf-8")
+        atomic_write(path, _patch_frontmatter(fresh_raw, {"status": "promoted", "promoted_to": "Ideas.md"}))
     return True, str(written)
 
 
@@ -419,7 +475,7 @@ def fold_idea_candidate(vault: Path, path: Path) -> "tuple[bool, str]":
 # Duty 6 — timestamp re-stamp
 # -----------------------------------------------------------------------------
 
-def restamp_candidate(path: Path) -> bool:
+def restamp_candidate(vault: Path, path: Path) -> bool:
     """Correct `captured:` against the file's own filesystem creation/
     modification time when they disagree by more than a few seconds
     (floating-point/clock-skew tolerant). Returns True if corrected."""
@@ -440,7 +496,9 @@ def restamp_candidate(path: Path) -> bool:
         return False
 
     corrected = fs_dt.replace(microsecond=0).isoformat()
-    atomic_write(path, _patch_frontmatter(raw, {"captured": corrected}))
+    with vault_mutex(vault):
+        fresh_raw = path.read_text(encoding="utf-8")
+        atomic_write(path, _patch_frontmatter(fresh_raw, {"captured": corrected}))
     return True
 
 
@@ -470,6 +528,24 @@ def run_ingest_sweep(
                 else:
                     result.idea_fold_denied.append((str(path), detail))
                 continue
+
+            # Ordering matters here, found by a retroactive /review: restamp
+            # MUST run first, before any other duty writes to this
+            # candidate this pass. restamp_candidate compares `captured:`
+            # against the file's CURRENT filesystem mtime -- if staging (or
+            # the act step) writes to the file first, the mtime it then
+            # reads back is that write's own timestamp, not the candidate's
+            # true original creation time, so restamp would "correct"
+            # captured: to the wrong value (confirmed empirically: a clip
+            # candidate whose body happened to contain this module's own
+            # pre-fix marker string surfaced this exact corruption in the
+            # regression test that caught it). Staging must still run
+            # before the act step, unchanged from before -- a `file-under:`
+            # instruction is meant to OVERRIDE the topic staging assigns,
+            # not be overwritten BY it.
+            if restamp_candidate(vault, path):
+                result.restamped.append(str(path))
+
             if fm.get("source") == "clipper" or fm.get("source_url"):
                 staged, detail = stage_candidate(vault, path, now=now)
                 if staged:
@@ -478,13 +554,11 @@ def run_ingest_sweep(
                     result.duplicates_skipped.append((str(path), detail))
                 elif "not eligible" not in detail and "outside this sweep's scope" not in detail:
                     result.fetch_failures.append((str(path), detail))
-            action, detail = apply_act_step(path, now=now)
+            action, detail = apply_act_step(vault, path, now=now)
             if action not in (None, "skip"):
                 result.acted.append((str(path), f"{action}:{detail}"))
             elif action is None and detail:
                 result.surfaced_instructions.append((str(path), detail))
-            if restamp_candidate(path):
-                result.restamped.append(str(path))
 
         elif status == "ingest_staged":
             fm2, _b2 = _parse_frontmatter(path.read_text(encoding="utf-8"))
@@ -492,6 +566,8 @@ def run_ingest_sweep(
                 promoted, detail = promote_candidate(vault, path, now=now)
                 if promoted:
                     result.promoted.append(detail)
+                else:
+                    result.promote_failures.append((str(path), detail))
 
     return result
 
@@ -501,6 +577,11 @@ def _render_digest(result: SweepResult) -> str:
     lines.append(f"Fetched + staged: {len(result.fetched)}")
     lines.append(f"Clips staged: {len(result.staged_clips)}")
     lines.append(f"Promoted to permanent memory: {len(result.promoted)}")
+    if result.promote_failures:
+        lines.append("")
+        lines.append("## Promotion failures (retried next cycle, not silently dropped)")
+        for path, err in result.promote_failures:
+            lines.append(f"- {path}: {err}")
     if result.fetch_failures:
         lines.append("")
         lines.append("## Fetch failures (left in place, not silently dropped)")
