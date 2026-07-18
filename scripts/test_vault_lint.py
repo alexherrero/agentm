@@ -341,7 +341,7 @@ class TestSchemaPin(unittest.TestCase):
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
             if f not in ("heat_pin", "source_url", "source_fetched",
-                         "fingerprint", "lifecycle_tier", "derived_from")
+                         "fingerprint", "lifecycle_tier", "derived_from", "arc")
         )
         self.assertEqual(tuple(keys), expected)
 
@@ -355,7 +355,7 @@ class TestSchemaPin(unittest.TestCase):
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
             if f not in ("heat_pin", "source_url", "source_fetched",
-                         "supersedes", "lifecycle_tier", "derived_from")
+                         "supersedes", "lifecycle_tier", "derived_from", "arc")
         )
         self.assertEqual(tuple(keys), expected)
         self.assertIn("fingerprint: abc123", fm)

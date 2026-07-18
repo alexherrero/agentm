@@ -44,6 +44,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import save  # noqa: E402  (schema source of truth — same skill dir)
+import arc_registry  # noqa: E402  (2026-07-18 arc-as-metadata convention)
 
 # Directories that are NOT memory-entry trees — skipped during the walk.
 # `_idea-incubator` is deferred to a follow-up (DC-4, bespoke shape); `_meta`
@@ -423,6 +424,27 @@ def check_supersede(entry: Entry, model: VaultModel) -> list:
     return out
 
 
+def check_arc_registry(entry: Entry, model: VaultModel) -> list:
+    # arc: is optional (most entries carry none) — only checked when present.
+    arc = entry.frontmatter.get("arc", "").strip()
+    if not arc:
+        return []
+    if not arc_registry.is_kebab(arc):
+        return [Finding(
+            "arc-registry", "error", entry.rel,
+            f"`arc: {arc}` is not kebab-case (^[a-z0-9-]+$)",
+            "rename `arc` to kebab-case",
+        )]
+    if not arc_registry.is_known(arc):
+        return [Finding(
+            "arc-registry", "error", entry.rel,
+            f"`arc: {arc}` is not a recognized arc slug",
+            f"add `{arc}` to arc_registry.py's KNOWN_ARCS, or fix the typo "
+            "against an existing arc slug",
+        )]
+    return []
+
+
 CHECKS = (
     check_required_fields,
     check_kebab_case,
@@ -433,6 +455,7 @@ CHECKS = (
     check_schema_drift,
     check_wikilinks,
     check_supersede,
+    check_arc_registry,
 )
 
 
