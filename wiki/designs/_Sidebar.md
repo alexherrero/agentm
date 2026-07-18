@@ -14,6 +14,7 @@
 - [Foundations](agentm-foundations-hld)
 - [AgentM HLD](agentm-hld)
   - [Memory System](agentm-memory-system)
+    - [Capture](agentm-capture)
   - [Memory↔Storage Seam](memory-storage-seam)
     - [Vault Storage & Presentation](agentm-vault-storage-presentation)
   - [Experience & Dreaming](agentm-experience-and-dreaming)
