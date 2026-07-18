@@ -63,7 +63,7 @@ class CaptureBasicsTests(unittest.TestCase):
     def test_writes_to_inbox_not_permanent_memory(self) -> None:
         result = cap.capture(self.vault, "x", now=_NOW)
         self.assertTrue(result.success)
-        self.assertIn("personal/_inbox", str(result.path))
+        self.assertIn("personal/_inbox", result.path.as_posix())
 
     def test_optional_fields_written_when_provided(self) -> None:
         result = cap.capture(
