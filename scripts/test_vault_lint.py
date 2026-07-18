@@ -238,6 +238,45 @@ class TestChecks(unittest.TestCase):
             self.assertTrue(any(f.severity == "warn" for f in sup), [f.message for f in sup])
             self.assertFalse(any(f.severity == "error" for f in sup), [f.message for f in sup])
 
+    def _with_arc(self, slug: str, arc: str) -> list:
+        # arc: sits between tags: and group: per save.FRONTMATTER_FIELD_ORDER
+        # — inserted there so these tests don't also trip field-order.
+        fm = _clean(slug)
+        fm.insert(5, f"arc: {arc}")
+        return fm
+
+    def test_arc_registry_known_value_passes(self):
+        with _Vault() as v:
+            _write(v, "personal/_always-load/p.md", self._with_arc("p", "wave-a"))
+            _, findings = _lint(v)
+            self.assertNotIn("arc-registry", _ids(findings))
+
+    def test_arc_registry_absent_arc_passes(self):
+        # arc: is optional — most entries carry none, and that's not a finding.
+        with _Vault() as v:
+            _write(v, "personal/_always-load/q.md", _clean("q"))
+            _, findings = _lint(v)
+            self.assertNotIn("arc-registry", _ids(findings))
+
+    def test_arc_registry_non_kebab_value_is_error(self):
+        with _Vault() as v:
+            fm = self._with_arc("r", "Not_Kebab")
+            _write(v, "personal/_always-load/r.md", fm)
+            _, findings = _lint(v)
+            arc_findings = [f for f in findings if f.check_id == "arc-registry"]
+            self.assertEqual(len(arc_findings), 1)
+            self.assertEqual(arc_findings[0].severity, "error")
+
+    def test_arc_registry_unrecognized_value_is_error(self):
+        with _Vault() as v:
+            fm = self._with_arc("s", "some-made-up-arc")
+            _write(v, "personal/_always-load/s.md", fm)
+            _, findings = _lint(v)
+            arc_findings = [f for f in findings if f.check_id == "arc-registry"]
+            self.assertEqual(len(arc_findings), 1)
+            self.assertEqual(arc_findings[0].severity, "error")
+            self.assertIn("some-made-up-arc", arc_findings[0].message)
+
 
 class TestCalibration(unittest.TestCase):
     """Real-world calibrations surfaced by the live-vault dogfood."""

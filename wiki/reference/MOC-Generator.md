@@ -84,8 +84,22 @@ This prints a summary line (`wrote N MOC page(s) under <vault>/_moc`). This is f
 - **No pagination.** High-frequency kinds (`preferences` alone was 993 notes at the plan's frequency audit) produce a single long MOC page with no pagination design. This is a named follow-up. You do not solve it here.
 - **Read-only over source notes.** The generator can overwrite its own `_moc/*.md` output. It never mutates a note it catalogs.
 
+## Arc-index pages (`--arcs`)
+
+The `--arcs` flag additionally (re)generates one `kind: arc-index` page per `(project, arc)` pair at `<vault>/projects/<project>/arcs/<arc-slug>.md`, for every entry under `projects/` carrying an `arc:` frontmatter field (the 2026-07-18 arc-as-metadata convention — see [AgentM Memory System § Arcs](../designs/agentm-memory-system#arcs--temporal-grouping-as-metadata-not-folders)).
+
+| Function | Signature | Purpose |
+|---|---|---|
+| `build_arc_groups(vault_path)` | `build_arc_groups(vault_path: Path \| str) -> dict[tuple[str, str], list[tuple[str, str, dict]]]` (`moc_generator.py`) | Read-only scan of `projects/` for entries carrying `arc:`. Returns `{(project, arc): [(rel_path_str, created, fm), ...]}`, newest-first by `created`. |
+| `generate_arc_indexes(vault_path, *, today)` | `generate_arc_indexes(vault_path: Path \| str, *, today: str) -> list[str]` | Writes/updates each `(project, arc)` page. Returns the `project/arc` keys written. |
+| CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> --arcs` | Runs `generate()` as normal, then also runs `generate_arc_indexes()`. |
+
+Unlike the fully-generated `_moc/<kind>.md` pages, an arc-index is a real memory entry a human may hand-edit above a marker line (`<!-- BEGIN GENERATED ARC LINKS (moc_generator.py — do not edit below) -->`). Regeneration only ever replaces the generated link-list below that marker — a hand-written header above it survives. A cross-repo arc (the same `arc:` slug stamped in more than one project) gets a full link list in each project that has entries, plus an "also stamped `arc: <arc>` in: …" cross-reference line pointing at the sibling project's page — the canonical-vs-pointer distinction the design names is an editorial call layered on by hand, not a mechanical one.
+
+Like `--arcs` regeneration itself, this is CLI-invokable only — no hook or scheduled wiring, same as the base `--vault`-only mode above.
+
 ## Related
 
-- [Kind-taxonomy registry](Kind-Taxonomy-Registry) — This generator depends on this registry for known/unrecognized-kind labeling.
-- [AgentM Memory System](../designs/agentm-memory-system) — This is the governing design (V6-18).
+- [Kind-taxonomy registry](Kind-Taxonomy-Registry) — This generator depends on this registry for known/unrecognized-kind labeling. `--arcs` groups by `arc_registry.py`'s `KNOWN_ARCS` the same way.
+- [AgentM Memory System](../designs/agentm-memory-system) — This is the governing design (V6-18; arcs added 2026-07-18).
 - [Audit the vault](../how-to/Audit-The-Vault) — This generator follows this sibling read-only vault tool pattern.
