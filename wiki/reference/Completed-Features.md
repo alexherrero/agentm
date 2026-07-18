@@ -11,6 +11,7 @@ This page provides the combined build timeline for agentm and its sibling toolki
 
 | Date | Feature (plain English) | Release | Roadmap id |
 |---|---|---|---|
+| 2026-07-18 | Reports that reach you: an opt-in daily on-device notification and an opt-in daily digest email (authenticated + TLS SMTP, works with transactional-email relays like Resend), the two Delivery channels that weren't built yet alongside the already-shipped SessionStart line — dogfooded live, including a real STARTTLS-downgrade credential-leak fix caught by adversarial review before the cut | agentm v8.3.0 (PR #325/#326) | FRIDAY ladder feature 1 of 7 |
 | 2026-07-17 | `/open` (alias `/orient`): a read-only conversational verb that locates a project by name across registered repos, the vault, and recall, confirms the match, then renders a short status orientation (what it is, plan progress, recent activity, board state) — absorbs the planned wake-from-state notifier as its successor | crickets v3.32.0 (PR #209) | F1-REAUDIT goal 5 + goal 6 |
 | 2026-07-17 | Observability digest ladder fixed and made visible — a launchd-`cd` bug meant every background cycle had discovered zero jobs since the runner was first built, so the ladder never ran unattended; fixed, plus a genuine session-start line and `/console` section replace the always-load dump nobody was reading | agentm v8.2.0 (PR #320/#321) | #319 |
 | 2026-07-17 | `Ideas.md`'s default path corrected for Drive-synced vault storage | agentm v8.2.0 (PR #318) | (bugfix) |
