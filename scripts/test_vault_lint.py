@@ -331,14 +331,17 @@ class TestSchemaPin(unittest.TestCase):
         )
         keys = [line.split(":", 1)[0] for line in fm.splitlines()
                 if ":" in line and not line.startswith("---")]
-        # heat_pin is written by the heat policy only, fingerprint only by
-        # callers that pass one (wave-c-diagnostics), lifecycle_tier only by
-        # callers that pass one (V6-1), and derived_from only by callers that
-        # pass one (V6-4) -- none of the four is emitted by this default
-        # call; compare against the subset that always is.
+        # heat_pin is written by the heat policy only, source_url/source_fetched
+        # only by capture/ingest callers (capture-front-door plan task 1),
+        # fingerprint only by callers that pass one (wave-c-diagnostics),
+        # lifecycle_tier only by callers that pass one (V6-1), and
+        # derived_from only by callers that pass one (V6-4) -- none of the
+        # six is emitted by this default call; compare against the subset
+        # that always is.
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
-            if f not in ("heat_pin", "fingerprint", "lifecycle_tier", "derived_from")
+            if f not in ("heat_pin", "source_url", "source_fetched",
+                         "fingerprint", "lifecycle_tier", "derived_from")
         )
         self.assertEqual(tuple(keys), expected)
 
@@ -351,7 +354,8 @@ class TestSchemaPin(unittest.TestCase):
                 if ":" in line and not line.startswith("---")]
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
-            if f not in ("heat_pin", "supersedes", "lifecycle_tier", "derived_from")
+            if f not in ("heat_pin", "source_url", "source_fetched",
+                         "supersedes", "lifecycle_tier", "derived_from")
         )
         self.assertEqual(tuple(keys), expected)
         self.assertIn("fingerprint: abc123", fm)

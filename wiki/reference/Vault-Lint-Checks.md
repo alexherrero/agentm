@@ -21,9 +21,9 @@ Nine checks run over every agent-shaped entry. Severities: `error` (off-spec —
 
 | Check ID | Severity | What it checks | Suggested-fix shape |
 |---|---|---|---|
-| `required-field` | error | A required frontmatter field (every field except the optional ones — `fingerprint`, `supersedes`, `lifecycle_tier`, `derived_from`, `heat_pin`) is missing. | Add the missing field in the locked order. |
+| `required-field` | error | A required frontmatter field (every field except the optional ones — `source_url`, `source_fetched`, `fingerprint`, `supersedes`, `lifecycle_tier`, `derived_from`, `heat_pin`) is missing. | Add the missing field in the locked order. |
 | `kebab-case` | error | `kind` / `slug` / `group` path segments / each `tag` are kebab-case (`^[a-z0-9-]+$`; `group` is `/`-joined kebab segments). | Rename the offending value to kebab-case. |
-| `field-order` | warn | The present frontmatter fields appear in the locked order (`kind, status, created, updated, tags, group, slug, fingerprint, always_load, supersedes, lifecycle_tier, derived_from, heat_pin`). | Reorder frontmatter to the locked order. |
+| `field-order` | warn | The present frontmatter fields appear in the locked order (`kind, status, created, updated, tags, group, slug, source_url, source_fetched, fingerprint, always_load, supersedes, lifecycle_tier, derived_from, heat_pin`). | Reorder frontmatter to the locked order. |
 | `slug-filename` | warn | The `slug` value matches the filename stem. | Rename the file to `<slug>.md`, or fix the `slug` field. |
 | `date-format` | error / warn | `created` / `updated` are `YYYY-MM-DD` (error if malformed); `updated` is on or after `created` (warn if earlier). | Set a valid date / make `updated` ≥ `created`. |
 | `placeholder-value` | warn | A frontmatter value still holds an unfilled template option-list (`a \| b \| c`). | Replace with the single chosen value. |
