@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v8.5.0](https://github.com/alexherrero/agentm/releases/tag/v8.5.0).** `/memory ingest <url|file>` reads a web page or file and remembers it: one intact full-document note plus reading-order-linked chunks for retrieval.
+> **Latest release: [v8.6.0](https://github.com/alexherrero/agentm/releases/tag/v8.6.0).** Capture from your phone now finishes itself — the ingest sweep fetches forwarded links within an hour and turns them into recallable memory, no manual step required.
 
 ---
 
