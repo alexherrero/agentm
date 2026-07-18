@@ -10,17 +10,24 @@ validated destinations. This module is the second front door: every write
 here lands in `personal/_inbox/`, never in permanent memory, and never
 goes through `save_entry`/`_validate_path_segment` at all.
 
-Write path: `vault_lock.atomic_write` directly (temp file in the same
-directory, fsync, atomic rename) — genuinely atomic per-file, unlike
-`reflect.py`'s existing `_save_candidate_to_inbox`, which does a raw
-`write_bytes()` with no atomic-write guarantee. Multiple transports write
-into `_inbox/` concurrently (the Drive connector, the Obsidian Web
-Clipper, this module, and the future ingest sweep) and Data Integrity is
-a named Quality Attribute of the capture design, so this module defaults
-to the safer, genuinely-atomic primitive rather than matching reflection's
-current non-atomic pattern. See the plan's own Constraints section for the
-full reasoning and the one-line-reversal note if the operator prefers
-matching `reflect.py` instead.
+Write path: the resolve-then-write sequence runs under `vault_lock.
+vault_mutex` (matching `save_entry`'s convention), with the write itself
+via `vault_lock.atomic_write` (temp file in the same directory, fsync,
+atomic rename) — genuinely atomic per-file and, with the mutex held
+across resolution, collision-safe against a second concurrent caller
+too. `reflect.py`'s existing `_save_candidate_to_inbox` does a raw
+`write_bytes()` with neither guarantee. Multiple transports write into
+`_inbox/` concurrently (the Drive connector, the Obsidian Web Clipper,
+this module, and the future ingest sweep) and Data Integrity is a named
+Quality Attribute of the capture design, so this module defaults to the
+safer, genuinely-atomic-and-serialized primitive rather than matching
+reflection's current pattern. See the plan's own Constraints section for
+the full reasoning and the one-line-reversal note if the operator
+prefers matching `reflect.py` instead. (A retroactive /review before the
+release cut found the mutex was missing on first ship — two concurrent
+callers resolving the same free slug before either wrote would silently
+overwrite one candidate with the other, contradicting this contract;
+fixed before release, never shipped to a tagged version.)
 
 Every call returns a `CaptureResult` — success or failure is always
 explicit, never a silent drop (the design's own reliability contract:
@@ -40,7 +47,7 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-from vault_lock import atomic_write  # noqa: E402
+from vault_lock import LockTimeout, atomic_write, vault_mutex  # noqa: E402
 
 _KNOWN_KINDS = ("capture", "idea")
 
@@ -128,35 +135,45 @@ def capture(
         resolved_slug = slug or _slugify(content, now=now)
         inbox_dir = vault / "personal" / "_inbox"
         inbox_dir.mkdir(parents=True, exist_ok=True)
-        target = _resolve_target(inbox_dir, resolved_slug)
-        final_slug = target.stem
 
-        fm_lines = [
-            "---",
-            f"kind: {kind}",
-            "status: inbox",
-            f"created: {_iso(now)}",
-            f"captured: {_iso(now)}",
-            f"slug: {final_slug}",
-        ]
-        if source:
-            fm_lines.append(f"source: {source}")
-        if surface:
-            fm_lines.append(f"surface: {surface}")
-        if tags:
-            fm_lines.append("tags: [" + ", ".join(tags) + "]")
-        if source_url:
-            fm_lines.append(f"source_url: {source_url}")
-        if instructions:
-            fm_lines.append(f"instructions: {json.dumps(instructions)}")
-        fm_lines.append("---")
-        fm = "\n".join(fm_lines) + "\n"
+        # resolve+write held under the vault's mutex (matching save_entry's
+        # convention) so two concurrent callers can never both resolve to
+        # the same free slug and have the second silently clobber the
+        # first's atomic_write — the check-then-write window is otherwise
+        # a TOCTOU race across transports (Drive connector, Clipper, this
+        # module, the future ingest sweep) writing the same second.
+        with vault_mutex(vault):
+            target = _resolve_target(inbox_dir, resolved_slug)
+            final_slug = target.stem
 
-        body = content.rstrip("\n") + "\n"
-        atomic_write(target, fm + "\n" + body)
+            fm_lines = [
+                "---",
+                f"kind: {kind}",
+                "status: inbox",
+                f"created: {_iso(now)}",
+                f"captured: {_iso(now)}",
+                f"slug: {final_slug}",
+            ]
+            if source:
+                fm_lines.append(f"source: {source}")
+            if surface:
+                fm_lines.append(f"surface: {surface}")
+            if tags:
+                fm_lines.append("tags: [" + ", ".join(tags) + "]")
+            if source_url:
+                fm_lines.append(f"source_url: {source_url}")
+            if instructions:
+                fm_lines.append(f"instructions: {json.dumps(instructions)}")
+            fm_lines.append("---")
+            fm = "\n".join(fm_lines) + "\n"
+
+            body = content.rstrip("\n") + "\n"
+            atomic_write(target, fm + "\n" + body)
         return CaptureResult(success=True, path=target, slug=final_slug)
     except OSError as e:
         return CaptureResult(success=False, error=f"write failed: {e}")
+    except LockTimeout as e:
+        return CaptureResult(success=False, error=f"vault busy: {e}")
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
