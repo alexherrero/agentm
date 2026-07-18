@@ -1,0 +1,23 @@
+# observability-email-daily.yaml — the opt-in daily digest email channel
+# (`wiki/designs/agentm-autonomy.md`'s "Delivery" subsection, PLAN-proactive-
+# delivery task 5).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored; register by copying this template to
+# .harness/jobs/observability-email-daily.yaml.
+#
+# The script itself is opt-in-gated (plugins.autonomy.email_to +
+# plugins.autonomy.email_smtp_url both required — see scripts/agentm_config.py
+# --email-to / --email-smtp-url): a fresh install that copies this manifest
+# still sends nothing until the operator configures a first-party SMTP
+# relay or on-device mail agent. dry_run stays false because the opt-in
+# gate IS the safety gate.
+schedule: daily
+lookback: 24h
+command: python3 -m health.session_email
+
+# Sends an email (T2, operator-facing, opt-in) — same tier as the digest
+# jobs it reads from.
+tier: T2
+
+dry_run: false

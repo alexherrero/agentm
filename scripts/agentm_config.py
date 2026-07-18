@@ -17,6 +17,15 @@ Operations:
                                             #   vault-less machine into repo-local state
     agentm_config.py --storage-backend <name>  # write storage.backend (the selected
                                             #   storage backend protocol name; V5-1 part 5)
+    agentm_config.py --notify-enabled true # opt in to the daily on-device notification
+                                            #   (plugins.autonomy.notify_enabled; FRIDAY feature 1)
+    agentm_config.py --email-to <address>  # opt in to the daily digest email
+                                            #   (plugins.autonomy.email_to)
+    agentm_config.py --email-smtp-url <url> # first-party SMTP/mail-agent target
+                                            #   (plugins.autonomy.email_smtp_url)
+    agentm_config.py --email-from <address> # optional verified sending address
+                                            #   (plugins.autonomy.email_from; some relays
+                                            #   require this distinct from the auth username)
     agentm_config.py --get vault_path      # read plugins.obsidian-vault.vault_path (with
                                             #   legacy vault_path fallback); rc=0 if present
     agentm_config.py --list                # dump full config as JSON
@@ -63,6 +72,19 @@ _STORAGE_BACKEND_KEY = "storage.backend"
 #: convention as _STORAGE_BACKEND_KEY — so it round-trips through --get/--unset.
 #: Must match harness_memory._PLUGIN_VAULT_PATH_KEY exactly.
 _PLUGIN_VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
+
+#: Autonomy-plugin delivery-channel opt-in keys (FRIDAY feature 1, "Reports
+#: that reach you" — `wiki/designs/agentm-autonomy.md`'s Delivery subsection).
+#: Flat with dots, same namespacing convention as the vault-path key above.
+#: Absent by default: both channels graceful-skip until the operator opts in.
+_AUTONOMY_NOTIFY_ENABLED_KEY = "plugins.autonomy.notify_enabled"
+_AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
+_AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
+#: Optional — the verified sending address for relays (e.g. Resend) that
+#: require a domain-verified From distinct from the SMTP auth username.
+#: Absent → the sender falls back to email_to (mail-to-self, fine for a
+#: local/on-device relay with no domain-verification requirement).
+_AUTONOMY_EMAIL_FROM_KEY = "plugins.autonomy.email_from"
 
 
 def _resolve_install_prefix(cli_arg: Optional[str] = None) -> Path:
@@ -196,6 +218,104 @@ def cmd_set_storage_backend(prefix: Path, name: str) -> int:
     return 0
 
 
+def cmd_set_notify_enabled(prefix: Path, value: str) -> int:
+    """Set the on-device notification opt-in (`plugins.autonomy.notify_enabled`).
+
+    Accepts 'true'/'false' (case-insensitive). Absent by default — the
+    notification channel (`session_notify.py`) graceful-skips until this is
+    explicitly set true. Idempotent: silent no-op when unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set notify_enabled: {value!r} is not 'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_AUTONOMY_NOTIFY_ENABLED_KEY) == enabled:
+        return 0
+    config[_AUTONOMY_NOTIFY_ENABLED_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_AUTONOMY_NOTIFY_ENABLED_KEY} = {enabled}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
+def cmd_set_email_to(prefix: Path, address: str) -> int:
+    """Set the daily-digest-email recipient (`plugins.autonomy.email_to`).
+
+    Validates a non-empty string only — no email-format validation, matching
+    `cmd_set_storage_backend`'s fail-loud-at-use-time philosophy rather than a
+    silent demotion here. Idempotent: silent no-op when unchanged.
+    """
+    address = address.strip()
+    if not address:
+        print(
+            "[agentm_config] refusing to set email_to: address must be a non-empty string",
+            file=sys.stderr,
+        )
+        return 2
+    config = _read_config(prefix) or {}
+    if config.get(_AUTONOMY_EMAIL_TO_KEY) == address:
+        return 0
+    config[_AUTONOMY_EMAIL_TO_KEY] = address
+    written = _write_config(prefix, config)
+    print(f"{_AUTONOMY_EMAIL_TO_KEY} = {address}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
+def cmd_set_email_from(prefix: Path, address: str) -> int:
+    """Set the verified sending address (`plugins.autonomy.email_from`).
+
+    Optional. Some relays (Resend and similar transactional-email services)
+    require a domain-verified From distinct from the SMTP auth username —
+    this field carries that address. Absent, the sender falls back to
+    email_to. Validates a non-empty string only. Idempotent.
+    """
+    address = address.strip()
+    if not address:
+        print(
+            "[agentm_config] refusing to set email_from: address must be a non-empty string",
+            file=sys.stderr,
+        )
+        return 2
+    config = _read_config(prefix) or {}
+    if config.get(_AUTONOMY_EMAIL_FROM_KEY) == address:
+        return 0
+    config[_AUTONOMY_EMAIL_FROM_KEY] = address
+    written = _write_config(prefix, config)
+    print(f"{_AUTONOMY_EMAIL_FROM_KEY} = {address}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
+def cmd_set_email_smtp_url(prefix: Path, url: str) -> int:
+    """Set the first-party SMTP/mail-agent target (`plugins.autonomy.email_smtp_url`).
+
+    The operator's own mail relay or on-device mail agent — never a
+    third-party push service. Validates a non-empty string only. Idempotent:
+    silent no-op when unchanged.
+    """
+    url = url.strip()
+    if not url:
+        print(
+            "[agentm_config] refusing to set email_smtp_url: url must be a non-empty string",
+            file=sys.stderr,
+        )
+        return 2
+    config = _read_config(prefix) or {}
+    if config.get(_AUTONOMY_EMAIL_SMTP_URL_KEY) == url:
+        return 0
+    config[_AUTONOMY_EMAIL_SMTP_URL_KEY] = url
+    written = _write_config(prefix, config)
+    print(f"{_AUTONOMY_EMAIL_SMTP_URL_KEY} = {url}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
 def cmd_get(prefix: Path, field: str) -> int:
     """Read a single field; rc=0 if present, rc=1 silent if absent.
 
@@ -284,6 +404,14 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="set state_mode field (how harness state is stored: local|backend; 'vault' is a deprecated alias for 'backend')")
     op.add_argument("--storage-backend", metavar="NAME",
                     help="set storage.backend field (the selected storage backend protocol name)")
+    op.add_argument("--notify-enabled", metavar="{true,false}",
+                    help="set plugins.autonomy.notify_enabled — opt in/out of the daily on-device notification")
+    op.add_argument("--email-to", metavar="ADDRESS",
+                    help="set plugins.autonomy.email_to — opt in to the daily digest email")
+    op.add_argument("--email-smtp-url", metavar="URL",
+                    help="set plugins.autonomy.email_smtp_url — the first-party SMTP/mail-agent target")
+    op.add_argument("--email-from", metavar="ADDRESS",
+                    help="set plugins.autonomy.email_from — the verified sending address (optional; some relays require this distinct from the SMTP auth username)")
     op.add_argument("--get", metavar="FIELD", help="read single field to stdout")
     op.add_argument("--list", action="store_true", help="dump full config as JSON")
     op.add_argument("--unset", metavar="FIELD", help="clear a field")
@@ -301,6 +429,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_state_mode(prefix, args.state_mode)
     if args.storage_backend is not None:
         return cmd_set_storage_backend(prefix, args.storage_backend)
+    if args.notify_enabled is not None:
+        return cmd_set_notify_enabled(prefix, args.notify_enabled)
+    if args.email_to is not None:
+        return cmd_set_email_to(prefix, args.email_to)
+    if args.email_smtp_url is not None:
+        return cmd_set_email_smtp_url(prefix, args.email_smtp_url)
+    if args.email_from is not None:
+        return cmd_set_email_from(prefix, args.email_from)
     if args.get is not None:
         return cmd_get(prefix, args.get)
     if args.list:

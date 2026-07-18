@@ -1,0 +1,22 @@
+# observability-notify-daily.yaml — the opt-in on-device notification channel
+# (`wiki/designs/agentm-autonomy.md`'s "Delivery" subsection, PLAN-proactive-
+# delivery task 5).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored; register by copying this template to
+# .harness/jobs/observability-notify-daily.yaml.
+#
+# The script itself is opt-in-gated (plugins.autonomy.notify_enabled — see
+# scripts/agentm_config.py --notify-enabled): a fresh install that copies
+# this manifest still fires nothing until the operator explicitly opts in.
+# The job's own dry_run stays false because the opt-in gate IS the safety
+# gate — a second dry-run layer on top would just be redundant ceremony.
+schedule: daily
+lookback: 24h
+command: python3 -m health.session_notify
+
+# Fires a native OS notification (T2, operator-facing, opt-in) — same tier
+# as the digest jobs it reads from.
+tier: T2
+
+dry_run: false
