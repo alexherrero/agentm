@@ -21,6 +21,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 |---|---|
 | Capture a specific preference / workflow / fix manually right now | `/memory save` |
 | Stage a casual thought, link, or idea for later triage — not yet reviewed | `/memory capture` |
+| Read a web page or file into memory as a full document plus retrieval chunks | `/memory ingest` |
 | Replace an existing entry with a corrected version (preserving audit trail) | `/memory evolve` |
 | Run reflection over the current session transcript on demand (or a specified transcript path) | `/memory reflect` |
 | Mine the full historical transcript backlog (`~/.claude/projects/*/`) with dry-run preview + resume-safe batching | `/memory reflect corpus` |
@@ -271,6 +272,42 @@ The same door, callable by any connected MCP host: `memory_capture(content, kind
 
 - **Don't populate `instructions` from anything other than this call's own explicit argument.** A caller that derives it from `content` (or any fetched/untrusted text) breaks the capture design's trust-boundary invariant at the call site.
 - **Don't choose a destination.** `/memory capture` has no `--group`/project parameter by design — every write lands in `_inbox/`; only the triage/ingestion machinery (a later capture part) ever promotes it elsewhere.
+
+### `/memory ingest`
+
+Capture part 2 — `designs/friday/agentm-capture.md`'s article-ingestion door, sibling to `/memory capture`. Where `capture` stages a candidate for later triage, `ingest` reads a web page or file right now and writes it straight into permanent memory as two forms that always ship together: one intact full-document note (the complete original text, unmodified) and a set of small, reading-order-linked chunk notes for retrieval. Neither form replaces the other — this is the only capture-family door that produces more than one note per item.
+
+Canonical implementation: `scripts/ingest.py`'s `ingest()` function. Both the document note and every chunk go through `save_entry()` (unlike `/memory capture`'s direct `_inbox/`-only write) — these are permanent-memory writes from the start, each individually validated and queued for search indexing.
+
+#### Invocation
+
+```
+python3 skills/memory/scripts/ingest.py <url-or-file> \
+  [--vault-path <path>] [--topic <slug>]
+```
+
+| Flag | Use case |
+|---|---|
+| `<url-or-file>` (positional) | A URL (fetched via a single stdlib `urllib` GET, no HTTP dependency) or a local file path. |
+| `--topic` | The topic slug (kebab-case) notes for this ingest are tagged and slug-prefixed with. **Omit it to get a suggestion first** — the command extracts a title-based slug and stops without writing anything; re-run with `--topic <suggested-or-your-own>` to actually ingest. This is a real confirmation step, not an auto-accept. |
+| `--vault-path` | Same resolution chain as `/memory save`: arg > `MEMORY_VAULT_PATH` env > error. |
+
+#### What gets written
+
+- **The full-document note** (`kind: domain-reference`, `group: personal`) — the complete extracted text, verbatim. HTML content is tag-stripped (a lightweight `<title>`/paragraph extractor, not a readability algorithm — scripts and styles are dropped, everything else becomes plain text); a local plain-text or markdown file passes through unmodified.
+- **The chunk notes** (same `kind`/`group`) — one per `chunking.py`'s `chunk_text()` output, each carrying a footer that links back to the full document and to its immediate reading-order neighbors (previous/next only — the first chunk has no "previous," the last has no "next," so the chain never cycles).
+- **Every note** carries `source_url`/`source_fetched` when the source was a URL (omitted for local files), and a `tags: [<topic>]` entry. Slugs are `<topic>-<title-slug>` for the document and `<topic>-<title-slug>-chunk-N` for each chunk, so same-topic ingests sort together even though they share the flat `group: personal` every other kind in this vault uses (the design's own "filed under `personal/domains/<topic>/`" phrasing describes the *intent* — discoverable by topic — which this achieves through slug-prefixing and tagging rather than a new per-topic directory layer `save_entry`'s `group`/`kind`/`slug` path formula has no clean way to produce without breaking the flat-`group`-per-kind convention every other entry follows).
+
+#### Failure modes (graceful)
+
+- **Fetch/read failure** (bad URL, network error, missing file) → returns `success: false` with the underlying error; nothing written. No retry, no paywall handling — that resilience is the ingest sweep's job (capture part 3), not this command's.
+- **Empty content** → returns `success: false`; nothing written.
+- **Vault not resolved** → the CLI exits 2 with a clear remedy.
+
+#### Anti-patterns
+
+- **Don't skip the topic-confirmation step in scripted/agent use.** A caller that always guesses `--topic` up front without surfacing the suggestion defeats the design's "the agent suggests a title-based slug for you to confirm" intent — treat the no-`--topic` suggestion as a real prompt, not dead code.
+- **Don't retune `chunk_text()`'s parameters here.** This command calls the existing chunking function unmodified; chunk-size tuning is out of this door's scope.
 
 ### `/memory evolve`
 
