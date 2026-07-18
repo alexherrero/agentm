@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Overlap-Aware Chunking, Briefly</title>
+<style>body { font-family: sans-serif; }</style>
+</head>
+<body>
+<script>console.log("tracking pixel nonsense");</script>
+<h1>Overlap-Aware Chunking, Briefly</h1>
+<p>Splitting a long document into smaller pieces for retrieval sounds simple until a relevant sentence lands exactly on a chunk boundary. A naive splitter cuts the sentence in half, and whichever half a search matches loses the context the other half carried, so the match scores lower than it should even though the passage was genuinely relevant to the query that found it.</p>
+<p>An overlap-aware splitter fixes this by repeating a short tail of each chunk at the start of the next one, so a boundary sentence still has enough surrounding context in at least one of the two chunks it touches. The overlap costs a little storage and a little redundant text, and buys back nearly all of the recall a naive splitter would have thrown away for free.</p>
+<p>None of this is exotic. It is the same trade-off a print typesetter makes with a running header repeating a chapter title on every page, so a reader who opens to any single page still knows roughly where they are without having to flip back to the start.</p>
+</body>
+</html>
