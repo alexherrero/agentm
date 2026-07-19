@@ -73,6 +73,47 @@ _RELATED_LINE_RE = re.compile(r"^\*\*Related:\*\* (.+)$", re.MULTILINE)
 _RELATED_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _FENCE_MARKER_RE = re.compile(r"^```", re.MULTILINE)
 
+# ingest.py's chunk-slug formula: `<doc-slug>-chunk-<i>` (see its `ingest()`
+# — the only writer that produces this pattern).
+_CHUNK_SLUG_RE = re.compile(r"^(?P<doc>.+)-chunk-\d+$")
+
+# Extra results requested beyond the Related-line cap when querying the
+# vector index for link candidates (auto-org part 2 task 5). An ingested
+# chunk's very nearest neighbors are overwhelmingly its own batch — the
+# sibling chunks and the parent document, near-identical text — and a query
+# sized exactly to the cap would return ONLY those, crowding every outward
+# candidate out of the result window before `same_ingest_batch` even gets
+# to filter them. The headroom keeps outward candidates visible; sized to
+# comfortably exceed a typical batch's chunk count. Cheap: a sqlite-vec
+# top-k query's cost barely moves between k=4 and k=12.
+_NEIGHBOR_QUERY_HEADROOM = 8
+
+
+def same_ingest_batch(slug_a: str, slug_b: str) -> bool:
+    """True if two slugs belong to the same ingest batch (the document note
+    + its reading-order chunk notes, per ingest.py's `<doc-slug>-chunk-<i>`
+    formula).
+
+    Ingest batches arrive internally linked already — every chunk carries a
+    reading-order nav footer plus a backlink to the document — so the
+    linker's job for a batch is OUTWARD connections only (the design's own
+    words: "Ingest batches from the capture design arrive internally linked
+    already. The linker adds their outward connections."). Both linking
+    surfaces (write-time `apply()` and the weekly sweep) use this to skip
+    intra-batch candidates, which would otherwise dominate every chunk's
+    nearest-neighbor list with links the batch already has.
+
+    A hand-written non-ingest slug that happens to end in `-chunk-<N>`
+    would false-positive here; the cost is a missed link suggestion for
+    that one pair (never a wrong write), accepted for the simplicity of
+    matching ingest.py's deterministic formula directly.
+    """
+    a = _CHUNK_SLUG_RE.match(slug_a)
+    b = _CHUNK_SLUG_RE.match(slug_b)
+    base_a = a.group("doc") if a else slug_a
+    base_b = b.group("doc") if b else slug_b
+    return base_a == base_b
+
 
 def _fenced_ranges(content: str) -> list[tuple[int, int]]:
     """(start, end) char-offset ranges covered by fenced code blocks
@@ -174,15 +215,25 @@ def apply(vault_path: Path | str, rel_path: str, embedding: list[float]) -> list
     if not target.is_file():
         return []
     try:
+        origin_meta = vec_index._extract_meta_from_file(target)
+        origin_slug = origin_meta["slug"] or Path(rel_path).stem
+        # Headroom beyond the cap so an ingest batch's own siblings can't
+        # crowd every outward candidate out of the result window (task 5 —
+        # see _NEIGHBOR_QUERY_HEADROOM's comment).
         neighbors = vec_index.nearest(
-            vault, embedding, k=MAX_RELATED_LINKS + 1, similarity_floor=LINK_SIMILARITY_FLOOR
+            vault, embedding,
+            k=MAX_RELATED_LINKS + 1 + _NEIGHBOR_QUERY_HEADROOM,
+            similarity_floor=LINK_SIMILARITY_FLOOR,
         )
         slugs: list[str] = []
         for path, _sim in neighbors:
             if path == rel_path:
                 continue  # defensive self-match filter (see plan task 3 note)
             meta = vec_index._extract_meta_from_file(vault / path)
-            slugs.append(meta["slug"] or Path(path).stem)
+            neighbor_slug = meta["slug"] or Path(path).stem
+            if same_ingest_batch(origin_slug, neighbor_slug):
+                continue  # already internally linked (nav + backlink) — outward only
+            slugs.append(neighbor_slug)
             if len(slugs) >= MAX_RELATED_LINKS:
                 break
         if not slugs:

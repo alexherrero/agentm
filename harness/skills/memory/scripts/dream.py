@@ -701,10 +701,13 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
         # ambiguous middle band is genuinely visible to the code below,
         # rather than silently invisible because the query itself already
         # excluded it — the seam has to see a candidate to (not) call the
-        # cheap model on it.
+        # cheap model on it. Headroom beyond the cap so an ingest batch's
+        # own siblings can't crowd every outward candidate out of the
+        # result window (task 5 — see write_time_linker's
+        # _NEIGHBOR_QUERY_HEADROOM comment).
         neighbors = vec_index.nearest(
             vault_path, embedding,
-            k=write_time_linker.MAX_RELATED_LINKS + 1,
+            k=write_time_linker.MAX_RELATED_LINKS + 1 + write_time_linker._NEIGHBOR_QUERY_HEADROOM,
             similarity_floor=write_time_linker.LINK_SIMILARITY_FLOOR,
         )
         qualifying = []
@@ -713,6 +716,13 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
                 continue
             neighbor_path = by_rel.get(neighbor_rel)
             if neighbor_path is None or neighbor_path not in loaded or neighbor_path in touched_this_sweep:
+                continue
+            neighbor_slug = loaded[neighbor_path][0].get("slug") or neighbor_path.stem
+            if write_time_linker.same_ingest_batch(slug, neighbor_slug):
+                # Same ingest batch (doc + its chunks) — already internally
+                # linked at ingest time (reading-order nav + backlink); the
+                # sweep's job for a batch is outward connections only
+                # (task 5).
                 continue
             if sim < write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD:
                 # Ambiguous middle band. Never fail open to an unbudgeted

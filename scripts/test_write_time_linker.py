@@ -101,6 +101,26 @@ class TestMergeRelatedSlugs(unittest.TestCase):
         self.assertEqual(related_lines, ["**Related:** [[old-a]]", "**Related:** [[old-b]], [[new-c]]"])
 
 
+class TestSameIngestBatch(unittest.TestCase):
+    """same_ingest_batch() -- pure slug logic, never skips (task 5)."""
+
+    def test_sibling_chunks_are_same_batch(self):
+        self.assertTrue(write_time_linker.same_ingest_batch("ai-article-chunk-0", "ai-article-chunk-3"))
+
+    def test_chunk_and_its_document_are_same_batch(self):
+        self.assertTrue(write_time_linker.same_ingest_batch("ai-article-chunk-2", "ai-article"))
+        self.assertTrue(write_time_linker.same_ingest_batch("ai-article", "ai-article-chunk-2"))
+
+    def test_chunks_of_different_documents_are_not_same_batch(self):
+        self.assertFalse(write_time_linker.same_ingest_batch("ai-article-chunk-0", "other-doc-chunk-0"))
+
+    def test_unrelated_plain_slugs_are_not_same_batch(self):
+        self.assertFalse(write_time_linker.same_ingest_batch("note-a", "note-b"))
+
+    def test_chunk_vs_unrelated_plain_slug(self):
+        self.assertFalse(write_time_linker.same_ingest_batch("ai-article-chunk-1", "some-other-note"))
+
+
 def _unit_vector(hot_index: int, sign: float = 1.0) -> list:
     v = [0.0] * vec_index.EMBEDDING_DIM
     v[hot_index] = sign
@@ -178,6 +198,38 @@ class TestWriteTimeLinkerApply(unittest.TestCase):
 
         slugs = write_time_linker.apply(self.vault, rel, _unit_vector(0))
         self.assertNotIn("self-check", slugs)
+
+    def test_sibling_chunks_excluded_outward_neighbor_linked(self):
+        # Task 5: an ingested chunk's nearest neighbors are overwhelmingly
+        # its own batch (sibling chunks + the parent doc, near-identical
+        # text) -- already internally linked at ingest time. The linker
+        # must skip those and surface the OUTWARD link to older content,
+        # even when every sibling ranks above the outward candidate.
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        # Batch: doc + 3 sibling chunks, all ranked ABOVE the older note.
+        self._seed("ai-article", _unit_vector(0, 0.999))
+        for i in (0, 2, 3):
+            self._seed(f"ai-article-chunk-{i}", _unit_vector(0, 0.998 - i * 0.0001))
+        # The outward candidate: older, related, pre-existing content --
+        # similar enough to clear the floor, but BELOW every batch member.
+        self._seed("older-related-note", _unit_vector(0, 0.9))
+
+        # The just-saved origin: chunk 1 of the same batch.
+        rel = "personal/reference/ai-article-chunk-1.md"
+        (self.vault / rel).write_text(
+            "---\nslug: ai-article-chunk-1\n---\nchunk body\n\n---\n\nFrom [[ai-article]]\n",
+            encoding="utf-8",
+        )
+        slugs = write_time_linker.apply(self.vault, rel, _unit_vector(0))
+
+        self.assertEqual(slugs, ["older-related-note"])
+        content = (self.vault / rel).read_text(encoding="utf-8")
+        self.assertIn("[[older-related-note]]", content)
+        for batch_slug in ("ai-article", "ai-article-chunk-0", "ai-article-chunk-2", "ai-article-chunk-3"):
+            self.assertNotIn(f"**Related:** [[{batch_slug}]]", content)
+            related_line = next(l for l in content.splitlines() if l.startswith("**Related:**"))
+            self.assertNotIn(batch_slug, related_line)
 
     def test_apply_nudges_the_graph_snapshot(self):
         if not _vec_backend_available(self.vault):

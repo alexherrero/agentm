@@ -980,6 +980,95 @@ class LinkImprovementStageTests(_DreamTestBase):
         self.assertIn(self._rel("note-b.md"), proposals[0].paths)
 
 
+class IngestBatchHandoffTests(_DreamTestBase):
+    """Task 5 verification: a REAL fixture ingest batch (capture part 2's
+    own scripts/fixtures/ingest/sample-article.md, reused here per the
+    plan's verification text) gets OUTWARD links added to a planted "older
+    related note" after one sweep cycle -- and no intra-batch Related
+    links, since the batch arrived internally linked (reading-order nav +
+    backlink) at ingest time."""
+
+    _NOW = "2026-01-01"
+
+    def setUp(self) -> None:
+        super().setUp()
+        import vec_index
+        self.vec_index = vec_index
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+
+    def test_fixture_ingest_batch_gets_outward_links_after_one_sweep(self) -> None:
+        import ingest
+        import os
+
+        fixture = Path(__file__).resolve().parent / "fixtures" / "ingest" / "sample-article.md"
+
+        # The planted older related note: arrived in a PRIOR cycle (cursor
+        # advanced past it), already indexed, similar enough to clear the
+        # confident threshold but ranked BELOW every batch sibling.
+        older_rel = "personal/reference/older-related-note.md"
+        older_path = self.vault / older_rel
+        older_path.write_text(
+            f"---\nkind: reference\nslug: older-related-note\ncreated: {self._NOW}\n---\nolder body\n",
+            encoding="utf-8",
+        )
+        self.vec_index.upsert_entry(self.vault, older_rel, _unit_vector(0, 0.9))
+        dream._write_link_sweep_cursor(self.vault, older_path.stat().st_mtime + 1.0)
+
+        # The real ingest: capture part 2's own fixture, via its own code.
+        result = ingest.ingest(self.vault, str(fixture), topic="sample")
+        self.assertTrue(result.success, f"fixture ingest failed: {result.error}")
+        self.assertGreater(len(result.chunks), 1)
+
+        # Index the batch the way a post-ingest drain would have: every
+        # batch member near-identical (same document), all ranked ABOVE
+        # the older note.
+        batch_paths = [result.document, *result.chunks]
+        cursor = dream._read_link_sweep_cursor(self.vault)
+        for i, p in enumerate(batch_paths):
+            rel = str(p.relative_to(self.vault)).replace("\\", "/")
+            self.vec_index.upsert_entry(self.vault, rel, _unit_vector(0, 0.999 - i * 0.0001))
+            newer = cursor + 2.0
+            os.utime(p, (newer, newer))  # arrived since the last cycle
+
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", return_value=_unit_vector(0)):
+            proposals = dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
+
+        # At least one proposal connects a batch member outward to the
+        # planted older note, both directions.
+        self.assertGreaterEqual(len(proposals), 1)
+        all_mutated = {}
+        for p in proposals:
+            self.assertEqual(p.stage, "link_improvement")
+            for path, content in p.mutations:
+                all_mutated[str(path)] = content
+        self.assertIn(str(older_path), all_mutated)  # reciprocal link landed on the older note
+
+        batch_slugs = {p.stem for p in batch_paths}
+        outward_batch_content = [
+            content for path, content in all_mutated.items()
+            if Path(path).stem in batch_slugs
+        ]
+        self.assertGreaterEqual(len(outward_batch_content), 1)
+        for content in outward_batch_content:
+            related_line = next(l for l in content.splitlines() if l.startswith("**Related:**"))
+            self.assertIn("[[older-related-note]]", related_line)
+            # No intra-batch Related link, ever -- the batch is already
+            # internally linked via reading-order nav + doc backlink.
+            for batch_slug in batch_slugs:
+                self.assertNotIn(f"[[{batch_slug}]]", related_line)
+        # And the older note's reciprocal Related line points into the
+        # batch (the outward connection, seen from the older side).
+        older_related = next(
+            l for l in all_mutated[str(older_path)].splitlines() if l.startswith("**Related:**")
+        )
+        self.assertTrue(any(f"[[{s}]]" in older_related for s in batch_slugs))
+
+
 class LinkImprovementIntegrationTests(_DreamTestBase):
     """The full run_dream_and_auto_apply()/revert pipeline for
     link_improvement -- auto-applies without a confirm() call (joined
