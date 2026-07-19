@@ -473,6 +473,66 @@ def index_size(vault_path: Path | str) -> int | None:
         conn.close()
 
 
+def nearest(
+    vault_path: Path | str,
+    embedding: list[float],
+    *,
+    k: int,
+    similarity_floor: float = 0.0,
+) -> list[tuple[str, float]]:
+    """Query the vec-index for the k entries nearest to `embedding`.
+
+    Returns a list of (relative_path, similarity) tuples, sorted by
+    similarity descending, filtered to similarity >= similarity_floor.
+    similarity is in [0, 1] (1 = most similar); it's derived from the
+    raw vec0 MATCH distance the same way recall.py's `_vec_search`
+    derives its own score (`1 - distance / 2`, clamped) — kept
+    identical so a similarity value means the same thing everywhere in
+    the memory system, on top of the same `entries` table.
+
+    Returns [] if sqlite-vec is unavailable (graceful-skip, same
+    contract as every other vec_index op in this module) or `k < 1`.
+
+    Raises ValueError if `embedding` isn't EMBEDDING_DIM-long — a
+    caller bug, not a graceful-skip condition.
+    """
+    if k < 1:
+        return []
+    vault = Path(vault_path)
+    conn = _open_index(vault)
+    if conn is None:
+        return []
+    try:
+        if len(embedding) != EMBEDDING_DIM:
+            raise ValueError(
+                f"embedding dimension {len(embedding)} != expected {EMBEDDING_DIM}"
+            )
+        emb_blob = json.dumps(embedding)
+        try:
+            cursor = conn.execute(
+                "SELECT entries.rowid, distance FROM entries "
+                "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+                (emb_blob, k),
+            )
+            rows = cursor.fetchall()
+        except sqlite3.OperationalError:
+            return []
+        results: list[tuple[str, float]] = []
+        for rowid, distance in rows:
+            meta_row = conn.execute(
+                "SELECT path FROM entry_meta WHERE rowid = ?", (rowid,)
+            ).fetchone()
+            if not meta_row:
+                continue
+            sim = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+            if sim < similarity_floor:
+                continue
+            results.append((meta_row[0], sim))
+        return results
+    finally:
+        conn.close()
+
+
 # -----------------------------------------------------------------------------
 # V4 #37: drift detection primitives
 # -----------------------------------------------------------------------------

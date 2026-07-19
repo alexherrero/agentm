@@ -224,6 +224,101 @@ class TestV6_11ExtractMeta(unittest.TestCase):
         self.assertTrue(all(v is None for v in meta.values()))
 
 
+class TestNearest(unittest.TestCase):
+    """vec_index.nearest() — the plan #auto-org-write-time-linking task 1
+    nearest-neighbor query the linker (task 3) will build on.
+
+    Uses hand-crafted unit/orthogonal/opposite vectors rather than
+    embed_text(mode="stub")'s hash output, so similarity is exact and
+    predictable rather than incidental to a hash's bit pattern.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name) / "vault"
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _unit_vector(self, hot_index: int, sign: float = 1.0) -> list[float]:
+        v = [0.0] * vec_index.EMBEDDING_DIM
+        v[hot_index] = sign
+        return v
+
+    def _seed(self, rel: str, embedding: list[float]) -> None:
+        path = self.vault / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("seed", encoding="utf-8")
+        vec_index.upsert_entry(self.vault, rel, embedding)
+
+    def test_nearest_ranks_similar_above_dissimilar(self):
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        query = self._unit_vector(0)
+        self._seed("personal/reference/near.md", self._unit_vector(0, 0.99))  # ~same direction
+        self._seed("personal/reference/orthogonal.md", self._unit_vector(1))  # 90 degrees off
+        self._seed("personal/reference/opposite.md", self._unit_vector(0, -1.0))  # 180 degrees off
+
+        results = vec_index.nearest(self.vault, query, k=3, similarity_floor=0.0)
+        paths_in_order = [path for path, _sim in results]
+        self.assertEqual(
+            paths_in_order,
+            [
+                "personal/reference/near.md",
+                "personal/reference/orthogonal.md",
+                "personal/reference/opposite.md",
+            ],
+        )
+        sims = dict(results)
+        self.assertGreater(sims["personal/reference/near.md"], sims["personal/reference/orthogonal.md"])
+        self.assertGreater(sims["personal/reference/orthogonal.md"], sims["personal/reference/opposite.md"])
+
+    def test_similarity_floor_excludes_weak_matches(self):
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        query = self._unit_vector(0)
+        self._seed("personal/reference/near.md", self._unit_vector(0, 0.99))
+        self._seed("personal/reference/opposite.md", self._unit_vector(0, -1.0))
+
+        # Opposite vector: distance 2.0 -> similarity 0.0, well below a
+        # mid floor that the near-identical vector clears.
+        results = vec_index.nearest(self.vault, query, k=2, similarity_floor=0.5)
+        paths = [path for path, _sim in results]
+        self.assertIn("personal/reference/near.md", paths)
+        self.assertNotIn("personal/reference/opposite.md", paths)
+
+    def test_nearest_respects_k(self):
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        query = self._unit_vector(0)
+        for i in range(1, 6):
+            self._seed(f"personal/reference/n{i}.md", self._unit_vector(0, 1.0 - i * 0.01))
+        results = vec_index.nearest(self.vault, query, k=2)
+        self.assertEqual(len(results), 2)
+
+    def test_nearest_rejects_wrong_dimension_embedding(self):
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        with self.assertRaises(ValueError):
+            vec_index.nearest(self.vault, [0.0, 1.0], k=1)
+
+    def test_nearest_returns_empty_list_when_backend_unavailable(self):
+        # Doesn't skip: this exercises the graceful-skip path itself, which
+        # only fires when the backend is genuinely unavailable. On a machine
+        # where it IS available there's no way to force the None-conn branch
+        # without monkeypatching, so this assertion only has teeth on the
+        # skip-prone default macOS system Python -- harmless either way.
+        if _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend available -- can't exercise the unavailable path here")
+        results = vec_index.nearest(self.vault, self._unit_vector(0), k=3)
+        self.assertEqual(results, [])
+
+    def test_nearest_k_zero_returns_empty_list(self):
+        results = vec_index.nearest(self.vault, self._unit_vector(0), k=0)
+        self.assertEqual(results, [])
+
+
 class TestV6_11Migration(unittest.TestCase):
     """The additive entry_meta migration + index creation — plain sqlite3,
     no sqlite-vec extension needed, so these never skip either."""
