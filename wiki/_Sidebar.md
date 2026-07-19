@@ -22,6 +22,8 @@
 - [Enable email digest delivery](Enable-Email-Digest-Delivery)
 - [Ingest an article](Ingest-An-Article)
 - [Capture from your phone](Capture-From-Your-Phone)
+- [Archive a finished project](Archive-A-Finished-Project)
+- [Tune the archive](Tune-The-Archive)
 ### 📖 [Reference](Reference)
 - [Installer CLI](Installer-CLI)
 - [Supported configurations](Supported-Configurations)
