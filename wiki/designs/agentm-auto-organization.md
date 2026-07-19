@@ -5,7 +5,7 @@ kind: design
 scope: feature
 area: agentm/memory
 parent: agentm-memory-system.md
-governs: [harness/skills/memory/scripts/dream.py, harness/skills/memory/scripts/dream_confirm.py, harness/skills/memory/scripts/lifecycle.py, scripts/health/eval_v6_retrieval.py, harness/skills/memory/scripts/vec_index.py, harness/skills/memory/scripts/graph_snapshot.py, harness/skills/memory/scripts/write_time_linker.py, harness/skills/memory/scripts/save.py, harness/skills/memory/scripts/fingerprint.py, harness/skills/memory/scripts/dedup_guard.py, harness/skills/memory/scripts/inbox_triage.py, harness/skills/memory/scripts/lint.py, harness/skills/console/scripts/console.py]
+governs: [harness/skills/memory/scripts/dream.py, harness/skills/memory/scripts/dream_confirm.py, harness/skills/memory/scripts/lifecycle.py, scripts/health/eval_v6_retrieval.py, harness/skills/memory/scripts/graph_snapshot.py, harness/skills/memory/scripts/write_time_linker.py, harness/skills/memory/scripts/fingerprint.py, harness/skills/memory/scripts/dedup_guard.py, harness/skills/memory/scripts/inbox_triage.py, harness/skills/memory/scripts/lint.py, harness/skills/console/scripts/console.py]
 seeded: 2026-07-17
 approved: 2026-07-17
 ---
