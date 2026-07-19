@@ -402,9 +402,62 @@ def _archived_path(rel_path: Path) -> Path:
     return Path(*parts[:tier_len], "_archive", *parts[tier_len:])
 
 
+# -----------------------------------------------------------------------------
+# The artifact shelf (task 4) — the tidying stage's second lane, for
+# "the other non-memory documents" the design names: any entry this same
+# corpus walk finds with no `kind:` frontmatter field at all, i.e. never
+# written through save.py's locked memory-entry contract (REQUIRED
+# FRONTMATTER_FIELD_ORDER makes `kind` mandatory for a real memory — its
+# absence IS the signal, not a second, invented classification).
+#
+# Operator ruling (2026-07-18, this plan's own task 4): "touch" for an
+# artifact reuses the EXACT SAME mechanism task 3 already reuses for
+# memories — a genuine recall.py hit, tracked via
+# lifecycle.days_since_last_genuine_access — rather than a new "any
+# injection into a conversation" tracker (which nothing in this codebase
+# implements yet, and would need cross-repo instrumentation spanning
+# skills/hooks living in the separate crickets repo — disproportionate to
+# one task). Same mechanism, narrower population, shorter threshold,
+# `_shelf/` destination instead of `_archive/`.
+#
+# Unlike the archive lane, the shelf is bidirectional: `_shelf/` is NOT in
+# `_EXCLUDE_DIRS` (unlike `_archive/`), so a previously-shelved artifact is
+# re-walked every cycle — if it's been touched since shelving (elapsed
+# drops back below the threshold), this stage proposes moving it back to
+# its original folder on the very next cycle, exactly as the design's own
+# "one use brings it back" line specifies.
+# -----------------------------------------------------------------------------
+
+_SHELF_THRESHOLD_DAYS = 365.0  # 1 year
+
+
+def _shelved_path(rel_path: Path) -> Path:
+    """Mirrors `_archived_path`'s tier-root insertion, using `_shelf`
+    instead of `_archive` — same two real tier-root conventions, same
+    bare-root fallback."""
+    parts = rel_path.parts
+    if len(parts) >= 2 and parts[0] == "personal":
+        tier_len = 1
+    elif len(parts) >= 3 and parts[0] == "projects":
+        tier_len = 2
+    else:
+        tier_len = 0
+    return Path(*parts[:tier_len], "_shelf", *parts[tier_len:])
+
+
+def _unshelved_path(rel_path: Path) -> Path:
+    """Inverse of `_shelved_path` — strips the (single, by construction)
+    `_shelf` segment, restoring the artifact to its original tier-relative
+    location."""
+    parts = list(rel_path.parts)
+    parts.remove("_shelf")
+    return Path(*parts)
+
+
 def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | None = None) -> tuple:
-    """Returns (proposals, preview_lines). See module section docstring
-    above. `now` is injectable for tests (ISO date string YYYY-MM-DD)."""
+    """Returns (proposals, preview_lines). See module section docstrings
+    above (memory archive, then the artifact shelf). `now` is injectable
+    for tests (ISO date string YYYY-MM-DD)."""
     import lifecycle  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
 
     if now is None:
@@ -418,10 +471,45 @@ def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | 
         fm, _body, raw = loaded[path]
         rel = path.relative_to(vault_path)
         slug = fm.get("slug") or path.stem
+        is_artifact = "kind" not in fm
 
         elapsed = lifecycle.days_since_last_genuine_access(vault_path, slug, fm, rel, now=now)
         if elapsed is None:
             continue  # decay-exempt, or no basis to compute — never tidied
+
+        if is_artifact:
+            currently_shelved = "_shelf" in rel.parts
+            if currently_shelved:
+                if elapsed < _SHELF_THRESHOLD_DAYS:
+                    dest_rel = _unshelved_path(rel)
+                    proposals.append(
+                        Proposal(
+                            stage="tidying",
+                            kind="unshelve",
+                            paths=[str(rel)],
+                            summary=(
+                                f"{rel} — touched {elapsed:.0f} days ago, since being shelved — "
+                                f"propose return to {dest_rel}"
+                            ),
+                            mutations=[(path, None), (vault_path / dest_rel, raw)],
+                        )
+                    )
+                # else: still cold — stays on the shelf, no action.
+            elif elapsed > _SHELF_THRESHOLD_DAYS:
+                dest_rel = _shelved_path(rel)
+                proposals.append(
+                    Proposal(
+                        stage="tidying",
+                        kind="shelve",
+                        paths=[str(rel)],
+                        summary=(
+                            f"{rel} — {elapsed:.0f} days untouched, past the 1y shelf threshold — "
+                            f"propose move to {dest_rel}"
+                        ),
+                        mutations=[(path, None), (vault_path / dest_rel, raw)],
+                    )
+                )
+            continue  # artifacts don't participate in the memory-archive lane below
 
         if elapsed > _ARCHIVE_THRESHOLD_DAYS:
             dest_rel = _archived_path(rel)

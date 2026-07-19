@@ -437,6 +437,101 @@ class TidyingStageBandTests(_DreamTestBase):
         self.assertEqual(previews_after, [])
 
 
+class ArtifactShelfBandTests(_DreamTestBase):
+    """Task 4 verification: a fixture artifact untouched for 370 days
+    stages a shelf move; the same artifact "used" (touched) mid-cycle does
+    not shelve; a previously-shelved artifact that gets touched is
+    confirmed to return on the next cycle's pass. An "artifact" here is
+    any entry with no `kind:` frontmatter field at all — the operator's
+    2026-07-18 ruling reusing recall.py's existing touch mechanism rather
+    than inventing a new one."""
+
+    _NOW = "2026-01-01"
+
+    def _write_artifact(self, name: str, days_untouched: int) -> Path:
+        import datetime
+        created = (
+            datetime.date.fromisoformat(self._NOW) - datetime.timedelta(days=days_untouched)
+        ).isoformat()
+        # Deliberately NO `kind:` field -- that absence is what makes this
+        # an "artifact" rather than a memory.
+        return self._write(name, f"---\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
+
+    def _run_stage(self):
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        return dream._stage_tidying(self.vault, entries, loaded, now=self._NOW)
+
+    def test_kind_tagged_entry_never_enters_the_artifact_lane(self) -> None:
+        # A memory (has `kind:`) untouched 370 days should archive-preview
+        # or no-op via the memory lane, never shelve, regardless of age.
+        self._write(
+            "memory.md",
+            "---\nkind: fix\nslug: memory\ncreated: 2020-01-01\n---\nBody.\n",
+        )
+        proposals, _ = self._run_stage()
+        kinds = {p.kind for p in proposals}
+        self.assertNotIn("shelve", kinds)
+
+    def test_370_days_untouched_stages_a_shelf_move(self) -> None:
+        path = self._write_artifact("plan-notes.md", 370)
+        proposals, _ = self._run_stage()
+        self.assertEqual(len(proposals), 1)
+        p = proposals[0]
+        self.assertEqual(p.stage, "tidying")
+        self.assertEqual(p.kind, "shelve")
+        dest = self.vault / "_shelf" / "plan-notes.md"
+        mutated_paths = {str(m[0]) for m in p.mutations}
+        self.assertIn(str(path), mutated_paths)
+        self.assertIn(str(dest), mutated_paths)
+
+    def test_recently_used_artifact_does_not_shelve(self) -> None:
+        self._write_artifact("fresh-notes.md", 10)
+        proposals, _ = self._run_stage()
+        self.assertEqual(proposals, [])
+
+    def test_364_days_is_not_yet_past_the_threshold(self) -> None:
+        self._write_artifact("almost.md", 364)
+        proposals, _ = self._run_stage()
+        self.assertEqual(proposals, [])
+
+    def test_shelved_artifact_untouched_stays_shelved_no_action(self) -> None:
+        (self.vault / "_shelf").mkdir()
+        self._write_artifact("_shelf/old-plan.md", 400)
+        proposals, _ = self._run_stage()
+        self.assertEqual(proposals, [])
+
+    def test_shelved_artifact_touched_since_shelving_proposes_return(self) -> None:
+        (self.vault / "_shelf").mkdir()
+        path = self._write_artifact("_shelf/came-back.md", 400)
+
+        import lifecycle  # noqa: E402
+        fm, _ = dream._parse_frontmatter(path.read_text(encoding="utf-8"))
+        # A genuine recall access on the shelved copy, shortly before "now".
+        lifecycle.record_recall_access(self.vault, "came-back", fm, "_shelf/came-back.md", today="2025-12-30")
+
+        proposals, _ = self._run_stage()
+        self.assertEqual(len(proposals), 1)
+        p = proposals[0]
+        self.assertEqual(p.kind, "unshelve")
+        dest = self.vault / "came-back.md"
+        mutated_paths = {str(m[0]) for m in p.mutations}
+        self.assertIn(str(path), mutated_paths)
+        self.assertIn(str(dest), mutated_paths)
+
+    def test_personal_and_projects_tier_shelf_insertion(self) -> None:
+        self.assertEqual(dream._shelved_path(Path("personal/foo.md")), Path("personal/_shelf/foo.md"))
+        self.assertEqual(
+            dream._shelved_path(Path("projects/agentm/notes/foo.md")),
+            Path("projects/agentm/_shelf/notes/foo.md"),
+        )
+
+    def test_unshelved_path_is_the_exact_inverse(self) -> None:
+        for original in (Path("personal/foo.md"), Path("projects/agentm/notes/foo.md"), Path("bare.md")):
+            shelved = dream._shelved_path(original)
+            self.assertEqual(dream._unshelved_path(shelved), original)
+
+
 class TidyingDigestAndAutoApplyIntegrationTests(_DreamTestBase):
     """The full `run_dream()` / `run_dream_and_auto_apply()` pipeline, using
     REAL relative dates (today - N days) rather than an injected `now` —
