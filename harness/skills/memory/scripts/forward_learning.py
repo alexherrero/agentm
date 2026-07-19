@@ -42,9 +42,20 @@ Public surface:
     Source(slug, kind, type, url, trusted=False)
         One operator-configured approved source. `kind` is "idea" |
         "pattern" | "reference" (mirrors the design's three named
-        categories); `type` is "feed" | "repo" | "web" (informational —
-        this thin v1's `default_fetcher` treats every type the same way,
-        a single stdlib-urllib GET).
+        categories); `type` is "feed" | "repo" | "web" — still a single
+        stdlib-urllib GET regardless of `type` (informational, not a fetch
+        selector), but `default_fetcher` now auto-detects the *response*
+        shape: an RSS/Atom body parses into one Candidate per item/entry
+        (stdlib `xml.etree.ElementTree`, no new dependency); an HTML body
+        that looks like a client-rendered SPA shell (near-empty visible
+        text on an otherwise substantial page) retries once through a
+        headless-Chromium render if Playwright is installed, else degrades
+        to whatever the plain fetch returned — never raises, never blocks
+        a scan. Playwright is an OPTIONAL dependency (not in
+        `requirements.txt`'s default install — a real browser-binary
+        download is too heavy to impose on every install for a capability
+        no source has needed yet); see `_render_with_playwright`'s
+        docstring for the manual opt-in install command.
 
     Candidate(slug, title, body, url)
         One raw item a fetcher returned for a source, pre-scoring.
@@ -66,10 +77,13 @@ CLI: `python3 forward_learning.py --vault-path <path>`.
 from __future__ import annotations
 
 import argparse
+import html
 import json
+import re
 import socket
 import sys
 import time
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -82,6 +96,15 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from vault_lock import atomic_write  # noqa: E402
+
+# Optional dependency (NOT in requirements.txt's default install — see
+# _render_with_playwright's docstring). Lazy, guarded import: every other
+# capability in this module stays fully usable with Playwright absent.
+try:
+    from playwright.sync_api import sync_playwright  # type: ignore
+    _PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    _PLAYWRIGHT_AVAILABLE = False
 
 __all__ = [
     "Source",
@@ -204,20 +227,168 @@ def _save_state(vault_path: Path, state: dict) -> None:
 # urllib pattern; graceful on any network failure — never blocks the scan)
 # -----------------------------------------------------------------------------
 
+_TAG_RE = re.compile(r"<[^>]+>")
+_SCRIPT_STYLE_RE = re.compile(r"<(script|style)[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
+_WHITESPACE_RE = re.compile(r"\s+")
+
+# A JS-shell tell: a substantial page (real markup, not a 404 stub) whose
+# stripped visible text is still tiny -- the content only exists after
+# client-side rendering the plain GET can't see. Both thresholds are
+# deliberately loose (a real, sparse server-rendered page still clears
+# them easily); this is a cheap heuristic, not a certainty.
+_JS_SHELL_MIN_PAGE_BYTES = 2000
+_JS_SHELL_MAX_VISIBLE_CHARS = 500
+
+
+def _strip_html_tags(text: str) -> str:
+    """Rough visible-text extraction: drop script/style bodies, strip
+    remaining tags, unescape entities, collapse whitespace. Not a real
+    HTML parser -- good enough for the JS-shell heuristic and for turning
+    an RSS <description>'s embedded HTML into plain text."""
+    text = _SCRIPT_STYLE_RE.sub(" ", text)
+    text = _TAG_RE.sub(" ", text)
+    text = html.unescape(text)
+    return _WHITESPACE_RE.sub(" ", text).strip()
+
+
+def _looks_like_js_shell(page_text: str) -> bool:
+    """True when a substantial page's visible text is suspiciously thin --
+    the signature of an SPA root div the plain fetch can't render into."""
+    if len(page_text) < _JS_SHELL_MIN_PAGE_BYTES:
+        return False  # too small a page to judge either way -- not a shell, just sparse
+    return len(_strip_html_tags(page_text)) < _JS_SHELL_MAX_VISIBLE_CHARS
+
+
+def _looks_like_feed(body: bytes) -> bool:
+    """Sniff the first non-whitespace bytes for an XML/RSS/Atom root --
+    cheaper and more reliable than a Content-Type header (feeds are
+    inconsistently served as application/xml, application/rss+xml,
+    text/xml, or even text/html in the wild)."""
+    head = body.lstrip()[:200].lower()
+    return head.startswith(b"<?xml") or b"<rss" in head or b"<feed" in head
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def _feed_item_text(elem) -> tuple:
+    """(title, body_text, link) for one RSS <item> or Atom <entry> --
+    namespace-agnostic (matches by local tag name), since RSS is
+    unprefixed and Atom is fully namespaced and real-world feeds are not
+    always consistent about declaring `xmlns:content`/`xmlns:atom`."""
+    title, body_raw, link = "", "", ""
+    for child in elem:
+        local = _local_name(child.tag)
+        if local == "title" and not title:
+            title = (child.text or "").strip()
+        elif local in ("description", "summary", "content", "encoded") and not body_raw:
+            body_raw = (child.text or "").strip()
+        elif local == "link":
+            href = child.get("href")  # Atom: <link href="..."/>
+            if href and not link:
+                link = href
+            elif child.text and not link:  # RSS: <link>url</link>
+                link = child.text.strip()
+    body_text = _strip_html_tags(body_raw) if "<" in body_raw else body_raw
+    return title, body_text, link
+
+
+def _parse_feed(body: bytes, source: Source) -> list:
+    """Parse an RSS 2.0 or Atom body into one Candidate per <item>/<entry>.
+    Returns `[]` on any parse failure or if no items/entries were found --
+    the caller falls back to whole-body treatment, never raises."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return []
+
+    candidates = []
+    for elem in root.iter():
+        if _local_name(elem.tag) not in ("item", "entry"):
+            continue
+        title, body_text, link = _feed_item_text(elem)
+        if not (title or body_text):
+            continue
+        candidates.append(
+            Candidate(slug=source.slug, title=title or source.slug, body=body_text, url=link or source.url)
+        )
+    return candidates
+
+
+def _render_with_playwright(url: str, *, timeout_sec: int = _FETCH_TIMEOUT_SEC) -> "Optional[str]":
+    """Best-effort headless-Chromium render of `url`, returning the
+    rendered page's visible body text, or `None` on any failure --
+    Playwright not installed, browser binary not installed, navigation
+    timeout, or any other error. Never raises; the caller degrades to
+    whatever the plain GET already returned.
+
+    Optional dependency, deliberately NOT in requirements.txt's default
+    install (a browser-binary download is too heavy to impose on every
+    agentm install for a capability no configured source has needed yet —
+    2026-07-19 inventory, PLAN-dormant-wake task 2). Manual opt-in:
+
+        python3 -m pip install --user playwright
+        python3 -m playwright install chromium
+    """
+    if not _PLAYWRIGHT_AVAILABLE:
+        return None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            try:
+                page = browser.new_page(user_agent=_USER_AGENT)
+                page.goto(url, timeout=timeout_sec * 1000, wait_until="networkidle")
+                text = page.inner_text("body")
+            finally:
+                browser.close()
+        return text
+    except Exception:
+        return None
+
+
 def default_fetcher(source: Source) -> list:
-    """Best-effort single GET of `source.url`, wrapped as one Candidate.
-    Thin v1: does not parse RSS/Atom feeds or crawl a repo tree — every
-    source type gets the same one-candidate-per-fetch treatment. Returns
-    `[]` on any network error (timeouts/4xx/5xx never fail a scan, same
-    graceful-degradation posture as `adapt_skills.py`'s GitHub enrichment)."""
+    """Best-effort single GET of `source.url`. Response-shape auto-detect:
+    an RSS/Atom body parses into one Candidate per item/entry
+    (`_parse_feed`); an HTML body that looks like a client-rendered SPA
+    shell (`_looks_like_js_shell`) retries once through a headless render
+    when Playwright is installed, else degrades to the plain-fetch text.
+    Returns `[]` on any network error (timeouts/4xx/5xx never fail a scan,
+    same graceful-degradation posture as `adapt_skills.py`'s GitHub
+    enrichment)."""
     req = Request(source.url, headers={"User-Agent": _USER_AGENT})
     try:
         with urlopen(req, timeout=_FETCH_TIMEOUT_SEC) as resp:
             if getattr(resp, "status", 200) >= 400:
                 return []
-            body = resp.read().decode("utf-8", errors="replace")
+            raw = resp.read()
     except (HTTPError, URLError, socket.timeout, OSError):
         return []
+
+    if _looks_like_feed(raw):
+        feed_candidates = _parse_feed(raw, source)
+        if feed_candidates:
+            return feed_candidates
+        # parsed as XML but yielded no items/entries -- fall through to
+        # whole-body treatment rather than silently returning nothing
+
+    body = raw.decode("utf-8", errors="replace")
+
+    if _looks_like_js_shell(body):
+        rendered = _render_with_playwright(source.url)
+        if rendered:
+            body = rendered
+        # else: Playwright absent or the render itself failed -- degrade to
+        # the plain-fetch body (likely near-empty; the rubric's own
+        # substantiveness-floor rule already scores that LOW rather than
+        # this function needing to guess or raise)
+
+    # Strip markup for the watchlist excerpt's sake (_write_watchlist_entry
+    # truncates candidate.body to 400 chars for the entry preview -- raw
+    # HTML there was mostly closing/opening tags, not readable content). A
+    # no-op on an already-plain-text Playwright render (no tags present).
+    body = _strip_html_tags(body)
+
     return [Candidate(slug=source.slug, title=source.slug, body=body, url=source.url)]
 
 

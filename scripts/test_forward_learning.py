@@ -22,6 +22,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _SKILL_SCRIPTS = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
@@ -172,6 +173,193 @@ class DefaultFetcherGracefulDegradationTests(_ForwardLearningTestBase):
         source = fl.Source(slug="x", kind="idea", type="web", url="http://127.0.0.1:1/nope", trusted=False)
         candidates = fl.default_fetcher(source)
         self.assertEqual(candidates, [])
+
+
+_RSS_SAMPLE = b"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><title>Test Feed</title>
+<item><title>First post &amp; more</title><description>&lt;p&gt;Body one&lt;/p&gt;</description><link>https://example.com/1</link></item>
+<item><title>Second post</title><description>Body two here</description><link>https://example.com/2</link></item>
+</channel></rss>"""
+
+_ATOM_SAMPLE = b"""<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>Test Atom</title>
+<entry><title>Atom post</title><summary>Atom body</summary><link href="https://example.com/atom1" rel="alternate"/></entry>
+</feed>"""
+
+_MALFORMED_XML = b"<?xml version=\"1.0\"?><rss><channel><item><title>unterminated"
+
+_EMPTY_FEED = b'<?xml version="1.0"?><rss version="2.0"><channel><title>Empty</title></channel></rss>'
+
+
+class LooksLikeFeedTests(unittest.TestCase):
+    def test_rss_detected(self) -> None:
+        self.assertTrue(fl._looks_like_feed(_RSS_SAMPLE))
+
+    def test_atom_detected(self) -> None:
+        self.assertTrue(fl._looks_like_feed(_ATOM_SAMPLE))
+
+    def test_html_not_detected(self) -> None:
+        self.assertFalse(fl._looks_like_feed(b"<!DOCTYPE html><html><body>hi</body></html>"))
+
+    def test_leading_whitespace_tolerated(self) -> None:
+        self.assertTrue(fl._looks_like_feed(b"\n\n  " + _RSS_SAMPLE))
+
+
+class ParseFeedTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.source = fl.Source(slug="test-feed", kind="idea", type="feed", url="https://example.com/feed", trusted=True)
+
+    def test_rss_items_parsed(self) -> None:
+        candidates = fl._parse_feed(_RSS_SAMPLE, self.source)
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(candidates[0].title, "First post & more")  # entity-unescaped
+        self.assertEqual(candidates[0].body, "Body one")  # HTML-in-description stripped
+        self.assertEqual(candidates[0].url, "https://example.com/1")
+        self.assertEqual(candidates[0].slug, "test-feed")
+        self.assertEqual(candidates[1].title, "Second post")
+
+    def test_atom_entries_parsed(self) -> None:
+        candidates = fl._parse_feed(_ATOM_SAMPLE, self.source)
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].title, "Atom post")
+        self.assertEqual(candidates[0].body, "Atom body")
+        self.assertEqual(candidates[0].url, "https://example.com/atom1")
+
+    def test_malformed_xml_returns_empty_not_raises(self) -> None:
+        self.assertEqual(fl._parse_feed(_MALFORMED_XML, self.source), [])
+
+    def test_no_items_returns_empty(self) -> None:
+        self.assertEqual(fl._parse_feed(_EMPTY_FEED, self.source), [])
+
+    def test_item_missing_link_falls_back_to_source_url(self) -> None:
+        body = b'<rss><channel><item><title>No link</title><description>text</description></item></channel></rss>'
+        candidates = fl._parse_feed(body, self.source)
+        self.assertEqual(candidates[0].url, self.source.url)
+
+
+class StripHtmlTagsTests(unittest.TestCase):
+    def test_tags_stripped_and_entities_unescaped(self) -> None:
+        self.assertEqual(fl._strip_html_tags("<p>Hello &amp; welcome</p>"), "Hello & welcome")
+
+    def test_script_and_style_content_dropped_not_just_tags(self) -> None:
+        html_text = "<html><head><style>.x{color:red}</style></head><body><script>var x=1;</script>Real text</body></html>"
+        result = fl._strip_html_tags(html_text)
+        self.assertEqual(result, "Real text")
+
+    def test_whitespace_collapsed(self) -> None:
+        self.assertEqual(fl._strip_html_tags("a   \n\n  b"), "a b")
+
+
+class LooksLikeJsShellTests(unittest.TestCase):
+    def test_spa_shell_detected(self) -> None:
+        shell = "<html><body><div id='root'></div></body></html>" + (" " * 3000)
+        self.assertTrue(fl._looks_like_js_shell(shell))
+
+    def test_real_content_page_not_flagged(self) -> None:
+        real = "<html><body>" + ("<p>Real article content, quite a lot of it.</p>" * 20) + "</body></html>"
+        self.assertFalse(fl._looks_like_js_shell(real))
+
+    def test_tiny_page_not_flagged_too_small_to_judge(self) -> None:
+        self.assertFalse(fl._looks_like_js_shell("<html></html>"))
+
+
+class RenderWithPlaywrightTests(unittest.TestCase):
+    def test_playwright_unavailable_returns_none(self) -> None:
+        with mock.patch.object(fl, "_PLAYWRIGHT_AVAILABLE", False):
+            self.assertIsNone(fl._render_with_playwright("https://example.com"))
+
+    def test_playwright_available_and_succeeds(self) -> None:
+        class _FakePage:
+            def goto(self, url, timeout=None, wait_until=None):
+                pass
+
+            def inner_text(self, selector):
+                return "rendered visible text"
+
+        class _FakeBrowser:
+            def new_page(self, user_agent=None):
+                return _FakePage()
+
+            def close(self):
+                pass
+
+        class _FakeChromium:
+            def launch(self):
+                return _FakeBrowser()
+
+        class _FakePlaywrightCtx:
+            def __enter__(self):
+                ctx = mock.Mock()
+                ctx.chromium = _FakeChromium()
+                return ctx
+
+            def __exit__(self, *exc):
+                return False
+
+        with mock.patch.object(fl, "_PLAYWRIGHT_AVAILABLE", True), \
+             mock.patch.object(fl, "sync_playwright", lambda: _FakePlaywrightCtx(), create=True):
+            result = fl._render_with_playwright("https://example.com")
+        self.assertEqual(result, "rendered visible text")
+
+    def test_playwright_available_but_render_raises_returns_none(self) -> None:
+        def _raising_sync_playwright():
+            raise RuntimeError("browser not installed")
+
+        with mock.patch.object(fl, "_PLAYWRIGHT_AVAILABLE", True), \
+             mock.patch.object(fl, "sync_playwright", _raising_sync_playwright, create=True):
+            self.assertIsNone(fl._render_with_playwright("https://example.com"))
+
+
+class DefaultFetcherFeedAndRenderIntegrationTests(unittest.TestCase):
+    """default_fetcher's response-shape auto-detection, with urlopen mocked
+    (no real network) -- proves the RSS/JS-shell paths wire together
+    correctly, distinct from the pure-function unit tests above."""
+
+    def _mock_response(self, body: bytes, status: int = 200):
+        resp = mock.MagicMock()
+        resp.status = status
+        resp.read.return_value = body
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = False
+        return resp
+
+    def test_feed_response_yields_multiple_candidates(self) -> None:
+        source = fl.Source(slug="feed-src", kind="idea", type="feed", url="https://example.com/feed", trusted=True)
+        with mock.patch.object(fl, "urlopen", return_value=self._mock_response(_RSS_SAMPLE)):
+            candidates = fl.default_fetcher(source)
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(candidates[0].title, "First post & more")
+
+    def test_js_shell_html_falls_back_to_playwright_when_available(self) -> None:
+        source = fl.Source(slug="spa-src", kind="idea", type="web", url="https://example.com/spa", trusted=True)
+        shell_html = ("<html><body><div id='root'></div></body></html>" + (" " * 3000)).encode("utf-8")
+
+        with mock.patch.object(fl, "urlopen", return_value=self._mock_response(shell_html)), \
+             mock.patch.object(fl, "_render_with_playwright", return_value="the real rendered article text"):
+            candidates = fl.default_fetcher(source)
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].body, "the real rendered article text")
+
+    def test_js_shell_html_degrades_gracefully_when_playwright_unavailable(self) -> None:
+        source = fl.Source(slug="spa-src", kind="idea", type="web", url="https://example.com/spa", trusted=True)
+        shell_html = ("<html><body><div id='root'></div></body></html>" + (" " * 3000)).encode("utf-8")
+
+        with mock.patch.object(fl, "urlopen", return_value=self._mock_response(shell_html)), \
+             mock.patch.object(fl, "_render_with_playwright", return_value=None):
+            candidates = fl.default_fetcher(source)
+        # Degrades to the plain-fetch body (stripped) rather than raising or returning [].
+        self.assertEqual(len(candidates), 1)
+
+    def test_ordinary_html_page_never_calls_playwright(self) -> None:
+        source = fl.Source(slug="normal-src", kind="idea", type="web", url="https://example.com/page", trusted=True)
+        real_html = ("<html><body>" + ("<p>Real article content, quite a lot of it.</p>" * 20) + "</body></html>").encode()
+
+        with mock.patch.object(fl, "urlopen", return_value=self._mock_response(real_html)), \
+             mock.patch.object(fl, "_render_with_playwright") as render_mock:
+            candidates = fl.default_fetcher(source)
+        render_mock.assert_not_called()
+        self.assertEqual(len(candidates), 1)
+        self.assertNotIn("<p>", candidates[0].body)  # tags stripped from the final body
 
 
 class CliTests(_ForwardLearningTestBase):
