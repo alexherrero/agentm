@@ -594,7 +594,7 @@ def _stage_qualification(insight_candidates: list) -> None:
 # Stage 7 — digest + staging
 # -----------------------------------------------------------------------------
 
-def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
+def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=None) -> str:
     """`auto_applied` (an optional `dream_confirm.AutoAppliedBatch`) marks
     which proposals this run already applied automatically — the
     dreaming pipeline's confirm-free "expire" action (2026-07-11 operator
@@ -604,7 +604,14 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
     `auto_applied=None` (nothing has auto-applied yet at that point in the
     pipeline); `run_dream_and_auto_apply()` re-renders with the real batch
     once it's known, so the on-disk `digest.md` never misreports an
-    already-applied item as still awaiting confirmation."""
+    already-applied item as still awaiting confirmation.
+
+    `tidying_anomaly` (an optional `dream_confirm.AnomalyCheckResult`,
+    task 6) flags a tripped anomaly breaker: this cycle's tidying-stage
+    proposal count was several times the recent usual, so none of it
+    auto-applied this cycle (it stays pending, exactly like dedup/
+    contradiction-triage) — surfaced here as the digest's "console" line
+    for the operator."""
     lines = [
         f"# Dream digest — run {digest.run_id}",
         "",
@@ -622,6 +629,19 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
         lines.append("")
         for line in digest.tidying_previews:
             lines.append(f"- {line}")
+        lines.append("")
+
+    if tidying_anomaly is not None and tidying_anomaly.tripped:
+        lines.append("## ⚠ ANOMALY BREAKER TRIPPED — tidying auto-apply suppressed this cycle")
+        lines.append("")
+        lines.append(
+            f"{tidying_anomaly.current_count} tidying-stage proposal(s) this run, "
+            f"vs. a recent baseline of {tidying_anomaly.baseline:.1f} "
+            f"(threshold {tidying_anomaly.threshold:.1f}) — applying nothing from this "
+            "stage this cycle rather than an abnormal batch. Every tidying proposal "
+            "stays pending; review the run's proposals.json and confirm manually if "
+            "the volume is genuinely expected, or investigate before the next cycle."
+        )
         lines.append("")
 
     auto_applied_by_index = {}
@@ -799,19 +819,26 @@ def run_dream_and_auto_apply(
     lock_root: Path | str | None = None,
 ):
     """Run `run_dream()` (unchanged), then auto-apply its compression-stage
-    proposals through `dream_confirm.auto_apply_batch` — no operator
-    confirm required for those. Dedup and contradiction-triage proposals
-    stay staged in `_dream-staging/<run_id>/`, exactly as `run_dream()`
-    left them.
+    and tidying-stage proposals through `dream_confirm.auto_apply_batch` —
+    no operator confirm required for those. Dedup and contradiction-triage
+    proposals stay staged in `_dream-staging/<run_id>/`, exactly as
+    `run_dream()` left them.
 
-    Re-renders `digest.md` with the auto-applied batch reflected (see
-    `_render_digest`'s `auto_applied` param), and writes the
-    machine-readable per-run `_dream-staging/<run_id>/auto-expired.json`
-    plus the stable, run-id-free `_meta/dream-auto-expired-latest.json`
-    pointer — the latter is what a later reader (e.g. a console/dashboard
-    surface) reads without needing to already know the run id, and it is
-    overwritten every cycle (including a zero-item one) so it never goes
-    stale.
+    Before applying, the tidying-stage proposal count runs through
+    `dream_confirm.check_tidying_anomaly` (task 6's anomaly breaker,
+    scoped to tidying specifically — the rest of the guard suite lands
+    with part 3). A tripped check excludes `"tidying"` from this cycle's
+    auto-apply stages (compression is unaffected); every tidying proposal
+    stays pending instead, and the digest carries a visible flag.
+
+    Re-renders `digest.md` with the auto-applied batch (and any tripped
+    anomaly) reflected (see `_render_digest`'s `auto_applied`/
+    `tidying_anomaly` params), and writes the machine-readable per-run
+    `_dream-staging/<run_id>/auto-expired.json` plus the stable, run-id-
+    free `_meta/dream-auto-expired-latest.json` pointer — the latter is
+    what a later reader (e.g. a console/dashboard surface) reads without
+    needing to already know the run id, and it is overwritten every cycle
+    (including a zero-item one) so it never goes stale.
 
     `revert_log` defaults to a fresh `RevertLog(vault_path, log_root=
     log_root, lock_root=lock_root)` (the CLI's own default; `log_root`/
@@ -820,7 +847,10 @@ def run_dream_and_auto_apply(
     either, or injects a whole `revert_log` instance directly, exactly
     like `dream_confirm`'s own existing tests do). Ignored if `revert_log`
     is given explicitly. `batch_cap` defaults to
-    `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP`.
+    `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP` — the global mutation
+    budget the design names, which already applies across every auto-
+    apply stage combined (compression + tidying), on top of this per-
+    stage anomaly check; no separate cap needed for task 6.
 
     Returns `(digest, auto_applied_batch)`.
     """
@@ -833,14 +863,36 @@ def run_dream_and_auto_apply(
     if revert_log is None:
         revert_log = RevertLog(vault_path, log_root=log_root, lock_root=lock_root)
     cap = batch_cap if batch_cap is not None else dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP
-    batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap)
+
+    tidying_count = sum(1 for p in digest.proposals if p.stage == "tidying")
+    anomaly = dream_confirm.check_tidying_anomaly(vault_path, tidying_count)
+    stages = dream_confirm.AUTO_APPLY_STAGES
+    if anomaly.tripped:
+        stages = frozenset(stages - {"tidying"})
+
+    batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap, stages=stages)
 
     staging_dir = vault_path / "_dream-staging" / digest.run_id
-    atomic_write(staging_dir / "digest.md", _render_digest(digest, auto_applied=batch))
+    atomic_write(
+        staging_dir / "digest.md",
+        _render_digest(digest, auto_applied=batch, tidying_anomaly=anomaly),
+    )
 
     payload = dream_confirm.render_auto_applied_json(batch)
     atomic_write(staging_dir / "auto-expired.json", payload)
     atomic_write(vault_path / "_meta" / "dream-auto-expired-latest.json", payload)
+
+    if anomaly.tripped:
+        atomic_write(
+            vault_path / "_meta" / "dream-anomaly-latest.json",
+            json.dumps({
+                "run_id": digest.run_id,
+                "stage": "tidying",
+                "current_count": anomaly.current_count,
+                "baseline": anomaly.baseline,
+                "threshold": anomaly.threshold,
+            }, indent=2),
+        )
 
     return digest, batch
 

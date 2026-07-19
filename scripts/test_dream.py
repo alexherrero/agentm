@@ -599,5 +599,100 @@ class TidyingDigestAndAutoApplyIntegrationTests(_DreamTestBase):
         self.assertFalse(new_path.exists())
 
 
+class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
+    """Task 6 verification: a fixture cycle with an artificially inflated
+    proposal count is confirmed to apply nothing and flag the console,
+    rather than applying an abnormal batch — exercised through the real
+    `run_dream_and_auto_apply()` pipeline, not just the isolated
+    `check_tidying_anomaly` unit above."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from revert_log import RevertLog  # noqa: E402
+        import dream_confirm  # noqa: E402
+
+        self.dc = dream_confirm
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _write_aged(self, name: str, days_silent: int) -> Path:
+        import datetime
+        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
+        return self._write(name, f"---\nkind: fix\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
+
+    def test_inflated_batch_applies_nothing_and_flags_the_digest(self) -> None:
+        # Seed a "usual" baseline of small tidying cycles.
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_tidying_anomaly(self.vault, 1)
+
+        # A cycle with a way-past-baseline number of cold entries.
+        n = 20
+        for i in range(n):
+            self._write_aged(f"cold-{i}.md", 1900)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-anomaly", revert_log=self.revert_log,
+        )
+        tidying_in_digest = [p for p in digest.proposals if p.stage == "tidying"]
+        self.assertEqual(len(tidying_in_digest), n)
+
+        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
+        self.assertEqual(tidying_applied, [], "nothing should auto-apply from the tripped stage")
+
+        # Every tidying proposal must still exist as ordinary pending state.
+        pending = self.dc.list_pending(self.vault, "run-anomaly")
+        tidying_pending = [p for p in pending if p.stage == "tidying"]
+        self.assertEqual(len(tidying_pending), n)
+        self.assertTrue(all(p.status == "pending" for p in tidying_pending))
+
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("ANOMALY BREAKER TRIPPED", digest_text)
+
+        anomaly_flag_path = self.vault / "_meta" / "dream-anomaly-latest.json"
+        self.assertTrue(anomaly_flag_path.exists())
+        payload = json.loads(anomaly_flag_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["run_id"], "run-anomaly")
+        self.assertEqual(payload["stage"], "tidying")
+        self.assertEqual(payload["current_count"], n)
+
+    def test_normal_batch_after_seeded_history_applies_as_usual(self) -> None:
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_tidying_anomaly(self.vault, 2)
+
+        self._write_aged("cold-a.md", 1900)
+        self._write_aged("cold-b.md", 1900)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-normal", revert_log=self.revert_log,
+        )
+        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
+        self.assertEqual(len(tidying_applied), 2)
+
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertNotIn("ANOMALY BREAKER TRIPPED", digest_text)
+        self.assertFalse((self.vault / "_meta" / "dream-anomaly-latest.json").exists())
+
+    def test_compression_still_auto_applies_when_tidying_is_suppressed(self) -> None:
+        # The breaker is scoped to tidying only -- compression's own
+        # auto-apply must be unaffected by a tidying-side trip.
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_tidying_anomaly(self.vault, 1)
+
+        for i in range(10):
+            self._write_aged(f"cold-{i}.md", 1900)
+        self._write("chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md"))
+        self._write("chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md"))
+        self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-mixed", revert_log=self.revert_log,
+        )
+        stages_applied = {i["stage"] for i in batch.items}
+        self.assertIn("compression", stages_applied)
+        self.assertNotIn("tidying", stages_applied)
+
+
 if __name__ == "__main__":
     unittest.main()

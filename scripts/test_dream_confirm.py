@@ -425,5 +425,63 @@ class CleanupAppliedBatchesTests(_DreamConfirmTestBase):
         self.assertTrue(bogus.is_dir())  # left alone, not deleted
 
 
+class AnomalyBreakerTests(_DreamConfirmTestBase):
+    """Task 6 (auto-organization part 1): the anomaly breaker guarding the
+    tidying stage's own auto-apply. `batch_cap` already provides the
+    "global mutation budget ... across every stage combined" the design
+    names (tested elsewhere, unchanged by this class) -- this covers only
+    the genuinely new piece: a cycle proposing several times the usual
+    tidying count applies nothing from that stage, rather than a capped
+    partial batch."""
+
+    def test_cold_start_never_trips(self) -> None:
+        # No history yet -- nothing to compare against, so even a large
+        # count is never anomalous on the very first few cycles.
+        result = dc.check_tidying_anomaly(self.vault, 500)
+        self.assertFalse(result.tripped)
+        self.assertIsNone(result.baseline)
+
+    def test_zero_count_never_trips_and_still_records(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY):
+            dc.check_tidying_anomaly(self.vault, 2)
+        result = dc.check_tidying_anomaly(self.vault, 0)
+        self.assertFalse(result.tripped)
+
+    def test_normal_count_after_history_does_not_trip(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_tidying_anomaly(self.vault, 3)
+        result = dc.check_tidying_anomaly(self.vault, 4)  # close to baseline
+        self.assertFalse(result.tripped)
+        self.assertAlmostEqual(result.baseline, 3.0)
+
+    def test_inflated_count_trips_after_enough_history(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_tidying_anomaly(self.vault, 2)
+        # Several times the baseline (2 * multiplier=3.0 -> threshold 6.0).
+        result = dc.check_tidying_anomaly(self.vault, 50)
+        self.assertTrue(result.tripped)
+        self.assertEqual(result.current_count, 50)
+        self.assertAlmostEqual(result.baseline, 2.0)
+
+    def test_tripped_cycle_does_not_poison_the_history(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_tidying_anomaly(self.vault, 2)
+        dc.check_tidying_anomaly(self.vault, 50)  # trips, must NOT be recorded
+
+        history = dc._load_anomaly_history(self.vault)
+        self.assertNotIn(50, history)
+
+        # A second inflated cycle right after must ALSO trip -- if the
+        # first anomaly had poisoned the baseline, this would look normal.
+        result = dc.check_tidying_anomaly(self.vault, 40)
+        self.assertTrue(result.tripped)
+
+    def test_history_window_bounded(self) -> None:
+        for i in range(dc.ANOMALY_HISTORY_WINDOW + 5):
+            dc.check_tidying_anomaly(self.vault, 1)
+        history = dc._load_anomaly_history(self.vault)
+        self.assertLessEqual(len(history), dc.ANOMALY_HISTORY_WINDOW)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -92,6 +92,11 @@ __all__ = [
     "render_auto_applied_json",
     "DEFAULT_REVERT_TTL_DAYS",
     "cleanup_applied_batches",
+    "AnomalyCheckResult",
+    "check_tidying_anomaly",
+    "ANOMALY_HISTORY_WINDOW",
+    "ANOMALY_THRESHOLD_MULTIPLIER",
+    "ANOMALY_MIN_HISTORY",
 ]
 
 DEFAULT_TTL_DAYS = 30.0
@@ -472,6 +477,99 @@ def render_auto_applied_json(batch: AutoAppliedBatch) -> str:
         },
         indent=2,
         sort_keys=True,
+    )
+
+
+# -----------------------------------------------------------------------------
+# The anomaly breaker (auto-organization part 1, task 6) -- one of the two
+# automation guards this plan wires around the tidying stage's own moves
+# specifically (the sampled higher-tier audit and the rest of the full
+# guard suite land with part 3). The global mutation-budget half of task 6
+# needs no new code: `auto_apply_batch`'s own `batch_cap` already applies
+# across every stage in `stages` combined (it slices the merged, sorted
+# pending list, not a per-stage list) -- that IS "a global mutation budget
+# ... on top of the per-stage caps" the design names, and tidying inherited
+# it automatically the moment it joined `AUTO_APPLY_STAGES` in task 3.
+#
+# What's genuinely new here is the anomaly breaker: `batch_cap` paces a
+# NORMAL cycle by deferring the overflow to a later one -- it never refuses
+# to apply anything. The breaker is a different kind of guard: a cycle
+# proposing several times the usual tidying-mutation count applies NOTHING
+# from that stage this cycle (not a capped partial batch) and flags it,
+# because an abnormal spike is more likely a bug/corruption than routine
+# backlog. A small trailing-history sidecar (`_meta/tidying-cycle-history.json`)
+# tracks recent NORMAL cycles' counts as the "usual" baseline -- a tripped
+# cycle's own (anomalous) count is deliberately never added to that
+# history, so a second anomalous cycle in a row can't be laundered into
+# looking normal by the first one poisoning the baseline.
+# -----------------------------------------------------------------------------
+
+ANOMALY_HISTORY_WINDOW = 8  # trailing normal cycles considered "usual"
+ANOMALY_THRESHOLD_MULTIPLIER = 3.0  # "several times" the usual count
+ANOMALY_MIN_HISTORY = 3  # cold-start guard -- no "usual" to compare against yet
+
+
+@dataclass
+class AnomalyCheckResult:
+    """`tripped=True` means: apply nothing from the checked stage this
+    cycle, the count is anomalous relative to recent history. `baseline`/
+    `threshold` are `None` only when there isn't yet enough history to
+    judge (cold start) -- a cold start never trips."""
+
+    tripped: bool
+    current_count: int
+    baseline: Optional[float]
+    threshold: Optional[float]
+
+
+def _anomaly_history_path(vault_path: Path) -> Path:
+    return Path(vault_path) / "_meta" / "tidying-cycle-history.json"
+
+
+def _load_anomaly_history(vault_path: Path) -> list:
+    path = _anomaly_history_path(vault_path)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    try:
+        return [int(x) for x in data]
+    except (TypeError, ValueError):
+        return []
+
+
+def check_tidying_anomaly(vault_path: Path, current_count: int) -> AnomalyCheckResult:
+    """Compare `current_count` (this cycle's tidying-stage proposal count,
+    BEFORE any `batch_cap` truncation) against the trailing history of
+    recent normal cycles. Persists `current_count` into that history when
+    the check does NOT trip (a normal cycle, or a cold start with too
+    little history to judge yet) -- an anomalous count is never recorded,
+    so it can't poison the baseline for the next cycle's comparison.
+
+    A count of 0 never trips (nothing proposed is never anomalous) but
+    still updates history, keeping "quiet cycles are normal" true of the
+    baseline too.
+    """
+    history = _load_anomaly_history(vault_path)
+
+    if current_count == 0 or len(history) < ANOMALY_MIN_HISTORY:
+        baseline = (sum(history) / len(history)) if history else None
+        threshold = baseline * ANOMALY_THRESHOLD_MULTIPLIER if baseline is not None else None
+        tripped = False
+    else:
+        baseline = sum(history) / len(history)
+        threshold = baseline * ANOMALY_THRESHOLD_MULTIPLIER
+        tripped = current_count > threshold
+
+    if not tripped:
+        history.append(current_count)
+        history = history[-ANOMALY_HISTORY_WINDOW:]
+        atomic_write(_anomaly_history_path(vault_path), json.dumps(history))
+
+    return AnomalyCheckResult(
+        tripped=tripped, current_count=current_count, baseline=baseline, threshold=threshold,
     )
 
 
