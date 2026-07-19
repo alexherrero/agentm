@@ -688,6 +688,40 @@ def section_dream_expire(vault: "Path | None", *, now: "float | None" = None) ->
     )
 
 
+def section_needs_your_eye(vault: "Path | None") -> str:
+    """The needs-your-eye list (auto-org part 3, tasks 3+5): ambiguous
+    dedup/merge candidates the weekly cycle flagged instead of forcing —
+    read from the one underlying list (`_meta/needs-your-eye.json`,
+    overwritten every triage run). Honest-dark on every edge, same
+    convention as every section here."""
+    if vault is None:
+        return "Needs your eye: n/a (no vault resolved)"
+    pointer = vault / "_meta" / "needs-your-eye.json"
+    if not pointer.is_file():
+        return (
+            "Needs your eye: dark -- no _meta/needs-your-eye.json yet "
+            "(the weekly triage cycle hasn't run on this machine since the "
+            "ambiguous-candidate list shipped)"
+        )
+    try:
+        data = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return f"Needs your eye: n/a (unreadable list at {pointer}: {e})"
+    items = data.get("items") if isinstance(data, dict) else None
+    if not isinstance(items, list):
+        return f"Needs your eye: n/a (list at {pointer} is not the expected shape)"
+    if not items:
+        return "Needs your eye: nothing -- no ambiguous dedup/merge candidates awaiting you"
+    lines = [
+        f"Needs your eye: {len(items)} ambiguous dedup/merge candidate(s) — "
+        "left in the inbox untouched, never forced; merge by hand, edit apart, or leave:"
+    ]
+    for item in items:
+        names = ", ".join(Path(p).name for p in item.get("paths", []))
+        lines.append(f"  - {names} — {item.get('reason', '')}")
+    return "\n".join(lines)
+
+
 # ── section: rich (HTML) view pointer (Consolidation follow-ups batch,
 #    piece 4) -- printed at the end of every terminal run, not a mode the
 #    operator has to remember exists ─────────────────────────────────────
@@ -742,6 +776,7 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
         "vault_doctor": section_vault_doctor(vault, runner=runner),
         "vault_lint": section_vault_lint(vault),
         "dream_expire": section_dream_expire(vault),
+        "needs_your_eye": section_needs_your_eye(vault),
     }
 
 
@@ -755,6 +790,7 @@ def render_terminal(report: dict, *, html_path: "Path | None" = None, repo_root:
         ("Memory activity", "memory"), ("Machinery", "machinery"),
         ("Vault doctor", "vault_doctor"), ("Vault lint", "vault_lint"),
         ("Dreaming", "dream_expire"),
+        ("Needs your eye", "needs_your_eye"),
     ):
         if key not in report:
             continue
