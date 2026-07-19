@@ -602,16 +602,66 @@ def _fetch_listing_candidates(source: Source) -> list:
     return candidates
 
 
+_GITHUB_API_REPOS_RE = re.compile(r"^https://api\.github\.com/(orgs|users)/[^/]+/repos", re.IGNORECASE)
+
+
+def _looks_like_github_api_repos_url(url: str) -> bool:
+    """True for a GitHub REST API org/user repo-listing endpoint. A source
+    pointed directly at one of these (rather than scraping the HTML org
+    page, whose per-repo sub-links -- /forks, /issues, /pulls, /stargazers
+    -- all match a naive link-prefix filter and would multiply one repo
+    into several near-duplicate candidates) gets clean, structured, one-
+    candidate-per-repo results instead."""
+    return bool(_GITHUB_API_REPOS_RE.match(url))
+
+
+def _parse_github_api_repos(body: bytes, source: Source) -> list:
+    """One Candidate per repo from a GitHub org/user repos API response
+    (already sorted newest-first when the source URL requests that, e.g.
+    `?sort=created&direction=desc`), capped to `_MAX_FEED_ITEMS_PER_SCAN`.
+    [] on any parse failure -- malformed JSON, an error envelope instead of
+    a list (rate-limited, org not found), never raises."""
+    try:
+        repos = json.loads(body)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(repos, list):
+        return []  # GitHub's error shape is a dict ({"message": "..."}), not a list
+    candidates = []
+    for repo in repos[:_MAX_FEED_ITEMS_PER_SCAN]:
+        if not isinstance(repo, dict):
+            continue
+        name = repo.get("name") or ""
+        description = repo.get("description") or ""
+        html_url = repo.get("html_url") or source.url
+        if not name:
+            continue
+        candidates.append(Candidate(slug=source.slug, title=name, body=description, url=html_url))
+    return candidates
+
+
 def default_fetcher(source: Source) -> list:
     """Best-effort single GET of `source.url`. Response-shape auto-detect:
-    `source.link_prefix` set -> listing-page extraction, one Candidate per
-    linked item (`_fetch_listing_candidates`); an RSS/Atom body parses into
-    one Candidate per item/entry (`_parse_feed`); an HTML body that looks
-    like a client-rendered SPA shell (`_looks_like_js_shell`) retries once
-    through a headless render when Playwright is installed, else degrades
-    to the plain-fetch text. Returns `[]` on any network error
-    (timeouts/4xx/5xx never fail a scan, same graceful-degradation posture
-    as `adapt_skills.py`'s GitHub enrichment)."""
+    a GitHub API repos-listing URL parses into one Candidate per repo
+    (`_parse_github_api_repos`); `source.link_prefix` set -> listing-page
+    extraction, one Candidate per linked item (`_fetch_listing_candidates`);
+    an RSS/Atom body parses into one Candidate per item/entry
+    (`_parse_feed`); an HTML body that looks like a client-rendered SPA
+    shell (`_looks_like_js_shell`) retries once through a headless render
+    when Playwright is installed, else degrades to the plain-fetch text.
+    Returns `[]` on any network error (timeouts/4xx/5xx never fail a scan,
+    same graceful-degradation posture as `adapt_skills.py`'s GitHub
+    enrichment)."""
+    if _looks_like_github_api_repos_url(source.url):
+        req = Request(source.url, headers={"User-Agent": _USER_AGENT, "Accept": "application/vnd.github+json"})
+        try:
+            with urlopen(req, timeout=_FETCH_TIMEOUT_SEC) as resp:
+                if getattr(resp, "status", 200) >= 400:
+                    return []
+                return _parse_github_api_repos(resp.read(), source)
+        except (HTTPError, URLError, socket.timeout, OSError):
+            return []
+
     if source.link_prefix:
         return _fetch_listing_candidates(source)
 

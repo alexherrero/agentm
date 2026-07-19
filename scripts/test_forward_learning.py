@@ -590,6 +590,65 @@ class ExtractTitleTests(unittest.TestCase):
         self.assertEqual(fl._extract_title("<html><body>just text</body></html>"), "")
 
 
+class GithubApiReposTests(unittest.TestCase):
+    """A real gap found live: the GitHub org HTML page's per-repo links
+    (/forks, /issues, /pulls, /stargazers) all match a naive link-prefix
+    filter, multiplying one repo into several near-duplicate candidates.
+    The REST API gives clean, structured, one-candidate-per-repo results."""
+
+    def test_org_repos_url_detected(self) -> None:
+        self.assertTrue(fl._looks_like_github_api_repos_url("https://api.github.com/orgs/deepseek-ai/repos?sort=created"))
+
+    def test_user_repos_url_detected(self) -> None:
+        self.assertTrue(fl._looks_like_github_api_repos_url("https://api.github.com/users/someuser/repos"))
+
+    def test_html_org_page_not_detected(self) -> None:
+        self.assertFalse(fl._looks_like_github_api_repos_url("https://github.com/deepseek-ai"))
+
+    def test_unrelated_url_not_detected(self) -> None:
+        self.assertFalse(fl._looks_like_github_api_repos_url("https://example.com/repos"))
+
+    def test_parses_repo_list_into_candidates(self) -> None:
+        source = fl.Source(slug="org", kind="idea", type="web", url="https://api.github.com/orgs/example/repos", trusted=True)
+        body = json.dumps([
+            {"name": "repo-one", "description": "First repo.", "html_url": "https://github.com/example/repo-one"},
+            {"name": "repo-two", "description": None, "html_url": "https://github.com/example/repo-two"},
+        ]).encode()
+        candidates = fl._parse_github_api_repos(body, source)
+        self.assertEqual(len(candidates), 2)
+        self.assertEqual(candidates[0].title, "repo-one")
+        self.assertEqual(candidates[0].body, "First repo.")
+        self.assertEqual(candidates[1].body, "")  # None description -> empty, not "None"
+
+    def test_error_envelope_returns_empty_not_raises(self) -> None:
+        source = fl.Source(slug="org", kind="idea", type="web", url="https://api.github.com/orgs/example/repos", trusted=True)
+        body = json.dumps({"message": "Not Found"}).encode()  # GitHub's error shape is a dict, not a list
+        self.assertEqual(fl._parse_github_api_repos(body, source), [])
+
+    def test_malformed_json_returns_empty_not_raises(self) -> None:
+        source = fl.Source(slug="org", kind="idea", type="web", url="https://api.github.com/orgs/example/repos", trusted=True)
+        self.assertEqual(fl._parse_github_api_repos(b"not json", source), [])
+
+    def test_capped_to_max_per_scan(self) -> None:
+        source = fl.Source(slug="org", kind="idea", type="web", url="https://api.github.com/orgs/example/repos", trusted=True)
+        body = json.dumps([{"name": f"repo-{i}", "description": "", "html_url": f"https://github.com/example/repo-{i}"} for i in range(fl._MAX_FEED_ITEMS_PER_SCAN + 10)]).encode()
+        candidates = fl._parse_github_api_repos(body, source)
+        self.assertEqual(len(candidates), fl._MAX_FEED_ITEMS_PER_SCAN)
+
+    def test_default_fetcher_routes_github_api_url_through_repos_parser(self) -> None:
+        source = fl.Source(slug="org", kind="idea", type="web", url="https://api.github.com/orgs/example/repos", trusted=True)
+        body = json.dumps([{"name": "repo-one", "description": "d", "html_url": "https://github.com/example/repo-one"}]).encode()
+        resp = mock.MagicMock()
+        resp.status = 200
+        resp.read.return_value = body
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = False
+        with mock.patch.object(fl, "urlopen", return_value=resp):
+            candidates = fl.default_fetcher(source)
+        self.assertEqual(len(candidates), 1)
+        self.assertEqual(candidates[0].title, "repo-one")
+
+
 class FetchListingCandidatesTests(unittest.TestCase):
     """default_fetcher's listing-page path, with urlopen mocked (no real
     network) -- each linked item gets its own individually-fetched
