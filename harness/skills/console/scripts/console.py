@@ -722,6 +722,43 @@ def section_needs_your_eye(vault: "Path | None") -> str:
     return "\n".join(lines)
 
 
+def section_sampled_audit(vault: "Path | None") -> str:
+    """The sampled higher-tier audit (auto-org part 3, task 9): the most
+    recent cycle's applied-link/merge review, read from the one pointer
+    file (`_meta/sampled-audit-latest.json`, overwritten every cycle —
+    same convention as `dream-auto-expired-latest.json`). Honest-dark on
+    every edge, same convention as every section here. `sampled_count:
+    0` is the expected, permanent state until the higher-tier model tier
+    ships (see `dream_confirm.higher_tier_model_available`'s own
+    docstring) — reported as "nothing sampled," not an error."""
+    if vault is None:
+        return "Sampled audit: n/a (no vault resolved)"
+    pointer = vault / "_meta" / "sampled-audit-latest.json"
+    if not pointer.is_file():
+        return (
+            "Sampled audit: dark -- no _meta/sampled-audit-latest.json yet "
+            "(the weekly dreaming cycle hasn't run on this machine since the audit shipped)"
+        )
+    try:
+        data = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return f"Sampled audit: n/a (unreadable pointer at {pointer}: {e})"
+    if not isinstance(data, dict):
+        return f"Sampled audit: n/a (pointer at {pointer} is not the expected shape)"
+    sampled_count = data.get("sampled_count", 0)
+    if not sampled_count:
+        return "Sampled audit: nothing sampled this cycle (higher-tier model tier unavailable)"
+    rate = data.get("disagreement_rate")
+    line = (
+        f"Sampled audit: {sampled_count} applied link/merge(s) reviewed — "
+        f"{data.get('disagree_count', 0)} disagreement(s)"
+        + (f" ({rate:.1%})" if isinstance(rate, (int, float)) else "")
+    )
+    if data.get("narrowed"):
+        line += " -- ⚠ ambiguous bands narrowed this cycle"
+    return line
+
+
 # ── section: rich (HTML) view pointer (Consolidation follow-ups batch,
 #    piece 4) -- printed at the end of every terminal run, not a mode the
 #    operator has to remember exists ─────────────────────────────────────
@@ -777,6 +814,7 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
         "vault_lint": section_vault_lint(vault),
         "dream_expire": section_dream_expire(vault),
         "needs_your_eye": section_needs_your_eye(vault),
+        "sampled_audit": section_sampled_audit(vault),
     }
 
 
@@ -791,6 +829,7 @@ def render_terminal(report: dict, *, html_path: "Path | None" = None, repo_root:
         ("Vault doctor", "vault_doctor"), ("Vault lint", "vault_lint"),
         ("Dreaming", "dream_expire"),
         ("Needs your eye", "needs_your_eye"),
+        ("Sampled audit", "sampled_audit"),
     ):
         if key not in report:
             continue

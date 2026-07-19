@@ -732,12 +732,16 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         digest_text = digest.digest_path.read_text(encoding="utf-8")
         self.assertIn("ANOMALY BREAKER TRIPPED", digest_text)
 
+        # dream-anomaly-latest.json is now a LIST of tripped stages (task 9
+        # generalized the breaker beyond tidying-only) -- exactly one
+        # entry here since only tidying tripped this cycle.
         anomaly_flag_path = self.vault / "_meta" / "dream-anomaly-latest.json"
         self.assertTrue(anomaly_flag_path.exists())
         payload = json.loads(anomaly_flag_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["run_id"], "run-anomaly")
-        self.assertEqual(payload["stage"], "tidying")
-        self.assertEqual(payload["current_count"], n)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["run_id"], "run-anomaly")
+        self.assertEqual(payload[0]["stage"], "tidying")
+        self.assertEqual(payload[0]["current_count"], n)
 
     def test_normal_batch_after_seeded_history_applies_as_usual(self) -> None:
         for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
@@ -757,8 +761,9 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         self.assertFalse((self.vault / "_meta" / "dream-anomaly-latest.json").exists())
 
     def test_compression_still_auto_applies_when_tidying_is_suppressed(self) -> None:
-        # The breaker is scoped to tidying only -- compression's own
-        # auto-apply must be unaffected by a tidying-side trip.
+        # Each watched stage's breaker is independent -- compression isn't
+        # even watched by the breaker at all, and a tidying-side trip must
+        # never affect it either way.
         for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
             self.dc.check_tidying_anomaly(self.vault, 1)
 
@@ -774,6 +779,72 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         stages_applied = {i["stage"] for i in batch.items}
         self.assertIn("compression", stages_applied)
         self.assertNotIn("tidying", stages_applied)
+
+
+class MultiStageAnomalyBreakerIntegrationTests(_DreamTestBase):
+    """Task 9 verification: the anomaly breaker generalized beyond tidying
+    (part 1) now also watches `suffix_backlog_drain` and `lint` (part 3's
+    own dedup/lint mutations) -- each with its OWN independent history, so
+    a spike in one watched stage never trips or suppresses another."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from revert_log import RevertLog  # noqa: E402
+        import dream_confirm  # noqa: E402
+
+        self.dc = dream_confirm
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _write_suffix_family(self, index: int) -> None:
+        base = f"family-{index:02d}"
+        body = f"identical legacy content, family {index}\n"
+        self._write(
+            f"personal/reference/{base}.md",
+            f"---\nkind: reference\nslug: {base}\nstatus: active\ncreated: 2025-01-01\n---\n{body}",
+        )
+        self._write(
+            f"personal/reference/{base}_1.md",
+            f"---\nkind: reference\nslug: {base}_1\nstatus: active\ncreated: 2025-06-01\n---\n{body}",
+        )
+
+    def test_suffix_backlog_drain_spike_trips_independently_of_tidying(self) -> None:
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+        # Seed a "usual" baseline of 1 suffix-family collapse per cycle for
+        # suffix_backlog_drain; tidying gets no history at all (cold start).
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 1)
+
+        # 6 families this cycle -- well past baseline(1) * multiplier(3.0).
+        for i in range(6):
+            self._write_suffix_family(i)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-drain-anomaly", revert_log=self.revert_log,
+        )
+
+        drain_applied = [i for i in batch.items if i["stage"] == "suffix_backlog_drain"]
+        self.assertEqual(drain_applied, [], "nothing should auto-apply from the tripped stage")
+
+        pending = self.dc.list_pending(self.vault, "run-drain-anomaly")
+        drain_pending = [p for p in pending if p.stage == "suffix_backlog_drain"]
+        self.assertEqual(len(drain_pending), 6)
+        self.assertTrue(all(p.status == "pending" for p in drain_pending))
+
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("ANOMALY BREAKER TRIPPED — suffix_backlog_drain", digest_text)
+
+        payload = json.loads((self.vault / "_meta" / "dream-anomaly-latest.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["stage"], "suffix_backlog_drain")
+        self.assertEqual(payload[0]["current_count"], 6)
+
+        # tidying was never watched with any history this cycle -- a cold
+        # start never trips, regardless of the suffix_backlog_drain spike.
+        tidying_flagged = any(entry["stage"] == "tidying" for entry in payload)
+        self.assertFalse(tidying_flagged)
 
 
 def _vec_backend_available(vault: Path) -> bool:
@@ -917,6 +988,46 @@ class LinkImprovementStageTests(_DreamTestBase):
             )
         self.assertEqual(proposals, [])
         spy.assert_not_called()  # never even reaches the ambiguous-band check
+
+    def test_narrowed_floor_excludes_a_pair_that_would_otherwise_qualify(self) -> None:
+        # Task 9: a similarity just above the BASE floor (0.70) but below a
+        # narrowed floor (0.70 + one 0.05 step = 0.75) must be excluded once
+        # dream_confirm.run_sampled_audit has persisted a narrowing
+        # directive -- proves _stage_link_improvement actually reads
+        # write_time_linker.link_similarity_floor(vault_path), not the raw
+        # module constant.
+        import math
+        import write_time_linker
+
+        target_similarity = 0.72  # above 0.70, below the narrowed 0.75
+        cos_theta = 1 - 2 * (1 - target_similarity) ** 2
+        angle = math.acos(cos_theta)
+        vec = [0.0] * self.vec_index.EMBEDDING_DIM
+        vec[0] = math.cos(angle)
+        vec[1] = math.sin(angle)
+        self._seed_older_entry("mid-note.md", "mid-note", vec)
+
+        # Confirm the floor is still narrow-able before the fixture -- if
+        # this ever changes it invalidates the test's own premise.
+        self.assertLess(0.70 + write_time_linker._LINK_BAND_NARROWING_STEP, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
+
+        (self.vault / "_meta").mkdir(parents=True, exist_ok=True)
+        (self.vault / "_meta" / "link-band-narrowing.json").write_text(
+            '{"floor_override": 0.75}', encoding="utf-8",
+        )
+
+        # The differentiating proof: at the BASE floor (0.70), 0.72 sits in
+        # the ambiguous band and reaches cheap_model_tier_available() (see
+        # test_ambiguous_match_pair_left_unlinked_no_model_call at 0.77,
+        # same band). With the narrowed floor (0.75) in effect, 0.72 must
+        # be excluded at the vec_index query itself -- the ambiguous-band
+        # check is never even reached, proving the narrowed floor is what
+        # actually excluded it, not a coincidental empty result via the
+        # pre-existing ambiguous-band path.
+        with unittest.mock.patch("dream.cheap_model_tier_available") as spy:
+            proposals = self._run_stage_with_new_entry("new-note.md", "new-note", embedding=_unit_vector(0))
+        self.assertEqual(proposals, [], "a candidate below the narrowed floor must never qualify")
+        spy.assert_not_called()
 
     def test_decay_exempt_entry_never_becomes_an_origin(self) -> None:
         self._write(
@@ -1530,6 +1641,34 @@ class LinkImprovementIntegrationTests(_DreamTestBase):
         self.revert_log.revert("run-link-1", entry_id)
         self.assertEqual(new_path.read_text(encoding="utf-8"), original_new_content)
         self.assertEqual(old_path.read_text(encoding="utf-8"), original_old_content)
+
+    def test_sampled_audit_gathers_a_real_applied_link_improvement_item(self) -> None:
+        # Task 9 coverage gap flagged by adversarial review: every other
+        # sampled-audit test passes SYNTHETIC item dicts directly to
+        # dream_confirm.run_sampled_audit. This proves the real
+        # batch.items dict shape run_dream_and_auto_apply() gathers from
+        # (filtered to stage == "link_improvement") actually reaches
+        # run_sampled_audit and gets sampled -- not silently empty due to
+        # a key-name mismatch between what auto_apply_batch produces and
+        # what the gathering filter checks for.
+        old_path = self._write_entry("old-note.md", "old-note")
+        self.vec_index.upsert_entry(self.vault, self._rel("old-note.md"), _unit_vector(0, 0.99))
+        import graph_snapshot
+        graph_snapshot.rebuild(self.vault)
+        self._write_entry("new-note.md", "new-note")
+
+        import dream_confirm
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", return_value=_unit_vector(0)), \
+             unittest.mock.patch.object(dream_confirm, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dream_confirm, "judge_applied_mutation", return_value="agree"):
+            digest, _batch = dream.run_dream_and_auto_apply(
+                self.vault, run_id="run-link-audit", revert_log=self.revert_log,
+            )
+
+        self.assertIsNotNone(digest.sampled_audit)
+        self.assertGreaterEqual(digest.sampled_audit["sampled_count"], 1)
+        self.assertEqual(digest.sampled_audit["disagree_count"], 0)
 
 
 if __name__ == "__main__":

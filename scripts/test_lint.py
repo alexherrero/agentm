@@ -13,6 +13,7 @@ out-of-registry kind appears in the report. `lint.main()` (the
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -121,6 +122,126 @@ class SeededRotFixtureTests(_LintFixtureTestBase):
         kt = [f for f in self.report.findings if f.check_id == "kind-taxonomy"]
         self.assertEqual(len(kt), 1)
         self.assertEqual(kt[0].entry_path, "personal/reference/mystery-kind.md")
+
+
+class GraphSnapshotCrossCheckTests(_LintFixtureTestBase):
+    """Task 9 verification: the graph-snapshot cross-check catches drift
+    between the persisted snapshot and a live re-extraction. This must
+    run BEFORE `run_lint()`'s own snapshot rebuild — a note whose
+    snapshot was never built (or is stale) has to be caught in THAT same
+    call, not silently healed by the rebuild moments before the check
+    ever looks. A second call against the same (now-rebuilt) vault finds
+    nothing, proving the check is real and not a permanent false-positive
+    generator either."""
+
+    def test_never_indexed_note_with_a_real_link_is_caught_on_first_scan(self) -> None:
+        self._write("correct-target.md", _note("correct-target"))
+        self._write("linking-note.md", _note("linking-note", body="See [[correct-target]] for detail.\n"))
+
+        report = lint.run_lint(self.vault)
+
+        drift = [f for f in report.findings if f.check_id == "graph-snapshot-drift"]
+        self.assertEqual(len(drift), 1)
+        self.assertEqual(drift[0].entry_path, "personal/reference/linking-note.md")
+        self.assertEqual(drift[0].severity, "warn")
+
+    def test_second_scan_after_the_rebuild_finds_no_drift(self) -> None:
+        self._write("correct-target.md", _note("correct-target"))
+        self._write("linking-note.md", _note("linking-note", body="See [[correct-target]] for detail.\n"))
+
+        lint.run_lint(self.vault)  # first scan: catches the drift, then rebuilds
+        second_report = lint.run_lint(self.vault)  # second scan: already fresh
+
+        drift = [f for f in second_report.findings if f.check_id == "graph-snapshot-drift"]
+        self.assertEqual(drift, [])
+
+    def test_rotation_eventually_attempts_every_entry_not_just_the_first_batch(self) -> None:
+        # Adversarial-review regression: without a persisted rotation
+        # cursor, `sorted(...)[:_CAP]` re-selects the SAME alphabetically-
+        # first batch every cycle forever, permanently starving any entry
+        # past the cap -- it would never even be LOOKED AT, regardless of
+        # whether it happens to carry real drift. 30 filler notes (past
+        # the 25-entry cap) plus one sorting alphabetically LAST: proves
+        # the rotation reaches it within a bounded number of cycles.
+        for i in range(30):
+            self._write(f"filler-{i:02d}.md", _note(f"filler-{i:02d}"))
+        self._write("zzz-last.md", _note("zzz-last"))
+
+        reached = False
+        for _ in range(3):  # ceil(31 / 25) = 2 cycles needed; generous headroom
+            lint.run_lint(self.vault)
+            attempted = json.loads(
+                (self.vault / "_meta" / "graph-snapshot-cross-check-state.json").read_text(encoding="utf-8")
+            )["attempted"]
+            if "personal/reference/zzz-last.md" in attempted:
+                reached = True
+                break
+        self.assertTrue(reached, "an entry past the batch cap was never reached by the rotation")
+
+    def test_drift_introduced_between_cycles_is_caught_when_the_rotation_reaches_it(self) -> None:
+        # A more realistic drift scenario than "brand new, never indexed":
+        # cycle 1 establishes a clean baseline for the WHOLE corpus (every
+        # note is new, so the unconditional rebuild indexes everything
+        # regardless of what the cross-check itself sampled). Content is
+        # THEN changed directly -- mimicking a mutation path that doesn't
+        # call graph_snapshot.rebuild() itself (e.g. tidying/dedup moves)
+        # -- so genuine drift exists at the START of cycle 2, for an entry
+        # the rotation has now reached.
+        for i in range(30):
+            self._write(f"filler-{i:02d}.md", _note(f"filler-{i:02d}"))
+        self._write("zzz-target.md", _note("zzz-target"))
+        zzz_path = self._write("zzz-linking-note.md", _note("zzz-linking-note"))
+
+        lint.run_lint(self.vault)  # cycle 1: clean baseline, whole corpus indexed
+
+        zzz_path.write_text(
+            zzz_path.read_text(encoding="utf-8").rstrip("\n") + "\n\nSee [[zzz-target]] for detail.\n",
+            encoding="utf-8",
+        )
+
+        found = False
+        for _ in range(3):  # the rotation needs at most 1 more cycle to reach zzz-linking-note
+            report = lint.run_lint(self.vault)
+            drift = {f.entry_path for f in report.findings if f.check_id == "graph-snapshot-drift"}
+            if "personal/reference/zzz-linking-note.md" in drift:
+                found = True
+                break
+        self.assertTrue(found, "drift introduced between cycles was never caught once the rotation reached it")
+
+    def test_pool_exhaustion_resets_the_pass(self) -> None:
+        # Once every entry has had a turn, the NEXT cycle starts a fresh
+        # pass rather than sampling nothing forever -- same contract as
+        # dream.py's own link-backfill pool exhaustion.
+        for i in range(30):
+            self._write(f"filler-{i:02d}.md", _note(f"filler-{i:02d}"))
+
+        first = lint.run_lint(self.vault)
+        self.assertEqual(len(first.model.entries), 30)
+
+        second = lint.run_lint(self.vault)  # drains the remaining 5
+        self.assertIsNotNone(second)
+        attempted_after_second = json.loads(
+            (self.vault / "_meta" / "graph-snapshot-cross-check-state.json").read_text(encoding="utf-8")
+        )["attempted"]
+        # After exactly 2 cycles the whole 30-entry corpus has had a turn.
+        self.assertEqual(len(attempted_after_second), 30)
+
+        third = lint.run_lint(self.vault)  # fresh pass: samples from the start again
+        self.assertIsNotNone(third)  # the third call itself must not raise/crash on a fresh pass
+
+    def test_stage_lint_runs_before_link_improvement_rebuilds_in_run_dream(self) -> None:
+        # The real regression this guards: run_dream()'s own
+        # _stage_link_improvement unconditionally rebuilds the snapshot
+        # in full-vault mode as a side effect. If _stage_lint ran AFTER
+        # it in the same cycle, the cross-check would compare a snapshot
+        # against itself moments after its own rebuild and never find
+        # anything -- through the real weekly pipeline, not just
+        # run_lint() in isolation.
+        self._write("correct-target.md", _note("correct-target"))
+        self._write("linking-note.md", _note("linking-note", body="See [[correct-target]] for detail.\n"))
+
+        digest = dream.run_dream(self.vault, run_id="run-cross-check")
+        self.assertEqual(digest.corpus_stats.get("lint_graph_snapshot_mismatch_count"), 1)
 
 
 class FencedCodeRepairSafetyTests(_LintFixtureTestBase):

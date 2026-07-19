@@ -15,6 +15,11 @@ Composes three existing signals into one report and one auto-repair pass:
   - A new per-note quality score (frontmatter completeness + link
     presence + `lifecycle.compute_decay_score`'s staleness axis),
     weighted-averaged and rolled up vault-wide.
+  - The graph-snapshot cross-check (task 9): a capped batch of entries'
+    persisted graph-snapshot edges compared against a live re-extraction
+    from their current content, surfacing drift as a `graph-snapshot-
+    drift` finding. Runs BEFORE this module's own snapshot rebuild below
+    — see `_graph_snapshot_cross_check`'s own docstring for why.
 
 The one new BEHAVIOR this module adds on top of those existing signals: a
 mis-cased wikilink (`[[Wrong-Case]]` where `[[Correct-Case]]` is the only
@@ -48,6 +53,7 @@ them — see `dream.py::_stage_lint`, which routes through
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -57,6 +63,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import vault_lint  # noqa: E402  (same skill dir — the structural check suite)
+from vault_lock import atomic_write  # noqa: E402
 
 __all__ = ["LintReport", "run_lint", "main"]
 
@@ -75,6 +82,12 @@ _CONTRADICTION_CHECK_IDS = frozenset(
 _QUALITY_WEIGHTS = {"completeness": 0.4, "linked": 0.3, "freshness": 0.3}
 _COMPLETENESS_PENALTY_PER_VIOLATION = 0.25
 
+# The graph-snapshot cross-check's per-cycle sample cap (task 9): "since
+# three features now lean on it" (write_time_linker's write-time rebuild,
+# dream.py's link-improvement sweep, and this module's own orphan check) —
+# 25 matches every other batched check in this design's own precedent.
+_GRAPH_SNAPSHOT_CROSS_CHECK_BATCH_CAP = 25
+
 
 @dataclass
 class LintReport:
@@ -88,6 +101,10 @@ class LintReport:
     @property
     def contradiction_count(self) -> int:
         return sum(1 for f in self.findings if f.check_id in _CONTRADICTION_CHECK_IDS)
+
+    @property
+    def graph_snapshot_mismatch_count(self) -> int:
+        return sum(1 for f in self.findings if f.check_id == "graph-snapshot-drift")
 
 
 def _case_insensitive_match(t: str, model) -> "str | None":
@@ -204,14 +221,94 @@ def _quality_score(vault_path: Path, entry, orphan_rels: set, *, now=None) -> fl
     )
 
 
+_GRAPH_SNAPSHOT_CROSS_CHECK_STATE_REL = "_meta/graph-snapshot-cross-check-state.json"
+
+
+def _read_cross_check_attempted(vault_path: Path) -> set:
+    """The set of rel paths already checked in the current pass over the
+    corpus (adversarial review, task 9): without this, a plain `sorted(...)
+    [:cap]` re-selects the SAME alphabetically-first batch every cycle
+    forever, permanently starving every entry past the cap — the exact
+    "drains the whole corpus over successive cycles" contract this
+    function's own docstring promises, but the original implementation
+    never actually delivered. Mirrors `dream._read_backfill_attempted`'s
+    identical pool-rotation shape."""
+    try:
+        data = json.loads((Path(vault_path) / _GRAPH_SNAPSHOT_CROSS_CHECK_STATE_REL).read_text(encoding="utf-8"))
+        return set(data.get("attempted", []))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return set()
+
+
+def _write_cross_check_attempted(vault_path: Path, attempted: set) -> None:
+    atomic_write(
+        Path(vault_path) / _GRAPH_SNAPSHOT_CROSS_CHECK_STATE_REL,
+        json.dumps({"attempted": sorted(attempted)}),
+    )
+
+
+def _graph_snapshot_cross_check(vault_path: Path, model) -> list:
+    """The graph-snapshot cross-check (task 9): a capped batch of entries'
+    PERSISTED outgoing edges (`graph_snapshot.outgoing`) compared against
+    a LIVE re-extraction from their current content
+    (`graph.extract_edges_for_paths`) — catching drift between what's
+    stored and what the note's content actually says. MUST run before
+    `run_lint()`'s own `graph_snapshot.rebuild()` call: a rebuild
+    reconciles the whole vault against live content, so any drift this
+    check exists to catch would already be gone by the time it looked if
+    it ran after the rebuild instead.
+
+    A persisted `attempted` set (`_read_cross_check_attempted`) rotates
+    the sample through the whole corpus, one capped batch at a time, so
+    every entry gets a turn across successive cycles — the exact same
+    pool-exhaustion-resets-the-pass shape `dream.py`'s own link-backfill
+    pool already uses. Deterministic order within each pass (sorted rel
+    path), not one true-random sample per run."""
+    import graph  # noqa: E402  (lazy — same skill dir)
+    import graph_snapshot  # noqa: E402
+
+    all_rels = sorted(entry.rel for entry in model.entries)
+    attempted = _read_cross_check_attempted(vault_path)
+    remaining = [r for r in all_rels if r not in attempted]
+    if not remaining and all_rels:
+        # Every entry has had a turn this pass -- start a fresh pass.
+        attempted = set()
+        remaining = list(all_rels)
+    sample = remaining[:_GRAPH_SNAPSHOT_CROSS_CHECK_BATCH_CAP]
+
+    findings = []
+    for rel in sample:
+        persisted = graph_snapshot.outgoing(vault_path, rel)
+        live = graph.extract_edges_for_paths(vault_path, [rel])
+        persisted_set = {(e.target, e.edge_type) for e in persisted}
+        live_set = {(e.target, e.edge_type) for e in live}
+        if persisted_set != live_set:
+            findings.append(vault_lint.Finding(
+                "graph-snapshot-drift", "warn", rel,
+                f"persisted graph snapshot disagrees with a live re-extraction "
+                f"({len(persisted_set)} persisted edge(s) vs {len(live_set)} live edge(s))",
+                "run graph_snapshot.rebuild(vault_path) to resync the snapshot for this note",
+            ))
+    if sample:
+        _write_cross_check_attempted(vault_path, attempted | set(sample))
+    return findings
+
+
 def run_lint(vault_path: "Path | str", *, now: "str | None" = None) -> LintReport:
     """The full read-only scan. Never writes — `repairs` are proposed
     mutations a caller applies (or doesn't)."""
     vault_path = Path(vault_path)
     import graph_snapshot  # noqa: E402  (lazy — same skill dir)
 
-    graph_snapshot.rebuild(vault_path)
     model = vault_lint.build_model(vault_path)
+
+    # The graph-snapshot cross-check MUST run against whatever's currently
+    # persisted, BEFORE the rebuild below reconciles it -- see
+    # `_graph_snapshot_cross_check`'s own docstring for why running it
+    # after the rebuild would make it a no-op every cycle.
+    graph_snapshot_findings = _graph_snapshot_cross_check(vault_path, model)
+
+    graph_snapshot.rebuild(vault_path)
 
     miscased = _find_miscased_wikilinks(model)
 
@@ -257,6 +354,8 @@ def run_lint(vault_path: "Path | str", *, now: "str | None" = None) -> LintRepor
             "no action needed — already repaired and revert-logged",
         ))
 
+    findings.extend(graph_snapshot_findings)
+
     repairs = _build_repairs(miscased)
     orphans = graph_snapshot.orphans(vault_path)
     orphan_set = set(orphans)
@@ -281,6 +380,7 @@ def _render_report(report: LintReport) -> str:
         f"{len(report.model.entries)} entries",
         f"orphans: {len(report.orphans)}",
         f"contradictions: {report.contradiction_count}",
+        f"graph-snapshot mismatches: {report.graph_snapshot_mismatch_count}",
         f"auto-repairs: {len(report.repairs)} note(s) with a mis-cased wikilink corrected",
         f"mean quality score: {report.mean_quality_score:.2f}",
     ]

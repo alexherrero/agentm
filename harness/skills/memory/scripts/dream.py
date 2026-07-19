@@ -135,6 +135,11 @@ class DreamDigest:
     # `run_dream()` (propose-only, never mutates — triage's auto-applying
     # engine deliberately doesn't ride it) or when the fold is disabled.
     inbox_triage_run: Optional[dict] = None
+    # The sampled higher-tier audit's result (task 9): populated by
+    # `run_dream_and_auto_apply` only — a bare `run_dream()` has nothing
+    # applied yet to sample, so this stays `None` there (matches
+    # `inbox_triage_run`'s own convention above).
+    sampled_audit: Optional[dict] = None
 
 
 # -----------------------------------------------------------------------------
@@ -820,11 +825,13 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
         # cheap model on it. Headroom beyond the cap so an ingest batch's
         # own siblings can't crowd every outward candidate out of the
         # result window (task 5 — see write_time_linker's
-        # _NEIGHBOR_QUERY_HEADROOM comment).
+        # _NEIGHBOR_QUERY_HEADROOM comment). Reads the narrowing-aware
+        # floor (task 9's sampled higher-tier audit may have raised it
+        # above the plain constant), not the raw module constant.
         neighbors = vec_index.nearest(
             vault_path, embedding,
             k=write_time_linker.MAX_RELATED_LINKS + 1 + write_time_linker._NEIGHBOR_QUERY_HEADROOM,
-            similarity_floor=write_time_linker.LINK_SIMILARITY_FLOOR,
+            similarity_floor=write_time_linker.link_similarity_floor(vault_path),
         )
         qualifying = []
         for neighbor_rel, sim in neighbors:
@@ -1098,6 +1105,7 @@ def _stage_lint(vault_path: Path) -> tuple:
             1 for f in report.findings if f.check_id in _LINT_CONTRADICTION_CHECK_IDS
         ),
         "lint_mean_quality_score": report.mean_quality_score,
+        "lint_graph_snapshot_mismatch_count": report.graph_snapshot_mismatch_count,
     }
     return proposals, stats
 
@@ -1162,7 +1170,7 @@ def _stage_qualification(insight_candidates: list) -> None:
 # Stage 7 — digest + staging
 # -----------------------------------------------------------------------------
 
-def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=None) -> str:
+def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) -> str:
     """`auto_applied` (an optional `dream_confirm.AutoAppliedBatch`) marks
     which proposals this run already applied automatically — the
     dreaming pipeline's confirm-free "expire" action (2026-07-11 operator
@@ -1174,12 +1182,14 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
     once it's known, so the on-disk `digest.md` never misreports an
     already-applied item as still awaiting confirmation.
 
-    `tidying_anomaly` (an optional `dream_confirm.AnomalyCheckResult`,
-    task 6) flags a tripped anomaly breaker: this cycle's tidying-stage
-    proposal count was several times the recent usual, so none of it
-    auto-applied this cycle (it stays pending, exactly like dedup/
+    `anomalies` (an optional `dict[str, dream_confirm.AnomalyCheckResult]`,
+    task 6 initially scoped to tidying only, generalized to any stage by
+    task 9's `check_stage_anomaly`) flags every TRIPPED stage this cycle:
+    that stage's proposal count was several times the recent usual, so
+    none of it auto-applied (it stays pending, exactly like dedup/
     contradiction-triage) — surfaced here as the digest's "console" line
-    for the operator."""
+    for the operator, one section per tripped stage. A stage absent from
+    the dict, or present but not tripped, renders nothing."""
     lines = [
         f"# Dream digest — run {digest.run_id}",
         "",
@@ -1208,6 +1218,8 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
         lines.append(
             f"Lint: {digest.corpus_stats['lint_orphan_count']} orphan(s), "
             f"{digest.corpus_stats['lint_contradiction_count']} contradiction(s), "
+            f"{digest.corpus_stats.get('lint_graph_snapshot_mismatch_count', 0)} graph-snapshot "
+            "mismatch(es), "
             f"mean quality score {digest.corpus_stats['lint_mean_quality_score']:.2f} "
             "· full report via `/memory lint`."
         )
@@ -1218,6 +1230,16 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
             f"{t['proposals']} proposal(s), {t['auto_applied']} auto-applied, "
             f"{t['needs_your_eye']} needs-your-eye · full digest: {t['digest_path']}"
         )
+    if digest.sampled_audit is not None:
+        a = digest.sampled_audit
+        if a["sampled_count"] == 0:
+            lines.append("Sampled audit: nothing sampled this cycle (higher-tier model tier unavailable).")
+        else:
+            lines.append(
+                f"Sampled audit: {a['sampled_count']} applied link/merge(s) reviewed — "
+                f"{a['disagree_count']} disagreement(s) ({a['disagreement_rate']:.1%})"
+                + (" · ⚠ ambiguous bands narrowed this cycle" if a["narrowed"] else "")
+            )
     lines.append("")
     if digest.insight_candidates:
         lines.append("## Insight candidates (written, status: candidate)")
@@ -1232,14 +1254,15 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
             lines.append(f"- {line}")
         lines.append("")
 
-    if tidying_anomaly is not None and tidying_anomaly.tripped:
-        lines.append("## ⚠ ANOMALY BREAKER TRIPPED — tidying auto-apply suppressed this cycle")
+    tripped_anomalies = {stage: r for stage, r in (anomalies or {}).items() if r.tripped}
+    for stage, r in sorted(tripped_anomalies.items()):
+        lines.append(f"## ⚠ ANOMALY BREAKER TRIPPED — {stage} auto-apply suppressed this cycle")
         lines.append("")
         lines.append(
-            f"{tidying_anomaly.current_count} tidying-stage proposal(s) this run, "
-            f"vs. a recent baseline of {tidying_anomaly.baseline:.1f} "
-            f"(threshold {tidying_anomaly.threshold:.1f}) — applying nothing from this "
-            "stage this cycle rather than an abnormal batch. Every tidying proposal "
+            f"{r.current_count} {stage}-stage proposal(s) this run, "
+            f"vs. a recent baseline of {r.baseline:.1f} "
+            f"(threshold {r.threshold:.1f}) — applying nothing from this "
+            f"stage this cycle rather than an abnormal batch. Every {stage} proposal "
             "stays pending; review the run's proposals.json and confirm manually if "
             "the volume is genuinely expected, or investigate before the next cycle."
         )
@@ -1377,6 +1400,18 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     corpus_stats.update(_connectivity_meter(loaded))
     corpus_stats.update(_browse_surface_counts(vault_path, entries))
     proposals = []
+    # `_stage_lint` runs FIRST, before anything else in this pass touches
+    # the graph snapshot: its own graph-snapshot cross-check (task 9) must
+    # see whatever's persisted from BEFORE this cycle to catch genuine
+    # drift accumulated since the last rebuild. `_stage_link_improvement`
+    # below unconditionally rebuilds the snapshot in full-vault mode as
+    # its own side effect — running lint any later would make the cross-
+    # check compare a snapshot against itself, moments after its own
+    # rebuild, and never find anything (see `lint._graph_snapshot_cross_
+    # check`'s own docstring for the full reasoning).
+    lint_proposals, lint_stats = _stage_lint(vault_path)
+    proposals.extend(lint_proposals)
+    corpus_stats.update(lint_stats)
     proposals.extend(_stage_dedup(entries, loaded))
     proposals.extend(_stage_contradiction_triage(entries, loaded))
     proposals.extend(_stage_compression(entries, loaded))
@@ -1384,9 +1419,6 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(tidying_proposals)
     proposals.extend(_stage_link_improvement(vault_path, entries, loaded))
     proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
-    lint_proposals, lint_stats = _stage_lint(vault_path)
-    proposals.extend(lint_proposals)
-    corpus_stats.update(lint_stats)
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
@@ -1417,6 +1449,15 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
 # awaiting an explicit operator `dream_confirm.confirm()` call.
 # -----------------------------------------------------------------------------
 
+# Stages the anomaly breaker watches (task 9, part 3, generalizing task 6's
+# tidying-only breaker): `link_improvement` is a KNOWN, DELIBERATELY
+# DEFERRED gap — it has its own fixed per-cycle batch cap but no anomaly
+# breaker of its own yet (see wiki/designs/agentm-auto-organization.md's
+# "Guarding the automation" section) — task 9's own plan text scopes the
+# extension to "this part's own dedup/lint mutations," not part 2's.
+_ANOMALY_WATCHED_STAGES = ("tidying", "suffix_backlog_drain", "lint")
+
+
 def run_dream_and_auto_apply(
     vault_path: Path,
     *,
@@ -1435,16 +1476,20 @@ def run_dream_and_auto_apply(
     staged in `_dream-staging/<run_id>/`, exactly as `run_dream()` left
     them.
 
-    Before applying, the tidying-stage proposal count runs through
-    `dream_confirm.check_tidying_anomaly` (task 6's anomaly breaker,
-    scoped to tidying specifically — the rest of the guard suite lands
-    with part 3). A tripped check excludes `"tidying"` from this cycle's
-    auto-apply stages (compression is unaffected); every tidying proposal
-    stays pending instead, and the digest carries a visible flag.
+    Before applying, EVERY stage in `_ANOMALY_WATCHED_STAGES` (tidying —
+    task 6, part 1 — plus `suffix_backlog_drain`/`lint` — task 9, part 3,
+    generalizing the same breaker via `dream_confirm.check_stage_anomaly`)
+    has its own proposal count run through its own anomaly check, each
+    against its own trailing history (`_meta/<stage>-cycle-history.json`)
+    so one stage's spike can never trip or poison another's baseline. A
+    tripped stage is excluded from this cycle's auto-apply stages
+    (every other stage is unaffected); every proposal from that stage
+    stays pending instead, and the digest carries a visible flag per
+    tripped stage.
 
     Re-renders `digest.md` with the auto-applied batch (and any tripped
-    anomaly) reflected (see `_render_digest`'s `auto_applied`/
-    `tidying_anomaly` params), and writes the machine-readable per-run
+    anomalies) reflected (see `_render_digest`'s `auto_applied`/
+    `anomalies` params), and writes the machine-readable per-run
     `_dream-staging/<run_id>/auto-expired.json` plus the stable, run-id-
     free `_meta/dream-auto-expired-latest.json` pointer — the latter is
     what a later reader (e.g. a console/dashboard surface) reads without
@@ -1475,11 +1520,19 @@ def run_dream_and_auto_apply(
         revert_log = RevertLog(vault_path, log_root=log_root, lock_root=lock_root)
     cap = batch_cap if batch_cap is not None else dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP
 
-    tidying_count = sum(1 for p in digest.proposals if p.stage == "tidying")
-    anomaly = dream_confirm.check_tidying_anomaly(vault_path, tidying_count)
+    proposal_counts_by_stage: dict = {}
+    for p in digest.proposals:
+        proposal_counts_by_stage[p.stage] = proposal_counts_by_stage.get(p.stage, 0) + 1
+
+    anomalies = {}
     stages = dream_confirm.AUTO_APPLY_STAGES
-    if anomaly.tripped:
-        stages = frozenset(stages - {"tidying"})
+    for watched_stage in _ANOMALY_WATCHED_STAGES:
+        result = dream_confirm.check_stage_anomaly(
+            vault_path, watched_stage, proposal_counts_by_stage.get(watched_stage, 0)
+        )
+        anomalies[watched_stage] = result
+        if result.tripped:
+            stages = frozenset(stages - {watched_stage})
 
     batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap, stages=stages)
 
@@ -1491,6 +1544,7 @@ def run_dream_and_auto_apply(
     # It rides this wrapper, not run_dream(), because run_dream() is
     # propose-only by contract and triage's engine applies. Best-effort:
     # a triage failure never takes down the rest of the cycle.
+    triage_batch = None
     if include_inbox_triage:
         try:
             import inbox_triage  # function-local: inbox_triage imports dream
@@ -1507,26 +1561,54 @@ def run_dream_and_auto_apply(
         except Exception as e:  # pragma: no cover
             print(f"warning: folded inbox-triage sub-run failed: {e}", file=sys.stderr)
 
+    # The sampled higher-tier audit (task 9): "links" = this cycle's
+    # applied link_improvement mutations; "merges" = the folded inbox-
+    # triage sub-run's applied inbox_merge mutations. Always
+    # sampled_count=0 today (see dream_confirm.run_sampled_audit's own
+    # header comment — the higher-tier model tier doesn't exist yet).
+    audit_items = [i for i in batch.items if i["stage"] == "link_improvement"]
+    if triage_batch is not None:
+        audit_items += [i for i in triage_batch.items if i["stage"] == "inbox_merge"]
+    sampled_audit = dream_confirm.run_sampled_audit(vault_path, audit_items)
+    digest.sampled_audit = {
+        "sampled_count": sampled_audit.sampled_count,
+        "agree_count": sampled_audit.agree_count,
+        "disagree_count": sampled_audit.disagree_count,
+        "disagreement_rate": sampled_audit.disagreement_rate,
+        "narrowed": sampled_audit.narrowed,
+    }
+    # Overwritten every cycle (including a zero-sample one), the same
+    # "never goes stale" convention as dream-auto-expired-latest.json —
+    # what a console/dashboard surface reads without knowing the run id.
+    atomic_write(
+        vault_path / "_meta" / "sampled-audit-latest.json",
+        json.dumps({"run_id": digest.run_id, **digest.sampled_audit}, indent=2),
+    )
+
     staging_dir = vault_path / "_dream-staging" / digest.run_id
     atomic_write(
         staging_dir / "digest.md",
-        _render_digest(digest, auto_applied=batch, tidying_anomaly=anomaly),
+        _render_digest(digest, auto_applied=batch, anomalies=anomalies),
     )
 
     payload = dream_confirm.render_auto_applied_json(batch)
     atomic_write(staging_dir / "auto-expired.json", payload)
     atomic_write(vault_path / "_meta" / "dream-auto-expired-latest.json", payload)
 
-    if anomaly.tripped:
+    tripped_stages = sorted(stage for stage, r in anomalies.items() if r.tripped)
+    if tripped_stages:
         atomic_write(
             vault_path / "_meta" / "dream-anomaly-latest.json",
-            json.dumps({
-                "run_id": digest.run_id,
-                "stage": "tidying",
-                "current_count": anomaly.current_count,
-                "baseline": anomaly.baseline,
-                "threshold": anomaly.threshold,
-            }, indent=2),
+            json.dumps([
+                {
+                    "run_id": digest.run_id,
+                    "stage": stage,
+                    "current_count": anomalies[stage].current_count,
+                    "baseline": anomalies[stage].baseline,
+                    "threshold": anomalies[stage].threshold,
+                }
+                for stage in tripped_stages
+            ], indent=2),
         )
 
     return digest, batch

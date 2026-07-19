@@ -35,6 +35,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -575,7 +576,7 @@ class AnomalyBreakerTests(_DreamConfirmTestBase):
             dc.check_tidying_anomaly(self.vault, 2)
         dc.check_tidying_anomaly(self.vault, 50)  # trips, must NOT be recorded
 
-        history = dc._load_anomaly_history(self.vault)
+        history = dc._load_anomaly_history(self.vault, "tidying")
         self.assertNotIn(50, history)
 
         # A second inflated cycle right after must ALSO trip -- if the
@@ -586,8 +587,129 @@ class AnomalyBreakerTests(_DreamConfirmTestBase):
     def test_history_window_bounded(self) -> None:
         for i in range(dc.ANOMALY_HISTORY_WINDOW + 5):
             dc.check_tidying_anomaly(self.vault, 1)
-        history = dc._load_anomaly_history(self.vault)
+        history = dc._load_anomaly_history(self.vault, "tidying")
         self.assertLessEqual(len(history), dc.ANOMALY_HISTORY_WINDOW)
+
+
+class StageAnomalyGeneralizationTests(_DreamConfirmTestBase):
+    """Task 9 (auto-organization part 3): the tidying-only breaker
+    generalizes to any stage via `check_stage_anomaly` -- each stage gets
+    its OWN history sidecar, so one stage's spike can never trip or
+    poison another's baseline. `check_tidying_anomaly` is now a thin
+    `stage="tidying"` wrapper over the same function."""
+
+    def test_check_tidying_anomaly_delegates_to_the_generalized_function(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_stage_anomaly(self.vault, "tidying", 2)
+        result = dc.check_tidying_anomaly(self.vault, 50)
+        self.assertTrue(result.tripped)
+        self.assertAlmostEqual(result.baseline, 2.0)
+
+    def test_different_stages_have_independent_histories(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 2)
+        # "lint" has no history at all yet -- a cold start, never trips,
+        # regardless of what suffix_backlog_drain's own history says.
+        lint_result = dc.check_stage_anomaly(self.vault, "lint", 50)
+        self.assertFalse(lint_result.tripped)
+        self.assertIsNone(lint_result.baseline)
+
+        # suffix_backlog_drain's own history is untouched by lint's check.
+        drain_result = dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 3)
+        self.assertFalse(drain_result.tripped)
+        self.assertAlmostEqual(drain_result.baseline, 2.0)
+
+    def test_one_stage_tripping_does_not_affect_another_stages_history_file(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_stage_anomaly(self.vault, "lint", 2)
+        dc.check_stage_anomaly(self.vault, "lint", 50)  # trips
+
+        lint_history = dc._load_anomaly_history(self.vault, "lint")
+        self.assertNotIn(50, lint_history)
+        drain_history = dc._load_anomaly_history(self.vault, "suffix_backlog_drain")
+        self.assertEqual(drain_history, [])
+
+
+class SampledAuditTests(_DreamConfirmTestBase):
+    """Task 9: the sampled higher-tier audit. `higher_tier_model_available()`
+    is always False today (no synchronous model-call primitive exists --
+    same finding as `dream.cheap_model_tier_available()`), so every REAL
+    cycle samples nothing. Tests exercise the sampling/disagreement-rate/
+    narrowing logic end-to-end by patching availability + the verdict
+    function, the same convention `dream.py`'s `judge_fuzzy_merge` tests
+    already established."""
+
+    def test_tier_unavailable_samples_nothing(self) -> None:
+        items = [{"index": 1, "stage": "link_improvement", "summary": "x"}]
+        result = dc.run_sampled_audit(self.vault, items)
+        self.assertEqual(result.sampled_count, 0)
+        self.assertIsNone(result.disagreement_rate)
+        self.assertFalse(result.narrowed)
+
+    def test_empty_items_never_calls_the_seam(self) -> None:
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation") as mock_judge:
+            result = dc.run_sampled_audit(self.vault, [])
+        self.assertEqual(result.sampled_count, 0)
+        mock_judge.assert_not_called()
+
+    def test_low_disagreement_rate_does_not_narrow(self) -> None:
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
+        # 1/10 disagree = 10%, below the 20% threshold.
+        verdicts = iter(["disagree"] + ["agree"] * 9)
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=lambda s: next(verdicts)):
+            result = dc.run_sampled_audit(self.vault, items)
+        self.assertEqual(result.sampled_count, 10)
+        self.assertAlmostEqual(result.disagreement_rate, 0.1)
+        self.assertFalse(result.narrowed)
+        self.assertFalse((self.vault / "_meta" / "link-band-narrowing.json").exists())
+
+    def test_high_disagreement_rate_narrows_and_writes_directive(self) -> None:
+        import write_time_linker
+
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
+        # 5/10 disagree = 50%, above the 20% threshold.
+        verdicts = iter(["disagree"] * 5 + ["agree"] * 5)
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=lambda s: next(verdicts)):
+            result = dc.run_sampled_audit(self.vault, items)
+
+        self.assertEqual(result.sampled_count, 10)
+        self.assertAlmostEqual(result.disagreement_rate, 0.5)
+        self.assertTrue(result.narrowed)
+
+        # The floor actually narrowed -- read back via the real reader,
+        # not just the raw JSON, since that's what _stage_link_improvement
+        # actually consumes.
+        narrowed_floor = write_time_linker.link_similarity_floor(self.vault)
+        self.assertGreater(narrowed_floor, write_time_linker.LINK_SIMILARITY_FLOOR)
+        self.assertLess(narrowed_floor, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
+
+    def test_batch_cap_bounds_the_sample_deterministically(self) -> None:
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(40)]
+        seen_indices = []
+
+        def _judge(summary):
+            return "agree"
+
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=_judge):
+            result = dc.run_sampled_audit(self.vault, items)
+        self.assertEqual(result.sampled_count, dc.SAMPLED_AUDIT_BATCH_CAP)
+
+    def test_successive_narrowings_compound_but_never_cross_the_confident_threshold(self) -> None:
+        import write_time_linker
+
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
+        verdicts_always_disagree = lambda s: "disagree"  # 100% disagreement every cycle
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=verdicts_always_disagree):
+            for _ in range(20):  # far more than enough narrowing steps to hit the ceiling
+                dc.run_sampled_audit(self.vault, items)
+
+        floor = write_time_linker.link_similarity_floor(self.vault)
+        self.assertLess(floor, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
 
 
 if __name__ == "__main__":
