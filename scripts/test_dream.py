@@ -219,7 +219,10 @@ class CliTests(_DreamTestBase):
             (self.vault / "_dream-staging" / "cli-auto-run" / "auto-expired.json").read_text(encoding="utf-8")
         )
         self.assertEqual(auto_expired["count"], 1)
-        self.assertEqual(auto_expired["stages"], ["compression"])
+        # "stages" reports the full AUTO_APPLY_STAGES watched set for this
+        # call, not just the stages with an item this run -- tidying joined
+        # compression in that set (auto-organization part 1, task 3).
+        self.assertEqual(auto_expired["stages"], ["compression", "tidying"])
 
         latest = json.loads(
             (self.vault / "_meta" / "dream-auto-expired-latest.json").read_text(encoding="utf-8")
@@ -314,6 +317,381 @@ class RunDreamAndAutoApplyTests(_DreamTestBase):
         digest_text = digest.digest_path.read_text(encoding="utf-8")
         self.assertIn("Auto-expired this run", digest_text)
         self.assertIn("None this run", digest_text)
+
+
+class ArchivedPathTests(unittest.TestCase):
+    """Task 3's pure path-transform helper — no vault, no I/O."""
+
+    def test_personal_tier_inserts_archive_after_personal(self) -> None:
+        got = dream._archived_path(Path("personal/preferences/foo.md"))
+        self.assertEqual(got, Path("personal/_archive/preferences/foo.md"))
+
+    def test_projects_tier_inserts_archive_after_the_project_segment(self) -> None:
+        got = dream._archived_path(Path("projects/agentm/idea/foo.md"))
+        self.assertEqual(got, Path("projects/agentm/_archive/idea/foo.md"))
+
+    def test_bare_root_file_archives_at_the_root_not_after_the_filename(self) -> None:
+        # A naive "insert after the first segment" rule would produce the
+        # nonsensical foo.md/_archive — must prepend instead.
+        got = dream._archived_path(Path("foo.md"))
+        self.assertEqual(got, Path("_archive/foo.md"))
+
+    def test_personal_tier_with_no_kind_subfolder(self) -> None:
+        got = dream._archived_path(Path("personal/foo.md"))
+        self.assertEqual(got, Path("personal/_archive/foo.md"))
+
+
+class TidyingStageBandTests(_DreamTestBase):
+    """Task 3 verification: fixture entries at 4.4y/4.6y/5.1y silence
+    produce, respectively, no action / a digest preview line / an actual
+    staged archive move. Calls `_stage_tidying` directly with an injected
+    `now` for exact, deterministic band boundaries."""
+
+    _NOW = "2026-01-01"
+
+    def _write_aged(self, name: str, days_silent: int, *, extra_fm: str = "") -> Path:
+        import datetime
+        created = (
+            datetime.date.fromisoformat(self._NOW) - datetime.timedelta(days=days_silent)
+        ).isoformat()
+        return self._write(
+            name, f"---\nkind: fix\nslug: {Path(name).stem}\ncreated: {created}\n{extra_fm}---\nBody.\n"
+        )
+
+    def _run_stage(self):
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        return dream._stage_tidying(self.vault, entries, loaded, now=self._NOW)
+
+    def test_4_4_years_silent_no_action(self) -> None:
+        self._write_aged("recent.md", 1607)  # ~4.4y, below the 4.5y preview line
+        proposals, previews = self._run_stage()
+        self.assertEqual(proposals, [])
+        self.assertEqual(previews, [])
+
+    def test_4_6_years_silent_preview_only(self) -> None:
+        self._write_aged("aging.md", 1680)  # ~4.6y, between 4.5y and 5y
+        proposals, previews = self._run_stage()
+        self.assertEqual(proposals, [])
+        self.assertEqual(len(previews), 1)
+        self.assertIn("aging.md", previews[0])
+
+    def test_5_1_years_silent_stages_an_archive_move(self) -> None:
+        path = self._write_aged("cold.md", 1863)  # ~5.1y, past the 5y threshold
+        proposals, previews = self._run_stage()
+        self.assertEqual(previews, [])
+        self.assertEqual(len(proposals), 1)
+        p = proposals[0]
+        self.assertEqual(p.stage, "tidying")
+        self.assertEqual(p.kind, "archive")
+        self.assertEqual(p.paths, ["cold.md"])
+        # mutations: delete the old path, write the archived copy.
+        mutated_paths = {str(m[0]) for m in p.mutations}
+        self.assertIn(str(path), mutated_paths)
+        dest = self.vault / "_archive" / "cold.md"
+        self.assertIn(str(dest), mutated_paths)
+        old_mutation = next(m for m in p.mutations if m[0] == path)
+        self.assertIsNone(old_mutation[1])
+        new_mutation = next(m for m in p.mutations if m[0] == dest)
+        self.assertEqual(new_mutation[1], path.read_text(encoding="utf-8"))
+
+    def test_decay_exempt_entry_never_archived_or_previewed(self) -> None:
+        self._write_aged("incident.md", 5000, extra_fm="kind: failure-incident\n")
+        proposals, previews = self._run_stage()
+        self.assertEqual(proposals, [])
+        self.assertEqual(previews, [])
+
+    def test_decisions_path_exempt_entry_never_archived(self) -> None:
+        (self.vault / "projects" / "agentm" / "decisions").mkdir(parents=True)
+        self._write_aged("projects/agentm/decisions/old-call.md", 5000)
+        proposals, previews = self._run_stage()
+        self.assertEqual(proposals, [])
+        self.assertEqual(previews, [])
+
+    def test_explicit_durable_tag_never_archived(self) -> None:
+        self._write_aged("pinned.md", 5000, extra_fm="lifecycle_tier: durable\n")
+        proposals, previews = self._run_stage()
+        self.assertEqual(proposals, [])
+        self.assertEqual(previews, [])
+
+    def test_no_anchor_at_all_never_archived(self) -> None:
+        self._write("no-dates.md", "---\nkind: fix\n---\nBody.\n")
+        proposals, previews = self._run_stage()
+        self.assertEqual(proposals, [])
+        self.assertEqual(previews, [])
+
+    def test_genuine_recall_between_cycles_resets_a_previously_aging_entry(self) -> None:
+        # Red-test (task 3 verification, bullet 2): a recall access must
+        # reset the clock, tested against the real sidecar (.lifecycle.json).
+        path = self._write_aged("was-cold.md", 1863)  # would stage an archive move…
+        proposals_before, _ = self._run_stage()
+        self.assertEqual(len(proposals_before), 1)
+
+        import lifecycle  # noqa: E402
+        fm, _ = dream._parse_frontmatter(path.read_text(encoding="utf-8"))
+        lifecycle.record_recall_access(self.vault, "was-cold", fm, "was-cold.md", today=self._NOW)
+
+        # …but a genuine recall between cycles resets it to fully fresh.
+        proposals_after, previews_after = self._run_stage()
+        self.assertEqual(proposals_after, [])
+        self.assertEqual(previews_after, [])
+
+
+class ArtifactShelfBandTests(_DreamTestBase):
+    """Task 4 verification: a fixture artifact untouched for 370 days
+    stages a shelf move; the same artifact "used" (touched) mid-cycle does
+    not shelve; a previously-shelved artifact that gets touched is
+    confirmed to return on the next cycle's pass. An "artifact" here is
+    any entry with no `kind:` frontmatter field at all — the operator's
+    2026-07-18 ruling reusing recall.py's existing touch mechanism rather
+    than inventing a new one."""
+
+    _NOW = "2026-01-01"
+
+    def _write_artifact(self, name: str, days_untouched: int) -> Path:
+        import datetime
+        created = (
+            datetime.date.fromisoformat(self._NOW) - datetime.timedelta(days=days_untouched)
+        ).isoformat()
+        # Deliberately NO `kind:` field -- that absence is what makes this
+        # an "artifact" rather than a memory.
+        return self._write(name, f"---\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
+
+    def _run_stage(self):
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        return dream._stage_tidying(self.vault, entries, loaded, now=self._NOW)
+
+    def test_kind_tagged_entry_never_enters_the_artifact_lane(self) -> None:
+        # A memory (has `kind:`) untouched 370 days should archive-preview
+        # or no-op via the memory lane, never shelve, regardless of age.
+        self._write(
+            "memory.md",
+            "---\nkind: fix\nslug: memory\ncreated: 2020-01-01\n---\nBody.\n",
+        )
+        proposals, _ = self._run_stage()
+        kinds = {p.kind for p in proposals}
+        self.assertNotIn("shelve", kinds)
+
+    def test_370_days_untouched_stages_a_shelf_move(self) -> None:
+        path = self._write_artifact("plan-notes.md", 370)
+        proposals, _ = self._run_stage()
+        self.assertEqual(len(proposals), 1)
+        p = proposals[0]
+        self.assertEqual(p.stage, "tidying")
+        self.assertEqual(p.kind, "shelve")
+        dest = self.vault / "_shelf" / "plan-notes.md"
+        mutated_paths = {str(m[0]) for m in p.mutations}
+        self.assertIn(str(path), mutated_paths)
+        self.assertIn(str(dest), mutated_paths)
+
+    def test_recently_used_artifact_does_not_shelve(self) -> None:
+        self._write_artifact("fresh-notes.md", 10)
+        proposals, _ = self._run_stage()
+        self.assertEqual(proposals, [])
+
+    def test_364_days_is_not_yet_past_the_threshold(self) -> None:
+        self._write_artifact("almost.md", 364)
+        proposals, _ = self._run_stage()
+        self.assertEqual(proposals, [])
+
+    def test_shelved_artifact_untouched_stays_shelved_no_action(self) -> None:
+        (self.vault / "_shelf").mkdir()
+        self._write_artifact("_shelf/old-plan.md", 400)
+        proposals, _ = self._run_stage()
+        self.assertEqual(proposals, [])
+
+    def test_shelved_artifact_touched_since_shelving_proposes_return(self) -> None:
+        (self.vault / "_shelf").mkdir()
+        path = self._write_artifact("_shelf/came-back.md", 400)
+
+        import lifecycle  # noqa: E402
+        fm, _ = dream._parse_frontmatter(path.read_text(encoding="utf-8"))
+        # A genuine recall access on the shelved copy, shortly before "now".
+        lifecycle.record_recall_access(self.vault, "came-back", fm, "_shelf/came-back.md", today="2025-12-30")
+
+        proposals, _ = self._run_stage()
+        self.assertEqual(len(proposals), 1)
+        p = proposals[0]
+        self.assertEqual(p.kind, "unshelve")
+        dest = self.vault / "came-back.md"
+        mutated_paths = {str(m[0]) for m in p.mutations}
+        self.assertIn(str(path), mutated_paths)
+        self.assertIn(str(dest), mutated_paths)
+
+    def test_personal_and_projects_tier_shelf_insertion(self) -> None:
+        self.assertEqual(dream._shelved_path(Path("personal/foo.md")), Path("personal/_shelf/foo.md"))
+        self.assertEqual(
+            dream._shelved_path(Path("projects/agentm/notes/foo.md")),
+            Path("projects/agentm/_shelf/notes/foo.md"),
+        )
+
+    def test_unshelved_path_is_the_exact_inverse(self) -> None:
+        for original in (Path("personal/foo.md"), Path("projects/agentm/notes/foo.md"), Path("bare.md")):
+            shelved = dream._shelved_path(original)
+            self.assertEqual(dream._unshelved_path(shelved), original)
+
+
+class TidyingDigestAndAutoApplyIntegrationTests(_DreamTestBase):
+    """The full `run_dream()` / `run_dream_and_auto_apply()` pipeline, using
+    REAL relative dates (today - N days) rather than an injected `now` —
+    exercises the actual wiring (stage inclusion, digest rendering,
+    auto-apply, revert), not just the isolated band function above."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from revert_log import RevertLog  # noqa: E402
+
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _write_aged(self, name: str, days_silent: int) -> Path:
+        import datetime
+        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
+        return self._write(name, f"---\nkind: fix\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
+
+    def test_tidying_proposal_appears_in_run_dream_digest(self) -> None:
+        self._write_aged("very-cold.md", 1900)  # well past 5y
+        digest = dream.run_dream(self.vault, run_id="run-tidy-1")
+        tidying = [p for p in digest.proposals if p.stage == "tidying"]
+        self.assertEqual(len(tidying), 1)
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("tidying", digest_text)
+
+    def test_preview_section_renders_in_digest(self) -> None:
+        self._write_aged("getting-old.md", 1680)  # ~4.6y
+        digest = dream.run_dream(self.vault, run_id="run-tidy-2")
+        self.assertEqual(len(digest.tidying_previews), 1)
+        self.assertIn("getting-old.md", digest.tidying_previews[0])
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("Archive preview", digest_text)
+        self.assertIn("getting-old.md", digest_text)
+
+    def test_tidying_auto_applies_no_confirm_required(self) -> None:
+        old_path = self._write_aged("ancient.md", 1900)
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-tidy-3", revert_log=self.revert_log,
+        )
+        tidying_items = [i for i in batch.items if i["stage"] == "tidying"]
+        self.assertEqual(len(tidying_items), 1)
+
+        self.assertFalse(old_path.exists())
+        new_path = self.vault / "_archive" / "ancient.md"
+        self.assertTrue(new_path.exists())
+        self.assertIn("Body.", new_path.read_text(encoding="utf-8"))
+
+    def test_tidying_move_reverts_cleanly(self) -> None:
+        old_path = self._write_aged("revertme.md", 1900)
+        original_content = old_path.read_text(encoding="utf-8")
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-tidy-4", revert_log=self.revert_log,
+        )
+        entry_id = batch.items[0]["entry_id"]
+        new_path = self.vault / "_archive" / "revertme.md"
+        self.assertTrue(new_path.exists())
+
+        self.revert_log.revert("run-tidy-4", entry_id)
+
+        self.assertTrue(old_path.exists())
+        self.assertEqual(old_path.read_text(encoding="utf-8"), original_content)
+        self.assertFalse(new_path.exists())
+
+
+class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
+    """Task 6 verification: a fixture cycle with an artificially inflated
+    proposal count is confirmed to apply nothing and flag the console,
+    rather than applying an abnormal batch — exercised through the real
+    `run_dream_and_auto_apply()` pipeline, not just the isolated
+    `check_tidying_anomaly` unit above."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from revert_log import RevertLog  # noqa: E402
+        import dream_confirm  # noqa: E402
+
+        self.dc = dream_confirm
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _write_aged(self, name: str, days_silent: int) -> Path:
+        import datetime
+        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
+        return self._write(name, f"---\nkind: fix\nslug: {Path(name).stem}\ncreated: {created}\n---\nBody.\n")
+
+    def test_inflated_batch_applies_nothing_and_flags_the_digest(self) -> None:
+        # Seed a "usual" baseline of small tidying cycles.
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_tidying_anomaly(self.vault, 1)
+
+        # A cycle with a way-past-baseline number of cold entries.
+        n = 20
+        for i in range(n):
+            self._write_aged(f"cold-{i}.md", 1900)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-anomaly", revert_log=self.revert_log,
+        )
+        tidying_in_digest = [p for p in digest.proposals if p.stage == "tidying"]
+        self.assertEqual(len(tidying_in_digest), n)
+
+        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
+        self.assertEqual(tidying_applied, [], "nothing should auto-apply from the tripped stage")
+
+        # Every tidying proposal must still exist as ordinary pending state.
+        pending = self.dc.list_pending(self.vault, "run-anomaly")
+        tidying_pending = [p for p in pending if p.stage == "tidying"]
+        self.assertEqual(len(tidying_pending), n)
+        self.assertTrue(all(p.status == "pending" for p in tidying_pending))
+
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("ANOMALY BREAKER TRIPPED", digest_text)
+
+        anomaly_flag_path = self.vault / "_meta" / "dream-anomaly-latest.json"
+        self.assertTrue(anomaly_flag_path.exists())
+        payload = json.loads(anomaly_flag_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["run_id"], "run-anomaly")
+        self.assertEqual(payload["stage"], "tidying")
+        self.assertEqual(payload["current_count"], n)
+
+    def test_normal_batch_after_seeded_history_applies_as_usual(self) -> None:
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_tidying_anomaly(self.vault, 2)
+
+        self._write_aged("cold-a.md", 1900)
+        self._write_aged("cold-b.md", 1900)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-normal", revert_log=self.revert_log,
+        )
+        tidying_applied = [i for i in batch.items if i["stage"] == "tidying"]
+        self.assertEqual(len(tidying_applied), 2)
+
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertNotIn("ANOMALY BREAKER TRIPPED", digest_text)
+        self.assertFalse((self.vault / "_meta" / "dream-anomaly-latest.json").exists())
+
+    def test_compression_still_auto_applies_when_tidying_is_suppressed(self) -> None:
+        # The breaker is scoped to tidying only -- compression's own
+        # auto-apply must be unaffected by a tidying-side trip.
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_tidying_anomaly(self.vault, 1)
+
+        for i in range(10):
+            self._write_aged(f"cold-{i}.md", 1900)
+        self._write("chain-1.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v3.\n".format(self.vault / "chain-2.md"))
+        self._write("chain-2.md", "---\nkind: fix\nsupersedes: {}\n---\nFix v2.\n".format(self.vault / "chain-3.md"))
+        self._write("chain-3.md", "---\nkind: fix\n---\nFix v1.\n")
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-mixed", revert_log=self.revert_log,
+        )
+        stages_applied = {i["stage"] for i in batch.items}
+        self.assertIn("compression", stages_applied)
+        self.assertNotIn("tidying", stages_applied)
 
 
 if __name__ == "__main__":

@@ -127,6 +127,7 @@ class DreamDigest:
     proposals: list
     insight_candidates: list
     digest_path: Optional[Path] = None
+    tidying_previews: list = field(default_factory=list)
 
 
 # -----------------------------------------------------------------------------
@@ -350,6 +351,190 @@ def _stage_compression(entries: list, loaded: dict) -> list:
 
 
 # -----------------------------------------------------------------------------
+# Stage — tidying (auto-organization part 1, task 3): a non-exempt entry
+# past 5 years without a genuine recall access stages a move to its tier's
+# `_archive/` — never a delete, both the old and new path are captured in
+# one mutation pair (record_and_apply journals a pre-image of each), so
+# reverting a tidying entry restores the original file and removes the
+# archived copy. An entry crossing 4.5 years gets a one-cycle preview line
+# in the digest (informational only, no mutation) before the actual move —
+# a heads-up, not a gate. A genuine recall resets the clock to zero: this
+# reads the exact same `.lifecycle.json` anchor `lifecycle.py`'s own decay
+# scoring uses, via the shared `lifecycle.days_since_last_genuine_access`
+# seam, so "cold" here means exactly what "decayed" means everywhere else
+# in the memory engine, never a second, independently-drifting notion of
+# staleness. Task 4 (the artifact shelf) extends this same stage with a
+# second, non-memory lane rather than adding a separate one.
+# -----------------------------------------------------------------------------
+
+_ARCHIVE_THRESHOLD_DAYS = 1825.0  # 5 years
+_ARCHIVE_PREVIEW_DAYS = 1642.5  # 4.5 years — one cycle's heads-up before the move
+
+
+def _archived_path(rel_path: Path) -> Path:
+    """Where a tidying-stage archive move for `rel_path` lands: `_archive/`
+    inserted right after the owning tier root, kind-subfolder structure
+    preserved past that point. Two tier roots are real, already-live vault
+    conventions this mirrors exactly:
+
+      personal/<kind>/...            -> personal/_archive/<kind>/...
+      projects/<project>/<kind>/...  -> projects/<project>/_archive/<kind>/...
+
+    `personal/_archive/preferences/*.md` already exists in this exact
+    shape. The `projects/` case is scoped PER-PROJECT (`_archive` inserted
+    after the project segment, not after `projects/` itself) deliberately:
+    `projects/_archive/<project>/` is a different, already-existing
+    feature — whole-*project* retirement (the 2026-07-12 amendment) — and
+    reusing that namespace for a still-active project's individual
+    archived notes would collide with it. Anything outside those two tier
+    roots — including a bare-root file with no parent directory at all,
+    the shape this module's own test fixtures use — falls back to
+    inserting `_archive` right at the root, never after the filename
+    itself (a naive "after the first segment" rule would turn `foo.md`
+    into the nonsensical `foo.md/_archive`)."""
+    parts = rel_path.parts
+    if len(parts) >= 2 and parts[0] == "personal":
+        tier_len = 1
+    elif len(parts) >= 3 and parts[0] == "projects":
+        tier_len = 2
+    else:
+        tier_len = 0
+    return Path(*parts[:tier_len], "_archive", *parts[tier_len:])
+
+
+# -----------------------------------------------------------------------------
+# The artifact shelf (task 4) — the tidying stage's second lane, for
+# "the other non-memory documents" the design names: any entry this same
+# corpus walk finds with no `kind:` frontmatter field at all, i.e. never
+# written through save.py's locked memory-entry contract (REQUIRED
+# FRONTMATTER_FIELD_ORDER makes `kind` mandatory for a real memory — its
+# absence IS the signal, not a second, invented classification).
+#
+# Operator ruling (2026-07-18, this plan's own task 4): "touch" for an
+# artifact reuses the EXACT SAME mechanism task 3 already reuses for
+# memories — a genuine recall.py hit, tracked via
+# lifecycle.days_since_last_genuine_access — rather than a new "any
+# injection into a conversation" tracker (which nothing in this codebase
+# implements yet, and would need cross-repo instrumentation spanning
+# skills/hooks living in the separate crickets repo — disproportionate to
+# one task). Same mechanism, narrower population, shorter threshold,
+# `_shelf/` destination instead of `_archive/`.
+#
+# Unlike the archive lane, the shelf is bidirectional: `_shelf/` is NOT in
+# `_EXCLUDE_DIRS` (unlike `_archive/`), so a previously-shelved artifact is
+# re-walked every cycle — if it's been touched since shelving (elapsed
+# drops back below the threshold), this stage proposes moving it back to
+# its original folder on the very next cycle, exactly as the design's own
+# "one use brings it back" line specifies.
+# -----------------------------------------------------------------------------
+
+_SHELF_THRESHOLD_DAYS = 365.0  # 1 year
+
+
+def _shelved_path(rel_path: Path) -> Path:
+    """Mirrors `_archived_path`'s tier-root insertion, using `_shelf`
+    instead of `_archive` — same two real tier-root conventions, same
+    bare-root fallback."""
+    parts = rel_path.parts
+    if len(parts) >= 2 and parts[0] == "personal":
+        tier_len = 1
+    elif len(parts) >= 3 and parts[0] == "projects":
+        tier_len = 2
+    else:
+        tier_len = 0
+    return Path(*parts[:tier_len], "_shelf", *parts[tier_len:])
+
+
+def _unshelved_path(rel_path: Path) -> Path:
+    """Inverse of `_shelved_path` — strips the (single, by construction)
+    `_shelf` segment, restoring the artifact to its original tier-relative
+    location."""
+    parts = list(rel_path.parts)
+    parts.remove("_shelf")
+    return Path(*parts)
+
+
+def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | None = None) -> tuple:
+    """Returns (proposals, preview_lines). See module section docstrings
+    above (memory archive, then the artifact shelf). `now` is injectable
+    for tests (ISO date string YYYY-MM-DD)."""
+    import lifecycle  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+
+    if now is None:
+        import datetime
+        now = datetime.date.today().isoformat()
+
+    proposals = []
+    preview_lines = []
+
+    for path in entries:
+        fm, _body, raw = loaded[path]
+        rel = path.relative_to(vault_path)
+        slug = fm.get("slug") or path.stem
+        is_artifact = "kind" not in fm
+
+        elapsed = lifecycle.days_since_last_genuine_access(vault_path, slug, fm, rel, now=now)
+        if elapsed is None:
+            continue  # decay-exempt, or no basis to compute — never tidied
+
+        if is_artifact:
+            currently_shelved = "_shelf" in rel.parts
+            if currently_shelved:
+                if elapsed < _SHELF_THRESHOLD_DAYS:
+                    dest_rel = _unshelved_path(rel)
+                    proposals.append(
+                        Proposal(
+                            stage="tidying",
+                            kind="unshelve",
+                            paths=[str(rel)],
+                            summary=(
+                                f"{rel} — touched {elapsed:.0f} days ago, since being shelved — "
+                                f"propose return to {dest_rel}"
+                            ),
+                            mutations=[(path, None), (vault_path / dest_rel, raw)],
+                        )
+                    )
+                # else: still cold — stays on the shelf, no action.
+            elif elapsed > _SHELF_THRESHOLD_DAYS:
+                dest_rel = _shelved_path(rel)
+                proposals.append(
+                    Proposal(
+                        stage="tidying",
+                        kind="shelve",
+                        paths=[str(rel)],
+                        summary=(
+                            f"{rel} — {elapsed:.0f} days untouched, past the 1y shelf threshold — "
+                            f"propose move to {dest_rel}"
+                        ),
+                        mutations=[(path, None), (vault_path / dest_rel, raw)],
+                    )
+                )
+            continue  # artifacts don't participate in the memory-archive lane below
+
+        if elapsed > _ARCHIVE_THRESHOLD_DAYS:
+            dest_rel = _archived_path(rel)
+            proposals.append(
+                Proposal(
+                    stage="tidying",
+                    kind="archive",
+                    paths=[str(rel)],
+                    summary=(
+                        f"{rel} — {elapsed:.0f} days ({elapsed / 365.25:.1f}y) since last genuine "
+                        f"recall access, past the 5y archive threshold — propose move to {dest_rel}"
+                    ),
+                    mutations=[(path, None), (vault_path / dest_rel, raw)],
+                )
+            )
+        elif elapsed > _ARCHIVE_PREVIEW_DAYS:
+            preview_lines.append(
+                f"{rel} — {elapsed:.0f} days ({elapsed / 365.25:.1f}y) silent, crosses the 5y "
+                "archive threshold within roughly the next cycle"
+            )
+
+    return proposals, preview_lines
+
+
+# -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
 # [PENDING-IMPL] elsewhere in the Experience design).
@@ -409,7 +594,7 @@ def _stage_qualification(insight_candidates: list) -> None:
 # Stage 7 — digest + staging
 # -----------------------------------------------------------------------------
 
-def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
+def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=None) -> str:
     """`auto_applied` (an optional `dream_confirm.AutoAppliedBatch`) marks
     which proposals this run already applied automatically — the
     dreaming pipeline's confirm-free "expire" action (2026-07-11 operator
@@ -419,7 +604,14 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
     `auto_applied=None` (nothing has auto-applied yet at that point in the
     pipeline); `run_dream_and_auto_apply()` re-renders with the real batch
     once it's known, so the on-disk `digest.md` never misreports an
-    already-applied item as still awaiting confirmation."""
+    already-applied item as still awaiting confirmation.
+
+    `tidying_anomaly` (an optional `dream_confirm.AnomalyCheckResult`,
+    task 6) flags a tripped anomaly breaker: this cycle's tidying-stage
+    proposal count was several times the recent usual, so none of it
+    auto-applied this cycle (it stays pending, exactly like dedup/
+    contradiction-triage) — surfaced here as the digest's "console" line
+    for the operator."""
     lines = [
         f"# Dream digest — run {digest.run_id}",
         "",
@@ -430,6 +622,26 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
         lines.append("## Insight candidates (written, status: candidate)")
         for c in digest.insight_candidates:
             lines.append(f"- `{c.path}`")
+        lines.append("")
+
+    if digest.tidying_previews:
+        lines.append("## Archive preview (crosses the 5y threshold next cycle — no action yet)")
+        lines.append("")
+        for line in digest.tidying_previews:
+            lines.append(f"- {line}")
+        lines.append("")
+
+    if tidying_anomaly is not None and tidying_anomaly.tripped:
+        lines.append("## ⚠ ANOMALY BREAKER TRIPPED — tidying auto-apply suppressed this cycle")
+        lines.append("")
+        lines.append(
+            f"{tidying_anomaly.current_count} tidying-stage proposal(s) this run, "
+            f"vs. a recent baseline of {tidying_anomaly.baseline:.1f} "
+            f"(threshold {tidying_anomaly.threshold:.1f}) — applying nothing from this "
+            "stage this cycle rather than an abnormal batch. Every tidying proposal "
+            "stays pending; review the run's proposals.json and confirm manually if "
+            "the volume is genuinely expected, or investigate before the next cycle."
+        )
         lines.append("")
 
     auto_applied_by_index = {}
@@ -565,6 +777,8 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(_stage_dedup(entries, loaded))
     proposals.extend(_stage_contradiction_triage(entries, loaded))
     proposals.extend(_stage_compression(entries, loaded))
+    tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
+    proposals.extend(tidying_proposals)
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
@@ -578,6 +792,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
         corpus_stats=corpus_stats,
         proposals=proposals,
         insight_candidates=insight_candidates,
+        tidying_previews=tidying_previews,
     )
     digest.digest_path = _stage_digest_and_staging(vault_path, digest)
     return digest
@@ -604,19 +819,26 @@ def run_dream_and_auto_apply(
     lock_root: Path | str | None = None,
 ):
     """Run `run_dream()` (unchanged), then auto-apply its compression-stage
-    proposals through `dream_confirm.auto_apply_batch` — no operator
-    confirm required for those. Dedup and contradiction-triage proposals
-    stay staged in `_dream-staging/<run_id>/`, exactly as `run_dream()`
-    left them.
+    and tidying-stage proposals through `dream_confirm.auto_apply_batch` —
+    no operator confirm required for those. Dedup and contradiction-triage
+    proposals stay staged in `_dream-staging/<run_id>/`, exactly as
+    `run_dream()` left them.
 
-    Re-renders `digest.md` with the auto-applied batch reflected (see
-    `_render_digest`'s `auto_applied` param), and writes the
-    machine-readable per-run `_dream-staging/<run_id>/auto-expired.json`
-    plus the stable, run-id-free `_meta/dream-auto-expired-latest.json`
-    pointer — the latter is what a later reader (e.g. a console/dashboard
-    surface) reads without needing to already know the run id, and it is
-    overwritten every cycle (including a zero-item one) so it never goes
-    stale.
+    Before applying, the tidying-stage proposal count runs through
+    `dream_confirm.check_tidying_anomaly` (task 6's anomaly breaker,
+    scoped to tidying specifically — the rest of the guard suite lands
+    with part 3). A tripped check excludes `"tidying"` from this cycle's
+    auto-apply stages (compression is unaffected); every tidying proposal
+    stays pending instead, and the digest carries a visible flag.
+
+    Re-renders `digest.md` with the auto-applied batch (and any tripped
+    anomaly) reflected (see `_render_digest`'s `auto_applied`/
+    `tidying_anomaly` params), and writes the machine-readable per-run
+    `_dream-staging/<run_id>/auto-expired.json` plus the stable, run-id-
+    free `_meta/dream-auto-expired-latest.json` pointer — the latter is
+    what a later reader (e.g. a console/dashboard surface) reads without
+    needing to already know the run id, and it is overwritten every cycle
+    (including a zero-item one) so it never goes stale.
 
     `revert_log` defaults to a fresh `RevertLog(vault_path, log_root=
     log_root, lock_root=lock_root)` (the CLI's own default; `log_root`/
@@ -625,7 +847,10 @@ def run_dream_and_auto_apply(
     either, or injects a whole `revert_log` instance directly, exactly
     like `dream_confirm`'s own existing tests do). Ignored if `revert_log`
     is given explicitly. `batch_cap` defaults to
-    `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP`.
+    `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP` — the global mutation
+    budget the design names, which already applies across every auto-
+    apply stage combined (compression + tidying), on top of this per-
+    stage anomaly check; no separate cap needed for task 6.
 
     Returns `(digest, auto_applied_batch)`.
     """
@@ -638,14 +863,36 @@ def run_dream_and_auto_apply(
     if revert_log is None:
         revert_log = RevertLog(vault_path, log_root=log_root, lock_root=lock_root)
     cap = batch_cap if batch_cap is not None else dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP
-    batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap)
+
+    tidying_count = sum(1 for p in digest.proposals if p.stage == "tidying")
+    anomaly = dream_confirm.check_tidying_anomaly(vault_path, tidying_count)
+    stages = dream_confirm.AUTO_APPLY_STAGES
+    if anomaly.tripped:
+        stages = frozenset(stages - {"tidying"})
+
+    batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap, stages=stages)
 
     staging_dir = vault_path / "_dream-staging" / digest.run_id
-    atomic_write(staging_dir / "digest.md", _render_digest(digest, auto_applied=batch))
+    atomic_write(
+        staging_dir / "digest.md",
+        _render_digest(digest, auto_applied=batch, tidying_anomaly=anomaly),
+    )
 
     payload = dream_confirm.render_auto_applied_json(batch)
     atomic_write(staging_dir / "auto-expired.json", payload)
     atomic_write(vault_path / "_meta" / "dream-auto-expired-latest.json", payload)
+
+    if anomaly.tripped:
+        atomic_write(
+            vault_path / "_meta" / "dream-anomaly-latest.json",
+            json.dumps({
+                "run_id": digest.run_id,
+                "stage": "tidying",
+                "current_count": anomaly.current_count,
+                "baseline": anomaly.baseline,
+                "threshold": anomaly.threshold,
+            }, indent=2),
+        )
 
     return digest, batch
 

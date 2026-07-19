@@ -29,6 +29,8 @@ from lifecycle import (  # noqa: E402
     DECAY_HALF_LIFE_DAYS,
     LIFECYCLE_SIDECAR_NAME,
     compute_decay_score,
+    compute_decay_score_shadow,
+    compute_decay_score_stepped,
     is_decay_exempt,
     lifecycle_tier_for,
     record_recall_access,
@@ -149,6 +151,119 @@ class TestDecayScore(unittest.TestCase):
         ).isoformat()
         score = compute_decay_score(self.vault, "some-note", fm, rel, now=later)
         self.assertAlmostEqual(score, 0.5, places=6)
+
+
+class TestSteppedDecayScore(unittest.TestCase):
+    """Task 1 (auto-organization part 1): the stepped rank-curve function,
+    shadow-mode only — compute_decay_score (the live exponential curve,
+    recall.py's actual call site) is untouched by this class's fixtures."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name) / "vault"
+        self.vault.mkdir(parents=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _score_at(self, days_elapsed: int) -> float:
+        fm = _fm(created="2026-01-01")
+        rel = "personal/insight/some-note.md"
+        import datetime
+        later = (
+            datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=days_elapsed)
+        ).isoformat()
+        return compute_decay_score_stepped(self.vault, "some-note", fm, rel, now=later)
+
+    def test_full_strength_within_six_months(self):
+        self.assertEqual(self._score_at(0), 1.0)
+        self.assertEqual(self._score_at(182), 1.0)
+
+    def test_half_strength_at_boundary_to_one_year(self):
+        self.assertEqual(self._score_at(183), 0.5)
+        self.assertEqual(self._score_at(365), 0.5)
+
+    def test_an_eighth_from_one_to_three_years(self):
+        self.assertEqual(self._score_at(366), 0.125)
+        self.assertEqual(self._score_at(1095), 0.125)
+
+    def test_a_sixteenth_from_three_to_five_years_and_beyond(self):
+        self.assertEqual(self._score_at(1096), 0.0625)
+        self.assertEqual(self._score_at(1825), 0.0625)
+        self.assertEqual(self._score_at(10_000), 0.0625)  # floor holds past 5y
+
+    def test_decay_exempt_entry_is_always_full_strength(self):
+        fm = _fm(kind="failure-incident", created="2020-01-01")
+        rel = "personal/diag/incident-a.md"
+        score = compute_decay_score_stepped(self.vault, "incident-a", fm, rel, now="2035-01-01")
+        self.assertEqual(score, 1.0)
+
+    def test_no_anchor_defaults_fresh(self):
+        fm = {"kind": "insight"}  # no created, no sidecar entry.
+        rel = "personal/insight/no-dates.md"
+        score = compute_decay_score_stepped(self.vault, "no-dates", fm, rel, now="2026-06-01")
+        self.assertEqual(score, 1.0)
+
+    def test_genuine_recall_access_resets_the_stepped_clock_too(self):
+        # The two curves share the exact same anchor-resolution chain — an
+        # access recorded via record_recall_access() must reset both.
+        fm = _fm(created="2020-01-01")
+        rel = "personal/insight/some-note.md"
+        stale = compute_decay_score_stepped(self.vault, "some-note", fm, rel, now="2026-01-01")
+        self.assertEqual(stale, 0.0625)
+
+        record_recall_access(self.vault, "some-note", fm, rel, today="2026-06-01")
+        fresh = compute_decay_score_stepped(self.vault, "some-note", fm, rel, now="2026-06-01")
+        self.assertEqual(fresh, 1.0)
+
+
+class TestShadowModeComparison(unittest.TestCase):
+    """Both curves compute per note and the delta is available — while
+    compute_decay_score (the function recall.py actually calls) keeps
+    driving live ranking, provably unaffected by anything in this module
+    section since recall.py itself is untouched by task 1."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name) / "vault"
+        self.vault.mkdir(parents=True)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_both_curves_compute_and_delta_is_correct(self):
+        fm = _fm(created="2026-01-01")
+        rel = "personal/insight/some-note.md"
+        import datetime
+        # 200 days: exponential is well past its 30-day half-life; stepped
+        # is still in the "half strength to 1y" band (200 > 182).
+        now = (datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=200)).isoformat()
+
+        result = compute_decay_score_shadow(self.vault, "some-note", fm, rel, now=now)
+        expected_old = compute_decay_score(self.vault, "some-note", fm, rel, now=now)
+        expected_new = compute_decay_score_stepped(self.vault, "some-note", fm, rel, now=now)
+
+        self.assertEqual(result["old"], expected_old)
+        self.assertEqual(result["new"], expected_new)
+        self.assertAlmostEqual(result["delta"], expected_new - expected_old, places=9)
+        self.assertFalse(result["exempt"])
+        # The stepped curve is far more generous than exponential decay at
+        # 200 days out — this is the real-world shape the retune is for.
+        self.assertGreater(result["new"], result["old"])
+
+    def test_exempt_entry_shows_no_delta(self):
+        fm = _fm(kind="failure-incident", created="2020-01-01")
+        rel = "personal/diag/incident-a.md"
+        result = compute_decay_score_shadow(self.vault, "incident-a", fm, rel, now="2035-01-01")
+        self.assertEqual(result, {"old": 1.0, "new": 1.0, "delta": 0.0, "exempt": True})
+
+    def test_shadow_comparison_never_mutates_the_sidecar(self):
+        # A read-only comparison must not itself count as an access.
+        fm = _fm(created="2020-01-01")
+        rel = "personal/insight/some-note.md"
+        compute_decay_score_shadow(self.vault, "some-note", fm, rel, now="2026-01-01")
+        sidecar = self.vault / LIFECYCLE_SIDECAR_NAME
+        self.assertFalse(sidecar.exists())
 
 
 class TestAccessDrivenReset(unittest.TestCase):
