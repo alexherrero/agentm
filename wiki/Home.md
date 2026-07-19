@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v8.7.0](https://github.com/alexherrero/agentm/releases/tag/v8.7.0).** The vault now tidies itself — cold notes you haven't touched in years move to an archive, and unused artifacts get shelved out of your way after a year of silence. Nothing is ever deleted, and a shelved artifact comes back on its own the moment you touch it again.
+> **Latest release: [v8.8.0](https://github.com/alexherrero/agentm/releases/tag/v8.8.0).** Notes now link themselves — a new note arrives already connected to its nearest neighbors under a Related line, older notes pick up connections each weekly cycle, and the unlinked backlog drains a batch at a time. Links are only ever added, and every automatic link is undoable.

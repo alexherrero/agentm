@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v8.6.0](https://github.com/alexherrero/agentm/releases/tag/v8.6.0).** Capture from your phone now finishes itself — the ingest sweep fetches forwarded links within an hour and turns them into recallable memory, no manual step required.
+> **Latest release: [v8.8.0](https://github.com/alexherrero/agentm/releases/tag/v8.8.0).** Notes now link themselves — a new note arrives already connected to its nearest neighbors under a Related line, older notes pick up connections each weekly cycle, and the unlinked backlog drains a batch at a time. Links are only ever added, and every automatic link is undoable.
 
 ---
 
