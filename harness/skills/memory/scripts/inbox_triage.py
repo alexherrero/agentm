@@ -183,18 +183,33 @@ DEFAULT_PROMOTE_OCCURRENCE_THRESHOLD = 3
 # is no longer behavioral; both are in `ALL_AUTO_APPLY_STAGES` below.
 PROMOTE_STAGE = "inbox_promote"
 MERGE_STAGE = "inbox_merge"
+COLLAPSE_STAGE = "inbox_collapse"                # fingerprint-exact family collapse (auto-org part 3 task 3)
 AUTO_APPLY_ELIGIBLE_STAGE = "inbox_expire"       # post-cutover expire (era label only)
 BACKLOG_EXPIRE_STAGE = "inbox_expire_backlog"    # pre-existing-backlog expire (era label only)
 
 # Every stage this module ever proposes auto-applies by default now --
 # promote/merge/expire alike, regardless of the source entry's era. This
 # is the stage set `run_inbox_triage_and_auto_apply` passes to
-# `dream_confirm.auto_apply_batch(stages=...)`.
-ALL_AUTO_APPLY_STAGES = frozenset({PROMOTE_STAGE, MERGE_STAGE, AUTO_APPLY_ELIGIBLE_STAGE, BACKLOG_EXPIRE_STAGE})
+# `dream_confirm.auto_apply_batch(stages=...)`. `inbox_collapse` joined
+# (auto-org part 3 task 3) on the plan's own Locked design call
+# ("Fingerprint-exact collapses are deterministic") + the design's fresh
+# ruling extending auto-apply to dedup under these bounds: a collapse only
+# ever MARKS copies superseded (never deletes), every mutation rides
+# revert_log.record_and_apply, and membership in an exact family is a
+# deterministic content-hash fact, not a judgment call. Fuzzy merges are
+# the judgment-call case — and those never reach a proposal without a
+# model verdict (see _build_merge_and_promote_clusters).
+ALL_AUTO_APPLY_STAGES = frozenset({PROMOTE_STAGE, MERGE_STAGE, COLLAPSE_STAGE, AUTO_APPLY_ELIGIBLE_STAGE, BACKLOG_EXPIRE_STAGE})
 
 _META_DIR_NAME = "_meta"
 _CUTOVER_MARKER_NAME = "inbox-triage-cutover.json"
 _AUTO_EXPIRED_LATEST_NAME = "inbox-triage-auto-expired-latest.json"
+# The needs-your-eye list (auto-org part 3 tasks 3+5): ambiguous dedup/merge
+# candidates neither exact-matched nor confidently fuzzy-verdicted. One
+# underlying JSON list; the console / digest / morning-brief surfaces all
+# read this file (task 5). Overwritten every run — a candidate the operator
+# resolves simply stops reappearing on the next cycle's recompute.
+_NEEDS_YOUR_EYE_NAME = "needs-your-eye.json"
 
 
 # -----------------------------------------------------------------------------
@@ -224,6 +239,13 @@ class InboxTriageDigest:
     corpus_stats: dict
     proposals: list
     digest_path: Optional[Path] = None
+    # Ambiguous dedup/merge candidates (auto-org part 3 task 3): fuzzy-
+    # similar pairs whose required model verdict was unavailable or unsure.
+    # Never proposals — they stay `status: inbox` untouched, exempt from
+    # this run's occurrence-promote and expire passes, and surface via the
+    # digest + `_meta/needs-your-eye.json`. Items: {"paths": [...],
+    # "reason": str}.
+    needs_your_eye: list = field(default_factory=list)
 
 
 # -----------------------------------------------------------------------------
@@ -481,45 +503,154 @@ def _build_promote_proposal(vault_path: Path, cluster_paths: list, loaded: dict,
 # Merge -- reuses dream.py's own dedup stage verbatim
 # -----------------------------------------------------------------------------
 
-def _build_merge_and_promote_clusters(entries: list, loaded: dict):
-    """Calls `dream._stage_dedup(entries, loaded)` directly against the
-    inbox pool -- the SAME `difflib.SequenceMatcher` comparison, the SAME
-    `dream.DEDUP_SIMILARITY_THRESHOLD`, and the SAME merge-into-earlier /
-    mark-later-superseded mutation shape dream.py's general-corpus dedup
-    stage already uses. Nothing about the comparison or the mutation is
-    reimplemented here.
+def judge_fuzzy_merge(hub_body: str, other_body: str) -> str:
+    """The cheap-model yes/no/unsure verdict for a FUZZY (similar-not-
+    identical) merge candidate — "yes" (merge), "no" (genuinely distinct,
+    keep both), or "unsure" (needs-your-eye).
 
-    `dream._stage_dedup` never lets an entry serve as both a match target
-    ("b") and a later hub ("a") -- its own `matched` set rules that out --
-    so grouping its output by hub path (`paths[0]`) partitions the inbox
-    pool's near-duplicates into disjoint clusters with no extra bookkeeping
-    needed. A hub matched by exactly one other entry (cluster size 2) is an
-    ordinary pairwise near-duplicate -- MERGE. A hub matched by two or more
-    (cluster size >= 3) is "a real content match across multiple inbox
-    entries" -- the operator's own words for a PROMOTE signal (the same
-    insight was independently captured three-plus times), not merely a
-    duplicate.
-
-    Returns (merge_proposals: list[Proposal], promote_clusters: list[list[Path]]).
+    Only ever invoked when `dream.cheap_model_tier_available()` returns
+    True — which it never does today (see that seam's docstring: no
+    synchronous budgeted model-call primitive exists in this codebase), so
+    this function is unreachable in production until the tier ships. Tests
+    patch both the seam and this judge. Raises rather than guessing: a
+    fuzzy merge without a real verdict must fail closed to needs-your-eye
+    (the plan's Locked design call — "no exception either direction"),
+    never fall through to a silent heuristic.
     """
-    dedup_proposals = dream._stage_dedup(entries, loaded)
+    raise RuntimeError(
+        "judge_fuzzy_merge called with no cheap-model primitive available — "
+        "fuzzy-merge verdicts are unreachable until the tier ships"
+    )
+
+
+@dataclass
+class ClusterScan:
+    """`_build_merge_and_promote_clusters`' result (auto-org part 3 task 3
+    widened the old 2-tuple): deterministic exact-family collapses, verdict-
+    approved fuzzy merges, promote clusters, and the ambiguous leftovers."""
+
+    collapse_proposals: list = field(default_factory=list)
+    merge_proposals: list = field(default_factory=list)
+    promote_clusters: list = field(default_factory=list)
+    needs_your_eye: list = field(default_factory=list)  # {"paths": [...], "reason": str}
+
+
+def _build_merge_and_promote_clusters(entries: list, loaded: dict) -> ClusterScan:
+    """Two passes over the inbox pool (auto-org part 3 task 3).
+
+    **Pass 1 — fingerprint-exact families (deterministic).** Bucket the
+    pool by `dedup_guard.live_content_fingerprint` (the same hash the
+    write-time guard matches on, recomputed from each file's current
+    body). A bucket of two or more is a suffix family: content-identical
+    modulo formatting, however many `_1`/`_2` copies deep. The whole
+    family collapses into the canonical EARLIEST note in one disposition
+    (`inbox_collapse`): every copy is marked `status: superseded` +
+    `supersedes: <canonical>` — marked, never deleted, so part 1's tidying
+    lanes pick the copies up on later cycles — and the surviving note's
+    content is left exactly as it is (the copies are the same content;
+    there is nothing to absorb). Deterministic by the plan's Locked design
+    call, so it auto-applies. Family members are claimed here and never
+    reach pass 2.
+
+    **Pass 2 — difflib near-duplicates over the remainder.** Same
+    `dream._stage_dedup` comparison as always (threshold
+    `dream.DEDUP_SIMILARITY_THRESHOLD`, disjoint hub-grouping per its own
+    `matched` set). A hub matched by 2+ others stays a PROMOTE cluster
+    (the operator's "same insight captured three-plus times" signal —
+    promotion, not deduplication, untouched by this task). A pairwise
+    near-duplicate is now a FUZZY MERGE candidate: by the Locked design
+    call it requires a cheap-model verdict before applying — "yes" emits
+    the merge proposal (dream's own merge-into-earlier / mark-later-
+    superseded mutations, verbatim), "no" keeps both notes in the normal
+    flow, "unsure" OR an unavailable tier routes the pair to the
+    needs-your-eye list (left `status: inbox`, untouched, never forced).
+    Before this task, pairwise difflib merges auto-applied unverdicted —
+    that path is deliberately gone.
+    """
+    import dedup_guard  # same skill dir (lazy: mirrors dream's own import style)
+
+    scan = ClusterScan()
+
+    # Pass 1 — exact families.
+    by_fingerprint: dict = defaultdict(list)
+    for path in entries:
+        fp = dedup_guard.live_content_fingerprint(path)
+        if fp is not None:
+            by_fingerprint[fp].append(path)
+
+    exact_family_members: set = set()
+    for fp, family in by_fingerprint.items():
+        if len(family) < 2:
+            continue
+        canonical = _earliest_note(family, loaded)
+        copies = [p for p in family if p != canonical]
+        mutations = [
+            (copy, _patch_frontmatter(loaded[copy][2], {
+                "status": "superseded",
+                "supersedes": str(canonical),
+            }))
+            for copy in copies
+        ]
+        scan.collapse_proposals.append(Proposal(
+            stage=COLLAPSE_STAGE, kind="collapse",
+            paths=[str(canonical)] + [str(c) for c in copies],
+            summary=(
+                f"{canonical.name} + {len(copies)} content-identical cop"
+                f"{'y' if len(copies) == 1 else 'ies'} (fingerprint {fp[:12]}…) — "
+                f"collapse into the earliest, mark the rest superseded"
+            ),
+            mutations=mutations,
+        ))
+        exact_family_members.update(family)
+
+    # Pass 2 — difflib near-duplicates over what's left.
+    remaining = [p for p in entries if p not in exact_family_members]
+    dedup_proposals = dream._stage_dedup(remaining, loaded)
     by_hub: dict = defaultdict(list)
     for p in dedup_proposals:
         by_hub[Path(p.paths[0])].append(p)
 
-    merge_proposals = []
-    promote_clusters = []
     for hub, group in by_hub.items():
         if len(group) >= 2:
             cluster = [hub] + [Path(p.paths[1]) for p in group]
-            promote_clusters.append(cluster)
-        else:
-            p = group[0]
-            merge_proposals.append(Proposal(
+            scan.promote_clusters.append(cluster)
+            continue
+        p = group[0]
+        pair_paths = [str(x) for x in p.paths]
+        if not dream.cheap_model_tier_available():
+            scan.needs_your_eye.append({
+                "paths": pair_paths,
+                "reason": (
+                    "fuzzy near-duplicate (similar, not fingerprint-identical) — "
+                    "a merge needs a cheap-model verdict and the tier is unavailable"
+                ),
+            })
+            continue
+        verdict = judge_fuzzy_merge(loaded[Path(p.paths[0])][1], loaded[Path(p.paths[1])][1])
+        if verdict == "yes":
+            scan.merge_proposals.append(Proposal(
                 stage=MERGE_STAGE, kind="merge",
                 paths=list(p.paths), summary=p.summary, mutations=list(p.mutations),
             ))
-    return merge_proposals, promote_clusters
+        elif verdict == "unsure":
+            scan.needs_your_eye.append({
+                "paths": pair_paths,
+                "reason": "fuzzy near-duplicate — the cheap-model judge was unsure",
+            })
+        # "no": genuinely distinct — both notes stay in the normal flow.
+
+    return scan
+
+
+def _earliest_note(family: list, loaded: dict) -> Path:
+    """The canonical survivor of an exact family: earliest by `created`
+    frontmatter; sorted-path order breaks ties and covers the legacy
+    backlog shape with no `created` at all (matching `_iter_inbox_files`'
+    own ordering)."""
+    def sort_key(p: Path):
+        created = (loaded[p][0].get("created") or "").strip()
+        return (0 if created else 1, created, str(p))
+    return sorted(family, key=sort_key)[0]
 
 
 # -----------------------------------------------------------------------------
@@ -565,15 +696,21 @@ def run_inbox_triage(
     claimed: set = set()
     proposals: list = []
 
-    merge_proposals, promote_clusters = _build_merge_and_promote_clusters(entries, loaded)
+    scan = _build_merge_and_promote_clusters(entries, loaded)
 
-    for cluster in promote_clusters:
+    # Exact-family collapses first (deterministic — auto-org part 3 task 3):
+    # each claims its whole family.
+    for prop in scan.collapse_proposals:
+        proposals.append(prop)
+        claimed.update(Path(p) for p in prop.paths)
+
+    for cluster in scan.promote_clusters:
         prop = _build_promote_proposal(vault_path, cluster, loaded, reason="repeated near-duplicate capture", now=now)
         if prop is not None:
             proposals.append(prop)
             claimed.update(Path(p) for p in prop.paths)
 
-    for prop in merge_proposals:
+    for prop in scan.merge_proposals:
         paths = [Path(p) for p in prop.paths]
         if claimed.intersection(paths):
             # Provably unreachable given _build_merge_and_promote_clusters'
@@ -584,16 +721,32 @@ def run_inbox_triage(
         proposals.append(prop)
         claimed.update(paths)
 
+    # Needs-your-eye pairs stay `status: inbox`, untouched — but their
+    # paths are claimed so this same run's occurrence-promote and expire
+    # passes can't touch them either (an ambiguous pair expiring in the
+    # very cycle that flagged it would violate "left in the inbox
+    # untouched and flagged"). They wait for the operator; the list is
+    # recomputed every run, so a resolved pair just stops reappearing.
+    for item in scan.needs_your_eye:
+        claimed.update(Path(p) for p in item["paths"])
+
     # Occurrence-based promote: single entries reinforced on their own,
     # not part of any similarity cluster.
     for path in entries:
         if path in claimed:
             continue
         fm, _body, _raw = loaded[path]
-        try:
-            occurrences = int(fm.get("mining_occurrences", "0") or 0)
-        except ValueError:
-            occurrences = 0
+        # Two occurrence counters exist: `mining_occurrences` (reflect's
+        # miner) and `occurrences` (the write-time dedup guard's reinforce
+        # bump, auto-org part 3 task 2). Both mean "this content recurred";
+        # the promote threshold honors whichever is higher rather than
+        # privileging one writer's counter (part 3 task 3 unification).
+        def _int_field(name: str) -> int:
+            try:
+                return int(fm.get(name, "0") or 0)
+            except ValueError:
+                return 0
+        occurrences = max(_int_field("mining_occurrences"), _int_field("occurrences"))
         if occurrences >= promote_occurrence_threshold:
             prop = _build_promote_proposal(
                 vault_path, [path], loaded,
@@ -621,9 +774,33 @@ def run_inbox_triage(
         "entry_count": len(entries),
         "total_bytes": sum(p.stat().st_size for p in entries),
     }
-    digest = InboxTriageDigest(run_id=run_id, cutover_at=cutover_at, corpus_stats=corpus_stats, proposals=proposals)
+    digest = InboxTriageDigest(
+        run_id=run_id, cutover_at=cutover_at, corpus_stats=corpus_stats,
+        proposals=proposals, needs_your_eye=scan.needs_your_eye,
+    )
     digest.digest_path = _stage_digest_and_staging(vault_path, digest, staged_at=now)
+    _write_needs_your_eye(vault_path, scan.needs_your_eye, run_id=run_id, now=now)
     return digest
+
+
+def _needs_your_eye_path(vault_path: Path) -> Path:
+    return Path(vault_path) / _META_DIR_NAME / _NEEDS_YOUR_EYE_NAME
+
+
+def _write_needs_your_eye(vault_path: Path, items: list, *, run_id: str, now: float | None) -> None:
+    """Overwrite `_meta/needs-your-eye.json` with this run's ambiguous
+    candidates — the ONE underlying list the console / digest / morning-
+    brief surfaces read (task 5). Written every run, including an empty
+    one, so the surfaces never show a stale flag after the operator
+    resolves a pair."""
+    payload = {
+        "run_id": run_id,
+        "detected_at": _utcnow_iso(now),
+        "items": items,
+    }
+    path = _needs_your_eye_path(vault_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write(path, json.dumps(payload, indent=2))
 
 
 # -----------------------------------------------------------------------------
@@ -646,6 +823,23 @@ def _render_digest(digest: InboxTriageDigest, *, auto_applied=None) -> str:
         f"entries, {digest.corpus_stats['total_bytes']} bytes.",
         "",
     ]
+
+    if digest.needs_your_eye:
+        lines.append("## Needs your eye (ambiguous — nothing applied, nothing forced)")
+        lines.append("")
+        lines.append(
+            "These pairs are similar but not content-identical, and a fuzzy "
+            "merge never applies without a confident verdict. They stay in "
+            "the inbox untouched (exempt from this run's promote/expire "
+            "passes) until you resolve them — merge by hand, edit one apart, "
+            "or leave them; a resolved pair drops off this list on the next "
+            "cycle."
+        )
+        lines.append("")
+        for item in digest.needs_your_eye:
+            names = ", ".join(Path(p).name for p in item["paths"])
+            lines.append(f"- {names} — {item['reason']}")
+        lines.append("")
 
     auto_applied_by_index = {}
     if auto_applied is not None:
