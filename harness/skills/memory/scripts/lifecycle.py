@@ -44,7 +44,7 @@ from __future__ import annotations
 import json
 import math
 import sys
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
@@ -100,7 +100,18 @@ def is_decay_exempt(fm: dict[str, str], rel_path: str | Path) -> bool:
         return True
     if fm.get("kind") in DECAY_EXEMPT_KINDS:
         return True
-    parts = PurePosixPath(str(rel_path)).parts
+    # Path(rel_path), not PurePosixPath(str(rel_path)) -- the latter silently
+    # broke on a real Path object on Windows: str(WindowsPath(...)) renders
+    # backslash-separated, and PurePosixPath treats a backslash as an
+    # ordinary filename character, not a separator, collapsing the whole
+    # relative path into ONE segment -- so "decisions" was never found in
+    # `parts`, and a decisions/ entry silently lost its exemption on Windows.
+    # A plain Path() handles both a forward-slash string literal (every
+    # existing caller/test) and a real Path object (this module's own
+    # production call sites, e.g. dream.py's `path.relative_to(vault_path)`)
+    # correctly on every platform -- PureWindowsPath accepts "/" exactly
+    # like PurePosixPath does, so there is no cross-platform downside.
+    parts = Path(rel_path).parts
     if _DECISIONS_DIR_SEGMENT in parts:
         return True
     return False
