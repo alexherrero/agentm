@@ -54,8 +54,11 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "derived_from", "heat_pin",
 )
 # Required fields = every field except the optional ones.
-# `fingerprint` is written only by callers that pass one (the diagnostics
-# recall ladder, wave-c-diagnostics) -- optional alongside supersedes/heat_pin.
+# `fingerprint` stays structurally optional in the frontmatter contract, but
+# since auto-org part 3 task 1 `save_entry()` auto-computes a content hash
+# (fingerprint.compute_fingerprint) whenever the caller doesn't pass one —
+# an explicit caller value (the diagnostics recall ladder's semantic incident
+# join key, wave-c-diagnostics) always wins over the auto-computed hash.
 # `lifecycle_tier` (V6-1, agentm-memory-index.md) is likewise optional: absent
 # means "volatile" by default (lifecycle.py applies kind/path-based overrides
 # for the decay-exempt categories regardless of this field being set).
@@ -255,6 +258,19 @@ def save_entry(
 
     # Create parent dirs.
     target.parent.mkdir(parents=True, exist_ok=True)
+
+    # Auto-compute the content fingerprint when the caller didn't supply
+    # one (auto-org part 3 task 1). An explicit caller-supplied value
+    # always wins — the diagnostics recall ladder passes a semantic
+    # incident join key, not a content hash, and must keep doing so.
+    # Best-effort: a fingerprint failure must never block the write
+    # (matches the vec-enqueue block's own posture below).
+    if fingerprint is None:
+        try:
+            from fingerprint import compute_fingerprint  # type: ignore
+            fingerprint = compute_fingerprint(body)
+        except Exception as e:  # pragma: no cover
+            print(f"warning: fingerprint computation failed: {e}", file=sys.stderr)
 
     # Build content.
     fm = _build_frontmatter(

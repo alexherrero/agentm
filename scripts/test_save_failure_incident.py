@@ -49,12 +49,23 @@ class TestFailureIncidentFingerprint(unittest.TestCase):
         meta = vec_index._extract_meta_from_file(target)
         self.assertEqual(meta["fingerprint"], "abc123")
 
-    def test_fingerprint_omitted_when_not_provided(self):
+    def test_fingerprint_auto_computed_when_not_provided(self):
+        # Contract extended by auto-org part 3 task 1: an omitted
+        # fingerprint no longer stays absent -- save_entry auto-computes a
+        # content hash. The ORIGINAL intent this test keeps checking: the
+        # caller-supplied value is optional, and what lands without one is
+        # never garbage -- now specifically the deterministic content hash
+        # (scrub runs BEFORE the hash, so the fingerprint reflects the
+        # scrubbed body actually written, not the raw PII-bearing input).
+        import fingerprint as fp_mod
+        from privacy_scrub import scrub_pii
         target = save.save_entry(
             self.vault, "failure-incident", "crash-report",
             "ValueError in classify", group="personal",
         )
-        self.assertNotIn("fingerprint:", target.read_text(encoding="utf-8"))
+        content = target.read_text(encoding="utf-8")
+        expected = fp_mod.compute_fingerprint(scrub_pii("ValueError in classify"))
+        self.assertIn(f"fingerprint: {expected}", content)
 
 
 class TestFailureIncidentScrub(unittest.TestCase):
