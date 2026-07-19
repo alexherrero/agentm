@@ -1421,6 +1421,63 @@ class ConnectivityMeterTests(_DreamTestBase):
         self.assertEqual(digest.corpus_stats["generated_link_count"], 1)
 
 
+class BrowseSurfaceCountsTests(_DreamTestBase):
+    """Task 8 verification: a fixture cycle exercising all three states
+    (a live note, a shelved artifact, an archived memory) produces
+    correct counts in both the digest and `corpus_stats` (the dashboard's
+    data source). The acceptance test this meter encodes: browsing shows
+    live notes, and archived material is still readable on request."""
+
+    def _write(self, name: str, content: str):
+        path = self.vault / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_three_states_counted_correctly(self) -> None:
+        self._write("personal/reference/live.md", "---\nslug: live\n---\nbody\n")
+        self._write("personal/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
+        self._write("personal/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
+
+        entries = dream._iter_entries(self.vault)
+        counts = dream._browse_surface_counts(self.vault, entries)
+
+        self.assertEqual(counts["browse_live_count"], 1)
+        self.assertEqual(counts["browse_shelved_count"], 1)
+        self.assertEqual(counts["browse_archived_count"], 1)
+
+    def test_archived_note_content_still_readable(self) -> None:
+        # The acceptance test in the operator's own words: aged material
+        # sits in the archive, still there on request -- never deleted.
+        archived_path = self._write(
+            "personal/reference/_archive/archived.md", "---\nslug: archived\n---\noriginal content\n"
+        )
+        entries = dream._iter_entries(self.vault)
+        dream._browse_surface_counts(self.vault, entries)  # never mutates anything
+        self.assertTrue(archived_path.is_file())
+        self.assertIn("original content", archived_path.read_text(encoding="utf-8"))
+
+    def test_empty_vault_reports_all_zero(self) -> None:
+        entries = dream._iter_entries(self.vault)
+        counts = dream._browse_surface_counts(self.vault, entries)
+        self.assertEqual(counts["browse_live_count"], 0)
+        self.assertEqual(counts["browse_shelved_count"], 0)
+        self.assertEqual(counts["browse_archived_count"], 0)
+
+    def test_counts_land_in_the_digest(self) -> None:
+        self._write("personal/reference/live.md", "---\nslug: live\n---\nbody\n")
+        self._write("personal/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
+        self._write("personal/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
+
+        digest = dream.run_dream(self.vault, run_id="run-browse-1")
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+
+        self.assertIn("Browse surface:", digest_text)
+        self.assertEqual(digest.corpus_stats["browse_live_count"], 1)
+        self.assertEqual(digest.corpus_stats["browse_shelved_count"], 1)
+        self.assertEqual(digest.corpus_stats["browse_archived_count"], 1)
+
+
 class LinkImprovementIntegrationTests(_DreamTestBase):
     """The full run_dream_and_auto_apply()/revert pipeline for
     link_improvement -- auto-applies without a confirm() call (joined

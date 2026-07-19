@@ -139,6 +139,14 @@ jobs:
         # (no silent apply on timeout); the shipped job manifest
         # (templates/jobs/dream.yaml) parses and stays dry_run: true.
         run: bash scripts/verify-dreaming.sh
+      - name: verify-auto-org-meters (connectivity + browse-surface e2e)
+        # PLAN-auto-org-dedup-and-lint.md task 8: a fixture cycle with a
+        # linked pair, an unlinked note, a shelved artifact, and an
+        # archived memory reports the correct organic-connectivity ratio
+        # and three-state browse-surface counts through run_dream(), both
+        # in corpus_stats and rendered in the digest; the archived note's
+        # content stays readable on disk (the plan's own acceptance test).
+        run: bash scripts/verify-auto-org-meters.sh
       - name: verify-mcp-surface (append/search/forget round-trip, dead-surface fate)
         # R1.6 / agentmEngine#2: an in-process FastMCP client drives the real
         # append->search->forget round-trip, soft-delete semantics, and the

@@ -273,6 +273,32 @@ def _connectivity_meter(loaded: dict) -> dict:
     }
 
 
+def _browse_surface_counts(vault_path: Path, entries: list) -> dict:
+    """The three-state browse-surface meter (task 8): live / shelved /
+    archived. The acceptance test is the operator's own sentence:
+    browsing the vault shows live, current notes, and aged material sits
+    in the archive, still there on request — this meter is what makes
+    that testable rather than just felt.
+
+    `entries` (this module's own corpus scan) already excludes
+    `_archive` but NOT `_shelf` (see `_EXCLUDE_DIRS`) — so live vs.
+    shelved is a free split of the list already in hand, using the exact
+    `"_shelf" in path.parts` test `_stage_tidying`'s own shelf logic
+    already relies on. Archived notes need a second, separate walk since
+    `_archive` is deliberately excluded from every other stage's corpus."""
+    live = sum(1 for p in entries if "_shelf" not in p.parts)
+    shelved = sum(1 for p in entries if "_shelf" in p.parts)
+    archived = sum(
+        1 for p in vault_path.rglob("*.md")
+        if "_archive" in p.relative_to(vault_path).parts
+    )
+    return {
+        "browse_live_count": live,
+        "browse_shelved_count": shelved,
+        "browse_archived_count": archived,
+    }
+
+
 # -----------------------------------------------------------------------------
 # Stage 1 — dedup
 # -----------------------------------------------------------------------------
@@ -1169,6 +1195,13 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
             f"{digest.corpus_stats['entry_count']} notes with ≥1 real, non-generated link) · "
             f"{digest.corpus_stats['generated_link_count']} generated link(s) (counted separately)."
         )
+    # The browse-surface meter (task 8) — same defensive .get() convention.
+    if "browse_live_count" in digest.corpus_stats:
+        lines.append(
+            f"Browse surface: {digest.corpus_stats['browse_live_count']} live, "
+            f"{digest.corpus_stats['browse_shelved_count']} shelved, "
+            f"{digest.corpus_stats['browse_archived_count']} archived."
+        )
     # The lint engine (task 7) — same defensive .get() convention as the
     # connectivity meter above, for the identical reason.
     if "lint_orphan_count" in digest.corpus_stats:
@@ -1342,6 +1375,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
 
     corpus_stats = _stage_corpus_stats(entries)
     corpus_stats.update(_connectivity_meter(loaded))
+    corpus_stats.update(_browse_surface_counts(vault_path, entries))
     proposals = []
     proposals.extend(_stage_dedup(entries, loaded))
     proposals.extend(_stage_contradiction_triage(entries, loaded))
