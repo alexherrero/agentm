@@ -127,6 +127,7 @@ class DreamDigest:
     proposals: list
     insight_candidates: list
     digest_path: Optional[Path] = None
+    tidying_previews: list = field(default_factory=list)
 
 
 # -----------------------------------------------------------------------------
@@ -350,6 +351,102 @@ def _stage_compression(entries: list, loaded: dict) -> list:
 
 
 # -----------------------------------------------------------------------------
+# Stage — tidying (auto-organization part 1, task 3): a non-exempt entry
+# past 5 years without a genuine recall access stages a move to its tier's
+# `_archive/` — never a delete, both the old and new path are captured in
+# one mutation pair (record_and_apply journals a pre-image of each), so
+# reverting a tidying entry restores the original file and removes the
+# archived copy. An entry crossing 4.5 years gets a one-cycle preview line
+# in the digest (informational only, no mutation) before the actual move —
+# a heads-up, not a gate. A genuine recall resets the clock to zero: this
+# reads the exact same `.lifecycle.json` anchor `lifecycle.py`'s own decay
+# scoring uses, via the shared `lifecycle.days_since_last_genuine_access`
+# seam, so "cold" here means exactly what "decayed" means everywhere else
+# in the memory engine, never a second, independently-drifting notion of
+# staleness. Task 4 (the artifact shelf) extends this same stage with a
+# second, non-memory lane rather than adding a separate one.
+# -----------------------------------------------------------------------------
+
+_ARCHIVE_THRESHOLD_DAYS = 1825.0  # 5 years
+_ARCHIVE_PREVIEW_DAYS = 1642.5  # 4.5 years — one cycle's heads-up before the move
+
+
+def _archived_path(rel_path: Path) -> Path:
+    """Where a tidying-stage archive move for `rel_path` lands: `_archive/`
+    inserted right after the owning tier root, kind-subfolder structure
+    preserved past that point. Two tier roots are real, already-live vault
+    conventions this mirrors exactly:
+
+      personal/<kind>/...            -> personal/_archive/<kind>/...
+      projects/<project>/<kind>/...  -> projects/<project>/_archive/<kind>/...
+
+    `personal/_archive/preferences/*.md` already exists in this exact
+    shape. The `projects/` case is scoped PER-PROJECT (`_archive` inserted
+    after the project segment, not after `projects/` itself) deliberately:
+    `projects/_archive/<project>/` is a different, already-existing
+    feature — whole-*project* retirement (the 2026-07-12 amendment) — and
+    reusing that namespace for a still-active project's individual
+    archived notes would collide with it. Anything outside those two tier
+    roots — including a bare-root file with no parent directory at all,
+    the shape this module's own test fixtures use — falls back to
+    inserting `_archive` right at the root, never after the filename
+    itself (a naive "after the first segment" rule would turn `foo.md`
+    into the nonsensical `foo.md/_archive`)."""
+    parts = rel_path.parts
+    if len(parts) >= 2 and parts[0] == "personal":
+        tier_len = 1
+    elif len(parts) >= 3 and parts[0] == "projects":
+        tier_len = 2
+    else:
+        tier_len = 0
+    return Path(*parts[:tier_len], "_archive", *parts[tier_len:])
+
+
+def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | None = None) -> tuple:
+    """Returns (proposals, preview_lines). See module section docstring
+    above. `now` is injectable for tests (ISO date string YYYY-MM-DD)."""
+    import lifecycle  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+
+    if now is None:
+        import datetime
+        now = datetime.date.today().isoformat()
+
+    proposals = []
+    preview_lines = []
+
+    for path in entries:
+        fm, _body, raw = loaded[path]
+        rel = path.relative_to(vault_path)
+        slug = fm.get("slug") or path.stem
+
+        elapsed = lifecycle.days_since_last_genuine_access(vault_path, slug, fm, rel, now=now)
+        if elapsed is None:
+            continue  # decay-exempt, or no basis to compute — never tidied
+
+        if elapsed > _ARCHIVE_THRESHOLD_DAYS:
+            dest_rel = _archived_path(rel)
+            proposals.append(
+                Proposal(
+                    stage="tidying",
+                    kind="archive",
+                    paths=[str(rel)],
+                    summary=(
+                        f"{rel} — {elapsed:.0f} days ({elapsed / 365.25:.1f}y) since last genuine "
+                        f"recall access, past the 5y archive threshold — propose move to {dest_rel}"
+                    ),
+                    mutations=[(path, None), (vault_path / dest_rel, raw)],
+                )
+            )
+        elif elapsed > _ARCHIVE_PREVIEW_DAYS:
+            preview_lines.append(
+                f"{rel} — {elapsed:.0f} days ({elapsed / 365.25:.1f}y) silent, crosses the 5y "
+                "archive threshold within roughly the next cycle"
+            )
+
+    return proposals, preview_lines
+
+
+# -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
 # [PENDING-IMPL] elsewhere in the Experience design).
@@ -430,6 +527,13 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None) -> str:
         lines.append("## Insight candidates (written, status: candidate)")
         for c in digest.insight_candidates:
             lines.append(f"- `{c.path}`")
+        lines.append("")
+
+    if digest.tidying_previews:
+        lines.append("## Archive preview (crosses the 5y threshold next cycle — no action yet)")
+        lines.append("")
+        for line in digest.tidying_previews:
+            lines.append(f"- {line}")
         lines.append("")
 
     auto_applied_by_index = {}
@@ -565,6 +669,8 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(_stage_dedup(entries, loaded))
     proposals.extend(_stage_contradiction_triage(entries, loaded))
     proposals.extend(_stage_compression(entries, loaded))
+    tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
+    proposals.extend(tidying_proposals)
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
@@ -578,6 +684,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
         corpus_stats=corpus_stats,
         proposals=proposals,
         insight_candidates=insight_candidates,
+        tidying_previews=tidying_previews,
     )
     digest.digest_path = _stage_digest_and_staging(vault_path, digest)
     return digest

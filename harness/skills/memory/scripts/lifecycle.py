@@ -29,11 +29,14 @@ frontmatter carries the durable `lifecycle_tier` classification; the sidecar
 carries the volatile last-access clock, mirroring heat_policy.py's split
 (frontmatter = durable classification, `.heat.json` = ephemeral counters).
 
-Public API (called by recall.py):
+Public API (called by recall.py, and — as of the auto-organization tidying
+stage, task 3 — dream.py):
   lifecycle_tier_for(fm, rel_path)             — "durable" | "volatile"
   is_decay_exempt(fm, rel_path)                — bool
   compute_decay_score(vault, slug, fm, rel_path, *, now=None) -> float
   record_recall_access(vault, slug, fm, rel_path, *, today=None) -> None
+  days_since_last_genuine_access(vault, slug, fm, rel_path, *, now=None)
+                                                — float | None
 """
 
 from __future__ import annotations
@@ -175,6 +178,33 @@ def _days_between(earlier_iso: str, later_iso: str) -> float:
     a = datetime.datetime.strptime(earlier_iso[:10], fmt)
     b = datetime.datetime.strptime(later_iso[:10], fmt)
     return (b - a).total_seconds() / 86400.0
+
+
+def days_since_last_genuine_access(
+    vault: Path,
+    slug: str,
+    fm: dict[str, str],
+    rel_path: str | Path,
+    *,
+    now: str | None = None,
+) -> float | None:
+    """Elapsed days since the same anchor `compute_decay_score` uses (last
+    genuine recall access, falling back to `updated` then `created`) — the
+    public seam a second consumer (dream.py's tidying stage, auto-
+    organization part 1 task 3) uses to decide "how cold is this entry"
+    without duplicating the anchor-resolution chain.
+
+    Returns None for a decay-exempt entry (durable tiers have no
+    meaningful "silence" — nothing should read a numeric age off one) or
+    when there's no anchor at all / it's malformed (the same "no basis to
+    compute decay" case `compute_decay_score` treats as fully fresh).
+    """
+    if is_decay_exempt(fm, rel_path):
+        return None
+    if now is None:
+        import datetime
+        now = datetime.date.today().isoformat()
+    return _resolve_elapsed_days(vault, slug, fm, now)
 
 
 def compute_decay_score(

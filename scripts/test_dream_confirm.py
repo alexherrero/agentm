@@ -326,7 +326,10 @@ class AutoApplyExpireTests(_DreamConfirmTestBase):
 
         self.assertEqual(payload["run_id"], digest.run_id)
         self.assertEqual(payload["count"], 1)
-        self.assertEqual(payload["stages"], ["compression"])
+        # "stages" reports the full AUTO_APPLY_STAGES watched set for this
+        # call, not just the stages with an item this run -- tidying joined
+        # compression in that set (auto-organization part 1, task 3).
+        self.assertEqual(payload["stages"], ["compression", "tidying"])
         self.assertEqual(payload["batch_cap"], dc.DEFAULT_AUTO_APPLY_BATCH_CAP)
         self.assertEqual(len(payload["items"]), 1)
         self.assertIn("entry_id", payload["items"][0])

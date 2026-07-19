@@ -126,7 +126,17 @@ DEFAULT_REVERT_TTL_DAYS = 14.0
 # an explicit `confirm()` call. Do not add either to `AUTO_APPLY_STAGES`
 # without a fresh, separate operator ruling -- this is a narrow, specific
 # flip, not a general autonomy expansion.
-AUTO_APPLY_STAGES = frozenset({"compression"})
+#
+# `tidying` (auto-organization part 1, task 3 -- wiki/designs/agentm-auto-
+# organization.md, PLAN-auto-org-shelf-and-archive.md's own "Every move
+# auto-applies" constraint) joins the set on the same "retire it, reversible
+# via the undo/revert log" basis: a tidying move never deletes -- both the
+# old and new path are captured in one record_and_apply pre-image pair, so
+# it reverts exactly like a compression-stage compaction does -- and it
+# only ever acts on an entry lifecycle.py itself has already classified as
+# non-exempt and cold (the same anchor chain compute_decay_score uses, not
+# a second, independently-invented staleness signal).
+AUTO_APPLY_STAGES = frozenset({"compression", "tidying"})
 
 # Standing batch bound for one auto-apply cycle (2026-07-11 cadence
 # review). The proving-window's temporary <=100 cap was sized for a short
