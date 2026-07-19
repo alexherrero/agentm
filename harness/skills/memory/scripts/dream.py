@@ -549,6 +549,37 @@ _LINK_IMPROVEMENT_BATCH_CAP = 25
 
 _LINK_SWEEP_CURSOR_REL = "_meta/link-sweep-cursor.json"
 
+# The backfill's per-cycle batch bound (task 6): each weekly cycle attempts
+# at most this many of the vault's unlinked (orphan) notes — 25, matching
+# dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP (the existing compression cap
+# the plan names as the precedent). Continues cycle over cycle until the
+# pool drains.
+_LINK_BACKFILL_BATCH_CAP = 25
+
+_LINK_BACKFILL_STATE_REL = "_meta/link-backfill-state.json"
+
+
+def _read_backfill_attempted(vault_path: Path) -> set:
+    """The set of orphan paths already attempted in the current pass over
+    the backfill pool. Persisted so an orphan that found no qualifying
+    neighbor doesn't permanently occupy one of the 25 batch slots every
+    cycle, starving the rest of the pool — attempted notes are skipped
+    until the whole pool has had a turn, then the pass resets and everyone
+    (including previously-unmatched notes, which may match newer content
+    by then) gets a fresh chance."""
+    try:
+        data = json.loads((vault_path / _LINK_BACKFILL_STATE_REL).read_text(encoding="utf-8"))
+        return set(data.get("attempted", []))
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def _write_backfill_attempted(vault_path: Path, attempted: set) -> None:
+    atomic_write(
+        vault_path / _LINK_BACKFILL_STATE_REL,
+        json.dumps({"attempted": sorted(attempted)}),
+    )
+
 
 def _link_sweep_cursor_path(vault_path: Path) -> Path:
     return vault_path / _LINK_SWEEP_CURSOR_REL
@@ -673,12 +704,17 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
     proposals: list = []
     touched_this_sweep: set = set()
 
-    for rel_path in changed_paths:
-        if len(proposals) >= _LINK_IMPROVEMENT_BATCH_CAP:
-            break
+    def _process_origin(rel_path: str, kind: str) -> None:
+        """One origin note through the full link flow: exemption gate,
+        fresh embed, neighbor query, filters, both-direction merge,
+        proposal. Appends to `proposals` / marks `touched_this_sweep`;
+        a no-op for an ineligible origin or one with nothing to add.
+        `kind` labels the proposal ("link" for a changed-note origin,
+        "backfill" for an orphan-pool origin — same stage either way, so
+        auto-apply and the revert log treat them identically)."""
         path = by_rel.get(rel_path)
         if path is None or path not in loaded or path in touched_this_sweep:
-            continue
+            return
 
         fm, body, raw = loaded[path]
         slug = fm.get("slug") or path.stem
@@ -687,15 +723,15 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
         # decision/always-load/pinned notes are "never candidates for
         # anything here" per the design's Signals section.
         if lifecycle.days_since_last_genuine_access(vault_path, slug, fm, rel_obj, now=now) is None:
-            continue
+            return
 
         embed_input = f"{slug} [{fm.get('tags', '')}]\n\n{body[:500]}"
         try:
             embedding = embed.embed_text(embed_input)
         except embed.EmbeddingUnavailable:
-            continue
+            return
         except Exception:
-            continue
+            return
 
         # Query at the LOWER floor (not the confident threshold) so the
         # ambiguous middle band is genuinely visible to the code below,
@@ -753,7 +789,7 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
             if len(qualifying) >= write_time_linker.MAX_RELATED_LINKS:
                 break
         if not qualifying:
-            continue
+            return
 
         neighbor_slugs = []
         for _neighbor_rel, neighbor_path in qualifying:
@@ -774,13 +810,13 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
                 touched_this_sweep.add(neighbor_path)
 
         if not mutations:
-            continue  # already linked both ways -- nothing to propose
+            return  # already linked both ways -- nothing to propose
 
         neighbor_rels = [nr for nr, _np in qualifying]
         proposals.append(
             Proposal(
                 stage="link_improvement",
-                kind="link",
+                kind=kind,
                 paths=[rel_path, *neighbor_rels],
                 summary=(
                     f"{rel_path} <-> {', '.join(neighbor_rels)} — related "
@@ -789,6 +825,36 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
                 mutations=mutations,
             )
         )
+
+    for rel_path in changed_paths:
+        if len(proposals) >= _LINK_IMPROVEMENT_BATCH_CAP:
+            break
+        _process_origin(rel_path, "link")
+
+    # The backfill (task 6): each cycle, attempt a capped batch of the
+    # vault's unlinked notes — `graph_snapshot.orphans()` (zero edges in
+    # either direction, freshly accurate after this stage's own full
+    # rebuild above) — through the identical link flow. The persisted
+    # attempted-set (see _read_backfill_attempted) rotates through the
+    # pool so an unmatched orphan can't occupy a batch slot every cycle;
+    # a note linked this cycle (as an origin OR as some other origin's
+    # neighbor) leaves the pool naturally once the applied link makes it
+    # a non-orphan. Continues cycle over cycle until the pool drains.
+    changed_set = set(changed_paths)
+    pool = [p for p in graph_snapshot.orphans(vault_path) if p not in changed_set and p in by_rel]
+    attempted = _read_backfill_attempted(vault_path)
+    remaining = [p for p in pool if p not in attempted]
+    if not remaining and pool:
+        # Every pool member has had a turn this pass — start a fresh pass,
+        # so previously-unmatched notes get another chance against
+        # whatever newer content has arrived since.
+        attempted = set()
+        remaining = list(pool)
+    backfill_batch = remaining[:_LINK_BACKFILL_BATCH_CAP]
+    for rel_path in backfill_batch:
+        _process_origin(rel_path, "backfill")
+    if backfill_batch:
+        _write_backfill_attempted(vault_path, attempted | set(backfill_batch))
 
     # Advance the cursor to when THIS sweep started (not `time.time()` now)
     # -- anything modified DURING this run's own execution stays eligible

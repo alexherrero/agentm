@@ -857,11 +857,20 @@ class LinkImprovementStageTests(_DreamTestBase):
         first = self._run_stage_with_new_entry("new-note.md", "new-note", embedding=_unit_vector(0))
         self.assertEqual(len(first), 1)
 
-        # A second sweep over the same (now already-linked) pair proposes nothing.
+        # APPLY the proposal's mutations, as auto-apply would. (Without
+        # this the notes stay unlinked on disk, and the task-6 backfill
+        # would -- correctly -- pick them up as orphans and re-propose;
+        # this test's intent is specifically that an already-LINKED pair
+        # is never re-proposed.)
+        for path, content in first[0].mutations:
+            path.write_text(content, encoding="utf-8")
+
+        # A second sweep over the same (now genuinely linked) pair
+        # proposes nothing: not from the changed loop (merge no-ops on
+        # already-present links), and not from the backfill (linked notes
+        # are no longer orphans).
         entries = dream._iter_entries(self.vault)
         loaded = dream._load(entries)
-        import graph_snapshot
-        graph_snapshot.rebuild(self.vault)  # settle -- nothing "changed" anymore
         import embed
         with unittest.mock.patch.object(embed, "embed_text", return_value=_unit_vector(0)):
             second = dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
@@ -1067,6 +1076,120 @@ class IngestBatchHandoffTests(_DreamTestBase):
             l for l in all_mutated[str(older_path)].splitlines() if l.startswith("**Related:**")
         )
         self.assertTrue(any(f"[[{s}]]" in older_related for s in batch_slugs))
+
+
+class LinkBackfillTests(_DreamTestBase):
+    """Task 6 verification: a fixture vault with N > 25 unlinked notes
+    confirms exactly 25 get processed in one cycle, the remainder carry
+    over to the next; re-running the cycle against the same fixture
+    doesn't reprocess already-linked notes."""
+
+    _NOW = "2026-01-01"
+    _N = 30  # > _LINK_BACKFILL_BATCH_CAP (25)
+
+    def setUp(self) -> None:
+        super().setUp()
+        import vec_index
+        self.vec_index = vec_index
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+
+        # 30 unlinked notes, zero-padded so sort order is deterministic:
+        # notes 00-24 mutually similar (dim 0), notes 25-29 mutually
+        # similar (dim 1) but orthogonal to the first group -- so cycle 1's
+        # batch (the first 25) can never link a carry-over note as a
+        # neighbor, keeping the carry-over set exact.
+        self.vectors = {}
+        for i in range(self._N):
+            slug = f"note-{i:02d}"
+            rel = f"personal/reference/{slug}.md"
+            (self.vault / rel).write_text(
+                f"---\nkind: reference\nslug: {slug}\ncreated: {self._NOW}\n---\nbody {i}\n",
+                encoding="utf-8",
+            )
+            dim = 0 if i < 25 else 1
+            vec = _unit_vector(dim, 0.99 - (i % 25) * 0.0001)
+            self.vec_index.upsert_entry(self.vault, rel, vec)
+            self.vectors[slug] = vec
+
+        # Advance the sweep cursor past every fixture write, so nothing
+        # counts as "changed" -- isolating the backfill loop specifically.
+        newest = max(
+            (self.vault / f"personal/reference/note-{i:02d}.md").stat().st_mtime
+            for i in range(self._N)
+        )
+        dream._write_link_sweep_cursor(self.vault, newest + 1.0)
+
+    def _fake_embed(self, text, mode=None):
+        slug = text.split(" ", 1)[0]
+        return self.vectors[slug]
+
+    def _run_cycle(self):
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", side_effect=self._fake_embed):
+            return dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
+
+    def _apply(self, proposals):
+        """Write proposals' mutations to disk, as auto-apply would, then
+        advance the cursor past the new mtimes so the next cycle's changed
+        loop doesn't reprocess them (isolating the backfill assertions)."""
+        newest = 0.0
+        for p in proposals:
+            for path, content in p.mutations:
+                path.write_text(content, encoding="utf-8")
+                newest = max(newest, path.stat().st_mtime)
+        if newest:
+            dream._write_link_sweep_cursor(self.vault, newest + 1.0)
+
+    def test_exactly_cap_processed_remainder_carries_over_no_reprocess(self) -> None:
+        # Cycle 1: exactly 25 attempted (the batch cap), all from the
+        # first 25 in sort order.
+        proposals_1 = self._run_cycle()
+        attempted_1 = dream._read_backfill_attempted(self.vault)
+        self.assertEqual(len(attempted_1), dream._LINK_BACKFILL_BATCH_CAP)
+        expected_batch_1 = {f"personal/reference/note-{i:02d}.md" for i in range(25)}
+        self.assertEqual(attempted_1, expected_batch_1)
+        self.assertGreaterEqual(len(proposals_1), 1)
+        for p in proposals_1:
+            self.assertEqual(p.stage, "link_improvement")
+            self.assertEqual(p.kind, "backfill")
+            # No carry-over note was touched this cycle.
+            for path, _content in p.mutations:
+                self.assertIn(str(path.name), [f"note-{i:02d}.md" for i in range(25)])
+
+        self._apply(proposals_1)
+        linked_in_1 = {
+            str(path.relative_to(self.vault)).replace("\\", "/")
+            for p in proposals_1 for path, _content in p.mutations
+        }
+
+        # Cycle 2: the remainder (notes 25-29) carries over; nothing
+        # already linked in cycle 1 is reprocessed as a backfill origin.
+        proposals_2 = self._run_cycle()
+        attempted_2 = dream._read_backfill_attempted(self.vault)
+        carry_over = {f"personal/reference/note-{i:02d}.md" for i in range(25, 30)}
+        self.assertTrue(carry_over <= attempted_2)
+        origins_2 = {p.paths[0] for p in proposals_2}
+        self.assertEqual(origins_2 & linked_in_1, set())
+        self.assertTrue(origins_2 <= carry_over)
+        for p in proposals_2:
+            self.assertEqual(p.kind, "backfill")
+
+    def test_pool_exhaustion_resets_the_pass(self) -> None:
+        # Mark every note attempted -- the next cycle must reset the pass
+        # and re-attempt rather than backfilling nothing forever.
+        all_paths = {f"personal/reference/note-{i:02d}.md" for i in range(self._N)}
+        dream._write_backfill_attempted(self.vault, all_paths)
+
+        proposals = self._run_cycle()
+        attempted = dream._read_backfill_attempted(self.vault)
+        # A fresh pass started: attempted was reset, then this cycle's
+        # batch (25) recorded.
+        self.assertEqual(len(attempted), dream._LINK_BACKFILL_BATCH_CAP)
+        self.assertGreaterEqual(len(proposals), 1)
 
 
 class LinkImprovementIntegrationTests(_DreamTestBase):
