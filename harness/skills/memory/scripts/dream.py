@@ -128,6 +128,13 @@ class DreamDigest:
     insight_candidates: list
     digest_path: Optional[Path] = None
     tidying_previews: list = field(default_factory=list)
+    # The folded inbox-triage sub-run's summary (auto-org part 3 task 4):
+    # populated by `run_dream_and_auto_apply` when the weekly cycle drives
+    # `inbox_triage`'s engine as a sibling sub-run (its own run_id, its own
+    # staging dir + digest — this is the pointer). None on a bare
+    # `run_dream()` (propose-only, never mutates — triage's auto-applying
+    # engine deliberately doesn't ride it) or when the fold is disabled.
+    inbox_triage_run: Optional[dict] = None
 
 
 # -----------------------------------------------------------------------------
@@ -1010,6 +1017,13 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
             f"{digest.corpus_stats['entry_count']} notes with ≥1 real, non-generated link) · "
             f"{digest.corpus_stats['generated_link_count']} generated link(s) (counted separately)."
         )
+    if digest.inbox_triage_run is not None:
+        t = digest.inbox_triage_run
+        lines.append(
+            f"Inbox triage (folded into this cycle): run {t['run_id']} — "
+            f"{t['proposals']} proposal(s), {t['auto_applied']} auto-applied, "
+            f"{t['needs_your_eye']} needs-your-eye · full digest: {t['digest_path']}"
+        )
     lines.append("")
     if digest.insight_candidates:
         lines.append("## Insight candidates (written, status: candidate)")
@@ -1212,6 +1226,7 @@ def run_dream_and_auto_apply(
     batch_cap: int | None = None,
     log_root: Path | str | None = None,
     lock_root: Path | str | None = None,
+    include_inbox_triage: bool = True,
 ):
     """Run `run_dream()` (unchanged), then auto-apply its compression-stage,
     tidying-stage, and link-improvement-stage proposals through
@@ -1268,6 +1283,30 @@ def run_dream_and_auto_apply(
         stages = frozenset(stages - {"tidying"})
 
     batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap, stages=stages)
+
+    # Inbox triage folds into the weekly cycle (auto-org part 3 task 4):
+    # the same underlying merge/promote/collapse/expire engine `/memory
+    # inbox` drives on demand runs here automatically as a sibling sub-run
+    # — its own run_id, staging dir, digest, and auto-apply (through the
+    # SAME revert_log instance, so one cycle's undo surface stays whole).
+    # It rides this wrapper, not run_dream(), because run_dream() is
+    # propose-only by contract and triage's engine applies. Best-effort:
+    # a triage failure never takes down the rest of the cycle.
+    if include_inbox_triage:
+        try:
+            import inbox_triage  # function-local: inbox_triage imports dream
+            triage_digest, triage_batch = inbox_triage.run_inbox_triage_and_auto_apply(
+                vault_path, revert_log=revert_log, lock_root=lock_root,
+            )
+            digest.inbox_triage_run = {
+                "run_id": triage_digest.run_id,
+                "proposals": len(triage_digest.proposals),
+                "auto_applied": len(triage_batch.items),
+                "needs_your_eye": len(triage_digest.needs_your_eye),
+                "digest_path": str(triage_digest.digest_path),
+            }
+        except Exception as e:  # pragma: no cover
+            print(f"warning: folded inbox-triage sub-run failed: {e}", file=sys.stderr)
 
     staging_dir = vault_path / "_dream-staging" / digest.run_id
     atomic_write(

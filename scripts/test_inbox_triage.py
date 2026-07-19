@@ -825,3 +825,99 @@ class ClusterAwareDedupTests(_InboxTriageTestBase):
         it.run_inbox_triage(self.vault, now=time.time())
         payload2 = json.loads(state_path.read_text(encoding="utf-8"))
         self.assertEqual(payload2["items"], [])
+
+
+# -----------------------------------------------------------------------------
+# Inbox triage folds into the weekly dreaming cycle (auto-org part 3, task 4)
+# -----------------------------------------------------------------------------
+
+class TriageFoldsIntoDreamingTests(_InboxTriageTestBase):
+    def test_weekly_dreaming_cycle_processes_inbox_without_explicit_invocation(self) -> None:
+        import dream
+
+        # An exact suffix family in the inbox -- nothing else invokes
+        # /memory inbox; the weekly cycle alone must collapse it.
+        base = "One insight, captured twice."
+        self._write_inbox("dup", created="2026-07-01T00:00:00+00:00", body=base)
+        self._write_inbox("dup-1", created="2026-07-02T00:00:00+00:00", body=f"  {base}")
+
+        digest, _batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="weekly-1", revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+
+        self.assertIsNotNone(digest.inbox_triage_run)
+        self.assertGreaterEqual(digest.inbox_triage_run["auto_applied"], 1)
+        self.assertEqual(self._status(self._inbox_dir() / "dup-1.md"), "superseded")
+        self.assertEqual(self._status(self._inbox_dir() / "dup.md"), "inbox")
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("Inbox triage (folded into this cycle)", digest_text)
+
+    def test_on_demand_cli_path_produces_same_disposition_on_same_fixture(self) -> None:
+        import dream
+
+        base = "One insight, captured twice."
+
+        # Fixture A: processed by the weekly dreaming cycle.
+        self._write_inbox("dup", created="2026-07-01T00:00:00+00:00", body=base)
+        self._write_inbox("dup-1", created="2026-07-02T00:00:00+00:00", body=f"  {base}")
+        dream.run_dream_and_auto_apply(
+            self.vault, run_id="weekly-2", revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        weekly_statuses = {
+            "dup": self._status(self._inbox_dir() / "dup.md"),
+            "dup-1": self._status(self._inbox_dir() / "dup-1.md"),
+        }
+
+        # Fixture B (a second, identical family in a FRESH vault): the
+        # standalone on-demand engine, same dispositions.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp2:
+            vault2 = Path(tmp2) / "vault"
+            (vault2 / "personal" / "_inbox").mkdir(parents=True)
+            for slug, created, body in (
+                ("dup", "2026-07-01T00:00:00+00:00", base),
+                ("dup-1", "2026-07-02T00:00:00+00:00", f"  {base}"),
+            ):
+                (vault2 / "personal" / "_inbox" / f"{slug}.md").write_text(
+                    _INBOX_TEMPLATE.format(
+                        kind="idea", created_line=f"created: {created}\n", slug=slug,
+                        confidence="LOW", occurrences=1, body=body,
+                    ),
+                    encoding="utf-8",
+                )
+            log2 = Path(tmp2) / "revert-log"
+            lock2 = Path(tmp2) / "locks"
+            from revert_log import RevertLog
+            it.run_inbox_triage_and_auto_apply(
+                vault2, now=time.time(),
+                revert_log=RevertLog(vault2, log_root=log2, lock_root=lock2),
+                lock_root=lock2,
+            )
+            standalone_statuses = {
+                "dup": it._current_status(vault2 / "personal" / "_inbox" / "dup.md"),
+                "dup-1": it._current_status(vault2 / "personal" / "_inbox" / "dup-1.md"),
+            }
+
+        self.assertEqual(weekly_statuses, standalone_statuses)
+
+    def test_bare_run_dream_stays_propose_only_no_triage(self) -> None:
+        import dream
+
+        base = "One insight, captured twice."
+        self._write_inbox("dup", body=base)
+        self._write_inbox("dup-1", body=f"  {base}")
+        digest = dream.run_dream(self.vault, run_id="bare-1")
+        self.assertIsNone(digest.inbox_triage_run)
+        # Nothing applied -- both candidates untouched.
+        self.assertEqual(self._status(self._inbox_dir() / "dup.md"), "inbox")
+        self.assertEqual(self._status(self._inbox_dir() / "dup-1.md"), "inbox")
+
+    def test_fold_can_be_disabled_for_isolation(self) -> None:
+        import dream
+
+        self._write_inbox("solo", body="A single candidate.")
+        digest, _batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="weekly-3", revert_log=self.revert_log, lock_root=self.lock_root,
+            include_inbox_triage=False,
+        )
+        self.assertIsNone(digest.inbox_triage_run)
