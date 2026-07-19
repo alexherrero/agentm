@@ -32,6 +32,7 @@ The first toolkit skill that integrates with the user's own personal note-taking
 | Review pending entries in `_skill-watchlist/` — promote / dismiss / defer | `/memory watchlist` |
 | Bulk-triage the `_inbox/` backlog — promote (reinforced) / merge (near-duplicate) / expire (stale) | `/memory inbox --bulk-review` |
 | See what the heat-based always-load policy would demote or promote (never applies without `--apply`) | `/memory heat-policy` |
+| Check the vault for orphans, broken links, contradictions, and a per-note quality score — on demand (the weekly dreaming cycle also runs this automatically) | `/memory lint` |
 
 Auto-recall happens via the [SessionStart + UserPromptSubmit hooks](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/designs/memoryvault/parts/recall-loop.md) — operators don't invoke a recall command directly. Reflection happens automatically via Stop + idle hooks too; the manual `/memory reflect` is for one-off runs against arbitrary transcripts.
 
@@ -1141,6 +1142,33 @@ python3 harness/skills/memory/scripts/recall.py heat-pin <slug> [--vault-path <p
 
 - **Not enough recorded sessions yet** → reports `too_early: true` in the result; no demotions considered until the cold-session floor is met.
 - **No vault resolved** → same resolution failure as every other `recall.py` sub-command (`--vault-path` / `MEMORY_VAULT_PATH`).
+
+### `/memory lint`
+
+Reports vault-wide rot the write-time guards can't catch on their own: orphans (notes with zero links in either direction — the same pool `dream.py`'s link-improvement backfill already drains directly, reported here for visibility rather than as a second feed), broken wikilinks, supersede-chain contradictions (a cycle, a fork where two entries both claim to supersede the same note, or a `status: superseded` note with no `supersedes:` backing it anywhere), a kind outside the known-kinds registry, and a per-note quality score (frontmatter completeness + link presence + `lifecycle.compute_decay_score`'s staleness axis). Canonical implementation at `skills/memory/scripts/lint.py` (`run_lint()`), composing `vault_lint.py`'s structural check suite, `graph_snapshot.orphans()`, and a new composite score — auto-organization part 3, task 7.
+
+**One thing on this list gets fixed automatically, everything else is surfaced only.** A mis-cased wikilink (`[[Wrong-Case]]` where `[[Correct-Case]]` is the sole vault-wide case-insensitive match, no alias, no anchor) auto-corrects and revert-logs — a string fact, not a judgment call. An unresolved link with no unique case-insensitive match, a contradiction, an out-of-registry kind, and every orphan stay exactly as reported; deciding what to do about them is an editorial call this engine never makes for you.
+
+`dream.py`'s weekly cycle runs the identical engine automatically via `_stage_lint()`, applying the same auto-repair through the standard revert-logged auto-apply path (`dream_confirm.AUTO_APPLY_STAGES` — `wikilink_repair` mutations only). The plan's own verification requirement holds by construction: `/memory lint` and the weekly stage share one code path, so they can't drift.
+
+#### Invocation
+
+```
+python3 harness/skills/memory/scripts/lint.py [--vault-path <path>] [--apply]
+```
+
+- **(no flags)** — read-only report to stdout: finding counts by severity, orphan/contradiction counts, the mean quality score, then every finding.
+- **`--apply`** — writes the auto-repairable mis-cased-wikilink fixes directly to disk. A CLI-only convenience for inspecting the result immediately; the weekly cycle does NOT use this flag — it applies through `revert_log.record_and_apply` instead, so those repairs stay undoable the same way every other auto-apply stage's mutations are.
+
+#### Failure modes (graceful)
+
+- **No vault resolved** → same resolution failure as every other verb (`--vault-path` / `MEMORY_VAULT_PATH`); exit 2.
+- **A scoring failure on one note** (e.g. a decay-score lookup error) → best-effort; that note's freshness axis falls back to `1.0` rather than failing the whole report.
+
+#### Anti-patterns
+
+- **Don't treat a nonzero finding count as a failure to fix immediately.** Most findings (orphans, contradictions, unknown kinds) are informational — the engine surfaces them because an editorial call is needed, not because something is broken.
+- **Don't reach for `--apply` as part of automation expecting it to auto-repair everything.** It only ever touches the narrow, deterministic mis-cased-wikilink case; nothing else this verb reports is ever auto-resolved by design.
 
 ### `/memory search`
 

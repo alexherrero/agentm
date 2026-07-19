@@ -431,11 +431,11 @@ class AutoApplyExpireTests(_DreamConfirmTestBase):
         # call, not just the stages with an item this run -- tidying joined
         # compression in that set (auto-organization part 1, task 3),
         # link_improvement joined both (auto-organization part 2, task 4),
-        # and suffix_backlog_drain joined all three (auto-organization
-        # part 3, task 6).
+        # suffix_backlog_drain joined all three (auto-organization part 3,
+        # task 6), and lint joined all four (task 7, wikilink_repair only).
         self.assertEqual(
             payload["stages"],
-            ["compression", "link_improvement", "suffix_backlog_drain", "tidying"],
+            ["compression", "link_improvement", "lint", "suffix_backlog_drain", "tidying"],
         )
         self.assertEqual(payload["batch_cap"], dc.DEFAULT_AUTO_APPLY_BATCH_CAP)
         self.assertEqual(len(payload["items"]), 1)

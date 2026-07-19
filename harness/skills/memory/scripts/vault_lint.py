@@ -45,6 +45,7 @@ if str(_HERE) not in sys.path:
 
 import save  # noqa: E402  (schema source of truth — same skill dir)
 import arc_registry  # noqa: E402  (2026-07-18 arc-as-metadata convention)
+from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task 7 — kind-taxonomy check)
 
 # Directories that are NOT memory-entry trees — skipped during the walk.
 # `_idea-incubator` is deferred to a follow-up (DC-4, bespoke shape); `_meta`
@@ -424,6 +425,106 @@ def check_supersede(entry: Entry, model: VaultModel) -> list:
     return out
 
 
+def _supersede_target_slug(sup: str) -> str:
+    return Path(sup).stem if ("/" in sup or sup.endswith(".md")) else sup
+
+
+def check_supersede_cycle(entry: Entry, model: VaultModel) -> list:
+    """A `supersedes` chain that loops back on itself — A supersedes B
+    supersedes ... supersedes A — is a genuine contradiction: nothing can
+    both supersede and be superseded by its own lineage (auto-organization
+    part 3, task 7). Surfaced only, never auto-resolved — breaking a cycle
+    is an editorial call about which entry is actually the head."""
+    sup = entry.frontmatter.get("supersedes", "").strip()
+    if not sup:
+        return []
+    start_slug = entry.frontmatter.get("slug", "").strip() or entry.path.stem
+    visited = {start_slug}
+    cur = _supersede_target_slug(sup)
+    for _ in range(len(model.entries) + 1):  # bounded — never an infinite loop
+        if cur == start_slug:
+            return [Finding(
+                "supersede-cycle", "error", entry.rel,
+                f"`supersedes` chain starting here loops back to itself via `{cur}`",
+                "break the cycle — one entry in the chain has the wrong `supersedes` target",
+            )]
+        if cur in visited:
+            return []  # loops into a DIFFERENT cycle, not one this entry is part of
+        visited.add(cur)
+        target = model.by_slug.get(cur)
+        if target is None:
+            return []  # unresolved — check_supersede already flags this
+        nxt = target.frontmatter.get("supersedes", "").strip()
+        if not nxt:
+            return []  # chain ends cleanly
+        cur = _supersede_target_slug(nxt)
+    return []
+
+
+def check_supersede_fork(entry: Entry, model: VaultModel) -> list:
+    """Two or more DIFFERENT entries both claim `supersedes:` the same
+    target — which one is the real successor is an editorial call, not
+    something this check resolves. Reports once per forking entry (not
+    once per fork), matching every other check's per-entry contract."""
+    sup = entry.frontmatter.get("supersedes", "").strip()
+    if not sup:
+        return []
+    target_slug = _supersede_target_slug(sup)
+    claimants = [
+        e for e in model.entries
+        if e.frontmatter.get("supersedes", "").strip()
+        and _supersede_target_slug(e.frontmatter.get("supersedes", "").strip()) == target_slug
+    ]
+    if len(claimants) < 2:
+        return []
+    others = sorted(c.rel for c in claimants if c.rel != entry.rel)
+    return [Finding(
+        "supersede-fork", "warn", entry.rel,
+        f"also claimed as superseded by {', '.join(others)} — multiple entries supersede `{target_slug}`",
+        "keep exactly one successor and reconcile the others (merge, retarget, or remove the extra `supersedes`)",
+    )]
+
+
+def check_dangling_supersession_status(entry: Entry, model: VaultModel) -> list:
+    """`status: superseded` with no entry's `supersedes:` pointing here is
+    a status field with nothing backing it — the note claims to have been
+    replaced but the lineage that would say by what is missing. Surfaced
+    only; deciding the real lineage (or reverting the status) is an
+    editorial call, never auto-resolved."""
+    if entry.frontmatter.get("status", "").strip() != "superseded":
+        return []
+    slug = entry.frontmatter.get("slug", "").strip() or entry.path.stem
+    stem = entry.path.stem
+    for other in model.entries:
+        if other.rel == entry.rel:
+            continue
+        sup = other.frontmatter.get("supersedes", "").strip()
+        if sup and _supersede_target_slug(sup) in (slug, stem):
+            return []  # some entry's lineage explains this one's superseded status
+    return [Finding(
+        "dangling-supersession", "warn", entry.rel,
+        "`status: superseded` but no entry's `supersedes:` points here",
+        "add `supersedes: <successor>` on the entry that actually replaced this one, "
+        "or revert `status` if nothing did",
+    )]
+
+
+def check_kind_taxonomy(entry: Entry, model: VaultModel) -> list:
+    """`kind` isn't in the known-kinds registry (auto-organization part 3,
+    task 7). Reuses `kind_registry.is_known` directly rather than
+    reimplementing the registry check — narrowly scoped to just the
+    taxonomy question, not a duplicate of `check_kebab_case`'s
+    kebab-format check or `check_required_fields`'s presence check."""
+    kind = entry.frontmatter.get("kind", "").strip()
+    if kind and not is_known(kind):
+        return [Finding(
+            "kind-taxonomy", "warn", entry.rel,
+            f"`kind: {kind}` is not in the known-kinds registry",
+            "use a registered kind, or add this one to kind_registry.py's KNOWN_KINDS if it's a genuine addition",
+        )]
+    return []
+
+
 def check_arc_registry(entry: Entry, model: VaultModel) -> list:
     # arc: is optional (most entries carry none) — only checked when present.
     arc = entry.frontmatter.get("arc", "").strip()
@@ -455,6 +556,10 @@ CHECKS = (
     check_schema_drift,
     check_wikilinks,
     check_supersede,
+    check_supersede_cycle,
+    check_supersede_fork,
+    check_dangling_supersession_status,
+    check_kind_taxonomy,
     check_arc_registry,
 )
 

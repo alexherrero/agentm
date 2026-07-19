@@ -238,6 +238,87 @@ class TestChecks(unittest.TestCase):
             self.assertTrue(any(f.severity == "warn" for f in sup), [f.message for f in sup])
             self.assertFalse(any(f.severity == "error" for f in sup), [f.message for f in sup])
 
+    def test_supersede_cycle_detected(self):
+        with _Vault() as v:
+            fm_a = _clean("cycle-a") + ["supersedes: cycle-b"]
+            fm_b = _clean("cycle-b") + ["supersedes: cycle-a"]
+            _write(v, "personal/_always-load/cycle-a.md", fm_a)
+            _write(v, "personal/_always-load/cycle-b.md", fm_b)
+            _, findings = _lint(v)
+            cycle = [f for f in findings if f.check_id == "supersede-cycle"]
+            self.assertEqual(len(cycle), 2)  # reported from both members
+            self.assertTrue(all(f.severity == "error" for f in cycle))
+
+    def test_supersede_no_cycle_on_a_clean_chain(self):
+        with _Vault() as v:
+            _write(v, "personal/_always-load/head.md", _clean("head") + ["supersedes: mid"])
+            fm_mid = _clean("mid")
+            fm_mid[1] = "status: superseded"  # so the dangling-status check doesn't fire here
+            _write(v, "personal/_always-load/mid.md", fm_mid + ["supersedes: tail"])
+            fm_tail = _clean("tail")
+            fm_tail[1] = "status: superseded"
+            _write(v, "personal/_always-load/tail.md", fm_tail)
+            _, findings = _lint(v)
+            self.assertNotIn("supersede-cycle", _ids(findings))
+
+    def test_supersede_fork_two_entries_claim_the_same_target(self):
+        with _Vault() as v:
+            fm_old = _clean("forked-old")
+            fm_old[1] = "status: superseded"
+            _write(v, "personal/_always-load/forked-old.md", fm_old)
+            fm_a = _clean("forker-a") + ["supersedes: forked-old"]
+            fm_b = _clean("forker-b") + ["supersedes: forked-old"]
+            _write(v, "personal/_always-load/forker-a.md", fm_a)
+            _write(v, "personal/_always-load/forker-b.md", fm_b)
+            _, findings = _lint(v)
+            fork = [f for f in findings if f.check_id == "supersede-fork"]
+            self.assertEqual(len(fork), 2)  # reported from both claimants
+            self.assertTrue(all(f.severity == "warn" for f in fork))
+
+    def test_supersede_no_fork_with_a_single_claimant(self):
+        with _Vault() as v:
+            fm_old = _clean("single-old")
+            fm_old[1] = "status: superseded"
+            _write(v, "personal/_always-load/single-old.md", fm_old)
+            _write(v, "personal/_always-load/single-new.md", _clean("single-new") + ["supersedes: single-old"])
+            _, findings = _lint(v)
+            self.assertNotIn("supersede-fork", _ids(findings))
+
+    def test_dangling_supersession_status_with_no_backing_lineage(self):
+        with _Vault() as v:
+            fm = _clean("orphan-superseded")
+            fm[1] = "status: superseded"
+            _write(v, "personal/_always-load/orphan-superseded.md", fm)
+            _, findings = _lint(v)
+            dangling = [f for f in findings if f.check_id == "dangling-supersession"]
+            self.assertEqual(len(dangling), 1)
+            self.assertEqual(dangling[0].severity, "warn")
+
+    def test_no_dangling_supersession_status_when_lineage_exists(self):
+        with _Vault() as v:
+            fm_old = _clean("backed-old")
+            fm_old[1] = "status: superseded"
+            _write(v, "personal/_always-load/backed-old.md", fm_old)
+            _write(v, "personal/_always-load/backed-new.md", _clean("backed-new") + ["supersedes: backed-old"])
+            _, findings = _lint(v)
+            self.assertNotIn("dangling-supersession", _ids(findings))
+
+    def test_kind_taxonomy_unknown_kind_flagged(self):
+        with _Vault() as v:
+            fm = _clean("mystery")
+            fm[0] = "kind: totally-made-up-kind"
+            _write(v, "personal/_always-load/mystery.md", fm)
+            _, findings = _lint(v)
+            kt = [f for f in findings if f.check_id == "kind-taxonomy"]
+            self.assertEqual(len(kt), 1)
+            self.assertEqual(kt[0].severity, "warn")
+
+    def test_kind_taxonomy_known_kind_passes(self):
+        with _Vault() as v:
+            _write(v, "personal/_always-load/ordinary.md", _clean("ordinary"))  # kind: convention
+            _, findings = _lint(v)
+            self.assertNotIn("kind-taxonomy", _ids(findings))
+
     def _with_arc(self, slug: str, arc: str) -> list:
         # arc: sits between tags: and group: per save.FRONTMATTER_FIELD_ORDER
         # — inserted there so these tests don't also trip field-order.

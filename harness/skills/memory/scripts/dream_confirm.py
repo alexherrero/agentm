@@ -170,7 +170,21 @@ DEFAULT_REVERT_TTL_DAYS = 14.0
 # revert-log record_and_apply pre-image pair, same capped-batch bound as
 # `link_improvement`'s own backfill. No fresh ruling needed beyond the
 # one task 3 already has, since the risk profile is identical.
-AUTO_APPLY_STAGES = frozenset({"compression", "tidying", "link_improvement", "suffix_backlog_drain"})
+#
+# `lint` (auto-organization part 3, task 7 — the same PLAN-auto-org-
+# dedup-and-lint.md) joins the set for exactly ONE of its mutation kinds:
+# `wikilink_repair`, a mis-cased `[[Target]]` corrected to the single
+# case-insensitive match that actually exists — a string fact, not a
+# judgment call, the identical "no exception either direction" basis
+# `suffix_backlog_drain` already established. Every OTHER thing the lint
+# engine reports (orphans, supersede cycles/forks, dangling-supersession
+# status, unknown kinds, genuinely-broken links) is advisory-only —
+# `lint.run_lint()` never proposes a mutation for any of them, so this
+# stage joining `AUTO_APPLY_STAGES` can never auto-apply anything beyond
+# the one narrow repair kind its own proposals ever carry.
+AUTO_APPLY_STAGES = frozenset(
+    {"compression", "tidying", "link_improvement", "suffix_backlog_drain", "lint"}
+)
 
 # Standing batch bound for one auto-apply cycle (2026-07-11 cadence
 # review). The proving-window's temporary <=100 cap was sized for a short

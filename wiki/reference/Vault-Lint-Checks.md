@@ -9,15 +9,16 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | What runs the checks? | `harness/skills/memory/scripts/vault_lint.py` (the check registry + runner). |
 | How do I see findings? | `python3 harness/skills/memory/scripts/vault_lint.py --format text` (or `--format json`). |
 | Which entries get linted? | Only agent-shaped entries (core frontmatter trio `kind`+`status`+`created`); free-form personal notes are skipped (DC-3). |
-| Does the lint ever edit the vault? | No. Read-only / surface-only (DC-1). It reports + suggests; the operator applies. Auto-fix is deferred to V5-5. |
+| Does the lint ever edit the vault? | `vault_lint.py` itself never does — read-only / surface-only (DC-1), reports + suggests only. The composed `/memory lint` engine layered on top (`lint.py`, auto-organization part 3 task 7) auto-corrects exactly one narrow, safe case — a mis-cased wikilink with a single unambiguous target — revert-logged; every other finding, from either layer, stays surfaced-only by design. |
 | Where does the schema come from? | `save.py` — the lint imports its validators + `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` so the two can't drift (DC-2). |
 | How do I run a full audit report? | See [Audit the vault](Audit-The-Vault). |
 | How do I check vec-index freshness? | `python3 harness/skills/memory/scripts/vault_lint.py --check-freshness` (or `--format json`). |
+| How do I also get orphans, contradictions, and a quality score? | `/memory lint` (`harness/skills/memory/scripts/lint.py`) composes this catalog's `supersede-cycle` / `supersede-fork` / `dangling-supersession` / `kind-taxonomy` checks with `graph_snapshot.orphans()` and a per-note quality score, on demand or via the weekly dreaming cycle — see the memory skill's `/memory lint` section. |
 | Related pages | [Audit the vault](Audit-The-Vault) |
 
 ## Checks
 
-Nine checks run over every agent-shaped entry. Severities: `error` (off-spec — needs a fix) · `warn` (drift or smell — review). The lint exits `0` regardless; findings are advisory.
+14 checks run over every agent-shaped entry. Severities: `error` (off-spec — needs a fix) · `warn` (drift or smell — review). The lint exits `0` regardless; findings are advisory.
 
 | Check ID | Severity | What it checks | Suggested-fix shape |
 |---|---|---|---|
@@ -30,8 +31,13 @@ Nine checks run over every agent-shaped entry. Severities: `error` (off-spec —
 | `schema-drift` | warn | A frontmatter key is not in the locked schema (unknown key). | Remove the key, or confirm an intentional schema addition. |
 | `wikilink-resolution` | error | Every `[[link]]` in the body resolves to a file in the enclosing Obsidian vault (stem- or path-wise, vault-wide). | Fix the target, create the note, or remove the link. |
 | `supersede-integrity` | error / warn | `supersedes:` resolves to a real entry (error if dangling); the superseded entry is no longer `active` (warn if still `active`). | Fix the reference / set the target's status to `superseded`. |
+| `supersede-cycle` | error | A `supersedes:` chain loops back on itself (A supersedes B ... supersedes A). | Break the cycle — fix the `supersedes` target on one entry in the chain. |
+| `supersede-fork` | warn | Two or more entries both claim `supersedes:` the same target. | Keep exactly one successor; reconcile the others (merge, retarget, or drop the extra `supersedes`). |
+| `dangling-supersession` | warn | `status: superseded` but no entry's `supersedes:` points here. | Add `supersedes: <successor>` on the entry that replaced this one, or revert `status` if nothing did. |
+| `kind-taxonomy` | warn | `kind` is not in `kind_registry.py`'s `KNOWN_KINDS` registry. | Use a registered kind, or add this one to `KNOWN_KINDS` if it's a genuine addition. |
+| `arc-registry` | error | `arc` (when present — most entries carry none) is kebab-case and a recognized slug in `arc_registry.py`'s `KNOWN_ARCS`. | Rename to kebab-case, or add the slug to `KNOWN_ARCS`. |
 
-Anchor files (`_index`, `_summary`) are exempt from the kebab `slug` check. Bespoke shapes — the idea-incubator `_summary.md` + `Ideas.md` — are skipped entirely (DC-4); a dedicated lint for them is a follow-up. Scheduled / unattended runs are deferred to V6.
+Anchor files (`_index`, `_summary`) are exempt from the kebab `slug` check. Bespoke shapes — the idea-incubator `_summary.md` + `Ideas.md` — are skipped entirely (DC-4); a dedicated lint for them is a follow-up. Scheduled / unattended runs of this raw check suite are deferred to V6; the weekly *composed* run (orphans + quality score + the four contradiction/taxonomy checks above + the mis-cased-wikilink auto-repair) already ships today via `dream.py`'s `_stage_lint()` — see `/memory lint`.
 
 ## Vault-wide freshness check
 
@@ -47,3 +53,4 @@ It is also wired into `doctor`'s default-mode structural checks (item 7 in `harn
 ## Related
 
 - [Audit the vault](Audit-The-Vault) — the operator recipe that runs these checks and reads the report.
+- `harness/skills/memory/SKILL.md`'s `/memory lint` section — the composed engine (orphans, contradictions, quality score, mis-cased-wikilink auto-repair) built on top of this catalog.

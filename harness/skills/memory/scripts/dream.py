@@ -1026,6 +1026,56 @@ def _stage_suffix_backlog_drain(vault_path: Path, entries: list, loaded: dict) -
     return proposals
 
 
+# Contradiction check_ids (vault_lint.py, task 7) that count toward the
+# lint stage's own "contradiction" summary — distinct from ordinary
+# schema/wikilink findings.
+_LINT_CONTRADICTION_CHECK_IDS = frozenset(
+    {"supersede-cycle", "supersede-fork", "dangling-supersession"}
+)
+
+
+def _stage_lint(vault_path: Path) -> tuple:
+    """Returns `(proposals, stats)` (task 7). `proposals` wraps the lint
+    engine's auto-repairable mis-cased-wikilink fixes (`stage="lint"`,
+    `kind="wikilink_repair"`), one per entry with >=1 repair, carrying the
+    full raw-content mutation the same way every other stage's `Proposal`
+    does. `stats` is merged into `corpus_stats` (`lint_orphan_count`,
+    `lint_contradiction_count`, `lint_mean_quality_score`) for the digest
+    and task 8's meters.
+
+    Calls `lint.run_lint(vault_path)` — a genuinely standalone scan (the
+    identical engine `/memory lint` calls on demand), not threaded through
+    this module's own `entries`/`loaded` snapshot. The plan's own
+    verification requires the weekly stage and the on-demand CLI to match
+    exactly; sharing the identical code path end to end is simpler and
+    more trustworthy than keeping two independently-fed call sites in
+    sync. Findings (orphans, contradictions, broken links, kind-taxonomy
+    warnings, ...) are surfaced-only here — only the mis-cased-wikilink
+    repair ever mutates anything, matching the plan's "surfaced only,
+    never auto-resolved" rule for everything else the engine reports."""
+    import lint as lint_module  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+
+    report = lint_module.run_lint(vault_path)
+
+    proposals: list = []
+    for entry, _old_raw, new_raw in report.repairs:
+        proposals.append(Proposal(
+            stage="lint", kind="wikilink_repair",
+            paths=[entry.rel],
+            summary=f"{entry.rel} — auto-corrected mis-cased wikilink(s)",
+            mutations=[(entry.path, new_raw)],
+        ))
+
+    stats = {
+        "lint_orphan_count": len(report.orphans),
+        "lint_contradiction_count": sum(
+            1 for f in report.findings if f.check_id in _LINT_CONTRADICTION_CHECK_IDS
+        ),
+        "lint_mean_quality_score": report.mean_quality_score,
+    }
+    return proposals, stats
+
+
 # -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
@@ -1118,6 +1168,15 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
             f"({digest.corpus_stats['organically_linked_count']} of "
             f"{digest.corpus_stats['entry_count']} notes with ≥1 real, non-generated link) · "
             f"{digest.corpus_stats['generated_link_count']} generated link(s) (counted separately)."
+        )
+    # The lint engine (task 7) — same defensive .get() convention as the
+    # connectivity meter above, for the identical reason.
+    if "lint_orphan_count" in digest.corpus_stats:
+        lines.append(
+            f"Lint: {digest.corpus_stats['lint_orphan_count']} orphan(s), "
+            f"{digest.corpus_stats['lint_contradiction_count']} contradiction(s), "
+            f"mean quality score {digest.corpus_stats['lint_mean_quality_score']:.2f} "
+            "· full report via `/memory lint`."
         )
     if digest.inbox_triage_run is not None:
         t = digest.inbox_triage_run
@@ -1291,6 +1350,9 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(tidying_proposals)
     proposals.extend(_stage_link_improvement(vault_path, entries, loaded))
     proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
+    lint_proposals, lint_stats = _stage_lint(vault_path)
+    proposals.extend(lint_proposals)
+    corpus_stats.update(lint_stats)
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
