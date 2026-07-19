@@ -94,9 +94,16 @@ __all__ = [
     "cleanup_applied_batches",
     "AnomalyCheckResult",
     "check_tidying_anomaly",
+    "check_stage_anomaly",
     "ANOMALY_HISTORY_WINDOW",
     "ANOMALY_THRESHOLD_MULTIPLIER",
     "ANOMALY_MIN_HISTORY",
+    "SampledAuditResult",
+    "higher_tier_model_available",
+    "judge_applied_mutation",
+    "run_sampled_audit",
+    "SAMPLED_AUDIT_BATCH_CAP",
+    "SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD",
 ]
 
 DEFAULT_TTL_DAYS = 30.0
@@ -159,7 +166,32 @@ DEFAULT_REVERT_TTL_DAYS = 14.0
 # here uses, and `merge_related_slugs` is idempotent by construction (a
 # proposal re-applied against already-linked content is a captured no-op,
 # never a duplicate line).
-AUTO_APPLY_STAGES = frozenset({"compression", "tidying", "link_improvement"})
+# `suffix_backlog_drain` (auto-organization part 3, task 6 —
+# PLAN-auto-org-dedup-and-lint.md) joins the set on task 3's own,
+# already-approved basis for `inbox_collapse`: fingerprint-exact family
+# membership is a content-hash fact, not a judgment call, so it needs no
+# verdict to auto-apply. This stage is that same deterministic collapse
+# applied to the vault-wide legacy backlog outside the inbox instead of
+# the inbox pool task 3 covers — same mutation shape (mark copies
+# `superseded` + `supersedes:`, never delete, survivor untouched), same
+# revert-log record_and_apply pre-image pair, same capped-batch bound as
+# `link_improvement`'s own backfill. No fresh ruling needed beyond the
+# one task 3 already has, since the risk profile is identical.
+#
+# `lint` (auto-organization part 3, task 7 — the same PLAN-auto-org-
+# dedup-and-lint.md) joins the set for exactly ONE of its mutation kinds:
+# `wikilink_repair`, a mis-cased `[[Target]]` corrected to the single
+# case-insensitive match that actually exists — a string fact, not a
+# judgment call, the identical "no exception either direction" basis
+# `suffix_backlog_drain` already established. Every OTHER thing the lint
+# engine reports (orphans, supersede cycles/forks, dangling-supersession
+# status, unknown kinds, genuinely-broken links) is advisory-only —
+# `lint.run_lint()` never proposes a mutation for any of them, so this
+# stage joining `AUTO_APPLY_STAGES` can never auto-apply anything beyond
+# the one narrow repair kind its own proposals ever carry.
+AUTO_APPLY_STAGES = frozenset(
+    {"compression", "tidying", "link_improvement", "suffix_backlog_drain", "lint"}
+)
 
 # Standing batch bound for one auto-apply cycle (2026-07-11 cadence
 # review). The proving-window's temporary <=100 cap was sized for a short
@@ -435,7 +467,25 @@ def auto_apply_batch(
     Returns an `AutoAppliedBatch` describing exactly what applied (empty
     `items` if nothing qualified) -- always a real record, never `None`, so
     the digest and the auto-expired-batch log always have something
-    current to report, even on a zero-item cycle."""
+    current to report, even on a zero-item cycle.
+
+    Cross-stage same-path collision guard (adversarial review, auto-
+    organization part 3 task 6): two DIFFERENT auto-apply stages can each
+    independently propose a mutation against the same path in the same
+    `run_dream()` cycle -- e.g. tidying archive-moves a note the same
+    cycle suffix_backlog_drain proposes marking superseded. Both stages
+    compute their mutations against one frozen `loaded` snapshot with no
+    awareness of each other, so applying both blindly (the naive
+    `pending[:batch_cap]` loop this replaced) can resurrect a just-moved
+    file at its old path with stale, now-wrong content -- confirmed by a
+    reproduction that did exactly that. This loop tracks every path an
+    already-applied proposal in THIS batch has touched and skips (leaves
+    pending, never counted against `batch_cap`) any later proposal that
+    touches one of them; a skipped proposal's underlying condition is
+    re-evaluated fresh next cycle -- by then the earlier move has already
+    settled, so `_iter_entries`/the relevant stage scan either no longer
+    sees the path as a candidate (e.g. it moved into an excluded dir) or
+    proposes a fresh, correctly-based mutation against it."""
     now = now if now is not None else time.time()
     pending = [
         p for p in list_pending(vault_path, run_id, now=now)
@@ -444,8 +494,14 @@ def auto_apply_batch(
     pending.sort(key=lambda p: p.index)
 
     items: list = []
-    for p in pending[:batch_cap]:
+    touched_paths: set = set()
+    for p in pending:
+        if len(items) >= batch_cap:
+            break
+        if touched_paths.intersection(p.paths):
+            continue
         entry_id = confirm(vault_path, run_id, p.index, revert_log, now=now, lock_root=lock_root)
+        touched_paths.update(p.paths)
         items.append({
             "index": p.index,
             "stage": p.stage,
@@ -540,12 +596,12 @@ class AnomalyCheckResult:
     threshold: Optional[float]
 
 
-def _anomaly_history_path(vault_path: Path) -> Path:
-    return Path(vault_path) / "_meta" / "tidying-cycle-history.json"
+def _anomaly_history_path(vault_path: Path, stage: str) -> Path:
+    return Path(vault_path) / "_meta" / f"{stage}-cycle-history.json"
 
 
-def _load_anomaly_history(vault_path: Path) -> list:
-    path = _anomaly_history_path(vault_path)
+def _load_anomaly_history(vault_path: Path, stage: str) -> list:
+    path = _anomaly_history_path(vault_path, stage)
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
@@ -558,19 +614,24 @@ def _load_anomaly_history(vault_path: Path) -> list:
         return []
 
 
-def check_tidying_anomaly(vault_path: Path, current_count: int) -> AnomalyCheckResult:
-    """Compare `current_count` (this cycle's tidying-stage proposal count,
+def check_stage_anomaly(vault_path: Path, stage: str, current_count: int) -> AnomalyCheckResult:
+    """Compare `current_count` (this cycle's `stage`-stage proposal count,
     BEFORE any `batch_cap` truncation) against the trailing history of
-    recent normal cycles. Persists `current_count` into that history when
-    the check does NOT trip (a normal cycle, or a cold start with too
-    little history to judge yet) -- an anomalous count is never recorded,
-    so it can't poison the baseline for the next cycle's comparison.
+    recent normal cycles FOR THAT STAGE — a separate `_meta/<stage>-
+    cycle-history.json` sidecar per stage, so one stage's spike never
+    pollutes another's baseline (auto-organization part 3, task 9:
+    generalizes the part-1 tidying-only breaker to cover this part's own
+    `suffix_backlog_drain`/`lint` mutations too). Persists `current_count`
+    into that stage's own history when the check does NOT trip (a normal
+    cycle, or a cold start with too little history to judge yet) -- an
+    anomalous count is never recorded, so it can't poison the baseline
+    for the next cycle's comparison.
 
     A count of 0 never trips (nothing proposed is never anomalous) but
     still updates history, keeping "quiet cycles are normal" true of the
     baseline too.
     """
-    history = _load_anomaly_history(vault_path)
+    history = _load_anomaly_history(vault_path, stage)
 
     if current_count == 0 or len(history) < ANOMALY_MIN_HISTORY:
         baseline = (sum(history) / len(history)) if history else None
@@ -584,10 +645,159 @@ def check_tidying_anomaly(vault_path: Path, current_count: int) -> AnomalyCheckR
     if not tripped:
         history.append(current_count)
         history = history[-ANOMALY_HISTORY_WINDOW:]
-        atomic_write(_anomaly_history_path(vault_path), json.dumps(history))
+        atomic_write(_anomaly_history_path(vault_path, stage), json.dumps(history))
 
     return AnomalyCheckResult(
         tripped=tripped, current_count=current_count, baseline=baseline, threshold=threshold,
+    )
+
+
+def check_tidying_anomaly(vault_path: Path, current_count: int) -> AnomalyCheckResult:
+    """Auto-organization part 1's original tidying-specific anomaly
+    breaker -- now a thin `stage="tidying"` wrapper over the generalized
+    `check_stage_anomaly` (task 9), preserving its exact history-file
+    path (`_meta/tidying-cycle-history.json`) and behavior byte-for-byte
+    for every existing call site and test."""
+    return check_stage_anomaly(vault_path, "tidying", current_count)
+
+
+# -----------------------------------------------------------------------------
+# Sampled higher-tier audit (task 9, part 3). Each cycle, a capped batch of
+# this cycle's applied links/merges gets a higher-tier-model agree/disagree
+# verdict; the disagreement rate is itself a meter, and past a threshold the
+# ambiguous bands narrow toward deterministic-only automatically (raising
+# write_time_linker's own `LINK_SIMILARITY_FLOOR` via a persisted override
+# -- see `write_time_linker.link_similarity_floor`'s own docstring), flagging
+# the console.
+#
+# `higher_tier_model_available()` is always False today, for the identical
+# reason `dream.cheap_model_tier_available()` is: research before this task
+# confirmed no synchronous "ask a model X, get a verdict back" primitive
+# exists anywhere in this codebase (same finding, same seam shape, same
+# fail-closed contract -- never guess without the tier). This means every
+# REAL cycle samples nothing, records no disagreement, and never narrows --
+# a named, tracked gap exactly like every other consumer of that seam, not a
+# silently-dropped feature. Tests exercise the sampling/disagreement-rate/
+# narrowing logic end-to-end by patching `higher_tier_model_available` to
+# True and providing a verdict, the same convention `dream.py`'s
+# `judge_fuzzy_merge` tests already established.
+# -----------------------------------------------------------------------------
+
+SAMPLED_AUDIT_BATCH_CAP = 25  # matches every other batched-check precedent in this design
+SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD = 0.2  # >20% disagreement narrows the band
+
+
+@dataclass
+class SampledAuditResult:
+    """`sampled_count` is 0 whenever the tier is unavailable OR there was
+    nothing eligible to sample -- `disagreement_rate` is `None` in that
+    case (there is no rate over zero samples, not a `0.0` that would read
+    as "everything agreed"). `narrowed=True` means this run's rate
+    crossed the threshold and a narrowing directive was written."""
+
+    sampled_count: int
+    agree_count: int
+    disagree_count: int
+    disagreement_rate: Optional[float]
+    narrowed: bool
+
+
+def higher_tier_model_available() -> bool:
+    """Whether a synchronous higher-tier-model agree/disagree verdict is
+    available for the sampled audit's sample. Always False today -- see
+    this section's own header comment for the full reasoning (identical
+    seam shape to `dream.cheap_model_tier_available()`)."""
+    return False
+
+
+def judge_applied_mutation(summary: str) -> str:
+    """Ask the higher tier: does this applied link/merge look correct?
+    Returns "agree" or "disagree". Raises if ever called -- unreachable
+    until `higher_tier_model_available()` is real (mirrors `dream.py`'s
+    `judge_fuzzy_merge`'s own unreachable-until-shipped contract)."""
+    raise RuntimeError(
+        "judge_applied_mutation called with no higher-tier-model primitive "
+        "available -- sampled-audit verdicts are unreachable until the tier ships"
+    )
+
+
+def _sampled_audit_history_path(vault_path: Path) -> Path:
+    return Path(vault_path) / "_meta" / "sampled-audit-history.json"
+
+
+def _load_sampled_audit_history(vault_path: Path) -> list:
+    try:
+        data = json.loads(_sampled_audit_history_path(vault_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    try:
+        return [float(x) for x in data]
+    except (TypeError, ValueError):
+        return []
+
+
+def _record_sampled_audit_rate(vault_path: Path, rate: float) -> None:
+    history = _load_sampled_audit_history(vault_path)
+    history.append(rate)
+    history = history[-ANOMALY_HISTORY_WINDOW:]  # same trailing-window size as the anomaly breaker
+    atomic_write(_sampled_audit_history_path(vault_path), json.dumps(history))
+
+
+def run_sampled_audit(vault_path: Path, applied_items: list) -> SampledAuditResult:
+    """Samples up to `SAMPLED_AUDIT_BATCH_CAP` of `applied_items` (the
+    cycle's applied link/merge mutations -- the caller filters to
+    whichever stages count as "links/merges"; see `dream.py`'s own call
+    site), in deterministic order (sorted by `index`, matching every
+    other capped-batch stage's own convention -- draining coverage over
+    successive cycles, not one true-random draw per run). Asks the
+    higher tier for a verdict on each; on a disagreement rate above
+    `SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD`, narrows `write_time_linker`'s
+    similarity floor via a persisted override and returns `narrowed=True`.
+
+    Records this cycle's rate into a trailing history sidecar regardless
+    of whether the tier was available (an unavailable-tier cycle simply
+    isn't recorded at all -- `sampled_count == 0` means nothing to record,
+    not a `0.0` rate)."""
+    sample = sorted(applied_items, key=lambda item: item.get("index", 0))[:SAMPLED_AUDIT_BATCH_CAP]
+
+    if not sample or not higher_tier_model_available():
+        return SampledAuditResult(
+            sampled_count=0, agree_count=0, disagree_count=0,
+            disagreement_rate=None, narrowed=False,
+        )
+
+    agree = 0
+    disagree = 0
+    for item in sample:
+        verdict = judge_applied_mutation(item.get("summary", ""))
+        if verdict == "agree":
+            agree += 1
+        else:
+            disagree += 1
+
+    rate = disagree / len(sample)
+    _record_sampled_audit_rate(vault_path, rate)
+
+    narrowed = False
+    if rate > SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD:
+        import write_time_linker  # noqa: E402  (lazy -- same skill dir)
+
+        current_floor = write_time_linker.link_similarity_floor(vault_path)
+        new_floor = min(
+            current_floor + write_time_linker._LINK_BAND_NARROWING_STEP,
+            write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD - write_time_linker._LINK_BAND_NARROWING_STEP,
+        )
+        atomic_write(
+            Path(vault_path) / write_time_linker._LINK_BAND_NARROWING_REL,
+            json.dumps({"floor_override": new_floor}),
+        )
+        narrowed = True
+
+    return SampledAuditResult(
+        sampled_count=len(sample), agree_count=agree, disagree_count=disagree,
+        disagreement_rate=rate, narrowed=narrowed,
     )
 
 

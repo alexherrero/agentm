@@ -49,7 +49,7 @@ Add columns to the built `entry_meta` by **additive, idempotent migration** (an 
 | `kind` · `status` · `slug` · `project` · `created` | the entry's frontmatter |
 | `tags` (JSON array) | frontmatter |
 | `group_name` | frontmatter `group` (renamed — `group` is a SQL keyword) |
-| `fingerprint` | the AG-added join key for the diagnostics recall ladder |
+| `fingerprint` | auto-computed by `save_entry()` via `fingerprint.py`'s `compute_fingerprint()` — a sha256 hash over the normalized body — for every new entry; an explicit caller value (the diagnostics ladder's semantic incident key) overrides |
 
 Row id stays the join to `entries`. The `rebuild_index` contract extends to repopulate these columns from frontmatter on a `full-sync`, alongside the embeddings; its `CREATE TABLE entry_meta` must carry the new columns too, or a rebuild would drop them. The design declares which columns are indexed (`kind`, `project`, `status` carry a `CREATE INDEX` for the filter path). The built table starts at four columns, so the migration is purely additive.
 
@@ -72,7 +72,7 @@ Add a `--filter` path to `recall.py query`: an expression like `tag=security AND
 - **`session-cost`** — **vestigial (delivered 2026-07-07).** Reserved for [token-audit](https://github.com/alexherrero/crickets/wiki/crickets-token-audit)'s session-cost capture; the Autonomy arc's [observability design](agentm-autonomy.md) has now retargeted that capture off the vault onto a device-local telemetry ledger (`PLAN-observability-ledger`, both repo halves merged) — nothing writes this kind anymore. The vault entries already written stay as historical record; no data migration was needed.
 - **`failure-incident`** — the kind the [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics) recall ladder writes. Its write carries a **mandatory privacy scrub**, because failure context is untrusted and PII-bearing — a persistence-boundary guard the write cannot skip.
 
-The **`fingerprint`** is a real column — a join/lookup key the diagnostics ladder matches on.
+The **`fingerprint`** is a real column, and as of `PLAN-auto-org-dedup-and-lint` task 1 (2026-07-18, auto-organization part 3) it has a universal writer, not just a lookup key the diagnostics ladder happens to populate: `save_entry()` auto-computes a stable sha256 hash over the note's normalized body (`fingerprint.py`'s `compute_fingerprint()` / `normalize_body()` — CRLF→LF, per-line strip, whitespace-run collapse, blank-line drop, casefold; punctuation and wikilinks stay significant, deliberately favoring false negatives over false positives) for every newly written note. An explicit caller-supplied value still wins, so the diagnostics recall ladder's semantic incident join key keeps its meaning unchanged; for a `failure-incident` write, the mandatory PII scrub runs before the hash, so the fingerprint reflects the scrubbed body actually persisted. Best-effort — a fingerprint failure never blocks the write.
 
 ### The DerivedMaintenance relationship
 
@@ -118,7 +118,7 @@ The [memory system](agentm-memory-system) reserves a `DerivedMaintenance` extens
 ## References
 
 - **Lifted from:** the queued V6 plan (`_harness/ROADMAP-AgentMemoryV6.md` — the V6-11 metadata-table spec)
-- **Extends (built):** `harness/skills/memory/scripts/vec_index.py` (the four-column `entry_meta` + `entries` + drain + rebuild) · `recall.py` (the five-step loop + the `sim × 0.85 + keyword × 0.05` merge)
+- **Extends (built):** `harness/skills/memory/scripts/vec_index.py` (the four-column `entry_meta` + `entries` + drain + rebuild) · `recall.py` (the five-step loop + the `sim × 0.85 + keyword × 0.05` merge) · `fingerprint.py` (the `fingerprint` column's universal writer — `compute_fingerprint()` / `normalize_body()`, wired into `save_entry()`; landed via `PLAN-auto-org-dedup-and-lint` task 1)
 - **Composes:** [memory system](agentm-memory-system) (the recall loop + tiers + the local-index tier + the `DerivedMaintenance` reservation) · [storage seam](memory-storage-seam) (the read/write verbs + ownership tiers) · [privacy](https://github.com/alexherrero/crickets/wiki/crickets-privacy) (the failure-incident scrub)
 - **Consumers:** [diagnostics](https://github.com/alexherrero/crickets/wiki/crickets-diagnostics) (the `failure-incident` + `fingerprint` recall ladder) · the [runner](agentm-runner) health-check report. `session-cost` is vestigial — see the kinds section above.
 - **Up:** [agentm HLD](agentm-hld) §Memory · [memory system](agentm-memory-system) (the V6 indexed-recall trajectory)
@@ -126,6 +126,8 @@ The [memory system](agentm-memory-system) reserves a `DerivedMaintenance` extens
 ## Amendment log
 
 *Newest first. Collapses to one ≤2-paragraph entry at finalization; git holds the granular history.*
+
+**2026-07-18 — `fingerprint` gets a universal writer (auto-organization part 3, `PLAN-auto-org-dedup-and-lint` task 1).** The column existed since the 2026-07-06 build but had no writer of its own — it stayed `NULL` unless a caller passed one explicitly, so the schema table and the kinds section above described it as a bare lookup key the diagnostics ladder happened to populate. Task 1 of the dedup-and-lint plan adds `harness/skills/memory/scripts/fingerprint.py` (`compute_fingerprint()` / `normalize_body()` — a sha256 hash over the normalized body, conservative by design: CRLF/whitespace/case folded, punctuation and wikilinks left significant, favoring false negatives) and wires it into `save_entry()`, so every newly written note now gets a real content-hash fingerprint automatically. An explicit caller-supplied value still wins — the diagnostics ladder's semantic incident join key is unchanged — and for `failure-incident` the mandatory PII scrub runs before the hash, so the fingerprint reflects the scrubbed body actually written; best-effort, a fingerprint failure never blocks the write. This closes the "real column, no writer" gap described above; the column is no longer aspirational for ordinary entries. *Not yet built:* the write-time exact-duplicate dedup guard and cluster-aware collapse this fingerprint feeds ([auto-organization](agentm-auto-organization)'s dedup section) — those are later tasks in the same plan.
 
 **2026-07-07 — `session-cost` retarget delivered (AA3, `PLAN-observability-ledger` agentm half).** Flips the AA2 entry below from "stops being written once the plan lands" to as-built: both repo halves have merged (crickets' writer/reader repoint, agentm's runner-hosted SQLite aggregator over the resulting event log), so `session-cost` is now confirmed vestigial rather than merely scheduled to become so. Left as a reserved value (no data migration needed — the vault entries already written stay as historical record) rather than removed from the taxonomy.
 

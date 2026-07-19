@@ -165,8 +165,16 @@ class SameShapeAsManualRunTests(unittest.TestCase):
             self.assertEqual(outcome.exit_code, 0)
 
             staging_runs = list((job_vault / "_dream-staging").iterdir())
-            self.assertEqual(len(staging_runs), 1)
-            job_digest_text = (staging_runs[0] / "digest.md").read_text(encoding="utf-8")
+            # A weekly cycle now stages TWO runs -- dream's own plus the
+            # folded inbox-triage sub-run (auto-org part 3 task 4). This
+            # test's intent is the DREAM digest's shape parity; select it
+            # by its own header rather than assuming it's alone.
+            dream_runs = [
+                d for d in staging_runs
+                if (d / "digest.md").read_text(encoding="utf-8").startswith("# Dream digest")
+            ]
+            self.assertEqual(len(dream_runs), 1)
+            job_digest_text = (dream_runs[0] / "digest.md").read_text(encoding="utf-8")
             job_shape = _shape(job_digest_text)
 
             self.assertEqual(job_shape, manual_shape)

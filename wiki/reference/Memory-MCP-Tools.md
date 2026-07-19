@@ -7,7 +7,7 @@
 |---|---|---|---|
 | `memory_search` | `query: str` | `scope`, `project`, `kind`, `limit`, `include_deleted`, `cursor` | `{results: [...], total, cursor}` |
 | `memory_append` | `content: str`, `kind: str` | `project`, `title`, `tags`, `idempotency_key` | `{id, slug, deduplicated}` |
-| `memory_capture` | `content: str` | `kind`, `title`, `tags`, `instructions`, `source_url` | `{success: true, id, slug}` or `{success: false, error}` |
+| `memory_capture` | `content: str` | `kind`, `title`, `tags`, `instructions`, `source_url` | `{success: true, id, slug, deduplicated}` or `{success: false, error}` |
 | `memory_forget` | `id: str` | `reason` | `{id, status: "deleted", already_deleted}` |
 
 > [!NOTE]
@@ -54,6 +54,8 @@ You can write a new memory entry. This operation is idempotent on `idempotency_k
 
 You might provide an `idempotency_key` that already exists. In this case, the server returns the existing entry with `deduplicated: true`. It does not write a second copy. You will not see HTTP-status branching in the tool itself. The dedup hit is just a flag on the normal return shape. It is not a distinct 200-vs-409 response.
 
+A second, independent mechanism can also set `deduplicated: true` — even when you pass no `idempotency_key` at all. `save_entry` runs a write-time content-fingerprint check: an exact hash of the entry body against the vault's existing notes. An exact match reinforces that note instead of writing a new one — its `occurrences` count and `updated` stamp bump; no new file appears. On this path the returned `slug` is the **existing** note's real slug, not the one your `title` / `content` would have generated. This check is exact-fingerprint-only. No near-duplicate heuristic runs synchronously on this path — a near-match is left for the weekly cluster pass instead. It also only reinforces a note whose `status` is `active`; an expired, deleted, superseded, or curated always-load note is never a reinforce target, and your write proceeds normally against those.
+
 ---
 
 ## `memory_capture`
@@ -73,7 +75,9 @@ There is no `project` or destination parameter. `memory_capture` never chooses i
 
 `instructions` is a security boundary. The server stores only the string you pass in this call's own `instructions` argument, verbatim. It never parses or extracts an instruction out of `content`. A fetched article's body, or a pasted link's page text, is untrusted data — a phrase inside it that looks like an instruction is inert. This is a locked, adversarially-tested invariant of the capture design, not an incidental behavior.
 
-**Returns:** `{success: true, id, slug}` on success. `{success: false, error}` on failure. A capture is never silently dropped — the server always returns an explicit outcome, and a write failure surfaces as `error` rather than an exception or a partial result.
+**Returns:** `{success: true, id, slug, deduplicated}` on success. `{success: false, error}` on failure. A capture is never silently dropped — the server always returns an explicit outcome, and a write failure surfaces as `error` rather than an exception or a partial result.
+
+`deduplicated: true` means the same write-time content-fingerprint check `memory_append` uses (see above) matched an existing, not-yet-triaged inbox candidate and reinforced it instead of staging a new one. The match is refused — and a fresh candidate stages normally — when your capture carries a `source_url` or `instructions` value the matched candidate lacks, so a link resend's ingest-sweep trigger is never silently dropped into a plain-text duplicate.
 
 ---
 
@@ -108,4 +112,4 @@ The server **never** unlinks the backing file. It flips `status → deleted`. It
 | 403 | Origin validation failed (DNS-rebinding defense — do not set `Origin:` in host config) |
 | `FileNotFoundError` (`memory_forget`) | Memory ID does not exist — this is a plain Python exception, not a distinguished HTTP 404; no status-code mapping exists in the source for this case. |
 
-The tool code lacks an idempotency-key-reuse-with-different-content check anywhere. `memory_append` dedupes purely on the idempotency-key tag matching. It ignores whether the new `content` differs from what is already stored. You will not find a 409 code path for this.
+The tool code lacks an idempotency-key-reuse-with-different-content check anywhere. `memory_append` dedupes purely on the idempotency-key tag matching. It ignores whether the new `content` differs from what is already stored. You will not find a 409 code path for this. This gap is specific to the `idempotency_key` path — the separate write-time content-fingerprint guard both tools also run (see above) decides purely from an exact hash of the body itself, so it can never reinforce a note whose content actually differs.

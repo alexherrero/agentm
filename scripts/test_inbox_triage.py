@@ -47,6 +47,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -82,6 +83,20 @@ _INBOX_TEMPLATE = (
     "---\n\n"
     "{body}\n"
 )
+
+
+class _ConfidentMergeVerdict:
+    def __enter__(self):
+        self._p1 = mock.patch.object(it.dream, "cheap_model_tier_available", return_value=True)
+        self._p2 = mock.patch.object(it, "judge_fuzzy_merge", return_value="yes")
+        self._p1.__enter__()
+        self._p2.__enter__()
+        return self
+
+    def __exit__(self, *exc):
+        self._p2.__exit__(*exc)
+        self._p1.__exit__(*exc)
+        return False
 
 
 class _InboxTriageTestBase(unittest.TestCase):
@@ -165,9 +180,10 @@ class BacklogAutoAppliesByDefaultTests(_InboxTriageTestBase):
         self._write_inbox("d", body="A completely unrelated single hunch.")
 
         now0 = time.time()
-        digest, batch = it.run_inbox_triage_and_auto_apply(
-            self.vault, now=now0, revert_log=self.revert_log, lock_root=self.lock_root,
-        )
+        with _ConfidentMergeVerdict():
+            digest, batch = it.run_inbox_triage_and_auto_apply(
+                self.vault, now=now0, revert_log=self.revert_log, lock_root=self.lock_root,
+            )
 
         self.assertGreaterEqual(len(digest.proposals), 3)
         self.assertEqual(
@@ -231,9 +247,10 @@ class PostCutoverAutoApplyTests(_InboxTriageTestBase):
         )
 
         now1 = now0 + (200 * 86400)  # 200 days later -- past the 90d default TTL
-        digest, batch = it.run_inbox_triage_and_auto_apply(
-            self.vault, now=now1, revert_log=self.revert_log, lock_root=self.lock_root,
-        )
+        with _ConfidentMergeVerdict():
+            digest, batch = it.run_inbox_triage_and_auto_apply(
+                self.vault, now=now1, revert_log=self.revert_log, lock_root=self.lock_root,
+            )
 
         by_stage = {p.stage for p in digest.proposals}
         self.assertIn(it.AUTO_APPLY_ELIGIBLE_STAGE, by_stage)
@@ -332,13 +349,26 @@ class PromoteReusesCanonicalConventionTests(_InboxTriageTestBase):
 # -----------------------------------------------------------------------------
 
 class MergeReusesDedupLogicTests(_InboxTriageTestBase):
-    def test_near_duplicate_pair_proposes_merge_at_dream_similarity_threshold(self) -> None:
+    def test_near_duplicate_pair_detected_at_dream_similarity_threshold(self) -> None:
+        # Same detection intent as ever (dream's difflib threshold finds
+        # the pair) -- but under the verdict-gated contract (auto-org part
+        # 3 task 3, the plan's Locked design call) an UNVERDICTED fuzzy
+        # pair routes to needs-your-eye instead of an auto-applied merge.
         self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
         self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
         digest = it.run_inbox_triage(self.vault, now=time.time())
         merges = [p for p in digest.proposals if p.stage == it.MERGE_STAGE]
-        self.assertEqual(len(merges), 1)
-        self.assertEqual(set(Path(p).name for p in merges[0].paths), {"a.md", "b.md"})
+        self.assertEqual(merges, [])
+        self.assertEqual(len(digest.needs_your_eye), 1)
+        self.assertEqual(
+            set(Path(p).name for p in digest.needs_your_eye[0]["paths"]), {"a.md", "b.md"}
+        )
+        # With a confident verdict, the same still-untriaged pair (nothing
+        # was applied above) merges exactly as before.
+        with _ConfidentMergeVerdict():
+            digest2 = it.run_inbox_triage(self.vault, now=time.time())
+        merges2 = [p for p in digest2.proposals if p.stage == it.MERGE_STAGE]
+        self.assertEqual(len(merges2), 1)
 
     def test_dissimilar_entries_are_never_proposed_for_merge(self) -> None:
         self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
@@ -374,7 +404,11 @@ class MergeReusesDedupLogicTests(_InboxTriageTestBase):
         direct = dream._stage_dedup(entries, loaded)
         self.assertEqual(len(direct), 1)
 
-        digest = it.run_inbox_triage(self.vault, now=time.time())
+        # Gate open (confident verdict) so the merge disposition
+        # materializes -- this test's intent is the mutation REUSE, not
+        # the verdict gate.
+        with _ConfidentMergeVerdict():
+            digest = it.run_inbox_triage(self.vault, now=time.time())
         merges = [p for p in digest.proposals if p.stage == it.MERGE_STAGE]
         self.assertEqual(len(merges), 1)
         self.assertEqual(merges[0].mutations, direct[0].mutations)
@@ -408,9 +442,10 @@ class BacklogPromoteAndMergeAutoApplyTests(_InboxTriageTestBase):
         # No `created` field on either side of the pair.
         self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
         self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
-        digest, batch = it.run_inbox_triage_and_auto_apply(
-            self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
-        )
+        with _ConfidentMergeVerdict():
+            digest, batch = it.run_inbox_triage_and_auto_apply(
+                self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
+            )
         merges = [p for p in digest.proposals if p.stage == it.MERGE_STAGE]
         self.assertEqual(len(merges), 1)
         self.assertEqual(len(batch.items), 1, "a backlog-shaped merge pair must auto-apply, no confirm call")
@@ -654,3 +689,235 @@ class ManualCliPathsTests(_InboxTriageTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# -----------------------------------------------------------------------------
+# Cluster-aware dedup (auto-org part 3, task 3): fingerprint-exact families
+# collapse deterministically; fuzzy merges are verdict-gated; ambiguous
+# pairs land on needs-your-eye.
+# -----------------------------------------------------------------------------
+
+class ClusterAwareDedupTests(_InboxTriageTestBase):
+    def test_exact_family_of_four_collapses_to_one(self) -> None:
+        # Formatting variants of one body -- identical after normalize_body,
+        # however deep the suffix family goes.
+        base = "The same insight captured four times."
+        self._write_inbox("insight", created="2026-07-01T00:00:00+00:00", body=base)
+        self._write_inbox("insight-1", created="2026-07-02T00:00:00+00:00", body=f"  {base}  ")
+        self._write_inbox("insight-2", created="2026-07-03T00:00:00+00:00", body=base.upper())
+        self._write_inbox("insight-3", created="2026-07-04T00:00:00+00:00", body=f"{base}\n\n")
+
+        digest, batch = it.run_inbox_triage_and_auto_apply(
+            self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        collapses = [p for p in digest.proposals if p.stage == it.COLLAPSE_STAGE]
+        self.assertEqual(len(collapses), 1)
+        self.assertEqual(len(collapses[0].paths), 4)
+        # Canonical survivor = the earliest by `created`.
+        self.assertEqual(Path(collapses[0].paths[0]).name, "insight.md")
+        # Auto-applied without a confirm call, one disposition for the family.
+        self.assertIn(it.COLLAPSE_STAGE, {item["stage"] for item in batch.items})
+        # Copies: superseded, marked -- and STILL PRESENT ON DISK.
+        for copy_name in ("insight-1.md", "insight-2.md", "insight-3.md"):
+            copy = self._inbox_dir() / copy_name
+            self.assertTrue(copy.exists(), f"{copy_name} must be marked, never deleted")
+            self.assertEqual(self._status(copy), "superseded")
+            self.assertIn("supersedes:", copy.read_text(encoding="utf-8"))
+        # Survivor: untouched content, still status inbox (its own
+        # disposition comes on a later cycle like any live candidate).
+        survivor = self._inbox_dir() / "insight.md"
+        self.assertEqual(self._status(survivor), "inbox")
+        self.assertIn(base, survivor.read_text(encoding="utf-8"))
+
+    def test_superseded_copies_enter_the_tidying_lanes_shape(self) -> None:
+        # The collapse marks copies `status: superseded` -- the same status
+        # dream's own dedup mutation writes, which part 1's tidying lanes
+        # already treat as a normal aged-entry input. Assert the exact
+        # frontmatter shape those lanes key on.
+        base = "A duplicated observation."
+        self._write_inbox("obs", created="2026-07-01T00:00:00+00:00", body=base)
+        self._write_inbox("obs-1", created="2026-07-02T00:00:00+00:00", body=f"{base} ")
+        with _ConfidentMergeVerdict():  # gate irrelevant for exact families; belt-and-suspenders
+            digest, _batch = it.run_inbox_triage_and_auto_apply(
+                self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
+            )
+        copy_raw = (self._inbox_dir() / "obs-1.md").read_text(encoding="utf-8")
+        self.assertIn("status: superseded", copy_raw)
+        self.assertIn(f"supersedes: {self._inbox_dir() / 'obs.md'}", copy_raw)
+
+    def test_fuzzy_pair_confident_yes_verdict_collapses(self) -> None:
+        self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
+        self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
+        with _ConfidentMergeVerdict():
+            digest, batch = it.run_inbox_triage_and_auto_apply(
+                self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
+            )
+        self.assertEqual(len([p for p in digest.proposals if p.stage == it.MERGE_STAGE]), 1)
+        self.assertEqual(digest.needs_your_eye, [])
+        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "superseded")
+
+    def test_fuzzy_pair_unsure_verdict_lands_on_needs_your_eye(self) -> None:
+        self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
+        self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
+        with mock.patch.object(it.dream, "cheap_model_tier_available", return_value=True), \
+             mock.patch.object(it, "judge_fuzzy_merge", return_value="unsure"):
+            digest, batch = it.run_inbox_triage_and_auto_apply(
+                self.vault, now=time.time(), revert_log=self.revert_log, lock_root=self.lock_root,
+            )
+        self.assertEqual([p for p in digest.proposals if p.stage == it.MERGE_STAGE], [])
+        self.assertEqual(len(digest.needs_your_eye), 1)
+        self.assertIn("unsure", digest.needs_your_eye[0]["reason"])
+        # Both notes untouched, still inbox.
+        self.assertEqual(self._status(self._inbox_dir() / "a.md"), "inbox")
+        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "inbox")
+
+    def test_fuzzy_pair_confident_no_verdict_keeps_both(self) -> None:
+        self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
+        self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
+        with mock.patch.object(it.dream, "cheap_model_tier_available", return_value=True), \
+             mock.patch.object(it, "judge_fuzzy_merge", return_value="no"):
+            digest = it.run_inbox_triage(self.vault, now=time.time())
+        self.assertEqual([p for p in digest.proposals if p.stage == it.MERGE_STAGE], [])
+        self.assertEqual(digest.needs_your_eye, [])
+
+    def test_tier_unavailable_routes_to_needs_your_eye_no_judge_call(self) -> None:
+        # The plan's fail-closed rule with a call-count check: the judge is
+        # NEVER invoked when the tier is unavailable.
+        self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
+        self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
+        with mock.patch.object(it, "judge_fuzzy_merge") as judge_spy:
+            digest = it.run_inbox_triage(self.vault, now=time.time())
+        judge_spy.assert_not_called()
+        self.assertEqual(len(digest.needs_your_eye), 1)
+
+    def test_needs_your_eye_pair_exempt_from_same_run_expiry(self) -> None:
+        # An ambiguous pair past the TTL must NOT expire in the very run
+        # that flagged it.
+        now0 = time.time()
+        old = "2026-01-01T00:00:00+00:00"
+        self._write_inbox("a", created=old, body="The quick brown fox jumps over the lazy dog today.")
+        self._write_inbox("b", created=old, body="The quick brown fox jumps over the lazy dog today!")
+        digest, batch = it.run_inbox_triage_and_auto_apply(
+            self.vault, now=now0, revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        self.assertEqual(len(digest.needs_your_eye), 1)
+        self.assertEqual(self._status(self._inbox_dir() / "a.md"), "inbox")
+        self.assertEqual(self._status(self._inbox_dir() / "b.md"), "inbox")
+
+    def test_needs_your_eye_state_file_written_and_cleared(self) -> None:
+        self._write_inbox("a", body="The quick brown fox jumps over the lazy dog today.")
+        self._write_inbox("b", body="The quick brown fox jumps over the lazy dog today!")
+        it.run_inbox_triage(self.vault, now=time.time())
+        state_path = it._needs_your_eye_path(self.vault)
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(len(payload["items"]), 1)
+
+        # Operator resolves it (edits one note apart) -- next cycle's
+        # recompute clears the list.
+        b = self._inbox_dir() / "b.md"
+        b.write_text(
+            b.read_text(encoding="utf-8").replace(
+                "The quick brown fox jumps over the lazy dog today!",
+                "A completely rewritten, unrelated thought.",
+            ),
+            encoding="utf-8",
+        )
+        it.run_inbox_triage(self.vault, now=time.time())
+        payload2 = json.loads(state_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload2["items"], [])
+
+
+# -----------------------------------------------------------------------------
+# Inbox triage folds into the weekly dreaming cycle (auto-org part 3, task 4)
+# -----------------------------------------------------------------------------
+
+class TriageFoldsIntoDreamingTests(_InboxTriageTestBase):
+    def test_weekly_dreaming_cycle_processes_inbox_without_explicit_invocation(self) -> None:
+        import dream
+
+        # An exact suffix family in the inbox -- nothing else invokes
+        # /memory inbox; the weekly cycle alone must collapse it.
+        base = "One insight, captured twice."
+        self._write_inbox("dup", created="2026-07-01T00:00:00+00:00", body=base)
+        self._write_inbox("dup-1", created="2026-07-02T00:00:00+00:00", body=f"  {base}")
+
+        digest, _batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="weekly-1", revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+
+        self.assertIsNotNone(digest.inbox_triage_run)
+        self.assertGreaterEqual(digest.inbox_triage_run["auto_applied"], 1)
+        self.assertEqual(self._status(self._inbox_dir() / "dup-1.md"), "superseded")
+        self.assertEqual(self._status(self._inbox_dir() / "dup.md"), "inbox")
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("Inbox triage (folded into this cycle)", digest_text)
+
+    def test_on_demand_cli_path_produces_same_disposition_on_same_fixture(self) -> None:
+        import dream
+
+        base = "One insight, captured twice."
+
+        # Fixture A: processed by the weekly dreaming cycle.
+        self._write_inbox("dup", created="2026-07-01T00:00:00+00:00", body=base)
+        self._write_inbox("dup-1", created="2026-07-02T00:00:00+00:00", body=f"  {base}")
+        dream.run_dream_and_auto_apply(
+            self.vault, run_id="weekly-2", revert_log=self.revert_log, lock_root=self.lock_root,
+        )
+        weekly_statuses = {
+            "dup": self._status(self._inbox_dir() / "dup.md"),
+            "dup-1": self._status(self._inbox_dir() / "dup-1.md"),
+        }
+
+        # Fixture B (a second, identical family in a FRESH vault): the
+        # standalone on-demand engine, same dispositions.
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp2:
+            vault2 = Path(tmp2) / "vault"
+            (vault2 / "personal" / "_inbox").mkdir(parents=True)
+            for slug, created, body in (
+                ("dup", "2026-07-01T00:00:00+00:00", base),
+                ("dup-1", "2026-07-02T00:00:00+00:00", f"  {base}"),
+            ):
+                (vault2 / "personal" / "_inbox" / f"{slug}.md").write_text(
+                    _INBOX_TEMPLATE.format(
+                        kind="idea", created_line=f"created: {created}\n", slug=slug,
+                        confidence="LOW", occurrences=1, body=body,
+                    ),
+                    encoding="utf-8",
+                )
+            log2 = Path(tmp2) / "revert-log"
+            lock2 = Path(tmp2) / "locks"
+            from revert_log import RevertLog
+            it.run_inbox_triage_and_auto_apply(
+                vault2, now=time.time(),
+                revert_log=RevertLog(vault2, log_root=log2, lock_root=lock2),
+                lock_root=lock2,
+            )
+            standalone_statuses = {
+                "dup": it._current_status(vault2 / "personal" / "_inbox" / "dup.md"),
+                "dup-1": it._current_status(vault2 / "personal" / "_inbox" / "dup-1.md"),
+            }
+
+        self.assertEqual(weekly_statuses, standalone_statuses)
+
+    def test_bare_run_dream_stays_propose_only_no_triage(self) -> None:
+        import dream
+
+        base = "One insight, captured twice."
+        self._write_inbox("dup", body=base)
+        self._write_inbox("dup-1", body=f"  {base}")
+        digest = dream.run_dream(self.vault, run_id="bare-1")
+        self.assertIsNone(digest.inbox_triage_run)
+        # Nothing applied -- both candidates untouched.
+        self.assertEqual(self._status(self._inbox_dir() / "dup.md"), "inbox")
+        self.assertEqual(self._status(self._inbox_dir() / "dup-1.md"), "inbox")
+
+    def test_fold_can_be_disabled_for_isolation(self) -> None:
+        import dream
+
+        self._write_inbox("solo", body="A single candidate.")
+        digest, _batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="weekly-3", revert_log=self.revert_log, lock_root=self.lock_root,
+            include_inbox_triage=False,
+        )
+        self.assertIsNone(digest.inbox_triage_run)

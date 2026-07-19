@@ -222,9 +222,14 @@ class CliTests(_DreamTestBase):
         self.assertEqual(auto_expired["count"], 1)
         # "stages" reports the full AUTO_APPLY_STAGES watched set for this
         # call, not just the stages with an item this run -- tidying joined
-        # compression in that set (auto-organization part 1, task 3), and
-        # link_improvement joined both (auto-organization part 2, task 4).
-        self.assertEqual(auto_expired["stages"], ["compression", "link_improvement", "tidying"])
+        # compression in that set (auto-organization part 1, task 3),
+        # link_improvement joined both (auto-organization part 2, task 4),
+        # suffix_backlog_drain joined all three (auto-organization part 3,
+        # task 6), and lint joined all four (task 7, wikilink_repair only).
+        self.assertEqual(
+            auto_expired["stages"],
+            ["compression", "link_improvement", "lint", "suffix_backlog_drain", "tidying"],
+        )
 
         latest = json.loads(
             (self.vault / "_meta" / "dream-auto-expired-latest.json").read_text(encoding="utf-8")
@@ -601,6 +606,81 @@ class TidyingDigestAndAutoApplyIntegrationTests(_DreamTestBase):
         self.assertFalse(new_path.exists())
 
 
+class CrossStageAutoApplyCollisionTests(_DreamTestBase):
+    """Adversarial-review regression (auto-organization part 3 task 6): a
+    note that's simultaneously tidying-eligible (aged past the 5y archive
+    threshold) AND suffix_backlog_drain-eligible (a fingerprint-exact
+    duplicate of an older active note) must not get corrupted by both
+    stages auto-applying in the same `run_dream_and_auto_apply()` cycle.
+
+    Before the fix in `dream_confirm.auto_apply_batch`: tidying's move
+    (delete the old path, write `_archive/<name>.md`) applied first, then
+    suffix_backlog_drain's independently-captured, now-stale mutation
+    unconditionally rewrote the just-deleted old path back into
+    existence — a resurrected ghost file with stale content, while the
+    real archived survivor was left un-superseded. The fix tracks paths
+    touched earlier in the same batch and skips (leaves pending) any
+    later proposal that targets one of them."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from revert_log import RevertLog  # noqa: E402
+
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _write_aged_active(self, name: str, days_silent: int, body: str) -> Path:
+        import datetime
+        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
+        return self._write(
+            name,
+            f"---\nkind: fix\nslug: {Path(name).stem}\nstatus: active\ncreated: {created}\n---\n{body}",
+        )
+
+    def test_tidying_move_and_suffix_drain_collide_no_corruption(self) -> None:
+        import dream_confirm as dc  # noqa: E402
+
+        body = "Duplicate legacy content shared by both notes.\n"
+        # Both notes are old enough to be tidying-eligible (>5y silent);
+        # canonical.md is older still, so suffix_backlog_drain picks it as
+        # the fingerprint family's survivor and proposes marking copy.md
+        # (the younger duplicate) superseded -- the exact path tidying
+        # ALSO independently proposes archiving this same cycle.
+        self._write_aged_active("canonical.md", 4000, body)
+        old_path = self._write_aged_active("copy.md", 1900, body)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-collide", revert_log=self.revert_log,
+        )
+
+        tidying_targets = {i["paths"][0] for i in batch.items if i["stage"] == "tidying"}
+        drain_items = [i for i in batch.items if i["stage"] == "suffix_backlog_drain"]
+        self.assertIn(
+            "copy.md", tidying_targets,
+            "tidying should win copy.md's collision (lower proposal index)",
+        )
+        self.assertEqual(
+            len(drain_items), 0,
+            "the colliding suffix_backlog_drain proposal must be skipped, not applied",
+        )
+
+        # No ghost file resurrected at the old path; the real archived
+        # copy exists and was never corrupted into `superseded`.
+        self.assertFalse(old_path.exists())
+        archived = self.vault / "_archive" / "copy.md"
+        self.assertTrue(archived.exists())
+        self.assertIn("status: active", archived.read_text(encoding="utf-8"))
+
+        # The skipped proposal is still visible as pending -- deferred,
+        # not silently dropped.
+        pending = dc.list_pending(self.vault, "run-collide")
+        skipped = [p for p in pending if p.stage == "suffix_backlog_drain"]
+        self.assertEqual(len(skipped), 1)
+        self.assertEqual(skipped[0].status, "pending")
+
+
 class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
     """Task 6 verification: a fixture cycle with an artificially inflated
     proposal count is confirmed to apply nothing and flag the console,
@@ -652,12 +732,16 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         digest_text = digest.digest_path.read_text(encoding="utf-8")
         self.assertIn("ANOMALY BREAKER TRIPPED", digest_text)
 
+        # dream-anomaly-latest.json is now a LIST of tripped stages (task 9
+        # generalized the breaker beyond tidying-only) -- exactly one
+        # entry here since only tidying tripped this cycle.
         anomaly_flag_path = self.vault / "_meta" / "dream-anomaly-latest.json"
         self.assertTrue(anomaly_flag_path.exists())
         payload = json.loads(anomaly_flag_path.read_text(encoding="utf-8"))
-        self.assertEqual(payload["run_id"], "run-anomaly")
-        self.assertEqual(payload["stage"], "tidying")
-        self.assertEqual(payload["current_count"], n)
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["run_id"], "run-anomaly")
+        self.assertEqual(payload[0]["stage"], "tidying")
+        self.assertEqual(payload[0]["current_count"], n)
 
     def test_normal_batch_after_seeded_history_applies_as_usual(self) -> None:
         for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
@@ -677,8 +761,9 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         self.assertFalse((self.vault / "_meta" / "dream-anomaly-latest.json").exists())
 
     def test_compression_still_auto_applies_when_tidying_is_suppressed(self) -> None:
-        # The breaker is scoped to tidying only -- compression's own
-        # auto-apply must be unaffected by a tidying-side trip.
+        # Each watched stage's breaker is independent -- compression isn't
+        # even watched by the breaker at all, and a tidying-side trip must
+        # never affect it either way.
         for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
             self.dc.check_tidying_anomaly(self.vault, 1)
 
@@ -694,6 +779,72 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         stages_applied = {i["stage"] for i in batch.items}
         self.assertIn("compression", stages_applied)
         self.assertNotIn("tidying", stages_applied)
+
+
+class MultiStageAnomalyBreakerIntegrationTests(_DreamTestBase):
+    """Task 9 verification: the anomaly breaker generalized beyond tidying
+    (part 1) now also watches `suffix_backlog_drain` and `lint` (part 3's
+    own dedup/lint mutations) -- each with its OWN independent history, so
+    a spike in one watched stage never trips or suppresses another."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from revert_log import RevertLog  # noqa: E402
+        import dream_confirm  # noqa: E402
+
+        self.dc = dream_confirm
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _write_suffix_family(self, index: int) -> None:
+        base = f"family-{index:02d}"
+        body = f"identical legacy content, family {index}\n"
+        self._write(
+            f"personal/reference/{base}.md",
+            f"---\nkind: reference\nslug: {base}\nstatus: active\ncreated: 2025-01-01\n---\n{body}",
+        )
+        self._write(
+            f"personal/reference/{base}_1.md",
+            f"---\nkind: reference\nslug: {base}_1\nstatus: active\ncreated: 2025-06-01\n---\n{body}",
+        )
+
+    def test_suffix_backlog_drain_spike_trips_independently_of_tidying(self) -> None:
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+        # Seed a "usual" baseline of 1 suffix-family collapse per cycle for
+        # suffix_backlog_drain; tidying gets no history at all (cold start).
+        for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
+            self.dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 1)
+
+        # 6 families this cycle -- well past baseline(1) * multiplier(3.0).
+        for i in range(6):
+            self._write_suffix_family(i)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-drain-anomaly", revert_log=self.revert_log,
+        )
+
+        drain_applied = [i for i in batch.items if i["stage"] == "suffix_backlog_drain"]
+        self.assertEqual(drain_applied, [], "nothing should auto-apply from the tripped stage")
+
+        pending = self.dc.list_pending(self.vault, "run-drain-anomaly")
+        drain_pending = [p for p in pending if p.stage == "suffix_backlog_drain"]
+        self.assertEqual(len(drain_pending), 6)
+        self.assertTrue(all(p.status == "pending" for p in drain_pending))
+
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("ANOMALY BREAKER TRIPPED — suffix_backlog_drain", digest_text)
+
+        payload = json.loads((self.vault / "_meta" / "dream-anomaly-latest.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(payload), 1)
+        self.assertEqual(payload[0]["stage"], "suffix_backlog_drain")
+        self.assertEqual(payload[0]["current_count"], 6)
+
+        # tidying was never watched with any history this cycle -- a cold
+        # start never trips, regardless of the suffix_backlog_drain spike.
+        tidying_flagged = any(entry["stage"] == "tidying" for entry in payload)
+        self.assertFalse(tidying_flagged)
 
 
 def _vec_backend_available(vault: Path) -> bool:
@@ -837,6 +988,46 @@ class LinkImprovementStageTests(_DreamTestBase):
             )
         self.assertEqual(proposals, [])
         spy.assert_not_called()  # never even reaches the ambiguous-band check
+
+    def test_narrowed_floor_excludes_a_pair_that_would_otherwise_qualify(self) -> None:
+        # Task 9: a similarity just above the BASE floor (0.70) but below a
+        # narrowed floor (0.70 + one 0.05 step = 0.75) must be excluded once
+        # dream_confirm.run_sampled_audit has persisted a narrowing
+        # directive -- proves _stage_link_improvement actually reads
+        # write_time_linker.link_similarity_floor(vault_path), not the raw
+        # module constant.
+        import math
+        import write_time_linker
+
+        target_similarity = 0.72  # above 0.70, below the narrowed 0.75
+        cos_theta = 1 - 2 * (1 - target_similarity) ** 2
+        angle = math.acos(cos_theta)
+        vec = [0.0] * self.vec_index.EMBEDDING_DIM
+        vec[0] = math.cos(angle)
+        vec[1] = math.sin(angle)
+        self._seed_older_entry("mid-note.md", "mid-note", vec)
+
+        # Confirm the floor is still narrow-able before the fixture -- if
+        # this ever changes it invalidates the test's own premise.
+        self.assertLess(0.70 + write_time_linker._LINK_BAND_NARROWING_STEP, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
+
+        (self.vault / "_meta").mkdir(parents=True, exist_ok=True)
+        (self.vault / "_meta" / "link-band-narrowing.json").write_text(
+            '{"floor_override": 0.75}', encoding="utf-8",
+        )
+
+        # The differentiating proof: at the BASE floor (0.70), 0.72 sits in
+        # the ambiguous band and reaches cheap_model_tier_available() (see
+        # test_ambiguous_match_pair_left_unlinked_no_model_call at 0.77,
+        # same band). With the narrowed floor (0.75) in effect, 0.72 must
+        # be excluded at the vec_index query itself -- the ambiguous-band
+        # check is never even reached, proving the narrowed floor is what
+        # actually excluded it, not a coincidental empty result via the
+        # pre-existing ambiguous-band path.
+        with unittest.mock.patch("dream.cheap_model_tier_available") as spy:
+            proposals = self._run_stage_with_new_entry("new-note.md", "new-note", embedding=_unit_vector(0))
+        self.assertEqual(proposals, [], "a candidate below the narrowed floor must never qualify")
+        spy.assert_not_called()
 
     def test_decay_exempt_entry_never_becomes_an_origin(self) -> None:
         self._write(
@@ -1192,6 +1383,89 @@ class LinkBackfillTests(_DreamTestBase):
         self.assertGreaterEqual(len(proposals), 1)
 
 
+class SuffixBacklogDrainTests(_DreamTestBase):
+    """Task 6 verification: a fixture vault with N > 25 suffix families
+    confirms exactly 25 collapse in one cycle, the remainder carrying
+    over; a second cycle against the same fixture processes the
+    remainder and doesn't reprocess already-collapsed families."""
+
+    _N = 30  # > _SUFFIX_BACKLOG_BATCH_CAP (25)
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+        for i in range(self._N):
+            base = f"family-{i:02d}"
+            body = f"identical legacy content, family {i}\n"
+            self._write(
+                f"personal/reference/{base}.md",
+                f"---\nkind: reference\nslug: {base}\nstatus: active\n"
+                f"created: 2025-01-01\n---\n{body}",
+            )
+            self._write(
+                f"personal/reference/{base}_1.md",
+                f"---\nkind: reference\nslug: {base}_1\nstatus: active\n"
+                f"created: 2025-06-01\n---\n{body}",
+            )
+
+    def _run_cycle(self):
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        return dream._stage_suffix_backlog_drain(self.vault, entries, loaded)
+
+    def _apply(self, proposals):
+        for p in proposals:
+            for path, content in p.mutations:
+                path.write_text(content, encoding="utf-8")
+
+    def test_exactly_cap_collapses_remainder_carries_over_no_reprocess(self) -> None:
+        proposals_1 = self._run_cycle()
+        self.assertEqual(len(proposals_1), dream._SUFFIX_BACKLOG_BATCH_CAP)
+        expected_first_batch = {f"personal/reference/family-{i:02d}.md" for i in range(25)}
+        self.assertEqual({p.paths[0] for p in proposals_1}, expected_first_batch)
+        for p in proposals_1:
+            self.assertEqual(p.stage, "suffix_backlog_drain")
+            self.assertEqual(p.kind, "collapse")
+            self.assertEqual(len(p.mutations), 1)
+            copy_path, new_content = p.mutations[0]
+            self.assertTrue(copy_path.name.endswith("_1.md"))
+            self.assertIn("status: superseded", new_content)
+            self.assertIn(f"supersedes: {p.paths[0]}", new_content)
+
+        self._apply(proposals_1)
+
+        # Cycle 2: the remainder (families 25-29) carries over; nothing
+        # already collapsed in cycle 1 is reprocessed.
+        proposals_2 = self._run_cycle()
+        self.assertEqual(len(proposals_2), self._N - dream._SUFFIX_BACKLOG_BATCH_CAP)
+        expected_second_batch = {f"personal/reference/family-{i:02d}.md" for i in range(25, self._N)}
+        self.assertEqual({p.paths[0] for p in proposals_2}, expected_second_batch)
+
+    def test_survivor_is_earliest_by_created_and_stays_unmutated(self) -> None:
+        proposals = self._run_cycle()
+        p = next(p for p in proposals if p.paths[0] == "personal/reference/family-00.md")
+        mutated = {str(path.relative_to(self.vault)).replace("\\", "/") for path, _c in p.mutations}
+        self.assertNotIn("personal/reference/family-00.md", mutated)
+        self.assertIn("personal/reference/family-00_1.md", mutated)
+        # The canonical's own file on disk is untouched by the proposal
+        # (mutations only ever target copies).
+        original = (self.vault / "personal/reference/family-00.md").read_text(encoding="utf-8")
+        self.assertIn("status: active", original)
+
+    def test_always_load_notes_excluded_from_collapse(self) -> None:
+        (self.vault / "_always-load").mkdir(parents=True)
+        self._write(
+            "_always-load/pinned.md",
+            "---\nkind: convention\nslug: pinned\nstatus: active\n"
+            "created: 2020-01-01\n---\nidentical legacy content, family 0\n",
+        )
+        proposals = self._run_cycle()
+        touched = {p for prop in proposals for p in prop.paths}
+        self.assertNotIn("_always-load/pinned.md", touched)
+        family_0 = next(p for p in proposals if p.paths[0] == "personal/reference/family-00.md")
+        self.assertEqual(len(family_0.mutations), 1)  # still just the one _1 copy
+
+
 class ConnectivityMeterTests(_DreamTestBase):
     """Task 7 verification: the two counts are computed independently, and
     a note with only a generated (Related-line) link doesn't count toward
@@ -1258,6 +1532,63 @@ class ConnectivityMeterTests(_DreamTestBase):
         self.assertEqual(digest.corpus_stats["generated_link_count"], 1)
 
 
+class BrowseSurfaceCountsTests(_DreamTestBase):
+    """Task 8 verification: a fixture cycle exercising all three states
+    (a live note, a shelved artifact, an archived memory) produces
+    correct counts in both the digest and `corpus_stats` (the dashboard's
+    data source). The acceptance test this meter encodes: browsing shows
+    live notes, and archived material is still readable on request."""
+
+    def _write(self, name: str, content: str):
+        path = self.vault / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        return path
+
+    def test_three_states_counted_correctly(self) -> None:
+        self._write("personal/reference/live.md", "---\nslug: live\n---\nbody\n")
+        self._write("personal/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
+        self._write("personal/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
+
+        entries = dream._iter_entries(self.vault)
+        counts = dream._browse_surface_counts(self.vault, entries)
+
+        self.assertEqual(counts["browse_live_count"], 1)
+        self.assertEqual(counts["browse_shelved_count"], 1)
+        self.assertEqual(counts["browse_archived_count"], 1)
+
+    def test_archived_note_content_still_readable(self) -> None:
+        # The acceptance test in the operator's own words: aged material
+        # sits in the archive, still there on request -- never deleted.
+        archived_path = self._write(
+            "personal/reference/_archive/archived.md", "---\nslug: archived\n---\noriginal content\n"
+        )
+        entries = dream._iter_entries(self.vault)
+        dream._browse_surface_counts(self.vault, entries)  # never mutates anything
+        self.assertTrue(archived_path.is_file())
+        self.assertIn("original content", archived_path.read_text(encoding="utf-8"))
+
+    def test_empty_vault_reports_all_zero(self) -> None:
+        entries = dream._iter_entries(self.vault)
+        counts = dream._browse_surface_counts(self.vault, entries)
+        self.assertEqual(counts["browse_live_count"], 0)
+        self.assertEqual(counts["browse_shelved_count"], 0)
+        self.assertEqual(counts["browse_archived_count"], 0)
+
+    def test_counts_land_in_the_digest(self) -> None:
+        self._write("personal/reference/live.md", "---\nslug: live\n---\nbody\n")
+        self._write("personal/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
+        self._write("personal/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
+
+        digest = dream.run_dream(self.vault, run_id="run-browse-1")
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+
+        self.assertIn("Browse surface:", digest_text)
+        self.assertEqual(digest.corpus_stats["browse_live_count"], 1)
+        self.assertEqual(digest.corpus_stats["browse_shelved_count"], 1)
+        self.assertEqual(digest.corpus_stats["browse_archived_count"], 1)
+
+
 class LinkImprovementIntegrationTests(_DreamTestBase):
     """The full run_dream_and_auto_apply()/revert pipeline for
     link_improvement -- auto-applies without a confirm() call (joined
@@ -1310,6 +1641,34 @@ class LinkImprovementIntegrationTests(_DreamTestBase):
         self.revert_log.revert("run-link-1", entry_id)
         self.assertEqual(new_path.read_text(encoding="utf-8"), original_new_content)
         self.assertEqual(old_path.read_text(encoding="utf-8"), original_old_content)
+
+    def test_sampled_audit_gathers_a_real_applied_link_improvement_item(self) -> None:
+        # Task 9 coverage gap flagged by adversarial review: every other
+        # sampled-audit test passes SYNTHETIC item dicts directly to
+        # dream_confirm.run_sampled_audit. This proves the real
+        # batch.items dict shape run_dream_and_auto_apply() gathers from
+        # (filtered to stage == "link_improvement") actually reaches
+        # run_sampled_audit and gets sampled -- not silently empty due to
+        # a key-name mismatch between what auto_apply_batch produces and
+        # what the gathering filter checks for.
+        old_path = self._write_entry("old-note.md", "old-note")
+        self.vec_index.upsert_entry(self.vault, self._rel("old-note.md"), _unit_vector(0, 0.99))
+        import graph_snapshot
+        graph_snapshot.rebuild(self.vault)
+        self._write_entry("new-note.md", "new-note")
+
+        import dream_confirm
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", return_value=_unit_vector(0)), \
+             unittest.mock.patch.object(dream_confirm, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dream_confirm, "judge_applied_mutation", return_value="agree"):
+            digest, _batch = dream.run_dream_and_auto_apply(
+                self.vault, run_id="run-link-audit", revert_log=self.revert_log,
+            )
+
+        self.assertIsNotNone(digest.sampled_audit)
+        self.assertGreaterEqual(digest.sampled_audit["sampled_count"], 1)
+        self.assertEqual(digest.sampled_audit["disagree_count"], 0)
 
 
 if __name__ == "__main__":

@@ -210,6 +210,22 @@ def count_parked(park_dir: Path) -> int:
         return 0
 
 
+def count_needs_your_eye(vault: Path) -> int:
+    """Ambiguous dedup/merge candidates awaiting the operator — the
+    auto-organization needs-your-eye list (`_meta/needs-your-eye.json`,
+    inbox_triage.py, auto-org part 3). This is the widening the autonomy
+    design promised: the brief's needs-your-eye count now reads BOTH the
+    observability signal (parked runs, above) and this list. Best-effort
+    zero on any edge — never raises (the hook contract)."""
+    pointer = Path(vault) / "_meta" / "needs-your-eye.json"
+    try:
+        data = json.loads(pointer.read_text(encoding="utf-8"))
+        items = data.get("items")
+        return len(items) if isinstance(items, list) else 0
+    except (OSError, ValueError, AttributeError):
+        return 0
+
+
 def history_latest_date(history_path: Path) -> "datetime | None":
     """The newest `date` recorded in the digest-history ledger — evidence the
     ladder *computed* a digest even when no note reached `_briefs/`. The gap
@@ -278,6 +294,12 @@ def build_brief(
     parked_clause = ""
     if parked > 0:
         parked_clause = f" · {parked} run{'s' if parked != 1 else ''} parked, awaiting resume"
+    needs_eye = count_needs_your_eye(vault)
+    if needs_eye > 0:
+        parked_clause += (
+            f" · {needs_eye} dedup candidate{'s' if needs_eye != 1 else ''} need"
+            f"{'s' if needs_eye == 1 else ''} your eye"
+        )
 
     hist_str = hist_latest.strftime("%Y-%m-%d") if hist_latest is not None else None
 
@@ -290,7 +312,7 @@ def build_brief(
             else:
                 age = f"{stale_days}d ago" if stale_days else "today"
             line = f"[agentm] Observability — {digest['headline']} (last cycle {age}){parked_clause}."
-            signature = f"fresh|{digest['slug']}|{parked}"
+            signature = f"fresh|{digest['slug']}|{parked}|{needs_eye}"
             return {"line": line, "signature": signature}
         # Deadman — a note exists but the ladder has gone quiet.
         extra = ""

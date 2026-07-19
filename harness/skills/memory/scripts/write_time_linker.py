@@ -69,6 +69,39 @@ MAX_RELATED_LINKS = 3
 # tier unavailable," just unconditionally rather than conditionally.
 CONFIDENT_SIMILARITY_THRESHOLD = 0.85
 
+# The floor's per-narrowing step (task 9's sampled higher-tier audit):
+# each time the audit's disagreement rate crosses its threshold, the
+# floor is raised by this much, shrinking the ambiguous middle band from
+# below -- narrowing "toward deterministic-only" means fewer candidates
+# even become ambiguous in the first place, not that more borderline
+# matches get auto-linked. Never raised past `CONFIDENT_SIMILARITY_
+# THRESHOLD` minus this same headroom, so some ambiguous band always
+# remains (a fully collapsed band would silently make the band concept
+# itself moot, a different failure than "the model tier is unavailable").
+_LINK_BAND_NARROWING_STEP = 0.05
+
+_LINK_BAND_NARROWING_REL = "_meta/link-band-narrowing.json"
+
+
+def link_similarity_floor(vault_path: "Path | str | None" = None) -> float:
+    """`LINK_SIMILARITY_FLOOR`, narrowed by the sampled higher-tier audit
+    (task 9, `dream_confirm.run_sampled_audit`) if a narrowing directive
+    is persisted at `_meta/link-band-narrowing.json`. Falls back to the
+    plain module constant when no override exists, or no `vault_path` is
+    given -- narrowing is deliberately scoped to the weekly sweep's own
+    consumer (`dream._stage_link_improvement`), which is the only
+    reachable ambiguous-band gate this task's audit watches; write-time
+    linking's own single-direction suggestion is unaffected."""
+    if vault_path is None:
+        return LINK_SIMILARITY_FLOOR
+    import json
+    try:
+        data = json.loads((Path(vault_path) / _LINK_BAND_NARROWING_REL).read_text(encoding="utf-8"))
+        return float(data.get("floor_override", LINK_SIMILARITY_FLOOR))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return LINK_SIMILARITY_FLOOR
+
+
 _RELATED_LINE_RE = re.compile(r"^\*\*Related:\*\* (.+)$", re.MULTILINE)
 _RELATED_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _FENCE_MARKER_RE = re.compile(r"^```", re.MULTILINE)

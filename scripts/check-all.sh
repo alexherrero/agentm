@@ -78,6 +78,7 @@ gate "verify-state-routing (backend x project-mode matrix, never-demote)" bash s
 gate "verify-vec-index (drain pipeline e2e, freshness invariant)" bash scripts/verify-vec-index.sh
 gate "verify-reflection (tri-lane routing, machine-source filter)" bash scripts/verify-reflection.sh
 gate "verify-dreaming (stage->confirm->revert-log e2e, no-silent-apply-on-timeout)" bash scripts/verify-dreaming.sh
+gate "verify-auto-org-meters (connectivity + browse-surface e2e)" bash scripts/verify-auto-org-meters.sh
 gate "verify-mcp-surface (append/search/forget round-trip, dead-surface fate)" "$PY" scripts/verify-mcp-surface.py
 gate "health-score-determinism (scorecard byte-identical across two runs)" "$PY" scripts/health/health_score.py --check-determinism --path scripts/health/fixtures/sample-records.jsonl
 gate "validate-audit-coverage (5 in-scope mythos-readiness blockers detectable)" bash scripts/health/validate-audit-coverage.sh

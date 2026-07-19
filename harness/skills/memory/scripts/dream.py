@@ -128,6 +128,18 @@ class DreamDigest:
     insight_candidates: list
     digest_path: Optional[Path] = None
     tidying_previews: list = field(default_factory=list)
+    # The folded inbox-triage sub-run's summary (auto-org part 3 task 4):
+    # populated by `run_dream_and_auto_apply` when the weekly cycle drives
+    # `inbox_triage`'s engine as a sibling sub-run (its own run_id, its own
+    # staging dir + digest — this is the pointer). None on a bare
+    # `run_dream()` (propose-only, never mutates — triage's auto-applying
+    # engine deliberately doesn't ride it) or when the fold is disabled.
+    inbox_triage_run: Optional[dict] = None
+    # The sampled higher-tier audit's result (task 9): populated by
+    # `run_dream_and_auto_apply` only — a bare `run_dream()` has nothing
+    # applied yet to sample, so this stays `None` there (matches
+    # `inbox_triage_run`'s own convention above).
+    sampled_audit: Optional[dict] = None
 
 
 # -----------------------------------------------------------------------------
@@ -263,6 +275,32 @@ def _connectivity_meter(loaded: dict) -> dict:
         "organically_linked_count": organic,
         "organic_connectivity": (organic / total) if total else 0.0,
         "generated_link_count": generated_links,
+    }
+
+
+def _browse_surface_counts(vault_path: Path, entries: list) -> dict:
+    """The three-state browse-surface meter (task 8): live / shelved /
+    archived. The acceptance test is the operator's own sentence:
+    browsing the vault shows live, current notes, and aged material sits
+    in the archive, still there on request — this meter is what makes
+    that testable rather than just felt.
+
+    `entries` (this module's own corpus scan) already excludes
+    `_archive` but NOT `_shelf` (see `_EXCLUDE_DIRS`) — so live vs.
+    shelved is a free split of the list already in hand, using the exact
+    `"_shelf" in path.parts` test `_stage_tidying`'s own shelf logic
+    already relies on. Archived notes need a second, separate walk since
+    `_archive` is deliberately excluded from every other stage's corpus."""
+    live = sum(1 for p in entries if "_shelf" not in p.parts)
+    shelved = sum(1 for p in entries if "_shelf" in p.parts)
+    archived = sum(
+        1 for p in vault_path.rglob("*.md")
+        if "_archive" in p.relative_to(vault_path).parts
+    )
+    return {
+        "browse_live_count": live,
+        "browse_shelved_count": shelved,
+        "browse_archived_count": archived,
     }
 
 
@@ -787,11 +825,13 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
         # cheap model on it. Headroom beyond the cap so an ingest batch's
         # own siblings can't crowd every outward candidate out of the
         # result window (task 5 — see write_time_linker's
-        # _NEIGHBOR_QUERY_HEADROOM comment).
+        # _NEIGHBOR_QUERY_HEADROOM comment). Reads the narrowing-aware
+        # floor (task 9's sampled higher-tier audit may have raised it
+        # above the plain constant), not the raw module constant.
         neighbors = vec_index.nearest(
             vault_path, embedding,
             k=write_time_linker.MAX_RELATED_LINKS + 1 + write_time_linker._NEIGHBOR_QUERY_HEADROOM,
-            similarity_floor=write_time_linker.LINK_SIMILARITY_FLOOR,
+            similarity_floor=write_time_linker.link_similarity_floor(vault_path),
         )
         qualifying = []
         for neighbor_rel, sim in neighbors:
@@ -917,6 +957,159 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
     return proposals
 
 
+# The suffix-backlog drain's per-cycle batch bound (task 6): each weekly
+# cycle collapses at most this many pre-existing suffix families — 25,
+# matching `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP` (the plan's own
+# named precedent, "matching the existing compression/backfill cap
+# precedent"). Continues cycle over cycle until the backlog drains.
+_SUFFIX_BACKLOG_BATCH_CAP = 25
+
+
+def _stage_suffix_backlog_drain(vault_path: Path, entries: list, loaded: dict) -> list:
+    """Returns proposals (`stage="suffix_backlog_drain"`, `kind="collapse"`).
+
+    Task 2's write-time guard and task 3's cluster-aware inbox pass both
+    stop NEW suffix families from forming or piling up in the inbox, but
+    neither reaches the LEGACY backlog: active notes elsewhere in the
+    vault that were already `_1`/`_2` suffix-duplicated before the guard
+    existed. This stage drains that backlog the same way part 2's link
+    backfill drains its own pool — a capped batch per cycle, continuing
+    cycle over cycle until none remain.
+
+    `entries`/`loaded` are the same vault-wide corpus every other stage
+    here sees, which `_EXCLUDE_DIRS` already keeps inbox-free — task 3/4's
+    fold owns the inbox's own suffix families, uncapped, every cycle; this
+    stage's job starts where that pool ends. Every `status: active` entry
+    (skipping curated `_always-load` notes, the same exemption
+    `dedup_guard._is_reinforceable` applies to a reinforce target) is
+    bucketed by `dedup_guard.live_content_fingerprint` — the identical
+    live-recomputed hash the write-time guard and task 3's inbox pass both
+    match on. A bucket of two or more is a suffix family: content-
+    identical modulo formatting, however many `_1`/`_2` copies deep.
+
+    Each family in this cycle's batch collapses into its canonical
+    EARLIEST note (by `created` frontmatter, path-order tiebreak for the
+    legacy shape with no `created` at all — the same rule task 3's
+    `_earliest_note` uses): every copy is marked `status: superseded` +
+    `supersedes: <canonical rel path>`, never deleted, so part 1's tidying
+    lanes still pick the copies up later; the survivor's own content is
+    left untouched (a copy carries nothing new to absorb).
+
+    No persisted cursor is needed (unlike the link-backfill's attempted-
+    set): a collapsed family's copies flip to `superseded` and drop out of
+    every later cycle's `status: active` grouping on their own, so the
+    backlog self-drains — whatever this cycle's cap doesn't reach is still
+    there, unchanged, for the next one. Unlike an orphan with no
+    qualifying neighbor, a family that DOES make the batch always
+    resolves (fingerprint-exact membership is a hash fact, never an
+    ambiguous judgment), so there's no starvation case to guard against.
+
+    Families are ordered deterministically (by the collapsing family's own
+    canonical rel path) before the cap is applied, so which ones land in
+    a given cycle's batch is stable and a re-run against an unchanged
+    vault is idempotent.
+    """
+    import dedup_guard  # noqa: E402  (lazy: mirrors this module's other stages)
+
+    by_fingerprint: dict = {}
+    for path in entries:
+        if path not in loaded or "_always-load" in path.parts:
+            continue
+        fm, _body, _raw = loaded[path]
+        if fm.get("status") != "active":
+            continue
+        fp = dedup_guard.live_content_fingerprint(path)
+        if fp is not None:
+            by_fingerprint.setdefault(fp, []).append(path)
+
+    def _canonical(family: list) -> Path:
+        def sort_key(p: Path):
+            created = (loaded[p][0].get("created") or "").strip()
+            return (0 if created else 1, created, str(p))
+        return sorted(family, key=sort_key)[0]
+
+    def _rel(p: Path) -> str:
+        return str(p.relative_to(vault_path)).replace("\\", "/")
+
+    families = [members for members in by_fingerprint.values() if len(members) >= 2]
+    families.sort(key=lambda family: _rel(_canonical(family)))
+
+    proposals: list = []
+    for family in families[:_SUFFIX_BACKLOG_BATCH_CAP]:
+        canonical = _canonical(family)
+        copies = [p for p in family if p != canonical]
+        canonical_rel = _rel(canonical)
+        mutations = [
+            (copy, _patch_frontmatter(loaded[copy][2], {
+                "status": "superseded",
+                "supersedes": canonical_rel,
+            }))
+            for copy in copies
+        ]
+        proposals.append(Proposal(
+            stage="suffix_backlog_drain", kind="collapse",
+            paths=[canonical_rel] + [_rel(c) for c in copies],
+            summary=(
+                f"{canonical_rel} + {len(copies)} content-identical legacy cop"
+                f"{'y' if len(copies) == 1 else 'ies'} — collapse into the earliest, "
+                "mark the rest superseded"
+            ),
+            mutations=mutations,
+        ))
+    return proposals
+
+
+# Contradiction check_ids (vault_lint.py, task 7) that count toward the
+# lint stage's own "contradiction" summary — distinct from ordinary
+# schema/wikilink findings.
+_LINT_CONTRADICTION_CHECK_IDS = frozenset(
+    {"supersede-cycle", "supersede-fork", "dangling-supersession"}
+)
+
+
+def _stage_lint(vault_path: Path) -> tuple:
+    """Returns `(proposals, stats)` (task 7). `proposals` wraps the lint
+    engine's auto-repairable mis-cased-wikilink fixes (`stage="lint"`,
+    `kind="wikilink_repair"`), one per entry with >=1 repair, carrying the
+    full raw-content mutation the same way every other stage's `Proposal`
+    does. `stats` is merged into `corpus_stats` (`lint_orphan_count`,
+    `lint_contradiction_count`, `lint_mean_quality_score`) for the digest
+    and task 8's meters.
+
+    Calls `lint.run_lint(vault_path)` — a genuinely standalone scan (the
+    identical engine `/memory lint` calls on demand), not threaded through
+    this module's own `entries`/`loaded` snapshot. The plan's own
+    verification requires the weekly stage and the on-demand CLI to match
+    exactly; sharing the identical code path end to end is simpler and
+    more trustworthy than keeping two independently-fed call sites in
+    sync. Findings (orphans, contradictions, broken links, kind-taxonomy
+    warnings, ...) are surfaced-only here — only the mis-cased-wikilink
+    repair ever mutates anything, matching the plan's "surfaced only,
+    never auto-resolved" rule for everything else the engine reports."""
+    import lint as lint_module  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+
+    report = lint_module.run_lint(vault_path)
+
+    proposals: list = []
+    for entry, _old_raw, new_raw in report.repairs:
+        proposals.append(Proposal(
+            stage="lint", kind="wikilink_repair",
+            paths=[entry.rel],
+            summary=f"{entry.rel} — auto-corrected mis-cased wikilink(s)",
+            mutations=[(entry.path, new_raw)],
+        ))
+
+    stats = {
+        "lint_orphan_count": len(report.orphans),
+        "lint_contradiction_count": sum(
+            1 for f in report.findings if f.check_id in _LINT_CONTRADICTION_CHECK_IDS
+        ),
+        "lint_mean_quality_score": report.mean_quality_score,
+        "lint_graph_snapshot_mismatch_count": report.graph_snapshot_mismatch_count,
+    }
+    return proposals, stats
+
+
 # -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
@@ -977,7 +1170,7 @@ def _stage_qualification(insight_candidates: list) -> None:
 # Stage 7 — digest + staging
 # -----------------------------------------------------------------------------
 
-def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=None) -> str:
+def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) -> str:
     """`auto_applied` (an optional `dream_confirm.AutoAppliedBatch`) marks
     which proposals this run already applied automatically — the
     dreaming pipeline's confirm-free "expire" action (2026-07-11 operator
@@ -989,12 +1182,14 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
     once it's known, so the on-disk `digest.md` never misreports an
     already-applied item as still awaiting confirmation.
 
-    `tidying_anomaly` (an optional `dream_confirm.AnomalyCheckResult`,
-    task 6) flags a tripped anomaly breaker: this cycle's tidying-stage
-    proposal count was several times the recent usual, so none of it
-    auto-applied this cycle (it stays pending, exactly like dedup/
+    `anomalies` (an optional `dict[str, dream_confirm.AnomalyCheckResult]`,
+    task 6 initially scoped to tidying only, generalized to any stage by
+    task 9's `check_stage_anomaly`) flags every TRIPPED stage this cycle:
+    that stage's proposal count was several times the recent usual, so
+    none of it auto-applied (it stays pending, exactly like dedup/
     contradiction-triage) — surfaced here as the digest's "console" line
-    for the operator."""
+    for the operator, one section per tripped stage. A stage absent from
+    the dict, or present but not tripped, renders nothing."""
     lines = [
         f"# Dream digest — run {digest.run_id}",
         "",
@@ -1010,6 +1205,41 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
             f"{digest.corpus_stats['entry_count']} notes with ≥1 real, non-generated link) · "
             f"{digest.corpus_stats['generated_link_count']} generated link(s) (counted separately)."
         )
+    # The browse-surface meter (task 8) — same defensive .get() convention.
+    if "browse_live_count" in digest.corpus_stats:
+        lines.append(
+            f"Browse surface: {digest.corpus_stats['browse_live_count']} live, "
+            f"{digest.corpus_stats['browse_shelved_count']} shelved, "
+            f"{digest.corpus_stats['browse_archived_count']} archived."
+        )
+    # The lint engine (task 7) — same defensive .get() convention as the
+    # connectivity meter above, for the identical reason.
+    if "lint_orphan_count" in digest.corpus_stats:
+        lines.append(
+            f"Lint: {digest.corpus_stats['lint_orphan_count']} orphan(s), "
+            f"{digest.corpus_stats['lint_contradiction_count']} contradiction(s), "
+            f"{digest.corpus_stats.get('lint_graph_snapshot_mismatch_count', 0)} graph-snapshot "
+            "mismatch(es), "
+            f"mean quality score {digest.corpus_stats['lint_mean_quality_score']:.2f} "
+            "· full report via `/memory lint`."
+        )
+    if digest.inbox_triage_run is not None:
+        t = digest.inbox_triage_run
+        lines.append(
+            f"Inbox triage (folded into this cycle): run {t['run_id']} — "
+            f"{t['proposals']} proposal(s), {t['auto_applied']} auto-applied, "
+            f"{t['needs_your_eye']} needs-your-eye · full digest: {t['digest_path']}"
+        )
+    if digest.sampled_audit is not None:
+        a = digest.sampled_audit
+        if a["sampled_count"] == 0:
+            lines.append("Sampled audit: nothing sampled this cycle (higher-tier model tier unavailable).")
+        else:
+            lines.append(
+                f"Sampled audit: {a['sampled_count']} applied link/merge(s) reviewed — "
+                f"{a['disagree_count']} disagreement(s) ({a['disagreement_rate']:.1%})"
+                + (" · ⚠ ambiguous bands narrowed this cycle" if a["narrowed"] else "")
+            )
     lines.append("")
     if digest.insight_candidates:
         lines.append("## Insight candidates (written, status: candidate)")
@@ -1024,14 +1254,15 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
             lines.append(f"- {line}")
         lines.append("")
 
-    if tidying_anomaly is not None and tidying_anomaly.tripped:
-        lines.append("## ⚠ ANOMALY BREAKER TRIPPED — tidying auto-apply suppressed this cycle")
+    tripped_anomalies = {stage: r for stage, r in (anomalies or {}).items() if r.tripped}
+    for stage, r in sorted(tripped_anomalies.items()):
+        lines.append(f"## ⚠ ANOMALY BREAKER TRIPPED — {stage} auto-apply suppressed this cycle")
         lines.append("")
         lines.append(
-            f"{tidying_anomaly.current_count} tidying-stage proposal(s) this run, "
-            f"vs. a recent baseline of {tidying_anomaly.baseline:.1f} "
-            f"(threshold {tidying_anomaly.threshold:.1f}) — applying nothing from this "
-            "stage this cycle rather than an abnormal batch. Every tidying proposal "
+            f"{r.current_count} {stage}-stage proposal(s) this run, "
+            f"vs. a recent baseline of {r.baseline:.1f} "
+            f"(threshold {r.threshold:.1f}) — applying nothing from this "
+            f"stage this cycle rather than an abnormal batch. Every {stage} proposal "
             "stays pending; review the run's proposals.json and confirm manually if "
             "the volume is genuinely expected, or investigate before the next cycle."
         )
@@ -1167,13 +1398,27 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
 
     corpus_stats = _stage_corpus_stats(entries)
     corpus_stats.update(_connectivity_meter(loaded))
+    corpus_stats.update(_browse_surface_counts(vault_path, entries))
     proposals = []
+    # `_stage_lint` runs FIRST, before anything else in this pass touches
+    # the graph snapshot: its own graph-snapshot cross-check (task 9) must
+    # see whatever's persisted from BEFORE this cycle to catch genuine
+    # drift accumulated since the last rebuild. `_stage_link_improvement`
+    # below unconditionally rebuilds the snapshot in full-vault mode as
+    # its own side effect — running lint any later would make the cross-
+    # check compare a snapshot against itself, moments after its own
+    # rebuild, and never find anything (see `lint._graph_snapshot_cross_
+    # check`'s own docstring for the full reasoning).
+    lint_proposals, lint_stats = _stage_lint(vault_path)
+    proposals.extend(lint_proposals)
+    corpus_stats.update(lint_stats)
     proposals.extend(_stage_dedup(entries, loaded))
     proposals.extend(_stage_contradiction_triage(entries, loaded))
     proposals.extend(_stage_compression(entries, loaded))
     tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
     proposals.extend(tidying_proposals)
     proposals.extend(_stage_link_improvement(vault_path, entries, loaded))
+    proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
@@ -1204,6 +1449,15 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
 # awaiting an explicit operator `dream_confirm.confirm()` call.
 # -----------------------------------------------------------------------------
 
+# Stages the anomaly breaker watches (task 9, part 3, generalizing task 6's
+# tidying-only breaker): `link_improvement` is a KNOWN, DELIBERATELY
+# DEFERRED gap — it has its own fixed per-cycle batch cap but no anomaly
+# breaker of its own yet (see wiki/designs/agentm-auto-organization.md's
+# "Guarding the automation" section) — task 9's own plan text scopes the
+# extension to "this part's own dedup/lint mutations," not part 2's.
+_ANOMALY_WATCHED_STAGES = ("tidying", "suffix_backlog_drain", "lint")
+
+
 def run_dream_and_auto_apply(
     vault_path: Path,
     *,
@@ -1212,6 +1466,7 @@ def run_dream_and_auto_apply(
     batch_cap: int | None = None,
     log_root: Path | str | None = None,
     lock_root: Path | str | None = None,
+    include_inbox_triage: bool = True,
 ):
     """Run `run_dream()` (unchanged), then auto-apply its compression-stage,
     tidying-stage, and link-improvement-stage proposals through
@@ -1221,16 +1476,20 @@ def run_dream_and_auto_apply(
     staged in `_dream-staging/<run_id>/`, exactly as `run_dream()` left
     them.
 
-    Before applying, the tidying-stage proposal count runs through
-    `dream_confirm.check_tidying_anomaly` (task 6's anomaly breaker,
-    scoped to tidying specifically — the rest of the guard suite lands
-    with part 3). A tripped check excludes `"tidying"` from this cycle's
-    auto-apply stages (compression is unaffected); every tidying proposal
-    stays pending instead, and the digest carries a visible flag.
+    Before applying, EVERY stage in `_ANOMALY_WATCHED_STAGES` (tidying —
+    task 6, part 1 — plus `suffix_backlog_drain`/`lint` — task 9, part 3,
+    generalizing the same breaker via `dream_confirm.check_stage_anomaly`)
+    has its own proposal count run through its own anomaly check, each
+    against its own trailing history (`_meta/<stage>-cycle-history.json`)
+    so one stage's spike can never trip or poison another's baseline. A
+    tripped stage is excluded from this cycle's auto-apply stages
+    (every other stage is unaffected); every proposal from that stage
+    stays pending instead, and the digest carries a visible flag per
+    tripped stage.
 
     Re-renders `digest.md` with the auto-applied batch (and any tripped
-    anomaly) reflected (see `_render_digest`'s `auto_applied`/
-    `tidying_anomaly` params), and writes the machine-readable per-run
+    anomalies) reflected (see `_render_digest`'s `auto_applied`/
+    `anomalies` params), and writes the machine-readable per-run
     `_dream-staging/<run_id>/auto-expired.json` plus the stable, run-id-
     free `_meta/dream-auto-expired-latest.json` pointer — the latter is
     what a later reader (e.g. a console/dashboard surface) reads without
@@ -1261,34 +1520,95 @@ def run_dream_and_auto_apply(
         revert_log = RevertLog(vault_path, log_root=log_root, lock_root=lock_root)
     cap = batch_cap if batch_cap is not None else dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP
 
-    tidying_count = sum(1 for p in digest.proposals if p.stage == "tidying")
-    anomaly = dream_confirm.check_tidying_anomaly(vault_path, tidying_count)
+    proposal_counts_by_stage: dict = {}
+    for p in digest.proposals:
+        proposal_counts_by_stage[p.stage] = proposal_counts_by_stage.get(p.stage, 0) + 1
+
+    anomalies = {}
     stages = dream_confirm.AUTO_APPLY_STAGES
-    if anomaly.tripped:
-        stages = frozenset(stages - {"tidying"})
+    for watched_stage in _ANOMALY_WATCHED_STAGES:
+        result = dream_confirm.check_stage_anomaly(
+            vault_path, watched_stage, proposal_counts_by_stage.get(watched_stage, 0)
+        )
+        anomalies[watched_stage] = result
+        if result.tripped:
+            stages = frozenset(stages - {watched_stage})
 
     batch = dream_confirm.auto_apply_batch(vault_path, digest.run_id, revert_log, batch_cap=cap, stages=stages)
+
+    # Inbox triage folds into the weekly cycle (auto-org part 3 task 4):
+    # the same underlying merge/promote/collapse/expire engine `/memory
+    # inbox` drives on demand runs here automatically as a sibling sub-run
+    # — its own run_id, staging dir, digest, and auto-apply (through the
+    # SAME revert_log instance, so one cycle's undo surface stays whole).
+    # It rides this wrapper, not run_dream(), because run_dream() is
+    # propose-only by contract and triage's engine applies. Best-effort:
+    # a triage failure never takes down the rest of the cycle.
+    triage_batch = None
+    if include_inbox_triage:
+        try:
+            import inbox_triage  # function-local: inbox_triage imports dream
+            triage_digest, triage_batch = inbox_triage.run_inbox_triage_and_auto_apply(
+                vault_path, revert_log=revert_log, lock_root=lock_root,
+            )
+            digest.inbox_triage_run = {
+                "run_id": triage_digest.run_id,
+                "proposals": len(triage_digest.proposals),
+                "auto_applied": len(triage_batch.items),
+                "needs_your_eye": len(triage_digest.needs_your_eye),
+                "digest_path": str(triage_digest.digest_path),
+            }
+        except Exception as e:  # pragma: no cover
+            print(f"warning: folded inbox-triage sub-run failed: {e}", file=sys.stderr)
+
+    # The sampled higher-tier audit (task 9): "links" = this cycle's
+    # applied link_improvement mutations; "merges" = the folded inbox-
+    # triage sub-run's applied inbox_merge mutations. Always
+    # sampled_count=0 today (see dream_confirm.run_sampled_audit's own
+    # header comment — the higher-tier model tier doesn't exist yet).
+    audit_items = [i for i in batch.items if i["stage"] == "link_improvement"]
+    if triage_batch is not None:
+        audit_items += [i for i in triage_batch.items if i["stage"] == "inbox_merge"]
+    sampled_audit = dream_confirm.run_sampled_audit(vault_path, audit_items)
+    digest.sampled_audit = {
+        "sampled_count": sampled_audit.sampled_count,
+        "agree_count": sampled_audit.agree_count,
+        "disagree_count": sampled_audit.disagree_count,
+        "disagreement_rate": sampled_audit.disagreement_rate,
+        "narrowed": sampled_audit.narrowed,
+    }
+    # Overwritten every cycle (including a zero-sample one), the same
+    # "never goes stale" convention as dream-auto-expired-latest.json —
+    # what a console/dashboard surface reads without knowing the run id.
+    atomic_write(
+        vault_path / "_meta" / "sampled-audit-latest.json",
+        json.dumps({"run_id": digest.run_id, **digest.sampled_audit}, indent=2),
+    )
 
     staging_dir = vault_path / "_dream-staging" / digest.run_id
     atomic_write(
         staging_dir / "digest.md",
-        _render_digest(digest, auto_applied=batch, tidying_anomaly=anomaly),
+        _render_digest(digest, auto_applied=batch, anomalies=anomalies),
     )
 
     payload = dream_confirm.render_auto_applied_json(batch)
     atomic_write(staging_dir / "auto-expired.json", payload)
     atomic_write(vault_path / "_meta" / "dream-auto-expired-latest.json", payload)
 
-    if anomaly.tripped:
+    tripped_stages = sorted(stage for stage, r in anomalies.items() if r.tripped)
+    if tripped_stages:
         atomic_write(
             vault_path / "_meta" / "dream-anomaly-latest.json",
-            json.dumps({
-                "run_id": digest.run_id,
-                "stage": "tidying",
-                "current_count": anomaly.current_count,
-                "baseline": anomaly.baseline,
-                "threshold": anomaly.threshold,
-            }, indent=2),
+            json.dumps([
+                {
+                    "run_id": digest.run_id,
+                    "stage": stage,
+                    "current_count": anomalies[stage].current_count,
+                    "baseline": anomalies[stage].baseline,
+                    "threshold": anomalies[stage].threshold,
+                }
+                for stage in tripped_stages
+            ], indent=2),
         )
 
     return digest, batch

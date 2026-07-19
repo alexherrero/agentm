@@ -35,6 +35,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -223,6 +224,107 @@ class ConcurrentConfirmTests(_DreamConfirmTestBase):
             dc.confirm(self.vault, "run-concurrent", 2, self.revert_log)
 
 
+class CrossStageCollisionGuardTests(_DreamConfirmTestBase):
+    """Adversarial-review regression (auto-organization part 3 task 6):
+    `auto_apply_batch` must never apply two proposals that both touch the
+    same path within one batch. Each proposal's mutation is captured
+    against a frozen pre-cycle snapshot, so applying a second,
+    independently-captured mutation against a path the first proposal in
+    this same batch already changed can resurrect or corrupt whatever the
+    first just wrote — confirmed by a real cross-stage reproduction
+    (tidying archive-move + suffix_backlog_drain collapse racing on the
+    same path) in `test_dream.py`'s `CrossStageAutoApplyCollisionTests`.
+    This class exercises the guard directly against a synthetic manifest,
+    independent of which two stages happen to collide."""
+
+    def _stage_colliding_pair(self, run_id: str):
+        shared = self._write("shared.md", "---\nkind: fix\nstatus: active\n---\nOriginal.\n")
+        p1 = dream.Proposal(
+            stage="stage-a", kind="move",
+            paths=["shared.md"],
+            summary="stage-a moves shared.md",
+            mutations=[
+                (shared, None),
+                (self.vault / "_archive" / "shared.md", "---\nkind: fix\nstatus: active\n---\nOriginal.\n"),
+            ],
+        )
+        p2 = dream.Proposal(
+            stage="stage-b", kind="collapse",
+            paths=["shared.md"],
+            summary="stage-b marks shared.md superseded (stale -- unaware of p1's move)",
+            mutations=[
+                (shared, "---\nkind: fix\nstatus: superseded\nsupersedes: canonical.md\n---\nOriginal.\n"),
+            ],
+        )
+        digest = dream.DreamDigest(
+            run_id=run_id,
+            corpus_stats={"entry_count": 1, "total_bytes": 0},
+            proposals=[p1, p2],
+            insight_candidates=[],
+        )
+        dream._stage_digest_and_staging(self.vault, digest)
+        return shared
+
+    def test_second_colliding_proposal_stays_pending_not_applied(self) -> None:
+        shared = self._stage_colliding_pair("run-collide")
+        batch = dc.auto_apply_batch(
+            self.vault, "run-collide", self.revert_log,
+            stages=frozenset({"stage-a", "stage-b"}),
+        )
+        self.assertEqual(len(batch.items), 1)
+        self.assertEqual(batch.items[0]["stage"], "stage-a")
+
+        # stage-a's move actually happened.
+        self.assertFalse(shared.exists())
+        self.assertTrue((self.vault / "_archive" / "shared.md").exists())
+
+        # stage-b's colliding proposal was never applied -- no ghost file
+        # resurrected at the old path -- and it's still pending, not
+        # silently dropped, for a later cycle to re-evaluate.
+        pending = dc.list_pending(self.vault, "run-collide")
+        second = next(p for p in pending if p.stage == "stage-b")
+        self.assertEqual(second.status, "pending")
+
+    def test_batch_cap_not_consumed_by_a_skipped_collision(self) -> None:
+        self._stage_colliding_pair("run-collide-cap")
+        batch = dc.auto_apply_batch(
+            self.vault, "run-collide-cap", self.revert_log,
+            stages=frozenset({"stage-a", "stage-b"}),
+            batch_cap=5,
+        )
+        # Only 1 real item applied even though batch_cap allowed up to 5
+        # -- the skipped collision didn't silently eat a cap slot, but
+        # there was nothing else pending to backfill with either.
+        self.assertEqual(len(batch.items), 1)
+
+    def test_non_colliding_proposals_in_same_batch_both_apply(self) -> None:
+        """Control: two proposals touching DIFFERENT paths in the same
+        batch are unaffected by the guard -- it only skips genuine path
+        overlap, not everything after the first item."""
+        a = self._write("a.md", "---\nkind: fix\nstatus: active\n---\nA.\n")
+        b = self._write("b.md", "---\nkind: fix\nstatus: active\n---\nB.\n")
+        p1 = dream.Proposal(
+            stage="stage-a", kind="edit", paths=["a.md"], summary="edit a",
+            mutations=[(a, "---\nkind: fix\nstatus: active\n---\nA edited.\n")],
+        )
+        p2 = dream.Proposal(
+            stage="stage-b", kind="edit", paths=["b.md"], summary="edit b",
+            mutations=[(b, "---\nkind: fix\nstatus: active\n---\nB edited.\n")],
+        )
+        digest = dream.DreamDigest(
+            run_id="run-no-collide", corpus_stats={"entry_count": 2, "total_bytes": 0},
+            proposals=[p1, p2], insight_candidates=[],
+        )
+        dream._stage_digest_and_staging(self.vault, digest)
+        batch = dc.auto_apply_batch(
+            self.vault, "run-no-collide", self.revert_log,
+            stages=frozenset({"stage-a", "stage-b"}),
+        )
+        self.assertEqual(len(batch.items), 2)
+        self.assertIn("A edited.", a.read_text(encoding="utf-8"))
+        self.assertIn("B edited.", b.read_text(encoding="utf-8"))
+
+
 class AutoApplyExpireTests(_DreamConfirmTestBase):
     """The 2026-07-11 operator ruling: expire (compression) auto-applies
     with no confirm() call; promote (dedup) and link (contradiction-
@@ -328,9 +430,14 @@ class AutoApplyExpireTests(_DreamConfirmTestBase):
         self.assertEqual(payload["count"], 1)
         # "stages" reports the full AUTO_APPLY_STAGES watched set for this
         # call, not just the stages with an item this run -- tidying joined
-        # compression in that set (auto-organization part 1, task 3), and
-        # link_improvement joined both (auto-organization part 2, task 4).
-        self.assertEqual(payload["stages"], ["compression", "link_improvement", "tidying"])
+        # compression in that set (auto-organization part 1, task 3),
+        # link_improvement joined both (auto-organization part 2, task 4),
+        # suffix_backlog_drain joined all three (auto-organization part 3,
+        # task 6), and lint joined all four (task 7, wikilink_repair only).
+        self.assertEqual(
+            payload["stages"],
+            ["compression", "link_improvement", "lint", "suffix_backlog_drain", "tidying"],
+        )
         self.assertEqual(payload["batch_cap"], dc.DEFAULT_AUTO_APPLY_BATCH_CAP)
         self.assertEqual(len(payload["items"]), 1)
         self.assertIn("entry_id", payload["items"][0])
@@ -469,7 +576,7 @@ class AnomalyBreakerTests(_DreamConfirmTestBase):
             dc.check_tidying_anomaly(self.vault, 2)
         dc.check_tidying_anomaly(self.vault, 50)  # trips, must NOT be recorded
 
-        history = dc._load_anomaly_history(self.vault)
+        history = dc._load_anomaly_history(self.vault, "tidying")
         self.assertNotIn(50, history)
 
         # A second inflated cycle right after must ALSO trip -- if the
@@ -480,8 +587,129 @@ class AnomalyBreakerTests(_DreamConfirmTestBase):
     def test_history_window_bounded(self) -> None:
         for i in range(dc.ANOMALY_HISTORY_WINDOW + 5):
             dc.check_tidying_anomaly(self.vault, 1)
-        history = dc._load_anomaly_history(self.vault)
+        history = dc._load_anomaly_history(self.vault, "tidying")
         self.assertLessEqual(len(history), dc.ANOMALY_HISTORY_WINDOW)
+
+
+class StageAnomalyGeneralizationTests(_DreamConfirmTestBase):
+    """Task 9 (auto-organization part 3): the tidying-only breaker
+    generalizes to any stage via `check_stage_anomaly` -- each stage gets
+    its OWN history sidecar, so one stage's spike can never trip or
+    poison another's baseline. `check_tidying_anomaly` is now a thin
+    `stage="tidying"` wrapper over the same function."""
+
+    def test_check_tidying_anomaly_delegates_to_the_generalized_function(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_stage_anomaly(self.vault, "tidying", 2)
+        result = dc.check_tidying_anomaly(self.vault, 50)
+        self.assertTrue(result.tripped)
+        self.assertAlmostEqual(result.baseline, 2.0)
+
+    def test_different_stages_have_independent_histories(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 2)
+        # "lint" has no history at all yet -- a cold start, never trips,
+        # regardless of what suffix_backlog_drain's own history says.
+        lint_result = dc.check_stage_anomaly(self.vault, "lint", 50)
+        self.assertFalse(lint_result.tripped)
+        self.assertIsNone(lint_result.baseline)
+
+        # suffix_backlog_drain's own history is untouched by lint's check.
+        drain_result = dc.check_stage_anomaly(self.vault, "suffix_backlog_drain", 3)
+        self.assertFalse(drain_result.tripped)
+        self.assertAlmostEqual(drain_result.baseline, 2.0)
+
+    def test_one_stage_tripping_does_not_affect_another_stages_history_file(self) -> None:
+        for _ in range(dc.ANOMALY_MIN_HISTORY + 2):
+            dc.check_stage_anomaly(self.vault, "lint", 2)
+        dc.check_stage_anomaly(self.vault, "lint", 50)  # trips
+
+        lint_history = dc._load_anomaly_history(self.vault, "lint")
+        self.assertNotIn(50, lint_history)
+        drain_history = dc._load_anomaly_history(self.vault, "suffix_backlog_drain")
+        self.assertEqual(drain_history, [])
+
+
+class SampledAuditTests(_DreamConfirmTestBase):
+    """Task 9: the sampled higher-tier audit. `higher_tier_model_available()`
+    is always False today (no synchronous model-call primitive exists --
+    same finding as `dream.cheap_model_tier_available()`), so every REAL
+    cycle samples nothing. Tests exercise the sampling/disagreement-rate/
+    narrowing logic end-to-end by patching availability + the verdict
+    function, the same convention `dream.py`'s `judge_fuzzy_merge` tests
+    already established."""
+
+    def test_tier_unavailable_samples_nothing(self) -> None:
+        items = [{"index": 1, "stage": "link_improvement", "summary": "x"}]
+        result = dc.run_sampled_audit(self.vault, items)
+        self.assertEqual(result.sampled_count, 0)
+        self.assertIsNone(result.disagreement_rate)
+        self.assertFalse(result.narrowed)
+
+    def test_empty_items_never_calls_the_seam(self) -> None:
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation") as mock_judge:
+            result = dc.run_sampled_audit(self.vault, [])
+        self.assertEqual(result.sampled_count, 0)
+        mock_judge.assert_not_called()
+
+    def test_low_disagreement_rate_does_not_narrow(self) -> None:
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
+        # 1/10 disagree = 10%, below the 20% threshold.
+        verdicts = iter(["disagree"] + ["agree"] * 9)
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=lambda s: next(verdicts)):
+            result = dc.run_sampled_audit(self.vault, items)
+        self.assertEqual(result.sampled_count, 10)
+        self.assertAlmostEqual(result.disagreement_rate, 0.1)
+        self.assertFalse(result.narrowed)
+        self.assertFalse((self.vault / "_meta" / "link-band-narrowing.json").exists())
+
+    def test_high_disagreement_rate_narrows_and_writes_directive(self) -> None:
+        import write_time_linker
+
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
+        # 5/10 disagree = 50%, above the 20% threshold.
+        verdicts = iter(["disagree"] * 5 + ["agree"] * 5)
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=lambda s: next(verdicts)):
+            result = dc.run_sampled_audit(self.vault, items)
+
+        self.assertEqual(result.sampled_count, 10)
+        self.assertAlmostEqual(result.disagreement_rate, 0.5)
+        self.assertTrue(result.narrowed)
+
+        # The floor actually narrowed -- read back via the real reader,
+        # not just the raw JSON, since that's what _stage_link_improvement
+        # actually consumes.
+        narrowed_floor = write_time_linker.link_similarity_floor(self.vault)
+        self.assertGreater(narrowed_floor, write_time_linker.LINK_SIMILARITY_FLOOR)
+        self.assertLess(narrowed_floor, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
+
+    def test_batch_cap_bounds_the_sample_deterministically(self) -> None:
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(40)]
+        seen_indices = []
+
+        def _judge(summary):
+            return "agree"
+
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=_judge):
+            result = dc.run_sampled_audit(self.vault, items)
+        self.assertEqual(result.sampled_count, dc.SAMPLED_AUDIT_BATCH_CAP)
+
+    def test_successive_narrowings_compound_but_never_cross_the_confident_threshold(self) -> None:
+        import write_time_linker
+
+        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
+        verdicts_always_disagree = lambda s: "disagree"  # 100% disagreement every cycle
+        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
+             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=verdicts_always_disagree):
+            for _ in range(20):  # far more than enough narrowing steps to hit the ceiling
+                dc.run_sampled_audit(self.vault, items)
+
+        floor = write_time_linker.link_similarity_floor(self.vault)
+        self.assertLess(floor, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
 
 
 if __name__ == "__main__":

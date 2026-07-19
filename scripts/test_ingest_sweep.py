@@ -89,7 +89,14 @@ class StagingTests(unittest.TestCase):
         # /work time, not assumed. This sweep's own bounded, targeted
         # same-source_url check closes that specific gap.
         p1 = _new_candidate(self.vault, source_url="https://example.com/article")
-        p2 = _new_candidate(self.vault, source_url="https://example.com/article", slug="resend")
+        # Distinct content on the resend: identical content would now be
+        # reinforced away at CAPTURE time by the write-time dedup guard
+        # (auto-org part 3 task 2), leaving this sweep-level source_url
+        # check nothing to see. The sweep mechanism this test exists for
+        # is the DIFFERENT-content resend (a re-forward with a different
+        # accompanying note) -- same source_url, new text.
+        p2 = _new_candidate(self.vault, source_url="https://example.com/article", slug="resend",
+                            content="worth remembering (forwarded again with a new note)")
         with mock.patch("ingest.fetch_url", return_value=self.fixture_text) as mock_fetch:
             result = ingest_sweep.run_ingest_sweep(self.vault, now=_NOW.timestamp())
         self.assertEqual(mock_fetch.call_count, 1, "the resend must not trigger a second fetch")

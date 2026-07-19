@@ -54,6 +54,13 @@ KNOWN_KINDS: frozenset[str] = frozenset({
     # full_sync convention; the seed grep that authored this set did not).
     "idea-incubator", "idea-incubator-summary", "idea-incubator-research",
     "idea-incubator-runbook",
+    # Surfaced by vault_lint.py's new check_kind_taxonomy (auto-organization
+    # part 3, task 7 — PLAN-auto-org-dedup-and-lint.md): the first check to
+    # actually enforce this registry against a live note found "howto"
+    # in use (scripts/verify-memory-roundtrip.sh's own fixture) but never
+    # added to the 2026-07-10 seed — exactly the kind of gap this registry's
+    # own extend-as-discovered process expects.
+    "howto",
 })
 
 # Universal frontmatter fields save.py requires on every entry, per
