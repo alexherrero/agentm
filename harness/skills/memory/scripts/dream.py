@@ -535,6 +535,266 @@ def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | 
 
 
 # -----------------------------------------------------------------------------
+# Stage — weekly link-improvement sweep (auto-org part 2 task 4). Connects
+# notes that arrived or changed since the last cycle to older related
+# content, using task 1's vector index + task 2's persisted graph snapshot.
+# -----------------------------------------------------------------------------
+
+# Cap on proposals this stage generates per cycle — bounds worst-case blast
+# radius the same way tidying/compression already do (plan constraint:
+# "capped"). Matches dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP's own
+# number, the standing precedent for a per-cycle auto-org action bound.
+_LINK_IMPROVEMENT_BATCH_CAP = 25
+
+
+_LINK_SWEEP_CURSOR_REL = "_meta/link-sweep-cursor.json"
+
+
+def _link_sweep_cursor_path(vault_path: Path) -> Path:
+    return vault_path / _LINK_SWEEP_CURSOR_REL
+
+
+def _read_link_sweep_cursor(vault_path: Path) -> float:
+    """Epoch seconds of the last `_stage_link_improvement` run, or `0.0` if
+    it's never run (everything counts as "changed").
+
+    Deliberately its OWN, separate cursor — NOT `graph_snapshot.rebuild()`'s
+    `touched_paths` (a review caught a real bug in an earlier version that
+    used it: `write_time_linker.apply()` already calls `graph_snapshot.
+    rebuild(vault, paths=[rel_path])` for every note it write-time-links,
+    which records that note's post-write mtime into the SAME snapshot DB —
+    so by the time the weekly sweep ran its own full-vault rebuild, any
+    note that already got an ordinary write-time link (the common case —
+    precisely the notes most likely to have qualifying neighbors) had its
+    mtime already "consumed" and never showed up as newly touched. This
+    cursor is independent of anything graph_snapshot tracks internally."""
+    try:
+        data = json.loads(_link_sweep_cursor_path(vault_path).read_text(encoding="utf-8"))
+        return float(data.get("last_run_epoch", 0.0))
+    except (OSError, ValueError, TypeError):
+        return 0.0
+
+
+def _write_link_sweep_cursor(vault_path: Path, epoch: float) -> None:
+    atomic_write(_link_sweep_cursor_path(vault_path), json.dumps({"last_run_epoch": epoch}))
+
+
+def cheap_model_tier_available() -> bool:
+    """Whether a budget-capped cheap-model yes/no call is available for the
+    weekly sweep's ambiguous middle band. Always `False` today.
+
+    Confirmed by research before this stage was built: no synchronous
+    "ask a cheap model X, get yes/no back, capped by a budget" primitive
+    exists anywhere in this codebase. The job-manifest schema has a
+    `budget_tokens` field, but it's parsed and never consumed (zero
+    callers). The only place this codebase shells out to `claude`
+    programmatically spawns full async background sessions — the wrong
+    shape for a synchronous per-candidate call. Every prior instance of
+    this exact problem (a cron/hook context needing LLM judgment) —
+    `adapt_skills.py`'s deterministic-Pass-1/sub-agent-Pass-2 split,
+    `orchestration_idle.py`'s explicit "a hook fires outside the agent
+    loop and cannot dispatch a sub-agent", `forward_learning.py`'s
+    deliberately-deterministic-only v1 — resolved it by staying
+    deterministic and deferring the LLM-judged pass, never by building a
+    new primitive this codebase has consistently avoided.
+
+    This function is the seam a future build wires to a real budget +
+    call primitive. Until then it's a named, tracked gap (not silently
+    dropped): every ambiguous candidate the weekly sweep finds falls
+    through to "left unlinked," matching the design's own explicit
+    "budget exhausted / tier unavailable" fallback — unconditionally
+    today rather than conditionally on a budget that has nothing to
+    spend from yet.
+    """
+    return False
+
+
+def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, now: str | None = None) -> list:
+    """Returns proposals (`stage="link_improvement"`, `kind="link"`).
+
+    For notes that arrived or changed since the last cycle — tracked via
+    this function's OWN cursor (`_read_link_sweep_cursor`/
+    `_write_link_sweep_cursor`; see its docstring for why this is
+    deliberately not `graph_snapshot.rebuild()`'s own `touched_paths`) —
+    queries task 1's vector index for older related notes. A candidate
+    above `write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD` gets a
+    both-directions link proposal; this function's caller (`run_dream`)
+    runs the normal stage->confirm->revert-log pipeline on it like any
+    other proposal. Also rebuilds task 2's graph snapshot in full-vault
+    mode as a side effect (keeping it current for its OTHER consumers —
+    the connectivity meter, task 7 — even though this function no longer
+    reads its `touched_paths`).
+
+    The ambiguous middle band (between `write_time_linker.
+    LINK_SIMILARITY_FLOOR` and `CONFIDENT_SIMILARITY_THRESHOLD`) — the
+    design's own reserved slot for a budget-capped cheap-model yes/no —
+    checks `cheap_model_tier_available()` (always `False` today; see its
+    own docstring for the full reasoning) and falls through to "left
+    unlinked" for every candidate in that band.
+
+    Same-cycle mutation-collision guard: if note A and note B (both in this
+    cycle's changed set) are both related to the same older note C, only
+    the first one to claim C gets to add C's reciprocal link this cycle —
+    a `touched_this_sweep` set makes sure no path is ever a mutation target
+    in more than one proposal in a single call, which would otherwise let
+    a later proposal's captured pre-mutation content silently overwrite an
+    earlier proposal's addition once both apply. The missed reciprocal
+    link (C not linked to B this cycle) is deferred, not lost — C stays a
+    normal candidate for a future cycle once something else changes it.
+
+    `now` is injectable for tests, matching `_stage_tidying`'s own
+    exemption-check convention below.
+    """
+    import embed  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+    import graph_snapshot  # noqa: E402
+    import lifecycle  # noqa: E402
+    import vec_index  # noqa: E402
+    import write_time_linker  # noqa: E402
+
+    if now is None:
+        import datetime
+        now = datetime.date.today().isoformat()
+
+    sweep_started_at = time.time()
+    cursor = _read_link_sweep_cursor(vault_path)
+    graph_snapshot.rebuild(vault_path)  # keep the snapshot current for its other consumers
+
+    by_rel = {}
+    for p in entries:
+        rel = str(p.relative_to(vault_path)).replace("\\", "/")
+        by_rel[rel] = p
+
+    changed_paths = [
+        rel for rel, p in by_rel.items()
+        if p in loaded and p.stat().st_mtime > cursor
+    ]
+    max_seen_mtime = max((by_rel[rel].stat().st_mtime for rel in changed_paths), default=0.0)
+
+    proposals: list = []
+    touched_this_sweep: set = set()
+
+    for rel_path in changed_paths:
+        if len(proposals) >= _LINK_IMPROVEMENT_BATCH_CAP:
+            break
+        path = by_rel.get(rel_path)
+        if path is None or path not in loaded or path in touched_this_sweep:
+            continue
+
+        fm, body, raw = loaded[path]
+        slug = fm.get("slug") or path.stem
+        rel_obj = path.relative_to(vault_path)
+        # Same exemption gate as _stage_tidying: durable/failure-incident/
+        # decision/always-load/pinned notes are "never candidates for
+        # anything here" per the design's Signals section.
+        if lifecycle.days_since_last_genuine_access(vault_path, slug, fm, rel_obj, now=now) is None:
+            continue
+
+        embed_input = f"{slug} [{fm.get('tags', '')}]\n\n{body[:500]}"
+        try:
+            embedding = embed.embed_text(embed_input)
+        except embed.EmbeddingUnavailable:
+            continue
+        except Exception:
+            continue
+
+        # Query at the LOWER floor (not the confident threshold) so the
+        # ambiguous middle band is genuinely visible to the code below,
+        # rather than silently invisible because the query itself already
+        # excluded it — the seam has to see a candidate to (not) call the
+        # cheap model on it.
+        neighbors = vec_index.nearest(
+            vault_path, embedding,
+            k=write_time_linker.MAX_RELATED_LINKS + 1,
+            similarity_floor=write_time_linker.LINK_SIMILARITY_FLOOR,
+        )
+        qualifying = []
+        for neighbor_rel, sim in neighbors:
+            if neighbor_rel == rel_path:
+                continue
+            neighbor_path = by_rel.get(neighbor_rel)
+            if neighbor_path is None or neighbor_path not in loaded or neighbor_path in touched_this_sweep:
+                continue
+            if sim < write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD:
+                # Ambiguous middle band. Never fail open to an unbudgeted
+                # call (plan's Locked design call) -- check the seam, and
+                # today it's always unavailable (see this function's own
+                # docstring), so every ambiguous candidate falls through to
+                # "left unlinked" without ever reaching a model call.
+                #
+                # Deliberately does NOT remember this pair as "considered"
+                # anywhere: similarity isn't guaranteed symmetric within one
+                # sweep (this note's embedding is freshly recomputed above;
+                # the neighbor's is whatever's already stored, from a
+                # possibly-different embed-input formula or an earlier,
+                # since-changed version of that note) — a review caught a
+                # real bug where marking a pair "seen" here silently
+                # dropped a genuinely confident match from the OTHER
+                # direction later in the same sweep. touched_this_sweep
+                # (below) is the only cross-proposal guard this function
+                # needs: it stops the same PATH being a mutation target
+                # twice, which is the actual hazard (a second proposal's
+                # captured pre-mutation content silently overwriting the
+                # first's addition) -- it doesn't need a redundant "did we
+                # already look at this exact pair" tracker on top.
+                if not cheap_model_tier_available():
+                    continue
+                continue  # pragma: no cover -- unreachable until the tier ships
+            qualifying.append((neighbor_rel, neighbor_path))
+            if len(qualifying) >= write_time_linker.MAX_RELATED_LINKS:
+                break
+        if not qualifying:
+            continue
+
+        neighbor_slugs = []
+        for _neighbor_rel, neighbor_path in qualifying:
+            neighbor_fm = loaded[neighbor_path][0]
+            neighbor_slugs.append(neighbor_fm.get("slug") or neighbor_path.stem)
+
+        mutations = []
+        new_content = write_time_linker.merge_related_slugs(raw, neighbor_slugs)
+        if new_content is not None:
+            mutations.append((path, new_content))
+            touched_this_sweep.add(path)
+
+        for (neighbor_rel, neighbor_path), neighbor_slug in zip(qualifying, neighbor_slugs):
+            neighbor_raw = loaded[neighbor_path][2]
+            neighbor_new_content = write_time_linker.merge_related_slugs(neighbor_raw, [slug])
+            if neighbor_new_content is not None:
+                mutations.append((neighbor_path, neighbor_new_content))
+                touched_this_sweep.add(neighbor_path)
+
+        if not mutations:
+            continue  # already linked both ways -- nothing to propose
+
+        neighbor_rels = [nr for nr, _np in qualifying]
+        proposals.append(
+            Proposal(
+                stage="link_improvement",
+                kind="link",
+                paths=[rel_path, *neighbor_rels],
+                summary=(
+                    f"{rel_path} <-> {', '.join(neighbor_rels)} — related "
+                    f"(similarity clears the confident threshold)"
+                ),
+                mutations=mutations,
+            )
+        )
+
+    # Advance the cursor to when THIS sweep started (not `time.time()` now)
+    # -- anything modified DURING this run's own execution stays eligible
+    # for the next cycle too, rather than silently slipping past both.
+    # Floored at the max mtime actually seen among this cycle's changed
+    # entries: guards against the cursor ever retreating behind an entry
+    # it just processed (defensive against clock skew between the mtime
+    # clock and time.time(), and keeps this robust for tests that set an
+    # explicit future mtime rather than relying on real elapsed wall-clock
+    # time between fixture writes).
+    _write_link_sweep_cursor(vault_path, max(sweep_started_at, max_seen_mtime))
+
+    return proposals
+
+
+# -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
 # [PENDING-IMPL] elsewhere in the Experience design).
@@ -779,6 +1039,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(_stage_compression(entries, loaded))
     tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
     proposals.extend(tidying_proposals)
+    proposals.extend(_stage_link_improvement(vault_path, entries, loaded))
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
@@ -818,11 +1079,13 @@ def run_dream_and_auto_apply(
     log_root: Path | str | None = None,
     lock_root: Path | str | None = None,
 ):
-    """Run `run_dream()` (unchanged), then auto-apply its compression-stage
-    and tidying-stage proposals through `dream_confirm.auto_apply_batch` —
-    no operator confirm required for those. Dedup and contradiction-triage
-    proposals stay staged in `_dream-staging/<run_id>/`, exactly as
-    `run_dream()` left them.
+    """Run `run_dream()` (unchanged), then auto-apply its compression-stage,
+    tidying-stage, and link-improvement-stage proposals through
+    `dream_confirm.auto_apply_batch` — no operator confirm required for
+    those (see `dream_confirm.AUTO_APPLY_STAGES`'s own docstring for each
+    stage's justification). Dedup and contradiction-triage proposals stay
+    staged in `_dream-staging/<run_id>/`, exactly as `run_dream()` left
+    them.
 
     Before applying, the tidying-stage proposal count runs through
     `dream_confirm.check_tidying_anomaly` (task 6's anomaly breaker,

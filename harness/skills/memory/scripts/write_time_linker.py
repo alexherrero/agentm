@@ -36,6 +36,7 @@ Public API:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -57,6 +58,80 @@ from vault_lock import vault_mutex  # noqa: E402
 LINK_SIMILARITY_FLOOR = 0.70
 MAX_RELATED_LINKS = 3
 
+# The weekly link-improvement sweep's (task 4) higher bar for a fully
+# deterministic, both-directions, auto-applied link — distinct from (and
+# above) LINK_SIMILARITY_FLOOR, which only gates the single-direction,
+# write-time suggestion. Below LINK_SIMILARITY_FLOOR: not a candidate at
+# all. Between the two: the "ambiguous middle band" the design reserves for
+# a budget-capped cheap-model yes/no — not built (see dream.py's
+# _stage_link_improvement module note); candidates in that band are simply
+# left unlinked, the same outcome the design specifies for "budget spent or
+# tier unavailable," just unconditionally rather than conditionally.
+CONFIDENT_SIMILARITY_THRESHOLD = 0.85
+
+_RELATED_LINE_RE = re.compile(r"^\*\*Related:\*\* (.+)$", re.MULTILINE)
+_RELATED_WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
+_FENCE_MARKER_RE = re.compile(r"^```", re.MULTILINE)
+
+
+def _fenced_ranges(content: str) -> list[tuple[int, int]]:
+    """(start, end) char-offset ranges covered by fenced code blocks
+    (paired ``` markers). An unterminated final fence extends to
+    end-of-string — conservative: better to wrongly treat trailing content
+    as fenced than to wrongly mutate inside an unterminated fence."""
+    markers = [m.start() for m in _FENCE_MARKER_RE.finditer(content)]
+    ranges = [(markers[i], markers[i + 1]) for i in range(0, len(markers) - 1, 2)]
+    if len(markers) % 2 == 1:
+        ranges.append((markers[-1], len(content)))
+    return ranges
+
+
+def _in_any_range(pos: int, ranges: list[tuple[int, int]]) -> bool:
+    return any(start <= pos < end for start, end in ranges)
+
+
+def merge_related_slugs(content: str, new_slugs: list[str]) -> str | None:
+    """Merge `new_slugs` into `content`'s `**Related:**` line, creating one
+    if absent. Existing slugs are preserved, new ones appended in order,
+    de-duplicated, capped at `MAX_RELATED_LINKS` total.
+
+    Returns the updated content, or `None` if nothing would actually
+    change (every new slug is already present, or `new_slugs` is empty) —
+    the idempotency contract both `apply()` (task 3, re-running on the
+    same note) and the weekly sweep (task 4, an older note gaining a new
+    neighbor over several cycles) both need: a note's Related line grows
+    additively across calls, it never gets a second, duplicate line.
+
+    A `**Related:**`-shaped line inside a fenced code block (a note that
+    happens to show markdown syntax as a worked example) is never treated
+    as the real line — matched candidates inside a fence are dropped
+    before picking one, so a fenced false positive can't get silently
+    mutated in place while the note's real body goes unlinked. If more
+    than one non-fenced candidate exists (manual edit, corrupted state),
+    the LAST one is treated as authoritative — this system only ever
+    appends, so the last occurrence is the one it would itself have
+    written; earlier ones are left untouched rather than guessed-and-merged.
+
+    Pure function — no I/O. Callers own reading/writing the file.
+    """
+    if not new_slugs:
+        return None
+    fenced = _fenced_ranges(content)
+    candidates = [m for m in _RELATED_LINE_RE.finditer(content) if not _in_any_range(m.start(), fenced)]
+    match = candidates[-1] if candidates else None
+    existing = _RELATED_WIKILINK_RE.findall(match.group(1)) if match else []
+    merged = list(existing)
+    for s in new_slugs:
+        if s not in merged:
+            merged.append(s)
+    merged = merged[:MAX_RELATED_LINKS]
+    if merged == existing:
+        return None
+    related_line = "**Related:** " + ", ".join(f"[[{s}]]" for s in merged)
+    if match:
+        return content[: match.start()] + related_line + content[match.end() :]
+    return content.rstrip("\n") + "\n\n" + related_line + "\n"
+
 
 def apply(vault_path: Path | str, rel_path: str, embedding: list[float]) -> list[str]:
     """Add up to `MAX_RELATED_LINKS` wikilinks to `rel_path` under a short
@@ -65,22 +140,18 @@ def apply(vault_path: Path | str, rel_path: str, embedding: list[float]) -> list
     reciprocal-link case, task 4) and never touches an existing Related
     line's content beyond appending this call's own.
 
-    Returns the slugs linked (empty list if no qualifying neighbor, the
-    target file no longer exists — e.g. deleted between save and drain —
-    or the note already carries a Related line, see idempotency note
-    below).
+    Returns the candidate slugs found (empty list if no qualifying
+    neighbor, the target file no longer exists — e.g. deleted between save
+    and drain — or every candidate was already linked, see idempotency
+    note below) — NOT necessarily what changed on disk; `merge_related_slugs`
+    may find some or all of them already present.
 
-    Idempotent: if `rel_path` already has a `**Related:**` line by the
-    time the write actually happens, this is a no-op (returns `[]`,
-    doesn't touch the file). Matters because `drain_queue()`'s own
-    contract is "idempotent: re-running drain on a stable queue produces
-    the same final state" — without this check, a queue record that gets
-    reprocessed (e.g. drain interrupted between a record's successful
-    upsert and the queue file's own rewrite) would append a second,
-    duplicate Related line rather than leaving the already-linked note
-    alone. The write-time linker only ever adds ONE Related line per
-    note; a later re-evaluation of the SAME note against newer neighbors
-    is the weekly sweep's job (task 4), not a re-run of this function.
+    Idempotent via `merge_related_slugs`: re-finding the same neighbor(s)
+    a second time (e.g. drain interrupted between a record's successful
+    upsert and the queue file's own rewrite, so a re-drain reprocesses an
+    already-linked record) is a no-op, not a duplicate line — matches
+    `drain_queue()`'s own contract, "idempotent: re-running drain on a
+    stable queue produces the same final state."
 
     The neighbor query (a DB read) runs outside `vault_mutex` — cheap and
     read-only, no need to serialize it against other vault writers — but
@@ -116,7 +187,6 @@ def apply(vault_path: Path | str, rel_path: str, embedding: list[float]) -> list
                 break
         if not slugs:
             return []
-        related_line = "**Related:** " + ", ".join(f"[[{s}]]" for s in slugs)
 
         backend = DeviceLocalBackend(root=vault)
         locator = backend.resolve(*Path(rel_path).parts)
@@ -124,9 +194,9 @@ def apply(vault_path: Path | str, rel_path: str, embedding: list[float]) -> list
             if not target.is_file():
                 return []
             current = target.read_text(encoding="utf-8")
-            if "**Related:**" in current:
-                return []  # already linked -- idempotent no-op
-            updated = current.rstrip("\n") + "\n\n" + related_line + "\n"
+            updated = merge_related_slugs(current, slugs)
+            if updated is None:
+                return []  # already linked to all these candidates -- idempotent no-op
             backend.write(locator, updated)
 
         # Keep task 2's persisted graph snapshot current for this one note —

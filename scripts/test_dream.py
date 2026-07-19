@@ -27,6 +27,7 @@ import json
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -221,8 +222,9 @@ class CliTests(_DreamTestBase):
         self.assertEqual(auto_expired["count"], 1)
         # "stages" reports the full AUTO_APPLY_STAGES watched set for this
         # call, not just the stages with an item this run -- tidying joined
-        # compression in that set (auto-organization part 1, task 3).
-        self.assertEqual(auto_expired["stages"], ["compression", "tidying"])
+        # compression in that set (auto-organization part 1, task 3), and
+        # link_improvement joined both (auto-organization part 2, task 4).
+        self.assertEqual(auto_expired["stages"], ["compression", "link_improvement", "tidying"])
 
         latest = json.loads(
             (self.vault / "_meta" / "dream-auto-expired-latest.json").read_text(encoding="utf-8")
@@ -692,6 +694,344 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         stages_applied = {i["stage"] for i in batch.items}
         self.assertIn("compression", stages_applied)
         self.assertNotIn("tidying", stages_applied)
+
+
+def _vec_backend_available(vault: Path) -> bool:
+    import vec_index
+    conn = vec_index._open_index(vault)
+    if conn is None:
+        return False
+    conn.close()
+    return True
+
+
+def _unit_vector(hot_index: int, sign: float = 1.0) -> list:
+    import vec_index
+    v = [0.0] * vec_index.EMBEDDING_DIM
+    v[hot_index] = sign
+    return v
+
+
+class LinkImprovementStageTests(_DreamTestBase):
+    """Task 4 verification: a clear-match pair gets both-directions links,
+    capped, revert-logged; an ambiguous-match pair (between the base floor
+    and the confident threshold) is left unlinked -- the cheap-model band
+    isn't built (dream.cheap_model_tier_available() always returns False),
+    which IS the design's own "budget exhausted / tier unavailable"
+    fallback, just unconditional. A call-count check on that seam proves no
+    model call is ever attempted for the ambiguous case."""
+
+    _NOW = "2026-01-01"
+
+    def setUp(self) -> None:
+        super().setUp()
+        import vec_index
+        self.vec_index = vec_index
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+
+    def _rel(self, name: str) -> str:
+        # graph_snapshot._walk_vault_paths only walks personal/, projects/,
+        # _idea-incubator/ (the real vault's own layout) -- a fixture at
+        # the bare vault root is invisible to it, so every fixture here
+        # lives under personal/reference/.
+        return f"personal/reference/{name}"
+
+    def _write_entry(self, name: str, slug: str, body: str = "body") -> Path:
+        return self._write(
+            self._rel(name), f"---\nkind: reference\nslug: {slug}\ncreated: {self._NOW}\n---\n{body}\n"
+        )
+
+    def _seed_older_entry(self, name: str, slug: str, embedding: list) -> Path:
+        """Writes + indexes an entry as already-known-as-of-last-cycle:
+        advances the link-sweep cursor (dream.py's OWN "changed since last
+        cycle" tracker — deliberately independent of graph_snapshot's
+        internal mtime store, see dream._read_link_sweep_cursor's
+        docstring) to just past this file's own mtime, mirroring a note
+        that arrived in a PRIOR sweep and was already processed then.
+
+        Uses the file's OWN recorded mtime (+ a small buffer) rather than
+        a fresh `time.time()` call, so this is immune to filesystem mtime
+        granularity (HFS+ truncates to 1s; a `time.time()` call and the
+        immediately-following write could otherwise land in the same
+        truncated second, or a LATER write in the same test could too)."""
+        path = self._write_entry(name, slug)
+        self.vec_index.upsert_entry(self.vault, self._rel(name), embedding)
+        dream._write_link_sweep_cursor(self.vault, path.stat().st_mtime + 1.0)
+        return path
+
+    def _run_stage_with_new_entry(self, name: str, slug: str, *, embedding: list):
+        """Writes the "just arrived" origin note (with an explicit mtime
+        safely after the cursor -- see `_seed_older_entry`'s own note on
+        filesystem mtime granularity), mocks embed.embed_text to return
+        `embedding` for it, and runs the stage."""
+        import os
+        path = self._write_entry(name, slug)
+        cursor = dream._read_link_sweep_cursor(self.vault)
+        newer = max(cursor + 2.0, path.stat().st_mtime)
+        os.utime(path, (newer, newer))
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", return_value=embedding):
+            return dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
+
+    def test_clear_match_pair_gets_both_direction_links(self) -> None:
+        self._seed_older_entry("old-note.md", "old-note", _unit_vector(0, 0.99))
+        proposals = self._run_stage_with_new_entry(
+            "new-note.md", "new-note", embedding=_unit_vector(0)
+        )
+        self.assertEqual(len(proposals), 1)
+        p = proposals[0]
+        self.assertEqual(p.stage, "link_improvement")
+        self.assertEqual(p.kind, "link")
+        mutated = {str(path): content for path, content in p.mutations}
+        new_path = str(self.vault / self._rel("new-note.md"))
+        old_path = str(self.vault / self._rel("old-note.md"))
+        self.assertIn(new_path, mutated)
+        self.assertIn(old_path, mutated)
+        self.assertIn("[[old-note]]", mutated[new_path])
+        self.assertIn("[[new-note]]", mutated[old_path])
+
+    def test_ambiguous_match_pair_left_unlinked_no_model_call(self) -> None:
+        # A vector whose similarity to the origin sits in the band between
+        # LINK_SIMILARITY_FLOOR (0.70) and CONFIDENT_SIMILARITY_THRESHOLD
+        # (0.85) -- ambiguous, not clear.
+        import write_time_linker
+        import math
+        # vec_index.nearest's "similarity" is 1 - L2_distance/2, NOT raw
+        # cosine similarity -- for two unit vectors, L2_dist = sqrt(2*(1 -
+        # cos(theta))), so a target similarity of 0.77 (midpoint of the
+        # [0.70, 0.85) ambiguous band) needs cos(theta) = 1 - 2*(1-0.77)^2
+        # ~= 0.894, not 0.77 itself.
+        target_similarity = 0.77
+        cos_theta = 1 - 2 * (1 - target_similarity) ** 2
+        angle = math.acos(cos_theta)
+        ambiguous_vec = [0.0] * self.vec_index.EMBEDDING_DIM
+        ambiguous_vec[0] = math.cos(angle)
+        ambiguous_vec[1] = math.sin(angle)
+        self._seed_older_entry("mid-note.md", "mid-note", ambiguous_vec)
+
+        with unittest.mock.patch("dream.cheap_model_tier_available", return_value=False) as spy:
+            proposals = self._run_stage_with_new_entry(
+                "new-note.md", "new-note", embedding=_unit_vector(0)
+            )
+        self.assertEqual(proposals, [])
+        spy.assert_called()  # the seam was checked, not silently skipped
+        # And, separately: the similarity really did land in the ambiguous
+        # band, not below the floor entirely (belt-and-suspenders on the
+        # fixture's own math).
+        sim = self.vec_index.nearest(
+            self.vault, _unit_vector(0), k=2, similarity_floor=0.0
+        )
+        mid_sim = next(s for path, s in sim if path == self._rel("mid-note.md"))
+        self.assertGreaterEqual(mid_sim, write_time_linker.LINK_SIMILARITY_FLOOR)
+        self.assertLess(mid_sim, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
+
+    def test_below_floor_pair_not_a_candidate_at_all(self) -> None:
+        self._seed_older_entry("unrelated.md", "unrelated", _unit_vector(1))  # orthogonal
+        with unittest.mock.patch("dream.cheap_model_tier_available") as spy:
+            proposals = self._run_stage_with_new_entry(
+                "new-note.md", "new-note", embedding=_unit_vector(0)
+            )
+        self.assertEqual(proposals, [])
+        spy.assert_not_called()  # never even reaches the ambiguous-band check
+
+    def test_decay_exempt_entry_never_becomes_an_origin(self) -> None:
+        self._write(
+            self._rel("incident.md"),
+            f"---\nkind: failure-incident\nslug: incident\ncreated: {self._NOW}\n---\nbody\n",
+        )
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text") as spy:
+            proposals = dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
+        self.assertEqual(proposals, [])
+        spy.assert_not_called()
+
+    def test_already_linked_both_ways_produces_no_proposal(self) -> None:
+        self._seed_older_entry("old-note.md", "old-note", _unit_vector(0, 0.99))
+        # Run once -- links both ways.
+        first = self._run_stage_with_new_entry("new-note.md", "new-note", embedding=_unit_vector(0))
+        self.assertEqual(len(first), 1)
+
+        # A second sweep over the same (now already-linked) pair proposes nothing.
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        import graph_snapshot
+        graph_snapshot.rebuild(self.vault)  # settle -- nothing "changed" anymore
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", return_value=_unit_vector(0)):
+            second = dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
+        self.assertEqual(second, [])
+
+    def test_a_write_time_linked_note_still_counts_as_changed_for_the_sweep(self) -> None:
+        # Review-caught defect: write_time_linker.apply() (task 3) calls
+        # graph_snapshot.rebuild(vault, paths=[rel_path]) after every link
+        # it applies -- which, under the OLD (buggy) implementation that
+        # read graph_snapshot.RebuildStats.touched_paths as the "changed
+        # since last cycle" signal, silently "consumed" that note's mtime
+        # before the weekly sweep ever ran. The fix uses dream.py's OWN
+        # independent cursor -- this proves a note that already got an
+        # ordinary write-time link (the common case) is STILL visible to
+        # the weekly sweep as a valid origin.
+        import graph_snapshot
+        self._seed_older_entry("old-note.md", "old-note", _unit_vector(0, 0.99))
+
+        new_path = self._write_entry("new-note.md", "new-note")
+        # Simulate write_time_linker.apply() already having run on this
+        # note (a real "Related" line, plus the exact snapshot nudge call
+        # apply() itself makes) BEFORE the weekly sweep ever sees it.
+        new_path.write_text(
+            new_path.read_text(encoding="utf-8").rstrip("\n") + "\n\n**Related:** [[unrelated-old]]\n",
+            encoding="utf-8",
+        )
+        # Explicit mtime, safely after the cursor _seed_older_entry set --
+        # a bare write here could otherwise land within the same
+        # filesystem-mtime-granularity window as the cursor (see
+        # _seed_older_entry's own note on this).
+        import os
+        cursor = dream._read_link_sweep_cursor(self.vault)
+        newer = cursor + 2.0
+        os.utime(new_path, (newer, newer))
+        graph_snapshot.rebuild(self.vault, paths=[self._rel("new-note.md")])
+
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", return_value=_unit_vector(0)):
+            proposals = dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
+
+        self.assertEqual(len(proposals), 1)  # new-note.md was still visible as a changed origin
+        mutated = {str(path) for path, _content in proposals[0].mutations}
+        self.assertIn(str(self.vault / self._rel("new-note.md")), mutated)
+
+    def test_asymmetric_similarity_reverse_direction_still_gets_evaluated(self) -> None:
+        # Review-caught defect (the exact original scenario): TWO notes, A
+        # and B, both "changed" this cycle -- both get processed as
+        # origins in the SAME sweep call. A's turn comes first
+        # (alphabetical _iter_entries order); A's freshly-recomputed query
+        # vector lands only AMBIGUOUS relative to B's stored vector, so A
+        # produces no proposal (and, critically, doesn't touch B). B's
+        # turn comes next; B's OWN freshly-recomputed query vector lands
+        # CONFIDENT relative to A's stored vector -- a genuinely different
+        # result than A's own query got, because each note's query vector
+        # is independently, freshly recomputed (not symmetric by
+        # construction). The old `seen_pairs` tracking would have marked
+        # this pair permanently ineligible the moment A's ambiguous check
+        # ran, silently dropping B's later, confident match.
+        import math
+
+        def cos_theta_for_similarity(sim: float) -> float:
+            return 1 - 2 * (1 - sim) ** 2
+
+        # A's STORED vector (what B's query will be compared against) --
+        # arbitrary; what matters is A's own QUERY vector below.
+        a_stored = _unit_vector(0)
+        # B's STORED vector sits AMBIGUOUS relative to A's own query vector
+        # (both are _unit_vector(0) -- identical -- so instead make A's
+        # own query vector explicitly ambiguous toward B's stored vector).
+        ambiguous_angle = math.acos(cos_theta_for_similarity(0.77))
+        b_stored = [0.0] * self.vec_index.EMBEDDING_DIM
+        b_stored[0] = math.cos(ambiguous_angle)
+        b_stored[1] = math.sin(ambiguous_angle)
+
+        a_path = self._write_entry("note-a.md", "note-a")
+        b_path = self._write_entry("note-b.md", "note-b")
+        self.vec_index.upsert_entry(self.vault, self._rel("note-a.md"), a_stored)
+        self.vec_index.upsert_entry(self.vault, self._rel("note-b.md"), b_stored)
+        cursor = dream._read_link_sweep_cursor(self.vault)
+        import os
+        newer = cursor + 2.0
+        os.utime(a_path, (newer, newer))
+        os.utime(b_path, (newer, newer))
+
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+
+        # A's own fresh query vector: ambiguous toward B's stored vector
+        # (same angle as above, from A's "side"). B's own fresh query
+        # vector: confident toward A's stored vector (identical vectors).
+        confident_angle = math.acos(cos_theta_for_similarity(0.95))
+        a_query_vector = [0.0] * self.vec_index.EMBEDDING_DIM
+        a_query_vector[0] = math.cos(ambiguous_angle)
+        a_query_vector[1] = math.sin(ambiguous_angle)
+        b_query_vector = [0.0] * self.vec_index.EMBEDDING_DIM
+        b_query_vector[0] = math.cos(confident_angle)
+
+        def fake_embed_text(text, mode=None):
+            if text.startswith("note-a "):
+                return a_query_vector
+            if text.startswith("note-b "):
+                return b_query_vector
+            raise AssertionError(f"unexpected embed_text call: {text[:40]!r}")
+
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", side_effect=fake_embed_text):
+            proposals = dream._stage_link_improvement(self.vault, entries, loaded, now=self._NOW)
+
+        # A's own (ambiguous) query produces nothing; B's later, confident
+        # query must still produce a proposal linking A and B -- the exact
+        # case the old seen_pairs tracking would have silently dropped.
+        self.assertEqual(len(proposals), 1)
+        self.assertIn(self._rel("note-a.md"), proposals[0].paths)
+        self.assertIn(self._rel("note-b.md"), proposals[0].paths)
+
+
+class LinkImprovementIntegrationTests(_DreamTestBase):
+    """The full run_dream_and_auto_apply()/revert pipeline for
+    link_improvement -- auto-applies without a confirm() call (joined
+    AUTO_APPLY_STAGES per the auto-org design's own already-approved "every
+    link move auto-applies" ruling), and reverts cleanly."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        import vec_index
+        self.vec_index = vec_index
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+        from revert_log import RevertLog  # noqa: E402
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _rel(self, name: str) -> str:
+        return f"personal/reference/{name}"
+
+    def _write_entry(self, name: str, slug: str) -> Path:
+        return self._write(
+            self._rel(name), f"---\nkind: reference\nslug: {slug}\ncreated: 2026-01-01\n---\nbody\n"
+        )
+
+    def test_link_improvement_auto_applies_and_reverts(self) -> None:
+        import graph_snapshot
+        old_path = self._write_entry("old-note.md", "old-note")
+        self.vec_index.upsert_entry(self.vault, self._rel("old-note.md"), _unit_vector(0, 0.99))
+        graph_snapshot.rebuild(self.vault)
+
+        new_path = self._write_entry("new-note.md", "new-note")
+        original_new_content = new_path.read_text(encoding="utf-8")
+        original_old_content = old_path.read_text(encoding="utf-8")
+
+        import embed
+        with unittest.mock.patch.object(embed, "embed_text", return_value=_unit_vector(0)):
+            digest, batch = dream.run_dream_and_auto_apply(
+                self.vault, run_id="run-link-1", revert_log=self.revert_log,
+            )
+
+        link_applied = [i for i in batch.items if i["stage"] == "link_improvement"]
+        self.assertEqual(len(link_applied), 1)
+        self.assertIn("[[old-note]]", new_path.read_text(encoding="utf-8"))
+        self.assertIn("[[new-note]]", old_path.read_text(encoding="utf-8"))
+
+        entry_id = link_applied[0]["entry_id"]
+        self.revert_log.revert("run-link-1", entry_id)
+        self.assertEqual(new_path.read_text(encoding="utf-8"), original_new_content)
+        self.assertEqual(old_path.read_text(encoding="utf-8"), original_old_content)
 
 
 if __name__ == "__main__":

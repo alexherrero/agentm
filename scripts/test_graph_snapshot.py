@@ -65,6 +65,26 @@ class TestGraphSnapshot(unittest.TestCase):
         self.assertNotIn("personal/reference/note-a.md", orphaned)
         self.assertNotIn("personal/reference/note-b.md", orphaned)
 
+    def test_touched_paths_reports_only_newly_extracted_files(self):
+        # The "arrived or changed since the last cycle" signal task 4's
+        # weekly sweep needs, sourced from this rebuild rather than a
+        # second staleness tracker.
+        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody a")
+        self._write("personal/reference/note-b.md", "---\nslug: note-b\n---\nbody b")
+        first = graph_snapshot.rebuild(self.vault)
+        self.assertEqual(sorted(first.touched_paths), [
+            "personal/reference/note-a.md", "personal/reference/note-b.md",
+        ])
+
+        # Nothing changed -- a second rebuild touches nothing.
+        second = graph_snapshot.rebuild(self.vault)
+        self.assertEqual(second.touched_paths, [])
+
+        # Only the newly-added file shows up in touched_paths.
+        self._write("personal/reference/note-c.md", "---\nslug: note-c\n---\nbody c")
+        third = graph_snapshot.rebuild(self.vault)
+        self.assertEqual(third.touched_paths, ["personal/reference/note-c.md"])
+
     def test_outgoing_returns_stored_edges(self):
         self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody")
         self._write("personal/reference/note-b.md", "---\nslug: note-b\n---\nsee [[note-a]]")

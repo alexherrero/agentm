@@ -63,6 +63,7 @@ class RebuildStats:
     files_touched: int
     edges_written: int
     nodes_removed: int
+    touched_paths: list[str]
 
 
 def _snapshot_path(vault: Path) -> Path:
@@ -171,6 +172,12 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
     as a deletion, mirroring vec_index.drain_queue's stale-upsert-becomes-
     delete convention). This is the cheap path the write-time linker uses
     for a single just-saved note.
+
+    `RebuildStats.touched_paths` is the list of paths actually re-extracted
+    this call (new or changed since the prior rebuild; excludes removed
+    paths) — the "arrived or changed since the last cycle" signal the
+    weekly link-improvement sweep (task 4) needs, without a second,
+    independent staleness-tracking mechanism duplicating this one.
     """
     vault = Path(vault_path)
     conn = _open(vault)
@@ -178,6 +185,7 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
         files_touched = 0
         edges_written = 0
         nodes_removed = 0
+        touched_paths: list[str] = []
 
         if paths is not None:
             for rel_path in paths:
@@ -191,11 +199,13 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
                 mtime = full.stat().st_mtime
                 edges_written += _reindex_one(conn, vault, rel_path, mtime)
                 files_touched += 1
+                touched_paths.append(rel_path)
             conn.commit()
             return RebuildStats(
                 files_touched=files_touched,
                 edges_written=edges_written,
                 nodes_removed=nodes_removed,
+                touched_paths=touched_paths,
             )
 
         # Full-vault mode.
@@ -213,6 +223,7 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
                 continue  # unchanged — skip re-extraction
             edges_written += _reindex_one(conn, vault, rel_path, mtime)
             files_touched += 1
+            touched_paths.append(rel_path)
 
         for rel_path in stored:
             if rel_path not in walked_set:
@@ -224,6 +235,7 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
             files_touched=files_touched,
             edges_written=edges_written,
             nodes_removed=nodes_removed,
+            touched_paths=touched_paths,
         )
     finally:
         conn.close()

@@ -15,7 +15,7 @@ A note moves through six stages between the moment it's noticed and the moment i
 2. **Index** — the note is embedded into the vector index and linked to its neighbors by typed edges (`uses`, `fixed`, `supersedes`, and six more), so recall can follow a relationship, not just match text. See [Memory index](agentm-memory-index).
 3. **Recall** — every prompt searches the vault by meaning and by keyword, on top of a small always-load floor of standing rules that never has to be searched for.
 4. **Heat** — notes that keep getting used float up toward that always-load floor; notes nobody's touched cool back down. Forgetting is a managed policy here, not an accident.
-5. **Sleep** — between sessions, dreaming looks over the inbox and proposes promotions, links, and expirations. Every proposal is undo-backed, and none of them apply without you confirming.
+5. **Sleep** — between sessions, dreaming looks over the inbox and the whole corpus. Every proposal is undo-backed. Reversible moves — compression, tidying, and new links — apply automatically and land in the revert log; a merge or a flagged contradiction still waits for your confirm.
 6. **Watch** — `/console`, the session-start digest (see [Auto-orchestration](Auto-Orchestration)), and the nightly [health score](Health-Scorecard) keep the collection's shape visible, so drift shows up before it becomes a problem.
 
 ## What's here

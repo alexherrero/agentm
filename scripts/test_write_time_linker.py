@@ -43,6 +43,64 @@ def _vec_backend_available(vault: Path) -> bool:
     return True
 
 
+class TestMergeRelatedSlugs(unittest.TestCase):
+    """merge_related_slugs() is a pure function -- no sqlite-vec/vault
+    needed, so these never skip."""
+
+    def test_creates_a_related_line_when_absent(self):
+        updated = write_time_linker.merge_related_slugs("body text\n", ["a", "b"])
+        self.assertEqual(updated, "body text\n\n**Related:** [[a]], [[b]]\n")
+
+    def test_empty_new_slugs_is_a_noop(self):
+        self.assertIsNone(write_time_linker.merge_related_slugs("body text\n", []))
+
+    def test_merges_new_slugs_into_existing_line(self):
+        content = "body\n\n**Related:** [[a]]\n"
+        updated = write_time_linker.merge_related_slugs(content, ["b"])
+        self.assertEqual(updated, "body\n\n**Related:** [[a]], [[b]]\n")
+
+    def test_already_present_slug_is_a_noop(self):
+        content = "body\n\n**Related:** [[a]], [[b]]\n"
+        self.assertIsNone(write_time_linker.merge_related_slugs(content, ["a"]))
+
+    def test_merge_caps_at_max_related_links(self):
+        content = "body\n\n**Related:** [[a]], [[b]], [[c]]\n"
+        updated = write_time_linker.merge_related_slugs(content, ["d"])
+        self.assertIsNone(updated)  # already at the cap -- "d" can't fit
+
+    def test_merge_partial_fit_under_the_cap(self):
+        content = "body\n\n**Related:** [[a]], [[b]]\n"
+        updated = write_time_linker.merge_related_slugs(content, ["c", "d"])
+        # Only "c" fits under MAX_RELATED_LINKS=3; "d" is dropped, not just deferred.
+        self.assertEqual(updated, "body\n\n**Related:** [[a]], [[b]], [[c]]\n")
+
+    def test_related_line_inside_a_fenced_code_block_is_ignored(self):
+        # Review-caught defect: a note showing markdown syntax as a worked
+        # example must not have that example line treated as the real
+        # Related line -- the fenced content stays untouched, and a real
+        # line gets appended after it instead.
+        content = (
+            "intro\n\n"
+            "```\n"
+            "**Related:** [[example-note]]\n"
+            "```\n\n"
+            "real body\n"
+        )
+        updated = write_time_linker.merge_related_slugs(content, ["new-neighbor"])
+        self.assertIn("**Related:** [[example-note]]\n```", updated)  # fence untouched
+        self.assertTrue(updated.rstrip("\n").endswith("**Related:** [[new-neighbor]]"))
+
+    def test_duplicate_related_lines_merges_into_the_last_one(self):
+        # Review-caught defect: corrupted/manually-edited state with two
+        # Related-shaped lines must not silently drop the second one or
+        # produce three lines -- the last (most-recently-appended, by this
+        # system's own append-only convention) is the one merged into.
+        content = "body\n\n**Related:** [[old-a]]\n\nmore text\n\n**Related:** [[old-b]]\n"
+        updated = write_time_linker.merge_related_slugs(content, ["new-c"])
+        related_lines = [l for l in updated.splitlines() if l.startswith("**Related:**")]
+        self.assertEqual(related_lines, ["**Related:** [[old-a]]", "**Related:** [[old-b]], [[new-c]]"])
+
+
 def _unit_vector(hot_index: int, sign: float = 1.0) -> list:
     v = [0.0] * vec_index.EMBEDDING_DIM
     v[hot_index] = sign
