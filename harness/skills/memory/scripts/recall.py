@@ -986,7 +986,10 @@ def _vec_search(
     """Embed the query + search the vec-index for top-k nearest entries.
 
     Returns {relative_path_posix: similarity_score}. similarity_score is
-    in [0, 1] where 1 = most similar (computed as 1 - cosine_distance).
+    in [0, 1] where 1 = most similar — an approximation of cosine
+    similarity derived from vec0's raw L2 distance (see the conversion
+    comment below; embeddings are unit vectors, so L2-based ranking
+    matches cosine-based ranking even though the metric itself is L2).
 
     Returns {} (silently) under any of:
       - sqlite-vec not installed / Apple system Python missing
@@ -1052,11 +1055,17 @@ def _vec_search(
             rel_path = meta_row[0]
             if _is_inbox_path(rel_path):
                 continue
-            # Convert distance to similarity. sqlite-vec's default for vec0
-            # is cosine distance in [0, 2]; similarity = 1 - distance/2
-            # clamps to [0, 1]. (For L2 distance the conversion would be
-            # different; vec0 with FLOAT[N] uses cosine by default per
-            # sqlite-vec docs.)
+            # Convert distance to similarity. vec0's default metric for
+            # FLOAT[N] columns (no distance_metric= override) is raw L2,
+            # not cosine — verified empirically against sqlite-vec v0.1.9.
+            # BGE-large's encode() pipeline ends in a Normalize module
+            # (modules.json), so stored and query embeddings are unit
+            # vectors; for unit vectors L2 = sqrt(2 * cosine_distance), so
+            # ordering by L2 matches ordering by cosine distance. The
+            # `1 - distance/2` below approximates cosine similarity (the
+            # exact conversion is `1 - distance**2/2`) — rank order
+            # survives, but the reported score isn't exactly cosine
+            # similarity.
             sim = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
             results[rel_path] = sim
         return results
