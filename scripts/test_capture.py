@@ -122,6 +122,18 @@ class SlugCollisionTests(unittest.TestCase):
 
 
 class ConcurrencyTests(unittest.TestCase):
+    # capture()'s lock is per-vault, not per-slug, so every writer below --
+    # distinct-slug or same-slug -- queues on the one mutex. 20 writers on
+    # an 8-worker pool means up to ~2.5 writers deep behind the lock at
+    # once; on a slow CI runner (observed on windows-latest) that queueing
+    # can outrun vault_mutex's 10s default acquisition timeout even though
+    # no writer is actually stuck -- a false-negative LockTimeout, not a
+    # correctness failure. A generous per-test timeout gives slow runners
+    # headroom without touching the lock's real-world default (still 10s
+    # for every other caller) or diluting the contention these tests exist
+    # to exercise.
+    _LOCK_TIMEOUT = 60.0
+
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name)
@@ -132,9 +144,11 @@ class ConcurrencyTests(unittest.TestCase):
     def test_concurrent_writes_do_not_corrupt_files(self) -> None:
         # Distinct slugs, concurrent writers -- each atomic_write call is
         # independent (temp-in-same-dir + fsync + rename), so no shared
-        # mutex is needed for non-colliding targets. Confirms no torn writes.
+        # mutex is needed for CORRECTNESS on non-colliding targets. Confirms
+        # no torn writes. (capture()'s lock is still per-vault in practice --
+        # see _LOCK_TIMEOUT above -- so these writers do serialize on it.)
         def _write(i):
-            return cap.capture(self.vault, f"content-{i}", slug=f"slug-{i}", now=_NOW)
+            return cap.capture(self.vault, f"content-{i}", slug=f"slug-{i}", now=_NOW, lock_timeout=self._LOCK_TIMEOUT)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
             results = list(ex.map(_write, range(20)))
@@ -154,7 +168,7 @@ class ConcurrencyTests(unittest.TestCase):
         # first's file (both report success, one candidate is gone with no
         # error anywhere). Every writer must survive with distinct content.
         def _write(i):
-            return cap.capture(self.vault, f"content-{i}", slug="same-slug", now=_NOW)
+            return cap.capture(self.vault, f"content-{i}", slug="same-slug", now=_NOW, lock_timeout=self._LOCK_TIMEOUT)
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
             results = list(ex.map(_write, range(20)))

@@ -112,6 +112,7 @@ def capture(
     instructions: "str | None" = None,
     source_url: "str | None" = None,
     now: "datetime | None" = None,
+    lock_timeout: float = 10.0,
 ) -> CaptureResult:
     """Write one candidate to `personal/_inbox/<slug>.md`. Never raises on a
     write failure — returns a `CaptureResult` with `success=False` and the
@@ -125,6 +126,12 @@ def capture(
     anything other than the operator's own capture-time text breaks that
     invariant at the call site, not here; this function's contract is
     simply "store what you were handed, nothing inferred."
+
+    `lock_timeout` passes through to `vault_mutex`'s `timeout=` (default
+    unchanged at 10s). Exposed so a high-contention caller — e.g. a test
+    running many concurrent writers through the same per-vault lock on a
+    slow CI runner — can widen the acquisition budget without touching
+    the lock's own default for every other caller.
     """
     if kind not in _KNOWN_KINDS:
         return CaptureResult(success=False, error=f"unknown kind {kind!r}; expected one of {_KNOWN_KINDS}")
@@ -157,7 +164,7 @@ def capture(
         from fingerprint import compute_fingerprint  # same skill dir
         content_fp = compute_fingerprint(content)
 
-        with vault_mutex(vault):
+        with vault_mutex(vault, timeout=lock_timeout):
             try:
                 import dedup_guard  # same skill dir
                 existing = dedup_guard.find_inbox_duplicate(vault, content_fp)
