@@ -924,6 +924,108 @@ def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, no
     return proposals
 
 
+# The suffix-backlog drain's per-cycle batch bound (task 6): each weekly
+# cycle collapses at most this many pre-existing suffix families — 25,
+# matching `dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP` (the plan's own
+# named precedent, "matching the existing compression/backfill cap
+# precedent"). Continues cycle over cycle until the backlog drains.
+_SUFFIX_BACKLOG_BATCH_CAP = 25
+
+
+def _stage_suffix_backlog_drain(vault_path: Path, entries: list, loaded: dict) -> list:
+    """Returns proposals (`stage="suffix_backlog_drain"`, `kind="collapse"`).
+
+    Task 2's write-time guard and task 3's cluster-aware inbox pass both
+    stop NEW suffix families from forming or piling up in the inbox, but
+    neither reaches the LEGACY backlog: active notes elsewhere in the
+    vault that were already `_1`/`_2` suffix-duplicated before the guard
+    existed. This stage drains that backlog the same way part 2's link
+    backfill drains its own pool — a capped batch per cycle, continuing
+    cycle over cycle until none remain.
+
+    `entries`/`loaded` are the same vault-wide corpus every other stage
+    here sees, which `_EXCLUDE_DIRS` already keeps inbox-free — task 3/4's
+    fold owns the inbox's own suffix families, uncapped, every cycle; this
+    stage's job starts where that pool ends. Every `status: active` entry
+    (skipping curated `_always-load` notes, the same exemption
+    `dedup_guard._is_reinforceable` applies to a reinforce target) is
+    bucketed by `dedup_guard.live_content_fingerprint` — the identical
+    live-recomputed hash the write-time guard and task 3's inbox pass both
+    match on. A bucket of two or more is a suffix family: content-
+    identical modulo formatting, however many `_1`/`_2` copies deep.
+
+    Each family in this cycle's batch collapses into its canonical
+    EARLIEST note (by `created` frontmatter, path-order tiebreak for the
+    legacy shape with no `created` at all — the same rule task 3's
+    `_earliest_note` uses): every copy is marked `status: superseded` +
+    `supersedes: <canonical rel path>`, never deleted, so part 1's tidying
+    lanes still pick the copies up later; the survivor's own content is
+    left untouched (a copy carries nothing new to absorb).
+
+    No persisted cursor is needed (unlike the link-backfill's attempted-
+    set): a collapsed family's copies flip to `superseded` and drop out of
+    every later cycle's `status: active` grouping on their own, so the
+    backlog self-drains — whatever this cycle's cap doesn't reach is still
+    there, unchanged, for the next one. Unlike an orphan with no
+    qualifying neighbor, a family that DOES make the batch always
+    resolves (fingerprint-exact membership is a hash fact, never an
+    ambiguous judgment), so there's no starvation case to guard against.
+
+    Families are ordered deterministically (by the collapsing family's own
+    canonical rel path) before the cap is applied, so which ones land in
+    a given cycle's batch is stable and a re-run against an unchanged
+    vault is idempotent.
+    """
+    import dedup_guard  # noqa: E402  (lazy: mirrors this module's other stages)
+
+    by_fingerprint: dict = {}
+    for path in entries:
+        if path not in loaded or "_always-load" in path.parts:
+            continue
+        fm, _body, _raw = loaded[path]
+        if fm.get("status") != "active":
+            continue
+        fp = dedup_guard.live_content_fingerprint(path)
+        if fp is not None:
+            by_fingerprint.setdefault(fp, []).append(path)
+
+    def _canonical(family: list) -> Path:
+        def sort_key(p: Path):
+            created = (loaded[p][0].get("created") or "").strip()
+            return (0 if created else 1, created, str(p))
+        return sorted(family, key=sort_key)[0]
+
+    def _rel(p: Path) -> str:
+        return str(p.relative_to(vault_path)).replace("\\", "/")
+
+    families = [members for members in by_fingerprint.values() if len(members) >= 2]
+    families.sort(key=lambda family: _rel(_canonical(family)))
+
+    proposals: list = []
+    for family in families[:_SUFFIX_BACKLOG_BATCH_CAP]:
+        canonical = _canonical(family)
+        copies = [p for p in family if p != canonical]
+        canonical_rel = _rel(canonical)
+        mutations = [
+            (copy, _patch_frontmatter(loaded[copy][2], {
+                "status": "superseded",
+                "supersedes": canonical_rel,
+            }))
+            for copy in copies
+        ]
+        proposals.append(Proposal(
+            stage="suffix_backlog_drain", kind="collapse",
+            paths=[canonical_rel] + [_rel(c) for c in copies],
+            summary=(
+                f"{canonical_rel} + {len(copies)} content-identical legacy cop"
+                f"{'y' if len(copies) == 1 else 'ies'} — collapse into the earliest, "
+                "mark the rest superseded"
+            ),
+            mutations=mutations,
+        ))
+    return proposals
+
+
 # -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
@@ -1188,6 +1290,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
     proposals.extend(tidying_proposals)
     proposals.extend(_stage_link_improvement(vault_path, entries, loaded))
+    proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)

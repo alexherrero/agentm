@@ -223,6 +223,107 @@ class ConcurrentConfirmTests(_DreamConfirmTestBase):
             dc.confirm(self.vault, "run-concurrent", 2, self.revert_log)
 
 
+class CrossStageCollisionGuardTests(_DreamConfirmTestBase):
+    """Adversarial-review regression (auto-organization part 3 task 6):
+    `auto_apply_batch` must never apply two proposals that both touch the
+    same path within one batch. Each proposal's mutation is captured
+    against a frozen pre-cycle snapshot, so applying a second,
+    independently-captured mutation against a path the first proposal in
+    this same batch already changed can resurrect or corrupt whatever the
+    first just wrote — confirmed by a real cross-stage reproduction
+    (tidying archive-move + suffix_backlog_drain collapse racing on the
+    same path) in `test_dream.py`'s `CrossStageAutoApplyCollisionTests`.
+    This class exercises the guard directly against a synthetic manifest,
+    independent of which two stages happen to collide."""
+
+    def _stage_colliding_pair(self, run_id: str):
+        shared = self._write("shared.md", "---\nkind: fix\nstatus: active\n---\nOriginal.\n")
+        p1 = dream.Proposal(
+            stage="stage-a", kind="move",
+            paths=["shared.md"],
+            summary="stage-a moves shared.md",
+            mutations=[
+                (shared, None),
+                (self.vault / "_archive" / "shared.md", "---\nkind: fix\nstatus: active\n---\nOriginal.\n"),
+            ],
+        )
+        p2 = dream.Proposal(
+            stage="stage-b", kind="collapse",
+            paths=["shared.md"],
+            summary="stage-b marks shared.md superseded (stale -- unaware of p1's move)",
+            mutations=[
+                (shared, "---\nkind: fix\nstatus: superseded\nsupersedes: canonical.md\n---\nOriginal.\n"),
+            ],
+        )
+        digest = dream.DreamDigest(
+            run_id=run_id,
+            corpus_stats={"entry_count": 1, "total_bytes": 0},
+            proposals=[p1, p2],
+            insight_candidates=[],
+        )
+        dream._stage_digest_and_staging(self.vault, digest)
+        return shared
+
+    def test_second_colliding_proposal_stays_pending_not_applied(self) -> None:
+        shared = self._stage_colliding_pair("run-collide")
+        batch = dc.auto_apply_batch(
+            self.vault, "run-collide", self.revert_log,
+            stages=frozenset({"stage-a", "stage-b"}),
+        )
+        self.assertEqual(len(batch.items), 1)
+        self.assertEqual(batch.items[0]["stage"], "stage-a")
+
+        # stage-a's move actually happened.
+        self.assertFalse(shared.exists())
+        self.assertTrue((self.vault / "_archive" / "shared.md").exists())
+
+        # stage-b's colliding proposal was never applied -- no ghost file
+        # resurrected at the old path -- and it's still pending, not
+        # silently dropped, for a later cycle to re-evaluate.
+        pending = dc.list_pending(self.vault, "run-collide")
+        second = next(p for p in pending if p.stage == "stage-b")
+        self.assertEqual(second.status, "pending")
+
+    def test_batch_cap_not_consumed_by_a_skipped_collision(self) -> None:
+        self._stage_colliding_pair("run-collide-cap")
+        batch = dc.auto_apply_batch(
+            self.vault, "run-collide-cap", self.revert_log,
+            stages=frozenset({"stage-a", "stage-b"}),
+            batch_cap=5,
+        )
+        # Only 1 real item applied even though batch_cap allowed up to 5
+        # -- the skipped collision didn't silently eat a cap slot, but
+        # there was nothing else pending to backfill with either.
+        self.assertEqual(len(batch.items), 1)
+
+    def test_non_colliding_proposals_in_same_batch_both_apply(self) -> None:
+        """Control: two proposals touching DIFFERENT paths in the same
+        batch are unaffected by the guard -- it only skips genuine path
+        overlap, not everything after the first item."""
+        a = self._write("a.md", "---\nkind: fix\nstatus: active\n---\nA.\n")
+        b = self._write("b.md", "---\nkind: fix\nstatus: active\n---\nB.\n")
+        p1 = dream.Proposal(
+            stage="stage-a", kind="edit", paths=["a.md"], summary="edit a",
+            mutations=[(a, "---\nkind: fix\nstatus: active\n---\nA edited.\n")],
+        )
+        p2 = dream.Proposal(
+            stage="stage-b", kind="edit", paths=["b.md"], summary="edit b",
+            mutations=[(b, "---\nkind: fix\nstatus: active\n---\nB edited.\n")],
+        )
+        digest = dream.DreamDigest(
+            run_id="run-no-collide", corpus_stats={"entry_count": 2, "total_bytes": 0},
+            proposals=[p1, p2], insight_candidates=[],
+        )
+        dream._stage_digest_and_staging(self.vault, digest)
+        batch = dc.auto_apply_batch(
+            self.vault, "run-no-collide", self.revert_log,
+            stages=frozenset({"stage-a", "stage-b"}),
+        )
+        self.assertEqual(len(batch.items), 2)
+        self.assertIn("A edited.", a.read_text(encoding="utf-8"))
+        self.assertIn("B edited.", b.read_text(encoding="utf-8"))
+
+
 class AutoApplyExpireTests(_DreamConfirmTestBase):
     """The 2026-07-11 operator ruling: expire (compression) auto-applies
     with no confirm() call; promote (dedup) and link (contradiction-
@@ -328,9 +429,14 @@ class AutoApplyExpireTests(_DreamConfirmTestBase):
         self.assertEqual(payload["count"], 1)
         # "stages" reports the full AUTO_APPLY_STAGES watched set for this
         # call, not just the stages with an item this run -- tidying joined
-        # compression in that set (auto-organization part 1, task 3), and
-        # link_improvement joined both (auto-organization part 2, task 4).
-        self.assertEqual(payload["stages"], ["compression", "link_improvement", "tidying"])
+        # compression in that set (auto-organization part 1, task 3),
+        # link_improvement joined both (auto-organization part 2, task 4),
+        # and suffix_backlog_drain joined all three (auto-organization
+        # part 3, task 6).
+        self.assertEqual(
+            payload["stages"],
+            ["compression", "link_improvement", "suffix_backlog_drain", "tidying"],
+        )
         self.assertEqual(payload["batch_cap"], dc.DEFAULT_AUTO_APPLY_BATCH_CAP)
         self.assertEqual(len(payload["items"]), 1)
         self.assertIn("entry_id", payload["items"][0])

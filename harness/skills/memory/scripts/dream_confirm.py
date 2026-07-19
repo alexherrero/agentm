@@ -159,7 +159,18 @@ DEFAULT_REVERT_TTL_DAYS = 14.0
 # here uses, and `merge_related_slugs` is idempotent by construction (a
 # proposal re-applied against already-linked content is a captured no-op,
 # never a duplicate line).
-AUTO_APPLY_STAGES = frozenset({"compression", "tidying", "link_improvement"})
+# `suffix_backlog_drain` (auto-organization part 3, task 6 —
+# PLAN-auto-org-dedup-and-lint.md) joins the set on task 3's own,
+# already-approved basis for `inbox_collapse`: fingerprint-exact family
+# membership is a content-hash fact, not a judgment call, so it needs no
+# verdict to auto-apply. This stage is that same deterministic collapse
+# applied to the vault-wide legacy backlog outside the inbox instead of
+# the inbox pool task 3 covers — same mutation shape (mark copies
+# `superseded` + `supersedes:`, never delete, survivor untouched), same
+# revert-log record_and_apply pre-image pair, same capped-batch bound as
+# `link_improvement`'s own backfill. No fresh ruling needed beyond the
+# one task 3 already has, since the risk profile is identical.
+AUTO_APPLY_STAGES = frozenset({"compression", "tidying", "link_improvement", "suffix_backlog_drain"})
 
 # Standing batch bound for one auto-apply cycle (2026-07-11 cadence
 # review). The proving-window's temporary <=100 cap was sized for a short
@@ -435,7 +446,25 @@ def auto_apply_batch(
     Returns an `AutoAppliedBatch` describing exactly what applied (empty
     `items` if nothing qualified) -- always a real record, never `None`, so
     the digest and the auto-expired-batch log always have something
-    current to report, even on a zero-item cycle."""
+    current to report, even on a zero-item cycle.
+
+    Cross-stage same-path collision guard (adversarial review, auto-
+    organization part 3 task 6): two DIFFERENT auto-apply stages can each
+    independently propose a mutation against the same path in the same
+    `run_dream()` cycle -- e.g. tidying archive-moves a note the same
+    cycle suffix_backlog_drain proposes marking superseded. Both stages
+    compute their mutations against one frozen `loaded` snapshot with no
+    awareness of each other, so applying both blindly (the naive
+    `pending[:batch_cap]` loop this replaced) can resurrect a just-moved
+    file at its old path with stale, now-wrong content -- confirmed by a
+    reproduction that did exactly that. This loop tracks every path an
+    already-applied proposal in THIS batch has touched and skips (leaves
+    pending, never counted against `batch_cap`) any later proposal that
+    touches one of them; a skipped proposal's underlying condition is
+    re-evaluated fresh next cycle -- by then the earlier move has already
+    settled, so `_iter_entries`/the relevant stage scan either no longer
+    sees the path as a candidate (e.g. it moved into an excluded dir) or
+    proposes a fresh, correctly-based mutation against it."""
     now = now if now is not None else time.time()
     pending = [
         p for p in list_pending(vault_path, run_id, now=now)
@@ -444,8 +473,14 @@ def auto_apply_batch(
     pending.sort(key=lambda p: p.index)
 
     items: list = []
-    for p in pending[:batch_cap]:
+    touched_paths: set = set()
+    for p in pending:
+        if len(items) >= batch_cap:
+            break
+        if touched_paths.intersection(p.paths):
+            continue
         entry_id = confirm(vault_path, run_id, p.index, revert_log, now=now, lock_root=lock_root)
+        touched_paths.update(p.paths)
         items.append({
             "index": p.index,
             "stage": p.stage,

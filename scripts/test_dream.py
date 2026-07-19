@@ -222,9 +222,14 @@ class CliTests(_DreamTestBase):
         self.assertEqual(auto_expired["count"], 1)
         # "stages" reports the full AUTO_APPLY_STAGES watched set for this
         # call, not just the stages with an item this run -- tidying joined
-        # compression in that set (auto-organization part 1, task 3), and
-        # link_improvement joined both (auto-organization part 2, task 4).
-        self.assertEqual(auto_expired["stages"], ["compression", "link_improvement", "tidying"])
+        # compression in that set (auto-organization part 1, task 3),
+        # link_improvement joined both (auto-organization part 2, task 4),
+        # and suffix_backlog_drain joined all three (auto-organization
+        # part 3, task 6).
+        self.assertEqual(
+            auto_expired["stages"],
+            ["compression", "link_improvement", "suffix_backlog_drain", "tidying"],
+        )
 
         latest = json.loads(
             (self.vault / "_meta" / "dream-auto-expired-latest.json").read_text(encoding="utf-8")
@@ -599,6 +604,81 @@ class TidyingDigestAndAutoApplyIntegrationTests(_DreamTestBase):
         self.assertTrue(old_path.exists())
         self.assertEqual(old_path.read_text(encoding="utf-8"), original_content)
         self.assertFalse(new_path.exists())
+
+
+class CrossStageAutoApplyCollisionTests(_DreamTestBase):
+    """Adversarial-review regression (auto-organization part 3 task 6): a
+    note that's simultaneously tidying-eligible (aged past the 5y archive
+    threshold) AND suffix_backlog_drain-eligible (a fingerprint-exact
+    duplicate of an older active note) must not get corrupted by both
+    stages auto-applying in the same `run_dream_and_auto_apply()` cycle.
+
+    Before the fix in `dream_confirm.auto_apply_batch`: tidying's move
+    (delete the old path, write `_archive/<name>.md`) applied first, then
+    suffix_backlog_drain's independently-captured, now-stale mutation
+    unconditionally rewrote the just-deleted old path back into
+    existence — a resurrected ghost file with stale content, while the
+    real archived survivor was left un-superseded. The fix tracks paths
+    touched earlier in the same batch and skips (leaves pending) any
+    later proposal that targets one of them."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        from revert_log import RevertLog  # noqa: E402
+
+        self.scratch = Path(self._tmp.name) / "scratch"
+        self.revert_log = RevertLog(
+            self.vault, log_root=self.scratch / "revert-log", lock_root=self.scratch / "locks"
+        )
+
+    def _write_aged_active(self, name: str, days_silent: int, body: str) -> Path:
+        import datetime
+        created = (datetime.date.today() - datetime.timedelta(days=days_silent)).isoformat()
+        return self._write(
+            name,
+            f"---\nkind: fix\nslug: {Path(name).stem}\nstatus: active\ncreated: {created}\n---\n{body}",
+        )
+
+    def test_tidying_move_and_suffix_drain_collide_no_corruption(self) -> None:
+        import dream_confirm as dc  # noqa: E402
+
+        body = "Duplicate legacy content shared by both notes.\n"
+        # Both notes are old enough to be tidying-eligible (>5y silent);
+        # canonical.md is older still, so suffix_backlog_drain picks it as
+        # the fingerprint family's survivor and proposes marking copy.md
+        # (the younger duplicate) superseded -- the exact path tidying
+        # ALSO independently proposes archiving this same cycle.
+        self._write_aged_active("canonical.md", 4000, body)
+        old_path = self._write_aged_active("copy.md", 1900, body)
+
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-collide", revert_log=self.revert_log,
+        )
+
+        tidying_targets = {i["paths"][0] for i in batch.items if i["stage"] == "tidying"}
+        drain_items = [i for i in batch.items if i["stage"] == "suffix_backlog_drain"]
+        self.assertIn(
+            "copy.md", tidying_targets,
+            "tidying should win copy.md's collision (lower proposal index)",
+        )
+        self.assertEqual(
+            len(drain_items), 0,
+            "the colliding suffix_backlog_drain proposal must be skipped, not applied",
+        )
+
+        # No ghost file resurrected at the old path; the real archived
+        # copy exists and was never corrupted into `superseded`.
+        self.assertFalse(old_path.exists())
+        archived = self.vault / "_archive" / "copy.md"
+        self.assertTrue(archived.exists())
+        self.assertIn("status: active", archived.read_text(encoding="utf-8"))
+
+        # The skipped proposal is still visible as pending -- deferred,
+        # not silently dropped.
+        pending = dc.list_pending(self.vault, "run-collide")
+        skipped = [p for p in pending if p.stage == "suffix_backlog_drain"]
+        self.assertEqual(len(skipped), 1)
+        self.assertEqual(skipped[0].status, "pending")
 
 
 class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
@@ -1190,6 +1270,89 @@ class LinkBackfillTests(_DreamTestBase):
         # batch (25) recorded.
         self.assertEqual(len(attempted), dream._LINK_BACKFILL_BATCH_CAP)
         self.assertGreaterEqual(len(proposals), 1)
+
+
+class SuffixBacklogDrainTests(_DreamTestBase):
+    """Task 6 verification: a fixture vault with N > 25 suffix families
+    confirms exactly 25 collapse in one cycle, the remainder carrying
+    over; a second cycle against the same fixture processes the
+    remainder and doesn't reprocess already-collapsed families."""
+
+    _N = 30  # > _SUFFIX_BACKLOG_BATCH_CAP (25)
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.vault / "personal" / "reference").mkdir(parents=True)
+        for i in range(self._N):
+            base = f"family-{i:02d}"
+            body = f"identical legacy content, family {i}\n"
+            self._write(
+                f"personal/reference/{base}.md",
+                f"---\nkind: reference\nslug: {base}\nstatus: active\n"
+                f"created: 2025-01-01\n---\n{body}",
+            )
+            self._write(
+                f"personal/reference/{base}_1.md",
+                f"---\nkind: reference\nslug: {base}_1\nstatus: active\n"
+                f"created: 2025-06-01\n---\n{body}",
+            )
+
+    def _run_cycle(self):
+        entries = dream._iter_entries(self.vault)
+        loaded = dream._load(entries)
+        return dream._stage_suffix_backlog_drain(self.vault, entries, loaded)
+
+    def _apply(self, proposals):
+        for p in proposals:
+            for path, content in p.mutations:
+                path.write_text(content, encoding="utf-8")
+
+    def test_exactly_cap_collapses_remainder_carries_over_no_reprocess(self) -> None:
+        proposals_1 = self._run_cycle()
+        self.assertEqual(len(proposals_1), dream._SUFFIX_BACKLOG_BATCH_CAP)
+        expected_first_batch = {f"personal/reference/family-{i:02d}.md" for i in range(25)}
+        self.assertEqual({p.paths[0] for p in proposals_1}, expected_first_batch)
+        for p in proposals_1:
+            self.assertEqual(p.stage, "suffix_backlog_drain")
+            self.assertEqual(p.kind, "collapse")
+            self.assertEqual(len(p.mutations), 1)
+            copy_path, new_content = p.mutations[0]
+            self.assertTrue(copy_path.name.endswith("_1.md"))
+            self.assertIn("status: superseded", new_content)
+            self.assertIn(f"supersedes: {p.paths[0]}", new_content)
+
+        self._apply(proposals_1)
+
+        # Cycle 2: the remainder (families 25-29) carries over; nothing
+        # already collapsed in cycle 1 is reprocessed.
+        proposals_2 = self._run_cycle()
+        self.assertEqual(len(proposals_2), self._N - dream._SUFFIX_BACKLOG_BATCH_CAP)
+        expected_second_batch = {f"personal/reference/family-{i:02d}.md" for i in range(25, self._N)}
+        self.assertEqual({p.paths[0] for p in proposals_2}, expected_second_batch)
+
+    def test_survivor_is_earliest_by_created_and_stays_unmutated(self) -> None:
+        proposals = self._run_cycle()
+        p = next(p for p in proposals if p.paths[0] == "personal/reference/family-00.md")
+        mutated = {str(path.relative_to(self.vault)).replace("\\", "/") for path, _c in p.mutations}
+        self.assertNotIn("personal/reference/family-00.md", mutated)
+        self.assertIn("personal/reference/family-00_1.md", mutated)
+        # The canonical's own file on disk is untouched by the proposal
+        # (mutations only ever target copies).
+        original = (self.vault / "personal/reference/family-00.md").read_text(encoding="utf-8")
+        self.assertIn("status: active", original)
+
+    def test_always_load_notes_excluded_from_collapse(self) -> None:
+        (self.vault / "_always-load").mkdir(parents=True)
+        self._write(
+            "_always-load/pinned.md",
+            "---\nkind: convention\nslug: pinned\nstatus: active\n"
+            "created: 2020-01-01\n---\nidentical legacy content, family 0\n",
+        )
+        proposals = self._run_cycle()
+        touched = {p for prop in proposals for p in prop.paths}
+        self.assertNotIn("_always-load/pinned.md", touched)
+        family_0 = next(p for p in proposals if p.paths[0] == "personal/reference/family-00.md")
+        self.assertEqual(len(family_0.mutations), 1)  # still just the one _1 copy
 
 
 class ConnectivityMeterTests(_DreamTestBase):
