@@ -417,6 +417,41 @@ class StripHtmlTagsTests(unittest.TestCase):
         self.assertEqual(fl._strip_html_tags("a   \n\n  b"), "a b")
 
 
+class ExtractMainContentTests(unittest.TestCase):
+    """A real quality issue found live reviewing task 4's second run: a
+    site's global nav (present on every page) dominated a whole-body
+    excerpt, burying the actual article. <main>/<article> extraction fixes
+    it -- verified against real Anthropic/DeepMind pages before writing
+    these hermetic fixtures."""
+
+    def test_main_tag_preferred_over_whole_body(self) -> None:
+        html_text = (
+            "<html><body>"
+            "<nav>Home About Research Careers Skip to content Nav nav nav nav nav nav nav nav nav</nav>"
+            "<main>The real article abstract goes here, this is what matters.</main>"
+            "<footer>Copyright footer nav links</footer>"
+            "</body></html>"
+        )
+        result = fl._extract_main_content(html_text)
+        self.assertEqual(result, "The real article abstract goes here, this is what matters.")
+
+    def test_article_tag_used_when_no_main(self) -> None:
+        html_text = "<html><body><nav>Nav stuff</nav><article>The real content.</article></body></html>"
+        result = fl._extract_main_content(html_text)
+        self.assertEqual(result, "The real content.")
+
+    def test_main_preferred_over_article_when_both_present(self) -> None:
+        html_text = "<html><body><main>Main content wins.</main><article>Article content loses.</article></body></html>"
+        result = fl._extract_main_content(html_text)
+        self.assertEqual(result, "Main content wins.")
+
+    def test_neither_tag_returns_none(self) -> None:
+        self.assertIsNone(fl._extract_main_content("<html><body>Just a body, no landmarks.</body></html>"))
+
+    def test_empty_main_falls_through_to_none(self) -> None:
+        self.assertIsNone(fl._extract_main_content("<html><body><main></main></body></html>"))
+
+
 class LooksLikeJsShellTests(unittest.TestCase):
     def test_spa_shell_detected(self) -> None:
         shell = "<html><body><div id='root'></div></body></html>" + (" " * 3000)
@@ -436,12 +471,22 @@ class RenderWithPlaywrightTests(unittest.TestCase):
             self.assertIsNone(fl._render_with_playwright("https://example.com"))
 
     def test_playwright_available_and_succeeds(self) -> None:
+        class _FakeLocator:
+            def count(self):
+                return 0
+
         class _FakePage:
             def goto(self, url, timeout=None, wait_until=None):
                 pass
 
             def inner_text(self, selector):
                 return "rendered visible text"
+
+            def content(self):
+                return "<html><body>rendered visible text</body></html>"
+
+            def locator(self, selector):
+                return _FakeLocator()  # no main/article/[role=main] in this fake -- falls back to body
 
         class _FakeBrowser:
             def new_page(self, user_agent=None):
@@ -475,6 +520,113 @@ class RenderWithPlaywrightTests(unittest.TestCase):
         with mock.patch.object(fl, "_PLAYWRIGHT_AVAILABLE", True), \
              mock.patch.object(fl, "sync_playwright", _raising_sync_playwright, create=True):
             self.assertIsNone(fl._render_with_playwright("https://example.com"))
+
+
+_LISTING_HTML = b"""<html><body>
+<nav><a href="/about">About</a><a href="/research/team/alignment">Team</a></nav>
+<a href="/research/paper-one">Paper One</a>
+<a href="/research/paper-two"><span>Paper</span> <span>Two</span></a>
+<a href="/research/paper-one">Paper One (duplicate link)</a>
+<a href="/research/">Self link</a>
+<a href="/research/page/2">Pagination</a>
+<a href="https://external.com/other">External, not under prefix</a>
+</body></html>"""
+
+
+class ExtractLinksTests(unittest.TestCase):
+    def test_matching_links_extracted_with_text(self) -> None:
+        links = fl._extract_links(_LISTING_HTML.decode(), "/research/", "https://example.com/research/")
+        urls = [u for u, _ in links]
+        self.assertIn("https://example.com/research/paper-one", urls)
+        self.assertIn("https://example.com/research/paper-two", urls)
+
+    def test_nested_tags_in_anchor_text_concatenated(self) -> None:
+        links = fl._extract_links(_LISTING_HTML.decode(), "/research/", "https://example.com/research/")
+        by_url = dict(links)
+        self.assertEqual(by_url["https://example.com/research/paper-two"], "Paper Two")
+
+    def test_team_and_pagination_excluded(self) -> None:
+        links = fl._extract_links(_LISTING_HTML.decode(), "/research/", "https://example.com/research/")
+        urls = [u for u, _ in links]
+        self.assertFalse(any("team" in u for u in urls))
+        self.assertFalse(any("page" in u for u in urls))
+
+    def test_self_link_excluded(self) -> None:
+        links = fl._extract_links(_LISTING_HTML.decode(), "/research/", "https://example.com/research/")
+        urls = [u for u, _ in links]
+        self.assertNotIn("https://example.com/research/", urls)
+
+    def test_out_of_prefix_link_excluded(self) -> None:
+        links = fl._extract_links(_LISTING_HTML.decode(), "/research/", "https://example.com/research/")
+        urls = [u for u, _ in links]
+        self.assertFalse(any("external.com" in u for u in urls))
+        self.assertFalse(any("/about" in u for u in urls))
+
+    def test_duplicate_url_deduped_first_occurrence_wins(self) -> None:
+        links = fl._extract_links(_LISTING_HTML.decode(), "/research/", "https://example.com/research/")
+        urls = [u for u, _ in links]
+        self.assertEqual(urls.count("https://example.com/research/paper-one"), 1)
+        by_url = dict(links)
+        self.assertEqual(by_url["https://example.com/research/paper-one"], "Paper One")  # first, not "(duplicate link)"
+
+    def test_no_matching_links_returns_empty(self) -> None:
+        self.assertEqual(fl._extract_links("<html><body>no links here</body></html>", "/research/", "https://example.com/"), [])
+
+    def test_malformed_html_never_raises(self) -> None:
+        result = fl._extract_links("<html><body><a href='/research/x'>unterminated", "/research/", "https://example.com/")
+        self.assertIsInstance(result, list)
+
+
+class ExtractTitleTests(unittest.TestCase):
+    def test_title_tag_preferred(self) -> None:
+        html_text = "<html><head><title>The Title</title></head><body><h1>The Heading</h1></body></html>"
+        self.assertEqual(fl._extract_title(html_text), "The Title")
+
+    def test_falls_back_to_h1_when_no_title(self) -> None:
+        html_text = "<html><body><h1>The Heading</h1></body></html>"
+        self.assertEqual(fl._extract_title(html_text), "The Heading")
+
+    def test_no_title_or_h1_returns_empty(self) -> None:
+        self.assertEqual(fl._extract_title("<html><body>just text</body></html>"), "")
+
+
+class FetchListingCandidatesTests(unittest.TestCase):
+    """default_fetcher's listing-page path, with urlopen mocked (no real
+    network) -- each linked item gets its own individually-fetched
+    candidate rather than the whole listing page collapsing to one."""
+
+    def _mock_response(self, body: bytes, status: int = 200):
+        resp = mock.MagicMock()
+        resp.status = status
+        resp.read.return_value = body
+        resp.__enter__.return_value = resp
+        resp.__exit__.return_value = False
+        return resp
+
+    def test_listing_source_yields_one_candidate_per_link(self) -> None:
+        source = fl.Source(
+            slug="listing-src", kind="idea", type="web", url="https://example.com/research/",
+            trusted=True, link_prefix="/research/",
+        )
+        item_page = b"<html><head><title>Paper One</title></head><body><main>Abstract text here.</main></body></html>"
+
+        def fake_urlopen(req, timeout=None):
+            return self._mock_response(_LISTING_HTML if req.full_url == source.url else item_page)
+
+        with mock.patch.object(fl, "urlopen", side_effect=fake_urlopen):
+            candidates = fl.default_fetcher(source)
+
+        self.assertGreaterEqual(len(candidates), 2)
+        titles = {c.title for c in candidates}
+        self.assertIn("Paper One", titles)
+
+    def test_listing_page_unreachable_returns_empty(self) -> None:
+        source = fl.Source(
+            slug="listing-src", kind="idea", type="web", url="https://example.com/research/",
+            trusted=True, link_prefix="/research/",
+        )
+        with mock.patch.object(fl, "urlopen", side_effect=fl.URLError("nope")):
+            self.assertEqual(fl.default_fetcher(source), [])
 
 
 class DefaultFetcherFeedAndRenderIntegrationTests(unittest.TestCase):

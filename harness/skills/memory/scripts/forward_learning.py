@@ -89,7 +89,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
+from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
 _HERE = Path(__file__).resolve().parent
@@ -151,6 +153,15 @@ class Source:
     # Ignored for non-feed sources (there is nothing to filter on a single
     # whole-page candidate).
     categories: tuple = ()
+    # Optional listing-page extraction (a site with no RSS but a real
+    # per-item link structure, e.g. anthropic.com/research or
+    # deepmind.google/research/publications -- individual research posts
+    # each with their own URL, just not exposed as a feed). When set to a
+    # URL path prefix (e.g. "/research/"), default_fetcher extracts every
+    # `<a href>` under that prefix instead of treating the whole page as
+    # one candidate, then fetches each linked page individually for its
+    # own title + excerpt. Empty string (default) disables listing mode.
+    link_prefix: str = ""
 
 
 @dataclass(frozen=True)
@@ -210,6 +221,7 @@ def load_sources(vault_path: Path) -> list:
                 url=entry["url"],
                 trusted=bool(entry.get("trusted", False)),
                 categories=tuple(str(c).lower() for c in raw_categories),
+                link_prefix=str(entry.get("link_prefix") or ""),
             )
         )
     return sources
@@ -354,17 +366,24 @@ def _parse_feed(body: bytes, source: Source) -> list:
     return candidates
 
 
-def _render_with_playwright(url: str, *, timeout_sec: int = _FETCH_TIMEOUT_SEC) -> "Optional[str]":
-    """Best-effort headless-Chromium render of `url`, returning the
-    rendered page's visible body text, or `None` on any failure --
-    Playwright not installed, browser binary not installed, navigation
-    timeout, or any other error. Never raises; the caller degrades to
-    whatever the plain GET already returned.
+def _render_with_playwright(
+    url: str, *, timeout_sec: int = _FETCH_TIMEOUT_SEC, want_html: bool = False
+) -> "Optional[str]":
+    """Best-effort headless-Chromium render of `url`. Returns the rendered
+    page's visible body text by default, or its full rendered HTML when
+    `want_html=True` (needed to extract real `<a href>` elements a JS-
+    rendered page's initial markup never carries — a listing page's
+    individual item links only exist post-render). Returns `None` on any
+    failure -- Playwright not installed, browser binary not installed,
+    navigation timeout, or any other error. Never raises; the caller
+    degrades to whatever the plain GET already returned.
 
     Optional dependency, deliberately NOT in requirements.txt's default
     install (a browser-binary download is too heavy to impose on every
-    agentm install for a capability no configured source has needed yet —
-    2026-07-19 inventory, PLAN-dormant-wake task 2). Manual opt-in:
+    agentm install for a capability no configured source needed at v1 —
+    2026-07-19 inventory, PLAN-dormant-wake task 2; confirmed genuinely
+    needed the same day once DeepMind's publications listing turned out to
+    be JS-only, task 4 follow-up). Manual opt-in:
 
         python3 -m pip install --user playwright
         python3 -m playwright install chromium
@@ -377,23 +396,225 @@ def _render_with_playwright(url: str, *, timeout_sec: int = _FETCH_TIMEOUT_SEC) 
             try:
                 page = browser.new_page(user_agent=_USER_AGENT)
                 page.goto(url, timeout=timeout_sec * 1000, wait_until="networkidle")
-                text = page.inner_text("body")
+                if want_html:
+                    result = page.content()
+                else:
+                    # Prefer the semantic content landmark over the whole
+                    # <body> -- a real site's global nav/header/footer chrome
+                    # (present on every page) otherwise dominates the text,
+                    # burying the actual article behind thousands of nav-menu
+                    # characters (found live, DeepMind's publication pages:
+                    # <main> alone is ~1.5K focused chars vs ~6K for <body>,
+                    # nearly all of it repeated site-wide nav).
+                    result = None
+                    for selector in ("main", "article", "[role=main]"):
+                        locator = page.locator(selector)
+                        if locator.count() > 0:
+                            result = locator.first.inner_text()
+                            break
+                    if result is None:
+                        result = page.inner_text("body")
             finally:
                 browser.close()
-        return text
+        return result
     except Exception:
         return None
 
 
+# ── listing-page extraction (no feed, but a real per-item link structure) ──
+# anthropic.com/research and deepmind.google/research/publications both
+# have zero RSS/Atom but list individual, distinctly-URLed research posts.
+# Set `link_prefix` on a Source to switch default_fetcher from whole-page
+# treatment to: extract every matching link, fetch each one individually.
+
+# A link's first path segment right after `link_prefix` gets excluded when
+# it matches one of these -- generic pagination/section markers found on
+# real listing pages (DeepMind's own `/research/publications/page/2/`;
+# Anthropic's `/research/team/...` sub-section, not a paper). A small,
+# explainable allowlist-of-exclusions rather than per-site bespoke parsing.
+_LISTING_EXCLUDE_FIRST_SEGMENT = {"page", "team"}
+
+
+class _LinkExtractor(HTMLParser):
+    """Collects (absolute_url, anchor_text) for every `<a href>` whose
+    resolved path starts with `link_prefix` and isn't excluded. Anchor text
+    across nested tags (e.g. `<a><span>Title</span></a>`) is concatenated --
+    HTMLParser delivers handle_data per text node, not per element."""
+
+    def __init__(self, link_prefix: str, base_url: str):
+        super().__init__()
+        self.link_prefix = link_prefix
+        self.base_url = base_url
+        self.links: "list[tuple[str, str]]" = []
+        self._current_href: "Optional[str]" = None
+        self._current_text: "list[str]" = []
+
+    def _is_wanted(self, href: str) -> bool:
+        absolute = urljoin(self.base_url, href)
+        path = urlparse(absolute).path
+        if not path.startswith(self.link_prefix):
+            return False
+        remainder = path[len(self.link_prefix):].strip("/")
+        if not remainder:
+            return False  # the listing page's own self-link
+        first_segment = remainder.split("/", 1)[0]
+        return first_segment not in _LISTING_EXCLUDE_FIRST_SEGMENT
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "a":
+            return
+        href = dict(attrs).get("href")
+        if href and self._is_wanted(href):
+            self._current_href = urljoin(self.base_url, href)
+            self._current_text = []
+
+    def handle_data(self, data):
+        if self._current_href is not None:
+            self._current_text.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._current_href is not None:
+            text = " ".join("".join(self._current_text).split())
+            self.links.append((self._current_href, text))
+            self._current_href = None
+            self._current_text = []
+
+
+def _extract_links(html_text: str, link_prefix: str, base_url: str) -> "list[tuple[str, str]]":
+    """[(absolute_url, anchor_text), ...] for every matching link, in
+    document order, deduped by URL (first occurrence wins -- a listing page
+    sometimes wraps both a thumbnail and a title in separate anchors to the
+    same article). Malformed HTML never raises -- HTMLParser is lenient by
+    design; any construction error here degrades to no links found."""
+    parser = _LinkExtractor(link_prefix, base_url)
+    try:
+        parser.feed(html_text)
+    except Exception:
+        return []
+    seen_urls = set()
+    out = []
+    for url, text in parser.links:
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+        out.append((url, text))
+    return out
+
+
+_MAIN_TAG_RE = re.compile(r"<main[^>]*>(.*?)</main>", re.DOTALL | re.IGNORECASE)
+_ARTICLE_TAG_RE = re.compile(r"<article[^>]*>(.*?)</article>", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_main_content(html_text: str) -> "Optional[str]":
+    """The stripped text of `<main>` or `<article>` (first match, in that
+    order), or `None` if neither tag is present. A real page's global
+    nav/header/footer chrome (present on every page site-wide) otherwise
+    dominates a whole-body extraction -- found live on DeepMind's
+    publication pages: `<main>` alone is ~1.5K focused chars vs ~6K for
+    the whole body, nearly all of it repeated site-wide nav. Naive
+    non-greedy regex, not a real HTML parser -- correct for the (very
+    common) non-nested case, and `<main>`/nested-`<main>` is invalid HTML
+    per spec anyway, so this holds for any spec-conformant page."""
+    for pattern in (_MAIN_TAG_RE, _ARTICLE_TAG_RE):
+        m = pattern.search(html_text)
+        if m:
+            text = _strip_html_tags(m.group(1))
+            if text:
+                return text
+    return None
+
+
+def _fetch_page_text(url: str) -> "tuple[str, str]":
+    """(title, body_text) for one page: a plain GET, a JS-shell retry
+    through Playwright when available, tags stripped either way. Title
+    comes from `<title>`, falling back to the first `<h1>`. Body prefers
+    `<main>`/`<article>` content over the whole page (`_extract_main_content`
+    -- Playwright's own render path applies the equivalent selector-based
+    preference, see `_render_with_playwright`). Empty strings on any fetch
+    failure -- the caller drops a candidate with no title and no body
+    rather than raising."""
+    req = Request(url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urlopen(req, timeout=_FETCH_TIMEOUT_SEC) as resp:
+            if getattr(resp, "status", 200) >= 400:
+                return "", ""
+            raw = resp.read().decode("utf-8", errors="replace")
+    except (HTTPError, URLError, socket.timeout, OSError):
+        return "", ""
+
+    title = _extract_title(raw)
+
+    if _looks_like_js_shell(raw):
+        rendered = _render_with_playwright(url)
+        if rendered:
+            return title, rendered.strip()
+
+    return title, _extract_main_content(raw) or _strip_html_tags(raw)
+
+
+_TITLE_TAG_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.DOTALL | re.IGNORECASE)
+_H1_TAG_RE = re.compile(r"<h1[^>]*>(.*?)</h1>", re.DOTALL | re.IGNORECASE)
+
+
+def _extract_title(html_text: str) -> str:
+    for pattern in (_TITLE_TAG_RE, _H1_TAG_RE):
+        m = pattern.search(html_text)
+        if m:
+            title = _strip_html_tags(m.group(1))
+            if title:
+                return title
+    return ""
+
+
+def _fetch_listing_candidates(source: Source) -> list:
+    """One Candidate per link found under `source.link_prefix` on the
+    listing page (each fetched individually for its own title + excerpt),
+    capped to `_MAX_FEED_ITEMS_PER_SCAN`. [] on any failure to even load
+    the listing page -- default_fetcher's own graceful-degradation
+    contract, never raises."""
+    req = Request(source.url, headers={"User-Agent": _USER_AGENT})
+    try:
+        with urlopen(req, timeout=_FETCH_TIMEOUT_SEC) as resp:
+            if getattr(resp, "status", 200) >= 400:
+                return []
+            raw = resp.read().decode("utf-8", errors="replace")
+    except (HTTPError, URLError, socket.timeout, OSError):
+        return []
+
+    html_text = raw
+    if _looks_like_js_shell(raw):
+        rendered_html = _render_with_playwright(source.url, want_html=True)
+        if rendered_html:
+            html_text = rendered_html
+        # else: Playwright absent or the render failed -- fall through and
+        # try extraction against the plain (likely JS-shell, likely
+        # link-less) HTML anyway; an empty result degrades to [] below,
+        # never a crash.
+
+    links = _extract_links(html_text, source.link_prefix, source.url)[:_MAX_FEED_ITEMS_PER_SCAN]
+
+    candidates = []
+    for url, anchor_text in links:
+        title, body = _fetch_page_text(url)
+        if not (title or anchor_text or body):
+            continue
+        candidates.append(Candidate(slug=source.slug, title=title or anchor_text or source.slug, body=body, url=url))
+    return candidates
+
+
 def default_fetcher(source: Source) -> list:
     """Best-effort single GET of `source.url`. Response-shape auto-detect:
-    an RSS/Atom body parses into one Candidate per item/entry
-    (`_parse_feed`); an HTML body that looks like a client-rendered SPA
-    shell (`_looks_like_js_shell`) retries once through a headless render
-    when Playwright is installed, else degrades to the plain-fetch text.
-    Returns `[]` on any network error (timeouts/4xx/5xx never fail a scan,
-    same graceful-degradation posture as `adapt_skills.py`'s GitHub
-    enrichment)."""
+    `source.link_prefix` set -> listing-page extraction, one Candidate per
+    linked item (`_fetch_listing_candidates`); an RSS/Atom body parses into
+    one Candidate per item/entry (`_parse_feed`); an HTML body that looks
+    like a client-rendered SPA shell (`_looks_like_js_shell`) retries once
+    through a headless render when Playwright is installed, else degrades
+    to the plain-fetch text. Returns `[]` on any network error
+    (timeouts/4xx/5xx never fail a scan, same graceful-degradation posture
+    as `adapt_skills.py`'s GitHub enrichment)."""
+    if source.link_prefix:
+        return _fetch_listing_candidates(source)
+
     req = Request(source.url, headers={"User-Agent": _USER_AGENT})
     try:
         with urlopen(req, timeout=_FETCH_TIMEOUT_SEC) as resp:
