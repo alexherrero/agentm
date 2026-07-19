@@ -65,8 +65,34 @@ def apply(vault_path: Path | str, rel_path: str, embedding: list[float]) -> list
     reciprocal-link case, task 4) and never touches an existing Related
     line's content beyond appending this call's own.
 
-    Returns the slugs linked (empty list if no qualifying neighbor, or the
-    target file no longer exists — e.g. deleted between save and drain).
+    Returns the slugs linked (empty list if no qualifying neighbor, the
+    target file no longer exists — e.g. deleted between save and drain —
+    or the note already carries a Related line, see idempotency note
+    below).
+
+    Idempotent: if `rel_path` already has a `**Related:**` line by the
+    time the write actually happens, this is a no-op (returns `[]`,
+    doesn't touch the file). Matters because `drain_queue()`'s own
+    contract is "idempotent: re-running drain on a stable queue produces
+    the same final state" — without this check, a queue record that gets
+    reprocessed (e.g. drain interrupted between a record's successful
+    upsert and the queue file's own rewrite) would append a second,
+    duplicate Related line rather than leaving the already-linked note
+    alone. The write-time linker only ever adds ONE Related line per
+    note; a later re-evaluation of the SAME note against newer neighbors
+    is the weekly sweep's job (task 4), not a re-run of this function.
+
+    The neighbor query (a DB read) runs outside `vault_mutex` — cheap and
+    read-only, no need to serialize it against other vault writers — but
+    the target file's content is re-read fresh INSIDE the lock, right
+    before the write, and the idempotency + existence checks are re-run
+    against that fresh read. Matches `ingest_sweep.py`'s own established
+    "resolve outside the lock, re-verify + write inside it" convention
+    (see `stage_candidate`'s docstring) — a retroactive review of an
+    earlier version of this function found it read-then-locked-then-wrote
+    from the pre-lock snapshot, a TOCTOU window where a concurrent writer
+    to the same note (another save, an `/memory evolve`) could have its
+    own change silently clobbered by this function's write.
 
     Never raises. The caller (`vec_index.drain_queue`) already recorded
     this entry's upsert as successful before calling here; a link-
@@ -90,13 +116,17 @@ def apply(vault_path: Path | str, rel_path: str, embedding: list[float]) -> list
                 break
         if not slugs:
             return []
-
         related_line = "**Related:** " + ", ".join(f"[[{s}]]" for s in slugs)
-        current = target.read_text(encoding="utf-8")
-        updated = current.rstrip("\n") + "\n\n" + related_line + "\n"
+
         backend = DeviceLocalBackend(root=vault)
         locator = backend.resolve(*Path(rel_path).parts)
         with vault_mutex(vault):
+            if not target.is_file():
+                return []
+            current = target.read_text(encoding="utf-8")
+            if "**Related:**" in current:
+                return []  # already linked -- idempotent no-op
+            updated = current.rstrip("\n") + "\n\n" + related_line + "\n"
             backend.write(locator, updated)
 
         # Keep task 2's persisted graph snapshot current for this one note —

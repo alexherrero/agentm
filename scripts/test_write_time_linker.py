@@ -23,6 +23,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -133,6 +134,55 @@ class TestWriteTimeLinkerApply(unittest.TestCase):
         # the persisted graph snapshot, without a separate full rebuild.
         outgoing = graph_snapshot.outgoing(self.vault, "personal/reference/new-note.md")
         self.assertEqual([e.target for e in outgoing], ["near"])
+
+    def test_apply_is_idempotent_no_duplicate_related_line(self):
+        # Reviewer-caught defect: drain_queue's own contract is "idempotent
+        # -- re-running drain on a stable queue produces the same final
+        # state." A queue record that gets reprocessed (drain interrupted
+        # between a record's upsert and the queue file's rewrite) must not
+        # append a second Related line to an already-linked note.
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        self._seed("near", _unit_vector(0, 0.99))
+        target = self._write_target("personal/reference/new-note.md")
+
+        first = write_time_linker.apply(self.vault, "personal/reference/new-note.md", _unit_vector(0))
+        second = write_time_linker.apply(self.vault, "personal/reference/new-note.md", _unit_vector(0))
+
+        self.assertEqual(first, ["near"])
+        self.assertEqual(second, [])  # idempotent no-op, not a second append
+        content = target.read_text(encoding="utf-8")
+        self.assertEqual(content.count("**Related:**"), 1)
+
+    def test_apply_reads_the_file_fresh_inside_the_lock(self):
+        # Reviewer-caught defect: an earlier version read the target file
+        # BEFORE acquiring vault_mutex, then wrote that stale snapshot back
+        # inside the lock -- a TOCTOU window where a concurrent writer to
+        # the same note (another save, an /memory evolve) landing between
+        # the read and the lock would be silently clobbered. This proves
+        # the fix: content written by a "concurrent" writer that lands
+        # during vault_mutex's own critical section (simulated by patching
+        # vault_mutex to write before yielding) survives in the final file.
+        if not _vec_backend_available(self.vault):
+            self.skipTest("sqlite-vec backend unavailable on this Python")
+        import contextlib
+        self._seed("near", _unit_vector(0, 0.99))
+        target = self._write_target("personal/reference/new-note.md")
+
+        @contextlib.contextmanager
+        def _mutex_that_races(vault):
+            target.write_text(
+                target.read_text(encoding="utf-8").rstrip("\n") + "\nCONCURRENT-WRITE-MARKER\n",
+                encoding="utf-8",
+            )
+            yield
+
+        with unittest.mock.patch("write_time_linker.vault_mutex", side_effect=_mutex_that_races):
+            write_time_linker.apply(self.vault, "personal/reference/new-note.md", _unit_vector(0))
+
+        content = target.read_text(encoding="utf-8")
+        self.assertIn("CONCURRENT-WRITE-MARKER", content)
+        self.assertIn("[[near]]", content)
 
 
 if __name__ == "__main__":
