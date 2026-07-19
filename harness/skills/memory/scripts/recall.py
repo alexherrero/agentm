@@ -13,8 +13,9 @@
 #   1. Tokenize query.
 #   2. Embed query (api / local / stub) + sqlite-vec top-k by cosine sim.
 #   3. Grep + frontmatter scan in parallel — keyword match count per entry,
-#      filter `status: superseded`, exclude `_archive/` always + `_inbox/`
-#      by default.
+#      filter `status: superseded`, exclude `_archive/` and `_inbox/` by
+#      default (each independently reopenable: --include-archive /
+#      --include-inbox).
 #   4. Merge: combined = sim × 0.7 + keyword × 0.3 (per design doc;
 #      Tech Debt #7 — tune from real use).
 #   5. Dedup against caller-provided path set (always-load), return top-K.
@@ -143,17 +144,21 @@ def _stem(token: str) -> str:
 # for future per-group recall; v0.1.0 hardwires personal/.
 _ALWAYS_LOAD_REL = Path("personal") / "_always-load"
 
-# Directories excluded from recall walks. _archive/ is always excluded
-# (audit-trail content, never surfaced to the agent). _dream-staging/ is
-# always excluded too (L1/F4 fix: dream.py already excludes it from its own
+# Directories excluded from recall walks unconditionally. _dream-staging/
+# is always excluded (L1/F4 fix: dream.py already excludes it from its own
 # source walk, but recall.py had no matching entry -- a bulk-review batch's
 # proposal files, each embedding a full copy of a real note's content,
-# were keyword-recall candidates until this line closed the gap). _inbox/
-# is excluded by default but can be opted in via --include-inbox (raw
-# unfiltered capture; surfacing in recall would inject low-quality
-# candidate noise).
-_EXCLUDE_DIR_NAMES = {"_archive", "_dream-staging"}
+# were keyword-recall candidates until this line closed the gap). _archive/
+# used to live in this same always-excluded set; auto-organization part 1
+# task 5 gave it its own toggle (--include-archive, mirroring --include-
+# inbox exactly) instead, matching the design's own "an archived memory...
+# answers an explicit archive search whenever you ask" contract -- see
+# `_INCLUDE_ARCHIVE_DIR_NAME` below. _shelf/ was never in this set and
+# needs no change: the shelf is a browse convention, not a search boundary,
+# so shelved artifacts stay in everyday search by construction.
+_EXCLUDE_DIR_NAMES = {"_dream-staging"}
 _INBOX_DIR_NAME = "_inbox"
+_INCLUDE_ARCHIVE_DIR_NAME = "_archive"
 
 
 def _is_inbox_path(rel_path: str) -> bool:
@@ -527,13 +532,17 @@ def _iter_entry_paths(
     vault: Path,
     *,
     include_inbox: bool = False,
+    include_archive: bool = False,
 ) -> list[Path]:
     """Walk vault, yield all *.md entry paths (subject to filtering invariants).
 
     Excludes:
-      - `_archive/` and `_dream-staging/` subtrees (always — audit-trail /
-        staging content, never surfaced to the agent).
+      - `_dream-staging/` subtrees (always — staging content, never
+        surfaced to the agent).
       - `_inbox/` subtrees unless `include_inbox=True`.
+      - `_archive/` subtrees unless `include_archive=True` (auto-
+        organization part 1 task 5 — an archived memory answers an
+        explicit archive search, never ordinary recall).
       - Hidden directories (dirnames starting with `.`).
 
     Does NOT filter by frontmatter `status` (that happens at match time).
@@ -570,6 +579,8 @@ def _iter_entry_paths(
                     continue
                 if name == _INBOX_DIR_NAME and not include_inbox:
                     continue
+                if name == _INCLUDE_ARCHIVE_DIR_NAME and not include_archive:
+                    continue
                 if name.startswith("."):
                     continue
                 _walk(child)
@@ -586,6 +597,7 @@ def _grep_search(
     *,
     deadline: float | None = None,
     include_inbox: bool = False,
+    include_archive: bool = False,
     filter_criteria: dict[str, str] | None = None,
 ) -> dict[str, int]:
     """Scan vault entries for keyword matches.
@@ -610,7 +622,7 @@ def _grep_search(
     # always did underneath, just called through the seam.
     from storage_device_local import DeviceLocalBackend  # noqa: E402
     backend = DeviceLocalBackend(root=vault)
-    for md_path in _iter_entry_paths(vault, include_inbox=include_inbox):
+    for md_path in _iter_entry_paths(vault, include_inbox=include_inbox, include_archive=include_archive):
         if deadline is not None and time.monotonic() >= deadline:
             break
         # Broad catch on file read: OSError for IO problems, UnicodeDecodeError
@@ -645,6 +657,7 @@ def _bm25_search(
     *,
     deadline: float | None = None,
     include_inbox: bool = False,
+    include_archive: bool = False,
     filter_criteria: dict[str, str] | None = None,
 ) -> dict[str, float]:
     """BM25 lexical scoring (V6-3, PLAN-wave-e-v6-index task 5) — replaces
@@ -684,7 +697,7 @@ def _bm25_search(
     doc_chunk_counts: dict[str, list[dict[str, int]]] = {}
     doc_chunk_lengths: dict[str, list[int]] = {}
     all_chunk_lengths: list[int] = []
-    for md_path in _iter_entry_paths(vault, include_inbox=include_inbox):
+    for md_path in _iter_entry_paths(vault, include_inbox=include_inbox, include_archive=include_archive):
         if deadline is not None and time.monotonic() >= deadline:
             break
         try:
@@ -795,6 +808,7 @@ def _metadata_filter_only(
     *,
     deadline: float | None = None,
     include_inbox: bool = False,
+    include_archive: bool = False,
 ) -> list[str]:
     """MemoryOS fallback level 4 (V6-3): an unranked `--filter`-only match,
     used only when neither BM25 nor vector search produced any candidate for
@@ -807,7 +821,7 @@ def _metadata_filter_only(
     from storage_device_local import DeviceLocalBackend  # noqa: E402
     backend = DeviceLocalBackend(root=vault)
     out: list[str] = []
-    for md_path in _iter_entry_paths(vault, include_inbox=include_inbox):
+    for md_path in _iter_entry_paths(vault, include_inbox=include_inbox, include_archive=include_archive):
         if deadline is not None and time.monotonic() >= deadline:
             break
         try:
@@ -1140,6 +1154,7 @@ def query(
     k: int = DEFAULT_K,
     dedup_paths: set[str] | None = None,
     include_inbox: bool = False,
+    include_archive: bool = False,
     deadline: float | None = None,
     mode: str | None = None,
     filter_expr: str | None = None,
@@ -1216,7 +1231,7 @@ def query(
     # left rather than blocking.
     bm25_results = _bm25_search(
         vault, query_tokens, deadline=deadline, include_inbox=include_inbox,
-        filter_criteria=criteria,
+        include_archive=include_archive, filter_criteria=criteria,
     )
 
     # V6-3 (PLAN-wave-e-v6-index task 5): RRF fusion replaces the old
@@ -1233,6 +1248,7 @@ def query(
         # metadata-filter-only match (the SQLite-tier fallback).
         fused = {p: 0.0 for p in _metadata_filter_only(
             vault, criteria, deadline=deadline, include_inbox=include_inbox,
+            include_archive=include_archive,
         )}
     else:
         fused = {}
@@ -1323,6 +1339,7 @@ def prompt_submit(
     k: int = DEFAULT_K,
     token_budget: int = DEFAULT_TOKEN_BUDGET,
     include_inbox: bool = False,
+    include_archive: bool = False,
     mode: str | None = None,
     stdout=sys.stdout,
     stderr=sys.stderr,
@@ -1373,6 +1390,7 @@ def prompt_submit(
                 k=k,
                 dedup_paths=always_load_paths,
                 include_inbox=include_inbox,
+                include_archive=include_archive,
                 deadline=deadline,
                 mode=mode,
                 stderr=stderr,
@@ -1556,6 +1574,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                    help=f"time budget in milliseconds (default: {PROMPT_SUBMIT_BUDGET_MS})")
     q.add_argument("--include-inbox", action="store_true",
                    help="include _inbox/ entries in the search (default: excluded)")
+    q.add_argument("--include-archive", action="store_true",
+                   help="include _archive/ entries in the search (default: excluded)")
     q.add_argument("--mode", choices=["local", "stub"], default=None,
                    help="embedding mode override (default: local; see embed.py for details)")
     q.add_argument("--filter", dest="filter_expr", default=None,
@@ -1624,6 +1644,7 @@ def main(argv: list[str] | None = None) -> int:
                 query_text=query_text,
                 k=args.k,
                 include_inbox=args.include_inbox,
+                include_archive=args.include_archive,
                 deadline=deadline,
                 mode=args.mode,
                 filter_expr=args.filter_expr,

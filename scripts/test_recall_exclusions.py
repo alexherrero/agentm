@@ -5,8 +5,14 @@
 files, each embedding a full copy of a real note's content, were
 keyword-recall candidates until this test's fix closed the gap (dream.py
 already excluded the directory from its own source walk; recall.py had no
-matching entry). `_archive/` is covered too since both live in the same
-exclusion set.
+matching entry). `_dream-staging/` is unconditionally excluded.
+
+`_archive/` is excluded by default too, but — since auto-organization part
+1 task 5 — independently reopenable via `include_archive=True`
+(`--include-archive` on the CLI), mirroring `_inbox/`'s existing
+`include_inbox` toggle exactly: an archived memory answers an explicit
+archive search, never ordinary recall. `_shelf/` is never excluded at all
+— the shelf is a browse convention, not a search boundary.
 
 Run directly:
     cd scripts && python3 -m unittest test_recall_exclusions
@@ -54,6 +60,61 @@ class TestIterEntryPathsExclusions(unittest.TestCase):
         names = {p.name for p in paths}
         self.assertIn("live-note.md", names)
         self.assertNotIn("old.md", names)
+
+    def test_archive_subtree_reopens_with_include_archive(self):
+        # Task 5: _archive/ is independently reopenable, mirroring _inbox/'s
+        # existing include_inbox toggle exactly.
+        self._write("projects/foo/_archive/old.md")
+        paths = recall._iter_entry_paths(self.vault, include_archive=True)
+        names = {p.name for p in paths}
+        self.assertIn("old.md", names)
+
+    def test_shelf_subtree_never_excluded(self):
+        # Task 5: the shelf is a browse convention, not a search boundary —
+        # no toggle needed, it's simply never in the exclusion set.
+        self._write("personal/_shelf/old-plan.md")
+        paths = recall._iter_entry_paths(self.vault)
+        names = {p.name for p in paths}
+        self.assertIn("old-plan.md", names)
+
+
+class TestQueryEndToEndArchiveAndShelf(unittest.TestCase):
+    """Task 5's own verification bar, exercised through the real
+    recall.query() pipeline (mode="stub" -- deterministic, no network):
+    a shelved artifact is found by ordinary search; an archived memory is
+    not found by ordinary search but is found with include_archive=True."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write(self, rel: str, body: str) -> None:
+        p = self.vault / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(f"---\nkind: note\nslug: {Path(rel).stem}\n---\n{body}\n", encoding="utf-8")
+
+    def test_shelved_artifact_found_by_ordinary_search(self):
+        self._write("personal/_shelf/old-plan.md", "widget subsystem retry logic notes")
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        paths = {r["path"] for r in results}
+        self.assertIn("personal/_shelf/old-plan.md", paths)
+
+    def test_archived_memory_not_found_by_default_but_found_with_include_archive(self):
+        self._write("personal/_archive/old-widget.md", "widget subsystem retry logic notes")
+        default_results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        self.assertNotIn(
+            "personal/_archive/old-widget.md", {r["path"] for r in default_results}
+        )
+
+        reopened_results = recall.query(
+            vault=self.vault, query_text="widget subsystem", k=5, mode="stub", include_archive=True,
+        )
+        self.assertIn(
+            "personal/_archive/old-widget.md", {r["path"] for r in reopened_results}
+        )
 
 
 class TestIsInboxPath(unittest.TestCase):
