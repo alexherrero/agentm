@@ -5,6 +5,33 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v8.7.0] — 2026-07-19 — Minor: old notes out of the way (FRIDAY ladder feature 5 of 7)
+
+**MINOR.** The fifth shipped feature of the FRIDAY arc's agentm lane, and the first of three parts of `wiki/designs/agentm-auto-organization.md` — the vault starts maintaining itself. A new tidying stage in `dream.py` moves cold notes and unused artifacts out of the way on their own: a memory untouched for five years moves to its tier's `_archive/` (a digest preview at 4.5 years first), and a non-memory artifact untouched for a year moves to its tier's `_shelf/`, returning automatically the cycle after it's touched again. Every move is a revertable delete-and-write pair, journaled through the existing revert log, and auto-applies with no confirmation gate. See [#337](https://github.com/alexherrero/agentm/pull/337).
+
+The stepped rank-curve retune that feeds the archive lane (full strength to 6mo silence, half to 1y, an eighth to 3y, a sixteenth to 5y, replacing the flat 30-day exponential half-life) ships shadow-mode only: it computes alongside the live curve but drives nothing until a new `--decay-curve stepped` mode on the pinned retrieval eval (`scripts/health/eval_v6_retrieval.py`) confirms it doesn't regress ranking quality — the same standing rule that already gated the original RRF-retrieval change. A new anomaly breaker guards the tidying stage's own auto-apply: a cycle proposing several times the usual volume applies nothing from that stage — not a capped partial batch — and flags the digest, rather than risking an abnormal spike being a bug instead of routine backlog.
+
+Task 4 (the artifact shelf) hit a real design gap mid-build: the design's own words name "any injection into a conversation" as a touch, but nothing in this codebase tracks that. Resolved by operator ruling before continuing: an artifact is any entry with no `kind:` frontmatter field at all, and "touch" reuses the exact mechanism the memory-archive lane already tracks — a genuine `recall.py` hit — rather than a new, broader tracker that would need instrumenting skills and hooks in the separate `crickets` repo. Windows CI caught one real, pre-existing bug after the PR opened: `lifecycle.py`'s `decisions/` archive exemption silently broke on Windows, where converting a real `Path` object through `PurePosixPath(str(rel_path))` collapsed a backslash-separated path into a single segment — live since 2026-07-07 (V6-1), surfaced only because this plan's own new test was the first caller anywhere to exercise the exemption with a real `Path` object instead of a hand-written string literal.
+
+### Added
+
+- **The tidying stage** (`harness/skills/memory/scripts/dream.py`, [#337](https://github.com/alexherrero/agentm/pull/337)) — `_stage_tidying()`, a fifth dreaming stage: the memory-archive lane and the artifact-shelf lane, both auto-applying via `dream_confirm.py`'s existing revert-logged apply path.
+- **`compute_decay_score_stepped()` and `compute_decay_score_shadow()`** (`lifecycle.py`) — the stepped decay curve and a per-entry old-vs-new comparison, shadow-mode only; `compute_decay_score()`, the function `recall.py`'s live ranking actually calls, is untouched.
+- **`--decay-curve stepped`** on `scripts/health/eval_v6_retrieval.py` — compares live RRF ranking against the same ranking with the shadow curve substituted in via a reversible module-attribute monkeypatch, isolating the decay-curve retune from the fusion formula.
+- **`--include-archive`** on `recall.py`'s `query` command — mirrors the existing `--include-inbox` toggle exactly; built from scratch, since the design assumed it already existed and it didn't.
+- **The anomaly breaker** (`dream_confirm.check_tidying_anomaly`) — a trailing 8-cycle baseline and a 3× trip threshold, scoped to the tidying stage specifically.
+- **[AgentM Auto-Organization](https://github.com/alexherrero/agentm/wiki/agentm-auto-organization)** — the design lifted to `wiki/designs/`, status held at `final` (not `launched` — only part 1 of 3 has shipped). Both parent designs (`agentm-memory-system.md`, `agentm-experience-and-dreaming.md`) gained pointer amendments the same day.
+- **[Tune the archive](https://github.com/alexherrero/agentm/wiki/Tune-The-Archive)** — the new how-to page, with every tunable constant's real value cross-checked against code.
+
+### Fixed
+
+- **`lifecycle.py`'s `decisions/` archive exemption silently broke on Windows** — `PurePosixPath(str(rel_path))` treated a real `Path` object's backslash-separated string form as a single filename segment rather than a path to split, so the exemption's `"decisions" in parts` check never matched. Pre-existing since 2026-07-07 (V6-1), not introduced by this plan. Fixed with a plain `Path(rel_path)` call, correct on every platform.
+
+### Internal
+
+- 89 new tests across `test_memory_lifecycle.py`, `test_dream.py`, `test_dream_confirm.py`, `test_recall_exclusions.py`, and `test_eval_v6_retrieval.py`.
+- `AUTO_APPLY_STAGES` in `dream_confirm.py` gains `"tidying"` alongside the existing `"compression"`, on the same "retire it, reversible via the undo/revert log" basis the 2026-07-11 ruling already established.
+
 ## [v8.6.0] — 2026-07-18 — Minor: capture from your phone (FRIDAY ladder feature 4 of 7)
 
 **MINOR.** The fourth shipped feature of the FRIDAY arc's agentm lane, and the last of `wiki/designs/agentm-capture.md`'s three parts — the capture trilogy is now fully shipped, and the design's status moves from `final` to `launched`. This release adds the ingest sweep (`harness/skills/memory/scripts/ingest_sweep.py`), the hourly runner job that automates the phone-capture flow end to end: it fetches forwarded links and documents sitting in `_inbox/`, runs a deterministic act step, folds ideas into the ledger, and re-stamps chat-surface timestamps. See [#333](https://github.com/alexherrero/agentm/pull/333).

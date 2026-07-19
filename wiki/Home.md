@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v8.6.0](https://github.com/alexherrero/agentm/releases/tag/v8.6.0).** Capture from your phone now finishes itself — the ingest sweep fetches forwarded links within an hour and turns them into recallable memory, no manual step required.
+> **Latest release: [v8.7.0](https://github.com/alexherrero/agentm/releases/tag/v8.7.0).** The vault now tidies itself — cold notes you haven't touched in years move to an archive, and unused artifacts get shelved out of your way after a year of silence. Nothing is ever deleted, and a shelved artifact comes back on its own the moment you touch it again.
