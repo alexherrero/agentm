@@ -219,6 +219,53 @@ def _stage_corpus_stats(entries: list) -> dict:
     }
 
 
+def _connectivity_meter(loaded: dict) -> dict:
+    """The connectivity meter (auto-org part 2 task 7). Two numbers,
+    counted independently — the design is explicit they must be separate
+    so the linker can't inflate its own success number:
+
+      - `organic_connectivity` (+ `organically_linked_count`): the share
+        of notes with >= 1 real, NON-generated link — a wikilink (or a
+        `supersedes:` frontmatter edge) that survives after stripping
+        every `**Related:**` line, the only place the linker ever writes.
+        Detection reuses `graph.extract_edges` on the stripped content, so
+        fenced code blocks and inline code spans are excluded exactly the
+        way the typed-edge graph itself excludes them — a fenced
+        `[[example]]` never counts as connectivity here either.
+      - `generated_link_count`: the total wikilinks sitting on (non-
+        fenced) `**Related:**` lines across the corpus — the linker's own
+        additions, tracked as their own number.
+
+    A note whose ONLY link is a generated Related-line link does NOT count
+    toward organic connectivity. Ingest batches' reading-order nav +
+    doc-backlink wikilinks DO count as organic — they're structural links
+    ingest itself authored, not the linker's additions, and the meter's
+    job is specifically to keep the LINKER's contribution out of the
+    number it's judged by.
+    """
+    import graph  # noqa: E402  (lazy — same convention as the stages below)
+    import write_time_linker  # noqa: E402
+
+    total = 0
+    organic = 0
+    generated_links = 0
+    for path, (_fm, _body, raw) in loaded.items():
+        total += 1
+        fenced = write_time_linker._fenced_ranges(raw)
+        for m in write_time_linker._RELATED_LINE_RE.finditer(raw):
+            if write_time_linker._in_any_range(m.start(), fenced):
+                continue
+            generated_links += len(write_time_linker._RELATED_WIKILINK_RE.findall(m.group(1)))
+        stripped = write_time_linker._RELATED_LINE_RE.sub("", raw)
+        if graph.extract_edges(str(path), stripped):
+            organic += 1
+    return {
+        "organically_linked_count": organic,
+        "organic_connectivity": (organic / total) if total else 0.0,
+        "generated_link_count": generated_links,
+    }
+
+
 # -----------------------------------------------------------------------------
 # Stage 1 — dedup
 # -----------------------------------------------------------------------------
@@ -952,8 +999,18 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
         f"# Dream digest — run {digest.run_id}",
         "",
         f"Corpus: {digest.corpus_stats['entry_count']} entries, {digest.corpus_stats['total_bytes']} bytes.",
-        "",
     ]
+    # The connectivity meter (task 7) — rendered defensively via .get() so
+    # a digest re-render against an older run's stats (pre-meter) never
+    # crashes; both numbers land every cycle on any current run.
+    if "organic_connectivity" in digest.corpus_stats:
+        lines.append(
+            f"Connectivity: {digest.corpus_stats['organic_connectivity']:.1%} organic "
+            f"({digest.corpus_stats['organically_linked_count']} of "
+            f"{digest.corpus_stats['entry_count']} notes with ≥1 real, non-generated link) · "
+            f"{digest.corpus_stats['generated_link_count']} generated link(s) (counted separately)."
+        )
+    lines.append("")
     if digest.insight_candidates:
         lines.append("## Insight candidates (written, status: candidate)")
         for c in digest.insight_candidates:
@@ -1109,6 +1166,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     loaded = _load(entries)
 
     corpus_stats = _stage_corpus_stats(entries)
+    corpus_stats.update(_connectivity_meter(loaded))
     proposals = []
     proposals.extend(_stage_dedup(entries, loaded))
     proposals.extend(_stage_contradiction_triage(entries, loaded))

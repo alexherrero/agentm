@@ -1192,6 +1192,72 @@ class LinkBackfillTests(_DreamTestBase):
         self.assertGreaterEqual(len(proposals), 1)
 
 
+class ConnectivityMeterTests(_DreamTestBase):
+    """Task 7 verification: the two counts are computed independently, and
+    a note with only a generated (Related-line) link doesn't count toward
+    organic connectivity. Pure content parsing -- no sqlite-vec, never
+    skips."""
+
+    def _load(self):
+        entries = dream._iter_entries(self.vault)
+        return dream._load(entries)
+
+    def test_generated_only_note_does_not_count_as_organic(self) -> None:
+        # A: organic link in prose. B: ONLY a generated Related-line link.
+        # C: no links at all.
+        self._write("a.md", "---\nslug: a\n---\nsee [[b]] for the details\n")
+        self._write("b.md", "---\nslug: b\n---\nbody\n\n**Related:** [[a]]\n")
+        self._write("c.md", "---\nslug: c\n---\nno links here\n")
+
+        meter = dream._connectivity_meter(self._load())
+
+        self.assertEqual(meter["organically_linked_count"], 1)  # only A
+        self.assertAlmostEqual(meter["organic_connectivity"], 1 / 3)
+        self.assertEqual(meter["generated_link_count"], 1)  # B's Related link
+
+    def test_counts_are_independent_organic_note_with_generated_links_too(self) -> None:
+        # A note with BOTH an organic prose link and a generated Related
+        # line counts organic once AND contributes its Related links to
+        # the generated count -- the two numbers move independently.
+        self._write(
+            "both.md",
+            "---\nslug: both\n---\nbuilds on [[other]]\n\n**Related:** [[x]], [[y]]\n",
+        )
+        meter = dream._connectivity_meter(self._load())
+        self.assertEqual(meter["organically_linked_count"], 1)
+        self.assertEqual(meter["generated_link_count"], 2)
+
+    def test_fenced_wikilink_counts_toward_neither(self) -> None:
+        self._write(
+            "fenced.md",
+            "---\nslug: fenced\n---\nexample:\n\n```\nsee [[example-link]]\n**Related:** [[fenced-example]]\n```\n",
+        )
+        meter = dream._connectivity_meter(self._load())
+        self.assertEqual(meter["organically_linked_count"], 0)
+        self.assertEqual(meter["generated_link_count"], 0)
+
+    def test_supersedes_frontmatter_counts_as_organic(self) -> None:
+        self._write("super.md", "---\nslug: super\nsupersedes: old-note\n---\nbody\n")
+        meter = dream._connectivity_meter(self._load())
+        self.assertEqual(meter["organically_linked_count"], 1)
+
+    def test_empty_corpus_reports_zero_not_crash(self) -> None:
+        meter = dream._connectivity_meter({})
+        self.assertEqual(meter["organic_connectivity"], 0.0)
+        self.assertEqual(meter["generated_link_count"], 0)
+
+    def test_both_numbers_land_in_the_digest(self) -> None:
+        self._write("a.md", "---\nslug: a\n---\nsee [[b]]\n")
+        self._write("b.md", "---\nslug: b\n---\nbody\n\n**Related:** [[a]]\n")
+        digest = dream.run_dream(self.vault, run_id="run-meter-1")
+        digest_text = digest.digest_path.read_text(encoding="utf-8")
+        self.assertIn("Connectivity:", digest_text)
+        self.assertIn("organic", digest_text)
+        self.assertIn("1 generated link(s) (counted separately)", digest_text)
+        self.assertEqual(digest.corpus_stats["organically_linked_count"], 1)
+        self.assertEqual(digest.corpus_stats["generated_link_count"], 1)
+
+
 class LinkImprovementIntegrationTests(_DreamTestBase):
     """The full run_dream_and_auto_apply()/revert pipeline for
     link_improvement -- auto-applies without a confirm() call (joined
