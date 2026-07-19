@@ -146,6 +146,103 @@ class DryRunFixtureSourceSetTests(_ForwardLearningTestBase):
             self.assertIn("last_scan", state_after[slug])
 
 
+class CrossScanDedupTests(_ForwardLearningTestBase):
+    """A real gap found live on PLAN-dormant-wake task 4's first supervised
+    run: a big feed's items all cleared MEDIUM on every trusted source, and
+    with no per-item memory a re-scan re-wrote the exact same items every
+    time. _candidate_identity + the per-source `seen` list fix this."""
+
+    def test_rescan_does_not_rewrite_already_seen_candidate(self) -> None:
+        self._write_sources([{"slug": "src", "kind": "idea", "type": "web", "url": "https://example.com/src", "trusted": True}])
+        candidate = fl.Candidate(
+            slug="src", title="A finding", body="A substantive body that clears the 80-char floor easily, see.", url="https://example.com/src/article-1"
+        )
+        fetcher = _fixture_fetcher({"src": [candidate]})
+
+        first = fl.run_forward_learning(self.vault, fetcher=fetcher, now=1_700_000_000.0)
+        self.assertEqual(len(first.written), 1)
+        self.assertEqual(first.already_seen, 0)
+
+        second = fl.run_forward_learning(self.vault, fetcher=fetcher, now=1_700_000_100.0)
+        self.assertEqual(len(second.written), 0)
+        self.assertEqual(second.already_seen, 1)
+
+    def test_a_genuinely_new_item_from_the_same_source_is_written(self) -> None:
+        self._write_sources([{"slug": "src", "kind": "idea", "type": "web", "url": "https://example.com/src", "trusted": True}])
+        old = fl.Candidate(slug="src", title="Old", body="Old but substantive enough body content here, yes indeed.", url="https://example.com/src/1")
+        new = fl.Candidate(slug="src", title="New", body="New but substantive enough body content here, yes indeed.", url="https://example.com/src/2")
+
+        fl.run_forward_learning(self.vault, fetcher=_fixture_fetcher({"src": [old]}), now=1_700_000_000.0)
+        result = fl.run_forward_learning(self.vault, fetcher=_fixture_fetcher({"src": [old, new]}), now=1_700_000_100.0)
+
+        self.assertEqual(result.already_seen, 1)  # old
+        self.assertEqual(len(result.written), 1)  # new only
+        self.assertIn("New", result.written[0].read_text(encoding="utf-8"))
+
+    def test_whole_page_candidate_dedupes_by_content_not_url(self) -> None:
+        """A non-feed candidate's url always equals source.url -- dedup by
+        content hash means the SAME page content is skipped on a re-scan,
+        but genuinely CHANGED content (same URL) is written again."""
+        self._write_sources([{"slug": "page-src", "kind": "idea", "type": "web", "url": "https://example.com/page", "trusted": True}])
+        same_body = fl.Candidate(slug="page-src", title="page-src", body="The page content, substantive enough to clear the floor easily.", url="https://example.com/page")
+
+        first = fl.run_forward_learning(self.vault, fetcher=_fixture_fetcher({"page-src": [same_body]}), now=1_700_000_000.0)
+        self.assertEqual(len(first.written), 1)
+
+        # Re-fetch returns byte-identical content -- skipped.
+        second = fl.run_forward_learning(self.vault, fetcher=_fixture_fetcher({"page-src": [same_body]}), now=1_700_000_100.0)
+        self.assertEqual(second.already_seen, 1)
+        self.assertEqual(len(second.written), 0)
+
+        # The page's content genuinely changed (same URL) -- written again.
+        changed_body = fl.Candidate(slug="page-src", title="page-src", body="Completely different page content, also clears the floor.", url="https://example.com/page")
+        third = fl.run_forward_learning(self.vault, fetcher=_fixture_fetcher({"page-src": [changed_body]}), now=1_700_000_200.0)
+        self.assertEqual(third.already_seen, 0)
+        self.assertEqual(len(third.written), 1)
+
+    def test_seen_list_is_capped(self) -> None:
+        self._write_sources([{"slug": "src", "kind": "idea", "type": "web", "url": "https://example.com/src", "trusted": True}])
+        for i in range(fl._SEEN_CAP + 50):
+            candidate = fl.Candidate(slug="src", title=f"item-{i}", body="x" * 100, url=f"https://example.com/src/{i}")
+            fl.run_forward_learning(self.vault, fetcher=_fixture_fetcher({"src": [candidate]}), now=1_700_000_000.0 + i)
+        state = fl._load_state(self.vault)
+        self.assertLessEqual(len(state["src"]["seen"]), fl._SEEN_CAP)
+
+
+class CandidateIdentityTests(unittest.TestCase):
+    def test_distinct_permalink_uses_url(self) -> None:
+        source = fl.Source(slug="s", kind="idea", type="feed", url="https://example.com/feed", trusted=True)
+        candidate = fl.Candidate(slug="s", title="t", body="b", url="https://example.com/article-1")
+        self.assertEqual(fl._candidate_identity(candidate, source), "https://example.com/article-1")
+
+    def test_whole_page_fallback_uses_content_hash(self) -> None:
+        source = fl.Source(slug="s", kind="idea", type="web", url="https://example.com/page", trusted=True)
+        candidate = fl.Candidate(slug="s", title="s", body="the page body", url="https://example.com/page")
+        identity = fl._candidate_identity(candidate, source)
+        self.assertTrue(identity.startswith("content:"))
+
+    def test_same_content_same_identity_different_content_different_identity(self) -> None:
+        source = fl.Source(slug="s", kind="idea", type="web", url="https://example.com/page", trusted=True)
+        a = fl.Candidate(slug="s", title="s", body="body one", url="https://example.com/page")
+        b = fl.Candidate(slug="s", title="s", body="body one", url="https://example.com/page")
+        c = fl.Candidate(slug="s", title="s", body="body two", url="https://example.com/page")
+        self.assertEqual(fl._candidate_identity(a, source), fl._candidate_identity(b, source))
+        self.assertNotEqual(fl._candidate_identity(a, source), fl._candidate_identity(c, source))
+
+
+class ParseFeedCapTests(unittest.TestCase):
+    def test_feed_items_capped_to_max_per_scan(self) -> None:
+        source = fl.Source(slug="big-feed", kind="idea", type="feed", url="https://example.com/feed", trusted=True)
+        items = "".join(
+            f"<item><title>Item {i}</title><description>Body {i}</description><link>https://example.com/{i}</link></item>"
+            for i in range(fl._MAX_FEED_ITEMS_PER_SCAN + 30)
+        )
+        body = f'<?xml version="1.0"?><rss version="2.0"><channel>{items}</channel></rss>'.encode()
+        candidates = fl._parse_feed(body, source)
+        self.assertEqual(len(candidates), fl._MAX_FEED_ITEMS_PER_SCAN)
+        self.assertEqual(candidates[0].title, "Item 0")  # newest-first convention preserved
+
+
 class NoSourcesConfiguredTests(_ForwardLearningTestBase):
     def test_no_config_finds_nothing_writes_no_watchlist_entries(self) -> None:
         result = fl.run_forward_learning(self.vault, fetcher=_fixture_fetcher({}))
@@ -235,6 +332,76 @@ class ParseFeedTests(unittest.TestCase):
         body = b'<rss><channel><item><title>No link</title><description>text</description></item></channel></rss>'
         candidates = fl._parse_feed(body, self.source)
         self.assertEqual(candidates[0].url, self.source.url)
+
+
+class ParseFeedCategoryFilterTests(unittest.TestCase):
+    """A real refinement request: general lab news/announcements weren't
+    useful, only the research-tagged posts were -- OpenAI's RSS carries
+    real <category> values (Research/Publication alongside Company/
+    Product/Story) that make this filterable without a new dependency."""
+
+    _RSS_MIXED_CATEGORIES = b"""<?xml version="1.0"?>
+<rss version="2.0"><channel>
+<item><title>Research post</title><description>A real research finding, quite substantive.</description>
+  <link>https://example.com/r1</link><category>Research</category><category>Safety</category></item>
+<item><title>Product post</title><description>A product launch announcement, not research at all.</description>
+  <link>https://example.com/p1</link><category>Product</category></item>
+<item><title>Publication post</title><description>A published paper summary here.</description>
+  <link>https://example.com/pub1</link><category>Publication</category></item>
+</channel></rss>"""
+
+    def test_no_category_filter_returns_everything(self) -> None:
+        source = fl.Source(slug="s", kind="idea", type="feed", url="https://example.com/feed", trusted=True)
+        candidates = fl._parse_feed(self._RSS_MIXED_CATEGORIES, source)
+        self.assertEqual(len(candidates), 3)
+
+    def test_category_filter_keeps_only_matching_items(self) -> None:
+        source = fl.Source(
+            slug="s", kind="idea", type="feed", url="https://example.com/feed", trusted=True,
+            categories=("research", "publication"),
+        )
+        candidates = fl._parse_feed(self._RSS_MIXED_CATEGORIES, source)
+        titles = {c.title for c in candidates}
+        self.assertEqual(titles, {"Research post", "Publication post"})
+
+    def test_category_filter_is_case_insensitive(self) -> None:
+        source = fl.Source(
+            slug="s", kind="idea", type="feed", url="https://example.com/feed", trusted=True,
+            categories=("RESEARCH",),
+        )
+        candidates = fl._parse_feed(self._RSS_MIXED_CATEGORIES, source)
+        self.assertEqual([c.title for c in candidates], ["Research post"])
+
+    def test_category_filter_matching_nothing_returns_empty(self) -> None:
+        source = fl.Source(
+            slug="s", kind="idea", type="feed", url="https://example.com/feed", trusted=True,
+            categories=("nonexistent-category",),
+        )
+        self.assertEqual(fl._parse_feed(self._RSS_MIXED_CATEGORIES, source), [])
+
+    def test_load_sources_reads_categories_from_config(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            path = vault / fl.SOURCES_CONFIG_REL
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({"sources": [
+                {"slug": "s", "kind": "idea", "type": "feed", "url": "https://example.com", "categories": ["Research", "Publication"]}
+            ]}), encoding="utf-8")
+            sources = fl.load_sources(vault)
+        self.assertEqual(sources[0].categories, ("research", "publication"))
+
+    def test_load_sources_defaults_categories_to_empty(self) -> None:
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            path = vault / fl.SOURCES_CONFIG_REL
+            path.parent.mkdir(parents=True)
+            path.write_text(json.dumps({"sources": [
+                {"slug": "s", "kind": "idea", "type": "feed", "url": "https://example.com"}
+            ]}), encoding="utf-8")
+            sources = fl.load_sources(vault)
+        self.assertEqual(sources[0].categories, ())
 
 
 class StripHtmlTagsTests(unittest.TestCase):

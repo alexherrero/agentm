@@ -77,6 +77,7 @@ CLI: `python3 forward_learning.py --vault-path <path>`.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
@@ -143,6 +144,13 @@ class Source:
     type: str
     url: str
     trusted: bool = False
+    # Optional feed-category allowlist (case-insensitive) -- some feeds tag
+    # each item (OpenAI's RSS ships real <category> values including
+    # "Research"/"Publication" alongside "Company"/"Product"/"Story").
+    # Empty tuple (default) means no filtering -- every parsed item passes.
+    # Ignored for non-feed sources (there is nothing to filter on a single
+    # whole-page candidate).
+    categories: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -175,6 +183,7 @@ class ScanResult:
     candidates_seen: int
     written: list  # list of Path — one per watchlist entry actually written
     dropped_low: int
+    already_seen: int = 0  # candidates skipped: identical identity surfaced on a prior scan
 
 
 # -----------------------------------------------------------------------------
@@ -192,6 +201,7 @@ def load_sources(vault_path: Path) -> list:
         type_ = entry.get("type")
         if kind not in VALID_KINDS or type_ not in VALID_TYPES:
             continue  # malformed entry — skip, don't fail the whole scan
+        raw_categories = entry.get("categories") or []
         sources.append(
             Source(
                 slug=entry["slug"],
@@ -199,6 +209,7 @@ def load_sources(vault_path: Path) -> list:
                 type=type_,
                 url=entry["url"],
                 trusted=bool(entry.get("trusted", False)),
+                categories=tuple(str(c).lower() for c in raw_categories),
             )
         )
     return sources
@@ -273,11 +284,12 @@ def _local_name(tag: str) -> str:
 
 
 def _feed_item_text(elem) -> tuple:
-    """(title, body_text, link) for one RSS <item> or Atom <entry> --
-    namespace-agnostic (matches by local tag name), since RSS is
-    unprefixed and Atom is fully namespaced and real-world feeds are not
-    always consistent about declaring `xmlns:content`/`xmlns:atom`."""
+    """(title, body_text, link, categories) for one RSS <item> or Atom
+    <entry> -- namespace-agnostic (matches by local tag name), since RSS
+    is unprefixed and Atom is fully namespaced and real-world feeds are
+    not always consistent about declaring `xmlns:content`/`xmlns:atom`."""
     title, body_raw, link = "", "", ""
+    categories = []
     for child in elem:
         local = _local_name(child.tag)
         if local == "title" and not title:
@@ -290,12 +302,33 @@ def _feed_item_text(elem) -> tuple:
                 link = href
             elif child.text and not link:  # RSS: <link>url</link>
                 link = child.text.strip()
+        elif local == "category":
+            # RSS: <category>Research</category>; Atom: <category term="Research"/>
+            val = (child.get("term") or child.text or "").strip()
+            if val:
+                categories.append(val)
     body_text = _strip_html_tags(body_raw) if "<" in body_raw else body_raw
-    return title, body_text, link
+    return title, body_text, link, tuple(categories)
+
+
+# A real feed can carry a full archive (OpenAI's news RSS returned 1039
+# items on first fetch, 2026-07-19 live test) -- feeds are conventionally
+# newest-first, so capping to the first N here is a "recent items" filter,
+# not an arbitrary truncation. Cross-scan dedup (_candidate_identity, the
+# per-source `seen` list in run_forward_learning) is what actually keeps a
+# steady-state daily scan small; this cap only bounds the very first scan
+# of a source with deep history.
+_MAX_FEED_ITEMS_PER_SCAN = 20
 
 
 def _parse_feed(body: bytes, source: Source) -> list:
-    """Parse an RSS 2.0 or Atom body into one Candidate per <item>/<entry>.
+    """Parse an RSS 2.0 or Atom body into one Candidate per <item>/<entry>,
+    capped to the first `_MAX_FEED_ITEMS_PER_SCAN` *matching* items (feeds
+    are conventionally newest-first). When `source.categories` is
+    non-empty, an item is kept only if at least one of its own
+    `<category>` values case-insensitively matches -- the cap counts
+    matches, not raw items scanned, so a category filter doesn't starve
+    itself against a feed where the wanted tag is a small minority.
     Returns `[]` on any parse failure or if no items/entries were found --
     the caller falls back to whole-body treatment, never raises."""
     try:
@@ -303,12 +336,17 @@ def _parse_feed(body: bytes, source: Source) -> list:
     except ET.ParseError:
         return []
 
+    wanted = {c.lower() for c in source.categories}
     candidates = []
     for elem in root.iter():
+        if len(candidates) >= _MAX_FEED_ITEMS_PER_SCAN:
+            break
         if _local_name(elem.tag) not in ("item", "entry"):
             continue
-        title, body_text, link = _feed_item_text(elem)
+        title, body_text, link, item_categories = _feed_item_text(elem)
         if not (title or body_text):
+            continue
+        if wanted and not (wanted & {c.lower() for c in item_categories}):
             continue
         candidates.append(
             Candidate(slug=source.slug, title=title or source.slug, body=body_text, url=link or source.url)
@@ -467,6 +505,28 @@ def _write_watchlist_entry(
 # The scan
 # -----------------------------------------------------------------------------
 
+# Per-source cross-scan dedup (2026-07-19, PLAN-dormant-wake task 4 — a real
+# gap surfaced live on the first supervised run: a big RSS feed's ~1000
+# items all cleared MEDIUM on every trusted source, and with no per-item
+# memory a re-scan would re-surface and re-write the exact same items
+# forever). Bounded so a source's `seen` list can't grow without limit.
+_SEEN_CAP = 500
+
+
+def _candidate_identity(candidate: Candidate, source: Source) -> str:
+    """A stable per-candidate identity for cross-scan dedup.
+
+    A feed item's `url` is its own real permalink (distinct per article) --
+    dedup by that directly. A whole-page candidate's `url` is always
+    `source.url` itself (default_fetcher's single-candidate fallback), so
+    the same URL recurring is meaningless -- the page's *content* is what
+    changes between scans, not its address -- dedup by a content hash
+    instead."""
+    if candidate.url and candidate.url != source.url:
+        return candidate.url
+    return "content:" + hashlib.sha256(candidate.body.encode("utf-8", errors="replace")).hexdigest()[:16]
+
+
 def _existing_tags(vault_path: Path) -> set:
     """A cheap 'complements existing conventions' signal: every source
     slug + kind already seen in the vault's forward-learning watermark
@@ -494,18 +554,32 @@ def run_forward_learning(
     written = []
     candidates_seen = 0
     dropped_low = 0
+    already_seen = 0
 
     for source in sources:
+        source_state = state.setdefault(source.slug, {})
+        seen = set(source_state.get("seen", []))
+        new_seen_order = list(source_state.get("seen", []))  # preserve insertion order for the cap trim
+
         candidates = fetcher(source)
         candidates_seen += len(candidates)
         for candidate in candidates:
+            identity = _candidate_identity(candidate, source)
+            if identity in seen:
+                already_seen += 1
+                continue
+            seen.add(identity)
+            new_seen_order.append(identity)
+
             score, rules = _score_candidate(candidate, source, existing_tags=tags)
             scored = _ScoredCandidate(candidate=candidate, source=source, score=score, rules_fired=rules)
             if scored.tier == "LOW":
                 dropped_low += 1
                 continue
             written.append(_write_watchlist_entry(vault_path, scored, now_iso=now_iso))
-        state.setdefault(source.slug, {})["last_scan"] = now_iso
+
+        source_state["last_scan"] = now_iso
+        source_state["seen"] = new_seen_order[-_SEEN_CAP:]
 
     _save_state(vault_path, state)
 
@@ -514,6 +588,7 @@ def run_forward_learning(
         candidates_seen=candidates_seen,
         written=written,
         dropped_low=dropped_low,
+        already_seen=already_seen,
     )
 
 
@@ -543,8 +618,8 @@ def main(argv: Optional[list] = None) -> int:
     result = run_forward_learning(vault)
     print(
         f"forward-learning: {result.sources_scanned} source(s), "
-        f"{result.candidates_seen} candidate(s) seen, {len(result.written)} written "
-        f"to the watchlist, {result.dropped_low} dropped (LOW)"
+        f"{result.candidates_seen} candidate(s) seen, {result.already_seen} already-seen "
+        f"(skipped), {len(result.written)} written to the watchlist, {result.dropped_low} dropped (LOW)"
     )
     return 0
 
