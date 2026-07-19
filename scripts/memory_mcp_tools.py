@@ -285,6 +285,7 @@ def register_tools(mcp) -> None:
             )
             group = f"{projects_seg}/{project}"
 
+        dedup_info: dict = {}
         written = _save.save_entry(
             vault_path=vault,
             kind=kind,
@@ -292,19 +293,28 @@ def register_tools(mcp) -> None:
             body=content,
             group=group,
             tags=actual_tags or None,
+            dedup_info=dedup_info,
         )
+        deduplicated = bool(dedup_info.get("deduplicated"))
         # Defense-in-depth: confirm written path is strictly inside the vault.
+        # (Never unlink on the dedup path -- `written` is a PRE-EXISTING
+        # note the guard reinforced, not something this call created.)
         try:
             written.resolve().relative_to(vault.resolve())
         except ValueError:
-            written.unlink(missing_ok=True)
+            if not deduplicated:
+                written.unlink(missing_ok=True)
             raise ValueError(
                 f"save_entry wrote outside the vault root — rejected: {written}"
             )
         return {
             "id": written.relative_to(vault).as_posix(),
-            "slug": slug,
-            "deduplicated": False,
+            # On a reinforce the returned note keeps ITS slug -- report the
+            # real one, not the requested slug that never materialized
+            # (review-caught: the old hardcoded response claimed
+            # deduplicated: False and a phantom slug).
+            "slug": written.stem if deduplicated else slug,
+            "deduplicated": deduplicated,
         }
 
     @mcp.tool()
@@ -355,6 +365,10 @@ def register_tools(mcp) -> None:
             "success": True,
             "id": result.path.relative_to(vault).as_posix(),
             "slug": result.slug,
+            # True when the write-time dedup guard reinforced an existing
+            # inbox candidate instead of staging a new one (id/slug then
+            # name the existing candidate).
+            "deduplicated": result.deduplicated,
         }
 
     @mcp.tool()

@@ -68,6 +68,13 @@ class IngestResult:
     chunks: "list[Path]" = field(default_factory=list)
     topic: "str | None" = None
     error: "str | None" = None
+    # True when the write-time dedup guard matched the document note's
+    # content to an existing entry and reinforced it instead of writing
+    # (auto-org part 3 task 2): `document` then names the EXISTING note,
+    # and no chunk notes were written -- writing a chunk family whose
+    # reading-order backlinks point at a document slug that never
+    # materialized would leave dangling [[wikilinks]] (review-caught).
+    deduplicated: bool = False
 
 
 def _iso_now() -> str:
@@ -294,12 +301,33 @@ def ingest(
             error=f"slug(s) already exist, nothing written: {', '.join(existing)}",
         )
 
+    # `written` tracks only files THIS call actually created — the rollback
+    # below unlinks them on a mid-sequence failure. A save the write-time
+    # dedup guard (auto-org part 3 task 2) turned into a reinforce returns
+    # a PRE-EXISTING note's path; consulting `dedup_info` keeps that path
+    # out of the rollback list, so a failed ingest can never delete a note
+    # it didn't create.
     written: list[Path] = []
     try:
+        dedup_info: dict = {}
         doc_path = save_entry(
             vault_path, _INGEST_KIND, doc_slug, text,
             group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
+            dedup_info=dedup_info,
         )
+        if dedup_info.get("deduplicated"):
+            # The document's content already exists in the vault -- the
+            # guard reinforced that note (occurrences + updated bump).
+            # Stop here: no chunk family is written. Chunks embed this
+            # run's topic-specific slugs in their reading-order nav, so
+            # they can never exact-match an earlier family; writing them
+            # would create the exact suffix-style duplicate pile this
+            # guard exists to prevent, with backlinks to a document note
+            # that was never created (review-caught).
+            return IngestResult(
+                success=True, document=doc_path, chunks=[], topic=topic,
+                title=title, deduplicated=True,
+            )
         written.append(doc_path)
 
         chunk_paths: list[Path] = []
@@ -311,11 +339,14 @@ def ingest(
                 nav.append(f"[[{chunk_slugs[i + 1]}]] (next)")
             nav_line = f" · {' · '.join(nav)}" if nav else ""
             body = f"{chunk_body}\n\n---\n\nFrom [[{doc_slug}]]{nav_line}"
+            dedup_info = {}
             chunk_path = save_entry(
                 vault_path, _INGEST_KIND, chunk_slugs[i], body,
                 group=group, tags=tags, source_url=source_url, source_fetched=source_fetched,
+                dedup_info=dedup_info,
             )
-            written.append(chunk_path)
+            if not dedup_info.get("deduplicated"):
+                written.append(chunk_path)
             chunk_paths.append(chunk_path)
     except (FileNotFoundError, FileExistsError, ValueError) as e:
         # The pre-flight check above closes the common case (a stale

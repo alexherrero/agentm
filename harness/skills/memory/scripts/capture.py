@@ -58,6 +58,11 @@ class CaptureResult:
     path: "Path | None" = None
     slug: "str | None" = None
     error: "str | None" = None
+    # True when the write-time dedup guard (auto-org part 3 task 2) matched
+    # an existing inbox candidate by exact content fingerprint and
+    # reinforced it (occurrences + updated bump) instead of writing a new
+    # file — `path`/`slug` then name the EXISTING candidate.
+    deduplicated: bool = False
 
 
 def _iso(now: datetime) -> str:
@@ -142,7 +147,39 @@ def capture(
         # first's atomic_write — the check-then-write window is otherwise
         # a TOCTOU race across transports (Drive connector, Clipper, this
         # module, the future ingest sweep) writing the same second.
+        # Write-time dedup guard (auto-org part 3 task 2): an exact
+        # content-fingerprint match against a staged candidate means this
+        # capture reinforces it — occurrences + updated bump, no new file,
+        # no `_1` suffix. The scan runs INSIDE the mutex (with the write)
+        # so two concurrent identical captures can't both miss. Exact-only;
+        # near-duplicates still stage and the weekly pass owns them.
+        # Best-effort: a guard failure falls through to the normal write.
+        from fingerprint import compute_fingerprint  # same skill dir
+        content_fp = compute_fingerprint(content)
+
         with vault_mutex(vault):
+            try:
+                import dedup_guard  # same skill dir
+                existing = dedup_guard.find_inbox_duplicate(vault, content_fp)
+                if existing is not None:
+                    # Refuse the reinforce when this capture carries
+                    # act-relevant metadata the matched candidate lacks —
+                    # a link resend's source_url (the ingest sweep's
+                    # trigger) or an instructions string deduping into a
+                    # plain candidate would be silently discarded
+                    # (review-caught). It writes fresh instead.
+                    arriving_adds_metadata = (
+                        (source_url and not dedup_guard.has_frontmatter_field(existing, "source_url"))
+                        or (instructions and not dedup_guard.has_frontmatter_field(existing, "instructions"))
+                    )
+                    if not arriving_adds_metadata:
+                        dedup_guard.reinforce(existing, today=now.date().isoformat())
+                        return CaptureResult(
+                            success=True, path=existing, slug=existing.stem, deduplicated=True
+                        )
+            except Exception as e:
+                print(f"warning: capture dedup guard failed open: {e}", file=sys.stderr)
+
             target = _resolve_target(inbox_dir, resolved_slug)
             final_slug = target.stem
 
@@ -153,6 +190,7 @@ def capture(
                 f"created: {_iso(now)}",
                 f"captured: {_iso(now)}",
                 f"slug: {final_slug}",
+                f"fingerprint: {content_fp}",
             ]
             if source:
                 fm_lines.append(f"source: {source}")

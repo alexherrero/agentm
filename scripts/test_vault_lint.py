@@ -377,10 +377,13 @@ class TestSchemaPin(unittest.TestCase):
         # derived_from only by callers that pass one (V6-4) -- none of the
         # six is emitted by this default call; compare against the subset
         # that always is.
+        # `occurrences` is patch-only (dedup_guard.reinforce writes it on a
+        # duplicate hit; _build_frontmatter never emits it) -- excluded here
+        # alongside the caller-optional fields.
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
             if f not in ("heat_pin", "source_url", "source_fetched",
-                         "fingerprint", "lifecycle_tier", "derived_from", "arc")
+                         "fingerprint", "occurrences", "lifecycle_tier", "derived_from", "arc")
         )
         self.assertEqual(tuple(keys), expected)
 
@@ -394,7 +397,7 @@ class TestSchemaPin(unittest.TestCase):
         expected = tuple(
             f for f in save.FRONTMATTER_FIELD_ORDER
             if f not in ("heat_pin", "source_url", "source_fetched",
-                         "supersedes", "lifecycle_tier", "derived_from", "arc")
+                         "supersedes", "occurrences", "lifecycle_tier", "derived_from", "arc")
         )
         self.assertEqual(tuple(keys), expected)
         self.assertIn("fingerprint: abc123", fm)

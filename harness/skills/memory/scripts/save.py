@@ -50,7 +50,7 @@ _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
     "kind", "status", "created", "updated", "tags", "arc", "group", "slug",
     "source_url", "source_fetched",
-    "fingerprint", "always_load", "supersedes", "lifecycle_tier",
+    "fingerprint", "occurrences", "always_load", "supersedes", "lifecycle_tier",
     "derived_from", "heat_pin",
 )
 # Required fields = every field except the optional ones.
@@ -72,7 +72,7 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 # V5/V6/V7/V8 roadmap wave, architecture-governance, a lettered AG build wave,
 # …), validated against arc_registry.py. Optional: most entries carry no arc.
 _OPTIONAL_FIELDS = frozenset({
-    "source_url", "source_fetched", "fingerprint", "supersedes",
+    "source_url", "source_fetched", "fingerprint", "occurrences", "supersedes",
     "lifecycle_tier", "derived_from", "heat_pin", "arc",
 })
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
@@ -200,8 +200,20 @@ def save_entry(
     fingerprint: str | None = None,
     lifecycle_tier: str | None = None,
     derived_from: list[str] | None = None,
+    dedup_info: dict | None = None,
 ) -> Path:
-    """Write a memory entry to the vault. Returns the absolute path written.
+    """Write a memory entry to the vault. Returns the absolute path written —
+    or, when the write-time dedup guard fires (auto-org part 3 task 2), the
+    path of the EXISTING entry the arriving note reinforced instead (no new
+    file written; the existing note's `occurrences` count and `updated`
+    stamp bumped).
+
+    `dedup_info`, when a caller passes a dict, is the out-of-band signal for
+    that reinforce path: this function sets `dedup_info["deduplicated"]`
+    (True/False) and, on a reinforce, `dedup_info["existing_path"]`. Callers
+    that track "files I actually created this run" for rollback (ingest.py)
+    MUST consult it — unlinking a returned path that was a reinforce target
+    would delete a pre-existing note.
 
     Raises:
         FileNotFoundError: if `vault_path` doesn't exist or isn't a directory.
@@ -243,6 +255,43 @@ def save_entry(
             ) from e
         body = scrub_pii(body)
 
+    # Auto-compute the content fingerprint when the caller didn't supply
+    # one (auto-org part 3 task 1). An explicit caller-supplied value
+    # always wins — the diagnostics recall ladder passes a semantic
+    # incident join key, not a content hash, and must keep doing so.
+    # Best-effort: a fingerprint failure must never block the write
+    # (matches the vec-enqueue block's own posture below). Runs after the
+    # failure-incident scrub above so the hash reflects the scrubbed body
+    # actually written.
+    auto_fingerprinted = False
+    if fingerprint is None:
+        try:
+            from fingerprint import compute_fingerprint  # type: ignore
+            fingerprint = compute_fingerprint(body)
+            auto_fingerprinted = True
+        except Exception as e:  # pragma: no cover
+            print(f"warning: fingerprint computation failed: {e}", file=sys.stderr)
+
+    # Write-time dedup guard scope (auto-org part 3 task 2) — the check
+    # itself runs below, INSIDE the write's own single vault_mutex
+    # acquisition (one lock round-trip per save, and the find+reinforce
+    # +write decision is one atomic critical section). Guard scope:
+    # auto-computed fingerprints only (a caller-supplied semantic key
+    # keeps its own workflow's semantics), plain creates only (no
+    # supersedes chain, not always-load — curated standing rules are
+    # never dedup candidates, matching the design's exemption list).
+    # Exact-only by the plan's Locked design call (fuzzy merges need a
+    # model verdict; a near-match reinforce here would discard real
+    # differences without one) — near-duplicates write normally and the
+    # weekly cluster pass owns them. A same-slug collision still raises
+    # FileExistsError below BEFORE the guard can see it — the evolve/
+    # consolidate collision contracts depend on that error, and the
+    # guard's target is the different-slug duplicate (the suffix-family
+    # problem), not re-saves of the same path.
+    guard_active = auto_fingerprinted and supersedes is None and not always_load
+    if dedup_info is not None:
+        dedup_info["deduplicated"] = False
+
     # Compute target path. --always-load overrides --group: routes to
     # personal/_always-load/<slug>.md regardless of group.
     if always_load:
@@ -256,21 +305,9 @@ def save_entry(
             f"supersede the existing entry, or pick a different slug"
         )
 
-    # Create parent dirs.
-    target.parent.mkdir(parents=True, exist_ok=True)
-
-    # Auto-compute the content fingerprint when the caller didn't supply
-    # one (auto-org part 3 task 1). An explicit caller-supplied value
-    # always wins — the diagnostics recall ladder passes a semantic
-    # incident join key, not a content hash, and must keep doing so.
-    # Best-effort: a fingerprint failure must never block the write
-    # (matches the vec-enqueue block's own posture below).
-    if fingerprint is None:
-        try:
-            from fingerprint import compute_fingerprint  # type: ignore
-            fingerprint = compute_fingerprint(body)
-        except Exception as e:  # pragma: no cover
-            print(f"warning: fingerprint computation failed: {e}", file=sys.stderr)
+    # (No explicit mkdir here: the write path's atomic_write creates the
+    # parent directory itself, and a pre-created dir would be left behind
+    # empty when the dedup guard below turns this save into a reinforce.)
 
     # Build content.
     fm = _build_frontmatter(
@@ -305,6 +342,23 @@ def save_entry(
     backend = DeviceLocalBackend(root=vault)
     locator = backend.resolve(*target.relative_to(vault).parts)
     with vault_mutex(vault):
+        # The dedup guard's find+reinforce and the write share this one
+        # critical section: two concurrent identical saves serialize here,
+        # and the loser sees the winner (once indexed) rather than both
+        # writing. Fails open: any guard error → the write proceeds
+        # (favor false-negative; the weekly pass catches what this misses).
+        if guard_active:
+            try:
+                import dedup_guard  # type: ignore
+                existing_rel = dedup_guard.find_vault_duplicate(vault, fingerprint)
+                if existing_rel is not None:
+                    dedup_guard.reinforce(vault / existing_rel)
+                    if dedup_info is not None:
+                        dedup_info["deduplicated"] = True
+                        dedup_info["existing_path"] = str(vault / existing_rel)
+                    return vault / existing_rel
+            except Exception as e:  # pragma: no cover
+                print(f"warning: dedup guard failed open (write proceeds): {e}", file=sys.stderr)
         backend.write(locator, content)
 
     # rel_path is a trivial derivation (target was built from vault above, so
