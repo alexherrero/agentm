@@ -291,11 +291,22 @@ def save_entry(
     with vault_mutex(vault):
         backend.write(locator, content)
 
-    # Enqueue async embedding + vec-index upsert (task 4).
-    # File write is complete; queueing is fast + synchronous + never raises
-    # on missing deps (queue is JSONL append; sqlite-vec required only at
-    # drain time). Operators run `python3 vec_index.py drain` (or future
-    # idle-time hook) to actually process the queue.
+    # rel_path is a trivial derivation (target was built from vault above, so
+    # relative_to can't raise) — computed unconditionally, before either the
+    # enqueue try/except block below, so it's available even if that block
+    # fails before reaching its own assignment.
+    rel_path = str(target.relative_to(vault)).replace(os.sep, "/")
+
+    # Enqueue async embedding + vec-index upsert (task 4), and (auto-org
+    # part 2 task 3) flag it for the write-time linker. File write is
+    # complete; queueing is fast + synchronous + never raises on missing
+    # deps (queue is JSONL append; sqlite-vec required only at drain time).
+    # Operators run `python3 vec_index.py drain` (or future idle-time hook)
+    # to actually process the queue. `link=True` costs nothing extra here —
+    # it's a flag on the SAME record; the actual nearest-neighbor query +
+    # "Related" line write happens at drain time, reusing the embedding
+    # drain already computes for the upsert (write_time_linker.py), never a
+    # second synchronous embed call on the save path itself.
     try:
         import vec_index  # type: ignore
         # Embed text = title-frontmatter-tags + body's first paragraph
@@ -305,8 +316,7 @@ def save_entry(
         first_para = body[:500]
         tag_str = ", ".join(tags) if tags else ""
         embed_text = f"{slug} [{tag_str}]\n\n{first_para}"
-        rel_path = str(target.relative_to(vault)).replace(os.sep, "/")
-        vec_index.enqueue(vault, rel_path, "upsert", text=embed_text)
+        vec_index.enqueue(vault, rel_path, "upsert", text=embed_text, link=True)
     except Exception as e:  # pragma: no cover
         # Queueing should never fail in practice, but if it does (e.g.
         # vault filesystem read-only), log + continue. File write succeeded.

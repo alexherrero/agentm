@@ -219,6 +219,53 @@ def _stage_corpus_stats(entries: list) -> dict:
     }
 
 
+def _connectivity_meter(loaded: dict) -> dict:
+    """The connectivity meter (auto-org part 2 task 7). Two numbers,
+    counted independently — the design is explicit they must be separate
+    so the linker can't inflate its own success number:
+
+      - `organic_connectivity` (+ `organically_linked_count`): the share
+        of notes with >= 1 real, NON-generated link — a wikilink (or a
+        `supersedes:` frontmatter edge) that survives after stripping
+        every `**Related:**` line, the only place the linker ever writes.
+        Detection reuses `graph.extract_edges` on the stripped content, so
+        fenced code blocks and inline code spans are excluded exactly the
+        way the typed-edge graph itself excludes them — a fenced
+        `[[example]]` never counts as connectivity here either.
+      - `generated_link_count`: the total wikilinks sitting on (non-
+        fenced) `**Related:**` lines across the corpus — the linker's own
+        additions, tracked as their own number.
+
+    A note whose ONLY link is a generated Related-line link does NOT count
+    toward organic connectivity. Ingest batches' reading-order nav +
+    doc-backlink wikilinks DO count as organic — they're structural links
+    ingest itself authored, not the linker's additions, and the meter's
+    job is specifically to keep the LINKER's contribution out of the
+    number it's judged by.
+    """
+    import graph  # noqa: E402  (lazy — same convention as the stages below)
+    import write_time_linker  # noqa: E402
+
+    total = 0
+    organic = 0
+    generated_links = 0
+    for path, (_fm, _body, raw) in loaded.items():
+        total += 1
+        fenced = write_time_linker._fenced_ranges(raw)
+        for m in write_time_linker._RELATED_LINE_RE.finditer(raw):
+            if write_time_linker._in_any_range(m.start(), fenced):
+                continue
+            generated_links += len(write_time_linker._RELATED_WIKILINK_RE.findall(m.group(1)))
+        stripped = write_time_linker._RELATED_LINE_RE.sub("", raw)
+        if graph.extract_edges(str(path), stripped):
+            organic += 1
+    return {
+        "organically_linked_count": organic,
+        "organic_connectivity": (organic / total) if total else 0.0,
+        "generated_link_count": generated_links,
+    }
+
+
 # -----------------------------------------------------------------------------
 # Stage 1 — dedup
 # -----------------------------------------------------------------------------
@@ -535,6 +582,342 @@ def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | 
 
 
 # -----------------------------------------------------------------------------
+# Stage — weekly link-improvement sweep (auto-org part 2 task 4). Connects
+# notes that arrived or changed since the last cycle to older related
+# content, using task 1's vector index + task 2's persisted graph snapshot.
+# -----------------------------------------------------------------------------
+
+# Cap on proposals this stage generates per cycle — bounds worst-case blast
+# radius the same way tidying/compression already do (plan constraint:
+# "capped"). Matches dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP's own
+# number, the standing precedent for a per-cycle auto-org action bound.
+_LINK_IMPROVEMENT_BATCH_CAP = 25
+
+
+_LINK_SWEEP_CURSOR_REL = "_meta/link-sweep-cursor.json"
+
+# The backfill's per-cycle batch bound (task 6): each weekly cycle attempts
+# at most this many of the vault's unlinked (orphan) notes — 25, matching
+# dream_confirm.DEFAULT_AUTO_APPLY_BATCH_CAP (the existing compression cap
+# the plan names as the precedent). Continues cycle over cycle until the
+# pool drains.
+_LINK_BACKFILL_BATCH_CAP = 25
+
+_LINK_BACKFILL_STATE_REL = "_meta/link-backfill-state.json"
+
+
+def _read_backfill_attempted(vault_path: Path) -> set:
+    """The set of orphan paths already attempted in the current pass over
+    the backfill pool. Persisted so an orphan that found no qualifying
+    neighbor doesn't permanently occupy one of the 25 batch slots every
+    cycle, starving the rest of the pool — attempted notes are skipped
+    until the whole pool has had a turn, then the pass resets and everyone
+    (including previously-unmatched notes, which may match newer content
+    by then) gets a fresh chance."""
+    try:
+        data = json.loads((vault_path / _LINK_BACKFILL_STATE_REL).read_text(encoding="utf-8"))
+        return set(data.get("attempted", []))
+    except (OSError, ValueError, TypeError):
+        return set()
+
+
+def _write_backfill_attempted(vault_path: Path, attempted: set) -> None:
+    atomic_write(
+        vault_path / _LINK_BACKFILL_STATE_REL,
+        json.dumps({"attempted": sorted(attempted)}),
+    )
+
+
+def _link_sweep_cursor_path(vault_path: Path) -> Path:
+    return vault_path / _LINK_SWEEP_CURSOR_REL
+
+
+def _read_link_sweep_cursor(vault_path: Path) -> float:
+    """Epoch seconds of the last `_stage_link_improvement` run, or `0.0` if
+    it's never run (everything counts as "changed").
+
+    Deliberately its OWN, separate cursor — NOT `graph_snapshot.rebuild()`'s
+    `touched_paths` (a review caught a real bug in an earlier version that
+    used it: `write_time_linker.apply()` already calls `graph_snapshot.
+    rebuild(vault, paths=[rel_path])` for every note it write-time-links,
+    which records that note's post-write mtime into the SAME snapshot DB —
+    so by the time the weekly sweep ran its own full-vault rebuild, any
+    note that already got an ordinary write-time link (the common case —
+    precisely the notes most likely to have qualifying neighbors) had its
+    mtime already "consumed" and never showed up as newly touched. This
+    cursor is independent of anything graph_snapshot tracks internally."""
+    try:
+        data = json.loads(_link_sweep_cursor_path(vault_path).read_text(encoding="utf-8"))
+        return float(data.get("last_run_epoch", 0.0))
+    except (OSError, ValueError, TypeError):
+        return 0.0
+
+
+def _write_link_sweep_cursor(vault_path: Path, epoch: float) -> None:
+    atomic_write(_link_sweep_cursor_path(vault_path), json.dumps({"last_run_epoch": epoch}))
+
+
+def cheap_model_tier_available() -> bool:
+    """Whether a budget-capped cheap-model yes/no call is available for the
+    weekly sweep's ambiguous middle band. Always `False` today.
+
+    Confirmed by research before this stage was built: no synchronous
+    "ask a cheap model X, get yes/no back, capped by a budget" primitive
+    exists anywhere in this codebase. The job-manifest schema has a
+    `budget_tokens` field, but it's parsed and never consumed (zero
+    callers). The only place this codebase shells out to `claude`
+    programmatically spawns full async background sessions — the wrong
+    shape for a synchronous per-candidate call. Every prior instance of
+    this exact problem (a cron/hook context needing LLM judgment) —
+    `adapt_skills.py`'s deterministic-Pass-1/sub-agent-Pass-2 split,
+    `orchestration_idle.py`'s explicit "a hook fires outside the agent
+    loop and cannot dispatch a sub-agent", `forward_learning.py`'s
+    deliberately-deterministic-only v1 — resolved it by staying
+    deterministic and deferring the LLM-judged pass, never by building a
+    new primitive this codebase has consistently avoided.
+
+    This function is the seam a future build wires to a real budget +
+    call primitive. Until then it's a named, tracked gap (not silently
+    dropped): every ambiguous candidate the weekly sweep finds falls
+    through to "left unlinked," matching the design's own explicit
+    "budget exhausted / tier unavailable" fallback — unconditionally
+    today rather than conditionally on a budget that has nothing to
+    spend from yet.
+    """
+    return False
+
+
+def _stage_link_improvement(vault_path: Path, entries: list, loaded: dict, *, now: str | None = None) -> list:
+    """Returns proposals (`stage="link_improvement"`, `kind="link"`).
+
+    For notes that arrived or changed since the last cycle — tracked via
+    this function's OWN cursor (`_read_link_sweep_cursor`/
+    `_write_link_sweep_cursor`; see its docstring for why this is
+    deliberately not `graph_snapshot.rebuild()`'s own `touched_paths`) —
+    queries task 1's vector index for older related notes. A candidate
+    above `write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD` gets a
+    both-directions link proposal; this function's caller (`run_dream`)
+    runs the normal stage->confirm->revert-log pipeline on it like any
+    other proposal. Also rebuilds task 2's graph snapshot in full-vault
+    mode as a side effect (keeping it current for its OTHER consumers —
+    the connectivity meter, task 7 — even though this function no longer
+    reads its `touched_paths`).
+
+    The ambiguous middle band (between `write_time_linker.
+    LINK_SIMILARITY_FLOOR` and `CONFIDENT_SIMILARITY_THRESHOLD`) — the
+    design's own reserved slot for a budget-capped cheap-model yes/no —
+    checks `cheap_model_tier_available()` (always `False` today; see its
+    own docstring for the full reasoning) and falls through to "left
+    unlinked" for every candidate in that band.
+
+    Same-cycle mutation-collision guard: if note A and note B (both in this
+    cycle's changed set) are both related to the same older note C, only
+    the first one to claim C gets to add C's reciprocal link this cycle —
+    a `touched_this_sweep` set makes sure no path is ever a mutation target
+    in more than one proposal in a single call, which would otherwise let
+    a later proposal's captured pre-mutation content silently overwrite an
+    earlier proposal's addition once both apply. The missed reciprocal
+    link (C not linked to B this cycle) is deferred, not lost — C stays a
+    normal candidate for a future cycle once something else changes it.
+
+    `now` is injectable for tests, matching `_stage_tidying`'s own
+    exemption-check convention below.
+    """
+    import embed  # noqa: E402  (lazy: keeps run_dream()'s own import graph unchanged)
+    import graph_snapshot  # noqa: E402
+    import lifecycle  # noqa: E402
+    import vec_index  # noqa: E402
+    import write_time_linker  # noqa: E402
+
+    if now is None:
+        import datetime
+        now = datetime.date.today().isoformat()
+
+    sweep_started_at = time.time()
+    cursor = _read_link_sweep_cursor(vault_path)
+    graph_snapshot.rebuild(vault_path)  # keep the snapshot current for its other consumers
+
+    by_rel = {}
+    for p in entries:
+        rel = str(p.relative_to(vault_path)).replace("\\", "/")
+        by_rel[rel] = p
+
+    changed_paths = [
+        rel for rel, p in by_rel.items()
+        if p in loaded and p.stat().st_mtime > cursor
+    ]
+    max_seen_mtime = max((by_rel[rel].stat().st_mtime for rel in changed_paths), default=0.0)
+
+    proposals: list = []
+    touched_this_sweep: set = set()
+
+    def _process_origin(rel_path: str, kind: str) -> None:
+        """One origin note through the full link flow: exemption gate,
+        fresh embed, neighbor query, filters, both-direction merge,
+        proposal. Appends to `proposals` / marks `touched_this_sweep`;
+        a no-op for an ineligible origin or one with nothing to add.
+        `kind` labels the proposal ("link" for a changed-note origin,
+        "backfill" for an orphan-pool origin — same stage either way, so
+        auto-apply and the revert log treat them identically)."""
+        path = by_rel.get(rel_path)
+        if path is None or path not in loaded or path in touched_this_sweep:
+            return
+
+        fm, body, raw = loaded[path]
+        slug = fm.get("slug") or path.stem
+        rel_obj = path.relative_to(vault_path)
+        # Same exemption gate as _stage_tidying: durable/failure-incident/
+        # decision/always-load/pinned notes are "never candidates for
+        # anything here" per the design's Signals section.
+        if lifecycle.days_since_last_genuine_access(vault_path, slug, fm, rel_obj, now=now) is None:
+            return
+
+        embed_input = f"{slug} [{fm.get('tags', '')}]\n\n{body[:500]}"
+        try:
+            embedding = embed.embed_text(embed_input)
+        except embed.EmbeddingUnavailable:
+            return
+        except Exception:
+            return
+
+        # Query at the LOWER floor (not the confident threshold) so the
+        # ambiguous middle band is genuinely visible to the code below,
+        # rather than silently invisible because the query itself already
+        # excluded it — the seam has to see a candidate to (not) call the
+        # cheap model on it. Headroom beyond the cap so an ingest batch's
+        # own siblings can't crowd every outward candidate out of the
+        # result window (task 5 — see write_time_linker's
+        # _NEIGHBOR_QUERY_HEADROOM comment).
+        neighbors = vec_index.nearest(
+            vault_path, embedding,
+            k=write_time_linker.MAX_RELATED_LINKS + 1 + write_time_linker._NEIGHBOR_QUERY_HEADROOM,
+            similarity_floor=write_time_linker.LINK_SIMILARITY_FLOOR,
+        )
+        qualifying = []
+        for neighbor_rel, sim in neighbors:
+            if neighbor_rel == rel_path:
+                continue
+            neighbor_path = by_rel.get(neighbor_rel)
+            if neighbor_path is None or neighbor_path not in loaded or neighbor_path in touched_this_sweep:
+                continue
+            neighbor_slug = loaded[neighbor_path][0].get("slug") or neighbor_path.stem
+            if write_time_linker.same_ingest_batch(slug, neighbor_slug):
+                # Same ingest batch (doc + its chunks) — already internally
+                # linked at ingest time (reading-order nav + backlink); the
+                # sweep's job for a batch is outward connections only
+                # (task 5).
+                continue
+            if sim < write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD:
+                # Ambiguous middle band. Never fail open to an unbudgeted
+                # call (plan's Locked design call) -- check the seam, and
+                # today it's always unavailable (see this function's own
+                # docstring), so every ambiguous candidate falls through to
+                # "left unlinked" without ever reaching a model call.
+                #
+                # Deliberately does NOT remember this pair as "considered"
+                # anywhere: similarity isn't guaranteed symmetric within one
+                # sweep (this note's embedding is freshly recomputed above;
+                # the neighbor's is whatever's already stored, from a
+                # possibly-different embed-input formula or an earlier,
+                # since-changed version of that note) — a review caught a
+                # real bug where marking a pair "seen" here silently
+                # dropped a genuinely confident match from the OTHER
+                # direction later in the same sweep. touched_this_sweep
+                # (below) is the only cross-proposal guard this function
+                # needs: it stops the same PATH being a mutation target
+                # twice, which is the actual hazard (a second proposal's
+                # captured pre-mutation content silently overwriting the
+                # first's addition) -- it doesn't need a redundant "did we
+                # already look at this exact pair" tracker on top.
+                if not cheap_model_tier_available():
+                    continue
+                continue  # pragma: no cover -- unreachable until the tier ships
+            qualifying.append((neighbor_rel, neighbor_path))
+            if len(qualifying) >= write_time_linker.MAX_RELATED_LINKS:
+                break
+        if not qualifying:
+            return
+
+        neighbor_slugs = []
+        for _neighbor_rel, neighbor_path in qualifying:
+            neighbor_fm = loaded[neighbor_path][0]
+            neighbor_slugs.append(neighbor_fm.get("slug") or neighbor_path.stem)
+
+        mutations = []
+        new_content = write_time_linker.merge_related_slugs(raw, neighbor_slugs)
+        if new_content is not None:
+            mutations.append((path, new_content))
+            touched_this_sweep.add(path)
+
+        for (neighbor_rel, neighbor_path), neighbor_slug in zip(qualifying, neighbor_slugs):
+            neighbor_raw = loaded[neighbor_path][2]
+            neighbor_new_content = write_time_linker.merge_related_slugs(neighbor_raw, [slug])
+            if neighbor_new_content is not None:
+                mutations.append((neighbor_path, neighbor_new_content))
+                touched_this_sweep.add(neighbor_path)
+
+        if not mutations:
+            return  # already linked both ways -- nothing to propose
+
+        neighbor_rels = [nr for nr, _np in qualifying]
+        proposals.append(
+            Proposal(
+                stage="link_improvement",
+                kind=kind,
+                paths=[rel_path, *neighbor_rels],
+                summary=(
+                    f"{rel_path} <-> {', '.join(neighbor_rels)} — related "
+                    f"(similarity clears the confident threshold)"
+                ),
+                mutations=mutations,
+            )
+        )
+
+    for rel_path in changed_paths:
+        if len(proposals) >= _LINK_IMPROVEMENT_BATCH_CAP:
+            break
+        _process_origin(rel_path, "link")
+
+    # The backfill (task 6): each cycle, attempt a capped batch of the
+    # vault's unlinked notes — `graph_snapshot.orphans()` (zero edges in
+    # either direction, freshly accurate after this stage's own full
+    # rebuild above) — through the identical link flow. The persisted
+    # attempted-set (see _read_backfill_attempted) rotates through the
+    # pool so an unmatched orphan can't occupy a batch slot every cycle;
+    # a note linked this cycle (as an origin OR as some other origin's
+    # neighbor) leaves the pool naturally once the applied link makes it
+    # a non-orphan. Continues cycle over cycle until the pool drains.
+    changed_set = set(changed_paths)
+    pool = [p for p in graph_snapshot.orphans(vault_path) if p not in changed_set and p in by_rel]
+    attempted = _read_backfill_attempted(vault_path)
+    remaining = [p for p in pool if p not in attempted]
+    if not remaining and pool:
+        # Every pool member has had a turn this pass — start a fresh pass,
+        # so previously-unmatched notes get another chance against
+        # whatever newer content has arrived since.
+        attempted = set()
+        remaining = list(pool)
+    backfill_batch = remaining[:_LINK_BACKFILL_BATCH_CAP]
+    for rel_path in backfill_batch:
+        _process_origin(rel_path, "backfill")
+    if backfill_batch:
+        _write_backfill_attempted(vault_path, attempted | set(backfill_batch))
+
+    # Advance the cursor to when THIS sweep started (not `time.time()` now)
+    # -- anything modified DURING this run's own execution stays eligible
+    # for the next cycle too, rather than silently slipping past both.
+    # Floored at the max mtime actually seen among this cycle's changed
+    # entries: guards against the cursor ever retreating behind an entry
+    # it just processed (defensive against clock skew between the mtime
+    # clock and time.time(), and keeps this robust for tests that set an
+    # explicit future mtime rather than relying on real elapsed wall-clock
+    # time between fixture writes).
+    _write_link_sweep_cursor(vault_path, max(sweep_started_at, max_seen_mtime))
+
+    return proposals
+
+
+# -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
 # [PENDING-IMPL] elsewhere in the Experience design).
@@ -616,8 +999,18 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, tidying_anomaly=No
         f"# Dream digest — run {digest.run_id}",
         "",
         f"Corpus: {digest.corpus_stats['entry_count']} entries, {digest.corpus_stats['total_bytes']} bytes.",
-        "",
     ]
+    # The connectivity meter (task 7) — rendered defensively via .get() so
+    # a digest re-render against an older run's stats (pre-meter) never
+    # crashes; both numbers land every cycle on any current run.
+    if "organic_connectivity" in digest.corpus_stats:
+        lines.append(
+            f"Connectivity: {digest.corpus_stats['organic_connectivity']:.1%} organic "
+            f"({digest.corpus_stats['organically_linked_count']} of "
+            f"{digest.corpus_stats['entry_count']} notes with ≥1 real, non-generated link) · "
+            f"{digest.corpus_stats['generated_link_count']} generated link(s) (counted separately)."
+        )
+    lines.append("")
     if digest.insight_candidates:
         lines.append("## Insight candidates (written, status: candidate)")
         for c in digest.insight_candidates:
@@ -773,12 +1166,14 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     loaded = _load(entries)
 
     corpus_stats = _stage_corpus_stats(entries)
+    corpus_stats.update(_connectivity_meter(loaded))
     proposals = []
     proposals.extend(_stage_dedup(entries, loaded))
     proposals.extend(_stage_contradiction_triage(entries, loaded))
     proposals.extend(_stage_compression(entries, loaded))
     tidying_proposals, tidying_previews = _stage_tidying(vault_path, entries, loaded)
     proposals.extend(tidying_proposals)
+    proposals.extend(_stage_link_improvement(vault_path, entries, loaded))
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
@@ -818,11 +1213,13 @@ def run_dream_and_auto_apply(
     log_root: Path | str | None = None,
     lock_root: Path | str | None = None,
 ):
-    """Run `run_dream()` (unchanged), then auto-apply its compression-stage
-    and tidying-stage proposals through `dream_confirm.auto_apply_batch` —
-    no operator confirm required for those. Dedup and contradiction-triage
-    proposals stay staged in `_dream-staging/<run_id>/`, exactly as
-    `run_dream()` left them.
+    """Run `run_dream()` (unchanged), then auto-apply its compression-stage,
+    tidying-stage, and link-improvement-stage proposals through
+    `dream_confirm.auto_apply_batch` — no operator confirm required for
+    those (see `dream_confirm.AUTO_APPLY_STAGES`'s own docstring for each
+    stage's justification). Dedup and contradiction-triage proposals stay
+    staged in `_dream-staging/<run_id>/`, exactly as `run_dream()` left
+    them.
 
     Before applying, the tidying-stage proposal count runs through
     `dream_confirm.check_tidying_anomaly` (task 6's anomaly breaker,

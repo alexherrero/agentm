@@ -473,6 +473,66 @@ def index_size(vault_path: Path | str) -> int | None:
         conn.close()
 
 
+def nearest(
+    vault_path: Path | str,
+    embedding: list[float],
+    *,
+    k: int,
+    similarity_floor: float = 0.0,
+) -> list[tuple[str, float]]:
+    """Query the vec-index for the k entries nearest to `embedding`.
+
+    Returns a list of (relative_path, similarity) tuples, sorted by
+    similarity descending, filtered to similarity >= similarity_floor.
+    similarity is in [0, 1] (1 = most similar); it's derived from the
+    raw vec0 MATCH distance the same way recall.py's `_vec_search`
+    derives its own score (`1 - distance / 2`, clamped) — kept
+    identical so a similarity value means the same thing everywhere in
+    the memory system, on top of the same `entries` table.
+
+    Returns [] if sqlite-vec is unavailable (graceful-skip, same
+    contract as every other vec_index op in this module) or `k < 1`.
+
+    Raises ValueError if `embedding` isn't EMBEDDING_DIM-long — a
+    caller bug, not a graceful-skip condition.
+    """
+    if k < 1:
+        return []
+    vault = Path(vault_path)
+    conn = _open_index(vault)
+    if conn is None:
+        return []
+    try:
+        if len(embedding) != EMBEDDING_DIM:
+            raise ValueError(
+                f"embedding dimension {len(embedding)} != expected {EMBEDDING_DIM}"
+            )
+        emb_blob = json.dumps(embedding)
+        try:
+            cursor = conn.execute(
+                "SELECT entries.rowid, distance FROM entries "
+                "WHERE embedding MATCH ? AND k = ? ORDER BY distance",
+                (emb_blob, k),
+            )
+            rows = cursor.fetchall()
+        except sqlite3.OperationalError:
+            return []
+        results: list[tuple[str, float]] = []
+        for rowid, distance in rows:
+            meta_row = conn.execute(
+                "SELECT path FROM entry_meta WHERE rowid = ?", (rowid,)
+            ).fetchone()
+            if not meta_row:
+                continue
+            sim = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
+            if sim < similarity_floor:
+                continue
+            results.append((meta_row[0], sim))
+        return results
+    finally:
+        conn.close()
+
+
 # -----------------------------------------------------------------------------
 # V4 #37: drift detection primitives
 # -----------------------------------------------------------------------------
@@ -855,17 +915,27 @@ def rebuild_index(vault_path: Path | str) -> dict:
     }
 
 
-def enqueue(vault_path: Path | str, entry_relative: str, op: str, *, text: str = "") -> None:
+def enqueue(
+    vault_path: Path | str, entry_relative: str, op: str, *, text: str = "", link: bool = False
+) -> None:
     """Append an entry to the embedding queue.
 
     The queue is JSONL; each line is `{"op": "upsert"|"delete", "path":
-    "<relative>", "text": "<embed-text-or-empty>", "enqueued_at": "..."}`.
-    save.py + evolve.py call this synchronously after the file write;
-    drain_queue() processes the queue later (idle-time hook or manual
-    /memory reindex).
+    "<relative>", "text": "<embed-text-or-empty>", "enqueued_at": "...",
+    "link": true|false}`. save.py + evolve.py call this synchronously
+    after the file write; drain_queue() processes the queue later
+    (idle-time hook or manual /memory reindex).
 
     The `text` field is the content to embed for upsert ops (typically
     title + tags + first paragraph). For delete ops, text is ignored.
+
+    `link=True` (auto-org part 2 task 3, upsert ops only): after this
+    entry's embedding is computed and upserted at drain time, also apply
+    the write-time linker (write_time_linker.apply) using that SAME
+    embedding — no second embed call. Deliberately deferred to drain
+    rather than computed synchronously in save.py: a fresh model-load-on-
+    every-save cost would violate "saving stays fast" (confirmed during
+    this task's own build — see write_time_linker.py's module docstring).
 
     This function is sync + fast + never raises on sqlite-vec absence —
     it's the file-write side of the architecture; the slow async work
@@ -878,6 +948,7 @@ def enqueue(vault_path: Path | str, entry_relative: str, op: str, *, text: str =
         "path": entry_relative,
         "text": text,
         "enqueued_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "link": link,
     }
     # Append + LF newline (consistent with the vault's on-disk LF convention).
     line = (json.dumps(record) + "\n").encode("utf-8")
@@ -966,6 +1037,23 @@ def drain_queue(vault_path: Path | str, *, mode: str | None = None) -> dict:
             except Exception:  # pragma: no cover
                 stats["errors"] += 1
                 unprocessed.append(record)
+                continue
+            if record.get("link"):
+                # Auto-org part 2 task 3: reuse the embedding just computed
+                # above — no second embed call. Best-effort; write_time_linker
+                # never raises by its own contract, but this try/except is
+                # defense in depth anyway (matches every other sub-step in
+                # this loop) — a link-application failure must never turn an
+                # already-successful upsert into an "error" stat. Deferred
+                # (function-local) import: write_time_linker imports this
+                # module, but this module is already fully loaded by the
+                # time drain_queue runs, so the back-edge is only live at
+                # call time, not at module-load time — no import cycle.
+                try:
+                    import write_time_linker
+                    write_time_linker.apply(vault, rel_path, embedding)
+                except Exception:  # pragma: no cover
+                    pass
             continue
         # Unknown op — skip.
         stats["errors"] += 1

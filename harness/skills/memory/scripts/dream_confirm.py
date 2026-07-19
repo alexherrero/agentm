@@ -141,7 +141,25 @@ DEFAULT_REVERT_TTL_DAYS = 14.0
 # only ever acts on an entry lifecycle.py itself has already classified as
 # non-exempt and cold (the same anchor chain compute_decay_score uses, not
 # a second, independently-invented staleness signal).
-AUTO_APPLY_STAGES = frozenset({"compression", "tidying"})
+#
+# `link_improvement` (auto-organization part 2, task 4 -- the same
+# wiki/designs/agentm-auto-organization.md, PLAN-auto-org-write-time-
+# linking.md) joins the set on the SAME governing design's own explicit,
+# later-approved text: "Every shelf, archive, and link move auto-applies,
+# lands in the revert log, and shows in the digest -- none of it waits on
+# you," plus the plan's own Locked design call "Additive only. No link
+# removal happens in this part, ever." That is this stage's own fresh,
+# separate operator ruling this docstring's earlier `dedup`/
+# `contradiction_triage` note requires before a new stage can join this
+# set -- distinct from (and materially narrower than) the "keep_both"
+# contradiction-flagging action that note warns against: a link-
+# improvement mutation only ever ADDS a wikilink (never marks or flags a
+# relationship needing the operator's own judgment), it's revert-logged
+# through the identical record_and_apply pre-image pair every other stage
+# here uses, and `merge_related_slugs` is idempotent by construction (a
+# proposal re-applied against already-linked content is a captured no-op,
+# never a duplicate line).
+AUTO_APPLY_STAGES = frozenset({"compression", "tidying", "link_improvement"})
 
 # Standing batch bound for one auto-apply cycle (2026-07-11 cadence
 # review). The proving-window's temporary <=100 cap was sized for a short
