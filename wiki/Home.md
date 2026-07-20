@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v8.9.0](https://github.com/alexherrero/agentm/releases/tag/v8.9.0).** The vault now catches its own duplicates and broken links. A write-time guard reinforces an exact match instead of piling up `_1`/`_2` copies, a weekly pass collapses the ones already there, and a new `/memory lint` reports orphans, broken links, and contradictions — auto-fixing only the one safe case, a mis-cased link with an unambiguous target. This closes out the whole auto-organization design.
+> **Latest release: [v8.10.0](https://github.com/alexherrero/agentm/releases/tag/v8.10.0).** Forward-learning now runs for real against five approved research sources — Anthropic, OpenAI, DeepMind, DeepSeek, and Moonshot AI — each paper individually reviewable instead of one lumped finding per source. The last feature of the FRIDAY ladder; the arc-exit demo is next.
