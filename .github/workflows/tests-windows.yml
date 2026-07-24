@@ -64,30 +64,28 @@ jobs:
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         shell: bash
         run: bash scripts/check-vendored-parity.sh hook-config
-      # verify-hook-resolution.sh ESCALATED-AND-PARKED (Loose Ends Release 3,
-      # GH #70) rather than added here: it builds a scratch HOME via
-      # mktemp -d, then invokes the hook .sh scripts, which shell out to
-      # native (non-MSYS) python3.exe passing that HOME along — python3.exe
-      # can't resolve git-bash's MSYS-style /tmp/tmp.XXXXX path back to the
-      # real Windows filesystem location, so every hook sees a config file
-      # that "isn't there" (confirmed via a real CI run, PR #358:
-      # FileNotFoundError on .agentm-config.json under a git-bash /tmp
-      # path). The other three verify-*.sh scripts below don't shell out to
-      # python3 with a bash-side scratch-HOME path the same way, so they're
-      # not known to share this blocker — left in to find out for real.
-      # Needs either a cygpath -w translation at the git-bash/python
-      # boundary or a Windows-native temp dir instead of mktemp; deferred
-      # rather than guessed at without a real Windows+git-bash environment
-      # to verify the fix against.
-      - name: verify-state-routing (backend x project-mode matrix, never-demote)
-        shell: bash
-        run: bash scripts/verify-state-routing.sh
-      - name: "Phase-lifecycle e2e, both state modes (verify-phases.sh)"
-        shell: bash
-        run: bash scripts/verify-phases.sh
-      - name: "Memory-engine round-trip e2e (verify-memory-roundtrip.sh)"
-        shell: bash
-        run: bash scripts/verify-memory-roundtrip.sh
+      # verify-hook-resolution.sh, verify-state-routing.sh, verify-phases.sh,
+      # and verify-memory-roundtrip.sh ALL ESCALATED-AND-PARKED (Loose Ends
+      # Release 3, GH #70) rather than added here. Root cause, confirmed via
+      # two real CI runs on PR #358: each builds a scratch dir via
+      # mktemp -d (an MSYS-style /tmp/tmp.XXXXX path), then shells out to
+      # native (non-MSYS) python3.exe — via the hook .sh scripts directly,
+      # or via harness_memory.py/save.py/recall.py — passing that path
+      # along. python3.exe can't resolve git-bash's MSYS path back to the
+      # real Windows filesystem location, so the read/write fails
+      # (FileNotFoundError on .agentm-config.json in both observed
+      # failures). verify-state-routing.sh partially ran (5 of 8 checks
+      # passed) before failing on exactly this pattern on its "never-demote"
+      # safety-invariant check — not weakening that assertion to tolerate
+      # the environment gap (AGENTS.md's testing discipline), parking the
+      # whole script instead. verify-phases.sh and verify-memory-roundtrip.sh
+      # share the identical bash-mktemp + python3-shellout architecture
+      # (confirmed by reading both, not re-run empirically — the pattern is
+      # already conclusive from the first two). Needs either a cygpath -w
+      # translation at the git-bash/python boundary or a Windows-native temp
+      # dir instead of mktemp, applied consistently across all four scripts
+      # — real follow-up work for a session with actual Windows+git-bash
+      # access to verify against, not something to guess at further here.
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where
