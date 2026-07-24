@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.0.1](https://github.com/alexherrero/agentm/releases/tag/v9.0.1).** A clean install is now proven: the post-FRIDAY cold-install acceptance sweep passes end to end, including a real fix so your very first recall works even when the embedding model hasn't warmed up yet.
+> **Latest release: [v9.0.2](https://github.com/alexherrero/agentm/releases/tag/v9.0.2).** A machine-wide (`--scope user`) install now actually wires up your hooks — a real fix for a bug that's been there since the feature first shipped.

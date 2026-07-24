@@ -5,6 +5,28 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.0.2] — 2026-07-24 — Patch: works on every OS and install mode, part 1 — the matrix
+
+**PATCH.** Loose Ends Release 3, Plan A of 2 (GH #70). Builds out the install-mode × OS test matrix — `--scope user` had zero end-to-end coverage on any OS before this release.
+
+That new coverage found a real, previously-undiagnosed bug: `install.sh`/`install.ps1`'s `--scope user` release-mode copy loop has always laid `harness/agents`, `harness/skills`, and `harness/hooks` out flat under the install prefix instead of nested — a hook landed at `<prefix>/<name>/<name>.sh` instead of `<prefix>/hooks/<name>/<name>.sh`. Since `_agentm_merge_user_hook_fragments` hardcodes `$prefix/hooks` and silently no-ops when it's missing, this has broken every real `--scope user` install without a source clone since the original implementation (V4 #30 task 8). Local testing never caught it — this machine's own `~/Antigravity/agentm` clone silently selects source mode (which lays out correctly) over release mode (which didn't). Fixed, and both smoke-install scripts now force release mode via a scratch `HOME`, closing that exact blind spot for good.
+
+Plan A also found a second, unrelated environment limit: the four Linux/Mac-only `verify-*.sh` scripts this release meant to backfill onto Windows all hit the same git-bash/native-`python3.exe` path-translation issue in real CI. Escalated-and-parked with the exact blocker documented in `tests-windows.yml` — genuine follow-up work for a session with real Windows+git-bash access, not something to keep guessing at. Plan B (GH #72, next) fixes the still-open PowerShell side of the original bug — `install.ps1 -Scope user` doesn't merge hook fragments into `settings.json` at all yet — and adds the `.ps1` hook-firing test twins.
+
+### Fixed
+
+- **`--scope user` release-mode installs never actually worked** ([#358](https://github.com/alexherrero/agentm/pull/358)) — `harness/agents`, `harness/skills`, and `harness/hooks` now each copy into their own named destination directory in both `install.sh` and `install.ps1`, matching `install_symlinks.py`'s source-mode reference layout.
+
+### Added
+
+- **End-to-end `--scope user` test coverage** on bash (asserts hook dirs land *and* merge into `settings.json` — the test that found the bug above) and structural coverage on pwsh (hook dirs + `.agentm-config.json`, pending Plan B's fix before it can assert `settings.json` too).
+- **`--local-state` coverage added to the pwsh smoke test**, mirroring bash's existing coverage.
+
+### Internal
+
+- **macOS CI backfilled with `test-install.sh`** — the one OS running neither the `.sh` nor `.ps1` installer-boundary guard.
+- **`Compatibility.md`** no longer implies uniform per-OS CI depth; points at `CI-Gates.md`'s real gate-by-gate breakdown.
+
 ## [v9.0.1] — 2026-07-24 — Patch: a clean install, proven — Hardening II's acceptance gate closes
 
 **PATCH.** Loose Ends Release 2. Ran Hardening II's post-FRIDAY cold-install acceptance sweep (locked call ①) against a genuinely fresh checkout: the base install/update/local-state contract, all 7 heavy-tier checks (including both B3 criteria — dashboard honest-dark on a bare install, fan-out/budget gates fail closed with no config), and a manual zero→first-recall exercise. 11 of 12 sub-checks passed clean on the first run.
