@@ -5,6 +5,22 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.0.4] — 2026-07-24 — Patch: a smooth first run for newcomers
+
+**PATCH.** Loose Ends Release 4. Adds the onboarding page a newcomer needs before their first background dispatch, and — found while shipping it — fixes a real locking bug that could hand any caller a permission error that was never real.
+
+Dispatching background work through Agent View for the first time has a wall in front of it that nothing documented: a `claude --bg` session spawns its own process, so it doesn't inherit the ambient auth an interactive host injects per session. It needs `claude auth login` run once on that machine. A real acceptance run diagnosed this months ago and the autonomy design's own re-audit note asked for it to be named in onboarding docs; nothing in the wiki mentioned Agent View or `claude auth login` until now.
+
+The lock fix came out of taking a CI failure seriously. This release's own PR — three markdown files — kept failing the Windows leg on a concurrency test it could not possibly touch, twice in a row. `vault_lock.py` told a genuine permission problem apart from a Windows `mkdir` race by asking whether the lockdir existed right after the failed `mkdir`, which is time-of-check-to-time-of-use: the holder can release in that window, so the check reads "gone" for what was pure contention and the loser raises a `PermissionError` that never happened. It now discriminates on the timeout it already has — contention clears in milliseconds, an unwritable lock root never does.
+
+### Added
+
+- **[Your first Agent View dispatch](https://github.com/alexherrero/agentm/blob/main/wiki/how-to/02-First-Agent-View-Dispatch.md)** ([#361](https://github.com/alexherrero/agentm/pull/361)) — a tutorial covering the one-time `claude auth login` step a new machine needs, as the numbered sequel to "Your first install". Linked from the How-to index and the sidebar.
+
+### Fixed
+
+- **`vault_lock` could raise a `PermissionError` that was never real** ([#361](https://github.com/alexherrero/agentm/pull/361)) — a lock holder releasing at the wrong instant made a contention retry look like a permissions failure. Affected any caller under contention, not just tests. The regression test was confirmed to fail against the unfixed code before being kept.
+
 ## [v9.0.3] — 2026-07-24 — Patch: works on every OS and install mode, part 2 — pwsh hook parity
 
 **PATCH.** Loose Ends Release 3, Plan B of 2 (GH #72). Finishes what Plan A (v9.0.2) started: `install.ps1 -Scope user` never merged installed hooks' settings fragments into `settings.json` — so even after Plan A's directory-layout fix, hooks still never fired on a Windows user-scope install. Ported `install.sh`'s equivalent merge function to pwsh.

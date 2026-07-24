@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.0.3](https://github.com/alexherrero/agentm/releases/tag/v9.0.3).** A machine-wide (`--scope user`) install on Windows now actually wires up your hooks, and two more real PowerShell bugs — one affecting every OS's hooks, found along the way — are fixed too.
+> **Latest release: [v9.0.4](https://github.com/alexherrero/agentm/releases/tag/v9.0.4).** A new tutorial walks you through your first background dispatch, including the one-time `claude auth login` a fresh machine needs — plus a fix for a locking bug that could report a permission error that never happened.
 
 ---
 
