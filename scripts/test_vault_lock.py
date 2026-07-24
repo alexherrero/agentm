@@ -238,13 +238,16 @@ class VaultMutexTests(unittest.TestCase):
     def test_permission_error_on_nonexistent_lockdir_still_raises(self) -> None:
         # A genuine permission problem creating the lockdir itself -- NOT
         # the Windows mkdir-race case -- must still raise, not be silently
-        # retried forever. The distinguishing signal _acquire uses: the
-        # race case's lockdir exists right after the error; a real
-        # permission failure's does not. Scoped to the exact lockdir path
-        # (see the sibling test's own comment) so the earlier, unrelated
-        # `lockdir.parent.mkdir(parents=True, exist_ok=True)` call
-        # succeeds normally and this genuinely exercises _acquire's own
-        # except-block check, not a different failure point entirely.
+        # retried forever. _acquire discriminates the two by the deadline
+        # rather than by a filesystem probe: contention clears in
+        # milliseconds, an unwritable lock root never does, so a
+        # PermissionError that outlives `timeout` is re-raised as itself
+        # (with its own accurate message, not a LockTimeout). Scoped to the
+        # exact lockdir path (see the sibling test's own comment) so the
+        # earlier, unrelated `lockdir.parent.mkdir(parents=True,
+        # exist_ok=True)` call succeeds normally and this genuinely
+        # exercises _acquire's own except-block, not a different failure
+        # point entirely.
         lockdir = vl._lockdir_for(self.vault, self.root)
         real_mkdir = os.mkdir
 
@@ -258,6 +261,42 @@ class VaultMutexTests(unittest.TestCase):
                 with vl.vault_mutex(self.vault, lock_root=self.root, timeout=0.5, stale=10.0):
                     pass
         self.assertFalse(lockdir.exists())
+
+    def test_permission_error_when_holder_releases_before_check_is_contention(self) -> None:
+        # The regression this test pins. _acquire used to discriminate a
+        # genuine permission problem from the Windows mkdir-race by asking
+        # whether the lockdir existed right after the failed mkdir. That
+        # check is time-of-check-to-time-of-use: the holder can RELEASE
+        # between our mkdir failing and the check running, so `exists()`
+        # reads False for what was pure contention -- and the loser raised
+        # a spurious PermissionError. It was this loop's own recurring
+        # Windows CI failure, and the same hole a caller under contention
+        # could hit in production.
+        #
+        # Simulate exactly that interleaving: mkdir raises PermissionError
+        # once, and the lockdir does NOT exist afterwards (the winner
+        # already released). The acquisition must succeed on retry.
+        lockdir = vl._lockdir_for(self.vault, self.root)
+        call_count = {"n": 0}
+        real_mkdir = os.mkdir
+
+        def _intercept(path, *args, **kwargs):
+            if Path(path) != lockdir:
+                return real_mkdir(path, *args, **kwargs)
+            call_count["n"] += 1
+            if call_count["n"] == 1:
+                # Lockdir deliberately absent here — the winner released
+                # in the window between our mkdir and any existence check.
+                raise PermissionError(5, "Access is denied")
+            return real_mkdir(path, *args, **kwargs)
+
+        acquired = False
+        with mock.patch("os.mkdir", side_effect=_intercept):
+            with vl.vault_mutex(self.vault, lock_root=self.root, timeout=2.0, stale=10.0):
+                acquired = True
+        self.assertTrue(acquired, "a released-in-between race must retry, not raise")
+        self.assertEqual(call_count["n"], 2, "expected exactly one retry after the raced mkdir")
+        self.assertFalse(lockdir.exists(), "lock not released on exit")
 
     def test_stale_takeover(self) -> None:
         lockdir = vl._lockdir_for(self.vault, self.root)

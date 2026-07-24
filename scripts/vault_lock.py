@@ -265,12 +265,31 @@ def _acquire(lockdir: Path | str, *, timeout: float, stale: float) -> None:
             # (ingest_sweep's own concurrency regression suite) reliably
             # triggered it on the Windows runner; the same race never
             # surfaces on POSIX, where mkdir's FileExistsError is the only
-            # outcome. Only treat PermissionError as this same "someone
-            # else is acquiring it" signal when the directory now actually
-            # exists -- otherwise it's a genuine permission problem (e.g.
-            # the lock root itself isn't writable), which must still raise.
-            if isinstance(e, PermissionError) and not lockdir.exists():
-                raise
+            # outcome.
+            #
+            # A genuine permission problem (the lock root itself isn't
+            # writable) must still raise. Discriminating it by whether the
+            # lockdir exists *right now* does not work: that check is
+            # time-of-check-to-time-of-use, and the holder can release
+            # between our failed mkdir and the check -- making `exists()`
+            # False for what was pure contention, so the loser raised a
+            # spurious PermissionError. That was this loop's own recurring
+            # Windows failure, and the same hole a caller under contention
+            # could hit in production. Note the FileExistsError path below
+            # already treats "vanished in between" as retry-worthy (`age is
+            # None`); this path now agrees with it.
+            #
+            # Instead, bound the ambiguity by the deadline we already have:
+            # contention clears in milliseconds, an unwritable lock root
+            # never does. Re-raise the original error once the deadline
+            # passes, so a real permission problem still surfaces -- with
+            # its own accurate message rather than a LockTimeout.
+            if isinstance(e, PermissionError):
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(min(backoff, max(0.0, deadline - time.monotonic())))
+                backoff = min(backoff * 2, 0.2)
+                continue
             age = _lock_age(lockdir)
             if age is None:
                 continue  # released between our mkdir-fail and the stat — retry now

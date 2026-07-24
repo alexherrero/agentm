@@ -3,6 +3,7 @@
 ### 🔧 [How-to](How-To)
 - [Install machine-wide (recommended)](Install-Machine-Wide)
 - [Your first install](01-First-Install)
+- [Your first Agent View dispatch](02-First-Agent-View-Dispatch)
 - [Install into a project](Install-Into-Project)
 - [Configure a new project](Configure-A-New-Project)
 - [Update an installed harness](Update-Installed-Harness)
