@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v8.10.0](https://github.com/alexherrero/agentm/releases/tag/v8.10.0).** Forward-learning now runs for real against five approved research sources — Anthropic, OpenAI, DeepMind, DeepSeek, and Moonshot AI — each paper individually reviewable instead of one lumped finding per source. The last feature of the FRIDAY ladder; the arc-exit demo is next.
+> **Latest release: [v9.0.0](https://github.com/alexherrero/agentm/releases/tag/v9.0.0).** FRIDAY is declared complete — all 9 ladder features shipped, the exit demo passed — and the version catches up to match. This release also opens the Loose Ends cleanup arc with a first pass of record-hygiene fixes.
