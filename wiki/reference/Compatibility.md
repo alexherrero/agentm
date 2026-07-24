@@ -21,6 +21,8 @@ Both adapters act as thin shims for agentm's own surfaces. These surfaces includ
 
 The single aggregate `CI` badge in the README and wiki Home rolls up all three OS workflows into one status. To drill into a failure, you click the badge. You open the Actions tab. You pick the failing OS.
 
+Every OS runs its own workflow on every pull request, with check depth varying by platform. Windows runs a narrower check suite than Linux and macOS. The deeper engine, hook-resolution, and phase-lifecycle `verify-*.sh` gates run on Linux and macOS only. See [CI-Gates](CI-Gates) for a gate-by-gate breakdown of what runs where.
+
 ## Vault storage & sync
 
 The MemoryVault is a folder of markdown. You can place it anywhere on your machine. To back it up and sync it across devices, you pick a transport:
