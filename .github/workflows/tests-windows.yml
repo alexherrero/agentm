@@ -31,7 +31,11 @@ jobs:
       - uses: actions/checkout@v4
       # windows-latest ships pwsh 7+ and Python preinstalled.
       - name: Install Python deps (for validate script)
-        run: python -m pip install pyyaml
+        # sqlite-vec lets verify-memory-roundtrip.sh exercise the vec-index
+        # nearest-neighbor read-back on Windows too; the e2e self-skips it
+        # if the runner's Python can't load extensions (enhancement, never
+        # a hard dep) — same convention tests-mac.yml already uses.
+        run: python -m pip install pyyaml sqlite-vec
       - name: Run smoke-install (pwsh) + post-install integrity
         shell: pwsh
         run: pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1
@@ -60,6 +64,22 @@ jobs:
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         shell: bash
         run: bash scripts/check-vendored-parity.sh hook-config
+      - name: verify-hook-resolution (dual-key vault_path read, 4 hooks)
+        # Loose Ends Release 3 (GH #70): backfilling the Linux/Mac-only
+        # verify-*.sh scripts onto Windows via git-bash, the same
+        # shell: bash mechanism check-vendored-parity/check-no-pii already
+        # use successfully on windows-latest above.
+        shell: bash
+        run: bash scripts/verify-hook-resolution.sh
+      - name: verify-state-routing (backend x project-mode matrix, never-demote)
+        shell: bash
+        run: bash scripts/verify-state-routing.sh
+      - name: "Phase-lifecycle e2e, both state modes (verify-phases.sh)"
+        shell: bash
+        run: bash scripts/verify-phases.sh
+      - name: "Memory-engine round-trip e2e (verify-memory-roundtrip.sh)"
+        shell: bash
+        run: bash scripts/verify-memory-roundtrip.sh
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where
