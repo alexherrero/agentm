@@ -5,6 +5,21 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.0.1] — 2026-07-24 — Patch: a clean install, proven — Hardening II's acceptance gate closes
+
+**PATCH.** Loose Ends Release 2. Ran Hardening II's post-FRIDAY cold-install acceptance sweep (locked call ①) against a genuinely fresh checkout: the base install/update/local-state contract, all 7 heavy-tier checks (including both B3 criteria — dashboard honest-dark on a bare install, fan-out/budget gates fail closed with no config), and a manual zero→first-recall exercise. 11 of 12 sub-checks passed clean on the first run.
+
+One real defect surfaced: `recall.py`'s `query` CLI subcommand defaulted its time budget to the interactive UserPromptSubmit hook's tight 300ms window, which a cold (unwarmed) embedding-model load routinely exceeds — so a genuinely bare install's very first recall silently returned nothing. This is the exact symptom an earlier acceptance pass (AA4, 2026-07-08) flagged without diagnosing.
+
+### Fixed
+
+- **`recall.py query` silently returns nothing on a cold embedding-model load** ([#355](https://github.com/alexherrero/agentm/pull/355)) — the CLI subcommand now defaults to a dedicated, more generous `QUERY_CLI_BUDGET_MS` (10s) instead of borrowing the interactive UserPromptSubmit hook's locked 300ms budget. Both interactive hook budgets (SessionStart 500ms, UserPromptSubmit 300ms) are untouched. 4 new regression tests pin the default value and the actual slow-embed behavior.
+
+### Internal
+
+- **Two Loose Ends sweep-inventory items corrected, not rebuilt** — an installer vault-detection probe precedence bug and an install-state-sync moved-symlink bug were both re-verified as already shipped (v4.6.0 and v4.15.0 respectively) and annotated shipped in the record.
+- **Hardening II's acceptance gate closes** — the post-FRIDAY sweep this release ran is recorded as the exit-gate evidence in `ROADMAP-MASTER.md`.
+
 ## [v9.0.0] — 2026-07-24 — Major: FRIDAY is declared complete; the version catches up
 
 **MAJOR.** Per the project's versioning ladder (Consolidation arc Ruling 4: the major version number equals the roadmap era the project has completed), this release cuts the FRIDAY-era major. FRIDAY itself finished the day before this tag: all 9 ladder features shipped (v8.3.0 through v8.10.0), both FRIDAY-scoped designs (`agentm-capture.md`, `agentm-auto-organization.md`) launched, and the operator-run P6 arc-exit demo passed on the real machine and vault. This release doesn't ship that work again — it's the version catching up, the same shape as v7.0.0's V6/V7 catch-up two weeks earlier.

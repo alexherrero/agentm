@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.0.0](https://github.com/alexherrero/agentm/releases/tag/v9.0.0).** FRIDAY is declared complete — all 9 ladder features shipped, the exit demo passed — and the version catches up to match. This release also opens the Loose Ends cleanup arc with a first pass of record-hygiene fixes.
+> **Latest release: [v9.0.1](https://github.com/alexherrero/agentm/releases/tag/v9.0.1).** A clean install is now proven: the post-FRIDAY cold-install acceptance sweep passes end to end, including a real fix so your very first recall works even when the embedding model hasn't warmed up yet.
 
 ---
 
