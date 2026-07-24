@@ -64,13 +64,21 @@ jobs:
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         shell: bash
         run: bash scripts/check-vendored-parity.sh hook-config
-      - name: verify-hook-resolution (dual-key vault_path read, 4 hooks)
-        # Loose Ends Release 3 (GH #70): backfilling the Linux/Mac-only
-        # verify-*.sh scripts onto Windows via git-bash, the same
-        # shell: bash mechanism check-vendored-parity/check-no-pii already
-        # use successfully on windows-latest above.
-        shell: bash
-        run: bash scripts/verify-hook-resolution.sh
+      # verify-hook-resolution.sh ESCALATED-AND-PARKED (Loose Ends Release 3,
+      # GH #70) rather than added here: it builds a scratch HOME via
+      # mktemp -d, then invokes the hook .sh scripts, which shell out to
+      # native (non-MSYS) python3.exe passing that HOME along — python3.exe
+      # can't resolve git-bash's MSYS-style /tmp/tmp.XXXXX path back to the
+      # real Windows filesystem location, so every hook sees a config file
+      # that "isn't there" (confirmed via a real CI run, PR #358:
+      # FileNotFoundError on .agentm-config.json under a git-bash /tmp
+      # path). The other three verify-*.sh scripts below don't shell out to
+      # python3 with a bash-side scratch-HOME path the same way, so they're
+      # not known to share this blocker — left in to find out for real.
+      # Needs either a cygpath -w translation at the git-bash/python
+      # boundary or a Windows-native temp dir instead of mktemp; deferred
+      # rather than guessed at without a real Windows+git-bash environment
+      # to verify the fix against.
       - name: verify-state-routing (backend x project-mode matrix, never-demote)
         shell: bash
         run: bash scripts/verify-state-routing.sh
