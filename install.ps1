@@ -106,12 +106,27 @@ if ($Scope -eq 'user') {
         & $pythonCmd.Source $installSymlinksPy @args | Out-Null
         Write-Host '    symlinks: created'
     } else {
-        # Release-mode copy from this harness's source tree
-        foreach ($srcSubdir in @('harness/agents', 'harness/skills', 'harness/hooks', 'adapters/claude-code')) {
+        # Release-mode copy from this harness's source tree.
+        # harness/{agents,skills,hooks} each need their own name as the
+        # destination's top-level dir (install_copy.py relativizes against
+        # source_dir, so copying straight into $UserInstallPrefix drops that
+        # segment entirely — mirrors install_symlinks.py's explicit
+        # "agents/{name}" / "skills/{name}" / "hooks/{name}" destination
+        # mapping, the source-mode reference this release-mode path must
+        # match).
+        foreach ($srcSubdir in @('harness/agents', 'harness/skills', 'harness/hooks')) {
             $srcPath = Join-Path $HarnessRoot $srcSubdir
             if (Test-Path $srcPath) {
-                & $pythonCmd.Source $installCopyPy $srcPath $UserInstallPrefix *>$null
+                $destPath = Join-Path $UserInstallPrefix (Split-Path -Leaf $srcSubdir)
+                & $pythonCmd.Source $installCopyPy $srcPath $destPath *>$null
             }
+        }
+        # adapters/claude-code already nests commands/, skills/, agents/ as
+        # its own immediate children — copying it straight into the prefix
+        # is correct as-is, unlike the harness/* trio above.
+        $adaptersPath = Join-Path $HarnessRoot 'adapters/claude-code'
+        if (Test-Path $adaptersPath) {
+            & $pythonCmd.Source $installCopyPy $adaptersPath $UserInstallPrefix *>$null
         }
         Write-Host '    customizations: copied'
     }

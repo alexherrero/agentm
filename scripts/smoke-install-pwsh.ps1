@@ -235,9 +235,20 @@ try {
     # directories land, and install state persists to .agentm-config.json.
     # Plan B adds the settings.json assertion here once the fix lands,
     # mirroring smoke-install-bash.sh's task-1 coverage.
+    #
+    # Deliberately forces release mode (a scratch HOME with no agentm clone
+    # at it) rather than relying on "no CI runner has a clone" — a developer
+    # running this locally from a machine with a real Antigravity/agentm
+    # clone would otherwise silently exercise source mode instead, masking
+    # a release-mode-only regression (harness/{agents,skills,hooks} landing
+    # flat under the prefix instead of nested is exactly the class of bug
+    # this task-1's bash twin found and fixed the same way).
     Write-Host '==> -Scope user: hook dirs land + install state persists'
     $userScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("harness-smoke-user-" + [System.Guid]::NewGuid().ToString('N'))
+    $fakeHome = Join-Path ([System.IO.Path]::GetTempPath()) ("harness-smoke-fakehome-" + [System.Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $fakeHome -Force | Out-Null
     $env:AGENTM_INSTALL_PREFIX = $userScratch
+    $env:HOME = $fakeHome
     try {
         & pwsh -NoProfile -File (Join-Path $HarnessRoot 'install.ps1') -Scope user | Out-File (Join-Path $scratch '.user-install.log')
 
@@ -262,16 +273,20 @@ try {
             exit 1
         }
         $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
-        if ($config.mode -notin @('source', 'release')) {
-            Write-Host "FAIL: .agentm-config.json mode is not source/release: $($config.mode)"
+        if ($config.mode -ne 'release') {
+            Write-Host "FAIL: .agentm-config.json mode is not 'release' despite the forced-empty HOME: $($config.mode)"
             exit 1
         }
         Write-Host "    hook dirs + .agentm-config.json (mode: $($config.mode)) OK"
     }
     finally {
         $env:AGENTM_INSTALL_PREFIX = $null
+        $env:HOME = $null
         if (Test-Path -LiteralPath $userScratch) {
             Remove-Item -LiteralPath $userScratch -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $fakeHome) {
+            Remove-Item -LiteralPath $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 

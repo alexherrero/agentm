@@ -212,14 +212,25 @@ echo "    repo-local write/read round-trip OK"
 # not just drop hook dirs under <prefix>/hooks/<name>/, it must merge each
 # hook's settings-fragment-bash.json into <prefix>/settings.json (the bug
 # class V4 #39 fixed on this bash side — see install.sh's
-# _agentm_merge_user_hook_fragments). No CI runner has a real agentm source
-# clone at the canonical ~/Antigravity/agentm path, so this naturally
-# exercises release mode (copy, not symlink) with no special fixture.
+# _agentm_merge_user_hook_fragments). Deliberately forces release mode (a
+# scratch HOME with no agentm clone at it) rather than relying on "no CI
+# runner has a clone" — a developer running this locally from a machine
+# with a real ~/Antigravity/agentm clone would otherwise silently exercise
+# source mode instead, masking a release-mode-only regression exactly like
+# the one this task found (harness/{agents,skills,hooks} landed flat under
+# the prefix instead of nested, invisible until CI genuinely hit the
+# release-mode path with no clone to fall back on).
 echo "==> --scope user: hook dirs land + settings.json fragment-merge (V4 #39 path)"
 USER_SCRATCH="$(mktemp -d)"
-trap 'rm -rf "$SCRATCH" "$LOCAL_SCRATCH" "$USER_SCRATCH"' EXIT   # extend cleanup again
-AGENTM_INSTALL_PREFIX="$USER_SCRATCH/.claude" bash "$HARNESS_ROOT/install.sh" \
+FAKE_HOME="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH" "$LOCAL_SCRATCH" "$USER_SCRATCH" "$FAKE_HOME"' EXIT   # extend cleanup again
+HOME="$FAKE_HOME" AGENTM_INSTALL_PREFIX="$USER_SCRATCH/.claude" bash "$HARNESS_ROOT/install.sh" \
   --scope user > "$USER_SCRATCH/.install.log"
+
+if ! grep -q '"mode": "release"' "$USER_SCRATCH/.claude/.agentm-config.json"; then
+  echo "FAIL: .agentm-config.json mode is not 'release' despite the forced-empty HOME — the fake-HOME trick that keeps this test honest didn't work" >&2
+  exit 1
+fi
 
 user_hooks=(
   harness-context-session-start
