@@ -69,6 +69,45 @@ if ($LocalState) { $PersistStateModeArgs = @('--state-mode', 'local') }
 # Operators install crickets via its one-line bootstrap or the host's native
 # `plugin install`. The two repos are now decoupled at install time.
 
+# ── -Scope user: merge installed hooks' settings fragments (GH #72) ─────────
+# pwsh twin of install.sh's _agentm_merge_user_hook_fragments (the V4 #39
+# fix). The -Scope user install (symlink/copy) drops hook DIRS into
+# <prefix>/hooks/<name>/ but never merged their settings-fragment-pwsh.json
+# into <prefix>/settings.json — so no hook ever fired on a Windows user-scope
+# install. Walks the installed hook dirs, merges each pwsh fragment, and
+# absolutizes the command to the user-scope layout ("pwsh -NoProfile -File
+# <prefix>/hooks/<name>/<name>.ps1") — source fragments stay project-relative
+# on disk; the command gets rewritten per scope, mirroring the bash side's
+# same rule. Returns a {path, sha256} record array (as JSON) for the
+# install-state fragments field. Idempotent: re-running merges nothing new.
+function Merge-AgentmUserHookFragments {
+    param([string]$Prefix, [string]$RecordsOutFile, $PythonCmd)
+    $hooksDir = Join-Path $Prefix 'hooks'
+    $records = @()
+    $merged = 0
+    if ((Test-Path -LiteralPath $hooksDir -PathType Container) -and $PythonCmd) {
+        Get-ChildItem -LiteralPath $hooksDir -Directory | ForEach-Object {
+            $name = $_.Name
+            $frag = Join-Path $_.FullName 'settings-fragment-pwsh.json'
+            $script = Join-Path $_.FullName "$name.ps1"
+            if ((Test-Path -LiteralPath $frag) -and (Test-Path -LiteralPath $script)) {
+                $settingsPath = Join-Path $Prefix 'settings.json'
+                $command = "pwsh -NoProfile -File $script"
+                & $PythonCmd.Source (Join-Path $HarnessRoot 'scripts/merge-settings-fragment.py') $settingsPath $frag '--command' $command 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    $merged++
+                    $sha = (Get-FileHash -LiteralPath $frag -Algorithm SHA256).Hash.ToLower()
+                    $records += [ordered]@{ path = $frag; sha256 = $sha }
+                } else {
+                    Write-Warning "failed to merge settings fragment for user-scope hook '$name'"
+                }
+            }
+        }
+    }
+    ($records | ConvertTo-Json -AsArray -Depth 5) | Set-Content -LiteralPath $RecordsOutFile
+    Write-Host "    hooks: merged $merged settings fragment(s) into $Prefix\settings.json"
+}
+
 # ── -Scope user dispatch (V4 #30 task 8) ────────────────────────────────────
 if ($Scope -eq 'user') {
     $UserInstallPrefix = if ($env:AGENTM_INSTALL_PREFIX) {
@@ -131,12 +170,20 @@ if ($Scope -eq 'user') {
         Write-Host '    customizations: copied'
     }
 
-    # Persist install state
+    # GH #72: merge installed hooks' settings fragments into settings.json —
+    # the missing pwsh half of the V4 #39 fix (bash side: install.sh's
+    # _agentm_merge_user_hook_fragments).
+    $fragRecordsFile = Join-Path ([System.IO.Path]::GetTempPath()) ("agentm-frag-" + [System.Guid]::NewGuid().ToString('N') + '.json')
+    Merge-AgentmUserHookFragments -Prefix $UserInstallPrefix -RecordsOutFile $fragRecordsFile -PythonCmd $pythonCmd
+
+    # Persist install state (incl. the merged-fragments records for drift detection)
     & $pythonCmd.Source $installStatePy 'persist' `
         $UserInstallPrefix `
         '--harness-version' $HarnessVersion `
         '--installer-source' (Join-Path $HarnessRoot 'install.ps1') `
+        '--fragments-file' $fragRecordsFile `
         @PersistStateModeArgs | Out-Null
+    Remove-Item -LiteralPath $fragRecordsFile -Force -ErrorAction SilentlyContinue
 
     # Install agentm-update launcher
     $userBin = Join-Path $HOME '.local/bin'

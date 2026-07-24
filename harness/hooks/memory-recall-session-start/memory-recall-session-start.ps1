@@ -37,7 +37,12 @@ if sid:
         $Cwd = if ($Parts.Length -gt 1 -and $Parts[1]) { $Parts[1] } else { (Get-Location).Path }
         # Transcript path slug (same formula as memory-reflect-stop.ps1; strip ':' for Windows).
         $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '')
-        $TranscriptPath = Join-Path $HOME ".claude/projects/$CwdSlug/$SessionId.jsonl"
+        # $HOME (automatic variable) is USERPROFILE-derived on Windows and does
+        # not follow a HOME env var set on the process; $env:HOME is a direct
+        # env-var read on every platform, so prefer it and fall back to $HOME
+        # for real end-user machines that don't set HOME at all.
+        $HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
+        $TranscriptPath = Join-Path $HomeDir ".claude/projects/$CwdSlug/$SessionId.jsonl"
         # Ensure .harness/ exists.
         $HarnessDir = ".harness"
         if (-not (Test-Path $HarnessDir)) {
