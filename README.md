@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.0.2](https://github.com/alexherrero/agentm/releases/tag/v9.0.2).** A machine-wide (`--scope user`) install now actually wires up your hooks — a real fix for a bug that's been there since the feature first shipped.
+> **Latest release: [v9.0.3](https://github.com/alexherrero/agentm/releases/tag/v9.0.3).** A machine-wide (`--scope user`) install on Windows now actually wires up your hooks, and two more real PowerShell bugs — one affecting every OS's hooks, found along the way — are fixed too.
 
 ---
 

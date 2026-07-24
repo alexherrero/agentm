@@ -5,6 +5,26 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.0.3] — 2026-07-24 — Patch: works on every OS and install mode, part 2 — pwsh hook parity
+
+**PATCH.** Loose Ends Release 3, Plan B of 2 (GH #72). Finishes what Plan A (v9.0.2) started: `install.ps1 -Scope user` never merged installed hooks' settings fragments into `settings.json` — so even after Plan A's directory-layout fix, hooks still never fired on a Windows user-scope install. Ported `install.sh`'s equivalent merge function to pwsh.
+
+The four new `.ps1` hook-firing test twins this release adds earned their keep immediately: they're the first tests to ever exercise these hooks on PowerShell, and they found two more real, previously-undiagnosed bugs. One predates this entire release ladder — a PowerShell array-to-string coercion bug silently collapsed `harness-context-session-start.ps1`'s multi-line plan discovery into one unparseable line, breaking named-plan mode, the dangling-marker warning, and the singleton state block. Confirmed on real Linux and macOS CI before being fixed. The other: PowerShell's automatic `$HOME` variable doesn't follow an overridden `HOME` environment variable on Windows — it's derived from the OS user-profile API instead — which would silently misdirect any of these hooks on a real Windows machine with a custom `HOME` set (WSL and git-bash users, notably).
+
+### Fixed
+
+- **`install.ps1 -Scope user` never merged hook settings fragments into `settings.json`** ([#359](https://github.com/alexherrero/agentm/pull/359)) — the actual GH #72 gap. Ported `install.sh`'s `_agentm_merge_user_hook_fragments` to pwsh as `Merge-AgentmUserHookFragments`.
+- **A pwsh array-join bug silently broke `harness-context-session-start.ps1`'s named-plan mode, dangling-marker warning, and singleton state injection** — predates this release; confirmed reproducing identically on real Linux and macOS CI, first caught by this release's own new test coverage.
+- **PowerShell's `$HOME` doesn't follow an overridden `HOME` environment variable on Windows** — fixed across the three hooks that read it directly (`harness-context-session-start`, `memory-recall-session-start`, `memory-reflect-stop`). Real machines with no `HOME` set keep today's behavior exactly.
+
+### Added
+
+- **Four `.ps1` hook-firing subprocess test twins** (`harness-context-session-start`, `memory-recall-session-start`, `memory-reflect-stop`, `memory-reflect-idle`) — the coverage that found the two bugs above, running for real on macOS and Windows CI.
+
+### Internal
+
+- **Confirmed `--mcp-server` has no PowerShell equivalent** — it's inherently macOS-only (generates a launchd plist), so a Windows equivalent needs its own mechanism rather than a port. Flagged as a real, low-severity, separate follow-up.
+
 ## [v9.0.2] — 2026-07-24 — Patch: works on every OS and install mode, part 1 — the matrix
 
 **PATCH.** Loose Ends Release 3, Plan A of 2 (GH #70). Builds out the install-mode × OS test matrix — `--scope user` had zero end-to-end coverage on any OS before this release.
