@@ -49,8 +49,14 @@ if (-not $resolver) { Write-Skip "harness_memory.py resolver unavailable" }
 $plansOut = ""
 try {
     Push-Location -LiteralPath $eventCwd
-    $plansOut = & $py $resolver list-plans --project-root $eventCwd 2>$null
-    $plansOut = ([string]$plansOut).Trim()
+    $rawPlansOut = & $py $resolver list-plans --project-root $eventCwd 2>$null
+    # `&` returns a scalar string for single-line output but an array for
+    # multi-line output (the common case here: a plan path + an
+    # active-binding line). Casting an array via [string] joins elements
+    # with $OFS (a single space by default), destroying the newlines the
+    # parsing below splits on. @(...) -join "`n" handles both shapes
+    # uniformly and preserves line boundaries.
+    $plansOut = ((@($rawPlansOut) -join "`n")).Trim()
 } catch { $plansOut = "" } finally { Pop-Location -ErrorAction SilentlyContinue }
 
 $namedPlans = @()

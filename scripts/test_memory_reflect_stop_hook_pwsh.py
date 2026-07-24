@@ -79,9 +79,12 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         return env
 
     def _transcript_path(self, sid: str, cwd: Path) -> Path:
-        # Mirror the hook's own formula (memory-reflect-stop.ps1): "-" + cwd
-        # with path separators replaced by "-" (no ':' to strip on POSIX CI).
-        slug = "-" + str(cwd).replace("/", "-")
+        # Mirror the hook's own formula exactly (memory-reflect-stop.ps1):
+        # $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '').
+        # Both \ and / become -, then any : is stripped outright (Windows
+        # drive-letter colons) — this hook runs for real on Windows CI, so
+        # the colon strip isn't a POSIX-only no-op here.
+        slug = "-" + str(cwd).replace("\\", "-").replace("/", "-").replace(":", "")
         return self.fake_home / ".claude" / "projects" / slug / f"{sid}.jsonl"
 
     def _place_transcript(self, sid: str, cwd: Path) -> Path:
