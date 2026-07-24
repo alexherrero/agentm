@@ -56,7 +56,12 @@ $Cwd = if ($Parts.Length -gt 1 -and $Parts[1]) { $Parts[1] } else { (Get-Locatio
 # transcript (exit 0 + "transcript not found"). Tracked as a Windows-recall
 # follow-up if real-world dogfood surfaces a mismatch.
 $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '')
-$Transcript = Join-Path $HOME ".claude/projects/$CwdSlug/$SessionId.jsonl"
+# $HOME (automatic variable) is USERPROFILE-derived on Windows and does not
+# follow a HOME env var set on the process; $env:HOME is a direct env-var
+# read on every platform, so prefer it and fall back to $HOME for real
+# end-user machines that don't set HOME at all.
+$HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
+$Transcript = Join-Path $HomeDir ".claude/projects/$CwdSlug/$SessionId.jsonl"
 
 if (-not (Test-Path $Transcript)) {
     [Console]::Error.WriteLine("[memory-reflect-stop] transcript not found: $Transcript (skipping)")

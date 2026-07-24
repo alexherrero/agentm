@@ -26,8 +26,16 @@ if (-not $eventCwd) { $eventCwd = (Get-Location).Path }
 if (-not (Test-Path -LiteralPath $eventCwd -PathType Container)) { Write-Skip "event cwd not a directory" }
 
 # ── Resolve harness_memory.py: recorded agentm source clone → fallback ──
+# $HOME (the automatic variable) is populated from the OS user-profile API at
+# session startup, not a live read of the HOME env var -- on Windows this is
+# USERPROFILE-derived and does NOT follow a HOME env var set on the process
+# (confirmed: a subprocess launched with HOME overridden still resolved $HOME
+# to the real runner profile). $env:HOME is a direct env-var read on every
+# platform, so prefer it; fall back to $HOME for real end-user machines that
+# don't set HOME at all (the common case on Windows).
+$HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
 $resolver = ""
-$cfg = Join-Path $HOME ".claude/.agentm-config.json"
+$cfg = Join-Path $HomeDir ".claude/.agentm-config.json"
 if (Test-Path -LiteralPath $cfg) {
     try {
         $clone = [string]((Get-Content -Raw -LiteralPath $cfg | ConvertFrom-Json).source_clones.agentm)
@@ -38,7 +46,7 @@ if (Test-Path -LiteralPath $cfg) {
     } catch { }
 }
 if (-not $resolver) {
-    $fallback = Join-Path $HOME "Antigravity/agentm/scripts/harness_memory.py"
+    $fallback = Join-Path $HomeDir "Antigravity/agentm/scripts/harness_memory.py"
     if (Test-Path -LiteralPath $fallback) { $resolver = $fallback }
 }
 if (-not $resolver) { Write-Skip "harness_memory.py resolver unavailable" }
