@@ -176,6 +176,120 @@ try {
         exit 1
     }
 
+    # -LocalState: first-class repo-local (vault-less) mode (Hardening I #44
+    # task 4). Mirrors smoke-install-bash.sh's equivalent section — proves
+    # the entry point end-to-end on Windows too: the flag writes
+    # state_mode:local to .agentm-config.json (DC-8), and a subsequent
+    # state write lands repo-local with no vault configured.
+    Write-Host '==> -LocalState writes state_mode:local + state lands repo-local'
+    $localScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("harness-smoke-local-" + [System.Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $localScratch -Force | Out-Null
+    try {
+        & pwsh -NoProfile -File (Join-Path $HarnessRoot 'install.ps1') -LocalState $localScratch | Out-File (Join-Path $localScratch '.install.log')
+
+        $configPath = Join-Path $localScratch '.claude/.agentm-config.json'
+        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        if ($config.state_mode -ne 'local') {
+            Write-Host "FAIL: state_mode not 'local': $($config.state_mode)"
+            exit 1
+        }
+        Write-Host '    state_mode:local OK'
+
+        $projectJsonPath = Join-Path $localScratch '.harness/project.json'
+        New-Item -ItemType Directory -Path (Join-Path $localScratch '.harness') -Force | Out-Null
+        Set-Content -LiteralPath $projectJsonPath -Value '{"vault_project": "smokedemo"}'
+
+        $pythonCmd = Get-Command python3 -ErrorAction SilentlyContinue
+        if (-not $pythonCmd) { $pythonCmd = Get-Command python -ErrorAction SilentlyContinue }
+        $env:AGENTM_INSTALL_PREFIX = (Join-Path $localScratch '.claude')
+        $env:MEMORY_VAULT_PATH = $null
+        "# smoke PLAN" | & $pythonCmd.Source (Join-Path $HarnessRoot 'scripts/harness_memory.py') `
+            write-state --project-root $localScratch 'PLAN.md' | Out-Null
+        $env:AGENTM_INSTALL_PREFIX = $null
+
+        $planPath = Join-Path $localScratch '.harness/PLAN.md'
+        if (-not (Test-Path -LiteralPath $planPath)) {
+            Write-Host 'FAIL: -LocalState write-state did not land repo-local at .harness/PLAN.md'
+            exit 1
+        }
+        $got = (Get-Content -LiteralPath $planPath -Raw).Trim()
+        if ($got -ne '# smoke PLAN') {
+            Write-Host "FAIL: -LocalState read-state round-trip mismatch: got '$got'"
+            exit 1
+        }
+        Write-Host '    repo-local write/read round-trip OK'
+    }
+    finally {
+        if (Test-Path -LiteralPath $localScratch) {
+            Remove-Item -LiteralPath $localScratch -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    # -Scope user: hook dirs land + install state persists (Loose Ends
+    # Release 3 Plan A, GH #70). Structural-only on purpose: install.ps1's
+    # -Scope user path has no equivalent of install.sh's
+    # _agentm_merge_user_hook_fragments (the V4 #39 fix) yet, so
+    # .claude/settings.json is never even created under -Scope user today —
+    # not just unmerged, genuinely absent. That's the real bug GH #72 (Plan
+    # B) fixes; this task only proves what already works: the hook
+    # directories land, and install state persists to .agentm-config.json.
+    # Plan B adds the settings.json assertion here once the fix lands,
+    # mirroring smoke-install-bash.sh's task-1 coverage.
+    #
+    # Deliberately forces release mode (a scratch HOME with no agentm clone
+    # at it) rather than relying on "no CI runner has a clone" — a developer
+    # running this locally from a machine with a real Antigravity/agentm
+    # clone would otherwise silently exercise source mode instead, masking
+    # a release-mode-only regression (harness/{agents,skills,hooks} landing
+    # flat under the prefix instead of nested is exactly the class of bug
+    # this task-1's bash twin found and fixed the same way).
+    Write-Host '==> -Scope user: hook dirs land + install state persists'
+    $userScratch = Join-Path ([System.IO.Path]::GetTempPath()) ("harness-smoke-user-" + [System.Guid]::NewGuid().ToString('N'))
+    $fakeHome = Join-Path ([System.IO.Path]::GetTempPath()) ("harness-smoke-fakehome-" + [System.Guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $fakeHome -Force | Out-Null
+    $env:AGENTM_INSTALL_PREFIX = $userScratch
+    $env:HOME = $fakeHome
+    try {
+        & pwsh -NoProfile -File (Join-Path $HarnessRoot 'install.ps1') -Scope user | Out-File (Join-Path $scratch '.user-install.log')
+
+        $userHooks = @(
+            'harness-context-session-start',
+            'memory-recall-prompt-submit',
+            'memory-recall-session-start',
+            'memory-reflect-idle',
+            'memory-reflect-stop'
+        )
+        foreach ($h in $userHooks) {
+            $hookScript = Join-Path $userScratch "hooks/$h/$h.sh"
+            if (-not (Test-Path -LiteralPath $hookScript)) {
+                Write-Host "FAIL: -Scope user did not install hooks/$h/$h.sh"
+                exit 1
+            }
+        }
+
+        $configPath = Join-Path $userScratch '.agentm-config.json'
+        if (-not (Test-Path -LiteralPath $configPath)) {
+            Write-Host 'FAIL: -Scope user did not write .agentm-config.json'
+            exit 1
+        }
+        $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+        if ($config.mode -ne 'release') {
+            Write-Host "FAIL: .agentm-config.json mode is not 'release' despite the forced-empty HOME: $($config.mode)"
+            exit 1
+        }
+        Write-Host "    hook dirs + .agentm-config.json (mode: $($config.mode)) OK"
+    }
+    finally {
+        $env:AGENTM_INSTALL_PREFIX = $null
+        $env:HOME = $null
+        if (Test-Path -LiteralPath $userScratch) {
+            Remove-Item -LiteralPath $userScratch -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        if (Test-Path -LiteralPath $fakeHome) {
+            Remove-Item -LiteralPath $fakeHome -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+
     Write-Host '==> smoke-install-pwsh: OK'
 }
 finally {

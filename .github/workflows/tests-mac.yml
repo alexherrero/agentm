@@ -40,6 +40,11 @@ jobs:
         run: python3 -m pip install --break-system-packages pyyaml sqlite-vec fastmcp
       - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
+      - name: Installer-boundary byte-for-byte test (wiki scaffold)
+        # Loose Ends Release 3 (GH #70): the one OS running neither the .sh
+        # nor the .ps1 boundary-guard test — Linux runs test-install.sh,
+        # Windows runs test-install.ps1, macOS ran neither.
+        run: bash scripts/test-install.sh
       - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
         run: python3 scripts/validate-adapters.py
       - name: Check cross-references + hook-fragment schema parity

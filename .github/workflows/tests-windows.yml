@@ -31,7 +31,11 @@ jobs:
       - uses: actions/checkout@v4
       # windows-latest ships pwsh 7+ and Python preinstalled.
       - name: Install Python deps (for validate script)
-        run: python -m pip install pyyaml
+        # sqlite-vec lets verify-memory-roundtrip.sh exercise the vec-index
+        # nearest-neighbor read-back on Windows too; the e2e self-skips it
+        # if the runner's Python can't load extensions (enhancement, never
+        # a hard dep) — same convention tests-mac.yml already uses.
+        run: python -m pip install pyyaml sqlite-vec
       - name: Run smoke-install (pwsh) + post-install integrity
         shell: pwsh
         run: pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1
@@ -60,6 +64,28 @@ jobs:
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         shell: bash
         run: bash scripts/check-vendored-parity.sh hook-config
+      # verify-hook-resolution.sh, verify-state-routing.sh, verify-phases.sh,
+      # and verify-memory-roundtrip.sh ALL ESCALATED-AND-PARKED (Loose Ends
+      # Release 3, GH #70) rather than added here. Root cause, confirmed via
+      # two real CI runs on PR #358: each builds a scratch dir via
+      # mktemp -d (an MSYS-style /tmp/tmp.XXXXX path), then shells out to
+      # native (non-MSYS) python3.exe — via the hook .sh scripts directly,
+      # or via harness_memory.py/save.py/recall.py — passing that path
+      # along. python3.exe can't resolve git-bash's MSYS path back to the
+      # real Windows filesystem location, so the read/write fails
+      # (FileNotFoundError on .agentm-config.json in both observed
+      # failures). verify-state-routing.sh partially ran (5 of 8 checks
+      # passed) before failing on exactly this pattern on its "never-demote"
+      # safety-invariant check — not weakening that assertion to tolerate
+      # the environment gap (AGENTS.md's testing discipline), parking the
+      # whole script instead. verify-phases.sh and verify-memory-roundtrip.sh
+      # share the identical bash-mktemp + python3-shellout architecture
+      # (confirmed by reading both, not re-run empirically — the pattern is
+      # already conclusive from the first two). Needs either a cygpath -w
+      # translation at the git-bash/python boundary or a Windows-native temp
+      # dir instead of mktemp, applied consistently across all four scripts
+      # — real follow-up work for a session with actual Windows+git-bash
+      # access to verify against, not something to guess at further here.
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where

@@ -207,4 +207,60 @@ if [[ "$GOT" != "# smoke PLAN" ]]; then
 fi
 echo "    repo-local write/read round-trip OK"
 
+# ── --scope user: end-to-end hook-fragment merge (Loose Ends Release 3, GH #70) ──
+# Proves the V4 #39 fix's own code path end to end: a --scope user install must
+# not just drop hook dirs under <prefix>/hooks/<name>/, it must merge each
+# hook's settings-fragment-bash.json into <prefix>/settings.json (the bug
+# class V4 #39 fixed on this bash side — see install.sh's
+# _agentm_merge_user_hook_fragments). Deliberately forces release mode (a
+# scratch HOME with no agentm clone at it) rather than relying on "no CI
+# runner has a clone" — a developer running this locally from a machine
+# with a real ~/Antigravity/agentm clone would otherwise silently exercise
+# source mode instead, masking a release-mode-only regression exactly like
+# the one this task found (harness/{agents,skills,hooks} landed flat under
+# the prefix instead of nested, invisible until CI genuinely hit the
+# release-mode path with no clone to fall back on).
+echo "==> --scope user: hook dirs land + settings.json fragment-merge (V4 #39 path)"
+USER_SCRATCH="$(mktemp -d)"
+FAKE_HOME="$(mktemp -d)"
+trap 'rm -rf "$SCRATCH" "$LOCAL_SCRATCH" "$USER_SCRATCH" "$FAKE_HOME"' EXIT   # extend cleanup again
+HOME="$FAKE_HOME" AGENTM_INSTALL_PREFIX="$USER_SCRATCH/.claude" bash "$HARNESS_ROOT/install.sh" \
+  --scope user > "$USER_SCRATCH/.install.log"
+
+if ! grep -q '"mode": "release"' "$USER_SCRATCH/.claude/.agentm-config.json"; then
+  echo "FAIL: .agentm-config.json mode is not 'release' despite the forced-empty HOME — the fake-HOME trick that keeps this test honest didn't work" >&2
+  exit 1
+fi
+
+user_hooks=(
+  harness-context-session-start
+  memory-recall-prompt-submit
+  memory-recall-session-start
+  memory-reflect-idle
+  memory-reflect-stop
+)
+for h in "${user_hooks[@]}"; do
+  if [[ ! -f "$USER_SCRATCH/.claude/hooks/$h/$h.sh" ]]; then
+    echo "FAIL: --scope user did not install hooks/$h/$h.sh" >&2
+    exit 1
+  fi
+done
+
+python3 - "$USER_SCRATCH/.claude/settings.json" "${user_hooks[@]}" <<'PY' || exit 1
+import json, sys
+path, hook_names = sys.argv[1], sys.argv[2:]
+s = json.load(open(path))
+commands = []
+for entries in s.get("hooks", {}).values():
+    for entry in entries:
+        for h in entry.get("hooks", []):
+            commands.append(h.get("command", ""))
+missing = [h for h in hook_names if not any(f"{h}.sh" in c for c in commands)]
+if missing:
+    print(f"FAIL: settings.json has no merged fragment for: {missing}", file=sys.stderr)
+    sys.exit(1)
+print(f"    settings.json: all {len(hook_names)} user-scope hook fragments merged")
+PY
+echo "    hook dirs + fragment merge OK"
+
 echo "==> smoke-install-bash: OK"

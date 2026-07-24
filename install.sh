@@ -383,12 +383,25 @@ if [[ "$SCOPE" == "user" ]]; then
     # Release-mode: copy customizations from this harness's source tree
     # (the operator who ran install.sh has the source available right here).
     # Walk relevant dirs.
-    for src_subdir in harness/agents harness/skills harness/hooks adapters/claude-code; do
+    # harness/{agents,skills,hooks} each need their own name as the
+    # destination's top-level dir (install_copy.py relativizes against
+    # source_dir, so copying straight into $USER_INSTALL_PREFIX drops that
+    # segment entirely — mirrors install_symlinks.py's explicit
+    # "agents/{name}" / "skills/{name}" / "hooks/{name}" destination
+    # mapping, the source-mode reference this release-mode path must match).
+    for src_subdir in harness/agents harness/skills harness/hooks; do
       if [[ -d "$HARNESS_ROOT/$src_subdir" ]]; then
         python3 "$HARNESS_ROOT/lib/install/python/install_copy.py" \
-          "$HARNESS_ROOT/$src_subdir" "$USER_INSTALL_PREFIX" >/dev/null 2>&1 || true
+          "$HARNESS_ROOT/$src_subdir" "$USER_INSTALL_PREFIX/$(basename "$src_subdir")" >/dev/null 2>&1 || true
       fi
     done
+    # adapters/claude-code already nests commands/, skills/, agents/ as its
+    # own immediate children — copying it straight into the prefix is correct
+    # as-is, unlike the harness/* trio above.
+    if [[ -d "$HARNESS_ROOT/adapters/claude-code" ]]; then
+      python3 "$HARNESS_ROOT/lib/install/python/install_copy.py" \
+        "$HARNESS_ROOT/adapters/claude-code" "$USER_INSTALL_PREFIX" >/dev/null 2>&1 || true
+    fi
     # User-scope helper scripts. telemetry.sh roots across multiple projects
     # (`--all` scans ~/Antigravity etc.) so it belongs at <prefix>/scripts/,
     # not per-project. Mirrors install_symlinks.py source-mode behavior.
