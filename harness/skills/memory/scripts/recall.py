@@ -63,6 +63,13 @@ if str(_SCRIPTS_DIR) not in sys.path:
 SESSION_START_BUDGET_MS = 500
 PROMPT_SUBMIT_BUDGET_MS = 300
 
+# The standalone `query` CLI subcommand assumes no model is warm yet
+# (unlike the two interactive hooks above, which run inside a session
+# where one likely already loaded). A cold sentence-transformers load
+# alone routinely exceeds 300ms, so it needs its own, more generous
+# default rather than inheriting PROMPT_SUBMIT_BUDGET_MS.
+QUERY_CLI_BUDGET_MS = 10_000
+
 # Default top-K per locked design call (plan #7a part 2 recall-loop).
 DEFAULT_K = 5
 
@@ -1579,8 +1586,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     q.add_argument("query_text", help="the query string (use '-' to read stdin)")
     q.add_argument("-k", type=int, default=DEFAULT_K,
                    help=f"top-K results to return (default: {DEFAULT_K})")
-    q.add_argument("--budget-ms", type=int, default=PROMPT_SUBMIT_BUDGET_MS,
-                   help=f"time budget in milliseconds (default: {PROMPT_SUBMIT_BUDGET_MS})")
+    q.add_argument("--budget-ms", type=int, default=QUERY_CLI_BUDGET_MS,
+                   help=f"time budget in milliseconds (default: {QUERY_CLI_BUDGET_MS})")
     q.add_argument("--include-inbox", action="store_true",
                    help="include _inbox/ entries in the search (default: excluded)")
     q.add_argument("--include-archive", action="store_true",
