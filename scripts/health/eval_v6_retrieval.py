@@ -173,6 +173,17 @@ def run_eval(
     doc = json.loads(query_set_path.read_text(encoding="utf-8"))
     queries = doc["entries"]
 
+    # L7-style fail-loud (eval_v6_graph.py's v9.0.5 fix, same shape): a query
+    # set whose expected_notes have drifted from the vault (moved/archived
+    # files) silently reports a confident but meaningless accuracy/discovery
+    # number — every affected query just looks like a 0-hit recall miss, with
+    # no signal that the ground truth itself is gone. Check once, up front,
+    # against the deduped set of every resolved expected_notes path.
+    all_expected_paths: set[str] = set()
+    for q in queries:
+        all_expected_paths.update(_resolve_expected_path(p) for p in q["expected_notes"])
+    missing_expected_paths = sorted(p for p in all_expected_paths if not (vault / p).exists())
+
     old_p_at_5 = old_r_at_5 = 0.0
     new_p_at_5 = new_r_at_5 = 0.0
     old_first_hit_ranks: list[int] = []
@@ -213,6 +224,9 @@ def run_eval(
 
     result = {
         "queries_evaluated": n,
+        "expected_files_checked": len(all_expected_paths),
+        "expected_files_missing": len(missing_expected_paths),
+        "missing_expected_paths": missing_expected_paths,
         "accuracy": {
             "old_p_at_5": old_p_at_5 / n if n else 0.0,
             "new_p_at_5": new_p_at_5 / n if n else 0.0,
@@ -281,6 +295,49 @@ def main(argv: list[str] | None = None) -> int:
         result = run_eval(vault, query_set_path)
     print(json.dumps(result, indent=2))
 
+    label = (
+        "auto-org task 2 (exponential decay vs. shadow stepped decay, same RRF fusion)"
+        if args.decay_curve == "stepped" else "V6-3 RRF hybrid retrieval"
+    )
+
+    # L7-style fail-loud (mirrors eval_v6_graph.py's v9.0.5 fix): a drifted or
+    # wrong-vault expected_notes set makes every affected query report as a
+    # plain 0-hit recall miss, indistinguishable from the retrieval formulas
+    # genuinely failing. Any missing path makes this run's denominator
+    # untrustworthy, independent of what the accuracy/compression/discovery
+    # numbers happen to show — fail explicit rather than let a shrunk or
+    # wrong-vault sample pass silently.
+    if result["expected_files_missing"] > 0:
+        _emit_jsonl(
+            args.jsonl_out,
+            f"{label}: {result['expected_files_missing']} expected-notes path(s) "
+            f"referenced by {query_set_path.name} are missing from the vault — the "
+            f"labeled sample has drifted (or the vault path is wrong) and this run's "
+            f"accuracy/compression/discovery-rate numbers are not trustworthy",
+            False,
+        )
+        print(
+            f"[eval-v6-retrieval] ERROR: {result['expected_files_missing']} expected-notes "
+            f"path(s) missing — the query set has drifted from the vault (e.g. an archive "
+            f"move) or --vault-path points at the wrong tree. Missing: "
+            f"{', '.join(result['missing_expected_paths'])}. Fix the query set's "
+            f"expected_notes entries; a shrunk or wrong denominator cannot be trusted to "
+            f"reflect the real recall/discovery rate.",
+            file=sys.stderr,
+        )
+        # Non-zero, unlike a genuinely-measured-but-low-recall run further
+        # below. A low R@5 is a real measurement that came out badly — it
+        # still reports through the JSONL record and lets a batch continue.
+        # A missing expected-notes path means there is no trustworthy
+        # measurement to report at all for that query.
+        #
+        # Note this is currently latent, same as eval_v6_graph.py's own
+        # v9.0.5 fix: run-fast-tier.sh deliberately swallows each suite's
+        # exit code so a batch continues, and health-nightly.yml consumes
+        # stdout rather than the status — so nothing gates on this yet.
+        # Wiring it into a gate is a separate, deliberate decision.
+        return 1
+
     acc = result["accuracy"]
     comp = result["compression"]
     disc = result["discovery_rate"]
@@ -300,11 +357,6 @@ def main(argv: list[str] | None = None) -> int:
     # improving, but not regressing either) is fine; regressing outright is
     # not, regardless of what the other two signals show.
     merge_gate_passed = not accuracy_regressed and (compression_improved or discovery_improved)
-
-    label = (
-        "auto-org task 2 (exponential decay vs. shadow stepped decay, same RRF fusion)"
-        if args.decay_curve == "stepped" else "V6-3 RRF hybrid retrieval"
-    )
 
     print(
         f"\n[eval-v6-retrieval:{args.decay_curve}] accuracy_improved={accuracy_improved} "

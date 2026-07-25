@@ -114,6 +114,9 @@ class TestRunEvalInjectableTopKFns(unittest.TestCase):
 
 
 _FAKE_RESULT = {
+    "expected_files_checked": 0,
+    "expected_files_missing": 0,
+    "missing_expected_paths": [],
     "accuracy": {"old_p_at_5": 0.0, "new_p_at_5": 0.0, "old_r_at_5": 0.0, "new_r_at_5": 0.0},
     "compression": {
         "old_avg_rank_to_first_hit": None, "new_avg_rank_to_first_hit": None,
@@ -159,6 +162,15 @@ class TestDecayCurveCLIDispatch(unittest.TestCase):
         # honest case when a vault has no lifecycle sidecar history at all,
         # so both curves fall back to the same "no basis, fully fresh"
         # 1.0 score), the gate must not report a regression.
+        # This exercises the real (unmocked) run_eval(), so the query set's
+        # expected_notes paths must actually exist under the tmp vault —
+        # otherwise the expected-files-missing fail-loud check (below) fires
+        # first, which is a different, correctly-triggered behavior, not the
+        # regression this test targets.
+        (self.vault / "a.md").touch()
+        (self.vault / "b.md").touch()
+        (self.vault / "c.md").touch()
+
         def same(vault, query_text, k=5):
             return ["a.md"] if query_text == "alpha" else ["b.md", "c.md"]
 
@@ -169,6 +181,96 @@ class TestDecayCurveCLIDispatch(unittest.TestCase):
                 "--decay-curve", "stepped",
             ])
         self.assertEqual(exit_code, 0)
+
+
+class TestExpectedNotesExistenceCheck(unittest.TestCase):
+    """run_eval() reports expected-notes paths that don't exist in the vault —
+    the corpus-drift signal eval_v6_graph.py's v9.0.5 fix pioneered
+    (files_missing/files_read), extended here to this sibling script."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name)
+        self.query_set = self.vault / "queries.json"
+        _write_query_set(self.query_set)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _same(self, vault, query_text, k=5):
+        return ["a.md"] if query_text == "alpha" else ["b.md", "c.md"]
+
+    def test_missing_expected_paths_are_reported(self):
+        # None of a.md/b.md/c.md exist under self.vault (setUp never creates
+        # them) — all three should come back as missing.
+        result = ev.run_eval(self.vault, self.query_set, old_top_k_fn=self._same, new_top_k_fn=self._same)
+        self.assertEqual(result["expected_files_checked"], 3)
+        self.assertEqual(result["expected_files_missing"], 3)
+        self.assertEqual(result["missing_expected_paths"], ["a.md", "b.md", "c.md"])
+
+    def test_all_expected_paths_present_reports_zero_missing(self):
+        (self.vault / "a.md").touch()
+        (self.vault / "b.md").touch()
+        (self.vault / "c.md").touch()
+        result = ev.run_eval(self.vault, self.query_set, old_top_k_fn=self._same, new_top_k_fn=self._same)
+        self.assertEqual(result["expected_files_checked"], 3)
+        self.assertEqual(result["expected_files_missing"], 0)
+        self.assertEqual(result["missing_expected_paths"], [])
+
+    def test_partial_drift_reports_only_the_missing_ones(self):
+        (self.vault / "a.md").touch()
+        (self.vault / "b.md").touch()
+        # c.md deliberately left missing.
+        result = ev.run_eval(self.vault, self.query_set, old_top_k_fn=self._same, new_top_k_fn=self._same)
+        self.assertEqual(result["expected_files_missing"], 1)
+        self.assertEqual(result["missing_expected_paths"], ["c.md"])
+
+
+class TestMainFailsLoudOnMissingExpectedPaths(unittest.TestCase):
+    """main() fails loud (exit 1 + a failing JSONL record) when the query
+    set's expected_notes have drifted from the vault — mirrors
+    eval_v6_graph.py's test_main_fails_loud_instead_of_silently_shrinking."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self.tmp.name)
+        self.query_set = self.vault / "queries.json"
+        _write_query_set(self.query_set)
+        self.jsonl_out = self.vault / "out.jsonl"
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_returns_1_and_emits_failing_record_when_a_path_is_missing(self):
+        # a.md/b.md/c.md are never created — a drifted/wrong-vault fixture.
+        # The existence check runs before any top-k retrieval, so this fires
+        # regardless of what real retrieval against this fake vault returns.
+        exit_code = ev.main([
+            "--vault-path", str(self.vault), "--query-set", str(self.query_set),
+            "--jsonl-out", str(self.jsonl_out),
+        ])
+        self.assertEqual(exit_code, 1)
+        records = [json.loads(line) for line in self.jsonl_out.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(records), 1)
+        self.assertFalse(records[0]["pass"])
+        self.assertEqual(records[0]["suite"], "eval-v6-retrieval")
+
+    def test_returns_0_when_all_expected_paths_present(self):
+        # main() calls run_eval() with no top_k_fn override in the default
+        # (non-stepped) path, so retrieval runs for real against this fake,
+        # content-free vault — the point here is only that the existence
+        # check itself doesn't fire (no `--decay-curve` gate mixed in), not
+        # what the real merge-gate/pass verdict comes out to.
+        (self.vault / "a.md").touch()
+        (self.vault / "b.md").touch()
+        (self.vault / "c.md").touch()
+        exit_code = ev.main([
+            "--vault-path", str(self.vault), "--query-set", str(self.query_set),
+            "--jsonl-out", str(self.jsonl_out),
+        ])
+        self.assertEqual(exit_code, 0)
+        records = [json.loads(line) for line in self.jsonl_out.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual(len(records), 1)
 
 
 if __name__ == "__main__":
