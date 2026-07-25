@@ -49,9 +49,10 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         (self.root / "personal").mkdir(parents=True)
 
-    def _route(self, cands):
+    def _route(self, cands, *, session_id=None):
         return reflect.route_candidates(
             cands, [], vault=self.root, mode=reflect.ROUTE_MODE_AUTO,
+            session_id=session_id,
             stdin=io.StringIO(), stdout=io.StringIO(), stderr=io.StringIO(),
         )
 
@@ -99,6 +100,24 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         lane = self.root / "personal" / "_opinions" / "done"
         self.assertTrue((lane / "dupe.md").is_file())
         self.assertTrue((lane / "dupe-1.md").is_file())
+
+    def test_session_id_threads_into_the_sessions_field(self):
+        # Stage 1 never threaded a session id through; the recurrence gate
+        # (Stages 2-3) has no substrate without it. Prove route_candidates
+        # actually carries reflect._session_id_from_path's shape down into
+        # the written entry's `sessions:` list.
+        self._route([_cand(**_STANDARD, slug="gate-battery")], session_id="my-proj/abc-123")
+        written = self.root / "personal" / "_opinions" / "done" / "gate-battery.md"
+        text = written.read_text(encoding="utf-8")
+        self.assertIn("sessions: [my-proj/abc-123]", text)
+
+    def test_no_session_id_omits_the_sessions_field(self):
+        # Backward-compatible default: a caller that doesn't know a session
+        # (or a pre-existing Stage-1 entry) must not error or fabricate one.
+        self._route([_cand(**_STANDARD, slug="gate-battery")])
+        written = self.root / "personal" / "_opinions" / "done" / "gate-battery.md"
+        text = written.read_text(encoding="utf-8")
+        self.assertNotIn("sessions:", text)
 
     def test_classifier_failure_degrades_to_normal_routing(self):
         # A classifier that raises must never take reflection down with it.

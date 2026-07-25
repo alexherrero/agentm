@@ -123,6 +123,16 @@ jobs:
         # in corpus_stats and rendered in the digest; the archived note's
         # content stays readable on disk (the plan's own acceptance test).
         run: bash scripts/verify-auto-org-meters.sh
+      - name: verify-opinion-supplements (accumulate loop Stages 2-3 e2e)
+        # wiki/designs/agentm-experience-and-dreaming.md's accumulate-loop
+        # section, ten locked calls: a two-distinct-session lane stages a
+        # confirm-gated opinion_promote proposal (never auto-applied);
+        # confirming it applies through revert_log and opinion_resolver
+        # reads the served supplement back; a direct base contradiction on
+        # a shared anchor never gets served and is recorded in
+        # _meta/opinion-base-proposals.json; the health pointer and
+        # console.section_opinion_supplements render it.
+        run: bash scripts/verify-opinion-supplements.sh
       - name: verify-mcp-surface (append/search/forget round-trip, dead-surface fate)
         # R1.6 / agentmEngine#2: an in-process FastMCP client drives the real
         # append->search->forget round-trip, soft-delete semantics, and the

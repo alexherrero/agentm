@@ -64,6 +64,14 @@ class TestKnownKinds(unittest.TestCase):
         # exactly that reason.
         self.assertTrue(kr.is_known("capture"))
 
+    def test_opinion_supplement_is_known(self):
+        # Accumulate loop Stage 1 (v9.1.0) already writes `kind:
+        # opinion-supplement` via reflect._save_candidate_to_opinions, but
+        # this registry never carried it -- the vault was at zero
+        # unrecognized kinds only because no standard had been mined yet
+        # (Stages 2-3 design pass, locked call 3).
+        self.assertTrue(kr.is_known("opinion-supplement"))
+
 
 class TestIsKebab(unittest.TestCase):
     def test_valid_kebab(self):
