@@ -192,7 +192,23 @@ def main(argv: list[str] | None = None) -> int:
             "sample cannot be trusted to reflect the real recall/trap rate.",
             file=sys.stderr,
         )
-        return 0
+        # Non-zero, unlike the below-the-bar branch further down, and the
+        # distinction is the point. A recall figure under the pass bar is a
+        # real measurement that came out badly -- it reports through the
+        # JSONL record and lets the batch carry on. A missing fixture file
+        # means there is no trustworthy measurement to report at all: the
+        # denominator shrank silently, so even a "passing" number is
+        # meaningless. Returning 0 here was the original bug (the script
+        # printed ERROR and then exited success).
+        #
+        # Note this is currently latent. run-fast-tier.sh deliberately
+        # swallows each suite's exit code so a batch continues, and
+        # health-nightly.yml consumes stdout rather than the status -- so
+        # nothing gates on this yet. Wiring it into a gate would turn an
+        # informational nightly run into a hard failure, which is a
+        # separate call to make deliberately rather than as a side effect
+        # of this fix.
+        return 1
 
     passed = result["trap_leaked_as_edges"] == 0 and result["recall"] > 0.5
     _emit_jsonl(

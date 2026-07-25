@@ -79,7 +79,7 @@ class TestFailLoudOnMissingFixture(unittest.TestCase):
             )
 
             jsonl_out = vault / "out.jsonl"
-            eval_v6_graph.main(
+            rc = eval_v6_graph.main(
                 ["--vault-path", str(vault), "--fixture", str(fixture), "--jsonl-out", str(jsonl_out)]
             )
 
@@ -87,6 +87,44 @@ class TestFailLoudOnMissingFixture(unittest.TestCase):
             self.assertEqual(len(records), 1)
             self.assertFalse(records[0]["pass"], "a missing fixture file must never pass silently")
             self.assertIn("missing", records[0]["check"])
+            # The record alone was never enough: main() printed its own
+            # ERROR line and then returned 0, so `raise SystemExit(main())`
+            # exited success on a run it had just called untrustworthy.
+            # This assertion is what actually pins the fix -- the original
+            # version of this test ignored the return value entirely and so
+            # passed against the bug.
+            self.assertEqual(rc, 1, "a drifted fixture must exit non-zero, not just log")
+
+    def test_exit_code_is_zero_on_a_clean_fixture(self) -> None:
+        # The companion to the assertion above: prove the non-zero exit is
+        # specific to the untrustworthy-measurement case and hasn't turned
+        # every run into a failure.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "present.md").write_text("[[target-note]]", encoding="utf-8")
+
+            fixture = vault / "fixture.json"
+            fixture.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "source_path": "present.md",
+                                "target": "target-note",
+                                "is_edge": True,
+                                "edge_type": "reference",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            jsonl_out = vault / "out.jsonl"
+            rc = eval_v6_graph.main(
+                ["--vault-path", str(vault), "--fixture", str(fixture), "--jsonl-out", str(jsonl_out)]
+            )
+            self.assertEqual(rc, 0, "a fixture with no missing files must still exit 0")
 
 
 if __name__ == "__main__":
