@@ -5,6 +5,29 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.1.0] — 2026-07-24 — Minor: standards that learn from you (Stage 1)
+
+**MINOR.** Loose Ends Release 6. The first piece of the accumulate loop: a lesson that reads as *a rule about how work should be judged or done* now routes to an opinion supplement instead of general memory, and the layer that folds supplements onto the coded opinions can finally be served.
+
+The nine coded opinions — `done`, `good`, `efficient`, `how-we-engineer` and the rest — have always been able to carry a learned supplement on top of the base. Nothing ever wrote one, and nothing in production told the resolver where to look. This release closes both ends: reflection writes standard-shaped candidates into `personal/_opinions/<name>/`, and the resolver takes a `--supplement-dir` so a caller can point it at them.
+
+The classifier is deliberately narrow. A candidate has to read as a rule **and** be about doing work — that pair is what separates a standard from a preference wearing the same grammar. "Always use dark mode" is a preference; "always run the gates before committing" is a standard. Anything it can't place confidently takes its normal path, because over-routing puts noise in front of the standards the agent works to, while under-routing costs nothing.
+
+**Nothing is ever written into a coded base opinion.** Supplements land in their own lane as proposals. The spec's extend-never-override guard is held here by construction rather than by a guard that isn't built yet.
+
+### Added
+
+- **Standard-shaped routing** ([#367](https://github.com/alexherrero/agentm/pull/367)) — reflection now recognizes a rule-shaped lesson and routes it to an opinion supplement lane, checked before the confidence ladder so a standard is never filed into general memory first. A classifier failure degrades to normal routing; reflection runs from a session-close hook and must not lose a session's candidates to it.
+- **`opinion_resolver --supplement-dir`** — the learned layer can be served for the first time.
+
+### Fixed
+
+- **`opinion_resolver`'s supplement docstring described something impossible** — it claimed the path was "resolved through the storage seam in the real deployment", but that module is held to stdlib-only imports by its own one-way-import gate and cannot reach the seam. The caller resolves the path; the resolver stays pure.
+
+### Internal
+
+- Stages 2-3 of the loop are deliberately **not** built. The landed spec is a design amendment rather than an implementable design — its signal→opinion map keys on sources that emit nothing machine-readable, and six further holes (provenance schema, cross-session lesson identity, contradiction detection) need design decisions first. Recorded rather than guessed at.
+
 ## [v9.0.5] — 2026-07-24 — Patch: engine tidy-up
 
 **PATCH.** Loose Ends Release 5, first of two. A batch of small engine tails — and re-checking each one against live code before building it changed what this release is. Two of the five items turned out to rest on wrong premises, so this ships two fixes, closes a long-parked cleanup, and corrects the backlog on the rest.

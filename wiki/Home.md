@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.0.5](https://github.com/alexherrero/agentm/releases/tag/v9.0.5).** Every `kind:` value in your memory vault is now canonical — a long-parked cleanup, closed — and a health check that used to report failure and then exit success now exits non-zero.
+> **Latest release: [v9.1.0](https://github.com/alexherrero/agentm/releases/tag/v9.1.0).** A lesson that reads as a rule about how work should be done now becomes a learned supplement to one of the agent's standards, instead of an ordinary memory.
