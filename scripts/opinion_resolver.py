@@ -184,9 +184,18 @@ def build_index(root: Path | None = None) -> dict[str, OpinionEntry]:
 
 def _read_supplement(name: str, *, supplement_dir: Path | None) -> str | None:
     """The learned supplement lives in the memory backend's `opinions/` area
-    (an `opinions/<name>.md` entry, written by Experience over time) —
-    resolved through the storage seam in the real deployment; `supplement_dir`
-    is the injectable override tests use to avoid touching a real vault.
+    (an `opinions/<name>.md` entry, written by Experience over time).
+
+    `supplement_dir` is supplied **by the caller**, which is architecture
+    rather than a test convenience: this module's own one-way-import rule
+    (`check-one-way-imports.py`'s `opinion-resolver`, with empty
+    `allowed_siblings` and `allowed_lazy_froms`) permits stdlib only, so it
+    cannot reach the storage seam or `harness_memory` to resolve a vault
+    path itself. Whoever knows where the vault is passes the directory in;
+    the resolver stays pure. An earlier version of this docstring claimed
+    the path was "resolved through the storage seam in the real deployment",
+    which that gate makes impossible from here.
+
     Never raises: an absent/unreadable supplement is simply `None` (the
     resolver reports `base-only`, not an error)."""
     if supplement_dir is None:
@@ -240,6 +249,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("name", help="the Opinion name, e.g. 'good'")
     p.add_argument("--root", default=None, help="repo root (default: this repo)")
+    p.add_argument(
+        "--supplement-dir", default=None,
+        help="directory holding learned supplements (<name>.md). The caller "
+             "resolves this — typically <vault>/personal/_opinions — because "
+             "this module is held to stdlib-only imports and cannot reach the "
+             "storage seam itself. Omit for base-only resolution.",
+    )
     p.add_argument("--json", action="store_true", help="print the full result dict")
     return p
 
@@ -247,7 +263,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     ns = _build_parser().parse_args(argv)
     root = Path(ns.root) if ns.root else None
-    result = opinion_resolve(ns.name, root=root)
+    supplement_dir = Path(ns.supplement_dir) if ns.supplement_dir else None
+    result = opinion_resolve(ns.name, root=root, supplement_dir=supplement_dir)
 
     if ns.json:
         print(json.dumps(result, indent=2))

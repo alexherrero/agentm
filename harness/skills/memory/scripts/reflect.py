@@ -601,6 +601,103 @@ def _save_candidate_to_inbox(
     return target
 
 
+def _classify_standard_shaped(candidate: Candidate) -> str | None:
+    """Deterministic standard-shaped classifier (accumulate loop, Stage 1).
+
+    Thin wrapper so a missing sibling module degrades to today's behavior
+    rather than breaking reflection outright — reflect.py runs from a Stop
+    hook, where an ImportError would cost the session's mined candidates.
+    Returns the target opinion name, or None to route normally.
+    """
+    try:
+        from opinion_routing import classify_standard_shaped  # type: ignore  # noqa
+    except ImportError:
+        return None
+    try:
+        return classify_standard_shaped(candidate)
+    except Exception:
+        # A classifier bug must never take reflection down with it; the
+        # candidate simply routes the normal way.
+        return None
+
+
+def _save_candidate_to_opinions(
+    candidate: Candidate, vault: Path, opinion: str, *,
+    source: str | None = None, stderr=sys.stderr,
+) -> Path | None:
+    """Save a standard-shaped candidate to the opinion supplement lane.
+
+    Accumulate loop, Stage 1. The target is
+    `<vault>/personal/_opinions/<opinion>/<slug>.md` — an `opinions/` area
+    beside the always-load conventions, per the opinions design's own
+    placement sentence. Returns the saved path, or None on failure.
+
+    **This never writes into a coded base opinion.** The spec's own
+    extend-never-override guard keeps `opinions/<name>.md` authoritative;
+    entries land here as candidate supplements for later triage. Stage 1
+    ships no auto-append, so the corruption ceiling is zero by construction
+    rather than by a guard that isn't built yet.
+
+    Entries carry the origin refs they can carry today — the session source
+    tag and mining instrumentation. The spec's fuller provenance contract
+    ("session/commit/incident refs and a supersedes chain") names no field
+    shapes, and inventing one here would pre-empt the design pass that owes
+    Stages 2-3 their schema.
+    """
+    lane = vault / "personal" / "_opinions" / opinion
+    try:
+        lane.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[reflect.route] cannot create opinion lane {lane}: {e}", file=stderr)
+        return None
+
+    target = lane / f"{candidate.slug}.md"
+    if target.exists():
+        n = 1
+        while target.exists():
+            target = lane / f"{candidate.slug}-{n}.md"
+            n += 1
+
+    excerpts_block = ""
+    if candidate.excerpts:
+        excerpts_block = "\n\n## Supporting excerpts\n\n" + "\n".join(
+            f"> {e}" for e in candidate.excerpts
+        )
+    # The title leads, unlike an inbox entry (which writes the body alone).
+    # A supplement's audience is different: an inbox entry is opened by a
+    # person who can see its filename and context, whereas a supplement gets
+    # folded into an opinion and served back to the agent as guidance, so it
+    # has to state its own rule. Dropping the title there would serve the
+    # supporting detail without the standard it supports.
+    body = (
+        f"## {candidate.title}\n\n"
+        f"{candidate.body}\n\n"
+        f"## Mining metadata\n\n"
+        f"- **Proposed supplement to**: `{opinion}`\n"
+        f"- **Category**: `{candidate.category}`\n"
+        f"- **Confidence**: `{candidate.confidence}`\n"
+        f"- **Rationale**: {candidate.rationale}\n"
+        f"- **Occurrences**: {candidate.occurrences}\n"
+        f"{excerpts_block}"
+    )
+    source_line = f"source: {source}\n" if source else ""
+    fm = (
+        "---\n"
+        "kind: opinion-supplement\n"
+        "status: proposed\n"
+        f"created: {_utcnow_iso()}\n"
+        f"slug: {target.stem}\n"
+        f"opinion: {opinion}\n"
+        f"{source_line}"
+        f"mining_confidence: {candidate.confidence}\n"
+        f"mining_rationale: {json.dumps(candidate.rationale)}\n"
+        f"mining_occurrences: {candidate.occurrences}\n"
+        "---\n"
+    )
+    target.write_bytes((fm + "\n" + body + "\n").encode("utf-8"))
+    return target
+
+
 def _save_candidate_canonical(
     candidate: Candidate, vault: Path, *, stderr=sys.stderr
 ) -> Path | None:
@@ -726,6 +823,7 @@ def route_candidates(
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
         "skipped": 0, "inboxed": 0, "ideas_inboxed": 0, "capped": 0, "errors": 0,
+        "opinion_supplements": 0,
     }
     inbox_writes_so_far = 0
 
@@ -752,6 +850,20 @@ def route_candidates(
         mode = ROUTE_MODE_AUTO
 
     for c in memory_candidates:
+        # Accumulate loop, Stage 1: a standard-shaped candidate — a rule
+        # about how work should be judged or done — belongs to an opinion
+        # supplement, not general memory. Checked before the confidence
+        # ladder so it can't be auto-saved into the corpus first and then
+        # need extracting back out. Classification is deterministic and
+        # deliberately narrow; anything it can't place returns None and
+        # falls through to the normal routing below, unchanged.
+        opinion = _classify_standard_shaped(c)
+        if opinion:
+            if _save_candidate_to_opinions(c, vault, opinion, source=source, stderr=stderr):
+                stats["opinion_supplements"] += 1
+            else:
+                stats["errors"] += 1
+            continue
         if c.confidence == "HIGH":
             if _save_candidate_canonical(c, vault, stderr=stderr):
                 stats["auto_saved"] += 1
