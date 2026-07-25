@@ -3,7 +3,7 @@
 
 _Six phases, hard boundaries, one per session — the discipline that keeps coherence-critical work single-threaded instead of freestyling the whole lifecycle at once._
 
-The harness is a phase-gated workflow. Development is cut into six phases with hard boundaries between them, and a session executes **exactly one** phase — not the full lifecycle in one pass. Each phase reads the state the last one wrote and writes the state the next one needs, so the conversation can end at any boundary without losing the thread.
+Development runs as a phase-gated workflow on top of agentm's memory engine: state written to disk, not held in a single long conversation. Six phases carry hard boundaries between them, and a session executes **exactly one** phase — not the full lifecycle in one pass. Each phase reads the state the last one wrote and writes the state the next one needs, so the conversation can end at any boundary without losing the thread.
 
 ## How it works
 

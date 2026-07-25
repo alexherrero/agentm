@@ -45,8 +45,8 @@ Someone who pays per token and per minute, values minimal ceremony over a 150-ag
 
 The full text is in [`harness/principles.md`](https://github.com/alexherrero/agentm/blob/main/harness/principles.md); each decision is recorded in the relevant design's amendment log under [Designs](Designs).
 
-1. **Phase-gated workflow over free-form conversation.** Each session does one thing; fresh context at boundaries beats compaction.
-2. **State lives on disk, not in context.** `PLAN.md`, `features.json`, `progress.md` — the next session starts by reading.
+1. **State lives on disk, not in context.** `PLAN.md`, `features.json`, `progress.md` — the next session starts by reading.
+2. **Phase-gated workflow over free-form conversation.** Each session does one thing; fresh context at boundaries beats compaction.
 3. **Single-threaded for coherence; fan-out only for read-only breadth.** Parallel implementers produce inconsistent decisions; parallel readers are fine.
 4. **Deterministic verification before LLM judgment.** Typecheck → lint → test → build, *then* an optional critic. A review that skips gates is not a review.
 5. **Adversarial review with an "assume bugs" framing.** The reviewer must produce an executable artifact, not prose. Neutral reviewers rubber-stamp.

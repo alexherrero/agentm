@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/alexherrero/agentm/main/assets/agent-m/banner-1600.png" alt="AgentM — the agent harness you wished you had">
+  <img src="https://raw.githubusercontent.com/alexherrero/agentm/main/assets/agent-m/banner-1600.png" alt="AgentM — the memory your coding agent wished it had">
 </p>
 
-<p align="center"><em>The agent harness that remembers your work — so you get the assistant you actually wanted.</em></p>
+<p align="center"><em>The memory that follows your coding agent — so you get the assistant you actually wanted.</em></p>
 
 <p align="center">
   <a href="https://github.com/alexherrero/agentm/actions/workflows/ci-all.yml"><img src="https://img.shields.io/github/actions/workflow/status/alexherrero/agentm/ci-all.yml?branch=main&style=for-the-badge&label=CI&labelColor=0a0a0a&logo=github&logoColor=f4efe6" alt="CI"></a>
@@ -15,7 +15,7 @@
 
 **AgentM** gives your coding agent a permanent memory. It writes what it learns — about you, and about each project — as plain Markdown notes in a folder you own: no hidden database, nothing you can't read or edit yourself. Memory splits into two tenants — personal notes on how you like to work, and a per-project record of decisions and open threads — so a fresh session can pick up exactly where the last one left off. It brings the right notes back at the right moment, and looks after the collection over time so it gets better instead of messier.
 
-Said differently, AgentM pairs a phase-gated harness with that memory and a self-improvement pass — it dreams and learns between sessions. Its customization system extends those abilities through plugins that enable long-running, nuanced development workflows, automated project management, and more. Its opinion system is designed to layer in personas focused on a specific kind of work — activation is the next build slice.
+Said differently, AgentM is the memory and self-improvement layer — it dreams and learns between sessions. A phase-gated development workflow (setup · plan · work · review · release · bugfix) can run on top of it, provided by a companion toolkit rather than by AgentM itself. Its customization system extends AgentM's own abilities through plugins that enable long-running, nuanced development workflows, automated project management, and more. Its opinion system is designed to layer in personas focused on a specific kind of work — activation is the next build slice.
 
 AgentM works best paired with [`crickets`](https://github.com/alexherrero/crickets) — the toolkit of plugins (capabilities, skills, hooks, and sub-agents) that make it even more useful.
 
