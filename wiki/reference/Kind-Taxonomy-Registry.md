@@ -21,11 +21,18 @@ The `kind_registry.py` script formalizes the vault's existing free-form `kind:` 
 ## Registry (task 1)
 
 > [!NOTE]
-> **Status: implemented** — You shipped this in `harness/skills/memory/scripts/kind_registry.py`. You covered it with 13 tests in `scripts/test_kind_registry.py`. The test classes are `TestKnownKinds`, `TestIsKebab`, and `TestAudit`.
+> **Status: implemented** — You shipped this in `harness/skills/memory/scripts/kind_registry.py`. You covered it with 15 tests in `scripts/test_kind_registry.py`. The test classes are `TestKnownKinds`, `TestIsKebab`, and `TestAudit`.
 
 The `kind_registry.py` script (`kind_registry.py:1`) is a stdlib-only module. It contains `KNOWN_KINDS` (`kind_registry.py:33-52`, a `frozenset[str]`). You seed this set from two sources. The first source is reserved values that shipped code already references. These are `failure-incident`, `session-cost`, and `crystallized`. The second source is a frequency audit of the real vault's `personal/` and `projects/` trees. You took this audit at authoring time on 2026-07-10.
 
-The module keeps near-duplicate values as **separate, distinct entries deliberately**. For example, both `convention` and `conventions` are known kinds. You must make an explicit operator judgment call to canonicalize near-synonyms. You parked this task as its own backlog item in [agentm issue #273](https://github.com/alexherrero/agentm/issues/273). This module does not decide canonicalization.
+The module keeps near-duplicate values as **separate, distinct entries deliberately**. For example, both `convention` and `conventions` are known kinds. You must make an explicit operator judgment call to canonicalize near-synonyms. This module does not decide canonicalization.
+
+**The #273 canonicalization pass ran on 2026-07-24** ([agentm issue #273](https://github.com/alexherrero/agentm/issues/273), Loose Ends Release 5). A full `audit()` over the live vault — 3,069 files — found 30 non-canonical values and took them to zero:
+
+- **15 malformed values** carried prose inside the field, like `handoff-artifact (verdict memo)`. Each was stripped to its base kind.
+- **`arc-index` (9 files), `dir-index`, and `pilot-index`** joined the registry. They belong to the same `*-index` family as `project-index`, `research-index`, and `handoff-index`.
+- **`capture` joined the registry** rather than being remapped. It is the default kind `capture.py` writes and the `memory_append` MCP tool documents, so remapping the one live instance would be undone by the next capture.
+- **`proving-ledger`, `proving-report`, and `coordinator-log`** remapped to `handoff-artifact`; **`design-draft` and `design-brief`** remapped to `design`. These were one-off artifact labels rather than recurring kinds.
 
 The `REQUIRED_UNIVERSAL_FIELDS` tuple (`kind_registry.py:59-61`, a `tuple[str, ...]`: `kind, status, created, updated, tags, group, slug`) also exists in this module. The `frontmatter_validator.validate()` function now consumes it directly. You can see task 2 below.
 

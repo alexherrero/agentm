@@ -46,6 +46,24 @@ class TestKnownKinds(unittest.TestCase):
         self.assertFalse(kr.is_known("Fix"))
         self.assertTrue(kr.is_known("fix"))
 
+    def test_index_family_kinds_are_known(self):
+        # #273 canonicalization (Loose Ends Release 5): a full audit over the
+        # live vault found these in real use but absent from the registry.
+        # They belong to the same *-index family as the already-registered
+        # project-index / research-index / handoff-index.
+        for kind in ("arc-index", "dir-index", "pilot-index"):
+            self.assertTrue(kr.is_known(kind), kind)
+        for sibling in ("project-index", "research-index", "handoff-index"):
+            self.assertTrue(kr.is_known(sibling), sibling)
+
+    def test_capture_the_pipeline_default_is_known(self):
+        # capture.py writes `kind: capture` by default and the memory_append
+        # MCP tool documents it as its default, so the registry has to
+        # recognize it — otherwise every fresh capture lands unrecognized and
+        # lint re-flags it forever. Registered rather than remapped for
+        # exactly that reason.
+        self.assertTrue(kr.is_known("capture"))
+
 
 class TestIsKebab(unittest.TestCase):
     def test_valid_kebab(self):

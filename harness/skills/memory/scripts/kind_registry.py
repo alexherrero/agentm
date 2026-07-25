@@ -61,6 +61,25 @@ KNOWN_KINDS: frozenset[str] = frozenset({
     # added to the 2026-07-10 seed — exactly the kind of gap this registry's
     # own extend-as-discovered process expects.
     "howto",
+    # Loose Ends Release 5 (#273 kind canonicalization, 2026-07-24): a full
+    # kind_registry.audit() over the live vault (3,069 files) found 15
+    # well-formed values in real use but absent from this set. Operator
+    # ruling: register the *-index family, remap the arc one-offs.
+    #
+    # "arc-index" was the largest single gap (9 files across agentm and
+    # crickets) and sits squarely in the existing *-index family alongside
+    # project-index / research-index / handoff-index. "dir-index" and
+    # "pilot-index" are the same shape.
+    "arc-index", "dir-index", "pilot-index",
+    # "capture" is registered rather than remapped, deviating from the
+    # remap-the-singletons half of that ruling, because it is not a
+    # one-off at all: it is the DEFAULT kind the production capture
+    # pipeline writes (capture.py's `kind: str = "capture"`, and the
+    # memory_append MCP tool's documented default). Remapping the single
+    # live instance would be undone by the next capture and re-flagged by
+    # lint forever. It reads as a singleton today only because captures
+    # are consumed out of _inbox/ quickly.
+    "capture",
 })
 
 # Universal frontmatter fields save.py requires on every entry, per
