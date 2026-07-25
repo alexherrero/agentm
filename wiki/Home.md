@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.2.0](https://github.com/alexherrero/agentm/releases/tag/v9.2.0).** Crystallization — distilling a finished exploration into a five-field digest — now has a command line you can actually run.
+> **Latest release: [v9.2.1](https://github.com/alexherrero/agentm/releases/tag/v9.2.1).** `eval_v6_retrieval.py` fails loud on a drifted or wrong-vault query set instead of reporting a confident but meaningless `0.0000`.

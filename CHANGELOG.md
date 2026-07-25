@@ -5,6 +5,18 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.2.1] — 2026-07-25 — Patch: eval_v6_retrieval fails loud on drifted expected-notes
+
+**PATCH.** Loose Ends follow-on. `eval_v6_retrieval.py` reported a confident `0.0000`-shaped result when its query set's `expected_notes` paths no longer existed in the vault — no signal separated "measured zero" from "measured nothing." Same bug shape as the `eval_v6_graph.py` fail-loud fix shipped in v9.0.5.
+
+Confirmed live against the real vault before fixing: 4 of `query-set-v0.json`'s 22 queries reference paths that no longer exist (an archive move) — this was silently degrading real measurements, not a hypothetical risk.
+
+No pinned-baseline regression file added — recorded as a deliberate drop, not a deferral: this eval scores against a live, continuously-growing vault, so an absolute historical floor would be noisy for reasons unrelated to retrieval quality. The existing same-run old-vs-new comparison already gives a self-relative regression signal immune to vault growth.
+
+### Fixed
+
+- **`eval_v6_retrieval.py` fails loud on a drifted or wrong-vault query set** ([#373](https://github.com/alexherrero/agentm/pull/373)) — `run_eval()` now checks every resolved `expected_notes` path against the vault and reports the missing count/list; `main()` exits 1 with a failing JSONL record when any are missing, mirroring `eval_v6_graph.py`'s `files_missing` contract. Latent by design, same as that fix: `run-fast-tier.sh` swallows exit codes and `health-nightly.yml` reads stdout, not the status, so wiring this into a hard gate is a separate, deliberate decision.
+
 ## [v9.2.0] — 2026-07-25 — Minor: crystallization you can actually run
 
 **MINOR.** Loose Ends Release 7. Crystallization distils a finished exploration into a five-field digest — question, investigation, findings, lessons, open threads. It has described itself since it shipped as "the callable an operator invokes once an exploration is judged closed." It had no command-line entrypoint, so you couldn't invoke it. Now you can.
