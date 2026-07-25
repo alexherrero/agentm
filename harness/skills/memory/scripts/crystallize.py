@@ -168,3 +168,123 @@ def parse_digest(entry_path: Path | str) -> CrystallizationDigest:
         values[field] = m.group(1).strip()
 
     return CrystallizationDigest(**values)
+
+
+# ── CLI ──────────────────────────────────────────────────────────────────────
+# The module docstring above describes this as "the callable an operator ...
+# invokes once an exploration is judged closed" — but until this entrypoint
+# existed the module was importable-only, so an operator could not actually
+# invoke it. This is the thin manual path the design names as the right first
+# step ("the same thin-manual-path-first precedent dreaming (`/dream`) and
+# forward learning already set"), not the deferred phase-close trigger.
+#
+# It deliberately does NOT distil. `crystallize_exploration` takes an
+# already-composed digest by design, and turning a transcript into the five
+# fields is the other half of this module's `[PENDING-IMPL]`. The CLI reads
+# the five fields you give it and writes the entry; building a summarizer in
+# here would be shipping the deferred work through the back door.
+
+
+def _parse_digest_text(text: str) -> "CrystallizationDigest":
+    """Parse the five locked sections out of raw digest markdown.
+
+    Shares `parse_digest`'s section grammar deliberately: an operator writes
+    the same `## Question` / `## Investigation` / ... shape the entry itself
+    uses, so what you hand in reads like what comes back out. Frontmatter is
+    tolerated but not required, which lets you pipe an existing crystallized
+    entry straight back in.
+    """
+    if text.startswith("---\n"):
+        end = text.find("\n---\n", 4)
+        if end != -1:
+            text = text[end + 5:]
+    values = {}
+    for field in DIGEST_FIELDS:
+        title = re.escape(_SECTION_TITLES[field])
+        m = re.search(rf"^## {title}\n\n(.*?)(?=\n## |\Z)", text,
+                      flags=re.MULTILINE | re.DOTALL)
+        if m is None:
+            raise MalformedDigestError(
+                f"missing locked section '## {_SECTION_TITLES[field]}' — the "
+                f"schema is exact; all five of "
+                f"{', '.join(_SECTION_TITLES[f] for f in DIGEST_FIELDS)} are required"
+            )
+        values[field] = m.group(1).strip()
+    return CrystallizationDigest(**values)
+
+
+def _build_parser():
+    import argparse
+
+    p = argparse.ArgumentParser(
+        prog="crystallize.py",
+        description="Write or read a five-field crystallization digest.",
+        epilog="The digest is yours to compose — this does not summarize a "
+               "transcript. Automatic phase-close crystallization is deferred; "
+               "see the design's [PENDING-IMPL].",
+    )
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    w = sub.add_parser("write", help="write a digest as a crystallized entry")
+    w.add_argument("--vault-path", required=True)
+    w.add_argument("--slug", required=True, help="entry slug (kebab-case)")
+    w.add_argument("--digest-file", default=None,
+                   help="markdown file with the five '## <Title>' sections "
+                        "(default: read stdin)")
+    w.add_argument("--group", default="personal")
+    w.add_argument("--tags", default=None, help="comma-separated")
+
+    r = sub.add_parser("read", help="parse a crystallized entry back into its fields")
+    r.add_argument("entry_path")
+    return p
+
+
+def main(argv: "list[str] | None" = None) -> int:
+    ns = _build_parser().parse_args(argv)
+
+    if ns.cmd == "read":
+        try:
+            digest = parse_digest(ns.entry_path)
+        except MalformedDigestError as e:
+            print(f"crystallize: {e}", file=sys.stderr)
+            return 1
+        except OSError as e:
+            print(f"crystallize: cannot read {ns.entry_path}: {e}", file=sys.stderr)
+            return 1
+        for field in DIGEST_FIELDS:
+            print(f"## {_SECTION_TITLES[field]}\n\n{getattr(digest, field)}\n")
+        return 0
+
+    raw = (Path(ns.digest_file).read_text(encoding="utf-8")
+           if ns.digest_file else sys.stdin.read())
+    if not raw.strip():
+        print("crystallize: empty digest input", file=sys.stderr)
+        return 1
+    try:
+        digest = _parse_digest_text(raw)
+    except MalformedDigestError as e:
+        print(f"crystallize: {e}", file=sys.stderr)
+        return 1
+
+    tags = [t.strip() for t in ns.tags.split(",") if t.strip()] if ns.tags else []
+    try:
+        written = crystallize_exploration(
+            ns.vault_path, ns.slug, digest, group=ns.group, tags=tags,
+        )
+    except FileExistsError:
+        # save_entry's never-silently-overwrite contract. Surface it as a
+        # sentence rather than a traceback — a slug collision is an ordinary
+        # thing to hit, not a crash.
+        print(f"crystallize: an entry already exists for slug {ns.slug!r} "
+              f"(nothing was overwritten); choose another slug", file=sys.stderr)
+        return 1
+    except OSError as e:
+        print(f"crystallize: could not write entry: {e}", file=sys.stderr)
+        return 1
+
+    print(written)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
