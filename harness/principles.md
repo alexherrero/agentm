@@ -2,17 +2,7 @@
 
 The design calls behind this harness. Written down so they can be argued with and revised — not decorative.
 
-## 1. Phase-gated workflow over free-form conversation
-
-A single session should do exactly one of: scaffold, plan, implement, review, release. The boundaries exist because:
-
-- Each phase has a different success criterion. Mixing them makes all of them worse.
-- Fresh context at each boundary is cheaper and more reliable than trying to compact across roles. ([Trail of Bits' fresh-session discipline](https://github.com/trailofbits/claude-code-config) — "interview first, implement second, in a clean session.")
-- When something goes wrong, you can see *which phase* broke.
-
-**The five verbs:** `setup / plan / work / review / release`, plus a `bugfix` pipeline for triage-first work. Borrowed from [Chachamaru127/claude-code-harness](https://github.com/Chachamaru127/claude-code-harness).
-
-## 2. State lives on disk, not in context
+## 1. State lives on disk, not in context
 
 Context is ephemeral. Files are durable, diffable, resumable. The harness mandates four on-disk artifacts per project:
 
@@ -22,6 +12,18 @@ Context is ephemeral. Files are durable, diffable, resumable. The harness mandat
 - `.harness/init.sh` — pre-written script to boot the dev environment. Saves context on every session start.
 
 **Rule:** every phase ends with an on-disk update. A session that leaves no trace is a session the next agent cannot pick up.
+
+This is the same discipline agentm's own memory engine applies to the agents it serves — durable state outlives any one context window. The difference is scope: this principle is about a *build session's own* progress; the memory engine is about persisting what an agent learns across sessions and projects, for the operator, not just for the harness that built it.
+
+## 2. Phase-gated workflow over free-form conversation
+
+A single session should do exactly one of: scaffold, plan, implement, review, release. The boundaries exist because:
+
+- Each phase has a different success criterion. Mixing them makes all of them worse.
+- Fresh context at each boundary is cheaper and more reliable than trying to compact across roles. ([Trail of Bits' fresh-session discipline](https://github.com/trailofbits/claude-code-config) — "interview first, implement second, in a clean session.")
+- When something goes wrong, you can see *which phase* broke.
+
+**The five verbs:** `setup / plan / work / review / release`, plus a `bugfix` pipeline for triage-first work. Borrowed from [Chachamaru127/claude-code-harness](https://github.com/Chachamaru127/claude-code-harness). Since the V5 unbundling, the phase loop itself ships from the companion crickets `developer-workflows` plugin — this repo owns the state substrate and memory engine the phases run on, not the phase specs.
 
 ## 3. Single-threaded for coherence, fan-out only for read-only breadth
 

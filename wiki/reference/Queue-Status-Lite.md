@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # Queue status lite
 
-`/queue-status-lite` is the read-only coordinator dashboard: it lists every active plan in a project's `_harness/`, along with its status and the head of its progress log. It is deterministic, makes no writes, and arbitrates no claims — the human stays the arbiter. The *why* is [Named plans](Named-Plans); this page is the lookup.
+The `/queue-status-lite` command provides a read-only dashboard. It lists every active plan in a project's `_harness/` directory. Each entry shows the plan status and the head of the progress log. The command is deterministic. It makes no writes. It arbitrates no claims — the human stays the arbiter. The reasoning lives in [Named plans](Named-Plans); this page is the lookup.
 
 ## ⚡ Quick Reference
 
@@ -20,13 +20,13 @@
 
 ## What it lists
 
-For every `PLAN*.md` file in the resolved `_harness/` directory — both the unnamed singleton `PLAN.md` and any `PLAN-<name>.md` — it prints the singleton first, then named plans alphabetically:
+The script reads every `PLAN*.md` file in the resolved `_harness/` directory — both the singleton `PLAN.md` and any named `PLAN-<name>.md` files. It prints the singleton first, then named plans alphabetically:
 
 | Column | Source |
 |---|---|
-| Plan name | the filename (`PLAN.md`, or `PLAN-<name>.md`) |
-| Status | the plan's `Status:` line, read from the plan file (markdown-bold `**Status:**` and plain `Status:` both accepted; `—` if absent) |
-| Progress head | the most-recent (last non-empty) line of the matching `progress*.md` (`progress-<name>.md`, or `progress.md` for the singleton), truncated to 120 chars with a trailing `…` |
+| Plan name | the filename (`PLAN.md` or `PLAN-<name>.md`) |
+| Status | the plan's `Status:` line (`**Status:**` and `Status:` both accepted; `—` if absent) |
+| Progress head | the last non-empty line of the matching `progress*.md` file, truncated to 120 chars with a trailing `…` |
 
 Archived plans (`PLAN.archive.*.md`) and GDrive conflict copies (`PLAN-foo (conflicted copy …).md`) are excluded — the former by the `PLAN-*` glob, the latter via `hm._conflict_family`.
 
@@ -46,7 +46,7 @@ A plan with no matching progress file still lists, with the head shown as `(no p
 ## Contract
 
 - **Read-only.** The command performs zero filesystem mutation. Its test asserts the fixture `_harness/` directory is byte-identical before and after a run.
-- **Deterministic.** No network, no transcript mining, no sub-agent dispatch — pure enumeration of the resolved `_harness/`. Output depends only on the directory contents.
+- **Deterministic.** The script enumerates the resolved `_harness/` directory — no network, no transcript mining, no sub-agent dispatch. Output depends only on the directory contents.
 - **No arbitration.** It does not claim, lease, lock, or assign plans to workers. It surfaces state for a human coordinator to read; the design deliberately omits queue/lease machinery.
 - **Always exit 0.** Success exits `0`; so does every graceful path — no resolvable `_harness/`, a missing directory, or an empty one. A status read never errors on absence.
 
