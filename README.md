@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.2.1](https://github.com/alexherrero/agentm/releases/tag/v9.2.1).** `eval_v6_retrieval.py` fails loud on a drifted or wrong-vault query set instead of reporting a confident but meaningless `0.0000`.
+> **Latest release: [v9.2.2](https://github.com/alexherrero/agentm/releases/tag/v9.2.2).** The prose reframes memory-first where it had genuinely drifted, and rejects a doc rewrite that quietly dropped a real fact.
 
 ---
 

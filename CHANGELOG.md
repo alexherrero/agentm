@@ -5,6 +5,19 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.2.2] — 2026-07-25 — Patch: Loose Ends Release 5b — the prose items
+
+**PATCH.** Docs-only. Retry-or-accept the 3 parked reference pages via the two-step cross-model prose pass (`prose_pass.py`), and the V5-6 narrative-shed "plugin host" prose sweep.
+
+`Queue-Status-Lite.md` retried clean and applied, with two small hand-corrections found during verification (a dropped truncation-ellipsis detail restored; a few redundant lead-in lines the pass injected removed). `Vault-Lint-Checks.md` retried but **rejected** — the revision dropped `info` from the severity enum, a real factual error confirmed against `vault_lint.py`'s own `Finding.severity` type, plus several other precision losses a reference page needs (the exact kebab-case regex, the locked field-order list). Accepted as-is. `persona-tier-schema.md` failed the structural contract for the third time across two build sessions (FACT-GUARD leakage) — accepted as-is, per precedent.
+
+The narrative-shed sweep re-verified a pre-existing queued plan (authored 2026-06-18, describing a 6-task hero-surface memory-first identity rewrite) against live content rather than assuming its age made it either stale or still fully open. Most of its scope was already done by later work — `Product-Intent.md`, `Toolkit-Interface.md`, and `How-The-Pieces-Fit.md` already lead memory-first and attribute the phase loop to crickets — and the operator's own global `~/.claude/CLAUDE.md` (the plan's largest named risk) needed no changes at all. What was genuinely still open got fixed: `harness/principles.md`'s principle ordering (state-on-disk now leads), the `README.md`/`wiki/Home.md` hero block, and `Phases.md`'s opening line. `agentm-hld.md`'s one remaining "plugin host" mention stays untouched — it's inside a labeled historical "V5 — the unbundling" line, the same append-only-history shape as `Completed-Features.md`'s own version rows. The queued plan is retired with the full reasoning recorded, not silently dropped.
+
+### Changed
+
+- **3 parked reference pages retried; 1 applied, 2 accepted-as-is with reasons** ([#376](https://github.com/alexherrero/agentm/pull/376)).
+- **`harness/principles.md`, `README.md`, `wiki/Home.md`, `Phases.md` reframed memory-first** ([#376](https://github.com/alexherrero/agentm/pull/376)) — the V5-6 narrative-shed sweep's genuinely-open remainder.
+
 ## [v9.2.1] — 2026-07-25 — Patch: eval_v6_retrieval fails loud on drifted expected-notes
 
 **PATCH.** Loose Ends follow-on. `eval_v6_retrieval.py` reported a confident `0.0000`-shaped result when its query set's `expected_notes` paths no longer existed in the vault — no signal separated "measured zero" from "measured nothing." Same bug shape as the `eval_v6_graph.py` fail-loud fix shipped in v9.0.5.
