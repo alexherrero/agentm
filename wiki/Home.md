@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.1.0](https://github.com/alexherrero/agentm/releases/tag/v9.1.0).** A lesson that reads as a rule about how work should be done now becomes a learned supplement to one of the agent's standards, instead of an ordinary memory.
+> **Latest release: [v9.2.0](https://github.com/alexherrero/agentm/releases/tag/v9.2.0).** Crystallization — distilling a finished exploration into a five-field digest — now has a command line you can actually run.

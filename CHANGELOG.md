@@ -5,6 +5,22 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.2.0] — 2026-07-25 — Minor: crystallization you can actually run
+
+**MINOR.** Loose Ends Release 7. Crystallization distils a finished exploration into a five-field digest — question, investigation, findings, lessons, open threads. It has described itself since it shipped as "the callable an operator invokes once an exploration is judged closed." It had no command-line entrypoint, so you couldn't invoke it. Now you can.
+
+**The automatic phase-close trigger is still not built, and this release does not change that.** The roadmap item read as trigger-wiring; re-checking against the design found the trigger was deliberately deferred, with reasons that still hold — "the close of a completed exploration" names no detectable event anywhere in the codebase, and composing the five fields needs a sub-agent that the background chains structurally cannot dispatch. Its `[PENDING-IMPL]` marker stays. Crystallization does not fire on its own.
+
+What ships is the design's own stated next step: the thin manual path, the same order `/dream` and forward learning already followed.
+
+### Added
+
+- **`crystallize.py` command line** ([#370](https://github.com/alexherrero/agentm/pull/370)) — `write` takes the five locked sections from a file or stdin and writes the entry; `read` parses one back. A malformed digest names the section it's missing, and a slug that's already taken reports it plainly while leaving the original entry untouched.
+
+### Fixed
+
+- **The auto-orchestration page described a wiring that doesn't exist** — it stated the crickets developer plugin calls in through the `phase_dispatch()` bridge. That plugin was retired and its replacement doesn't, so reflection at the end of `/work` and skill-refresh at the end of `/release` don't actually fire. Session reflection still happens on every session through the Stop hook, which is why the gap went unnoticed. The page now says so.
+
 ## [v9.1.0] — 2026-07-24 — Minor: standards that learn from you (Stage 1)
 
 **MINOR.** Loose Ends Release 6. The first piece of the accumulate loop: a lesson that reads as *a rule about how work should be judged or done* now routes to an opinion supplement instead of general memory, and the layer that folds supplements onto the coded opinions can finally be served.
