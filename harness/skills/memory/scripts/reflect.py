@@ -623,14 +623,15 @@ def _classify_standard_shaped(candidate: Candidate) -> str | None:
 
 def _save_candidate_to_opinions(
     candidate: Candidate, vault: Path, opinion: str, *,
-    source: str | None = None, stderr=sys.stderr,
+    source: str | None = None, session_id: str | None = None, stderr=sys.stderr,
 ) -> Path | None:
     """Save a standard-shaped candidate to the opinion supplement lane.
 
-    Accumulate loop, Stage 1. The target is
-    `<vault>/personal/_opinions/<opinion>/<slug>.md` — an `opinions/` area
-    beside the always-load conventions, per the opinions design's own
-    placement sentence. Returns the saved path, or None on failure.
+    Accumulate loop, Stage 1 (schema extended for Stages 2-3, locked call
+    2). The target is `<vault>/personal/_opinions/<opinion>/<slug>.md` — an
+    `opinions/` area beside the always-load conventions, per the opinions
+    design's own placement sentence. Returns the saved path, or None on
+    failure.
 
     **This never writes into a coded base opinion.** The spec's own
     extend-never-override guard keeps `opinions/<name>.md` authoritative;
@@ -638,11 +639,15 @@ def _save_candidate_to_opinions(
     ships no auto-append, so the corruption ceiling is zero by construction
     rather than by a guard that isn't built yet.
 
-    Entries carry the origin refs they can carry today — the session source
-    tag and mining instrumentation. The spec's fuller provenance contract
-    ("session/commit/incident refs and a supersedes chain") names no field
-    shapes, and inventing one here would pre-empt the design pass that owes
-    Stages 2-3 their schema.
+    `session_id` (`reflect._session_id_from_path`, threaded down through
+    `route_candidates` — Stage 1 did not carry this) becomes the entry's
+    `sessions:` list, a single-element list on write. Dreaming's recurrence
+    gate (`opinion_supplement.py`) unions this field across a lane's
+    similarity-matched entries and promotes only once two DISTINCT session
+    ids are present — without this field there is no substrate for that
+    gate at all, so every Stage-1-era entry (written before this change)
+    permanently reads as zero sessions and can only ever contribute to,
+    never complete, a recurrence group on its own.
     """
     lane = vault / "personal" / "_opinions" / opinion
     try:
@@ -681,6 +686,7 @@ def _save_candidate_to_opinions(
         f"{excerpts_block}"
     )
     source_line = f"source: {source}\n" if source else ""
+    sessions_line = f"sessions: [{session_id}]\n" if session_id else ""
     fm = (
         "---\n"
         "kind: opinion-supplement\n"
@@ -689,6 +695,7 @@ def _save_candidate_to_opinions(
         f"slug: {target.stem}\n"
         f"opinion: {opinion}\n"
         f"{source_line}"
+        f"{sessions_line}"
         f"mining_confidence: {candidate.confidence}\n"
         f"mining_rationale: {json.dumps(candidate.rationale)}\n"
         f"mining_occurrences: {candidate.occurrences}\n"
@@ -785,6 +792,7 @@ def route_candidates(
     vault: Path,
     mode: str = ROUTE_MODE_AUTO,
     source: str | None = None,
+    session_id: str | None = None,
     max_inbox: int | None = None,
     stdin=sys.stdin,
     stdout=sys.stdout,
@@ -797,6 +805,14 @@ def route_candidates(
         idea_candidates: ditto idea_candidates
         vault: MemoryVault root (where save.py writes)
         mode: 'auto' | 'silent' | 'interactive' (see module-level docstring)
+        session_id: `_session_id_from_path(transcript)` — threaded into a
+            standard-shaped candidate's opinion-supplement entry as its
+            `sessions:` list (accumulate loop, Stages 2-3, locked call 2).
+            Every caller of this function processes exactly one
+            transcript, so one id covers the whole call. `None` (e.g. a
+            caller with no transcript path) simply omits the field on
+            write — the recurrence gate then reads that entry as
+            contributing zero sessions, never an error.
         source: optional origin tag (e.g. "machine-session") written into
             every inboxed entry's frontmatter (L1, ruling 8). HIGH/silent-
             mode canonical saves are never tagged -- the tag exists so a
@@ -859,7 +875,9 @@ def route_candidates(
         # falls through to the normal routing below, unchanged.
         opinion = _classify_standard_shaped(c)
         if opinion:
-            if _save_candidate_to_opinions(c, vault, opinion, source=source, stderr=stderr):
+            if _save_candidate_to_opinions(
+                c, vault, opinion, source=source, session_id=session_id, stderr=stderr
+            ):
                 stats["opinion_supplements"] += 1
             else:
                 stats["errors"] += 1
@@ -1179,6 +1197,7 @@ def reflect_corpus(
                 result["idea_candidates"],
                 vault=vault,
                 mode=route_mode,
+                session_id=sid,
                 stderr=stderr,
             )
             summary["memory_auto_saved"] += stats["auto_saved"]
@@ -1456,7 +1475,8 @@ def main(argv: list[str] | None = None) -> int:
             max_inbox = None
         stats = route_candidates(
             memory_to_route, idea_to_route, vault=vault, mode=route_mode,
-            source=source, max_inbox=max_inbox,
+            source=source, session_id=_session_id_from_path(Path(args.transcript_path).expanduser()),
+            max_inbox=max_inbox,
         )
         # Routing stats as a final JSON-Lines record on stdout (after the
         # candidate records). Operator scripts + hooks can parse this to

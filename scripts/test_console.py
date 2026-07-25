@@ -297,6 +297,18 @@ class MemoryActivityTests(unittest.TestCase):
         self.assertIn("insight/keep.md", names)
         self.assertTrue(all("_inbox" not in n for n in names))
 
+    def test_newest_curated_entries_excludes_opinion_supplements(self) -> None:
+        # Accumulate loop Stages 2-3: a lane entry or a composed served file
+        # is configuration the agent reads as its own standards, not a note
+        # a human browses -- it must never show up as a "newest curated
+        # entry" alongside real memory.
+        personal = self.vault / "personal"
+        (personal / "_opinions" / "good").mkdir(parents=True)
+        (personal / "_opinions" / "good" / "lesson.md").write_text("x", encoding="utf-8")
+        (personal / "_opinions" / "good.md").write_text("served", encoding="utf-8")
+        names = c.newest_curated_entries(self.vault)
+        self.assertTrue(all("_opinions" not in n for n in names))
+
     def test_heat_policy_report_never_raises_on_empty_vault(self):
         out = c.heat_policy_report(self.vault)
         self.assertTrue(out.startswith("Heat-policy"))
@@ -588,6 +600,68 @@ class DreamExpireSectionTests(unittest.TestCase):
     def test_malformed_pointer_degrades_gracefully(self):
         (self.vault / "_meta" / "dream-auto-expired-latest.json").write_text("not json", encoding="utf-8")
         out = c.section_dream_expire(self.vault)
+        self.assertIn("n/a", out)
+
+
+class OpinionSupplementsSectionTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name)
+        (self.vault / "_meta").mkdir()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_pointer(self, opinions: dict) -> None:
+        (self.vault / "_meta" / "opinion-supplement-health-latest.json").write_text(
+            json.dumps({"opinions": opinions}), encoding="utf-8"
+        )
+
+    def test_none_vault(self):
+        self.assertIn("n/a", c.section_opinion_supplements(None))
+
+    def test_dark_when_pointer_absent(self):
+        out = c.section_opinion_supplements(self.vault)
+        self.assertIn("dark", out)
+
+    def test_no_opinions_tracked_yet(self):
+        self._write_pointer({})
+        out = c.section_opinion_supplements(self.vault)
+        self.assertIn("no opinion has an active lane yet", out)
+
+    def test_present_reports_per_opinion_counts(self):
+        self._write_pointer({
+            "good": {"lane_depth": 3, "promoted_count": 2, "parked_count": 1,
+                      "provenance_coverage": 0.5, "base_proposal_count": 0},
+        })
+        out = c.section_opinion_supplements(self.vault)
+        self.assertIn("good:", out)
+        self.assertIn("2 promoted", out)
+        self.assertIn("1 parked", out)
+        self.assertIn("50%", out)
+
+    def test_deep_lane_gets_flagged(self):
+        self._write_pointer({
+            "done": {"lane_depth": 25, "promoted_count": 0, "parked_count": 25,
+                      "provenance_coverage": 0.0, "base_proposal_count": 0},
+        })
+        out = c.section_opinion_supplements(self.vault)
+        self.assertIn("⚠", out)
+        self.assertIn("recurrence threshold may be too loose", out)
+
+    def test_shallow_lane_is_not_flagged(self):
+        self._write_pointer({
+            "done": {"lane_depth": 3, "promoted_count": 0, "parked_count": 3,
+                      "provenance_coverage": 0.0, "base_proposal_count": 0},
+        })
+        out = c.section_opinion_supplements(self.vault)
+        self.assertNotIn("⚠", out)
+
+    def test_malformed_pointer_degrades_gracefully(self):
+        (self.vault / "_meta" / "opinion-supplement-health-latest.json").write_text(
+            "not json", encoding="utf-8"
+        )
+        out = c.section_opinion_supplements(self.vault)
         self.assertIn("n/a", out)
 
 

@@ -88,8 +88,18 @@ COMPRESSION_CHAIN_MIN_LENGTH = 3
 # Reserved top-level vault dirs a dream pass never reads as source entries —
 # mirrors vault_lint.py's _EXCLUDE_DIRS plus dreaming's own output dirs (a
 # pass must not dream about its own prior output).
+#
+# "_opinions" (accumulate loop, Stages 2-3, locked call 6): a live hazard
+# until this exclusion landed -- the directory sat in the general corpus,
+# so `_stage_link_improvement` would write **Related:** wikilinks into a
+# served supplement (changing text the agent reads as its own standards),
+# `_stage_tidying` would shelve a year-old standard, and the general
+# `_stage_dedup` would merge across opinions at the wrong threshold.
+# `_stage_opinion_supplement()` owns this directory exclusively, mirroring
+# `_inbox`'s own exclusion + dedicated-owner pattern above.
 _EXCLUDE_DIRS = frozenset(
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive", "_dream", ".obsidian"}
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive",
+     "_dream", ".obsidian", "_opinions"}
 )
 
 
@@ -1111,6 +1121,82 @@ def _stage_lint(vault_path: Path) -> tuple:
 
 
 # -----------------------------------------------------------------------------
+# Stage — opinion supplement (accumulate loop, Stages 2-3;
+# wiki/designs/agentm-experience-and-dreaming.md's accumulate-loop section,
+# ten locked calls, 2026-07-25).
+# -----------------------------------------------------------------------------
+
+# The health snapshot's own "-latest.json" pointer (locked call 10) —
+# overwritten every cycle, same convention as `dream-auto-expired-latest.
+# json` / `sampled-audit-latest.json`. Kept as a plain filename constant
+# here (not in opinion_supplement.py) since writing it is this stage's own
+# I/O, not that leaf module's pure-function surface.
+_OPINION_SUPPLEMENT_HEALTH_LATEST_NAME = "opinion-supplement-health-latest.json"
+
+
+def _stage_opinion_supplement(vault_path: Path, *, now: str | None = None) -> list:
+    """Runs the recurrence gate, contradiction check, and composition
+    (`opinion_supplement.py`, a leaf module — no model call anywhere in it,
+    matching this pass's own deterministic-only constraint) for every
+    opinion currently holding a lane under
+    `<vault>/personal/_opinions/<name>/`. Owns that directory exclusively
+    (excluded from the general corpus above — see `_EXCLUDE_DIRS`), so it
+    does its own separate walk rather than taking `entries`/`loaded`.
+
+    Deliberately confirm-gated (locked call 9): every non-empty result
+    becomes an ordinary PENDING `stage="opinion_promote"` proposal —
+    `opinion_promote` is NOT in `dream_confirm.AUTO_APPLY_STAGES` and must
+    not be added to it without a fresh, separate operator ruling recorded
+    as an amendment to the design (at which point it also joins
+    `_ANOMALY_WATCHED_STAGES` in that same change, per the design's own
+    text). One opinion's whole cycle bundles into ONE proposal — see
+    `opinion_supplement.LaneCycleResult`'s own docstring for why a
+    per-lesson-group proposal could race the served file.
+
+    Also writes two `_meta/` pointer files, unconditionally, every cycle —
+    observability about the corpus, not vault content served to the agent,
+    so (like the connectivity meter and the sampled-audit pointer) they are
+    never gated behind confirm:
+
+      - `_meta/opinion-base-proposals.json` (locked call 3's second
+        channel) — every currently-suspected supplement/base contradiction,
+        recomputed fresh each cycle so a resolved one drops out on its own.
+      - `_meta/opinion-supplement-health-latest.json` (locked call 10) —
+        per-opinion lane depth / promoted / parked / provenance-coverage /
+        base-proposal counts, for `console.section_opinion_supplements`.
+    """
+    import opinion_supplement  # noqa: E402  (lazy — same convention as lifecycle/write_time_linker above)
+
+    proposals: list = []
+    all_base_proposals: list = []
+    health_by_opinion: dict = {}
+
+    for lane_dir in opinion_supplement.lane_dirs(vault_path):
+        opinion = lane_dir.name
+        result = opinion_supplement.process_lane(vault_path, opinion, now=now)
+        if result is not None:
+            if result.mutations:
+                proposals.append(Proposal(
+                    stage="opinion_promote", kind="promote",
+                    paths=[str(p) for p, _ in result.mutations],
+                    summary=result.summary,
+                    mutations=result.mutations,
+                ))
+            all_base_proposals.extend(result.base_change_proposals)
+        health_by_opinion[opinion] = opinion_supplement.lane_health(vault_path, opinion)
+
+    atomic_write(
+        vault_path / "_meta" / opinion_supplement.BASE_PROPOSALS_FILENAME,
+        json.dumps(all_base_proposals, indent=2),
+    )
+    atomic_write(
+        vault_path / "_meta" / _OPINION_SUPPLEMENT_HEALTH_LATEST_NAME,
+        json.dumps({"opinions": health_by_opinion}, indent=2),
+    )
+    return proposals
+
+
+# -----------------------------------------------------------------------------
 # Stage 4 — crystallization (thin: a textual summary folded into the digest,
 # not a new file — phase-close crystallization is a separate, out-of-scope
 # [PENDING-IMPL] elsewhere in the Experience design).
@@ -1419,6 +1505,7 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(tidying_proposals)
     proposals.extend(_stage_link_improvement(vault_path, entries, loaded))
     proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
+    proposals.extend(_stage_opinion_supplement(vault_path))
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)

@@ -391,7 +391,7 @@ def _spend_unavailable_reason(repo_root: "Path | None", *, runner=subprocess.run
 
 # ── section: memory activity ─────────────────────────────────────────────────
 _INBOX_SKIP = {"_index.md", "readme.md", "_readme.md"}
-_CURATED_SKIP_DIRS = {"_inbox", "_skill-watchlist", "_watchlist", "_archive"}
+_CURATED_SKIP_DIRS = {"_inbox", "_skill-watchlist", "_watchlist", "_archive", "_opinions"}
 
 
 def count_inbox(vault: Path) -> int:
@@ -759,6 +759,61 @@ def section_sampled_audit(vault: "Path | None") -> str:
     return line
 
 
+# ── section: opinion supplements (accumulate loop, Stages 2-3, locked call
+#    10) -- the per-opinion lane-depth / promoted / provenance snapshot
+#    `dream.py`'s `_stage_opinion_supplement()` writes every cycle ─────────
+def section_opinion_supplements(vault: "Path | None") -> str:
+    """Reads the stable, always-overwritten pointer `_stage_opinion_
+    supplement()` writes every dreaming cycle (`_meta/opinion-supplement-
+    health-latest.json`) -- never recomputes the snapshot itself, the same
+    "read the pointer, don't re-derive" convention `section_sampled_audit`
+    / `section_needs_your_eye` already use. Honest-dark on every edge."""
+    if vault is None:
+        return "Opinion supplements: n/a (no vault resolved)"
+    pointer = vault / "_meta" / "opinion-supplement-health-latest.json"
+    if not pointer.is_file():
+        return (
+            "Opinion supplements: dark -- no _meta/opinion-supplement-health-latest.json "
+            "yet (the weekly dreaming cycle hasn't run on this machine since Stages 2-3 shipped, "
+            "or no standard has been mined into an opinion lane yet)"
+        )
+    try:
+        data = json.loads(pointer.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        return f"Opinion supplements: n/a (unreadable pointer at {pointer}: {e})"
+    opinions = data.get("opinions") if isinstance(data, dict) else None
+    if not isinstance(opinions, dict):
+        return f"Opinion supplements: n/a (pointer at {pointer} is not the expected shape)"
+    if not opinions:
+        return "Opinion supplements: no opinion has an active lane yet"
+
+    warn_threshold = None
+    mem_dir = _memory_scripts_dir()
+    if mem_dir is not None:
+        if str(mem_dir) not in sys.path:
+            sys.path.insert(0, str(mem_dir))
+        try:
+            import opinion_supplement as osup  # type: ignore
+
+            warn_threshold = osup.LANE_DEPTH_WARNING_THRESHOLD
+        except ImportError:
+            pass
+
+    lines = [f"Opinion supplements: {len(opinions)} opinion(s) with an active lane"]
+    for name in sorted(opinions):
+        h = opinions[name]
+        depth = h.get("lane_depth", 0)
+        flag = ""
+        if warn_threshold is not None and depth > warn_threshold:
+            flag = f" ⚠ exceeds {warn_threshold} — the recurrence threshold may be too loose"
+        lines.append(
+            f"  {name}: {h.get('promoted_count', 0)} promoted, {h.get('parked_count', 0)} parked, "
+            f"{depth} lane-depth{flag}, {h.get('provenance_coverage', 0.0):.0%} provenance, "
+            f"{h.get('base_proposal_count', 0)} base-change proposal(s)"
+        )
+    return "\n".join(lines)
+
+
 # ── section: rich (HTML) view pointer (Consolidation follow-ups batch,
 #    piece 4) -- printed at the end of every terminal run, not a mode the
 #    operator has to remember exists ─────────────────────────────────────
@@ -815,6 +870,7 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
         "dream_expire": section_dream_expire(vault),
         "needs_your_eye": section_needs_your_eye(vault),
         "sampled_audit": section_sampled_audit(vault),
+        "opinion_supplements": section_opinion_supplements(vault),
     }
 
 
@@ -830,6 +886,7 @@ def render_terminal(report: dict, *, html_path: "Path | None" = None, repo_root:
         ("Dreaming", "dream_expire"),
         ("Needs your eye", "needs_your_eye"),
         ("Sampled audit", "sampled_audit"),
+        ("Opinion supplements", "opinion_supplements"),
     ):
         if key not in report:
             continue

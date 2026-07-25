@@ -80,6 +80,16 @@ KNOWN_KINDS: frozenset[str] = frozenset({
     # lint forever. It reads as a singleton today only because captures
     # are consumed out of _inbox/ quickly.
     "capture",
+    # Accumulate loop, Stage 1 (v9.1.0): reflect.py's `_save_candidate_to_
+    # opinions` already writes `kind: opinion-supplement` for every
+    # standard-shaped candidate routed to an opinion's lane, but this
+    # registry never carried it -- a defect the Stages 2-3 design pass
+    # surfaced rather than invented (wiki/designs/agentm-experience-and-
+    # dreaming.md, locked call 3). One kind covers both a lane entry and
+    # the composed served file; `status:` distinguishes proposed/promoted/
+    # parked/superseded, so a second kind buys nothing a status value
+    # doesn't already.
+    "opinion-supplement",
 })
 
 # Universal frontmatter fields save.py requires on every entry, per

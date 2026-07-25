@@ -165,6 +165,115 @@ class ContradictionAdvisoryOnlyTests(_DreamTestBase):
         self.assertEqual(contra, [])
 
 
+class OpinionsDirExclusionTests(_DreamTestBase):
+    """Accumulate loop, Stages 2-3, locked call 6 (second half): `_opinions/`
+    joins `_EXCLUDE_DIRS`. Before this fix the directory sat in the general
+    corpus, so a served supplement or a lane entry could be merged, shelved,
+    or link-annotated by the wrong stage — changing text the agent reads as
+    its own standards."""
+
+    def test_iter_entries_skips_opinions_dir(self) -> None:
+        (self.vault / "personal" / "_opinions" / "done").mkdir(parents=True)
+        self._write("personal/_opinions/done/lesson.md", "---\nkind: opinion-supplement\n---\nAlways X.\n")
+        self._write("personal/_opinions/done.md", "---\nkind: opinion-supplement\n---\nServed.\n")
+        self._write("ordinary.md", "---\nkind: workflow\n---\nUnrelated content.\n")
+        entries = dream._iter_entries(self.vault)
+        rels = {p.relative_to(self.vault) for p in entries}
+        self.assertEqual(rels, {Path("ordinary.md")})
+
+    def test_run_dream_never_proposes_a_general_stage_merge_inside_the_opinions_lane(self) -> None:
+        (self.vault / "personal" / "_opinions" / "done").mkdir(parents=True)
+        # A near-verbatim pair that would trip dedup's own 0.92 threshold if
+        # the general corpus still walked this directory. The dedicated
+        # opinion_promote stage (Stages 2-3) is EXPECTED to process this
+        # lane on its own similarity threshold — what must never happen is
+        # a GENERAL-corpus stage (dedup/tidying/link_improvement/lint/
+        # suffix_backlog_drain/compression/contradiction_triage) reaching
+        # in here, since general dedup's own merge shape would concatenate
+        # bodies and write **Related:** lines a served supplement was never
+        # meant to carry.
+        self._write("personal/_opinions/done/a.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first.\n")
+        self._write("personal/_opinions/done/b.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first!\n")
+        digest = dream.run_dream(self.vault, run_id="run-opinions-exclusion")
+        general_stages = {
+            "dedup", "contradiction_triage", "compression", "tidying",
+            "link_improvement", "suffix_backlog_drain", "lint",
+        }
+        offenders = [p for p in digest.proposals if p.stage in general_stages]
+        self.assertEqual(offenders, [], "no general-corpus stage may touch _opinions/ content")
+
+
+class OpinionSupplementStageTests(_DreamTestBase):
+    """Accumulate loop, Stages 2-3 — `_stage_opinion_supplement()` joining
+    `run_dream()`'s own hand-wired sequence (locked calls 4, 5, 7, 9)."""
+
+    def _write_lane_pair(self, opinion="good"):
+        lane = self.vault / "personal" / "_opinions" / opinion
+        lane.mkdir(parents=True)
+        for slug, session, created in (("a1", "proj/s1", "2026-01-01T00:00:00+00:00"),
+                                        ("a2", "proj/s2", "2026-01-02T00:00:00+00:00")):
+            self._write(
+                f"personal/_opinions/{opinion}/{slug}.md",
+                "---\nkind: opinion-supplement\nstatus: proposed\n"
+                f"created: {created}\nslug: {slug}\nopinion: {opinion}\n"
+                f"sessions: [{session}]\n---\n\n"
+                "## Always run the linter before committing\n\n"
+                "Run the linter first, always.\n",
+            )
+        return lane
+
+    def test_two_session_lane_stages_an_opinion_promote_proposal(self) -> None:
+        self._write_lane_pair()
+        digest = dream.run_dream(self.vault, run_id="run-opinion-stage")
+        op_proposals = [p for p in digest.proposals if p.stage == "opinion_promote"]
+        self.assertEqual(len(op_proposals), 1)
+
+    def test_run_dream_never_applies_the_opinion_promote_proposal(self) -> None:
+        self._write_lane_pair()
+        dream.run_dream(self.vault, run_id="run-opinion-propose-only")
+        served = self.vault / "personal" / "_opinions" / "good.md"
+        self.assertFalse(served.exists(), "run_dream must be propose-only")
+
+    def test_opinion_promote_is_confirm_gated_not_auto_applied(self) -> None:
+        import dream_confirm
+        self.assertNotIn("opinion_promote", dream_confirm.AUTO_APPLY_STAGES)
+        self._write_lane_pair()
+        digest, batch = dream.run_dream_and_auto_apply(
+            self.vault, run_id="run-opinion-auto-apply",
+            log_root=self.vault.parent / "revert-log", lock_root=self.vault.parent / "locks",
+        )
+        served = self.vault / "personal" / "_opinions" / "good.md"
+        self.assertFalse(served.exists(), "opinion_promote must never auto-apply")
+        self.assertNotIn("opinion_promote", batch.stages)
+        pending = [p for p in digest.proposals if p.stage == "opinion_promote"]
+        self.assertEqual(len(pending), 1, "the proposal must survive, still pending")
+
+    def test_confirming_the_proposal_serves_the_supplement(self) -> None:
+        import dream_confirm
+        from revert_log import RevertLog
+        self._write_lane_pair()
+        digest = dream.run_dream(self.vault, run_id="run-opinion-confirm")
+        idx = next(i for i, p in enumerate(digest.proposals, start=1) if p.stage == "opinion_promote")
+        rl = RevertLog(self.vault, log_root=self.vault.parent / "revert-log")
+        dream_confirm.confirm(self.vault, digest.run_id, idx, rl)
+        served = self.vault / "personal" / "_opinions" / "good.md"
+        self.assertTrue(served.is_file())
+        self.assertIn("Run the linter first, always.", served.read_text(encoding="utf-8"))
+
+    def test_meta_pointer_files_written_every_cycle(self) -> None:
+        self._write_lane_pair()
+        dream.run_dream(self.vault, run_id="run-opinion-meta")
+        self.assertTrue((self.vault / "_meta" / "opinion-base-proposals.json").is_file())
+        self.assertTrue((self.vault / "_meta" / "opinion-supplement-health-latest.json").is_file())
+
+    def test_no_opinions_dir_at_all_proposes_nothing_and_still_writes_pointers(self) -> None:
+        # A vault where Stage 1 has never mined a single standard yet.
+        self._write("ordinary.md", "---\nkind: workflow\n---\nUnrelated.\n")
+        digest = dream.run_dream(self.vault, run_id="run-no-opinions")
+        self.assertEqual([p for p in digest.proposals if p.stage == "opinion_promote"], [])
+        self.assertTrue((self.vault / "_meta" / "opinion-base-proposals.json").is_file())
+
+
 class EmptyRunTests(_DreamTestBase):
     def test_no_dispositions_writes_no_insight_and_digest_says_none(self) -> None:
         self._write("solo.md", "---\nkind: workflow\n---\nNothing to dedup, no slug, no chain.\n")
