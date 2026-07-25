@@ -5,6 +5,27 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.0.5] — 2026-07-24 — Patch: engine tidy-up
+
+**PATCH.** Loose Ends Release 5, first of two. A batch of small engine tails — and re-checking each one against live code before building it changed what this release is. Two of the five items turned out to rest on wrong premises, so this ships two fixes, closes a long-parked cleanup, and corrects the backlog on the rest.
+
+Every `kind:` value in the memory vault is now canonical. A full audit over 3,069 files found 30 that weren't: 15 had descriptive prose sitting inside the field (`handoff-artifact (verdict memo)`), and 15 were well-formed but unregistered. That's the close of a cleanup parked since the registry first shipped.
+
+The eval fix is smaller but the same shape of problem. `eval_v6_graph.py` printed its own "fixture has drifted, these numbers aren't trustworthy" error and then exited success. A recall figure below the pass bar is a real measurement that reports through the run record; a missing fixture file means there's no trustworthy measurement at all. Those now exit differently.
+
+### Fixed
+
+- **`eval_v6_graph.py` exited success on a drifted fixture** ([#364](https://github.com/alexherrero/agentm/pull/364)) — it now exits non-zero. The existing test called `main()` and discarded the return value, so it passed against the bug; it now pins the exit code in both directions.
+
+### Changed
+
+- **Every vault `kind:` value is canonical** ([#364](https://github.com/alexherrero/agentm/pull/364), closes [#273](https://github.com/alexherrero/agentm/issues/273)) — 30 non-canonical values across 3,069 files taken to zero. `arc-index`, `dir-index` and `pilot-index` join the registry's existing `*-index` family; `capture` joins it too, because the capture pipeline writes it by default and remapping the one live instance would be undone by the next capture.
+- **The organic-connectivity figure is current** — the design read "starts at 13.8%" while the meter it shipped has reported 30.0% (177 of 590 notes) since 2026-07-23.
+
+### Internal
+
+- **The vault-path config-resolution dedup is dropped from the backlog** — the repo's own one-way-import and vendored-parity gates require the copies that item proposed removing. Recorded with the evidence so it isn't picked up again.
+
 ## [v9.0.4] — 2026-07-24 — Patch: a smooth first run for newcomers
 
 **PATCH.** Loose Ends Release 4. Adds the onboarding page a newcomer needs before their first background dispatch, and — found while shipping it — fixes a real locking bug that could hand any caller a permission error that was never real.

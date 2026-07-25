@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.0.4](https://github.com/alexherrero/agentm/releases/tag/v9.0.4).** A new tutorial walks you through your first background dispatch, including the one-time `claude auth login` a fresh machine needs — plus a fix for a locking bug that could report a permission error that never happened.
+> **Latest release: [v9.0.5](https://github.com/alexherrero/agentm/releases/tag/v9.0.5).** Every `kind:` value in your memory vault is now canonical — a long-parked cleanup, closed — and a health check that used to report failure and then exit success now exits non-zero.
