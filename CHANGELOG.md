@@ -5,6 +5,16 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.3.1] — 2026-07-26 — Patch: the last mirror catches up to _opinions/
+
+**PATCH.** v9.3.0's own as-built note tracked one out-of-scope gap: `dream.py` excluded `_opinions/` from its general dreaming stages ([v9.3.0](https://github.com/alexherrero/agentm/releases/tag/v9.3.0), locked call 6), but `vault_lint.py` and `frontmatter_validator.py` — both of which claim to mirror `dream.py`'s exclusion set — had gone one-way and kept walking it. A served supplement is text the agent reads as its own standards, so no lint stage may touch it, and a lane entry's bespoke frontmatter shape (a bare `created:` timestamp, no `updated:`/`tags:`/`group:`) would have flooded both walkers with false findings the moment real content lands there.
+
+Both walkers now exclude `_opinions/`. `frontmatter_validator.py`'s exclusion set also absorbs its inline `_archive` special-case, so its "mirrors `vault_lint` exactly" claim is true again. Rather than share one imported constant — `dream.py` deliberately keeps lint out of its module import graph, and the scripts directory's standalone-copy convention is explicit elsewhere (`moc_generator.py`) — the mirror relationship is now pinned by parity tests, so a directory added to one exclusion list can't silently go missing from the others.
+
+### Fixed
+
+- **`vault_lint.py` + `frontmatter_validator.py` exclude `_opinions/`** ([#382](https://github.com/alexherrero/agentm/pull/382)) — closes the gap v9.3.0's own build tracked rather than fixed. Exclusion coverage extended in both walkers' test suites; a new parity test in `test_vault_lint.py` pins the three-way mirror so it can't drift silently again.
+
 ## [v9.3.0] — 2026-07-25 — Minor: standards that learn from you, part 2 — recurrence, contradiction, composition
 
 **MINOR.** Loose Ends Release 6, continued. [v9.1.0](https://github.com/alexherrero/agentm/releases/tag/v9.1.0) (part 1) shipped the classifier: a lesson that reads as a rule about how work should be judged or done routes to an opinion supplement lane instead of general memory, and deliberately stopped there — the landed spec for what happens next was a design amendment, not something buildable, with a signal→opinion map keyed on sources that emit nothing machine-readable. This release closes that gap and ships the rest of the loop.
