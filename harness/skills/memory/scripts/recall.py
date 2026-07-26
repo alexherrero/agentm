@@ -229,9 +229,9 @@ def _resolve_token_budget(arg_value: int | None) -> int:
 
 def _apply_token_budget(
     blocks: list[str],
-    slugs: list[str],
+    slugs: list,
     token_budget: int,
-) -> tuple[list[str], list[str], int]:
+) -> tuple[list[str], list, int]:
     """Fit blocks into the token budget (highest-salience/priority first).
 
     Walks blocks in order (caller must pass them pre-ordered, highest
@@ -240,6 +240,12 @@ def _apply_token_budget(
     a large one overflows, rather than the entire tail being dropped at the
     first entry that doesn't fit. Returns (kept_blocks, kept_slugs,
     omitted_count); output order matches the input order (not a repack).
+
+    `slugs` is measured only by its length matching `blocks` — each element
+    rides along with its block and is never itself inspected — so a caller
+    may pack a richer per-block payload in here (recall-trace, Loose Ends
+    Release 8: `prompt_submit` packs `(slug, hit_dict)` pairs) rather than
+    bare slug strings, with no change to which blocks are kept.
 
     If token_budget <= 0, returns all blocks unchanged (0 = unlimited).
     """
@@ -1423,6 +1429,7 @@ def prompt_submit(
     # Results are already salience-ordered (combined-score desc) from query().
     raw_blocks: list[str] = []
     raw_slugs: list[str] = []
+    raw_hits: list[dict] = []
     # Part G (#46): lazy-import heat_policy for on-demand hit recording.
     # Best-effort — missing heat_policy never blocks the recall pipeline.
     try:
@@ -1433,7 +1440,12 @@ def prompt_submit(
         from lifecycle import record_recall_access as _record_lifecycle_access  # type: ignore
     except ImportError:
         _record_lifecycle_access = None
-    for result in results:
+    # recall-trace (Loose Ends Release 8): rank is this hit's 1-indexed
+    # position in the full `results` list -- enumerated over `results`
+    # itself, before the loop's own unreadable-file `continue` can skip an
+    # entry. Computing rank from a loop-local counter instead would
+    # silently renumber every hit after a skip.
+    for rank, result in enumerate(results, start=1):
         md_path = vault / result["path"]
         try:
             content = md_path.read_text(encoding="utf-8")
@@ -1442,6 +1454,7 @@ def prompt_submit(
         fm, body = _parse_frontmatter(content)
         raw_blocks.append(_format_recall_result(result, body, fm))
         raw_slugs.append(result["slug"])
+        raw_hits.append({**result, "rank": rank})
         # Record the on-demand hit for heat tracking (best-effort).
         if _record_recall_hit is not None:
             _record_recall_hit(vault, result["slug"])
@@ -1453,18 +1466,29 @@ def prompt_submit(
             _record_lifecycle_access(vault, result["slug"], fm, result["path"])
 
     # Apply token budget: results are highest-salience first → truncation
-    # drops the least-relevant tail entries, never the top hits.
-    blocks, loaded_slugs, token_budget_omitted = _apply_token_budget(
-        raw_blocks, raw_slugs, token_budget
+    # drops the least-relevant tail entries, never the top hits. Each
+    # slug's evidence rides through packed as (slug, hit) pairs rather than
+    # being recovered afterward by filtering `results` against the kept
+    # slug list -- slugs are not unique in a real vault (duplicate
+    # basenames, including the altitude-boosted `_index`/`_summary`
+    # anchors), so a post-hoc membership filter can attach the wrong
+    # entry's evidence to a kept slug. _apply_token_budget only ever
+    # measures `blocks`, so packing this payload cannot change which
+    # blocks survive (recall-trace, Loose Ends Release 8).
+    blocks, kept_pairs, token_budget_omitted = _apply_token_budget(
+        raw_blocks, list(zip(raw_slugs, raw_hits)), token_budget
     )
+    loaded_slugs = [slug for slug, _hit in kept_pairs]
+    kept_hits = [hit for _slug, hit in kept_pairs]
 
     # L1 (ledger ruling 6): one per-recall counter event, query hashed (never
     # raw text) + the slugs actually surfaced after truncation. Best-effort,
     # this function's sole call site — same discipline as the heat/lifecycle
-    # recordings above.
+    # recordings above. `hits` (Loose Ends Release 8) carries the same
+    # evidence alongside, for the `memory-recall trace` reader.
     try:
         from recall_counter import record_recall as _record_recall_event  # type: ignore
-        _record_recall_event(prompt, loaded_slugs)
+        _record_recall_event(prompt, loaded_slugs, hits=kept_hits)
     except ImportError:
         pass
 
