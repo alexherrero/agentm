@@ -18,10 +18,15 @@ So these tests deliberately do NOT re-derive the formula. They pin it against
 hand-written literals and assert both hooks agree — the two failure modes a
 mirror cannot catch.
 
+Skipped on non-POSIX (the slug expressions are bash, and `tr` is a POSIX tool) —
+the same skip the sibling hook suites take. CI runs these on the Linux and macOS
+matrices.
+
 Run: python3 scripts/test_transcript_slug.py
 """
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import unittest
@@ -82,10 +87,17 @@ def _run_slug(script: Path, cwd_value: str, var: str) -> str:
         ["bash", "-c", script_body], capture_output=True, text=True, timeout=30
     )
     if out.returncode != 0:
-        raise AssertionError(f"{script.name}: slug expression failed: {out.stderr}")
+        # Include the exit code: the stderr is often empty (a missing `bash` or
+        # `tr` exits non-zero silently), and "failed: " with nothing after it
+        # tells the next reader nothing.
+        raise AssertionError(
+            f"{script.name}: slug expression exited {out.returncode} "
+            f"for cwd={cwd_value!r}; stderr={out.stderr.strip()!r}"
+        )
     return out.stdout
 
 
+@unittest.skipIf(os.name == "nt", "bash hook expressions — POSIX only")
 class TestTranscriptSlug(unittest.TestCase):
     def test_stop_hook_matches_known_good_slugs(self) -> None:
         """The regression test: the old '-' + tr '/'→'-' turns '/a/b' into '--a-b',
