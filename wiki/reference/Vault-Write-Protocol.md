@@ -10,7 +10,7 @@ The memory engine writes a Drive-synced vault safely when two or more agent sess
 | Lock mechanism | `mkdir`/`O_EXCL` dir + mtime heartbeat (no PID) | `fcntl` is undefined over synced FS; no PID survives a crash/another machine (R4 rule 3) |
 | Heartbeat / stale / timeout | touch every 5 s · stale at 10 s · acquire-timeout ≈10 s | short/rare writes block briefly; stale-takeover recovers a crashed writer (DC-6) |
 | CAS currency | **content hash (sha256)**, not mtime | Drive re-downloads rewrite mtimes (R4 rule 4) |
-| Atomic write | bytes → `<path>.tmp` (same dir) → `fsync` → `os.replace` | the sync layer never sees a torn file; bytes-mode keeps LF byte-exact |
+| Atomic write | bytes → `<path>.<pid>.<uuid4>.tmp` (same dir) → `fsync` → `os.replace` | the sync layer never sees a torn file; bytes-mode keeps LF byte-exact; the temp name is unique per writer so concurrent writers of one target never rename the same name |
 | Durability barrier | plain `fsync`, **not** `F_FULLFSYNC` | the cloud copy is the backstop; we need each snapshot *internally consistent*, not crash-durable (DC-5) |
 | Scope | one machine, N≥2 writers | cross-device exclusion is impossible on Drive — locks are local-only by design |
 

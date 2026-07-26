@@ -335,7 +335,8 @@ def save_entry(
     # the identical V5-0 primitives (temp(same dir)→fsync→rename, bytes-mode)
     # as before — same bytes on disk, routed through a seam verb instead of
     # calling the primitive directly. The mutex gives torn-write safety when
-    # two writers race the same target's <name>.tmp path. This is a per-slug
+    # two writers race the same target (each writer's temp file carries its
+    # own pid+uuid name, so the rename itself no longer races). This is a per-slug
     # CREATE (the FileExistsError guard above forbids overwrite), so
     # mutex-only — no CAS (DC-2: per-slug entry files are partitioned by
     # ownership).
