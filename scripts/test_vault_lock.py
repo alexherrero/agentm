@@ -140,6 +140,59 @@ class AtomicWriteFailurePathTests(unittest.TestCase):
         )
 
 
+class ReplaceRetryTests(unittest.TestCase):
+    """`_replace` retries the Windows rename-contention PermissionError but
+    must not swallow a real one. Driven with an injected `os.replace` so the
+    behavior is checked on every OS, not only the one that produces it."""
+
+    def setUp(self) -> None:
+        self.dir = Path(tempfile.mkdtemp(prefix="vault-lock-retry-"))
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def test_transient_permission_error_is_retried(self) -> None:
+        target = self.dir / "contended.md"
+        real_replace = os.replace
+        attempts = []
+
+        def flaky_replace(src: object, dst: object) -> None:
+            attempts.append(1)
+            if len(attempts) <= 3:
+                raise PermissionError(13, "Access is denied")
+            return real_replace(src, dst)  # type: ignore[arg-type]
+
+        with mock.patch.object(vl.os, "replace", flaky_replace):
+            vl.atomic_write(target, "landed\n")
+
+        self.assertEqual(len(attempts), 4)
+        self.assertEqual(target.read_text(encoding="utf-8"), "landed\n")
+        self.assertEqual(list(self.dir.rglob("*.tmp")), [])
+
+    def test_persistent_permission_error_surfaces_after_the_deadline(self) -> None:
+        # A read-only target or an ACL denial never clears, so the caller must
+        # still see the real error rather than an unbounded retry loop.
+        target = self.dir / "denied.md"
+        boom = PermissionError(13, "Access is denied")
+        with mock.patch.object(vl, "_REPLACE_RETRY_TIMEOUT", 0.05):
+            with mock.patch.object(vl.os, "replace", side_effect=boom):
+                with self.assertRaises(PermissionError) as caught:
+                    vl.atomic_write(target, "never lands")
+        self.assertIs(caught.exception, boom)
+        self.assertEqual(list(self.dir.rglob("*.tmp")), [])
+
+    def test_non_permission_errors_are_not_retried(self) -> None:
+        target = self.dir / "other.md"
+        attempts = []
+
+        def failing_replace(src: object, dst: object) -> None:
+            attempts.append(1)
+            raise OSError("boom")
+
+        with mock.patch.object(vl.os, "replace", failing_replace):
+            with self.assertRaises(OSError):
+                vl.atomic_write(target, "data")
+        self.assertEqual(len(attempts), 1)
+
+
 class AtomicWriteConcurrencyTests(unittest.TestCase):
     """N writers aimed at ONE path, deterministically interleaved.
 
@@ -163,22 +216,53 @@ class AtomicWriteConcurrencyTests(unittest.TestCase):
     def _payloads(self) -> set[str]:
         return {f"payload-{i}\n" for i in range(self.WRITERS)}
 
-    def _run_gated_writers(self) -> tuple[list[BaseException], list[str]]:
+    @staticmethod
+    def _windows_style_replace():
+        """An `os.replace` that fails the loser of a destination collision the
+        way `MoveFileEx` does, so Windows' rename semantics are exercised on
+        every platform rather than only on the Windows runner.
+
+        POSIX `rename` serializes concurrent renames onto one destination;
+        Windows needs a delete handle on the destination and fails the loser
+        with `PermissionError` (WinError 5). Emulating it here is what makes
+        that failure reproducible locally — the real thing was only visible
+        after a CI round-trip."""
+        real_replace = os.replace
+        in_flight = threading.Lock()
+
+        def windows_replace(src: object, dst: object) -> None:
+            if not in_flight.acquire(blocking=False):
+                raise PermissionError(13, "Access is denied")
+            try:
+                return real_replace(src, dst)  # type: ignore[arg-type]
+            finally:
+                in_flight.release()
+
+        return windows_replace
+
+    def _run_gated_writers(self, replace_impl=None) -> tuple[list[BaseException], list[str]]:
         """Fire WRITERS threads at one target, each with its own payload, and
         release them all into `os.replace` together. Returns the exceptions
         they raised and the temp paths they tried to rename."""
         barrier = threading.Barrier(self.WRITERS)
-        real_replace = os.replace
+        real_replace = replace_impl or os.replace
         sources: list[str] = []
         errors: list[BaseException] = []
         bookkeeping = threading.Lock()
+        gate = threading.local()
 
         def gated_replace(src: object, dst: object) -> None:
-            with bookkeeping:
-                sources.append(str(src))
-            # Every writer's temp file now exists; hold them here so the
-            # renames contend rather than happening to serialize.
-            barrier.wait(timeout=30)
+            # Gate each thread's FIRST rename attempt only. `_replace` retries
+            # Windows contention, and a barrier is single-use per generation —
+            # re-entering it on a retry would hang waiting for 8 parties that
+            # already went through.
+            if not getattr(gate, "passed", False):
+                gate.passed = True
+                with bookkeeping:
+                    sources.append(str(src))
+                # Every writer's temp file now exists; hold them here so the
+                # renames contend rather than happening to serialize.
+                barrier.wait(timeout=30)
             return real_replace(src, dst)  # type: ignore[arg-type]
 
         def write(i: int) -> None:
@@ -221,6 +305,16 @@ class AtomicWriteConcurrencyTests(unittest.TestCase):
         self._run_gated_writers()
         self.assertEqual(list(self.dir.rglob("*.tmp")), [])
         self.assertEqual(list(self.dir.iterdir()), [self.target])
+
+    def test_concurrent_writers_survive_windows_rename_contention(self) -> None:
+        # The unique temp name fixes the rename's source; this covers the
+        # destination, which Windows fails rather than serializes. Ran green on
+        # Mac and Linux and failed 6-of-8 writers on the Windows runner before
+        # `_replace` bounded-retried it.
+        errors, _ = self._run_gated_writers(self._windows_style_replace())
+        self.assertEqual(errors, [], f"concurrent atomic_write raised: {errors!r}")
+        self.assertIn(self.target.read_text(encoding="utf-8"), self._payloads())
+        self.assertEqual(list(self.dir.rglob("*.tmp")), [])
 
 
 class ContentHashTests(unittest.TestCase):

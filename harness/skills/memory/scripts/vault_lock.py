@@ -100,6 +100,44 @@ class ConcurrentModificationError(RuntimeError):
 # Canonical atomic writer + hash
 # -----------------------------------------------------------------------------
 
+# How long `_replace` retries a Windows rename-contention PermissionError
+# before giving up and re-raising. Contention clears in milliseconds; this
+# only needs to outlast a burst of concurrent writers, not a wedged file.
+_REPLACE_RETRY_TIMEOUT = 2.0
+
+
+def _replace(tmp: Path, path: Path) -> None:
+    """`os.replace(tmp, path)`, retrying a Windows contention PermissionError.
+
+    On Windows `os.replace` is `MoveFileEx`, which needs a delete handle on the
+    destination. Two renames landing on one destination at the same moment
+    don't serialize there — the loser fails with `PermissionError` (WinError 5,
+    "Access is denied"). POSIX `rename` has no such window.
+
+    This is the same Windows race `_acquire` already documents for `os.mkdir`,
+    and it is bounded the same way and for the same reason: contention clears
+    in milliseconds, while a genuine permission problem — a read-only target,
+    an ACL denial, a file another process holds open — never does. So retry
+    until the deadline, then re-raise the original error, which surfaces with
+    its own accurate message rather than as a spurious success or a made-up
+    error type.
+
+    Found by CI, not reasoned about in advance: the 8-writer contention test
+    below passed on Mac and Linux and failed 6-of-8 writers on Windows.
+    """
+    deadline = time.monotonic() + _REPLACE_RETRY_TIMEOUT
+    backoff = 0.001
+    while True:
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(min(backoff, max(0.0, deadline - time.monotonic())))
+            backoff = min(backoff * 2, 0.05)
+
+
 def atomic_write(path: Path | str, content: str | bytes, *, fsync: bool = True) -> Path:
     """Atomically write `content` to `path` via temp→fsync→rename (R4 rule 2).
 
@@ -122,6 +160,10 @@ def atomic_write(path: Path | str, content: str | bytes, *, fsync: bool = True) 
     `mkstemp` forces 0o600, and `os.replace` carries the temp file's mode onto
     the target, which would silently tighten every vault file it rewrote.
 
+    A unique temp name fixes the rename's *source*; `_replace` handles the
+    contention Windows still has on its *destination*. Both are needed for N
+    concurrent writers of one target to all come back clean.
+
     `fsync` uses plain `os.fsync`, never `F_FULLFSYNC` (DC-5).
     """
     path = Path(path)
@@ -135,7 +177,7 @@ def atomic_write(path: Path | str, content: str | bytes, *, fsync: bool = True) 
             f.flush()
             if fsync:
                 os.fsync(f.fileno())
-        os.replace(tmp, path)
+        _replace(tmp, path)
     except BaseException:
         # A unique temp name is only half the contract — the other half is
         # that a failed write leaves no `.tmp` remnant behind for a vault
