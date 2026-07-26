@@ -22,6 +22,7 @@ children:
   - agentm-runner.md
   - agentm-goal-contract.md
   - agentm-memory-index.md
+  - agentm-recall-trace.md
   - agentm-autonomy.md
 ---
 
@@ -174,6 +175,7 @@ The component-level sources now live in each pillar's child design (linked above
 - [Runner](agentm-runner.md) — the standalone background-job executor: rides the hosts' built-in scheduled tasks, routes writes by ownership tier, reports to the digest
 - [Goal contract](agentm-goal-contract.md) — the contract a persona rides the host's autonomous run under: done-determination, anti-gaming, the convergence bound, the four exits
 - [Memory index](agentm-memory-index.md) — the V6-11 SQLite metadata table for hybrid SQL+vector recall, plus the build-from-source (cold-start) path
+- [Recall trace](agentm-recall-trace.md) — why a memory surfaced: the score breakdown behind each recall hit, kept in the ledger after the session ends
 - [Autonomy — observability ledger and console](agentm-autonomy.md) — the Autonomy arc's telemetry substrate: a device-local spend ledger, a deterministic console, and a digest ladder; evolved from the budget-governor draft after enforcement was dropped in favor of the subscription window's own rate limit
 
 **Anchors**
@@ -191,6 +193,8 @@ The component-level sources now live in each pillar's child design (linked above
 - **V8 — Collective memory, multi-agent concurrency (speculative tail):** a multi-agent dispatcher over one shared vault (queue/lease coordination, briefing/unblock flows, worktree-per-claim).
 
 ## Amendment log
+
+**2026-07-25 — Recall trace seeds a new small child (Loose Ends Release 8 of 8).** Added **[Recall trace](agentm-recall-trace.md)** to `children:` and the References child block — widens the existing per-recall JSONL ledger (`recall_counter.py`) with the score breakdown behind each surfaced hit (`sim`/`keyword`/`combined`/rank/lifecycle tier) and ships its first reader, `memory-recall trace <slug>`, so a bad recall stays auditable after the session that produced it ends. The child's own frontmatter sets `governs: []` and names [Memory System](agentm-memory-system.md) as the file-governing design instead (`recall.py`/`recall_counter.py` are already stamped there) — this addition is the structural parent-pointer only, not a governance change.
 
 **2026-07-07 — Autonomy arc seeds a new cross-cutting child (AA2).** Added **[Autonomy — observability ledger and console](agentm-autonomy.md)** to `children:` and the References child block — a device-local telemetry ledger + deterministic console for the Autonomy arc, evolved from the arc's front-loaded budget-governor draft after operator review dropped its enforcement machinery in favor of the subscription plan's own window rate limit. Why not a fifth pillar: same reasoning as model+effort routing — it is cross-cutting infrastructure (a `run-start` event field, a runner job, a console page), not a stance the person holds.
 
