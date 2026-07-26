@@ -71,8 +71,20 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         return env
 
     def _transcript_path(self, sid: str, cwd: Path) -> Path:
-        # Mirror the hook's formula: $HOME/.claude/projects/-<cwd-with-slashes-as-dashes>/<sid>.jsonl
-        slug = "-" + str(cwd).replace("/", "-")
+        # $HOME/.claude/projects/<cwd-slug>/<sid>.jsonl, where the slug replaces
+        # both '/' and '.' with '-' and takes NO extra leading '-' (an absolute
+        # path's own leading '/' supplies it).
+        #
+        # This used to read `"-" + str(cwd).replace("/", "-")` under a comment
+        # saying "mirror the hook's formula" — and mirroring is precisely why it
+        # never caught anything: the hook prefixed a second '-', this helper
+        # prefixed the same second '-', so the fixture landed exactly where the
+        # broken lookup searched. Both sides agreed with each other and neither
+        # agreed with Claude Code, so reflection was dead for 57 days with this
+        # test green. scripts/test_transcript_slug.py now pins the formula against
+        # real directory names; this helper states the convention rather than
+        # copying whatever the hook happens to do.
+        slug = str(cwd).replace("/", "-").replace(".", "-")
         return self.fake_home / ".claude" / "projects" / slug / f"{sid}.jsonl"
 
     def _place_transcript(self, sid: str, cwd: Path) -> Path:

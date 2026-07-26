@@ -115,8 +115,15 @@ if [[ -z "$CWD" ]]; then
 fi
 
 # Compute transcript path: ~/.claude/projects/<cwd-slug>/<session_id>.jsonl
-# where <cwd-slug> = CWD with '/' replaced by '-' and a leading '-'.
-CWD_SLUG="-$(printf '%s' "$CWD" | tr '/' '-')"
+# where <cwd-slug> = CWD with '/' and '.' both replaced by '-'.
+#
+# NO extra leading '-': the path is absolute, so `tr` already turns its leading
+# '/' into the leading '-'. Prefixing another one produced '--Users-...', which
+# matches no directory Claude Code ever creates — so every lookup missed, this
+# hook logged "transcript not found (skipping)" on every session, and reflection
+# silently never ran at all. Dots convert too ('/x/.claude/y' -> '-x--claude-y'),
+# which is what makes worktree sessions resolve.
+CWD_SLUG="$(printf '%s' "$CWD" | tr '/.' '--')"
 TRANSCRIPT="$HOME/.claude/projects/${CWD_SLUG}/${SESSION_ID}.jsonl"
 
 if [[ ! -f "$TRANSCRIPT" ]]; then

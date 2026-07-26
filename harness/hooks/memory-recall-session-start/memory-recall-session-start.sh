@@ -39,8 +39,13 @@ if sid:
         if [[ -z "$SESSION_CWD" ]]; then
             SESSION_CWD="$(pwd)"
         fi
-        # Transcript path (same formula as memory-reflect-stop.sh).
-        CWD_SLUG="-$(printf '%s' "$SESSION_CWD" | tr '/' '-')"
+        # Transcript path (same formula as memory-reflect-stop.sh): '/' and '.'
+        # both become '-', with NO extra leading '-' — the path is absolute, so
+        # `tr` already supplies the leading one. The old extra prefix wrote
+        # '--Users-...' into every marker, a path matching no directory Claude
+        # Code creates, so no marker was ever resolvable and the orphan sweeper
+        # skipped all of them forever (200 accumulated before this was found).
+        CWD_SLUG="$(printf '%s' "$SESSION_CWD" | tr '/.' '--')"
         TRANSCRIPT_PATH="$HOME/.claude/projects/${CWD_SLUG}/${SESSION_ID}.jsonl"
         # Ensure .harness/ exists; if not, create it (operator may not have
         # initialized the harness in this project yet — marker is still useful
