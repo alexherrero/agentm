@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.4.0](https://github.com/alexherrero/agentm/releases/tag/v9.4.0).** Crystallization's phase-close trigger ships — `post-work` and `post-release` now stage candidates for later distillation — and session reflection itself gets fixed along the way: a one-character transcript-path bug meant it had never run once in this repo.
+> **Latest release: [v9.4.1](https://github.com/alexherrero/agentm/releases/tag/v9.4.1).** Fixes v9.4.0's crystallization trigger, which shipped unable to fire in any repo with ordinary session history — accumulated dedup markers read as competing live sessions. Staging now runs ahead of reflection and ignores that history.

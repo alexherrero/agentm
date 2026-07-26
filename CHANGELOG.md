@@ -23,6 +23,22 @@ The build caught its own bug before it shipped: a first-draft capture method —
 
 Found in passing, not fixed here: smoke-testing `trace` against this machine's real 1,400+-row ledger surfaced that `test_recall_token_budget.py`'s `prompt_submit()` integration tests don't mock `recall_counter`, so every run has been writing test rows into the real production telemetry file. Flagged as a separate follow-up.
 
+## [v9.4.1] — 2026-07-26 — Patch: the crystallization trigger shipped inert
+
+**PATCH.** v9.4.0's crystallization trigger shipped inert. It could not fire in any repo with ordinary history, and the tests were green because none of their fixtures had any.
+
+Locked call 3 ordered staging after reflect, then compensated for reflect's `.start`→`.reflected` rename by resolving `.reflected` markers too. But those persist for thirty days by design — they are the dedup record, GC'd on their own schedule — so once a repo has two reflected sessions in a month, resolution always sees multiple competing sessions and refuses. This repo carried 111 of them and the trigger reported `ambiguous-session` unconditionally from the moment it released. Nothing corrupted; it simply did nothing, quietly.
+
+Every fixture, unit and end-to-end, carried one or two markers. None modeled a repo with history, and `test_two_live_markers_is_ambiguous` asserted that ambiguity is the correct response to two live sessions — true, and beside the point, since the real question was whether ambiguity would be the *normal* condition. Caught by dry-running the shipped feature against the real vault rather than a scratch directory.
+
+### Fixed
+
+- **Staging runs before reflect and resolves live `.start` markers only** ([`orchestration_phase.py`](harness/skills/memory/scripts/orchestration_phase.py)) — the first task commit stages while the marker still exists; later commits find no `.start` and skip, which is harmless because the candidate is already written and `stage_candidate` is idempotent. Accumulated `.reflected` history is now invisible to resolution. Costs `fire_count`, which stays at 1: the "how much work did this session do" prior is traded for a resolver that does not degrade as a repo ages. Rejected alternatives are recorded in the design — a freshness window (needs a calibration number, still fails on a long session) and threading the real session id through `phase-dispatch` (correct, but a cross-repo change for a case marker resolution now handles).
+
+### Added
+
+- **Two regression tests that model a repo with history**, the thing whose absence let this ship: one at the resolver level (40 `.reflected` markers plus one live `.start`) and one end-to-end in [`verify-phases.sh`](scripts/verify-phases.sh) (11 markers through the real CLI), plus an assertion that the staging-before-reflect ordering actually held. Verified against the real vault too: with 111 `.reflected` and a dead `.start` present, a dry-run resolves the one live session correctly.
+
 ## [v9.4.0] — 2026-07-26 — Minor: crystallization's phase-close trigger, and a 57-day-old reflection defect
 
 **MINOR.** Crystallization's phase-close trigger — parked since 2026-07-07 on the premise that "the close of a completed exploration" named no bounded, detectable event anywhere in this codebase — ships against the events that made that premise expire, and session reflection itself gets fixed along the way.

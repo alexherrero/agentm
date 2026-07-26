@@ -253,36 +253,47 @@ assert_equals "crystallize: single live marker -> staged" \
 assert_exists "crystallize: candidate file written" \
   "$CZ_VAULT/_crystallize-staging/post-work-cz-s1.json"
 
-# The common path this whole trigger exists to hit: reflect renames .start ->
-# .reflected on its own first success, so every LATER task commit in the same
-# session takes reflect's already-handled path. Staging must still resolve via
-# the tolerant .start-or-.reflected glob and refresh the SAME candidate rather
-# than silently stop firing — call 2's whole reason for existing.
-mv "$CZ_PROJ/.harness/session-id-cz-s1.start" "$CZ_PROJ/.harness/session-id-cz-s1.reflected"
-CZ_R2="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
-assert_equals "crystallize: fires on the already-reflected path" \
-  "$(cz_field "$CZ_R2" crystallization.status)" "refreshed"
-assert_equals "crystallize: same session, no second candidate file" \
-  "$(ls "$CZ_VAULT/_crystallize-staging/" | wc -l | tr -d ' ')" "1"
-CZ_CANDIDATE="$(cat "$CZ_VAULT/_crystallize-staging/post-work-cz-s1.json")"
-assert_equals "crystallize: fire_count bumped on refresh" \
-  "$(cz_field "$CZ_CANDIDATE" fire_count)" "2"
+# Staging runs BEFORE reflect, so that first dispatch staged while the .start
+# marker still existed — and reflect then renamed it. Confirm the ordering
+# actually held end-to-end: the marker is now .reflected, and the candidate
+# exists anyway.
+assert_exists "crystallize: reflect renamed the marker after staging ran" \
+  "$CZ_PROJ/.harness/session-id-cz-s1.reflected"
 
-# post-release stages too (call 1 — both events, not post-work alone). Drop
-# cz-s1's marker first so the set stays unambiguous for this scenario.
-rm -f "$CZ_PROJ/.harness/session-id-cz-s1.reflected"
+# Every LATER task commit in the same session finds no .start and skips. That
+# is intended: the candidate is already there from the first commit, and
+# .reflected markers are deliberately NOT resolved — they accumulate for 30
+# days, so counting them made ambiguous-session the permanent steady state and
+# the trigger never fired at all (found by dry-running the shipped trigger
+# against a repo carrying 111 of them).
+CZ_R2="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
+assert_equals "crystallize: later task commits skip (no .start left)" \
+  "$(cz_field "$CZ_R2" crystallization.status)" "no-session"
+assert_equals "crystallize: still exactly one candidate for the session" \
+  "$(ls "$CZ_VAULT/_crystallize-staging/" | wc -l | tr -d ' ')" "1"
+
+# The regression test for the defect that shipped: a realistic repo carries
+# many .reflected markers from past sessions, every one with a live transcript.
+# The one session in progress has a .start. Resolution must find it and ignore
+# all the history.
+for i in 1 2 3 4 5 6 7 8 9 10; do
+  : > "$SCRATCH/cz-past-$i.jsonl"
+  printf 'session_id: cz-past-%s\ntranscript: %s/cz-past-%s.jsonl\n' "$i" "$SCRATCH" "$i" \
+    > "$CZ_PROJ/.harness/session-id-cz-past-$i.reflected"
+done
 CZ_T2="$SCRATCH/cz-transcript-2.jsonl"; : > "$CZ_T2"
 printf 'session_id: cz-s2\nstarted_at: 2026-01-01T00:00:00Z\ntranscript: %s\n' "$CZ_T2" \
-  > "$CZ_PROJ/.harness/session-id-cz-s2.reflected"
+  > "$CZ_PROJ/.harness/session-id-cz-s2.start"
 CZ_R3="$(cz_hm phase-dispatch post-release --project-root "$CZ_PROJ" 2>/dev/null)"
-assert_equals "crystallize: post-release stages too" \
+assert_equals "crystallize: post-release stages too (call 1 — both events)" \
   "$(cz_field "$CZ_R3" crystallization.status)" "staged"
+assert_equals "crystallize: 11 .reflected markers do not block the live session" \
+  "$(cz_field "$CZ_R3" crystallization.session_id)" "cz-s2"
 assert_exists "crystallize: post-release candidate lands under its own name" \
   "$CZ_VAULT/_crystallize-staging/post-release-cz-s2.json"
 
-# A dead marker (transcript gone) beside a live one must not manufacture false
-# ambiguity (call 9's live-transcript filter), proven end-to-end through the
-# real CLI rather than only the Python unit test.
+# A dead .start marker (transcript gone) beside a live one must not manufacture
+# false ambiguity (call 9's live-transcript filter), end-to-end through the CLI.
 printf 'session_id: cz-dead\nstarted_at: 2026-01-01T00:00:00Z\ntranscript: %s/gone.jsonl\n' "$SCRATCH" \
   > "$CZ_PROJ/.harness/session-id-cz-dead.start"
 CZ_R4="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
