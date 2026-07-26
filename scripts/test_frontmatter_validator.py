@@ -129,6 +129,14 @@ class TestValidateVault(unittest.TestCase):
             _write(vault / "personal" / "_meta" / "notes.md", "no frontmatter here\n")
             _write(vault / "personal" / "_inbox" / "capture.md", "no frontmatter here\n")
             _write(vault / "personal" / "_dream-staging" / "proposal.md", "no frontmatter here\n")
+            # Accumulate-loop supplement lanes: bespoke shape (no
+            # updated/tags/group) that must not be held to the universal
+            # contract — mirrors vault_lint.py's own _opinions exclusion.
+            _write(vault / "personal" / "_opinions" / "plain-english" / "lane-entry.md",
+                   "---\nkind: opinion-supplement\nstatus: proposed\n"
+                   "created: 2026-07-25T10:00:00+00:00\nslug: lane-entry\n---\n\nbody\n")
+            _write(vault / "personal" / "_opinions" / "plain-english.md",
+                   "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nServed.\n")
             self.assertEqual(fv.validate_vault(vault), {})
 
     def test_excludes_archive_dir_and_plan_archive_files(self):

@@ -107,6 +107,46 @@ class TestGateAndParse(unittest.TestCase):
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
 
+    def test_opinions_dir_skipped(self):
+        # Accumulate-loop supplement lanes (reflect._save_candidate_to_opinions)
+        # carry the full agent-shaped trio but a bespoke schema — timestamp
+        # `created:`, no updated/tags/group — so without the exclusion every
+        # lane entry floods the lint with false findings. And a served
+        # supplement is text the agent reads as its own standards: no lint
+        # stage may touch it (same rationale as dream.py's exclusion).
+        with _Vault() as v:
+            _write(v, "personal/_opinions/plain-english/lane-entry.md", [
+                "kind: opinion-supplement",
+                "status: proposed",
+                "created: 2026-07-25T10:00:00+00:00",
+                "slug: lane-entry",
+                "opinion: plain-english",
+            ])
+            (v / "personal" / "_opinions" / "plain-english.md").write_text(
+                "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nServed.\n",
+                encoding="utf-8")
+            model, findings = _lint(v)
+            self.assertEqual(len(model.entries), 0)
+            self.assertEqual(findings, [], _ids(findings))
+
+
+class TestExcludeDirsParity(unittest.TestCase):
+    """The three vault walkers keep deliberate standalone copies of the
+    exclude set (same-dir convention — see moc_generator.py's precedent
+    note), so nothing enforces the mirror at runtime. These pins make the
+    drift deterministic to catch: a dir added to one list can't silently go
+    missing from the others (the exact drift that left vault_lint.py walking
+    _opinions/ after dream.py excluded it)."""
+
+    def test_dream_mirrors_vault_lint_plus_own_extras(self):
+        import dream
+        self.assertEqual(dream._EXCLUDE_DIRS,
+                         vl._EXCLUDE_DIRS | {"_dream", ".obsidian"})
+
+    def test_frontmatter_validator_mirrors_vault_lint_exactly(self):
+        import frontmatter_validator
+        self.assertEqual(frontmatter_validator._EXCLUDE_DIRS, vl._EXCLUDE_DIRS)
+
 
 class TestChecks(unittest.TestCase):
     def test_required_field_missing(self):

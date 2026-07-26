@@ -28,11 +28,16 @@ _DEFAULT_SCOPE_DIRS = ("personal", "projects")
 
 # Mirrors vault_lint.py's _EXCLUDE_DIRS exactly (DC-4): these subdirectories
 # carry non-memory-entry content (harness state, dev-loop infra, staging
-# areas) that was never meant to satisfy the universal frontmatter contract.
-# Without this, e.g. projects/<repo>/_harness/PLAN.md or progress.md (plain
-# harness state, no frontmatter at all) floods every check-vault run with
-# false "no frontmatter block found" violations.
-_EXCLUDE_DIRS = frozenset({"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging"})
+# areas, retired entries, opinion-supplement lanes) that was never meant to
+# satisfy the universal frontmatter contract. Without this, e.g.
+# projects/<repo>/_harness/PLAN.md (plain harness state, no frontmatter at
+# all) or a personal/_opinions/ lane entry (bespoke shape — no
+# `updated`/`tags`/`group`) floods every check-vault run with false
+# violations. A deliberate standalone copy, not an import (same-dir
+# convention); test_vault_lint.py's parity test pins it to vault_lint.py's.
+_EXCLUDE_DIRS = frozenset(
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive", "_opinions"}
+)
 
 
 def _parse_frontmatter(text: str) -> dict | None:
@@ -106,7 +111,7 @@ def validate_vault(vault_path: Path | str, *, scope_dirs=_DEFAULT_SCOPE_DIRS) ->
         if not root.is_dir():
             continue
         for md in sorted(root.rglob("*.md")):
-            if any(p == "_archive" or p in _EXCLUDE_DIRS for p in md.parts):
+            if any(p in _EXCLUDE_DIRS for p in md.parts):
                 continue
             if md.name.startswith("PLAN.archive."):
                 continue
