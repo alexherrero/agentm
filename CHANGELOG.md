@@ -5,6 +5,24 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.5.0] — 2026-07-25 — Minor: recall trace — why a memory surfaced
+
+**MINOR.** Loose Ends Release 8 of 8 — the arc's own last conditional rung, correctly not taken when the arc closed at 7/8, picked back up whole in a dedicated session per [wiki/designs/agentm-recall-trace.md](wiki/designs/agentm-recall-trace.md).
+
+A recalled memory's score breakdown used to exist for one prompt turn: printed into the injected block, then discarded. Auditing a bad recall meant re-running the query later and hoping the index, the decay clock, and the vault hadn't moved on since. `recall_counter.py`'s per-recall JSONL ledger (`recall-history.jsonl`) already recorded which slugs surfaced on every prompt — it just had zero production readers, and nothing recorded *why* a hit was there. This release widens that same ledger with the evidence `recall.py`'s `query()` already computes, and adds the first reader for it.
+
+The build caught its own bug before it shipped: a first-draft capture method — recovering a recall's surviving hits by filtering the full result set against the post-truncation slug list — mis-identifies entries whenever two results share a slug, which is common in a real vault (`_index`, `_summary`, and dated notes all repeat as basenames, and `_index`/`_summary` are exactly the altitude-boosted anchors recall ranks higher). The shipped version instead packs `(slug, hit)` pairs through the existing token-budget helper unchanged, so truncation and duplicate slugs can never desync evidence from the entry it actually describes — proven by a test built around that exact scenario.
+
+### Added
+
+- **Per-hit recall evidence** ([`recall_counter.py`](harness/skills/memory/scripts/recall_counter.py)) — `record_recall()` gains an optional `hits` array (sim, keyword, combined, rank, and lifecycle tier/decay score when available), written alongside the existing `hit_slugs`. Omitted by default: a caller not yet passing it writes today's exact row shape, no `hits` key at all.
+- **Duplicate-slug-safe capture** ([`recall.py`](harness/skills/memory/scripts/recall.py)) — `prompt_submit()` now packs the evidence through `_apply_token_budget`'s existing walk instead of recovering it afterward by slug membership; `rank` is read off the full result list before any per-file read skip can renumber it. `_apply_token_budget`'s own logic and arity are untouched.
+- **`memory-recall trace <slug> [-n N]`** ([`recall.py`](harness/skills/memory/scripts/recall.py)) — explains why a memory surfaced: the N most recent recall events for a slug, most-recent-first, with the score breakdown at fixed precision. Degrades honestly on three "nothing to show" cases — no ledger, never recalled, or recalled before this feature existed to record why — each an explicit line, never silence.
+- **Console pointer** ([`console.py`](harness/skills/console/scripts/console.py)) — one documented line in the Memory Activity section pointing at the new reader; no new always-rendered row, since a per-slug trace is a drill-down, not a summary metric.
+- 19 new tests across `test_recall_counter.py`, the new `test_recall_trace.py`, and `test_console.py`. All 129 tests in the eight other recall-adjacent test files reconfirmed green, untouched.
+
+Found in passing, not fixed here: smoke-testing `trace` against this machine's real 1,400+-row ledger surfaced that `test_recall_token_budget.py`'s `prompt_submit()` integration tests don't mock `recall_counter`, so every run has been writing test rows into the real production telemetry file. Flagged as a separate follow-up.
+
 ## [v9.4.0] — 2026-07-26 — Minor: crystallization's phase-close trigger, and a 57-day-old reflection defect
 
 **MINOR.** Crystallization's phase-close trigger — parked since 2026-07-07 on the premise that "the close of a completed exploration" named no bounded, detectable event anywhere in this codebase — ships against the events that made that premise expire, and session reflection itself gets fixed along the way.
