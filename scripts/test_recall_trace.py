@@ -18,6 +18,7 @@ Run: python3 scripts/test_recall_trace.py
 from __future__ import annotations
 
 import io
+import json
 import sys
 import tempfile
 import unittest
@@ -140,6 +141,30 @@ class TestTraceReader(unittest.TestCase):
     def test_no_ledger_file_at_all(self):
         out = self._run("anything")
         self.assertIn("no recall ledger found", out)
+
+    def test_non_object_json_line_does_not_crash_trace(self):
+        """A ledger line can be syntactically valid JSON without being the
+        row shape every write produces (e.g. a bare list). Must degrade,
+        never raise -- caught by adversarial review against the first
+        shipped cut of trace(), which only guarded JSONDecodeError."""
+        self.history_path.write_text("[1, 2, 3]\n", encoding="utf-8")
+        out = self._run("anything")  # must not raise
+        self.assertIn("never recalled", out)
+
+    def test_hits_entry_that_is_not_a_dict_does_not_crash_trace(self):
+        recall_counter.record_recall("q", ["s"], history_path=self.history_path)
+        # Hand-corrupt the row's `hits` to a shape record_recall would never
+        # itself write, to prove the reader survives it regardless.
+        row = json.loads(self.history_path.read_text(encoding="utf-8"))
+        row["hits"] = ["not-a-dict"]
+        self.history_path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        out = self._run("s")  # must not raise
+        self.assertIn("recalled before trace capture landed", out)
+
+    def test_undecodable_bytes_in_ledger_does_not_crash_trace(self):
+        self.history_path.write_bytes(b"\xff\xfe not valid utf-8\n")
+        out = self._run("anything")  # must not raise
+        self.assertIn("unreadable", out)
 
     def test_slug_never_recalled(self):
         recall_counter.record_recall("q", ["some-other-slug"], history_path=self.history_path)

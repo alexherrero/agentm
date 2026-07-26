@@ -21,7 +21,7 @@ The [Architecture](Architecture) page lists those designs that have been impleme
 | [Memory↔Storage Seam](memory-storage-seam)                                      | The contract memory uses to reach storage, so the backend can change without touching the engine     |  Final   |
 | &nbsp;&nbsp;↳ [Vault Storage & Presentation](agentm-vault-storage-presentation) | Where the vault lives and how it syncs to your devices                                               | Proposed |
 | [Memory index](agentm-memory-index)                                             | The metadata table behind fast, hybrid recall                                                        |  Final   |
-| &nbsp;&nbsp;↳ [Recall trace](agentm-recall-trace)                               | Why a memory surfaced — the evidence behind each recall hit, kept after the session ends              |  Draft   |
+| &nbsp;&nbsp;↳ [Recall trace](agentm-recall-trace)                               | Why a memory surfaced — the evidence behind each recall hit, kept after the session ends              |  Final   |
 | [Experience & Dreaming](agentm-experience-and-dreaming)                         | How AgentM learns between sessions — reflection, scheduled learning, dreaming                        |  Final   |
 | [Runner](agentm-runner)                                                         | The background-job executor that runs scheduled work on the host's own scheduler                     |  Final   |
 | [Goal contract](agentm-goal-contract)                                           | The contract for a persona pursuing an objective on an autonomous run                                |  Final   |
