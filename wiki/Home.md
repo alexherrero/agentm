@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.3.1](https://github.com/alexherrero/agentm/releases/tag/v9.3.1).** The last lint walker catches up: `_opinions/` is now excluded everywhere it needs to be, closing a gap the previous release tracked rather than fixed.
+> **Latest release: [v9.4.0](https://github.com/alexherrero/agentm/releases/tag/v9.4.0).** Crystallization's phase-close trigger ships — `post-work` and `post-release` now stage candidates for later distillation — and session reflection itself gets fixed along the way: a one-character transcript-path bug meant it had never run once in this repo.

@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v9.4.0] — 2026-07-26 — Minor: crystallization's phase-close trigger, and a 57-day-old reflection defect
 
 **MINOR.** Crystallization's phase-close trigger — parked since 2026-07-07 on the premise that "the close of a completed exploration" named no bounded, detectable event anywhere in this codebase — ships against the events that made that premise expire, and session reflection itself gets fixed along the way.
 
