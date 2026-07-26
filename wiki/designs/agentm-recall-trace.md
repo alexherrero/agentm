@@ -347,6 +347,12 @@ annotation plus docstring text, zero logic lines. Ranking cannot have
 regressed by construction, independent of the live-vault eval's drift
 issue.
 
+**Update, same day:** the drift's own follow-up (spawned separately, not by
+this design) landed as [PR #391](https://github.com/alexherrero/agentm/pull/391)
+before this release tagged. Re-run post-fix: `merge_gate_passed=True`,
+`accuracy_regressed=False`, `expected_files_missing=0` — the pinned eval now
+confirms this diff clean directly, not only by the code-level argument above.
+
 **2026-07-25** — Initial draft, authored per the Loose Ends ladder's rung 8
 (conditional item, handed to a dedicated session). Grounded against `recall.py`
 / `recall_counter.py` / `vec_index.py` / `console.py` as they exist today, then
