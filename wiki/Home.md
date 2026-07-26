@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.4.1](https://github.com/alexherrero/agentm/releases/tag/v9.4.1).** Fixes v9.4.0's crystallization trigger, which shipped unable to fire in any repo with ordinary session history — accumulated dedup markers read as competing live sessions. Staging now runs ahead of reflection and ignores that history.
+> **Latest release: [v9.5.0](https://github.com/alexherrero/agentm/releases/tag/v9.5.0).** A recalled memory's score breakdown used to exist for one prompt turn, then vanish — `memory-recall trace <slug>` now explains why any past recall surfaced what it did, kept in the existing per-recall ledger.

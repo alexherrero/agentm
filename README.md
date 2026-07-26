@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.3.1](https://github.com/alexherrero/agentm/releases/tag/v9.3.1).** The last lint walker catches up: `_opinions/` is now excluded everywhere it needs to be, closing a gap the previous release tracked rather than fixed.
+> **Latest release: [v9.5.0](https://github.com/alexherrero/agentm/releases/tag/v9.5.0).** A recalled memory's score breakdown used to exist for one prompt turn, then vanish — `memory-recall trace <slug>` now explains why any past recall surfaced what it did, kept in the existing per-recall ledger.
 
 ---
 
