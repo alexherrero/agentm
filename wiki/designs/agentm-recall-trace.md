@@ -309,9 +309,25 @@ against this machine's real 1,400+-row production ledger — which surfaced a
 genuine pre-existing bug, unrelated to this design: `test_recall_token_budget.py`'s
 `prompt_submit()` integration tests don't mock `recall_counter`, so they've
 been writing test rows into the real ledger. Flagged as a separate follow-up,
-not fixed here (out of this design's scope). Full verification (the pinned
-retrieval eval, confirming this capture-only change never touched ranking) is
-this design's own build plan's task 7, run before merge.
+not fixed here (out of this design's scope).
+
+**Eval-gate outcome (task 7).** `bash scripts/check-all.sh` — 34/34 green,
+including the full `unittest discover` sweep (which already exercises
+`scripts/health/test_eval_v6_retrieval.py`'s own fixture-based suite). The
+CLI (`python3 scripts/health/eval_v6_retrieval.py`) run directly against the
+real vault exits 1, but on a cause unrelated to this design: 4 of its
+pinned query set's expected-notes paths have moved or been archived since
+that query set was authored — the intentional fail-loud-on-drift behavior
+v9.2.1 shipped, refusing to report a number it can't trust rather than
+silently under-counting. This diff cannot be the cause (it touches zero
+vault content), and the drift predates it. Flagged separately, not fixed
+here. In its place: `query()` — the function that does every bit of
+scoring, ranking, RRF fusion, and decay/lifecycle weighting — is byte-for-
+byte untouched by this diff (confirmed directly against the base commit,
+not merely asserted); `_apply_token_budget`'s only change is a type
+annotation plus docstring text, zero logic lines. Ranking cannot have
+regressed by construction, independent of the live-vault eval's drift
+issue.
 
 **2026-07-25** — Initial draft, authored per the Loose Ends ladder's rung 8
 (conditional item, handed to a dedicated session). Grounded against `recall.py`
