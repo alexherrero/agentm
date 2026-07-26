@@ -16,6 +16,7 @@
   - [Memory System](agentm-memory-system)
     - [Capture](agentm-capture)
     - [Auto-Organization](agentm-auto-organization)
+    - [Recall trace](agentm-recall-trace)
   - [Memory↔Storage Seam](memory-storage-seam)
     - [Vault Storage & Presentation](agentm-vault-storage-presentation)
   - [Experience & Dreaming](agentm-experience-and-dreaming)
