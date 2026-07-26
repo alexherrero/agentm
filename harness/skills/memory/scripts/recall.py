@@ -1396,9 +1396,18 @@ def trace(
         )
         return 0
 
+    try:
+        raw_lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as e:
+        print(
+            f"[memory-recall trace] ledger at {path} is unreadable ({type(e).__name__}) — nothing to show",
+            file=stdout,
+        )
+        return 0
+
     matches: list[tuple[str, dict | None]] = []
     ever_recalled = False
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in raw_lines:
         line = line.strip()
         if not line:
             continue
@@ -1406,11 +1415,21 @@ def trace(
             row = json.loads(line)
         except json.JSONDecodeError:
             continue
+        # A ledger line can be syntactically valid JSON without being the
+        # object shape every row is written as (e.g. a bare list or scalar).
+        # Skip rather than let `.get` raise -- same degraded-graceful
+        # discipline as the JSONDecodeError guard above, just for a shape
+        # error instead of a syntax one.
+        if not isinstance(row, dict):
+            continue
         if slug not in row.get("hit_slugs", []):
             continue
         ever_recalled = True
         ts = row.get("ts", "?")
-        matched_hits = [h for h in (row.get("hits") or []) if h.get("slug") == slug]
+        matched_hits = [
+            h for h in (row.get("hits") or [])
+            if isinstance(h, dict) and h.get("slug") == slug
+        ]
         if matched_hits:
             matches.extend((ts, h) for h in matched_hits)
         else:
