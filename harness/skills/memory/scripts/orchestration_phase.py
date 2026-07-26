@@ -322,24 +322,32 @@ def _resolve_transcript_for_staging(harness_dir: Path) -> tuple[str | None, str 
     `(session_id, transcript, reason)`; `reason` is `None` on success, else
     `"no-session"` or `"ambiguous-session"`.
 
-    Tolerant of both marker states (call 3): reflect renames `.start` to
-    `.reflected` on success, so by the second task commit there is no
-    `.start` file left to read — `_resolve_session_marker` (above) globs only
-    `.start` and is correct for reflect's own purpose, but would starve
-    staging of a transcript on the common post-first-commit path.
+    **`.start` markers only, deliberately** — and this is why staging runs
+    BEFORE reflect in `_main()` rather than after. Reflect renames a session's
+    `.start` to `.reflected` on its first success, so ordering staging second
+    left it with no `.start` to read; the original fix was to glob `.reflected`
+    too. That was wrong in a way no test caught, because `.reflected` markers
+    legitimately accumulate for 30 days (their GC threshold): two reflected
+    sessions in a month is enough to make every later resolution look like two
+    competing live sessions, so `ambiguous-session` became the permanent steady
+    state and the trigger never fired at all. Found by dry-running the shipped
+    trigger against this repo, which had 111 `.reflected` markers.
+
+    Reordering instead of widening the glob costs only `fire_count`: the first
+    task commit of a session stages while its `.start` still exists, and later
+    commits find none and skip — harmless, since `stage_candidate` is
+    idempotent and the candidate is already there. What it buys is a resolver
+    that ignores accumulated history entirely.
 
     Filters to markers whose transcript still resolves BEFORE counting (call
-    9's live-transcript filter) — this is what makes the exactly-one rule
-    usable at all rather than a pile of dead pointers manufacturing false
-    ambiguity. A session that happens to carry both a `.start` and a
-    `.reflected` marker (should not normally coexist, but is not assumed
-    impossible) counts once, keyed by session id, not twice.
+    9's live-transcript filter), so a pile of dead pointers cannot manufacture
+    false ambiguity either. Genuine ambiguity — two concurrent live sessions in
+    one repo — still refuses rather than guessing.
     """
     if not harness_dir.is_dir():
         return None, None, "no-session"
     try:
         markers = [p for p in harness_dir.glob("session-id-*.start") if p.is_file()]
-        markers += [p for p in harness_dir.glob("session-id-*.reflected") if p.is_file()]
     except OSError:
         return None, None, "no-session"
 
@@ -438,6 +446,19 @@ def _main(argv: list[str]) -> int:
     except ValueError:
         return 0  # no vault → silent, non-blocking
 
+    # Sibling step (call 2) — not nested inside either dispatch, so it still
+    # fires on the paths where reflect early-returns.
+    #
+    # Runs FIRST, and the order is load-bearing: `post_work_reflect` renames the
+    # session's `.start` marker to `.reflected` on success, and staging resolves
+    # from `.start` only (see `_resolve_transcript_for_staging` for why widening
+    # that glob instead made the trigger permanently inert). Staging after
+    # reflect would find no `.start` on the very first task commit — the one
+    # commit that needs to stage.
+    crystallization = stage_crystallization_candidate(
+        vault, Path(args.project_root), args.cmd, dry_run=args.dry_run,
+    )
+
     if args.cmd == "post-work":
         result = post_work_reflect(
             vault, Path(args.project_root),
@@ -448,11 +469,9 @@ def _main(argv: list[str]) -> int:
     else:  # pragma: no cover
         return 2
 
-    # Sibling step (call 2) — not nested in either dispatch above, and merged
-    # under a new key so their existing top-level "status" values are untouched.
-    result["crystallization"] = stage_crystallization_candidate(
-        vault, Path(args.project_root), args.cmd, dry_run=args.dry_run,
-    )
+    # Merged under a new key so the dispatches' existing top-level "status"
+    # values stay untouched.
+    result["crystallization"] = crystallization
 
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0

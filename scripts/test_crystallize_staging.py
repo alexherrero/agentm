@@ -227,16 +227,36 @@ class TestResolveTranscriptForStaging(unittest.TestCase):
         self.assertEqual(sid, "sid-1")
         self.assertEqual(transcript, str(t))
 
-    def test_single_reflected_marker_with_live_transcript(self) -> None:
-        # The bug call 2 exists to prevent: reflect renames .start -> .reflected
-        # on its first success, so this is the common state from the second
-        # task commit onward. The plain _resolve_session_marker (globs .start
-        # only) would return no-session here; the tolerant resolver must not.
+    def test_reflected_markers_are_ignored_entirely(self) -> None:
+        """`.reflected` markers must not resolve, and must not count toward
+        ambiguity. They accumulate for 30 days by design (their GC threshold),
+        so an earlier version of this resolver that globbed them alongside
+        `.start` made `ambiguous-session` the permanent steady state after just
+        two reflected sessions — the trigger never fired at all. Staging runs
+        before reflect instead, so a live session's `.start` is still there."""
         t = self._live_transcript("t.jsonl")
         _write_marker(self.root, "sid-1", str(t), suffix=".reflected")
         sid, transcript, reason = op._resolve_transcript_for_staging(self.harness_dir)
-        self.assertIsNone(reason)
-        self.assertEqual(sid, "sid-1")
+        self.assertEqual(reason, "no-session")
+
+    def test_accumulated_reflected_history_does_not_block_a_live_session(self) -> None:
+        """The regression test for the defect that shipped: a realistic repo
+        carries many `.reflected` markers from past sessions, all with live
+        transcripts. Exactly one of them is the session in progress, and it has
+        a `.start`. Resolution must find it and ignore the history.
+
+        This is the test whose absence let the trigger ship inert — every
+        earlier fixture had one or two markers, so nothing modeled a repo with
+        real history in it."""
+        live = self._live_transcript("current.jsonl")
+        for i in range(40):
+            past = self._live_transcript(f"past-{i}.jsonl")
+            _write_marker(self.root, f"sid-past-{i}", str(past), suffix=".reflected")
+        _write_marker(self.root, "sid-current", str(live), suffix=".start")
+        sid, transcript, reason = op._resolve_transcript_for_staging(self.harness_dir)
+        self.assertIsNone(reason, "accumulated .reflected history blocked a live session")
+        self.assertEqual(sid, "sid-current")
+        self.assertEqual(transcript, str(live))
 
     def test_dead_pointer_alone_is_no_session_not_ambiguous(self) -> None:
         _write_marker(self.root, "sid-dead", str(self.root / "gone.jsonl"), suffix=".start")
@@ -328,16 +348,20 @@ class TestStageCrystallizationCandidate(unittest.TestCase):
         self.assertEqual(r2["fire_count"], 2)
         self.assertEqual(crystallize.count_pending_candidates(self.vault), 1)
 
-    def test_fires_on_the_already_reflected_path(self) -> None:
-        # The bug call 2 exists to prevent: after reflect renames .start ->
-        # .reflected, staging must still resolve and fire — not silently stop
-        # on what is, after the first task commit, the common path.
+    def test_later_task_commits_skip_harmlessly(self) -> None:
+        """After reflect has renamed a session's marker, staging finds no
+        `.start` and skips. That is intended, not a regression: the candidate
+        was already written on the first task commit (staging runs before
+        reflect), and `stage_candidate` is idempotent, so the only thing a later
+        commit would have added is a `fire_count` bump — deliberately traded
+        away to keep accumulated `.reflected` history from making every
+        resolution ambiguous."""
         t = self._transcript()
         _write_marker(self.project_root, "sid-1", str(t), suffix=".reflected")
         r = op.stage_crystallization_candidate(
             self.vault, self.project_root, "post-work", config=_cfg(), now=_NOW,
         )
-        self.assertEqual(r["status"], "staged")
+        self.assertEqual(r["status"], "no-session")
 
     def test_post_release_stages_too(self) -> None:
         t = self._transcript()
