@@ -130,6 +130,69 @@ class TestStageCandidate(unittest.TestCase):
         self.assertFalse(crystallize.exploration_judge_available())
 
 
+class TestStagingDirnameHasOneMeaning(unittest.TestCase):
+    """The staging directory name exists as THREE independent copies: this
+    module's `STAGING_DIRNAME`, and a hardcoded literal in each of the two push
+    surfaces (`session_brief.count_crystallize_candidates`,
+    `console.section_crystallize_candidates`). The surfaces keep their own
+    literals deliberately — neither imports the memory-skill tree, and both
+    must stay importable from a hook with no `sys.path` surgery.
+
+    Copies drift. Found by mutation-testing this trigger: renaming
+    `STAGING_DIRNAME` alone left both surfaces globbing the old path and
+    silently reporting zero forever, and BOTH surface test suites still passed,
+    because each writes its fixture at its own literal and asserts the count —
+    a mirror that can only ever prove a surface agrees with itself. Only
+    `verify-phases.sh`'s hardcoded path caught it, incidentally.
+
+    So this pins the three together the same way `test_vault_lint.py` pins the
+    three `_EXCLUDE_DIRS` sets: read the real value out of each module and
+    assert they are one string.
+    """
+
+    def _load(self, rel_dir: str, module_name: str):
+        path = _HERE.parent / rel_dir
+        if str(path) not in sys.path:
+            sys.path.insert(0, str(path))
+        return __import__(module_name)
+
+    def test_session_brief_agrees_with_staging_dirname(self) -> None:
+        sb = self._load("scripts/health", "session_brief")
+        import inspect
+        src = inspect.getsource(sb.count_crystallize_candidates)
+        self.assertIn(
+            f'"{crystallize.STAGING_DIRNAME}"', src,
+            "session_brief.count_crystallize_candidates no longer globs "
+            f"{crystallize.STAGING_DIRNAME!r} — the brief will silently report "
+            "zero staged candidates forever",
+        )
+
+    def test_console_agrees_with_staging_dirname(self) -> None:
+        con = self._load("harness/skills/console/scripts", "console")
+        import inspect
+        src = inspect.getsource(con.section_crystallize_candidates)
+        self.assertIn(
+            f'"{crystallize.STAGING_DIRNAME}"', src,
+            "console.section_crystallize_candidates no longer globs "
+            f"{crystallize.STAGING_DIRNAME!r} — the console will silently "
+            "report none staged forever",
+        )
+
+    def test_all_three_surfaces_see_the_same_staged_candidate(self) -> None:
+        """The behavioral counterpart to the two source assertions above: stage
+        one candidate through the real writer, then confirm both surfaces
+        actually count it. This fails on a drift even if the literals are
+        obfuscated past a source-text match."""
+        sb = self._load("scripts/health", "session_brief")
+        con = self._load("harness/skills/console/scripts", "console")
+        with tempfile.TemporaryDirectory() as d:
+            vault = Path(d)
+            crystallize.stage_candidate(vault, "post-work", "sid-1", "/tmp/t.jsonl")
+            self.assertEqual(crystallize.count_pending_candidates(vault), 1)
+            self.assertEqual(sb.count_crystallize_candidates(vault), 1)
+            self.assertIn("1 session(s) staged", con.section_crystallize_candidates(vault))
+
+
 class TestResolveTranscriptForStaging(unittest.TestCase):
     """orchestration_phase._resolve_transcript_for_staging — the tolerant
     resolver call 3 requires, filtered per call 9's live-transcript rule."""
