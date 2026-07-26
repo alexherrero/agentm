@@ -206,6 +206,24 @@ code dependency).
 
 ## Risks & open questions
 
+- **`hits[].path` durably discloses vault directory structure, with no
+  redaction tied to a note's later lifecycle.** Found by a pre-tag adversarial
+  security review, missed by this design's original risk analysis. `path` is
+  a strict superset of what `hit_slugs` already stored (a bare filename stem)
+  — it additionally reveals which group/project a note lives under, and nothing
+  purges or redacts a ledger row when its source note is later deleted, moved,
+  or merged by crystallization. On this operator's actual deployment (a
+  single-user local machine where the same OS account already reads both the
+  ledger's cache path and the vault itself) this is not a new trust-boundary
+  crossing, so it does not block this design — but it is a real, previously-
+  unweighed gap, named honestly rather than assumed away, matching this design's
+  own "the ledger has no production reader" discipline above. A bare hash (the
+  `query_hash` precedent) isn't the fix: it would make `trace()` unable to say
+  which entry surfaced, defeating the design's whole purpose. **Re-audit
+  trigger:** before this ledger's data ever leaves the single-operator/single-
+  machine trust boundary it was built inside — e.g., any future shared,
+  synced, or multi-user reader — or if a dedicated rotation/redaction policy
+  is designed. Flagged as a separate follow-up, not built here.
 - **Ledger has no retention policy.** `recall-history.jsonl` already grows
   unbounded today (pre-existing, not introduced here); widening each row makes
   it grow roughly 5× faster — ~13 KB/day becomes ~70 KB/day. Rotation stays
