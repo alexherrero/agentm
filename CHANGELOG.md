@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v9.4.1] — 2026-07-26 — Patch: the crystallization trigger shipped inert
 
 **PATCH.** v9.4.0's crystallization trigger shipped inert. It could not fire in any repo with ordinary history, and the tests were green because none of their fixtures had any.
 
