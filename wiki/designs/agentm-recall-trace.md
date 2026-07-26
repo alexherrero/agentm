@@ -1,21 +1,21 @@
 ---
 title: recall trace — design
-status: draft
+status: launched
 kind: design
 scope: feature
 area: agentm/memory
 governs: []
 parent: agentm-hld.md
 seeded: 2026-07-25
-approved:
+approved: 2026-07-25
 ---
 
-> **Rung 8 of the Loose Ends ladder.** A recalled memory today shows its score
-> in the injected block (`sim=`, `keywords=`) but that breakdown dies with the
-> session — nothing durable records why a hit surfaced. This design widens the
-> existing `recall-history.jsonl` event ledger to carry that evidence and adds
-> a small reader for it. No new store; a thin, additive change to `recall.py`
-> + `recall_counter.py`. Sibling to [memory index](agentm-memory-index.md).
+> [!NOTE]
+> **LAUNCHED** (approved 2026-07-25, built same day). Widens the existing
+> `recall-history.jsonl` event ledger with the evidence behind each recall
+> hit, plus a small reader for it — no new store. Rung 8 of the Loose Ends
+> ladder; sibling to [memory index](agentm-memory-index.md). Full build
+> narrative in the Amendment log below.
 
 # recall trace
 
@@ -226,12 +226,13 @@ code dependency).
   call site — it must not touch `query()`'s ranking or `prompt_submit()`'s
   output. `scripts/health/eval_v6_retrieval.py` (the pinned retrieval eval)
   must stay green untouched; if it doesn't, the change has leaked into the
-  ranking path and needs to be narrowed back to capture-only.
+  ranking path and needs to be narrowed back to capture-only. **Verified by
+  this design's own build plan's task 7** — see the Amendment log.
 - **Partial evidence on budget overrun.** `prompt_submit()`'s own time budget
   can already truncate `results` before `query()` finishes every stream; the
   trace reflects whatever `query()` actually returned in that case — same
   degraded-graceful contract the rest of recall already has, not a new gap.
-- **`[PENDING-IMPL]`** until built — flip on landing.
+- **Built** — see the Amendment log for what shipped and where.
 
 ## Locked design calls
 
@@ -278,6 +279,39 @@ code dependency).
 ## Amendment log
 
 *Newest first.*
+
+**2026-07-25 — Built, same day as approval.** All four Design subsections
+shipped exactly as locked, no deviation found worth a NOTE:
+
+- `recall_counter.record_recall()` gains the optional `hits` param
+  (`harness/skills/memory/scripts/recall_counter.py:32`) — omitted by
+  default writes today's exact row shape (no `hits` key at all, not `[]`).
+- `recall.py`'s `prompt_submit()` packs `(slug, hit)` pairs through
+  `_apply_token_budget` (`harness/skills/memory/scripts/recall.py:1561`
+  builds `raw_hits`, `:1586` unpacks `kept_hits`, `:1595` passes them to
+  `record_recall`) — `_apply_token_budget`'s logic and arity are untouched,
+  only its `slugs` parameter's type annotation widened. `rank` is read off
+  `results`' own `enumerate()`, before the read-loop's unreadable-file skip
+  can renumber it — proven necessary and correct by a duplicate-slug test
+  (two entries sharing a slug, different paths) that fails under the naive
+  "filter `results` by `loaded_slugs` membership" approach this design
+  itself rejected below.
+- The reader lands as `recall.trace()` (`harness/skills/memory/scripts/recall.py:1356`)
+  + the `memory-recall trace <slug> [-n N]` CLI subcommand — a sized
+  whole-file read (not the reverse-chunked scan an earlier draft wrongly
+  promised), all three degrade cases each an explicit printed line.
+- `console.py`'s Memory Activity section gets its one documented pointer
+  (`harness/skills/console/scripts/console.py:535`), not a new row.
+
+19 new tests across three files (4 in `test_recall_counter.py`, 9 in the new
+`test_recall_trace.py`, 1 in `test_console.py`), plus manual smoke-testing
+against this machine's real 1,400+-row production ledger — which surfaced a
+genuine pre-existing bug, unrelated to this design: `test_recall_token_budget.py`'s
+`prompt_submit()` integration tests don't mock `recall_counter`, so they've
+been writing test rows into the real ledger. Flagged as a separate follow-up,
+not fixed here (out of this design's scope). Full verification (the pinned
+retrieval eval, confirming this capture-only change never touched ranking) is
+this design's own build plan's task 7, run before merge.
 
 **2026-07-25** — Initial draft, authored per the Loose Ends ladder's rung 8
 (conditional item, handed to a dedicated session). Grounded against `recall.py`
