@@ -222,6 +222,13 @@ class SectionDegradationTests(unittest.TestCase):
     def test_memory_none_vault(self):
         self.assertIn("n/a", c.section_memory(None))
 
+    def test_memory_includes_recall_trace_pointer(self):
+        """recall-trace (Loose Ends Release 8): a documented pointer to
+        `memory-recall trace`, not a new always-rendered row."""
+        with tempfile.TemporaryDirectory() as d:
+            out = c.section_memory(Path(d))
+        self.assertIn("memory-recall trace <slug>", out)
+
     def test_machinery_none_repo_root(self):
         self.assertIn("n/a", c.section_machinery(None))
 

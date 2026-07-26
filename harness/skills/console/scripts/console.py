@@ -529,6 +529,10 @@ def section_memory(vault: "Path | None") -> str:
     newest = newest_curated_entries(vault)
     lines.append("Newest curated entries: " + (", ".join(newest) if newest else "none found"))
     lines.append(heat_policy_report(vault))
+    # recall-trace (Loose Ends Release 8): a documented pointer, not a new
+    # row -- "why did entry X surface" is a per-slug drill-down, not a
+    # summary metric this section's always-rendered rollup should carry.
+    lines.append("Drill down: `memory-recall trace <slug>` -- why did an entry surface")
     return "\n".join(lines)
 
 
