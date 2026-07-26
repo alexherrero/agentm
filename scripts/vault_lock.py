@@ -11,9 +11,15 @@ exactly one implementation.
 Public surface:
 
     atomic_write(path, content, *, fsync=True) -> Path
-        The ONE canonical writer. Write bytes to ``<path>.tmp`` in the same
-        directory, ``os.fsync`` the temp fd, then ``os.replace`` onto the
-        target. Bytes-mode (str is encoded utf-8) so LF-only line endings are
+        The ONE canonical writer. Write bytes to a per-writer-unique temp file
+        in the same directory, ``os.fsync`` the temp fd, then ``os.replace``
+        onto the target. The temp name carries pid + uuid4 precisely because
+        the writer is shared: a fixed ``<path>.tmp`` is one name that every
+        concurrent writer aimed at the same target competes for, so the first
+        ``os.replace`` renames it away and the second dies with
+        ``FileNotFoundError``. Uniqueness per writer is what makes "ONE
+        canonical writer" safe to call from N sessions at once.
+        Bytes-mode (str is encoded utf-8) so LF-only line endings are
         preserved byte-for-byte across Mac/Linux/Windows (the V4 Windows-CI
         fix). Plain ``fsync``, NOT ``F_FULLFSYNC`` (DC-5): macOS fsync is not
         a durability guarantee, but it keeps each Drive-uploaded snapshot
@@ -58,6 +64,7 @@ import os
 import signal
 import threading
 import time
+import uuid
 from pathlib import Path
 
 __all__ = [
@@ -99,21 +106,47 @@ def atomic_write(path: Path | str, content: str | bytes, *, fsync: bool = True) 
     Bytes-mode: `str` is encoded utf-8 with no newline translation, so LF-only
     endings survive byte-for-byte. The temp file is created in the SAME
     directory as the target (so `os.replace` is a same-filesystem atomic
-    rename), its fd is fsync'd (unless `fsync=False`), then renamed onto the
-    target. The parent directory is created if absent. Returns the target path.
+    rename) under a name unique to this writer, its fd is fsync'd (unless
+    `fsync=False`), then renamed onto the target. The parent directory is
+    created if absent. Returns the target path.
+
+    The temp name must be per-writer, not `<name>.tmp`: one shared temp name
+    means concurrent writers of the same target all write the same file and
+    then race to rename it, so the first `os.replace` succeeds and every later
+    one raises `FileNotFoundError` — the name it was about to rename is
+    already gone. That bug shipped, and surfaced as a nondeterministic
+    Linux-only CI flake in the 8-way concurrent `memory_forget` test.
+
+    `os.open` with `O_EXCL` rather than `tempfile.mkstemp` so the temp file
+    keeps the umask-derived 0o666 mode plain `open(tmp, "wb")` gave it —
+    `mkstemp` forces 0o600, and `os.replace` carries the temp file's mode onto
+    the target, which would silently tighten every vault file it rewrote.
 
     `fsync` uses plain `os.fsync`, never `F_FULLFSYNC` (DC-5).
     """
     path = Path(path)
     data = content.encode("utf-8") if isinstance(content, str) else content
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.parent / (path.name + ".tmp")
-    with open(tmp, "wb") as f:
-        f.write(data)
-        f.flush()
-        if fsync:
-            os.fsync(f.fileno())
-    os.replace(tmp, path)
+    tmp = path.parent / f"{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+    try:
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            if fsync:
+                os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        # A unique temp name is only half the contract — the other half is
+        # that a failed write leaves no `.tmp` remnant behind for a vault
+        # walker (or the concurrency tests' `rglob("*.tmp")` assertion) to
+        # trip over. `os.replace` consumed the name on the success path, so
+        # this unlink only ever fires on a genuine failure.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     return path
 
 

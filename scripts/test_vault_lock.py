@@ -95,6 +95,134 @@ class AtomicWriteTests(unittest.TestCase):
         self.assertEqual(target.read_text(encoding="utf-8"), "data")
 
 
+class AtomicWriteFailurePathTests(unittest.TestCase):
+    """A unique temp name is only half the contract; the other half is that a
+    failed write leaves nothing behind. Vault walkers and the concurrency
+    suites both assert `rglob("*.tmp") == []`, and a remnant now carries a
+    pid+uuid name that no later run would ever overwrite."""
+
+    def setUp(self) -> None:
+        self.dir = Path(tempfile.mkdtemp(prefix="vault-lock-fail-"))
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+
+    def test_no_tmp_remnant_when_the_write_fails(self) -> None:
+        target = self.dir / "f.md"
+        with mock.patch.object(vl.os, "fsync", side_effect=OSError("boom")):
+            with self.assertRaises(OSError):
+                vl.atomic_write(target, "data")
+        self.assertEqual(list(self.dir.rglob("*.tmp")), [])
+        self.assertFalse(target.exists())
+
+    def test_no_tmp_remnant_when_the_rename_fails(self) -> None:
+        target = self.dir / "f.md"
+        with mock.patch.object(vl.os, "replace", side_effect=OSError("boom")):
+            with self.assertRaises(OSError):
+                vl.atomic_write(target, "data")
+        self.assertEqual(list(self.dir.rglob("*.tmp")), [])
+
+    @unittest.skipIf(platform.system() == "Windows", "POSIX mode bits")
+    def test_target_mode_matches_a_plain_open(self) -> None:
+        # `os.replace` carries the temp file's mode onto the target, so the
+        # temp file must be created exactly as `open(p, "wb")` would create
+        # it — 0o666 with the umask applied by the kernel. A `mkstemp`-based
+        # fix would force 0o600 and silently tighten every vault file it
+        # rewrote, which is why this writer uses `os.open(..., O_EXCL, 0o666)`.
+        written = self.dir / "via-atomic-write.md"
+        vl.atomic_write(written, "data")
+
+        reference = self.dir / "via-plain-open.md"
+        with open(reference, "wb") as f:
+            f.write(b"data")
+
+        self.assertEqual(
+            written.stat().st_mode & 0o777,
+            reference.stat().st_mode & 0o777,
+        )
+
+
+class AtomicWriteConcurrencyTests(unittest.TestCase):
+    """N writers aimed at ONE path, deterministically interleaved.
+
+    `os.replace` is gated on a barrier, so every writer has finished its temp
+    file before any rename lands. That is precisely the interleaving a shared
+    `<name>.tmp` cannot survive: the first rename moves the one shared temp
+    away and every later writer raises `FileNotFoundError` renaming a name
+    that no longer exists. Forcing the interleaving is the point — the same
+    race reached production and only ever showed up as a nondeterministic
+    Linux-only CI flake in the 8-way concurrent `memory_forget` test, which
+    passed 8 consecutive local runs on macOS while the bug was live.
+    """
+
+    WRITERS = 8
+
+    def setUp(self) -> None:
+        self.dir = Path(tempfile.mkdtemp(prefix="vault-lock-race-"))
+        self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
+        self.target = self.dir / "hot.md"
+
+    def _payloads(self) -> set[str]:
+        return {f"payload-{i}\n" for i in range(self.WRITERS)}
+
+    def _run_gated_writers(self) -> tuple[list[BaseException], list[str]]:
+        """Fire WRITERS threads at one target, each with its own payload, and
+        release them all into `os.replace` together. Returns the exceptions
+        they raised and the temp paths they tried to rename."""
+        barrier = threading.Barrier(self.WRITERS)
+        real_replace = os.replace
+        sources: list[str] = []
+        errors: list[BaseException] = []
+        bookkeeping = threading.Lock()
+
+        def gated_replace(src: object, dst: object) -> None:
+            with bookkeeping:
+                sources.append(str(src))
+            # Every writer's temp file now exists; hold them here so the
+            # renames contend rather than happening to serialize.
+            barrier.wait(timeout=30)
+            return real_replace(src, dst)  # type: ignore[arg-type]
+
+        def write(i: int) -> None:
+            try:
+                vl.atomic_write(self.target, f"payload-{i}\n")
+            except BaseException as e:  # noqa: BLE001 — "none of these" is the assertion
+                with bookkeeping:
+                    errors.append(e)
+
+        with mock.patch.object(vl.os, "replace", gated_replace):
+            threads = [
+                threading.Thread(target=write, args=(i,)) for i in range(self.WRITERS)
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=60)
+            self.assertEqual([t.name for t in threads if t.is_alive()], [])
+        return errors, sources
+
+    def test_concurrent_writers_none_raise(self) -> None:
+        errors, _ = self._run_gated_writers()
+        self.assertEqual(errors, [], f"concurrent atomic_write raised: {errors!r}")
+
+    def test_concurrent_writers_never_share_a_temp_name(self) -> None:
+        _, sources = self._run_gated_writers()
+        self.assertEqual(len(sources), self.WRITERS)
+        self.assertEqual(
+            len(set(sources)),
+            self.WRITERS,
+            f"writers shared a temp name: {sorted(set(sources))!r}",
+        )
+
+    def test_concurrent_writers_leave_one_whole_payload(self) -> None:
+        self._run_gated_writers()
+        # Last-write-wins is fine; a torn or blended file is not.
+        self.assertIn(self.target.read_text(encoding="utf-8"), self._payloads())
+
+    def test_concurrent_writers_leave_no_tmp_remnant(self) -> None:
+        self._run_gated_writers()
+        self.assertEqual(list(self.dir.rglob("*.tmp")), [])
+        self.assertEqual(list(self.dir.iterdir()), [self.target])
+
+
 class ContentHashTests(unittest.TestCase):
     def test_stable(self) -> None:
         self.assertEqual(vl.content_hash("abc"), vl.content_hash("abc"))
