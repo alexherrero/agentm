@@ -1353,6 +1353,110 @@ def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
     return f"{header}\n\n{body.strip()}"
 
 
+def trace(
+    *,
+    slug: str,
+    n: int = 3,
+    history_path: "Path | None" = None,
+    stdout=sys.stdout,
+) -> int:
+    """Print the N most recent recall events that surfaced `slug`, with the
+    evidence recall-trace (Loose Ends Release 8) captures at recall time —
+    "why did this memory surface," durable past the session that surfaced it.
+
+    Reads the whole ledger and filters, most-recent-first. Deliberately not
+    a reverse-chunked scan: the design's own sizing (1,422 rows / 167KB at
+    13 days, ~5x row growth from `hits`) doesn't warrant one yet — re-audit
+    at ~50MB or a >1s read, per the design doc's named trigger.
+
+    Degrades honestly, one explicit printed line per case, never silence:
+      - no ledger file at all
+      - `slug` never appears in any event's `hit_slugs` ("never recalled")
+      - `slug` appears in `hit_slugs` but that event predates trace capture
+        (no matching `hits` entry) — reported per-event, not folded into
+        the "never recalled" case, since it WAS recalled, just before this
+        feature existed to record why.
+
+    A single event can legitimately contribute more than one match — two
+    entries sharing a slug (duplicate basenames are real in a live vault;
+    see recall.py's own `_ALTITUDE_ANCHOR_SLUGS`) can both appear in one
+    recall's `hits`. `n` counts rendered matches, not events, so that case
+    shows both rather than silently picking one.
+
+    Returns 0 always — a CLI reader, never treated as a hook whose failure
+    should block anything.
+    """
+    import recall_counter  # noqa: E402 — lazy, mirrors this module's other cross-file imports
+
+    path = history_path if history_path is not None else recall_counter.default_history_path()
+    if not path.is_file():
+        print(
+            f"[memory-recall trace] no recall ledger found at {path} — nothing recorded yet",
+            file=stdout,
+        )
+        return 0
+
+    matches: list[tuple[str, dict | None]] = []
+    ever_recalled = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if slug not in row.get("hit_slugs", []):
+            continue
+        ever_recalled = True
+        ts = row.get("ts", "?")
+        matched_hits = [h for h in (row.get("hits") or []) if h.get("slug") == slug]
+        if matched_hits:
+            matches.extend((ts, h) for h in matched_hits)
+        else:
+            # In hit_slugs but no `hits` entry — this event predates trace
+            # capture (recall_counter.record_recall's `hits` param is
+            # optional; older rows simply never had it).
+            matches.append((ts, None))
+
+    if not ever_recalled:
+        print(
+            f"[memory-recall trace] '{slug}' was never recalled (no matching event in {path})",
+            file=stdout,
+        )
+        return 0
+
+    matches.reverse()  # ledger is append-only → reversed read order is most-recent-first
+    shown = matches[: max(n, 0)]
+    for ts, hit in shown:
+        if hit is None:
+            print(
+                f"### {slug} @ {ts}\n\nrecalled before trace capture landed — no evidence recorded for this event.\n",
+                file=stdout,
+            )
+            continue
+        header = f"### {slug} @ {ts} (path: {hit.get('path', '?')}"
+        if "sim" in hit:
+            header += f", sim={hit['sim']:.2f}"
+        if "keyword" in hit:
+            header += f", keyword={hit['keyword']:.1f}"
+        if "combined" in hit:
+            header += f", combined={hit['combined']:.4f}"
+        if "rank" in hit:
+            header += f", rank={hit['rank']}"
+        if "lifecycle_tier" in hit:
+            header += f", tier: {hit['lifecycle_tier']}"
+        header += ")"
+        print(header, file=stdout)
+    remaining = len(matches) - len(shown)
+    if remaining > 0:
+        print(
+            f"\n... {remaining} more recall event(s) for '{slug}' not shown (pass -n to see more)",
+            file=stdout,
+        )
+    return 0
+
+
 def prompt_submit(
     *,
     vault: Path | None,
@@ -1646,6 +1750,20 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     hpin.add_argument("slug", help="slug of the entry to pin (e.g. 'adr-shape')")
 
+    tr = sub.add_parser(
+        "trace",
+        help=(
+            "explain why a memory surfaced -- print the N most recent recall "
+            "events that surfaced <slug>, with their score evidence. "
+            "Loose Ends Release 8 (recall-trace)."
+        ),
+    )
+    tr.add_argument("slug", help="slug of the entry to trace (e.g. 'adr-shape')")
+    tr.add_argument(
+        "-n", type=int, default=3,
+        help="number of most-recent recall events to show (default: 3)",
+    )
+
     return parser.parse_args(argv)
 
 
@@ -1725,6 +1843,11 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         ok = pin_entry(vault, args.slug)
         return 0 if ok else 1
+    if args.cmd == "trace":
+        # No vault gate — the ledger `trace` reads lives at a fixed
+        # device-local path (recall_counter.default_history_path()), not
+        # inside the vault.
+        return trace(slug=args.slug, n=args.n)
     return 1  # pragma: no cover
 
 

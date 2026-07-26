@@ -21,6 +21,7 @@ import io
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -118,6 +119,85 @@ class TestPackedCaptureAlignment(unittest.TestCase):
             self.assertEqual(hit["sim"], match["sim"])
             self.assertEqual(hit["keyword"], match["keyword"])
             self.assertEqual(hit["combined"], match["combined"])
+
+
+class TestTraceReader(unittest.TestCase):
+    """`memory-recall trace <slug>` -- the read half of recall-trace."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.history_path = Path(self._tmp.name) / "recall-history.jsonl"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, slug: str, n: int = 3) -> str:
+        out = io.StringIO()
+        exit_code = recall.trace(slug=slug, n=n, history_path=self.history_path, stdout=out)
+        self.assertEqual(exit_code, 0, "trace() must always return 0 -- a reader, not a hook")
+        return out.getvalue()
+
+    def test_no_ledger_file_at_all(self):
+        out = self._run("anything")
+        self.assertIn("no recall ledger found", out)
+
+    def test_slug_never_recalled(self):
+        recall_counter.record_recall("q", ["some-other-slug"], history_path=self.history_path)
+        out = self._run("never-seen")
+        self.assertIn("never recalled", out)
+
+    def test_slug_recalled_before_trace_capture_landed(self):
+        """hit_slugs contains the slug but the row carries no `hits` key at
+        all -- a pre-recall-trace event, not "never recalled"."""
+        recall_counter.record_recall("q", ["old-slug"], history_path=self.history_path)  # hits=None
+        out = self._run("old-slug")
+        self.assertNotIn("never recalled", out)
+        self.assertIn("recalled before trace capture landed", out)
+
+    def test_normal_case_shows_score_breakdown_at_fixed_precision(self):
+        hit = {"slug": "s", "path": "personal/s.md", "sim": 0.812345, "keyword": 12.345,
+               "combined": 0.0163456, "rank": 1, "lifecycle_tier": "volatile"}
+        recall_counter.record_recall("q", ["s"], hits=[hit], history_path=self.history_path)
+        out = self._run("s")
+        self.assertIn("path: personal/s.md", out)
+        self.assertIn("sim=0.81", out)
+        self.assertIn("keyword=12.3", out)
+        self.assertIn("combined=0.0163", out)
+        self.assertIn("rank=1", out)
+        self.assertIn("tier: volatile", out)
+        # Never the raw float repr (would print a long tail for a BM25 score).
+        self.assertNotIn("12.345", out)
+
+    def test_most_recent_first_and_dash_n_limits_count(self):
+        for i in range(5):
+            recall_counter.record_recall(
+                f"q{i}", ["s"],
+                hits=[{"slug": "s", "path": "s.md", "rank": 1}],
+                now=datetime(2026, 7, 1, 12, i, 0, tzinfo=timezone.utc),
+                history_path=self.history_path,
+            )
+        out_default = self._run("s")  # default n=3
+        self.assertEqual(out_default.count("### s @"), 3)
+        # The newest (minute 4) must appear before the oldest shown (minute 2).
+        self.assertLess(out_default.index("12:04:00"), out_default.index("12:02:00"))
+        self.assertIn("2 more recall event(s)", out_default)
+
+        out_one = self._run("s", n=1)
+        self.assertEqual(out_one.count("### s @"), 1)
+        self.assertIn("12:04:00", out_one)
+
+    def test_duplicate_slug_within_one_event_shows_both(self):
+        """A single recall event where two distinct-path entries share a
+        slug (task 2's exact scenario) must surface both, not just one."""
+        hits = [
+            {"slug": "dup", "path": "personal/dup.md", "rank": 1},
+            {"slug": "dup", "path": "personal/sub/dup.md", "rank": 2},
+        ]
+        recall_counter.record_recall("q", ["dup", "dup"], hits=hits, history_path=self.history_path)
+        out = self._run("dup")
+        self.assertIn("personal/dup.md", out)
+        self.assertIn("personal/sub/dup.md", out)
+        self.assertEqual(out.count("### dup @"), 2)
 
 
 if __name__ == "__main__":
