@@ -8,6 +8,7 @@ Run directly:
 """
 from __future__ import annotations
 
+import json
 import sys
 import tempfile
 import unittest
@@ -56,6 +57,36 @@ class TestRecordRecall(unittest.TestCase):
         rc.record_recall("q2", ["b", "c"], now=_NOW, history_path=self.history_path)
         lines = self.history_path.read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(lines), 2)
+
+    def test_hits_omitted_by_default_is_byte_identical_to_pre_trace_shape(self):
+        """recall-trace (Loose Ends Release 8): a caller not yet passing
+        `hits` must produce exactly today's row -- no `hits` key at all,
+        not even an empty list."""
+        row = rc.record_recall("q", ["a", "b"], now=_NOW, history_path=self.history_path)
+        self.assertNotIn("hits", row)
+        on_disk = self.history_path.read_text(encoding="utf-8")
+        self.assertNotIn('"hits"', on_disk)
+
+    def test_hits_provided_lands_in_the_row_alongside_hit_slugs(self):
+        hits = [
+            {"slug": "a", "path": "personal/a.md", "sim": 0.81, "keyword": 12.3,
+             "combined": 0.0163, "rank": 1, "lifecycle_tier": "volatile", "decay_score": 0.94},
+            {"slug": "b", "path": "projects/agentm/b.md", "sim": 0.0, "keyword": 8.1,
+             "combined": 0.0157, "rank": 2},
+        ]
+        row = rc.record_recall("q", ["a", "b"], hits=hits, now=_NOW, history_path=self.history_path)
+        self.assertEqual(row["hit_slugs"], ["a", "b"])  # unchanged, back-compat
+        self.assertEqual(row["hit_count"], 2)
+        self.assertEqual(row["hits"], hits)
+        # Round-trips through the JSONL write, not just the in-memory return.
+        on_disk_row = json.loads(self.history_path.read_text(encoding="utf-8").splitlines()[0])
+        self.assertEqual(on_disk_row["hits"], hits)
+
+    def test_hits_presence_does_not_affect_count_since(self):
+        rc.record_recall("q", ["a"], hits=[{"slug": "a", "path": "a.md"}],
+                          now=_NOW, history_path=self.history_path)
+        s = rc.count_since(now=_NOW, lookback_seconds=86400, history_path=self.history_path)
+        self.assertEqual(s, {"recall_count": 1, "hit_count": 1})
 
 
 class TestCountSince(unittest.TestCase):

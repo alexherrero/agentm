@@ -30,11 +30,23 @@ def _hash_query(query_text: str) -> str:
 
 
 def record_recall(query_text: str, hit_slugs: list[str], *,
+                   hits: "list[dict] | None" = None,
                    now: "datetime | None" = None,
                    history_path: "Path | None" = None) -> dict:
     """Append one recall event. Best-effort: a write failure never raises --
     callers treat this the same as heat_policy/lifecycle's other best-effort
-    recording, never blocking the recall pipeline itself."""
+    recording, never blocking the recall pipeline itself.
+
+    `hits` (recall-trace, Loose Ends Release 8) is the optional per-slug
+    evidence array recall.py's query() already computes -- sim/keyword/
+    combined/rank and, when available, lifecycle_tier/decay_score. Omitted
+    (None) by default so a caller not yet passing it produces the exact row
+    shape this ledger has always written; the key is left off the row
+    entirely rather than written as `[]`, so a reader can tell "no trace
+    recorded" apart from "recorded, zero hits" (there is no such thing as a
+    recall event with hit_slugs non-empty but zero hits, so `[]` would only
+    ever mean the former in practice -- omitting the key says so directly
+    instead of relying on that inference)."""
     now = now if now is not None else datetime.now(timezone.utc)
     path = history_path if history_path is not None else default_history_path()
     row = {
@@ -43,6 +55,8 @@ def record_recall(query_text: str, hit_slugs: list[str], *,
         "hit_slugs": list(hit_slugs),
         "hit_count": len(hit_slugs),
     }
+    if hits is not None:
+        row["hits"] = list(hits)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as fh:
