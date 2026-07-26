@@ -147,6 +147,36 @@ class TestExcludeDirsParity(unittest.TestCase):
         import frontmatter_validator
         self.assertEqual(frontmatter_validator._EXCLUDE_DIRS, vl._EXCLUDE_DIRS)
 
+    def test_staging_and_lane_dirs_are_actually_excluded(self):
+        """The two pins above assert the three lists AGREE; they say nothing
+        about what is in them. Removing a directory from all three at once
+        keeps them mutually consistent and passes both — found by mutation-
+        testing the crystallization trigger, where dropping
+        `_crystallize-staging` everywhere went entirely undetected.
+
+        So assert the content too, for the directories whose exclusion is a
+        stated guarantee rather than an incidental default: staged/queued
+        machine artifacts and the served opinion lanes. `_opinions` and
+        `_crystallize-staging` are the ones a walker must never touch — a
+        served supplement is text the agent reads as its own standards, and a
+        staged candidate is deliberately not a note.
+
+        Worth naming honestly: for `_crystallize-staging` this is currently
+        defense-in-depth, not a live hazard. All three walkers match `*.md`
+        only and candidates are `*.json`, and two of the three never walk the
+        vault root at all. The exclusion protects against a future change to
+        either of those facts, and this test protects the exclusion."""
+        import dream
+        import frontmatter_validator
+        for name in ("_crystallize-staging", "_opinions", "_inbox", "_dream-staging"):
+            for mod, dirs in (
+                ("vault_lint", vl._EXCLUDE_DIRS),
+                ("dream", dream._EXCLUDE_DIRS),
+                ("frontmatter_validator", frontmatter_validator._EXCLUDE_DIRS),
+            ):
+                with self.subTest(dir=name, module=mod):
+                    self.assertIn(name, dirs, f"{mod} no longer excludes {name}/")
+
 
 class TestChecks(unittest.TestCase):
     def test_required_field_missing(self):
