@@ -114,6 +114,10 @@ get_mtime() {
 
 now=$(date +%s)
 processed_count=0
+# Dead pointers cleared this pass (unresolvable markers that used to accumulate
+# forever). Must be initialized: `set -u` is on, and bash errors on an unset
+# variable inside $(( )) rather than treating it as zero.
+dead_count=0
 
 if (( no_orphan_work == 1 )); then
     # Skip the orphan + GC passes entirely; fall through to discover-skills.
@@ -134,12 +138,21 @@ for marker in "${markers[@]:-}"; do
     #   started_at: <iso-timestamp>
     #   transcript: <absolute-path>
     transcript="$(grep '^transcript:' "$marker" 2>/dev/null | head -1 | sed 's/^transcript:[[:space:]]*//')"
+    # A marker past the idle threshold whose transcript cannot be found is a DEAD
+    # POINTER, not pending work: the session is over and there is nothing left to
+    # reflect from, so keep it and it accumulates forever. These two branches used
+    # to `continue`, which is how 200 markers piled up here — every one of them
+    # unresolvable because of the '--' slug bug, and every one skipped rather than
+    # cleared, on every session, for 57 days. Delete instead; the transcript (when
+    # it exists at all) is untouched, and a marker is a regenerable pointer.
     if [[ -z "$transcript" ]]; then
-        echo "[memory-reflect-idle] marker $marker missing 'transcript:' line (skipping)" >&2
+        echo "[memory-reflect-idle] marker $marker missing 'transcript:' line (deleting dead pointer)" >&2
+        rm -f "$marker" && dead_count=$((dead_count + 1))
         continue
     fi
     if [[ ! -f "$transcript" ]]; then
-        echo "[memory-reflect-idle] marker $marker transcript not found: $transcript (skipping)" >&2
+        echo "[memory-reflect-idle] marker $marker transcript not found: $transcript (deleting dead pointer)" >&2
+        rm -f "$marker" && dead_count=$((dead_count + 1))
         continue
     fi
 
@@ -149,6 +162,14 @@ for marker in "${markers[@]:-}"; do
     if python3 "$REFLECT_PY" "$transcript" --summary --route 2>/dev/null; then
         # Rename .start → .reflected on success.
         mv "$marker" "${marker%.start}.reflected" 2>/dev/null && processed_count=$((processed_count + 1))
+    elif (( age_sec > GC_THRESHOLD_SEC )); then
+        # Reflect keeps failing (an unconfigured vault at the time, a malformed
+        # transcript) and the marker is past the same 30-day ceiling the
+        # .reflected GC below uses — reusing that threshold rather than inventing
+        # a second number. Retrying forever is what turns a transient failure into
+        # a permanent leak, so stop retrying and clear it.
+        echo "[memory-reflect-idle] marker $marker unreflectable past the ${GC_THRESHOLD_SEC}s ceiling (deleting)" >&2
+        rm -f "$marker" && dead_count=$((dead_count + 1))
     fi
 done
 
@@ -167,8 +188,8 @@ if (( ${#reflected_markers[@]} > 0 )); then
     done
 fi
 
-if (( ${#markers[@]} > 0 || gc_count > 0 )); then
-    echo "[memory-reflect-idle] Scanned ${#markers[@]} .start + ${#reflected_markers[@]} .reflected markers; processed $processed_count orphans, GC'd $gc_count old markers (idle threshold: ${IDLE_THRESHOLD_SEC}s)" >&2
+if (( ${#markers[@]} > 0 || gc_count > 0 || dead_count > 0 )); then
+    echo "[memory-reflect-idle] Scanned ${#markers[@]} .start + ${#reflected_markers[@]} .reflected markers; processed $processed_count orphans, cleared $dead_count dead pointers, GC'd $gc_count old markers (idle threshold: ${IDLE_THRESHOLD_SEC}s)" >&2
 fi
 
 # ── Idle orchestration chain (V4 #23 task 4) ──────────────────────────────

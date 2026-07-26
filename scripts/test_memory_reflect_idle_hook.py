@@ -123,14 +123,35 @@ class TestMemoryReflectIdleHook(unittest.TestCase):
         self.assertTrue(m.is_file(), "fresh marker wrongly consumed")
         self.assertFalse((self.hdir / "session-id-fresh1.reflected").exists())
 
-    def test_aged_marker_missing_transcript_is_skipped(self) -> None:
-        # Aged, but its transcript is gone → skip (stays .start), non-blocking.
+    def test_aged_marker_missing_transcript_is_cleared_as_a_dead_pointer(self) -> None:
+        # Aged past the idle threshold with its transcript gone → nothing can ever
+        # be reflected from this marker, so it is deleted rather than skipped.
+        #
+        # This test previously asserted the opposite (`assertTrue(m.is_file())` —
+        # stays .start). That behavior was the leak: every such marker was skipped
+        # on every session forever, and 200 accumulated in this repo. The contract
+        # changed deliberately, so the assertion tracks it; the same intent is
+        # still being checked — what happens to an aged marker whose transcript is
+        # unresolvable — and the hook stays non-blocking either way.
         m = self._make_marker("gone1", str(self.root / "absent.jsonl"), ".start",
                               age_sec=_IDLE + 1000)
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertTrue(m.is_file())
+        self.assertFalse(m.exists(), "dead pointer not cleared — the leak is back")
+        self.assertFalse(m.with_suffix(".reflected").exists(),
+                         "an unreflectable marker must not be recorded as reflected")
         self.assertIn("transcript not found", r.stderr)
+
+    def test_fresh_marker_missing_transcript_is_left_alone(self) -> None:
+        # The guard on the above: a marker still INSIDE the idle threshold may be a
+        # live session whose transcript has not been written yet. Deleting it would
+        # destroy an active session's pending reflection, so the age gate — not the
+        # missing transcript alone — is what licenses the delete.
+        m = self._make_marker("fresh1", str(self.root / "absent.jsonl"), ".start",
+                              age_sec=0)
+        r = self._run_hook(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertTrue(m.is_file(), "a fresh marker was deleted — active session at risk")
 
     # ── GC of old .reflected markers ──────────────────────────────────────────
 

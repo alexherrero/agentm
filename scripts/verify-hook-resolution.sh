@@ -121,7 +121,13 @@ printf -- '---\nkind: reference\ntags: [hook-resolution]\n---\nHOOK-RESOLUTION-C
   > "$SV/personal/reference/hook-resolution-canary-ref.md"
 
 SESSION_ID="00000000-0000-0000-0000-000000000001"
-CWD_SLUG="-$(printf '%s' "$PROJ" | tr '/' '-')"
+# The real Claude Code slug: '/' and '.' both become '-', no extra prefix.
+# This line used to mirror the hooks' own (wrong) formula verbatim, so it seeded
+# the transcript at whatever path the hooks looked in — self-consistent, and
+# therefore green while reflection was broken in production for 57 days. It now
+# encodes the convention independently; scripts/test_transcript_slug.py pins the
+# formula against known-good literals so both sides cannot silently drift again.
+CWD_SLUG="$(printf '%s' "$PROJ" | tr '/.' '--')"
 mkdir -p "$SCRATCH_HOME/.claude/projects/$CWD_SLUG"
 TRANSCRIPT="$SCRATCH_HOME/.claude/projects/$CWD_SLUG/$SESSION_ID.jsonl"
 printf '%s\n%s\n' \
@@ -161,6 +167,26 @@ EOF
     bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
 assert_absent "reflect-idle: orphan marker consumed (.start removed)" "$MARKER"
 assert_exists "reflect-idle: orphan marker reflected (.reflected written)" "${MARKER%.start}.reflected"
+
+# ── E. reflect-idle: dead pointers are cleared, not skipped forever ─────────
+# An unresolvable marker past the idle threshold has nothing left to reflect
+# from. These two branches used to `continue`, which is how 200 markers piled up
+# in this repo — every one unresolvable (the '--' slug bug) and every one skipped
+# rather than cleared, on every session, for 57 days. A marker is a regenerable
+# pointer; the transcript, where one exists, is never touched.
+DEAD_GONE="$PROJ/.harness/session-id-dead-transcript.start"
+cat > "$DEAD_GONE" <<EOF
+session_id: dead-transcript
+started_at: 2026-01-01T00:00:00Z
+transcript: $PROJ/definitely-not-here.jsonl
+EOF
+DEAD_NOLINE="$PROJ/.harness/session-id-dead-noline.start"
+printf 'session_id: dead-noline\nstarted_at: 2026-01-01T00:00:00Z\n' > "$DEAD_NOLINE"
+( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
+    bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
+assert_absent "reflect-idle: dead pointer cleared (transcript missing)" "$DEAD_GONE"
+assert_absent "reflect-idle: dead pointer cleared (no transcript: line)" "$DEAD_NOLINE"
+assert_absent "reflect-idle: dead pointer not resurrected as .reflected" "${DEAD_GONE%.start}.reflected"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo

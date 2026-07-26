@@ -5,6 +5,30 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**PATCH.** Session reflection has never worked. Not on this machine, not through any of its three entry points, and the reason is one character.
+
+Both memory hooks build the transcript path as `"-"` plus the cwd with slashes turned into hyphens. But an absolute path already starts with `/`, so `tr` supplies that leading hyphen on its own — the extra prefix turned a cwd of `/a/b` into `--a-b`, a directory Claude Code never creates. Every lookup missed. `memory-reflect-stop` logged "transcript not found (skipping)" and exited on every session; every marker `memory-recall-session-start` wrote carried an unresolvable pointer; and the orphan sweeper, which skips any marker whose transcript it cannot find, skipped all of them on every pass instead of ever clearing one. **200 markers had accumulated over 57 days, and not one session had ever been reflected** — the vault's zero `.reflected` markers were the receipt.
+
+The formula was wrong a second way for worktree sessions, which this repo uses per plan: Claude Code converts `.` to `-` as well, so `.claude/worktrees/x` is `--claude-worktrees-x`, not `-.claude-worktrees-x`.
+
+CI stayed green throughout because the checks mirrored the bug. `verify-hook-resolution.sh` computed the expected path with the *same* wrong formula and seeded the fixture there, and `test_memory_reflect_stop_hook.py`'s helper did too, under a comment that said "mirror the hook's formula." Both sides agreed with each other; neither agreed with Claude Code. The mirrors are gone — the convention is now stated independently and pinned against real directory names, so the two sides cannot drift back into agreement about something false.
+
+### Fixed
+
+- **The transcript-path slug in both memory hooks** — `tr '/.' '--'` with no added prefix, in [`memory-reflect-stop.sh`](harness/hooks/memory-reflect-stop/memory-reflect-stop.sh) and [`memory-recall-session-start.sh`](harness/hooks/memory-recall-session-start/memory-recall-session-start.sh). Reflection resolves for the first time, including from worktree sessions.
+- **Dead marker pointers are cleared instead of skipped forever** ([`memory-reflect-idle.sh`](harness/hooks/memory-reflect-idle/memory-reflect-idle.sh)) — a marker past the idle threshold whose transcript is missing, or which carries no `transcript:` line at all, has nothing left to reflect from and is deleted. A marker still inside the threshold is left alone, since a live session's transcript may not exist yet; that guard has its own test. Markers that keep failing to reflect are cleared past the existing 30-day `.reflected` GC ceiling rather than retried forever.
+- **The gate that hid it** ([`verify-hook-resolution.sh`](scripts/verify-hook-resolution.sh)) — seeds the fixture at the real path, and gains three assertions covering dead-pointer clearing (8 checks, up from 5).
+
+### Added
+
+- **[`scripts/test_transcript_slug.py`](scripts/test_transcript_slug.py)** — pins the slug against known-good literals taken from real `~/.claude/projects/` names (plain path, home, dotted worktree path), asserts both hooks and the gate agree, and names the `--` regression explicitly. It reads each script's own `CWD_SLUG=` line rather than reimplementing the formula, so there is one fewer copy to drift.
+
+### Changed
+
+- **Two tests now assert the real contract instead of the broken one.** `test_memory_reflect_stop_hook.py`'s path helper states the convention rather than copying the hook. `test_memory_reflect_idle_hook.py`'s aged-marker test asserted that an unresolvable marker *stays* — which was the leak — and now asserts it is cleared, plus a new companion test proving a fresh marker is not.
+
 ## [v9.3.1] — 2026-07-26 — Patch: the last mirror catches up to _opinions/
 
 **PATCH.** v9.3.0's own as-built note tracked one out-of-scope gap: `dream.py` excluded `_opinions/` from its general dreaming stages ([v9.3.0](https://github.com/alexherrero/agentm/releases/tag/v9.3.0), locked call 6), but `vault_lint.py` and `frontmatter_validator.py` — both of which claim to mirror `dream.py`'s exclusion set — had gone one-way and kept walking it. A served supplement is text the agent reads as its own standards, so no lint stage may touch it, and a lane entry's bespoke frontmatter shape (a bare `created:` timestamp, no `updated:`/`tags:`/`group:`) would have flooded both walkers with false findings the moment real content lands there.
