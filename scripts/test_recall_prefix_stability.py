@@ -53,6 +53,7 @@ if str(_RECALL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_RECALL_SCRIPTS))
 
 import recall  # noqa: E402 — after sys.path injection
+import recall_counter  # noqa: E402 — after sys.path injection
 
 
 # Distinctive body token (len >= _MIN_TOKEN_LEN, lowercase alnum) so the
@@ -229,10 +230,11 @@ class TestPromptSubmitNoFloorReemission(_VaultFixture):
         # grep path deterministic.
         self._write_entry("floor-entry", f"durable note about {_FLOOR_TOKEN}")
         out, err = io.StringIO(), io.StringIO()
-        rc = recall.prompt_submit(
-            vault=self.vault, prompt=f"tell me about {_FLOOR_TOKEN}",
-            budget_ms=10_000, mode="stub", stdout=out, stderr=err,
-        )
+        with mock.patch.object(recall_counter, "record_recall", lambda *a, **kw: {}):
+            rc = recall.prompt_submit(
+                vault=self.vault, prompt=f"tell me about {_FLOOR_TOKEN}",
+                budget_ms=10_000, mode="stub", stdout=out, stderr=err,
+            )
         self.assertEqual(rc, 0, err.getvalue())
         self.assertNotIn("floor-entry", out.getvalue(),
                          "UserPromptSubmit re-emitted an always-load entry — "

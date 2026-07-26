@@ -17,6 +17,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 # Inject scripts dir so heat_policy + recall imports resolve without install.
 _SCRIPTS_DIR = Path(__file__).resolve().parent.parent / "harness" / "skills" / "memory" / "scripts"
@@ -365,6 +366,7 @@ class TestRecallHitIntegration(unittest.TestCase):
         import sys as _sys
         # Only run if recall module is importable (always true in this test tree).
         import recall  # noqa: F401
+        import recall_counter
 
         vault = _make_vault(self.root, [], ondemand_slugs=[])
         # Create a simple on-demand entry the recall engine can match.
@@ -381,13 +383,14 @@ class TestRecallHitIntegration(unittest.TestCase):
         # Inject a known prompt that matches 'test-convention'.
         stdout = _io.StringIO()
         stderr = _io.StringIO()
-        prompt_submit(
-            vault=vault,
-            prompt="convention",
-            budget_ms=500,
-            stdout=stdout,
-            stderr=stderr,
-        )
+        with mock.patch.object(recall_counter, "record_recall", lambda *a, **kw: {}):
+            prompt_submit(
+                vault=vault,
+                prompt="convention",
+                budget_ms=500,
+                stdout=stdout,
+                stderr=stderr,
+            )
         # Heat sidecar may or may not record (depends on whether the grep
         # match found the entry). Just confirm no exception was raised — the
         # test is a smoke check, not a recall-correctness assertion.
