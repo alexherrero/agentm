@@ -32,13 +32,15 @@ touching state. Never raises (phase-spec-invoked; must not wedge a phase).
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# sibling import (same scripts dir)
+# sibling imports (same scripts dir)
 import auto_orchestration as ao
+import crystallize
 
 _REFLECT_CHAIN = "phase_reflect"
 _RELEASE_CHAIN = "phase_release"
@@ -294,6 +296,125 @@ def post_release_refresh(
         return result
 
 
+# ── crystallization staging (agentm-experience-and-dreaming.md § Crystallization's
+# phase-close trigger, locked calls 1-2-3-5-9) ───────────────────────────────
+#
+# A SIBLING step, not a step inside post_work_reflect() (call 2): post-work
+# fires after every task commit, and reflect renames the session's `.start`
+# marker to `.reflected` on its first success, so every commit after the
+# first takes post_work_reflect()'s `already-reflected` early return. Staging
+# placed inside that function would never fire on what is, after the first
+# commit, the common path. _main() below calls this as a separate step for
+# both post-work and post-release, merging the outcome under a new
+# "crystallization" result key so the existing top-level "status" values
+# verify-phases.sh already asserts on stay untouched.
+
+_MARKER_RE = re.compile(r"^session-id-(.+)\.(start|reflected)$")
+
+
+def _session_id_from_marker(marker: Path) -> str | None:
+    m = _MARKER_RE.match(marker.name)
+    return m.group(1) if m else None
+
+
+def _resolve_transcript_for_staging(harness_dir: Path) -> tuple[str | None, str | None, str | None]:
+    """Resolve the one session to stage a candidate for. Returns
+    `(session_id, transcript, reason)`; `reason` is `None` on success, else
+    `"no-session"` or `"ambiguous-session"`.
+
+    Tolerant of both marker states (call 3): reflect renames `.start` to
+    `.reflected` on success, so by the second task commit there is no
+    `.start` file left to read — `_resolve_session_marker` (above) globs only
+    `.start` and is correct for reflect's own purpose, but would starve
+    staging of a transcript on the common post-first-commit path.
+
+    Filters to markers whose transcript still resolves BEFORE counting (call
+    9's live-transcript filter) — this is what makes the exactly-one rule
+    usable at all rather than a pile of dead pointers manufacturing false
+    ambiguity. A session that happens to carry both a `.start` and a
+    `.reflected` marker (should not normally coexist, but is not assumed
+    impossible) counts once, keyed by session id, not twice.
+    """
+    if not harness_dir.is_dir():
+        return None, None, "no-session"
+    try:
+        markers = [p for p in harness_dir.glob("session-id-*.start") if p.is_file()]
+        markers += [p for p in harness_dir.glob("session-id-*.reflected") if p.is_file()]
+    except OSError:
+        return None, None, "no-session"
+
+    live: dict[str, str] = {}  # session_id -> transcript, dead pointers filtered first
+    for marker in markers:
+        sid = _session_id_from_marker(marker)
+        if sid is None:
+            continue
+        transcript = _marker_transcript(marker)
+        if not transcript or not Path(transcript).is_file():
+            continue
+        live[sid] = transcript
+
+    if not live:
+        return None, None, "no-session"
+    if len(live) > 1:
+        return None, None, "ambiguous-session"
+    (sid, transcript), = live.items()
+    return sid, transcript, None
+
+
+def stage_crystallization_candidate(
+    vault: Path,
+    project_root: Path,
+    phase: str,
+    config: dict | None = None,
+    now: datetime | None = None,
+    *,
+    dry_run: bool = False,
+) -> dict:
+    """Stage a crystallization candidate for the session this phase-dispatch
+    fired from. Returns a result dict; never raises (invoked from a
+    non-blocking phase dispatch — see `phase_dispatch()`'s own contract).
+    Status: `disabled | no-session | ambiguous-session | dry-run | staged |
+    refreshed | capped | error`.
+
+    Deliberately no cooldown (call 5): idempotence on `(phase, session_id)`
+    already prevents duplicate candidates, and gating this write on a shared
+    clock would silently drop whole sessions rather than just skip a
+    redundant write.
+    """
+    vault = Path(vault)
+    project_root = Path(project_root)
+    result: dict = {"dispatch": "crystallization", "phase": phase, "dry_run": dry_run}
+    try:
+        if config is None:
+            config = ao.load_config(vault)
+        if not config.get("enable_crystallization_staging", True):
+            result["status"] = "disabled"
+            return result
+
+        sid, transcript, reason = _resolve_transcript_for_staging(project_root / ".harness")
+        if reason is not None:
+            result["status"] = reason
+            return result
+        result["session_id"] = sid
+        result["transcript"] = transcript
+
+        if dry_run:
+            result["status"] = "dry-run"
+            return result
+
+        # crystallize.stage_candidate takes an ISO string (its own on-disk
+        # field shape); this function's `now` is a datetime for consistency
+        # with post_work_reflect/post_release_refresh's testable-clock shape.
+        now_iso = now.isoformat() if now is not None else None
+        staged = crystallize.stage_candidate(vault, phase, sid, transcript, now=now_iso)
+        result.update(staged)
+        return result
+    except Exception as e:  # phase-dispatch-invoked — must not wedge the phase.
+        result["status"] = "error"
+        result["error"] = str(e)
+        return result
+
+
 def _main(argv: list[str]) -> int:
     import argparse
 
@@ -326,6 +447,13 @@ def _main(argv: list[str]) -> int:
         result = post_release_refresh(vault, dry_run=args.dry_run)
     else:  # pragma: no cover
         return 2
+
+    # Sibling step (call 2) — not nested in either dispatch above, and merged
+    # under a new key so their existing top-level "status" values are untouched.
+    result["crystallization"] = stage_crystallization_candidate(
+        vault, Path(args.project_root), args.cmd, dry_run=args.dry_run,
+    )
+
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 

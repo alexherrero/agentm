@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-**PATCH.** Session reflection has never worked. Not on this machine, not through any of its three entry points, and the reason is one character.
+**MINOR.** Crystallization's phase-close trigger — parked since 2026-07-07 on the premise that "the close of a completed exploration" named no bounded, detectable event anywhere in this codebase — ships against the events that made that premise expire, and session reflection itself gets fixed along the way.
+
+Crickets [PR #214](https://github.com/alexherrero/crickets/pull/214) shipped `agentm_bridge.py`'s `phase-dispatch` verb: `work.md` fires `post-work` after each task's commit, `release.md` fires `post-release` once a release lands. `orchestration_phase.stage_crystallization_candidate()` now rides both as a sibling step, staging a bare marker — session id, transcript pointer, fire count — under `_crystallize-staging/`, idempotent per session with no cooldown. What it deliberately does NOT do is judge whether a session merits a digest or compose one: an orchestration chain fires outside the agent loop and cannot dispatch a sub-agent, so both stay behind `crystallize.exploration_judge_available()`, always `False` — the fourth seam of that exact shape in this codebase. Composing a digest from a staged candidate is still an operator (or future agent-side) action; the trigger only makes sure a candidate is waiting.
+
+Checking whether the design's marker-resolution rule was even satisfiable surfaced something bigger: session reflection has never worked. Not on this machine, not through any of its three entry points, and the reason is one character.
 
 Both memory hooks build the transcript path as `"-"` plus the cwd with slashes turned into hyphens. But an absolute path already starts with `/`, so `tr` supplies that leading hyphen on its own — the extra prefix turned a cwd of `/a/b` into `--a-b`, a directory Claude Code never creates. Every lookup missed. `memory-reflect-stop` logged "transcript not found (skipping)" and exited on every session; every marker `memory-recall-session-start` wrote carried an unresolvable pointer; and the orphan sweeper, which skips any marker whose transcript it cannot find, skipped all of them on every pass instead of ever clearing one. **200 markers had accumulated over 57 days, and not one session had ever been reflected** — the vault's zero `.reflected` markers were the receipt.
 
@@ -15,15 +19,16 @@ The formula was wrong a second way for worktree sessions, which this repo uses p
 
 CI stayed green throughout because the checks mirrored the bug. `verify-hook-resolution.sh` computed the expected path with the *same* wrong formula and seeded the fixture there, and `test_memory_reflect_stop_hook.py`'s helper did too, under a comment that said "mirror the hook's formula." Both sides agreed with each other; neither agreed with Claude Code. The mirrors are gone — the convention is now stated independently and pinned against real directory names, so the two sides cannot drift back into agreement about something false.
 
+### Added
+
+- **Crystallization's phase-close trigger** ([`crystallize.py`](harness/skills/memory/scripts/crystallize.py), [`orchestration_phase.py`](harness/skills/memory/scripts/orchestration_phase.py)) — `stage_candidate()` / `list_candidates()` / `drop_candidate()` / `count_pending_candidates()` / `exploration_judge_available()`, and the tolerant `.start`-or-`.reflected` marker resolver that makes staging fire on the common post-first-task-commit path where reflect's own resolver no longer sees a `.start` file. `enable_crystallization_staging` joins `auto_orchestration.DEFAULT_CONFIG` (default on). Both push surfaces (`session_brief.py`, `console.py`) gain a pending-candidate count. Tested by 28 new tests in `scripts/test_crystallize_staging.py` plus a 10-check extension to `scripts/verify-phases.sh` proving the sibling-step wiring through the real CLI — no new gate.
+- **[`scripts/test_transcript_slug.py`](scripts/test_transcript_slug.py)** — pins the transcript-path slug (below) against known-good literals taken from real `~/.claude/projects/` names (plain path, home, dotted worktree path), asserts both hooks and the gate agree, and names the `--` regression explicitly. It reads each script's own `CWD_SLUG=` line rather than reimplementing the formula, so there is one fewer copy to drift.
+
 ### Fixed
 
 - **The transcript-path slug in both memory hooks** — `tr '/.' '--'` with no added prefix, in [`memory-reflect-stop.sh`](harness/hooks/memory-reflect-stop/memory-reflect-stop.sh) and [`memory-recall-session-start.sh`](harness/hooks/memory-recall-session-start/memory-recall-session-start.sh). Reflection resolves for the first time, including from worktree sessions.
 - **Dead marker pointers are cleared instead of skipped forever** ([`memory-reflect-idle.sh`](harness/hooks/memory-reflect-idle/memory-reflect-idle.sh)) — a marker past the idle threshold whose transcript is missing, or which carries no `transcript:` line at all, has nothing left to reflect from and is deleted. A marker still inside the threshold is left alone, since a live session's transcript may not exist yet; that guard has its own test. Markers that keep failing to reflect are cleared past the existing 30-day `.reflected` GC ceiling rather than retried forever.
 - **The gate that hid it** ([`verify-hook-resolution.sh`](scripts/verify-hook-resolution.sh)) — seeds the fixture at the real path, and gains three assertions covering dead-pointer clearing (8 checks, up from 5).
-
-### Added
-
-- **[`scripts/test_transcript_slug.py`](scripts/test_transcript_slug.py)** — pins the slug against known-good literals taken from real `~/.claude/projects/` names (plain path, home, dotted worktree path), asserts both hooks and the gate agree, and names the `--` regression explicitly. It reads each script's own `CWD_SLUG=` line rather than reimplementing the formula, so there is one fewer copy to drift.
 
 ### Changed
 

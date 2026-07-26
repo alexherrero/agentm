@@ -100,7 +100,7 @@ COMPRESSION_CHAIN_MIN_LENGTH = 3
 # `_inbox`'s own exclusion + dedicated-owner pattern above.
 _EXCLUDE_DIRS = frozenset(
     {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive",
-     "_dream", ".obsidian", "_opinions"}
+     "_dream", ".obsidian", "_opinions", "_crystallize-staging"}
 )
 
 

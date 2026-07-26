@@ -46,6 +46,7 @@ DEFAULT_CONFIG: dict[str, object] = {
     "enable_briefing": True,
     "enable_idle_chain": True,
     "enable_phase_integration": True,
+    "enable_crystallization_staging": True,
     "enable_promote_suggest": True,
     "enable_stale_promotion_nudge": True,
     # briefing thresholds — a signal is "worth surfacing" at/above its threshold

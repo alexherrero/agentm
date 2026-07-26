@@ -63,7 +63,8 @@ from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task
 # standalone copies of this set (same-dir convention — see moc_generator.py's
 # precedent note); test_vault_lint.py's parity tests pin all three together.
 _EXCLUDE_DIRS = frozenset(
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive", "_opinions"}
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive",
+     "_opinions", "_crystallize-staging"}
 )
 
 # Core frontmatter trio that marks a file as an agent-shaped entry (DC-3).

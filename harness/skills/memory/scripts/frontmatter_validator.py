@@ -36,7 +36,8 @@ _DEFAULT_SCOPE_DIRS = ("personal", "projects")
 # violations. A deliberate standalone copy, not an import (same-dir
 # convention); test_vault_lint.py's parity test pins it to vault_lint.py's.
 _EXCLUDE_DIRS = frozenset(
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive", "_opinions"}
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive",
+     "_opinions", "_crystallize-staging"}
 )
 
 

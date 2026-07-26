@@ -722,6 +722,32 @@ def section_needs_your_eye(vault: "Path | None") -> str:
     return "\n".join(lines)
 
 
+def section_crystallize_candidates(vault: "Path | None") -> str:
+    """Crystallization's phase-close trigger (agentm-experience-and-dreaming.md
+    § Crystallization's phase-close trigger, call 6): a bare count of sessions
+    staged from a completed `/work` or `/release`, awaiting a five-field
+    digest or an explicit dismissal. Globbed directly from the staging
+    directory — the same clobber-proof shape `section_needs_your_eye` avoids
+    needing, since `_meta/needs-your-eye.json` is overwritten wholesale every
+    dreaming cycle and an appended item there would be silently lost. Honest-
+    dark on every edge, same convention as every section here."""
+    if vault is None:
+        return "Crystallization candidates: n/a (no vault resolved)"
+    staging_dir = vault / "_crystallize-staging"
+    if not staging_dir.is_dir():
+        return "Crystallization candidates: none staged (no _crystallize-staging/ yet)"
+    try:
+        count = sum(1 for p in staging_dir.glob("*.json") if p.is_file())
+    except OSError as e:
+        return f"Crystallization candidates: n/a (unreadable {staging_dir}: {e})"
+    if count == 0:
+        return "Crystallization candidates: none staged"
+    return (
+        f"Crystallization candidates: {count} session(s) staged from a completed "
+        "/work or /release, awaiting a five-field digest or dismissal"
+    )
+
+
 def section_sampled_audit(vault: "Path | None") -> str:
     """The sampled higher-tier audit (auto-org part 3, task 9): the most
     recent cycle's applied-link/merge review, read from the one pointer
@@ -871,6 +897,7 @@ def gather_report(repo_root: "Path | None" = None, vault: "Path | None" = None, 
         "needs_your_eye": section_needs_your_eye(vault),
         "sampled_audit": section_sampled_audit(vault),
         "opinion_supplements": section_opinion_supplements(vault),
+        "crystallize_candidates": section_crystallize_candidates(vault),
     }
 
 
@@ -887,6 +914,7 @@ def render_terminal(report: dict, *, html_path: "Path | None" = None, repo_root:
         ("Needs your eye", "needs_your_eye"),
         ("Sampled audit", "sampled_audit"),
         ("Opinion supplements", "opinion_supplements"),
+        ("Crystallization candidates", "crystallize_candidates"),
     ):
         if key not in report:
             continue
