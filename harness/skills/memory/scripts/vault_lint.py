@@ -54,7 +54,17 @@ from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task
 # transient staging areas. `_archive` (any depth) holds retired entries —
 # recall.py and frontmatter_validator.py already skip it; L7 closes the gap
 # where vault_lint.py was the one walker still descending into it.
-_EXCLUDE_DIRS = frozenset({"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive"})
+# `_opinions` holds the accumulate loop's supplement lanes + served
+# supplements — a bespoke `opinion-supplement` shape (timestamp `created:`,
+# no `updated`/`tags`/`group`) that would flood the lint, and a served
+# supplement is text the agent reads as its own standards, so no lint stage
+# may touch it (same rationale as dream.py's own exclusion, accumulate
+# locked call 6). dream.py and frontmatter_validator.py keep deliberate
+# standalone copies of this set (same-dir convention — see moc_generator.py's
+# precedent note); test_vault_lint.py's parity tests pin all three together.
+_EXCLUDE_DIRS = frozenset(
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive", "_opinions"}
+)
 
 # Core frontmatter trio that marks a file as an agent-shaped entry (DC-3).
 _CORE_TRIO = ("kind", "status", "created")

@@ -86,8 +86,9 @@ DEDUP_SIMILARITY_THRESHOLD = 0.92
 COMPRESSION_CHAIN_MIN_LENGTH = 3
 
 # Reserved top-level vault dirs a dream pass never reads as source entries —
-# mirrors vault_lint.py's _EXCLUDE_DIRS plus dreaming's own output dirs (a
-# pass must not dream about its own prior output).
+# mirrors vault_lint.py's _EXCLUDE_DIRS (parity pinned by test_vault_lint.py)
+# plus dreaming's own extras: `_dream` (a pass must not dream about its own
+# prior output) and `.obsidian` (editor config, not notes).
 #
 # "_opinions" (accumulate loop, Stages 2-3, locked call 6): a live hazard
 # until this exclusion landed -- the directory sat in the general corpus,
