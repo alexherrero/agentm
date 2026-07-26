@@ -66,11 +66,29 @@ HEALTH_AXIS = "memory persist+recall"
 _PLACEHOLDER_PREFIX = "<vault>/"
 _PLACEHOLDER_REAL_PREFIX = "projects/agentm/"
 
+# Same non-mutation policy applies to genuine drift: these four notes moved
+# under the vault's own close-out archiving convention (AGENTS.md's "writes
+# to archive/, not a flat path") after query-set-v0.json pinned their
+# pre-close-out locations. Confirmed 2026-07-25 against the live vault --
+# each target still contains the passage its query's rationale quotes, so
+# this is a real move, not a deletion, and is corrected here rather than by
+# editing v0.
+_ARCHIVED_PATH_CORRECTIONS = {
+    "projects/agentm/_harness/PLAN-wave-e-v6-index.md":
+        "projects/agentm/_harness/archive/wave-e/PLAN.archive.20260707-wave-e-v6-index.md",
+    "projects/agentm/_harness/PLAN.archive.20260705-r3-uplift-scoring.md":
+        "projects/agentm/_harness/archive/roadmap-finish/PLAN.archive.20260705-r3-uplift-scoring.md",
+    "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md":
+        "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+    "projects/agentm/_harness/designs/v5-acceleration-plan.md":
+        "projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
+}
+
 
 def _resolve_expected_path(raw: str) -> str:
     if raw.startswith(_PLACEHOLDER_PREFIX):
-        return _PLACEHOLDER_REAL_PREFIX + raw[len(_PLACEHOLDER_PREFIX):]
-    return raw
+        raw = _PLACEHOLDER_REAL_PREFIX + raw[len(_PLACEHOLDER_PREFIX):]
+    return _ARCHIVED_PATH_CORRECTIONS.get(raw, raw)
 
 
 def _resolve_vault(arg_vault_path: str | None) -> Path | None:
