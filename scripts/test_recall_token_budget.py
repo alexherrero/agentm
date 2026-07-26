@@ -22,6 +22,7 @@ import os
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parent
@@ -30,6 +31,7 @@ if str(_RECALL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_RECALL_SCRIPTS))
 
 import recall  # noqa: E402
+import recall_counter  # noqa: E402
 
 
 def _write_always_load_entry(
@@ -337,15 +339,16 @@ class TestPromptSubmitTokenBudget(unittest.TestCase):
             vault = self._make_recall_vault(Path(d), n=5, token="zorptackle")
             stdout = io.StringIO()
             stderr = io.StringIO()
-            recall.prompt_submit(
-                vault=vault,
-                prompt="zorptackle",
-                budget_ms=5000,
-                token_budget=120,
-                mode="stub",
-                stdout=stdout,
-                stderr=stderr,
-            )
+            with mock.patch.object(recall_counter, "record_recall", lambda *a, **kw: {}):
+                recall.prompt_submit(
+                    vault=vault,
+                    prompt="zorptackle",
+                    budget_ms=5000,
+                    token_budget=120,
+                    mode="stub",
+                    stdout=stdout,
+                    stderr=stderr,
+                )
             out = stdout.getvalue()
             # Either truncation happened (entries found + truncated) or no results.
             # With grep-only the entries should be found. Check that if results are
@@ -359,15 +362,16 @@ class TestPromptSubmitTokenBudget(unittest.TestCase):
             vault = self._make_recall_vault(Path(d), n=2, token="zorptackle")
             stdout = io.StringIO()
             stderr = io.StringIO()
-            recall.prompt_submit(
-                vault=vault,
-                prompt="zorptackle",
-                budget_ms=5000,
-                token_budget=10_000,
-                mode="stub",
-                stdout=stdout,
-                stderr=stderr,
-            )
+            with mock.patch.object(recall_counter, "record_recall", lambda *a, **kw: {}):
+                recall.prompt_submit(
+                    vault=vault,
+                    prompt="zorptackle",
+                    budget_ms=5000,
+                    token_budget=10_000,
+                    mode="stub",
+                    stdout=stdout,
+                    stderr=stderr,
+                )
             out = stdout.getvalue()
             self.assertNotIn("recall truncated", out)
 
