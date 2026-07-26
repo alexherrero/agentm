@@ -22,6 +22,7 @@ The [Architecture](Architecture) page lists those designs that have been impleme
 | &nbsp;&nbsp;↳ [Vault Storage & Presentation](agentm-vault-storage-presentation) | Where the vault lives and how it syncs to your devices                                               | Proposed |
 | [Memory index](agentm-memory-index)                                             | The metadata table behind fast, hybrid recall                                                        |  Final   |
 | &nbsp;&nbsp;↳ [Recall trace](agentm-recall-trace)                               | Why a memory surfaced — the evidence behind each recall hit, kept after the session ends              |  Final   |
+| &nbsp;&nbsp;↳ [Recall ledger retention](agentm-recall-ledger-retention)         | Expiring recall evidence on a clock, so what the ledger discloses stays bounded                      |  Final   |
 | [Experience & Dreaming](agentm-experience-and-dreaming)                         | How AgentM learns between sessions — reflection, scheduled learning, dreaming                        |  Final   |
 | [Runner](agentm-runner)                                                         | The background-job executor that runs scheduled work on the host's own scheduler                     |  Final   |
 | [Goal contract](agentm-goal-contract)                                           | The contract for a persona pursuing an objective on an autonomous run                                |  Final   |

@@ -222,13 +222,19 @@ code dependency).
   which entry surfaced, defeating the design's whole purpose. **Re-audit
   trigger:** before this ledger's data ever leaves the single-operator/single-
   machine trust boundary it was built inside — e.g., any future shared,
-  synced, or multi-user reader — or if a dedicated rotation/redaction policy
-  is designed. Flagged as a separate follow-up, not built here.
-- **Ledger has no retention policy.** `recall-history.jsonl` already grows
-  unbounded today (pre-existing, not introduced here); widening each row makes
-  it grow roughly 5× faster — ~13 KB/day becomes ~70 KB/day. Rotation stays
-  out of scope, with the concrete re-audit trigger recorded above (~50 MB, or
-  a trace call over a second).
+  synced, or multi-user reader. **Partly resolved 2026-07-26** by
+  [recall ledger retention](agentm-recall-ledger-retention.md): rows now expire
+  on a 90-day clock, so a path no longer outlives its note indefinitely. That
+  bounds how *long* structure is disclosed; it does not change *who* can read
+  it, so the trust-boundary trigger above stands unchanged.
+- **Ledger has no retention policy.** ~~`recall-history.jsonl` grows
+  unbounded~~ — **resolved 2026-07-26** by
+  [recall ledger retention](agentm-recall-ledger-retention.md). Rows past 90
+  days are swept from `record_recall()`'s own write path, with a 25 MB ceiling
+  as a backstop. The ceiling deliberately sits below the ~50 MB re-audit
+  trigger named above, so enforcement engages before the threshold that says
+  "go redesign this." Measured growth is ~28 KB/day, below the ~70 KB/day this
+  design estimated.
 - **The ledger's only production reader will be the one this design adds.**
   Everything the design claims about the ledger's shape is verified against
   `recall_counter.py` itself, not against a downstream consumer's expectations
@@ -297,6 +303,24 @@ code dependency).
 ## Amendment log
 
 *Newest first.*
+
+**2026-07-26 — Retention gap closed; two Risks bullets reconciled.** The
+follow-up this design flagged rather than built shipped as
+[recall ledger retention](agentm-recall-ledger-retention.md): rows expire on a
+90-day clock, swept from `record_recall()`'s write path. The path-disclosure
+bullet is now *partly* resolved — retention bounds the exposure window, not the
+trust boundary, so that trigger survives intact — and the retention bullet is
+resolved outright.
+
+Two things this design recorded turned out to be wrong. The test-pollution note
+below ("flagged as a separate follow-up, not fixed here") named one file; there
+were three, found independently by two branches and fixed on main by
+[PR #390](https://github.com/alexherrero/agentm/pull/390). That bug also stopped
+being merely cosmetic once `record_recall` could rewrite the ledger, since an
+unmocked run would read-modify-write real telemetry rather than just append to
+it. And the measured growth rate is ~28 KB/day rather than the ~70 KB/day
+estimated here, which puts the ~50 MB re-audit trigger years out and makes
+bounded disclosure, not bounded size, the reason retention was worth building.
 
 **2026-07-25 — Built, same day as approval.** All four Design subsections
 shipped exactly as locked, no deviation found worth a NOTE:
