@@ -5,6 +5,31 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v9.3.0] — 2026-07-25 — Minor: standards that learn from you, part 2 — recurrence, contradiction, composition
+
+**MINOR.** Loose Ends Release 6, continued. [v9.1.0](https://github.com/alexherrero/agentm/releases/tag/v9.1.0) (part 1) shipped the classifier: a lesson that reads as a rule about how work should be judged or done routes to an opinion supplement lane instead of general memory, and deliberately stopped there — the landed spec for what happens next was a design amendment, not something buildable, with a signal→opinion map keyed on sources that emit nothing machine-readable. This release closes that gap and ships the rest of the loop.
+
+A design pass ([PR #379](https://github.com/alexherrero/agentm/pull/379)) closed the seven holes first, as ten locked calls with why-not-the-alternative reasoning apiece. Two of those are operator rulings that reshape the loop: the signal→opinion map is retired outright rather than built, since three of its four named sources live in crickets and emit nothing machine-readable — text-shape classification (what Stage 1 already ships) is the sole classifier, with an optional `signal_source:` field recording provenance only. And promotion into a served supplement is confirm-gated through one supervised window before it can ever auto-apply, because a served supplement is text the agent reads as its own standard, and the first pass over real content should not self-modify before a human has read a single proposal.
+
+The build ([PR #380](https://github.com/alexherrero/agentm/pull/380)) implements all ten calls in one new deterministic dreaming stage. The **recurrence gate** clusters same-opinion candidates by `difflib` similarity at a 0.85 threshold and requires two distinct sessions before anything promotes — a single occurrence parks in an inbox lane instead. The **contradiction check** is a narrow direct-negation guard against the coded base: a suspected contradiction never serves silently, it parks and surfaces as a base-change proposal through the digest, `_meta/opinion-base-proposals.json`, and the console. **Composition** regenerates the served `personal/_opinions/<name>.md` wholly from the lane every cycle, so it's idempotent and self-healing and needs no resolver change — `opinion_resolver._read_supplement` already reads exactly that path. Every promotion still stages as a confirm-gated proposal through the existing `dream_confirm.confirm()` → revert-log path, per the confirm-gated ruling above. A reconciliation pass ([PR #381](https://github.com/alexherrero/agentm/pull/381)) then flipped both design docs' `[PENDING-IMPL]` markers to as-built and caught two more stale `[PENDING-IMPL]` mentions in a third design (`agentm-opinion-registry.md`) that this release's own wiki sweep found and fixed.
+
+Retrieval eval unaffected — this change never touches real vault content; all verification ran against scratch vaults, same as v9.1.0.
+
+### Added
+
+- **`opinion_supplement.py`** ([#380](https://github.com/alexherrero/agentm/pull/380)) — a stdlib-only leaf module implementing the recurrence gate, the contradiction check, and whole-lane composition. `dream._stage_opinion_supplement()` joins `run_dream()`'s hand-wired sequence and stages every promotion as a `stage="opinion_promote"` proposal — deliberately not in `AUTO_APPLY_STAGES`, per the confirm-gated ruling.
+- **Supplement health surface** ([#380](https://github.com/alexherrero/agentm/pull/380)) — `_meta/opinion-supplement-health-latest.json`, `console.section_opinion_supplements`, and `scripts/verify-opinion-supplements.sh` (proving propose → confirm → serve → resolve → revert end to end, plus the contradiction guard), wired into `check-all.sh` (34/34 green) and CI on Linux and Mac.
+
+### Fixed
+
+- **`kind: opinion-supplement` registered in `KNOWN_KINDS`** ([#380](https://github.com/alexherrero/agentm/pull/380)) — Stage 1 already wrote this kind; nothing recognized it.
+- **`_opinions/` joins `dream._EXCLUDE_DIRS`** ([#380](https://github.com/alexherrero/agentm/pull/380)) — general dreaming stages (`link_improvement` in particular) could otherwise merge, shelve, or annotate a served supplement or lane entry.
+
+### Internal
+
+- **Two things stay deliberately open, not drift.** `opinion_promote` stays out of `AUTO_APPLY_STAGES` until a fresh, explicit operator ruling widens it (joining `_ANOMALY_WATCHED_STAGES` in that same future change). The two calibration numbers — the 0.85 similarity threshold and the ~20-entry lane-depth warning — are unmeasured against real lane volume, which is zero today; both carry their own re-audit trigger in the design.
+- **One field-name reconciliation** ([#381](https://github.com/alexherrero/agentm/pull/381)) — the design pass named a new `signal_source:` field, but Stage 1's existing `source:` field already is that exact thing (an optional, provenance-only origin tag). The docs now name `source:`; nothing shipped changed.
+
 ## [v9.2.2] — 2026-07-25 — Patch: Loose Ends Release 5b — the prose items
 
 **PATCH.** Docs-only. Retry-or-accept the 3 parked reference pages via the two-step cross-model prose pass (`prose_pass.py`), and the V5-6 narrative-shed "plugin host" prose sweep.

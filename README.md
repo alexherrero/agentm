@@ -70,7 +70,7 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 - [Reference](https://github.com/alexherrero/agentm/wiki/Reference) — fields, flags, schemas and more.
 
 > [!NOTE]
-> **Latest release: [v9.2.2](https://github.com/alexherrero/agentm/releases/tag/v9.2.2).** The prose reframes memory-first where it had genuinely drifted, and rejects a doc rewrite that quietly dropped a real fact.
+> **Latest release: [v9.3.0](https://github.com/alexherrero/agentm/releases/tag/v9.3.0).** The accumulate loop's recurrence gate, contradiction check, and confirm-gated composition ship — standards the agent learns from real work, not just what got coded.
 
 ---
 
