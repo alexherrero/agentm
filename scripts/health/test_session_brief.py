@@ -117,6 +117,26 @@ class CountParkedTests(unittest.TestCase):
         self.assertEqual(sb.count_parked(self.park), 2)
 
 
+class CountCrystallizeCandidatesTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.vault = Path(self._tmp.name) / "vault"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_zero_when_missing(self):
+        self.assertEqual(sb.count_crystallize_candidates(self.vault), 0)
+
+    def test_counts_staged_candidates(self):
+        staging = self.vault / "_crystallize-staging"
+        staging.mkdir(parents=True)
+        (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
+        (staging / "post-release-b.json").write_text("{}", encoding="utf-8")
+        (staging / "not-a-candidate.txt").write_text("x", encoding="utf-8")
+        self.assertEqual(sb.count_crystallize_candidates(self.vault), 2)
+
+
 class HistoryLatestDateTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -199,6 +219,14 @@ class BuildBriefTests(unittest.TestCase):
         (self.park / "myplan-park-state.json").write_text("{}", encoding="utf-8")
         b = self._brief()
         self.assertIn("1 run parked, awaiting resume", b["line"])
+
+    def test_crystallize_clause_appended(self):
+        _write_digest(self.vault / "_briefs", "20260717", "daily", spend=1.0, events=1)
+        staging = self.vault / "_crystallize-staging"
+        staging.mkdir(parents=True)
+        (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
+        b = self._brief()
+        self.assertIn("1 session awaiting crystallization", b["line"])
 
     def test_deadman_threshold_is_configurable(self):
         _write_digest(self.vault / "_briefs", "20260716", "daily", spend=1.0, events=1)  # 1 day old

@@ -226,6 +226,23 @@ def count_needs_your_eye(vault: Path) -> int:
         return 0
 
 
+def count_crystallize_candidates(vault: Path) -> int:
+    """Sessions staged by crystallization's phase-close trigger (agentm-
+    experience-and-dreaming.md § Crystallization's phase-close trigger, call
+    6), awaiting a five-field digest or an explicit dismissal. A bare
+    directory glob — deliberately not via `_meta/needs-your-eye.json` above,
+    which `inbox_triage.py` overwrites wholesale every cycle and would
+    silently lose an appended item. Best-effort zero on any edge — never
+    raises (the hook contract)."""
+    staging_dir = Path(vault) / "_crystallize-staging"
+    if not staging_dir.is_dir():
+        return 0
+    try:
+        return sum(1 for p in staging_dir.glob("*.json") if p.is_file())
+    except OSError:
+        return 0
+
+
 def history_latest_date(history_path: Path) -> "datetime | None":
     """The newest `date` recorded in the digest-history ledger — evidence the
     ladder *computed* a digest even when no note reached `_briefs/`. The gap
@@ -300,6 +317,12 @@ def build_brief(
             f" · {needs_eye} dedup candidate{'s' if needs_eye != 1 else ''} need"
             f"{'s' if needs_eye == 1 else ''} your eye"
         )
+    crystallize_pending = count_crystallize_candidates(vault)
+    if crystallize_pending > 0:
+        parked_clause += (
+            f" · {crystallize_pending} session{'s' if crystallize_pending != 1 else ''} "
+            f"awaiting crystallization"
+        )
 
     hist_str = hist_latest.strftime("%Y-%m-%d") if hist_latest is not None else None
 
@@ -312,7 +335,7 @@ def build_brief(
             else:
                 age = f"{stale_days}d ago" if stale_days else "today"
             line = f"[agentm] Observability — {digest['headline']} (last cycle {age}){parked_clause}."
-            signature = f"fresh|{digest['slug']}|{parked}|{needs_eye}"
+            signature = f"fresh|{digest['slug']}|{parked}|{needs_eye}|{crystallize_pending}"
             return {"line": line, "signature": signature}
         # Deadman — a note exists but the ladder has gone quiet.
         extra = ""

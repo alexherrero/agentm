@@ -10,20 +10,22 @@ stop` / `memory-reflect-idle` hooks on every session regardless of whether
 an exploration closed) — this is the phase-close counterpart, one digest
 per closed exploration, not one per session.
 
-**Trigger, and why it's operator-invoked in v1 (a scope decision, not an
-oversight):** at research time, "a completed exploration" is NOT a bounded,
-detectable thing anywhere in this codebase — no hook, marker, or session
-type of that name exists (confirmed by grep across wiki/, harness/,
-AGENTS.md). Wiring an automatic phase-boundary trigger (e.g. off the
-crickets developer-workflows phase loop, or a new session-boundary marker)
-is real, undecided infrastructure work this task does not invent from
-scratch. Instead this module ships the callable an operator — or, later, a
-phase hook once one is designed — invokes once an exploration is judged
-closed: `crystallize_exploration(vault_path, slug, digest)`. This mirrors
-this wave's own established precedent: dreaming shipped its manual `/dream`
-before any scheduled trigger; forward-learning shipped one deterministic
-pass before a semantic judge. Automatic phase-boundary wiring is a natural
-v2 graduation, not built here.
+**Trigger — designed and built (2026-07-26): `post-work` and `post-release`
+stage candidates; composing a digest stays manual.** At authoring time, "a
+completed exploration" was not a bounded, detectable thing anywhere in this
+codebase. That premise expired: crickets PR #214 shipped
+`agentm_bridge.py`'s `phase-dispatch` verb, and `orchestration_phase.py`'s
+`stage_crystallization_candidate()` now rides both events as a sibling step,
+staging a bare marker under `<vault>/_crystallize-staging/` (session id +
+transcript pointer — see that module and `wiki/designs/agentm-experience-
+and-dreaming.md` § Crystallization's phase-close trigger for the full design).
+What the trigger deliberately does NOT do is judge whether a session merits
+a digest or compose one: an orchestration chain fires outside the agent loop
+and cannot dispatch a sub-agent, so both stay behind
+`exploration_judge_available()` (always `False` today). Composing a digest
+from a staged candidate — via `crystallize_exploration(vault_path, slug,
+digest)` below — is still an operator (or future agent-side) action; the
+trigger only makes sure a candidate is waiting to be picked up.
 
 **Schema — shared with `PLAN-wave-e-v6-index` task 7's consolidation work**
 ("the phase-close counterpart to dreaming's whole-corpus pass; the digest
@@ -73,9 +75,11 @@ schema order.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -92,10 +96,156 @@ __all__ = [
     "crystallize_exploration",
     "parse_digest",
     "MalformedDigestError",
+    "STAGING_DIRNAME",
+    "stage_candidate",
+    "list_candidates",
+    "drop_candidate",
+    "count_pending_candidates",
+    "exploration_judge_available",
 ]
 
 DIGEST_KIND = "crystallized"
 DIGEST_FIELDS = ("question", "investigation", "findings", "lessons", "open_threads")
+
+# ── phase-close trigger: staging (agentm-experience-and-dreaming.md
+# § Crystallization's phase-close trigger, locked calls 4-5-7-8) ─────────────
+#
+# The trigger fires on real phase-dispatch events (post-work, post-release)
+# but cannot judge whether a session merits a digest or compose its five
+# fields — the chain that fires cannot dispatch a sub-agent
+# (orchestration_idle.py:24). So it stages a bare marker instead: a session id
+# and a transcript pointer, nothing else. `orchestration_phase.py` resolves
+# WHICH session to stage (it owns `.harness/` marker discovery); this module
+# owns WHERE staged candidates live in the vault and how they're managed.
+
+STAGING_DIRNAME = "_crystallize-staging"
+# Calibration-era cap (call 5) — no measured pending volume behind it yet. A
+# cap that trips is evidence the pickup surface isn't being read, not a bound
+# to raise reflexively.
+_MAX_PENDING_CANDIDATES = 50
+
+
+def _staging_dir(vault_path: Path | str) -> Path:
+    return Path(vault_path) / STAGING_DIRNAME
+
+
+def _candidate_path(vault_path: Path | str, phase: str, session_id: str) -> Path:
+    return _staging_dir(vault_path) / f"{phase}-{session_id}.json"
+
+
+def stage_candidate(
+    vault_path: Path | str,
+    phase: str,
+    session_id: str,
+    transcript: str,
+    *,
+    now: Optional[str] = None,
+) -> dict:
+    """Stage (or refresh) a crystallization candidate. Idempotent on
+    `(phase, session_id)` (call 5) — never writes a second candidate for the
+    same session; re-firing bumps `fire_count` and refreshes `last_fired`
+    instead. No cooldown: this write is a few hundred bytes, and gating it on
+    a shared clock would silently drop whole sessions' candidates.
+
+    Returns a result dict: `{"status": "staged"|"refreshed"|"capped",
+    "path": str|None, "fire_count": int}`. Never raises OSError from the
+    filesystem calls it makes directly — a caller invoked from a
+    non-blocking orchestration chain wraps this and must not be wedged by it,
+    but this function's own contract is to surface a status, not swallow one.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    staging_dir = _staging_dir(vault_path)
+    path = _candidate_path(vault_path, phase, session_id)
+
+    if path.is_file():
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["last_fired"] = now
+        data["fire_count"] = int(data.get("fire_count", 1)) + 1
+        path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        return {"status": "refreshed", "path": str(path), "fire_count": data["fire_count"]}
+
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        existing = sum(1 for p in staging_dir.glob("*.json") if p.is_file())
+    except OSError:
+        existing = 0
+    if existing >= _MAX_PENDING_CANDIDATES:
+        return {"status": "capped", "path": None, "fire_count": 0}
+
+    data = {
+        "phase": phase,
+        "session_id": session_id,
+        "transcript": str(transcript),
+        "first_fired": now,
+        "last_fired": now,
+        "fire_count": 1,
+    }
+    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    return {"status": "staged", "path": str(path), "fire_count": 1}
+
+
+def list_candidates(vault_path: Path | str) -> list:
+    """All pending candidates, oldest first. Never raises — a malformed
+    candidate is skipped rather than breaking the surface reading it (the
+    same hook-contract shape every push surface in this codebase follows)."""
+    staging_dir = _staging_dir(vault_path)
+    if not staging_dir.is_dir():
+        return []
+    try:
+        paths = sorted(staging_dir.glob("*.json"))
+    except OSError:
+        return []
+    out = []
+    for p in paths:
+        try:
+            out.append(json.loads(p.read_text(encoding="utf-8")))
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def drop_candidate(vault_path: Path | str, phase: str, session_id: str) -> bool:
+    """Delete a candidate — picked up into a digest, or dismissed. Never
+    archived (call 8): the marker holds no content worth retaining once a
+    digest exists or the operator has passed. Returns True if a file was
+    removed, False if it did not exist."""
+    path = _candidate_path(vault_path, phase, session_id)
+    try:
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def count_pending_candidates(vault_path: Path | str) -> int:
+    """Bare directory count for the push surfaces (session_brief.py,
+    console.py — call 6). Deliberately not a parse of each file's content:
+    the same clobber-proof glob shape `session_brief.count_parked` uses,
+    since `_meta/needs-your-eye.json`'s overwrite-every-cycle contract would
+    silently lose an appended item. Never raises."""
+    staging_dir = _staging_dir(vault_path)
+    if not staging_dir.is_dir():
+        return 0
+    try:
+        return sum(1 for p in staging_dir.glob("*.json") if p.is_file())
+    except OSError:
+        return 0
+
+
+def exploration_judge_available() -> bool:
+    """Unbuilt seam (call 7): whether a staged session merits a five-field
+    digest, and what the fields are, both need a model the orchestration
+    chain cannot call (`orchestration_idle.py:24`). Always `False` today —
+    the fourth seam of this exact shape, alongside
+    `opinion_routing.assist_tier_available()`,
+    `dream.cheap_model_tier_available()`, and
+    `dream_confirm.higher_tier_model_available()`. Flip all four together
+    when a chain-time model primitive exists; do not build a heuristic in
+    the meantime (transcript length, fire_count, files touched) — that would
+    encode a guess about what makes a session investigative as though it
+    were a measurement."""
+    return False
 
 _SECTION_TITLES = {
     "question": "Question",
