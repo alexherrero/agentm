@@ -17,6 +17,7 @@
     - [Capture](agentm-capture)
     - [Auto-Organization](agentm-auto-organization)
     - [Recall trace](agentm-recall-trace)
+    - [Recall ledger retention](agentm-recall-ledger-retention)
   - [Memory↔Storage Seam](memory-storage-seam)
     - [Vault Storage & Presentation](agentm-vault-storage-presentation)
   - [Experience & Dreaming](agentm-experience-and-dreaming)
