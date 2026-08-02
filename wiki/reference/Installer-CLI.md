@@ -36,6 +36,8 @@ install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-proje
 
 You use `scripts/agentm_config.py` to read and set fields on the on-host `.agentm-config.json`. This is your single config file. The vault holds data. The config lives only on the host. You do not need to re-run the installer. The script resolves the install prefix from `AGENTM_INSTALL_PREFIX`. If that is unset, it defaults to `~/.claude/`.
 
+**Re-running the installer keeps what you set here.** Both programs write this file: the installer owns `schema_version`, `mode`, `source_clones`, `installed_at`, `harness_version`, `vault_path`, `state_mode`, `installer_source`, `installed_shas` and `fragments`, and it overwrites only those. Everything else — every key in the table below, and anything a later plugin adds — is carried forward untouched on each re-persist. That was not always true: until the fix recorded in the [CHANGELOG](https://github.com/alexherrero/agentm/blob/main/CHANGELOG.md), the installer rebuilt the file from its own key list, so every `plugins.*` and `storage.*` key was deleted on each `install.sh` run. If you ran an installer from before that fix, `agentm_config.py --list` shows what survived; re-set anything missing.
+
 | Operation | Effect |
 |---|---|
 | `--vault-path <path>` | Set the vault path (validates the dir exists). Writes `plugins.obsidian-vault.vault_path` + `storage.backend=vault` on the on-host `.agentm-config.json` (V5-7 config-plane, tasks 1+2 shipped). `--get vault_path` reads the plugin-namespaced key first, then falls back to the legacy flat `vault_path` key. `--unset vault_path` removes both keys. Backs `harness_memory.py::vault_path()` when `$MEMORY_VAULT_PATH` is unset. |
