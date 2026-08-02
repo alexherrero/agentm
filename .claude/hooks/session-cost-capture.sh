@@ -69,7 +69,8 @@ if [[ ! -f "$WRITER_PY" ]]; then
     exit 0
 fi
 
-# Parse session_id + cwd from the Stop payload (per Claude Code's hook spec).
+# Parse transcript_path + session_id + cwd from the Stop payload (per Claude
+# Code's hook spec — transcript_path is sent on every hook event).
 PARSED="$(printf '%s' "$PAYLOAD" | python3 -c '
 import json, sys
 try:
@@ -78,8 +79,9 @@ except Exception:
     sys.exit(0)
 sid = d.get("session_id") or ""
 cwd = d.get("cwd") or ""
+tp = d.get("transcript_path") or ""
 if sid:
-    print(f"{sid}\t{cwd}")
+    print(f"{sid}\t{cwd}\t{tp}")
 ' 2>/dev/null)"
 
 if [[ -z "$PARSED" ]]; then
@@ -88,20 +90,35 @@ fi
 
 SESSION_ID="$(printf '%s' "$PARSED" | cut -f1)"
 CWD="$(printf '%s' "$PARSED" | cut -f2)"
+PAYLOAD_TRANSCRIPT="$(printf '%s' "$PARSED" | cut -f3)"
 if [[ -z "$CWD" ]]; then
     CWD="$(pwd)"
 fi
 
-# Compute transcript path: ~/.claude/projects/<cwd-slug>/<session_id>.jsonl
-# NOTE: fixed a real bug found during CONS-9 verification (Consolidation
-# arc) — the canonical script prepended an extra literal "-" on top of what
-# `tr '/' '-'` already produces from the leading "/" in an absolute path,
-# doubling the leading dash and never matching a real ~/.claude/projects/
-# directory name. Confirmed against a real transcript directory before
-# fixing; flagged upstream in crickets since the same bug is likely in
-# every install of this hook, not just this one.
-CWD_SLUG="$(printf '%s' "$CWD" | tr '/' '-')"
-TRANSCRIPT="$HOME/.claude/projects/${CWD_SLUG}/${SESSION_ID}.jsonl"
+# Transcript path: the payload's own `transcript_path` is authoritative, same
+# as the memory hooks in harness/hooks/. The computed path stays as a fallback
+# for hosts too old to send the field.
+if [[ -n "$PAYLOAD_TRANSCRIPT" ]]; then
+    TRANSCRIPT="$PAYLOAD_TRANSCRIPT"
+else
+    # Fallback: ~/.claude/projects/<cwd-slug>/<session_id>.jsonl.
+    #
+    # NOTE: this branch carried a real bug found during CONS-9 verification
+    # (Consolidation arc) — the canonical script prepended an extra literal "-"
+    # on top of what `tr` already produces from the leading "/" in an absolute
+    # path, doubling the leading dash and never matching a real
+    # ~/.claude/projects/ directory name. Flagged upstream in crickets since
+    # the same bug is likely in every install of this hook.
+    #
+    # It carried a SECOND one until the payload read landed: `tr '/' '-'` alone
+    # leaves dots intact, but Claude Code converts those too, so every worktree
+    # session (`.claude/worktrees/<name>` — the normal shape in this repo) slugged
+    # to a directory that does not exist and cost capture silently skipped. The
+    # memory hooks fixed this in PR #385; this one was missed because it lives
+    # under .claude/ rather than harness/hooks/. Matched to `tr '/.' '--'` here.
+    CWD_SLUG="$(printf '%s' "$CWD" | tr '/.' '--')"
+    TRANSCRIPT="$HOME/.claude/projects/${CWD_SLUG}/${SESSION_ID}.jsonl"
+fi
 
 if [[ ! -f "$TRANSCRIPT" ]]; then
     exit 0

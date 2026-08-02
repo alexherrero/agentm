@@ -26,7 +26,8 @@ if (-not $Payload) {
     exit 0
 }
 
-# Parse session_id + cwd via embedded Python (consistent with the bash side).
+# Parse session_id + cwd + transcript_path via embedded Python (consistent with
+# the bash side).
 $ParseDriver = @"
 import json, sys
 try:
@@ -35,8 +36,9 @@ except Exception:
     sys.exit(0)
 sid = d.get('session_id') or ''
 cwd = d.get('cwd') or ''
+tp = d.get('transcript_path') or ''
 if sid:
-    print(f'{sid}\t{cwd}')
+    print(f'{sid}\t{cwd}\t{tp}')
 "@
 $Parsed = ($Payload | & $Py -c $ParseDriver 2>$null).Trim()
 if (-not $Parsed) {
@@ -47,22 +49,36 @@ if (-not $Parsed) {
 $Parts = $Parsed -split "`t"
 $SessionId = $Parts[0]
 $Cwd = if ($Parts.Length -gt 1 -and $Parts[1]) { $Parts[1] } else { (Get-Location).Path }
+$PayloadTranscript = if ($Parts.Length -gt 2) { $Parts[2] } else { "" }
 
-# Compute transcript path: ~/.claude/projects/<cwd-slug>/<session_id>.jsonl
-# CWD slug: replace path separators + drive-letter colons with '-' + leading '-'.
-# The ':' replacement is Windows-specific — drive letters like "C:" produce
-# invalid filename chars otherwise. The exact slug convention Claude Code uses
-# on Windows may differ from this; if it does, the hook gracefully misses the
-# transcript (exit 0 + "transcript not found"). Tracked as a Windows-recall
-# follow-up if real-world dogfood surfaces a mismatch.
-$CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '')
-# $HOME (automatic variable) is USERPROFILE-derived on Windows and does not
-# follow a HOME env var set on the process; $env:HOME is a direct env-var
-# read on every platform, so prefer it and fall back to $HOME for real
-# end-user machines that don't set HOME at all.
-$HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
-$Transcript = Join-Path $HomeDir ".claude/projects/$CwdSlug/$SessionId.jsonl"
+# Transcript path: the payload's own `transcript_path` is authoritative. Claude
+# Code sends it on every hook event, and the session-id → filename
+# correspondence it replaces is not guaranteed. The computed path below stays
+# as a fallback for hosts too old to send the field — see the bash sibling for
+# the full rationale.
+#
+# The fallback matters more here than on POSIX: the slug convention Claude Code
+# uses on Windows was never confirmed, so this branch was always a best guess.
+# A payload-supplied path retires that guess outright.
+if ($PayloadTranscript) {
+    $Transcript = $PayloadTranscript
+} else {
+    # Fallback slug: replace path separators + drive-letter colons with '-' +
+    # leading '-'. The ':' replacement is Windows-specific — drive letters like
+    # "C:" produce invalid filename chars otherwise. If the real convention
+    # differs, the hook gracefully misses the transcript (exit 0 + "transcript
+    # not found").
+    $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '')
+    # $HOME (automatic variable) is USERPROFILE-derived on Windows and does not
+    # follow a HOME env var set on the process; $env:HOME is a direct env-var
+    # read on every platform, so prefer it and fall back to $HOME for real
+    # end-user machines that don't set HOME at all.
+    $HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
+    $Transcript = Join-Path $HomeDir ".claude/projects/$CwdSlug/$SessionId.jsonl"
+}
 
+# A payload-supplied path that does not exist is reported and skipped, never
+# quietly retried against the computed one.
 if (-not (Test-Path $Transcript)) {
     [Console]::Error.WriteLine("[memory-reflect-stop] transcript not found: $Transcript (skipping)")
     exit 0

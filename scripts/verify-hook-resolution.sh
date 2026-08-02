@@ -26,6 +26,11 @@
 #     (MEMORY_IDLE_THRESHOLD_SEC=0 makes a fresh marker instantly "stale" so
 #     the test doesn't need to fake mtimes)
 #
+# It also covers transcript-path resolution on both branches: the hooks read
+# `transcript_path` off the payload (checks F + G), and fall back to the
+# computed `~/.claude/projects/<cwd-slug>/<sid>.jsonl` when a host is too old
+# to send it (checks A + C, whose payloads deliberately omit the field).
+#
 # The assertions below are always the POSITIVE expectations (vault resolves;
 # each hook produces real, vault-derived output). Mirrors the
 # VERIFY_MEMORY_FAULT convention in verify-memory-roundtrip.sh: fault mode
@@ -33,10 +38,21 @@
 # (strips the plugin-namespaced key from config entirely — no vault key of any
 # kind) so the SAME assertions fail loudly, proving they have teeth. Run
 # normally (no fault var), every assertion should pass on the fixed hooks; run
-# under VERIFY_HOOK_RESOLUTION_FAULT=1, every assertion should fail — that's
-# the fault-injection mode "detecting" what agentmEngine#0 actually looked
-# like (a config with the real vault key present in its real location, but
-# nothing resolving because the reader hadn't been taught to look for it).
+# under VERIFY_HOOK_RESOLUTION_FAULT=1, every VAULT-DEPENDENT assertion should
+# fail — that's the fault-injection mode "detecting" what agentmEngine#0
+# actually looked like (a config with the real vault key present in its real
+# location, but nothing resolving because the reader hadn't been taught to look
+# for it).
+#
+# Six assertions are vault-INDEPENDENT by construction and stay green under
+# fault mode: the three dead-pointer sweeps in section E, the absent-transcript
+# skip in section F, and the two marker-content checks in section G. They assert
+# pointer hygiene — that a marker is cleared, or carries the fields it was
+# handed, or that an unresolvable path is reported rather than guessed around —
+# all true whether or not a vault resolves. That is correct, not a gap: naming
+# it here so a reader running fault mode doesn't read those PASSes as teeth that
+# fell out. (The header previously claimed every assertion fails under fault; it
+# had not been true of section E since those checks landed.)
 #
 # Usage:   bash scripts/verify-hook-resolution.sh
 #          VERIFY_HOOK_RESOLUTION_FAULT=1 bash scripts/verify-hook-resolution.sh
@@ -127,6 +143,10 @@ SESSION_ID="00000000-0000-0000-0000-000000000001"
 # therefore green while reflection was broken in production for 57 days. It now
 # encodes the convention independently; scripts/test_transcript_slug.py pins the
 # formula against known-good literals so both sides cannot silently drift again.
+#
+# Since the hooks read `transcript_path` off the payload, this slug is the
+# FALLBACK path — checks A and C below deliberately omit the field so the
+# fallback is what resolves them, and checks F and G cover the payload path.
 CWD_SLUG="$(printf '%s' "$PROJ" | tr '/.' '--')"
 mkdir -p "$SCRATCH_HOME/.claude/projects/$CWD_SLUG"
 TRANSCRIPT="$SCRATCH_HOME/.claude/projects/$CWD_SLUG/$SESSION_ID.jsonl"
@@ -135,9 +155,22 @@ printf '%s\n%s\n' \
   '{"type":"assistant","message":{"role":"assistant","content":"noted"}}' \
   > "$TRANSCRIPT"
 
+# A second transcript at a path the slug formula can NEVER produce — it sits
+# under $PROJ rather than under $SCRATCH_HOME/.claude/projects/, so a hook that
+# ignored `transcript_path` and computed instead could not find it by accident.
+PAYLOAD_SESSION_ID="00000000-0000-0000-0000-000000000002"
+PAYLOAD_TRANSCRIPT="$PROJ/elsewhere/payload-supplied.jsonl"
+mkdir -p "$PROJ/elsewhere"
+cp "$TRANSCRIPT" "$PAYLOAD_TRANSCRIPT"
+
 run_hook() {  # run_hook <hook-script-relpath> [stdin] — stdout only
   ( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX \
       bash "$HOOKS/$1" <<<"${2:-}" 2>/dev/null )
+}
+
+run_hook_stderr() {  # run_hook_stderr <hook-script-relpath> [stdin] — stderr only
+  ( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX \
+      bash "$HOOKS/$1" <<<"${2:-}" 2>&1 >/dev/null )
 }
 
 # ── A. recall session-start: always-load entry on stdout ───────────────────
@@ -151,9 +184,11 @@ PS_OUT="$(run_hook memory-recall-prompt-submit/memory-recall-prompt-submit.sh \
 assert_contains "prompt-submit: reference entry resolved from the scratch vault" "$PS_OUT" "hook-resolution-canary-ref"
 
 # ── C. reflect-stop: --route succeeds; a real record lands on stdout ───────
+# No `transcript_path` on this payload — this is the computed-fallback branch,
+# which stays live for hosts too old to send the field.
 RS_OUT="$(run_hook memory-reflect-stop/memory-reflect-stop.sh \
   "{\"session_id\":\"$SESSION_ID\",\"cwd\":\"$PROJ\"}")"
-assert_contains "reflect-stop: --route emits a summary pass record" "$RS_OUT" '"pass": "summary"'
+assert_contains "reflect-stop: --route emits a summary pass record (computed fallback)" "$RS_OUT" '"pass": "summary"'
 
 # ── D. reflect-idle: orphan marker renamed .start→.reflected iff resolvable ─
 rm -rf "$PROJ/.harness"; mkdir -p "$PROJ/.harness"
@@ -187,6 +222,42 @@ printf 'session_id: dead-noline\nstarted_at: 2026-01-01T00:00:00Z\n' > "$DEAD_NO
 assert_absent "reflect-idle: dead pointer cleared (transcript missing)" "$DEAD_GONE"
 assert_absent "reflect-idle: dead pointer cleared (no transcript: line)" "$DEAD_NOLINE"
 assert_absent "reflect-idle: dead pointer not resurrected as .reflected" "${DEAD_GONE%.start}.reflected"
+
+# ── F. reflect-stop: the payload's transcript_path wins over the formula ────
+# The fixture lives outside $SCRATCH_HOME/.claude/projects/ entirely, so a hook
+# that computed the path instead of reading it would miss and skip. Asserted on
+# the success transparency line ("...candidates from <path>"), not merely on the
+# path appearing somewhere in stderr — the route-failed line names the transcript
+# too, so the looser match would go green on a hook that resolved the right file
+# and then failed to mine it, and would survive fault mode.
+RS_PAYLOAD_ERR="$(run_hook_stderr memory-reflect-stop/memory-reflect-stop.sh \
+  "{\"session_id\":\"$PAYLOAD_SESSION_ID\",\"cwd\":\"$PROJ\",\"transcript_path\":\"$PAYLOAD_TRANSCRIPT\"}")"
+assert_contains "reflect-stop: mined the payload-supplied transcript_path" \
+  "$RS_PAYLOAD_ERR" "candidates from $PAYLOAD_TRANSCRIPT"
+
+# A payload path that does not exist is skipped, never silently retried against
+# the computed one — the whole point is to stop guessing at a path.
+RS_GHOST_ERR="$(run_hook_stderr memory-reflect-stop/memory-reflect-stop.sh \
+  "{\"session_id\":\"$SESSION_ID\",\"cwd\":\"$PROJ\",\"transcript_path\":\"$PROJ/no-such-transcript.jsonl\"}")"
+assert_contains "reflect-stop: absent payload transcript_path skips (no fallback guess)" \
+  "$RS_GHOST_ERR" "transcript not found: $PROJ/no-such-transcript.jsonl"
+
+# ── G. session-start: marker records the payload transcript_path + source ───
+rm -rf "$PROJ/.harness"; mkdir -p "$PROJ/.harness"
+run_hook memory-recall-session-start/memory-recall-session-start.sh \
+  "{\"session_id\":\"$PAYLOAD_SESSION_ID\",\"cwd\":\"$PROJ\",\"transcript_path\":\"$PAYLOAD_TRANSCRIPT\",\"source\":\"resume\"}" >/dev/null
+MARKER_G="$PROJ/.harness/session-id-$PAYLOAD_SESSION_ID.start"
+if [ -f "$MARKER_G" ]; then MARKER_G_BODY="$(cat "$MARKER_G")"; else MARKER_G_BODY=""; fi
+assert_contains "session-start: marker carries the payload transcript_path" \
+  "$MARKER_G_BODY" "transcript: $PAYLOAD_TRANSCRIPT"
+assert_contains "session-start: marker records the SessionStart source" "$MARKER_G_BODY" "source: resume"
+
+# The marker the payload wrote must be resolvable by the sweeper that reads it —
+# the round trip that was broken for 57 days, now closed without a formula.
+( cd "$PROJ" && HOME="$SCRATCH_HOME" env -u MEMORY_VAULT_PATH -u AGENTM_INSTALL_PREFIX MEMORY_IDLE_THRESHOLD_SEC=0 \
+    bash "$HOOKS/memory-reflect-idle/memory-reflect-idle.sh" >/dev/null 2>&1 )
+assert_exists "reflect-idle: payload-written marker reflects (not cleared as dead)" \
+  "${MARKER_G%.start}.reflected"
 
 # ── report ──────────────────────────────────────────────────────────────────
 echo

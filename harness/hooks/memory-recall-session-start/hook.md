@@ -23,6 +23,21 @@ A `SessionStart` event hook that globs `MemoryVault/personal-private/_always-loa
 - **Time budget:** 500ms wall clock. On overrun: log a warning to stderr, return the partial results gathered so far (degraded-graceful). The hook never blocks session boot.
 - **Exit 0** always (unless a Python interpreter error — vault problems are warnings, not failures).
 
+## Crash-recovery marker
+
+Before the recall pass, the hook writes `.harness/session-id-<session_id>.start` — the pointer [`memory-reflect-idle`](../memory-reflect-idle/hook.md)'s orphan sweep uses to reflect sessions where `Stop` never fired (crash, force quit, OS kill).
+
+```
+session_id: <uuid>
+started_at: <iso-timestamp>
+source: startup | resume | clear | compact | fork | unknown
+transcript: <absolute-path-to-transcript-jsonl>
+```
+
+- **`transcript:`** is the payload's own **`transcript_path`**, which Claude Code sends on every hook event. Claude Code's hook docs direct hooks to use it rather than constructing a path from `session_id`, since that correspondence is not guaranteed. When the payload omits it (a build predating the field), the hook falls back to the computed `~/.claude/projects/<cwd-slug>/<session_id>.jsonl` — `cwd` with both `/` and `.` replaced by `-`, no extra leading `-`.
+- **`source:`** records which `SessionStart` fired. Nothing reads it; it is there so a marker pointing somewhere unexpected reads as an explanation rather than a mystery. Defaults to `unknown` when the payload omits it.
+- **Writes are idempotent and best-effort.** `SessionStart` re-fires on resume, clear and compact, so an existing marker is left untouched; a failed write never blocks the recall pass.
+
 ## What it never does
 
 - **Never blocks session start.** If anything fails (vault missing, Python missing, entries unreadable), the hook exits 0 and the session proceeds without injected memory.

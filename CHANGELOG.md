@@ -5,6 +5,28 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **The memory hooks read `transcript_path` from the hook payload** ([`memory-reflect-stop`](harness/hooks/memory-reflect-stop/memory-reflect-stop.sh), [`memory-recall-session-start`](harness/hooks/memory-recall-session-start/memory-recall-session-start.sh), and both `.ps1` twins) — Claude Code sends the field on every hook event, and its docs direct hooks to use it rather than constructing a path from `session_id`, since that correspondence is not guaranteed. The value goes straight into the session marker's `transcript:` line. `memory-reflect-idle` and `orchestration_phase.py` already read that line and needed no change.
+
+  **This is hygiene, not a repair — reflection worked before and after.** `_resolve_transcript_for_staging()` filters markers to those whose transcript actually exists before applying its exactly-one rule, so the phantom markers the computed formula produced were discarded correctly rather than resolving to the wrong session; verified end-to-end with two phantoms and one live marker present. The win is that phantoms stop being written at all, and that a class of path-construction bug leaves the codebase. The residual symptom that prompted it: `SessionStart` sometimes fires with a session id having no transcript anywhere on disk — resume, compact and fork are the likely sources, and `/branch` is documented to mint a new id.
+
+- **The computed slug survives as a fallback, deliberately.** With no `transcript_path` on the payload (a Claude Code predating the field), the hooks still compute the corrected `~/.claude/projects/<cwd-slug>/<session_id>.jsonl`. Deleting it would turn "this host is older" into "reflection silently never runs" — the 57-day outage of [PR #385](https://github.com/alexherrero/agentm/pull/385) reached from the opposite direction. Both branches are exercised: `verify-hook-resolution.sh` splits its payloads so two checks resolve through the formula and three through the payload, and [`test_transcript_slug.py`](scripts/test_transcript_slug.py) keeps pinning the formula against hand-written literals rather than mirroring it. A payload path naming a missing file is reported and skipped, never retried against the computed one — that would be guessing at a path again.
+
+- **`source:` joins the session marker** — `startup` / `resume` / `clear` / `compact` / `fork`, or `unknown` when absent. Nothing reads it; it makes a marker pointing somewhere unexpected diagnosable instead of mysterious. Markers written before the field parse identically, since every reader keys on `transcript:` alone.
+
+### Fixed
+
+- **Session cost capture had been skipping every worktree session** ([`.claude/hooks/session-cost-capture.sh`](.claude/hooks/session-cost-capture.sh)) — a second instance of the same defect class, found in this sweep. Its slug used `tr '/' '-'`, leaving dots intact, but Claude Code converts those too, so `.claude/worktrees/<name>` — the normal shape in this repo — slugged to a directory that does not exist. [PR #385](https://github.com/alexherrero/agentm/pull/385) missed it because it lives under `.claude/` rather than `harness/hooks/`. Now reads `transcript_path` off the payload like the memory hooks, with the corrected `tr '/.' '--'` as its fallback.
+
+### Internal
+
+- 11 new tests across [`test_memory_reflect_stop_hook.py`](scripts/test_memory_reflect_stop_hook.py), [`test_memory_recall_hook.py`](scripts/test_memory_recall_hook.py), [`test_transcript_slug.py`](scripts/test_transcript_slug.py) and both pwsh twins, plus 5 new checks in [`verify-hook-resolution.sh`](scripts/verify-hook-resolution.sh). The payload branch is proven behaviorally, not structurally: its fixtures sit outside the fake `HOME`'s projects tree entirely, at paths no slug on either platform could produce, so a hook that reverted to computing cannot reach them by accident. Mutation-checked by reverting the branch on a scratch copy and confirming the new assertions fail.
+- `verify-hook-resolution.sh`'s header claimed every assertion fails under `VERIFY_HOOK_RESOLUTION_FAULT=1`. That had not been true of its dead-pointer checks since they landed — they assert pointer hygiene, which holds whether or not a vault resolves. The header now names the six vault-independent assertions so a reader running fault mode doesn't read those passes as teeth that fell out.
+- `memory-reflect-idle`'s [`hook.md`](harness/hooks/memory-reflect-idle/hook.md) still documented "never deletes `.start` markers" and a skip-on-unresolvable-transcript contract, both superseded by [PR #385](https://github.com/alexherrero/agentm/pull/385)'s dead-pointer sweep. Reconciled, along with the marker-format block both hooks share.
+
 ## [v9.5.0] — 2026-07-25 — Minor: recall trace — why a memory surfaced
 
 **MINOR.** Loose Ends Release 8 of 8 — the arc's own last conditional rung, correctly not taken when the arc closed at 7/8, picked back up whole in a dedicated session per [wiki/designs/agentm-recall-trace.md](wiki/designs/agentm-recall-trace.md).

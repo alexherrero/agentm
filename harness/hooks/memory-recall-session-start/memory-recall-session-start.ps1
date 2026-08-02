@@ -14,9 +14,9 @@ if (-not (Get-Command python3 -ErrorAction SilentlyContinue) -and
 $Py = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
 
 # ── Crash-recovery marker (plan #7a part 3 task 6) ─────────────────────────
-# Parse SessionStart event's stdin JSON for session_id + cwd; write a
-# .harness/session-id-<sid>.start marker so the idle hook's orphan-recovery
-# sweep can detect crashed sessions. Marker write is best-effort.
+# Parse SessionStart event's stdin JSON for transcript_path, session_id, cwd
+# and source; write a .harness/session-id-<sid>.start marker so the idle hook's
+# orphan-recovery sweep can detect crashed sessions. Marker write is best-effort.
 $Payload = ($Input | Out-String).Trim()
 if ($Payload) {
     $ParseDriver = @"
@@ -27,22 +27,34 @@ except Exception:
     sys.exit(0)
 sid = d.get('session_id') or ''
 cwd = d.get('cwd') or ''
+tp = d.get('transcript_path') or ''
+src = d.get('source') or ''
 if sid:
-    print(f'{sid}\t{cwd}')
+    print(f'{sid}\t{cwd}\t{tp}\t{src}')
 "@
     $Parsed = ($Payload | & $Py -c $ParseDriver 2>$null).Trim()
     if ($Parsed) {
         $Parts = $Parsed -split "`t"
         $SessionId = $Parts[0]
         $Cwd = if ($Parts.Length -gt 1 -and $Parts[1]) { $Parts[1] } else { (Get-Location).Path }
-        # Transcript path slug (same formula as memory-reflect-stop.ps1; strip ':' for Windows).
-        $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '')
-        # $HOME (automatic variable) is USERPROFILE-derived on Windows and does
-        # not follow a HOME env var set on the process; $env:HOME is a direct
-        # env-var read on every platform, so prefer it and fall back to $HOME
-        # for real end-user machines that don't set HOME at all.
-        $HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
-        $TranscriptPath = Join-Path $HomeDir ".claude/projects/$CwdSlug/$SessionId.jsonl"
+        $PayloadTranscript = if ($Parts.Length -gt 2) { $Parts[2] } else { "" }
+        $SessionSource = if ($Parts.Length -gt 3 -and $Parts[3]) { $Parts[3] } else { "unknown" }
+        # Transcript path: the payload's own `transcript_path` is authoritative;
+        # the computed slug is the fallback for hosts too old to send it. See
+        # memory-reflect-stop.ps1 for the rationale, and the bash siblings for
+        # the full account.
+        if ($PayloadTranscript) {
+            $TranscriptPath = $PayloadTranscript
+        } else {
+            # Fallback slug (same formula as memory-reflect-stop.ps1; strip ':' for Windows).
+            $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '')
+            # $HOME (automatic variable) is USERPROFILE-derived on Windows and does
+            # not follow a HOME env var set on the process; $env:HOME is a direct
+            # env-var read on every platform, so prefer it and fall back to $HOME
+            # for real end-user machines that don't set HOME at all.
+            $HomeDir = if ($env:HOME) { $env:HOME } else { $HOME }
+            $TranscriptPath = Join-Path $HomeDir ".claude/projects/$CwdSlug/$SessionId.jsonl"
+        }
         # Ensure .harness/ exists.
         $HarnessDir = ".harness"
         if (-not (Test-Path $HarnessDir)) {
@@ -51,9 +63,13 @@ if sid:
         $Marker = Join-Path $HarnessDir "session-id-$SessionId.start"
         if (-not (Test-Path $Marker)) {
             $Now = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+            # `source:` records which SessionStart fired (startup / resume /
+            # clear / compact / fork). Nothing reads it; it is there to make an
+            # odd marker diagnosable. Matches the bash sibling's field order.
             $MarkerContent = @"
 session_id: $SessionId
 started_at: $Now
+source: $SessionSource
 transcript: $TranscriptPath
 "@
             try {

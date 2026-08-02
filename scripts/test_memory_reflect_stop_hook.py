@@ -71,9 +71,10 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         return env
 
     def _transcript_path(self, sid: str, cwd: Path) -> Path:
-        # $HOME/.claude/projects/<cwd-slug>/<sid>.jsonl, where the slug replaces
-        # both '/' and '.' with '-' and takes NO extra leading '-' (an absolute
-        # path's own leading '/' supplies it).
+        # The hook's FALLBACK path, used only when the payload carries no
+        # `transcript_path`: $HOME/.claude/projects/<cwd-slug>/<sid>.jsonl,
+        # where the slug replaces both '/' and '.' with '-' and takes NO extra
+        # leading '-' (an absolute path's own leading '/' supplies it).
         #
         # This used to read `"-" + str(cwd).replace("/", "-")` under a comment
         # saying "mirror the hook's formula" — and mirroring is precisely why it
@@ -94,10 +95,13 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         return tp
 
     def _run_hook(self, env: dict, sid: str = "s1", cwd: Path | None = None,
-                  raw_payload: str | None = None):
+                  raw_payload: str | None = None, transcript_path: str | None = None):
         cwd = cwd or self.proj
         if raw_payload is None:
-            raw_payload = json.dumps({"session_id": sid, "cwd": str(cwd)})
+            payload = {"session_id": sid, "cwd": str(cwd)}
+            if transcript_path is not None:
+                payload["transcript_path"] = transcript_path
+            raw_payload = json.dumps(payload)
         return subprocess.run(
             ["bash", str(_HOOK)], input=raw_payload, env=env,
             cwd=str(cwd), capture_output=True, text=True,
@@ -106,6 +110,8 @@ class TestMemoryReflectStopHook(unittest.TestCase):
     # ── fires ────────────────────────────────────────────────────────────────
 
     def test_fires_reflect_and_renames_marker(self) -> None:
+        # No `transcript_path` on this payload — the computed-fallback branch,
+        # which stays live for hosts too old to send the field.
         self._place_transcript("s1", self.proj)
         start = self.proj / ".harness" / "session-id-s1.start"
         start.write_text("session_id: s1\ntranscript: x\n", encoding="utf-8")
@@ -116,6 +122,48 @@ class TestMemoryReflectStopHook(unittest.TestCase):
         # The hook-owned proof that reflection succeeded: .start → .reflected.
         self.assertFalse(start.exists(), ".start marker not renamed")
         self.assertTrue((self.proj / ".harness" / "session-id-s1.reflected").is_file())
+
+    # ── transcript_path from the payload (the normal route) ──────────────────
+
+    def test_payload_transcript_path_is_used_verbatim(self) -> None:
+        # The fixture sits outside the fake HOME's projects tree entirely, so a
+        # hook that computed the path instead of reading it could not reach this
+        # file by any slug. That is the point: an assertion a mirror can't pass.
+        elsewhere = self.root / "elsewhere" / "conversation.jsonl"
+        elsewhere.parent.mkdir(parents=True)
+        elsewhere.write_text(_TRANSCRIPT, encoding="utf-8")
+        start = self.proj / ".harness" / "session-id-p1.start"
+        start.write_text("session_id: p1\ntranscript: x\n", encoding="utf-8")
+        r = self._run_hook(self._env(), sid="p1", transcript_path=str(elsewhere))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('"pass": "summary"', r.stdout)
+        self.assertIn(f"candidates from {elsewhere}", r.stderr)
+        self.assertTrue((self.proj / ".harness" / "session-id-p1.reflected").is_file())
+
+    def test_payload_transcript_path_wins_over_the_computed_one(self) -> None:
+        # Both paths hold a real transcript, and they disagree. The payload's
+        # must win — the precedence is the whole change, and a test that only
+        # ever supplies one of the two cannot see it.
+        self._place_transcript("p2", self.proj)
+        elsewhere = self.root / "elsewhere2" / "conversation.jsonl"
+        elsewhere.parent.mkdir(parents=True)
+        elsewhere.write_text(_TRANSCRIPT, encoding="utf-8")
+        r = self._run_hook(self._env(), sid="p2", transcript_path=str(elsewhere))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(f"candidates from {elsewhere}", r.stderr)
+        self.assertNotIn(str(self._transcript_path("p2", self.proj)), r.stderr)
+
+    def test_absent_payload_transcript_path_skips_without_guessing(self) -> None:
+        # A payload path that doesn't exist must NOT silently retry the computed
+        # one. Falling back there would be guessing at a path again, which is
+        # what reading the payload exists to retire — so the computed transcript
+        # is deliberately present here and must still go unmined.
+        self._place_transcript("p3", self.proj)
+        ghost = self.root / "nope" / "gone.jsonl"
+        r = self._run_hook(self._env(), sid="p3", transcript_path=str(ghost))
+        self.assertEqual(r.returncode, 0)
+        self.assertIn(f"transcript not found: {ghost}", r.stderr)
+        self.assertNotIn('"pass": "summary"', r.stdout)
 
     # ── graceful-skip / non-blocking ─────────────────────────────────────────
 
