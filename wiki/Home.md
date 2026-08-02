@@ -54,4 +54,4 @@ The memory vault itself is browsable by kind — every note groups into a genera
 ---
 
 > [!NOTE]
-> **Latest release: [v9.5.0](https://github.com/alexherrero/agentm/releases/tag/v9.5.0).** A recalled memory's score breakdown used to exist for one prompt turn, then vanish — `memory-recall trace <slug>` now explains why any past recall surfaced what it did, kept in the existing per-recall ledger.
+> **Latest release: [v9.6.0](https://github.com/alexherrero/agentm/releases/tag/v9.6.0).** Every recall-history row names the vault directory a note lived in, and nothing ever removed one — rows now expire on a 90-day clock, swept from the same write path that creates them.
