@@ -2,10 +2,11 @@
 # memory-reflect-stop — mine the just-ended session's transcript on Stop.
 #
 # Fires on Claude Code's Stop event. Parses the stdin JSON payload for
-# session_id, computes the transcript path at
-# ~/.claude/projects/<cwd-slug>/<session_id>.jsonl, and invokes reflect.py
-# to mine durable candidates. Output on stdout (pass-through from reflect.py);
-# transparency line on stderr.
+# transcript_path (authoritative; sent on every hook event) plus session_id and
+# cwd, and invokes reflect.py to mine durable candidates. Hosts too old to send
+# transcript_path fall back to the computed
+# ~/.claude/projects/<cwd-slug>/<session_id>.jsonl. Output on stdout
+# (pass-through from reflect.py); transparency line on stderr.
 #
 # Tri-modal routing (HIGH→auto / MEDIUM→interactive / LOW→inbox) lands in
 # plan #7a part 3 task 5; this hook ships the mining-only scaffold.
@@ -79,8 +80,9 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
-# Stop hook stdin payload (per Claude Code hook spec): JSON with at minimum
-# session_id (UUID) and cwd. We extract both to compute the transcript path.
+# Stop hook stdin payload (per Claude Code hook spec): JSON carrying session_id,
+# cwd, and transcript_path on every hook event. We read transcript_path directly
+# and keep session_id + cwd for the marker and the fallback below.
 # Read stdin into a variable so we can parse it WITHOUT requiring jq (not
 # universally installed; Python json module is always present alongside python3).
 PAYLOAD="$(cat 2>/dev/null || true)"
@@ -89,8 +91,8 @@ if [[ -z "$PAYLOAD" ]]; then
     exit 0
 fi
 
-# Parse session_id + cwd via a one-liner Python invocation. Returns
-# "<session_id>\t<cwd>" or empty on parse failure.
+# Parse session_id + cwd + transcript_path via a one-liner Python invocation.
+# Returns "<session_id>\t<cwd>\t<transcript_path>" or empty on parse failure.
 PARSED="$(printf '%s' "$PAYLOAD" | python3 -c '
 import json, sys
 try:
@@ -99,8 +101,9 @@ except Exception:
     sys.exit(0)
 sid = d.get("session_id") or ""
 cwd = d.get("cwd") or ""
+tp = d.get("transcript_path") or ""
 if sid:
-    print(f"{sid}\t{cwd}")
+    print(f"{sid}\t{cwd}\t{tp}")
 ' 2>/dev/null)"
 
 if [[ -z "$PARSED" ]]; then
@@ -110,22 +113,42 @@ fi
 
 SESSION_ID="$(printf '%s' "$PARSED" | cut -f1)"
 CWD="$(printf '%s' "$PARSED" | cut -f2)"
+PAYLOAD_TRANSCRIPT="$(printf '%s' "$PARSED" | cut -f3)"
 if [[ -z "$CWD" ]]; then
     CWD="$(pwd)"
 fi
 
-# Compute transcript path: ~/.claude/projects/<cwd-slug>/<session_id>.jsonl
-# where <cwd-slug> = CWD with '/' and '.' both replaced by '-'.
+# Transcript path: the payload's own `transcript_path` is authoritative.
 #
-# NO extra leading '-': the path is absolute, so `tr` already turns its leading
-# '/' into the leading '-'. Prefixing another one produced '--Users-...', which
-# matches no directory Claude Code ever creates — so every lookup missed, this
-# hook logged "transcript not found (skipping)" on every session, and reflection
-# silently never ran at all. Dots convert too ('/x/.claude/y' -> '-x--claude-y'),
-# which is what makes worktree sessions resolve.
-CWD_SLUG="$(printf '%s' "$CWD" | tr '/.' '--')"
-TRANSCRIPT="$HOME/.claude/projects/${CWD_SLUG}/${SESSION_ID}.jsonl"
+# Claude Code sends it on every hook event and its docs say to use it rather
+# than constructing one from session_id, because that correspondence is not
+# guaranteed — resume, compact, fork and `/branch` all mint session ids whose
+# transcript may live elsewhere or not exist yet under the computed name.
+#
+# The computed path stays as a FALLBACK for hosts too old to send the field.
+# Deleting it would turn "this host predates transcript_path" into "reflection
+# silently never runs", which is precisely the failure this hook already spent
+# 57 days in. When the payload does carry the field, the fallback never runs.
+if [[ -n "$PAYLOAD_TRANSCRIPT" ]]; then
+    TRANSCRIPT="$PAYLOAD_TRANSCRIPT"
+else
+    # Fallback: ~/.claude/projects/<cwd-slug>/<session_id>.jsonl where
+    # <cwd-slug> = CWD with '/' and '.' both replaced by '-'.
+    #
+    # NO extra leading '-': the path is absolute, so `tr` already turns its
+    # leading '/' into the leading '-'. Prefixing another one produced
+    # '--Users-...', which matches no directory Claude Code ever creates — so
+    # every lookup missed, this hook logged "transcript not found (skipping)"
+    # on every session, and reflection silently never ran at all. Dots convert
+    # too ('/x/.claude/y' -> '-x--claude-y'), which is what makes worktree
+    # sessions resolve. Pinned to literals by scripts/test_transcript_slug.py.
+    CWD_SLUG="$(printf '%s' "$CWD" | tr '/.' '--')"
+    TRANSCRIPT="$HOME/.claude/projects/${CWD_SLUG}/${SESSION_ID}.jsonl"
+fi
 
+# A payload-supplied path that does not exist is reported and skipped, never
+# quietly retried against the computed one — falling back there would be
+# guessing again, and guessing is what this whole change retires.
 if [[ ! -f "$TRANSCRIPT" ]]; then
     echo "[memory-reflect-stop] transcript not found: $TRANSCRIPT (skipping)" >&2
     exit 0

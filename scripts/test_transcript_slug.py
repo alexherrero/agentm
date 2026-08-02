@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Tests for the transcript-path slug both memory hooks compute.
+"""Tests for the transcript-path slug both memory hooks compute as a FALLBACK.
+
+The hooks no longer compute this path on the normal route. Claude Code sends
+`transcript_path` on every hook event, both hooks read it, and its docs say to
+use it rather than constructing one from `session_id` — the session-id →
+filename correspondence is not guaranteed. The formula below survives as the
+fallback for hosts too old to send the field, which is why these tests survive
+with it. `scripts/test_memory_reflect_stop_hook.py` and
+`scripts/test_memory_recall_hook.py` cover the payload branch and pin the
+precedence between the two; `verify-hook-resolution.sh` exercises both ends to
+end.
 
 Why this file exists: the slug formula was wrong in production for 57 days and
 CI stayed green the whole time, because `verify-hook-resolution.sh` computed the
@@ -16,7 +26,9 @@ orphan sweeper skipped all of them permanently (200 had accumulated).
 
 So these tests deliberately do NOT re-derive the formula. They pin it against
 hand-written literals and assert both hooks agree — the two failure modes a
-mirror cannot catch.
+mirror cannot catch. A fallback nothing exercises is a fallback that rots, and a
+host old enough to need it is exactly the one least able to report that it
+broke, so the pinning stays as strict as when this was the only route.
 
 Skipped on non-POSIX (the slug expressions are bash, and `tr` is a POSIX tool) —
 the same skip the sibling hook suites take. CI runs these on the Linux and macOS
@@ -130,6 +142,27 @@ class TestTranscriptSlug(unittest.TestCase):
         for cwd, expected in _KNOWN_GOOD:
             with self.subTest(cwd=cwd):
                 self.assertEqual(_run_slug(_GATE, cwd, "PROJ"), expected)
+
+    def test_slug_is_only_reached_as_a_fallback(self) -> None:
+        """Each hook must read `transcript_path` off the payload, and the slug
+        must sit on the other side of that branch.
+
+        Without this, the two suites drift apart quietly: the payload-precedence
+        tests live in the hook-firing suites, so nothing here would notice a
+        hook that dropped the payload read and went back to computing. Matching
+        on the parse expression plus the guard keeps the check about which
+        route runs, not about how the branch happens to be written."""
+        for script in (_STOP_HOOK, _START_HOOK):
+            with self.subTest(script=script.name):
+                text = script.read_text(encoding="utf-8")
+                self.assertIn(
+                    'd.get("transcript_path")', text,
+                    f"{script.name} no longer reads transcript_path from the payload",
+                )
+                self.assertIn(
+                    'if [[ -n "$PAYLOAD_TRANSCRIPT" ]]', text,
+                    f"{script.name} no longer prefers the payload path over the slug",
+                )
 
     def test_no_slug_starts_with_a_double_hyphen(self) -> None:
         """The specific shape of the old bug, named so a regression reads clearly

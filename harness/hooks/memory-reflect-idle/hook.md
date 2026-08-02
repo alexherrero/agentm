@@ -69,10 +69,13 @@ This task ships the hook **scaffold + orphan-sweep logic**. The markers themselv
 ```
 session_id: <uuid>
 started_at: <iso-timestamp>
+source: startup | resume | clear | compact | fork | unknown
 transcript: <absolute-path-to-transcript-jsonl>
 ```
 
-The idle hook parses `transcript:` line for the reflection target. Other fields are operator-debug only.
+The idle hook parses the `transcript:` line for the reflection target. Other fields are operator-debug only.
+
+`transcript:` carries whatever `transcript_path` the SessionStart payload supplied, so the sweeper reads a path Claude Code named rather than one the writer computed. `source:` records which SessionStart fired — nothing reads it, but it is what makes a marker pointing somewhere surprising diagnosable. Markers written before either field existed parse identically; a missing `source:` is simply absent.
 
 ## Failure modes (all soft)
 
@@ -80,14 +83,15 @@ The idle hook parses `transcript:` line for the reflection target. Other fields 
 - **python3 not on PATH** → exit 0 silently.
 - **`.harness/` doesn't exist** → exit 0 silently (no markers, nothing to do).
 - **No `.start` markers** → exit 0 silently.
-- **Marker file unreadable / missing `transcript:` line** → stderr warning + skip that marker.
-- **Transcript path in marker doesn't exist** → stderr warning + skip that marker.
-- **Reflection error on an orphan** → stderr warning + skip rename (marker stays `.start` for retry next pass).
+- **Marker file unreadable / missing `transcript:` line** → stderr warning + **delete** the marker (a dead pointer past the idle threshold has nothing left to reflect from).
+- **Transcript path in marker doesn't exist** → stderr warning + **delete** the marker, same reasoning. Markers inside the idle threshold are left alone — a live session's transcript may not be written yet.
+- **Reflection error on an orphan** → stderr warning + skip rename (marker stays `.start` for retry next pass), until the marker passes the 30-day `.reflected` GC ceiling, at which point it is deleted rather than retried forever.
 
 ## What it never does
 
 - **Never blocks session start.** SessionStart hook contract preserved — exit 0 within budget, partial results on overrun.
-- **Never deletes `.start` markers.** Only renames to `.reflected` on success. Failure leaves the marker for the next sweep.
+- **Never deletes a `.start` marker it could still reflect.** A marker whose transcript resolves is renamed to `.reflected` on success and left in place on failure, for the next sweep. Deletion is reserved for dead pointers past the idle threshold and for markers that keep failing past the 30-day ceiling — both cases where retrying forever is what turns a transient failure into a permanent leak.
+- **Never touches a transcript.** Only the marker, which is a regenerable pointer.
 - **Never writes to MemoryVault.** Reflection output flows to stdout; task 5 wires the actual save/inbox-write routing.
 
 ## Antigravity equivalent

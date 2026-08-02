@@ -84,9 +84,15 @@ class TestMemoryRecallSessionStartHookPwsh(unittest.TestCase):
         env.update(over)
         return env
 
-    def _run_hook(self, env: dict, sid: str = "sess-1", raw_payload: str | None = None):
+    def _run_hook(self, env: dict, sid: str = "sess-1", raw_payload: str | None = None,
+                  transcript_path: str | None = None, source: str | None = None):
         if raw_payload is None:
-            raw_payload = json.dumps({"session_id": sid, "cwd": str(self.proj)})
+            payload = {"session_id": sid, "cwd": str(self.proj)}
+            if transcript_path is not None:
+                payload["transcript_path"] = transcript_path
+            if source is not None:
+                payload["source"] = source
+            raw_payload = json.dumps(payload)
         return subprocess.run(
             [_PWSH, "-NoProfile", "-File", str(_HOOK)],
             input=raw_payload, env=env, cwd=str(self.proj), capture_output=True, text=True,
@@ -106,6 +112,27 @@ class TestMemoryRecallSessionStartHookPwsh(unittest.TestCase):
         body = marker.read_text(encoding="utf-8")
         self.assertIn("session_id: abc123", body)
         self.assertIn("transcript:", body)
+
+    def test_marker_records_the_payload_transcript_path(self) -> None:
+        # A path no slug could produce, so this only passes if the hook read the
+        # payload. Parity with the bash twin's test of the same name.
+        elsewhere = str(self.root / "elsewhere" / "conversation.jsonl")
+        r = self._run_hook(self._env(), sid="p1", transcript_path=elsewhere)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = (self.proj / ".harness" / "session-id-p1.start").read_text(encoding="utf-8")
+        self.assertIn(f"transcript: {elsewhere}", body)
+
+    def test_marker_records_the_sessionstart_source(self) -> None:
+        r = self._run_hook(self._env(), sid="p2", source="compact")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = (self.proj / ".harness" / "session-id-p2.start").read_text(encoding="utf-8")
+        self.assertIn("source: compact", body)
+
+    def test_marker_source_defaults_when_the_payload_omits_it(self) -> None:
+        r = self._run_hook(self._env(), sid="p3")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = (self.proj / ".harness" / "session-id-p3.start").read_text(encoding="utf-8")
+        self.assertIn("source: unknown", body)
 
     def test_no_vault_recall_silent_but_marker_written(self) -> None:
         self._seed_always_load()

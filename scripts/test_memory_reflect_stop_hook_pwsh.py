@@ -79,11 +79,16 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         return env
 
     def _transcript_path(self, sid: str, cwd: Path) -> Path:
-        # Mirror the hook's own formula exactly (memory-reflect-stop.ps1):
-        # $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-') -replace ':', '').
-        # Both \ and / become -, then any : is stripped outright (Windows
-        # drive-letter colons) — this hook runs for real on Windows CI, so
-        # the colon strip isn't a POSIX-only no-op here.
+        # The hook's FALLBACK path, reached only when the payload carries no
+        # `transcript_path`: $CwdSlug = "-" + (($Cwd -replace '[\\/]', '-')
+        # -replace ':', ''). Both \ and / become -, then any : is stripped
+        # outright (Windows drive-letter colons) — this hook runs for real on
+        # Windows CI, so the colon strip isn't a POSIX-only no-op here.
+        #
+        # This states the convention rather than reading the hook's line, so it
+        # stays a mirror of a sort — but a mirror of a fallback the payload
+        # branch now shadows, and the payload branch is pinned behaviorally
+        # below against a path no slug can produce.
         slug = "-" + str(cwd).replace("\\", "-").replace("/", "-").replace(":", "")
         return self.fake_home / ".claude" / "projects" / slug / f"{sid}.jsonl"
 
@@ -93,15 +98,20 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         tp.write_text(_TRANSCRIPT, encoding="utf-8")
         return tp
 
-    def _run_hook(self, env: dict, sid: str = "s1", raw_payload: str | None = None):
+    def _run_hook(self, env: dict, sid: str = "s1", raw_payload: str | None = None,
+                  transcript_path: str | None = None):
         if raw_payload is None:
-            raw_payload = json.dumps({"session_id": sid, "cwd": str(self.proj)})
+            payload = {"session_id": sid, "cwd": str(self.proj)}
+            if transcript_path is not None:
+                payload["transcript_path"] = transcript_path
+            raw_payload = json.dumps(payload)
         return subprocess.run(
             [_PWSH, "-NoProfile", "-File", str(_HOOK)],
             input=raw_payload, env=env, cwd=str(self.proj), capture_output=True, text=True,
         )
 
     def test_fires_reflect_and_renames_marker(self) -> None:
+        # No `transcript_path` on this payload — the computed-fallback branch.
         self._place_transcript("s1", self.proj)
         start = self.proj / ".harness" / "session-id-s1.start"
         start.write_text("session_id: s1\ntranscript: x\n", encoding="utf-8")
@@ -110,6 +120,28 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         self.assertIn('"pass": "summary"', r.stdout)
         self.assertFalse(start.exists(), ".start marker not renamed")
         self.assertTrue((self.proj / ".harness" / "session-id-s1.reflected").is_file())
+
+    def test_payload_transcript_path_is_used_verbatim(self) -> None:
+        # Outside the fake HOME's projects tree entirely, so no slug — POSIX or
+        # Windows — could reach it. The pwsh fallback slug was always a guess at
+        # an unconfirmed Windows convention; this is the branch that retires it.
+        elsewhere = self.root / "elsewhere" / "conversation.jsonl"
+        elsewhere.parent.mkdir(parents=True)
+        elsewhere.write_text(_TRANSCRIPT, encoding="utf-8")
+        start = self.proj / ".harness" / "session-id-p1.start"
+        start.write_text("session_id: p1\ntranscript: x\n", encoding="utf-8")
+        r = self._run_hook(self._env(), sid="p1", transcript_path=str(elsewhere))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('"pass": "summary"', r.stdout)
+        self.assertTrue((self.proj / ".harness" / "session-id-p1.reflected").is_file())
+
+    def test_absent_payload_transcript_path_skips_without_guessing(self) -> None:
+        # The computed transcript is deliberately present and must stay unmined.
+        self._place_transcript("p2", self.proj)
+        ghost = self.root / "nope" / "gone.jsonl"
+        r = self._run_hook(self._env(), sid="p2", transcript_path=str(ghost))
+        self.assertEqual(r.returncode, 0)
+        self.assertNotIn('"pass": "summary"', r.stdout)
 
     def test_graceful_skip_no_stdin(self) -> None:
         r = self._run_hook(self._env(), raw_payload="")

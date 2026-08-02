@@ -77,10 +77,16 @@ class TestMemoryRecallSessionStartHook(unittest.TestCase):
         return env
 
     def _run_hook(self, env: dict, sid: str = "sess-1", cwd: Path | None = None,
-                  raw_payload: str | None = None):
+                  raw_payload: str | None = None, transcript_path: str | None = None,
+                  source: str | None = None):
         cwd = cwd or self.proj
         if raw_payload is None:
-            raw_payload = json.dumps({"session_id": sid, "cwd": str(cwd)})
+            payload = {"session_id": sid, "cwd": str(cwd)}
+            if transcript_path is not None:
+                payload["transcript_path"] = transcript_path
+            if source is not None:
+                payload["source"] = source
+            raw_payload = json.dumps(payload)
         return subprocess.run(
             ["bash", str(_HOOK)], input=raw_payload, env=env,
             cwd=str(cwd), capture_output=True, text=True,
@@ -111,6 +117,43 @@ class TestMemoryRecallSessionStartHook(unittest.TestCase):
         first = marker.read_text(encoding="utf-8")
         self._run_hook(env, sid="dup")                  # SessionStart re-fires on resume/clear/compact
         self.assertEqual(marker.read_text(encoding="utf-8"), first)
+
+    # ── transcript_path + source from the payload ────────────────────────────
+
+    def test_marker_records_the_payload_transcript_path(self) -> None:
+        # A path no slug could produce — it isn't under the fake HOME's projects
+        # tree at all — so this can only pass if the hook read the payload.
+        elsewhere = str(self.root / "elsewhere" / "conversation.jsonl")
+        r = self._run_hook(self._env(), sid="p1", transcript_path=elsewhere)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = (self.proj / ".harness" / "session-id-p1.start").read_text(encoding="utf-8")
+        self.assertIn(f"transcript: {elsewhere}\n", body)
+
+    def test_marker_falls_back_to_the_computed_path(self) -> None:
+        # No `transcript_path` on the payload (an older host) → the marker still
+        # gets a pointer rather than an empty line, via the computed fallback.
+        r = self._run_hook(self._env(), sid="p2")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = (self.proj / ".harness" / "session-id-p2.start").read_text(encoding="utf-8")
+        slug = str(self.proj).replace("/", "-").replace(".", "-")
+        self.assertIn(
+            f"transcript: {self.fake_home}/.claude/projects/{slug}/p2.jsonl\n", body
+        )
+
+    def test_marker_records_the_sessionstart_source(self) -> None:
+        # Which SessionStart fired is the field that makes an odd marker
+        # diagnosable — a resume/compact/fork marker pointing somewhere
+        # surprising reads as an explanation rather than a mystery.
+        r = self._run_hook(self._env(), sid="p3", source="compact")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = (self.proj / ".harness" / "session-id-p3.start").read_text(encoding="utf-8")
+        self.assertIn("source: compact\n", body)
+
+    def test_marker_source_defaults_when_the_payload_omits_it(self) -> None:
+        r = self._run_hook(self._env(), sid="p4")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = (self.proj / ".harness" / "session-id-p4.start").read_text(encoding="utf-8")
+        self.assertIn("source: unknown\n", body)
 
     # ── graceful-skip / non-blocking (both modes) ─────────────────────────────
 
