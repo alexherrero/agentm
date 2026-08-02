@@ -387,6 +387,101 @@ class SummarizeAndRenderTests(unittest.TestCase):
             md.Check("x", "NOPE", "detail")
 
 
+class JobConfigTests(unittest.TestCase):
+    """`registered` and `able to do anything` are different questions.
+
+    The 2026-08-02 installer regression stripped every `plugins.autonomy.*`
+    key out of `.agentm-config.json` while both delivery jobs kept reporting
+    `registered (live)` — the jobs fired daily and delivered nothing, and
+    nothing in this doctor said so. These pin the row that now does.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.repo = self.root / "repo"
+        self.prefix = self.root / "prefix"
+        self.prefix.mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _register(self, job_name: str) -> None:
+        jobs = self.repo / ".harness" / "jobs"
+        jobs.mkdir(parents=True, exist_ok=True)
+        (jobs / f"{job_name}.yaml").write_text("name: x\n", encoding="utf-8")
+
+    def _write_config(self, data: dict) -> None:
+        (self.prefix / ".agentm-config.json").write_text(json.dumps(data), encoding="utf-8")
+
+    def _check(self, job_name: str) -> "md.Check":
+        label = dict((n, l) for n, l in md._JOB_CONFIG_CHECKS)[job_name]
+        return md.check_job_config(self.repo, job_name, label, install_prefix=self.prefix)
+
+    def test_unverified_when_job_not_registered(self):
+        c = self._check("observability-notify-daily")
+        self.assertEqual(c.status, "UNVERIFIED")
+        self.assertIn("not registered", c.detail)
+
+    def test_notify_warns_when_registered_but_key_absent(self):
+        self._register("observability-notify-daily")
+        self._write_config({"schema_version": 2, "mode": "release"})
+        c = self._check("observability-notify-daily")
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("silently delivers nothing", c.detail)
+
+    def test_notify_warns_when_config_file_missing_entirely(self):
+        self._register("observability-notify-daily")
+        self.assertEqual(self._check("observability-notify-daily").status, "WARN")
+
+    def test_notify_ok_when_opted_in(self):
+        self._register("observability-notify-daily")
+        self._write_config({"plugins.autonomy.notify_enabled": True})
+        self.assertEqual(self._check("observability-notify-daily").status, "OK")
+
+    def test_notify_warns_when_explicitly_opted_out(self):
+        self._register("observability-notify-daily")
+        self._write_config({"plugins.autonomy.notify_enabled": False})
+        self.assertEqual(self._check("observability-notify-daily").status, "WARN")
+
+    def test_email_ok_when_both_required_keys_present(self):
+        self._register("observability-email-daily")
+        self._write_config({
+            "plugins.autonomy.email_to": "ops@example.com",
+            "plugins.autonomy.email_smtp_url": "smtp://relay@localhost:587",
+        })
+        self.assertEqual(self._check("observability-email-daily").status, "OK")
+
+    def test_email_warns_when_only_one_required_key_present(self):
+        """Half-configured is the same silence as unconfigured — the sender
+        graceful-skips unless BOTH keys are set."""
+        self._register("observability-email-daily")
+        self._write_config({"plugins.autonomy.email_to": "ops@example.com"})
+        self.assertEqual(self._check("observability-email-daily").status, "WARN")
+
+    def test_email_warns_when_keys_were_wiped(self):
+        """The literal regression: a config that kept its install fields but
+        lost the autonomy family."""
+        self._register("observability-email-daily")
+        self._write_config({
+            "schema_version": 2, "mode": "release", "source_clones": {},
+            "installed_at": "2026-08-02T12:00:00Z", "harness_version": "v9.6.0",
+            "vault_path": None, "installer_source": "/srv/install.sh",
+        })
+        self.assertEqual(self._check("observability-email-daily").status, "WARN")
+
+    def test_corrupt_config_reads_as_unconfigured_not_crash(self):
+        self._register("observability-notify-daily")
+        (self.prefix / ".agentm-config.json").write_text("{not json", encoding="utf-8")
+        self.assertEqual(self._check("observability-notify-daily").status, "WARN")
+
+    def test_inventory_includes_a_config_row_per_autonomy_job(self):
+        checks = md.run_inventory(self.repo, install_prefix=self.prefix)
+        names = {c.name for c in checks}
+        for job_name, _ in md._JOB_CONFIG_CHECKS:
+            self.assertIn(f"{job_name}:config", names)
+
+
 class RealRepoSmokeTests(unittest.TestCase):
     """Confirms the composed inventory runs clean (never raises) against
     this actual checkout -- the same "always degrades, never crashes"

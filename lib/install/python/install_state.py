@@ -43,11 +43,21 @@ Schema (v2; v4.5.1+) — written to `<install-prefix>/.agentm-config.json`:
                                                       // overrides per-repo.
     }
 
+**The installer is not the only writer of this file.** `agentm_config.py`
+owns the plugin-namespaced families that live alongside the fields above —
+`plugins.obsidian-vault.vault_path`, `storage.backend`, the
+`plugins.autonomy.*` notification/email settings — stored as flat keys with
+literal dots in the name, not nested objects. So `persist_install_state()`
+**merges**: it starts from the pre-existing config, overwrites only the keys
+listed in the schema block above, and carries every other key forward
+untouched. It never rebuilds the file from a list of keys it knows about;
+a key the installer doesn't recognize belongs to a writer that does.
+
 Pre-v4.5.1 installs may have a legacy `.agentm-install-state.json` file with
 schema v1 (`"version": 1`, no `vault_path` field). `persist_install_state()`
-auto-migrates: reads the legacy file (if new file absent), preserves any
-`vault_path` field found, removes the legacy file, and writes schema v2 under
-the new name. The read side is `read_install_state()` below.
+auto-migrates: reads the legacy file (if new file absent), merges its contents
+forward, removes the legacy file, and writes schema v2 under the new name. The
+read side is `read_install_state()` below.
 
 Stdlib-only (ADR 0001). Cross-platform via pathlib + os.path.expanduser.
 
@@ -76,6 +86,18 @@ _LEGACY_FILENAME = ".agentm-install-state.json"
 # Default canonical clone path — operator's documented dev-setup convention.
 # Overridable via CLI flag for tests + non-default setups.
 _DEFAULT_AGENTM_CLONE = "~/Antigravity/agentm"
+
+# Keys a persist actively DELETES from the pre-existing config.
+#
+# Because persist merges rather than rebuilds, dropping a write site no longer
+# drops the key — it makes the key immortal in every config that already has
+# it. Retiring a field therefore takes an entry here, deliberately, rather than
+# happening as a side effect of deleting code.
+#
+# `version` is schema v1's field, which `schema_version` replaced in v4.5.1.
+# Without this, migrating a legacy `.agentm-install-state.json` would carry
+# `"version": 1` forward into the v2 config forever.
+_RETIRED_KEYS = frozenset({"version"})
 
 
 # -----------------------------------------------------------------------------
@@ -169,6 +191,13 @@ def persist_install_state(
         `.harness/.project-mode` marker can still override per-repo). Preserved
         across re-persist like `vault_path`; omitted when unset (absent ⇒ vault
         default). NOT the same axis as `mode` (install: source vs release).
+
+    Merge contract: the pre-existing config (new filename, else legacy) is the
+    base. Only the fields documented above are overwritten; every other key —
+    `agentm_config.py`'s `plugins.*` / `storage.*` families, anything a future
+    writer adds — is carried forward byte-for-byte. Two deliberate exceptions:
+    keys in `_RETIRED_KEYS` are deleted, and a `state_mode` whose prior value
+    is outside the `local|vault` domain is dropped rather than propagated.
     """
     if mode not in ("source", "release"):
         raise ValueError(f"mode must be 'source' or 'release', got: {mode!r}")
@@ -179,30 +208,35 @@ def persist_install_state(
     if installed_at is None:
         installed_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-    # v4.5.1: preserve pre-existing vault_path field across re-install + handle
+    # v4.5.1: carry the pre-existing config forward across re-install + handle
     # the legacy filename. Resolution: read new file → fall back to legacy
     # filename if present (and remove legacy after harvest; mirrors the
     # read side in read_install_state()).
     new_path = prefix / _STATE_FILENAME
     legacy_path = prefix / _LEGACY_FILENAME
-    preserved: dict = {}
     source_for_preserve: Optional[Path] = None
     if new_path.is_file():
         source_for_preserve = new_path
     elif legacy_path.is_file():
         source_for_preserve = legacy_path
+    # The merge base: everything the prior config held. An unreadable or
+    # non-dict prior degrades to {} — same as a first install.
+    data: dict = {}
     if source_for_preserve is not None:
         try:
             prior = json.loads(source_for_preserve.read_text(encoding="utf-8"))
-            if isinstance(prior, dict) and "vault_path" in prior:
-                preserved["vault_path"] = prior["vault_path"]
-            # Only carry forward a VALID prior state_mode — a hand-corrupted /
-            # unknown value is dropped (self-heals to the omitted ⇒ vault default
-            # on this re-persist, rather than propagating garbage forward).
-            if isinstance(prior, dict) and prior.get("state_mode") in ("local", "vault"):
-                preserved["state_mode"] = prior["state_mode"]
+            if isinstance(prior, dict):
+                data = dict(prior)
         except (json.JSONDecodeError, OSError):
             pass
+    for retired in _RETIRED_KEYS:
+        data.pop(retired, None)
+    # Only carry forward a VALID prior state_mode — a hand-corrupted / unknown
+    # value is dropped (self-heals to the omitted ⇒ vault default on this
+    # re-persist, rather than propagating garbage forward). Scrubbed in place
+    # so a valid value keeps its position in the file.
+    if data.get("state_mode") not in ("local", "vault"):
+        data.pop("state_mode", None)
     # Drop the legacy file if it exists — the persist below writes the new
     # path; leaving the legacy around would create a split-brain state until
     # the next SessionStart hook fires.
@@ -212,23 +246,22 @@ def persist_install_state(
         except OSError:
             pass
 
-    data: dict = {
-        "schema_version": _SCHEMA_VERSION,
-        "mode": mode,
-        "source_clones": source_clones,
-        "installed_at": installed_at,
-        "harness_version": harness_version,
-    }
-    if "vault_path" in preserved:
-        data["vault_path"] = preserved["vault_path"]
-    else:
-        # Field is always present in schema v2; null when unset.
-        data["vault_path"] = None
-    # state_mode: explicit arg wins; else preserve prior; else omit (absent ⇒
-    # vault default — keeps pre-#44 configs untouched until the operator opts in).
-    effective_state_mode = state_mode if state_mode is not None else preserved.get("state_mode")
-    if effective_state_mode is not None:
-        data["state_mode"] = effective_state_mode
+    # Overwrite the fields this installer owns. Assignment is the ownership
+    # statement — there is no allowlist of keys to preserve, because anything
+    # not assigned here is already in `data` and stays there.
+    data["schema_version"] = _SCHEMA_VERSION
+    data["mode"] = mode
+    data["source_clones"] = source_clones
+    data["installed_at"] = installed_at
+    data["harness_version"] = harness_version
+    # Field is always present in schema v2; null when unset. A prior value
+    # (including an explicit null) survives untouched.
+    data.setdefault("vault_path", None)
+    # state_mode: explicit arg wins; else the scrubbed prior stands; else the
+    # key stays absent (⇒ vault default — keeps pre-#44 configs untouched
+    # until the operator opts in).
+    if state_mode is not None:
+        data["state_mode"] = state_mode
     if installer_source is not None:
         data["installer_source"] = installer_source
     if installed_shas is not None:

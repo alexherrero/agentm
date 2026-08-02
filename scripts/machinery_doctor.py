@@ -24,9 +24,19 @@ building a new subsystem: `scripts/runner/manifest.py` + `scripts/runner/
 state.py` for job registration + last-fired; a self-contained read of the
 device-local telemetry event log (mirrors crickets' `event_log.py` schema,
 no cross-repo import needed for a two-field read); `git rev-parse
---git-path hooks` for worktree-safe `.git/hooks/` resolution; and a
+--git-path hooks` for worktree-safe `.git/hooks/` resolution; `health/
+session_notify.py` + `health/session_email.py`'s own config readers for
+whether the autonomy delivery channels are actually configured; and a
 plain file-presence read of crickets' cross-review + development-lifecycle
 scripts when a sibling checkout is reachable.
+
+A registered job is not the same as a working one. A third confirmed case
+(2026-08-02) made that concrete: re-running `install.sh` wiped every
+`plugins.autonomy.*` key out of `~/.claude/.agentm-config.json`, and both
+observability delivery jobs went on reporting `registered (live)` here while
+delivering nothing, because registration was all this module asked about.
+`check_job_config()` closes that: it asks each autonomy channel's own reader
+whether the settings it needs are still there.
 
 Four status values, matching the "honest-dark" convention the console
 lane's health-scorecard already uses, adapted to a per-machine liveness
@@ -64,8 +74,15 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+if str(_HERE / "health") not in sys.path:
+    sys.path.insert(0, str(_HERE / "health"))
+
 from runner import manifest as manifest_mod  # noqa: E402
 from runner import state as state_mod  # noqa: E402
+# The autonomy channels' own config readers — reused, never re-derived, so a
+# key rename in either module can't drift from what this doctor asks about.
+import session_email as session_email_mod  # noqa: E402
+import session_notify as session_notify_mod  # noqa: E402
 
 _VALID_STATUSES = ("OK", "WARN", "FAIL", "UNVERIFIED")
 
@@ -270,6 +287,61 @@ def check_runner_job(repo: Path, job_name: str, *, state_root: Optional[Path] = 
     return Check(job_name, "OK", f"registered ({mode}), last fired", last_fired=last_run)
 
 
+# ── job config completeness (installer data-loss regression, 2026-08-02) ────
+# `check_runner_job()` above asks whether a job is REGISTERED. That is not the
+# same question as whether it can do anything. The two autonomy delivery
+# channels read their settings from `<prefix>/.agentm-config.json`; strip those
+# settings and both jobs still fire, still report `registered (live)` here, and
+# silently no-op forever. That is exactly what a re-run of `install.sh` did on
+# 2026-08-02, when persist rebuilt the config from an allowlist and dropped
+# every `plugins.autonomy.*` key. The installer bug is fixed; this row is the
+# detector, so the next way those keys go missing is visible on the same day.
+#
+# Config-absent is WARN, not FAIL: declining to opt in is a legitimate state,
+# and these channels are absent-by-default by design. The failure being caught
+# is silence, not misconfiguration.
+_JOB_CONFIG_CHECKS = (
+    ("observability-notify-daily", "plugins.autonomy.notify_enabled"),
+    ("observability-email-daily", "plugins.autonomy.email_to + .email_smtp_url"),
+)
+
+
+def _autonomy_config_present(job_name: str, install_prefix: Optional[Path]) -> bool:
+    """Would this job's channel actually deliver? Delegates to the channel's
+    own reader — the same call the job itself makes at fire time."""
+    if job_name == "observability-notify-daily":
+        return session_notify_mod.notify_enabled(install_prefix)
+    if job_name == "observability-email-daily":
+        return session_email_mod.email_config(install_prefix) is not None
+    raise KeyError(job_name)
+
+
+def check_job_config(
+    repo: Path, job_name: str, keys_label: str, *,
+    install_prefix: Optional[Path] = None,
+) -> Check:
+    """Registration says the job runs; this says it can do something when it does."""
+    name = f"{job_name}:config"
+    registered_path = repo / ".harness" / "jobs" / f"{job_name}.yaml"
+    if not registered_path.is_file():
+        return Check(
+            name, "UNVERIFIED",
+            f"job not registered on this machine — {keys_label} not applicable yet",
+        )
+    try:
+        configured = _autonomy_config_present(job_name, install_prefix)
+    except (KeyError, OSError) as e:
+        return Check(name, "FAIL", f"config readable check failed: {e}")
+    if configured:
+        return Check(name, "OK", f"{keys_label} present in .agentm-config.json")
+    return Check(
+        name, "WARN",
+        f"registered but {keys_label} absent from .agentm-config.json — the job "
+        "fires and silently delivers nothing "
+        "(set it via `python3 scripts/agentm_config.py --help`)",
+    )
+
+
 def job_names(repo: Path) -> list:
     jobs_dir = repo / "templates" / "jobs"
     if not jobs_dir.is_dir():
@@ -462,6 +534,7 @@ def check_crickets_coordination_suite(crickets_root: Optional[Path]) -> Check:
 def run_inventory(
     repo: Optional[Path] = None, *, state_root: Optional[Path] = None,
     telemetry_root: Optional[Path] = None,
+    install_prefix: Optional[Path] = None,
 ) -> list:
     repo = repo if repo is not None else repo_root()
     checks = [
@@ -477,6 +550,8 @@ def run_inventory(
     ]
     for job_name in job_names(repo):
         checks.append(check_runner_job(repo, job_name, state_root=state_root))
+    for job_name, keys_label in _JOB_CONFIG_CHECKS:
+        checks.append(check_job_config(repo, job_name, keys_label, install_prefix=install_prefix))
     checks.append(check_unattended_merge_gate(repo))
     crickets_check = check_crickets_sibling()
     checks.append(crickets_check)

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The interesting part of this one is not the bug. It is that the daily notification and email jobs kept reporting `registered (live)` in `machinery_doctor.py` the whole time they were delivering nothing — because registration was the only question the doctor asked. A job that fires on schedule and no-ops is indistinguishable, from the outside, from a job that fires and works. So there was no day on which this became visible; it would have stayed quiet until someone noticed an email that never arrived and went looking.
+
+Underneath: re-running `install.sh` deleted every plugin-namespaced key from `~/.claude/.agentm-config.json`. Two programs write that file — the installer and `agentm_config.py` — and `persist_install_state()` built its output from scratch, then conditionally re-added the five keys it knew about. Everything belonging to the other writer was destroyed on each run. Observed live on 2026-08-02 against a real config: six keys gone, of which `plugins.obsidian-vault.vault_path` and `storage.backend` self-healed because `harness_memory` re-derives them from the legacy top-level `vault_path` the rebuild happened to keep, and the four `plugins.autonomy.*` keys had no such path and stayed gone.
+
+### Fixed
+
+- **The installer merges the config instead of rebuilding it** ([`install_state.py`](lib/install/python/install_state.py)) — `persist_install_state()` now starts from the pre-existing config and overwrites only the fields it owns. Assignment is the ownership statement; there is no list of keys to preserve, because anything not assigned is already in the dict and stays there.
+
+  **The general rule was chosen over preserving the known namespaces**, which was the tempting narrower fix. A fix that carried forward `plugins.*` and `storage.*` would pass every test naming those families and fail the first key in the next namespace someone invents — the same shape of failure, one rename later. A fixed list is what caused this; a second fixed list is not the repair. The installer knows precisely which keys it writes, and anything else belongs to a writer that knows better than it does.
+
+  **Retiring a key now takes an explicit entry, because a merge makes silent omission impossible.** Under the old rebuild, a field vanished from every config the moment its write site was deleted. Under a merge that same deletion makes the field immortal. `_RETIRED_KEYS` is the mechanism, and it ships non-empty: `version` is schema v1's field, replaced by `schema_version` in v4.5.1, and without an entry there, migrating a legacy `.agentm-install-state.json` would carry `"version": 1` forward into the v2 config forever. Value-scrubbing stays a separate concern and is unchanged — a `state_mode` outside `local|vault` is still dropped rather than propagated.
+
+  One deliberate consequence: `installer_source`, `installed_shas` and `fragments` now survive a persist that omits them. Omitting an optional field means "not managing it this run," not "assert it is absent" — and nothing reads `fragments` since the `install-state-sync` hook was retired, while `installed_shas` is never written from the shell path at all.
+
+### Added
+
+- **`machinery_doctor.py` asks whether the autonomy jobs are configured, not just registered** ([`machinery_doctor.py`](scripts/machinery_doctor.py)) — two new rows, `observability-notify-daily:config` and `observability-email-daily:config`. Each delegates to the channel's own reader (`session_notify.notify_enabled()`, `session_email.email_config()`) rather than re-reading the keys, so a key rename cannot drift the check away from the behavior it describes. A registered job whose config is missing is WARN, and the detail says the job "fires and silently delivers nothing." Config-absent is not FAIL: declining to opt in is a legitimate state, and these channels are absent-by-default by design. What is being caught is silence, not misconfiguration.
+
+  The two jobs are hand-listed in `_JOB_CONFIG_CHECKS`, which is a known limit — a third config-dependent job gets no row until someone adds it. Recorded as a re-audit trigger in the design rather than left implicit.
+
+### Internal
+
+- **Proved end to end against the real installer, not just unit tests** — unit tests are what missed this. A scratch `HOME` was built with a config carrying all six keys that were lost, and `bash install.sh --hooks --update --scope user` — the operator's exact command — run against it. Pre-fix: the same six keys destroyed, reproducing the incident. Post-fix: all six preserved with identical types, `harness_version` and `installer_source` still updating, zero keys lost.
+- **Both suites were mutation-checked rather than trusted.** Reverting the installer fix on a scratch copy turns 13 of the 19 new tests in [`test_install_state_preserve.py`](scripts/test_install_state_preserve.py) red. The six that stay green are guards on behavior the old code already had — a corrupt or non-dict prior degrading cleanly, `vault_path` null when unset, an explicitly supplied `fragments` replacing the prior, the legacy `version` key dropped on migration — so they are pinning the contract, not the regression, and staying green is the correct result for them. For the doctor rows, deleting the function would only prove the symbol exists, so the mutation used instead was making `check_job_config` always report OK — the old "registration is enough" belief expressed as code — which turns 6 of its 10 new tests in [`test_machinery_doctor.py`](scripts/test_machinery_doctor.py) red.
+- **29 new tests** (19 + 10). The preservation suite pins the exact six keys from the incident with their real types — `notify_enabled` is a bool on purpose, so a fix that stringifies or truthiness-filters fails — plus arbitrary unknown keys with nested and list values, which a namespace-scoped fix would fail by construction. Both surfaces are exercised: the Python API and the `persist` subcommand as a subprocess, the path `install.sh` actually takes.
+
 ## [v9.6.0] — 2026-08-01 — Minor: recall-ledger rows expire, and the hooks stop computing transcript paths
 
 **MINOR.** Two follow-ups, each spawned by a review that named the gap rather than papering over it.
