@@ -63,12 +63,32 @@ if str(_SCRIPTS_DIR) not in sys.path:
 SESSION_START_BUDGET_MS = 500
 PROMPT_SUBMIT_BUDGET_MS = 300
 
-# The standalone `query` CLI subcommand assumes no model is warm yet
-# (unlike the two interactive hooks above, which run inside a session
-# where one likely already loaded). A cold sentence-transformers load
-# alone routinely exceeds 300ms, so it needs its own, more generous
-# default rather than inheriting PROMPT_SUBMIT_BUDGET_MS.
+# The standalone `query` CLI subcommand is an explicit, operator-initiated
+# search, so it can afford a cold sentence-transformers load (~3.9s measured
+# on an M-series Mac) to get real semantic ranking. The two interactive hooks
+# above cannot.
+#
+# An earlier version of this comment claimed the hooks "run inside a session
+# where one likely already loaded" — that was wrong, and it is the assumption
+# this whole budget rested on. Each hook invocation is a FRESH PROCESS, so the
+# model is cold every single time. Nothing is ever carried between prompts.
 QUERY_CLI_BUDGET_MS = 10_000
+
+# Stream admission (GH #92). A recall stream runs to completion or does not run
+# at all; recall never emits a ranking derived from a partially-searched
+# corpus. See `query()` for why partial is not merely "degraded" here.
+#
+# Measured costs that set these numbers (M-series Mac, 1745-entry vault):
+#   cold sentence-transformers load + encode ... ~3900ms
+#   warm encode (model already resident) ......... ~15ms
+#   full BM25 corpus walk ....................... ~3050ms
+#   sqlite-vec MATCH given an embedding ............ ~2ms
+#
+# A cold embed is attempted only when the remaining budget could plausibly
+# absorb it. This is deliberately generous: the failure it prevents is
+# spending an entire interactive budget on a load that then gets discarded,
+# and a caller with less than this much budget could not have used the result.
+VEC_COLD_EMBED_MIN_BUDGET_MS = 5_000
 
 # Default top-K per locked design call (plan #7a part 2 recall-loop).
 DEFAULT_K = 5
@@ -672,6 +692,7 @@ def _bm25_search(
     include_inbox: bool = False,
     include_archive: bool = False,
     filter_criteria: dict[str, str] | None = None,
+    status: dict | None = None,
 ) -> dict[str, float]:
     """BM25 lexical scoring (V6-3, PLAN-wave-e-v6-index task 5) — replaces
     `_grep_search`'s raw substring-count as the lexical stream RRF fuses.
@@ -686,7 +707,22 @@ def _bm25_search(
     document tokens are both stemmed (`_stem`) before matching.
 
     Returns {relative_path_posix: bm25_score}, score > 0 only.
+
+    `status`, when passed, is populated with `{"complete": bool, "walked": int,
+    "total": int}`. `complete` is False when `deadline` cut the corpus walk
+    short, and the caller is expected to DISCARD the results in that case
+    rather than treat them as partial (GH #92).
+
+    Why a truncated walk is not usable as "partial results": IDF and `avgdl`
+    are both computed over the candidate set this walk actually reached, so
+    stopping early does not yield a prefix of the full ranking — it yields a
+    differently-scored ranking over an arbitrary, walk-order-determined
+    subset. On a 1745-entry vault a 300ms budget reaches roughly the first 70
+    candidates, and the top hits it reports are simply whichever entries the
+    directory walk happened to visit first.
     """
+    if status is not None:
+        status.update({"complete": True, "walked": 0, "total": 0})
     if not query_tokens:
         return {}
     stemmed_query = [_stem(t) for t in query_tokens]
@@ -710,9 +746,20 @@ def _bm25_search(
     doc_chunk_counts: dict[str, list[dict[str, int]]] = {}
     doc_chunk_lengths: dict[str, list[int]] = {}
     all_chunk_lengths: list[int] = []
-    for md_path in _iter_entry_paths(vault, include_inbox=include_inbox, include_archive=include_archive):
+    entry_paths = _iter_entry_paths(
+        vault, include_inbox=include_inbox, include_archive=include_archive
+    )
+    if status is not None:
+        status["total"] = len(entry_paths)
+    for walked, md_path in enumerate(entry_paths):
         if deadline is not None and time.monotonic() >= deadline:
+            # Budget cut the walk short. Record it so the caller can discard
+            # this ranking rather than present an arbitrary prefix as results.
+            if status is not None:
+                status.update({"complete": False, "walked": walked})
             break
+        if status is not None:
+            status["walked"] = walked + 1
         try:
             content = backend.read(backend.resolve(*md_path.relative_to(vault).parts))
         except (OSError, UnicodeDecodeError):
@@ -929,33 +976,63 @@ def _vec_search_filtered(
     k: int,
     deadline: float | None = None,
     mode: str | None = None,
+    status: dict | None = None,
     stderr=sys.stderr,
 ) -> dict[str, float]:
     """Like `_vec_search`, but the SQL joins `entry_meta` and applies
-    `criteria` as an additional `WHERE` — one query, not a post-filter."""
-    try:
-        from embed import EmbeddingUnavailable, embed_text  # type: ignore
-        from vec_index import _open_index  # type: ignore
-    except ImportError:
+    `criteria` as an additional `WHERE` — one query, not a post-filter.
+
+    Same admission discipline as `_vec_search` (GH #92): the index is opened
+    before the query is embedded, and a cold model load is declined when the
+    remaining budget could not absorb it.
+    """
+    def _skip(reason: str) -> dict[str, float]:
+        if status is not None:
+            status.update({"ran": False, "reason": reason})
         return {}
 
-    if deadline is not None and time.monotonic() >= deadline:
-        return {}
     try:
-        embedding = embed_text(query_text, mode=mode)
-    except EmbeddingUnavailable as e:
-        print(f"[recall.query] embedding unavailable: {e}", file=stderr)
-        return {}
-    except Exception as e:  # noqa: BLE001 — degraded-graceful catch-all
-        print(f"[recall.query] embedding raised {type(e).__name__}: {e}", file=stderr)
-        return {}
+        from embed import (  # type: ignore
+            EmbeddingUnavailable,
+            embed_text,
+            local_model_is_resident,
+        )
+        from vec_index import _open_index  # type: ignore
+    except ImportError:
+        return _skip("embed/vec_index module unavailable")
+
     if deadline is not None and time.monotonic() >= deadline:
-        return {}
+        return _skip("budget already exhausted before vec search")
 
     conn = _open_index(vault)
     if conn is None:
-        return {}
+        return _skip(
+            "vector index unavailable (sqlite-vec could not load; a sqlite3 "
+            "built with enable_load_extension is required)"
+        )
     try:
+        if not local_model_is_resident(mode):
+            remaining_ms = (
+                None if deadline is None
+                else (deadline - time.monotonic()) * 1000.0
+            )
+            if remaining_ms is not None and remaining_ms < VEC_COLD_EMBED_MIN_BUDGET_MS:
+                return _skip(
+                    f"embedding model not loaded; a cold load needs roughly "
+                    f"{VEC_COLD_EMBED_MIN_BUDGET_MS}ms and only "
+                    f"{remaining_ms:.0f}ms of budget remained"
+                )
+        try:
+            embedding = embed_text(query_text, mode=mode)
+        except EmbeddingUnavailable as e:
+            print(f"[recall.query] embedding unavailable: {e}", file=stderr)
+            return _skip(f"embedding unavailable: {e}")
+        except Exception as e:  # noqa: BLE001 — degraded-graceful catch-all
+            print(f"[recall.query] embedding raised {type(e).__name__}: {e}", file=stderr)
+            return _skip(f"embedding raised {type(e).__name__}")
+        if status is not None:
+            status.update({"ran": True, "reason": ""})
+
         emb_blob = json.dumps(embedding)
         where_parts: list[str] = []
         params: list = [emb_blob, k]
@@ -976,7 +1053,7 @@ def _vec_search_filtered(
             rows = conn.execute(sql, params).fetchall()
         except sqlite3.OperationalError as e:
             print(f"[recall.query] filtered vec search SQL error: {e}", file=stderr)
-            return {}
+            return _skip(f"filtered vec search SQL error: {e}")
         results: dict[str, float] = {}
         for _rowid, distance, path in rows:
             if _is_inbox_path(path):
@@ -994,6 +1071,7 @@ def _vec_search(
     k: int,
     deadline: float | None = None,
     mode: str | None = None,
+    status: dict | None = None,
     stderr=sys.stderr,
 ) -> dict[str, float]:
     """Embed the query + search the vec-index for top-k nearest entries.
@@ -1010,37 +1088,86 @@ def _vec_search(
       - embedding mode unavailable (no API key, no local model)
       - query embedding raises any other exception
       - deadline elapsed before vec search completes
+      - the query embedding is cold and the remaining budget cannot absorb
+        a model load (`VEC_COLD_EMBED_MIN_BUDGET_MS`)
 
     All failures degrade gracefully — caller falls back to grep-only.
+
+    `status`, when passed, is populated with `{"ran": bool, "reason": str}`
+    so the caller can tell the operator WHY the vec half contributed nothing.
+    A silent zero and an unavailable index are indistinguishable otherwise —
+    which is exactly how GH #92 stayed invisible under green CI.
+
+    Cheap checks run before expensive ones (GH #92). The index is opened
+    BEFORE the query is embedded, because opening costs ~1ms and embedding
+    costs ~3900ms cold — and on any host whose sqlite3 cannot load
+    extensions (macOS system Python, notably) the index can never open, so
+    embedding first meant paying the full model load to produce a vector that
+    had nowhere to go.
     """
+    def _skip(reason: str) -> dict[str, float]:
+        if status is not None:
+            status.update({"ran": False, "reason": reason})
+        return {}
+
     # Lazy imports — keep module-level load fast even if deps missing.
     try:
-        from embed import EmbeddingUnavailable, embed_text  # type: ignore
+        from embed import (  # type: ignore
+            EmbeddingUnavailable,
+            embed_text,
+            local_model_is_resident,
+        )
         from vec_index import _open_index  # type: ignore
     except ImportError:
-        return {}
+        return _skip("embed/vec_index module unavailable")
 
     if deadline is not None and time.monotonic() >= deadline:
-        return {}
+        return _skip("budget already exhausted before vec search")
 
-    # Try to embed the query. EmbeddingUnavailable is the soft-fail path.
-    try:
-        embedding = embed_text(query_text, mode=mode)
-    except EmbeddingUnavailable as e:
-        print(f"[recall.query] embedding unavailable: {e}", file=stderr)
-        return {}
-    except Exception as e:  # noqa: BLE001 — degraded-graceful catch-all
-        print(f"[recall.query] embedding raised {type(e).__name__}: {e}", file=stderr)
-        return {}
-
-    if deadline is not None and time.monotonic() >= deadline:
-        return {}
-
+    # Cheap check first: can the index be opened at all? On a host without
+    # extension-loading sqlite3 this is a hard no, and it costs ~1ms to find
+    # out instead of ~3900ms.
     conn = _open_index(vault)
     if conn is None:
-        # sqlite-vec unavailable. Caller falls back to grep-only.
-        return {}
+        return _skip(
+            "vector index unavailable (sqlite-vec could not load; a sqlite3 "
+            "built with enable_load_extension is required)"
+        )
+
     try:
+        # Affordability check: a cold model load cannot fit an interactive
+        # budget. Declining costs nothing and leaves the whole budget to the
+        # lexical stream; attempting it consumes the budget and then discards
+        # the result at the next deadline check.
+        if not local_model_is_resident(mode):
+            remaining_ms = (
+                None if deadline is None
+                else (deadline - time.monotonic()) * 1000.0
+            )
+            if remaining_ms is not None and remaining_ms < VEC_COLD_EMBED_MIN_BUDGET_MS:
+                return _skip(
+                    f"embedding model not loaded; a cold load needs roughly "
+                    f"{VEC_COLD_EMBED_MIN_BUDGET_MS}ms and only "
+                    f"{remaining_ms:.0f}ms of budget remained"
+                )
+
+        # Try to embed the query. EmbeddingUnavailable is the soft-fail path.
+        try:
+            embedding = embed_text(query_text, mode=mode)
+        except EmbeddingUnavailable as e:
+            print(f"[recall.query] embedding unavailable: {e}", file=stderr)
+            return _skip(f"embedding unavailable: {e}")
+        except Exception as e:  # noqa: BLE001 — degraded-graceful catch-all
+            print(f"[recall.query] embedding raised {type(e).__name__}: {e}", file=stderr)
+            return _skip(f"embedding raised {type(e).__name__}")
+
+        # NOTE: no deadline re-check here. The embedding has already been paid
+        # for and the remaining work (one indexed MATCH) costs ~2ms; throwing
+        # the result away at this point would discard the entire cost of the
+        # step for no saving. Budget is enforced by declining to START the
+        # expensive work above, not by abandoning it once spent.
+        if status is not None:
+            status.update({"ran": True, "reason": ""})
         emb_blob = json.dumps(embedding)
         # sqlite-vec MATCH operator: top-k nearest by distance.
         # `vec0` virtual tables expose `distance` (lower = closer).
@@ -1055,7 +1182,7 @@ def _vec_search(
             rows = cursor.fetchall()
         except sqlite3.OperationalError as e:
             print(f"[recall.query] vec search SQL error: {e}", file=stderr)
-            return {}
+            return _skip(f"vec search SQL error: {e}")
         results: dict[str, float] = {}
         for rowid, distance in rows:
             # Look up the path for this rowid.
@@ -1180,6 +1307,7 @@ def query(
     deadline: float | None = None,
     mode: str | None = None,
     filter_expr: str | None = None,
+    status: dict | None = None,
     stderr=sys.stderr,
 ) -> list[dict]:
     """Run the 5-step recall engine.
@@ -1212,7 +1340,18 @@ def query(
     sqlite-vec is unavailable) applies the same criteria as it walks.
     Raises `FilterError` on a malformed expression — fail loud at parse
     time, before either search runs.
+
+    Stream admission (GH #92). Each half runs to completion or does not
+    contribute: a vec half that cannot afford a cold model load is declined
+    before it spends the budget, and a lexical half whose corpus walk was cut
+    short by the deadline has its results DISCARDED rather than fused. The
+    alternative — fusing whatever the walk reached — silently returns an
+    arbitrary walk-order-determined ranking that is indistinguishable from a
+    real one. `status`, when passed, records what each half did so the caller
+    can tell the operator "found nothing" apart from "could not search".
     """
+    if status is not None:
+        status.update({"vec": {}, "lexical": {}, "searched": False})
     if dedup_paths is None:
         dedup_paths = set()
     if not query_text or not query_text.strip():
@@ -1224,16 +1363,19 @@ def query(
     # model-load latency on the embed call). Done before grep so we can
     # short-circuit on budget overrun and still return grep results
     # (grep is fast — typical <50ms on <100 entries).
+    vec_status: dict = {"ran": True, "reason": ""}
     if criteria:
         vec_results = _vec_search_filtered(
             vault, query_text, criteria, k=max(k * 2, 10),
-            deadline=deadline, mode=mode, stderr=stderr,
+            deadline=deadline, mode=mode, status=vec_status, stderr=stderr,
         )
     else:
         vec_results = _vec_search(
             vault, query_text, k=max(k * 2, 10),
-            deadline=deadline, mode=mode, stderr=stderr,
+            deadline=deadline, mode=mode, status=vec_status, stderr=stderr,
         )
+    if status is not None:
+        status["vec"] = dict(vec_status)
 
     # V4 #37: per-hit drift check. Each vec result's source file mtime is
     # compared against the row's indexed_at; drifted hits enqueue for
@@ -1246,15 +1388,33 @@ def query(
         vault, vec_results, deadline=deadline, stderr=stderr,
     )
 
-    # BM25 lexical search — independently scored. Fast (<50ms typical). Even
-    # if vec consumed most of the budget, we try it — it's bounded by the
-    # _iter_entry_paths walk + per-file deadline check, so it naturally
-    # terminates if the budget is fully exhausted. Returns {} for no-time-
-    # left rather than blocking.
+    # BM25 lexical search — independently scored. This is a full corpus walk:
+    # it costs roughly 3050ms on a 1745-entry vault, NOT the "<50ms" an
+    # earlier version of this comment claimed (that figure was measured on a
+    # sub-100-entry vault and never revisited as the corpus grew).
+    #
+    # It is therefore normal for this half to be cut short by an interactive
+    # budget. When that happens its results are DISCARDED, not fused — see
+    # `_bm25_search`'s docstring for why a truncated walk is a differently-
+    # scored ranking rather than a partial one (GH #92).
+    bm25_status: dict = {"complete": True, "walked": 0, "total": 0}
     bm25_results = _bm25_search(
         vault, query_tokens, deadline=deadline, include_inbox=include_inbox,
         include_archive=include_archive, filter_criteria=criteria,
+        status=bm25_status,
     )
+    if not bm25_status["complete"]:
+        print(
+            f"[recall.query] lexical search discarded: the corpus walk reached "
+            f"{bm25_status['walked']} of {bm25_status['total']} entries before the "
+            f"time budget elapsed, and a partial walk produces an arbitrary "
+            f"ranking rather than a partial one",
+            file=stderr,
+        )
+        bm25_results = {}
+    if status is not None:
+        status["lexical"] = dict(bm25_status)
+        status["searched"] = bool(vec_status.get("ran")) or bm25_status["complete"]
 
     # V6-3 (PLAN-wave-e-v6-index task 5): RRF fusion replaces the old
     # weighted-sum merge (sim × 0.85 + keyword × 0.05), with the MemoryOS
@@ -1525,6 +1685,7 @@ def prompt_submit(
     # Non-positive budget → deterministic immediate-overrun path (matches
     # session_start's force-overrun branch). Smoke tests rely on this to
     # exercise the degraded-graceful path without depending on machine speed.
+    recall_status: dict = {}
     if budget_ms <= 0:
         results: list[dict] = []
     else:
@@ -1538,6 +1699,7 @@ def prompt_submit(
                 include_archive=include_archive,
                 deadline=deadline,
                 mode=mode,
+                status=recall_status,
                 stderr=stderr,
             )
         except Exception as e:  # noqa: BLE001 — never block the prompt
@@ -1648,9 +1810,37 @@ def prompt_submit(
         f"[memory-recall-prompt-submit] Loaded {len(loaded_slugs)} relevant "
         f"entries: {slug_list}"
     )
+    # A zero-result recall has two very different causes, and reporting them
+    # identically is how GH #92 survived under green CI for months: the hook
+    # fired, exited 0, and honestly announced "Loaded 0" whether the vault
+    # genuinely held nothing relevant or no search had actually run. Name the
+    # blocked streams whenever nothing was loaded and something was blocked.
+    blocked: list[str] = []
+    vec_status = recall_status.get("vec") or {}
+    lexical_status = recall_status.get("lexical") or {}
+    if vec_status.get("ran") is False and vec_status.get("reason"):
+        blocked.append(f"semantic: {vec_status['reason']}")
+    if lexical_status.get("complete") is False:
+        blocked.append(
+            f"lexical: discarded, walked {lexical_status.get('walked', 0)} of "
+            f"{lexical_status.get('total', 0)} entries before the budget elapsed"
+        )
+    # "Nothing was searched" is reserved for the case where NO stream completed.
+    # A vec half that could not run while the lexical half walked the whole
+    # corpus is a coverage caveat, not a failed search — the vault really was
+    # searched, just by one stream instead of two.
+    searched = recall_status.get("searched", True)
+    if blocked and not searched:
+        transparency += (
+            " (NOTHING WAS SEARCHED — this is not an empty vault: "
+            + "; ".join(blocked)
+            + ")"
+        )
+    elif blocked:
+        transparency += " (partial coverage — " + "; ".join(blocked) + ")"
     if overrun:
         transparency += (
-            f" (WARNING: {budget_ms}ms time budget exceeded; results may be partial)"
+            f" (WARNING: {budget_ms}ms time budget exceeded)"
         )
     if token_budget_omitted > 0:
         transparency += (
