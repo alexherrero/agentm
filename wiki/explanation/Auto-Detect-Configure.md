@@ -33,16 +33,18 @@ Here are the calls that matter, and why each is what it is:
 - **Detection augments `/setup`; it doesn't replace it.** The scan is the new §0 at the front of `/setup`, ahead of the inventory and interview.
 - **Default-all-enabled.** Detection never gates which skills or hooks are present — it surfaces *rationale* so the operator can make an informed opt-out. Opt-outs are recorded in `operator_overrides`.
 - **The permeable boundary.** Detection *proposes*; the operator approves or edits; nothing is ever written to the vault silently.
+- **Re-detection surfaces a diff; it never applies one.** A repo changes after you configure it, so `/setup --redetect` re-scans and shows what moved. The default run writes nothing but the `last_redetect_at` stamp, and `--apply` refreshes only the *rationale* — it never flips an `enabled` flag. Turning something off stays an operator decision recorded as an override, which is why an existing override suppresses any suggestion about its target instead of re-raising a choice you already made. See [Re-detect a configured project](Re-Detect-A-Configured-Project).
 
 ## What stays a known risk
 
-**Nudge fatigue** is the main one, mitigated by keeping the nudge to a single line and honouring the `.agentm-no-register` escape hatch — drop that marker for a one-time scratch session and the hook stays silent. A `.envrc` (direnv) file is a known false positive; the operator declines it at approval, and the decline is recorded so a future re-detect won't re-suggest it. If the vault is unavailable, detection still renders the proposal but skips the persist, noting it.
+**Nudge fatigue** is the main one, mitigated by keeping the nudge to a single line and honouring the `.agentm-no-register` escape hatch — drop that marker for a one-time scratch session and the hook stays silent. A `.envrc` (direnv) file is a known false positive; the operator declines it at approval, and the decline is recorded so re-detection won't re-suggest it. If the vault is unavailable, detection still renders the proposal but skips the persist, noting it.
 
-Deliberately deferred (do not treat as shipped): the pluggable rule API, the `/setup --redetect` diff flow, per-project rule disabling, the project-type taxonomy, and monorepo sub-project registration.
+Deliberately deferred (do not treat as shipped): the pluggable rule API, per-project rule disabling, the project-type taxonomy, and monorepo sub-project registration.
 
 ## Related
 
 - [Configure a new project](Configure-A-New-Project) — the operator recipe.
+- [Re-detect a configured project](Re-Detect-A-Configured-Project) — re-running the scan after the repo changes.
 - [Detection rules](Detection-Rules) — the built-in rules and what each attaches a rationale to.
 - [Project config](Project-Config) — the enablement-block schema.
 - [Orchestration and auto-detection](Orchestration-And-Auto-Detection) — where this sits in the architecture.
