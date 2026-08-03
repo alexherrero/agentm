@@ -51,6 +51,21 @@ The [wiki](https://github.com/alexherrero/agentm/wiki) covers everything there i
 
 The memory vault itself is browsable by kind — every note groups into a generated Map of Content (MOC) alongside its siblings of the same kind (`fix`, `pattern`, `decision`, and dozens more), so you can scan every entry of a kind without a search. See [MOC generator](MOC-Generator) for how the pages are built, and [Kind-taxonomy registry](Kind-Taxonomy-Registry) for the kinds it recognizes.
 
+## 🤖 Sub-agents
+
+A sub-agent is a helper your coding agent hands a narrow job to. It gathers what you asked for and reports back without touching your code.
+
+AgentM ships two sub-agents, both serving the memory engine:
+
+| Sub-agent | What it does |
+|---|---|
+| `adapt-evaluator` | Judges a candidate skill against the adapt-don't-import rule and writes the watchlist entry you review. |
+| `memory-idea-researcher` | Fills out an idea-incubator entry, reading the vault, your notes, and the web under set budgets. |
+
+Both install into your agent's `.claude/agents/` folder — or `.agents/skills/` on Antigravity. Alongside them, AgentM installs its [personas](agentm-personas), compiling named stances like the engineer or the reviewer into that same directory.
+
+Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`, or `documenter` — comes from [`crickets`](https://github.com/alexherrero/crickets), not AgentM. Standalone AgentM includes only the two memory sub-agents and the personas. The review, phase-loop, and wiki agents arrive with crickets plugins. See [Toolkit interface](Toolkit-Interface) for where the line sits.
+
 ---
 
 > [!NOTE]
