@@ -1151,6 +1151,8 @@ Reports vault-wide rot the write-time guards can't catch on their own: orphans (
 
 `dream.py`'s weekly cycle runs the identical engine automatically via `_stage_lint()`, applying the same auto-repair through the standard revert-logged auto-apply path (`dream_confirm.AUTO_APPLY_STAGES` — `wikilink_repair` mutations only). The plan's own verification requirement holds by construction: `/memory lint` and the weekly stage share one code path, so they can't drift.
 
+**The idea ledger is linted by a separate pass**, since neither the `_idea-incubator/` files nor `Ideas.md` use the `save.py` frontmatter schema — `incubator_lint.py` checks their own shapes instead (the five-field core, `kind`-matches-file-role, the `incubator:` back-reference, `_index`/`_summary` agreement, and `Ideas.md` heading form). It runs inside `vault_lint.py` at `--scope all`, or alone via `--scope incubator`. Full catalog: [Vault lint checks reference](../../../wiki/reference/Vault-Lint-Checks.md).
+
 #### Invocation
 
 ```
