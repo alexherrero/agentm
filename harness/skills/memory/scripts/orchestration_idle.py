@@ -155,10 +155,20 @@ def _summarize(name: str, r: dict) -> str:
         if name == "reflect-corpus":
             return "noop" if "nothing to process" in out else ("ran" if rc == 0 else f"rc={rc}")
         if name == "discover-skills":
-            low = out.lower()
-            if "throttl" in low or "cadence" in low and "skip" in low:
-                return "throttled"
-            return "ran" if rc == 0 else f"rc={rc}"
+            # Read the flag, don't grep for it: discover_skills.py always emits
+            # a `"cadence_skipped": <bool>` key, so the old substring probe for
+            # "cadence" + "skip" matched the KEY and reported "throttled" on
+            # every run — including one that fetched all four network sources.
+            try:
+                summary = json.loads(r.get("stdout") or "{}")
+                if summary.get("cadence_skipped"):
+                    return "throttled"
+                fetched = summary.get("fetched", 0)
+                if fetched:
+                    return f"fetched {fetched}"
+                return "ran" if rc == 0 else f"rc={rc}"
+            except (ValueError, AttributeError):
+                return "ran" if rc == 0 else f"rc={rc}"
         return "ran" if rc == 0 else f"rc={rc}"
     except Exception:
         return "?"

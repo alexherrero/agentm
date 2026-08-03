@@ -150,15 +150,37 @@ class TestIdleChain(unittest.TestCase):
     # ── resilience ──────────────────────────────────────────────────────────
     def test_empty_steps_noop_cleanly(self) -> None:
         # Every step reports an empty/no-op result; the chain still completes.
+        # The discover-skills stdout is the shape discover_skills.py really
+        # emits when its cadence gate short-circuits — the prose "cadence not
+        # due; skip" this fixture used to carry was invented, and inventing it
+        # is what hid the label bug below.
         runner = _FakeRunner(results={
             "reflect-corpus": {"returncode": 0, "stdout": "", "stderr": "[reflect.corpus] nothing to process", "timed_out": False},
-            "discover-skills": {"returncode": 0, "stdout": "", "stderr": "cadence not due; skip", "timed_out": False},
+            "discover-skills": {"returncode": 0, "stdout": json.dumps({"cadence_skipped": True, "cadence_days": 7, "fetched": 0}), "stderr": "", "timed_out": False},
             "adapt-pass1": {"returncode": 0, "stdout": json.dumps({"evaluated_count": 0}), "stderr": "", "timed_out": False},
         })
         out = oi.run_idle_chain(self.vault, _cfg(), _NOW, runner=runner)
         self.assertEqual(out["status"], "ran")
         self.assertEqual([s["outcome"] for s in out["steps"]],
                          ["noop", "throttled", "noop"])
+
+    def test_discover_outcome_reads_the_flag_not_the_key_name(self) -> None:
+        # A discover step that FETCHED must never be labelled "throttled".
+        # It was: the outcome came from grepping stdout for "cadence" + "skip",
+        # which matched the `"cadence_skipped"` KEY, so every run reported
+        # throttled — including one that fetched all four network sources.
+        runner = _FakeRunner(results={
+            "discover-skills": {
+                "returncode": 0,
+                "stdout": json.dumps({"cadence_skipped": False, "cadence_days": 7, "fetched": 4, "errors": 0}),
+                "stderr": "",
+                "timed_out": False,
+            },
+        })
+        out = oi.run_idle_chain(self.vault, _cfg(), _NOW, runner=runner)
+        outcome = next(s["outcome"] for s in out["steps"] if s["name"] == "discover-skills")
+        self.assertNotEqual(outcome, "throttled")
+        self.assertEqual(outcome, "fetched 4")
 
     def test_step_failure_does_not_abort_chain(self) -> None:
         runner = _FakeRunner(results={

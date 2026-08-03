@@ -69,6 +69,11 @@ assert_contains "config: defaults parse (inbox_threshold=10)"   "$CFG" '"inbox_t
 assert_contains "config: defaults parse (idle cooldown=24)"     "$CFG" '"idle_chain_cooldown_hours": 24'
 
 # ── E. idle chain (dry-run: ordering + bounded flags) ───────────────────────
+# Scope note (issue #71): these are plan-shape assertions and nothing more — a
+# chain whose every step silently no-ops still passes them. The non-dry-run
+# counterpart lives in verify-idle-chain.sh, which runs the real chain and
+# asserts the mutations. Keep new mutation checks there; this file stays
+# render-only so it never mines a transcript.
 IDLE="$("$PY" "$S/orchestration_idle.py" --vault-path "$SV" --dry-run 2>/dev/null)"
 assert_contains "idle: dry-run status"                          "$IDLE" '"status": "dry-run"'
 assert_contains "idle: step 1 reflect-corpus"                   "$IDLE" 'reflect-corpus'
