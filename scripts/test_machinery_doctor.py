@@ -482,6 +482,117 @@ class JobConfigTests(unittest.TestCase):
             self.assertIn(f"{job_name}:config", names)
 
 
+@unittest.skipIf(os.name == "nt", "the resolver the check delegates to is the POSIX/bash half")
+class MemoryHookInterpreterTests(unittest.TestCase):
+    """The check that would have caught a silent multi-year outage: the memory
+    hooks ran an interpreter whose sqlite3 cannot load sqlite-vec, so the vector
+    index was unreachable and every caller read that as an empty index.
+
+    Hermetic. Each case builds a fixture repo with a fake
+    `harness/hooks/lib/resolve-python.sh` and a fake interpreter, so what is
+    asserted is the check's *verdict* given a known interpreter capability —
+    not which Pythons happen to be on the machine running the suite.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.repo = Path(self._tmp.name)
+        self.libdir = self.repo / "harness" / "hooks" / "lib"
+        self.libdir.mkdir(parents=True)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _fake_interpreter(self, *, ext: bool, vec: bool, version: str = "3.13.13") -> Path:
+        """Stands in for a Python whose sqlite3 has (or lacks) extension
+        support. The check runs `<interp> -c <probe>` and parses stdout as
+        JSON, so emitting that JSON directly is the same contract a real
+        interpreter satisfies."""
+        p = self.repo / "fake-python"
+        payload = json.dumps({"ext": ext, "vec": vec, "version": version})
+        p.write_text(f"#!/bin/sh\ncat <<'EOF'\n{payload}\nEOF\n", encoding="utf-8")
+        p.chmod(0o755)
+        return p
+
+    def _write_resolver(self, prints: str) -> None:
+        r = self.libdir / "resolve-python.sh"
+        r.write_text(f"#!/usr/bin/env bash\nprintf '%s\\n' '{prints}'\n", encoding="utf-8")
+        r.chmod(0o755)
+
+    def test_ok_when_resolved_interpreter_loads_sqlite_vec(self):
+        interp = self._fake_interpreter(ext=True, vec=True)
+        self._write_resolver(str(interp))
+        c = md.check_memory_hook_interpreter(self.repo)
+        self.assertEqual(c.status, "OK")
+        self.assertIn("reachable", c.detail)
+
+    def test_fail_when_interpreter_cannot_load_extensions(self):
+        """Apple's system Python: the original bug, exactly."""
+        interp = self._fake_interpreter(ext=False, vec=False, version="3.9.6")
+        self._write_resolver(str(interp))
+        c = md.check_memory_hook_interpreter(self.repo)
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("enable_load_extension", c.detail)
+
+    def test_fail_when_extension_capable_but_sqlite_vec_missing(self):
+        """A distinct, separately-actionable failure — one pip install away,
+        so the check must not collapse it into the unfixable case above."""
+        interp = self._fake_interpreter(ext=True, vec=False)
+        self._write_resolver(str(interp))
+        c = md.check_memory_hook_interpreter(self.repo)
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("pip install sqlite-vec", c.detail)
+        self.assertNotIn("no sqlite3.enable_load_extension", c.detail)
+
+    def test_warn_when_resolver_is_absent(self):
+        c = md.check_memory_hook_interpreter(self.repo)
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("bare `python3`", c.detail)
+
+    def test_fail_when_resolver_prints_nothing(self):
+        r = self.libdir / "resolve-python.sh"
+        r.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        r.chmod(0o755)
+        c = md.check_memory_hook_interpreter(self.repo)
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("printed nothing", c.detail)
+
+    def test_fail_when_resolved_interpreter_is_unrunnable(self):
+        self._write_resolver("/nonexistent/python3")
+        c = md.check_memory_hook_interpreter(self.repo)
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("could not probe", c.detail)
+
+    def test_names_the_override_as_the_cause_when_one_is_set(self):
+        """An operator who pointed $AGENTM_PYTHON at a broken interpreter must
+        be told that is why, or the row sends them hunting the wrong thing."""
+        interp = self._fake_interpreter(ext=False, vec=False)
+        self._write_resolver(str(interp))
+        prior = os.environ.get("AGENTM_PYTHON")
+        os.environ["AGENTM_PYTHON"] = str(interp)
+        try:
+            c = md.check_memory_hook_interpreter(self.repo)
+        finally:
+            if prior is None:
+                os.environ.pop("AGENTM_PYTHON", None)
+            else:
+                os.environ["AGENTM_PYTHON"] = prior
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("override", c.detail)
+
+    def test_delegates_rather_than_reimplementing_the_probe(self):
+        """The check must ask the real resolver, so it cannot report a healthy
+        interpreter the hooks never actually pick. Proven by making the fixture
+        resolver the *only* thing that could have produced the answer: it names
+        an interpreter that exists nowhere in normal resolution."""
+        interp = self._fake_interpreter(ext=True, vec=True, version="9.9.9")
+        self._write_resolver(str(interp))
+        c = md.check_memory_hook_interpreter(self.repo)
+        self.assertEqual(c.status, "OK")
+        self.assertIn("9.9.9", c.detail)
+        self.assertIn(str(interp), c.detail)
+
+
 class RealRepoSmokeTests(unittest.TestCase):
     """Confirms the composed inventory runs clean (never raises) against
     this actual checkout -- the same "always degrades, never crashes"

@@ -81,6 +81,7 @@ The idle hook parses the `transcript:` line for the reflection target. Other fie
 
 - **reflect.py not installed** → exit 0 silently (graceful-skip; same as other memory hooks).
 - **python3 not on PATH** → exit 0 silently.
+- **No extension-capable Python anywhere** → the hook still runs, on the bare-`python3` floor; the vec-index sweep and drain no-op via `vec_index.py`'s own graceful skip. This used to be invisible. `machinery_doctor.py`'s `memory-hook-interpreter` row now names it — see `../lib/resolve-python.sh`.
 - **`.harness/` doesn't exist** → exit 0 silently (no markers, nothing to do).
 - **No `.start` markers** → exit 0 silently.
 - **Marker file unreadable / missing `transcript:` line** → stderr warning + **delete** the marker (a dead pointer past the idle threshold has nothing left to reflect from).

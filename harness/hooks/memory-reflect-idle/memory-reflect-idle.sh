@@ -53,6 +53,20 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
+# Resolve the interpreter that runs the memory scripts. See
+# memory-recall-session-start.sh for the rationale + bug history.
+_resolve_agentm_python() {
+    local lib
+    lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../lib/resolve-python.sh"
+    if [[ -r "$lib" ]]; then
+        local resolved
+        resolved="$(bash "$lib" 2>/dev/null || true)"
+        if [[ -n "$resolved" ]]; then printf '%s\n' "$resolved"; return 0; fi
+    fi
+    printf '%s\n' "python3"
+}
+AGENTM_PY="$(_resolve_agentm_python)"
+
 # Resolve MEMORY_VAULT_PATH from .agentm-config.json if not in env. See
 # memory-recall-session-start.sh for rationale + bug history.
 _resolve_vault_path() {
@@ -159,7 +173,7 @@ for marker in "${markers[@]:-}"; do
     # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → _inbox/
     # via reflect.py's tri-modal routing). Requires MEMORY_VAULT_PATH; if
     # unset, --route fails non-zero + marker stays .start for next pass.
-    if python3 "$REFLECT_PY" "$transcript" --summary --route 2>/dev/null; then
+    if "$AGENTM_PY" "$REFLECT_PY" "$transcript" --summary --route 2>/dev/null; then
         # Rename .start → .reflected on success.
         mv "$marker" "${marker%.start}.reflected" 2>/dev/null && processed_count=$((processed_count + 1))
     elif (( age_sec > GC_THRESHOLD_SEC )); then
@@ -206,7 +220,7 @@ fi
 # MEMORY_VAULT_PATH; graceful-skip if unset / driver absent.
 ORCH_IDLE_PY="$(_resolve_memory_script orchestration_idle.py 2>/dev/null)" || ORCH_IDLE_PY=""
 if [[ -n "$ORCH_IDLE_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
-    ( python3 "$ORCH_IDLE_PY" --vault-path "$MEMORY_VAULT_PATH" >/dev/null 2>&1 & ) 2>/dev/null || true
+    ( "$AGENTM_PY" "$ORCH_IDLE_PY" --vault-path "$MEMORY_VAULT_PATH" >/dev/null 2>&1 & ) 2>/dev/null || true
 fi
 
 # ── Vec-index drift sweep (V4 #37 task 6) ─────────────────────────────────
@@ -222,28 +236,17 @@ fi
 # the vec-index backend needs `sqlite3.Connection.enable_load_extension`,
 # which Apple's macOS system Python disables — a bare `python3` there means
 # vec_index.py always hits its own graceful-skip, silently, even when
-# sqlite-vec is pip-installed. Precedence: $AGENT_TOOLKIT_PYTHON override >
-# python3 (if capable) > common Homebrew/pyenv locations. Falls back to bare
-# `python3` if none qualify — vec_index.py's own graceful-skip still applies,
-# so this is purely additive (no new failure mode).
-_resolve_extension_capable_python() {
-    local candidates=()
-    if [[ -n "${AGENT_TOOLKIT_PYTHON:-}" ]]; then
-        candidates+=("$AGENT_TOOLKIT_PYTHON")
-    fi
-    candidates+=(python3 /opt/homebrew/bin/python3 /usr/local/bin/python3 "$HOME/.pyenv/shims/python3")
-    local c
-    for c in "${candidates[@]}"; do
-        if command -v "$c" >/dev/null 2>&1; then
-            if "$c" -c "import sqlite3, sys; sys.exit(0 if hasattr(sqlite3.Connection, 'enable_load_extension') else 1)" 2>/dev/null; then
-                printf '%s\n' "$c"
-                return 0
-            fi
-        fi
-    done
-    printf '%s\n' "python3"
-}
-VEC_PYTHON="$(_resolve_extension_capable_python)"
+# sqlite-vec is pip-installed.
+#
+# This hook used to carry its own private copy of that probe. The copy listed
+# only bare-name paths (/opt/homebrew/bin/python3, /usr/local/bin/python3, a
+# pyenv shim), and Homebrew installs *versioned* binaries only — there is no
+# bare `python3` in its bin dir — so on the very machine the probe was written
+# for, every candidate missed and it fell through to the incapable floor. It
+# was right about the problem and wrong about where the answer lives. The
+# canonical resolver replaces it, probes versioned names via PATH, and is
+# shared with the other three memory hooks and the doctor.
+VEC_PYTHON="$AGENTM_PY"
 
 VEC_INDEX_PY="$(_resolve_memory_script vec_index.py 2>/dev/null)" || VEC_INDEX_PY=""
 if [[ -n "$VEC_INDEX_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then

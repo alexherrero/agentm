@@ -80,6 +80,20 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
+# Resolve the interpreter that runs the memory scripts. See
+# memory-recall-session-start.sh for the rationale + bug history.
+_resolve_agentm_python() {
+    local lib
+    lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../lib/resolve-python.sh"
+    if [[ -r "$lib" ]]; then
+        local resolved
+        resolved="$(bash "$lib" 2>/dev/null || true)"
+        if [[ -n "$resolved" ]]; then printf '%s\n' "$resolved"; return 0; fi
+    fi
+    printf '%s\n' "python3"
+}
+AGENTM_PY="$(_resolve_agentm_python)"
+
 # Stop hook stdin payload (per Claude Code hook spec): JSON carrying session_id,
 # cwd, and transcript_path on every hook event. We read transcript_path directly
 # and keep session_id + cwd for the marker and the fallback below.
@@ -177,7 +191,7 @@ fi
 # We capture output once + reuse for both the transparency line + stdout
 # pass-through. Running reflect.py --route twice would error on slug
 # collision (HIGH save would refuse the second time).
-REFLECT_OUT="$(python3 "$REFLECT_PY" "$TRANSCRIPT" --summary --route 2>&1)"
+REFLECT_OUT="$("$AGENTM_PY" "$REFLECT_PY" "$TRANSCRIPT" --summary --route 2>&1)"
 REFLECT_EXIT=$?
 if [[ $REFLECT_EXIT -ne 0 ]]; then
     # Most common cause: MEMORY_VAULT_PATH not set in hook env. Reflection

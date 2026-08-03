@@ -193,47 +193,64 @@ mode_hook_config() {
     "harness/hooks/memory-reflect-idle/memory-reflect-idle.sh"
   )
 
-  _extract() {
-    awk '/^_resolve_vault_path\(\) \{/{p=1} p{print} p && /^}$/{exit}' "$1"
+  # Each of these is replicated verbatim across all four hooks rather than
+  # sourced, because a hook is copied into an install as a standalone file.
+  #   _resolve_vault_path     — the dual-key config read (R1.2 / agentmEngine#0)
+  #   _resolve_agentm_python  — the bootstrap that hands the memory scripts an
+  #                             interpreter which can actually load sqlite-vec.
+  #                             The *probe* is not replicated (it lives once, in
+  #                             harness/hooks/lib/resolve-python.sh); this
+  #                             function is only the few lines that find and
+  #                             call it, and they are gated here so a hook
+  #                             cannot quietly drift back to a bare `python3`
+  #                             the way the whole set did before 2026-08-02.
+  local funcs=(_resolve_vault_path _resolve_agentm_python)
+
+  _extract() {  # $1 = file, $2 = function name
+    awk -v fn="$2" '$0 ~ "^" fn "\\(\\) \\{" {p=1} p{print} p && /^}$/{exit}' "$1"
   }
 
   local TMPDIR; TMPDIR="$(mktemp -d)"
-  local FIRST="" FIRST_HOOK="" hook path out
-  for hook in "${hooks[@]}"; do
-    path="$REPO_ROOT/$hook"
-    if [[ ! -f "$path" ]]; then
-      echo "check-vendored-parity[hook-config]: missing $path" >&2
-      rm -rf "$TMPDIR"
-      return 2
-    fi
-    out="$TMPDIR/$(basename "$hook").func"
-    _extract "$path" > "$out"
-    if [[ ! -s "$out" ]]; then
-      echo "check-vendored-parity[hook-config]: _resolve_vault_path not found in $path" >&2
-      rm -rf "$TMPDIR"
-      return 2
-    fi
-    if [[ -z "$FIRST" ]]; then
-      FIRST="$out"
-      FIRST_HOOK="$hook"
-    fi
-  done
+  local drift=0 fn FIRST FIRST_HOOK hook path out
 
-  local drift=0
-  for hook in "${hooks[@]}"; do
-    out="$TMPDIR/$(basename "$hook").func"
-    if ! diff -q "$FIRST" "$out" >/dev/null 2>&1; then
-      echo "check-vendored-parity[hook-config]: DRIFT — $hook's _resolve_vault_path differs from $FIRST_HOOK" >&2
-      diff -u "$FIRST" "$out" >&2 || true
-      drift=1
-    fi
+  for fn in "${funcs[@]}"; do
+    FIRST=""
+    FIRST_HOOK=""
+    for hook in "${hooks[@]}"; do
+      path="$REPO_ROOT/$hook"
+      if [[ ! -f "$path" ]]; then
+        echo "check-vendored-parity[hook-config]: missing $path" >&2
+        rm -rf "$TMPDIR"
+        return 2
+      fi
+      out="$TMPDIR/$(basename "$hook").$fn.func"
+      _extract "$path" "$fn" > "$out"
+      if [[ ! -s "$out" ]]; then
+        echo "check-vendored-parity[hook-config]: $fn not found in $path" >&2
+        rm -rf "$TMPDIR"
+        return 2
+      fi
+      if [[ -z "$FIRST" ]]; then
+        FIRST="$out"
+        FIRST_HOOK="$hook"
+      fi
+    done
+
+    for hook in "${hooks[@]}"; do
+      out="$TMPDIR/$(basename "$hook").$fn.func"
+      if ! diff -q "$FIRST" "$out" >/dev/null 2>&1; then
+        echo "check-vendored-parity[hook-config]: DRIFT — $hook's $fn differs from $FIRST_HOOK" >&2
+        diff -u "$FIRST" "$out" >&2 || true
+        drift=1
+      fi
+    done
   done
   rm -rf "$TMPDIR"
 
   if [[ "$drift" -ne 0 ]]; then
     return 1
   fi
-  echo "check-vendored-parity[hook-config]: clean (all four _resolve_vault_path copies are byte-identical)"
+  echo "check-vendored-parity[hook-config]: clean (all four copies of ${funcs[*]} are byte-identical)"
   return 0
 }
 

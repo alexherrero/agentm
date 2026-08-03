@@ -161,12 +161,49 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
+# Resolve the interpreter that runs the memory scripts.
+#
+# Pre-fix, every memory hook ended in a bare `python3 …`, which is a PATH
+# lookup. On a stock macOS box that resolves to Apple's /usr/bin/python3, whose
+# sqlite3 is built without `--enable-loadable-sqlite-extensions` and therefore
+# has no `enable_load_extension` at all. sqlite-vec is a loadable native
+# extension, so `vec_index._open_index()` returned None on every call and every
+# caller read that as the graceful "index not built yet" skip — semantic recall
+# was structurally unreachable, silently, against a fully healthy 1035-row
+# index. See harness/hooks/lib/resolve-python.sh for the resolution order and
+# the reasoning behind each step; it is the canonical resolver, and
+# scripts/machinery_doctor.py's `memory-hook-interpreter` check delegates to
+# the same script so the diagnosis cannot drift from the behavior.
+#
+# The lib path is resolved relative to this hook file, which is identical in
+# the repo (harness/hooks/<name>/ → harness/hooks/lib/) and in an install
+# (<prefix>/hooks/<name>/ → <prefix>/hooks/lib/), so no config lookup is
+# needed to find it. Falls back to bare `python3` — the pre-fix behavior — if
+# the lib is missing, so a partial install degrades exactly as it used to.
+#
+# Note the ordering: this deliberately sits *after* the `command -v python3`
+# gate and the config reads above, which stay on bare `python3`. Those only
+# parse small JSON files, which any interpreter can do; only the memory
+# scripts need the capable one, and bootstrapping the resolver off the config
+# would be circular.
+_resolve_agentm_python() {
+    local lib
+    lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../lib/resolve-python.sh"
+    if [[ -r "$lib" ]]; then
+        local resolved
+        resolved="$(bash "$lib" 2>/dev/null || true)"
+        if [[ -n "$resolved" ]]; then printf '%s\n' "$resolved"; return 0; fi
+    fi
+    printf '%s\n' "python3"
+}
+AGENTM_PY="$(_resolve_agentm_python)"
+
 # Invoke recall. recall.py handles MEMORY_VAULT_PATH resolution, glob,
 # frontmatter parse, filter, output, and the 500ms time budget internally.
 # We no longer `exec` it — the SessionStart pending-state briefing
 # (orchestration_briefing.py) appends after the always-load recall
 # (V4 #23 task 3, DC-3: agentm-native, non-blocking).
-python3 "$RECALL_PY" session-start || true
+"$AGENTM_PY" "$RECALL_PY" session-start || true
 
 # ── Pending-state briefing pass (V4 #23 task 3) ────────────────────────────
 # Best-effort, non-blocking: scans the vault for over-threshold pending signals
@@ -179,9 +216,9 @@ python3 "$RECALL_PY" session-start || true
 BRIEFING_PY="$(_resolve_memory_script orchestration_briefing.py 2>/dev/null)" || BRIEFING_PY=""
 if [[ -n "$BRIEFING_PY" ]]; then
     if [[ -n "${MEMORY_VAULT_PATH:-}" ]]; then
-        python3 "$BRIEFING_PY" --vault-path "$MEMORY_VAULT_PATH" 2>/dev/null || true
+        "$AGENTM_PY" "$BRIEFING_PY" --vault-path "$MEMORY_VAULT_PATH" 2>/dev/null || true
     else
-        python3 "$BRIEFING_PY" 2>/dev/null || true
+        "$AGENTM_PY" "$BRIEFING_PY" 2>/dev/null || true
     fi
 fi
 
