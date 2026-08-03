@@ -25,7 +25,7 @@ The `build_enablement_block` function emits 7 keys. The `merge_enablement` funct
 | `registered_at` | string (ISO-8601 UTC) | now, at write time | When the block was first written, e.g. `2026-05-29T14:03:00Z`. |
 | `registered_via` | string | `"auto-detect"` | How the repo was registered — `"auto-detect"` (the flow) or `"manual"`. |
 | `operator_overrides` | array | `[]` | `[{at, skill_or_hook, action, reason}]` — one entry per opt-out recorded by `apply_override` (action defaults to `"disabled-at-registration"`). |
-| `last_redetect_at` | string \| null | `null` | Reserved; stays `null` (the `/setup --redetect` flow is deferred). |
+| `last_redetect_at` | string \| null | `null` | When re-detection last scanned this repo. Stays `null` until the first `redetect` run; a `--dry-run` preview leaves it alone. |
 
 ### `TargetState` shape (each entry in `skills` / `hooks`)
 
@@ -36,6 +36,33 @@ The `build_enablement_block` function emits 7 keys. The `merge_enablement` funct
 | `rationale` | string | Why this target is relevant — a detection reason (when matched) or a default reason. |
 | `rule_id` | string \| null | The matching rule's id (e.g. `R-wiki`), or `null` when default-enabled. |
 | `operator_action` | string \| null | `null` until an opt-out flips it to `"disabled-at-registration"`. |
+
+## Re-detection
+
+You re-scan a configured repo with `redetect`. It diffs a fresh detection result against the stored block and prints what moved. It writes no enablement key unless you pass `--apply`.
+
+```bash
+python3 scripts/project_config.py redetect .                    # surface the diff
+python3 scripts/project_config.py redetect . --format json      # machine-readable
+python3 scripts/project_config.py redetect . --dry-run          # read-only; no stamp
+python3 scripts/project_config.py redetect . --apply            # refresh the rationale
+```
+
+| Change category | What moved | What `--apply` does |
+|---|---|---|
+| `newly-detected` | A rule matches a target that carried only the default rationale. | Writes the rule's `rule_id` and `rationale` onto the entry. |
+| `no-longer-detected` | The rule that justified a target stopped matching. | Returns the entry to `auto_detected: false` with the default rationale. |
+| `rule-changed` | A different rule justifies the target now. | Writes the new `rule_id` and `rationale`. |
+| `new-target` | The harness added an enableable your config predates. | Adds the entry with `operator_action: null`. |
+| `retired-target` | The harness dropped an enableable your config still lists. | Removes the stale entry. |
+
+Three rules govern the flow:
+
+- **Applying refreshes rationale, never enablement.** `--apply` writes `auto_detected`, `rule_id`, and `rationale`. It carries `enabled` and `operator_action` over from the stored entry untouched, so re-detection can never turn a skill off behind you. Detection surfaces and never gates (DC-7), so a lapsed rule returns a target to its default rationale rather than disabling it. You disable things through the override path instead.
+- **An `operator_overrides` entry suppresses suggestions about its target.** Those land in a separate `suppressed` list that names the override and your original reason, so a decline you already made never comes back as a fresh choice. A `retired-target` is the one exception — a dead config entry is housekeeping, not a re-suggestion.
+- **`--apply` re-scans from scratch.** There is no stored diff to go stale between the run that shows you a change and the run that applies it.
+
+Exit codes: `0` the config still matches the repo, `1` changes were surfaced or applied, `2` re-detect could not run (no enablement block yet, or the repo is the harness source and detection bypasses it).
 
 ## Pre-existing keys (unchanged)
 
@@ -51,5 +78,6 @@ _You add the enablement block. The merge-writer preserves these existing keys._
 
 - [Detection rules](Detection-Rules) — You populate `rationale` and `rule_id` in the `skills` and `hooks` maps here.
 - [Configure a new project](Configure-A-New-Project) — You write this block using this flow.
+- [Re-detect a configured project](Re-Detect-A-Configured-Project) — You refresh this block after the repo changes.
 - [Repo layout](Repo-Layout) — You store `.harness/project.json` on disk here.
 - [Auto-detect + auto-configure](Auto-Detect-Configure) — You see why config lives here and not in `features.json` (DC-1).

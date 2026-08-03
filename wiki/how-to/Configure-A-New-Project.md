@@ -36,6 +36,7 @@ When you open an unconfigured code project, the SessionStart hook emits a one-li
 
 ## Related
 
+- [Re-detect a configured project](Re-Detect-A-Configured-Project) — re-run the scan once the repo has changed.
 - [Detection rules reference](Detection-Rules) — the 10 built-in rules and what each detects.
 - [Project config reference](Project-Config) — the `project.json` enablement-block schema this flow writes.
 - [Auto-detect + auto-configure](Auto-Detect-Configure) — why the flow proposes-then-approves and why config lives in `project.json`.

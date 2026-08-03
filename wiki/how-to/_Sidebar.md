@@ -5,6 +5,7 @@
 - [Your first install](01-First-Install)
 - [Install into a project](Install-Into-Project)
 - [Configure a new project](Configure-A-New-Project)
+- [Re-detect a configured project](Re-Detect-A-Configured-Project)
 - [Update an installed harness](Update-Installed-Harness)
 - [Use auto-context in phases](Use-Auto-Context-In-Harness-Phases)
 - [Use per-project install](Use-Per-Project-Install)
