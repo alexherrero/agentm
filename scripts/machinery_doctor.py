@@ -530,6 +530,93 @@ def check_crickets_coordination_suite(crickets_root: Optional[Path]) -> Check:
     )
 
 
+def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
+    """Can the interpreter the memory hooks actually run open the vector index?
+
+    This is the check that would have caught a silent, years-long outage. The
+    hooks used to end in a bare `python3`, a PATH lookup that resolves to
+    Apple's system Python on a stock macOS box. That build has no
+    `sqlite3.Connection.enable_load_extension` at all, sqlite-vec is a loadable
+    native extension, so `vec_index._open_index()` returned None on every call
+    — and every caller treats None as the graceful "index not built yet" skip.
+    Nothing went red. Recall just quietly never used the 1035-row index sitting
+    healthy on disk. `/doctor` had no row that would have said so.
+
+    It delegates rather than re-derives. The interpreter is whatever
+    `harness/hooks/lib/resolve-python.sh` prints — the same script the hooks
+    bootstrap through — so this cannot report a healthy interpreter the hooks
+    never pick. A check that re-implemented the candidate list would be a
+    second implementation to drift, which is the failure mode this whole area
+    already has a scar from.
+
+    Statuses:
+      OK    the resolved interpreter loads sqlite-vec — the index is reachable
+      FAIL  it cannot, naming which half is missing and the one-line fix
+      WARN  the resolver is absent (partial checkout/install), so the hooks are
+            on the bare-`python3` floor and this can't say what that resolves to
+    """
+    name = "memory-hook-interpreter"
+    repo = repo if repo is not None else repo_root()
+    resolver = repo / "harness" / "hooks" / "lib" / "resolve-python.sh"
+    if not resolver.is_file():
+        return Check(
+            name, "WARN",
+            f"{resolver} missing — the memory hooks fall back to a bare `python3`, "
+            "which on macOS is Apple's system Python and cannot load sqlite-vec",
+        )
+    try:
+        resolved = subprocess.run(
+            ["bash", str(resolver)],
+            capture_output=True, text=True, timeout=30,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        return Check(name, "FAIL", f"could not run {resolver} ({e})")
+    if not resolved:
+        return Check(name, "FAIL", f"{resolver} printed nothing — it must always print an interpreter")
+
+    # Ask the resolved interpreter itself, rather than inferring from its name.
+    # A path tells you nothing about how its sqlite3 was compiled.
+    probe = (
+        "import json, sqlite3, sys\n"
+        "out = {'ext': hasattr(sqlite3.Connection, 'enable_load_extension'), 'vec': False,\n"
+        "       'version': '.'.join(str(p) for p in sys.version_info[:3])}\n"
+        "try:\n"
+        "    import sqlite_vec\n"
+        "    out['vec'] = True\n"
+        "except Exception:\n"
+        "    pass\n"
+        "print(json.dumps(out))\n"
+    )
+    try:
+        proc = subprocess.run([resolved, "-c", probe], capture_output=True, text=True, timeout=60)
+        info = json.loads(proc.stdout.strip())
+    except (OSError, subprocess.SubprocessError, ValueError) as e:
+        return Check(name, "FAIL", f"resolved to `{resolved}` but could not probe it ({e})")
+
+    where = f"`{resolved}` (Python {info.get('version', '?')})"
+    override = os.environ.get("AGENTM_PYTHON") or os.environ.get("AGENT_TOOLKIT_PYTHON")
+    via = f" — selected by your $AGENTM_PYTHON/$AGENT_TOOLKIT_PYTHON override" if override else ""
+
+    if not info.get("ext"):
+        return Check(
+            name, "FAIL",
+            f"{where} has no sqlite3.enable_load_extension{via}, so sqlite-vec can never load and "
+            "semantic recall silently returns nothing against a healthy index. Install an "
+            "extension-capable Python (`brew install python`, pyenv, or a python.org build) or point "
+            "$AGENTM_PYTHON at one",
+        )
+    if not info.get("vec"):
+        return Check(
+            name, "FAIL",
+            f"{where} supports extension loading but has no sqlite_vec module{via} — semantic recall "
+            f"is a no-op until it is installed: `{resolved} -m pip install sqlite-vec`",
+        )
+    return Check(
+        name, "OK",
+        f"{where} loads sqlite-vec{via} — the vector index is reachable from the memory hooks",
+    )
+
+
 # ── composition ───────────────────────────────────────────────────────────
 def run_inventory(
     repo: Optional[Path] = None, *, state_root: Optional[Path] = None,
@@ -553,6 +640,7 @@ def run_inventory(
     for job_name, keys_label in _JOB_CONFIG_CHECKS:
         checks.append(check_job_config(repo, job_name, keys_label, install_prefix=install_prefix))
     checks.append(check_unattended_merge_gate(repo))
+    checks.append(check_memory_hook_interpreter(repo))
     crickets_check = check_crickets_sibling()
     checks.append(crickets_check)
     crickets_root = find_crickets_root()

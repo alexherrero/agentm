@@ -11,7 +11,38 @@ if (-not (Get-Command python3 -ErrorAction SilentlyContinue) -and
     -not (Get-Command python -ErrorAction SilentlyContinue)) {
     exit 0
 }
-$Py = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
+# Resolve the interpreter that runs the memory scripts.
+#
+# Pre-fix, every memory hook picked `python3` (else `python`) by bare name,
+# which is a PATH lookup. On macOS that resolves to Apple's system Python,
+# whose sqlite3 is built without `--enable-loadable-sqlite-extensions` and so
+# has no `enable_load_extension` at all; sqlite-vec is a loadable native
+# extension, so `vec_index._open_index()` returned None on every call and every
+# caller read that as the graceful "index not built yet" skip. Semantic recall
+# was structurally unreachable, silently, against a fully healthy index. The
+# property is a build flag, not an OS, so this Windows half probes rather than
+# assumes. See ../lib/resolve-python.ps1 for the resolution order; it is the
+# canonical resolver, shared with the other three memory hooks.
+#
+# The lib path is resolved relative to this hook file, which is identical in
+# the repo (harness/hooks/<name>/ → harness/hooks/lib/) and in an install
+# (<prefix>/hooks/<name>/ → <prefix>/hooks/lib/). Falls back to the pre-fix
+# python3-else-python choice if the lib is missing, so a partial install
+# degrades exactly as it used to.
+function Resolve-AgentmPython {
+    $lib = Join-Path $PSScriptRoot '..' 'lib' 'resolve-python.ps1'
+    if (Test-Path -LiteralPath $lib) {
+        try {
+            $resolved = & $lib 2>$null | Select-Object -First 1
+            if ($resolved) { return "$resolved".Trim() }
+        } catch {
+            # Fall through to the floor below.
+        }
+    }
+    if (Get-Command python3 -ErrorAction SilentlyContinue) { return 'python3' }
+    return 'python'
+}
+$Py = Resolve-AgentmPython
 
 # ── Crash-recovery marker (plan #7a part 3 task 6) ─────────────────────────
 # Parse SessionStart event's stdin JSON for transcript_path, session_id, cwd

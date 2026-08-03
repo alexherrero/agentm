@@ -79,8 +79,22 @@ if ! command -v python3 >/dev/null 2>&1; then
     exit 0
 fi
 
+# Resolve the interpreter that runs the memory scripts. See
+# memory-recall-session-start.sh for the rationale + bug history.
+_resolve_agentm_python() {
+    local lib
+    lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)/../lib/resolve-python.sh"
+    if [[ -r "$lib" ]]; then
+        local resolved
+        resolved="$(bash "$lib" 2>/dev/null || true)"
+        if [[ -n "$resolved" ]]; then printf '%s\n' "$resolved"; return 0; fi
+    fi
+    printf '%s\n' "python3"
+}
+AGENTM_PY="$(_resolve_agentm_python)"
+
 # Pipe stdin (the UserPromptSubmit JSON payload) through to recall.py.
 # recall.py handles MEMORY_VAULT_PATH resolution, JSON parsing, prompt
 # extraction, recall engine query (lands in task 3), dedup, output, and
 # the 300ms time budget internally.
-exec python3 "$RECALL_PY" prompt-submit
+exec "$AGENTM_PY" "$RECALL_PY" prompt-submit

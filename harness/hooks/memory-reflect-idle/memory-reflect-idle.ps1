@@ -15,7 +15,22 @@ if (-not (Get-Command python3 -ErrorAction SilentlyContinue) -and
     exit 0
 }
 
-$Py = if (Get-Command python3 -ErrorAction SilentlyContinue) { "python3" } else { "python" }
+# Resolve the interpreter that runs the memory scripts. See
+# memory-recall-session-start.ps1 for the rationale + bug history.
+function Resolve-AgentmPython {
+    $lib = Join-Path $PSScriptRoot '..' 'lib' 'resolve-python.ps1'
+    if (Test-Path -LiteralPath $lib) {
+        try {
+            $resolved = & $lib 2>$null | Select-Object -First 1
+            if ($resolved) { return "$resolved".Trim() }
+        } catch {
+            # Fall through to the floor below.
+        }
+    }
+    if (Get-Command python3 -ErrorAction SilentlyContinue) { return 'python3' }
+    return 'python'
+}
+$Py = Resolve-AgentmPython
 
 # Thresholds (env overrides + defaults).
 $IdleThresholdSec = if ($env:MEMORY_IDLE_THRESHOLD_SEC) { [int]$env:MEMORY_IDLE_THRESHOLD_SEC } else { 3600 }
