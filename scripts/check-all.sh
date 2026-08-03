@@ -73,6 +73,7 @@ gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --str
 gate "check-slop (--strict)"                    "$PY" scripts/check-slop.py --strict --wiki-root wiki wiki
 gate "verify-v4 (push-surface integration)"    bash scripts/verify-v4.sh
 gate "verify-orchestration-briefing (PM-half · briefing + nudge signals)" bash scripts/verify-orchestration-briefing.sh
+gate "verify-idle-chain (non-dry-run chain + post-release dispatch, real mutations)" bash scripts/verify-idle-chain.sh
 gate "verify-hook-resolution (dual-key vault_path read, 4 hooks)" bash scripts/verify-hook-resolution.sh
 gate "verify-state-routing (backend x project-mode matrix, never-demote)" bash scripts/verify-state-routing.sh
 gate "verify-vec-index (drain pipeline e2e, freshness invariant)" bash scripts/verify-vec-index.sh
