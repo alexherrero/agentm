@@ -21,7 +21,9 @@ A `UserPromptSubmit` event hook that takes the user's prompt as a recall query, 
 - **Output:**
   - **stdout** — formatted markdown block: a header line + each entry's body (frontmatter stripped) separated by `---` rules. Claude Code injects this as additional context before the agent sees the prompt.
   - **stderr** — one transparency line: `[memory-recall-prompt-submit] Loaded N relevant entries: <slug-list>` (shown to operator in hook logs).
-- **Time budget:** 300ms wall clock. On overrun: log a warning to stderr, return the partial results gathered so far (degraded-graceful). The hook never blocks the user prompt.
+- **Time budget:** 300ms wall clock, enforced by **stream admission** — each half of the search runs to completion or does not run at all. A stream whose cost cannot fit the remaining budget is declined before it starts, and a stream cut short mid-flight has its results discarded rather than returned. The hook never blocks the user prompt.
+  - **Why not "return the partial results gathered so far"** (this hook's contract until GH #92): the lexical scorer computes IDF and average document length over the candidate set its walk actually reached, so a walk stopped halfway does not yield the first half of the real ranking — it yields a *different* ranking over an arbitrary, walk-order-determined subset. Returning that as "partial results" surfaces confident-looking entries that no complete search would have chosen, and nothing downstream can tell the difference. Silence is the honest degradation here.
+  - **On overrun:** stderr names which streams were blocked and why. A zero-result recall must distinguish *"searched, found nothing"* from *"could not search"* — reporting both as `Loaded 0` is how GH #92 stayed invisible under green CI for months.
 - **Exit 0** always (unless a Python interpreter error — vault / engine problems are warnings, not failures).
 
 ## Implementation status (task 2 of plan #7a part 2)
@@ -42,7 +44,8 @@ This task ships the **hook scaffold** — the hook installs at its host destinat
 - **Vault path doesn't exist:** stderr warning + exit 0.
 - **Stdin not valid JSON or `prompt` field missing:** stderr warning + exit 0 (graceful — the agent still gets the prompt).
 - **Recall engine raises (any reason):** stderr warning + exit 0 with empty injection (degraded-graceful — agent processes prompt without memory context this turn).
-- **Time budget exceeded mid-recall:** stderr warning naming the budget overrun + partial results emitted + exit 0.
+- **Time budget exceeded mid-recall:** stderr warning naming the budget overrun + the blocked streams and their reasons + whatever *complete* streams produced + exit 0. Never a partially-walked ranking.
+- **Vector index unreachable:** the semantic half is skipped in ~1ms and named on stderr; the lexical half gets the whole budget. Notably this is the steady state on macOS system Python, whose `sqlite3` is built without `enable_load_extension`, so `sqlite-vec` can never load — worth checking before assuming the index is merely unbuilt.
 - **Python unavailable:** the shell wrapper exits 0 silently.
 
 ## Antigravity equivalent

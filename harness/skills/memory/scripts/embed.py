@@ -193,6 +193,44 @@ def embed_text(text: str, *, mode: str | None = None) -> list[float]:
     raise ValueError(f"internal: unhandled mode {resolved!r}")  # pragma: no cover
 
 
+def local_model_is_resident(mode: str | None = None) -> bool:
+    """True iff `embed_text` can serve right now WITHOUT loading a model.
+
+    The distinction this answers is the difference between ~15ms and ~4000ms,
+    which is the difference between fitting an interactive time budget and
+    blowing it by an order of magnitude. `_embed_local` caches the
+    `SentenceTransformer` per process, so the first call in a process pays the
+    full checkpoint load and every later call is a cheap forward pass. A hook
+    is a fresh process per invocation, so for hook callers this answers False
+    every time — which is the point: `recall.py` uses it to decline the vec
+    stream rather than spend a 300ms budget on a 4s load.
+
+    Deliberately answers only "is it already loaded", never "load it" — a
+    probe that could trigger the cost it exists to measure would be useless.
+    Stub mode is pure hashing with no checkpoint, so it is always resident.
+
+    Returns False (never raises) on an unresolvable mode: an unknown mode
+    means embedding will fail anyway, and a probe is not the place to surface
+    that.
+    """
+    try:
+        resolved = _resolve_mode(mode)
+    except ValueError:
+        return False
+    if resolved == "stub":
+        return True
+    # Cheapest possible check first: if the package was never imported in this
+    # process, no model can be resident and importing it here to find out
+    # would itself cost seconds.
+    if "sentence_transformers" not in sys.modules:
+        return False
+    try:
+        instances = _LOCAL_MODEL_INSTANCES  # noqa: F821 — lazily created in _embed_local
+    except NameError:
+        return False
+    return _resolve_model() in instances
+
+
 def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="memory-embed",

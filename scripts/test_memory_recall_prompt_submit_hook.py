@@ -41,13 +41,17 @@ operator's real ledger.
 What these tests do NOT cover, so nobody reads green here as "recall works in
 production": the fake HOME also drops the user site-packages, so `embed.py`'s
 default local mode finds no `sentence-transformers` and the vec half of the
-query soft-fails in milliseconds — the same state CI runs in. On a machine
-where that package IS installed, the model load costs seconds, the deadline is
-already blown by the time `query()` gets to the lexical half, and recall
-returns zero entries. The hook still fires, still exits 0, and still reports
-the overrun honestly, so every assertion below holds; what breaks is the value
-of the injection, which lives in the recall engine rather than in the hook.
-Tracked separately — GH #92's comment has the repro.
+query soft-fails in milliseconds — the same state CI runs in. The fixture vault
+is small enough that the lexical half completes well inside the budget, so the
+injection assertions below are real; on a production-sized vault that walk does
+not finish, and per-prompt recall correctly declines to return an arbitrary
+partial ranking. These tests say nothing about that case.
+
+The engine-level gap this docstring used to describe — a cold model load
+blowing the 300ms budget and yielding zero entries — is fixed (GH #92). The
+recall engine now admits a stream only if it can complete, and
+`scripts/test_recall_stream_admission.py` pins that contract. What still isn't
+covered here is the hook driving a vault large enough to exercise it.
 
 Run: python3 scripts/test_memory_recall_prompt_submit_hook.py
 Skipped on non-POSIX (bash hook).
