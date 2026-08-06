@@ -1,0 +1,261 @@
+{
+  "$schema_note": "Week-1 retrieval gold set (60 questions) for wiki/designs/agentm-rescope-week1-experiment.md. Scored with the P@5/R@5 code in scripts/health/eval_v6_retrieval.py against both arms (FTS5-only vs FTS5+vector). Entry shape: {id, question, expected_note_paths, stratum, source}. `expected_note_paths` are vault-relative, resolved against plugins.obsidian-vault.vault_path — never hardcode the absolute path.",
+  "$strata": {
+    "distinctive-token": "12 — question shares an uncommon term (proper noun, package name, slug) with the target. Mined from real prompts in ~/.claude/projects/ transcripts.",
+    "pure-paraphrase": "18 — question shares no content word with the target's text. Operator writes these cold; placeholders below.",
+    "episodic-temporal": "12 — question references when or in what context something happened. Operator writes these cold; placeholders below.",
+    "research-density": "10 — question targets ONE note inside a dense near-identical cluster under projects/agentm/research/*/reference/. Precision, not recall.",
+    "negative": "8 — the true answer is 'no such memory exists.' Verified absent across the entire vault including personal/_inbox/ and the retirement-listed directories."
+  },
+  "$labeling_constraints": {
+    "no_fragments": "No expected_note_path points at a miner fragment — a body opening 'User stated:' / 'Fix observed:' / 'User corrected the agent:', or a mid-word slug under personal/idea/ or personal/fix/. 3,393 of the vault's 8,588 markdown files are that shape and are not valid ground truth even when they contain the fact.",
+    "no_retired_files": "No expected_note_path points at anything on the retirement list in wiki/designs/agentm-rescope-memory.md: personal/_opinions/, personal/_watchlist/, personal/_skill-watchlist/, _meta/skill-discovery-cache/, _idea-incubator/, _moc/, _meta/ health-scorecard + forward-learning + orchestration state.",
+    "question_provenance": "distinctive-token questions are transcript-sourced. Where a mid-session prompt did not stand alone (a bare 'yes, do that'), the operator's information need and its distinctive token are preserved and the session-only referent is dropped; the wording is otherwise his."
+  },
+  "entries": [
+    {
+      "id": "dt01",
+      "question": "the vault has a _dream-staging folder, which contains an inbox? I thought we just had an inbox with dated sub-folders.",
+      "expected_note_paths": ["_dream-staging/_index.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt02",
+      "question": "can you tell me what the rag_tutorials folder is and why it's there? it looks like it's out of place / should be cleaned up",
+      "expected_note_paths": ["projects/_archive/experimental/onenote-migration-summary.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt03",
+      "question": "i don't see F0's prompt in prompts-fin.md pack",
+      "expected_note_paths": ["projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt04",
+      "question": "vault-git — does this design also handle the team vault scenario I want to plan for later?",
+      "expected_note_paths": ["projects/agentm/_harness/designs/vault-backing/vault-git.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt05",
+      "question": "on vault-drive's pre-requisites, is obsidian a hard pre-req or is that step optional?",
+      "expected_note_paths": ["projects/agentm/_harness/designs/vault-backing/vault-drive.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt06",
+      "question": "where should we file primos within the vault — it's not a personal project, it's a review for a nephew's project, so it shouldn't be mixed with my own work?",
+      "expected_note_paths": ["external/primos/_index.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt07",
+      "question": "I really dislike it when you use the word 'load-bearing' — feels agent-y to me. What alternate did we codify for my voice?",
+      "expected_note_paths": ["projects/blog/writing-voice.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt08",
+      "question": "we should have an hld template too, based off the existing HLDs — where did that land?",
+      "expected_note_paths": ["projects/agentm/_harness/designs/architecture-governance/hld-template.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt09",
+      "question": "what is phase-5b and what did we annotate on it before the wiki pass ran in the worker?",
+      "expected_note_paths": ["projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt10",
+      "question": "Done with CR-COORD through what we can, S1 Wave 4 — are we really completely done?",
+      "expected_note_paths": ["projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt11",
+      "question": "for sherwood's brokers — Yahoo Finance, Alpaca and Robinhood for crypto — which one actually has to land, and which are designed-in but out of scope?",
+      "expected_note_paths": ["projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt12",
+      "question": "You know it's \"AgentM\", not \"Agent M\" right?",
+      "expected_note_paths": ["personal/_always-load/agent-m-crickets-branding.md"],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+
+    {"id": "pp01", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp02", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp03", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp04", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp05", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp06", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp07", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp08", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp09", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp10", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp11", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp12", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp13", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp14", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp15", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp16", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp17", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+    {"id": "pp18", "question": "", "expected_note_paths": [], "stratum": "pure-paraphrase", "source": "cold"},
+
+    {"id": "ep01", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep02", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep03", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep04", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep05", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep06", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep07", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep08", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep09", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep10", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep11", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+    {"id": "ep12", "question": "", "expected_note_paths": [], "stratum": "episodic-temporal", "source": "cold"},
+
+    {
+      "id": "rd01",
+      "question": "In the built-in ranker, can we change how quickly repeated occurrences of a term stop adding to a document's score, or is the per-field boost the only lever we get?",
+      "expected_note_paths": ["projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd02",
+      "question": "If we need to find a fragment sitting in the middle of a longer string rather than a whole word or a prefix, which indexing choice supports that — and does the same index also speed up ordinary pattern-match queries?",
+      "expected_note_paths": ["projects/agentm/research/sqlite/reference/trigram-tokenizer-substring-match.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd03",
+      "question": "One of the ways the server can collapse a model's output isn't usable for similarity search at all — it hands back a single number instead of anything you can compare with cosine. Which one, and what endpoint needs it?",
+      "expected_note_paths": ["projects/agentm/research/llama-cpp-embeddings/reference/rank-pooling-is-not-a-vector.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd04",
+      "question": "One of the two candidate embedding models only wants the instruction sentence glued onto the thing being searched with, never onto what we index, and barely suffers if we skip it entirely. Which model, and what is the exact sentence?",
+      "expected_note_paths": ["projects/agentm/research/llama-cpp-embeddings/reference/bge-small-optional-query-instruction.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd05",
+      "question": "Our watch on a single file goes dead after the first save. What does the library do to its own bookkeeping when a path gets renamed, and why isn't simply re-registering the watch afterwards enough to close the hole?",
+      "expected_note_paths": ["projects/agentm/research/file-watching/reference/issue-214-watch-removed-on-rename.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd06",
+      "question": "Can we rely on getting a modification notification for a directory itself when something inside it appears or disappears, or does that depend on which platform we're running on?",
+      "expected_note_paths": ["projects/agentm/research/file-watching/reference/event-write-directory-platform-divergence.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd07",
+      "question": "What's the reported hazard of pointing the repository-open call at a directory that turns out not to be a repository at all — does it just error out cleanly?",
+      "expected_note_paths": ["projects/agentm/research/go-git/reference/plain-open-side-effect-creates-git-dir.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd08",
+      "question": "If we take the library's stock diff settings, how alike do two files have to be before it calls the pair a rename, and is there a ceiling on how many pairs it will compare looking for one?",
+      "expected_note_paths": ["projects/agentm/research/go-git/reference/default-diff-tree-options-rename-score.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd09",
+      "question": "Why does the compiler keep bundled assets uncompressed inside the executable when squeezing them would obviously make it smaller — what capability would compressing them have broken?",
+      "expected_note_paths": ["projects/agentm/research/go-static-binaries/reference/embed-no-compression-random-access-rationale.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd10",
+      "question": "If the build-time value injection points at a symbol path that no longer exists after a package gets moved, do we find out at build time, or does the binary just ship with the wrong value?",
+      "expected_note_paths": ["projects/agentm/research/go-static-binaries/reference/ldflags-x-silent-failure-mismatch.md"],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+
+    {
+      "id": "ng01",
+      "question": "What did we settle on for backing the vault up to Backblaze B2 — bucket layout and retention?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng02",
+      "question": "What's our YubiKey enrolment procedure for the git signing key?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng03",
+      "question": "What did we decide about publishing the daemon to Chocolatey for Windows users?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng04",
+      "question": "What did we settle on for managing the homelab boxes with Ansible?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng05",
+      "question": "What retention did we set on the Time Machine backups for the MacBook?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng06",
+      "question": "What did we conclude about swapping FTS5 out for Meilisearch?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng07",
+      "question": "How do we sync the KeePass database between machines?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng08",
+      "question": "What did we decide about standing up a Sourcegraph instance for cross-repo search?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    }
+  ]
+}
