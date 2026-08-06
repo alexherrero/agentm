@@ -91,6 +91,45 @@ def _resolve_expected_path(raw: str) -> str:
     return _ARCHIVED_PATH_CORRECTIONS.get(raw, raw)
 
 
+def score_at_k(expected: list[str], ranked: list[str], k: int = 5) -> dict:
+    """Score one query's ranking against its expected paths. The P@k/R@k definition.
+
+    Extracted from `run_eval` so the week-1 retrieval experiment
+    (`week1_retrieval_experiment.py`) scores against the same arithmetic rather
+    than a second copy of it that can drift. `run_eval`'s numbers are unchanged.
+
+    Returns `{hits, p_at_k, r_at_k, first_hit_rank, is_negative, correct_rejection}`.
+
+    P@k divides by `k`, not by how many results came back: a run that returns
+    two results and gets both right has not achieved perfect precision at 5, it
+    has returned two results. That is the convention `run_eval` has always used.
+
+    An empty `expected` means the gold set asserts no note answers this question
+    — the week-1 gold set's negative stratum. There, correct is returning
+    nothing, so both figures are 1.0 for an empty ranking and 0.0 for a
+    confident guess. The prior formula scored 0.0 either way, which made a
+    correct rejection and a hallucinated answer indistinguishable. No entry in
+    `query-set-v0.json` has empty `expected_notes`, so this branch is
+    unreachable from `run_eval` and its results are byte-identical.
+    """
+    ranked_k = list(ranked)[:k]
+    if not expected:
+        correct = not ranked_k
+        return {
+            "hits": [], "p_at_k": 1.0 if correct else 0.0,
+            "r_at_k": 1.0 if correct else 0.0, "first_hit_rank": None,
+            "is_negative": True, "correct_rejection": correct,
+        }
+    hits = [e for e in expected if e in ranked_k]
+    return {
+        "hits": hits,
+        "p_at_k": len(hits) / float(k),
+        "r_at_k": len(hits) / float(len(expected)),
+        "first_hit_rank": min(ranked_k.index(e) + 1 for e in hits) if hits else None,
+        "is_negative": False, "correct_rejection": None,
+    }
+
+
 def _resolve_vault(arg_vault_path: str | None) -> Path | None:
     if arg_vault_path:
         return Path(arg_vault_path).expanduser()
@@ -217,18 +256,19 @@ def run_eval(
         old_top = old_top_k_fn(vault, q["query"], k=5)
         new_top = new_top_k_fn(vault, q["query"], k=5)
 
-        old_hits = [e for e in expected if e in old_top]
-        new_hits = [e for e in expected if e in new_top]
+        old_score = score_at_k(expected, old_top, k=5)
+        new_score = score_at_k(expected, new_top, k=5)
+        old_hits, new_hits = old_score["hits"], new_score["hits"]
 
-        old_p_at_5 += len(old_hits) / 5.0
-        new_p_at_5 += len(new_hits) / 5.0
-        old_r_at_5 += len(old_hits) / len(expected) if expected else 0.0
-        new_r_at_5 += len(new_hits) / len(expected) if expected else 0.0
+        old_p_at_5 += old_score["p_at_k"]
+        new_p_at_5 += new_score["p_at_k"]
+        old_r_at_5 += old_score["r_at_k"]
+        new_r_at_5 += new_score["r_at_k"]
 
-        if old_hits:
-            old_first_hit_ranks.append(min(old_top.index(e) + 1 for e in old_hits))
-        if new_hits:
-            new_first_hit_ranks.append(min(new_top.index(e) + 1 for e in new_hits))
+        if old_score["first_hit_rank"] is not None:
+            old_first_hit_ranks.append(old_score["first_hit_rank"])
+        if new_score["first_hit_rank"] is not None:
+            new_first_hit_ranks.append(new_score["first_hit_rank"])
 
         for e in expected:
             total_expected_pairs += 1

@@ -1,0 +1,81 @@
+{
+  "_comment": [
+    "THROWAWAY HARNESS FIXTURE — NOT THE GOLD SET.",
+    "",
+    "Eight questions written by the session that built week1_retrieval_experiment.py,",
+    "for the sole purpose of smoke-testing that runner end to end: schema validation,",
+    "both search tools, the tool-call ceiling, per-stratum aggregation, and the miss",
+    "list. They are not sampled from transcripts, not written cold by the operator,",
+    "and not labeled with the care the real set requires. Nothing measured against",
+    "this file is a result.",
+    "",
+    "The real 60-question gold set is being assembled separately and belongs at",
+    "gold-set.json in this directory. Do not merge these questions into it, and do",
+    "not report a number produced from this file.",
+    "",
+    "Every expected_note_paths entry points at a note that existed in the vault on",
+    "2026-08-05. The runner fails loud when one goes missing, so a rename here shows",
+    "up as a labeling error rather than as a silent retrieval miss."
+  ],
+  "entries": [
+    {
+      "id": "smoke-01",
+      "question": "What's my rule about the Co-Authored-By trailer on git commits?",
+      "expected_note_paths": ["personal/_always-load/commit-no-coauthor-trailer.md"],
+      "stratum": "distinctive-token",
+      "source": "authored"
+    },
+    {
+      "id": "smoke-02",
+      "question": "What is the wake-on-CI pattern?",
+      "expected_note_paths": ["personal/_always-load/wake-on-ci-pattern.md"],
+      "stratum": "distinctive-token",
+      "source": "authored"
+    },
+    {
+      "id": "smoke-03",
+      "question": "A check started failing after my change. Am I allowed to relax what it asserts so the build goes green again?",
+      "expected_note_paths": ["personal/_always-load/tests-are-sacred.md"],
+      "stratum": "pure-paraphrase",
+      "source": "authored"
+    },
+    {
+      "id": "smoke-04",
+      "question": "Two of my safety interceptors run on the same event. Which one has to go first, and what actually guarantees that ordering?",
+      "expected_note_paths": ["personal/_always-load/kill-switch-alphabetically-first.md"],
+      "stratum": "pure-paraphrase",
+      "source": "authored"
+    },
+    {
+      "id": "smoke-05",
+      "question": "When the docs checker complains a page is too long but the content earns its length, what did I decide to do?",
+      "expected_note_paths": ["personal/_always-load/docs-soft-warning-tradeoff.md"],
+      "stratum": "episodic-temporal",
+      "source": "authored"
+    },
+    {
+      "id": "smoke-06",
+      "question": "What are all my conventions about how a commit message should be written?",
+      "expected_note_paths": [
+        "personal/_always-load/commit-conventional-format.md",
+        "personal/_always-load/commit-no-coauthor-trailer.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "smoke-07",
+      "question": "Which espresso machine did I decide to buy, and what grind setting did I settle on for it?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "smoke-08",
+      "question": "What was the outcome of my meeting with the Reykjavik harbour authority about the mooring permit?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    }
+  ]
+}
