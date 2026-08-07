@@ -398,10 +398,14 @@
     },
     {
       "id": "ep07",
-      "question": "",
-      "expected_note_paths": [],
+      "question": "When did I decide to begin my first AgentM arc?",
+      "expected_note_paths": [
+        "projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md",
+        "projects/_archive/agent-m-v4/_index.md"
+      ],
       "stratum": "episodic-temporal",
-      "source": "cold"
+      "source": "cold",
+      "note": "The V4 roadmap's own '## Why a separate V4 roadmap' section is the decision — V4 work 'isn't sequenced linearly behind the non-V4 backlog. It's its own track, and items in this file get planned + executed in their own cadence once V3 is in production.' agent-m-v4/_index.md dates it: deferred to a dedicated roadmap as of plan #14 close, 2026-05-23. Ambiguity worth knowing: 'arc' as a formal label only appears from 2026-06-05, when arc: frontmatter stamping begins — so the first work stream that WAS an arc (V4, May) and the first thing CALLED one (June) are different dates. Both readings resolve inside these two notes."
     },
     {
       "id": "ep08",
