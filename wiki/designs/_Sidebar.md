@@ -31,4 +31,8 @@
   - [Autonomy](agentm-autonomy)
   - [Goal contract](agentm-goal-contract)
   - [Memory index](agentm-memory-index)
+- [Rescope](agentm-rescope-principles)
+  - [Topology](agentm-rescope-topology)
+  - [Memory engine](agentm-rescope-memory)
+  - [Week-1 retrieval experiment](agentm-rescope-week1-experiment)
 ### 💡 [Explanation](Explanation)
