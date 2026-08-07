@@ -1,0 +1,3491 @@
+{
+  "arm": "B",
+  "driver": "claude",
+  "model": "opus",
+  "corpus": {
+    "n_docs": 8599,
+    "excluded_dirs": [],
+    "embed_mode": "local"
+  },
+  "call_budget": 6,
+  "n_questions": 60,
+  "cost_usd_total": 7.0196,
+  "wall_s_total": 1285.5,
+  "overall": {
+    "n": 60,
+    "p_at_5": 0.2567,
+    "r_at_5": 0.6722,
+    "accuracy": 0.7667,
+    "mean_tool_calls": 3.35,
+    "correct_rejection_rate": 0.75
+  },
+  "per_stratum": {
+    "distinctive-token": {
+      "n": 12,
+      "p_at_5": 0.15,
+      "r_at_5": 0.75,
+      "accuracy": 0.75,
+      "mean_tool_calls": 2.67
+    },
+    "pure-paraphrase": {
+      "n": 18,
+      "p_at_5": 0.1444,
+      "r_at_5": 0.4352,
+      "accuracy": 0.6111,
+      "mean_tool_calls": 3.28
+    },
+    "episodic-temporal": {
+      "n": 12,
+      "p_at_5": 0.25,
+      "r_at_5": 0.625,
+      "accuracy": 0.8333,
+      "mean_tool_calls": 4.0
+    },
+    "research-density": {
+      "n": 10,
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "accuracy": 1.0,
+      "mean_tool_calls": 2.3
+    },
+    "negative": {
+      "n": 8,
+      "p_at_5": 0.75,
+      "r_at_5": 0.75,
+      "accuracy": 0.75,
+      "mean_tool_calls": 4.88,
+      "correct_rejection_rate": 0.75
+    }
+  },
+  "per_question": [
+    {
+      "id": "dt01",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "the vault has a _dream-staging folder, which contains an inbox? I thought we just had an inbox with dated sub-folders.",
+      "expected": [
+        "_dream-staging/_index.md"
+      ],
+      "answered": [
+        "_dream-staging/_index.md",
+        "projects/agentm/_harness/archive/wave-e/PLAN.archive.20260707-wave-e-dreaming.md",
+        "projects/agentm/decisions/research-dream-mode-design.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "_dream-staging/_index.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "_dream-staging inbox",
+          "n_results": 5,
+          "ms": 145.5
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "dream-staging",
+          "n_results": 5,
+          "ms": 21.1
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.9,
+      "cost_usd": 0.1161
+    },
+    {
+      "id": "dt02",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "can you tell me what the rag_tutorials folder is and why it's there? it looks like it's out of place / should be cleaned up",
+      "expected": [
+        "projects/_archive/experimental/onenote-migration-summary.md"
+      ],
+      "answered": [
+        "_meta/skill-discovery-cache/_index.md",
+        "personal/skill-discovery-sources.md",
+        "_meta/skill-discovery-cache/shubhamsaboo-awesome-llm-apps/2026-05-29.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "rag_tutorials",
+          "n_results": 5,
+          "ms": 1.8
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Why does the rag_tutorials folder exist and what is its purpose in this vault?",
+          "n_results": 5,
+          "ms": 80.9
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "skill-discovery-cache awesome-llm-apps",
+          "n_results": 5,
+          "ms": 10.0
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "What is the skill discovery cache and why are external repository READMEs stored in the vault meta folder?",
+          "n_results": 5,
+          "ms": 89.2
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 27.9,
+      "cost_usd": 0.1433
+    },
+    {
+      "id": "dt03",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "i don't see F0's prompt in prompts-fin.md pack",
+      "expected": [
+        "projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md",
+        "projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md",
+        "projects/agentm/_harness/designs/roadmap-finish/F1-PROMPT.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 3,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "prompts-fin F0 prompt",
+          "n_results": 5,
+          "ms": 3.7
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "\"F0\" prompt pack",
+          "n_results": 4,
+          "ms": 3.1
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "F0 friday surface audit read-only prompt FIN-3a",
+          "n_results": 5,
+          "ms": 24.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 24.4,
+      "cost_usd": 0.1343
+    },
+    {
+      "id": "dt04",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "vault-git \u2014 does this design also handle the team vault scenario I want to plan for later?",
+      "expected": [
+        "projects/agentm/_harness/designs/vault-backing/vault-git.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/vault-backing/vault-git.md",
+        "projects/agentm/_harness/designs/vault-backing/_index.md",
+        "projects/agentm/_harness/designs/friday-inputs/team-vault-readiness-assessment.md",
+        "projects/agentm/decisions/research-multi-developer-vault.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/_harness/designs/vault-backing/vault-git.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "vault-git team vault",
+          "n_results": 6,
+          "ms": 11.2
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Design for syncing the vault with git, and whether it supports a shared team vault with multiple people.",
+          "n_results": 6,
+          "ms": 74.5
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 16.8,
+      "cost_usd": 0.1015
+    },
+    {
+      "id": "dt05",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "on vault-drive's pre-requisites, is obsidian a hard pre-req or is that step optional?",
+      "expected": [
+        "projects/agentm/_harness/designs/vault-backing/vault-drive.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/vault-backing/vault-drive.md",
+        "projects/agentm/_harness/designs/vault-backing/vault-obsidian.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/_harness/designs/vault-backing/vault-drive.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "vault-drive prerequisites Obsidian",
+          "n_results": 5,
+          "ms": 8.7
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Is installing Obsidian a required prerequisite for vault-drive or an optional step?",
+          "n_results": 5,
+          "ms": 76.5
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 14.3,
+      "cost_usd": 0.0983
+    },
+    {
+      "id": "dt06",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "where should we file primos within the vault \u2014 it's not a personal project, it's a review for a nephew's project, so it shouldn't be mixed with my own work?",
+      "expected": [
+        "external/primos/_index.md"
+      ],
+      "answered": [
+        "external/_index.md",
+        "external/primos/_index.md",
+        "personal/_always-load/vault-internal-taxonomy.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "external/primos/_index.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 2,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "primos",
+          "n_results": 5,
+          "ms": 2.5
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Where to file a review of someone else's project separate from my own personal projects in the vault folder structure.",
+          "n_results": 5,
+          "ms": 69.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 21.8,
+      "cost_usd": 0.0976
+    },
+    {
+      "id": "dt07",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "I really dislike it when you use the word 'load-bearing' \u2014 feels agent-y to me. What alternate did we codify for my voice?",
+      "expected": [
+        "projects/blog/writing-voice.md"
+      ],
+      "answered": [
+        "projects/_global/wiki-style/2026-06-09-llm-tell-vocabulary.md",
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "\"load-bearing\" voice word alternate replace",
+          "n_results": 5,
+          "ms": 28.2
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "A word to use instead of \"load-bearing\" because it sounds too agent-like in my writing voice.",
+          "n_results": 5,
+          "ms": 47.4
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "\"load-bearing\" banned tell-word added instead prefer \"not\" contrastive",
+          "n_results": 5,
+          "ms": 16.6
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "\"load-bearing\" \"Substitute\" reads as jargon",
+          "n_results": 3,
+          "ms": 21.9
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "NEAR(\"load-bearing\" \"Substitute\", 6)",
+          "n_results": 0,
+          "ms": 0.7
+        },
+        {
+          "n": 6,
+          "tool": "search_lexical",
+          "query": "\"Substitute\" \"essential\" OR \"central\" OR \"critical\" OR \"key\" OR \"structural\" jargon banned",
+          "n_results": 3,
+          "ms": 6.1
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 37.0,
+      "cost_usd": 0.1752
+    },
+    {
+      "id": "dt08",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "we should have an hld template too, based off the existing HLDs \u2014 where did that land?",
+      "expected": [
+        "projects/agentm/_harness/designs/architecture-governance/hld-template.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/architecture-governance/hld-template.md",
+        "projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md",
+        "projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/_harness/designs/architecture-governance/hld-template.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "HLD template high-level design",
+          "n_results": 6,
+          "ms": 7.9
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "We should create a high-level design (HLD) template based on the existing HLDs.",
+          "n_results": 6,
+          "ms": 76.2
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 12.9,
+      "cost_usd": 0.0958
+    },
+    {
+      "id": "dt09",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "what is phase-5b and what did we annotate on it before the wiki pass ran in the worker?",
+      "expected": [
+        "projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "phase-5b annotation wiki pass worker",
+          "n_results": 5,
+          "ms": 32.3
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "What we annotated on phase-5b before the wiki pass ran in the worker.",
+          "n_results": 5,
+          "ms": 45.8
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 12.1,
+      "cost_usd": 0.0925
+    },
+    {
+      "id": "dt10",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "Done with CR-COORD through what we can, S1 Wave 4 \u2014 are we really completely done?",
+      "expected": [
+        "projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/archive/designs/consolidation-review/CONS-COORD-LOG.md",
+        "projects/agentm/_harness/archive/designs/consolidation-review/CONSOLIDATION-VERDICT.md",
+        "projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 3,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 3,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "CR-COORD \"Wave 4\" S1",
+          "n_results": 5,
+          "ms": 10.4
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "CR-COORD coordination task completion status for Sprint 1 Wave 4",
+          "n_results": 5,
+          "ms": 73.8
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "\"Wave 4\" dispatch addendum punch list deferred remaining",
+          "n_results": 3,
+          "ms": 21.7
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 21.5,
+      "cost_usd": 0.1202
+    },
+    {
+      "id": "dt11",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "for sherwood's brokers \u2014 Yahoo Finance, Alpaca and Robinhood for crypto \u2014 which one actually has to land, and which are designed-in but out of scope?",
+      "expected": [
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "answered": [
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md",
+        "projects/sherwood/_index.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "sherwood brokers Yahoo Finance Alpaca Robinhood crypto scope",
+          "n_results": 0,
+          "ms": 0.9
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Which broker integration must actually ship for sherwood and which are designed-in but out of scope.",
+          "n_results": 5,
+          "ms": 76.4
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "sherwood broker adapter Alpaca",
+          "n_results": 1,
+          "ms": 1.1
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "Sherwood broker adapters: primary provider that must land versus placeholder integrations deferred out of scope.",
+          "n_results": 5,
+          "ms": 53.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.3,
+      "cost_usd": 0.102
+    },
+    {
+      "id": "dt12",
+      "stratum": "distinctive-token",
+      "source": "transcript",
+      "question": "You know it's \"AgentM\", not \"Agent M\" right?",
+      "expected": [
+        "personal/_always-load/agent-m-crickets-branding.md"
+      ],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 0,
+      "tool_call_log": [],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 11.7,
+      "cost_usd": 0.0652
+    },
+    {
+      "id": "pp01",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "What were the three templates for design docs and where were they again?",
+      "expected": [
+        "projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md",
+        "projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/architecture-governance/design-doc.md",
+        "projects/agentm/_harness/designs/architecture-governance/hld-template.md",
+        "projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 3,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 3,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "design doc templates",
+          "n_results": 5,
+          "ms": 20.1
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "There are three templates for writing design documents and this note explains where they live.",
+          "n_results": 5,
+          "ms": 52.3
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "template rung design-doc.md parent NEAR(template rung, 8)",
+          "n_results": 8,
+          "ms": 77.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.4,
+      "cost_usd": 0.1159
+    },
+    {
+      "id": "pp02",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Where did we store the worktree rules and can we change them depending on how agentm is installed/confgured?",
+      "expected": [
+        "personal/_always-load/worktrees-never-auto.md"
+      ],
+      "answered": [
+        "personal/_always-load/worktrees-never-auto.md",
+        "personal/_inbox/never-spawn-a-worktree-without-operator-1.md",
+        "projects/crickets/_harness/archive/worktree-native-flow/PLAN.archive.20260706-worktree-native-flow.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "personal/_always-load/worktrees-never-auto.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "worktree isolation mode per-plan agentm",
+          "n_results": 5,
+          "ms": 9.9
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Rules governing whether a git worktree is spawned per plan depend on how the project is installed and configured.",
+          "n_results": 5,
+          "ms": 46.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.6,
+      "cost_usd": 0.1036
+    },
+    {
+      "id": "pp03",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Lets update my voice for design documents",
+      "expected": [
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
+      ],
+      "answered": [
+        "projects/_global/wiki-style/2026-06-09-design-doc-prose.md",
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "projects/_global/wiki-style/2026-07-05-personal-comms-style.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
+      ],
+      "p_at_5": 0.4,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "voice tone style design documents writing",
+          "n_results": 5,
+          "ms": 95.5
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The writing voice and tone I use for design documents.",
+          "n_results": 5,
+          "ms": 61.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.5,
+      "cost_usd": 0.0982
+    },
+    {
+      "id": "pp04",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "We need to adjust my voice for the blog to be more human and plain engligh.",
+      "expected": [
+        "projects/blog/writing-voice.md"
+      ],
+      "answered": [
+        "projects/blog/writing-voice.md",
+        "projects/_global/wiki-style/2026-07-05-personal-narrative-style.md",
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/blog/writing-voice.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Guidelines for my blog writing voice and tone, keeping it human and plain English.",
+          "n_results": 5,
+          "ms": 78.2
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "blog voice tone style plain english",
+          "n_results": 5,
+          "ms": 91.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 15.8,
+      "cost_usd": 0.0983
+    },
+    {
+      "id": "pp05",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Give me a list of my pending project ideas for the house?",
+      "expected": [
+        "projects/home-tech-next/_index.md"
+      ],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Ideas and projects I want to do around the house, home improvement to-do list.",
+          "n_results": 7,
+          "ms": 49.2
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "house project ideas OR home improvement OR renovation",
+          "n_results": 7,
+          "ms": 7.3
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "house NEAR(project 10)",
+          "n_results": 7,
+          "ms": 92.3
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "Things I want to fix, build, or install at home \u2014 a running list of DIY tasks for the apartment or house.",
+          "n_results": 7,
+          "ms": 79.7
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 20.8,
+      "cost_usd": 0.1236
+    },
+    {
+      "id": "pp06",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "What broke in sherwood that cuased me to decide to move from v1 to v2?",
+      "expected": [
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md",
+        "projects/sherwood/_index.md"
+      ],
+      "answered": [
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md",
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md",
+        "projects/sherwood/conventions.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "sherwood v1 v2 migration",
+          "n_results": 5,
+          "ms": 6.5
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The problem in sherwood v1 that caused the decision to move to a v2 rewrite.",
+          "n_results": 5,
+          "ms": 55.7
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "sherwood v1 tech debt broke",
+          "n_results": 2,
+          "ms": 23.2
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "What specifically broke or failed in sherwood v1 architecture that made a rewrite necessary.",
+          "n_results": 5,
+          "ms": 51.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 19.6,
+      "cost_usd": 0.1147
+    },
+    {
+      "id": "pp07",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Why did AgentM never fully realize the vault vision that I had?",
+      "expected": [
+        "projects/agentm/_harness/designs/friday/F1-REAUDIT.md",
+        "projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md"
+      ],
+      "answered": [
+        "_vault-archive/ag-design-history/agent-memory-evolution.md",
+        "projects/agentm/decisions/harness-engineering-and-multi-developer-vault.md",
+        "projects/agentm/_harness/FOLLOWUPS.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Why AgentM never fully realized the original vision I had for the vault",
+          "n_results": 5,
+          "ms": 81.2
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "AgentM vault vision",
+          "n_results": 5,
+          "ms": 23.0
+        },
+        {
+          "n": 3,
+          "tool": "search_vector",
+          "query": "Retrospective on the gap between the vault vision and what AgentM actually became, why it fell short",
+          "n_results": 5,
+          "ms": 52.7
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "vault vision \"never\" NEAR(realize fully, 20)",
+          "n_results": 1,
+          "ms": 3.8
+        },
+        {
+          "n": 5,
+          "tool": "search_vector",
+          "query": "AgentM pivoted away from the original Obsidian vault as memory idea toward a harness, abandoning the personal knowledge vault vision",
+          "n_results": 5,
+          "ms": 74.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 23.7,
+      "cost_usd": 0.1314
+    },
+    {
+      "id": "pp08",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "What did we decide on the primos review?",
+      "expected": [
+        "external/primos/decisions/launch-readiness-verdict.md",
+        "external/primos/analysis/03-review/verdict.md"
+      ],
+      "answered": [
+        "external/primos/decisions/launch-readiness-verdict.md",
+        "external/primos/analysis/03-review/verdict.md",
+        "external/primos/analysis/_summary.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "external/primos/decisions/launch-readiness-verdict.md",
+        "external/primos/analysis/03-review/verdict.md"
+      ],
+      "p_at_5": 0.4,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "primos review",
+          "n_results": 5,
+          "ms": 3.4
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Decisions and conclusions reached during the primos review.",
+          "n_results": 5,
+          "ms": 76.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 11.7,
+      "cost_usd": 0.0881
+    },
+    {
+      "id": "pp09",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Show me where we kept the notes for primos",
+      "expected": [
+        "external/primos/_index.md",
+        "external/primos/analysis/_summary.md"
+      ],
+      "answered": [
+        "external/primos/_index.md",
+        "external/primos/decisions/launch-readiness-verdict.md",
+        "external/primos/decisions/phase2-database-stack.md",
+        "external/primos/analysis/02-research/geospatial-geofence.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "external/primos/_index.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "primos",
+          "n_results": 5,
+          "ms": 2.9
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Notes about Primos",
+          "n_results": 5,
+          "ms": 76.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 12.5,
+      "cost_usd": 0.0893
+    },
+    {
+      "id": "pp10",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Remind me why i chose to use a vault in the first place?",
+      "expected": [
+        "personal/_always-load/vault-as-canonical-context.md"
+      ],
+      "answered": [
+        "projects/_archive/experimental/onenote-migration-summary.md",
+        "projects/_archive/memoryvault/conversations/2026-05-10-vault-design.md",
+        "projects/_archive/experimental/_index.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "The reasons and motivation for why I decided to start keeping a personal knowledge vault of notes.",
+          "n_results": 5,
+          "ms": 52.5
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "why vault notes second brain motivation",
+          "n_results": 4,
+          "ms": 28.6
+        },
+        {
+          "n": 3,
+          "tool": "search_vector",
+          "query": "Why I started using Obsidian and keeping a personal notes system, the problem it solved for me.",
+          "n_results": 5,
+          "ms": 51.7
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "\"why\" (Obsidian OR \"note-taking\" OR \"personal notes\") decided started",
+          "n_results": 5,
+          "ms": 15.9
+        },
+        {
+          "n": 5,
+          "tool": "search_vector",
+          "query": "The decision to migrate from OneNote to a Markdown vault and the reasons that motivated the switch.",
+          "n_results": 5,
+          "ms": 48.7
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 24.1,
+      "cost_usd": 0.1358
+    },
+    {
+      "id": "pp11",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Why aren't you using em-dashes, did I ban those?",
+      "expected": [
+        "projects/blog/writing-voice.md",
+        "projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
+      ],
+      "answered": [
+        "personal/_inbox/never-let-the-dash-stand-in-1.md",
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "personal/_inbox/never-let-the-dash-stand-in.md",
+        "personal/_inbox/never-let-the-dash-stand-in-2.md",
+        "projects/_global/wiki-style/2026-07-05-personal-narrative-style.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 3,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "em-dash",
+          "n_results": 5,
+          "ms": 6.0
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "A rule banning the use of em-dashes in writing and prose style preferences.",
+          "n_results": 5,
+          "ms": 52.3
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "NEAR(dash colon replace, 15)",
+          "n_results": 5,
+          "ms": 0.8
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 20.7,
+      "cost_usd": 0.1149
+    },
+    {
+      "id": "pp12",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Under what circumstances do you automatically invoke worktrees and not?",
+      "expected": [
+        "personal/_always-load/worktrees-never-auto.md"
+      ],
+      "answered": [
+        "personal/_always-load/worktrees-never-auto.md",
+        "personal/_inbox/never-spawn-a-worktree-without-operator.md",
+        "projects/agentm/_harness/designs/architecture-governance/worktree-native-verdict-draft.md",
+        "personal/_inbox/never-spawn-a-worktree-without-operator-1.md",
+        "projects/crickets/_harness/archive/designs/worktree-pr-loop/parts/worktree-per-plan.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "personal/_always-load/worktrees-never-auto.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "worktree isolation mode worktree-per-plan operator authority auto-spawn",
+          "n_results": 5,
+          "ms": 9.3
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Under what circumstances a worktree is automatically spawned versus working directly on the current branch.",
+          "n_results": 5,
+          "ms": 50.8
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 18.1,
+      "cost_usd": 0.106
+    },
+    {
+      "id": "pp13",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Show me my current house configuration, what processor do i have in the two servers?",
+      "expected": [
+        "personal/domains/homelab/nas-unraid.md",
+        "personal/domains/homelab/home-server.md"
+      ],
+      "answered": [
+        "personal/domains/homelab/nas-unraid.md",
+        "_idea-incubator/home-server-cluster/_summary.md",
+        "_idea-incubator/home-server-cluster/research-local-llm-home-box.md",
+        "_idea-incubator/home-server-cluster/research-local-llm-frontier-rig.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "personal/domains/homelab/nas-unraid.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "house server processor CPU configuration",
+          "n_results": 5,
+          "ms": 784.2
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The home network setup including the two servers and their processors.",
+          "n_results": 5,
+          "ms": 61.3
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "homelab NAS Ryzen Intel Xeon rack home network",
+          "n_results": 0,
+          "ms": 0.7
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "My house hardware configuration listing the CPU in each of my two home servers.",
+          "n_results": 5,
+          "ms": 82.7
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "homelab servers processor",
+          "n_results": 8,
+          "ms": 1314.2
+        },
+        {
+          "n": 6,
+          "tool": "search_vector",
+          "query": "Overview of my homelab hardware: the two servers, their CPUs, RAM, and roles.",
+          "n_results": 8,
+          "ms": 37.5
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 29.7,
+      "cost_usd": 0.1534
+    },
+    {
+      "id": "pp14",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Which sources do I trust for news, articles and research and why?",
+      "expected": [
+        "personal/domains/security/trusted-security-sources.md",
+        "personal/skill-discovery-sources.md",
+        "personal/trusted-sources.md"
+      ],
+      "answered": [
+        "personal/domains/security/trusted-security-sources.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "personal/domains/security/trusted-security-sources.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.3333,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "These are the sources I trust for news, articles, and research, and the reasons why I trust them.",
+          "n_results": 5,
+          "ms": 54.2
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "trusted sources news research",
+          "n_results": 5,
+          "ms": 2.9
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "trusted_source rubric evaluator classification feed sources list",
+          "n_results": 4,
+          "ms": 38.8
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "The list of feeds and outlets I follow and why each one is a high-quality trusted source for articles and research.",
+          "n_results": 5,
+          "ms": 51.7
+        },
+        {
+          "n": 5,
+          "tool": "search_vector",
+          "query": "My preferred news outlets and media publications for staying informed on current events and journalism.",
+          "n_results": 5,
+          "ms": 54.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 24.4,
+      "cost_usd": 0.1347
+    },
+    {
+      "id": "pp15",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "Does agentm still support multiple operating systems?",
+      "expected": [
+        "projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-os-install-matrix.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/v8-proving/crossmodel-pilot/CI-Gates-agentm.md",
+        "projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md",
+        "projects/dev-setup/_harness/PLAN.archive.20260626-harness-bootstrap.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "agentm operating system support cross-platform Windows macOS Linux",
+          "n_results": 5,
+          "ms": 54.2
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "agentm dropped support for some operating systems and now only targets certain platforms",
+          "n_results": 5,
+          "ms": 38.8
+        },
+        {
+          "n": 3,
+          "tool": "search_vector",
+          "query": "agentm decision to narrow supported platforms to macOS only, dropping Linux and Windows support",
+          "n_results": 5,
+          "ms": 50.5
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "agentm \"Mac-only\" OR \"macOS-only\" OR \"Mac-first\" platform support decision",
+          "n_results": 5,
+          "ms": 67.8
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "agentm OS matrix CI ubuntu macos windows runner test",
+          "n_results": 3,
+          "ms": 5.4
+        },
+        {
+          "n": 6,
+          "tool": "search_vector",
+          "query": "Which operating systems does agentm run on and which does its CI test",
+          "n_results": 5,
+          "ms": 42.8
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 25.1,
+      "cost_usd": 0.148
+    },
+    {
+      "id": "pp16",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "How am I optimizing model cost despite the limitaitons of Claude and Antigravity in changing models on the fly automtically?",
+      "expected": [
+        "projects/crickets/_harness/archive/progress-model-routing-and-levers.md",
+        "projects/agentm/_harness/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md"
+      ],
+      "answered": [
+        "projects/agentm/decisions/research-token-efficiency-novel.md",
+        "projects/agentm/_harness/archive/designs/efficiency-automation/agentm-model-effort-routing.md",
+        "projects/agentm/_harness/designs/token-efficiency-46/design-doc.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Optimizing model cost and token budget by routing work to cheaper models when Claude and Antigravity cannot switch models automatically on the fly.",
+          "n_results": 5,
+          "ms": 75.3
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "model cost token budget opusplan route model switch",
+          "n_results": 5,
+          "ms": 29.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.1,
+      "cost_usd": 0.1017
+    },
+    {
+      "id": "pp17",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "In my developer workflows, tell me what I do and don't do automaticaly and why",
+      "expected": [
+        "projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"
+      ],
+      "answered": [
+        "projects/crickets/_harness/archive/designs/developer-workflows-autonomy/developer-workflows-autonomy.md",
+        "personal/_opinions/recoverable/never-auto.md",
+        "projects/crickets/_harness/archive/developer-workflows-autonomy/PLAN.archive.20260614-developer-workflows-autonomy-autonomy-doctrine.md",
+        "personal/preferences/never-auto-4.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "In my developer workflows, which actions happen automatically without confirmation and which require explicit permission, and why.",
+          "n_results": 6,
+          "ms": 55.9
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "recoverable push announce proceed confirmation worktree auto-spawn authority",
+          "n_results": 6,
+          "ms": 9.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 16.9,
+      "cost_usd": 0.1052
+    },
+    {
+      "id": "pp18",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "question": "How many articles have I published on the blog vs TILs?",
+      "expected": [
+        "projects/blog/parts/content-model.md",
+        "projects/blog/_harness/progress.md"
+      ],
+      "answered": [
+        "projects/blog/_harness/progress.md",
+        "projects/blog/_index.md",
+        "projects/blog/design-doc.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/blog/_harness/progress.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "blog posts published TIL count",
+          "n_results": 2,
+          "ms": 3.6
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "A summary of how many blog articles and TIL posts I have published.",
+          "n_results": 5,
+          "ms": 52.2
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.4,
+      "cost_usd": 0.0981
+    },
+    {
+      "id": "ep01",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "Tell me about the research we did on a tunneling or vpn solution for hosting without exposing services to the internet.",
+      "expected": [
+        "personal/domains/homelab/network-topology.md",
+        "personal/domains/homelab/_index.md"
+      ],
+      "answered": [
+        "_idea-incubator/home-server-cluster/research-managed-private-vpn.md",
+        "_idea-incubator/home-server-cluster/research-pangolin-ingress.md",
+        "personal/domains/homelab/network-topology.md",
+        "personal/domains/homelab/_index.md",
+        "projects/home-tech-next/_index.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "personal/domains/homelab/network-topology.md",
+        "personal/domains/homelab/_index.md"
+      ],
+      "p_at_5": 0.4,
+      "r_at_5": 1.0,
+      "first_hit_rank": 3,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "tunnel VPN self-hosting expose services internet",
+          "n_results": 6,
+          "ms": 8.4
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Researching a tunneling or VPN solution to host services at home without exposing them directly to the public internet.",
+          "n_results": 6,
+          "ms": 46.1
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 24.7,
+      "cost_usd": 0.1131
+    },
+    {
+      "id": "ep02",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When did I start working on shrimpi and when did i stop?",
+      "expected": [
+        "projects/shrimpi/_index.md",
+        "projects/shrimpi/decisions/2026-03-20-key-design-decisions.md",
+        "projects/shrimpi/conventions/auto-sync-worktree.md"
+      ],
+      "answered": [
+        "projects/shrimpi/_index.md",
+        "projects/shrimpi/decisions/2026-03-20-key-design-decisions.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/shrimpi/_index.md",
+        "projects/shrimpi/decisions/2026-03-20-key-design-decisions.md"
+      ],
+      "p_at_5": 0.4,
+      "r_at_5": 0.6667,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "shrimpi",
+          "n_results": 8,
+          "ms": 4.2
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "When the shrimpi project started and when work on it ended, its timeline and duration.",
+          "n_results": 6,
+          "ms": 53.1
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 16.5,
+      "cost_usd": 0.0995
+    },
+    {
+      "id": "ep03",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "How long has it been since my last bog post?",
+      "expected": [
+        "projects/blog/_harness/PLAN.md",
+        "projects/blog/_harness/progress.md"
+      ],
+      "answered": [
+        "projects/blog/_harness/progress.md",
+        "projects/blog/_harness/PLAN.md",
+        "projects/blog/_harness/PLAN.archive.20260627-agentm-arc.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/blog/_harness/PLAN.md",
+        "projects/blog/_harness/progress.md"
+      ],
+      "p_at_5": 0.4,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "blog post",
+          "n_results": 8,
+          "ms": 78.6
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "A blog post I wrote and published on my website.",
+          "n_results": 8,
+          "ms": 48.3
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "published post date draft: false",
+          "n_results": 8,
+          "ms": 19.7
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "The most recent article I published, with its publication date.",
+          "n_results": 8,
+          "ms": 48.2
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "\"publish\" AND \"post\" AND (\"2026-07\" OR \"2026-08\")",
+          "n_results": 8,
+          "ms": 69.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 41.5,
+      "cost_usd": 0.1635
+    },
+    {
+      "id": "ep04",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When did we setup the cross-model pass for prose?",
+      "expected": [
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-newcomer-onboarding.md"
+      ],
+      "answered": [
+        "projects/crickets/_harness/archive/crickets-v3/PLAN.archive.20260603-cr-v3x-04-code-review.md",
+        "projects/crickets/_harness/archive/dogfood/Code-Review.baseline.md",
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 3,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "cross-model pass prose",
+          "n_results": 5,
+          "ms": 10.6
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "We set up a cross-model review pass where a different model checks prose quality.",
+          "n_results": 5,
+          "ms": 49.2
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "adversarial-reviewer-cross Gemini CLI prose critic",
+          "n_results": 5,
+          "ms": 12.1
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "The date when we introduced a second-model review to check the quality of written prose in the vault.",
+          "n_results": 5,
+          "ms": 54.4
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "cross-model prose review blog editing pass",
+          "n_results": 5,
+          "ms": 14.2
+        },
+        {
+          "n": 6,
+          "tool": "search_vector",
+          "query": "Setting up a second AI model to proofread and critique blog prose before publishing.",
+          "n_results": 5,
+          "ms": 44.6
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 32.8,
+      "cost_usd": 0.1597
+    },
+    {
+      "id": "ep05",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "Why did I choose to split agentm into two repos and when?",
+      "expected": [
+        "projects/crickets/decisions/2026-05-12-key-decisions.md",
+        "projects/agentm/decisions/2026-03-01-key-decisions.md"
+      ],
+      "answered": [
+        "projects/agentm/decisions/2026-03-01-key-decisions.md",
+        "_vault-archive/ag-design-history/memory-os-architecture.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/decisions/2026-03-01-key-decisions.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "agentm split two repos crickets",
+          "n_results": 5,
+          "ms": 22.0
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The decision and reasons for splitting agentm into two separate repositories.",
+          "n_results": 5,
+          "ms": 54.2
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 13.1,
+      "cost_usd": 0.0936
+    },
+    {
+      "id": "ep06",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When was the last time we worked on dev-setup?",
+      "expected": [
+        "projects/dev-setup/_harness/progress.md",
+        "projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md"
+      ],
+      "answered": [
+        "projects/dev-setup/_harness/progress.md",
+        "projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md",
+        "projects/dev-setup/_index.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/dev-setup/_harness/progress.md",
+        "projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md"
+      ],
+      "p_at_5": 0.4,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "dev-setup",
+          "n_results": 8,
+          "ms": 3.8
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Recent work on the dev-setup repository and its configuration.",
+          "n_results": 8,
+          "ms": 51.5
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "\"dev-setup\" NEAR(progress changelog release, 15)",
+          "n_results": 1,
+          "ms": 2.2
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "The most recent progress update or changelog entry for the dev-setup project.",
+          "n_results": 8,
+          "ms": 56.6
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 20.7,
+      "cost_usd": 0.1213
+    },
+    {
+      "id": "ep07",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When did I decide to begin my first AgentM arc?",
+      "expected": [
+        "projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md",
+        "projects/_archive/agent-m-v4/_index.md"
+      ],
+      "answered": [
+        "projects/blog/drafts/_archive/building-agent-m.md",
+        "projects/blog/_harness/progress.md",
+        "projects/blog/_harness/PLAN.archive.20260627-agentm-arc.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "first AgentM arc begin decide",
+          "n_results": 4,
+          "ms": 29.1
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The decision to start my first AgentM arc.",
+          "n_results": 5,
+          "ms": 56.8
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "\"AgentM\" decided start project began",
+          "n_results": 3,
+          "ms": 12.7
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "When I first decided to build AgentM and kicked off the project.",
+          "n_results": 5,
+          "ms": 49.9
+        },
+        {
+          "n": 5,
+          "tool": "search_vector",
+          "query": "The day I chose to kick off my first arc of AgentM work.",
+          "n_results": 5,
+          "ms": 56.8
+        },
+        {
+          "n": 6,
+          "tool": "search_lexical",
+          "query": "first arc kickoff decision date",
+          "n_results": 3,
+          "ms": 24.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 30.6,
+      "cost_usd": 0.1314
+    },
+    {
+      "id": "ep08",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "What caused googel drive to thrash on file sync and how did we fix it?",
+      "expected": [
+        "projects/agentm/decisions/research-concurrent-vault-writes.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/vault-backing/vault-drive.md",
+        "projects/agentm/_harness/archive/v5/PLAN.archive.20260612-v5-0-vault-write-protocol.md",
+        "projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": false,
+      "correct": false,
+      "tool_calls": 3,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "Google Drive sync thrashing",
+          "n_results": 5,
+          "ms": 20.1
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Google Drive was thrashing and constantly re-syncing files; here is what caused it and how we fixed it.",
+          "n_results": 5,
+          "ms": 54.5
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "Drive sync thrash fix write protocol",
+          "n_results": 3,
+          "ms": 25.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 20.9,
+      "cost_usd": 0.1154
+    },
+    {
+      "id": "ep09",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When did we re-write agentm the first time?",
+      "expected": [
+        "projects/_archive/agent-m-v4/_index.md",
+        "projects/agentm/version-summaries.md",
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md"
+      ],
+      "answered": [
+        "projects/blog/_harness/PLAN.archive.20260627-agentm-arc.md",
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md",
+        "_vault-archive/ag-design-history/agent-memory-evolution.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.3333,
+      "first_hit_rank": 2,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "agentm rewrite",
+          "n_results": 6,
+          "ms": 7.0
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The first time agentm was rewritten from scratch.",
+          "n_results": 6,
+          "ms": 55.5
+        },
+        {
+          "n": 3,
+          "tool": "search_vector",
+          "query": "The history and timeline of agentm, including its first ground-up rewrite and version milestones.",
+          "n_results": 6,
+          "ms": 52.0
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "agentm \"first rewrite\" OR \"ground-up\" OR \"v1\" OR history",
+          "n_results": 6,
+          "ms": 5.4
+        },
+        {
+          "n": 5,
+          "tool": "search_vector",
+          "query": "The date agentm was rebuilt from scratch, its v1.0.0 origin and the story of its first major rewrite.",
+          "n_results": 6,
+          "ms": 67.2
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 25.5,
+      "cost_usd": 0.1442
+    },
+    {
+      "id": "ep10",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When did we re-write sherwood the first time?",
+      "expected": [
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md",
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "answered": [
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md",
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md",
+        "projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "p_at_5": 0.4,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "sherwood rewrite",
+          "n_results": 5,
+          "ms": 21.4
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The first time we rewrote the sherwood project from scratch.",
+          "n_results": 5,
+          "ms": 55.3
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "sherwood v2 rewrite date first",
+          "n_results": 5,
+          "ms": 28.2
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "The history and timeline of the sherwood project, including when it was rebuilt.",
+          "n_results": 5,
+          "ms": 59.7
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "sherwood rebuild not refactor rewrite from scratch",
+          "n_results": 5,
+          "ms": 39.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 30.1,
+      "cost_usd": 0.149
+    },
+    {
+      "id": "ep11",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When did i establish my \"voice\" or prose for you?",
+      "expected": [
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "answered": [
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "projects/_global/wiki-style/2026-07-05-personal-comms-style.md",
+        "projects/blog/writing-voice.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "The moment I defined the writing voice, tone, and prose style that Claude should use when writing for me.",
+          "n_results": 5,
+          "ms": 56.8
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "voice prose writing style tone",
+          "n_results": 5,
+          "ms": 57.1
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 16.5,
+      "cost_usd": 0.0993
+    },
+    {
+      "id": "ep12",
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "question": "When did I switch from antigravity to claude? or better when did I start using claude?",
+      "expected": [
+        "projects/blog/drafts/_archive/claude-allowance-cut.md",
+        "projects/blog/drafts/_archive/green-squares.md"
+      ],
+      "answered": [
+        "projects/blog/_harness/PLAN.archive.20260626-memoir-series.md",
+        "projects/blog/drafts/_archive/claude-allowance-cut.md",
+        "projects/blog/designs/blog-design-handoff-for-antigravity.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/blog/drafts/_archive/claude-allowance-cut.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 0.5,
+      "first_hit_rank": 2,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Switching from Antigravity to Claude Code as my main coding agent.",
+          "n_results": 5,
+          "ms": 56.1
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "Antigravity Claude Code switch migrate",
+          "n_results": 5,
+          "ms": 13.2
+        },
+        {
+          "n": 3,
+          "tool": "search_vector",
+          "query": "The day I decided to stop using Antigravity and adopt Claude Code as my daily driver.",
+          "n_results": 5,
+          "ms": 51.0
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "post-ag \"moved off Antigravity\" OR \"switched to Claude\" OR \"started using Claude\"",
+          "n_results": 5,
+          "ms": 16.9
+        },
+        {
+          "n": 5,
+          "tool": "search_vector",
+          "query": "Blog post about my personal history: when I first started using Claude and moving away from Antigravity.",
+          "n_results": 6,
+          "ms": 51.6
+        },
+        {
+          "n": 6,
+          "tool": "search_lexical",
+          "query": "memoir NEAR(Antigravity Claude, 30)",
+          "n_results": 2,
+          "ms": 3.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 35.8,
+      "cost_usd": 0.1625
+    },
+    {
+      "id": "rd01",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "In the built-in ranker, can we change how quickly repeated occurrences of a term stop adding to a document's score, or is the per-field boost the only lever we get?",
+      "expected": [
+        "projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md"
+      ],
+      "answered": [
+        "projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md",
+        "projects/agentm/research/sqlite/reference/bm25-column-weight-arguments.md",
+        "projects/agentm/research/sqlite/reference/order-by-rank-vs-bm25-call.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "BM25 term frequency saturation k1 field boost",
+          "n_results": 0,
+          "ms": 0.8
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Tuning how quickly repeated occurrences of a term stop adding to a document's ranking score in the built-in ranker.",
+          "n_results": 5,
+          "ms": 75.7
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "FTS5 bm25 column weights ranking",
+          "n_results": 5,
+          "ms": 102.1
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "The lexical full-text search ranker only lets you set per-field weights and does not expose term-frequency saturation tuning.",
+          "n_results": 5,
+          "ms": 53.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 22.0,
+      "cost_usd": 0.1192
+    },
+    {
+      "id": "rd02",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "If we need to find a fragment sitting in the middle of a longer string rather than a whole word or a prefix, which indexing choice supports that \u2014 and does the same index also speed up ordinary pattern-match queries?",
+      "expected": [
+        "projects/agentm/research/sqlite/reference/trigram-tokenizer-substring-match.md"
+      ],
+      "answered": [
+        "projects/agentm/research/sqlite/reference/trigram-tokenizer-substring-match.md",
+        "projects/agentm/research/sqlite/reference/prefix-index-option.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/sqlite/reference/trigram-tokenizer-substring-match.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "trigram index substring pattern LIKE match",
+          "n_results": 0,
+          "ms": 0.7
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Which index type lets you search for a substring in the middle of a string and also speeds up pattern-matching queries.",
+          "n_results": 5,
+          "ms": 58.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 16.6,
+      "cost_usd": 0.0952
+    },
+    {
+      "id": "rd03",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "One of the ways the server can collapse a model's output isn't usable for similarity search at all \u2014 it hands back a single number instead of anything you can compare with cosine. Which one, and what endpoint needs it?",
+      "expected": [
+        "projects/agentm/research/llama-cpp-embeddings/reference/rank-pooling-is-not-a-vector.md"
+      ],
+      "answered": [
+        "projects/agentm/research/llama-cpp-embeddings/reference/rank-pooling-is-not-a-vector.md",
+        "projects/agentm/research/llama-cpp-embeddings/reference/pooling-must-match-model.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/llama-cpp-embeddings/reference/rank-pooling-is-not-a-vector.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "A pooling strategy that collapses a model's output into a single scalar cannot be used for cosine similarity search.",
+          "n_results": 5,
+          "ms": 56.5
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "pooling similarity single number score cosine endpoint",
+          "n_results": 5,
+          "ms": 196.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 17.8,
+      "cost_usd": 0.1046
+    },
+    {
+      "id": "rd04",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "One of the two candidate embedding models only wants the instruction sentence glued onto the thing being searched with, never onto what we index, and barely suffers if we skip it entirely. Which model, and what is the exact sentence?",
+      "expected": [
+        "projects/agentm/research/llama-cpp-embeddings/reference/bge-small-optional-query-instruction.md"
+      ],
+      "answered": [
+        "projects/agentm/research/llama-cpp-embeddings/reference/bge-small-optional-query-instruction.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/llama-cpp-embeddings/reference/bge-small-optional-query-instruction.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 3,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "embedding model instruction prefix query",
+          "n_results": 5,
+          "ms": 75.6
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "One embedding model only needs the instruction sentence prepended to the query side, not to indexed documents, and works fine without it.",
+          "n_results": 5,
+          "ms": 45.5
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "\"Represent this sentence for searching relevant passages\"",
+          "n_results": 1,
+          "ms": 1.5
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 20.7,
+      "cost_usd": 0.1056
+    },
+    {
+      "id": "rd05",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "Our watch on a single file goes dead after the first save. What does the library do to its own bookkeeping when a path gets renamed, and why isn't simply re-registering the watch afterwards enough to close the hole?",
+      "expected": [
+        "projects/agentm/research/file-watching/reference/issue-214-watch-removed-on-rename.md"
+      ],
+      "answered": [
+        "projects/agentm/research/file-watching/reference/issue-214-watch-removed-on-rename.md",
+        "projects/agentm/research/file-watching/reference/fsnotify-individual-file-watch-discouraged.md",
+        "projects/agentm/research/file-watching/reference/recommend-watch-parent-directory.md",
+        "projects/agentm/research/file-watching/reference/vim-rename-backup-then-recreate-pattern.md",
+        "projects/agentm/research/file-watching/reference/editors-temp-file-rename-produces-delete-create.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/file-watching/reference/issue-214-watch-removed-on-rename.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "file watch rename inode watcher",
+          "n_results": 0,
+          "ms": 0.6
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Watching a single file stops working after the first save because the editor renames the file, and re-registering the watch does not fully fix it.",
+          "n_results": 6,
+          "ms": 76.7
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 21.5,
+      "cost_usd": 0.1043
+    },
+    {
+      "id": "rd06",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "Can we rely on getting a modification notification for a directory itself when something inside it appears or disappears, or does that depend on which platform we're running on?",
+      "expected": [
+        "projects/agentm/research/file-watching/reference/event-write-directory-platform-divergence.md"
+      ],
+      "answered": [
+        "projects/agentm/research/file-watching/reference/event-write-directory-platform-divergence.md",
+        "projects/agentm/research/file-watching/reference/event-create-trigger.md",
+        "projects/agentm/research/file-watching/reference/event-remove-linux-chmod-delay.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/file-watching/reference/event-write-directory-platform-divergence.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Whether a directory receives a modification notification when a file inside it is created or deleted depends on the operating system platform.",
+          "n_results": 5,
+          "ms": 54.1
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "directory modification notification file created deleted platform",
+          "n_results": 5,
+          "ms": 67.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 15.6,
+      "cost_usd": 0.0995
+    },
+    {
+      "id": "rd07",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "What's the reported hazard of pointing the repository-open call at a directory that turns out not to be a repository at all \u2014 does it just error out cleanly?",
+      "expected": [
+        "projects/agentm/research/go-git/reference/plain-open-side-effect-creates-git-dir.md"
+      ],
+      "answered": [
+        "projects/agentm/research/go-git/reference/plain-open-side-effect-creates-git-dir.md",
+        "projects/agentm/research/go-git/reference/plain-open-detect-dot-git-option.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/go-git/reference/plain-open-side-effect-creates-git-dir.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "The hazard of opening a repository at a path that turns out not to be a git repository.",
+          "n_results": 5,
+          "ms": 58.2
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "Repository open directory not a repository error",
+          "n_results": 5,
+          "ms": 15.0
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 13.0,
+      "cost_usd": 0.0905
+    },
+    {
+      "id": "rd08",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "If we take the library's stock diff settings, how alike do two files have to be before it calls the pair a rename, and is there a ceiling on how many pairs it will compare looking for one?",
+      "expected": [
+        "projects/agentm/research/go-git/reference/default-diff-tree-options-rename-score.md"
+      ],
+      "answered": [
+        "projects/agentm/research/go-git/reference/default-diff-tree-options-rename-score.md",
+        "projects/agentm/research/go-git/reference/difftree-with-options-rename-detection.md",
+        "projects/agentm/research/go-git/reference/detect-renames-standalone-function.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/go-git/reference/default-diff-tree-options-rename-score.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "rename detection similarity threshold diff",
+          "n_results": 5,
+          "ms": 98.3
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Default diff settings for detecting when two files are similar enough to be considered a rename, and the maximum number of file pairs compared.",
+          "n_results": 5,
+          "ms": 58.2
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 14.4,
+      "cost_usd": 0.0931
+    },
+    {
+      "id": "rd09",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "Why does the compiler keep bundled assets uncompressed inside the executable when squeezing them would obviously make it smaller \u2014 what capability would compressing them have broken?",
+      "expected": [
+        "projects/agentm/research/go-static-binaries/reference/embed-no-compression-random-access-rationale.md"
+      ],
+      "answered": [
+        "projects/agentm/research/go-static-binaries/reference/embed-no-compression-random-access-rationale.md",
+        "projects/agentm/research/go-static-binaries/reference/embed-binary-size-grows-by-file-size.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/go-static-binaries/reference/embed-no-compression-random-access-rationale.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "compiler bundled assets uncompressed executable",
+          "n_results": 1,
+          "ms": 1.0
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "The compiler embeds assets uncompressed in the executable so they can be memory-mapped directly, and compressing them would break that capability.",
+          "n_results": 5,
+          "ms": 75.6
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 25.8,
+      "cost_usd": 0.101
+    },
+    {
+      "id": "rd10",
+      "stratum": "research-density",
+      "source": "authored",
+      "question": "If the build-time value injection points at a symbol path that no longer exists after a package gets moved, do we find out at build time, or does the binary just ship with the wrong value?",
+      "expected": [
+        "projects/agentm/research/go-static-binaries/reference/ldflags-x-silent-failure-mismatch.md"
+      ],
+      "answered": [
+        "projects/agentm/research/go-static-binaries/reference/ldflags-x-silent-failure-mismatch.md",
+        "projects/agentm/research/go-static-binaries/reference/ldflags-x-string-only-constraint.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [
+        "projects/agentm/research/go-static-binaries/reference/ldflags-x-silent-failure-mismatch.md"
+      ],
+      "p_at_5": 0.2,
+      "r_at_5": 1.0,
+      "first_hit_rank": 1,
+      "is_negative": false,
+      "correct": true,
+      "tool_calls": 2,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "ldflags -X build-time value injection symbol path package",
+          "n_results": 5,
+          "ms": 18.1
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Build-time injection of a version value into a symbol path silently fails if the package is moved, so the binary ships with the wrong value instead of failing at build time.",
+          "n_results": 5,
+          "ms": 71.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 14.6,
+      "cost_usd": 0.0936
+    },
+    {
+      "id": "ng01",
+      "stratum": "negative",
+      "source": "authored",
+      "question": "What did we settle on for backing the vault up to Backblaze B2 \u2014 bucket layout and retention?",
+      "expected": [],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 1.0,
+      "r_at_5": 1.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": true,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "Backblaze B2 backup bucket retention vault",
+          "n_results": 0,
+          "ms": 0.4
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Decision on backing up the vault to Backblaze B2, including bucket layout and retention policy.",
+          "n_results": 5,
+          "ms": 45.4
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "Backblaze OR B2 OR \"off-site backup\" OR \"backup retention\"",
+          "n_results": 5,
+          "ms": 27.1
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "Off-site backup strategy for the notes vault: cloud object storage buckets, versioning, and how long backups are kept.",
+          "n_results": 5,
+          "ms": 53.5
+        },
+        {
+          "n": 5,
+          "tool": "search_vector",
+          "query": "We settled on this bucket layout and retention schedule for backing up the Obsidian vault to Backblaze B2 cloud storage.",
+          "n_results": 5,
+          "ms": 56.8
+        },
+        {
+          "n": 6,
+          "tool": "search_lexical",
+          "query": "vault backup bucket layout retention schedule versioning lifecycle",
+          "n_results": 5,
+          "ms": 67.4
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 28.3,
+      "cost_usd": 0.1367
+    },
+    {
+      "id": "ng02",
+      "stratum": "negative",
+      "source": "cold",
+      "question": "Show me recent research you've ingested on current security vulnerability trends as it pretains to my current homelab setup and my github projects.",
+      "expected": [],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 1.0,
+      "r_at_5": 1.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": true,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Recent research on current security vulnerability trends relevant to a homelab setup and self-hosted infrastructure.",
+          "n_results": 5,
+          "ms": 54.8
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "security vulnerability trends homelab",
+          "n_results": 5,
+          "ms": 45.5
+        },
+        {
+          "n": 3,
+          "tool": "search_vector",
+          "query": "Ingested research digest summarizing current cybersecurity vulnerability trends and emerging exploits from external sources.",
+          "n_results": 5,
+          "ms": 46.2
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "vulnerability trends CVE supply chain security research",
+          "n_results": 5,
+          "ms": 56.3
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 31.1,
+      "cost_usd": 0.1394
+    },
+    {
+      "id": "ng03",
+      "stratum": "negative",
+      "source": "cold",
+      "question": "What are my most commonly repeated preferences that we don't have rules for yet?",
+      "expected": [],
+      "answered": [
+        "_moc/preferences.md",
+        "personal/preferences/_index.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": false,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_vector",
+          "query": "Recurring personal preferences and habits that I express repeatedly but haven't formalized into rules.",
+          "n_results": 5,
+          "ms": 48.3
+        },
+        {
+          "n": 2,
+          "tool": "search_lexical",
+          "query": "preferences NOT rules",
+          "n_results": 5,
+          "ms": 5.3
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "mining_occurrences preference no rule",
+          "n_results": 5,
+          "ms": 7.5
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "An overview map of my preferences, which ones recur most often and which lack a formal rule.",
+          "n_results": 5,
+          "ms": 44.1
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 19.6,
+      "cost_usd": 0.1181
+    },
+    {
+      "id": "ng04",
+      "stratum": "negative",
+      "source": "authored",
+      "question": "What did we settle on for managing the homelab boxes with Ansible?",
+      "expected": [],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 1.0,
+      "r_at_5": 1.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": true,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "Ansible homelab",
+          "n_results": 0,
+          "ms": 0.5
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "We decided how to manage the homelab servers with Ansible for configuration.",
+          "n_results": 5,
+          "ms": 54.7
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "Ansible",
+          "n_results": 0,
+          "ms": 0.3
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "Decision on configuration management tooling for provisioning the home lab machines.",
+          "n_results": 5,
+          "ms": 56.3
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "homelab provisioning configuration playbook",
+          "n_results": 8,
+          "ms": 95.8
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 23.0,
+      "cost_usd": 0.1284
+    },
+    {
+      "id": "ng05",
+      "stratum": "negative",
+      "source": "cold",
+      "question": "When did git worktrees break my old antigravity setup and why?",
+      "expected": [],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 1.0,
+      "r_at_5": 1.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": true,
+      "tool_calls": 6,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "git worktree antigravity broke",
+          "n_results": 5,
+          "ms": 27.2
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Git worktrees broke my old Antigravity setup and here is why it happened.",
+          "n_results": 5,
+          "ms": 51.1
+        },
+        {
+          "n": 3,
+          "tool": "search_vector",
+          "query": "The incident where git worktrees caused a failure or broke the Antigravity IDE environment.",
+          "n_results": 5,
+          "ms": 53.5
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "worktree NEAR(broke failed incompatible IDE, 12)",
+          "n_results": 0,
+          "ms": 0.7
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "Antigravity \"New-Worktree-Mode\" OR \"worktree mode\" broke setup",
+          "n_results": 4,
+          "ms": 8.8
+        },
+        {
+          "n": 6,
+          "tool": "search_vector",
+          "query": "When Antigravity's worktree mode was enabled it broke the previous development configuration.",
+          "n_results": 6,
+          "ms": 54.7
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 32.5,
+      "cost_usd": 0.138
+    },
+    {
+      "id": "ng06",
+      "stratum": "negative",
+      "source": "authored",
+      "question": "What did we conclude about swapping FTS5 out for Meilisearch?",
+      "expected": [],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 1.0,
+      "r_at_5": 1.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": true,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "FTS5 Meilisearch",
+          "n_results": 0,
+          "ms": 0.5
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "We decided whether to replace the FTS5 full-text search engine with Meilisearch.",
+          "n_results": 5,
+          "ms": 51.0
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "Meilisearch OR FTS5 OR \"search backend\"",
+          "n_results": 5,
+          "ms": 98.5
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "Decision to keep SQLite full-text search instead of adopting a dedicated search server.",
+          "n_results": 5,
+          "ms": 50.4
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "Meilisearch",
+          "n_results": 0,
+          "ms": 0.5
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 25.7,
+      "cost_usd": 0.12
+    },
+    {
+      "id": "ng07",
+      "stratum": "negative",
+      "source": "cold",
+      "question": "Is my homelab vulnerable to any active security threats in the wild?",
+      "expected": [],
+      "answered": [
+        "personal/domains/security/threat-model.md",
+        "personal/domains/homelab/docker-inventory.md",
+        "personal/domains/security/trusted-security-sources.md",
+        "personal/domains/security/_index.md",
+        "personal/domains/homelab/network-topology.md"
+      ],
+      "said_no_answer": false,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 0.0,
+      "r_at_5": 0.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": false,
+      "tool_calls": 4,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "homelab",
+          "n_results": 8,
+          "ms": 5.4
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Active security vulnerabilities and CVEs being exploited in the wild affecting self-hosted services.",
+          "n_results": 8,
+          "ms": 46.9
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "CVE OR advisory OR exploit OR patch vulnerability",
+          "n_results": 8,
+          "ms": 4.1
+        },
+        {
+          "n": 4,
+          "tool": "search_vector",
+          "query": "Which software versions run on the Unraid NAS and Docker containers, so I can check them against known vulnerabilities.",
+          "n_results": 6,
+          "ms": 54.9
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 26.2,
+      "cost_usd": 0.132
+    },
+    {
+      "id": "ng08",
+      "stratum": "negative",
+      "source": "cold",
+      "question": "Give me information on the last 5 security vulnerabilities that we fixed on shrimpi.",
+      "expected": [],
+      "answered": [],
+      "said_no_answer": true,
+      "never_concluded": false,
+      "hits": [],
+      "p_at_5": 1.0,
+      "r_at_5": 1.0,
+      "first_hit_rank": null,
+      "is_negative": true,
+      "correct": true,
+      "tool_calls": 5,
+      "tool_call_log": [
+        {
+          "n": 1,
+          "tool": "search_lexical",
+          "query": "shrimpi security vulnerability fix",
+          "n_results": 2,
+          "ms": 19.5
+        },
+        {
+          "n": 2,
+          "tool": "search_vector",
+          "query": "Security vulnerabilities that were fixed in the shrimpi project.",
+          "n_results": 8,
+          "ms": 41.6
+        },
+        {
+          "n": 3,
+          "tool": "search_lexical",
+          "query": "shrimpi (CVE OR vulnerability OR security OR advisory OR patch)",
+          "n_results": 8,
+          "ms": 15.0
+        },
+        {
+          "n": 4,
+          "tool": "search_lexical",
+          "query": "shrimpi changelog security fix",
+          "n_results": 4,
+          "ms": 18.4
+        },
+        {
+          "n": 5,
+          "tool": "search_lexical",
+          "query": "shrimpi",
+          "n_results": 10,
+          "ms": 4.0
+        }
+      ],
+      "refused_over_budget": 0,
+      "driver_error": null,
+      "wall_s": 22.7,
+      "cost_usd": 0.145
+    }
+  ],
+  "misses": [
+    {
+      "id": "dt02",
+      "stratum": "distinctive-token",
+      "question": "can you tell me what the rag_tutorials folder is and why it's there? it looks like it's out of place / should be cleaned up",
+      "expected": [
+        "projects/_archive/experimental/onenote-migration-summary.md"
+      ],
+      "answered": [
+        "_meta/skill-discovery-cache/_index.md",
+        "personal/skill-discovery-sources.md",
+        "_meta/skill-discovery-cache/shubhamsaboo-awesome-llm-apps/2026-05-29.md"
+      ],
+      "tool_calls": 4,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "dt07",
+      "stratum": "distinctive-token",
+      "question": "I really dislike it when you use the word 'load-bearing' \u2014 feels agent-y to me. What alternate did we codify for my voice?",
+      "expected": [
+        "projects/blog/writing-voice.md"
+      ],
+      "answered": [
+        "projects/_global/wiki-style/2026-06-09-llm-tell-vocabulary.md",
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "tool_calls": 6,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "dt12",
+      "stratum": "distinctive-token",
+      "question": "You know it's \"AgentM\", not \"Agent M\" right?",
+      "expected": [
+        "personal/_always-load/agent-m-crickets-branding.md"
+      ],
+      "answered": [],
+      "tool_calls": 0,
+      "reason": "gave up \u2014 said no answer found, but a note does answer it"
+    },
+    {
+      "id": "pp05",
+      "stratum": "pure-paraphrase",
+      "question": "Give me a list of my pending project ideas for the house?",
+      "expected": [
+        "projects/home-tech-next/_index.md"
+      ],
+      "answered": [],
+      "tool_calls": 4,
+      "reason": "gave up \u2014 said no answer found, but a note does answer it"
+    },
+    {
+      "id": "pp07",
+      "stratum": "pure-paraphrase",
+      "question": "Why did AgentM never fully realize the vault vision that I had?",
+      "expected": [
+        "projects/agentm/_harness/designs/friday/F1-REAUDIT.md",
+        "projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md"
+      ],
+      "answered": [
+        "_vault-archive/ag-design-history/agent-memory-evolution.md",
+        "projects/agentm/decisions/harness-engineering-and-multi-developer-vault.md",
+        "projects/agentm/_harness/FOLLOWUPS.md"
+      ],
+      "tool_calls": 5,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "pp10",
+      "stratum": "pure-paraphrase",
+      "question": "Remind me why i chose to use a vault in the first place?",
+      "expected": [
+        "personal/_always-load/vault-as-canonical-context.md"
+      ],
+      "answered": [
+        "projects/_archive/experimental/onenote-migration-summary.md",
+        "projects/_archive/memoryvault/conversations/2026-05-10-vault-design.md",
+        "projects/_archive/experimental/_index.md"
+      ],
+      "tool_calls": 5,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "pp11",
+      "stratum": "pure-paraphrase",
+      "question": "Why aren't you using em-dashes, did I ban those?",
+      "expected": [
+        "projects/blog/writing-voice.md",
+        "projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
+      ],
+      "answered": [
+        "personal/_inbox/never-let-the-dash-stand-in-1.md",
+        "projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "personal/_inbox/never-let-the-dash-stand-in.md",
+        "personal/_inbox/never-let-the-dash-stand-in-2.md",
+        "projects/_global/wiki-style/2026-07-05-personal-narrative-style.md"
+      ],
+      "tool_calls": 3,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "pp15",
+      "stratum": "pure-paraphrase",
+      "question": "Does agentm still support multiple operating systems?",
+      "expected": [
+        "projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-os-install-matrix.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/v8-proving/crossmodel-pilot/CI-Gates-agentm.md",
+        "projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md",
+        "projects/dev-setup/_harness/PLAN.archive.20260626-harness-bootstrap.md"
+      ],
+      "tool_calls": 6,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "pp16",
+      "stratum": "pure-paraphrase",
+      "question": "How am I optimizing model cost despite the limitaitons of Claude and Antigravity in changing models on the fly automtically?",
+      "expected": [
+        "projects/crickets/_harness/archive/progress-model-routing-and-levers.md",
+        "projects/agentm/_harness/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md"
+      ],
+      "answered": [
+        "projects/agentm/decisions/research-token-efficiency-novel.md",
+        "projects/agentm/_harness/archive/designs/efficiency-automation/agentm-model-effort-routing.md",
+        "projects/agentm/_harness/designs/token-efficiency-46/design-doc.md"
+      ],
+      "tool_calls": 2,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "pp17",
+      "stratum": "pure-paraphrase",
+      "question": "In my developer workflows, tell me what I do and don't do automaticaly and why",
+      "expected": [
+        "projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"
+      ],
+      "answered": [
+        "projects/crickets/_harness/archive/designs/developer-workflows-autonomy/developer-workflows-autonomy.md",
+        "personal/_opinions/recoverable/never-auto.md",
+        "projects/crickets/_harness/archive/developer-workflows-autonomy/PLAN.archive.20260614-developer-workflows-autonomy-autonomy-doctrine.md",
+        "personal/preferences/never-auto-4.md"
+      ],
+      "tool_calls": 2,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "ep07",
+      "stratum": "episodic-temporal",
+      "question": "When did I decide to begin my first AgentM arc?",
+      "expected": [
+        "projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md",
+        "projects/_archive/agent-m-v4/_index.md"
+      ],
+      "answered": [
+        "projects/blog/drafts/_archive/building-agent-m.md",
+        "projects/blog/_harness/progress.md",
+        "projects/blog/_harness/PLAN.archive.20260627-agentm-arc.md"
+      ],
+      "tool_calls": 6,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "ep08",
+      "stratum": "episodic-temporal",
+      "question": "What caused googel drive to thrash on file sync and how did we fix it?",
+      "expected": [
+        "projects/agentm/decisions/research-concurrent-vault-writes.md"
+      ],
+      "answered": [
+        "projects/agentm/_harness/designs/vault-backing/vault-drive.md",
+        "projects/agentm/_harness/archive/v5/PLAN.archive.20260612-v5-0-vault-write-protocol.md",
+        "projects/agentm/_harness/designs/v5-10-coordinator-team/design-doc.md"
+      ],
+      "tool_calls": 3,
+      "reason": "answered with the wrong note(s)"
+    },
+    {
+      "id": "ng03",
+      "stratum": "negative",
+      "question": "What are my most commonly repeated preferences that we don't have rules for yet?",
+      "expected": [],
+      "answered": [
+        "_moc/preferences.md",
+        "personal/preferences/_index.md"
+      ],
+      "tool_calls": 4,
+      "reason": "should have found nothing, but named a note"
+    },
+    {
+      "id": "ng07",
+      "stratum": "negative",
+      "question": "Is my homelab vulnerable to any active security threats in the wild?",
+      "expected": [],
+      "answered": [
+        "personal/domains/security/threat-model.md",
+        "personal/domains/homelab/docker-inventory.md",
+        "personal/domains/security/trusted-security-sources.md",
+        "personal/domains/security/_index.md",
+        "personal/domains/homelab/network-topology.md"
+      ],
+      "tool_calls": 4,
+      "reason": "should have found nothing, but named a note"
+    }
+  ],
+  "integrity": {
+    "hook_violations": [],
+    "tool_escapes": [
+      {
+        "id": "pp04",
+        "tools": [
+          "mcp__week1__search_vault"
+        ]
+      }
+    ],
+    "tool_call_count_mismatches": [],
+    "budget_leaks": [],
+    "questions_that_wanted_more_calls": 0,
+    "driver_errors": []
+  },
+  "gold_set": "scripts/health/fixtures/week1-gold/gold-set.json",
+  "vault_name": "Agent"
+}

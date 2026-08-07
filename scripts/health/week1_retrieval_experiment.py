@@ -284,12 +284,13 @@ def run_driver_claude(question, arm, socket_path, call_budget, *, model, timeout
         )
     except subprocess.TimeoutExpired:
         return {"text": "", "hooks_fired": [], "transcript_tool_calls": 0,
-                "unexpected_tools": [],
+                "unexpected_tools": [], "refused_tool_attempts": [],
                 "error": f"driver timed out after {timeout}s",
                 "wall_s": round(time.monotonic() - started, 1)}
 
     text, hooks, err = "", [], None
     tools_used, cost_usd = [], 0.0
+    tool_names_by_id, failed_tool_ids = {}, set()
     for line in proc.stdout.splitlines():
         try:
             ev = json.loads(line)
@@ -301,6 +302,14 @@ def run_driver_claude(question, arm, socket_path, call_budget, *, model, timeout
             for block in (ev.get("message") or {}).get("content") or []:
                 if block.get("type") == "tool_use":
                     tools_used.append(block.get("name"))
+                    tool_names_by_id[block.get("id")] = block.get("name")
+        elif ev.get("type") == "user":
+            # Whether each call actually returned anything. A tool the model
+            # invented does not exist to be called, so it comes back an error
+            # and reaches nothing.
+            for block in (ev.get("message") or {}).get("content") or []:
+                if block.get("type") == "tool_result" and block.get("is_error"):
+                    failed_tool_ids.add(block.get("tool_use_id"))
         elif ev.get("type") == "result":
             if ev.get("is_error") or ev.get("subtype") != "success":
                 err = str(ev.get("result") or ev.get("subtype") or "driver error")
@@ -310,14 +319,24 @@ def run_driver_claude(question, arm, socket_path, call_budget, *, model, timeout
         err = err or (proc.stderr.strip().splitlines() or ["driver failed"])[-1]
     if verbose and err:
         print(f"[week1] driver error on {question['id']}: {err}", file=sys.stderr)
-    # Only arm tools count against the budget; anything outside the permitted
-    # set is an escape and is reported, not counted.
+    # An escape is a *successful* call to something outside the permitted set —
+    # a way the driver actually reached the vault other than its arm's tool.
+    # A call that came back an error reached nothing, and the common case is the
+    # model inventing a plausible tool name (`mcp__week1__search_vault` turned up
+    # once in a 60-question run). Flagging those would fail a sound run on a
+    # typo; ignoring a *successful* one would pass a contaminated run, so the
+    # error state is what separates them. Hallucinated names are still recorded,
+    # just not as escapes.
+    outside = [(tid, name) for tid, name in tool_names_by_id.items()
+               if name not in _ARM_TOOLS and name not in _HARNESS_TOOLS]
     return {
         "text": text, "hooks_fired": hooks, "error": err,
         "transcript_tool_calls": sum(1 for t in tools_used if t in _ARM_TOOLS),
         "cost_usd": round(cost_usd, 4),
         "unexpected_tools": sorted(
-            set(tools_used) - _ARM_TOOLS - _HARNESS_TOOLS),
+            {name for tid, name in outside if tid not in failed_tool_ids}),
+        "refused_tool_attempts": sorted(
+            {name for tid, name in outside if tid in failed_tool_ids}),
         "wall_s": round(time.monotonic() - started, 1),
     }
 
@@ -347,13 +366,13 @@ def run_driver_mock(question, arm, socket_path, call_budget, *, mock_calls, **_)
                 refusals += 1
                 continue
             return {"text": "", "hooks_fired": [], "transcript_tool_calls": calls,
-                    "unexpected_tools": [],
+                    "unexpected_tools": [], "refused_tool_attempts": [],
                     "error": f"mock search failed: {resp.get('error')}", "wall_s": 0.0}
         for r in resp.get("results") or []:
             if r["path"] not in seen:
                 seen.append(r["path"])
     answer = ", ".join(seen[:SCORE_K]) if seen else "no answer found"
-    return {"text": f"ANSWER: {answer}", "hooks_fired": [], "unexpected_tools": [],
+    return {"text": f"ANSWER: {answer}", "hooks_fired": [], "unexpected_tools": [], "refused_tool_attempts": [],
             "transcript_tool_calls": calls, "error": None, "wall_s": 0.0,
             "mock_budget_refusals": refusals}
 
@@ -530,6 +549,7 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
                   f"{info['n_docs']} notes, budget {info['call_budget']}", file=sys.stderr)
 
         rows, hook_violations, count_mismatches, tool_escapes = [], [], [], []
+        refused_attempts = []
         for i, e in enumerate(entries, 1):
             daemon_mod.request(socket_path, {"op": "begin", "question_id": e["id"], "arm": arm})
             if driver == "mock":
@@ -545,6 +565,8 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
                 hook_violations.append((e["id"], sorted(set(res["hooks_fired"]))))
             if res.get("unexpected_tools"):
                 tool_escapes.append((e["id"], res["unexpected_tools"]))
+            if res.get("refused_tool_attempts"):
+                refused_attempts.append((e["id"], res["refused_tool_attempts"]))
             # The daemon counts calls it served; the transcript counts calls the
             # model made. They agree unless something is calling the tools that
             # is not the driver, or the driver is calling tools we did not give it.
@@ -560,7 +582,11 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
                 "question": e["question"], "expected": e["expected_note_paths"],
                 "answered": answered, "said_no_answer": kind == "no_answer",
                 "never_concluded": kind is None,
-                "hits": score["hits"], "p_at_5": p_at_5, "r_at_5": r_at_5,
+                # Rounded like the aggregates. Full precision buys nothing on a
+                # ratio of small integers, and 1/3 written out in full contains
+                # a ten-digit run that the PII scanner reads as a phone number.
+                "hits": score["hits"],
+                "p_at_5": round(p_at_5, 4), "r_at_5": round(r_at_5, 4),
                 "first_hit_rank": score["first_hit_rank"], "is_negative": score["is_negative"],
                 "correct": bool(correct), "tool_calls": tool_calls,
                 "tool_call_log": stats.get("call_log", []) if stats.get("ok") else [],
@@ -593,7 +619,13 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
     return {
         "arm": arm, "driver": driver,
         "model": model if driver == "claude" else None,
-        "vault": str(vault),
+        # The vault's name, never its absolute path. Reports are committed as
+        # the experiment's durable scorecard, and an absolute path here encodes
+        # a username and a Google-Drive mount id — the exact literal AGENTS.md's
+        # vault-path convention forbids, and which `check-no-hardcoded-vault-path`
+        # fails the build over. The full path still goes to the daemon's stderr
+        # at startup, where it helps and is not committed.
+        "vault_name": vault.name,
         "corpus": {"n_docs": info["n_docs"], "excluded_dirs": exclude_dirs,
                    "embed_mode": embed_mode if arm == "B" else None},
         "call_budget": call_budget,
@@ -612,6 +644,10 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
         "integrity": {
             "hook_violations": [{"id": i, "hooks": h} for i, h in hook_violations],
             "tool_escapes": [{"id": i, "tools": t} for i, t in tool_escapes],
+            # Recorded, not fatal: calls to tools that do not exist or were
+            # denied. They reached nothing.
+            "refused_tool_attempts": [
+                {"id": i, "tools": t} for i, t in refused_attempts],
             "tool_call_count_mismatches": [
                 {"id": i, "transcript": t, "daemon": d} for i, t, d in count_mismatches],
             # A genuine failure: the daemon SERVED more calls than the ceiling
