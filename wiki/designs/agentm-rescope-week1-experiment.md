@@ -60,12 +60,42 @@ Pre-registered before the results are seen, so the outcome can't be rationalized
 
 FTS5 ships in either outcome. This experiment decides whether it ships alone.
 
+## The outcome
+
+Run 2026-08-06 against the full 60-question gold set, both arms, under two drivers. Every integrity check returned zero across all four runs:
+
+- No hook fired into the driver's context.
+- No tool was used outside its arm's permitted set.
+- The daemon's call count and the transcript's agreed on every question.
+- No budget leaks.
+
+| driver | Arm A R@5 | Arm B R@5 | delta | rule says |
+| --- | ---: | ---: | ---: | --- |
+| Opus | 0.725 | 0.672 | −5.3 | FTS5-only |
+| Fable | 0.631 | 0.686 | +5.5 | sidecar |
+
+The rule gives opposite answers depending on the driver, and the pre-registration never fixed which driver counts. That is a real gap in the rule as written, not a tie to break on preference.
+
+**Ruling: the Opus run binds. Ship FTS5-only; no vector sidecar in the v0 daemon.** Opus was the declared first run and Fable was a sensitivity check. Picking which run counts after both numbers are visible is the exact move pre-registration exists to prevent, so the later result cannot promote itself to primary.
+
+Adding the sidecar anyway would hurt the driver actually in use. Opus measured a drop, 0.725 down to 0.672, with the agent spending 92 of its 201 calls on semantic search that displaced lexical retries Opus does well.
+
+The cost also runs past the child process. Embedding every captured note either makes capture wait on a model, which breaks the offline, no-judgment-in-the-write-path property the topology design turns on, or it restores an asynchronous embedding queue. That second mechanism is the one whose silent stall left recall returning nothing for four months.
+
+What the Fable run establishes is still worth keeping. Arm B is nearly driver-independent, 0.672 against 0.686, while Arm A is not, 0.725 against 0.631. Lexical-only quality depends on how well the driver guesses the vocabulary a note actually used, so the sidecar buys consistency rather than accuracy. That makes the finding conditional, not wrong.
+
+*Re-audit trigger:* adopting a driver weaker than Opus for `memory_search`, a small local model above all. Arm A degrades in that case and this ruling stops holding. Re-run both arms against the gold set with the candidate driver before assuming FTS5-only survives. The run costs roughly $15 and an hour, and any backfill it calls for is a one-time corpus embed.
+
+Per-arm scorecards and per-question miss lists live in `scripts/health/results/week1/`. Six Arm A questions missed under both drivers — `dt12`, `ep09`, `ep12`, `ng02`, `pp05`, `pp07`. A miss shared across drivers points at the corpus or the tool rather than the model, so those six seed the failure-pattern log.
+
 ## Deliverables
 
 1. The gold set (60 questions, permanent artifact, versioned in the repo).
 2. Per-arm, per-stratum P@5/R@5 scores.
 3. The go/no-go call on the vector sidecar, made mechanically by the rule above.
 4. A short written note of any question either arm got wrong, with a one-line reason — this is the seed of the failure-pattern log that later weeks' scorecard runs should keep appending to.
+
+All four delivered 2026-08-06. The gold set is at `scripts/health/fixtures/week1-gold/gold-set.json`, the runner at `scripts/health/week1_retrieval_experiment.py`, and the four scorecards (two arms x two drivers, each carrying its own per-question miss list) at `scripts/health/results/week1/`.
 
 ## Standing note for every week after this one
 
@@ -76,3 +106,9 @@ The gold set is the ongoing scorecard principle 3 requires, not a one-time artif
 - `agentm-rescope-principles.md` — principle 3 is what makes this experiment's output the thing a milestone hangs on rather than an optional extra.
 - `agentm-rescope-topology.md` — what the daemon does with whichever arm wins.
 - `agentm-rescope-memory.md` — the capture doctrine that produces the research-density stratum's workload, and the retirement list the gold set shouldn't label against.
+
+## Amendment log
+
+*Newest first. Collapses to one <=2-paragraph entry at finalization; git holds the granular history.*
+
+- **2026-08-06 - the experiment ran; the rule fired FTS5-only, and the driver model turned out to be a free variable nobody had pinned.** Built the runner (`scripts/health/week1_retrieval_experiment.py`, plus an FTS5/vector corpus layer, a warm-embedder daemon, and an MCP shim), then ran all 60 questions across both arms under Opus and again under Fable. **Outcome section added above** with the numbers and the ruling: Opus binds, ship FTS5-only, no vector sidecar in the v0 daemon. **Why not the sidecar:** for Opus it measured a loss rather than a gain (0.725 -> 0.672), and it would reintroduce either a model call in the capture write path or an asynchronous embedding queue - the mechanism whose silent stall cost four months of dead recall. **Why not let Fable's opposite verdict decide:** it was declared a sensitivity check after Opus was declared the run, and promoting it once both numbers are visible is the post-hoc selection pre-registration exists to block. Two things the build itself forced, both recorded because they would have invalidated the numbers silently: the operator's `UserPromptSubmit` recall hook injects vault content into a `claude -p` driver and only `--settings '{"disableAllHooks":true}'` stops it without breaking OAuth; and `--disallowedTools` does not cover Claude Code's deferred tool surface, so a driver can reach `Monitor` through `ToolSearch` and grep the vault directly - closed with `permissions.deny` plus a transcript audit that fails the run on any tool outside the arm's set. *Re-audit:* adopting a driver weaker than Opus for `memory_search`, a small local model above all - re-run both arms against the gold set before assuming FTS5-only still holds.

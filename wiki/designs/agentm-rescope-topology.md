@@ -103,7 +103,9 @@ Review scales with how autonomous the write was, rather than applying uniformly.
 
 One resident process, written in Go. The case for Go over Rust rests entirely on not needing to run a model inside the binary: `modernc.org/sqlite` gives pure-Go SQLite with FTS5 built in, no cgo; a static binary cross-compiles for any machine on the home network with `CGO_ENABLED=0`; the standard library covers HTTP and the dashboard with `//go:embed`; `go-git` is mature. Rust's one structural advantage — in-process ML inference via `candle` — only matters if the daemon runs a model directly, and it doesn't.
 
-If the week-1 experiment's decision rule calls for a vector sidecar, it is not Python and not a CGO bridge: it's a small GGUF embedding model served by `llama.cpp`, run as a child process the daemon spawns, health-checks, and restarts — reachable over localhost, reported on the dashboard as part of the daemon's own status. This is a supervised child, not a second independently-managed resident process, and principle 4 is written to make that distinction explicit rather than something a future build discovers by accident.
+The week-1 experiment ran on 2026-08-06 and its rule came back FTS5-only, so v0 ships no vector sidecar and the daemon stays a single process with no model anywhere near it. The shape stands recorded for the one case that would reopen it — a driver weaker than Opus calling `memory_search`, a small local model above all, which is where lexical-only retrieval degrades. Should that happen, the sidecar is not Python and not a CGO bridge: it's a small GGUF embedding model served by `llama.cpp`, run as a child process the daemon spawns, health-checks, and restarts — reachable over localhost, reported on the dashboard as part of the daemon's own status. A supervised child, not a second independently-managed resident process, and principle 4 is written to make that distinction explicit rather than something a future build discovers by accident.
+
+Adding it later stays cheap by construction, which is what makes shipping without it safe. The driver talks to the daemon over `memory_search`, so swapping drivers is a client-side change with no daemon work at all, and the sidecar would be additive — a child process plus a fusion step, with FTS5 unchanged underneath. The one genuinely one-way cost is backfill: embeddings for the existing corpus have to be computed once before search can fuse them.
 
 The daemon exposes exactly two MCP tools to any connected client: `memory_search` and `memory_capture`. Sessions call `memory_search` and iterate — the week-1 experiment's whole premise is that an agent searching a warm index in a loop beats a single blind lookup — instead of receiving a fixed dump at session start. The current ~80KB always-load broadcast shrinks to a pointer a session can follow if it wants to, not a wall of text every session pays for whether it's relevant or not.
 
@@ -131,9 +133,9 @@ Crickets' own simplification, beyond what dies automatically here, is out of sco
 
 ## Build sequence
 
-**Week 1.** Run the retrieval experiment (`agentm-rescope-week1-experiment.md`) on the existing Python stack. No daemon code yet. Output: the gold set, the go/no-go on the vector sidecar, and the first scorecard number.
+**Week 1 — done 2026-08-06.** Ran the retrieval experiment (`agentm-rescope-week1-experiment.md`) on the existing Python stack, no daemon code. Delivered the 60-question gold set, four scorecards, and the sidecar call: FTS5-only. Arm A scored R@5 0.725 under Opus, the driver in use.
 
-**Weeks 2–3.** Daemon v0, in Go: watch the vault, maintain one FTS5 index file (deletable, rebuildable), serve `memory_search` and `memory_capture`, capture as a single transaction per the section above. Retire the orphaned port-7821 daemon and the misnamed filesystem MCP entry. Add the llama.cpp sidecar only if week 1's rule called for it.
+**Weeks 2–3.** Daemon v0, in Go: watch the vault, maintain one FTS5 index file (deletable, rebuildable), serve `memory_search` and `memory_capture`, capture as a single transaction per the section above. Retire the orphaned port-7821 daemon and the misnamed filesystem MCP entry. No llama.cpp sidecar — week 1's rule ruled it out for the current driver.
 
 **Week 4.** The daily self-probe, the two dashboard numbers and their red thresholds, email alerting wired to the existing notifier.
 
