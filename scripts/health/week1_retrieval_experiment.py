@@ -715,7 +715,14 @@ def main(argv=None):
         exclude_dirs=args.exclude_dir, embed_mode=args.embed_mode,
         mock_calls=args.mock_calls, verbose=not args.quiet,
     )
-    report["gold_set"] = str(Path(args.gold_set).resolve())
+    # Repo-relative when it resolves inside the repo, else just the filename —
+    # committed reports must not carry `/Users/<name>/...` (the PII gate blocks
+    # the push; it did, on the first Fable scorecards).
+    _gs = Path(args.gold_set).resolve()
+    try:
+        report["gold_set"] = str(_gs.relative_to(_REPO))
+    except ValueError:
+        report["gold_set"] = _gs.name
 
     if args.out:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)

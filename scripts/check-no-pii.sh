@@ -97,6 +97,7 @@ ALLOWLIST_PATTERNS=(
 # gate's detection logic).
 LINE_ALLOWLIST_PATTERNS=(
     'uses: [A-Za-z0-9_./-]+@[0-9a-f]{40}'  # SHA-pinned GitHub Actions (public refs; digit runs inside a SHA can mimic a phone number)
+    '_dream-staging/inbox-[0-9]{8}-[0-9]{6}-[0-9a-f]{8}'  # machine-stamped staging dirnames (YYYYMMDD-HHMMSS-hash); the digit run mimics a phone number but is a timestamp. Week-1 retrieval scorecards record answered vault paths verbatim, so these land in committed JSON.
 )
 
 # ── file collection ───────────────────────────────────────────────────────
