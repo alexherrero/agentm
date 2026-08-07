@@ -15,14 +15,14 @@
   },
   "$deferred": [
     {
-      "question": "Why did AgentM never fully realize the vault vision that I had, forcing me to do a second re-write when we got to FRIDAY, but actuall didn't?",
+      "question": "Why did AgentM never fully realize the vault vision that I had, forcing me to do a second re-write when we got to FRIDAY?",
       "stratum": "pure-paraphrase",
       "source": "cold",
       "target_when_activated": "wiki/designs/agentm-rescope-*.md (agentm repo)",
       "why_deferred": "The answer is a repo file, not vault content, so no arm can retrieve it from the 8,030-file week-1 corpus. Both arms would fail equally — the A/B comparison survives, but the slot measures nothing. The vault holds only partial answers: F1-REAUDIT.md states the as-built capture path contradicts the designed one, and progress-r0-engine-repairs.md carries the inbox-backlog finding. Neither is the diagnosis being asked for.",
       "activation_condition": "Promote into `entries` once the rescope designs live under desk/projects/ per the layout in agentm-rescope-memory.md. This is the mirror of the retirement-list rule: that rule stops the set labeling against files about to disappear; this stops it discarding questions whose targets have not arrived yet.",
-      "open_question": "The clause 'forcing me to do a second re-write ... but actuall didn't' is unresolved — whether the rewrite did not happen, or happened and did not deliver. Settle before promoting; a scorer needs to know what a right answer looks like.",
-      "superseded_for_week_1_by": "pp07 — the same question narrowed by deletion to the half the current vault can answer. Promoting this one later does not retire pp07; they ask at different altitudes."
+      "superseded_for_week_1_by": "pp07 — the same question narrowed by deletion to the half the current vault can answer. Promoting this one later does not retire pp07; they ask at different altitudes.",
+      "clause_note": "The original ended '...but actuall didn't?'. Operator dropped the clause 2026-08-06 as unresolvable rather than pick a reading; whoever promotes this decides what a right answer looks like."
     }
   ],
   "entries": [
@@ -266,7 +266,7 @@
     },
     {
       "id": "pp13",
-      "question": "Show me my current homelab configuration, what processor do i have in the two servers?",
+      "question": "Show me my current house configuration, what processor do i have in the two servers?",
       "expected_note_paths": [
         "personal/domains/homelab/nas-unraid.md",
         "personal/domains/homelab/home-server.md"
@@ -274,7 +274,7 @@
       "stratum": "pure-paraphrase",
       "source": "cold",
       "note": "nas-unraid.md carries the confirmed spec (Intel Xeon E-2176G, 6C/12T, ASRock Rack E3C246D4U, 64 GB ECC), confirmed 2026-06-27. Note the confirmation cites _idea-incubator/home-server-cluster/research-local-llm-home-box, which is on the retirement list — same pattern as ep01, the surviving fact outlives its source.",
-      "sharpest_collision": "homelab (0.8%)"
+      "sharpest_collision": "current (10.3%)"
     },
     {
       "id": "pp14",
@@ -398,13 +398,10 @@
     },
     {
       "id": "ep07",
-      "question": "When did git worktrees break my old antigravity setup and why?",
-      "expected_note_paths": [
-        "personal/workflow-pattern/renamed-cwd-breaks-resume.md"
-      ],
+      "question": "",
+      "expected_note_paths": [],
       "stratum": "episodic-temporal",
-      "source": "cold",
-      "note": "PREMISE MISMATCH — the vault records a renamed cwd breaking session resume in Claude Code (discovered 2026-05-25, gh repo rename during plan #15 Wave 6), not worktrees breaking Antigravity. Either the operator is conflating two events or the one he means was never captured. Settle before this is scored."
+      "source": "cold"
     },
     {
       "id": "ep08",
@@ -582,10 +579,11 @@
     },
     {
       "id": "ng05",
-      "question": "What retention did we set on the Time Machine backups for the MacBook?",
+      "question": "When did git worktrees break my old antigravity setup and why?",
       "expected_note_paths": [],
       "stratum": "negative",
-      "source": "authored"
+      "source": "cold",
+      "note": "Operator confirms the event was never captured (2026-08-06). Verified across the whole vault: nothing records the operator's own Antigravity setup breaking because of worktrees. The near-misses are the trap, and they are strong. worktree-native-verdict-draft.md documents Antigravity's worktree support and cites 'live bug reports of worktree-config breaking the agent' — but those are Google AI Developer Forum threads by other people, undated, not his machine. BUGFIX-killswitch-ag-cwd.md (2026-06-02) is a real Antigravity directory-assumption failure that silently disabled his kill-switch, but has nothing to do with worktrees. renamed-cwd-breaks-resume.md (2026-05-25) and progress-wave-c-research-forward-learning.md are both Claude Code. An arm that returns any of these is wrong, and all four are plausible enough that returning nothing is a real test. Replaced my Time Machine negative, which duplicated ng01's backup topic."
     },
     {
       "id": "ng06",
