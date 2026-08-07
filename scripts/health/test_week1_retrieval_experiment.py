@@ -908,5 +908,408 @@ class TestSocketPathLength(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+# ---------------------------------------------------------------------------
+# Rank penalty
+# ---------------------------------------------------------------------------
+
+_FRAGMENT_NOTE = (
+    "---\nkind: preferences\nstatus: inbox\nslug: never-cache-1\n"
+    "mining_confidence: LOW\n---\n"
+    "User stated: ...never cache an absolute vault path as a literal, resolve it\n"
+)
+_REAL_NOTE = (
+    "---\nkind: convention\nstatus: active\ntags: [vault, paths]\n"
+    "aliases: [resolve the vault path at runtime]\n---\n"
+    "# Vault path convention\n\nResolve vault paths at runtime; never cache one.\n"
+)
+
+
+class TestClassifyDocument(unittest.TestCase):
+    """Every detection path, asserted against hand-written expectations.
+
+    The flag sets below are written out by hand from what each fixture is, not
+    read back off the classifier — a check that asks the implementation what it
+    thinks and then agrees with it verifies nothing.
+    """
+
+    def test_body_opening_with_a_miner_lead_in_is_a_fragment(self):
+        for opener in ("User stated:", "Fix observed:", "User corrected the agent:"):
+            raw = f"---\nkind: fix\n---\n{opener} ...something clipped mid-sentence\n"
+            self.assertEqual(wc.classify_document("personal/_inbox/x.md", raw),
+                             {"fragment"}, opener)
+
+    def test_mining_frontmatter_is_a_fragment_even_without_the_lead_in(self):
+        raw = "---\nkind: idea\nmining_confidence: HIGH\n---\nA perfectly ordinary body.\n"
+        self.assertEqual(wc.classify_document("personal/_inbox/y.md", raw), {"fragment"})
+
+    def test_mid_word_slug_under_a_miner_directory_is_a_fragment(self):
+        raw = "---\nkind: idea\n---\nrver's vault-hardwiring can't degrade\n"
+        self.assertEqual(
+            wc.classify_document("personal/idea/rver-s-vault-hardwiring-can-t-1.md", raw),
+            {"fragment"})
+
+    def test_an_ellipsis_opener_under_a_miner_directory_is_a_fragment(self):
+        raw = "---\nkind: idea\n---\n...processed in order. This is useful for bridges\n"
+        self.assertEqual(
+            wc.classify_document("personal/idea/processed-in-order-this-is-useful-1.md",
+                                 raw),
+            {"fragment"})
+
+    def test_a_real_looking_slug_outside_a_miner_directory_is_not_a_fragment(self):
+        raw = "---\nkind: convention\nstatus: active\n---\nOrdinary prose.\n"
+        self.assertEqual(wc.classify_document("personal/_always-load/ps-tooling.md", raw),
+                         set())
+
+    def test_a_short_real_word_does_not_read_as_a_truncation(self):
+        self.assertFalse(wc._looks_truncated_slug("api-key-handling"))
+        self.assertFalse(wc._looks_truncated_slug("read-multi-agent-memory"))
+        self.assertTrue(wc._looks_truncated_slug("rver-s-vault"))
+        self.assertTrue(wc._looks_truncated_slug("10-leaf-to-the-tree"))
+
+    def test_each_penalized_status_is_flagged(self):
+        for status in ("unfiled", "inbox", "superseded", "expired"):
+            raw = f"---\nkind: convention\nstatus: {status}\n---\n# Real note\n\nProse.\n"
+            self.assertEqual(wc.classify_document("personal/x.md", raw),
+                             {"status"}, status)
+
+    def test_an_active_note_carries_no_class(self):
+        self.assertEqual(wc.classify_document("projects/a/design.md", _REAL_NOTE), set())
+
+    def test_a_note_can_carry_several_classes(self):
+        self.assertEqual(wc.classify_document("personal/_inbox/never-cache-1.md",
+                                              _FRAGMENT_NOTE),
+                         {"fragment", "status"})
+
+    def test_a_dream_staging_proposal_is_its_own_class(self):
+        raw = "# Proposal 132: inbox_merge / merge\n\nnever-cache-1.md and never-cache.md\n"
+        self.assertEqual(
+            wc.classify_document(
+                "_dream-staging/inbox-20260712/132-inbox_merge-merge.proposal.md", raw),
+            {"staging"})
+
+    def test_a_proposal_outside_dream_staging_is_not_staged(self):
+        raw = "# Proposal 132: something\n\nbody\n"
+        self.assertEqual(wc.classify_document("projects/x/proposal.md", raw), set())
+
+
+class TestPenaltyMultiplier(unittest.TestCase):
+    def test_no_flags_leaves_a_score_untouched(self):
+        self.assertEqual(wc.penalty_multiplier(frozenset(), {"fragment": 0.3}), 1.0)
+
+    def test_classes_compound(self):
+        self.assertAlmostEqual(
+            wc.penalty_multiplier(frozenset({"fragment", "status"}),
+                                  {"fragment": 0.5, "status": 0.5}),
+            0.25)
+
+    def test_an_unweighted_class_is_a_no_op(self):
+        self.assertEqual(
+            wc.penalty_multiplier(frozenset({"staging"}), {"fragment": 0.1}), 1.0)
+
+
+def _make_penalty_vault(tmp):
+    """A vault where the fragments outrank the real note on a plain BM25 query.
+
+    Four fragments repeat the query's vocabulary in a short body, which is what
+    BM25 rewards; the real answer says the same thing once inside a longer note.
+    This is the shape the live vault has, reproduced small enough to assert on.
+    """
+    v = Path(tmp) / "vault"
+    (v / "personal" / "_inbox").mkdir(parents=True)
+    (v / "personal" / "_always-load").mkdir(parents=True)
+    for i in range(4):
+        (v / "personal" / "_inbox" / f"never-cache-{i}.md").write_text(
+            "---\nkind: preferences\nstatus: inbox\nmining_confidence: LOW\n---\n"
+            "User stated: ...vault path vault path never cache the vault path\n",
+            encoding="utf-8")
+    (v / "personal" / "_always-load" / "vault-path-convention.md").write_text(
+        "---\nkind: convention\nstatus: active\n---\n"
+        "# Vault path convention\n\n" + ("Unrelated background prose. " * 60)
+        + "\nResolve the vault path at runtime.\n",
+        encoding="utf-8")
+    return v
+
+
+class TestRankPenalty(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = _make_penalty_vault(self.tmp.name)
+        self.conn, self.n = wc.build_lexical_index(
+            self.vault, Path(self.tmp.name) / "lex.db")
+        self.flags = wc.load_doc_flags(self.conn)
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def test_flags_are_stored_for_the_fragments_only(self):
+        self.assertEqual(
+            set(self.flags),
+            {f"personal/_inbox/never-cache-{i}.md" for i in range(4)})
+        self.assertEqual(self.flags["personal/_inbox/never-cache-0.md"],
+                         frozenset({"fragment", "status"}))
+
+    def test_without_the_penalty_the_fragments_bury_the_real_note(self):
+        results, _ = wc.search_lexical(self.conn, "vault path", k=3)
+        self.assertTrue(all(r["path"].startswith("personal/_inbox/") for r in results),
+                        [r["path"] for r in results])
+
+    def test_the_penalty_lifts_the_real_note_to_the_top(self):
+        results, _ = wc.search_lexical(
+            self.conn, "vault path", k=3, doc_flags=self.flags,
+            penalty={"fragment": 0.3, "status": 0.6})
+        self.assertEqual(results[0]["path"],
+                         "personal/_always-load/vault-path-convention.md")
+
+    def test_demoted_notes_are_still_returned(self):
+        """The whole point. A demoted note ranks lower; it does not disappear."""
+        results, _ = wc.search_lexical(
+            self.conn, "vault path", k=5, doc_flags=self.flags,
+            penalty={"fragment": 0.3, "status": 0.6})
+        self.assertEqual(len(results), 5)
+        self.assertEqual(
+            {r["path"] for r in results if r["path"].startswith("personal/_inbox/")},
+            {f"personal/_inbox/never-cache-{i}.md" for i in range(4)})
+
+    def test_a_penalized_note_that_is_the_only_match_still_comes_back_first(self):
+        results, _ = wc.search_lexical(
+            self.conn, "mining_confidence", k=5, doc_flags=self.flags,
+            penalty={"fragment": 0.01, "status": 0.01})
+        self.assertTrue(results)
+        self.assertTrue(results[0]["path"].startswith("personal/_inbox/"))
+
+    def test_the_adjusted_score_and_the_reason_are_both_reported(self):
+        results, _ = wc.search_lexical(
+            self.conn, "vault path", k=5, doc_flags=self.flags,
+            penalty={"fragment": 0.5, "status": 0.5})
+        demoted = next(r for r in results if r["path"].startswith("personal/_inbox/"))
+        self.assertEqual(demoted["penalty"], "fragment,status")
+        self.assertAlmostEqual(demoted["score"], round(demoted["raw_score"] * 0.25, 4),
+                               places=3)
+
+    def test_an_unpenalized_search_is_byte_identical_to_before_the_change(self):
+        """The control has to stay the control: passing no penalty must not
+        reorder, rescore, or annotate anything."""
+        plain, _ = wc.search_lexical(self.conn, "vault path", k=5)
+        with_flags_but_no_penalty, _ = wc.search_lexical(
+            self.conn, "vault path", k=5, doc_flags=self.flags)
+        self.assertEqual(plain, with_flags_but_no_penalty)
+        self.assertTrue(all("penalty" not in r and "raw_score" not in r for r in plain))
+
+    def test_the_penalty_can_promote_a_note_from_outside_the_top_k(self):
+        """Over-fetch, not re-sort-the-five. A penalty that only reordered the
+        k rows already returned could never surface the note the fragments were
+        hiding, which is the only thing it exists to do."""
+        results, _ = wc.search_lexical(
+            self.conn, "vault path", k=1, doc_flags=self.flags,
+            penalty={"fragment": 0.3, "status": 0.6})
+        self.assertEqual(results[0]["path"],
+                         "personal/_always-load/vault-path-convention.md")
+
+
+class TestLexicalVariants(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = _make_vault(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _build(self, variant):
+        return wc.build_lexical_index(
+            self.vault, Path(self.tmp.name) / wc.lexical_db_name(variant),
+            variant=variant)
+
+    def test_every_variant_builds_and_indexes_the_same_notes(self):
+        for variant in sorted(wc.LEXICAL_VARIANTS):
+            conn, n = self._build(variant)
+            try:
+                self.assertEqual(n, 4, variant)
+            finally:
+                conn.close()
+
+    def test_the_baseline_variant_is_what_the_first_run_used(self):
+        """Pinned to literals, because the follow-up's whole attribution rests on
+        the baseline already carrying porter stemming and a 4x title weight."""
+        spec = wc.LEXICAL_VARIANTS["baseline"]
+        self.assertEqual(spec["tokenize"], "porter unicode61")
+        self.assertEqual(spec["weights"], (0.0, 4.0, 1.0))
+        self.assertEqual(wc.lexical_db_name("baseline"), "lexical.db")
+
+    def test_porter_stemming_matches_an_inflected_query(self):
+        conn, _ = self._build("baseline")
+        try:
+            results, _ = wc.search_lexical(conn, "watering tomatoes", k=3)
+            self.assertEqual(results[0]["path"], "projects/unrelated-gardening.md")
+        finally:
+            conn.close()
+
+    def test_the_plain_variant_drops_stemming(self):
+        conn, _ = self._build("plain")
+        try:
+            results, _ = wc.search_lexical(conn, "tomato", k=3,
+                                           weights=wc.LEXICAL_VARIANTS["plain"]["weights"])
+            self.assertEqual(results, [],
+                             "unicode61 alone should not match 'tomatoes' from 'tomato'")
+        finally:
+            conn.close()
+
+    def test_the_fields_variant_indexes_tags_into_their_own_column(self):
+        conn, _ = self._build("fields")
+        try:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(docs)").fetchall()]
+            self.assertEqual(cols, ["path", "title", "meta", "body"])
+            row = conn.execute(
+                "SELECT meta FROM docs WHERE path = ?",
+                ("personal/_always-load/commit-no-coauthor-trailer.md",)).fetchone()
+            self.assertEqual(row[0], "git commits")
+        finally:
+            conn.close()
+
+    def test_switching_variant_rebuilds_rather_than_reusing_the_other_schema(self):
+        db = Path(self.tmp.name) / "shared.db"
+        conn_a, _ = wc.build_lexical_index(self.vault, db, variant="baseline")
+        conn_a.close()
+        conn_b, n = wc.build_lexical_index(self.vault, db, variant="fields")
+        try:
+            cols = [r[1] for r in conn_b.execute("PRAGMA table_info(docs)").fetchall()]
+            self.assertIn("meta", cols)
+            self.assertEqual(n, 4)
+        finally:
+            conn_b.close()
+
+    def test_an_unknown_variant_is_refused(self):
+        with self.assertRaises(wc.CorpusError):
+            wc.variant_spec("porter-plus-magic")
+
+
+class TestExtractMetaText(unittest.TestCase):
+    def test_aliases_and_tags_are_flattened(self):
+        head = "kind: convention\naliases: [resolve at runtime, never cache]\ntags: [vault]"
+        self.assertEqual(wc.extract_meta_text(head),
+                         "resolve at runtime never cache vault")
+
+    def test_absent_fields_give_an_empty_string(self):
+        self.assertEqual(wc.extract_meta_text("kind: convention\nstatus: active"), "")
+
+
+class TestOrJoinQuery(unittest.TestCase):
+    """FTS5's bare MATCH ANDs every term. These pin what the OR rewrite does to
+    a query, because the rewrite is the difference between a paraphrase finding
+    nothing and finding something."""
+
+    def test_bare_words_are_quoted_and_or_joined(self):
+        self.assertEqual(wc.or_join_query("house project ideas"),
+                         '"house" OR "project" OR "ideas"')
+
+    def test_a_quoted_phrase_survives_as_a_phrase(self):
+        self.assertEqual(wc.or_join_query('"F0" prompt pack'),
+                         '"F0" OR "prompt" OR "pack"')
+        self.assertEqual(wc.or_join_query('"rebuild not refactor" blog draft'),
+                         '"rebuild not refactor" OR "blog" OR "draft"')
+
+    def test_an_operator_the_agent_wrote_is_not_searched_for(self):
+        self.assertEqual(wc.or_join_query('"first rewrite" OR "ground-up rewrite"'),
+                         '"first rewrite" OR "ground-up rewrite"')
+
+    def test_punctuation_cannot_become_syntax(self):
+        self.assertEqual(wc.or_join_query("v5.3 what's foo-bar"),
+                         '"v5" OR "3" OR "what" OR "s" OR "foo" OR "bar"')
+
+    def test_an_empty_or_wordless_query_gives_nothing_to_search(self):
+        self.assertIsNone(wc.or_join_query(""))
+        self.assertIsNone(wc.or_join_query("   "))
+        self.assertIsNone(wc.or_join_query("!!! ???"))
+
+
+class TestQueryModes(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.vault = _make_vault(self.tmp.name)
+        self.conn, _ = wc.build_lexical_index(self.vault, Path(self.tmp.name) / "lex.db")
+
+    def tearDown(self):
+        self.conn.close()
+        self.tmp.cleanup()
+
+    def test_as_is_ands_the_terms_and_can_return_nothing(self):
+        """The 2026-08-06 behaviour, pinned: no note holds all four words, so
+        the default mode returns an empty set rather than its best partial match."""
+        results, _ = wc.search_lexical(
+            self.conn, "tomatoes harbour trailer speculatively", k=5)
+        self.assertEqual(results, [])
+
+    def test_or_mode_returns_the_best_partial_match_instead_of_nothing(self):
+        results, note = wc.search_lexical(
+            self.conn, "tomatoes harbour trailer speculatively", k=5,
+            query_mode="or")
+        self.assertTrue(results)
+        self.assertIn("any of the query's terms", note)
+
+    def test_or_mode_still_ranks_the_note_that_matches_most_terms_first(self):
+        results, _ = wc.search_lexical(
+            self.conn, "tomatoes full sun watering", k=4, query_mode="or")
+        self.assertEqual(results[0]["path"], "projects/unrelated-gardening.md")
+
+    def test_or_mode_leaves_a_single_term_query_alone(self):
+        as_is, _ = wc.search_lexical(self.conn, "tomatoes", k=3)
+        or_mode, note = wc.search_lexical(self.conn, "tomatoes", k=3, query_mode="or")
+        self.assertEqual([r["path"] for r in as_is], [r["path"] for r in or_mode])
+        self.assertIsNone(note)
+
+    def test_or_mode_composes_with_the_penalty(self):
+        flags = wc.load_doc_flags(self.conn)
+        results, _ = wc.search_lexical(
+            self.conn, "tomatoes harbour", k=5, query_mode="or",
+            doc_flags=flags, penalty={"fragment": 0.3})
+        self.assertTrue(results)
+
+
+class TestPenaltyCliGuards(unittest.TestCase):
+    """A zero weight is exclusion in a demotion's costume — the CLI refuses it."""
+
+    def _main(self, penalty):
+        return w1.main([
+            "--gold-set", str(_HERE / "fixtures" / "week1-gold" / "smoke-set.json"),
+            "--arm", "A", "--driver", "mock", "--penalty", penalty,
+            "--vault-path", str(_make_vault(tempfile.mkdtemp())),
+        ])
+
+    def test_a_zero_weight_is_rejected(self):
+        with self.assertRaises(SystemExit) as cm:
+            self._main('{"fragment": 0}')
+        self.assertIn("exclusion", str(cm.exception))
+
+    def test_a_weight_above_one_is_rejected(self):
+        with self.assertRaises(SystemExit) as cm:
+            self._main('{"fragment": 1.5}')
+        self.assertIn("(0, 1]", str(cm.exception))
+
+    def test_an_unknown_class_is_rejected(self):
+        with self.assertRaises(SystemExit) as cm:
+            self._main('{"fragmnet": 0.3}')
+        self.assertIn("unknown penalty class", str(cm.exception))
+
+
+class TestSurfaceStats(unittest.TestCase):
+    def test_flagged_share_counts_served_rows_not_questions(self):
+        rows = [
+            {"tool_call_log": [
+                {"result_penalties": ["fragment", "", "fragment,status", "", ""]},
+                {"result_penalties": ["", ""]},
+            ]},
+            {"tool_call_log": [{"result_penalties": ["staging"]}]},
+        ]
+        stats = w1._surface_stats(rows)
+        self.assertEqual(stats["results_served"], 8)
+        self.assertEqual(stats["flagged_results_served"], 3)
+        self.assertEqual(stats["flagged_share"], 0.375)
+        self.assertEqual(stats["flagged_by_class"],
+                         {"fragment": 2, "staging": 1, "status": 1})
+
+    def test_a_run_that_served_nothing_reports_no_share_rather_than_zero(self):
+        self.assertIsNone(w1._surface_stats([])["flagged_share"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -72,6 +72,7 @@ for _p in (_HERE, _REPO / "scripts"):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
+import week1_corpus as corpus_mod  # noqa: E402
 import week1_search_daemon as daemon_mod  # noqa: E402
 from eval_v6_retrieval import score_at_k  # noqa: E402
 
@@ -412,6 +413,34 @@ def _finalize(bucket):
     return out
 
 
+def _surface_stats(rows):
+    """How much of what the agent actually read was flagged junk.
+
+    The scorecard's P@5/R@5 score the agent's *answer*, which is the right thing
+    to decide the design on and the wrong thing to diagnose a ranking change
+    with — an agent can read five fragments, discard all five, and still answer
+    correctly on the sixth call. This counts the results the tools returned, so
+    "the penalty cleared the reading surface" and "the penalty changed the
+    answer" are two separate claims with two separate numbers behind them.
+    """
+    served = flagged = 0
+    by_class = {}
+    for r in rows:
+        for call in r.get("tool_call_log") or []:
+            for pen in call.get("result_penalties") or []:
+                served += 1
+                if pen:
+                    flagged += 1
+                    for c in pen.split(","):
+                        by_class[c] = by_class.get(c, 0) + 1
+    return {
+        "results_served": served,
+        "flagged_results_served": flagged,
+        "flagged_share": round(flagged / served, 4) if served else None,
+        "flagged_by_class": dict(sorted(by_class.items())),
+    }
+
+
 def render_table(report):
     """A readable scorecard: overall, per stratum, then every question that missed."""
     lines = []
@@ -423,6 +452,19 @@ def render_table(report):
         + (f"  ·  ${report['cost_usd_total']:.2f}  ·  {report['wall_s_total'] / 60:.1f} min"
            if report.get("cost_usd_total") else "")
     )
+    lines.append(
+        f"lexical={report.get('lexical_variant', 'baseline')}"
+        f"  ·  query-mode={report.get('query_mode', 'as-is')}  ·  penalty="
+        + (json.dumps(report["penalty"], sort_keys=True) if report.get("penalty") else "off")
+    )
+    surface = report.get("surface") or {}
+    if surface.get("results_served"):
+        lines.append(
+            f"reading surface: {surface['flagged_results_served']}/"
+            f"{surface['results_served']} results served were flagged "
+            f"({surface['flagged_share']:.1%})"
+            + (f"  {surface['flagged_by_class']}" if surface.get("flagged_by_class") else "")
+        )
     lines.append("")
     header = f"{'stratum':<22} {'n':>4} {'P@5':>7} {'R@5':>7} {'acc':>7} {'calls':>7}"
     lines.append(header)
@@ -512,7 +554,9 @@ def _make_run_dir(arm):
 
 
 def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeout,
-            exclude_dirs, embed_mode, mock_calls, verbose=True):
+            exclude_dirs, embed_mode, mock_calls, verbose=True,
+            lexical_variant=corpus_mod.DEFAULT_VARIANT, penalty=None,
+            query_mode="as-is"):
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
     run_dir = _make_run_dir(arm)
@@ -526,7 +570,9 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
          "--vault-path", str(vault), "--work-dir", str(work_dir),
          "--socket", str(socket_path), "--ready-file", str(ready_path),
          "--arm", arm, "--call-budget", str(call_budget),
-         "--embed-mode", embed_mode]
+         "--embed-mode", embed_mode, "--variant", lexical_variant,
+         "--query-mode", query_mode]
+        + (["--penalty", json.dumps(penalty)] if penalty else [])
         + [a for d in exclude_dirs for a in ("--exclude-dir", d)],
         stdout=None, stderr=None,
     )
@@ -544,9 +590,26 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
         info = daemon_mod.request(socket_path, {"op": "ping"})
         if not info.get("ok"):
             raise SystemExit(f"[week1] daemon ping failed: {info}")
+        # The daemon is the authority on what it actually built. Trusting the
+        # flag we passed would let a scorecard claim a variant it never ran —
+        # the same class of error as a mirror test, and the reason every
+        # integrity check here reads back rather than assumes.
+        if (info.get("variant") != lexical_variant
+                or (info.get("penalty") or None) != (penalty or None)
+                or info.get("query_mode") != query_mode):
+            raise SystemExit(
+                f"[week1] the daemon is serving variant={info.get('variant')!r} "
+                f"query_mode={info.get('query_mode')!r} penalty={info.get('penalty')!r}, "
+                f"but this run was asked for variant={lexical_variant!r} "
+                f"query_mode={query_mode!r} penalty={penalty!r}. Refusing to label a "
+                f"scorecard with a configuration it did not run under.")
         if verbose:
             print(f"[week1] arm {arm} ready — tools {info['tools']}, "
-                  f"{info['n_docs']} notes, budget {info['call_budget']}", file=sys.stderr)
+                  f"{info['n_docs']} notes, budget {info['call_budget']}, "
+                  f"variant {info.get('variant')}, "
+                  f"query-mode {info.get('query_mode')}, "
+                  f"{info.get('n_flagged', 0)} flagged notes, penalty "
+                  f"{info.get('penalty') or 'off'}", file=sys.stderr)
 
         rows, hook_violations, count_mismatches, tool_escapes = [], [], [], []
         refused_attempts = []
@@ -628,6 +691,13 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
         "vault_name": vault.name,
         "corpus": {"n_docs": info["n_docs"], "excluded_dirs": exclude_dirs,
                    "embed_mode": embed_mode if arm == "B" else None},
+        # Read back off the daemon, not echoed from the arguments — see the
+        # ready-check above for why.
+        "lexical_variant": info.get("variant"),
+        "query_mode": info.get("query_mode"),
+        "penalty": info.get("penalty"),
+        "n_flagged_notes": info.get("n_flagged"),
+        "surface": _surface_stats(rows),
         "call_budget": call_budget,
         "n_questions": len(rows),
         "cost_usd_total": round(sum(r.get("cost_usd", 0.0) for r in rows), 4),
@@ -687,7 +757,38 @@ def main(argv=None):
                          "ceiling is exercised on every question")
     ap.add_argument("--limit", type=int, default=None, help="first N questions only")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument(
+        "--lexical-variant", default=corpus_mod.DEFAULT_VARIANT,
+        choices=sorted(corpus_mod.LEXICAL_VARIANTS),
+        help="which FTS5 schema the lexical tool queries (default: baseline, "
+             "the schema the 2026-08-06 run used)")
+    ap.add_argument(
+        "--query-mode", default="as-is", choices=corpus_mod.QUERY_MODES,
+        help="'as-is' hands the agent's query straight to FTS5, which ANDs its "
+             "terms — the 2026-08-06 behaviour; 'or' OR-joins them, phrases intact")
+    ap.add_argument(
+        "--penalty", default=None,
+        help='rank-penalty weights as JSON, e.g. \'{"fragment":0.3,"status":0.6}\', '
+             'or "default" for the tuned set. Omit for no penalty.')
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
+
+    if args.penalty == "default":
+        penalty = dict(corpus_mod.DEFAULT_PENALTY_WEIGHTS)
+    elif args.penalty:
+        penalty = json.loads(args.penalty)
+        unknown = set(penalty) - set(corpus_mod.DEFAULT_PENALTY_WEIGHTS)
+        if unknown:
+            raise SystemExit(
+                f"[week1] unknown penalty class(es) {sorted(unknown)}; known classes "
+                f"are {sorted(corpus_mod.DEFAULT_PENALTY_WEIGHTS)}. A typo here would "
+                f"silently run an unpenalized arm and report it as penalized.")
+        if any(not (0 < float(v) <= 1) for v in penalty.values()):
+            raise SystemExit(
+                "[week1] penalty weights must be in (0, 1]. A weight of 0 is "
+                "exclusion wearing a demotion's clothes, and this experiment "
+                "exists partly because exclusion cost four months of dead recall.")
+    else:
+        penalty = None
 
     vault = resolve_vault(args.vault_path)
     entries = load_gold_set(args.gold_set)
@@ -714,6 +815,8 @@ def main(argv=None):
         driver=args.driver, model=args.model, timeout=args.timeout,
         exclude_dirs=args.exclude_dir, embed_mode=args.embed_mode,
         mock_calls=args.mock_calls, verbose=not args.quiet,
+        lexical_variant=args.lexical_variant, penalty=penalty,
+        query_mode=args.query_mode,
     )
     # Repo-relative when it resolves inside the repo, else just the filename —
     # committed reports must not carry `/Users/<name>/...` (the PII gate blocks

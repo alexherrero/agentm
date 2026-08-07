@@ -97,7 +97,14 @@ ALLOWLIST_PATTERNS=(
 # gate's detection logic).
 LINE_ALLOWLIST_PATTERNS=(
     'uses: [A-Za-z0-9_./-]+@[0-9a-f]{40}'  # SHA-pinned GitHub Actions (public refs; digit runs inside a SHA can mimic a phone number)
-    '_dream-staging/inbox-[0-9]{8}-[0-9]{6}-[0-9a-f]{8}'  # machine-stamped staging dirnames (YYYYMMDD-HHMMSS-hash); the digit run mimics a phone number but is a timestamp. Week-1 retrieval scorecards record answered vault paths verbatim, so these land in committed JSON.
+    # Machine-stamped vault paths whose timestamp digits mimic a US phone
+    # number. The week-1 retrieval scorecards record the paths a search
+    # returned, verbatim, so every timestamped note name in this vault lands in
+    # committed JSON. Each pattern below names one real path shape rather than
+    # allowlisting date-like digit runs generally — a broad rule here would mask
+    # a genuine phone number that happened to sit in a path.
+    '_dream(-staging)?/(inbox-|insights/)?[0-9]{8}-[0-9]{6}-[0-9a-f]{8}'  # staging dirnames + distilled insights, YYYYMMDD-HHMMSS-hash
+    'personal/_inbox/[0-9]{8}-[0-9]{4}-'                                 # timestamped note filenames, YYYYMMDD-HHMM-slug
 )
 
 # ── file collection ───────────────────────────────────────────────────────

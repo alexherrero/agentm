@@ -56,12 +56,18 @@ TOOL_VECTOR = "search_vector"
 
 class SearchDaemon:
     def __init__(self, vault, work_dir, *, arm="A", call_budget=DEFAULT_CALL_BUDGET,
-                 exclude_dirs=None, embed_mode="local", verbose=True):
+                 exclude_dirs=None, embed_mode="local", verbose=True,
+                 variant=week1_corpus.DEFAULT_VARIANT, penalty=None,
+                 query_mode="as-is"):
         self.vault = Path(vault)
         self.work_dir = Path(work_dir)
         self.arm = arm
         self.call_budget = call_budget
         self.verbose = verbose
+        self.variant = variant
+        self.penalty = penalty or None
+        self.query_mode = query_mode
+        self.weights = week1_corpus.variant_spec(variant)["weights"]
         self.lock = threading.Lock()
         self.question_id = None
         self.calls_used = 0
@@ -70,7 +76,17 @@ class SearchDaemon:
         paths = week1_corpus.iter_markdown_paths(self.vault, exclude_dirs=exclude_dirs)
         self._log(f"corpus: {len(paths)} .md files under {self.vault}")
         self.conn, self.n_docs = week1_corpus.build_lexical_index(
-            self.vault, self.work_dir / "lexical.db", paths=paths, verbose=verbose
+            self.vault, self.work_dir / week1_corpus.lexical_db_name(variant),
+            paths=paths, variant=variant, verbose=verbose
+        )
+        # Loaded whatever the penalty setting, so an unpenalized run still
+        # reports how much of what it served was flagged.
+        self.doc_flags = week1_corpus.load_doc_flags(self.conn)
+        self._log(
+            f"lexical variant {variant} (weights {self.weights}), "
+            f"query-mode {query_mode}, "
+            f"{len(self.doc_flags)} flagged notes, penalty "
+            + (f"{self.penalty}" if self.penalty else "off")
         )
         # SQLite connections are not shareable across threads by default and the
         # accept loop is single-threaded, so this stays on the serving thread.
@@ -110,7 +126,10 @@ class SearchDaemon:
         op = req.get("op")
         if op == "ping":
             return {"ok": True, "arm": self.arm, "tools": self.tools(),
-                    "n_docs": self.n_docs, "call_budget": self.call_budget}
+                    "n_docs": self.n_docs, "call_budget": self.call_budget,
+                    "variant": self.variant, "penalty": self.penalty,
+                    "query_mode": self.query_mode,
+                    "n_flagged": len(self.doc_flags)}
         if op == "begin":
             with self.lock:
                 self.question_id = req.get("question_id")
@@ -153,7 +172,11 @@ class SearchDaemon:
 
         started = time.monotonic()
         if tool == TOOL_LEXICAL:
-            results, note = week1_corpus.search_lexical(self.conn, query, k=k)
+            results, note = week1_corpus.search_lexical(
+                self.conn, query, k=k, weights=self.weights,
+                doc_flags=self.doc_flags, penalty=self.penalty,
+                query_mode=self.query_mode,
+            )
         else:
             results, note = week1_corpus.search_vector(*self.vector, query=query, k=k)
         elapsed_ms = (time.monotonic() - started) * 1000
@@ -162,6 +185,19 @@ class SearchDaemon:
             self.call_log.append({
                 "n": used, "tool": tool, "query": query,
                 "n_results": len(results), "ms": round(elapsed_ms, 1),
+                # What the agent was shown, so the scorecard can answer "how much
+                # of the reading surface was junk" without a second run.
+                #
+                # The classes come from `doc_flags`, not from each result's own
+                # `penalty` key, and that distinction is load-bearing: the key is
+                # only attached when a penalty is active, so reading it made an
+                # unpenalized run report a junk share of zero — which is what the
+                # first control run did, claiming a clean reading surface while
+                # serving 5.9% fragments. A control that looks clean by
+                # construction is worse than no number at all.
+                "result_paths": [r["path"] for r in results],
+                "result_penalties": [
+                    ",".join(sorted(self.doc_flags.get(r["path"], ()))) for r in results],
             })
         return {
             "ok": True, "results": results, "note": note,
@@ -243,11 +279,20 @@ def main(argv=None):
     ap.add_argument("--call-budget", type=int, default=DEFAULT_CALL_BUDGET)
     ap.add_argument("--exclude-dir", action="append", default=[])
     ap.add_argument("--embed-mode", default="local", choices=("local", "stub"))
+    ap.add_argument("--variant", default=week1_corpus.DEFAULT_VARIANT,
+                    choices=sorted(week1_corpus.LEXICAL_VARIANTS))
+    ap.add_argument("--query-mode", default="as-is",
+                    choices=week1_corpus.QUERY_MODES)
+    ap.add_argument("--penalty", default=None,
+                    help="JSON object of per-class weights, e.g. "
+                         '\'{"fragment": 0.3, "status": 0.6}\'. Omit for none.')
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
     daemon = SearchDaemon(
         args.vault_path, args.work_dir, arm=args.arm, call_budget=args.call_budget,
         exclude_dirs=args.exclude_dir, embed_mode=args.embed_mode,
+        variant=args.variant, query_mode=args.query_mode,
+        penalty=json.loads(args.penalty) if args.penalty else None,
     )
     daemon.serve(args.socket, ready_path=args.ready_file)
     return 0
