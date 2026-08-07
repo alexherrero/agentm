@@ -35,9 +35,11 @@ by the thing enforcing it is not checked.
 **Context isolation.** The operator's `UserPromptSubmit` hook injects recalled
 vault entries into every prompt. Left alone it would hand the driver the answer
 before it searched, and the experiment would report near-perfect recall for both
-arms. Measured, not assumed: `--settings '{"hooks":{}}'` does *not* suppress
-them (settings merge), so the driver runs under a scratch `CLAUDE_CONFIG_DIR`,
-and every run is parsed for hook events. Any hook that fires fails the run.
+arms. Suppressing it is `--settings '{"disableAllHooks":true}'`, which was
+arrived at by measurement — `{"hooks":{}}` and per-event empty arrays both leave
+the hooks running, while `CLAUDE_CONFIG_DIR` and `--bare` stop them but break
+OAuth. Since a wrong choice here fails silently and inflates both arms, every
+run is parsed for hook events regardless, and any hook that fires fails the run.
 
 **The warm embedding model.** The daemon loads it once for the whole run and
 probes it; see that module's docstring for why this is the one thing the
@@ -75,6 +77,36 @@ from eval_v6_retrieval import score_at_k  # noqa: E402
 
 VALID_SOURCES = {"transcript", "cold", "authored"}
 SCORE_K = 5
+
+# Tools the driver is permitted to touch. `ToolSearch` is Claude Code's own
+# deferred-tool loader: MCP tools arrive deferred, so the agent must load the
+# search tool's schema before it can call it. It is plumbing, not a search, and
+# does not count against the budget.
+_HARNESS_TOOLS = {"ToolSearch"}
+_ARM_TOOLS = {"mcp__week1__search_lexical", "mcp__week1__search_vector"}
+
+# Denied outright. `--disallowedTools` alone is NOT sufficient: it does not
+# cover the deferred surface, and an agent told to try can reach `Monitor`
+# through `ToolSearch` and run `grep -rl <vault>` against the corpus — verified
+# by doing exactly that during this build. That single hole would have made Arm
+# A measure grep instead of FTS5, which is the specific failure the MCP design
+# was chosen to prevent. `permissions.deny` in `--settings` does close it.
+#
+# This list is prevention and will drift as Claude Code adds tools, so it is not
+# what the experiment's validity rests on — `_UNEXPECTED_TOOL_USE` below audits
+# the transcript for any tool outside the permitted set and fails the run. A
+# denylist can be incomplete; the audit cannot be, because it checks what was
+# actually called.
+_DENIED_TOOLS = [
+    "Bash", "Read", "Grep", "Glob", "Edit", "Write", "NotebookEdit",
+    "Task", "Agent", "Workflow", "Skill", "Artifact", "SendUserFile",
+    "Monitor", "TaskCreate", "TaskGet", "TaskList", "TaskOutput", "TaskStop",
+    "TaskUpdate", "ScheduleWakeup", "CronCreate", "CronList", "CronDelete",
+    "RemoteTrigger", "SendMessage", "PushNotification", "DesignSync",
+    "EnterWorktree", "ExitWorktree", "EnterPlanMode", "ExitPlanMode",
+    "WebSearch", "WebFetch", "ListMcpResourcesTool", "ReadMcpResourceTool",
+    "ReadMcpResourceDirTool", "ReportFindings",
+]
 _ANSWER_RE = re.compile(r"^\s*ANSWER:\s*(.*)$", re.IGNORECASE | re.MULTILINE)
 _NO_ANSWER = {"no answer found", "none", "no answer", "n/a", "-"}
 
@@ -223,19 +255,25 @@ def run_driver_claude(question, arm, socket_path, call_budget, *, model, timeout
         "--mcp-config", json.dumps(mcp_config),
         "--strict-mcp-config",
         "--allowedTools", *allowed,
-        # Belt and braces on the closed toolset: even if an allowlist were
-        # somehow permissive, an agent that can read or grep the vault directly
-        # is not running the arm we think it is running.
-        "--disallowedTools", "Read", "Grep", "Glob", "Bash", "Task", "WebSearch",
-        "WebFetch", "Edit", "Write", "NotebookEdit", "Skill",
+        # The operator's real ~/.claude carries a UserPromptSubmit hook that
+        # injects recalled vault entries into every prompt — it would hand the
+        # driver its answers before it searched. Suppressing it took measuring
+        # rather than guessing, because three plausible approaches fail, two of
+        # them silently:
+        #   --settings '{"hooks":{}}'          hooks still fire (settings merge)
+        #   --settings '{"hooks":{"X":[]}}'    hooks still fire (arrays concat)
+        #   CLAUDE_CONFIG_DIR=<scratch>        hooks off, but OAuth breaks
+        #   --bare / CLAUDE_CODE_SIMPLE=1      hooks off, but OAuth breaks
+        # Only this one gives both. The two properties are otherwise coupled:
+        # every mode that drops the hook config also refuses keychain OAuth.
+        "--settings", json.dumps({
+            "disableAllHooks": True,
+            "permissions": {"deny": _DENIED_TOOLS},
+        }),
         "--output-format", "stream-json", "--verbose", "--include-hook-events",
         "--no-session-persistence", "--disable-slash-commands",
     ]
     env = dict(os.environ)
-    # Scratch config dir: the operator's real ~/.claude carries the memory-recall
-    # hooks that would inject vault content straight into the prompt. Verified
-    # empirically to suppress them; `--settings '{"hooks":{}}'` does not.
-    env["CLAUDE_CONFIG_DIR"] = str(config_dir)
     env.pop("MEMORY_VAULT_PATH", None)
 
     started = time.monotonic()
@@ -246,10 +284,12 @@ def run_driver_claude(question, arm, socket_path, call_budget, *, model, timeout
         )
     except subprocess.TimeoutExpired:
         return {"text": "", "hooks_fired": [], "transcript_tool_calls": 0,
+                "unexpected_tools": [],
                 "error": f"driver timed out after {timeout}s",
                 "wall_s": round(time.monotonic() - started, 1)}
 
-    text, hooks, tool_calls, err = "", [], 0, None
+    text, hooks, err = "", [], None
+    tools_used, cost_usd = [], 0.0
     for line in proc.stdout.splitlines():
         try:
             ev = json.loads(line)
@@ -260,17 +300,26 @@ def run_driver_claude(question, arm, socket_path, call_budget, *, model, timeout
         elif ev.get("type") == "assistant":
             for block in (ev.get("message") or {}).get("content") or []:
                 if block.get("type") == "tool_use":
-                    tool_calls += 1
+                    tools_used.append(block.get("name"))
         elif ev.get("type") == "result":
             if ev.get("is_error") or ev.get("subtype") != "success":
                 err = str(ev.get("result") or ev.get("subtype") or "driver error")
             text = ev.get("result") or text
+            cost_usd = float(ev.get("total_cost_usd") or 0.0)
     if not text and proc.returncode != 0:
         err = err or (proc.stderr.strip().splitlines() or ["driver failed"])[-1]
     if verbose and err:
         print(f"[week1] driver error on {question['id']}: {err}", file=sys.stderr)
-    return {"text": text, "hooks_fired": hooks, "transcript_tool_calls": tool_calls,
-            "error": err, "wall_s": round(time.monotonic() - started, 1)}
+    # Only arm tools count against the budget; anything outside the permitted
+    # set is an escape and is reported, not counted.
+    return {
+        "text": text, "hooks_fired": hooks, "error": err,
+        "transcript_tool_calls": sum(1 for t in tools_used if t in _ARM_TOOLS),
+        "cost_usd": round(cost_usd, 4),
+        "unexpected_tools": sorted(
+            set(tools_used) - _ARM_TOOLS - _HARNESS_TOOLS),
+        "wall_s": round(time.monotonic() - started, 1),
+    }
 
 
 def run_driver_mock(question, arm, socket_path, call_budget, *, mock_calls, **_):
@@ -298,12 +347,13 @@ def run_driver_mock(question, arm, socket_path, call_budget, *, mock_calls, **_)
                 refusals += 1
                 continue
             return {"text": "", "hooks_fired": [], "transcript_tool_calls": calls,
+                    "unexpected_tools": [],
                     "error": f"mock search failed: {resp.get('error')}", "wall_s": 0.0}
         for r in resp.get("results") or []:
             if r["path"] not in seen:
                 seen.append(r["path"])
     answer = ", ".join(seen[:SCORE_K]) if seen else "no answer found"
-    return {"text": f"ANSWER: {answer}", "hooks_fired": [],
+    return {"text": f"ANSWER: {answer}", "hooks_fired": [], "unexpected_tools": [],
             "transcript_tool_calls": calls, "error": None, "wall_s": 0.0,
             "mock_budget_refusals": refusals}
 
@@ -350,6 +400,9 @@ def render_table(report):
     lines.append(
         f"Arm {report['arm']}  ·  {report['n_questions']} questions  ·  "
         f"{report['corpus']['n_docs']} notes indexed  ·  driver={report['driver']}"
+        + (f"/{report['model']}" if report.get("model") else "")
+        + (f"  ·  ${report['cost_usd_total']:.2f}  ·  {report['wall_s_total'] / 60:.1f} min"
+           if report.get("cost_usd_total") else "")
     )
     lines.append("")
     header = f"{'stratum':<22} {'n':>4} {'P@5':>7} {'R@5':>7} {'acc':>7} {'calls':>7}"
@@ -476,7 +529,7 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
             print(f"[week1] arm {arm} ready — tools {info['tools']}, "
                   f"{info['n_docs']} notes, budget {info['call_budget']}", file=sys.stderr)
 
-        rows, hook_violations, count_mismatches = [], [], []
+        rows, hook_violations, count_mismatches, tool_escapes = [], [], [], []
         for i, e in enumerate(entries, 1):
             daemon_mod.request(socket_path, {"op": "begin", "question_id": e["id"], "arm": arm})
             if driver == "mock":
@@ -490,6 +543,8 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
 
             if res["hooks_fired"]:
                 hook_violations.append((e["id"], sorted(set(res["hooks_fired"]))))
+            if res.get("unexpected_tools"):
+                tool_escapes.append((e["id"], res["unexpected_tools"]))
             # The daemon counts calls it served; the transcript counts calls the
             # model made. They agree unless something is calling the tools that
             # is not the driver, or the driver is calling tools we did not give it.
@@ -515,6 +570,7 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
                 # six is the right number.
                 "refused_over_budget": max(0, res["transcript_tool_calls"] - call_budget),
                 "driver_error": res["error"], "wall_s": res["wall_s"],
+                "cost_usd": res.get("cost_usd", 0.0),
             }
             rows.append(row)
             if verbose:
@@ -542,6 +598,8 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
                    "embed_mode": embed_mode if arm == "B" else None},
         "call_budget": call_budget,
         "n_questions": len(rows),
+        "cost_usd_total": round(sum(r.get("cost_usd", 0.0) for r in rows), 4),
+        "wall_s_total": round(sum(r["wall_s"] for r in rows), 1),
         "overall": _finalize(overall),
         "per_stratum": {k: _finalize(v) for k, v in per_stratum.items()},
         "per_question": rows,
@@ -553,6 +611,7 @@ def run_arm(entries, vault, arm, *, work_dir, call_budget, driver, model, timeou
         ],
         "integrity": {
             "hook_violations": [{"id": i, "hooks": h} for i, h in hook_violations],
+            "tool_escapes": [{"id": i, "tools": t} for i, t in tool_escapes],
             "tool_call_count_mismatches": [
                 {"id": i, "transcript": t, "daemon": d} for i, t, d in count_mismatches],
             # A genuine failure: the daemon SERVED more calls than the ceiling
@@ -640,6 +699,14 @@ def main(argv=None):
             f"for. These scores do not mean what they appear to mean. "
             f"Hooks: {integrity['hook_violations'][0]['hooks']}", file=sys.stderr)
         return 3
+    if integrity["tool_escapes"]:
+        print(
+            f"\n[week1] ERROR: the driver used {len(integrity['tool_escapes'])} "
+            f"tool(s) outside this arm's permitted set — it had a way to reach the "
+            f"vault that is not the arm's search tool, so these scores do not "
+            f"measure the arm. Escapes: {integrity['tool_escapes'][:3]}",
+            file=sys.stderr)
+        return 6
     if integrity["tool_call_count_mismatches"]:
         print(f"\n[week1] ERROR: the daemon and the driver transcript disagree on how "
               f"many tool calls happened for "

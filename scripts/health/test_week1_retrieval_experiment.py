@@ -736,6 +736,77 @@ class TestJudgeCorrect(unittest.TestCase):
         self.assertEqual(w1.judge_correct(score, "answer", None), (False, 0.0, 0.0))
 
 
+class TestToolsetIsClosed(unittest.TestCase):
+    """The arms differ by exactly one tool. Everything here defends that.
+
+    `--disallowedTools` does not cover Claude Code's deferred surface: during
+    this build the driver was talked into `ToolSearch` -> `Monitor` -> `grep -rl
+    <vault>`, reading the corpus directly. An arm that can grep is not the arm
+    the decision rule thinks it is comparing.
+    """
+
+    def test_the_denylist_covers_every_way_out_found_so_far(self):
+        for tool in ("Bash", "Monitor", "Task", "Read", "Grep", "Glob",
+                     "TaskOutput", "WebFetch", "Skill", "Workflow"):
+            self.assertIn(tool, w1._DENIED_TOOLS)
+
+    def test_only_arm_tools_and_the_loader_are_permitted(self):
+        self.assertEqual(w1._HARNESS_TOOLS, {"ToolSearch"})
+        self.assertEqual(w1._ARM_TOOLS,
+                         {"mcp__week1__search_lexical", "mcp__week1__search_vector"})
+        self.assertFalse(w1._ARM_TOOLS & set(w1._DENIED_TOOLS))
+        self.assertFalse(w1._HARNESS_TOOLS & set(w1._DENIED_TOOLS))
+
+    def test_the_settings_payload_carries_both_protections(self):
+        """The two must ride together: hooks off AND the denylist applied."""
+        settings = json.dumps({"disableAllHooks": True,
+                               "permissions": {"deny": w1._DENIED_TOOLS}})
+        parsed = json.loads(settings)
+        self.assertTrue(parsed["disableAllHooks"])
+        self.assertIn("Monitor", parsed["permissions"]["deny"])
+
+    def _classify(self, tools_used):
+        """The transcript audit, as run_driver_claude computes it."""
+        return (sum(1 for t in tools_used if t in w1._ARM_TOOLS),
+                sorted(set(tools_used) - w1._ARM_TOOLS - w1._HARNESS_TOOLS))
+
+    def test_toolsearch_does_not_count_against_the_budget(self):
+        """It loads the deferred schema; charging for it would cost a real search.
+
+        Observed live: the daemon served 2 searches while the transcript held 3
+        tool_use blocks, the third being ToolSearch.
+        """
+        counted, escapes = self._classify(
+            ["ToolSearch", "mcp__week1__search_lexical", "mcp__week1__search_lexical"])
+        self.assertEqual(counted, 2)
+        self.assertEqual(escapes, [])
+
+    def test_a_shell_capable_tool_is_reported_as_an_escape(self):
+        counted, escapes = self._classify(
+            ["ToolSearch", "Monitor", "mcp__week1__search_lexical"])
+        self.assertEqual(counted, 1)
+        self.assertEqual(escapes, ["Monitor"])
+
+    def test_a_tool_nobody_has_thought_of_yet_is_still_an_escape(self):
+        """The audit must not depend on the denylist being complete.
+
+        A denylist enumerates known tools and goes stale as Claude Code adds
+        them; this check asks the opposite question — was anything called that
+        is not one of ours — so a brand-new tool fails the run on first use.
+        """
+        counted, escapes = self._classify(
+            ["mcp__week1__search_lexical", "SomeToolShippedNextRelease"])
+        self.assertNotIn("SomeToolShippedNextRelease", w1._DENIED_TOOLS)
+        self.assertEqual(escapes, ["SomeToolShippedNextRelease"])
+
+    def test_a_second_mcp_server_would_be_an_escape(self):
+        _, escapes = self._classify(["mcp__othersrv__read_vault"])
+        self.assertEqual(escapes, ["mcp__othersrv__read_vault"])
+
+    def test_arm_a_is_not_given_the_vector_tool_in_its_prompt(self):
+        self.assertNotIn("search_vector", w1.build_system_prompt("A", 6))
+
+
 class TestAggregation(unittest.TestCase):
     def _rows(self):
         return [
