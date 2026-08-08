@@ -22,6 +22,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -674,7 +675,13 @@ func buildDaemon(t *testing.T) string {
 			buildErr = err
 			return
 		}
-		buildPath = filepath.Join(dir, "agentmd")
+		name := "agentmd"
+		if runtime.GOOS == "windows" {
+			// Windows will not execute a file without the extension, and every
+			// test here runs the binary rather than calling into it.
+			name += ".exe"
+		}
+		buildPath = filepath.Join(dir, name)
 		cmd := exec.Command("go", "build", "-o", buildPath, "./cmd/agentmd")
 		cmd.Dir = repoRoot(t)
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
