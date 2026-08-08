@@ -32,6 +32,19 @@ for _p in (_HERE, _REPO / "scripts", _REPO / "harness" / "skills" / "memory" / "
 
 import eval_v6_retrieval as ev  # noqa: E402
 import week1_corpus as wc  # noqa: E402
+
+# The vector arm needs numpy. CI's unit-test job does not install it, so those
+# tests skip there rather than erroring — an ImportError reported as a test
+# failure says "the code is broken" when it means "the optional dependency is
+# absent", and eleven of those buried a real signal on the first PR to run this
+# suite. The lexical arm, which is what the daemon actually ships, needs nothing
+# beyond the standard library and is never skipped.
+try:
+    import numpy  # noqa: F401
+    HAVE_NUMPY = True
+except ImportError:
+    HAVE_NUMPY = False
+needs_numpy = unittest.skipUnless(HAVE_NUMPY, "numpy not installed — vector arm only")
 import week1_retrieval_experiment as w1  # noqa: E402
 import week1_search_daemon as wd  # noqa: E402
 import week1_search_shim as ws  # noqa: E402
@@ -332,6 +345,7 @@ class TestLexicalSearch(unittest.TestCase):
         conn2.close()
 
 
+@needs_numpy
 class TestVectorSearchPlumbing(unittest.TestCase):
     """Stub embeddings are hash noise, so these prove wiring, never relevance."""
 
@@ -370,6 +384,7 @@ class TestVectorSearchPlumbing(unittest.TestCase):
             self.assertEqual((results, note), ([], "empty query"))
 
 
+@needs_numpy
 class TestVectorCacheIsIncremental(unittest.TestCase):
     """Only new or edited notes get embedded. A full rebuild is ~35 minutes.
 
@@ -558,6 +573,7 @@ class TestCallBudget(unittest.TestCase):
             d.handle({"op": "search", "tool": "search_vector", "query": "x"})
             self.assertEqual(d.handle({"op": "stats"})["calls_used"], 0)
 
+    @needs_numpy
     def test_arm_b_exposes_both_tools(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work", arm="B",

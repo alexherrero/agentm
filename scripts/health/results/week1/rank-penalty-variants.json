@@ -1,0 +1,3124 @@
+{
+  "label": "single-run variant exploration (illustrations, not results)",
+  "n_runs": 5,
+  "arms": {
+    "control": {
+      "n": 3,
+      "mean_r_at_5": 0.6546,
+      "sd": 0.0403,
+      "min": 0.6139,
+      "max": 0.6944,
+      "values": [
+        0.6139,
+        0.6556,
+        0.6944
+      ]
+    },
+    "penalty": {
+      "n": 2,
+      "mean_r_at_5": 0.6681,
+      "sd": 0.0177,
+      "min": 0.6556,
+      "max": 0.6806,
+      "values": [
+        0.6806,
+        0.6556
+      ]
+    }
+  },
+  "runs": [
+    {
+      "run": "opus-arm-a-control",
+      "arm": "A",
+      "driver": "claude",
+      "model": "opus",
+      "lexical_variant": "baseline",
+      "query_mode": "as-is",
+      "penalty": null,
+      "call_budget": 6,
+      "n_questions": 60,
+      "corpus": {
+        "n_docs": 8687,
+        "excluded_dirs": [],
+        "embed_mode": null
+      },
+      "vault_name": "Agent",
+      "gold_set": "scripts/health/fixtures/week1-gold/gold-set.json",
+      "cost_usd_total": 7.2755,
+      "wall_s_total": 1325.8,
+      "overall": {
+        "n": 60,
+        "p_at_5": 0.2,
+        "r_at_5": 0.6139,
+        "accuracy": 0.7,
+        "mean_tool_calls": 3.47,
+        "correct_rejection_rate": 0.5
+      },
+      "per_stratum": {
+        "distinctive-token": {
+          "n": 12,
+          "p_at_5": 0.1833,
+          "r_at_5": 0.9167,
+          "accuracy": 0.9167,
+          "mean_tool_calls": 2.5
+        },
+        "pure-paraphrase": {
+          "n": 18,
+          "p_at_5": 0.1444,
+          "r_at_5": 0.4907,
+          "accuracy": 0.6667,
+          "mean_tool_calls": 3.39
+        },
+        "episodic-temporal": {
+          "n": 12,
+          "p_at_5": 0.1167,
+          "r_at_5": 0.3333,
+          "accuracy": 0.5,
+          "mean_tool_calls": 4.33
+        },
+        "research-density": {
+          "n": 10,
+          "p_at_5": 0.18,
+          "r_at_5": 0.9,
+          "accuracy": 0.9,
+          "mean_tool_calls": 2.5
+        },
+        "negative": {
+          "n": 8,
+          "p_at_5": 0.5,
+          "r_at_5": 0.5,
+          "accuracy": 0.5,
+          "mean_tool_calls": 5.0,
+          "correct_rejection_rate": 0.5
+        }
+      },
+      "integrity": {
+        "hook_violations": [],
+        "tool_escapes": [],
+        "refused_tool_attempts": [],
+        "tool_call_count_mismatches": [],
+        "budget_leaks": [],
+        "questions_that_wanted_more_calls": 0,
+        "driver_errors": []
+      },
+      "per_question": [
+        {
+          "id": "dt01",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt02",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt03",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt04",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt05",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt06",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt07",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt08",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt09",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt10",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt11",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt12",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp01",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "pp02",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp03",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp04",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp05",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 6,
+          "n_expected": 1
+        },
+        {
+          "id": "pp06",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "pp07",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp08",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp09",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp10",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp11",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp12",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp13",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "pp14",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.3333,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 3
+        },
+        {
+          "id": "pp15",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 1
+        },
+        {
+          "id": "pp16",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "pp17",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp18",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "ep01",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep02",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 3
+        },
+        {
+          "id": "ep03",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep04",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep05",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep06",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "ep07",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep08",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "ep09",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 3
+        },
+        {
+          "id": "ep10",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep11",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 1
+        },
+        {
+          "id": "ep12",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "rd01",
+          "stratum": "research-density",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd02",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "rd03",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "rd04",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 1
+        },
+        {
+          "id": "rd05",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd06",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "rd07",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd08",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd09",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd10",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "ng01",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng02",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 0
+        },
+        {
+          "id": "ng03",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng04",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng05",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng06",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng07",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng08",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        }
+      ]
+    },
+    {
+      "run": "opus-arm-a-fields",
+      "arm": "A",
+      "driver": "claude",
+      "model": "opus",
+      "lexical_variant": "fields",
+      "query_mode": "as-is",
+      "penalty": null,
+      "call_budget": 6,
+      "n_questions": 60,
+      "corpus": {
+        "n_docs": 8700,
+        "excluded_dirs": [],
+        "embed_mode": null
+      },
+      "vault_name": "Agent",
+      "gold_set": "scripts/health/fixtures/week1-gold/gold-set.json",
+      "cost_usd_total": 4.0329,
+      "wall_s_total": 1287.9,
+      "overall": {
+        "n": 60,
+        "p_at_5": 0.2267,
+        "r_at_5": 0.6556,
+        "accuracy": 0.7333,
+        "mean_tool_calls": 3.27,
+        "correct_rejection_rate": 0.5
+      },
+      "per_stratum": {
+        "distinctive-token": {
+          "n": 12,
+          "p_at_5": 0.15,
+          "r_at_5": 0.75,
+          "accuracy": 0.75,
+          "mean_tool_calls": 2.83
+        },
+        "pure-paraphrase": {
+          "n": 18,
+          "p_at_5": 0.1333,
+          "r_at_5": 0.4444,
+          "accuracy": 0.6111,
+          "mean_tool_calls": 2.78
+        },
+        "episodic-temporal": {
+          "n": 12,
+          "p_at_5": 0.2833,
+          "r_at_5": 0.6944,
+          "accuracy": 0.8333,
+          "mean_tool_calls": 4.08
+        },
+        "research-density": {
+          "n": 10,
+          "p_at_5": 0.2,
+          "r_at_5": 1.0,
+          "accuracy": 1.0,
+          "mean_tool_calls": 2.5
+        },
+        "negative": {
+          "n": 8,
+          "p_at_5": 0.5,
+          "r_at_5": 0.5,
+          "accuracy": 0.5,
+          "mean_tool_calls": 4.75,
+          "correct_rejection_rate": 0.5
+        }
+      },
+      "integrity": {
+        "hook_violations": [],
+        "tool_escapes": [],
+        "refused_tool_attempts": [],
+        "tool_call_count_mismatches": [],
+        "budget_leaks": [],
+        "questions_that_wanted_more_calls": 0,
+        "driver_errors": []
+      },
+      "per_question": [
+        {
+          "id": "dt01",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt02",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt03",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt04",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt05",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt06",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt07",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "dt08",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt09",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt10",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "dt11",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt12",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "pp01",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp02",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp03",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp04",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "pp05",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 1
+        },
+        {
+          "id": "pp06",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp07",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp08",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp09",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp10",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "pp11",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp12",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp13",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp14",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 3
+        },
+        {
+          "id": "pp15",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp16",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp17",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp18",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep01",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep02",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.6,
+          "tool_calls": 4,
+          "n_expected": 3
+        },
+        {
+          "id": "ep03",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep04",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep05",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep06",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep07",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep08",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "ep09",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.3333,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 3
+        },
+        {
+          "id": "ep10",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "ep11",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "ep12",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "rd01",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd02",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "rd03",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "rd04",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd05",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd06",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "rd07",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd08",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd09",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd10",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "ng01",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng02",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng03",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 0
+        },
+        {
+          "id": "ng04",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng05",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 0
+        },
+        {
+          "id": "ng06",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 6,
+          "n_expected": 0
+        },
+        {
+          "id": "ng07",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng08",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        }
+      ]
+    },
+    {
+      "run": "opus-arm-a-or-penalty",
+      "arm": "A",
+      "driver": "claude",
+      "model": "opus",
+      "lexical_variant": "baseline",
+      "query_mode": "or",
+      "penalty": {
+        "fragment": 0.3,
+        "status": 0.6,
+        "staging": 0.3
+      },
+      "call_budget": 6,
+      "n_questions": 60,
+      "corpus": {
+        "n_docs": 8700,
+        "excluded_dirs": [],
+        "embed_mode": null
+      },
+      "vault_name": "Agent",
+      "gold_set": "scripts/health/fixtures/week1-gold/gold-set.json",
+      "cost_usd_total": 4.0898,
+      "wall_s_total": 1258.9,
+      "overall": {
+        "n": 60,
+        "p_at_5": 0.2433,
+        "r_at_5": 0.6806,
+        "accuracy": 0.7667,
+        "mean_tool_calls": 2.98,
+        "correct_rejection_rate": 0.625
+      },
+      "per_stratum": {
+        "distinctive-token": {
+          "n": 12,
+          "p_at_5": 0.15,
+          "r_at_5": 0.75,
+          "accuracy": 0.75,
+          "mean_tool_calls": 2.08
+        },
+        "pure-paraphrase": {
+          "n": 18,
+          "p_at_5": 0.1778,
+          "r_at_5": 0.5741,
+          "accuracy": 0.7778,
+          "mean_tool_calls": 2.89
+        },
+        "episodic-temporal": {
+          "n": 12,
+          "p_at_5": 0.2167,
+          "r_at_5": 0.5417,
+          "accuracy": 0.6667,
+          "mean_tool_calls": 4.0
+        },
+        "research-density": {
+          "n": 10,
+          "p_at_5": 0.2,
+          "r_at_5": 1.0,
+          "accuracy": 1.0,
+          "mean_tool_calls": 2.0
+        },
+        "negative": {
+          "n": 8,
+          "p_at_5": 0.625,
+          "r_at_5": 0.625,
+          "accuracy": 0.625,
+          "mean_tool_calls": 4.25,
+          "correct_rejection_rate": 0.625
+        }
+      },
+      "integrity": {
+        "hook_violations": [],
+        "tool_escapes": [],
+        "refused_tool_attempts": [],
+        "tool_call_count_mismatches": [],
+        "budget_leaks": [],
+        "questions_that_wanted_more_calls": 0,
+        "driver_errors": []
+      },
+      "per_question": [
+        {
+          "id": "dt01",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt02",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt03",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt04",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt05",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt06",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt07",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt08",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt09",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt10",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "dt11",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt12",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 0,
+          "n_expected": 1
+        },
+        {
+          "id": "pp01",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp02",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp03",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "pp04",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp05",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp06",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp07",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "pp08",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp09",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp10",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp11",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp12",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp13",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "pp14",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.3333,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 3
+        },
+        {
+          "id": "pp15",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "pp16",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp17",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp18",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep01",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep02",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.6667,
+          "p_at_5": 0.4,
+          "tool_calls": 4,
+          "n_expected": 3
+        },
+        {
+          "id": "ep03",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "ep04",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep05",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep06",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "ep07",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep08",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "ep09",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.3333,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 3
+        },
+        {
+          "id": "ep10",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep11",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "ep12",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "rd01",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd02",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd03",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd04",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd05",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd06",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd07",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd08",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd09",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd10",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "ng01",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng02",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng03",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng04",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng05",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng06",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng07",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng08",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        }
+      ]
+    },
+    {
+      "run": "opus-arm-a-or",
+      "arm": "A",
+      "driver": "claude",
+      "model": "opus",
+      "lexical_variant": "baseline",
+      "query_mode": "or",
+      "penalty": null,
+      "call_budget": 6,
+      "n_questions": 60,
+      "corpus": {
+        "n_docs": 8700,
+        "excluded_dirs": [],
+        "embed_mode": null
+      },
+      "vault_name": "Agent",
+      "gold_set": "scripts/health/fixtures/week1-gold/gold-set.json",
+      "cost_usd_total": 3.9804,
+      "wall_s_total": 1222.6,
+      "overall": {
+        "n": 60,
+        "p_at_5": 0.2433,
+        "r_at_5": 0.6944,
+        "accuracy": 0.7667,
+        "mean_tool_calls": 2.93,
+        "correct_rejection_rate": 0.625
+      },
+      "per_stratum": {
+        "distinctive-token": {
+          "n": 12,
+          "p_at_5": 0.1667,
+          "r_at_5": 0.8333,
+          "accuracy": 0.8333,
+          "mean_tool_calls": 2.08
+        },
+        "pure-paraphrase": {
+          "n": 18,
+          "p_at_5": 0.1556,
+          "r_at_5": 0.5278,
+          "accuracy": 0.7222,
+          "mean_tool_calls": 3.06
+        },
+        "episodic-temporal": {
+          "n": 12,
+          "p_at_5": 0.2333,
+          "r_at_5": 0.5972,
+          "accuracy": 0.6667,
+          "mean_tool_calls": 3.5
+        },
+        "research-density": {
+          "n": 10,
+          "p_at_5": 0.2,
+          "r_at_5": 1.0,
+          "accuracy": 1.0,
+          "mean_tool_calls": 2.0
+        },
+        "negative": {
+          "n": 8,
+          "p_at_5": 0.625,
+          "r_at_5": 0.625,
+          "accuracy": 0.625,
+          "mean_tool_calls": 4.25,
+          "correct_rejection_rate": 0.625
+        }
+      },
+      "integrity": {
+        "hook_violations": [],
+        "tool_escapes": [],
+        "refused_tool_attempts": [],
+        "tool_call_count_mismatches": [],
+        "budget_leaks": [],
+        "questions_that_wanted_more_calls": 0,
+        "driver_errors": []
+      },
+      "per_question": [
+        {
+          "id": "dt01",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt02",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt03",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt04",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt05",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt06",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt07",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt08",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt09",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt10",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt11",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt12",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 1
+        },
+        {
+          "id": "pp01",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp02",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp03",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp04",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp05",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 1
+        },
+        {
+          "id": "pp06",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp07",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "pp08",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp09",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp10",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp11",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "pp12",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp13",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "pp14",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 3
+        },
+        {
+          "id": "pp15",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp16",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp17",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp18",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep01",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep02",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.6667,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 3
+        },
+        {
+          "id": "ep03",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "ep04",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "ep05",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep06",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep07",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "ep08",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "ep09",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 3
+        },
+        {
+          "id": "ep10",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep11",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "ep12",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "rd01",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd02",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd03",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd04",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd05",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd06",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd07",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd08",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd09",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd10",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "ng01",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng02",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 0
+        },
+        {
+          "id": "ng03",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng04",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng05",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng06",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng07",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 0
+        },
+        {
+          "id": "ng08",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        }
+      ]
+    },
+    {
+      "run": "opus-arm-a-penalty",
+      "arm": "A",
+      "driver": "claude",
+      "model": "opus",
+      "lexical_variant": "baseline",
+      "query_mode": "as-is",
+      "penalty": {
+        "fragment": 0.3,
+        "status": 0.6,
+        "staging": 0.3
+      },
+      "call_budget": 6,
+      "n_questions": 60,
+      "corpus": {
+        "n_docs": 8700,
+        "excluded_dirs": [],
+        "embed_mode": null
+      },
+      "vault_name": "Agent",
+      "gold_set": "scripts/health/fixtures/week1-gold/gold-set.json",
+      "cost_usd_total": 4.0136,
+      "wall_s_total": 1268.3,
+      "overall": {
+        "n": 60,
+        "p_at_5": 0.2433,
+        "r_at_5": 0.6556,
+        "accuracy": 0.7667,
+        "mean_tool_calls": 3.43,
+        "correct_rejection_rate": 0.75
+      },
+      "per_stratum": {
+        "distinctive-token": {
+          "n": 12,
+          "p_at_5": 0.1667,
+          "r_at_5": 0.8333,
+          "accuracy": 0.8333,
+          "mean_tool_calls": 2.67
+        },
+        "pure-paraphrase": {
+          "n": 18,
+          "p_at_5": 0.1667,
+          "r_at_5": 0.5185,
+          "accuracy": 0.7778,
+          "mean_tool_calls": 3.39
+        },
+        "episodic-temporal": {
+          "n": 12,
+          "p_at_5": 0.15,
+          "r_at_5": 0.4167,
+          "accuracy": 0.5833,
+          "mean_tool_calls": 3.83
+        },
+        "research-density": {
+          "n": 10,
+          "p_at_5": 0.18,
+          "r_at_5": 0.9,
+          "accuracy": 0.9,
+          "mean_tool_calls": 2.6
+        },
+        "negative": {
+          "n": 8,
+          "p_at_5": 0.75,
+          "r_at_5": 0.75,
+          "accuracy": 0.75,
+          "mean_tool_calls": 5.12,
+          "correct_rejection_rate": 0.75
+        }
+      },
+      "integrity": {
+        "hook_violations": [],
+        "tool_escapes": [],
+        "refused_tool_attempts": [],
+        "tool_call_count_mismatches": [],
+        "budget_leaks": [],
+        "questions_that_wanted_more_calls": 0,
+        "driver_errors": []
+      },
+      "per_question": [
+        {
+          "id": "dt01",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt02",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt03",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt04",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt05",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt06",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt07",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 1
+        },
+        {
+          "id": "dt08",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt09",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "dt10",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt11",
+          "stratum": "distinctive-token",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "dt12",
+          "stratum": "distinctive-token",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "pp01",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "pp02",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp03",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp04",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp05",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 1
+        },
+        {
+          "id": "pp06",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "pp07",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "pp08",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp09",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 1,
+          "n_expected": 2
+        },
+        {
+          "id": "pp10",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "pp11",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "pp12",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp13",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 6,
+          "n_expected": 2
+        },
+        {
+          "id": "pp14",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.3333,
+          "p_at_5": 0.2,
+          "tool_calls": 6,
+          "n_expected": 3
+        },
+        {
+          "id": "pp15",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "pp16",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "pp17",
+          "stratum": "pure-paraphrase",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "pp18",
+          "stratum": "pure-paraphrase",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep01",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep02",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 3
+        },
+        {
+          "id": "ep03",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "ep04",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "ep05",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep06",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.4,
+          "tool_calls": 3,
+          "n_expected": 2
+        },
+        {
+          "id": "ep07",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 2
+        },
+        {
+          "id": "ep08",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "ep09",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 3
+        },
+        {
+          "id": "ep10",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 0.5,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 2
+        },
+        {
+          "id": "ep11",
+          "stratum": "episodic-temporal",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "ep12",
+          "stratum": "episodic-temporal",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 4,
+          "n_expected": 2
+        },
+        {
+          "id": "rd01",
+          "stratum": "research-density",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 3,
+          "n_expected": 1
+        },
+        {
+          "id": "rd02",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 5,
+          "n_expected": 1
+        },
+        {
+          "id": "rd03",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 4,
+          "n_expected": 1
+        },
+        {
+          "id": "rd04",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd05",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd06",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd07",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd08",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd09",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "rd10",
+          "stratum": "research-density",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 0.2,
+          "tool_calls": 2,
+          "n_expected": 1
+        },
+        {
+          "id": "ng01",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 6,
+          "n_expected": 0
+        },
+        {
+          "id": "ng02",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng03",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 4,
+          "n_expected": 0
+        },
+        {
+          "id": "ng04",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 6,
+          "n_expected": 0
+        },
+        {
+          "id": "ng05",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng06",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        },
+        {
+          "id": "ng07",
+          "stratum": "negative",
+          "correct": false,
+          "r_at_5": 0.0,
+          "p_at_5": 0.0,
+          "tool_calls": 6,
+          "n_expected": 0
+        },
+        {
+          "id": "ng08",
+          "stratum": "negative",
+          "correct": true,
+          "r_at_5": 1.0,
+          "p_at_5": 1.0,
+          "tool_calls": 5,
+          "n_expected": 0
+        }
+      ]
+    }
+  ]
+}
