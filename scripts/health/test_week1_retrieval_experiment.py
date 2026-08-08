@@ -18,12 +18,14 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 _HERE = Path(__file__).resolve().parent
 _REPO = _HERE.parent.parent
@@ -1307,6 +1309,55 @@ class TestWindowsFileHandles(unittest.TestCase):
                     conn2.execute("SELECT count(*) FROM docflags").fetchone()[0], 0)
             finally:
                 conn2.close()
+
+
+class TestConstructorReleasesTheHandleItOpened(unittest.TestCase):
+    """A constructor that raises after opening SQLite has to close it itself.
+
+    Nothing else can. `__init__` opens the FTS5 connection first and builds the
+    vector index second, so a failure in the second half never returns the
+    object — a `with` block or a `contextlib.closing()` at the call site is
+    handed nothing to close. The connection then survives until the cyclic GC
+    finalizes it at an arbitrary later moment, which on Python 3.13+ prints
+    `ResourceWarning: unclosed database` into whatever stderr is being captured
+    at that moment. Seven leaked from here landed in the wrong test's captured
+    output and failed `test_notify_enabled_absent_by_default` in
+    `scripts/test_agentm_config.py` on the macOS runner, a file that does not
+    import this one.
+
+    This forces the failure with a mock rather than by removing numpy, because
+    the `needs_numpy` skip guards mean an arm-B daemon is never built when numpy
+    is missing — the suite stopped observing the leak without the leak being
+    fixed. A real arm-B run on such a machine still hits it, so the trigger has
+    to be the constructor failing, not the environment that made it fail.
+    """
+
+    def test_a_failed_vector_build_does_not_leak_the_lexical_connection(self):
+        opened = []
+        real_build = wd.week1_corpus.build_lexical_index
+
+        def spy(*a, **kw):
+            conn, n_docs = real_build(*a, **kw)
+            opened.append(conn)
+            return conn, n_docs
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch.object(wd.week1_corpus, "build_lexical_index", spy), \
+                 mock.patch.object(
+                     wd.week1_corpus, "build_vector_index",
+                     side_effect=ModuleNotFoundError("No module named 'numpy'")):
+                with self.assertRaises(ModuleNotFoundError):
+                    wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work",
+                                    arm="B", verbose=False)
+
+            self.assertEqual(len(opened), 1,
+                             "the lexical index was never built, so this test "
+                             "proves nothing about releasing its handle")
+            # Asked of the connection itself rather than of the daemon, which was
+            # never handed back. A closed sqlite3 connection refuses work; an
+            # open one answers.
+            with self.assertRaises(sqlite3.ProgrammingError):
+                opened[0].execute("SELECT 1")
 
 
 class TestOrJoinQuery(unittest.TestCase):
