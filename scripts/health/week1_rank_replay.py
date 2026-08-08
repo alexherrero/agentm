@@ -181,7 +181,7 @@ def main(argv=None):
     ap.add_argument("--variant", default=wc.DEFAULT_VARIANT,
                     choices=sorted(wc.LEXICAL_VARIANTS))
     ap.add_argument("--penalty", default=None,
-                    help='JSON weights, or "default"; omit for none')
+                    help='JSON weights, or "default" / "as-measured"; omit for none')
     ap.add_argument("--sweep", action="store_true",
                     help="grid-search penalty weights instead of scoring one setting")
     ap.add_argument("--sweep-values", default="1.0,0.7,0.5,0.3,0.15,0.05")
@@ -243,6 +243,8 @@ def main(argv=None):
                   "variant": args.variant, "grid": grid}
     else:
         penalty = (dict(wc.DEFAULT_PENALTY_WEIGHTS) if args.penalty == "default"
+                   else dict(wc.AS_MEASURED_PENALTY_WEIGHTS)
+                   if args.penalty == "as-measured"
                    else json.loads(args.penalty) if args.penalty else None)
         conn, n, flags, weights = _open_index(vault, args.work_dir, args.variant,
                                               verbose=True)
