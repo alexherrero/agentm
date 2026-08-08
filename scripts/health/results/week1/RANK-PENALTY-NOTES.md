@@ -1,9 +1,9 @@
 # Week 1 follow-up — does rank-penalizing miner fragments improve retrieval?
 
-Run 2026-08-07. Arm A only, Opus driver only, 60 questions, 6-call budget, the
-same gold set and the same integrity checks as the 2026-08-06 run. All 17 runs
-report zero hook violations, zero tool escapes, zero call-count mismatches, and
-zero budget leaks.
+Run 2026-08-07/08. Arm A only, Opus driver only, 60 questions, 6-call budget,
+the same gold set and the same integrity checks as the 2026-08-06 run. All 23
+runs report zero hook violations, zero tool escapes, zero call-count mismatches,
+and zero budget leaks.
 
 The question: `agentm-rescope-memory.md` calls for demoting miner fragments, and
 nobody had measured whether that helps before the Go daemon bakes a penalty into
@@ -13,9 +13,11 @@ its index.
 shape to implement is in "What the daemon should do" below, and it is simpler
 than the design assumes — the penalty's strength turns out not to matter at all.
 
-Two findings landed alongside it that matter at least as much: the tokenizer and
-column-weighting knobs the brief asked to try were already shipped, and the
-largest defect in this retrieval surface is not ranking at all.
+Three findings landed alongside it. The tokenizer and column-weighting knobs
+the brief asked to try were already shipped. The gold set's P@5 cannot express
+what the brief assumed it did. And the OR query rewrite — which looked like the
+largest win here on a single run — does not survive replication, and costs
+correct rejections.
 
 ---
 
@@ -142,7 +144,7 @@ alias backfill and not before. Its one live run nonetheless swung the episodic
 stratum +36 points, which is the clearest available illustration of why the
 single-run comparisons in the live batch cannot be read as effects.
 
-## Result 5 — the larger defect is the query semantics, not the ranking
+## Result 5 — the query semantics are a real defect, and OR is the wrong fix
 
 FTS5's bare `docs MATCH 'a b c'` is an implicit AND across every term. A
 six-word paraphrase therefore has to find a note containing all six words.
@@ -158,15 +160,45 @@ surfaces the gold note in 35 (query, question) pairs where AND did not:
 | no penalty | 0.788 | 0.865 |
 | penalty | 0.827 | **0.904** |
 
-The two effects are additive and do not interfere. The penalty matters *more*
-under OR — widening the net doubles the junk share, 5.9% to 11.0%, and the
-penalty absorbs it back to 0.5%. Live, `or` also cut the agent's tool calls 16%
-(3.47 to 2.93), because a query that returns something does not need a retry.
+At the tool level the two effects are additive. **At the answer level OR adds
+nothing on top of the penalty, and it costs correct rejections.** Six more
+replicates on the same frozen corpus, using the as-measured weights so the OR
+effect is not confounded with the status gate:
 
-**This is tool-level evidence plus one live run, not the replicated design the
-penalty got.** The single live `or` run scored 0.694 against a 0.614 control,
-but a single run is exactly what Result 4 shows cannot be trusted. Measure it
-the same way before shipping it: six replicates per arm on a frozen corpus.
+| arm | n | mean R@5 | sd | range |
+| --- | ---: | ---: | ---: | --- |
+| control (AND) | 6 | 0.6162 | 0.0085 | 0.603 – 0.628 |
+| penalty (AND) | 6 | 0.6537 | 0.0340 | 0.617 – 0.706 |
+| OR + penalty | 6 | 0.6662 | 0.0185 | 0.642 – 0.697 |
+
+- penalty vs control: +3.75 points, p = 0.0195
+- **OR+penalty vs penalty: +1.25 points, p = 0.4589 — null**
+- OR+penalty vs control: +5.00 points, p = 0.0022, which is the penalty doing
+  the work
+
+Per stratum, OR against the penalty alone: pure-paraphrase +0.080,
+research-density +0.050, episodic +0.025, distinctive-token 0.000, and
+**negative −0.188**.
+
+That last one is the finding. OR never returns an empty result set, so an agent
+that would have concluded "no such memory exists" is handed five plausible notes
+instead and names one. The regression is clean — the two arms do not overlap at
+all across six runs each (0.500–0.750 against 0.375–0.500), p = 0.0087, which is
+a stronger result than OR's own headline. OR buys paraphrase recall and pays for
+it in correct rejections, netting out to nothing measurable.
+
+The tool-call saving survives: 3.38 to 3.08, about 9%.
+
+**So: do not ship the OR rewrite as it stands.** The empty result set it removes
+is a real defect, but the answer it substitutes is worse on the one stratum that
+tests whether the system knows what it does not know. Anything that revives it
+needs to protect that case first — a minimum-score floor below which the OR
+rewrite returns nothing rather than its best partial match is the obvious
+candidate, and it is untested here.
+
+The single live `or` run scored 0.694 against a 0.614 control and looked like a
++8-point win. It was noise, and the replicated marginal is +1.25 at p = 0.46.
+That run is preserved in `rank-penalty-variants.json` precisely as the example.
 
 ## Result 6 — the six shared misses are vocabulary failures, not crowding
 
@@ -215,10 +247,12 @@ roughly twenty lines of Go.
 5. **Never exclude.** Unchanged from the design, and the tests pin it: a
    penalized note that is the only match still comes back first.
 
-**Fix the query semantics too, after measuring it properly.** OR-joining with
-phrases preserved is worth roughly twice what the penalty is worth at the tool
-level, costs nothing, and removes a failure mode — the empty result set — that
-no amount of ranking work can reach.
+**Do not ship the OR query rewrite.** Measured the same way, it adds +1.25
+points at p = 0.46 while losing 18.8 points of correct rejections at p = 0.0087.
+The empty result set is a real defect and worth solving, but OR as written
+solves it by always answering, which is the wrong trade on the one stratum that
+tests whether the system knows what it does not know. It stays in the tree,
+off by default, behind `--query-mode or`.
 
 ## What this measurement cannot tell you
 
@@ -268,6 +302,7 @@ python3 scripts/health/week1_compare_runs.py \
 | --- | --- | ---: | ---: |
 | `opus-arm-{a,b}.json`, `fable-arm-{a,b}.json` | 2026-08-06 originals | 1 each | 8,599 |
 | `rank-penalty-replicates.json` | 6 control + 6 penalty, frozen snapshot | 12 | 8,700 |
+| `or-query-mode-replicates.json` | 6 OR + penalty, same snapshot | 6 | 8,700 |
 | `rank-penalty-variants.json` | control / penalty / fields / or / or+penalty | 1 each | 8,687–8,700 |
 
 The replicates file is the result. The variants file is the exploration that
@@ -291,4 +326,4 @@ re-running. The four 2026-08-06 originals are kept raw because the replay
 harness reads `opus-arm-a.json`'s recorded queries, and because they are the
 artifact the design's Outcome section points at.
 
-This follow-up cost $72.10 across 17 live runs.
+This follow-up cost roughly $96 across 23 live runs.
