@@ -410,7 +410,20 @@ def build_lexical_index(vault, db_path, *, exclude_dirs=None, paths=None,
         except sqlite3.Error:
             pass
         conn.close()
-        db_path.unlink()
+        try:
+            db_path.unlink()
+        except PermissionError:
+            # Windows refuses to delete a file another connection still holds
+            # open, and POSIX does not — so the "delete and start over" rebuild
+            # works everywhere except the one platform where a stale handle is
+            # visible. Dropping the tables achieves the same thing through the
+            # handle we do have, which is also the honest fix: the goal was
+            # never to remove the file, it was to discard what is in it.
+            conn = sqlite3.connect(str(db_path))
+            for table in ("docs", "meta", "docflags"):
+                conn.execute(f"DROP TABLE IF EXISTS {table}")
+            conn.commit()
+            conn.close()
 
     split = spec["fields"] == "split"
     columns = "path UNINDEXED, title, meta, body" if split else "path UNINDEXED, title, body"

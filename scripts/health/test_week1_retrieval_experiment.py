@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -289,7 +290,7 @@ class TestLexicalSearch(unittest.TestCase):
             self.vault, Path(self.tmp.name) / "lex.db")
 
     def tearDown(self):
-        self.conn.close()
+        self.conn.close()   # sqlite3 close() is idempotent
         self.tmp.cleanup()
 
     def test_indexes_every_visible_note(self):
@@ -340,6 +341,11 @@ class TestLexicalSearch(unittest.TestCase):
     def test_index_rebuilds_when_a_note_changes(self):
         (self.vault / "projects" / "new-note.md").write_text(
             "---\nkind: note\n---\nA brand new note.\n", encoding="utf-8")
+        # setUp's connection is closed first: nothing in production holds a
+        # second handle on an index that is being rebuilt, and leaving one open
+        # here tests an arrangement that cannot occur while breaking on Windows,
+        # where an open handle blocks deleting the file.
+        self.conn.close()
         conn2, n2 = wc.build_lexical_index(self.vault, Path(self.tmp.name) / "lex.db")
         self.assertEqual(n2, 5)
         conn2.close()
@@ -517,83 +523,106 @@ class TestVectorCacheIsIncremental(unittest.TestCase):
 class TestCallBudget(unittest.TestCase):
     """The ceiling is the experiment's control. It is enforced, not requested."""
 
-    def _daemon(self, tmp, budget=6):
-        return wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work",
-                               arm="A", call_budget=budget, verbose=False)
+    def _tmpdir(self):
+        """A temp dir torn down by addCleanup rather than by a `with` block.
+
+        Ordering is the whole point. addCleanup runs LIFO, so a daemon created
+        after this call is closed *before* the directory is removed. A `with
+        tempfile.TemporaryDirectory()` block cannot give that ordering — it
+        unwinds when the method returns, which is before any cleanup runs, so on
+        Windows the directory removal hits a SQLite handle that is still open
+        and raises WinError 32 in place of whatever the test was asserting.
+        """
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        return d.name
+
+    def _daemon(self, tmp, budget=6, arm="A", **kw):
+        """A daemon that releases its SQLite handle when the test ends.
+
+        Closed via addCleanup rather than at the end of the test body so that a
+        failing assertion still releases the handle — otherwise the first
+        failure in this class reports a teardown error instead of itself.
+        """
+        d = wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work",
+                            arm=arm, call_budget=budget, verbose=False, **kw)
+        self.addCleanup(d.close)
+        return d
 
     def test_exactly_the_budget_is_served_and_the_next_call_is_refused(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = self._daemon(tmp, budget=6)
-            d.handle({"op": "begin", "question_id": "q1"})
-            for expected_remaining in (5, 4, 3, 2, 1, 0):
-                r = d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
-                self.assertTrue(r["ok"])
-                self.assertEqual(r["calls_remaining"], expected_remaining)
-            refused = d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
-            self.assertFalse(refused["ok"])
-            self.assertEqual(refused["error"], "budget_exhausted")
-            self.assertIn("Answer now", refused["message"])
+        tmp = self._tmpdir()
+        d = self._daemon(tmp, budget=6)
+        d.handle({"op": "begin", "question_id": "q1"})
+        for expected_remaining in (5, 4, 3, 2, 1, 0):
+            r = d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
+            self.assertTrue(r["ok"])
+            self.assertEqual(r["calls_remaining"], expected_remaining)
+        refused = d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
+        self.assertFalse(refused["ok"])
+        self.assertEqual(refused["error"], "budget_exhausted")
+        self.assertIn("Answer now", refused["message"])
 
     def test_a_refused_call_does_not_consume_further_budget(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = self._daemon(tmp, budget=1)
-            d.handle({"op": "begin", "question_id": "q1"})
+        tmp = self._tmpdir()
+        d = self._daemon(tmp, budget=1)
+        d.handle({"op": "begin", "question_id": "q1"})
+        d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
+        for _ in range(4):
             d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
-            for _ in range(4):
-                d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
-            self.assertEqual(d.handle({"op": "stats"})["calls_used"], 1)
+        self.assertEqual(d.handle({"op": "stats"})["calls_used"], 1)
 
     def test_begin_resets_the_budget_for_the_next_question(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = self._daemon(tmp, budget=2)
-            d.handle({"op": "begin", "question_id": "q1"})
-            d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
-            d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
-            self.assertFalse(
-                d.handle({"op": "search", "tool": "search_lexical", "query": "x"})["ok"])
-            d.handle({"op": "begin", "question_id": "q2"})
-            stats = d.handle({"op": "stats"})
-            self.assertEqual((stats["calls_used"], stats["question_id"]), (0, "q2"))
-            self.assertTrue(
-                d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})["ok"])
+        tmp = self._tmpdir()
+        d = self._daemon(tmp, budget=2)
+        d.handle({"op": "begin", "question_id": "q1"})
+        d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
+        d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})
+        self.assertFalse(
+            d.handle({"op": "search", "tool": "search_lexical", "query": "x"})["ok"])
+        d.handle({"op": "begin", "question_id": "q2"})
+        stats = d.handle({"op": "stats"})
+        self.assertEqual((stats["calls_used"], stats["question_id"]), (0, "q2"))
+        self.assertTrue(
+            d.handle({"op": "search", "tool": "search_lexical", "query": "commit"})["ok"])
 
     def test_arm_a_does_not_expose_the_vector_tool(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = self._daemon(tmp)
-            self.assertEqual(d.tools(), ["search_lexical"])
-            d.handle({"op": "begin", "question_id": "q1"})
-            r = d.handle({"op": "search", "tool": "search_vector", "query": "x"})
-            self.assertFalse(r["ok"])
-            self.assertIn("unknown tool", r["error"])
+        tmp = self._tmpdir()
+        d = self._daemon(tmp)
+        self.assertEqual(d.tools(), ["search_lexical"])
+        d.handle({"op": "begin", "question_id": "q1"})
+        r = d.handle({"op": "search", "tool": "search_vector", "query": "x"})
+        self.assertFalse(r["ok"])
+        self.assertIn("unknown tool", r["error"])
 
     def test_a_rejected_tool_does_not_consume_budget(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = self._daemon(tmp)
-            d.handle({"op": "begin", "question_id": "q1"})
-            d.handle({"op": "search", "tool": "search_vector", "query": "x"})
-            self.assertEqual(d.handle({"op": "stats"})["calls_used"], 0)
+        tmp = self._tmpdir()
+        d = self._daemon(tmp)
+        d.handle({"op": "begin", "question_id": "q1"})
+        d.handle({"op": "search", "tool": "search_vector", "query": "x"})
+        self.assertEqual(d.handle({"op": "stats"})["calls_used"], 0)
 
     @needs_numpy
     def test_arm_b_exposes_both_tools(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work", arm="B",
-                                embed_mode="stub", verbose=False)
-            self.assertEqual(d.tools(), ["search_lexical", "search_vector"])
-            d.handle({"op": "begin", "question_id": "q1"})
-            self.assertTrue(
-                d.handle({"op": "search", "tool": "search_vector", "query": "x"})["ok"])
+        tmp = self._tmpdir()
+        d = self._daemon(tmp, arm="B", embed_mode="stub")
+        self.assertEqual(d.tools(), ["search_lexical", "search_vector"])
+        d.handle({"op": "begin", "question_id": "q1"})
+        self.assertTrue(
+            d.handle({"op": "search", "tool": "search_vector", "query": "x"})["ok"])
 
     def test_the_call_log_records_what_was_actually_searched(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            d = self._daemon(tmp)
-            d.handle({"op": "begin", "question_id": "q1"})
-            d.handle({"op": "search", "tool": "search_lexical", "query": "first try"})
-            d.handle({"op": "search", "tool": "search_lexical", "query": "second try"})
-            log = d.handle({"op": "stats"})["call_log"]
-            self.assertEqual([c["query"] for c in log], ["first try", "second try"])
-            self.assertEqual([c["n"] for c in log], [1, 2])
+        tmp = self._tmpdir()
+        d = self._daemon(tmp)
+        d.handle({"op": "begin", "question_id": "q1"})
+        d.handle({"op": "search", "tool": "search_lexical", "query": "first try"})
+        d.handle({"op": "search", "tool": "search_lexical", "query": "second try"})
+        log = d.handle({"op": "stats"})["call_log"]
+        self.assertEqual([c["query"] for c in log], ["first try", "second try"])
+        self.assertEqual([c["n"] for c in log], [1, 2])
 
 
+@unittest.skipUnless(hasattr(socket, "AF_UNIX"),
+                     "the daemon's transport is a Unix domain socket")
 class TestDaemonSocket(unittest.TestCase):
     def test_a_real_client_round_trip_over_the_socket(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1207,6 +1236,77 @@ class TestExtractMetaText(unittest.TestCase):
 
     def test_absent_fields_give_an_empty_string(self):
         self.assertEqual(wc.extract_meta_text("kind: convention\nstatus: active"), "")
+
+
+class TestWindowsFileHandles(unittest.TestCase):
+    """Two paths that only execute on Windows, exercised here so they are not
+    written blind and re-broken by the next edit.
+
+    POSIX lets you unlink a file another handle still holds open; Windows raises
+    WinError 32. Every SQLite handle in this module is therefore a resource that
+    has to be given back explicitly, and the rebuild path has to work without
+    deleting the file. Both were broken until the first PR to run this suite on
+    a Windows runner said so.
+    """
+
+    def test_the_daemon_releases_its_sqlite_handle(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work", verbose=False)
+            self.assertIsNotNone(d.conn)
+            d.close()
+            self.assertIsNone(d.conn)
+
+    def test_closing_the_daemon_twice_is_harmless(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work", verbose=False)
+            d.close()
+            d.close()
+
+    def test_the_daemon_works_as_a_context_manager(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with wd.SearchDaemon(_make_vault(tmp), Path(tmp) / "work",
+                                 verbose=False) as d:
+                self.assertTrue(d.handle({"op": "ping"})["ok"])
+            self.assertIsNone(d.conn)
+
+    def test_a_rebuild_survives_an_undeletable_index(self):
+        """The Windows case: unlink raises, so the rebuild drops the tables
+        through the handle it has instead. The rebuilt index must be complete,
+        not merely non-crashing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = _make_vault(tmp)
+            db = Path(tmp) / "lex.db"
+            conn1, n1 = wc.build_lexical_index(vault, db)
+            conn1.close()
+            self.assertEqual(n1, 4)
+
+            (vault / "projects" / "new-note.md").write_text(
+                "---\nkind: note\n---\nA brand new note about mooring.\n",
+                encoding="utf-8")
+
+            real_unlink = Path.unlink
+            calls = []
+
+            def refuse(self, *a, **kw):
+                calls.append(self)
+                raise PermissionError(32, "used by another process")
+
+            Path.unlink = refuse
+            try:
+                conn2, n2 = wc.build_lexical_index(vault, db)
+            finally:
+                Path.unlink = real_unlink
+            try:
+                self.assertTrue(calls, "the rebuild never tried to unlink")
+                self.assertEqual(n2, 5, "the rebuilt index is missing the new note")
+                results, _ = wc.search_lexical(conn2, "mooring", k=3)
+                self.assertEqual(results[0]["path"], "projects/new-note.md")
+                # The docflags table has to come back too, or a penalized run
+                # silently serves an unpenalized ranking.
+                self.assertEqual(
+                    conn2.execute("SELECT count(*) FROM docflags").fetchone()[0], 0)
+            finally:
+                conn2.close()
 
 
 class TestOrJoinQuery(unittest.TestCase):

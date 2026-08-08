@@ -119,6 +119,28 @@ class SearchDaemon:
         if self.verbose:
             print(f"[week1-daemon] {msg}", file=sys.stderr, flush=True)
 
+    def close(self):
+        """Release the SQLite handle. Idempotent.
+
+        The daemon normally lives until the run ends and the process exits, which
+        closes this implicitly — so this exists for callers that outlive it, which
+        in practice means tests. On Windows an open handle blocks deleting the
+        file underneath it, so a test that builds a daemon inside a
+        `TemporaryDirectory` cannot clean up until the connection is closed. That
+        is not a Windows quirk to work around; it is a resource this object owns
+        and never offered a way to give back.
+        """
+        conn, self.conn = getattr(self, "conn", None), None
+        if conn is not None:
+            conn.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
     def tools(self):
         return [TOOL_LEXICAL] + ([TOOL_VECTOR] if self.vector else [])
 
@@ -239,6 +261,7 @@ class SearchDaemon:
                     conn.close()
         finally:
             srv.close()
+            self.close()
             if os.path.exists(socket_path):
                 os.unlink(socket_path)
             if ready_path and os.path.exists(str(ready_path)):
