@@ -1039,6 +1039,77 @@ class TestClassifyDocument(unittest.TestCase):
         self.assertEqual(wc.classify_document("projects/x/proposal.md", raw), set())
 
 
+class TestShapeRuleGatedOnStatus(unittest.TestCase):
+    """232 of the 234 notes in `personal/preferences/` are `status: active` AND
+    fragment-shaped, because the promotion pipeline promoted the fragment's body
+    verbatim. Demoting them for their shape is the penalty's one real cost, and
+    the gold set cannot see it — no gold target lives there. So it is pinned
+    here instead."""
+
+    PROMOTED_FRAGMENT = (
+        "---\nkind: preferences\nstatus: active\nslug: always-absolute\n---\n"
+        "User stated: ...share file paths, always absolute\n"
+    )
+
+    def test_a_promoted_fragment_is_classed_apart_from_an_unfiled_one(self):
+        self.assertEqual(
+            wc.classify_document("personal/preferences/always-absolute.md",
+                                 self.PROMOTED_FRAGMENT),
+            {"fragment-promoted"})
+        self.assertEqual(
+            wc.classify_document("personal/_inbox/never-cache-1.md", _FRAGMENT_NOTE),
+            {"fragment", "status"})
+
+    def test_every_promoted_status_gates_the_shape_rule(self):
+        for status in sorted(wc.PROMOTED_STATUSES):
+            raw = (f"---\nkind: fix\nstatus: {status}\n---\n"
+                   "Fix observed: ...something clipped\n")
+            self.assertEqual(wc.classify_document("personal/fix/x.md", raw),
+                             {"fragment-promoted"}, status)
+
+    def test_the_recommended_weights_spare_a_promoted_fragment(self):
+        flags = wc.classify_document("personal/preferences/always-absolute.md",
+                                     self.PROMOTED_FRAGMENT)
+        self.assertEqual(
+            wc.penalty_multiplier(flags, wc.DEFAULT_PENALTY_WEIGHTS), 1.0,
+            "the recommended shape must leave a filed note's score untouched")
+
+    def test_the_as_measured_weights_demote_it(self):
+        flags = wc.classify_document("personal/preferences/always-absolute.md",
+                                     self.PROMOTED_FRAGMENT)
+        self.assertAlmostEqual(
+            wc.penalty_multiplier(flags, wc.AS_MEASURED_PENALTY_WEIGHTS), 0.30)
+
+    def test_the_two_presets_differ_only_on_promoted_fragments(self):
+        """Anything not carrying `fragment-promoted` must score identically under
+        both presets — otherwise the twelve committed scorecards stop being
+        reproducible from the preset that claims to reproduce them."""
+        for flags in ({"fragment"}, {"status"}, {"staging"}, {"fragment", "status"},
+                      {"staging", "status"}, set()):
+            self.assertEqual(
+                wc.penalty_multiplier(frozenset(flags), wc.DEFAULT_PENALTY_WEIGHTS),
+                wc.penalty_multiplier(frozenset(flags), wc.AS_MEASURED_PENALTY_WEIGHTS),
+                flags)
+
+    def test_an_unfiled_fragment_is_still_demoted_under_both(self):
+        flags = wc.classify_document("personal/_inbox/x.md", _FRAGMENT_NOTE)
+        for preset in (wc.DEFAULT_PENALTY_WEIGHTS, wc.AS_MEASURED_PENALTY_WEIGHTS):
+            self.assertLess(wc.penalty_multiplier(flags, preset), 0.3)
+
+    def test_the_class_set_covers_everything_the_classifier_emits(self):
+        """A weight aimed at a class name that does not exist is a silent no-op,
+        so the CLI validates against this set. It has to stay complete."""
+        emitted = set()
+        for rel, raw in (
+            ("personal/_inbox/a.md", _FRAGMENT_NOTE),
+            ("personal/preferences/b.md", self.PROMOTED_FRAGMENT),
+            ("_dream-staging/x/1.proposal.md", "# Proposal 1: merge\n\nbody\n"),
+            ("personal/c.md", "---\nstatus: expired\n---\n# Real\n\nProse.\n"),
+        ):
+            emitted |= wc.classify_document(rel, raw)
+        self.assertEqual(emitted, set(wc.PENALTY_CLASSES))
+
+
 class TestPenaltyMultiplier(unittest.TestCase):
     def test_no_flags_leaves_a_score_untouched(self):
         self.assertEqual(wc.penalty_multiplier(frozenset(), {"fragment": 0.3}), 1.0)

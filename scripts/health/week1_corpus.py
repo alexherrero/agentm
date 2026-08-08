@@ -75,7 +75,7 @@ _BM25_WEIGHTS = (0.0, 4.0, 1.0)
 
 # Bumped whenever the on-disk index schema changes, so a cached index built by an
 # older revision is rebuilt rather than queried through a schema it does not have.
-_SCHEMA_VERSION = "2"
+_SCHEMA_VERSION = "3"
 
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
@@ -149,6 +149,15 @@ FRAGMENT_OPENERS = (
 # condition `inbox`, so both are listed and the daemon inherits the pair.
 PENALIZED_STATUSES = frozenset({"unfiled", "inbox", "superseded", "expired"})
 
+# Statuses that mean a human or dreaming has looked at this note and kept it.
+# A promoted note that still *looks* like a miner fragment is one, because the
+# promotion pipeline promoted the fragment's body verbatim — 232 of the 234
+# notes in `personal/preferences/` are exactly this. Filing is the signal that
+# overrides the miner's fingerprint, so their shape stops being evidence.
+PROMOTED_STATUSES = frozenset({
+    "active", "filed", "final", "promoted", "done", "ratified", "rendered",
+})
+
 # Where a mid-word slug is evidence of a fragment. Both directories were filled
 # by the same miner, and a note whose filename starts partway into a word
 # ("rver-s-vault-hardwiring-can-t-1") was cut out of a longer sentence.
@@ -176,10 +185,31 @@ with word work wrap year your zero
 """.split())
 _ELLIPSIS_OPENERS = ("...", "…")
 
-# One weight per class, applied multiplicatively to the BM25 score. Chosen by
-# the offline sweep in `week1_rank_replay.py`, not by taste — see the week-1
-# rank-penalty scorecard for the sweep that produced them.
+# Every class the classifier can emit. Used to reject a typo'd weight rather
+# than silently running an arm with one fewer penalty than it claims.
+PENALTY_CLASSES = frozenset({"fragment", "fragment-promoted", "status", "staging"})
+
+# One weight per class, applied multiplicatively to the BM25 score.
+#
+# The values are not taste: a 125-point sweep over [0.02, 1.0] per class
+# produced four distinct outcomes, and every setting at or below 0.6 for a class
+# ranked identically. Strength is not a parameter — only whether a class is
+# penalized at all. These numbers are a legible constant, nothing more.
+#
+# `fragment-promoted` is absent on purpose, which is what gates the shape rule
+# on status: an unlisted class multiplies by 1.0, so a fragment-shaped note that
+# filing already promoted keeps its score. That spares 1,288 notes for a
+# measured cost of 0.000 tool-level hit@5 and 0.001 MRR, and it is the shape the
+# daemon should implement.
 DEFAULT_PENALTY_WEIGHTS = {"fragment": 0.30, "status": 0.60, "staging": 0.30}
+
+# What the 2026-08-07 replicates actually ran: no gate, so a promoted note was
+# demoted for its shape like any other fragment. Kept nameable so the twelve
+# committed scorecards stay reproducible — a preset that quietly became the
+# recommended one would make those numbers unverifiable.
+AS_MEASURED_PENALTY_WEIGHTS = {
+    "fragment": 0.30, "fragment-promoted": 0.30, "status": 0.60, "staging": 0.30,
+}
 
 # How deep to look before re-ranking. A penalty can only promote a note the
 # first fetch actually saw, so the window has to be wide enough that a real note
@@ -234,17 +264,26 @@ def classify_document(rel, raw):
     head = m.group(1) if m else ""
     after = (raw[m.end():] if m else raw).lstrip()
 
+    st = _STATUS_RE.search(head)
+    status = st.group(1).strip().strip("'\"").lower() if st else ""
+
+    shaped = False
     if any(after.startswith(o) for o in FRAGMENT_OPENERS):
-        flags.add("fragment")
+        shaped = True
     elif _MINING_RE.search(head):
-        flags.add("fragment")
+        shaped = True
     elif rel.rsplit("/", 1)[0] in FRAGMENT_SLUG_DIRS:
         stem = rel.rsplit("/", 1)[-1][:-3]
-        if _looks_truncated_slug(stem) or after.startswith(_ELLIPSIS_OPENERS):
-            flags.add("fragment")
+        shaped = _looks_truncated_slug(stem) or after.startswith(_ELLIPSIS_OPENERS)
 
-    st = _STATUS_RE.search(head)
-    if st and st.group(1).strip().strip("'\"").lower() in PENALIZED_STATUSES:
+    # The shape rule splits on whether filing has already passed judgement. Both
+    # halves are recorded so the caller decides, by which weights it supplies,
+    # whether a promoted fragment is demoted — rather than the index deciding at
+    # build time and forcing a rebuild to change its mind.
+    if shaped:
+        flags.add("fragment-promoted" if status in PROMOTED_STATUSES else "fragment")
+
+    if status in PENALIZED_STATUSES:
         flags.add("status")
 
     if rel.startswith("_dream-staging/") and (
