@@ -79,41 +79,62 @@ class SearchDaemon:
             self.vault, self.work_dir / week1_corpus.lexical_db_name(variant),
             paths=paths, variant=variant, verbose=verbose
         )
-        # Loaded whatever the penalty setting, so an unpenalized run still
-        # reports how much of what it served was flagged.
-        self.doc_flags = week1_corpus.load_doc_flags(self.conn)
-        self._log(
-            f"lexical variant {variant} (weights {self.weights}), "
-            f"query-mode {query_mode}, "
-            f"{len(self.doc_flags)} flagged notes, penalty "
-            + (f"{self.penalty}" if self.penalty else "off")
-        )
-        # SQLite connections are not shareable across threads by default and the
-        # accept loop is single-threaded, so this stays on the serving thread.
-        self.vector = None
-        if arm == "B":
-            t0 = time.monotonic()
-            encode, doc_paths, vectors = week1_corpus.build_vector_index(
-                self.vault, self.work_dir / f"vectors-{embed_mode}.npz",
-                paths=paths, mode=embed_mode, verbose=verbose,
-            )
-            self.vector = (encode, doc_paths, vectors)
-            # Prove the warm load actually took, rather than trusting that it
-            # did. A second query that still costs seconds means the model is
-            # being reloaded and every number this run produces is suspect.
-            t1 = time.monotonic()
-            week1_corpus.search_vector(encode, doc_paths, vectors, "warm probe", k=1)
-            probe_ms = (time.monotonic() - t1) * 1000
+        # Everything past this point runs with a SQLite handle already open, and
+        # a constructor that raises never hands the object back — so a `with`
+        # block or a `contextlib.closing()` at the call site has nothing to
+        # close. Only `__init__` itself can release it. The failure that makes
+        # this concrete is arm B on a machine without numpy: the vector build
+        # raises, the connection survives until the cyclic GC finalizes it at an
+        # arbitrary later moment, and Python 3.13+ prints `ResourceWarning:
+        # unclosed database` into whatever stderr is being captured right then.
+        # Seven leaked this way once failed an unrelated test in
+        # `scripts/test_agentm_config.py` on the macOS runner. The `needs_numpy`
+        # skip guards added since stop the suite from building an arm-B daemon
+        # at all, which hides that count rather than closing the hole — a real
+        # arm-B run on a machine without numpy still walks straight into it.
+        # BaseException, not Exception: a Ctrl-C during the ~35-minute embedding
+        # build is the other realistic way out of this block, and it owes the
+        # handle back too.
+        try:
+            # Loaded whatever the penalty setting, so an unpenalized run still
+            # reports how much of what it served was flagged.
+            self.doc_flags = week1_corpus.load_doc_flags(self.conn)
             self._log(
-                f"vector surface ready in {t1 - t0:.1f}s; warm query probe "
-                f"{probe_ms:.0f}ms ({vectors.shape[0]} chunks)"
+                f"lexical variant {variant} (weights {self.weights}), "
+                f"query-mode {query_mode}, "
+                f"{len(self.doc_flags)} flagged notes, penalty "
+                + (f"{self.penalty}" if self.penalty else "off")
             )
-            if probe_ms > 1000:
-                self._log(
-                    f"WARNING: a warm query took {probe_ms:.0f}ms. The embedding "
-                    f"model is being reloaded per query — results are not "
-                    f"measuring what this experiment thinks they measure."
+            # SQLite connections are not shareable across threads by default and
+            # the accept loop is single-threaded, so this stays on the serving
+            # thread.
+            self.vector = None
+            if arm == "B":
+                t0 = time.monotonic()
+                encode, doc_paths, vectors = week1_corpus.build_vector_index(
+                    self.vault, self.work_dir / f"vectors-{embed_mode}.npz",
+                    paths=paths, mode=embed_mode, verbose=verbose,
                 )
+                self.vector = (encode, doc_paths, vectors)
+                # Prove the warm load actually took, rather than trusting that it
+                # did. A second query that still costs seconds means the model is
+                # being reloaded and every number this run produces is suspect.
+                t1 = time.monotonic()
+                week1_corpus.search_vector(encode, doc_paths, vectors, "warm probe", k=1)
+                probe_ms = (time.monotonic() - t1) * 1000
+                self._log(
+                    f"vector surface ready in {t1 - t0:.1f}s; warm query probe "
+                    f"{probe_ms:.0f}ms ({vectors.shape[0]} chunks)"
+                )
+                if probe_ms > 1000:
+                    self._log(
+                        f"WARNING: a warm query took {probe_ms:.0f}ms. The embedding "
+                        f"model is being reloaded per query — results are not "
+                        f"measuring what this experiment thinks they measure."
+                    )
+        except BaseException:
+            self.close()
+            raise
 
     def _log(self, msg):
         if self.verbose:
