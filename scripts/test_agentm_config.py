@@ -26,6 +26,7 @@ import os
 import sys
 import tempfile
 import unittest
+import warnings
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 
@@ -34,6 +35,38 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import agentm_config as ac  # noqa: E402
+
+
+def _capture_main(argv: list[str]) -> tuple[int, str, str]:
+    """Invoke `ac.main(argv)`, returning (rc, stdout, stderr).
+
+    ResourceWarning is suppressed for the duration of the call. `redirect_stderr`
+    swaps the process-wide stream, so a cyclic-GC finalization that happens to
+    fire while `ac.main` is running writes into the same buffer — and CPython
+    reports such a warning against whatever frame was executing at collection
+    time, not against the object's origin, so it can never be attributed to the
+    code under test. Filtering it here is what lets every caller keep asserting
+    `err == ""` exactly, rather than loosening to a substring check that a
+    genuine new diagnostic could slip past.
+
+    Concretely: `health/test_week1_retrieval_experiment.py` leaked seven sqlite
+    connections from `SearchDaemon`, that module sorts ahead of this one under
+    `unittest discover`, and the collection landed inside this call — failing
+    `test_notify_enabled_absent_by_default` on macOS/Python 3.14 (3.13+ added
+    `ResourceWarning: unclosed database`; Linux CI runs the suite on 3.11 and
+    never saw it). Releasing that connection is a separate fix, in flight as of
+    this commit. This guard is the part that belongs here: whether some other
+    module leaks a handle is not something a config test can police, and it
+    should not be able to decide whether one passes.
+    """
+    out, err = io.StringIO(), io.StringIO()
+    with warnings.catch_warnings():
+        # Inserted at the front of the filter list — every other category keeps
+        # whatever behavior the test runner configured and still reaches `err`.
+        warnings.simplefilter("ignore", ResourceWarning)
+        with redirect_stdout(out), redirect_stderr(err):
+            rc = ac.main(argv)
+    return rc, out.getvalue(), err.getvalue()
 
 
 class _ClearEnv:
@@ -79,10 +112,7 @@ class TestAgentmConfig(unittest.TestCase):
 
     def _run(self, *argv: str) -> tuple[int, str, str]:
         """Invoke ac.main(argv) capturing stdout + stderr."""
-        out, err = io.StringIO(), io.StringIO()
-        with redirect_stdout(out), redirect_stderr(err):
-            rc = ac.main(list(argv))
-        return rc, out.getvalue(), err.getvalue()
+        return _capture_main(list(argv))
 
     # -----------------------------------------------------------------------
     # --vault-path: happy path + validation + idempotency
@@ -379,10 +409,7 @@ class TestStateMode(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _run(self, *argv: str) -> tuple[int, str, str]:
-        out, err = io.StringIO(), io.StringIO()
-        with redirect_stdout(out), redirect_stderr(err):
-            rc = ac.main(list(argv))
-        return rc, out.getvalue(), err.getvalue()
+        return _capture_main(list(argv))
 
     def test_set_state_mode_local_writes_field_rc0(self) -> None:
         rc, out, err = self._run("--state-mode", "local")
@@ -470,10 +497,7 @@ class TestStorageBackend(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _run(self, *argv: str) -> tuple[int, str, str]:
-        out, err = io.StringIO(), io.StringIO()
-        with redirect_stdout(out), redirect_stderr(err):
-            rc = ac.main(list(argv))
-        return rc, out.getvalue(), err.getvalue()
+        return _capture_main(list(argv))
 
     def test_set_storage_backend_writes_flat_key_rc0(self) -> None:
         rc, out, err = self._run("--storage-backend", "device-local")
@@ -537,6 +561,58 @@ class TestStorageBackend(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestCaptureMainStderrIsolation(unittest.TestCase):
+    """`_capture_main` filters GC noise and nothing else.
+
+    Every `assertEqual(err, "")` in this file rests on that split: a
+    ResourceWarning collected mid-call is not the CLI's output and must not
+    fail the test, while anything the CLI actually writes must still land in
+    `err`. The filter is narrow on purpose — widen it and these assertions stop
+    catching the diagnostics they exist to catch.
+    """
+
+    def _fake_main(self, fn) -> None:
+        real = ac.main
+        ac.main = fn
+        self.addCleanup(setattr, ac, "main", real)
+
+    def test_resource_warning_during_the_call_is_not_reported_as_output(self) -> None:
+        def fake(argv):
+            warnings.warn("unclosed database in <sqlite3.Connection>", ResourceWarning)
+            return 1
+
+        self._fake_main(fake)
+        self.assertEqual(_capture_main([]), (1, "", ""))
+
+    def test_a_diagnostic_the_cli_writes_still_reaches_stderr(self) -> None:
+        def fake(argv):
+            print("agentm-config: --get needs a field name", file=sys.stderr)
+            return 2
+
+        self._fake_main(fake)
+        rc, out, err = _capture_main([])
+        self.assertEqual(rc, 2)
+        self.assertEqual(out, "")
+        self.assertEqual(err.strip(), "agentm-config: --get needs a field name")
+
+    def test_a_warning_that_is_not_a_resource_warning_still_reaches_stderr(self) -> None:
+        # Proves the filter is scoped to ResourceWarning rather than silencing
+        # the warnings machinery wholesale.
+        def fake(argv):
+            warnings.warn("--vault-path is going away")
+            return 0
+
+        self._fake_main(fake)
+        _, _, err = _capture_main([])
+        self.assertIn("--vault-path is going away", err)
+
+    def test_the_filter_does_not_outlive_the_call(self) -> None:
+        before = list(warnings.filters)
+        self._fake_main(lambda argv: 0)
+        _capture_main([])
+        self.assertEqual(warnings.filters, before)
+
+
 class TestMaskSmtpUrlPassword(unittest.TestCase):
     """Unit tests for `_mask_smtp_url_password` — the display-only redaction
     helper used by `--email-smtp-url`'s confirmation echo and `--list`."""
@@ -590,10 +666,7 @@ class TestAutonomyDeliveryConfig(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def _run(self, *argv: str) -> tuple[int, str, str]:
-        out, err = io.StringIO(), io.StringIO()
-        with redirect_stdout(out), redirect_stderr(err):
-            rc = ac.main(list(argv))
-        return rc, out.getvalue(), err.getvalue()
+        return _capture_main(list(argv))
 
     # -- absent-by-default ----------------------------------------------------
 
