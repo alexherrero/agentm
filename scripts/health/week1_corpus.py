@@ -73,9 +73,209 @@ VECTOR_CHUNK_OVERLAP = 200
 # match on this vault is a strong signal — notes are named for their subject.
 _BM25_WEIGHTS = (0.0, 4.0, 1.0)
 
+# Bumped whenever the on-disk index schema changes, so a cached index built by an
+# older revision is rebuilt rather than queried through a schema it does not have.
+_SCHEMA_VERSION = "2"
+
 _FRONTMATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _TITLE_RE = re.compile(r"^title:\s*(.+?)\s*$", re.MULTILINE)
 _FTS_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+
+
+# ---------------------------------------------------------------------------
+# Lexical variants
+# ---------------------------------------------------------------------------
+# Each variant is one FTS5 schema. They differ only in tokenizer and column
+# layout, so a run can attribute a score change to exactly one of those and not
+# to a bundle of them. `baseline` is byte-for-byte what the 2026-08-06 run
+# indexed — porter stemming and a 4x title boost were already in it, so the two
+# knobs the follow-up brief named as untried variants are the control, and the
+# variants below are the ablation (`plain`, `flat`) and the extension (`fields`).
+#
+# `fields` adds one column rather than moving text between columns: `meta`
+# carries the note's `aliases` and `tags` values, which stay in `body` too. So
+# the only difference from baseline is that those two fields are counted twice,
+# the second time at a higher weight — nothing becomes less searchable.
+LEXICAL_VARIANTS = {
+    "baseline": {"tokenize": "porter unicode61", "fields": "merged",
+                 "weights": (0.0, 4.0, 1.0)},
+    "fields": {"tokenize": "porter unicode61", "fields": "split",
+               "weights": (0.0, 4.0, 3.0, 1.0)},
+    "plain": {"tokenize": "unicode61", "fields": "merged",
+              "weights": (0.0, 4.0, 1.0)},
+    "flat": {"tokenize": "porter unicode61", "fields": "merged",
+             "weights": (0.0, 1.0, 1.0)},
+}
+DEFAULT_VARIANT = "baseline"
+
+
+def variant_spec(variant):
+    try:
+        return LEXICAL_VARIANTS[variant]
+    except KeyError:
+        raise CorpusError(
+            f"unknown lexical variant {variant!r}; expected one of "
+            f"{', '.join(sorted(LEXICAL_VARIANTS))}"
+        ) from None
+
+
+def lexical_db_name(variant):
+    """Per-variant index filename. `baseline` keeps the original name so the
+    already-built index on this machine is reused rather than rebuilt."""
+    return "lexical.db" if variant == DEFAULT_VARIANT else f"lexical-{variant}.db"
+
+
+# ---------------------------------------------------------------------------
+# Rank penalty — the classifier
+# ---------------------------------------------------------------------------
+# 3,413 of this vault's 8,687 notes are miner fragments: a truncated sentence
+# clipped out of a session transcript, wrapped in frontmatter, and written as its
+# own file. They carry the operator's vocabulary because they are quotations of
+# it, which is exactly why they rank — they compete on every query and win on
+# some. `agentm-rescope-memory.md` calls for demoting them.
+#
+# Demote, never exclude. A note that cannot be returned at all cannot be returned
+# when it is the only answer, and a filter that silently removed a class of
+# results is the mechanism that left recall dead for four months. Everything here
+# multiplies a score; nothing here drops a row.
+FRAGMENT_OPENERS = (
+    "User stated:",
+    "Fix observed:",
+    "User corrected the agent:",
+)
+
+# Statuses that mean "not filed yet" or "no longer true". The rescope design
+# names `unfiled`; this corpus predates that vocabulary and spells the same
+# condition `inbox`, so both are listed and the daemon inherits the pair.
+PENALIZED_STATUSES = frozenset({"unfiled", "inbox", "superseded", "expired"})
+
+# Where a mid-word slug is evidence of a fragment. Both directories were filled
+# by the same miner, and a note whose filename starts partway into a word
+# ("rver-s-vault-hardwiring-can-t-1") was cut out of a longer sentence.
+FRAGMENT_SLUG_DIRS = ("personal/idea", "personal/fix")
+
+# Short words that legitimately start a slug, so a real note is not read as a
+# truncation just for beginning with one.
+_REAL_SHORT_WORDS = frozenset("""
+a an and the of to in on at by for is it as or no not new old all one two six
+add api cli fix log run see set use web why how who has had was are can may
+day end few far git job key lab map max min net now off out own pdf per put
+raw ref sdk sql ssh sum tag ten tip top ui url v1 v2 v3 v4 v5 v6 v7 v8 yes
+also auto back base best both call case chat code copy core cost data date
+docs done down draft drop each edit else even fail file find flag flow form
+free from full gate give gold good half hand hard have head help here hold
+hook host idea into join jump just keep kind know last left less line link
+list live load lock long look loop main make many mark menu mode more most
+move much must name need next node note only open over page part pass past
+path plan play plus pull push read real repo rest role room root rule runs
+safe same save scan seed seem self send sent ship show side sign site size
+skip slow slug some sort spec stay step stop such sure sync take task team
+tell term test text than that them then they this thus time tool turn type
+unit upon used user very view wait walk want ways week well what when will
+with word work wrap year your zero
+""".split())
+_ELLIPSIS_OPENERS = ("...", "…")
+
+# One weight per class, applied multiplicatively to the BM25 score. Chosen by
+# the offline sweep in `week1_rank_replay.py`, not by taste — see the week-1
+# rank-penalty scorecard for the sweep that produced them.
+DEFAULT_PENALTY_WEIGHTS = {"fragment": 0.30, "status": 0.60, "staging": 0.30}
+
+# How deep to look before re-ranking. A penalty can only promote a note the
+# first fetch actually saw, so the window has to be wide enough that a real note
+# buried under a wall of fragments can climb into the top five. 200 is ~2.3% of
+# the corpus and costs under a millisecond; k alone would make the penalty a
+# no-op, since re-sorting five rows cannot introduce a sixth.
+PENALTY_OVERFETCH = 200
+
+_STATUS_RE = re.compile(r"^status:\s*(\S+)", re.MULTILINE)
+_MINING_RE = re.compile(r"^mining_confidence:", re.MULTILINE)
+_ALIASES_RE = re.compile(r"^aliases:\s*(.*)$", re.MULTILINE)
+_TAGS_RE = re.compile(r"^tags:\s*(.*)$", re.MULTILINE)
+_PROPOSAL_RE = re.compile(r"\A#\s*Proposal\s+\d+\s*:", re.MULTILINE)
+
+
+def _looks_truncated_slug(stem):
+    """True when a slug appears to start partway into a word.
+
+    Deliberately conservative: it fires on a short leading segment that is not a
+    real short word, which catches `mber-…`, `rver-…`, `ps-…` and leaves
+    `read-multi-agent-collective-memory-vault` alone. It cannot catch every case
+    without a dictionary, and it does not need to — this class is 32 files out
+    of 8,687 and the ellipsis check below covers most of what it misses.
+    """
+    first = stem.split("-", 1)[0].lower()
+    if not first:
+        return False
+    if first.isdigit():
+        return True
+    return len(first) <= 4 and first not in _REAL_SHORT_WORDS
+
+
+def classify_document(rel, raw):
+    """Return the set of rank-penalty classes a note falls into.
+
+    `rel` is the vault-relative POSIX path, `raw` the file's full text.
+    Classes are independent and a note can carry several:
+
+      `fragment` — a miner artifact. Detected three ways, because no single
+        signal covers the population: the body opens with one of the miner's
+        stock lead-ins; the frontmatter carries `mining_confidence`, which only
+        the miner writes; or the note sits in one of the two miner-filled
+        directories under a slug that starts mid-word.
+      `status`   — frontmatter status is unfiled/inbox/superseded/expired.
+      `staging`  — a dream-staging proposal. Not in the brief's list, and
+        reported separately for that reason. It earns a class because each
+        proposal quotes the full text of the two notes it is about, so it is a
+        fragment counted twice, and 1,052 of them sit in the corpus.
+    """
+    flags = set()
+    m = _FRONTMATTER_RE.match(raw)
+    head = m.group(1) if m else ""
+    after = (raw[m.end():] if m else raw).lstrip()
+
+    if any(after.startswith(o) for o in FRAGMENT_OPENERS):
+        flags.add("fragment")
+    elif _MINING_RE.search(head):
+        flags.add("fragment")
+    elif rel.rsplit("/", 1)[0] in FRAGMENT_SLUG_DIRS:
+        stem = rel.rsplit("/", 1)[-1][:-3]
+        if _looks_truncated_slug(stem) or after.startswith(_ELLIPSIS_OPENERS):
+            flags.add("fragment")
+
+    st = _STATUS_RE.search(head)
+    if st and st.group(1).strip().strip("'\"").lower() in PENALIZED_STATUSES:
+        flags.add("status")
+
+    if rel.startswith("_dream-staging/") and (
+        rel.endswith(".proposal.md") or _PROPOSAL_RE.match(after)
+    ):
+        flags.add("staging")
+
+    return flags
+
+
+def penalty_multiplier(flags, weights):
+    """Compound the per-class weights a note's flags earn. 1.0 when unflagged.
+
+    Multiplicative rather than additive so the classes compose without any one
+    of them being able to zero a score out — a note that is both a fragment and
+    unfiled is demoted twice, and still ranked.
+    """
+    w = 1.0
+    for flag in flags:
+        w *= weights.get(flag, 1.0)
+    return w
+
+
+def extract_meta_text(head):
+    """The `aliases` + `tags` values as plain text, for the `fields` variant."""
+    parts = []
+    for rx in (_ALIASES_RE, _TAGS_RE):
+        m = rx.search(head)
+        if m:
+            parts.append(re.sub(r"[\[\],'\"]", " ", m.group(1)))
+    return " ".join(" ".join(parts).split())
 
 
 class CorpusError(RuntimeError):
@@ -152,20 +352,50 @@ def read_document(path, vault):
     return rel, title, (m.group(1) + "\n" + body if m else body)
 
 
+def read_document_ex(path, vault):
+    """`read_document` plus the two things indexing needs and scoring does not.
+
+    Returns `(rel, title, body, meta, flags)`, or None if unreadable. Split from
+    `read_document` rather than folded into it so the vector arm — which wants
+    neither the penalty classes nor the `fields` variant's extra column — keeps
+    reading exactly the text it read before, and the two arms stay comparable.
+    """
+    try:
+        raw = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    doc = read_document(path, vault)
+    if doc is None:
+        return None
+    rel, title, body = doc
+    m = _FRONTMATTER_RE.match(raw)
+    meta = extract_meta_text(m.group(1)) if m else ""
+    return rel, title, body, meta, classify_document(rel, raw)
+
+
 # ---------------------------------------------------------------------------
 # Lexical surface — SQLite FTS5 + BM25
 # ---------------------------------------------------------------------------
 
-def build_lexical_index(vault, db_path, *, exclude_dirs=None, paths=None, verbose=False):
+def build_lexical_index(vault, db_path, *, exclude_dirs=None, paths=None,
+                        variant=DEFAULT_VARIANT, verbose=False):
     """Build (or reuse) the FTS5 index at `db_path`. Returns (sqlite3.Connection, n_docs).
 
     Reuses an existing index when its stored fingerprint matches the live
     corpus, so a repeated run does not re-read 17MB off a Google Drive mount.
+    The fingerprint now covers the variant and the schema version too, so
+    switching either rebuilds instead of querying a schema that is not there.
+
+    Every variant stores the same `docflags` table, which is what lets one index
+    serve both a penalized and an unpenalized run: the penalty is applied at
+    query time, so a with/without comparison is guaranteed to be reading the
+    identical index rather than two builds that might differ for another reason.
     """
     db_path = Path(db_path)
+    spec = variant_spec(variant)
     if paths is None:
         paths = iter_markdown_paths(vault, exclude_dirs=exclude_dirs)
-    fp = corpus_fingerprint(paths, vault)
+    fp = f"{_SCHEMA_VERSION}:{variant}:{corpus_fingerprint(paths, vault)}"
 
     if db_path.exists():
         conn = sqlite3.connect(str(db_path))
@@ -174,45 +404,93 @@ def build_lexical_index(vault, db_path, *, exclude_dirs=None, paths=None, verbos
             if row and row[0] == fp:
                 n = conn.execute("SELECT count(*) FROM docs").fetchone()[0]
                 if verbose:
-                    print(f"[week1-corpus] lexical index reused ({n} docs)", file=sys.stderr)
+                    print(f"[week1-corpus] lexical index reused ({n} docs, "
+                          f"variant {variant})", file=sys.stderr)
                 return conn, n
         except sqlite3.Error:
             pass
         conn.close()
-        db_path.unlink()
+        try:
+            db_path.unlink()
+        except PermissionError:
+            # Windows refuses to delete a file another connection still holds
+            # open, and POSIX does not — so the "delete and start over" rebuild
+            # works everywhere except the one platform where a stale handle is
+            # visible. Dropping the tables achieves the same thing through the
+            # handle we do have, which is also the honest fix: the goal was
+            # never to remove the file, it was to discard what is in it.
+            conn = sqlite3.connect(str(db_path))
+            for table in ("docs", "meta", "docflags"):
+                conn.execute(f"DROP TABLE IF EXISTS {table}")
+            conn.commit()
+            conn.close()
 
+    split = spec["fields"] == "split"
+    columns = "path UNINDEXED, title, meta, body" if split else "path UNINDEXED, title, body"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
     try:
         conn.execute(
-            "CREATE VIRTUAL TABLE docs USING fts5("
-            "path UNINDEXED, title, body, tokenize='porter unicode61')"
+            f"CREATE VIRTUAL TABLE docs USING fts5("
+            f"{columns}, tokenize='{spec['tokenize']}')"
         )
     except sqlite3.OperationalError as e:
         raise CorpusError(
             f"SQLite has no FTS5 support in this interpreter ({sys.executable}): {e}"
         ) from e
     conn.execute("CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT)")
+    conn.execute("CREATE TABLE docflags (path TEXT PRIMARY KEY, flags TEXT)")
 
     n = 0
+    flag_counts = {}
     started = time.monotonic()
     for p in paths:
-        doc = read_document(p, vault)
+        doc = read_document_ex(p, vault)
         if doc is None:
             continue
-        conn.execute("INSERT INTO docs (path, title, body) VALUES (?, ?, ?)", doc)
+        rel, title, body, meta_text, flags = doc
+        if split:
+            conn.execute(
+                "INSERT INTO docs (path, title, meta, body) VALUES (?, ?, ?, ?)",
+                (rel, title, meta_text, body))
+        else:
+            conn.execute(
+                "INSERT INTO docs (path, title, body) VALUES (?, ?, ?)",
+                (rel, title, body))
+        if flags:
+            conn.execute("INSERT INTO docflags VALUES (?, ?)",
+                         (rel, ",".join(sorted(flags))))
+            for f in flags:
+                flag_counts[f] = flag_counts.get(f, 0) + 1
         n += 1
         if verbose and n % 1000 == 0:
             print(f"[week1-corpus] indexed {n}/{len(paths)}…", file=sys.stderr)
     conn.execute("INSERT INTO meta VALUES ('fingerprint', ?)", (fp,))
+    conn.execute("INSERT INTO meta VALUES ('variant', ?)", (variant,))
     conn.commit()
     if verbose:
         print(
             f"[week1-corpus] lexical index built: {n} docs in "
-            f"{time.monotonic() - started:.1f}s -> {db_path}",
+            f"{time.monotonic() - started:.1f}s (variant {variant}) -> {db_path}",
             file=sys.stderr,
         )
+        print(f"[week1-corpus] penalty classes: "
+              f"{', '.join(f'{k}={v}' for k, v in sorted(flag_counts.items())) or 'none'}",
+              file=sys.stderr)
     return conn, n
+
+
+def load_doc_flags(conn):
+    """`{path: frozenset(flags)}` for every flagged note. Read once, held in memory.
+
+    Only flagged notes are stored, so this is ~6k rows on this vault and an
+    empty dict on a corpus with nothing to demote.
+    """
+    try:
+        rows = conn.execute("SELECT path, flags FROM docflags").fetchall()
+    except sqlite3.Error:
+        return {}
+    return {p: frozenset(f.split(",")) for p, f in rows if f}
 
 
 def _sanitize_fts_query(query):
@@ -227,7 +505,52 @@ def _sanitize_fts_query(query):
     return " OR ".join(f'"{t}"' for t in tokens)
 
 
-def search_lexical(conn, query, k=5):
+_QUOTED_RE = re.compile(r'"([^"]+)"')
+
+
+def or_join_query(query):
+    """OR-join a query's terms, keeping any double-quoted phrase intact.
+
+    The difference from `_sanitize_fts_query` is the phrase handling, and it is
+    the whole point: an agent that writes `"F0" prompt pack` means the literal
+    `F0` and then three hints, and flattening the quotes throws away the one
+    piece of the query it was most sure about.
+
+    Why this exists at all: FTS5's bare `docs MATCH 'a b c'` is an implicit AND
+    across every term, so a six-word paraphrase has to find a note containing
+    all six words or it returns nothing. On the 2026-08-06 Opus run that emptied
+    32 of 206 queries outright and left 62 returning fewer than five results.
+    Ranking cannot rescue an empty result set, which is why this is measured
+    alongside the rank penalty rather than after it.
+    """
+    query = (query or "").strip()
+    if not query:
+        return None
+    terms, rest = [], []
+    pos = 0
+    for m in _QUOTED_RE.finditer(query):
+        rest.append(query[pos:m.start()])
+        inner = m.group(1).strip()
+        if inner:
+            terms.append('"' + inner.replace('"', "") + '"')
+        pos = m.end()
+    rest.append(query[pos:])
+    for tok in _FTS_TOKEN_RE.findall(" ".join(rest)):
+        # `OR`/`AND`/`NOT` written by the agent are operators it meant, not terms
+        # to search for; dropping them here is what makes the join total.
+        if tok.upper() in ("OR", "AND", "NOT", "NEAR"):
+            continue
+        terms.append(f'"{tok}"')
+    if not terms:
+        return None
+    return " OR ".join(terms)
+
+
+QUERY_MODES = ("as-is", "or")
+
+
+def search_lexical(conn, query, k=5, *, weights=None, doc_flags=None, penalty=None,
+                   query_mode="as-is"):
     """BM25-ranked search. Returns `(results, note)`.
 
     `results` is a list of `{path, score, snippet}`, best first. `score` is the
@@ -240,17 +563,44 @@ def search_lexical(conn, query, k=5):
     silent rewrite would make its next reformulation a guess. A hard error would
     be worse still: it would burn one of six tool calls and quietly bias the
     measurement toward whichever arm happened to phrase queries more plainly.
+
+    With `penalty` set, the query fetches `PENALTY_OVERFETCH` rows instead of
+    `k`, multiplies each score by the weight its penalty classes earn, re-sorts,
+    and returns the top `k`. Rows are re-ordered and never dropped: a penalized
+    note that is the best thing the corpus has still comes back first, because
+    every other row was multiplied by 1.0 and it was multiplied by something
+    greater than zero. `score` in the output is the adjusted score, with the
+    original alongside it as `raw_score` and the classes as `penalty` so a
+    demotion is visible in the call log rather than inferred from a number
+    moving.
     """
     query = (query or "").strip()
     if not query:
         return [], "empty query"
+    weights = tuple(weights or _BM25_WEIGHTS)
+    prefix_note = None
+    if query_mode == "or":
+        joined = or_join_query(query)
+        if joined is None:
+            return [], "query contained no searchable terms"
+        # The note is for the agent's benefit, so it only fires when the rewrite
+        # actually widened anything. A one-term query is rewritten to itself in
+        # quotes, and announcing a change there would just be noise the agent
+        # has to reason about.
+        if " OR " in joined:
+            prefix_note = "matched any of the query's terms, best-matching first"
+        query = joined
+    limit = max(k, PENALTY_OVERFETCH) if penalty else k
+    placeholders = ", ".join("?" * len(weights))
+    # The snippet column index is the body column, which is last in either layout.
     sql = (
-        "SELECT path, bm25(docs, ?, ?, ?) AS s, snippet(docs, 2, '[', ']', ' … ', 24) "
-        "FROM docs WHERE docs MATCH ? ORDER BY s LIMIT ?"
+        f"SELECT path, bm25(docs, {placeholders}) AS s, "
+        f"snippet(docs, {len(weights) - 1}, '[', ']', ' … ', 24) "
+        f"FROM docs WHERE docs MATCH ? ORDER BY s LIMIT ?"
     )
     note = None
     try:
-        rows = conn.execute(sql, (*_BM25_WEIGHTS, query, k)).fetchall()
+        rows = conn.execute(sql, (*weights, query, limit)).fetchall()
     except sqlite3.OperationalError:
         sanitized = _sanitize_fts_query(query)
         if sanitized is None:
@@ -260,14 +610,27 @@ def search_lexical(conn, query, k=5):
             f"instead ({sanitized})"
         )
         try:
-            rows = conn.execute(sql, (*_BM25_WEIGHTS, sanitized, k)).fetchall()
+            rows = conn.execute(sql, (*weights, sanitized, limit)).fetchall()
         except sqlite3.OperationalError as e:
             return [], f"search failed: {e}"
+
     results = [
         {"path": r[0], "score": round(-r[1], 4), "snippet": " ".join((r[2] or "").split())}
         for r in rows
     ]
-    return results, note
+    if penalty:
+        doc_flags = doc_flags or {}
+        for r in results:
+            flags = doc_flags.get(r["path"], frozenset())
+            mult = penalty_multiplier(flags, penalty)
+            r["raw_score"] = r["score"]
+            r["score"] = round(r["score"] * mult, 4)
+            if flags:
+                r["penalty"] = ",".join(sorted(flags))
+        # Ties broken by path so the ordering is total and a re-run is identical.
+        results.sort(key=lambda r: (-r["score"], r["path"]))
+        results = results[:k]
+    return results, note or prefix_note
 
 
 # ---------------------------------------------------------------------------
@@ -501,13 +864,16 @@ def main(argv=None):
     ap.add_argument("--exclude-dir", action="append", default=[])
     ap.add_argument("--embed-mode", default="local", choices=("local", "stub"))
     ap.add_argument("--lexical-only", action="store_true")
+    ap.add_argument("--variant", default=DEFAULT_VARIANT,
+                    choices=sorted(LEXICAL_VARIANTS), help="lexical index variant")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
     vault = resolve_vault(args.vault_path)
     work = Path(args.work_dir)
     paths = iter_markdown_paths(vault, exclude_dirs=args.exclude_dir)
     print(f"[week1-corpus] {len(paths)} .md files under {vault}", file=sys.stderr)
-    build_lexical_index(vault, work / "lexical.db", paths=paths, verbose=True)
+    build_lexical_index(vault, work / lexical_db_name(args.variant), paths=paths,
+                        variant=args.variant, verbose=True)
     if not args.lexical_only:
         build_vector_index(
             vault, work / f"vectors-{args.embed_mode}.npz",
