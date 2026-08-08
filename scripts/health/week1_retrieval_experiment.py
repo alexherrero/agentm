@@ -768,19 +768,23 @@ def main(argv=None):
              "terms — the 2026-08-06 behaviour; 'or' OR-joins them, phrases intact")
     ap.add_argument(
         "--penalty", default=None,
-        help='rank-penalty weights as JSON, e.g. \'{"fragment":0.3,"status":0.6}\', '
-             'or "default" for the tuned set. Omit for no penalty.')
+        help='rank-penalty weights as JSON, or a preset name. "default" is the '
+             'recommended shape, which spares notes filing already promoted; '
+             '"as-measured" is what the 2026-08-07 replicates ran, which does '
+             'not. Omit for no penalty.')
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
     if args.penalty == "default":
         penalty = dict(corpus_mod.DEFAULT_PENALTY_WEIGHTS)
+    elif args.penalty == "as-measured":
+        penalty = dict(corpus_mod.AS_MEASURED_PENALTY_WEIGHTS)
     elif args.penalty:
         penalty = json.loads(args.penalty)
-        unknown = set(penalty) - set(corpus_mod.DEFAULT_PENALTY_WEIGHTS)
+        unknown = set(penalty) - corpus_mod.PENALTY_CLASSES
         if unknown:
             raise SystemExit(
                 f"[week1] unknown penalty class(es) {sorted(unknown)}; known classes "
-                f"are {sorted(corpus_mod.DEFAULT_PENALTY_WEIGHTS)}. A typo here would "
+                f"are {sorted(corpus_mod.PENALTY_CLASSES)}. A typo here would "
                 f"silently run an unpenalized arm and report it as penalized.")
         if any(not (0 < float(v) <= 1) for v in penalty.values()):
             raise SystemExit(
