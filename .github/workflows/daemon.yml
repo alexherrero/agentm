@@ -1,0 +1,104 @@
+name: "[T] Daemon (Go)"
+
+# The Go memory daemon's own battery, on the three platforms the static binary
+# claims to serve.
+#
+# A separate workflow rather than three more jobs in tests-{linux,mac,windows}:
+# those are Python-shaped, and the ci-all aggregator polls exactly those three
+# names, so extending them would couple the daemon's build to the aggregator's
+# timing for no benefit. This runs on the same pull_request trigger and reports
+# as its own check.
+#
+# The matrix is the point. `CGO_ENABLED=0` with modernc.org/sqlite is what makes
+# the daemon a single static binary that cross-compiles to any box on the home
+# network, and a claim like that is worth actually running on each platform rather
+# than asserting in a design document.
+on:
+  pull_request: {}
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'daemon/**'
+      - 'scripts/check-daemon.sh'
+      - '.github/workflows/daemon.yml'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  daemon:
+    name: daemon (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+          cache-dependency-path: daemon/go.sum
+
+      # go.mod and go.sum must already describe the build. A CI run that silently
+      # resolves a different dependency set than the developer's machine is not
+      # testing the artifact that ships.
+      - name: Dependencies are pinned and tidy
+        working-directory: daemon
+        run: |
+          go mod download
+          go mod verify
+          cp go.mod go.mod.orig && cp go.sum go.sum.orig
+          go mod tidy
+          if ! diff -q go.mod go.mod.orig || ! diff -q go.sum go.sum.orig; then
+            echo "::error::go mod tidy changed go.mod/go.sum — commit the tidied files"
+            diff -u go.mod.orig go.mod || true
+            diff -u go.sum.orig go.sum || true
+            exit 1
+          fi
+          rm -f go.mod.orig go.sum.orig
+
+      - name: Formatted, vetted, and builds without cgo
+        working-directory: daemon
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::unformatted files:"; echo "$unformatted"; exit 1
+          fi
+          go vet ./...
+          go build ./...
+
+      # -count=1 is required, not defensive. The e2e suite drives the daemon as a
+      # built binary over HTTP, so its compile-time dependencies do not cover the
+      # behaviour it exercises, and Go will happily serve a cached PASS after a
+      # change to internal/. A suite that can report success without running is the
+      # same failure as one that never asked the question.
+      - name: Tests (including the principle-3 round trip)
+        working-directory: daemon
+        env:
+          CGO_ENABLED: '0'
+        run: go test -count=1 -timeout 10m ./...
+
+      # The binary must run somewhere other than the machine that built it, with no
+      # vault configured — the failure has to be a clear message about the missing
+      # vault path, not a panic or a hardcoded fallback.
+      - name: Fails cleanly with no configuration
+        working-directory: daemon
+        env:
+          CGO_ENABLED: '0'
+        run: |
+          go build -o agentmd-probe ./cmd/agentmd
+          ./agentmd-probe version
+          if ./agentmd-probe search --config /nonexistent/agentm.json hello 2>err.txt; then
+            echo "::error::search succeeded with no vault configured"; exit 1
+          fi
+          cat err.txt
+          grep -q "no vault path" err.txt || {
+            echo "::error::expected a message naming the missing vault path"; exit 1; }

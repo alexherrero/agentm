@@ -26,6 +26,7 @@
 - [Compatibility](Compatibility)
 - [Completed features](Completed-Features)
 - [Known issues](Known-Issues)
+- [Memory daemon (agentmd)](Memory-Daemon)
 - [Memory MCP tools](Memory-MCP-Tools)
 - [Kind-taxonomy registry](Kind-Taxonomy-Registry)
 - [MOC generator](MOC-Generator)

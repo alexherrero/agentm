@@ -105,6 +105,17 @@ LINE_ALLOWLIST_PATTERNS=(
     # a genuine phone number that happened to sit in a path.
     '_dream(-staging)?/(inbox-|insights/)?[0-9]{8}-[0-9]{6}-[0-9a-f]{8}'  # staging dirnames + distilled insights, YYYYMMDD-HHMMSS-hash
     'personal/_inbox/[0-9]{8}-[0-9]{4}-'                                 # timestamped note filenames, YYYYMMDD-HHMM-slug
+    # Go module pseudo-versions. A dependency pinned to an untagged commit is
+    # written v0.0.0-<YYYYMMDDHHMMSS>-<12 hex>, and the 14-digit timestamp's
+    # leading run mimics a US phone number — so most of daemon/go.sum
+    # false-positives. The pattern names the full pseudo-version shape (semver
+    # prefix, 14-digit stamp, 12-char commit hash) rather than adding go.sum to
+    # SELF_SKIP_PATHS, which would stop scanning a lockfile entirely — and a
+    # lockfile is exactly where a credential in a vanity module URL would hide.
+    # Residual risk, stated plainly because this is a line-level rule: a real
+    # phone number sharing a line with a pseudo-version is masked. That needs a
+    # module path containing one, which no dependency here has.
+    'v[0-9]+\.[0-9]+\.[0-9]+-([0-9A-Za-z.-]+\.)?[0-9]{14}-[0-9a-f]{12}'
 )
 
 # ── file collection ───────────────────────────────────────────────────────

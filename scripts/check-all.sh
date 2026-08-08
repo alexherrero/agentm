@@ -88,6 +88,7 @@ gate "run-ablation-baseline (mechanical uplift, on/off per subsystem)" bash scri
 gate "verify-phases (lifecycle e2e · both modes)" bash scripts/verify-phases.sh
 gate "verify-memory-roundtrip (engine e2e)"    bash scripts/verify-memory-roundtrip.sh
 gate "check-kind-taxonomy (advisory, report-only — V6-15)" bash scripts/check-kind-taxonomy.sh
+gate "check-daemon (Go daemon: fmt, vet, build CGO_ENABLED=0, test -count=1)" bash scripts/check-daemon.sh
 
 echo
 if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi
