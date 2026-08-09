@@ -1116,9 +1116,33 @@ PLISTEOF
 
     # Reload rather than load, so re-running after a source pull is the same
     # command as installing.
-    launchctl bootout "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || true
-    if ! launchctl bootstrap "gui/$(id -u)" "$DAEMON_PLIST" 2>/dev/null; then
+    #
+    # bootout returns before the job is actually gone, and bootstrapping into a
+    # domain that still holds the old job fails. Caught on the first real reload:
+    # the build succeeded, bootstrap failed, and the daemon was left down. So wait
+    # for the unload to land, then retry the bootstrap a few times rather than
+    # treating one attempt as the answer.
+    if launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
+      launchctl bootout "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || true
+      for _ in $(seq 1 30); do
+        launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || break
+        sleep 1
+      done
+    fi
+    DAEMON_LOADED=0
+    for _ in $(seq 1 5); do
+      if launchctl bootstrap "gui/$(id -u)" "$DAEMON_PLIST" 2>/dev/null; then
+        DAEMON_LOADED=1; break
+      fi
+      # Already loaded is success, not failure — a concurrent load beat us to it.
+      if launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
+        DAEMON_LOADED=1; break
+      fi
+      sleep 2
+    done
+    if [[ $DAEMON_LOADED -eq 0 ]]; then
       echo "Error: --daemon: launchctl bootstrap failed for $DAEMON_PLIST" >&2
+      echo "       Try manually:  launchctl bootstrap gui/\$(id -u) $DAEMON_PLIST" >&2
       echo "       Check $DAEMON_LOG_DIR/daemon.log" >&2
       exit 1
     fi
