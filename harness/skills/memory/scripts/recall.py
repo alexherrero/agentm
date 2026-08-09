@@ -247,6 +247,40 @@ def _resolve_token_budget(arg_value: int | None) -> int:
     return DEFAULT_TOKEN_BUDGET
 
 
+def _resolve_budget_ms(arg_value: int | None, default: int) -> int:
+    """Resolve an interactive time budget: --budget-ms → RECALL_BUDGET_MS env → default.
+
+    The two interactive subcommands are driven by shell/pwsh hook wrappers that
+    pass no flags, so the environment is the only channel a caller has to widen
+    the budget. `query` is excluded deliberately: it is invoked directly and can
+    already pass --budget-ms.
+
+    This exists because the budget is a production tuning constant that a test
+    driving the hook end-to-end would otherwise race. The setup a recall pays
+    before the corpus walk even starts — importing embed/vec_index, opening the
+    vec index, and on hosts where sqlite-vec loads, creating the index DB and
+    loading a native extension — is a FIXED cost, independent of corpus size.
+    Measured at 25-42ms of the 300ms prompt-submit budget on an idle M-series
+    Mac, and larger on Windows, where sqlite-vec actually loads. On a loaded CI
+    runner it can consume the whole budget, at which point `_bm25_search` finds
+    the deadline already elapsed, reports `walked 0 of N`, and `query()`
+    discards the stream — so recall emits nothing on a two-entry fixture vault
+    for reasons that have nothing to do with the behavior under test.
+
+    A non-positive value stays meaningful: 0 or negative is the forced-overrun
+    path, so the check here is `is not None`, never truthiness.
+    """
+    if arg_value is not None:
+        return arg_value
+    env_val = os.environ.get("RECALL_BUDGET_MS", "").strip()
+    if env_val:
+        try:
+            return int(env_val)
+        except ValueError:
+            pass
+    return default
+
+
 def _apply_token_budget(
     blocks: list[str],
     slugs: list,
@@ -1875,8 +1909,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     ss.add_argument(
         "--budget-ms",
         type=int,
-        default=SESSION_START_BUDGET_MS,
-        help=f"time budget in milliseconds (default: {SESSION_START_BUDGET_MS})",
+        default=None,
+        help=(
+            f"time budget in milliseconds (default: {SESSION_START_BUDGET_MS}). "
+            "Also read from RECALL_BUDGET_MS env."
+        ),
     )
     ss.add_argument(
         "--token-budget",
@@ -1899,8 +1936,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     ps.add_argument(
         "--budget-ms",
         type=int,
-        default=PROMPT_SUBMIT_BUDGET_MS,
-        help=f"time budget in milliseconds (default: {PROMPT_SUBMIT_BUDGET_MS})",
+        default=None,
+        help=(
+            f"time budget in milliseconds (default: {PROMPT_SUBMIT_BUDGET_MS}). "
+            "Also read from RECALL_BUDGET_MS env."
+        ),
     )
     ps.add_argument(
         "--token-budget",
@@ -1982,7 +2022,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "session-start":
         return session_start(
             vault=vault,
-            budget_ms=args.budget_ms,
+            budget_ms=_resolve_budget_ms(args.budget_ms, SESSION_START_BUDGET_MS),
             token_budget=_resolve_token_budget(args.token_budget),
         )
     if args.cmd == "prompt-submit":
@@ -1990,7 +2030,7 @@ def main(argv: list[str] | None = None) -> int:
         return prompt_submit(
             vault=vault,
             prompt=prompt,
-            budget_ms=args.budget_ms,
+            budget_ms=_resolve_budget_ms(args.budget_ms, PROMPT_SUBMIT_BUDGET_MS),
             token_budget=_resolve_token_budget(args.token_budget),
         )
     if args.cmd == "query":
