@@ -18,6 +18,10 @@ touches the machine it runs on:
                       production once, which is the argument for being able to
                       test it at all.
 
+Every test here shells out to install.sh, so the whole file skips on Windows —
+`bash` there resolves to WSL, which on a bare runner has no distribution
+installed. install.ps1 is the Windows path and covers none of this.
+
 Run: python3 scripts/test_install_daemon_refresh.py
 """
 from __future__ import annotations
@@ -37,6 +41,7 @@ _INSTALL = _REPO / "install.sh"
 PLIST_REL = "Library/LaunchAgents/com.agentm.daemon.plist"
 
 
+@unittest.skipIf(os.name == "nt", "drives install.sh — POSIX only (install.ps1 is the Windows path)")
 class DaemonRefreshBase(unittest.TestCase):
 
     def setUp(self) -> None:
