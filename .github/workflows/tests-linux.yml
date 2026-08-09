@@ -85,6 +85,13 @@ jobs:
         run: python3 scripts/check-governs-index.py
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         run: bash scripts/check-vendored-parity.sh hook-config
+      - name: check-vault-frontmatter (self-test — the scanner's own defect classes)
+        # The gate's scan mode walks the operator's vault, which a runner does
+        # not have, so on CI it would skip and prove nothing. --self-test builds
+        # a scratch vault of known-bad notes instead and asserts each defect is
+        # caught at the expected file:line. check-all.sh runs the scan mode
+        # locally, against the real vault.
+        run: python3 scripts/check-vault-frontmatter.py --self-test
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit. Closes pre-v4.5.1 CI gap where
