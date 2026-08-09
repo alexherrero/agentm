@@ -15,6 +15,9 @@ Run directly:
 """
 from __future__ import annotations
 
+import json
+import os
+import subprocess
 import sys
 import tempfile
 import time
@@ -97,6 +100,114 @@ class TestQueryCliBudgetSurvivesSlowEmbed(unittest.TestCase):
         # what it pins is the vec half never contributing under this
         # budget: sim stays 0.0 for every hit.
         self.assertTrue(all(r["sim"] == 0.0 for r in results))
+
+
+class TestInteractiveBudgetEnvOverride(unittest.TestCase):
+    """RECALL_BUDGET_MS widens the two hook-driven budgets.
+
+    The shell/pwsh hook wrappers pass no flags, so the environment is the only
+    channel a caller has to ask for a budget other than the production
+    constant. The caller that needs one is a test driving the hook end-to-end:
+    recall pays a fixed setup cost before the corpus walk starts, and on a
+    loaded CI runner that alone can exhaust 300ms, at which point the lexical
+    stream is discarded and the hook prints nothing on a two-entry vault.
+    """
+
+    def test_hook_subcommands_defer_their_budget_to_the_resolver(self):
+        # A literal argparse default here would shadow the env silently --
+        # None is what lets it be consulted at all.
+        self.assertIsNone(recall._parse_args(["session-start"]).budget_ms)
+        self.assertIsNone(recall._parse_args(["prompt-submit"]).budget_ms)
+
+    def test_query_is_deliberately_outside_the_env_override(self):
+        # query is invoked directly and can already pass --budget-ms.
+        self.assertEqual(
+            recall._parse_args(["query", "x"]).budget_ms, recall.QUERY_CLI_BUDGET_MS
+        )
+
+    def test_an_explicit_flag_beats_the_env(self):
+        with unittest.mock.patch.dict(os.environ, {"RECALL_BUDGET_MS": "4321"}):
+            self.assertEqual(recall._resolve_budget_ms(None, 300), 4321)
+            self.assertEqual(recall._resolve_budget_ms(900, 300), 900)
+
+    def test_an_explicit_zero_survives_the_env(self):
+        # 0/negative is the forced-overrun path the smoke tests drive. A
+        # truthiness check instead of `is not None` would silently promote it
+        # to the env value and delete that path's only trigger.
+        with unittest.mock.patch.dict(os.environ, {"RECALL_BUDGET_MS": "4321"}):
+            self.assertEqual(recall._resolve_budget_ms(0, 300), 0)
+            self.assertEqual(recall._resolve_budget_ms(-1, 300), -1)
+
+    def test_the_default_stands_when_the_env_is_absent_or_junk(self):
+        with unittest.mock.patch.dict(os.environ, {}):
+            os.environ.pop("RECALL_BUDGET_MS", None)
+            self.assertEqual(recall._resolve_budget_ms(None, 300), 300)
+        for junk in ("", "   ", "soon", "3.5"):
+            with self.subTest(junk=junk):
+                with unittest.mock.patch.dict(os.environ, {"RECALL_BUDGET_MS": junk}):
+                    self.assertEqual(recall._resolve_budget_ms(None, 300), 300)
+
+
+class TestInteractiveBudgetEnvReachesTheEngine(unittest.TestCase):
+    """The env var must change what the CLI actually emits, not just parse.
+
+    A resolver that agrees with itself proves nothing; this drives recall.py as
+    a subprocess the way the hook does. Both literals are observed behavior on
+    this fixture, not recomputed from the engine: at 1ms prompt-submit prints
+    nothing at all (the corpus walk is discarded before it reaches entry 0, so
+    there are no blocks to print), and at 3000ms it prints the entry.
+    """
+
+    _SENTINEL = "ENV_BUDGET_SENTINEL_BODY"
+    _RECALL_PY = _SKILL_SCRIPTS / "recall.py"
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.vault = root / "vault"
+        (self.vault / "personal").mkdir(parents=True)
+        (self.vault / "personal" / "zorbulax-note.md").write_text(
+            "---\nname: zorbulax-note\nkind: convention\n"
+            "description: a fixture entry\n---\n\n"
+            f"{self._SENTINEL} the zorbulax protocol governs widget alignment.\n",
+            encoding="utf-8",
+        )
+        self.home = root / "home"
+        self.home.mkdir()
+        self.history = root / "recall-history.jsonl"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _run(self, budget_ms: str):
+        env = {
+            **os.environ,
+            "HOME": str(self.home),
+            "MEMORY_VAULT_PATH": str(self.vault),
+            "AGENTM_RECALL_HISTORY": str(self.history),
+            "RECALL_BUDGET_MS": budget_ms,
+        }
+        env.pop("AGENTM_INSTALL_PREFIX", None)
+        return subprocess.run(
+            [sys.executable, str(self._RECALL_PY), "prompt-submit"],
+            input=json.dumps({"hookEventName": "UserPromptSubmit",
+                              "prompt": "how does the zorbulax protocol align widgets?"}),
+            env=env, capture_output=True, text=True,
+        )
+
+    def test_a_starved_budget_emits_nothing(self):
+        r = self._run("1")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "")
+        # The engine must say WHY it found nothing -- an empty vault and an
+        # unsearched one are not the same event (GH #92).
+        self.assertIn("lexical", r.stderr)
+
+    def test_a_widened_budget_injects_the_entry(self):
+        r = self._run("3000")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn(self._SENTINEL, r.stdout)
+        self.assertIn("Loaded 1 relevant entries: zorbulax-note", r.stderr)
 
 
 if __name__ == "__main__":
