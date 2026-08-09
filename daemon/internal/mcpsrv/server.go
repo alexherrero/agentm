@@ -11,7 +11,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -55,24 +57,80 @@ func (s *Server) Handler() http.Handler {
 	return s.localOnly(mux)
 }
 
-// localOnly refuses anything that did not come from this machine. The daemon
-// holds the operator's entire memory, including scanned documents and financial
-// records once his own spaces join the repository; it has no business being
-// reachable from the network, and binding to loopback alone is not something to
-// rely on a single flag for.
+// localOnly refuses anything that did not come from this machine, and anything
+// that reached this machine through a browser.
+//
+// The daemon holds the operator's entire memory, including scanned documents and
+// financial records once his own spaces join the repository, so binding to
+// loopback is where the reasoning starts rather than where it ends.
+//
+// Three checks, because a peer address alone is not enough. A web page the
+// operator visits can make his browser issue requests to 127.0.0.1, and those
+// arrive with a loopback peer address like any other — so the peer check passes
+// and the page gets to drive the tool surface. DNS rebinding removes the
+// remaining obstacle: the attacker's domain resolves to 127.0.0.1, the browser
+// treats the daemon as same-origin, and responses become readable. `Origin` and
+// `Host` are what distinguish those requests from a local client's, which is why
+// the retired daemon's own doctor spec checked for exactly this.
+//
+// Deliberately not a bearer token. A token would additionally gate other
+// processes running as the operator, and any such process can already read the
+// vault files directly — so it would add setup friction for every client while
+// closing nothing this does not close.
 func (s *Server) localOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		host := r.RemoteAddr
-		if i := strings.LastIndex(host, ":"); i > 0 {
-			host = host[:i]
-		}
-		host = strings.Trim(host, "[]")
-		if host != "127.0.0.1" && host != "::1" && host != "localhost" {
+		if !isLoopbackAddr(r.RemoteAddr) {
 			http.Error(w, "local requests only", http.StatusForbidden)
+			return
+		}
+		// A rebound request carries the attacker's hostname here, because that is
+		// what the browser was told to connect to.
+		if h := r.Host; h != "" && !isLoopbackHost(h) {
+			http.Error(w, "unrecognized Host; local requests only", http.StatusForbidden)
+			return
+		}
+		// A native client sends no Origin. A browser always does, and a browser
+		// has no business here whatever it claims.
+		if origin := r.Header.Get("Origin"); origin != "" && !isLoopbackOrigin(origin) {
+			http.Error(w, "cross-origin requests are refused", http.StatusForbidden)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isLoopbackAddr(remoteAddr string) bool {
+	host := remoteAddr
+	if h, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		host = h
+	}
+	return isLoopbackName(strings.Trim(host, "[]"))
+}
+
+func isLoopbackHost(hostHeader string) bool {
+	host := hostHeader
+	if h, _, err := net.SplitHostPort(hostHeader); err == nil {
+		host = h
+	}
+	return isLoopbackName(strings.Trim(host, "[]"))
+}
+
+func isLoopbackOrigin(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	return isLoopbackName(u.Hostname())
+}
+
+func isLoopbackName(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------
@@ -348,6 +406,10 @@ func toolSpecs() []map[string]any {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
+		// `status` carries the shape the doctor skill's liveness row already
+		// checks for, so this daemon is a drop-in for the health contract the
+		// retired one published rather than a second dialect of it.
+		"status":  "ok",
 		"ok":      true,
 		"service": "agentm",
 		"version": s.version,

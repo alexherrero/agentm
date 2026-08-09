@@ -29,7 +29,25 @@ cd daemon && CGO_ENABLED=0 go build -o ~/.local/bin/agentmd ./cmd/agentmd
 
 `CGO_ENABLED=0` is the point rather than a precaution: it produces a static binary with no system SQLite dependency, which is what lets the same source serve any machine on the home network. Cross-compile by setting `GOOS` and `GOARCH` — `GOOS=linux GOARCH=arm64` builds for a NAS from the laptop.
 
-Nothing installs a launchd job. The daemon runs for as long as the process runs, so after a reboot it is not running until something starts it — making it survive a restart is a standing-automation decision, deliberately left to the operator rather than assumed.
+## Installing it for good
+
+One flag does the build and the launchd agent together, on macOS:
+
+```bash
+bash /path/to/agentm/install.sh --daemon <target-project>
+```
+
+It builds `~/.local/bin/agentmd`, writes `~/Library/LaunchAgents/com.agentm.daemon.plist`, loads it, and then **verifies the daemon answers `/health` before returning** — a job launchd accepted and that immediately died on a held port is indistinguishable from a working one in `launchctl list`, which is how the retired daemon stayed "healthy" and wired to nothing for months.
+
+`RunAtLoad` starts it at login and `KeepAlive` restarts it if it dies; `ThrottleInterval` bounds the retry rate so a broken install idles instead of spinning. The vault path is deliberately **not** written into the plist — it is resolved from the kernel config at every start, because a path baked into a plist is a cached literal that goes stale.
+
+Re-run the same command after pulling new daemon source: it rebuilds and reloads. Logs go to `~/Library/Logs/agentm/daemon.log`.
+
+```bash
+launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/com.agentm.daemon.plist
+```
+
+`install.sh --mcp-server` is retired and now refuses — it installed the Python FastMCP server, and a second agent on port 7821 would lose a race for the port and retry forever.
 
 ## Subcommands
 
@@ -152,6 +170,18 @@ claude mcp add --transport http agentmemory http://127.0.0.1:7821/mcp
 ```
 
 Remove any existing `agentmemory` entry first — before this daemon, that name resolved to the stock filesystem server pointed at the vault's parent directory, which was a coincidence of naming rather than a relationship.
+
+## Who can reach it
+
+Loopback only, and not by binding alone. Three checks run on every request, including `/health` and `/status`:
+
+1. The peer address must be loopback.
+2. The `Host` header must name a loopback address. A DNS-rebinding request carries the attacker's hostname here, because that is what the browser was told to connect to.
+3. An `Origin` header, if present, must be loopback. A native client sends none; a browser always does.
+
+The reason all three exist is that the first is not sufficient. The daemon listens on a fixed port for as long as the machine is up, so a page the operator visits can make his browser issue requests to `127.0.0.1` — and those arrive with a loopback peer address like any other. Cross-origin refusals return 403.
+
+There is no bearer token, on purpose. It would gate other processes running as the operator, and any such process can already read the vault files directly.
 
 ## Related
 
