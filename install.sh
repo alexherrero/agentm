@@ -2,7 +2,7 @@
 # install.sh — install or update agentm in a target project.
 #
 # Usage:
-#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] [--mcp-server] <target-project-path>
+#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] [--daemon] <target-project-path>
 #
 # Options:
 #   --hooks    Install the PostToolUse/PreCompact/SessionStart hooks into
@@ -18,9 +18,17 @@
 #              writes "state_mode": "local" to .agentm-config.json (the on-host
 #              config; DC-8) and skips vault auto-detection. State then lives in
 #              <repo>/.harness/ instead of a MemoryVault.
-#   --mcp-server   Generate the launchd plist for the memory MCP daemon at
-#              ~/.config/agentm/com.agentm.memory-mcp-server.plist and print
-#              the three launchctl commands to load it. Does NOT auto-load;
+#   --daemon   Build the Go memory daemon and install it as a launchd agent
+#              (macOS only) so it survives a reboot. Builds ~/.local/bin/agentmd
+#              with CGO_ENABLED=0, writes ~/Library/LaunchAgents/
+#              com.agentm.daemon.plist, loads it, and verifies it answers on
+#              /health before returning. Idempotent — re-run to rebuild and
+#              reload after pulling new daemon source.
+#
+#   --mcp-server   RETIRED. Generated a launchd plist for the Python FastMCP
+#              memory server, which was retired when the Go daemon took over
+#              port 7821. The flag now refuses rather than installing a second
+#              agent that would fight the real one for the port. Use --daemon.
 #              the operator runs the commands. macOS only.
 #
 # Without --update: existing files are preserved (skip-if-exists).
@@ -41,7 +49,8 @@ INSTALL_HOOKS=0
 UPDATE_MODE=0
 FORCE_VAULT_PROMPT=0   # v4.5.1 task 4: re-fire first-run vault prompt
 LOCAL_STATE=0          # Hardening I #44 task 4: --local-state → repo-local (vault-less) state
-INSTALL_MCP_SERVER=0   # V5-9: --mcp-server → generate launchd plist for memory daemon
+INSTALL_MCP_SERVER=0   # RETIRED — refuses; the Python server it served is gone
+INSTALL_DAEMON=0       # --daemon → build the Go daemon + install the launchd agent
 TARGET=""
 SCOPE="project"  # V4 #30 task 8: --scope user|project. Default 'project' for
                  # v4.3.0 backward compat; default flips to 'user' in a future
@@ -56,6 +65,7 @@ while [[ $# -gt 0 ]]; do
     --force-vault-prompt) FORCE_VAULT_PROMPT=1; shift ;;
     --local-state) LOCAL_STATE=1; shift ;;
     --mcp-server) INSTALL_MCP_SERVER=1; shift ;;
+    --daemon) INSTALL_DAEMON=1; shift ;;
     --scope)
       if [[ -z "${2:-}" ]]; then
         echo "Error: --scope requires a value (user|project)" >&2
@@ -98,7 +108,7 @@ done
 # --scope user doesn't require a positional TARGET (install prefix is ~/.claude/);
 # --scope project requires one.
 if [[ "$SCOPE" == "project" && -z "$TARGET" ]]; then
-  echo "Usage: $0 [--hooks] [--update] [--local-state] [--scope user|project] <target-project-path>" >&2
+  echo "Usage: $0 [--hooks] [--update] [--local-state] [--daemon] [--scope user|project] <target-project-path>" >&2
   echo "  --scope user: install customizations to ~/.claude/ (target not required)" >&2
   echo "  --scope project (default): install to <target>/.claude/" >&2
   exit 1
@@ -1005,76 +1015,160 @@ fi
 
 echo "$HARNESS_VERSION" > .harness/.version
 
-# ── memory MCP server launchd plist (V5-9, --mcp-server) ────────────────────
+# ── --mcp-server: retired ───────────────────────────────────────────────────
+# The Python FastMCP memory server this generated a plist for was retired when
+# the Go daemon took over port 7821. Generating the plist anyway would install a
+# second launchd agent that loses a race for the port and then retries forever,
+# so the flag refuses and names its replacement instead of failing later in a
+# way nobody would connect back to this decision.
 
 if [[ $INSTALL_MCP_SERVER -eq 1 ]]; then
+  echo "" >&2
+  echo "==> --mcp-server is retired." >&2
+  echo "    It installed the Python FastMCP memory server, which was retired when" >&2
+  echo "    the Go daemon took over port 7821. Installing it now would put two" >&2
+  echo "    agents on the same port." >&2
+  echo "" >&2
+  echo "    Use --daemon instead: it builds the Go daemon and installs it as a" >&2
+  echo "    launchd agent that survives a reboot." >&2
+  echo "" >&2
+  exit 2
+fi
+
+# ── --daemon: build the Go daemon + install the launchd agent ───────────────
+# Permanence, in one flag. Without a launchd agent the daemon is only resident
+# until the process ends, which makes "resident memory service" a property of
+# whoever last remembered to start it.
+
+if [[ $INSTALL_DAEMON -eq 1 ]]; then
   if [[ "$(uname -s)" != "Darwin" ]]; then
-    echo "==> --mcp-server: skipped (launchd is macOS-only; on this OS use your system's service manager)." >&2
+    echo "==> --daemon: skipped (launchd is macOS-only; on this OS run 'agentmd serve' under your service manager)." >&2
   else
-    PYTHON_BIN="$(command -v python3.13 || command -v python3 || echo python3)"
-    MCP_SERVER_SCRIPT="$HARNESS_ROOT/scripts/memory_mcp_server.py"
-    PLIST_DIR="$HOME/.config/agentm"
-    PLIST_FILE="$PLIST_DIR/com.agentm.memory-mcp-server.plist"
-    mkdir -p "$PLIST_DIR"
-    cat > "$PLIST_FILE" << PLISTEOF
+    DAEMON_SRC="$HARNESS_ROOT/daemon"
+    if [[ ! -d "$DAEMON_SRC" ]]; then
+      echo "Error: --daemon: no daemon/ directory at $DAEMON_SRC" >&2
+      exit 1
+    fi
+    # A missing toolchain is a work item with an exact fix, not a silent skip.
+    if ! command -v go >/dev/null 2>&1; then
+      echo "Error: --daemon needs Go to build the binary (it is built from source, not vendored)." >&2
+      echo "       Install it and re-run:  brew install go" >&2
+      exit 1
+    fi
+
+    DAEMON_BIN_DIR="$HOME/.local/bin"
+    DAEMON_BIN="$DAEMON_BIN_DIR/agentmd"
+    DAEMON_LABEL="com.agentm.daemon"
+    DAEMON_PLIST="$HOME/Library/LaunchAgents/$DAEMON_LABEL.plist"
+    DAEMON_LOG_DIR="$HOME/Library/Logs/agentm"
+    mkdir -p "$DAEMON_BIN_DIR" "$DAEMON_LOG_DIR" "$HOME/Library/LaunchAgents"
+
+    echo "==> Building the memory daemon (CGO_ENABLED=0, static, no cgo)…"
+    if ! ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -o "$DAEMON_BIN" ./cmd/agentmd ); then
+      echo "Error: --daemon: the build failed; nothing was installed." >&2
+      exit 1
+    fi
+    echo "    built $DAEMON_BIN"
+
+    # PATH is set explicitly because a launchd agent inherits almost nothing.
+    cat > "$DAEMON_PLIST" << PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.agentm.memory-mcp-server</string>
+    <string>$DAEMON_LABEL</string>
 
-    <!-- Fill in: the Python interpreter that has fastmcp + uvicorn installed. -->
     <key>ProgramArguments</key>
     <array>
-        <string>$PYTHON_BIN</string>
-        <string>$MCP_SERVER_SCRIPT</string>
+        <string>$DAEMON_BIN</string>
+        <string>serve</string>
     </array>
 
-    <!--
-      AGENTM_MCP_TOKEN is NOT stored in this file — set it once via:
-        launchctl setenv AGENTM_MCP_TOKEN <your-token>
-      (and add that line to your ~/.zshrc / ~/.bashrc for persistence across reboots).
-      The daemon reads the env var at startup via launchd's environment inheritance.
-    -->
     <key>EnvironmentVariables</key>
     <dict>
-        <key>AGENTM_MCP_URL</key>
-        <string>http://127.0.0.1:7821/mcp</string>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$DAEMON_BIN_DIR</string>
     </dict>
 
-    <!-- Keep the daemon warm — avoids cold-start drops under host timeouts. -->
+    <!-- Resident by definition: start at login, restart if it dies. The vault
+         path is resolved from the kernel config at every start, never baked in
+         here — a path in this file would be a cached literal that goes stale. -->
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>ProcessType</key>
     <string>Standard</string>
+    <!-- Bounds the retry rate if the binary is missing or the port is taken,
+         so a broken install idles instead of spinning. -->
     <key>ThrottleInterval</key>
     <integer>10</integer>
 
-    <!-- stderr only — stdout is sacred (stdio-shim protocol uses it). -->
+    <key>StandardOutPath</key>
+    <string>$DAEMON_LOG_DIR/daemon.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/agentm-memory-mcp.log</string>
+    <string>$DAEMON_LOG_DIR/daemon.log</string>
 </dict>
 </plist>
 PLISTEOF
-    echo ""
-    echo "==> memory MCP server launchd plist generated: $PLIST_FILE"
-    echo ""
-    echo "    Next steps (three commands):"
-    echo ""
-    echo "    1. Set the bearer token (add to ~/.zshrc for persistence):"
-    echo "         launchctl setenv AGENTM_MCP_TOKEN <your-token>"
-    echo ""
-    echo "    2. Load the daemon:"
-    echo "         launchctl bootstrap gui/\$UID $PLIST_FILE"
-    echo ""
-    echo "    3. Verify it loaded:"
-    echo "         launchctl list | grep agentm"
-    echo ""
-    echo "    To unload: launchctl bootout gui/\$UID $PLIST_FILE"
-    echo "    Logs at:   /tmp/agentm-memory-mcp.log"
+    echo "    wrote $DAEMON_PLIST"
+
+    # Reload rather than load, so re-running after a source pull is the same
+    # command as installing.
+    #
+    # bootout returns before the job is actually gone, and bootstrapping into a
+    # domain that still holds the old job fails. Caught on the first real reload:
+    # the build succeeded, bootstrap failed, and the daemon was left down. So wait
+    # for the unload to land, then retry the bootstrap a few times rather than
+    # treating one attempt as the answer.
+    if launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
+      launchctl bootout "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || true
+      for _ in $(seq 1 30); do
+        launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || break
+        sleep 1
+      done
+    fi
+    DAEMON_LOADED=0
+    for _ in $(seq 1 5); do
+      if launchctl bootstrap "gui/$(id -u)" "$DAEMON_PLIST" 2>/dev/null; then
+        DAEMON_LOADED=1; break
+      fi
+      # Already loaded is success, not failure — a concurrent load beat us to it.
+      if launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
+        DAEMON_LOADED=1; break
+      fi
+      sleep 2
+    done
+    if [[ $DAEMON_LOADED -eq 0 ]]; then
+      echo "Error: --daemon: launchctl bootstrap failed for $DAEMON_PLIST" >&2
+      echo "       Try manually:  launchctl bootstrap gui/\$(id -u) $DAEMON_PLIST" >&2
+      echo "       Check $DAEMON_LOG_DIR/daemon.log" >&2
+      exit 1
+    fi
+
+    # Verify it is actually answering rather than merely loaded. A job that
+    # launchd accepted and that then died on a held port looks identical to a
+    # working one in 'launchctl list' — which is exactly how the retired daemon
+    # stayed 'healthy' and wired to nothing for months.
+    DAEMON_UP=0
+    for _ in $(seq 1 45); do
+      if curl -fsS -m 2 http://127.0.0.1:7821/health >/dev/null 2>&1; then DAEMON_UP=1; break; fi
+      sleep 1
+    done
+    if [[ $DAEMON_UP -eq 1 ]]; then
+      echo "==> Memory daemon installed and answering on http://127.0.0.1:7821"
+      echo "    It now starts at login and restarts if it dies."
+      echo "    Logs:      $DAEMON_LOG_DIR/daemon.log"
+      echo "    Status:    agentmd status"
+      echo "    Uninstall: launchctl bootout gui/\$(id -u)/$DAEMON_LABEL && rm $DAEMON_PLIST"
+    else
+      echo "Error: --daemon: the agent loaded but nothing answered /health within 45s." >&2
+      echo "       Most likely something else holds port 7821 — check with:" >&2
+      echo "         lsof -nP -iTCP:7821 -sTCP:LISTEN" >&2
+      echo "       Log: $DAEMON_LOG_DIR/daemon.log" >&2
+      exit 1
+    fi
   fi
 fi
 

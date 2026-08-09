@@ -64,19 +64,16 @@ Then:
    - status `warn`, exit `0` → `[WARN]` — `device-local` selected but its root is not writable. The engine will still try, but the write will fail loudly; surfacing it here is preventive, never build-blocking.
    - status `fail`, exit `1` → `[FAIL]` — the selected backend has no registered plugin (prints the verbatim install-the-plugin message the task-3 guard raises), or `vault` is selected with no resolvable `vault_path`, or the config file exists but is unparseable / names a non-string `storage.backend`. **This is the one structural check that legitimately FAILs** (unlike the worktree-slug reporter above): it is the fail-loud preview shown *before* the engine itself refuses — doctor previewing exactly what selection will do, not second-guessing a separate enforcer.
 
-4e. **Memory MCP server (V5-9).** Run `python3 <agentm>/scripts/memory_mcp_doctor.py` to check the health of the standalone memory MCP daemon. **Graceful-skip if `memory_mcp_doctor.py` is absent** — report `[SKIP] memory-server not installed (pre-V5-9)`, never FAIL. The MCP server is not a required component of a bare agentm install.
+4e. **Memory daemon (`agentmd`).** The service on `127.0.0.1:7821` is the Go daemon (`daemon/`, see `wiki/reference/Memory-Daemon.md`), which replaced the Python FastMCP server that used to answer there. Check it directly — `curl -fsS http://127.0.0.1:7821/health` — and **graceful-skip if nothing answers on the port**: report `[SKIP] daemon not installed (run install.sh --daemon)`, never FAIL. A bare agentm install does not require the daemon.
 
-   Default mode runs `liveness` + `token_env`; `--live` adds `origin_guard` + `index_root_safe` (`--all` flag):
+   - **`liveness`** — GET `/health` expects `{"status":"ok"}`. FAIL if the body is unexpected; the remedy is `install.sh --daemon`, which builds the binary and loads the launchd agent.
+   - **`origin_guard`** — POST `/mcp` with `Origin: http://evil.example.com` expects **403**, and again with `Host: evil.example.com` expects 403. FAIL on any other status: the daemon listens on a fixed loopback port indefinitely, so a page in the operator's browser can reach it, and these two headers are what separate a browser from a real client.
+   - **`resident`** — `launchctl list | grep com.agentm.daemon` finds the agent. WARN (not FAIL) if the daemon answers but no agent is loaded: it is running now and will not be after a reboot.
+   - **`index_outside_vault`** — the `index_path` reported by `/status` is not inside the vault. FAIL if it is: the index is a deletable cache, and a database on a synced or git-tracked path is a known corruption pattern.
 
-   - **`liveness`** — GET `/health` at `AGENTM_MCP_URL` (default `http://127.0.0.1:7821`); expects `{"status":"ok"}`. FAIL if daemon unreachable or body unexpected; remedy names the launchctl bootstrap command.
-   - **`token_env`** — `AGENTM_MCP_TOKEN` is set and non-empty. FAIL if unset; remedy names the `launchctl setenv` command.
-   - **`origin_guard`** (`--live`) — POST to `/mcp` with `Origin: http://evil.example.com`; expects 403. SKIP if daemon is down. FAIL if daemon returns non-403 (Origin-validation not wired).
-   - **`index_root_safe`** (`--live`) — vault_mutex lock root is not inside a synced/cloud-backed path (`/CloudStorage/`, `/Dropbox/`, etc.). FAIL if lock root is inside a synced tree; remedy names the `XDG_CACHE_HOME` fix.
+   No token check. The daemon has no bearer token by design — any local process that could present one can already read the vault files directly, so a token would add setup friction for every client without closing anything the Origin/Host guard does not.
 
-   Map results:
-   - `passed=True` → `[OK]  memory-server <name>: <msg>`
-   - `passed=False` → `[FAIL] memory-server <name>: <msg — includes named remedy>`
-   - `passed=None` → `[SKIP] memory-server <name>: <reason>`
+   `python3 <agentm>/scripts/memory_mcp_doctor.py` targets the **retired** Python server and its `token_env` row fails by construction against the daemon. Do not run it as part of this check.
 
 5. **Host wiring file**: `AGENTS.md` exists at repo root. Adapter-specific overlay file exists (`CLAUDE.md` for Claude Code, `.gemini/settings.json` for Gemini pointing at `AGENTS.md`).
 6. **Hook wiring** (Claude Code; V4 #39 — a real check, not "absent block is fine"). Hooks install at user scope (`<prefix>/hooks/<name>/`, prefix = `$AGENTM_INSTALL_PREFIX` → `~/.claude`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Apply this truth table to `<prefix>/hooks/` + `<prefix>/settings.json` (and a populated legacy project-scope `<project>/.claude/` likewise):
