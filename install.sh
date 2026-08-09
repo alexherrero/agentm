@@ -2,7 +2,7 @@
 # install.sh — install or update agentm in a target project.
 #
 # Usage:
-#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] [--daemon] <target-project-path>
+#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] [--daemon|--no-daemon] <target-project-path>
 #
 # Options:
 #   --hooks    Install the PostToolUse/PreCompact/SessionStart hooks into
@@ -22,8 +22,16 @@
 #              (macOS only) so it survives a reboot. Builds ~/.local/bin/agentmd
 #              with CGO_ENABLED=0, writes ~/Library/LaunchAgents/
 #              com.agentm.daemon.plist, loads it, and verifies it answers on
-#              /health before returning. Idempotent — re-run to rebuild and
-#              reload after pulling new daemon source.
+#              /health before returning.
+#
+#              Only needed ONCE. After the agent exists, every install or
+#              --update run rebuilds and reloads it automatically, so a refresh
+#              of the harness is also a refresh of the daemon — the binary is
+#              built from daemon/, and stale source would otherwise keep running
+#              indefinitely with nothing saying so.
+#
+#   --no-daemon  Skip that automatic refresh for this run. The daemon keeps
+#              running whatever binary it already has.
 #
 #   --mcp-server   RETIRED. Generated a launchd plist for the Python FastMCP
 #              memory server, which was retired when the Go daemon took over
@@ -51,6 +59,7 @@ FORCE_VAULT_PROMPT=0   # v4.5.1 task 4: re-fire first-run vault prompt
 LOCAL_STATE=0          # Hardening I #44 task 4: --local-state → repo-local (vault-less) state
 INSTALL_MCP_SERVER=0   # RETIRED — refuses; the Python server it served is gone
 INSTALL_DAEMON=0       # --daemon → build the Go daemon + install the launchd agent
+NO_DAEMON=0            # --no-daemon → skip the automatic refresh of an installed daemon
 TARGET=""
 SCOPE="project"  # V4 #30 task 8: --scope user|project. Default 'project' for
                  # v4.3.0 backward compat; default flips to 'user' in a future
@@ -66,6 +75,7 @@ while [[ $# -gt 0 ]]; do
     --local-state) LOCAL_STATE=1; shift ;;
     --mcp-server) INSTALL_MCP_SERVER=1; shift ;;
     --daemon) INSTALL_DAEMON=1; shift ;;
+    --no-daemon) NO_DAEMON=1; shift ;;
     --scope)
       if [[ -z "${2:-}" ]]; then
         echo "Error: --scope requires a value (user|project)" >&2
@@ -108,7 +118,7 @@ done
 # --scope user doesn't require a positional TARGET (install prefix is ~/.claude/);
 # --scope project requires one.
 if [[ "$SCOPE" == "project" && -z "$TARGET" ]]; then
-  echo "Usage: $0 [--hooks] [--update] [--local-state] [--daemon] [--scope user|project] <target-project-path>" >&2
+  echo "Usage: $0 [--hooks] [--update] [--local-state] [--daemon|--no-daemon] [--scope user|project] <target-project-path>" >&2
   echo "  --scope user: install customizations to ~/.claude/ (target not required)" >&2
   echo "  --scope project (default): install to <target>/.claude/" >&2
   exit 1
@@ -1035,43 +1045,95 @@ if [[ $INSTALL_MCP_SERVER -eq 1 ]]; then
   exit 2
 fi
 
-# ── --daemon: build the Go daemon + install the launchd agent ───────────────
-# Permanence, in one flag. Without a launchd agent the daemon is only resident
-# until the process ends, which makes "resident memory service" a property of
-# whoever last remembered to start it.
+# ── the Go memory daemon: install on request, refresh automatically ─────────
+# Two modes, one code path.
+#
+#   install  — --daemon was passed. The operator is asking for the launchd agent,
+#              so a missing toolchain or a failed build is a hard error.
+#   refresh  — the agent already exists, and this is any ordinary install or
+#              --update run. The binary is compiled from daemon/, so refreshing
+#              the harness without rebuilding it leaves stale code resident with
+#              nothing saying so. This is the case that makes a reinstall mean
+#              what people assume it means.
+#
+# Refresh is deliberately non-fatal. A project install must not fail because Go
+# was uninstalled, and a broken build must never take down a daemon that is
+# currently working — so the build goes to a sibling path and only replaces the
+# live binary once it has succeeded.
 
+DAEMON_LABEL="com.agentm.daemon"
+DAEMON_PLIST="$HOME/Library/LaunchAgents/$DAEMON_LABEL.plist"
+# Overridable so the installer's own tests can drive this path against a stub
+# instead of the machine's real launchd. The reload sequence below broke in
+# production once; it is worth being able to test.
+LAUNCHCTL="${AGENTM_LAUNCHCTL:-launchctl}"
+
+DAEMON_MODE=none
 if [[ $INSTALL_DAEMON -eq 1 ]]; then
-  if [[ "$(uname -s)" != "Darwin" ]]; then
+  DAEMON_MODE=install
+elif [[ $NO_DAEMON -eq 0 && -f "$DAEMON_PLIST" ]]; then
+  DAEMON_MODE=refresh
+fi
+
+if [[ "$DAEMON_MODE" != "none" && "$(uname -s)" != "Darwin" ]]; then
+  if [[ "$DAEMON_MODE" == "install" ]]; then
     echo "==> --daemon: skipped (launchd is macOS-only; on this OS run 'agentmd serve' under your service manager)." >&2
+  fi
+  DAEMON_MODE=none
+fi
+
+if [[ "$DAEMON_MODE" != "none" ]]; then
+  # daemon_fail <message> — hard error when installing, loud warning when
+  # refreshing. Never silent in either case.
+  daemon_fail() {
+    if [[ "$DAEMON_MODE" == "install" ]]; then
+      echo "Error: --daemon: $1" >&2
+      exit 1
+    fi
+    echo "==> WARNING: the memory daemon was NOT refreshed: $1" >&2
+    echo "    It keeps running whatever binary it already has, which may now be" >&2
+    echo "    older than daemon/. Re-run with --daemon once the cause is fixed." >&2
+    DAEMON_MODE=none
+  }
+
+  DAEMON_SRC="$HARNESS_ROOT/daemon"
+  DAEMON_BIN_DIR="$HOME/.local/bin"
+  DAEMON_BIN="$DAEMON_BIN_DIR/agentmd"
+  DAEMON_LOG_DIR="$HOME/Library/Logs/agentm"
+
+  if [[ ! -d "$DAEMON_SRC" ]]; then
+    daemon_fail "no daemon/ directory at $DAEMON_SRC"
+  fi
+fi
+
+if [[ "$DAEMON_MODE" != "none" ]] && ! command -v go >/dev/null 2>&1; then
+  daemon_fail "Go is not installed, and the daemon is built from source rather than vendored (fix: brew install go)"
+fi
+
+if [[ "$DAEMON_MODE" != "none" ]]; then
+  mkdir -p "$DAEMON_BIN_DIR" "$DAEMON_LOG_DIR" "$HOME/Library/LaunchAgents"
+
+  if [[ "$DAEMON_MODE" == "refresh" ]]; then
+    echo "==> Refreshing the memory daemon from daemon/ …"
   else
-    DAEMON_SRC="$HARNESS_ROOT/daemon"
-    if [[ ! -d "$DAEMON_SRC" ]]; then
-      echo "Error: --daemon: no daemon/ directory at $DAEMON_SRC" >&2
-      exit 1
-    fi
-    # A missing toolchain is a work item with an exact fix, not a silent skip.
-    if ! command -v go >/dev/null 2>&1; then
-      echo "Error: --daemon needs Go to build the binary (it is built from source, not vendored)." >&2
-      echo "       Install it and re-run:  brew install go" >&2
-      exit 1
-    fi
-
-    DAEMON_BIN_DIR="$HOME/.local/bin"
-    DAEMON_BIN="$DAEMON_BIN_DIR/agentmd"
-    DAEMON_LABEL="com.agentm.daemon"
-    DAEMON_PLIST="$HOME/Library/LaunchAgents/$DAEMON_LABEL.plist"
-    DAEMON_LOG_DIR="$HOME/Library/Logs/agentm"
-    mkdir -p "$DAEMON_BIN_DIR" "$DAEMON_LOG_DIR" "$HOME/Library/LaunchAgents"
-
     echo "==> Building the memory daemon (CGO_ENABLED=0, static, no cgo)…"
-    if ! ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -o "$DAEMON_BIN" ./cmd/agentmd ); then
-      echo "Error: --daemon: the build failed; nothing was installed." >&2
-      exit 1
-    fi
-    echo "    built $DAEMON_BIN"
+  fi
 
-    # PATH is set explicitly because a launchd agent inherits almost nothing.
-    cat > "$DAEMON_PLIST" << PLISTEOF
+  # Build beside the live binary, then swap. A failed build leaves the running
+  # daemon untouched; the rename is atomic, and replacing the file does not
+  # disturb the running process, which keeps its own inode until reload.
+  if ( cd "$DAEMON_SRC" && CGO_ENABLED=0 go build -o "$DAEMON_BIN.new" ./cmd/agentmd ); then
+    mv -f "$DAEMON_BIN.new" "$DAEMON_BIN"
+    echo "    built $DAEMON_BIN"
+  else
+    rm -f "$DAEMON_BIN.new"
+    daemon_fail "the daemon build failed; the existing binary was left in place"
+  fi
+fi
+
+if [[ "$DAEMON_MODE" != "none" ]]; then
+  # PATH is set explicitly because a launchd agent inherits almost nothing.
+  cat > "$DAEMON_PLIST" << PLISTEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -1112,63 +1174,60 @@ if [[ $INSTALL_DAEMON -eq 1 ]]; then
 </dict>
 </plist>
 PLISTEOF
-    echo "    wrote $DAEMON_PLIST"
 
-    # Reload rather than load, so re-running after a source pull is the same
-    # command as installing.
-    #
-    # bootout returns before the job is actually gone, and bootstrapping into a
-    # domain that still holds the old job fails. Caught on the first real reload:
-    # the build succeeded, bootstrap failed, and the daemon was left down. So wait
-    # for the unload to land, then retry the bootstrap a few times rather than
-    # treating one attempt as the answer.
-    if launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
-      launchctl bootout "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || true
-      for _ in $(seq 1 30); do
-        launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || break
-        sleep 1
-      done
-    fi
-    DAEMON_LOADED=0
-    for _ in $(seq 1 5); do
-      if launchctl bootstrap "gui/$(id -u)" "$DAEMON_PLIST" 2>/dev/null; then
-        DAEMON_LOADED=1; break
-      fi
-      # Already loaded is success, not failure — a concurrent load beat us to it.
-      if launchctl print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
-        DAEMON_LOADED=1; break
-      fi
-      sleep 2
-    done
-    if [[ $DAEMON_LOADED -eq 0 ]]; then
-      echo "Error: --daemon: launchctl bootstrap failed for $DAEMON_PLIST" >&2
-      echo "       Try manually:  launchctl bootstrap gui/\$(id -u) $DAEMON_PLIST" >&2
-      echo "       Check $DAEMON_LOG_DIR/daemon.log" >&2
-      exit 1
-    fi
-
-    # Verify it is actually answering rather than merely loaded. A job that
-    # launchd accepted and that then died on a held port looks identical to a
-    # working one in 'launchctl list' — which is exactly how the retired daemon
-    # stayed 'healthy' and wired to nothing for months.
-    DAEMON_UP=0
-    for _ in $(seq 1 45); do
-      if curl -fsS -m 2 http://127.0.0.1:7821/health >/dev/null 2>&1; then DAEMON_UP=1; break; fi
+  # Reload, so re-running after a source pull is the same command as installing.
+  #
+  # bootout returns before the job is actually gone, and bootstrapping into a
+  # domain that still holds the old job fails. Caught on the first real reload:
+  # the build succeeded, bootstrap failed, and the daemon was left down. So wait
+  # for the unload to land, then retry the bootstrap rather than treating one
+  # attempt as the answer.
+  if "$LAUNCHCTL" print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
+    "$LAUNCHCTL" bootout "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || true
+    for _ in $(seq 1 30); do
+      "$LAUNCHCTL" print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || break
       sleep 1
     done
-    if [[ $DAEMON_UP -eq 1 ]]; then
+  fi
+  DAEMON_LOADED=0
+  for _ in $(seq 1 5); do
+    if "$LAUNCHCTL" bootstrap "gui/$(id -u)" "$DAEMON_PLIST" 2>/dev/null; then
+      DAEMON_LOADED=1; break
+    fi
+    # Already loaded is success, not failure — a concurrent load beat us to it.
+    if "$LAUNCHCTL" print "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1; then
+      DAEMON_LOADED=1; break
+    fi
+    sleep 2
+  done
+  if [[ $DAEMON_LOADED -eq 0 ]]; then
+    daemon_fail "launchctl bootstrap failed for $DAEMON_PLIST (try: launchctl bootstrap gui/\$(id -u) $DAEMON_PLIST; log: $DAEMON_LOG_DIR/daemon.log)"
+  fi
+fi
+
+if [[ "$DAEMON_MODE" != "none" ]]; then
+  # Verify it is actually answering rather than merely loaded. A job that
+  # launchd accepted and that then died on a held port looks identical to a
+  # working one in 'launchctl list' — which is exactly how the retired daemon
+  # stayed 'healthy' and wired to nothing for months.
+  DAEMON_UP=0
+  for _ in $(seq 1 45); do
+    if curl -fsS -m 2 http://127.0.0.1:7821/health >/dev/null 2>&1; then DAEMON_UP=1; break; fi
+    sleep 1
+  done
+  if [[ $DAEMON_UP -eq 1 ]]; then
+    if [[ "$DAEMON_MODE" == "refresh" ]]; then
+      echo "    memory daemon refreshed and answering on http://127.0.0.1:7821"
+    else
       echo "==> Memory daemon installed and answering on http://127.0.0.1:7821"
-      echo "    It now starts at login and restarts if it dies."
+      echo "    It now starts at login, restarts if it dies, and refreshes on every"
+      echo "    future install or --update run (opt out with --no-daemon)."
       echo "    Logs:      $DAEMON_LOG_DIR/daemon.log"
       echo "    Status:    agentmd status"
       echo "    Uninstall: launchctl bootout gui/\$(id -u)/$DAEMON_LABEL && rm $DAEMON_PLIST"
-    else
-      echo "Error: --daemon: the agent loaded but nothing answered /health within 45s." >&2
-      echo "       Most likely something else holds port 7821 — check with:" >&2
-      echo "         lsof -nP -iTCP:7821 -sTCP:LISTEN" >&2
-      echo "       Log: $DAEMON_LOG_DIR/daemon.log" >&2
-      exit 1
     fi
+  else
+    daemon_fail "the agent loaded but nothing answered /health within 45s — most likely something else holds port 7821 (check: lsof -nP -iTCP:7821 -sTCP:LISTEN; log: $DAEMON_LOG_DIR/daemon.log)"
   fi
 fi
 
