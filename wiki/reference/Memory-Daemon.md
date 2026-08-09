@@ -19,6 +19,18 @@ Source lives in [`daemon/`](https://github.com/alexherrero/agentm/tree/main/daem
 agentmd serve
 ```
 
+## Building it
+
+Needs Go on the machine (`brew install go`). There is no vendored binary — the daemon is built from source in this repo:
+
+```bash
+cd daemon && CGO_ENABLED=0 go build -o ~/.local/bin/agentmd ./cmd/agentmd
+```
+
+`CGO_ENABLED=0` is the point rather than a precaution: it produces a static binary with no system SQLite dependency, which is what lets the same source serve any machine on the home network. Cross-compile by setting `GOOS` and `GOARCH` — `GOOS=linux GOARCH=arm64` builds for a NAS from the laptop.
+
+Nothing installs a launchd job. The daemon runs for as long as the process runs, so after a reboot it is not running until something starts it — making it survive a restart is a standing-automation decision, deliberately left to the operator rather than assumed.
+
 ## Subcommands
 
 | Command | What it does |
