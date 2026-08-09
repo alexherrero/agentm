@@ -55,6 +55,23 @@ type Index struct {
 	// reason to fight itself over a lock. One connection removes a whole class of
 	// "database is locked" flake for a cost that is unmeasurable at this size.
 	mu sync.Mutex
+
+	// snippetedDocs counts the documents handed to snippet() since this index was
+	// opened. It exists to be asserted on: snippet() scans whatever document it
+	// is called on, so the one thing that must stay true is that it is called for
+	// the k rows a caller reads and not for the 200-row over-fetch window. That
+	// invariant is otherwise invisible — it shows up as a slow search months
+	// later, which is exactly how it was found the first time. Guarded by mu.
+	snippetedDocs int64
+}
+
+// snippetedDocs reports the counter above. Unexported: the number is a claim
+// about how the index did its work, not about the corpus, and only the package's
+// own tests have any business reading it.
+func (x *Index) snippeted() int64 {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	return x.snippetedDocs
 }
 
 // Open opens or creates the index at dbPath. A schema-version mismatch discards

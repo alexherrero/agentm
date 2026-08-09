@@ -26,6 +26,11 @@ type Result struct {
 	Captured       string `json:"captured,omitempty"`
 	CapturedSource string `json:"captured_source,omitempty"`
 	Snippet        string `json:"snippet,omitempty"`
+
+	// rowid keys the snippet pass back to this row. Unexported, so it stays out
+	// of the JSON the driver sees — it is an index-internal handle, not a fact
+	// about the note.
+	rowid int64
 }
 
 // Query is one search request.
@@ -70,6 +75,15 @@ var ftsTokenRe = regexp.MustCompile(`[A-Za-z0-9_]+`)
 // plausible notes and it names one. So the semantics stay as measured and the
 // driver is *told* what happened instead, which costs nothing and preserves the
 // one stratum that tests whether the system knows what it does not know.
+//
+// Snippets are fetched last, for the k rows that survive, and this ordering is
+// the whole reason the search has two queries instead of one. `snippet()` scans
+// the document it is called on, so computing it inside the ranking query prices
+// every over-fetched candidate — and the penalty needs a 200-row window. On the
+// operator's corpus that was 575x: a query matching 43 notes cost 3.1ms ranked
+// and 1,784ms ranked-with-snippets, because the matched set included notes of
+// 1.0–1.3 MB. Six of 206 benchmark queries cost four to six seconds each. Rank
+// first and the scan is priced for the five rows anyone will read.
 func (x *Index) Search(q Query) (SearchOutcome, error) {
 	out := SearchOutcome{Results: []Result{}}
 
@@ -97,7 +111,7 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 		limit = k
 	}
 
-	rows, note1, err := x.match(text, after, before, limit)
+	rows, matchExpr, note1, err := x.match(text, after, before, limit)
 	if err != nil {
 		return out, err
 	}
@@ -137,6 +151,14 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	}
 	out.Results = rows
 
+	// matchExpr is the expression FTS5 actually ran, which is the sanitized one
+	// when the original was not valid syntax. Snippets have to be produced by the
+	// same expression that produced the rows, or they would highlight different
+	// phrases than the ranking saw.
+	if err := x.fillSnippets(matchExpr, out.Results); err != nil {
+		return out, err
+	}
+
 	if len(out.Results) == 0 && out.Note == "" {
 		out.Note = "0 results. FTS5 requires every term to appear in the same note, " +
 			"so a long phrasing often matches nothing — try two or three distinctive " +
@@ -146,10 +168,13 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	return out, nil
 }
 
-func (x *Index) match(text, after, before string, limit int) ([]Result, string, error) {
+// match runs the query, retrying a syntax error with its terms quoted. It
+// returns the rows, the match expression FTS5 accepted, and any note for the
+// driver. The expression comes back because the snippet pass has to re-issue it.
+func (x *Index) match(text, after, before string, limit int) ([]Result, string, string, error) {
 	rows, err := x.runMatch(text, after, before, limit)
 	if err == nil {
-		return rows, "", nil
+		return rows, text, "", nil
 	}
 	// A query carrying punctuation FTS5 reads as an operator is a syntax error,
 	// not a miss. Re-issue it with every token quoted and the implicit AND
@@ -157,13 +182,13 @@ func (x *Index) match(text, after, before string, limit int) ([]Result, string, 
 	// the measurement rejected, on exactly the queries hardest to reason about.
 	sanitized := sanitizeQuery(text)
 	if sanitized == "" {
-		return nil, "query contained no searchable terms", nil
+		return nil, "", "query contained no searchable terms", nil
 	}
 	rows, retryErr := x.runMatch(sanitized, after, before, limit)
 	if retryErr != nil {
-		return nil, "", fmt.Errorf("search failed: %w", retryErr)
+		return nil, "", "", fmt.Errorf("search failed: %w", retryErr)
 	}
-	return rows, fmt.Sprintf(
+	return rows, sanitized, fmt.Sprintf(
 		"query was not valid FTS5 syntax; searched for its quoted terms instead (%s)",
 		sanitized), nil
 }
@@ -172,10 +197,11 @@ func (x *Index) runMatch(match, after, before string, limit int) ([]Result, erro
 	x.mu.Lock()
 	defer x.mu.Unlock()
 
+	// No snippet() here. It belongs to the k rows that survive the re-rank, not
+	// to the whole over-fetch window — see Search.
 	sql := fmt.Sprintf(`
-		SELECT m.path,
+		SELECT m.id, m.path,
 		       bm25(docs, %v, %v, %v, %v) AS s,
-		       snippet(docs, %d, '[', ']', ' … ', 24),
 		       m.flags, m.captured, m.captured_src
 		FROM docs JOIN docmeta m ON m.id = docs.rowid
 		WHERE docs MATCH ?
@@ -183,7 +209,7 @@ func (x *Index) runMatch(match, after, before string, limit int) ([]Result, erro
 		  AND (? = '' OR m.captured <  ?)
 		ORDER BY s
 		LIMIT ?`,
-		weightPath, weightTitle, weightMeta, weightBody, bodyColumn)
+		weightPath, weightTitle, weightMeta, weightBody)
 
 	rows, err := x.db.Query(sql, match, after, after, before, before, limit)
 	if err != nil {
@@ -195,18 +221,75 @@ func (x *Index) runMatch(match, after, before string, limit int) ([]Result, erro
 	for rows.Next() {
 		var r Result
 		var bm float64
-		var snippet, flags, captured, capturedSrc string
-		if err := rows.Scan(&r.Path, &bm, &snippet, &flags, &captured, &capturedSrc); err != nil {
+		var flags, captured, capturedSrc string
+		if err := rows.Scan(&r.rowid, &r.Path, &bm, &flags, &captured, &capturedSrc); err != nil {
 			return nil, err
 		}
 		r.Score = -bm
 		r.Penalty = flags
 		r.Captured = captured
 		r.CapturedSource = capturedSrc
-		r.Snippet = strings.Join(strings.Fields(snippet), " ")
 		out = append(out, r)
 	}
 	return out, rows.Err()
+}
+
+// fillSnippets computes the highlighted extract for exactly the rows handed to
+// it, keyed by rowid, and writes it into them.
+//
+// The rowid list is what keeps this cheap: FTS5 seeks straight to those
+// documents inside the doclist the match expression already defines, so the
+// scan is priced for k documents rather than for the over-fetch window. The
+// expression must be the one that produced the rows — snippet() highlights the
+// phrases of the query it is run under.
+//
+// A row whose note was deleted or re-indexed between the two queries comes back
+// without a snippet rather than failing the search. The window is microseconds
+// wide, the field is decorative, and a note that just changed has no snippet
+// worth insisting on.
+func (x *Index) fillSnippets(match string, rows []Result) error {
+	if match == "" || len(rows) == 0 {
+		return nil
+	}
+
+	x.mu.Lock()
+	defer x.mu.Unlock()
+
+	args := make([]any, 0, len(rows)+1)
+	args = append(args, match)
+	holders := make([]string, len(rows))
+	for i := range rows {
+		holders[i] = "?"
+		args = append(args, rows[i].rowid)
+	}
+	sql := fmt.Sprintf(
+		`SELECT docs.rowid, snippet(docs, %d, '[', ']', ' … ', 24)
+		 FROM docs WHERE docs MATCH ? AND docs.rowid IN (%s)`,
+		bodyColumn, strings.Join(holders, ","))
+
+	found, err := x.db.Query(sql, args...)
+	if err != nil {
+		return err
+	}
+	defer found.Close()
+
+	byID := make(map[int64]string, len(rows))
+	for found.Next() {
+		var id int64
+		var snippet string
+		if err := found.Scan(&id, &snippet); err != nil {
+			return err
+		}
+		byID[id] = snippet
+	}
+	if err := found.Err(); err != nil {
+		return err
+	}
+	for i := range rows {
+		rows[i].Snippet = strings.Join(strings.Fields(byID[rows[i].rowid]), " ")
+	}
+	x.snippetedDocs += int64(len(rows))
+	return nil
 }
 
 func splitFlags(s string) []string {
