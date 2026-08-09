@@ -399,6 +399,9 @@ func cmdClassify(args []string) error {
 	fs := newFlagSet("classify")
 	opts := bindCommon(fs)
 	showSamples := fs.Int("samples", 0, "print this many example paths per class")
+	asJSON := fs.Bool("json", false,
+		"emit one JSON object per note instead of the summary, so another tool can "+
+			"filter on the classifier's own verdict rather than guessing at it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -406,6 +409,7 @@ func cmdClassify(args []string) error {
 	if err != nil {
 		return err
 	}
+	enc := json.NewEncoder(os.Stdout)
 
 	counts := map[string]int{}
 	samples := map[string][]string{}
@@ -439,6 +443,18 @@ func cmdClassify(args []string) error {
 		}
 		n := note.Parse(rel, string(raw), mod)
 		total++
+		if *asJSON {
+			flags := n.Flags
+			if flags == nil {
+				flags = []string{}
+			}
+			return enc.Encode(map[string]any{
+				"path":   rel,
+				"flags":  flags,
+				"status": n.Status,
+				"weight": note.Multiplier(n.Flags),
+			})
+		}
 		for _, f := range n.Flags {
 			counts[f]++
 			if len(samples[f]) < *showSamples {
@@ -463,6 +479,9 @@ func cmdClassify(args []string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if *asJSON {
+		return nil
 	}
 
 	fmt.Printf("vault:      %s\n", cfg.VaultPath)
