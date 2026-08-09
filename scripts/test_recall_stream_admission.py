@@ -39,10 +39,31 @@ was called, which is the actual assertion for the ordering rules -- pinning
 "the embedder was never invoked" is what stops the 4s cost from silently
 returning, and unlike a wall-clock assertion it holds on any machine.
 
+**Timing discipline.** Every test here is about which admission branch a given
+budget selects. None is about how fast the host is, and any test that lets the
+two get mixed up is testing the runner. Two ways that has actually happened:
+
+  - `deadline=time.monotonic() + 0.300` reads as "300ms of budget" but delivers
+    "300ms minus however long this host took to get here", which on a loaded
+    shared runner has been the entire budget. Use `_a_budget_of` instead, which
+    freezes the clock so the figure is exact.
+  - A test that asserts something about a search which RAN has a precondition
+    the host can fail to meet. Give it `_GENEROUS_BUDGET_MS` and call
+    `_require_a_completed_search` first, so a starved run says it was starved
+    rather than failing on the downstream assertion as if the code were broken.
+
+A test that needs the opposite -- a stream that was blocked -- cannot get there
+by asking for a 1ms budget either, however safe that sounds. That is the hook
+suites' idiom and it relies on a fresh interpreter and a real index open to
+burn the millisecond; in-process, with every module already imported, a
+one-entry vault walks well inside it. Use `_an_exhausted_budget`, which elapses
+the deadline on a fake clock rather than betting on the host being slow.
+
 Run: python3 scripts/test_recall_stream_admission.py
 """
 from __future__ import annotations
 
+import contextlib
 import sys
 import tempfile
 import time
@@ -58,6 +79,14 @@ if str(_SKILL_SCRIPTS) not in sys.path:
 import embed  # noqa: E402
 import recall  # noqa: E402
 import vec_index  # noqa: E402
+
+# 10x the production interactive budget, for the tests whose subject is what a
+# completed search reports rather than how long one takes. Deliberately still
+# below VEC_COLD_EMBED_MIN_BUDGET_MS, so the vec half is declined on
+# affordability here exactly as it is in production -- widening past that would
+# change which streams run and make these different tests. Same figure and same
+# reasoning as the hook suites' fixtures (PR #418).
+_GENEROUS_BUDGET_MS = 3000
 
 
 def _write_entry(directory: Path, slug: str, body: str, *, tags: str = "") -> Path:
@@ -116,10 +145,11 @@ class VecSearchAdmissionTests(unittest.TestCase):
         """
         vec_index._open_index = lambda vault: None
         status: dict = {}
-        results = recall._vec_search(
-            self.vault, "zorbulax", k=5,
-            deadline=time.monotonic() + 0.300, status=status,
-        )
+        with _a_budget_of(300) as deadline:
+            results = recall._vec_search(
+                self.vault, "zorbulax", k=5,
+                deadline=deadline, status=status,
+            )
         self.assertEqual(results, {})
         self.assertEqual(
             self.spy.calls, 0,
@@ -135,10 +165,11 @@ class VecSearchAdmissionTests(unittest.TestCase):
         vec_index._open_index = lambda vault: _FakeConn()
         embed.local_model_is_resident = lambda mode=None: False
         status: dict = {}
-        results = recall._vec_search(
-            self.vault, "zorbulax", k=5,
-            deadline=time.monotonic() + 0.300, status=status,
-        )
+        with _a_budget_of(300) as deadline:
+            results = recall._vec_search(
+                self.vault, "zorbulax", k=5,
+                deadline=deadline, status=status,
+            )
         self.assertEqual(results, {})
         self.assertEqual(
             self.spy.calls, 0,
@@ -159,11 +190,11 @@ class VecSearchAdmissionTests(unittest.TestCase):
         vec_index._open_index = lambda vault: _FakeConn()
         embed.local_model_is_resident = lambda mode=None: False
         status: dict = {}
-        recall._vec_search(
-            self.vault, "zorbulax", k=5,
-            deadline=time.monotonic() + (recall.QUERY_CLI_BUDGET_MS / 1000.0),
-            status=status,
-        )
+        with _a_budget_of(recall.QUERY_CLI_BUDGET_MS) as deadline:
+            recall._vec_search(
+                self.vault, "zorbulax", k=5,
+                deadline=deadline, status=status,
+            )
         self.assertEqual(
             self.spy.calls, 1,
             "a 10s budget can absorb a ~3.9s cold load; declining it would "
@@ -174,10 +205,8 @@ class VecSearchAdmissionTests(unittest.TestCase):
         """~15ms warm fits 300ms comfortably; only the cold path is refused."""
         vec_index._open_index = lambda vault: _FakeConn()
         embed.local_model_is_resident = lambda mode=None: True
-        recall._vec_search(
-            self.vault, "zorbulax", k=5,
-            deadline=time.monotonic() + 0.300,
-        )
+        with _a_budget_of(300) as deadline:
+            recall._vec_search(self.vault, "zorbulax", k=5, deadline=deadline)
         self.assertEqual(self.spy.calls, 1)
 
     def test_no_deadline_means_no_admission_gate(self):
@@ -232,6 +261,49 @@ class _FakeClock:
         value = self._t
         self._t += self._step
         return value
+
+
+@contextlib.contextmanager
+def _a_budget_of(ms: float):
+    """Hold exactly `ms` of remaining budget open for the duration of the call.
+
+    `deadline = time.monotonic() + 0.300` states an intent the wall clock does
+    not keep. It reads as "300ms of budget", but what the code under test
+    actually sees is "300ms minus however long this host took to get from that
+    line to the admission check" -- and on a loaded shared runner that
+    difference has been the whole budget. A frozen clock makes the number the
+    test names the number the code reads, on any machine.
+
+    Freezing rather than expiring is the point: these callers are about which
+    branch a given remaining budget selects, so the budget has to still be
+    there when the branch is chosen.
+    """
+    clock = _FakeClock(step=0.0)
+    deadline = clock.now() + ms / 1000.0
+    with unittest.mock.patch.object(recall.time, "monotonic", clock):
+        yield deadline
+
+
+@contextlib.contextmanager
+def _an_exhausted_budget():
+    """Elapse the budget before the first stream is reached, on any host.
+
+    The obvious alternative -- ask for a 1ms budget and rely on setup costing
+    more than that -- is the hook suites' idiom, and it does not transfer
+    in-process. There, a fresh interpreter and a real sqlite-vec index open
+    guarantee the starvation. Here every module is already imported, and a host
+    whose sqlite3 cannot load extensions declines the index in microseconds, so
+    a one-entry vault finishes comfortably inside 1ms; observed doing exactly
+    that on macOS system Python, which reported `Loaded 1` where the test wanted
+    a blocked stream. A clock that jumps a full second per read starves the walk
+    everywhere instead of on the slow half of the fleet.
+
+    Safe to patch globally for the duration: `vault_lock` reads the same clock,
+    but only inside its contention-retry loop, which an uncontended write in a
+    fresh temp vault never enters.
+    """
+    with unittest.mock.patch.object(recall.time, "monotonic", _FakeClock(step=1.0)):
+        yield
 
 
 class LexicalCompletenessTests(unittest.TestCase):
@@ -339,15 +411,26 @@ class LexicalCompletenessTests(unittest.TestCase):
 
         They are what the transparency line quotes back to the operator, and a
         hardcoded 0-of-0 would read as plausible while telling them nothing.
+
+        The fake clock is doing the same job here as in the discard test above.
+        This used to pass a real 0.5ms deadline and then assert only
+        `walked <= total`, which holds for a walk that completed, a walk that
+        was truncated, and a walk that never started -- so it could not tell a
+        real coverage report from a placeholder, which is the one thing it
+        exists to check. The partial walk is now established rather than hoped
+        for, and both numbers are pinned against it.
         """
+        clock = _FakeClock(step=0.001)
+        deadline = clock.now() + 0.050  # trips ~50 calls in, mid-walk
         status: dict = {}
-        # A deadline that elapses partway through the walk rather than before it.
-        recall._bm25_search(
-            self.vault, ["quokka"],
-            deadline=time.monotonic() + 0.0005, status=status,
-        )
+        with unittest.mock.patch.object(recall.time, "monotonic", clock):
+            recall._bm25_search(
+                self.vault, ["quokka"], deadline=deadline, status=status,
+            )
+        self.assertFalse(status["complete"])
         self.assertEqual(status["total"], 120)
-        self.assertLessEqual(status["walked"], status["total"])
+        self.assertGreater(status["walked"], 0)
+        self.assertLess(status["walked"], status["total"])
 
 
 class TransparencyTests(unittest.TestCase):
@@ -372,6 +455,35 @@ class TransparencyTests(unittest.TestCase):
         )
         return out.getvalue(), err.getvalue()
 
+    def _require_a_completed_search(self, stderr: str) -> None:
+        """Precondition for the tests below whose subject is a search that RAN.
+
+        Those tests say something about what a completed search reports. A host
+        too slow to complete one has not met their precondition, and whatever
+        they would assert next is then a statement about the runner.
+        `_GENEROUS_BUDGET_MS` is what makes that vanishingly unlikely; this is
+        what stops it being silent on the day it happens anyway. It fails with
+        the starvation named, rather than leaving the downstream assertion to
+        fail with a message that reads like a real defect -- which is how the
+        Windows install-smoke failures at f5f2307 were first read.
+
+        Keyed on the discarded walk rather than on the overrun warning, which
+        is the broader signal and would over-trigger: a run that crossed its
+        budget on the final check but walked the whole corpus has met the
+        precondition, and failing it would trade one flake for another.
+        """
+        if "lexical: discarded" in stderr:
+            self.fail(
+                "budget-starved run, not a defect in the code under test: "
+                f"{_GENEROUS_BUDGET_MS}ms was not enough for this host to walk "
+                "a one-entry vault, so the lexical half was discarded and no "
+                "search completed -- there is nothing here to assert about. "
+                "Re-run on an idle machine, or widen _GENEROUS_BUDGET_MS "
+                f"(staying under {recall.VEC_COLD_EMBED_MIN_BUDGET_MS}ms, or the "
+                "vec half stops being declined on affordability and these become "
+                f"different tests). stderr:\n{stderr}"
+            )
+
     def test_a_matching_entry_is_injected_when_the_budget_is_sufficient(self):
         """The end-to-end repro from GH #92, inverted into a passing case.
 
@@ -391,7 +503,8 @@ class TransparencyTests(unittest.TestCase):
         affordability here exactly as it is in production — widening past that
         would change which streams run and make this a different test.
         """
-        stdout, stderr = self._run("how do I reset zorbulax", 3000)
+        stdout, stderr = self._run("how do I reset zorbulax", _GENEROUS_BUDGET_MS)
+        self._require_a_completed_search(stderr)
         self.assertIn("zorbulax", stdout)
         self.assertIn("Loaded 1 relevant entries", stderr)
         # The admission contract, pinned independently of the clock: the vec
@@ -400,25 +513,72 @@ class TransparencyTests(unittest.TestCase):
         # quietly buying a cold model load.
         self.assertIn("semantic:", stderr)
 
-    def test_unsearched_is_reported_differently_from_no_matches(self):
-        """The observability half of the bug.
+    def test_an_overrun_is_reported_even_when_no_stream_was_attempted(self):
+        """The forced-overrun path still has to announce its overrun.
 
-        `Loaded 0` read identically whether the vault was genuinely empty of
-        matches or no stream had run at all, which is why this survived months
-        of green CI. A zero caused by a blocked stream must say so.
+        `budget_ms <= 0` short-circuits before `query()` is called, so no
+        stream reports back and there are no blocked streams to name -- the
+        overrun warning is the only signal the operator gets, and it has to be
+        there. The blocked-stream wording is a different path, pinned by
+        `test_a_blocked_search_is_labelled_unsearched` below; this test was
+        named for it and never reached it.
         """
         _, stderr = self._run("how do I reset zorbulax", budget_ms=-1)
         self.assertIn("Loaded 0 relevant entries", stderr)
-        # budget_ms <= 0 is the forced-overrun path: nothing is searched.
+        self.assertIn("WARNING", stderr)
+
+    def test_a_blocked_search_is_labelled_unsearched(self):
+        """The observability half of the bug, pinned positively.
+
+        `Loaded 0` read identically whether the vault was genuinely empty of
+        matches or no stream had run at all, which is why GH #92 survived
+        months of green CI. A zero caused by a blocked stream must say so, and
+        must name which streams and why -- the reason is what tells the
+        operator whether to widen a budget or repair an index.
+
+        This is the assertion the converse below is the converse OF. Without it
+        `NOTHING WAS SEARCHED` is only ever asserted absent, and deleting the
+        wording from recall.py outright would keep this suite green: the same
+        shape of gap the wording exists to close.
+
+        Runs at the production budget and exhausts it on a fake clock, so this
+        is the operator's real interactive scenario rather than an invented
+        one, reproduced without asking anything of the host. The budget still
+        has to be positive: a non-positive one takes the forced-overrun branch
+        above, which never calls `query()` and so has no blocked streams to
+        report -- which is why a matching entry that IS found here would be the
+        interesting failure, not a stray zero.
+        """
+        with _an_exhausted_budget():
+            _, stderr = self._run(
+                "how do I reset zorbulax", recall.PROMPT_SUBMIT_BUDGET_MS,
+            )
+        self.assertIn("Loaded 0 relevant entries", stderr)
+        self.assertIn("NOTHING WAS SEARCHED", stderr)
+        self.assertIn("this is not an empty vault", stderr)
+        self.assertIn("semantic:", stderr)
+        self.assertIn("lexical:", stderr)
         self.assertIn("WARNING", stderr)
 
     def test_genuine_no_match_does_not_claim_nothing_was_searched(self):
-        """The converse, so the new wording can't just always fire.
+        """The converse, so the wording above can't just always fire.
 
         A search that really ran and really found nothing must NOT be labelled
         as un-searched, or the distinction is decorative.
+
+        Runs at the fixture budget rather than `PROMPT_SUBMIT_BUDGET_MS`, which
+        is what it used to do. At 300ms it asserted on a state it had not
+        established: on the Windows install-smoke runner the fixed pre-walk
+        setup alone exhausted the budget, the walk was discarded before entry 0
+        of 1, and `NOTHING WAS SEARCHED` was then the CORRECT output for a
+        search that genuinely had not run. Twice on 2026-08-09, on two
+        unrelated PRs, green on re-run both times. The wording it guards is
+        real behavior, so the precondition moves rather than the assertion --
+        and the starved case it was accidentally exercising is now pinned on
+        purpose, above.
         """
-        _, stderr = self._run("entirely unrelated aardvark topic", recall.PROMPT_SUBMIT_BUDGET_MS)
+        _, stderr = self._run("entirely unrelated aardvark topic", _GENEROUS_BUDGET_MS)
+        self._require_a_completed_search(stderr)
         self.assertIn("Loaded 0 relevant entries", stderr)
         self.assertNotIn("NOTHING WAS SEARCHED", stderr)
 
