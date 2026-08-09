@@ -164,6 +164,60 @@ class InsertTests(unittest.TestCase):
             ab.verify_written("---\nkind: x\n---\nbody\n", ["one two"])
 
 
+class CreateFrontmatterTests(unittest.TestCase):
+    BARE = "# Progress — blog\n\n2026-06-06 /plan — created plan.\n"
+
+    def test_block_holds_the_aliases_and_nothing_else(self):
+        out = ab.create_frontmatter_block(self.BARE, ["one two", "three four"])
+        self.assertEqual(
+            out, "---\naliases: [one two, three four]\n---\n\n" + self.BARE
+        )
+
+    def test_no_status_or_type_is_guessed(self):
+        # Writing `status: unfiled` here would demote several hundred real
+        # documents into a penalty class to make the block look complete.
+        out = ab.create_frontmatter_block(self.BARE, ["one two", "three four"])
+        head = ab.FRONTMATTER_RE.match(out).group(1)
+        self.assertEqual(head, "aliases: [one two, three four]")
+
+    def test_body_is_untouched(self):
+        out = ab.create_frontmatter_block(self.BARE, ["one two", "three four"])
+        self.assertTrue(out.endswith(self.BARE))
+
+    def test_refuses_a_note_that_already_has_frontmatter(self):
+        with self.assertRaises(ValueError):
+            ab.create_frontmatter_block(NOTE, ["one two"])
+
+    def test_created_prefix_is_exactly_what_was_prepended(self):
+        aliases = ["one two", "three four"]
+        out = ab.create_frontmatter_block(self.BARE, aliases)
+        self.assertEqual(out[len(ab.created_prefix(aliases)):], self.BARE)
+
+
+class ArtifactRuleTests(unittest.TestCase):
+    def test_machine_exhaust_is_named_and_excluded(self):
+        for rel, reason in (
+            ("_moc/convention.md", "regenerated link index"),
+            ("_meta/skill-discovery-cache/x/diff-2026-06-15.md", "raw upstream README diff"),
+            ("_dream-staging/abc/digest.md", "dream-staging digest"),
+            ("_meta/archive/vault-lint-2026-05-29.md", "machine lint report"),
+            ("_meta/vault-lint-2026-07-15.md", "machine lint report"),
+        ):
+            with self.subTest(rel=rel):
+                self.assertEqual(ab.frontmatter_is_worth_creating(rel), reason)
+
+    def test_real_documents_are_not_excluded(self):
+        for rel in (
+            "projects/agentm/_harness/archive/v5/PLAN.archive.20260618.md",
+            "projects/blog/_harness/progress.md",
+            "_vault-archive/ag-design-history/memory-os-architecture.md",
+            "personal/trusted-sources.md",
+            "_meta/how-to-use-agentmemory.md",
+        ):
+            with self.subTest(rel=rel):
+                self.assertIsNone(ab.frontmatter_is_worth_creating(rel))
+
+
 class ExistingAliasTests(unittest.TestCase):
     def test_inline_list_counts_as_present(self):
         self.assertEqual(ab.existing_aliases("aliases: [a, b]\n"), "[a, b]")
@@ -182,14 +236,17 @@ class ExistingAliasTests(unittest.TestCase):
 class RevertTests(unittest.TestCase):
     """Revert has to restore the original bytes, and refuse anything else."""
 
-    def _run(self, mutate=None):
+    def _run(self, mutate=None, op="insert", original=NOTE):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp, "vault")
             (vault / "personal").mkdir(parents=True)
             note = vault / "personal" / "n.md"
-            note.write_text(NOTE, encoding="utf-8")
             aliases = ["don't rewrite whole files", "cost of a write"]
-            after = ab.insert_aliases(NOTE, aliases)
+            after = (
+                ab.create_frontmatter_block(original, aliases)
+                if op == "create"
+                else ab.insert_aliases(original, aliases)
+            )
             note.write_text(after, encoding="utf-8")
             journal = Path(tmp, "j.jsonl")
             journal.write_text(
@@ -197,8 +254,9 @@ class RevertTests(unittest.TestCase):
                     {
                         "path": "personal/n.md",
                         "outcome": "aliased",
+                        "op": op,
                         "aliases": aliases,
-                        "sha_before": hashlib.sha256(NOTE.encode()).hexdigest(),
+                        "sha_before": hashlib.sha256(original.encode()).hexdigest(),
                         "sha_after": hashlib.sha256(after.encode()).hexdigest(),
                     }
                 )
@@ -213,6 +271,10 @@ class RevertTests(unittest.TestCase):
 
     def test_restores_the_original_bytes(self):
         self.assertEqual(self._run(), NOTE)
+
+    def test_removes_a_whole_created_block(self):
+        bare = "# Progress — blog\n\n2026-06-06 /plan — created plan.\n"
+        self.assertEqual(self._run(op="create", original=bare), bare)
 
     def test_leaves_a_note_edited_since_alone(self):
         edited = self._run(mutate=lambda t: t + "\nsomeone else wrote this\n")

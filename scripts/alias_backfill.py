@@ -73,6 +73,37 @@ FORBIDDEN_IN_ALIAS = set("\n\r\t\x00")
 # `: ` opens a mapping, and `[]{},` are structure.
 PLAIN_SAFE_RE = re.compile(r"\A[A-Za-z0-9][^\[\]{},?#\n\r\t]*\Z")
 
+# Notes with no frontmatter at all are eligible by the classifier and cannot be
+# edited in place, because there is no block to add a key to. Giving them one is a
+# structural change rather than a field, so it is opt-in (`--create-frontmatter`)
+# and it is not applied to everything — a third of that population is machine
+# exhaust that would rank against real memories for nothing.
+#
+# The rule is a path allowlist rather than a heuristic on purpose: what counts as
+# a real document here is a judgement, and a judgement should be readable and
+# arguable rather than inferred from a word count.
+ARTIFACT_PREFIXES = {
+    # Scraped upstream READMEs, kept as a diff cache. External text, not memory.
+    "_meta/skill-discovery-cache/": "raw upstream README diff",
+    # Regenerated wikilink indexes — a title and a bare list of links, no prose,
+    # and rewritten wholesale by auto-organization whenever it runs.
+    "_moc/": "regenerated link index",
+    # Staging exhaust for proposals that are themselves a penalized class.
+    "_dream-staging/": "dream-staging digest",
+    # Machine lint and link-suggestion reports, dated and superseded weekly.
+    "_meta/archive/": "machine lint report",
+    "_meta/vault-lint-": "machine lint report",
+}
+
+
+def frontmatter_is_worth_creating(rel: str) -> str | None:
+    """Return None if this note should get a frontmatter block, else the reason not to."""
+    for prefix, reason in ARTIFACT_PREFIXES.items():
+        if rel.startswith(prefix):
+            return reason
+    return None
+
+
 MIN_ALIASES = 3
 MAX_ALIASES = 6
 MIN_ALIAS_WORDS = 2
@@ -95,6 +126,9 @@ class Candidate:
     head: str = ""
     body: str = ""
     promoted_fragment: bool = False
+    # True when the note has no frontmatter and one has to be created for the
+    # alias to have anywhere to live.
+    needs_frontmatter: bool = False
 
     @property
     def title(self) -> str:
@@ -185,7 +219,12 @@ class Census:
     skipped_dirs: Counter = field(default_factory=Counter)
 
 
-def survey_corpus(vault: str, rows: list[dict], subdir: str | None = None) -> Census:
+def survey_corpus(
+    vault: str,
+    rows: list[dict],
+    subdir: str | None = None,
+    create_frontmatter: bool = False,
+) -> Census:
     """Split the corpus into what this job writes to and what it leaves alone."""
     census = Census()
     for row in rows:
@@ -201,15 +240,36 @@ def survey_corpus(vault: str, rows: list[dict], subdir: str | None = None) -> Ce
             continue
         raw = Path(vault, rel).read_text(encoding="utf-8", errors="replace")
         m = FRONTMATTER_RE.match(raw)
+        promoted = "fragment-promoted" in flags
         if not m:
-            census.counts["skip:no-frontmatter"] += 1
-            census.skipped_dirs[rel.rsplit("/", 1)[0] if "/" in rel else "(root)"] += 1
+            reason = frontmatter_is_worth_creating(rel)
+            if not create_frontmatter:
+                census.counts["skip:no-frontmatter"] += 1
+                census.skipped_dirs[
+                    rel.rsplit("/", 1)[0] if "/" in rel else "(root)"
+                ] += 1
+                continue
+            if reason:
+                census.counts[f"skip:machine-artifact ({reason})"] += 1
+                continue
+            census.counts["eligible:needs-frontmatter"] += 1
+            census.eligible.append(
+                Candidate(
+                    path=rel,
+                    flags=sorted(flags),
+                    status=row.get("status", ""),
+                    raw=raw,
+                    head="",
+                    body=raw,
+                    promoted_fragment=promoted,
+                    needs_frontmatter=True,
+                )
+            )
             continue
         head = m.group(1)
         if existing_aliases(head) is not None:
             census.counts["skip:already-aliased"] += 1
             continue
-        promoted = "fragment-promoted" in flags
         census.counts[
             "eligible:fragment-promoted" if promoted else "eligible:unpenalized"
         ] += 1
@@ -450,6 +510,24 @@ def insert_aliases(raw: str, aliases: list[str]) -> str:
     return raw[: m.start(1)] + new_head + raw[m.end(1):]
 
 
+def create_frontmatter_block(raw: str, aliases: list[str]) -> str:
+    """Give a note with no frontmatter one, containing the aliases and nothing else.
+
+    Deliberately not `type` or `status`. Those are filing decisions, this job is
+    not the filing pass, and a guessed `status` would change the note's rank
+    penalty — writing `unfiled` here would demote several hundred real documents
+    to make a frontmatter block look complete.
+    """
+    if FRONTMATTER_RE.match(raw):
+        raise ValueError("already has frontmatter")
+    return "---\n" + render_line(aliases) + "\n---\n\n" + raw
+
+
+def created_prefix(aliases: list[str]) -> str:
+    """The exact bytes `create_frontmatter_block` prepends, so revert can remove them."""
+    return "---\n" + render_line(aliases) + "\n---\n\n"
+
+
 def verify_written(text: str, aliases: list[str]) -> None:
     """Parse the result before trusting it.
 
@@ -483,7 +561,9 @@ def sha(text: str) -> str:
 
 def cmd_survey(args: argparse.Namespace) -> int:
     vault = resolve_vault(args.vault)
-    census = survey_corpus(vault, classify(args.agentmd, vault), args.subdir)
+    census = survey_corpus(
+        vault, classify(args.agentmd, vault), args.subdir, args.create_frontmatter
+    )
     print(f"vault: {vault}")
     for key, val in sorted(census.counts.items()):
         print(f"{val:7d}  {key}")
@@ -541,6 +621,7 @@ def _work_batch(batch: list[Candidate], args: argparse.Namespace) -> list[dict]:
             {
                 "path": note.path,
                 "outcome": "aliased",
+                "op": "create" if note.needs_frontmatter else "insert",
                 "aliases": kept,
                 "rejected": rejected,
                 "promoted_fragment": note.promoted_fragment,
@@ -551,12 +632,16 @@ def _work_batch(batch: list[Candidate], args: argparse.Namespace) -> list[dict]:
 
 def cmd_run(args: argparse.Namespace) -> int:
     vault = resolve_vault(args.vault)
-    census = survey_corpus(vault, classify(args.agentmd, vault), args.subdir)
+    census = survey_corpus(
+        vault, classify(args.agentmd, vault), args.subdir, args.create_frontmatter
+    )
     todo = census.eligible
     if args.only_promoted:
         todo = [c for c in todo if c.promoted_fragment]
     if args.only_unpenalized:
         todo = [c for c in todo if not c.promoted_fragment]
+    if args.only_new_frontmatter:
+        todo = [c for c in todo if c.needs_frontmatter]
     todo.sort(key=lambda c: c.path)
     if args.sample:
         # An evenly-strided slice rather than the first N. The first fifty notes in
@@ -598,7 +683,10 @@ def cmd_run(args: argparse.Namespace) -> int:
                         abs_path = Path(vault, rec["path"])
                         before = abs_path.read_text(encoding="utf-8")
                         try:
-                            after = insert_aliases(before, rec["aliases"])
+                            if rec["op"] == "create":
+                                after = create_frontmatter_block(before, rec["aliases"])
+                            else:
+                                after = insert_aliases(before, rec["aliases"])
                             verify_written(after, rec["aliases"])
                         except Exception as exc:  # noqa: BLE001
                             outcomes["aliased"] -= 1
@@ -664,7 +752,11 @@ def cmd_revert(args: argparse.Namespace) -> int:
         if sha(current) != rec["sha_after"]:
             counts["changed-since — left alone"] += 1
             continue
-        restored = current.replace("\n" + render_line(rec["aliases"]), "", 1)
+        if rec.get("op") == "create":
+            prefix = created_prefix(rec["aliases"])
+            restored = current[len(prefix):] if current.startswith(prefix) else current
+        else:
+            restored = current.replace("\n" + render_line(rec["aliases"]), "", 1)
         if sha(restored) != rec["sha_before"]:
             counts["would-not-restore-cleanly — left alone"] += 1
             continue
@@ -684,12 +776,19 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--agentmd", default="agentmd", help="path to the agentmd binary")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
+    frontmatter_help = (
+        "also cover notes with no frontmatter at all, by giving them a block "
+        "holding only the aliases. Machine artifacts stay out — see ARTIFACT_PREFIXES."
+    )
+
     s = sub.add_parser("survey", help="census of what is eligible and what is not")
     s.add_argument("--subdir", help="restrict to one vault subdirectory")
+    s.add_argument("--create-frontmatter", action="store_true", help=frontmatter_help)
     s.set_defaults(func=cmd_survey)
 
     r = sub.add_parser("run", help="generate and write aliases")
     r.add_argument("--subdir", help="restrict to one vault subdirectory")
+    r.add_argument("--create-frontmatter", action="store_true", help=frontmatter_help)
     r.add_argument("--limit", type=int, default=0)
     r.add_argument("--offset", type=int, default=0)
     r.add_argument(
@@ -705,6 +804,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--pause", type=float, default=0.0, help="seconds between chunks")
     r.add_argument("--only-promoted", action="store_true")
     r.add_argument("--only-unpenalized", action="store_true")
+    r.add_argument(
+        "--only-new-frontmatter", action="store_true",
+        help="only the notes a frontmatter block is being created for",
+    )
     r.add_argument("--dry-run", action="store_true")
     r.add_argument("--journal", required=True, help="append-only record of every write")
     r.set_defaults(func=cmd_run)
