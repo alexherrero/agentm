@@ -29,6 +29,7 @@ retrieval more quietly than no alias at all.
     python3 scripts/alias_backfill.py run --limit 50 --dry-run
     python3 scripts/alias_backfill.py run
     python3 scripts/alias_backfill.py revert --journal <path>
+    python3 scripts/alias_backfill.py reapply --journal <path>
 
 Resumable by construction: a note with a non-empty `aliases` list is done, so a
 re-run picks up exactly what is left and cannot duplicate or overwrite.
@@ -770,6 +771,57 @@ def cmd_revert(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reapply(args: argparse.Namespace) -> int:
+    """Put back exactly what `revert` removed, from the same journal.
+
+    `revert` was written first and used alone for a year of nothing, because the
+    only reason to undo a backfill was a mistake. Measuring one changed that: the
+    week-3 retest reverted 1,930 aliases on evidence, and evidence can move
+    again. Without this, restoring them meant re-running the generator, which
+    calls a model and produces *different* aliases — a re-run is a new treatment,
+    not an undo, and a corpus you cannot return to a known state is a corpus you
+    cannot measure against twice.
+
+    Symmetric with `revert` in the one way that matters: it writes only to a file
+    that is still byte-identical to what the revert left behind, and reports
+    anything else rather than stamping over it.
+    """
+    vault = resolve_vault(args.vault)
+    counts: Counter = Counter()
+    for line in Path(args.journal).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        if rec.get("outcome") != "aliased" or "sha_after" not in rec:
+            continue
+        abs_path = Path(vault, rec["path"])
+        if not abs_path.exists():
+            counts["missing"] += 1
+            continue
+        current = abs_path.read_text(encoding="utf-8")
+        if sha(current) == rec["sha_after"]:
+            counts["already-aliased — left alone"] += 1
+            continue
+        if sha(current) != rec["sha_before"]:
+            counts["changed-since — left alone"] += 1
+            continue
+        if rec.get("op") == "create":
+            restored = created_prefix(rec["aliases"]) + current
+        else:
+            restored = insert_aliases(current, rec["aliases"])
+        if sha(restored) != rec["sha_after"]:
+            counts["would-not-restore-cleanly — left alone"] += 1
+            continue
+        if not args.dry_run:
+            abs_path.write_text(restored, encoding="utf-8")
+        counts["reapplied"] += 1
+    for k, v in counts.most_common():
+        print(f"{v:7d}  {k}")
+    if args.dry_run:
+        print("dry run — nothing was written")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--vault", help="override the resolved vault path")
@@ -816,6 +868,12 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--journal", required=True)
     v.add_argument("--dry-run", action="store_true")
     v.set_defaults(func=cmd_revert)
+
+    ra = sub.add_parser(
+        "reapply", help="put back exactly what revert removed, from the same journal")
+    ra.add_argument("--journal", required=True)
+    ra.add_argument("--dry-run", action="store_true")
+    ra.set_defaults(func=cmd_reapply)
 
     args = ap.parse_args(argv)
     return args.func(args)

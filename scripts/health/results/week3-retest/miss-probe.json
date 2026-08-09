@@ -1,0 +1,634 @@
+{
+  "shared_misses": [
+    {
+      "id": "dt12",
+      "stratum": "distinctive-token",
+      "question": "You know it's \"AgentM\", not \"Agent M\" right?",
+      "expected": [
+        "personal/_always-load/agent-m-crickets-branding.md"
+      ],
+      "aliases_in_AL": {
+        "personal/_always-load/agent-m-crickets-branding.md": [
+          "agent m and crickets brand names",
+          "men in black naming scheme",
+          "why is it called agent m",
+          "product names vs technical folder names"
+        ]
+      },
+      "week1_queries": [
+        {
+          "query": "AgentM name naming capitalization",
+          "AL": {
+            "rank": null,
+            "n": 3,
+            "matched": 3
+          },
+          "NO": {
+            "rank": null,
+            "n": 3,
+            "matched": 3
+          }
+        },
+        {
+          "query": "\"AgentM\" spelling brand name origin",
+          "AL": {
+            "rank": null,
+            "n": 2,
+            "matched": 2
+          },
+          "NO": {
+            "rank": null,
+            "n": 2,
+            "matched": 2
+          }
+        },
+        {
+          "query": "\"Building Agent M\" essay agentic-coding",
+          "AL": {
+            "rank": null,
+            "n": 19,
+            "matched": 19
+          },
+          "NO": {
+            "rank": null,
+            "n": 19,
+            "matched": 19
+          }
+        }
+      ],
+      "alias_self_probe": [
+        {
+          "alias": "agent m and crickets brand names",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "men in black naming scheme",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "why is it called agent m",
+          "rank_in_AL": 1
+        }
+      ]
+    },
+    {
+      "id": "ep09",
+      "stratum": "episodic-temporal",
+      "question": "When did we re-write agentm the first time?",
+      "expected": [
+        "projects/_archive/agent-m-v4/_index.md",
+        "projects/agentm/version-summaries.md",
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md"
+      ],
+      "aliases_in_AL": {
+        "projects/_archive/agent-m-v4/_index.md": [
+          "vectorized memory search design",
+          "knowledge graph roadmap for agent memory",
+          "conversational project file lookup",
+          "dynamic recall during conversation",
+          "vault redesign deferred to roadmap"
+        ],
+        "projects/agentm/version-summaries.md": [
+          "agentm roadmap version overview",
+          "quick orientation across agentm versions",
+          "where each agentm release sits architecturally",
+          "memory system evolution v4 through v7"
+        ],
+        "projects/blog/drafts/_archive/rebuild-not-refactor.md": [
+          "when to rewrite instead of patch",
+          "floating point money bug story",
+          "risk checks never wired in",
+          "starting v2 from scratch",
+          "why sherwood got archived",
+          "foundational debt from fast agentic builds"
+        ]
+      },
+      "week1_queries": [
+        {
+          "query": "agentm rewrite rewritten first",
+          "AL": {
+            "rank": null,
+            "n": 50,
+            "matched": 54
+          },
+          "NO": {
+            "rank": null,
+            "n": 50,
+            "matched": 54
+          }
+        },
+        {
+          "query": "agentm history origin ground-up rewrite",
+          "AL": {
+            "rank": null,
+            "n": 25,
+            "matched": 25
+          },
+          "NO": {
+            "rank": null,
+            "n": 25,
+            "matched": 25
+          }
+        },
+        {
+          "query": "agentm timeline version history first rewrite date",
+          "AL": {
+            "rank": null,
+            "n": 13,
+            "matched": 13
+          },
+          "NO": {
+            "rank": null,
+            "n": 13,
+            "matched": 13
+          }
+        },
+        {
+          "query": "\"rewrote agentm\" OR \"first rewrite\" OR \"ground-up rewrite\"",
+          "AL": {
+            "rank": null,
+            "n": 2,
+            "matched": 2
+          },
+          "NO": {
+            "rank": null,
+            "n": 2,
+            "matched": 2
+          }
+        },
+        {
+          "query": "agentm rewritten from scratch second time v2 previously",
+          "AL": {
+            "rank": null,
+            "n": 3,
+            "matched": 3
+          },
+          "NO": {
+            "rank": null,
+            "n": 3,
+            "matched": 3
+          }
+        },
+        {
+          "query": "agentm project origin born began started first version genesis",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        }
+      ],
+      "alias_self_probe": [
+        {
+          "alias": "vectorized memory search design",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "knowledge graph roadmap for agent memory",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "conversational project file lookup",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "agentm roadmap version overview",
+          "rank_in_AL": 2
+        },
+        {
+          "alias": "quick orientation across agentm versions",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "where each agentm release sits architecturally",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "when to rewrite instead of patch",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "floating point money bug story",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "risk checks never wired in",
+          "rank_in_AL": 1
+        }
+      ]
+    },
+    {
+      "id": "ep12",
+      "stratum": "episodic-temporal",
+      "question": "When did I switch from antigravity to claude? or better when did I start using claude?",
+      "expected": [
+        "projects/blog/drafts/_archive/claude-allowance-cut.md",
+        "projects/blog/drafts/_archive/green-squares.md"
+      ],
+      "aliases_in_AL": {
+        "projects/blog/drafts/_archive/claude-allowance-cut.md": [
+          "antigravity claude usage limit lowered",
+          "why switched from antigravity to claude",
+          "gemini and claude workflow switching story",
+          "forced harness rethink after allowance cut"
+        ],
+        "projects/blog/drafts/_archive/green-squares.md": [
+          "why my github graph went green again",
+          "returning to coding after management",
+          "picking up personal projects after years managing",
+          "when AI tools got good enough to build again",
+          "leaving management to build things myself"
+        ]
+      },
+      "week1_queries": [
+        {
+          "query": "switched from Antigravity to Claude Code",
+          "AL": {
+            "rank": 1,
+            "n": 50,
+            "matched": 116
+          },
+          "NO": {
+            "rank": null,
+            "n": 50,
+            "matched": 115
+          }
+        },
+        {
+          "query": "started using Claude migrate away from Antigravity",
+          "AL": {
+            "rank": null,
+            "n": 19,
+            "matched": 19
+          },
+          "NO": {
+            "rank": null,
+            "n": 19,
+            "matched": 19
+          }
+        },
+        {
+          "query": "moved from Antigravity to Claude Code as primary editor",
+          "AL": {
+            "rank": null,
+            "n": 9,
+            "matched": 9
+          },
+          "NO": {
+            "rank": null,
+            "n": 9,
+            "matched": 9
+          }
+        },
+        {
+          "query": "Antigravity to Claude migration switch decision date",
+          "AL": {
+            "rank": null,
+            "n": 42,
+            "matched": 42
+          },
+          "NO": {
+            "rank": null,
+            "n": 42,
+            "matched": 42
+          }
+        },
+        {
+          "query": "first time trying Claude Code new tool impressions",
+          "AL": {
+            "rank": null,
+            "n": 11,
+            "matched": 11
+          },
+          "NO": {
+            "rank": null,
+            "n": 11,
+            "matched": 11
+          }
+        }
+      ],
+      "alias_self_probe": [
+        {
+          "alias": "antigravity claude usage limit lowered",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "why switched from antigravity to claude",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "gemini and claude workflow switching story",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "why my github graph went green again",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "returning to coding after management",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "picking up personal projects after years managing",
+          "rank_in_AL": 1
+        }
+      ]
+    },
+    {
+      "id": "ng02",
+      "stratum": "negative",
+      "question": "Show me recent research you've ingested on current security vulnerability trends as it pretains to my current homelab setup and my github projects.",
+      "expected": [],
+      "aliases_in_AL": {},
+      "week1_queries": [
+        {
+          "query": "security vulnerability trends",
+          "AL": {
+            "rank": null,
+            "n": 14,
+            "matched": 14
+          },
+          "NO": {
+            "rank": null,
+            "n": 14,
+            "matched": 14
+          }
+        },
+        {
+          "query": "homelab security",
+          "AL": {
+            "rank": null,
+            "n": 41,
+            "matched": 41
+          },
+          "NO": {
+            "rank": null,
+            "n": 40,
+            "matched": 40
+          }
+        },
+        {
+          "query": "security advisory digest CVE homelab github",
+          "AL": {
+            "rank": null,
+            "n": 15,
+            "matched": 15
+          },
+          "NO": {
+            "rank": null,
+            "n": 15,
+            "matched": 15
+          }
+        },
+        {
+          "query": "supply chain agent-toolkit dependency vulnerability",
+          "AL": {
+            "rank": null,
+            "n": 15,
+            "matched": 15
+          },
+          "NO": {
+            "rank": null,
+            "n": 15,
+            "matched": 15
+          }
+        }
+      ],
+      "alias_self_probe": []
+    },
+    {
+      "id": "pp05",
+      "stratum": "pure-paraphrase",
+      "question": "Give me a list of my pending project ideas for the house?",
+      "expected": [
+        "projects/home-tech-next/_index.md"
+      ],
+      "aliases_in_AL": {
+        "projects/home-tech-next/_index.md": [
+          "home network project overview",
+          "nas identity consolidation and tunneling",
+          "immich self hosted photo backup plan",
+          "why bundle scattered home tech ideas together"
+        ]
+      },
+      "week1_queries": [
+        {
+          "query": "house project ideas todo",
+          "AL": {
+            "rank": null,
+            "n": 17,
+            "matched": 17
+          },
+          "NO": {
+            "rank": null,
+            "n": 17,
+            "matched": 17
+          }
+        },
+        {
+          "query": "home improvement projects pending renovation",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        },
+        {
+          "query": "home DIY garden kitchen paint furniture backyard",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        },
+        {
+          "query": "house repair contractor room remodel wishlist",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        },
+        {
+          "query": "apartment household chores decorate move",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        }
+      ],
+      "alias_self_probe": [
+        {
+          "alias": "home network project overview",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "nas identity consolidation and tunneling",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "immich self hosted photo backup plan",
+          "rank_in_AL": 2
+        }
+      ]
+    },
+    {
+      "id": "pp07",
+      "stratum": "pure-paraphrase",
+      "question": "Why did AgentM never fully realize the vault vision that I had?",
+      "expected": [
+        "projects/agentm/_harness/designs/friday/F1-REAUDIT.md",
+        "projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md"
+      ],
+      "aliases_in_AL": {
+        "projects/agentm/_harness/designs/friday/F1-REAUDIT.md": [],
+        "projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md": [
+          "remote control feature status check",
+          "claude code surface capabilities today",
+          "conversation and capture entry points audit",
+          "hold lift readiness check for friday"
+        ]
+      },
+      "week1_queries": [
+        {
+          "query": "AgentM vault vision",
+          "AL": {
+            "rank": null,
+            "n": 17,
+            "matched": 17
+          },
+          "NO": {
+            "rank": null,
+            "n": 16,
+            "matched": 16
+          }
+        },
+        {
+          "query": "vault vision never realized limitations shortcomings",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        },
+        {
+          "query": "agentm retrospective post-mortem why fell short vault vision",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        },
+        {
+          "query": "vault as canonical context vision original goal",
+          "AL": {
+            "rank": null,
+            "n": 16,
+            "matched": 16
+          },
+          "NO": {
+            "rank": null,
+            "n": 16,
+            "matched": 16
+          }
+        },
+        {
+          "query": "\"vault-as-canonical-context\" vision gap unrealized aspiration reality",
+          "AL": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          },
+          "NO": {
+            "rank": null,
+            "n": 0,
+            "matched": 0
+          }
+        },
+        {
+          "query": "agentm scope narrowed deferred embedding recall vision honest assessment",
+          "AL": {
+            "rank": null,
+            "n": 1,
+            "matched": 1
+          },
+          "NO": {
+            "rank": null,
+            "n": 1,
+            "matched": 1
+          }
+        }
+      ],
+      "alias_self_probe": [
+        {
+          "alias": "remote control feature status check",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "claude code surface capabilities today",
+          "rank_in_AL": 1
+        },
+        {
+          "alias": "conversation and capture entry points audit",
+          "rank_in_AL": 1
+        }
+      ]
+    }
+  ],
+  "surface_replay": {
+    "n_queries": 206,
+    "identical_top_5": 145,
+    "different_top_5": 61,
+    "different_rank_1": 32,
+    "share_top_5_changed": 0.2961,
+    "share_rank_1_changed": 0.1553,
+    "empty_result_sets": {
+      "AL": 36,
+      "NO": 39
+    },
+    "rows_matched_before_ranking": {
+      "AL": 4575,
+      "NO": 4541
+    },
+    "rows_gained_by_AL": 46,
+    "rows_dropped_by_AL": 41,
+    "gained_rows_matching_only_via_alias": 21,
+    "alias_only_share_of_gained": 0.4565
+  }
+}
