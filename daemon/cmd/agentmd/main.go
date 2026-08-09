@@ -1,0 +1,641 @@
+// Command agentmd is the resident memory daemon.
+//
+// One process. It watches the vault, maintains one FTS5 index, serves
+// memory_search and memory_capture over MCP, and is the only thing that runs git.
+// Nothing requiring judgment runs inside it.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"os/signal"
+	"path/filepath"
+	"sort"
+	"strings"
+	"syscall"
+	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/capture"
+	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/mcpsrv"
+	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/vcs"
+	"github.com/alexherrero/agentm/daemon/internal/watch"
+)
+
+// version is the daemon's own version, stamped at build time when the release
+// script sets it and honest about being a development build when it does not.
+var version = "0.1.0-dev"
+
+const usage = `agentmd — the agentm memory daemon
+
+  agentmd serve      run the daemon: watch, index, serve MCP, commit
+  agentmd search     one-shot search against the index
+  agentmd capture    one-shot capture
+  agentmd reindex    rebuild the index from the files
+  agentmd status     ask a running daemon how it is doing
+  agentmd classify   report rank-penalty class counts over the live vault
+  agentmd retire     retire the orphaned pre-daemon memory server
+
+Run any subcommand with -h for its flags.
+`
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Fprint(os.Stderr, usage)
+		os.Exit(2)
+	}
+	var err error
+	switch os.Args[1] {
+	case "serve":
+		err = cmdServe(os.Args[2:])
+	case "search":
+		err = cmdSearch(os.Args[2:])
+	case "capture":
+		err = cmdCapture(os.Args[2:])
+	case "reindex":
+		err = cmdReindex(os.Args[2:])
+	case "status":
+		err = cmdStatus(os.Args[2:])
+	case "classify":
+		err = cmdClassify(os.Args[2:])
+	case "retire":
+		err = cmdRetire(os.Args[2:])
+	case "version", "-v", "--version":
+		fmt.Println("agentmd", version)
+	case "help", "-h", "--help":
+		fmt.Print(usage)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown subcommand %q\n\n%s", os.Args[1], usage)
+		os.Exit(2)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "agentmd:", err)
+		os.Exit(1)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// serve
+// ---------------------------------------------------------------------------
+
+func cmdServe(args []string) error {
+	fs := newFlagSet("serve")
+	opts := bindCommon(fs)
+	verbose := fs.Bool("verbose", false, "log every indexed file")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	markPortSet(fs, opts)
+
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+
+	level := slog.LevelInfo
+	if *verbose {
+		level = slog.LevelDebug
+	}
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+
+	log.Info("resolved vault", "path", cfg.VaultPath, "source", cfg.VaultSource)
+
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
+
+	repo := vcs.Open(cfg.VaultPath)
+	if repo.Available() {
+		log.Info("git", "status", repo.Status())
+	} else {
+		// Loud, every start. Without git there is no undo for a bad write, and a
+		// capability that is quietly missing is the exact failure mode principle 4
+		// exists to prevent.
+		log.Warn("git DEGRADED — no commits, no undo", "reason", repo.Status())
+	}
+
+	cp := capture.New(cfg, idx)
+	w := watch.New(cfg, idx, repo, log)
+
+	// Bind before the initial reconcile so a port collision fails in a second
+	// rather than after a full vault walk.
+	addr := fmt.Sprintf("127.0.0.1:%d", cfg.Port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		if isAddrInUse(err) {
+			return fmt.Errorf(
+				"port %d is already in use — if that is the orphaned pre-daemon memory "+
+					"server, run `agentmd retire` first; otherwise pass --port: %w",
+				cfg.Port, err)
+		}
+		return err
+	}
+	defer ln.Close()
+
+	// Index everything before answering anything. A search served against a
+	// half-built index is how a memory system convinces its user a fact was never
+	// saved. On an existing index this is a stat-and-compare, not a re-read.
+	started := time.Now()
+	rep, err := w.ReconcileInitial()
+	if err != nil {
+		return fmt.Errorf("initial index pass: %w", err)
+	}
+	log.Info("index ready",
+		"documents", rep.Scanned, "added", rep.Added, "updated", rep.Updated,
+		"removed", rep.Removed, "errors", len(rep.Errors),
+		"elapsed", time.Since(started).Round(time.Millisecond))
+
+	statusFn := func() map[string]any {
+		out := map[string]any{
+			"vault":        cfg.VaultPath,
+			"vault_source": cfg.VaultSource,
+			"config":       cfg.ConfigPath,
+			"spaces":       cfg.Spaces,
+			"shard":        cfg.Shard,
+			"git": map[string]any{
+				"available": repo.Available(),
+				"status":    repo.Status(),
+			},
+			"watcher": w.Status(),
+		}
+		if st, err := idx.Stats(); err == nil {
+			out["index"] = st
+		} else {
+			out["index"] = map[string]any{"error": err.Error()}
+		}
+		return out
+	}
+
+	srv := &http.Server{
+		Handler:           mcpsrv.New(cfg, idx, cp, log, statusFn, w.MarkSelfWritten, version).Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		if err := w.Run(ctx); err != nil {
+			log.Error("watcher stopped", "err", err)
+		}
+	}()
+
+	// The address line is the readiness signal: it means indexed, watching, and
+	// serving. Tests and supervisors both wait on it.
+	fmt.Printf("agentmd %s listening http://%s\n", version, ln.Addr().String())
+	_ = os.Stdout.Sync()
+
+	errc := make(chan error, 1)
+	go func() {
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errc <- err
+		}
+	}()
+
+	select {
+	case err := <-errc:
+		return err
+	case <-ctx.Done():
+		log.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	}
+}
+
+func isAddrInUse(err error) bool {
+	return errors.Is(err, syscall.EADDRINUSE) ||
+		strings.Contains(err.Error(), "address already in use")
+}
+
+// ---------------------------------------------------------------------------
+// one-shot commands
+// ---------------------------------------------------------------------------
+
+func cmdSearch(args []string) error {
+	fs := newFlagSet("search")
+	opts := bindCommon(fs)
+	k := fs.Int("k", 5, "how many results")
+	after := fs.String("after", "", "only notes captured on or after this date")
+	before := fs.String("before", "", "only notes captured before this date")
+	asJSON := fs.Bool("json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	query := strings.Join(fs.Args(), " ")
+	if strings.TrimSpace(query) == "" {
+		return errors.New("usage: agentmd search [flags] <query terms>")
+	}
+
+	cfg, idx, err := openReadOnly(opts)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
+	_ = cfg
+
+	out, err := idx.Search(index.Query{Text: query, K: *k, After: *after, Before: *before})
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(out)
+	}
+	if out.Note != "" {
+		fmt.Println("note:", out.Note)
+	}
+	for i, r := range out.Results {
+		fmt.Printf("%d. %s\n", i+1, r.Path)
+		fmt.Printf("   score %.4f", r.Score)
+		if r.Penalty != "" {
+			fmt.Printf("  raw %.4f  penalty %s", r.RawScore, r.Penalty)
+		}
+		fmt.Printf("  captured %s (%s)\n", r.Captured, r.CapturedSource)
+		if r.Snippet != "" {
+			fmt.Printf("   %s\n", r.Snippet)
+		}
+	}
+	if len(out.Results) == 0 {
+		fmt.Println("(no results)")
+	}
+	return nil
+}
+
+func cmdCapture(args []string) error {
+	fs := newFlagSet("capture")
+	opts := bindCommon(fs)
+	title := fs.String("title", "", "short title")
+	noteType := fs.String("type", "", "one of: "+strings.Join(config.Types, ", "))
+	status := fs.String("status", "", "active | unfiled")
+	tags := fs.String("tags", "", "comma-separated tags")
+	aliases := fs.String("aliases", "", "comma-separated alternate phrasings")
+	source := fs.String("source", "", "URL or message-id")
+	space := fs.String("space", "", "which space to write into")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	text := strings.Join(fs.Args(), " ")
+	if strings.TrimSpace(text) == "" {
+		blob, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return err
+		}
+		text = string(blob)
+	}
+
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
+
+	res, err := capture.New(cfg, idx).Do(capture.Request{
+		Text: text, Title: *title, Type: *noteType, Status: *status,
+		Tags: splitList(*tags), Aliases: splitList(*aliases),
+		Source: *source, Space: *space,
+	})
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(res)
+}
+
+func cmdReindex(args []string) error {
+	fs := newFlagSet("reindex")
+	opts := bindCommon(fs)
+	scratch := fs.Bool("from-scratch", false,
+		"delete the index file first, proving it is rebuildable from the files alone")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	if *scratch {
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			if err := os.Remove(cfg.IndexPath + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
+		fmt.Println("deleted", cfg.IndexPath)
+	}
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
+
+	started := time.Now()
+	rep, err := idx.Reconcile()
+	if err != nil {
+		return err
+	}
+	fmt.Printf("scanned %d, added %d, updated %d, removed %d in %s\n",
+		rep.Scanned, rep.Added, rep.Updated, rep.Removed,
+		time.Since(started).Round(time.Millisecond))
+	for i, e := range rep.Errors {
+		if i >= 10 {
+			fmt.Printf("… and %d more errors\n", len(rep.Errors)-10)
+			break
+		}
+		fmt.Println("error:", e)
+	}
+	st, err := idx.Stats()
+	if err != nil {
+		return err
+	}
+	blob, _ := json.MarshalIndent(st, "", "  ")
+	fmt.Println(string(blob))
+	return nil
+}
+
+func cmdStatus(args []string) error {
+	fs := newFlagSet("status")
+	opts := bindCommon(fs)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	markPortSet(fs, opts)
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%d/status", cfg.Port)
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Get(url)
+	if err != nil {
+		return fmt.Errorf("no daemon answering on %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	_, err = io.Copy(os.Stdout, resp.Body)
+	return err
+}
+
+// cmdClassify reports rank-penalty class counts over the live vault.
+//
+// This is the drift check on the classifier, and it exists because of a specific
+// lesson: session 1's test suite passed unchanged after the classifier's behaviour
+// changed. A suite that does not notice a real behavioural change is reporting on
+// itself. Unit tests pin hand-written cases; this pins the population, against the
+// counts the Python reference measured on the corpus the +3.75 result came from.
+func cmdClassify(args []string) error {
+	fs := newFlagSet("classify")
+	opts := bindCommon(fs)
+	showSamples := fs.Int("samples", 0, "print this many example paths per class")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+
+	counts := map[string]int{}
+	samples := map[string][]string{}
+	total, unreadable := 0, 0
+	signals := map[string]int{}
+
+	err = filepath.WalkDir(cfg.VaultPath, func(abs string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if abs != cfg.VaultPath && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".md") || strings.HasPrefix(d.Name(), ".") {
+			return nil
+		}
+		raw, readErr := os.ReadFile(abs)
+		if readErr != nil {
+			unreadable++
+			return nil
+		}
+		rel, _ := filepath.Rel(cfg.VaultPath, abs)
+		rel = filepath.ToSlash(rel)
+		info, _ := d.Info()
+		mod := time.Time{}
+		if info != nil {
+			mod = info.ModTime()
+		}
+		n := note.Parse(rel, string(raw), mod)
+		total++
+		for _, f := range n.Flags {
+			counts[f]++
+			if len(samples[f]) < *showSamples {
+				samples[f] = append(samples[f], rel)
+			}
+		}
+		// Per-signal breakdown, so a drift in one detector is attributable rather
+		// than showing up only as a moved total. Read through the classifier's own
+		// detectors — counting these a second way is how a drift check ends up
+		// reporting on itself.
+		sig := note.DetectSignals(rel, string(raw))
+		if sig.LeadIn {
+			signals["lead-in"]++
+		}
+		if sig.MiningConfidence {
+			signals["mining_confidence"]++
+		}
+		if sig.TruncatedSlug {
+			signals["truncated-slug"]++
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("vault:      %s\n", cfg.VaultPath)
+	fmt.Printf("notes:      %d (%d unreadable)\n", total, unreadable)
+	fmt.Println("classes:")
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		pct := 0.0
+		if total > 0 {
+			pct = 100 * float64(counts[k]) / float64(total)
+		}
+		weight := note.Weights[k]
+		mark := fmt.Sprintf("weight %.2f", weight)
+		if weight == 0 {
+			mark = "UNPENALIZED (classified only)"
+		}
+		fmt.Printf("  %-20s %6d  %5.1f%%  %s\n", k, counts[k], pct, mark)
+		for _, s := range samples[k] {
+			fmt.Printf("      %s\n", s)
+		}
+	}
+	// The report's figures for the same three detectors on the 8,700-note snapshot
+	// the +3.75 R@5 result came from. Printed alongside so drift is visible here
+	// rather than discovered by a score moving months later.
+	fmt.Println("signals (report figures at 8,700 notes in parentheses):")
+	for _, ref := range []struct {
+		key      string
+		reported int
+	}{
+		{"lead-in", 3413},
+		{"mining_confidence", 5741},
+		{"truncated-slug", 32},
+	} {
+		fmt.Printf("  %-20s %6d  (%d)\n", ref.key, signals[ref.key], ref.reported)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// retire
+// ---------------------------------------------------------------------------
+
+// retiredLaunchdLabel is the orphaned FastMCP daemon: it ran under launchd on port
+// 7821, health-checked clean, and was wired to nothing for the project's entire
+// life. Principle 4 allows one resident service; this is the second one.
+const retiredLaunchdLabel = "com.agentm.memory-server"
+
+func cmdRetire(args []string) error {
+	fs := newFlagSet("retire")
+	dryRun := fs.Bool("dry-run", false, "report what would happen and change nothing")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return err
+	}
+	plist := filepath.Join(home, "Library", "LaunchAgents", retiredLaunchdLabel+".plist")
+
+	fmt.Println("Retiring the orphaned pre-daemon memory server")
+	fmt.Println("  label: ", retiredLaunchdLabel)
+	fmt.Println("  plist: ", plist)
+
+	loaded := launchdLoaded(retiredLaunchdLabel)
+	_, plistErr := os.Stat(plist)
+	present := plistErr == nil
+	fmt.Printf("  state:  loaded=%v plist_present=%v\n", loaded, present)
+
+	if !loaded && !present {
+		fmt.Println("nothing to retire — already gone")
+		return nil
+	}
+	if *dryRun {
+		fmt.Println("\ndry run: would bootout the job and archive the plist alongside itself")
+		return nil
+	}
+
+	if loaded {
+		// bootout is the modern form; unload is the fallback for older launchd.
+		target := fmt.Sprintf("gui/%d/%s", os.Getuid(), retiredLaunchdLabel)
+		if out, err := exec.Command("launchctl", "bootout", target).CombinedOutput(); err != nil {
+			if out2, err2 := exec.Command("launchctl", "unload", "-w", plist).CombinedOutput(); err2 != nil {
+				return fmt.Errorf("could not stop %s: bootout: %v (%s); unload: %v (%s)",
+					retiredLaunchdLabel, err, strings.TrimSpace(string(out)),
+					err2, strings.TrimSpace(string(out2)))
+			}
+		}
+		fmt.Println("  stopped the launchd job")
+	}
+
+	if present {
+		// Archived beside itself rather than deleted: retiring a service should be
+		// one `mv` away from reversible.
+		archived := plist + ".retired-" + time.Now().Format("20060102")
+		if err := os.Rename(plist, archived); err != nil {
+			return fmt.Errorf("archiving the plist: %w", err)
+		}
+		fmt.Println("  archived the plist to", filepath.Base(archived))
+		fmt.Println("    (restore with: mv", archived, plist+")")
+	}
+
+	// Verify rather than assume.
+	time.Sleep(500 * time.Millisecond)
+	if free := portIsFree(config.DefaultPort); free {
+		fmt.Printf("  port %d is now free\n", config.DefaultPort)
+	} else {
+		fmt.Printf("  WARNING: port %d is still held — something else is listening\n",
+			config.DefaultPort)
+	}
+
+	fmt.Println()
+	fmt.Println("Remaining, and not something this command can do for you:")
+	fmt.Println("  The `agentmemory` MCP entry resolves to the stock filesystem server")
+	fmt.Println("  pointed at the vault's parent directory — a coincidence of naming, not")
+	fmt.Println("  a relationship. It is registered in the Claude Code app's own settings,")
+	fmt.Println("  not in a file this command can safely rewrite, so removing it and")
+	fmt.Println("  registering the daemon under that name is a two-step you run yourself:")
+	fmt.Println()
+	fmt.Println("    1. Remove the existing `agentmemory` entry in the app's MCP settings.")
+	fmt.Printf("    2. claude mcp add --transport http agentmemory http://127.0.0.1:%d/mcp\n",
+		config.DefaultPort)
+	return nil
+}
+
+func launchdLoaded(label string) bool {
+	out, err := exec.Command("launchctl", "list").CombinedOutput()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasSuffix(strings.TrimSpace(line), label) {
+			return true
+		}
+	}
+	return false
+}
+
+func portIsFree(port int) bool {
+	ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return false
+	}
+	ln.Close()
+	return true
+}
+
+func openReadOnly(opts *config.Options) (*config.Config, *index.Index, error) {
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath)
+	if err != nil {
+		return nil, nil, err
+	}
+	return cfg, idx, nil
+}
+
+func splitList(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}

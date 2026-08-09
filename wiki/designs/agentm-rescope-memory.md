@@ -87,12 +87,17 @@ captured: 2026-08-03T14:22:00Z    # immutable; determines the shard
 updated: 2026-08-03T14:22:00Z
 slug: edit-not-write-for-existing-files
 tags: [tokens, tooling]
+aliases: [prefer Edit over Write, don't rewrite whole files]   # added at filing
 source: https://…                 # anything ingested from outside
 derived_from: [<slug>, <slug>]    # anything dreaming built from other memories
 ---
 ```
 
 `source` and `derived_from` are cheap to write now and expensive to reconstruct later. They are what makes "why do you believe this?" answerable, and without them an entity memory is an assertion with no way back to its evidence.
+
+`aliases` is the filing pass's answer to vocabulary mismatch, which week 1 measured directly: paraphrase R@5 of 0.472 under the binding driver, and the vector arm made it worse, because the real failure is that a note never contained the words the operator would later ask with. Retrieval cannot find what storage never wrote down. So filing — already an asynchronous model call, already off the capture path — writes a handful of alternate phrasings into the note itself, and FTS5 indexes them with the title and tags weighted above the body. Entity rollups get the same effect at higher power for free: a profile written in dreaming's own words carries both vocabularies and links down to the facts.
+
+Backfilling `aliases` across the existing corpus is dreaming's first real job once the daemon lands. Two constraints make the number honest: the backfill covers every real note and is blind to the retrieval gold set — expanding the gold set's targets specifically would raise the score while improving nothing — and fragments are excluded, because they get demoted rather than decorated.
 
 Every operation in the system's normal life is a frontmatter edit. Filing changes `status`. Re-typing changes `type`. Aging out changes `status`. Nothing moves, which means nothing in the system's normal life can break a link.
 

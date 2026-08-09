@@ -31,6 +31,30 @@ WORKFLOWS_DIR = REPO / ".github" / "workflows"
 LINUX = WORKFLOWS_DIR / "tests-linux.yml"
 CI_ALL = WORKFLOWS_DIR / "ci-all.yml"
 
+
+def pr_gated_workflow_text():
+    """Concatenated text of every workflow that runs on `pull_request`.
+
+    Rule 1 asks whether a battery gate is visible to CI, and for most gates the
+    answer lives in tests-linux.yml. The Go daemon's battery is the exception: it
+    runs in its own matrix workflow (daemon.yml) because the per-OS Python
+    workflows are what ci-all.yml polls, and extending those would couple the
+    daemon's build to the aggregator's timing for no benefit.
+
+    So the surface checked here is every pull_request-triggered workflow rather
+    than one named file. That keeps the guarantee the rule exists for — a gate
+    that gates a PR — while not requiring the daemon's gate to hide in a Python
+    workflow. Restricting to `pull_request` is what keeps it a guarantee: a gate
+    reachable only by manual dispatch would gate nothing.
+    """
+    parts = []
+    for path in sorted(WORKFLOWS_DIR.glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        head = text.split("jobs:", 1)[0]
+        if "pull_request:" in head:
+            parts.append(text)
+    return "\n".join(parts)
+
 GATE_FILE_RE = re.compile(r"[\w./*-]+\.(?:py|sh|ps1)\b")
 
 # Gates that do not appear as a direct tests-linux.yml step but are exercised via
@@ -75,6 +99,7 @@ class TestBatteryMatchesLinuxWorkflow(unittest.TestCase):
 
     def setUp(self):
         self.linux = LINUX.read_text(encoding="utf-8")
+        self.ci_surface = pr_gated_workflow_text()
         self.gates = battery_gate_lines()
         self.assertGreaterEqual(
             len(self.gates), 6, "check-all.sh should declare at least 6 gates"
@@ -88,14 +113,15 @@ class TestBatteryMatchesLinuxWorkflow(unittest.TestCase):
                 # check-all runs scripts via their path; the workflow may too —
                 # match on the basename so `scripts/x.py` == `x.py`.
                 basename = token.rsplit("/", 1)[-1]
-                if basename in self.linux:
+                if basename in self.ci_surface:
                     continue
                 self.assertIn(
                     basename,
                     UNIT_WRAPPED,
-                    f"battery gate references {basename!r} but tests-linux.yml "
-                    f"never runs it and it is not in UNIT_WRAPPED — the both-places "
-                    f"rule is broken (gate line: {gate})",
+                    f"battery gate references {basename!r} but no "
+                    f"pull_request-triggered workflow runs it and it is not in "
+                    f"UNIT_WRAPPED — the both-places rule is broken "
+                    f"(gate line: {gate})",
                 )
 
     def test_unit_wrapped_allowlist_entries_still_reference_their_gate(self):

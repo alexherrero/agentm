@@ -1,6 +1,15 @@
 <!-- mode: reference -->
 # Memory MCP tools reference
 
+> [!IMPORTANT]
+> The server documented on this page is **retired**. Its launchd job
+> (`com.agentm.memory-server`) was stopped and its plist archived when the Go
+> daemon took over port 7821. It had no live caller — nothing in `settings.json`
+> or the recall hooks ever pointed at it. The Python source remains in the tree,
+> frozen.
+>
+> For the surface that runs today, see [Memory daemon (agentmd)](Memory-Daemon).
+
 ## ⚡ Quick Reference
 
 | Tool | Required | Optional | Returns |
