@@ -47,6 +47,16 @@ injection assertions below are real; on a production-sized vault that walk does
 not finish, and per-prompt recall correctly declines to return an arbitrary
 partial ranking. These tests say nothing about that case.
 
+That last claim was true of the *walk* and false of everything preceding it,
+which is what made the injection assertions flaky. A recall pays a fixed cost
+before the walk starts — importing embed/vec_index, opening the vec index — and
+that cost does not shrink with the corpus, so a two-entry fixture vault does not
+escape it. On a loaded runner it can consume the entire budget on its own, at
+which point the walk is discarded before entry 0 and the hook prints nothing.
+The behavioral tests therefore run under an explicit `_TEST_BUDGET_MS` rather
+than the production constant; the two that are genuinely *about* the budget pin
+it back to `_BUDGET_MS` themselves.
+
 The engine-level gap this docstring used to describe — a cold model load
 blowing the 300ms budget and yielding zero entries — is fixed (GH #92). The
 recall engine now admits a stream only if it can complete, and
@@ -106,6 +116,21 @@ def _read_host_timeout_s() -> int:
 
 
 _BUDGET_MS = _read_declared_budget_ms()
+
+# What the behavioral tests run under. Ten times the production budget and two
+# orders of magnitude above the fixed cost a recall pays before its corpus walk
+# starts (importing embed/vec_index, opening the vec index — 25-42ms on an idle
+# M-series Mac, more under CI load), but still below the engine's
+# VEC_COLD_EMBED_MIN_BUDGET_MS, so the vec half is declined on affordability
+# exactly as in production rather than buying a real cold model load.
+#
+# Without this the injection assertions race that fixed cost: when it consumes
+# the whole budget, the corpus walk is discarded before entry 0 and the hook
+# prints nothing, so `assertIn(_SENTINEL, r.stdout)` fails against ''. Observed
+# on Windows CI (PR #417) and on Linux CI (PR #418) — it is not platform
+# specific, and the sibling library-level test in test_recall_stream_admission
+# hit the same wall with no hook or subprocess involved at all.
+_TEST_BUDGET_MS = 3000
 _HOST_TIMEOUT_S = _read_host_timeout_s()
 
 
@@ -169,6 +194,11 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
         # Never let a test write the operator's real recall ledger — see
         # recall_counter.default_history_path().
         env["AGENTM_RECALL_HISTORY"] = str(self.root / "recall-history.jsonl")
+        # Behavioral tests assert what recall INJECTS, and the production budget
+        # is not part of that claim -- it is a tuning constant they were racing.
+        # The two budget-semantics tests below opt back to _BUDGET_MS explicitly.
+        # See _TEST_BUDGET_MS.
+        env["RECALL_BUDGET_MS"] = str(_TEST_BUDGET_MS)
         if with_vault:
             env["MEMORY_VAULT_PATH"] = str(self.vault)
         else:
@@ -330,6 +360,23 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
         self.assertIsNotNone(m, "the hook script's header states no time budget")
         self.assertEqual(int(m.group(1)), _BUDGET_MS)
 
+    def test_the_budget_env_reaches_the_engine_through_the_hook(self) -> None:
+        # _env()'s widened budget is worth nothing unless the hook forwards the
+        # variable, and a hook that silently stopped would just restore the
+        # flake rather than fail anything. So starve it and require the
+        # starvation to bite: at 1ms the corpus walk is discarded before entry 0
+        # and the hook prints nothing. If the environment stops reaching the
+        # engine, this falls back to the 300ms default, the entry is injected,
+        # and this fails.
+        #
+        # Starving is the robust direction to assert in — the fixed pre-walk
+        # cost is tens of milliseconds on any machine, so a 1ms deadline has
+        # always already elapsed. Racing the other way is what flaked.
+        self._seed_recallable()
+        r = self._run_hook(self._env(RECALL_BUDGET_MS="1"))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, "")
+
     def test_the_host_timeout_leaves_room_for_the_declared_budget(self) -> None:
         # The installed fragment's timeout is the host's hard kill. A budget at
         # or above it would mean a within-budget recall could still be killed
@@ -340,8 +387,11 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
         # Exceeding the fragment's timeout is what actually costs the operator a
         # prompt, so that is the number this bounds against — not a wall-clock
         # figure invented here.
+        #
+        # Runs under the production budget, not the fixture's widened one: this
+        # bounds what the operator's own configuration costs.
         self._seed_recallable()
-        elapsed, r = self._time_hook(self._env())
+        elapsed, r = self._time_hook(self._env(RECALL_BUDGET_MS=str(_BUDGET_MS)))
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertLess(
             elapsed, _HOST_TIMEOUT_S / 2,
@@ -358,9 +408,16 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
         # interpreter start, import, and resolution cost, returning immediately
         # before any recall work. Subtracting it leaves the recall phase, which
         # is what the budget clock actually covers.
+        #
+        # Both runs pin RECALL_BUDGET_MS to the declared budget. This test
+        # correlates the measured phase against _BUDGET_MS, so it has to be the
+        # budget the engine actually ran under — the fixture's widened default
+        # would leave it comparing a 3000ms run to a 300ms threshold.
         self._seed_recallable()
-        baseline, _ = self._time_hook(self._env(MEMORY_VAULT_PATH=str(self.root / "gone")))
-        total, r = self._time_hook(self._env())
+        budget_env = {"RECALL_BUDGET_MS": str(_BUDGET_MS)}
+        baseline, _ = self._time_hook(
+            self._env(MEMORY_VAULT_PATH=str(self.root / "gone"), **budget_env))
+        total, r = self._time_hook(self._env(**budget_env))
         self.assertEqual(r.returncode, 0, r.stderr)
 
         recall_phase = max(0.0, total - baseline)
