@@ -106,6 +106,87 @@ Run 2026-08-07 to settle a question this experiment left open: `agentm-rescope-m
 
 *Three cautions this run earned.* A single run of this harness is not an effect: the OR rewrite measured +8 points once and +1.25 on replication, and a variant with provably zero retrieval effect swung one stratum 36 points. Six same-config replicates spread 2.5 points, so an effect smaller than that needs replication to see at all. And the vault moves while you measure it — the corpus grew from 8,599 to 8,709 over the course of the follow-up, partly from the measuring session's own capture hooks depositing fragments into the class under test. Snapshot the corpus before comparing anything.
 
+## The week-3 retest — standing-scorecard run #2
+
+Run 2026-08-08/09, the first scorecard run the standing note above calls for.
+Two questions: what did dreaming's alias backfill buy, and does the gold set
+still behave the same way through the daemon's own `memory_search` rather than
+the experiment's Python layer. Full write-up in
+`scripts/health/results/week3-retest/NOTES.md`.
+
+**The backfill costs 3.85 points of R@5. It is a real, negative result.** AL
+0.6032 against NO 0.6417, p = 0.0411 by exact permutation test over all 924
+rearrangements — six Opus replicates per copy against two unpacked copies of one
+frozen 8,993-note snapshot, differing by exactly the 1,930 `aliases` lines and
+nothing else. Every stratum is negative or flat, paraphrase most of all, which
+is the stratum aliases were written for. Fourteen runs, every integrity check
+zero.
+
+**The cause is open, and the obvious explanation does not survive checking.**
+The daemon weights `meta` (aliases plus tags) 3x above body, and the backfill
+filled that column across 21.5% of the corpus with model-written paraphrase.
+Replaying the 206 queries the 2026-08-06 agent wrote: the aliases add 46 rows to
+the top-5s and displace 41, and 21 of the 46 matched a query term appearing only
+in the alias line and nowhere in the note's body. That reads like the mechanism
+and is not one. A daemon rebuilt with the meta weight at body weight moves
+top-5-identical-to-control only from 70.4% to 73.8%; per-question alias-only
+exposure does not predict which questions lost, with the unexposed questions
+losing too and the single biggest winner heavily exposed; and searching less
+does not predict it either, at r = +0.088 across the 60 questions. `snippet()`
+reads the body column, so the agent never sees alias text.
+
+**The loss is retrieval-in-context, and the runs are instrumented well enough to
+say so.** Splitting the score into whether a gold note reached the agent's
+reading surface and whether the agent then named it: retrieval falls 0.792 to
+0.740 and selection is flat at 0.972 against 0.961, near ceiling in both arms.
+An agent that sees the right note names it either way. What it sees less often
+is the right note. Static index quality is not the explanation — replaying a
+fixed query set, the aliased index scores 54 gold-containing top-5s against 50 —
+and neither is agent behaviour, since the ~1,200 queries each arm wrote match on
+term count, empty rate, `k`, and iteration. The aliases reorder results without
+changing how the agent asks, and on live queries that reordering lands worse
+more often than better. Why is open, and a fixed-query replay structurally
+cannot answer it.
+
+**The paraphrase gap is not where the aliases were aimed.** They are written by
+a model reading the note, so they paraphrase the note. The gap that made week 1
+miss is between the note and the operator's *future question*, and a paraphrase
+of the note does not cross it. `pp05` is the clean demonstration: its gold note
+now carries "home network project overview", and every query the agent actually
+writes for "pending project ideas for the house" still returns nothing.
+
+**The negatives guard reports a direction, not a verdict.** Correct rejections
+went 0.521 to 0.458, −6.25 points at p = 0.4719 — the same shape as the OR
+rewrite's failure but a fifth the size, with the arms almost entirely
+overlapping. Six replicates of eight questions cannot resolve six points.
+
+*What to do:* write no more aliases until the cause is known, and treat reverting
+the 1,930 already written as the default rather than a decision that needs
+further argument. Indexing them at body weight is **not** the next experiment —
+that was the first proposal here and the deterministic pre-check retired it,
+since the weight change moves the surface by three points and the weight is not
+implicated. The open question is why a tool-level improvement becomes an
+answer-level loss.
+
+*Re-audit trigger:* an alias generator that writes from observed questions
+rather than from note content. This result prices these aliases, not aliases.
+
+Two findings the retest produced that are not about aliases. Through the daemon
+and without them, the gold set scores 0.642 overall and 0.531 on paraphrase
+against the 2026-08-07 penalty replicates' 0.654 and 0.488 on a corpus 3%
+smaller — directional, since both the corpus and the surface moved, but the
+daemon's ranking is not worse than the layer it replaced. And the daemon beat
+that layer's median query time by 13% while losing its tail badly, because
+FTS5's `snippet()` was computed inside the ranking query for all 200
+over-fetched rows before the re-rank discarded most of them — 3.1ms against
+1784ms on one measured query whose matched set includes megabyte-sized notes.
+That is fixed in `perf(daemon): rank first, snippet only the k rows that
+survive` (#423), after which the daemon wins the median by 9.5x and p90 by 2.8x.
+The retrieval numbers here were measured on the pre-fix build and were
+re-verified against the post-fix daemon rather than assumed unaffected: over the
+same 205 recorded queries the result paths, their order, and their scores are
+identical. The fix moved latency and nothing else.
+
 ## Deliverables
 
 1. The gold set (60 questions, permanent artifact, versioned in the repo).
@@ -129,6 +210,7 @@ The gold set is the ongoing scorecard principle 3 requires, not a one-time artif
 
 *Newest first. Collapses to one <=2-paragraph entry at finalization; git holds the granular history.*
 
+- **2026-08-09 - the alias backfill was measured through the daemon and it loses ground; standing-scorecard run #2 recorded.** Ran the 60-question gold set against `agentmd`'s own `memory_search` — the real surface, through a budget-enforcing MCP proxy rather than the experiment's Python layer — on two unpacked copies of one frozen 8,993-note snapshot differing by exactly the 1,930 `aliases` lines. Six Opus replicates per copy, plus a Fable pair as a labelled sensitivity check. **Week-3 retest section added above:** aliases cost **3.85 points of R@5 at p = 0.0411**, every stratum negative or flat. **Why the mechanism is recorded as open:** the obvious explanation was tested and failed. `meta` (aliases plus tags) is weighted 3x above body, and 21 of the 46 rows the aliases promoted matched a term found only in the alias line — which reads like the cause until a daemon rebuilt at body weight moves top-5-identical-to-control only 70.4% → 73.8%, per-question alias-only exposure fails to predict which questions lost, and searching less fails too at r = +0.088. That first explanation appeared in this entry's first draft as settled and is withdrawn; it was built from a suggestive share without checking that it predicted anything. **Why not conclude aliases are worthless:** search a note's own aliases and the daemon returns it at rank 1, and at the *tool* level the aliased corpus is slightly better — 54 of 206 recorded queries surface a gold note against 50. The loss appears between the tool's output and the agent's conclusion, on fewer tool calls, which is the shape the OR rewrite had. **Why the negatives guard is reported but not ruled on:** correct rejections fell 6.25 points at p = 0.4719, the OR rewrite's shape at a fifth its size, and six replicates of eight questions cannot resolve that. Two things this run established that the alias question does not depend on: the daemon's ranking is not worse than the layer it replaced (0.642 against the penalty replicates' 0.654 overall, 0.531 against 0.488 on paraphrase, on a 3% larger corpus — directional, both the corpus and the surface moved); and the daemon beat that layer's median query time by 13% while losing its tail to `snippet()`, which the ranking query computed for all 200 over-fetched rows before the re-rank discarded most of them — 3.1ms against 1784ms on one measured query — since fixed in #423, after which the daemon wins the median by 9.5x and p90 by 2.8x with ranking provably unchanged (identical paths, order and scores over the same 205 queries). The corpus is archived at `<vault>/_meta/corpus-snapshots/week3-retest-20260808.tar.gz` (content fingerprint `0a4c2fe1cc1c153c`), and unlike the 2026-08-07 campaign this gold set can see its own variable: 63 of 64 targets carry aliases in the treated copy against 3 in the control. *Re-audit:* an alias generator that writes from observed questions rather than from note content, which is a different treatment this result does not bind.
 - **2026-08-08 - the OR query rewrite did not survive replication, and the shape rule now gates on status.** Six more Opus replicates on the frozen corpus put OR's marginal effect over the penalty at **+1.25 points, p = 0.46** — against **-18.8 points of correct rejections at p = 0.0087**, the two arms not overlapping across six runs each. **Why not ship it:** OR never returns an empty result set, so an agent that would have concluded no memory exists is handed five plausible notes and names one; it buys paraphrase recall and pays in the one stratum that tests whether the system knows what it does not know. It stays in the tree behind `--query-mode or`, off by default. **Why this reverses the 08-07 entry's read:** that rested on one live run showing +8 points, which the same day's own replicate finding said could not be trusted — the caution applied to everything except the lead it was written next to. Separately, `classify_document` now emits `fragment-promoted` for a fragment-shaped note that filing already promoted, so the recommended weights spare it (1,287 notes, 229 of them in `personal/preferences/`) for 0.0009 MRR; `AS_MEASURED_PENALTY_WEIGHTS` reproduces the twelve committed scorecards exactly. The corpus those runs used is archived at `<vault>/_meta/corpus-snapshots/week1-corpus-20260807.tar.gz` (fingerprint `0267330aa68dade2`) — as a tarball, because the corpus walk takes every `.md` under the vault root and an unpacked snapshot would double the corpus it is meant to measure. *Re-audit:* a minimum-score floor under the OR rewrite, which is the untested way to keep its recall without its cost.
 - **2026-08-07 - the rank penalty was measured rather than assumed, and it earns its place; two knobs a follow-up would reach for turned out to be already shipped, and a bigger defect turned up upstream of ranking.** Added a status-and-shape rank penalty to the Arm A corpus layer, plus three lexical variants and an OR query mode, each switchable alone so a score change attributes to one of them. Twelve Opus runs on a frozen corpus snapshot — six control, six penalty — put the penalty at **+3.75 points of R@5, p = 0.0195** by exact permutation test. **Rank-penalty follow-up section added above.** **Why a constant rather than a tuned weight:** a 125-point sweep produced four distinct outcomes and every weight at or below 0.6 ranked identically, so strength is not a parameter and a config surface here would have nothing behind it. **Why not the tokenizer and column-weighting variants the brief named:** both were already in the 2026-08-06 baseline, so they were priced by ablation instead — porter is worth +5.7 tool-level hit@5, the 4x title weight +3.8 hit@1, and a dedicated aliases column changes nothing until the alias backfill gives it something to index. **Why the OR finding is not yet a ruling:** it has one live run behind it against the penalty's twelve, and this run also established that one run of this harness cannot be read as an effect. Four things the build forced, each recorded because it would otherwise mislead silently: this gold set's P@5 is R@5 rescaled by label size, so the 0.144 paraphrase figure never meant answers came back padded; six same-config replicates spread 2.5 points while a variant with provably zero retrieval effect swung a stratum 36 points in one run; the corpus grew 8,599 → 8,709 mid-experiment, partly from the measuring session's own capture hooks writing into the class under test; and zero of the gold set's 64 targets carry a penalty class, so this measures what demotion buys and never what it costs. *Re-audit:* a gold set that includes a genuinely useful `unfiled` note, which is the only way to price the cost side.
 - **2026-08-06 - the experiment ran; the rule fired FTS5-only, and the driver model turned out to be a free variable nobody had pinned.** Built the runner (`scripts/health/week1_retrieval_experiment.py`, plus an FTS5/vector corpus layer, a warm-embedder daemon, and an MCP shim), then ran all 60 questions across both arms under Opus and again under Fable. **Outcome section added above** with the numbers and the ruling: Opus binds, ship FTS5-only, no vector sidecar in the v0 daemon. **Why not the sidecar:** for Opus it measured a loss rather than a gain (0.725 -> 0.672), and it would reintroduce either a model call in the capture write path or an asynchronous embedding queue - the mechanism whose silent stall cost four months of dead recall. **Why not let Fable's opposite verdict decide:** it was declared a sensitivity check after Opus was declared the run, and promoting it once both numbers are visible is the post-hoc selection pre-registration exists to block. Two things the build itself forced, both recorded because they would have invalidated the numbers silently: the operator's `UserPromptSubmit` recall hook injects vault content into a `claude -p` driver and only `--settings '{"disableAllHooks":true}'` stops it without breaking OAuth; and `--disallowedTools` does not cover Claude Code's deferred tool surface, so a driver can reach `Monitor` through `ToolSearch` and grep the vault directly - closed with `permissions.deny` plus a transcript audit that fails the run on any tool outside the arm's set. *Re-audit:* adopting a driver weaker than Opus for `memory_search`, a small local model above all - re-run both arms against the gold set before assuming FTS5-only still holds.

@@ -1,0 +1,44 @@
+{
+  "n_queries": 206,
+  "corpus": {
+    "vault_name": "week3-AL",
+    "n_docs": 8993
+  },
+  "arms": [
+    {
+      "arm": "daemon ping (transport floor)",
+      "n": 50,
+      "mean_ms": 0.31,
+      "median_ms": 0.22,
+      "p90_ms": 0.26,
+      "max_ms": 4.35
+    },
+    {
+      "arm": "daemon memory_search (round trip)",
+      "n": 206,
+      "mean_ms": 256.43,
+      "median_ms": 56.5,
+      "p90_ms": 360.19,
+      "max_ms": 5653.73
+    },
+    {
+      "arm": "week-1 Python, no penalty (what week 1 timed)",
+      "n": 206,
+      "mean_ms": 35.29,
+      "median_ms": 10.92,
+      "p90_ms": 85.4,
+      "max_ms": 927.58
+    },
+    {
+      "arm": "week-1 Python, penalty on (like-for-like)",
+      "n": 206,
+      "mean_ms": 130.99,
+      "median_ms": 65.18,
+      "p90_ms": 223.42,
+      "max_ms": 2099.83
+    }
+  ],
+  "daemon_work_median_ms": 56.28,
+  "python_index_build_ms": 825.7,
+  "python_index_was_cached": false
+}

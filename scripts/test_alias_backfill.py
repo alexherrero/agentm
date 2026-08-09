@@ -282,5 +282,113 @@ class RevertTests(unittest.TestCase):
         self.assertIn("aliases: [", edited)
 
 
+class ReapplyTests(unittest.TestCase):
+    """Reapply is the other half of the undo, and it has to be exact.
+
+    The week-3 retest reverted 1,930 aliases on evidence, and evidence can move
+    again. Re-running the generator is not an undo — it calls a model and writes
+    *different* aliases — so the round trip has to come from the journal, and it
+    has to land on the same bytes or the corpus can no longer be measured twice
+    against the same baseline.
+    """
+
+    def _round_trip(self, op="insert", original=NOTE, mutate=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp, "vault")
+            (vault / "personal").mkdir(parents=True)
+            note = vault / "personal" / "n.md"
+            aliases = ["don't rewrite whole files", "cost of a write"]
+            after = (
+                ab.create_frontmatter_block(original, aliases)
+                if op == "create"
+                else ab.insert_aliases(original, aliases)
+            )
+            note.write_text(after, encoding="utf-8")
+            journal = Path(tmp, "j.jsonl")
+            journal.write_text(
+                json.dumps({
+                    "path": "personal/n.md", "outcome": "aliased", "op": op,
+                    "aliases": aliases,
+                    "sha_before": hashlib.sha256(original.encode()).hexdigest(),
+                    "sha_after": hashlib.sha256(after.encode()).hexdigest(),
+                }) + "\n",
+                encoding="utf-8",
+            )
+            with contextlib.redirect_stdout(io.StringIO()):
+                ab.main(["--vault", str(vault), "revert", "--journal", str(journal)])
+            reverted = note.read_text(encoding="utf-8")
+            if mutate:
+                note.write_text(mutate(reverted), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
+            return reverted, note.read_text(encoding="utf-8"), after
+
+    def test_revert_then_reapply_returns_the_exact_bytes(self):
+        reverted, restored, after = self._round_trip()
+        self.assertEqual(reverted, NOTE)
+        self.assertEqual(restored, after)
+
+    def test_round_trip_survives_a_created_block(self):
+        bare = "# Progress — blog\n\n2026-06-06 /plan — created plan.\n"
+        reverted, restored, after = self._round_trip(op="create", original=bare)
+        self.assertEqual(reverted, bare)
+        self.assertEqual(restored, after)
+
+    def test_leaves_a_note_edited_since_the_revert_alone(self):
+        """Symmetric with revert's own refusal. A note someone touched between
+        the revert and the reapply is not a note this can restore blind."""
+        _, restored, _ = self._round_trip(
+            mutate=lambda t: t + "\nsomeone else wrote this\n")
+        self.assertIn("someone else wrote this", restored)
+        self.assertNotIn("aliases: [", restored)
+
+    def test_reapply_is_idempotent(self):
+        """Running it twice must not write a second aliases line."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp, "vault")
+            (vault / "personal").mkdir(parents=True)
+            note = vault / "personal" / "n.md"
+            aliases = ["cost of a write"]
+            after = ab.insert_aliases(NOTE, aliases)
+            note.write_text(after, encoding="utf-8")
+            journal = Path(tmp, "j.jsonl")
+            journal.write_text(
+                json.dumps({
+                    "path": "personal/n.md", "outcome": "aliased", "op": "insert",
+                    "aliases": aliases,
+                    "sha_before": hashlib.sha256(NOTE.encode()).hexdigest(),
+                    "sha_after": hashlib.sha256(after.encode()).hexdigest(),
+                }) + "\n", encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                ab.main(["--vault", str(vault), "revert", "--journal", str(journal)])
+                ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
+                ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
+            text = note.read_text(encoding="utf-8")
+            self.assertEqual(text, after)
+            self.assertEqual(text.count("aliases: ["), 1)
+
+    def test_dry_run_writes_nothing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp, "vault")
+            (vault / "personal").mkdir(parents=True)
+            note = vault / "personal" / "n.md"
+            aliases = ["cost of a write"]
+            after = ab.insert_aliases(NOTE, aliases)
+            note.write_text(after, encoding="utf-8")
+            journal = Path(tmp, "j.jsonl")
+            journal.write_text(
+                json.dumps({
+                    "path": "personal/n.md", "outcome": "aliased", "op": "insert",
+                    "aliases": aliases,
+                    "sha_before": hashlib.sha256(NOTE.encode()).hexdigest(),
+                    "sha_after": hashlib.sha256(after.encode()).hexdigest(),
+                }) + "\n", encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                ab.main(["--vault", str(vault), "revert", "--journal", str(journal)])
+                ab.main(["--vault", str(vault), "reapply", "--journal", str(journal),
+                         "--dry-run"])
+            self.assertEqual(note.read_text(encoding="utf-8"), NOTE)
+
+
 if __name__ == "__main__":
     unittest.main()
