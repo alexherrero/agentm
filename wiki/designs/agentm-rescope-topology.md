@@ -143,6 +143,8 @@ Three things the build learned that this document had assumed otherwise, each co
 
 **Week 4.** The daily self-probe, the two dashboard numbers and their red thresholds, email alerting wired to the existing notifier.
 
+One ordering inside the post-soak bucket below is now fixed: **git-transport lands before dreaming's first corpus-wide pass.** The alias backfill ran 1,930 edits with a homemade revert journal as its only undo, and the missing repository was the binding constraint twice in one session. Dreaming's inbox drain is larger, and it does not get to repeat that arrangement.
+
 **Then two weeks of just living in it** before anything else is allowed to start — dreaming, self-improvement, the rest of the dashboard, the promotion door's mechanism (its policy — FRIDAY doesn't write into the operator's spaces — is already in effect from day one; the door's tooling waits), git-transport migration and the Syncthing spike, and any crickets simplification beyond the seam above. The Python stack freezes for new feature work starting now and keeps running as today's system until the daemon replaces it.
 
 ## Related
