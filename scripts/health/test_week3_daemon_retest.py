@@ -15,6 +15,7 @@ was served. A mock of the shim would prove none of them.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -113,18 +114,36 @@ class _DaemonFixture:
 
 
 def run_shim(url, log_path, requests, budget=6):
-    """Feed the real shim a list of JSON-RPC requests; return its replies."""
+    """Feed the real shim a list of JSON-RPC requests; return its replies.
+
+    The environment is inherited and then overridden, never replaced. An earlier
+    version passed a hand-built `{"PATH": "/usr/bin:/bin", …}`, which is a POSIX
+    assumption: Windows Python needs `SystemRoot` on the environment to
+    initialise sockets at all, so the shim started, could not reach the
+    stand-in daemon, and logged every call as a backend error. The tests then
+    reported "0 calls served" — which reads as a broken call ceiling rather
+    than as a broken test.
+    """
+    env = dict(os.environ)
+    env.update({
+        "WEEK3_DAEMON_URL": f"{url}/mcp",
+        "WEEK3_CALL_LOG": str(log_path),
+        "WEEK3_CALL_BUDGET": str(budget),
+    })
     proc = subprocess.run(
         [sys.executable, str(SHIM)],
         input="\n".join(json.dumps(r) for r in requests) + "\n",
-        capture_output=True, text=True, timeout=60,
-        env={"PATH": "/usr/bin:/bin", "WEEK3_DAEMON_URL": f"{url}/mcp",
-             "WEEK3_CALL_LOG": str(log_path), "WEEK3_CALL_BUDGET": str(budget)},
+        capture_output=True, text=True, timeout=60, env=env,
     )
     out = []
     for line in proc.stdout.splitlines():
         if line.strip():
             out.append(json.loads(line))
+    # A shim that could not reach the daemon produces replies that look like
+    # refusals. Surface its stderr rather than letting the caller's assertion
+    # blame the thing under test.
+    if not out and proc.stderr.strip():
+        raise AssertionError(f"shim produced no replies; stderr: {proc.stderr.strip()}")
     return out, proc
 
 
