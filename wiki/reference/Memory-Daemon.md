@@ -41,7 +41,11 @@ It builds `~/.local/bin/agentmd`, writes `~/Library/LaunchAgents/com.agentm.daem
 
 `RunAtLoad` starts it at login and `KeepAlive` restarts it if it dies; `ThrottleInterval` bounds the retry rate so a broken install idles instead of spinning. The vault path is deliberately **not** written into the plist — it is resolved from the kernel config at every start, because a path baked into a plist is a cached literal that goes stale.
 
-Re-run the same command after pulling new daemon source: it rebuilds and reloads. Logs go to `~/Library/Logs/agentm/daemon.log`.
+**You only need that flag once.** Once the agent exists, every later install or `--update` run rebuilds and reloads the daemon on its own, so refreshing the harness also refreshes the daemon. That matters because the binary is compiled from `daemon/` — without it, pulling new source leaves the old binary resident indefinitely with nothing saying so.
+
+The refresh is deliberately non-fatal. A missing Go toolchain or a failed build prints a warning naming the fix and lets the install finish, because a project install should not die over the daemon, and a broken build must never take down a daemon that is currently working. The build goes to a sibling path and only replaces the live binary once it has succeeded.
+
+Pass `--no-daemon` to skip the refresh for one run; the daemon keeps whatever binary it has. Logs go to `~/Library/Logs/agentm/daemon.log`.
 
 ```bash
 launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/com.agentm.daemon.plist
