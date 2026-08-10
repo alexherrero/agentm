@@ -368,7 +368,10 @@ def select_backend(
     where the explicit `storage.backend` key is read from (None →
     `$AGENTM_INSTALL_PREFIX` → `~/.claude`).
     """
-    vault_root = harness_memory.vault_path()
+    # memory_root(), not vault_path(): this becomes the storage backend's root,
+    # and the seam resolves personal/, projects/ and _meta/ beneath it. The
+    # repository root is one level up and belongs to the daemon and the gate.
+    vault_root = harness_memory.memory_root()
     protocol = choose_protocol(install_prefix=install_prefix)
 
     backend_cls = registry.get(protocol)
@@ -526,7 +529,7 @@ def storage_preview(
     except StorageSelectionError as exc:
         return StoragePreview("fail", None, f"storage [FAIL] {exc}")
 
-    vault_root = harness_memory.vault_path()
+    vault_root = harness_memory.memory_root()
     if explicit:
         protocol, origin = explicit, "configured (storage.backend)"
     elif os.environ.get("MEMORY_VAULT_PATH", "").strip():

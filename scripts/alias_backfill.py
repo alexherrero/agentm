@@ -178,6 +178,47 @@ def resolve_vault(explicit: str | None) -> str:
     return path
 
 
+def resolve_memory_root(explicit: str | None) -> str:
+    """Resolve the agent's own tree — what a corpus-wide job reads and rewrites.
+
+    `resolve_vault()` above returns the *repository* root, which is what the
+    corpus-write gate has to see: it decides whether an undo exists, and that
+    question is answered by git at the repository root. Since the 2026-08-10
+    git-transport cutover those are not the same directory — the repo root is
+    the whole Obsidian vault so wikilinks resolve across the operator's folders,
+    while the agent's tree is one level down. This module needs both, and
+    handing the gate a memory root makes it refuse with `git-degraded`.
+
+    An explicit `--vault` or `$MEMORY_VAULT_PATH` already names a memory tree by
+    the convention every other consumer follows, so the prefix is not re-applied
+    to either.
+    """
+    if explicit:
+        return explicit
+    env = os.environ.get("MEMORY_VAULT_PATH")
+    if env:
+        return env
+    root = resolve_vault(None)
+    cfg_path = Path(os.environ.get("AGENTM_CONFIG") or "")
+    if not cfg_path.is_file():
+        cfg_path = Path.home() / ".claude" / ".agentm-config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return root
+    rel = cfg.get("plugins.obsidian-vault.memory_root")
+    if not isinstance(rel, str):
+        return root
+    candidate = rel.strip().replace("\\", "/")
+    # Absoluteness before stripping — "/etc" must not strip to a usable "etc".
+    if not candidate or candidate.startswith("/") or ":" in candidate:
+        return root
+    parts = candidate.strip("/").split("/")
+    if not parts or "" in parts or ".." in parts:
+        return root
+    return str(Path(root).joinpath(*parts))
+
+
 def classify(agentmd: str, vault: str) -> list[dict]:
     """Ask the daemon's classifier what every note in the vault is.
 
@@ -570,7 +611,7 @@ def sha(text: str) -> str:
 
 
 def cmd_survey(args: argparse.Namespace) -> int:
-    vault = resolve_vault(args.vault)
+    vault = resolve_memory_root(args.vault)
     census = survey_corpus(
         vault, classify(args.agentmd, vault), args.subdir, args.create_frontmatter
     )
@@ -641,9 +682,11 @@ def _work_batch(batch: list[Candidate], args: argparse.Namespace) -> list[dict]:
 
 
 def cmd_run(args: argparse.Namespace) -> int:
-    vault = resolve_vault(args.vault)
+    vault = resolve_memory_root(args.vault)
     if not args.dry_run:
-        require_corpus_write_gate(args.agentmd, vault)
+        # The gate is asked about the REPOSITORY, not the memory tree — it
+        # answers "does an undo exist", and git answers that at the repo root.
+        require_corpus_write_gate(args.agentmd, resolve_vault(args.vault))
     census = survey_corpus(
         vault, classify(args.agentmd, vault), args.subdir, args.create_frontmatter
     )
@@ -748,7 +791,7 @@ def cmd_revert(args: argparse.Namespace) -> int:
     written, so a note touched since is reported and left alone rather than
     stamped over.
     """
-    vault = resolve_vault(args.vault)
+    vault = resolve_memory_root(args.vault)
     counts: Counter = Counter()
     for line in Path(args.journal).read_text(encoding="utf-8").splitlines():
         if not line.strip():
@@ -797,12 +840,14 @@ def cmd_reapply(args: argparse.Namespace) -> int:
     that is still byte-identical to what the revert left behind, and reports
     anything else rather than stamping over it.
     """
-    vault = resolve_vault(args.vault)
+    vault = resolve_memory_root(args.vault)
     # Gated like `run`, and for the same reason: reapply is a corpus-wide write.
     # `revert` deliberately is not — gating the undo on there being an undo is
     # the one arrangement that could strand the corpus.
     if not args.dry_run:
-        require_corpus_write_gate(args.agentmd, vault)
+        # The gate is asked about the REPOSITORY, not the memory tree — it
+        # answers "does an undo exist", and git answers that at the repo root.
+        require_corpus_write_gate(args.agentmd, resolve_vault(args.vault))
     counts: Counter = Counter()
     for line in Path(args.journal).read_text(encoding="utf-8").splitlines():
         if not line.strip():

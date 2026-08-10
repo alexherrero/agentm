@@ -184,6 +184,21 @@ def _agentm_install_prefix() -> Path:
 # "storage.backend") so it round-trips through agentm_config --get/--unset.
 _PLUGIN_VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
 
+# Vault-relative prefix at which the agent's OWN tree begins — personal/,
+# projects/, _meta/, _moc/, _briefs/, _dream/, _idea-incubator/. Same flat
+# dotted-key convention as the vault path above.
+#
+# Distinct from the vault path, which is the tree to index and the git root the
+# corpus-write gate resolves against. Before the 2026-08-10 git-transport
+# cutover the two were the same directory, which is why so much of this module
+# derives its layout straight off `vault_path()`. They are not the same now: the
+# repository root has to be the whole Obsidian vault so wikilinks resolve across
+# the operator's folders, while the agent's tree is one level down inside it.
+#
+# Unset means "the memory root IS the vault root" — the pre-cutover topology,
+# and still correct for every install whose vault_path points at a memory tree.
+_PLUGIN_MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
+
 # One-time migration warning flag (reset by _reset_warn_state() in tests).
 _warned_vault_path_migration: bool = False
 
@@ -267,6 +282,82 @@ def _read_config_vault_path(install_prefix: Optional[Path] = None) -> Optional[P
     if not p.is_dir():
         return None
     return p
+
+
+def _read_config_memory_root(install_prefix: Optional[Path] = None) -> str:
+    """Read the vault-relative memory root from the install config.
+
+    Returns "" when the key is absent, empty, or unusable — meaning the memory
+    root is the vault root itself. There is deliberately no fallback to a
+    default like "personal": a wrong sub-root silently relocates the whole
+    corpus, and an absent key must mean "unchanged", never a guess.
+
+    Graceful-skips silently on any I/O or parse error — never raises.
+    """
+    if install_prefix is None:
+        install_prefix = _agentm_install_prefix()
+    config_path = install_prefix / ".agentm-config.json"
+    if not config_path.is_file():
+        return ""
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    raw = data.get(_PLUGIN_MEMORY_ROOT_KEY)
+    if not isinstance(raw, str):
+        return ""
+    # Normalize to a bare relative POSIX prefix. An absolute value is a
+    # configuration error rather than an alternate spelling: it would escape the
+    # vault, and the whole point of this key is that it names a place inside it.
+    candidate = raw.strip().replace("\\", "/")
+    # Absoluteness is judged BEFORE separators are stripped: "/etc" would
+    # otherwise strip down to "etc" and be honoured as a vault-relative prefix,
+    # quietly relocating the corpus to <vault>/etc.
+    if not candidate or candidate.startswith("/") or ":" in candidate:
+        return ""
+    rel = candidate.strip("/")
+    if not rel or ".." in rel.split("/"):
+        return ""
+    return rel
+
+
+def memory_root() -> Optional[Path]:
+    """Return the root of the agent's own tree, or None when no vault resolves.
+
+    This is `vault_path()` joined with `plugins.obsidian-vault.memory_root`.
+    Callers addressing the agent's own content — personal/, projects/, _meta/,
+    and the rest of the layout — want this. Callers addressing the repository or
+    the operator's own notes want `vault_path()`: the corpus-write gate (which
+    must see the git root), `notes_link_discovery` (which audits the operator's
+    folders by design), and `vault_lint._obsidian_root` (which walks up for
+    `.obsidian/` and lands correctly from either).
+
+    `$MEMORY_VAULT_PATH` is returned as-is, WITHOUT joining the configured
+    prefix. The variable has always named the memory tree to the consumers that
+    actually read it — `recall.py`, `reflect.py` and `capture.py` all join
+    `personal/`, `projects/` and `_meta/` to it — so an export is already a
+    memory root and joining a second prefix onto it would address
+    `<vault>/Agent/Agent`. The hooks are what supply it, and they supply this.
+
+    Returns None when no vault is accessible, matching `vault_path()`, so every
+    existing graceful-skip on a falsy vault keeps working unchanged.
+    """
+    raw = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    if raw:
+        # Same fail-quiet-on-broken-export semantics as vault_path()'s env
+        # branch: a set-but-wrong export is reported as "no vault", never
+        # silently repaired into a different directory.
+        p = Path(os.path.expanduser(raw))
+        return p if p.is_dir() else None
+    v = vault_path()
+    if v is None:
+        return None
+    rel = _read_config_memory_root()
+    if not rel:
+        return v
+    return v.joinpath(*rel.split("/"))
 
 
 def _read_config_storage_backend(install_prefix: Optional[Path] = None) -> Optional[str]:
@@ -1376,7 +1467,7 @@ def offer_save(
     stdout = stdout if stdout is not None else sys.stdout
     stderr = stderr if stderr is not None else sys.stderr
 
-    v = vault_path()
+    v = memory_root()
     if v is None:
         return 0  # graceful-skip
 
@@ -1703,7 +1794,7 @@ def phase_dispatch(
             f"phase_dispatch: unknown phase {phase!r}; "
             f"valid: {sorted(_BRIDGE_PHASES)}"
         )
-    v = vault_path()
+    v = memory_root()
     if v is None:
         return 0  # graceful-skip: no vault configured
     tk = toolkit_scripts_dir()

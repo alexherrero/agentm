@@ -78,7 +78,7 @@ _capture = _load_toolkit("_agentm_capture", "capture.py")
 
 def _require_vault() -> Path:
     """Return the configured vault path or raise with a clear remedy."""
-    vault = harness_memory.vault_path()
+    vault = harness_memory.memory_root()
     if vault is None:
         raise RuntimeError(
             "Memory vault is not configured. "

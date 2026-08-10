@@ -311,7 +311,9 @@ def resolve_vault(explicit: str | None) -> Path | None:
         return Path(os.path.expanduser(explicit))
     try:
         import harness_memory
-        return harness_memory.vault_path()
+        # The agent's own tree only. The operator's folders alongside it are
+        # free-form notes with no frontmatter contract to enforce.
+        return harness_memory.memory_root()
     except Exception as exc:  # noqa: BLE001 - import or backend-guard failure
         print(
             f"check-vault-frontmatter: no vault resolved ({exc}) — skipping",

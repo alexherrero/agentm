@@ -146,7 +146,7 @@ def resolve_vault_path() -> "Path | None":
         try:
             import harness_memory as hm  # type: ignore
 
-            p = hm.vault_path()
+            p = hm.memory_root()
             if p is not None:
                 return p
         except Exception:
