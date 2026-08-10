@@ -80,6 +80,10 @@ type Repo struct {
 	available bool
 	reason    string
 
+	// precompose folds paths to NFC before they are compared or staged, which is
+	// what git does on macOS and go-git does nowhere. See normalize.go.
+	precompose bool
+
 	author object.Signature
 
 	// grace and pendingDeletes are the deletion quarantine. A path observed
@@ -117,6 +121,7 @@ func Open(vaultRoot string) *Repo {
 	switch {
 	case err == nil:
 		r.repo, r.available = repo, true
+		r.precompose = resolvePrecompose(repo)
 	case errors.Is(err, git.ErrRepositoryNotExists):
 		r.reason = fmt.Sprintf(
 			"%v (%s) — the git-transport migration has not run; changes are indexed "+
@@ -177,6 +182,10 @@ func (r *Repo) Head() (string, error) {
 // It hashes every tracked file, so it is seconds rather than milliseconds on a
 // vault this size. That is the right price for a check that runs once before a
 // job that rewrites thousands of notes.
+//
+// Paths that differ from the index only by Unicode normalization are folded
+// away, because git folds them and this must agree with git or the gate never
+// opens. normalize.go has the reasoning.
 func (r *Repo) Dirty() ([]string, error) {
 	if !r.available {
 		return nil, ErrNoRepo
@@ -192,15 +201,9 @@ func (r *Repo) Dirty() ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("status: %w", err)
 	}
-	var out []string
-	for path, st := range status {
-		if st.Worktree == git.Unmodified && st.Staging == git.Unmodified {
-			continue
-		}
-		out = append(out, path)
-	}
-	sort.Strings(out)
-	return out, nil
+	// The fold is what keeps a decomposed filename from reading as a deletion
+	// plus an untracked addition that no commit can clear. See normalize.go.
+	return r.foldStatus(status)
 }
 
 // Commit stages the given vault-relative paths and records one commit attributed
@@ -233,6 +236,14 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 	var staged []string
 	var problems []string
 	for _, rel := range paths {
+		// The watcher reports the name the filesystem gave it, which on macOS is
+		// the decomposed one, while the index holds the composed one. Staged
+		// verbatim, the decomposed name becomes a second index entry beside the
+		// composed one and the vault carries a single note under two spellings.
+		// Only the index key is composed below; every filesystem call keeps the
+		// name that was actually observed. See normalize.go.
+		name := r.composed(rel)
+
 		abs := filepath.Join(r.root, filepath.FromSlash(rel))
 		_, statErr := os.Stat(abs)
 		switch {
@@ -240,18 +251,28 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 			// Present. Whatever we previously suspected about this path is over —
 			// an absence that ends is a sync round-trip, not a deletion.
 			delete(r.pendingDeletes, rel)
+			// Add reads the file the watcher actually saw. Git folds the pathspec
+			// first and then opens the folded name, which works only because a
+			// Mac's local volume treats the two spellings as one file — and this
+			// vault is on a synced mount that may not.
 			if _, err := wt.Add(rel); err != nil {
 				problems = append(problems, fmt.Sprintf("%s: %v", rel, err))
 				continue
 			}
-			staged = append(staged, rel)
+			if name != rel {
+				if err := r.recomposeIndexEntry(rel, name); err != nil {
+					problems = append(problems, fmt.Sprintf("%s: %v", rel, err))
+					continue
+				}
+			}
+			staged = append(staged, name)
 
 		case errors.Is(statErr, os.ErrNotExist):
 			if !r.absenceConfirmed(rel, origin) {
 				continue
 			}
 			if r.stageDeletion(rel) {
-				staged = append(staged, rel)
+				staged = append(staged, name)
 			}
 
 		default:
@@ -323,8 +344,11 @@ func (r *Repo) SweepDeletions() ([]SweepCommit, error) {
 			delete(r.pendingDeletes, rel)
 		case errors.Is(statErr, os.ErrNotExist):
 			delete(r.pendingDeletes, rel)
+			// The quarantine is keyed by the name the filesystem reported, which
+			// is what os.Stat above has to be asked. What gets recorded is the
+			// name the index spells it — see normalize.go.
 			if r.stageDeletion(rel) {
-				byOrigin[pend.origin] = append(byOrigin[pend.origin], rel)
+				byOrigin[pend.origin] = append(byOrigin[pend.origin], r.composed(rel))
 			}
 		default:
 			// Still unknown. Leave it quarantined rather than guessing; the next
@@ -391,14 +415,22 @@ func (r *Repo) absenceConfirmed(rel string, origin Origin) bool {
 // A missing index entry is the ordinary case for a temp file that came and went,
 // and is not worth reporting.
 //
+// The entry is looked up under the composed spelling first, because that is the
+// one the index holds for an accented name; a removal asked for under the
+// decomposed name the filesystem reported would find nothing and the deletion
+// would be dropped in silence. The raw name is tried second for an index that
+// was written before any of this existed.
+//
 // Caller holds r.mu.
 func (r *Repo) stageDeletion(rel string) bool {
 	idx, err := r.repo.Storer.Index()
 	if err != nil {
 		return false
 	}
-	if _, err := idx.Remove(rel); err != nil {
-		return false
+	if _, err := idx.Remove(r.composed(rel)); err != nil {
+		if _, err := idx.Remove(rel); err != nil {
+			return false
+		}
 	}
 	return r.repo.Storer.SetIndex(idx) == nil
 }
@@ -419,7 +451,10 @@ func (r *Repo) commitStaged(wt *git.Worktree, origin Origin, msgPaths, staged []
 		return "", nil
 	}
 
-	hash, err := wt.Commit(commitMessage(origin, msgPaths), &git.CommitOptions{
+	// The message names the paths as the index spells them, so the log reads the
+	// way `git log` would render it rather than in whatever form the filesystem
+	// happened to report.
+	hash, err := wt.Commit(commitMessage(origin, r.composedAll(msgPaths)), &git.CommitOptions{
 		Author:    r.signature(),
 		Committer: r.signature(),
 	})
