@@ -15,10 +15,12 @@ import contextlib
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -34,6 +36,109 @@ slug: edit-not-write
 
 User stated: use Edit not Write for existing files.
 """
+
+
+@contextlib.contextmanager
+def gate_passes():
+    """Stand in for a passing `agentmd gate corpus-write`.
+
+    The tests below are about the write path, not about the gate — but every
+    corpus-wide write now asks the gate first, so leaving this out would make
+    them tests of whether a daemon binary happens to be installed. The gate's own
+    behaviour is pinned in GateTests.
+    """
+    with mock.patch.object(ab, "require_corpus_write_gate", lambda *a, **k: None):
+        yield
+
+
+class GateTests(unittest.TestCase):
+    """No corpus-wide write job starts unless the gate passes.
+
+    The gate exists because this job ran 1,930 edits with a hand-rolled revert
+    journal as its only undo. Every path here fails closed: a refusal stops the
+    run, and so does a gate that could not answer.
+    """
+
+    def _run(self, **kwargs):
+        completed = subprocess.CompletedProcess(
+            args=["agentmd"], returncode=kwargs.get("returncode", 0),
+            stdout=kwargs.get("stdout", ""), stderr=kwargs.get("stderr", ""),
+        )
+        with mock.patch.object(ab.subprocess, "run", return_value=completed):
+            ab.require_corpus_write_gate("agentmd", "/tmp/vault")
+
+    def test_a_passing_gate_reports_the_undo_point(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self._run(stdout=json.dumps({"pass": True, "head": "a" * 40}))
+        self.assertIn("PASS", out.getvalue())
+        self.assertIn("a" * 40, out.getvalue())
+
+    def test_a_refusal_stops_the_run_and_says_why(self):
+        with self.assertRaises(SystemExit) as caught:
+            self._run(returncode=3, stdout=json.dumps({
+                "pass": False,
+                "reasons": [{
+                    "code": "git-degraded",
+                    "detail": "vault root is not a git repository",
+                    "remedy": "run the git-transport migration",
+                }],
+            }))
+        message = str(caught.exception)
+        self.assertIn("REFUSED", message)
+        self.assertIn("git-degraded", message)
+        self.assertIn("run the git-transport migration", message)
+
+    def test_an_unreadable_verdict_is_a_refusal_not_a_pass(self):
+        with self.assertRaises(SystemExit):
+            self._run(returncode=0, stdout="this is not json")
+
+    def test_a_zero_exit_without_a_pass_field_is_a_refusal(self):
+        with self.assertRaises(SystemExit):
+            self._run(returncode=0, stdout=json.dumps({"reasons": []}))
+
+    def test_a_missing_binary_is_a_refusal(self):
+        with mock.patch.object(ab.subprocess, "run", side_effect=OSError("no such file")):
+            with self.assertRaises(SystemExit) as caught:
+                ab.require_corpus_write_gate("agentmd", "/tmp/vault")
+        self.assertIn("gate", str(caught.exception))
+
+    def test_reapply_asks_the_gate_before_writing_anything(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp, "vault")
+            (vault / "personal").mkdir(parents=True)
+            note = vault / "personal" / "n.md"
+            note.write_text(NOTE, encoding="utf-8")
+            journal = Path(tmp, "j.jsonl")
+            journal.write_text(json.dumps({
+                "path": "personal/n.md", "outcome": "aliased", "op": "insert",
+                "aliases": ["cost of a write"],
+                "sha_before": hashlib.sha256(NOTE.encode()).hexdigest(),
+                "sha_after": "0" * 64,
+            }) + "\n", encoding="utf-8")
+            refused = subprocess.CompletedProcess(
+                args=["agentmd"], returncode=3,
+                stdout=json.dumps({"pass": False, "reasons": [
+                    {"code": "git-degraded", "detail": "not a repository", "remedy": "migrate"}]}),
+                stderr="",
+            )
+            with mock.patch.object(ab.subprocess, "run", return_value=refused):
+                with self.assertRaises(SystemExit):
+                    ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
+            self.assertEqual(note.read_text(encoding="utf-8"), NOTE)
+
+    def test_a_dry_run_does_not_need_the_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp, "vault")
+            (vault / "personal").mkdir(parents=True)
+            (vault / "personal" / "n.md").write_text(NOTE, encoding="utf-8")
+            journal = Path(tmp, "j.jsonl")
+            journal.write_text("", encoding="utf-8")
+            with mock.patch.object(ab.subprocess, "run",
+                                   side_effect=AssertionError("the gate was consulted")):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    ab.main(["--vault", str(vault), "reapply",
+                             "--journal", str(journal), "--dry-run"])
 
 
 class RenderTests(unittest.TestCase):
@@ -319,7 +424,7 @@ class ReapplyTests(unittest.TestCase):
             reverted = note.read_text(encoding="utf-8")
             if mutate:
                 note.write_text(mutate(reverted), encoding="utf-8")
-            with contextlib.redirect_stdout(io.StringIO()):
+            with contextlib.redirect_stdout(io.StringIO()), gate_passes():
                 ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
             return reverted, note.read_text(encoding="utf-8"), after
 
@@ -361,8 +466,9 @@ class ReapplyTests(unittest.TestCase):
                 }) + "\n", encoding="utf-8")
             with contextlib.redirect_stdout(io.StringIO()):
                 ab.main(["--vault", str(vault), "revert", "--journal", str(journal)])
-                ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
-                ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
+                with gate_passes():
+                    ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
+                    ab.main(["--vault", str(vault), "reapply", "--journal", str(journal)])
             text = note.read_text(encoding="utf-8")
             self.assertEqual(text, after)
             self.assertEqual(text.count("aliases: ["), 1)

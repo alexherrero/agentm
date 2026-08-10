@@ -145,11 +145,13 @@ func (x *Index) migrate() error {
 			id            INTEGER PRIMARY KEY AUTOINCREMENT,
 			path          TEXT UNIQUE NOT NULL,
 			flags         TEXT NOT NULL DEFAULT '',
+			status        TEXT NOT NULL DEFAULT '',
 			captured      TEXT NOT NULL DEFAULT '',
 			captured_src  TEXT NOT NULL DEFAULT '',
 			mtime_ns      INTEGER NOT NULL DEFAULT 0,
 			size          INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS docmeta_captured ON docmeta(captured)`,
+		`CREATE INDEX IF NOT EXISTS docmeta_status ON docmeta(status)`,
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
 	}
 	for _, s := range stmts {
@@ -203,9 +205,10 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		res, err := tx.Exec(
-			`INSERT INTO docmeta(path, flags, captured, captured_src, mtime_ns, size)
-			 VALUES(?, ?, ?, ?, ?, ?)`,
-			n.Rel, strings.Join(n.Flags, ","), n.Captured.UTC().Format(capturedFormat),
+			`INSERT INTO docmeta(path, flags, status, captured, captured_src, mtime_ns, size)
+			 VALUES(?, ?, ?, ?, ?, ?, ?)`,
+			n.Rel, strings.Join(n.Flags, ","), n.Status,
+			n.Captured.UTC().Format(capturedFormat),
 			n.CapturedSource, mtimeNS, size)
 		if err != nil {
 			return err
@@ -237,9 +240,10 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 			}
 		}
 		if _, err := tx.Exec(
-			`UPDATE docmeta SET flags=?, captured=?, captured_src=?, mtime_ns=?, size=?
+			`UPDATE docmeta SET flags=?, status=?, captured=?, captured_src=?, mtime_ns=?, size=?
 			 WHERE id=?`,
-			strings.Join(n.Flags, ","), captured, capturedSrc, mtimeNS, size, id); err != nil {
+			strings.Join(n.Flags, ","), n.Status, captured, capturedSrc,
+			mtimeNS, size, id); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM docs WHERE rowid = ?`, id); err != nil {
@@ -432,6 +436,25 @@ func (x *Index) knownState() (map[string]fileState, error) {
 	return out, rows.Err()
 }
 
+// UnfiledStatuses are the frontmatter statuses that mean "waiting to be filed".
+//
+// The rescope design names `unfiled`; the existing corpus predates that
+// vocabulary and spells the same condition `inbox`, so both count. `superseded`
+// and `expired` are deliberately absent — they are demoted by the rank penalty
+// for a different reason and nothing is waiting on them.
+var UnfiledStatuses = []string{"unfiled", "inbox"}
+
+var (
+	unfiledPlaceholders = strings.TrimSuffix(strings.Repeat("?,", len(UnfiledStatuses)), ",")
+	unfiledArgs         = func() []any {
+		out := make([]any, len(UnfiledStatuses))
+		for i, s := range UnfiledStatuses {
+			out[i] = s
+		}
+		return out
+	}()
+)
+
 // Stats is the index's own account of itself, for the status surface.
 type Stats struct {
 	Documents   int            `json:"documents"`
@@ -446,6 +469,62 @@ type Stats struct {
 	CapturedFrom map[string]int `json:"captured_from"`
 	IndexPath    string         `json:"index_path"`
 	IndexBytes   int64          `json:"index_bytes"`
+}
+
+// OldestUnfiledTime parses the oldest unfiled item's capture date. The second
+// return is false when the queue is empty, which is a different fact from "the
+// oldest item was captured at the zero time" and the threshold has to be able
+// to tell them apart.
+func (s Stats) OldestUnfiledTime() (time.Time, bool) {
+	return parseCaptured(s.OldestUnfil)
+}
+
+func parseCaptured(s string) (time.Time, bool) {
+	if s == "" {
+		return time.Time{}, false
+	}
+	t, err := time.Parse(capturedFormat, s)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return t, true
+}
+
+// QueueSince is the part of the filing queue captured at or after `baseline` —
+// the part this daemon is responsible for, as opposed to the backlog it
+// inherited. Both halves are reported; only this one is measured against the
+// thresholds.
+type QueueSince struct {
+	Count  int
+	Oldest time.Time
+}
+
+// UnfiledSince counts the queue from a point in time.
+func (x *Index) UnfiledSince(baseline time.Time) (QueueSince, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+
+	from := baseline.UTC().Format(capturedFormat)
+	args := append(append([]any{}, unfiledArgs...), from)
+
+	var out QueueSince
+	if err := x.db.QueryRow(
+		`SELECT count(*) FROM docmeta
+		  WHERE status IN (`+unfiledPlaceholders+`) AND captured >= ?`,
+		args...).Scan(&out.Count); err != nil {
+		return out, err
+	}
+	var oldest sql.NullString
+	_ = x.db.QueryRow(
+		`SELECT min(captured) FROM docmeta
+		  WHERE status IN (`+unfiledPlaceholders+`) AND captured >= ?`,
+		args...).Scan(&oldest)
+	if oldest.Valid {
+		if t, ok := parseCaptured(oldest.String); ok {
+			out.Oldest = t
+		}
+	}
+	return out, nil
 }
 
 // Stats reports document counts and the filing queue as a query rather than a
@@ -496,11 +575,23 @@ func (x *Index) Stats() (Stats, error) {
 	// oldest. Age-dominant rather than size-dominant — fifty fresh unfiled items
 	// is an ordinary Tuesday under a standing ingest; a three-day-old oldest
 	// item means the pipeline stalled.
-	_ = x.db.QueryRow(
-		`SELECT count(*) FROM docmeta WHERE ','||flags||',' LIKE '%,status,%'`).Scan(&s.Unfiled)
+	//
+	// The queue is exactly the statuses that mean "not filed yet", which is a
+	// narrower set than the statuses the rank penalty demotes. `superseded` and
+	// `expired` are also demoted, and they are also not waiting for anything —
+	// counting them would put the oldest retired note in the corpus at the head
+	// of the queue and leave the age threshold red forever, which is a queue
+	// alert that has taught its reader to ignore it on day one.
+	if err := x.db.QueryRow(
+		`SELECT count(*) FROM docmeta WHERE status IN (`+unfiledPlaceholders+`)`,
+		unfiledArgs...).Scan(&s.Unfiled); err != nil {
+		return s, err
+	}
 	var oldest sql.NullString
 	_ = x.db.QueryRow(
-		`SELECT min(captured) FROM docmeta WHERE ','||flags||',' LIKE '%,status,%'`).Scan(&oldest)
+		`SELECT min(captured) FROM docmeta WHERE status IN (`+unfiledPlaceholders+`)
+		   AND captured <> ''`,
+		unfiledArgs...).Scan(&oldest)
 	if oldest.Valid {
 		s.OldestUnfil = oldest.String
 	}

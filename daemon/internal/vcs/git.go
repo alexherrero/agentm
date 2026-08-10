@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -47,6 +48,11 @@ const (
 	// OriginLocal is a change made on this machine by something other than the
 	// daemon — the operator in Obsidian, or in an editor.
 	OriginLocal Origin = "local-edit"
+	// OriginProbe is the daily self-probe writing or retiring its synthetic
+	// note. It is distinguished from an ordinary capture so the one log that is
+	// supposed to be readable does not report a memory being saved and deleted
+	// every day — those two commits are the daemon proving it works.
+	OriginProbe Origin = "self-probe"
 )
 
 // Repo is the vault's git repository, or a loud absence of one.
@@ -97,6 +103,59 @@ func (r *Repo) Status() string {
 		return "committing to " + filepath.Join(r.root, ".git")
 	}
 	return r.reason
+}
+
+// Head is the commit the vault currently sits on, which is the point a
+// corpus-wide job would be reverted to. Empty with no error means a repository
+// with no commits yet.
+func (r *Repo) Head() (string, error) {
+	if !r.available {
+		return "", ErrNoRepo
+	}
+	ref, err := r.repo.Head()
+	if err != nil {
+		if errors.Is(err, plumbing.ErrReferenceNotFound) {
+			return "", nil
+		}
+		return "", err
+	}
+	return ref.Hash().String(), nil
+}
+
+// Dirty reports the vault-relative paths with uncommitted changes.
+//
+// This is the second half of "is there an undo". A repository gives you one
+// only if the state before the job is a state you can name: with unrelated
+// edits already sitting in the worktree, reverting the job and reverting the
+// operator's afternoon are the same command.
+//
+// It hashes every tracked file, so it is seconds rather than milliseconds on a
+// vault this size. That is the right price for a check that runs once before a
+// job that rewrites thousands of notes.
+func (r *Repo) Dirty() ([]string, error) {
+	if !r.available {
+		return nil, ErrNoRepo
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	wt, err := r.repo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("worktree: %w", err)
+	}
+	status, err := wt.Status()
+	if err != nil {
+		return nil, fmt.Errorf("status: %w", err)
+	}
+	var out []string
+	for path, st := range status {
+		if st.Worktree == git.Unmodified && st.Staging == git.Unmodified {
+			continue
+		}
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Commit stages the given vault-relative paths and records one commit attributed
@@ -187,6 +246,8 @@ func commitMessage(origin Origin, paths []string) string {
 		subject = "memory: capture"
 	case OriginPhone:
 		subject = "vault: edits from phone"
+	case OriginProbe:
+		subject = "memory: self-probe"
 	default:
 		subject = "vault: local edits"
 	}

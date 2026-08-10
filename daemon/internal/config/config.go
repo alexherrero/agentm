@@ -22,7 +22,12 @@ import (
 
 // SchemaVersion is stamped into the index. A mismatch rebuilds rather than
 // querying through a schema that is not there.
-const SchemaVersion = "1"
+//
+// 2 adds the note's frontmatter status as its own column. The filing queue is a
+// query rather than a folder, and asking it through the rank-penalty flags —
+// which lump `unfiled` together with `superseded` and `expired` — counted
+// retired notes as waiting ones.
+const SchemaVersion = "2"
 
 // DefaultPort is the port the retired FastMCP daemon used. The real daemon takes
 // the name and the port when that one is retired; `agentmd retire` is what makes
@@ -61,8 +66,75 @@ type Config struct {
 	// currently lives.
 	ReconcileEvery time.Duration
 
+	// --- the loud queue -----------------------------------------------------
+
+	// UnfiledAgeRed is how old the oldest unfiled item may get before the queue
+	// is red. Age-dominant by design: under a standing daily ingest fifty fresh
+	// unfiled items every morning is an ordinary Tuesday, while a three-day-old
+	// oldest item means filing stalled.
+	UnfiledAgeRed time.Duration
+
+	// UnfiledCountRed is the size backstop. Deliberately far above any ordinary
+	// day, because size is the weaker signal — it exists to catch the one case
+	// age cannot see, a runaway producer whose whole queue is fresh.
+	UnfiledCountRed int
+
+	// QueueBaseline separates the backlog the daemon inherited from the queue it
+	// is responsible for. Zero means the daemon records its own on first run.
+	QueueBaseline time.Time
+
+	// HealthEvery is how often the daemon evaluates its own thresholds.
+	HealthEvery time.Duration
+
+	// ProbeEvery is how often the self-probe runs. Daily, in the sense the other
+	// notification channels mean it: at most once per interval, checked at
+	// startup and on a ticker, rather than pinned to a wall-clock hour.
+	ProbeEvery time.Duration
+
+	// ProbeBudget is how long the whole round trip may take before the probe
+	// counts as failed. Capture indexes inline, so the honest expectation is
+	// milliseconds; the budget is generous because it is a stall detector rather
+	// than a benchmark.
+	ProbeBudget time.Duration
+
+	// StateDir holds the daemon's small state files — the last probe result and
+	// the alert anti-fatigue record. Beside the index, and a deletable cache in
+	// the same sense: losing it costs one duplicate alert and one probe.
+	StateDir string
+
+	// Email is the alert channel, read from the same plugins.autonomy.* keys the
+	// existing digest email uses. Zero value means unconfigured, which is a
+	// silent skip rather than an error.
+	Email EmailConfig
+
 	// ConfigPath is the file the above was read from, for reporting.
 	ConfigPath string
+}
+
+// EmailConfig is the operator's own relay, read from plugins.autonomy.*.
+//
+// The keys are shared with scripts/health/session_email.py on purpose. There is
+// one place the operator configures where mail goes, and a second dialect of it
+// would be a second thing to get wrong.
+type EmailConfig struct {
+	To      string
+	SMTPURL string
+	From    string
+}
+
+// Configured reports whether mail can actually be sent. Both the recipient and
+// the relay are required; either one absent means the channel is unconfigured,
+// matching session_email.py's contract exactly.
+func (e EmailConfig) Configured() bool { return e.To != "" && e.SMTPURL != "" }
+
+// Sender is the address mail goes out as, falling back to the recipient — some
+// relays require a domain-verified From distinct from the auth username, and
+// mail-to-self is the sane default when none is set.
+func (e EmailConfig) Sender() string {
+	if e.From != "" {
+		return e.From
+	}
+	return e.To
 }
 
 // Options are the command-line overrides, applied over the config file.
@@ -70,9 +142,11 @@ type Options struct {
 	ConfigPath     string
 	VaultPath      string
 	IndexPath      string
+	StateDir       string
 	Port           int
 	PortSet        bool
 	ReconcileEvery time.Duration
+	ProbeEvery     time.Duration
 }
 
 // The six types that ship at cutover. Everything else retired with the machinery
@@ -113,11 +187,16 @@ func Load(opts Options) (*Config, error) {
 	}
 
 	c := &Config{
-		ConfigPath:     cfgPath,
-		Spaces:         defaultSpaces(),
-		Shard:          "date",
-		Port:           DefaultPort,
-		ReconcileEvery: 5 * time.Minute,
+		ConfigPath:      cfgPath,
+		Spaces:          defaultSpaces(),
+		Shard:           "date",
+		Port:            DefaultPort,
+		ReconcileEvery:  5 * time.Minute,
+		UnfiledAgeRed:   DefaultUnfiledAgeRed,
+		UnfiledCountRed: DefaultUnfiledCountRed,
+		HealthEvery:     15 * time.Minute,
+		ProbeEvery:      24 * time.Hour,
+		ProbeBudget:     10 * time.Second,
 	}
 
 	// --- the vault path -----------------------------------------------------
@@ -211,19 +290,82 @@ func Load(opts Options) (*Config, error) {
 		}
 	}
 
-	if v := strVal(raw, "daemon.reconcile_every"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil {
-			return nil, fmt.Errorf("daemon.reconcile_every %q: %w", v, err)
+	for _, d := range []struct {
+		key    string
+		target *time.Duration
+	}{
+		{"daemon.reconcile_every", &c.ReconcileEvery},
+		{"daemon.unfiled_age_red", &c.UnfiledAgeRed},
+		{"daemon.health_every", &c.HealthEvery},
+		{"daemon.probe_every", &c.ProbeEvery},
+		{"daemon.probe_budget", &c.ProbeBudget},
+	} {
+		v := strVal(raw, d.key)
+		if v == "" {
+			continue
 		}
-		c.ReconcileEvery = d
+		parsed, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("%s %q: %w", d.key, v, err)
+		}
+		if parsed <= 0 {
+			return nil, fmt.Errorf("%s %q must be positive", d.key, v)
+		}
+		*d.target = parsed
 	}
 	if opts.ReconcileEvery > 0 {
 		c.ReconcileEvery = opts.ReconcileEvery
 	}
+	if v := strVal(raw, "daemon.queue_baseline"); v != "" {
+		parsed, err := parseDate(v)
+		if err != nil {
+			return nil, fmt.Errorf("daemon.queue_baseline %q: %w", v, err)
+		}
+		c.QueueBaseline = parsed
+	}
+	if n, ok := intVal(raw, "daemon.unfiled_count_red"); ok {
+		if n <= 0 {
+			return nil, fmt.Errorf("daemon.unfiled_count_red %d must be positive", n)
+		}
+		c.UnfiledCountRed = n
+	}
+	if opts.ProbeEvery > 0 {
+		c.ProbeEvery = opts.ProbeEvery
+	}
+
+	c.StateDir = filepath.Dir(c.IndexPath)
+	if opts.StateDir != "" {
+		if c.StateDir, err = filepath.Abs(expandHome(opts.StateDir)); err != nil {
+			return nil, fmt.Errorf("state dir: %w", err)
+		}
+	}
+
+	c.Email = EmailConfig{
+		To:      strings.TrimSpace(strVal(raw, "plugins.autonomy.email_to")),
+		SMTPURL: strings.TrimSpace(strVal(raw, "plugins.autonomy.email_smtp_url")),
+		From:    strings.TrimSpace(strVal(raw, "plugins.autonomy.email_from")),
+	}
 
 	return c, nil
 }
+
+// Threshold defaults, stated as named constants because they are the numbers the
+// operator gets paged by and they carry an argument.
+//
+// The age is three days, from the memory design directly: fifty fresh unfiled
+// items every morning is an ordinary Tuesday, and the oldest unfiled item being
+// three days old means the pipeline stalled.
+//
+// The count is a backstop rather than a peer. At the design's own fifty-a-day it
+// would take twenty dead days to reach a thousand, by which point the age
+// threshold has been red for seventeen of them — so this fires first only in the
+// one case age cannot see, which is a producer writing thousands of fresh items
+// at once. Setting it near a normal day's volume would page about Tuesday, which
+// is how a queue alert teaches its reader to ignore it.
+const (
+	DefaultUnfiledAgeRed   = 72 * time.Hour
+	DefaultUnfiledCountRed = 1000
+)
 
 // SpaceDir returns the vault-relative directory for a space name.
 func (c *Config) SpaceDir(space string) (string, error) {
@@ -277,6 +419,17 @@ func DefaultIndexPath() string {
 		return filepath.Join(v, "agentm", "index.db")
 	}
 	return filepath.Join(home, ".local", "state", "agentm", "index.db")
+}
+
+// parseDate reads the date forms a person would actually type into a config
+// file. A bare date means midnight UTC.
+func parseDate(s string) (time.Time, error) {
+	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02"} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("not a date I can read; use YYYY-MM-DD or RFC3339")
 }
 
 func expandHome(p string) string {

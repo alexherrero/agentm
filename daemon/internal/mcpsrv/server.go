@@ -28,6 +28,11 @@ const protocolVersion = "2025-06-18"
 // StatusFunc returns whatever the daemon wants to report about itself.
 type StatusFunc func() map[string]any
 
+// ProbeFunc runs one self-probe now and returns its result. Nil when the daemon
+// has no probe wired, in which case the endpoint says so rather than pretending
+// to have run one.
+type ProbeFunc func() (any, error)
+
 // Server is the HTTP handler set.
 type Server struct {
 	cfg     *config.Config
@@ -35,6 +40,7 @@ type Server struct {
 	cap     *capture.Capturer
 	log     *slog.Logger
 	status  StatusFunc
+	probe   ProbeFunc
 	onWrite func(rel string)
 	started time.Time
 	version string
@@ -48,12 +54,18 @@ func New(cfg *config.Config, idx *index.Index, cp *capture.Capturer, log *slog.L
 	}
 }
 
+// SetProbe wires the on-demand self-probe. It is set after construction because
+// the probe talks to this server over HTTP and therefore cannot exist until the
+// listener does.
+func (s *Server) SetProbe(fn ProbeFunc) { s.probe = fn }
+
 // Handler wires the routes.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/mcp", s.handleMCP)
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/status", s.handleStatus)
+	mux.HandleFunc("/probe", s.handleProbe)
 	return s.localOnly(mux)
 }
 
@@ -429,6 +441,35 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// handleProbe runs one self-probe on demand.
+//
+// POST, because it writes: the probe captures a synthetic note, so a GET that
+// did this would be a side-effecting read and something would eventually
+// prefetch it.
+func (s *Server) handleProbe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST to run a self-probe", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.probe == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{
+			"ok":     false,
+			"detail": "this daemon has no self-probe wired",
+		})
+		return
+	}
+	res, err := s.probe()
+	if err != nil {
+		// The probe failing is a real answer, not a server error: the caller
+		// asked whether the round trip works and the answer is no.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok": false, "detail": err.Error(), "result": res,
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "result": res})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

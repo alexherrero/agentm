@@ -33,6 +33,11 @@ retrieval more quietly than no alias at all.
 
 Resumable by construction: a note with a non-empty `aliases` list is done, so a
 re-run picks up exactly what is left and cannot duplicate or overwrite.
+
+`run` and `reapply` are corpus-wide writes and ask `agentmd gate corpus-write`
+first; a refusal stops them, and so does a gate that could not answer. `revert`
+does not ask, because gating the undo on there being an undo is the one
+arrangement that could strand the corpus.
 """
 
 from __future__ import annotations
@@ -184,6 +189,56 @@ def classify(agentmd: str, vault: str) -> list[dict]:
     if proc.returncode != 0:
         raise SystemExit(f"agentmd classify failed:\n{proc.stderr.strip()}")
     return [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
+
+
+def require_corpus_write_gate(agentmd: str, vault: str) -> None:
+    """Refuse to start unless `agentmd gate corpus-write` passes.
+
+    This job is why the gate exists. It rewrote 1,930 notes with a hand-rolled
+    revert journal as its only undo, because the vault is not a git repository
+    yet — and the missing repository turned out to be the binding constraint
+    twice in one session. The build sequence's answer was an ordering sentence,
+    and a sentence in a design document is not a precondition.
+
+    Fails closed on every path. A refusal stops the run; so does a gate that
+    could not decide, and so does a missing binary — "I could not check" is not
+    "it is fine", and there is no `--force`, because the thing being checked is
+    whether an undo exists at all.
+    """
+    try:
+        proc = subprocess.run(
+            [agentmd, "gate", "corpus-write", "--json", "--vault", vault],
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        raise SystemExit(
+            f"could not run `{agentmd} gate corpus-write` ({exc}).\n"
+            "No corpus-wide write job starts without the gate; install the daemon "
+            "or pass --agentmd."
+        ) from exc
+
+    verdict: dict = {}
+    if proc.stdout.strip():
+        try:
+            verdict = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            verdict = {}
+
+    if proc.returncode == 0 and verdict.get("pass"):
+        head = verdict.get("head", "")
+        print(f"gate corpus-write: PASS  (undo point: {head or 'unknown'})")
+        return
+
+    lines = ["gate corpus-write: REFUSED — this job does not start."]
+    for reason in verdict.get("reasons", []):
+        lines.append(f"  {reason.get('code', '?')}: {reason.get('detail', '')}")
+        if reason.get("remedy"):
+            lines.append(f"    fix: {reason['remedy']}")
+    if not verdict:
+        detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
+        lines.append(f"  the gate did not return a verdict: {detail}")
+    raise SystemExit("\n".join(lines))
 
 
 def existing_aliases(head: str) -> str | None:
@@ -633,6 +688,8 @@ def _work_batch(batch: list[Candidate], args: argparse.Namespace) -> list[dict]:
 
 def cmd_run(args: argparse.Namespace) -> int:
     vault = resolve_vault(args.vault)
+    if not args.dry_run:
+        require_corpus_write_gate(args.agentmd, vault)
     census = survey_corpus(
         vault, classify(args.agentmd, vault), args.subdir, args.create_frontmatter
     )
@@ -787,6 +844,11 @@ def cmd_reapply(args: argparse.Namespace) -> int:
     anything else rather than stamping over it.
     """
     vault = resolve_vault(args.vault)
+    # Gated like `run`, and for the same reason: reapply is a corpus-wide write.
+    # `revert` deliberately is not — gating the undo on there being an undo is
+    # the one arrangement that could strand the corpus.
+    if not args.dry_run:
+        require_corpus_write_gate(args.agentmd, vault)
     counts: Counter = Counter()
     for line in Path(args.journal).read_text(encoding="utf-8").splitlines():
         if not line.strip():
