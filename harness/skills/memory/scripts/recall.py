@@ -45,9 +45,10 @@ import math
 import os
 import re
 import sqlite3
+import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 # embed.py + vec_index.py live in this same scripts/ dir — sys.path-injected
 # import so the recall engine can pull in shared helpers (embedding modes,
@@ -96,6 +97,95 @@ DEFAULT_K = 5
 # Default per-recall token budget (≈10% of a 200k Claude context).
 # 0 = unlimited. Override via --token-budget CLI arg or RECALL_TOKEN_BUDGET env.
 DEFAULT_TOKEN_BUDGET = 20_000
+
+# --- daemon fast path --------------------------------------------------------
+# `agentmd` (the Go memory daemon) answers a search off a maintained index in
+# ~12ms including process startup, against ~3170ms for this module's own corpus
+# walk over the same vault. The interactive hook budgets are 300ms and stay
+# there, so on a daemon-backed machine the daemon is the only engine that can
+# finish inside one — the in-process engine returned nothing at all on every
+# prompt, because a partial corpus walk is discarded rather than ranked (GH #92).
+#
+# Shelling out is deliberate, not laziness: recall.py is a vendored standalone
+# surface, and check-one-way-imports' lc8-bridge rule forbids it from importing
+# harness_memory back. A subprocess keeps it dependency-free, and the 12ms
+# measurement already includes the spawn.
+DAEMON_BIN = "agentmd"
+
+# Most of the 300ms goes to the daemon, and the split is deliberately lopsided.
+#
+# The fallback's value is almost entirely in the daemon-is-absent case, and that
+# case costs nothing to detect: a missing binary raises FileNotFoundError in
+# about 2ms, leaving the in-process engine essentially its whole budget. The
+# case this number actually governs is daemon-installed-but-slow, and there the
+# fallback cannot help — a corpus walk needs ~3170ms on this vault, so whatever
+# is left after a daemon timeout is nowhere near enough. Cutting the daemon off
+# early to hand 150ms to an engine that needs 3170ms produces exactly what this
+# change exists to fix: no results, slower.
+#
+# 250ms against a measured worst case of 153ms over 18 realistic prompts (p50
+# 20ms, p90 138ms). An earlier 150ms setting clipped that tail — one prompt in
+# 15 timed out, fell through to the doomed walk, and took 408ms to return
+# nothing.
+DAEMON_BUDGET_MS = 250
+
+# The daemon ranks the whole vault and knows none of recall's hygiene rules
+# (_dream-staging/, _inbox/, _archive/, superseded, memory-root scope), so ask
+# for more than k and filter down.
+#
+# Over-fetching is not free — measured across 15 realistic prompts, p90 went
+# 49ms (k=5) → 58ms (k=10) → 66ms (k=15), with worst cases 58ms → 134ms → 218ms.
+# 2x is where the curve is still cheap and the yield is worth it: asking for k
+# alone left 5 of those 15 prompts with fewer than k admissible hits after
+# filtering, and 2x cuts that to 3 while staying inside the daemon's budget.
+DAEMON_OVERFETCH = 2
+
+# A prompt is not a query, and handing the daemon the raw one is both slow and
+# worse. Measured: "what did we decide about the vault git transport?" takes
+# 578ms and ranks a stale audit-findings file first; its extracted terms take
+# 138ms and rank the vault-git design first. A 16-word prompt takes 2150ms —
+# seven times the entire hook budget — because BM25 scores every document any
+# common word appears in, and "what/did/we/about/the" appear in all of them.
+#
+# So the daemon is asked with content words only, capped. The cap is a guard
+# against a pathological prompt rather than the main lever: latency tracks how
+# common the terms are, not how many there are.
+DAEMON_QUERY_TERM_CAP = 6
+
+# Function words plus the conversational filler this corpus never uses as
+# content. Deliberately excludes domain verbs that look like filler but are not
+# ("run the gates", "fix the CI gate", "add a test", "update the changelog").
+# `_tokenize` below stays stopword-free on purpose: it feeds the in-process BM25,
+# whose scoring is tuned around that, and this list is a daemon-query concern.
+_DAEMON_STOPWORDS = frozenset("""
+a an the and or but if then than that this these those of to in on at by for
+with from as is are was were be been being it its am
+what which who whom whose when where why how do does did doing done
+can could should would will shall may might must
+i me my we us our you your he she they them their there here
+about into over under again more most some any all no not
+just really very please lets let tell show give got make made need want
+know think say said now also still even only
+last week today yesterday tomorrow
+""".split())
+
+# Which slice of the daemon's index ordinary recall may surface.
+#
+#   memory-root (default) — only notes under the resolved vault (the agent's
+#       own tree, `plugins.obsidian-vault.memory_root`). This is the corpus the
+#       Python engine searched, and the one agentm-rescope-topology.md's
+#       2026-08-10 `memory_root` amendment settled on after the operator's
+#       Church/Home/Tech/Other notes "silently entered the agent's retrieval
+#       corpus" and were deliberately taken back out.
+#   vault — everything the daemon indexes, personal folders included.
+#
+# Measured before choosing the default (20 prompts, top-5 each): technical
+# queries leak nothing, but generic ones a dev session really does type —
+# "what should I work on next", "the plan for this week" — pull Church notes
+# into context at 13% of results overall. The daemon's rank penalty down-weights
+# the unfiled landfill; it does not separate the operator's life from his work.
+DAEMON_SCOPE_ENV = "RECALL_DAEMON_SCOPE"
+DAEMON_SCOPE_DEFAULT = "memory-root"
 
 # Merge formula weights (per locked design call — recall-loop.md):
 #   combined = sim × SIM_WEIGHT + keyword × KEYWORD_WEIGHT
@@ -1529,20 +1619,31 @@ def query(
 def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
     """Format a single recall result for stdout injection.
 
-    Header includes slug + kind + sim/keyword breakdown so the agent sees
-    why this entry was recalled. Body follows verbatim (frontmatter
-    stripped by caller).
+    Header includes slug + kind + the ranking evidence so the agent sees why
+    this entry was recalled. Body follows verbatim (frontmatter stripped by
+    caller).
+
+    The evidence differs by engine, and quoting the wrong one is a small lie
+    that reads as a real signal: a daemon-ranked hit has no embedding behind it,
+    so it reports its BM25 score rather than a `sim` of 0.00 that would look
+    like a semantic match that failed.
     """
     kind = fm.get("kind", "unknown")
     tags = fm.get("tags", "")
-    header = (
-        f"### {result['slug']} (kind: {kind}, "
-        f"sim={result['sim']:.2f}, keywords={result['keyword']}"
-    )
+    if result.get("source") == "daemon":
+        score = result.get("score", result.get("combined", 0.0))
+        header = f"### {result['slug']} (kind: {kind}, score={score:.2f} daemon-lexical"
+    else:
+        header = (
+            f"### {result['slug']} (kind: {kind}, "
+            f"sim={result['sim']:.2f}, keywords={result['keyword']}"
+        )
     if tags and tags not in {"[]", ""}:
         header += f", tags: {tags}"
     if "lifecycle_tier" in result:
         header += f", tier: {result['lifecycle_tier']}"
+    if result.get("external"):
+        header += ", outside the memory root"
     header += ")"
     return f"{header}\n\n{body.strip()}"
 
@@ -1670,6 +1771,221 @@ def trace(
     return 0
 
 
+def _daemon_query_terms(prompt: str, cap: int = DAEMON_QUERY_TERM_CAP) -> str:
+    """Reduce a user prompt to the content words the daemon should search for.
+
+    Lowercase, split on non-alphanumerics, drop tokens under `_MIN_TOKEN_LEN`,
+    drop stopwords, drop repeats, keep source order, cap the count. See
+    `DAEMON_QUERY_TERM_CAP` for the measurements that make this necessary rather
+    than tidy — a raw prompt is both slower than the whole hook budget and worse
+    ranked than its own keywords.
+
+    Returns "" when the prompt carries no content words, which the caller treats
+    as "do not ask the daemon" rather than "search for nothing".
+    """
+    terms: list[str] = []
+    for token in _TOKEN_PATTERN.findall(prompt.lower()):
+        if len(token) < _MIN_TOKEN_LEN or token in _DAEMON_STOPWORDS or token in terms:
+            continue
+        terms.append(token)
+        if len(terms) >= cap:
+            break
+    return " ".join(terms)
+
+
+def _daemon_root_for(vault: Path, rel_posix: str) -> Path | None:
+    """The directory a daemon-returned path is relative to.
+
+    The daemon indexes from its own configured root, which since the
+    git-transport cutover is the Obsidian root — one level above the memory
+    root recall is pointed at. So the daemon says `Agent/personal/x.md` where
+    recall wants `personal/x.md`.
+
+    Rather than re-reading the kernel config (recall.py resolves its vault from
+    --vault-path/env and nothing else, and a second resolver is a second thing
+    that can disagree), find the ancestor of `vault` that makes the path a real
+    file. `vault` itself is tried first, so an install whose daemon root and
+    memory root are the same directory — `memory_root` unset, the install that
+    never moved — costs a single stat and gets prefix "" for free.
+    """
+    for root in (vault, *vault.parents):
+        try:
+            if (root / rel_posix).is_file():
+                return root
+        except OSError:
+            continue
+    return None
+
+
+def _daemon_admissible(
+    rel_posix: str, *, include_inbox: bool, include_archive: bool
+) -> bool:
+    """Apply `_iter_entry_paths`' directory rules to a daemon-returned path.
+
+    The daemon indexes everything by design; these are recall's rules, not the
+    index's, and nothing in the daemon knows them. Deliberately path-only so it
+    costs no I/O — the `status: superseded` half of the same policy runs in
+    `prompt_submit`, where the frontmatter has already been parsed to format the
+    entry anyway.
+    """
+    for name in PurePosixPath(rel_posix).parts[:-1]:
+        if name in _EXCLUDE_DIR_NAMES:
+            return False
+        if name == _INBOX_DIR_NAME and not include_inbox:
+            return False
+        if name == _INCLUDE_ARCHIVE_DIR_NAME and not include_archive:
+            return False
+        if name.startswith("."):
+            return False
+    return True
+
+
+def _daemon_search(
+    *,
+    vault: Path,
+    query_text: str,
+    k: int = DEFAULT_K,
+    dedup_paths: set[str] | None = None,
+    include_inbox: bool = False,
+    include_archive: bool = False,
+    budget_ms: int = DAEMON_BUDGET_MS,
+    scope: str | None = None,
+    status: dict | None = None,
+) -> list[dict] | None:
+    """Ask the agentm daemon for the top-k entries relevant to `query_text`.
+
+    Returns results in the same shape `query()` returns — `path` (vault-relative
+    POSIX), `slug`, `sim`, `keyword`, `combined` — so every downstream consumer
+    works unchanged, plus `score`/`source` recording that this ranking came from
+    the daemon's BM25 rather than this module's sim+keyword merge.
+
+    Returns None when the daemon could not answer, which is the caller's signal
+    to fall back to the in-process engine. **None and [] are different answers,
+    and `prompt_submit` branches on which one it gets** (GH #92): None is "no
+    search happened", [] is "the daemon searched and nothing admissible matched".
+    Collapsing them is how a broken recall reports itself as an empty vault.
+    """
+    dedup_paths = dedup_paths or set()
+    scope = (
+        scope or os.environ.get(DAEMON_SCOPE_ENV) or DAEMON_SCOPE_DEFAULT
+    ).strip().lower()
+
+    def _skip(reason: str) -> None:
+        if status is not None:
+            status.update({"ran": False, "reason": reason, "engine": "daemon"})
+        return None
+
+    if not query_text or not query_text.strip():
+        return _skip("empty query")
+    search_terms = _daemon_query_terms(query_text)
+    if not search_terms:
+        return _skip("prompt carried no content words to search for")
+
+    started = time.monotonic()
+    try:
+        proc = subprocess.run(
+            [
+                DAEMON_BIN, "search", "-json",
+                "-k", str(max(1, k) * DAEMON_OVERFETCH),
+                search_terms,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=budget_ms / 1000.0,
+        )
+    except FileNotFoundError:
+        return _skip(f"{DAEMON_BIN} not on PATH")
+    except subprocess.TimeoutExpired:
+        return _skip(f"{DAEMON_BIN} did not answer within {budget_ms}ms")
+    except OSError as e:  # noqa: BLE001 — never block the prompt
+        return _skip(f"{DAEMON_BIN} could not be run ({type(e).__name__})")
+    elapsed_ms = (time.monotonic() - started) * 1000.0
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or "").strip().splitlines()
+        return _skip(
+            f"{DAEMON_BIN} exited {proc.returncode}"
+            + (f": {detail[0][:120]}" if detail else "")
+        )
+    try:
+        payload = json.loads(proc.stdout or "")
+    except ValueError:
+        return _skip(f"{DAEMON_BIN} returned unparseable JSON")
+    raw = payload.get("results") if isinstance(payload, dict) else None
+    if not isinstance(raw, list):
+        return _skip(f"{DAEMON_BIN} response carried no results array")
+
+    root: Path | None = None
+    seen: set[str] = set()
+    out: list[dict] = []
+    for item in raw:
+        if len(out) >= k:
+            break
+        if not isinstance(item, dict):
+            continue
+        rel_daemon = item.get("path")
+        if not isinstance(rel_daemon, str) or not rel_daemon:
+            continue
+        if not _daemon_admissible(
+            rel_daemon, include_inbox=include_inbox, include_archive=include_archive
+        ):
+            continue
+        if root is None:
+            root = _daemon_root_for(vault, rel_daemon)
+            if root is None:
+                continue
+        abs_path = root / rel_daemon
+        external = False
+        try:
+            rel = abs_path.relative_to(vault).as_posix()
+        except ValueError:
+            # Outside the memory root — one of the operator's own folders.
+            if scope != "vault":
+                continue
+            rel = os.path.relpath(abs_path, vault).replace(os.sep, "/")
+            external = True
+        if rel in dedup_paths or rel in seen:
+            continue
+        seen.add(rel)
+        try:
+            score = float(item.get("score") or 0.0)
+        except (TypeError, ValueError):
+            score = 0.0
+        entry = {
+            "path": rel,
+            "slug": PurePosixPath(rel_daemon).stem,
+            # The daemon ranks lexically and runs no embedding, so there is no
+            # similarity to report. Zero here is the true value, not a
+            # placeholder — `_format_recall_result` prints `score` for
+            # daemon-sourced hits rather than a sim of 0.00 that would read as
+            # a failed semantic match.
+            "sim": 0.0,
+            "keyword": 0,
+            "combined": score,
+            "score": score,
+            "source": "daemon",
+        }
+        if external:
+            # Not a curated memory entry: readable and rankable, but it gets no
+            # heat count and no decay-clock reset (see prompt_submit).
+            entry["external"] = True
+        out.append(entry)
+
+    if status is not None:
+        status.update({
+            "ran": True,
+            "reason": "",
+            "engine": "daemon",
+            "elapsed_ms": elapsed_ms,
+            "scope": scope,
+            "terms": search_terms,
+            "returned": len(raw),
+            "admitted": len(out),
+            "matched": payload.get("matched"),
+        })
+    return out
+
+
 def prompt_submit(
     *,
     vault: Path | None,
@@ -1720,29 +2036,65 @@ def prompt_submit(
     # session_start's force-overrun branch). Smoke tests rely on this to
     # exercise the degraded-graceful path without depending on machine speed.
     recall_status: dict = {}
-    if budget_ms <= 0:
-        results: list[dict] = []
-    else:
-        try:
-            results = query(
-                vault=vault,
-                query_text=prompt,
-                k=k,
-                dedup_paths=always_load_paths,
-                include_inbox=include_inbox,
-                include_archive=include_archive,
-                deadline=deadline,
-                mode=mode,
-                status=recall_status,
-                stderr=stderr,
+    daemon_status: dict = {}
+    results: list[dict] = []
+    if budget_ms > 0:
+        # Ask the daemon first. On a daemon-backed machine it is the only engine
+        # that fits an interactive budget at all — this module's own corpus walk
+        # needs ~3170ms against 300ms, and a walk cut short is discarded rather
+        # than ranked, so the in-process path returned nothing on every prompt.
+        # When the daemon cannot answer, the engine below runs exactly as it did
+        # before, with whatever budget the attempt did not spend.
+        daemon_results: list[dict] | None = None
+        remaining_ms = int((deadline - time.monotonic()) * 1000)
+        if remaining_ms > 0:
+            try:
+                daemon_results = _daemon_search(
+                    vault=vault,
+                    query_text=prompt,
+                    k=k,
+                    dedup_paths=always_load_paths,
+                    include_inbox=include_inbox,
+                    include_archive=include_archive,
+                    budget_ms=min(DAEMON_BUDGET_MS, remaining_ms),
+                    status=daemon_status,
+                )
+            except Exception as e:  # noqa: BLE001 — never block the prompt
+                daemon_status.update(
+                    {"ran": False, "reason": f"{type(e).__name__}: {e}", "engine": "daemon"}
+                )
+                daemon_results = None
+        else:
+            daemon_status.update(
+                {"ran": False, "reason": "budget exhausted before the daemon was asked",
+                 "engine": "daemon"}
             )
-        except Exception as e:  # noqa: BLE001 — never block the prompt
-            print(
-                f"[memory-recall-prompt-submit] recall engine error ({type(e).__name__}: {e}); "
-                "skipping injection",
-                file=stderr,
-            )
-            return 0
+
+        if daemon_results is not None:
+            results = daemon_results
+            recall_status.update({"searched": True, "engine": "daemon"})
+        else:
+            try:
+                results = query(
+                    vault=vault,
+                    query_text=prompt,
+                    k=k,
+                    dedup_paths=always_load_paths,
+                    include_inbox=include_inbox,
+                    include_archive=include_archive,
+                    deadline=deadline,
+                    mode=mode,
+                    status=recall_status,
+                    stderr=stderr,
+                )
+                recall_status.setdefault("engine", "in-process")
+            except Exception as e:  # noqa: BLE001 — never block the prompt
+                print(
+                    f"[memory-recall-prompt-submit] recall engine error ({type(e).__name__}: {e}); "
+                    "skipping injection",
+                    file=stderr,
+                )
+                return 0
 
     # Build formatted blocks from results (reading entry content).
     # Results are already salience-ordered (combined-score desc) from query().
@@ -1771,17 +2123,27 @@ def prompt_submit(
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
+        # `query()` filters superseded entries as it walks; the daemon indexes
+        # everything and knows nothing about the field, so the check lives here
+        # too. Harmless duplication for the in-process path, and the only such
+        # check on the daemon path — a retired entry must not come back just
+        # because a faster engine found it.
+        if fm.get("status") == "superseded":
+            continue
         raw_blocks.append(_format_recall_result(result, body, fm))
         raw_slugs.append(result["slug"])
         raw_hits.append({**result, "rank": rank})
-        # Record the on-demand hit for heat tracking (best-effort).
-        if _record_recall_hit is not None:
+        # Record the on-demand hit for heat tracking (best-effort). Skipped for
+        # `external` hits — notes outside the memory root are readable context,
+        # not curated memory, and heat/decay bookkeeping on them would score a
+        # tree the memory engine does not own.
+        if _record_recall_hit is not None and not result.get("external"):
             _record_recall_hit(vault, result["slug"])
         # V6-1: genuine recall access resets the volatile-tier decay clock
         # (best-effort, no-op for decay-exempt entries). This is the ONLY
         # call site — a lint walk, index rebuild, or dreaming pass must
         # never reach this function.
-        if _record_lifecycle_access is not None:
+        if _record_lifecycle_access is not None and not result.get("external"):
             _record_lifecycle_access(vault, result["slug"], fm, result["path"])
 
     # Apply token budget: results are highest-salience first → truncation
@@ -1818,9 +2180,14 @@ def prompt_submit(
             file=stdout,
         )
         print("", file=stdout)
+        ranked_by = (
+            "daemon lexical rank"
+            if recall_status.get("engine") == "daemon"
+            else "semantic+keyword merge"
+        )
         print(
             f"The following entries match your prompt (top {len(blocks)} by "
-            f"semantic+keyword merge; deduped against always-load set).",
+            f"{ranked_by}; deduped against always-load set).",
             file=stdout,
         )
         print("", file=stdout)
@@ -1844,6 +2211,25 @@ def prompt_submit(
         f"[memory-recall-prompt-submit] Loaded {len(loaded_slugs)} relevant "
         f"entries: {slug_list}"
     )
+    # Name the engine. Which one answered changes both the latency and the
+    # ranking, so an operator reading this line should never have to guess —
+    # and when the fast path declined, the reason is the first thing worth
+    # knowing. Kept out of `blocked` below on purpose: an absent daemon is not
+    # "partial coverage" when the in-process engine went on to walk the whole
+    # corpus, and overloading that phrase would blunt it where it matters.
+    if recall_status.get("engine") == "daemon":
+        # The searched terms are quoted because they are not the prompt: the
+        # daemon is asked with content words only, and an operator debugging a
+        # miss needs to see what was actually looked for.
+        transparency += (
+            f" (engine: daemon, {daemon_status.get('elapsed_ms', 0.0):.0f}ms, "
+            f"scope={daemon_status.get('scope', DAEMON_SCOPE_DEFAULT)}, "
+            f"terms: {daemon_status.get('terms', '')!r})"
+        )
+    elif daemon_status.get("reason"):
+        transparency += (
+            f" (engine: in-process — daemon declined: {daemon_status['reason']})"
+        )
     # A zero-result recall has two very different causes, and reporting them
     # identically is how GH #92 survived under green CI for months: the hook
     # fired, exited 0, and honestly announced "Loaded 0" whether the vault
