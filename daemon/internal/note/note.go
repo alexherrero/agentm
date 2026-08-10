@@ -18,6 +18,7 @@ var (
 	titleRe       = regexp.MustCompile(`(?m)^title:[ \t]*(.+?)[ \t\r]*$`)
 	statusRe      = regexp.MustCompile(`(?m)^status:[ \t]*(\S+)`)
 	miningRe      = regexp.MustCompile(`(?m)^mining_confidence:`)
+	probeRe       = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
 	capturedRe    = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
 	dateRe        = regexp.MustCompile(`(?m)^date:[ \t]*(.+?)[ \t\r]*$`)
 	proposalRe    = regexp.MustCompile(`\A#[ \t]*Proposal[ \t]+\d+[ \t]*:`)
@@ -44,6 +45,12 @@ type Note struct {
 	Body string
 
 	Status string
+	// Probe marks a synthetic self-probe note. It is read from the frontmatter
+	// marker rather than inferred from the note's location, because the design
+	// requires a probe to be excludable by what it carries: capture shards by
+	// date, so any path rule would quietly stop matching the first time the
+	// month rolled over.
+	Probe bool
 	// Captured is the note's capture date, used by the after:/before: bounds.
 	Captured time.Time
 	// CapturedSource records which signal supplied it, so a bound that behaves
@@ -83,6 +90,7 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	}
 
 	n.Status = parseStatus(head)
+	n.Probe = parseProbe(head)
 	n.Captured, n.CapturedSource = parseCaptured(head, modTime)
 	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status)
 	return n
@@ -93,6 +101,30 @@ func parseStatus(head string) string {
 		return strings.ToLower(strings.Trim(m[1], `'"`))
 	}
 	return ""
+}
+
+// ProbeMarker is the frontmatter key that marks a note as a synthetic
+// self-probe, and ProbeMarkerValue is what the daemon writes into it.
+//
+// One key, read by everything that has any business excluding a probe from a
+// measurement — the classifier's JSON output, the alias backfill, any future
+// scorecard. `true` is accepted alongside the named value so a note marked by
+// hand is not silently ignored.
+const (
+	ProbeMarker      = "probe"
+	ProbeMarkerValue = "self-probe"
+)
+
+func parseProbe(head string) bool {
+	m := probeRe.FindStringSubmatch(head)
+	if m == nil {
+		return false
+	}
+	switch strings.ToLower(strings.Trim(m[1], `'"`)) {
+	case ProbeMarkerValue, "true", "yes":
+		return true
+	}
+	return false
 }
 
 // parseCaptured prefers the note's own claim, then a `date` field, then the

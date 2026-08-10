@@ -25,9 +25,12 @@ import (
 
 	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/gate"
+	"github.com/alexherrero/agentm/daemon/internal/health"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/mcpsrv"
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/probe"
 	"github.com/alexherrero/agentm/daemon/internal/vcs"
 	"github.com/alexherrero/agentm/daemon/internal/watch"
 )
@@ -43,6 +46,8 @@ const usage = `agentmd — the agentm memory daemon
   agentmd capture    one-shot capture
   agentmd reindex    rebuild the index from the files
   agentmd status     ask a running daemon how it is doing
+  agentmd probe      run the round-trip self-probe now
+  agentmd gate       ask whether a corpus-wide write job may start
   agentmd classify   report rank-penalty class counts over the live vault
   agentmd retire     retire the orphaned pre-daemon memory server
 
@@ -66,6 +71,10 @@ func main() {
 		err = cmdReindex(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
+	case "probe":
+		err = cmdProbe(os.Args[2:])
+	case "gate":
+		err = cmdGate(os.Args[2:])
 	case "classify":
 		err = cmdClassify(os.Args[2:])
 	case "retire":
@@ -79,10 +88,31 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
+		var exit *exitError
+		if errors.As(err, &exit) {
+			if exit.quiet {
+				os.Exit(exit.code)
+			}
+			fmt.Fprintln(os.Stderr, "agentmd:", err)
+			os.Exit(exit.code)
+		}
 		fmt.Fprintln(os.Stderr, "agentmd:", err)
 		os.Exit(1)
 	}
 }
+
+// exitError carries a specific exit status. It exists for the gate, where a
+// caller has to be able to tell "the gate says no" from "the gate broke" — both
+// are non-zero, because a gate that cannot decide must fail closed, but a job
+// script deserves to know which one happened.
+type exitError struct {
+	code  int
+	quiet bool
+	err   error
+}
+
+func (e *exitError) Error() string { return e.err.Error() }
+func (e *exitError) Unwrap() error { return e.err }
 
 // ---------------------------------------------------------------------------
 // serve
@@ -92,6 +122,10 @@ func cmdServe(args []string) error {
 	fs := newFlagSet("serve")
 	opts := bindCommon(fs)
 	verbose := fs.Bool("verbose", false, "log every indexed file")
+	healthEvery := fs.Duration("health-every", 0,
+		"how often to evaluate the queue thresholds and run the self-probe if it is due")
+	fs.DurationVar(&opts.ProbeEvery, "probe-every", 0,
+		"how often the round-trip self-probe runs")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -101,6 +135,13 @@ func cmdServe(args []string) error {
 	if err != nil {
 		return err
 	}
+	if *healthEvery > 0 {
+		cfg.HealthEvery = *healthEvery
+	}
+	// Uptime is measured from here rather than from the moment the listener
+	// binds, because the initial index pass is time the daemon was up and not
+	// answering, and a status surface that hid it would hide a slow start.
+	bootedAt := time.Now()
 
 	level := slog.LevelInfo
 	if *verbose {
@@ -157,6 +198,45 @@ func cmdServe(args []string) error {
 		"removed", rep.Removed, "errors", len(rep.Errors),
 		"elapsed", time.Since(started).Round(time.Millisecond))
 
+	baseURL := "http://" + ln.Addr().String()
+	prober := probe.New(cfg, idx, baseURL, func(rel string) {
+		w.MarkOrigin(rel, vcs.OriginProbe)
+	})
+
+	// The daemon's account of itself, evaluated fresh on every read. It is not
+	// cached: a status surface reporting a number from ten minutes ago is how a
+	// stalled queue looks fine.
+	baseline := health.Baseline(cfg.StateDir, cfg.QueueBaseline, time.Now())
+	log.Info("queue baseline", "at", baseline.Format(time.RFC3339),
+		"meaning", "unfiled items captured before this are the inherited backlog: "+
+			"reported, not paged about")
+
+	report := func() health.Report {
+		in := health.Input{
+			Now:                 time.Now(),
+			Uptime:              time.Since(bootedAt),
+			GitAvailable:        repo.Available(),
+			GitReason:           repo.Status(),
+			LastReconcile:       w.LastReconcileAt(),
+			LastReconcileErrors: w.LastReconcileErrors(),
+			Baseline:            baseline,
+			Thresholds:          thresholds(cfg),
+		}
+		if st, err := idx.Stats(); err == nil {
+			in.Unfiled, in.Documents = st.Unfiled, st.Documents
+			if oldest, ok := st.OldestUnfiledTime(); ok {
+				in.OldestUnfiled = oldest
+			}
+		}
+		if q, err := idx.UnfiledSince(baseline); err == nil {
+			in.UnfiledSince, in.OldestUnfiledSince = q.Count, q.Oldest
+		}
+		if st, ok := prober.Load(); ok {
+			in.Probe, in.ProbeAt = probe.AsHealth(st, true)
+		}
+		return health.Evaluate(in)
+	}
+
 	statusFn := func() map[string]any {
 		out := map[string]any{
 			"vault":        cfg.VaultPath,
@@ -164,22 +244,22 @@ func cmdServe(args []string) error {
 			"config":       cfg.ConfigPath,
 			"spaces":       cfg.Spaces,
 			"shard":        cfg.Shard,
-			"git": map[string]any{
-				"available": repo.Available(),
-				"status":    repo.Status(),
-			},
-			"watcher": w.Status(),
+			"uptime":       time.Since(bootedAt).Round(time.Second).String(),
+			"health":       report(),
+			"watcher":      w.Status(),
 		}
 		if st, err := idx.Stats(); err == nil {
-			out["index"] = st
+			out["index_detail"] = st
 		} else {
-			out["index"] = map[string]any{"error": err.Error()}
+			out["index_detail"] = map[string]any{"error": err.Error()}
 		}
 		return out
 	}
 
+	srv0 := mcpsrv.New(cfg, idx, cp, log, statusFn, w.MarkSelfWritten, version)
+	srv0.SetProbe(func() (any, error) { return prober.Run(time.Now()) })
 	srv := &http.Server{
-		Handler:           mcpsrv.New(cfg, idx, cp, log, statusFn, w.MarkSelfWritten, version).Handler(),
+		Handler:           srv0.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -203,6 +283,8 @@ func cmdServe(args []string) error {
 			errc <- err
 		}
 	}()
+
+	go watchHealth(ctx, cfg, log, prober, report)
 
 	select {
 	case err := <-errc:
@@ -367,9 +449,17 @@ func cmdReindex(args []string) error {
 	return nil
 }
 
+// cmdStatus asks a running daemon how it is doing, and prints the answer as
+// something a person can read at a glance.
+//
+// Four numbers and a verdict, which is the whole loud-queue mechanism from the
+// operator's side: how many items are waiting to be filed, how old the oldest
+// one is, whether the index still tracks the vault, whether there is an undo,
+// and whether the round trip was working the last time anything checked.
 func cmdStatus(args []string) error {
 	fs := newFlagSet("status")
 	opts := bindCommon(fs)
+	asJSON := fs.Bool("json", false, "emit the raw status document")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -378,14 +468,142 @@ func cmdStatus(args []string) error {
 	if err != nil {
 		return err
 	}
-	url := fmt.Sprintf("http://127.0.0.1:%d/status", cfg.Port)
-	resp, err := (&http.Client{Timeout: 10 * time.Second}).Get(url)
+	blob, err := daemonGet(cfg.Port, "/status")
 	if err != nil {
-		return fmt.Errorf("no daemon answering on %s: %w", url, err)
+		return err
+	}
+	if *asJSON {
+		_, err := os.Stdout.Write(blob)
+		return err
+	}
+
+	var payload struct {
+		Version string        `json:"version"`
+		Uptime  string        `json:"uptime"`
+		Health  health.Report `json:"health"`
+	}
+	if err := json.Unmarshal(blob, &payload); err != nil {
+		return fmt.Errorf("the daemon's status was not readable: %w", err)
+	}
+	fmt.Printf("agentmd %s · up %s\n", payload.Version, payload.Uptime)
+	fmt.Print(renderReport(payload.Health, cfg))
+	if payload.Health.Red() {
+		// Non-zero, so a shell script can ask "is it fine" without parsing the
+		// output — the same reason the gate has an exit code.
+		return &exitError{code: 3, quiet: true, err: errors.New("status is red")}
+	}
+	return nil
+}
+
+// cmdProbe runs the round trip now, against the running daemon.
+//
+// Same code path as the daily run, deliberately: a probe you can only trigger
+// on a timer is one nobody can check when they need to know.
+func cmdProbe(args []string) error {
+	fs := newFlagSet("probe")
+	opts := bindCommon(fs)
+	asJSON := fs.Bool("json", false, "emit the raw result")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	markPortSet(fs, opts)
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	blob, err := daemonPost(cfg.Port, "/probe")
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		_, err := os.Stdout.Write(blob)
+		return err
+	}
+	var out struct {
+		OK     bool        `json:"ok"`
+		Detail string      `json:"detail"`
+		Result probe.State `json:"result"`
+	}
+	if err := json.Unmarshal(blob, &out); err != nil {
+		return fmt.Errorf("the daemon's probe result was not readable: %w", err)
+	}
+	for _, q := range out.Result.Queries {
+		verdict := "MISSED"
+		if q.Found {
+			verdict = fmt.Sprintf("found at rank %d", q.Rank)
+		}
+		fmt.Printf("  %-6s %-24s %s\n", q.Kind, q.Query, verdict)
+	}
+	if !out.OK {
+		fmt.Printf("self-probe FAILED after %s\n", out.Result.Elapsed)
+		return &exitError{code: 3, err: errors.New(out.Detail)}
+	}
+	fmt.Printf("self-probe ok in %s — captured %s and found it again by two "+
+		"queries it does not contain\n", out.Result.Elapsed, out.Result.Path)
+	return nil
+}
+
+// cmdGate answers whether a corpus-wide write job may start.
+//
+// Exit codes are the contract: 0 passes, 3 refuses, 1 means the gate could not
+// decide. A caller that treats anything non-zero as "do not start" is correct,
+// which is the point — the gate fails closed.
+func cmdGate(args []string) error {
+	fs := newFlagSet("gate")
+	opts := bindCommon(fs)
+	asJSON := fs.Bool("json", false, "emit the verdict as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	name := strings.TrimSpace(strings.Join(fs.Args(), " "))
+	if name == "" {
+		return fmt.Errorf("usage: agentmd gate %s [--json]", gate.CorpusWrite)
+	}
+	if name != gate.CorpusWrite {
+		return fmt.Errorf("unknown gate %q; this daemon defines %q", name, gate.CorpusWrite)
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+
+	res, gateErr := gate.Evaluate(cfg)
+	if *asJSON {
+		if err := json.NewEncoder(os.Stdout).Encode(res); err != nil {
+			return err
+		}
+	} else {
+		fmt.Print(res.Explain())
+	}
+	if res.Pass {
+		return nil
+	}
+	if gateErr == nil {
+		gateErr = gate.ErrRefused
+	}
+	return &exitError{code: 3, quiet: true, err: gateErr}
+}
+
+func daemonGet(port int, path string) ([]byte, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", port, path)
+	resp, err := (&http.Client{Timeout: 30 * time.Second}).Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("no daemon answering on %s — start one with `agentmd serve`: %w",
+			url, err)
 	}
 	defer resp.Body.Close()
-	_, err = io.Copy(os.Stdout, resp.Body)
-	return err
+	return io.ReadAll(resp.Body)
+}
+
+func daemonPost(port int, path string) ([]byte, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d%s", port, path)
+	resp, err := (&http.Client{Timeout: 60 * time.Second}).Post(url, "application/json", nil)
+	if err != nil {
+		return nil, fmt.Errorf("no daemon answering on %s — start one with `agentmd serve`: %w",
+			url, err)
+	}
+	defer resp.Body.Close()
+	return io.ReadAll(resp.Body)
 }
 
 // cmdClassify reports rank-penalty class counts over the live vault.
@@ -413,7 +631,7 @@ func cmdClassify(args []string) error {
 
 	counts := map[string]int{}
 	samples := map[string][]string{}
-	total, unreadable := 0, 0
+	total, unreadable, probes := 0, 0, 0
 	signals := map[string]int{}
 
 	err = filepath.WalkDir(cfg.VaultPath, func(abs string, d os.DirEntry, err error) error {
@@ -442,19 +660,31 @@ func cmdClassify(args []string) error {
 			mod = info.ModTime()
 		}
 		n := note.Parse(rel, string(raw), mod)
-		total++
 		if *asJSON {
 			flags := n.Flags
 			if flags == nil {
 				flags = []string{}
 			}
+			// `probe` travels with every row so a downstream job can exclude
+			// synthetic notes on the marker rather than on a path convention it
+			// would have to keep in step with the shard.
 			return enc.Encode(map[string]any{
 				"path":   rel,
 				"flags":  flags,
 				"status": n.Status,
+				"probe":  n.Probe,
 				"weight": note.Multiplier(n.Flags),
 			})
 		}
+		// The daemon's own self-probe notes are synthetic and are counted apart
+		// rather than into the population: a class percentage that silently
+		// included them would drift by one note a day for no reason anyone
+		// reading it could see.
+		if n.Probe {
+			probes++
+			return nil
+		}
+		total++
 		for _, f := range n.Flags {
 			counts[f]++
 			if len(samples[f]) < *showSamples {
@@ -486,6 +716,8 @@ func cmdClassify(args []string) error {
 
 	fmt.Printf("vault:      %s\n", cfg.VaultPath)
 	fmt.Printf("notes:      %d (%d unreadable)\n", total, unreadable)
+	fmt.Printf("excluded:   %d self-probe notes (frontmatter `%s: %s`, not a path rule)\n",
+		probes, note.ProbeMarker, note.ProbeMarkerValue)
 	fmt.Println("classes:")
 	keys := make([]string, 0, len(counts))
 	for k := range counts {

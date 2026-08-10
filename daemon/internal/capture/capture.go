@@ -39,6 +39,16 @@ type Request struct {
 	Aliases []string `json:"aliases,omitempty"`
 	Source  string   `json:"source,omitempty"`
 	Space   string   `json:"space,omitempty"`
+
+	// Probe marks the note as the daemon's synthetic self-probe.
+	//
+	// It is a wire field, because the probe deliberately captures over the same
+	// HTTP surface every other client uses — an in-process shortcut would reach
+	// past the wiring the probe exists to test. It is deliberately absent from
+	// the published tool schema, so no model volunteers it: a probe note is
+	// excluded from measurements and retired by the next run, and neither is
+	// something a session should be able to ask for by accident.
+	Probe bool `json:"probe,omitempty"`
 }
 
 // Result is what the caller gets back.
@@ -162,6 +172,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		Tags:     req.Tags,
 		Aliases:  req.Aliases,
 		Source:   strings.TrimSpace(req.Source),
+		Probe:    req.Probe,
 		Text:     text,
 	})
 
@@ -259,6 +270,7 @@ type noteData struct {
 	Tags     []string
 	Aliases  []string
 	Source   string
+	Probe    bool
 	Text     string
 }
 
@@ -285,6 +297,13 @@ func renderNote(d noteData) string {
 	}
 	if d.Source != "" {
 		fmt.Fprintf(&b, "source: %s\n", yamlScalar(d.Source))
+	}
+	// The probe marker. Written as a frontmatter field rather than expressed by
+	// where the note lives, because everything downstream that must not count a
+	// synthetic note in a measurement reads frontmatter and none of it should
+	// have to know a path convention.
+	if d.Probe {
+		fmt.Fprintf(&b, "%s: %s\n", note.ProbeMarker, note.ProbeMarkerValue)
 	}
 	b.WriteString("---\n\n")
 	b.WriteString(d.Text)

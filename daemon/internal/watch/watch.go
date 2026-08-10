@@ -45,29 +45,44 @@ type Watcher struct {
 
 	fsw *fsnotify.Watcher
 
-	mu            sync.Mutex
-	watchedDirs   int
-	watchFailures int
-	lastReconcile index.ReconcileReport
-	lastEventAt   time.Time
+	mu              sync.Mutex
+	watchedDirs     int
+	watchFailures   int
+	lastReconcile   index.ReconcileReport
+	lastReconcileAt time.Time
+	lastEventAt     time.Time
 
 	// selfWritten holds paths the daemon wrote itself, so their commits are
-	// attributed to capture rather than mistaken for someone else's edit.
-	selfWritten map[string]time.Time
+	// attributed to what the daemon was doing rather than mistaken for someone
+	// else's edit.
+	selfWritten map[string]selfWrite
+}
+
+type selfWrite struct {
+	origin vcs.Origin
+	when   time.Time
 }
 
 func New(cfg *config.Config, idx *index.Index, repo *vcs.Repo, log *slog.Logger) *Watcher {
 	return &Watcher{
 		cfg: cfg, idx: idx, repo: repo, log: log,
-		selfWritten: map[string]time.Time{},
+		selfWritten: map[string]selfWrite{},
 	}
 }
 
-// MarkSelfWritten records that the daemon itself just wrote this path.
+// MarkSelfWritten records that the daemon itself just wrote this path as an
+// ordinary capture.
 func (w *Watcher) MarkSelfWritten(rel string) {
+	w.MarkOrigin(rel, vcs.OriginCapture)
+}
+
+// MarkOrigin records that the daemon itself just touched this path, and what it
+// was doing. A later mark for the same path wins, which is what lets the
+// self-probe re-attribute the note it just captured over the MCP surface.
+func (w *Watcher) MarkOrigin(rel string, origin vcs.Origin) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	w.selfWritten[rel] = time.Now()
+	w.selfWritten[rel] = selfWrite{origin: origin, when: time.Now()}
 }
 
 // Status is the watcher's account of itself.
@@ -80,6 +95,23 @@ type Status struct {
 	ReconcileEvery   string `json:"reconcile_every"`
 	LastReconcile    string `json:"last_reconcile,omitempty"`
 	LastReconcileErr int    `json:"last_reconcile_errors"`
+}
+
+// LastReconcileAt is when the last full pass finished, zero if none has. It is
+// the index's freshness signal: the notifier is an accelerator, so what tells
+// you the index still tracks the vault is whether the pass that guarantees it
+// is still running.
+func (w *Watcher) LastReconcileAt() time.Time {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.lastReconcileAt
+}
+
+// LastReconcileErrors is how many paths the last pass could not index.
+func (w *Watcher) LastReconcileErrors() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.lastReconcile.Errors)
 }
 
 func (w *Watcher) Status() Status {
@@ -135,6 +167,7 @@ func (w *Watcher) reconcile(commit bool) (index.ReconcileReport, error) {
 	rep, err := w.idx.Reconcile()
 	w.mu.Lock()
 	w.lastReconcile = rep
+	w.lastReconcileAt = time.Now()
 	w.mu.Unlock()
 	if err != nil {
 		return rep, err
@@ -316,19 +349,19 @@ func (w *Watcher) commitPaths(paths []string) {
 // set is the phone's; anything else is a local edit.
 func (w *Watcher) attribute(rel string) vcs.Origin {
 	w.mu.Lock()
-	when, self := w.selfWritten[rel]
+	mark, self := w.selfWritten[rel]
 	if self {
-		if time.Since(when) < 30*time.Second {
+		if time.Since(mark.when) < 30*time.Second {
 			delete(w.selfWritten, rel)
 			w.mu.Unlock()
-			return vcs.OriginCapture
+			return mark.origin
 		}
 		delete(w.selfWritten, rel)
 	}
 	// Opportunistic sweep so a capture that never produced an event cannot pin
 	// entries here forever.
-	for p, t := range w.selfWritten {
-		if time.Since(t) > 5*time.Minute {
+	for p, m := range w.selfWritten {
+		if time.Since(m.when) > 5*time.Minute {
 			delete(w.selfWritten, p)
 		}
 	}
