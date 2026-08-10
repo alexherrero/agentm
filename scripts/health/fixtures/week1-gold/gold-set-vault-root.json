@@ -1,0 +1,617 @@
+{
+  "$schema_note": "Week-1 retrieval gold set (60 questions) for wiki/designs/agentm-rescope-week1-experiment.md. Scored with the P@5/R@5 code in scripts/health/eval_v6_retrieval.py against both arms (FTS5-only vs FTS5+vector). Entry shape: {id, question, expected_note_paths, stratum, source}. `expected_note_paths` are vault-relative, resolved against plugins.obsidian-vault.vault_path \u2014 never hardcode the absolute path.",
+  "$derived_from": "gold-set.json (sha256 c301a093aa57fb5d), paths rewritten for a vault-root-relative corpus. The originals are relative to the agent's own tree, which was the vault root until the 2026-08-10 git-transport cutover moved the root up to the whole Obsidian folder. Use THIS file against the live vault and the stage1-* snapshots; use gold-set.json against week1-corpus-20260807 and week3-retest-20260808, whose roots are still the agent tree.",
+  "$strata": {
+    "distinctive-token": "12 \u2014 question shares an uncommon term (proper noun, package name, slug) with the target. Mined from real prompts in ~/.claude/projects/ transcripts.",
+    "pure-paraphrase": "18 \u2014 question shares no content word with the target's text. Operator writes these cold; placeholders below.",
+    "episodic-temporal": "12 \u2014 question references when or in what context something happened. Operator writes these cold; placeholders below.",
+    "research-density": "10 \u2014 question targets ONE note inside a dense near-identical cluster under projects/agentm/research/*/reference/. Precision, not recall.",
+    "negative": "8 \u2014 the true answer is 'no such memory exists.' Verified absent across the entire vault including personal/_inbox/ and the retirement-listed directories."
+  },
+  "$labeling_constraints": {
+    "no_fragments": "No expected_note_path points at a miner fragment \u2014 a body opening 'User stated:' / 'Fix observed:' / 'User corrected the agent:', or a mid-word slug under personal/idea/ or personal/fix/. 3,393 of the vault's 8,588 markdown files are that shape and are not valid ground truth even when they contain the fact.",
+    "no_retired_files": "No expected_note_path points at anything on the retirement list in wiki/designs/agentm-rescope-memory.md: personal/_opinions/, personal/_watchlist/, personal/_skill-watchlist/, _meta/skill-discovery-cache/, _idea-incubator/, _moc/, _meta/ health-scorecard + forward-learning + orchestration state.",
+    "question_provenance": "distinctive-token questions are transcript-sourced. Where a mid-session prompt did not stand alone (a bare 'yes, do that'), the operator's information need and its distinctive token are preserved and the session-only referent is dropped; the wording is otherwise his.",
+    "paraphrase_bar": "The design's literal bar \u2014 'shares no content word with the target note's text' \u2014 is unmeetable on a technical vault: a question about worktrees that avoids the word 'worktree' is a riddle, not something anyone types. Operational bar, ratified 2026-08-06: no RARE collision, where rare means the shared term appears in under 2% of the 4,475 eligible notes. A term above that (design 17.9%, agentm 21.3%) is ambient vocabulary and gives lexical ranking no handle. Every paraphrase entry records its sharpest collision below."
+  },
+  "$deferred": [
+    {
+      "question": "Why did AgentM never fully realize the vault vision that I had, forcing me to do a second re-write when we got to FRIDAY?",
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "target_when_activated": "wiki/designs/agentm-rescope-*.md (agentm repo)",
+      "why_deferred": "The answer is a repo file, not vault content, so no arm can retrieve it from the 8,030-file week-1 corpus. Both arms would fail equally \u2014 the A/B comparison survives, but the slot measures nothing. The vault holds only partial answers: F1-REAUDIT.md states the as-built capture path contradicts the designed one, and progress-r0-engine-repairs.md carries the inbox-backlog finding. Neither is the diagnosis being asked for.",
+      "activation_condition": "Promote into `entries` once the rescope designs live under desk/projects/ per the layout in agentm-rescope-memory.md. This is the mirror of the retirement-list rule: that rule stops the set labeling against files about to disappear; this stops it discarding questions whose targets have not arrived yet.",
+      "superseded_for_week_1_by": "pp07 \u2014 the same question narrowed by deletion to the half the current vault can answer. Promoting this one later does not retire pp07; they ask at different altitudes.",
+      "clause_note": "The original ended '...but actuall didn't?'. Operator dropped the clause 2026-08-06 as unresolvable rather than pick a reading; whoever promotes this decides what a right answer looks like."
+    }
+  ],
+  "entries": [
+    {
+      "id": "dt01",
+      "question": "the vault has a _dream-staging folder, which contains an inbox? I thought we just had an inbox with dated sub-folders.",
+      "expected_note_paths": [
+        "Agent/_dream-staging/_index.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt02",
+      "question": "can you tell me what the rag_tutorials folder is and why it's there? it looks like it's out of place / should be cleaned up",
+      "expected_note_paths": [
+        "Agent/projects/_archive/experimental/onenote-migration-summary.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt03",
+      "question": "i don't see F0's prompt in prompts-fin.md pack",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/designs/roadmap-finish/PROMPTS-FIN.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt04",
+      "question": "vault-git \u2014 does this design also handle the team vault scenario I want to plan for later?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/designs/vault-backing/vault-git.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt05",
+      "question": "on vault-drive's pre-requisites, is obsidian a hard pre-req or is that step optional?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/designs/vault-backing/vault-drive.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt06",
+      "question": "where should we file primos within the vault \u2014 it's not a personal project, it's a review for a nephew's project, so it shouldn't be mixed with my own work?",
+      "expected_note_paths": [
+        "Agent/external/primos/_index.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt07",
+      "question": "I really dislike it when you use the word 'load-bearing' \u2014 feels agent-y to me. What alternate did we codify for my voice?",
+      "expected_note_paths": [
+        "Agent/projects/blog/writing-voice.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt08",
+      "question": "we should have an hld template too, based off the existing HLDs \u2014 where did that land?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/designs/architecture-governance/hld-template.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt09",
+      "question": "what is phase-5b and what did we annotate on it before the wiki pass ran in the worker?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/designs/architecture-governance/PHASE-5B-wiki-transformation.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt10",
+      "question": "Done with CR-COORD through what we can, S1 Wave 4 \u2014 are we really completely done?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/archive/designs/consolidation-review/E0-coordinator-log.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt11",
+      "question": "for sherwood's brokers \u2014 Yahoo Finance, Alpaca and Robinhood for crypto \u2014 which one actually has to land, and which are designed-in but out of scope?",
+      "expected_note_paths": [
+        "Agent/projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "dt12",
+      "question": "You know it's \"AgentM\", not \"Agent M\" right?",
+      "expected_note_paths": [
+        "Agent/personal/_always-load/agent-m-crickets-branding.md"
+      ],
+      "stratum": "distinctive-token",
+      "source": "transcript"
+    },
+    {
+      "id": "pp01",
+      "question": "What were the three templates for design docs and where were they again?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/designs/architecture-governance/abbreviated-design-template.md",
+        "Agent/projects/crickets/_harness/archive/wave-c/PLAN.archive.20260706-wave-c-design-and-conventions.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "templates (3.4%)"
+    },
+    {
+      "id": "pp02",
+      "question": "Where did we store the worktree rules and can we change them depending on how agentm is installed/confgured?",
+      "expected_note_paths": [
+        "Agent/personal/_always-load/worktrees-never-auto.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "worktree (3.0%)"
+    },
+    {
+      "id": "pp03",
+      "question": "Lets update my voice for design documents",
+      "expected_note_paths": [
+        "Agent/projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "Agent/projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "voice (3.7%)"
+    },
+    {
+      "id": "pp04",
+      "question": "We need to adjust my voice for the blog to be more human and plain engligh.",
+      "expected_note_paths": [
+        "Agent/projects/blog/writing-voice.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "blog (2.5%)"
+    },
+    {
+      "id": "pp05",
+      "question": "Give me a list of my pending project ideas for the house?",
+      "expected_note_paths": [
+        "Agent/projects/home-tech-next/_index.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "ideas (2.2%)"
+    },
+    {
+      "id": "pp06",
+      "question": "What broke in sherwood that cuased me to decide to move from v1 to v2?",
+      "expected_note_paths": [
+        "Agent/projects/sherwood/decisions/2026-04-27-v2-design-decisions.md",
+        "Agent/projects/sherwood/_index.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "sherwood (1.4%) \u2014 KNOWN EXCEPTION to the 2% bar. Kept deliberately: it is the only term identifying which project, and agentm was rewritten too, so removing it makes the question ambiguous. An ambiguous question is a worse defect than a mild collision. v1 (4.6%) and v2 (3.8%) clear."
+    },
+    {
+      "id": "pp07",
+      "question": "Why did AgentM never fully realize the vault vision that I had?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/designs/friday/F1-REAUDIT.md",
+        "Agent/projects/agentm/_harness/designs/roadmap-finish/friday-surface-audit.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "fully (5.3%)",
+      "note": "Narrowed by deletion from the operator's original question \u2014 the unanswerable trailing clause was cut, no word was added, so source stays cold. The original is parked in $deferred. Broad question, best-available targets: F1-REAUDIT P2 states the as-built capture path contradicts the designed one, and the F0 surface audit is where that was found plus the companion [PENDING-IMPL] accumulate-loop finding. Neither is a full diagnosis; that lives in the repo's rescope designs."
+    },
+    {
+      "id": "pp08",
+      "question": "What did we decide on the primos review?",
+      "expected_note_paths": [
+        "Agent/external/primos/decisions/launch-readiness-verdict.md",
+        "Agent/external/primos/analysis/03-review/verdict.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "primos (1.0%) \u2014 KNOWN EXCEPTION, same reasoning as pp06's sherwood: the only term identifying which review. 'conclusion' (0.4%) was swapped for 'decide' (clear) to remove the avoidable rare collision."
+    },
+    {
+      "id": "pp09",
+      "question": "Show me where we kept the notes for primos",
+      "expected_note_paths": [
+        "Agent/external/primos/_index.md",
+        "Agent/external/primos/analysis/_summary.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "primos (1.0%) \u2014 KNOWN EXCEPTION as above. 'analysis' (1.9%) was swapped for 'notes' (clear)."
+    },
+    {
+      "id": "pp10",
+      "question": "Remind me why i chose to use a vault in the first place?",
+      "expected_note_paths": [
+        "Agent/personal/_always-load/vault-as-canonical-context.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "place (4.5%)"
+    },
+    {
+      "id": "pp11",
+      "question": "Why aren't you using em-dashes, did I ban those?",
+      "expected_note_paths": [
+        "Agent/projects/blog/writing-voice.md",
+        "Agent/projects/_global/wiki-style/2026-06-09-design-doc-prose.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "note": "FALSE PREMISE \u2014 em-dashes were never banned, they were mandated. writing-voice.md lists them as a deliberate casual marker ('Contractions, em-dashes everywhere'); design-doc-prose.md item 7 says em-dash asides are 'used liberally' and notes the approved voice would trip a naive check-slop em-dash-rate gate. The only 'avoid em dashes' text in the vault is a miner fragment (personal/preferences/i-want-it-even-more-plain.md, body opens 'User stated:'), which is precisely the shape that is not valid ground truth. Correct retrieval surfaces the contradiction.",
+      "sharpest_collision": "em-dashes (0.2%)"
+    },
+    {
+      "id": "pp12",
+      "question": "Under what circumstances do you automatically invoke worktrees and not?",
+      "expected_note_paths": [
+        "Agent/personal/_always-load/worktrees-never-auto.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "note": "Shares its target with pp02, which asks about the same note from the storage angle. Errors on the two will correlate.",
+      "sharpest_collision": "worktrees (1.9%)"
+    },
+    {
+      "id": "pp13",
+      "question": "Show me my current house configuration, what processor do i have in the two servers?",
+      "expected_note_paths": [
+        "Agent/personal/domains/homelab/nas-unraid.md",
+        "Agent/personal/domains/homelab/home-server.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "note": "nas-unraid.md carries the confirmed spec (Intel Xeon E-2176G, 6C/12T, ASRock Rack E3C246D4U, 64 GB ECC), confirmed 2026-06-27. Note the confirmation cites _idea-incubator/home-server-cluster/research-local-llm-home-box, which is on the retirement list \u2014 same pattern as ep01, the surviving fact outlives its source.",
+      "sharpest_collision": "current (10.3%)"
+    },
+    {
+      "id": "pp14",
+      "question": "Which sources do I trust for news, articles and research and why?",
+      "expected_note_paths": [
+        "Agent/personal/domains/security/trusted-security-sources.md",
+        "Agent/personal/skill-discovery-sources.md",
+        "Agent/personal/trusted-sources.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "note": "Three separately scoped whitelists, no single answer: the security advisory whitelist (a prompt-injection guard for the unbuilt vuln-watch sidecar), the skill-discovery source list, and an org-slug config used by adapt-skills to flag trustworthiness. Nothing covers general news or article reading.",
+      "sharpest_collision": "trust (2.0%)"
+    },
+    {
+      "id": "pp15",
+      "question": "Does agentm still support multiple operating systems?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-os-install-matrix.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "operating (0.6%)"
+    },
+    {
+      "id": "pp16",
+      "question": "How am I optimizing model cost despite the limitaitons of Claude and Antigravity in changing models on the fly automtically?",
+      "expected_note_paths": [
+        "Agent/projects/crickets/_harness/archive/progress-model-routing-and-levers.md",
+        "Agent/projects/agentm/_harness/designs/token-efficiency-46/queued-plans/model-routing-and-levers.PLAN.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "sharpest_collision": "cost (4.5%)"
+    },
+    {
+      "id": "pp17",
+      "question": "In my developer workflows, tell me what I do and don't do automaticaly and why",
+      "expected_note_paths": [
+        "Agent/projects/crickets/_harness/archive/designs/developer-workflows-autonomy/parts/autonomy-doctrine.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold"
+    },
+    {
+      "id": "pp18",
+      "question": "How many articles have I published on the blog vs TILs?",
+      "expected_note_paths": [
+        "Agent/projects/blog/parts/content-model.md",
+        "Agent/projects/blog/_harness/progress.md"
+      ],
+      "stratum": "pure-paraphrase",
+      "source": "cold",
+      "note": "content-model.md defines the two archetypes (Experiments long-form vs Learnings short notes); the running count lives in progress.md ('12 posts live'). No note states the split directly.",
+      "sharpest_collision": "tils (0.1%)"
+    },
+    {
+      "id": "ep01",
+      "question": "Tell me about the research we did on a tunneling or vpn solution for hosting without exposing services to the internet.",
+      "expected_note_paths": [
+        "Agent/personal/domains/homelab/network-topology.md",
+        "Agent/personal/domains/homelab/_index.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "The primary source \u2014 _idea-incubator/home-server-cluster/research-managed-private-vpn.md \u2014 is on the retirement list and cannot be labeled. Both targets carry the surviving verdict (Tailscale > NetBird > CF Zero Trust, WireGuard fallback, Headscale disqualified) and are rehomed as reference memories rather than deleted. Moved here from pure-paraphrase: four rare collisions (tunneling 0.1%, vpn 0.2%, hosting 0.6%, services 0.9%) made it unpassable as a paraphrase, and no rewording cleared the bar without becoming a riddle."
+    },
+    {
+      "id": "ep02",
+      "question": "When did I start working on shrimpi and when did i stop?",
+      "expected_note_paths": [
+        "Agent/projects/shrimpi/_index.md",
+        "Agent/projects/shrimpi/decisions/2026-03-20-key-design-decisions.md",
+        "Agent/projects/shrimpi/conventions/auto-sync-worktree.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "No note states a start or stop date. The answer is only inferable from artifact dating: the decisions doc is named 2026-03-20, auto-sync-worktree.md was created 2026-04-15 and last touched 2026-05-28, _index.md was created 2026-05-19 and still reads status: active. 'When I stopped' resolves to late May; 'when I started' is not recorded \u2014 the March decisions doc predates vault capture of this project, so the vault knows when it began watching, not when work began."
+    },
+    {
+      "id": "ep03",
+      "question": "How long has it been since my last bog post?",
+      "expected_note_paths": [
+        "Agent/projects/blog/_harness/PLAN.md",
+        "Agent/projects/blog/_harness/progress.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "Answerable, with an ambiguity the vault cannot resolve: posts are backdated via date: frontmatter in drafts/_archive/, so 'last post' reads two ways \u2014 by post date it is google-drive-no-undo (2026-06-26), by publish order it is 'Running Agent M all day' (v1.2.13). Both land in the same week of late June. PLAN.md still shows Task 4 ('Grounding Agent M', targeted July) open, confirming the gap is real rather than an unrecorded publish."
+    },
+    {
+      "id": "ep04",
+      "question": "When did we setup the cross-model pass for prose?",
+      "expected_note_paths": [
+        "Agent/projects/_global/wiki-style/2026-07-05-docs-prose-style.md",
+        "Agent/projects/agentm/_harness/archive/loose-ends/PLAN.archive.20260724-loose-ends-newcomer-onboarding.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "Weak target. No note records the two-step pass being established as a dated decision; these are the closest, carrying the simplify-aggressively rule and later plans that ran the pass."
+    },
+    {
+      "id": "ep05",
+      "question": "Why did I choose to split agentm into two repos and when?",
+      "expected_note_paths": [
+        "Agent/projects/crickets/decisions/2026-05-12-key-decisions.md",
+        "Agent/projects/agentm/decisions/2026-03-01-key-decisions.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold"
+    },
+    {
+      "id": "ep06",
+      "question": "When was the last time we worked on dev-setup?",
+      "expected_note_paths": [
+        "Agent/projects/dev-setup/_harness/progress.md",
+        "Agent/projects/dev-setup/designs/2026-06-26-ecosystem-reconciliation.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold"
+    },
+    {
+      "id": "ep07",
+      "question": "When did I decide to begin my first AgentM arc?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/_harness/archive/ROADMAP-AgentMemoryV4.md",
+        "Agent/projects/_archive/agent-m-v4/_index.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "The V4 roadmap's own '## Why a separate V4 roadmap' section is the decision \u2014 V4 work 'isn't sequenced linearly behind the non-V4 backlog. It's its own track, and items in this file get planned + executed in their own cadence once V3 is in production.' agent-m-v4/_index.md dates it: deferred to a dedicated roadmap as of plan #14 close, 2026-05-23. Ambiguity worth knowing: 'arc' as a formal label only appears from 2026-06-05, when arc: frontmatter stamping begins \u2014 so the first work stream that WAS an arc (V4, May) and the first thing CALLED one (June) are different dates. Both readings resolve inside these two notes."
+    },
+    {
+      "id": "ep08",
+      "question": "What caused googel drive to thrash on file sync and how did we fix it?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/decisions/research-concurrent-vault-writes.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "Answers the cause half well \u2014 macOS File Provider dataless placeholders, eviction re-dehydrating uploaded files, Drive conflict-copies, and the Claude Code EDEADLK issue on dataless CloudStorage reads. The fix half is a recommendation (coordination state on a local path outside the synced folder, lock/re-read/CAS/write-temp/fsync/rename), not a landed fix."
+    },
+    {
+      "id": "ep09",
+      "question": "When did we re-write agentm the first time?",
+      "expected_note_paths": [
+        "Agent/projects/_archive/agent-m-v4/_index.md",
+        "Agent/projects/agentm/version-summaries.md",
+        "Agent/projects/blog/drafts/_archive/rebuild-not-refactor.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "PARTIAL. No note calls anything an agentm rewrite. The closest records are the V3->V4 break (agent-m-v4/_index.md: V4 'deliberately breaks V3's folder structure + storage patterns', deferred 2026-05-23) and the V4->V7 through-line in version-summaries.md. rebuild-not-refactor.md dates Agent M's v0 birth to the Sherwood rebuild window (~April 2026) but describes a first build, not a rewrite. Answerable by inference, not by statement."
+    },
+    {
+      "id": "ep10",
+      "question": "When did we re-write sherwood the first time?",
+      "expected_note_paths": [
+        "Agent/projects/blog/drafts/_archive/rebuild-not-refactor.md",
+        "Agent/projects/sherwood/decisions/2026-04-27-v2-design-decisions.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "The blog draft carries the narrative and its post date (2026-04-18); the decisions doc dates the v1 tech-debt retro that triggered it (2026-04-27). Shares the decisions doc with pp06, which asks what broke rather than when."
+    },
+    {
+      "id": "ep11",
+      "question": "When did i establish my \"voice\" or prose for you?",
+      "expected_note_paths": [
+        "Agent/projects/_global/wiki-style/2026-07-05-docs-prose-style.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "Clean answer with a date in the note itself: created 2026-05-23, 'Learned during plan #14 ... over 3 review iterations where the user heavily edited an initial draft'. The same note's amendment log then dates every later evolution, so it answers both when it started and how it grew. Shares its target with pp03."
+    },
+    {
+      "id": "ep12",
+      "question": "When did I switch from antigravity to claude? or better when did I start using claude?",
+      "expected_note_paths": [
+        "Agent/projects/blog/drafts/_archive/claude-allowance-cut.md",
+        "Agent/projects/blog/drafts/_archive/green-squares.md"
+      ],
+      "stratum": "episodic-temporal",
+      "source": "cold",
+      "note": "First half answered precisely: claude-allowance-cut.md (dated 2026-02-04) records working almost entirely in Antigravity until the Claude allowance there was cut below usable, which forced the harness rethink and the lean into Claude \u2014 with Antigravity retained for what Gemini is good at. Second half is not recorded: green-squares.md only places first agentic-coding experience 'about eighteen months earlier' than 2026-01-19, and never names Claude as the tool."
+    },
+    {
+      "id": "rd01",
+      "question": "In the built-in ranker, can we change how quickly repeated occurrences of a term stop adding to a document's score, or is the per-field boost the only lever we get?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/sqlite/reference/bm25-k1-b-constants.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd02",
+      "question": "If we need to find a fragment sitting in the middle of a longer string rather than a whole word or a prefix, which indexing choice supports that \u2014 and does the same index also speed up ordinary pattern-match queries?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/sqlite/reference/trigram-tokenizer-substring-match.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd03",
+      "question": "One of the ways the server can collapse a model's output isn't usable for similarity search at all \u2014 it hands back a single number instead of anything you can compare with cosine. Which one, and what endpoint needs it?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/llama-cpp-embeddings/reference/rank-pooling-is-not-a-vector.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd04",
+      "question": "One of the two candidate embedding models only wants the instruction sentence glued onto the thing being searched with, never onto what we index, and barely suffers if we skip it entirely. Which model, and what is the exact sentence?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/llama-cpp-embeddings/reference/bge-small-optional-query-instruction.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd05",
+      "question": "Our watch on a single file goes dead after the first save. What does the library do to its own bookkeeping when a path gets renamed, and why isn't simply re-registering the watch afterwards enough to close the hole?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/file-watching/reference/issue-214-watch-removed-on-rename.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd06",
+      "question": "Can we rely on getting a modification notification for a directory itself when something inside it appears or disappears, or does that depend on which platform we're running on?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/file-watching/reference/event-write-directory-platform-divergence.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd07",
+      "question": "What's the reported hazard of pointing the repository-open call at a directory that turns out not to be a repository at all \u2014 does it just error out cleanly?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/go-git/reference/plain-open-side-effect-creates-git-dir.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd08",
+      "question": "If we take the library's stock diff settings, how alike do two files have to be before it calls the pair a rename, and is there a ceiling on how many pairs it will compare looking for one?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/go-git/reference/default-diff-tree-options-rename-score.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd09",
+      "question": "Why does the compiler keep bundled assets uncompressed inside the executable when squeezing them would obviously make it smaller \u2014 what capability would compressing them have broken?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/go-static-binaries/reference/embed-no-compression-random-access-rationale.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "rd10",
+      "question": "If the build-time value injection points at a symbol path that no longer exists after a package gets moved, do we find out at build time, or does the binary just ship with the wrong value?",
+      "expected_note_paths": [
+        "Agent/projects/agentm/research/go-static-binaries/reference/ldflags-x-silent-failure-mismatch.md"
+      ],
+      "stratum": "research-density",
+      "source": "authored"
+    },
+    {
+      "id": "ng01",
+      "question": "What did we settle on for backing the vault up to Backblaze B2 \u2014 bucket layout and retention?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng02",
+      "question": "Show me recent research you've ingested on current security vulnerability trends as it pretains to my current homelab setup and my github projects.",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "cold",
+      "note": "personal/domains/security/ looks populated but holds only scaffolding \u2014 threat-model.md is a triage lens with no findings, the four stack-*.md files are scan targets captured 2026-06-03, trusted-security-sources.md is the whitelist the unbuilt V7-6 vuln-watch sidecar would fetch from. No advisory has ever been ingested. The whole vault contains four CVE identifiers: three in _idea-incubator/ (retiring) and one in a design doc. A lexical arm should surface threat-model.md and stack-agentm.md with high confidence, and be wrong."
+    },
+    {
+      "id": "ng03",
+      "question": "What are my most commonly repeated preferences that we don't have rules for yet?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "cold",
+      "note": "Nothing answers this. The machinery that should \u2014 dreaming's inbox_promote proposals \u2014 lives in _dream-staging/, is TTL'd and cleaned up by dream_confirm.cleanup_applied_batches(), and on inspection is promoting miner fragments rather than preferences: proposal 21 of the 2026-07-12 batch promotes three near-duplicate captures whose body reads 'User stated: ...urns true, print inheritance_warning()'s text'. The two durable outputs in _dream/insights/ summarise counts (590 entries scanned, 3 contradiction_triage, 8 dedup, 1 lint) and surface no repeated preference at all. The question the memory system exists to answer, which it currently cannot."
+    },
+    {
+      "id": "ng04",
+      "question": "What did we settle on for managing the homelab boxes with Ansible?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng05",
+      "question": "When did git worktrees break my old antigravity setup and why?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "cold",
+      "note": "Operator confirms the event was never captured (2026-08-06). Verified across the whole vault: nothing records the operator's own Antigravity setup breaking because of worktrees. The near-misses are the trap, and they are strong. worktree-native-verdict-draft.md documents Antigravity's worktree support and cites 'live bug reports of worktree-config breaking the agent' \u2014 but those are Google AI Developer Forum threads by other people, undated, not his machine. BUGFIX-killswitch-ag-cwd.md (2026-06-02) is a real Antigravity directory-assumption failure that silently disabled his kill-switch, but has nothing to do with worktrees. renamed-cwd-breaks-resume.md (2026-05-25) and progress-wave-c-research-forward-learning.md are both Claude Code. An arm that returns any of these is wrong, and all four are plausible enough that returning nothing is a real test. Replaced my Time Machine negative, which duplicated ng01's backup topic."
+    },
+    {
+      "id": "ng06",
+      "question": "What did we conclude about swapping FTS5 out for Meilisearch?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "authored"
+    },
+    {
+      "id": "ng07",
+      "question": "Is my homelab vulnerable to any active security threats in the wild?",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "cold",
+      "note": "No live threat intelligence exists anywhere in the vault. threat-model.md names the scan surface (Docker-image CVEs, Unraid version advisories, network-gear firmware) and how to downgrade a finding on a LAN-only box, but records no finding. Sibling of ng02 \u2014 same domain, same emptiness, asked from the other direction."
+    },
+    {
+      "id": "ng08",
+      "question": "Give me information on the last 5 security vulnerabilities that we fixed on shrimpi.",
+      "expected_note_paths": [],
+      "stratum": "negative",
+      "source": "cold",
+      "note": "shrimpi has four notes in the whole vault \u2014 _index, conventions, a 2026-03-20 design-decisions doc, and a worktree convention. No bug, incident, or vulnerability is recorded for it anywhere. The trap is structural: personal/domains/security/ carries stack-agentm, stack-crickets, stack-dev-setup and stack-sherwood, so the folder is shaped as though a stack-shrimpi belongs in it. A lexical arm should surface the sibling stack files with confidence and be wrong."
+    }
+  ]
+}

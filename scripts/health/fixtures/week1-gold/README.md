@@ -4,12 +4,41 @@ Ground truth for the week-1 retrieval experiment
 (`wiki/designs/agentm-rescope-week1-experiment.md`). Read by
 `scripts/health/week1_retrieval_experiment.py`.
 
-Two files live here:
+Three files live here:
 
 | file | what it is |
 | --- | --- |
 | `gold-set.json` | the real 60-question set, hand-labeled. A durable artifact — it outlives this experiment and becomes the ongoing recall scorecard. |
+| `gold-set-vault-root.json` | the same 60 questions with every expected path prefixed `Agent/`. Same labels, same strata — only the path root differs. |
 | `smoke-set.json` | eight throwaway questions written to test the runner. Not a gold set. Nothing measured against it is a result. |
+
+## Which gold set to pass
+
+`score_at_k` matches expected paths against answered paths by **exact string
+equality** — no normalization, no prefix stripping. So the file you pass has to
+share a root with the corpus the daemon is serving, and neither harness defaults
+`--gold-set`: you always name one.
+
+| corpus | root it serves | pass |
+| --- | --- | --- |
+| `week1-corpus-20260807.tar.gz` | the agent tree | `gold-set.json` |
+| `week3-retest-20260808.tar.gz` | the agent tree | `gold-set.json` |
+| `stage1-pre-20260810.tar.gz` | the whole vault | `gold-set-vault-root.json` |
+| `stage1-post-20260810.tar.gz` | the whole vault | `gold-set-vault-root.json` |
+| the live vault | the whole vault | `gold-set-vault-root.json` |
+
+The split exists because the 2026-08-10 git-transport cutover moved the vault
+root up from the agent's own tree to the whole Obsidian folder, so the daemon
+now answers `Agent/projects/…` where it used to answer `projects/…`. The two
+frozen week-1/week-3 snapshots keep the old root forever — that is what a frozen
+snapshot is for — so the original labels stay correct for them and are left
+byte-identical, per this repo's fixture discipline: a correction is a new file,
+never a mutation of the pinned one.
+
+Against the live vault the original set scores **0/64** and has since the
+cutover. That is a stale label, not a retrieval regression, and any scorecard run
+against the live vault before 2026-08-10 that looked catastrophic should be
+re-read with that in mind.
 
 ## Schema
 
