@@ -152,13 +152,21 @@ const dialTimeout = 15 * time.Second
 // EHLO response otherwise harvests the password from a daemon that thought it
 // was being helpful.
 func sendSMTP(cfg config.EmailConfig, subject, body string) error {
+	// The URL carries the operator's relay password in its userinfo, so it never
+	// appears in an error. `url.Parse` embeds the string it failed on, and a `%q`
+	// of the URL would print the credential outright — either one puts a password
+	// into a log file that a status surface, a support paste, or a bug report
+	// then carries somewhere else.
 	u, err := url.Parse(cfg.SMTPURL)
 	if err != nil {
-		return fmt.Errorf("smtp url: %w", err)
+		return errors.New(
+			"plugins.autonomy.email_smtp_url is not a URL I can parse " +
+				"(expected smtp://[user[:password]@]host[:port]); the value is not " +
+				"echoed here because it carries a password")
 	}
 	host := u.Hostname()
 	if host == "" {
-		return fmt.Errorf("smtp url %q names no host", cfg.SMTPURL)
+		return errors.New("plugins.autonomy.email_smtp_url names no host")
 	}
 	port := u.Port()
 	if port == "" {
