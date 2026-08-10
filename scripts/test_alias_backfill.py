@@ -56,8 +56,16 @@ class GateTests(unittest.TestCase):
 
     The gate exists because this job ran 1,930 edits with a hand-rolled revert
     journal as its only undo. Every path here fails closed: a refusal stops the
-    run, and so does a gate that could not answer.
+    run, a gate that could not answer stops it, and so does anything that exits
+    0 without being the gate.
+
+    The daemon's exit code is the verdict and these tests do not re-derive it —
+    a second opinion in Python is a second dialect of the gate. What is pinned
+    is that each exit code produces the right outcome, and that an unrecognized
+    success is not read as permission.
     """
+
+    PASS_OUTPUT = "gate corpus-write: PASS\n  head:  " + "a" * 40
 
     def _run(self, **kwargs):
         completed = subprocess.CompletedProcess(
@@ -65,37 +73,37 @@ class GateTests(unittest.TestCase):
             stdout=kwargs.get("stdout", ""), stderr=kwargs.get("stderr", ""),
         )
         with mock.patch.object(ab.subprocess, "run", return_value=completed):
-            ab.require_corpus_write_gate("agentmd", "/tmp/vault")
+            ab.require_corpus_write_gate("agentmd", "/tmp/vault", stderr=io.StringIO())
 
-    def test_a_passing_gate_reports_the_undo_point(self):
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            self._run(stdout=json.dumps({"pass": True, "head": "a" * 40}))
-        self.assertIn("PASS", out.getvalue())
-        self.assertIn("a" * 40, out.getvalue())
+    def test_a_passing_gate_lets_the_job_start(self):
+        self._run(returncode=0, stdout=self.PASS_OUTPUT)
 
-    def test_a_refusal_stops_the_run_and_says_why(self):
+    def test_a_refusal_stops_the_run_and_relays_the_gates_own_reason(self):
+        refusal = (
+            "gate corpus-write: REFUSED\n\n  git-degraded\n"
+            "    vault root is not a git repository\n"
+            "    fix: run the git-transport migration\n"
+        )
         with self.assertRaises(SystemExit) as caught:
-            self._run(returncode=3, stdout=json.dumps({
-                "pass": False,
-                "reasons": [{
-                    "code": "git-degraded",
-                    "detail": "vault root is not a git repository",
-                    "remedy": "run the git-transport migration",
-                }],
-            }))
+            self._run(returncode=3, stdout=refusal)
         message = str(caught.exception)
-        self.assertIn("REFUSED", message)
         self.assertIn("git-degraded", message)
         self.assertIn("run the git-transport migration", message)
 
-    def test_an_unreadable_verdict_is_a_refusal_not_a_pass(self):
-        with self.assertRaises(SystemExit):
-            self._run(returncode=0, stdout="this is not json")
+    def test_an_undecidable_gate_is_a_refusal(self):
+        with self.assertRaises(SystemExit) as caught:
+            self._run(returncode=1, stderr="unknown gate \"invented\"")
+        self.assertIn("fail closed", str(caught.exception))
 
-    def test_a_zero_exit_without_a_pass_field_is_a_refusal(self):
+    def test_a_zero_exit_that_is_not_the_gate_is_refused(self):
+        """`agentmd` is a bare name on PATH. Something else exiting 0 is not a pass."""
+        with self.assertRaises(SystemExit) as caught:
+            self._run(returncode=0, stdout="usage: some other program")
+        self.assertIn("not the gate", str(caught.exception))
+
+    def test_a_silent_zero_exit_is_refused(self):
         with self.assertRaises(SystemExit):
-            self._run(returncode=0, stdout=json.dumps({"reasons": []}))
+            self._run(returncode=0, stdout="")
 
     def test_a_missing_binary_is_a_refusal(self):
         with mock.patch.object(ab.subprocess, "run", side_effect=OSError("no such file")):
@@ -118,9 +126,7 @@ class GateTests(unittest.TestCase):
             }) + "\n", encoding="utf-8")
             refused = subprocess.CompletedProcess(
                 args=["agentmd"], returncode=3,
-                stdout=json.dumps({"pass": False, "reasons": [
-                    {"code": "git-degraded", "detail": "not a repository", "remedy": "migrate"}]}),
-                stderr="",
+                stdout="gate corpus-write: REFUSED\n\n  git-degraded\n", stderr="",
             )
             with mock.patch.object(ab.subprocess, "run", return_value=refused):
                 with self.assertRaises(SystemExit):

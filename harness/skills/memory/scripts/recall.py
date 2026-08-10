@@ -2075,6 +2075,13 @@ def main(argv: list[str] | None = None) -> int:
         except ImportError:
             print("ERROR: heat_policy module not found", file=sys.stderr)
             return 1
+        if args.apply:
+            # Heat curation promotes and demotes entries across the whole
+            # corpus, editing frontmatter in place. That is a corpus-wide write
+            # and it asks the gate first.
+            from corpus_gate import require_corpus_write_gate  # type: ignore
+
+            require_corpus_write_gate(vault=str(vault))
         result = run_policy(vault, dry_run=not args.apply)
         print(json.dumps(result))
         return 0

@@ -552,10 +552,20 @@ func cmdGate(args []string) error {
 	fs := newFlagSet("gate")
 	opts := bindCommon(fs)
 	asJSON := fs.Bool("json", false, "emit the verdict as JSON")
-	if err := fs.Parse(args); err != nil {
+
+	// The gate's name is positional and Go's flag package stops parsing at the
+	// first non-flag argument, so `gate corpus-write --vault X` would otherwise
+	// leave every flag unparsed and fold them into the name. Pull the positional
+	// out first and both orderings work — which matters because the natural one
+	// is the one every caller writes.
+	name, flagArgs := splitPositional(args)
+	if err := fs.Parse(flagArgs); err != nil {
 		return err
 	}
-	name := strings.TrimSpace(strings.Join(fs.Args(), " "))
+	if extra := fs.Args(); len(extra) > 0 {
+		return fmt.Errorf("unexpected argument %q; usage: agentmd gate %s [flags]",
+			extra[0], gate.CorpusWrite)
+	}
 	if name == "" {
 		return fmt.Errorf("usage: agentmd gate %s [--json]", gate.CorpusWrite)
 	}

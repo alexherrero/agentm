@@ -543,6 +543,39 @@ func TestGate_UnknownGatesAreRefusedNotAssumed(t *testing.T) {
 	runCLI(t, bin, 1, "gate", "--config", env.config, "--index", env.index)
 }
 
+// TestGate_FlagsWorkOnEitherSideOfTheName.
+//
+// Go's flag package stops parsing at the first non-flag argument, so
+// `gate corpus-write --json` silently parsed no flags at all and folded them
+// into the gate's name. The tests above did not catch it because they all wrote
+// the flags first — an ordering no caller actually uses. Found by running a
+// wired job script for real, which is the only reason it is not still shipping.
+func TestGate_FlagsWorkOnEitherSideOfTheName(t *testing.T) {
+	bin := buildDaemon(t)
+	env := newVault(t)
+	gitInit(t, env.vault)
+	env.write(t, "personal/2026/08/seed.md", "---\ntype: idea\nstatus: active\n---\nA note.\n")
+	gitCommitAll(t, env.vault, "seed")
+
+	for _, args := range [][]string{
+		// The natural ordering — what every caller writes.
+		{"gate", "corpus-write", "--config", env.config, "--index", env.index, "--json"},
+		// And the one the earlier tests happened to use.
+		{"gate", "--config", env.config, "--index", env.index, "--json", "corpus-write"},
+		// A boolean flag between the two, which must not swallow the name.
+		{"gate", "--json", "corpus-write", "--config", env.config, "--index", env.index},
+	} {
+		res := decodeGate(t, runCLI(t, bin, 0, args...))
+		if !res.Pass || res.Gate != "corpus-write" {
+			t.Errorf("`agentmd %s` did not reach the gate: %+v", strings.Join(args, " "), res)
+		}
+	}
+
+	// And a stray second positional is an error rather than a silently ignored
+	// argument — the failure mode this whole entry is about.
+	runCLI(t, bin, 1, "gate", "corpus-write", "extra-thing", "--config", env.config)
+}
+
 // ---------------------------------------------------------------------------
 // Harness
 // ---------------------------------------------------------------------------

@@ -18,6 +18,12 @@
 #                  sorted for cross-platform determinism).
 #   vault-lock   — scripts/vault_lock.py is byte-identical to its vendored
 #                  sibling harness/skills/memory/scripts/vault_lock.py
+#   corpus-gate  — scripts/corpus_gate.py is byte-identical to its vendored
+#                  sibling harness/skills/memory/scripts/corpus_gate.py.
+#                  Same LC-8 reason as vault-lock: kernel toolkit scripts must
+#                  never import back into scripts/, so the corpus-write gate's
+#                  one call site shape is vendored rather than shared. A drift
+#                  here means two jobs disagree about whether an undo exists.
 #                  (DC-9: the skill dir isn't on sys.path in a real install,
 #                  so this security-critical write primitive is vendored,
 #                  not imported cross-tree).
@@ -50,7 +56,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-MODES=(lib vault-lock wiki-publish-transform storage-seam hook-config workflow)
+MODES=(lib vault-lock corpus-gate wiki-publish-transform storage-seam hook-config workflow)
 
 _sha_cmd() {
   # SHA-256 tool: prefer sha256sum (Linux/coreutils, Git Bash on Windows),
@@ -140,6 +146,18 @@ _pair_check() {
   echo "  Re-vendor with: cp $canon $vendored" >&2
   diff "$canon" "$vendored" >&2 || true
   return 1
+}
+
+# ── corpus-gate: single canonical/vendored pair ─────────────────────────────
+mode_corpus_gate() {
+  local CANON="$REPO_ROOT/scripts/corpus_gate.py"
+  local VENDORED="$REPO_ROOT/harness/skills/memory/scripts/corpus_gate.py"
+  _pair_check "corpus-gate" "$CANON" "$VENDORED"
+  local rc=$?
+  if [[ "$rc" -eq 0 ]]; then
+    echo "check-vendored-parity[corpus-gate]: clean (both corpus_gate.py copies are sha256-identical)"
+  fi
+  return "$rc"
 }
 
 # ── vault-lock: single canonical/vendored pair ──────────────────────────────
@@ -328,10 +346,16 @@ main() {
     case "$mode" in
       lib)          mode_lib ;;
       vault-lock)   mode_vault_lock ;;
+      corpus-gate)  mode_corpus_gate ;;
       wiki-publish-transform) mode_wiki_publish_transform ;;
       storage-seam) mode_storage_seam ;;
       hook-config)  mode_hook_config ;;
       workflow)     mode_workflow "$@" ;;
+      # A mode named in MODES but missing an arm here reached this point
+      # silently and passed, which is how a parity check reports clean on a
+      # pair it never compared. Unknown modes are a setup error, not a pass.
+      *)            echo "check-vendored-parity: no implementation for mode '$mode'" >&2
+                    false ;;
     esac
     rc=$?
     if [ "$rc" -gt "$worst" ]; then worst=$rc; fi

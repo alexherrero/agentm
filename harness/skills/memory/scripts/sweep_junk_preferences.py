@@ -146,6 +146,12 @@ def main(argv: list[str]) -> int:
     if not vault.is_dir():
         print(f"sweep_junk_preferences: vault path does not exist: {vault}", file=sys.stderr)
         return 2
+    if ns.apply:
+        # Archiving a cohort is a corpus-wide write: it moves many existing
+        # notes in one run, and undoing it needs a state to undo to.
+        from corpus_gate import require_corpus_write_gate  # type: ignore
+
+        require_corpus_write_gate(vault=str(vault))
     sweep(vault, apply=ns.apply)
     return 0
 
