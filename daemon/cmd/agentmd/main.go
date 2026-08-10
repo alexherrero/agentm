@@ -158,6 +158,11 @@ func cmdServe(args []string) error {
 	defer idx.Close()
 
 	repo := vcs.Open(cfg.VaultPath)
+	// An absence has to outlive a reconcile interval before it counts as a
+	// deletion, because the pass that would notice the file back runs on that
+	// interval. On a cloud-sync mount the alternative is recording a deletion for
+	// a file that was only being replaced at its own path.
+	repo.SetDeletionGrace(max(cfg.ReconcileEvery, vcs.DefaultDeletionGrace))
 	if repo.Available() {
 		log.Info("git", "status", repo.Status())
 	} else {

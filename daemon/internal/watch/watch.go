@@ -264,6 +264,11 @@ func (w *Watcher) Run(ctx context.Context) error {
 			if _, err := w.ReconcileNow(); err != nil {
 				w.log.Error("reconcile failed", "err", err)
 			}
+			// Deletions are recorded here rather than when they are first seen: a
+			// path missing once is a path the sync client may simply be moving into
+			// place. The pass above has already looked at the vault, so this is the
+			// second look the quarantine is waiting for.
+			w.sweepDeletions()
 			// A new subtree can appear between passes; pick up watches for it.
 			if fsw != nil {
 				w.addDirs(w.cfg.VaultPath)
@@ -275,8 +280,15 @@ func (w *Watcher) Run(ctx context.Context) error {
 // relevant filters the event stream down to markdown changes, and picks up watches
 // for directories that appear.
 func (w *Watcher) relevant(ev fsnotify.Event) (rel string, ok bool) {
-	name := filepath.Base(ev.Name)
-	if strings.HasPrefix(name, ".") {
+	r, err := filepath.Rel(w.cfg.VaultPath, ev.Name)
+	if err != nil {
+		return "", false
+	}
+	r = filepath.ToSlash(r)
+	if r == "." || r == ".." || strings.HasPrefix(r, "../") {
+		return "", false
+	}
+	if hasDotSegment(r) {
 		return "", false
 	}
 	if ev.Has(fsnotify.Create) {
@@ -285,17 +297,36 @@ func (w *Watcher) relevant(ev fsnotify.Event) (rel string, ok bool) {
 			return "", true
 		}
 	}
-	if !strings.HasSuffix(name, ".md") {
+	if !strings.HasSuffix(r, ".md") {
 		return "", false
 	}
 	if ev.Op == fsnotify.Chmod {
 		return "", false
 	}
-	r, err := filepath.Rel(w.cfg.VaultPath, ev.Name)
-	if err != nil {
-		return "", false
+	return r, true
+}
+
+// hasDotSegment reports whether any component of a vault-relative path starts
+// with a dot.
+//
+// Checking only the base name is not enough, and the gap is not theoretical.
+// Google Drive stages every upload through a `.tmp.driveupload` directory beside
+// the file, so its churn arrives as ordinary-looking `something.md` events one
+// level down — a base-name check waves all of them through. The reconcile pass
+// already skips dot directories during its walk (index.Reconcile), so those
+// paths never reached the index; the notifier had no equivalent, and during the
+// git-transport cutover's bulk upload it fed the commit path more than 1,400
+// files that existed for less than a debounce window.
+//
+// The notifier sees them at all because the kqueue backend adds watches for
+// directories created inside a watched directory, whatever addDirs chose to walk.
+func hasDotSegment(rel string) bool {
+	for _, seg := range strings.Split(rel, "/") {
+		if strings.HasPrefix(seg, ".") {
+			return true
+		}
 	}
-	return filepath.ToSlash(r), true
+	return false
 }
 
 // process re-indexes a batch and commits it, grouped by attribution.
@@ -341,6 +372,20 @@ func (w *Watcher) commitPaths(paths []string) {
 			w.log.Info("change indexed, not committed",
 				"origin", origin, "paths", len(paths), "reason", "git unavailable")
 		}
+	}
+}
+
+// sweepDeletions asks the repository to settle its quarantined absences, and
+// reports what it recorded. A deletion reaching history is worth the same line
+// as any other commit — it is the one that cannot be recovered by looking again.
+func (w *Watcher) sweepDeletions() {
+	commits, err := w.repo.SweepDeletions()
+	for _, c := range commits {
+		w.log.Info("committed confirmed deletions",
+			"origin", c.Origin, "paths", len(c.Paths), "commit", c.Hash[:8])
+	}
+	if err != nil {
+		w.log.Warn("confirming deletions failed", "err", err)
 	}
 }
 

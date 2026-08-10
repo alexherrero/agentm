@@ -55,6 +55,23 @@ const (
 	OriginProbe Origin = "self-probe"
 )
 
+// DefaultDeletionGrace is how long a path must stay missing before its removal
+// is recorded in history.
+//
+// The vault lives on a cloud-sync mount, and Google Drive replaces a file by
+// staging the new copy elsewhere and moving it into place — which makes the
+// file briefly unstattable at its own path while nothing about it has actually
+// changed. On 2026-08-10, immediately after the git-transport cutover, that
+// window was read as two deletions and committed as such; the notes were on
+// disk the whole time, and the history (and the backup pushed from it)
+// described a vault missing notes that existed.
+//
+// So an absence is confirmed, never believed on sight. Every other direction
+// this daemon can get wrong heals on the next pass — a note wrongly re-indexed
+// is re-indexed correctly a minute later. A deletion recorded in history is the
+// one that does not.
+const DefaultDeletionGrace = 90 * time.Second
+
 // Repo is the vault's git repository, or a loud absence of one.
 type Repo struct {
 	root      string
@@ -64,6 +81,21 @@ type Repo struct {
 	reason    string
 
 	author object.Signature
+
+	// grace and pendingDeletes are the deletion quarantine. A path observed
+	// missing is held here rather than staged, and only becomes a removal once
+	// the absence has survived a second look at least `grace` later.
+	grace          time.Duration
+	pendingDeletes map[string]pendingDelete
+}
+
+// pendingDelete is one absence waiting to be confirmed or withdrawn.
+type pendingDelete struct {
+	// origin is the attribution from when the absence was first seen, so a
+	// deletion confirmed several minutes later is still recorded as the thing
+	// that caused it rather than as whatever happened to run the sweep.
+	origin      Origin
+	firstAbsent time.Time
 }
 
 // Open opens the vault's repository. A missing repository is not an error — the
@@ -76,6 +108,8 @@ func Open(vaultRoot string) *Repo {
 			Name:  "agentm daemon",
 			Email: "agentm@localhost",
 		},
+		grace:          DefaultDeletionGrace,
+		pendingDeletes: map[string]pendingDelete{},
 	}
 	// DetectDotGit stays off on purpose: it would walk upward and happily adopt
 	// some unrelated ancestor repository, committing vault contents into it.
@@ -96,6 +130,17 @@ func Open(vaultRoot string) *Repo {
 
 // Available reports whether commits are actually happening.
 func (r *Repo) Available() bool { return r.available }
+
+// SetDeletionGrace sets how long an absence must persist before it is recorded
+// as a deletion. Zero still requires two separate observations; it just does not
+// require time to pass between them.
+func (r *Repo) SetDeletionGrace(d time.Duration) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if d >= 0 {
+		r.grace = d
+	}
+}
 
 // Status is the human-readable state, for the status surface.
 func (r *Repo) Status() string {
@@ -159,7 +204,12 @@ func (r *Repo) Dirty() ([]string, error) {
 }
 
 // Commit stages the given vault-relative paths and records one commit attributed
-// to `origin`. Paths that no longer exist are staged as deletions.
+// to `origin`.
+//
+// A path that no longer exists is not staged as a deletion here. The first time
+// it is seen missing it goes into the quarantine and nothing is recorded; it
+// becomes a removal only once SweepDeletions has watched the absence persist.
+// See DefaultDeletionGrace for why that asymmetry is deliberate.
 //
 // Returns the commit hash, or an empty string when there was nothing to commit or
 // git is unavailable.
@@ -180,53 +230,224 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 	}
 
 	sort.Strings(paths)
-	staged := 0
+	var staged []string
 	var problems []string
 	for _, rel := range paths {
 		abs := filepath.Join(r.root, filepath.FromSlash(rel))
 		_, statErr := os.Stat(abs)
-		if statErr != nil {
-			// Gone from disk: stage the deletion. go-git returns an error when the
-			// path was never tracked, which is the ordinary case for a temp file
-			// that came and went, and is not worth reporting.
-			if _, err := wt.Remove(rel); err != nil {
+		switch {
+		case statErr == nil:
+			// Present. Whatever we previously suspected about this path is over —
+			// an absence that ends is a sync round-trip, not a deletion.
+			delete(r.pendingDeletes, rel)
+			if _, err := wt.Add(rel); err != nil {
+				problems = append(problems, fmt.Sprintf("%s: %v", rel, err))
 				continue
 			}
-			staged++
-			continue
+			staged = append(staged, rel)
+
+		case errors.Is(statErr, os.ErrNotExist):
+			if !r.absenceConfirmed(rel, origin) {
+				continue
+			}
+			if r.stageDeletion(rel) {
+				staged = append(staged, rel)
+			}
+
+		default:
+			// Not ENOENT: an unreadable parent, an I/O error from the mount, a
+			// permission the sync client took away for a moment. None of that is
+			// evidence the file is gone, and unknown must never be treated as gone.
+			// The path stays tracked and the next reconcile pass looks again.
+			problems = append(problems, fmt.Sprintf("%s: %v", rel, statErr))
 		}
-		if _, err := wt.Add(rel); err != nil {
-			problems = append(problems, fmt.Sprintf("%s: %v", rel, err))
-			continue
-		}
-		staged++
-	}
-	if staged == 0 {
-		if len(problems) > 0 {
-			return "", fmt.Errorf("nothing could be staged: %s", strings.Join(problems, "; "))
-		}
-		return "", nil
 	}
 
+	hash, err := r.commitStaged(wt, origin, paths, staged)
+	if err != nil {
+		return "", err
+	}
+	if len(problems) == 0 {
+		return hash, nil
+	}
+	if hash != "" {
+		return hash, fmt.Errorf("committed with problems: %s", strings.Join(problems, "; "))
+	}
+	return "", fmt.Errorf("nothing was committed: %s", strings.Join(problems, "; "))
+}
+
+// SweepCommit is one deletion commit the sweep recorded.
+type SweepCommit struct {
+	Origin Origin
+	Paths  []string
+	Hash   string
+}
+
+// SweepDeletions records the removals whose absence has now persisted, and
+// withdraws the ones that turned out to be a file in transit.
+//
+// This is the other half of the quarantine, and it is not optional. The
+// reconcile pass reports a vanished path exactly once — it drops the row from
+// the index on the first pass that misses the file, so a second pass has
+// nothing left to re-offer. Holding a deletion inside Commit alone would
+// therefore lose real deletions rather than merely delay them. The daemon has
+// to re-check its own quarantine, which is what this does, once per reconcile
+// tick.
+func (r *Repo) SweepDeletions() ([]SweepCommit, error) {
+	if !r.available {
+		return nil, nil
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.pendingDeletes) == 0 {
+		return nil, nil
+	}
+
+	wt, err := r.repo.Worktree()
+	if err != nil {
+		return nil, fmt.Errorf("worktree: %w", err)
+	}
+
+	byOrigin := map[Origin][]string{}
+	for rel, pend := range r.pendingDeletes {
+		if time.Since(pend.firstAbsent) < r.grace {
+			continue
+		}
+		abs := filepath.Join(r.root, filepath.FromSlash(rel))
+		_, statErr := os.Stat(abs)
+		switch {
+		case statErr == nil:
+			// It came back. The sync was replacing the file at its own path; the
+			// reconcile pass has already re-indexed it and there is nothing to record.
+			delete(r.pendingDeletes, rel)
+		case errors.Is(statErr, os.ErrNotExist):
+			delete(r.pendingDeletes, rel)
+			if r.stageDeletion(rel) {
+				byOrigin[pend.origin] = append(byOrigin[pend.origin], rel)
+			}
+		default:
+			// Still unknown. Leave it quarantined rather than guessing; the next
+			// sweep asks again.
+		}
+	}
+	if len(byOrigin) == 0 {
+		return nil, nil
+	}
+
+	origins := make([]Origin, 0, len(byOrigin))
+	for origin := range byOrigin {
+		origins = append(origins, origin)
+	}
+	sort.Slice(origins, func(i, j int) bool { return origins[i] < origins[j] })
+
+	var out []SweepCommit
+	var problems []string
+	for _, origin := range origins {
+		paths := byOrigin[origin]
+		sort.Strings(paths)
+		hash, err := r.commitStaged(wt, origin, paths, paths)
+		if err != nil {
+			problems = append(problems, fmt.Sprintf("%s: %v", origin, err))
+			continue
+		}
+		if hash != "" {
+			out = append(out, SweepCommit{Origin: origin, Paths: paths, Hash: hash})
+		}
+	}
+	if len(problems) > 0 {
+		return out, fmt.Errorf("confirmed deletions: %s", strings.Join(problems, "; "))
+	}
+	return out, nil
+}
+
+// absenceConfirmed reports whether this path has now been seen missing twice,
+// far enough apart. The first sighting only opens the quarantine entry.
+//
+// Caller holds r.mu.
+func (r *Repo) absenceConfirmed(rel string, origin Origin) bool {
+	prev, quarantined := r.pendingDeletes[rel]
+	if quarantined && time.Since(prev.firstAbsent) >= r.grace {
+		delete(r.pendingDeletes, rel)
+		return true
+	}
+	if !quarantined {
+		r.pendingDeletes[rel] = pendingDelete{origin: origin, firstAbsent: time.Now()}
+	}
+	return false
+}
+
+// stageDeletion records a removal in the git index without touching the file,
+// reporting whether there was a tracked entry to remove at all.
+//
+// It edits the index directly rather than calling Worktree.Remove, which deletes
+// the file from the working tree as well (doRemoveFile: deleteFromIndex, then
+// deleteFromFilesystem). On a path that is genuinely gone that second step is a
+// no-op — but "genuinely gone" is precisely what a cloud-sync mount lies about,
+// and a Remove landing in the instant the file is back would delete the
+// operator's note rather than merely misrecord it. Keeping the blast radius
+// inside the index keeps the worst case recoverable.
+//
+// A missing index entry is the ordinary case for a temp file that came and went,
+// and is not worth reporting.
+//
+// Caller holds r.mu.
+func (r *Repo) stageDeletion(rel string) bool {
+	idx, err := r.repo.Storer.Index()
+	if err != nil {
+		return false
+	}
+	if _, err := idx.Remove(rel); err != nil {
+		return false
+	}
+	return r.repo.Storer.SetIndex(idx) == nil
+}
+
+// commitStaged records the staged paths as one commit, or reports that staging
+// them changed nothing.
+//
+// Caller holds r.mu.
+func (r *Repo) commitStaged(wt *git.Worktree, origin Origin, msgPaths, staged []string) (string, error) {
+	if len(staged) == 0 {
+		return "", nil
+	}
 	status, err := wt.Status()
-	if err == nil && status.IsClean() {
+	if err == nil && !changesTree(status, staged) {
 		// The watcher can see an event for a write that did not change content —
 		// a touch, or a sync round-trip. An empty commit would be noise in the
 		// one log that is supposed to be readable.
 		return "", nil
 	}
 
-	hash, err := wt.Commit(commitMessage(origin, paths), &git.CommitOptions{
+	hash, err := wt.Commit(commitMessage(origin, msgPaths), &git.CommitOptions{
 		Author:    r.signature(),
 		Committer: r.signature(),
 	})
 	if err != nil {
 		return "", fmt.Errorf("commit: %w", err)
 	}
-	if len(problems) > 0 {
-		return hash.String(), fmt.Errorf("committed with problems: %s", strings.Join(problems, "; "))
-	}
 	return hash.String(), nil
+}
+
+// changesTree reports whether staging these paths actually changed what the next
+// commit would record.
+//
+// The obvious check — Status().IsClean() — is wrong here, and wrong in a way
+// that only shows up on a cloud-sync mount. IsClean() counts untracked files,
+// which do not affect the tree at all. During Drive's bulk upload the vault is
+// continuously full of untracked staging files, so IsClean() was false the whole
+// time while a batch of unchanged notes staged nothing. Every batch then reached
+// a commit with an empty tree diff, which go-git rejects with "cannot create
+// empty commit: clean working tree" — a warning per batch, over 1,400 of them,
+// for a condition that was never an error. Asking only about the paths we staged
+// answers the question that was actually being asked.
+func changesTree(status git.Status, staged []string) bool {
+	for _, rel := range staged {
+		if st, ok := status[rel]; ok && st.Staging != git.Unmodified {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *Repo) signature() *object.Signature {

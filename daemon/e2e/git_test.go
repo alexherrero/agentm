@@ -1,7 +1,10 @@
 package e2e
 
 import (
+	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -95,6 +98,64 @@ Captured in the daily note on the phone.
 	}
 }
 
+// TestGit_DriveStagingChurnNeverReachesHistory keeps Google Drive's scratch
+// space out of the vault's record.
+//
+// Drive stages every upload through a `.tmp.driveupload` directory, so the vault
+// is briefly full of files that are named like notes and are not notes. Two
+// separate things currently keep them out: relevant() drops any path with a
+// dotted segment, and the Create branch below it is what would otherwise hand a
+// new directory to addDirs and start watching it. Remove either and this test
+// fails with several dozen staging files committed to history — which is the
+// point, because the two guards are one line apart and the second is easy to
+// reorder above the first while refactoring.
+//
+// This is a composite guard, not the regression test for the base-name-only
+// filter that preceded it; that distinction is pinned in the watch package,
+// where relevant() can be asked directly.
+func TestGit_DriveStagingChurnNeverReachesHistory(t *testing.T) {
+	bin := buildDaemon(t)
+	env := newVault(t)
+	gitInit(t, env.vault)
+
+	d := start(t, bin, env)
+	defer d.kill(t)
+
+	// A batch that persists, as during a bulk upload...
+	for i := range 40 {
+		env.write(t, fmt.Sprintf(".tmp.driveupload/%d.md", 3700+i), "in flight\n")
+	}
+	// ...and a batch that is gone again within a debounce window, which is what
+	// the transient half of the churn actually looks like.
+	for i := range 40 {
+		rel := fmt.Sprintf("personal/2026/08/.tmp.driveupload/%d.md", 3800+i)
+		env.write(t, rel, "in flight\n")
+		if err := os.Remove(filepath.Join(env.vault, filepath.FromSlash(rel))); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A real note, so we know the pipeline is alive and several reconcile cycles
+	// have run past the churn rather than merely not having got to it yet.
+	rel := "personal/2026/08/a-real-note.md"
+	env.write(t, rel, `---
+type: idea
+status: unfiled
+captured: 2026-08-10T09:00:00Z
+---
+The note that is actually a note.
+`)
+	waitForCommit(t, env.vault, rel)
+
+	if paths := committedPaths(t, env.vault); len(paths) > 0 {
+		t.Errorf("the sync client's staging files were committed to the vault's "+
+			"history: %v", paths)
+	}
+	if logs := d.logs(); strings.Contains(logs, "commit failed") {
+		t.Errorf("transient staging files produced commit attempts.\n  logs: %s", logs)
+	}
+}
+
 // TestGit_MissingRepositoryDegradesLoudly is principle 4 as a test: a capability
 // the daemon does not have must say so. The operator's vault is not a repository
 // today, so this is the path that actually runs on his machine.
@@ -142,6 +203,33 @@ func gitInit(t *testing.T, dir string) {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
+}
+
+// committedPaths is every path any commit has ever touched under a dot
+// directory — the question being whether the sync client's scratch space ever
+// entered the record, not whether it is there now.
+func committedPaths(t *testing.T, dir string) []string {
+	t.Helper()
+	cmd := exec.Command("git", "log", "--all", "--pretty=format:", "--name-only")
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v\n%s", err, out)
+	}
+	var found []string
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		for _, seg := range strings.Split(line, "/") {
+			if strings.HasPrefix(seg, ".") {
+				found = append(found, line)
+				break
+			}
+		}
+	}
+	return found
 }
 
 func isGitRepo(dir string) bool {
