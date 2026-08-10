@@ -126,7 +126,7 @@ def resolve_vault(arg_vault_path=None):
         p = Path(arg_vault_path).expanduser()
     else:
         import harness_memory  # noqa: E402
-        p = harness_memory.vault_path()
+        p = harness_memory.memory_root()
     if p is None or not Path(p).is_dir():
         raise SystemExit(
             "[week1] no reachable vault. Set plugins.obsidian-vault.vault_path via "

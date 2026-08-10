@@ -70,6 +70,7 @@ UNIT_WRAPPED = {
     # the three still mentions the merged gate by name).
     "check-one-way-imports.py": "test_process_seam.py",
     "check-kind-taxonomy.sh": "test_check_kind_taxonomy.py",
+    "check-memory-root-consistency.py": "test_memory_root.py",
     "check-multi-plan-naming.sh": "test_check_multi_plan_naming.py",
     "check-no-auto-worktree.sh": "test_worktree_slug_probe.py",
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",

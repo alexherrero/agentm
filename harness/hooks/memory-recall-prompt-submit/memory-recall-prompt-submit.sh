@@ -57,12 +57,20 @@ _resolve_vault_path() {
     if [[ -f "$cfg" ]] && command -v python3 >/dev/null 2>&1; then
         local v
         v="$(python3 -c '
-import json, sys
+import json, os, sys
 try:
     d = json.load(open(sys.argv[1]))
 except Exception:
     sys.exit(0)
-print(d.get("plugins.obsidian-vault.vault_path") or d.get("vault_path") or "")
+root = d.get("plugins.obsidian-vault.vault_path") or d.get("vault_path") or ""
+rel = d.get("plugins.obsidian-vault.memory_root")
+rel = rel.strip().replace(chr(92), "/") if isinstance(rel, str) else ""
+if rel.startswith("/") or ":" in rel:
+    rel = ""
+parts = [s for s in rel.split("/") if s]
+if root and parts and ".." not in parts:
+    root = os.path.join(root, *parts)
+print(root)
 ' "$cfg" 2>/dev/null || true)"
         if [[ -n "$v" ]]; then printf '%s\n' "$v"; return 0; fi
     fi

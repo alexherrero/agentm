@@ -73,6 +73,9 @@ _STORAGE_BACKEND_KEY = "storage.backend"
 #: Must match harness_memory._PLUGIN_VAULT_PATH_KEY exactly.
 _PLUGIN_VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
 
+#: Must match harness_memory._PLUGIN_MEMORY_ROOT_KEY exactly.
+_PLUGIN_MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
+
 #: Autonomy-plugin delivery-channel opt-in keys (FRIDAY feature 1, "Reports
 #: that reach you" — `wiki/designs/agentm-autonomy.md`'s Delivery subsection).
 #: Flat with dots, same namespacing convention as the vault-path key above.
@@ -197,6 +200,50 @@ def cmd_set_state_mode(prefix: Path, mode: str) -> int:
     config["state_mode"] = mode
     written = _write_config(prefix, config)
     print(f"state_mode = {mode}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
+def cmd_set_memory_root(prefix: Path, raw: str) -> int:
+    """Set `plugins.obsidian-vault.memory_root` — where the agent's own tree begins.
+
+    A **vault-relative** prefix (e.g. `Agent`), not an absolute path: the key
+    names a place inside the vault, and an absolute value would escape it. The
+    empty string is a legitimate value meaning "the memory root is the vault
+    root" — that is the pre-cutover topology and the default when the key is
+    absent — so clearing it goes through `--unset` rather than being spelled as
+    an empty `--memory-root`.
+
+    Does NOT validate that the directory exists. The vault may be on a mount
+    that is offline at configuration time, and refusing here would make the
+    config unwritable exactly when an operator is trying to repair it; the
+    resolver in `harness_memory.memory_root()` skips gracefully instead.
+    Idempotent: a silent no-op when the value is already set.
+    """
+    rel = raw.strip().replace("\\", "/").strip("/")
+    if not rel:
+        print(
+            "[agentm_config] refusing to set memory_root: value must be a "
+            "non-empty vault-relative prefix (use --unset memory_root to clear "
+            "it, which means the memory root is the vault root)",
+            file=sys.stderr,
+        )
+        return 2
+    if raw.strip().startswith("/") or ":" in rel or ".." in rel.split("/"):
+        print(
+            f"[agentm_config] refusing to set memory_root to {raw.strip()!r}: it "
+            "must be a relative prefix inside the vault, not an absolute path "
+            "and not an upward traversal",
+            file=sys.stderr,
+        )
+        return 2
+    config = _read_config(prefix) or {}
+    if config.get(_PLUGIN_MEMORY_ROOT_KEY) == rel:
+        # Idempotent — silent no-op when value unchanged.
+        return 0
+    config[_PLUGIN_MEMORY_ROOT_KEY] = rel
+    written = _write_config(prefix, config)
+    print(f"{_PLUGIN_MEMORY_ROOT_KEY} = {rel}")
     print(f"(written to {written})", file=sys.stderr)
     return 0
 
@@ -359,6 +406,8 @@ def cmd_get(prefix: Path, field: str) -> int:
         return 1
     if field == "vault_path":  # CLI field name — reads plugin key (legacy fallback)
         value = config.get(_PLUGIN_VAULT_PATH_KEY) or config.get("vault_path")  # legacy fallback
+    elif field == "memory_root":  # CLI shorthand for the plugin-namespaced key
+        value = config.get(_PLUGIN_MEMORY_ROOT_KEY)
     else:
         value = config.get(field)
     if value is None:
@@ -421,6 +470,12 @@ def cmd_unset(prefix: Path, field: str) -> int:
             return 1
         _write_config(prefix, config)
         return 0
+    if field == "memory_root":  # CLI shorthand — clearing means "the vault root"
+        if _PLUGIN_MEMORY_ROOT_KEY not in config:
+            return 1
+        del config[_PLUGIN_MEMORY_ROOT_KEY]
+        _write_config(prefix, config)
+        return 0
     if field not in config:
         return 1
     del config[field]
@@ -443,6 +498,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     op = parser.add_mutually_exclusive_group(required=True)
     op.add_argument("--vault-path", metavar="PATH", help="set vault_path field")
+    op.add_argument("--memory-root", metavar="REL",
+                    help="set plugins.obsidian-vault.memory_root — the "
+                         "vault-relative prefix where the agent's own tree "
+                         "begins (e.g. 'Agent'); unset means the vault root")
     op.add_argument("--state-mode", metavar="MODE", choices=_STATE_MODES,
                     help="set state_mode field (how harness state is stored: local|backend; 'vault' is a deprecated alias for 'backend')")
     op.add_argument("--storage-backend", metavar="NAME",
@@ -468,6 +527,8 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     if args.vault_path is not None:
         return cmd_set_vault_path(prefix, args.vault_path)
+    if args.memory_root is not None:
+        return cmd_set_memory_root(prefix, args.memory_root)
     if args.state_mode is not None:
         return cmd_set_state_mode(prefix, args.state_mode)
     if args.storage_backend is not None:

@@ -94,7 +94,7 @@ def _default_vault_path_fn() -> "Path | None":
         sys.path.insert(0, str(scripts_dir))
     import harness_memory as hm  # type: ignore
 
-    return hm.vault_path()
+    return hm.memory_root()
 
 
 def resolve_history_path(*, vault_path_fn=None) -> Path:
