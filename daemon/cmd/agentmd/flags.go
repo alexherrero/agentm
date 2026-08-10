@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"os"
+	"strings"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
 )
@@ -26,6 +27,50 @@ func bindCommon(fs *flag.FlagSet) *config.Options {
 	fs.DurationVar(&opts.ReconcileEvery, "reconcile", 0,
 		"how often to re-walk the vault for changes the notifier missed")
 	return opts
+}
+
+// splitPositional pulls the first bare (non-flag) argument out of args and
+// returns it alongside everything else, so a subcommand taking one positional
+// can accept flags on either side of it.
+//
+// Go's flag package stops at the first non-flag argument, which means
+// `gate corpus-write --json` parses no flags at all — they land in Args()
+// instead, silently. Every caller writes the name first, so the parser has to
+// cope with it rather than the callers having to know.
+//
+// A `--flag value` pair is kept together: `value` is not a positional, and
+// mistaking it for one would consume the flag's argument.
+func splitPositional(args []string) (positional string, rest []string) {
+	rest = make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if strings.HasPrefix(a, "-") {
+			rest = append(rest, a)
+			// A flag written as `--name value` takes the next token with it;
+			// `--name=value` carries its own.
+			if !strings.Contains(a, "=") && takesValue(strings.TrimLeft(a, "-")) && i+1 < len(args) {
+				i++
+				rest = append(rest, args[i])
+			}
+			continue
+		}
+		if positional == "" {
+			positional = a
+			continue
+		}
+		rest = append(rest, a)
+	}
+	return positional, rest
+}
+
+// takesValue reports whether a flag name consumes the following argument.
+// Booleans do not; everything else this command set defines does.
+func takesValue(name string) bool {
+	switch name {
+	case "json", "dry-run", "verbose", "from-scratch", "help", "h":
+		return false
+	}
+	return true
 }
 
 // markPortSet records whether --port was actually given, so a config-file port is

@@ -55,6 +55,10 @@ from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from corpus_gate import require_corpus_write_gate  # noqa: E402
+
 # The classifier's penalized classes. `fragment-promoted` is deliberately absent:
 # it is classified but unpenalized, which is the status gate, and those notes are
 # in scope.
@@ -189,56 +193,6 @@ def classify(agentmd: str, vault: str) -> list[dict]:
     if proc.returncode != 0:
         raise SystemExit(f"agentmd classify failed:\n{proc.stderr.strip()}")
     return [json.loads(line) for line in proc.stdout.splitlines() if line.strip()]
-
-
-def require_corpus_write_gate(agentmd: str, vault: str) -> None:
-    """Refuse to start unless `agentmd gate corpus-write` passes.
-
-    This job is why the gate exists. It rewrote 1,930 notes with a hand-rolled
-    revert journal as its only undo, because the vault is not a git repository
-    yet — and the missing repository turned out to be the binding constraint
-    twice in one session. The build sequence's answer was an ordering sentence,
-    and a sentence in a design document is not a precondition.
-
-    Fails closed on every path. A refusal stops the run; so does a gate that
-    could not decide, and so does a missing binary — "I could not check" is not
-    "it is fine", and there is no `--force`, because the thing being checked is
-    whether an undo exists at all.
-    """
-    try:
-        proc = subprocess.run(
-            [agentmd, "gate", "corpus-write", "--json", "--vault", vault],
-            capture_output=True,
-            text=True,
-        )
-    except OSError as exc:
-        raise SystemExit(
-            f"could not run `{agentmd} gate corpus-write` ({exc}).\n"
-            "No corpus-wide write job starts without the gate; install the daemon "
-            "or pass --agentmd."
-        ) from exc
-
-    verdict: dict = {}
-    if proc.stdout.strip():
-        try:
-            verdict = json.loads(proc.stdout)
-        except json.JSONDecodeError:
-            verdict = {}
-
-    if proc.returncode == 0 and verdict.get("pass"):
-        head = verdict.get("head", "")
-        print(f"gate corpus-write: PASS  (undo point: {head or 'unknown'})")
-        return
-
-    lines = ["gate corpus-write: REFUSED — this job does not start."]
-    for reason in verdict.get("reasons", []):
-        lines.append(f"  {reason.get('code', '?')}: {reason.get('detail', '')}")
-        if reason.get("remedy"):
-            lines.append(f"    fix: {reason['remedy']}")
-    if not verdict:
-        detail = (proc.stderr or proc.stdout).strip() or f"exit {proc.returncode}"
-        lines.append(f"  the gate did not return a verdict: {detail}")
-    raise SystemExit("\n".join(lines))
 
 
 def existing_aliases(head: str) -> str | None:

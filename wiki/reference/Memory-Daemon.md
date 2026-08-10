@@ -221,7 +221,20 @@ It refuses on two conditions, which mean the same thing:
 - `git-degraded` — the vault is not a repository, or has no commits. There is nothing to revert to.
 - `uncommitted-changes` — the worktree already carries edits, so undoing the job and undoing whatever else is in flight would be one command. Let the daemon commit them (it does so within a second of the last write) or commit them yourself.
 
-There is no override flag. What is being checked is whether an undo exists at all, and a gate with a `--force` is a gate that documents the thing it was meant to prevent. `alias_backfill.py`'s `run` and `reapply` call it; `revert` deliberately does not, because gating the undo on there being an undo is the one arrangement that could strand the corpus.
+There is no override flag. What is being checked is whether an undo exists at all, and a gate with a `--force` is a gate that documents the thing it was meant to prevent.
+
+**Every corpus-wide write job in the repo asks it.** Dry runs do not, since they write nothing:
+
+| Job | Gated path |
+|---|---|
+| `alias_backfill.py` | `run`, `reapply` — `revert` deliberately exempt |
+| `recall.py heat-policy` | `--apply` (promotes and demotes across the corpus) |
+| `sweep_junk_preferences.py` | `--apply` (archives a cohort) |
+| `migrate_arcs.py` | `--apply` on all three subcommands |
+
+`revert` is exempt on purpose: gating the undo on there being an undo is the one arrangement that could strand the corpus.
+
+The call itself is [`corpus_gate.py`](https://github.com/alexherrero/agentm/blob/main/scripts/corpus_gate.py), which runs the binary and relays its verdict without re-deriving it — a second opinion in Python would be a second dialect of the gate. It fails closed on a refusal, on an undecidable answer, on a missing binary, and on a zero exit that does not name the gate (`agentmd` is a bare name on `PATH`, so an unrelated program exiting 0 must not read as permission). It is vendored byte-identically into `harness/skills/memory/scripts/` because the LC-8 bridge rule forbids kernel toolkit scripts importing back into `scripts/`; `check-vendored-parity.sh corpus-gate` keeps the two in step.
 
 ## Watching, and what actually guarantees correctness
 

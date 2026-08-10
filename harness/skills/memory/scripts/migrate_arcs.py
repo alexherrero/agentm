@@ -378,6 +378,12 @@ def main(argv: list[str] | None = None) -> int:
     if not vault.is_dir():
         print(f"migrate_arcs: vault not found: {vault}", file=sys.stderr)
         return 2
+    if getattr(args, "apply", False):
+        # A migration is the first thing named in the corpus-write gate's
+        # contract. All three subcommands stamp or move many notes at once.
+        from corpus_gate import require_corpus_write_gate  # type: ignore
+
+        require_corpus_write_gate(vault=str(vault))
 
     if args.command == "stamp":
         plan = plan_stamp(vault, args.project)
