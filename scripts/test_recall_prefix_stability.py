@@ -211,13 +211,13 @@ class TestPromptSubmitNoFloorReemission(_VaultFixture):
         rel = self._always_load_rel("floor-entry")
 
         without = recall.query(vault=self.vault, query_text=_FLOOR_TOKEN,
-                               dedup_paths=set(), mode="stub")
+                               dedup_paths=set())
         slugs_without = {r["slug"] for r in without}
         self.assertIn("floor-entry", slugs_without,
                       "fixture broken: always-load entry is not even a grep match")
 
         with_dedup = recall.query(vault=self.vault, query_text=_FLOOR_TOKEN,
-                                  dedup_paths={rel}, mode="stub")
+                                  dedup_paths={rel})
         slugs_with = {r["slug"] for r in with_dedup}
         self.assertNotIn("floor-entry", slugs_with,
                          "query() re-surfaced an always-load path despite dedup — "
@@ -233,7 +233,7 @@ class TestPromptSubmitNoFloorReemission(_VaultFixture):
         with mock.patch.object(recall_counter, "record_recall", lambda *a, **kw: {}):
             rc = recall.prompt_submit(
                 vault=self.vault, prompt=f"tell me about {_FLOOR_TOKEN}",
-                budget_ms=10_000, mode="stub", stdout=out, stderr=err,
+                budget_ms=10_000, stdout=out, stderr=err,
             )
         self.assertEqual(rc, 0, err.getvalue())
         self.assertNotIn("floor-entry", out.getvalue(),

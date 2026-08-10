@@ -481,7 +481,7 @@ class TestEmbeddingSignal(unittest.TestCase):
         # `_cosine_unit` zips the two and truncates to the shorter length, so a
         # mismatched-dim pair scores 1.0 and surfaces as a bogus high-confidence
         # suggestion. embed_corpus must NOT return mixed-dimension vectors;
-        # vec_index.py guards exactly this (it rejects dim mismatches) -- this
+        # A dim mismatch is exactly what this guards -- this
         # cache must too (invalidate stale-dim entries, never reuse them).
         import embed as embed_mod
         with _Vault() as v:
@@ -509,7 +509,7 @@ class TestEmbeddingSignal(unittest.TestCase):
                 f"score_embedding_pairs then cosines mismatched-length vectors "
                 f"via zip() truncation -> garbage/false-positive scores")
 
-    def test_embed_index_path_is_separate_from_vec_index(self):
+    def test_embed_index_path_is_separate_from_the_agentmemory_index(self):
         p = nld.default_embed_index_path(Path("/tmp/AgentMemory"))
         self.assertEqual(p, Path("/tmp/AgentMemory/_meta/notes-embeddings.json"))
         self.assertNotEqual(p.name, "vec-index.db")

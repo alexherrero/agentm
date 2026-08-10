@@ -50,8 +50,8 @@ KNOWN_KINDS: frozenset[str] = frozenset({
     "evidence", "conversation", "archive",
     # _idea-incubator/ tree kinds — missed in the first personal/+projects/
     # seed grep, caught by this module's own first real-vault audit() run
-    # (the walk correctly covers _idea-incubator/ per vec_index.py's
-    # full_sync convention; the seed grep that authored this set did not).
+    # (the walk correctly covers _idea-incubator/; the seed grep that
+    # authored this set did not).
     "idea-incubator", "idea-incubator-summary", "idea-incubator-research",
     "idea-incubator-runbook",
     # Surfaced by vault_lint.py's new check_kind_taxonomy (auto-organization
@@ -101,8 +101,9 @@ REQUIRED_UNIVERSAL_FIELDS: tuple[str, ...] = (
     "kind", "status", "created", "updated", "tags", "group", "slug",
 )
 
-# Vault walk roots + excludes, mirroring vec_index.py's full_sync walk
-# exactly (agentm-memory-index.md's build-from-source path).
+# Vault walk roots + excludes. These mirrored `vec_index.py`'s full-sync walk
+# until that module was removed; the same three roots are now shared with
+# `graph_snapshot.py`, which is the walk to keep this in step with.
 _WALK_SUBDIRS = ("personal", "projects", "_idea-incubator")
 
 

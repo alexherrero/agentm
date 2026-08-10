@@ -17,7 +17,7 @@ set -uo pipefail  # NOTE: no -e — graceful-skip pattern; hook must never block
 # Resolve memory-skill scripts across install scopes (project → user → source-clone).
 # See memory-recall-session-start.sh for the rationale + bug history. This hook
 # uses three scripts: reflect.py (orphan-recovery), discover_skills.py (V4 #37),
-# and vec_index.py (V4 #37). All three resolve through the same helper.
+# (V4 #37). Both resolve through the same helper.
 _resolve_memory_script() {  # $1 = script basename
     local script="$1"
     local prefix="${AGENTM_INSTALL_PREFIX:-$HOME/.claude}"
@@ -229,64 +229,6 @@ fi
 ORCH_IDLE_PY="$(_resolve_memory_script orchestration_idle.py 2>/dev/null)" || ORCH_IDLE_PY=""
 if [[ -n "$ORCH_IDLE_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
     ( "$AGENTM_PY" "$ORCH_IDLE_PY" --vault-path "$MEMORY_VAULT_PATH" >/dev/null 2>&1 & ) 2>/dev/null || true
-fi
-
-# ── Vec-index drift sweep (V4 #37 task 6) ─────────────────────────────────
-# Fire vec_index.py full-sync (read-only; no --rebuild) so the operator
-# sees drift accumulation without surprise. Requires MEMORY_VAULT_PATH;
-# graceful-skip if unset / vec_index.py absent / sqlite-vec unavailable.
-#
-# Sub-second overhead at typical vault size (one os.stat per entry + one
-# bulk sqlite query). Non-blocking — surfaces drift count to stderr per
-# the existing idle-pass transparency convention. Operators with drift
-# accumulation run `vec_index.py full-sync --rebuild` to enqueue.
-# Extension-capable Python resolution (R0.2 / agentmEngine#4-adjacent):
-# the vec-index backend needs `sqlite3.Connection.enable_load_extension`,
-# which Apple's macOS system Python disables — a bare `python3` there means
-# vec_index.py always hits its own graceful-skip, silently, even when
-# sqlite-vec is pip-installed.
-#
-# This hook used to carry its own private copy of that probe. The copy listed
-# only bare-name paths (/opt/homebrew/bin/python3, /usr/local/bin/python3, a
-# pyenv shim), and Homebrew installs *versioned* binaries only — there is no
-# bare `python3` in its bin dir — so on the very machine the probe was written
-# for, every candidate missed and it fell through to the incapable floor. It
-# was right about the problem and wrong about where the answer lives. The
-# canonical resolver replaces it, probes versioned names via PATH, and is
-# shared with the other three memory hooks and the doctor.
-VEC_PYTHON="$AGENTM_PY"
-
-VEC_INDEX_PY="$(_resolve_memory_script vec_index.py 2>/dev/null)" || VEC_INDEX_PY=""
-if [[ -n "$VEC_INDEX_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
-    drift_json=$("$VEC_PYTHON" "$VEC_INDEX_PY" --vault-path "$MEMORY_VAULT_PATH" full-sync 2>/dev/null || echo '{}')
-    if [[ -n "$drift_json" ]]; then
-        drift_summary=$(python3 -c "
-import json, sys
-try:
-    d = json.loads(sys.argv[1])
-    drifted = d.get('drifted_count', 0)
-    not_indexed = d.get('not_indexed_count', 0)
-    if drifted or not_indexed:
-        print(f'{drifted} drifted + {not_indexed} not-indexed')
-except Exception:
-    pass
-" "$drift_json" 2>/dev/null)
-        if [[ -n "$drift_summary" ]]; then
-            echo "[memory-reflect-idle] vec-index drift sweep: $drift_summary (run \`python3 $VEC_INDEX_PY full-sync --rebuild\` to enqueue for re-embed)" >&2
-        fi
-    fi
-fi
-
-# ── Embedding-queue drain (R0.2 / agentmExperience#0) ─────────────────────
-# Pre-fix, nothing in the production code path ever called `drain_queue` —
-# the queue grew unboundedly and the device-local index stayed empty. Fire
-# a drain pass here, detached (backgrounded) so a slow local-model embed
-# never blocks the idle hook's other work. Same graceful-skip guards as the
-# full-sync sweep above: requires MEMORY_VAULT_PATH + vec_index.py;
-# internally no-ops if sqlite-vec / the embedding backend is unavailable
-# (queue entries stay pending for a future drain).
-if [[ -n "$VEC_INDEX_PY" && -n "${MEMORY_VAULT_PATH:-}" ]]; then
-    ( "$VEC_PYTHON" "$VEC_INDEX_PY" --vault-path "$MEMORY_VAULT_PATH" drain >/dev/null 2>&1 & ) 2>/dev/null || true
 fi
 
 exit 0

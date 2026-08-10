@@ -358,19 +358,6 @@ def index_one_skill(
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(content.encode("utf-8"))
 
-    # Enqueue vec-index upsert. Same pattern as save.py: graceful-skip on
-    # any failure — the file write is the contract; embedding is best-effort.
-    try:
-        import vec_index  # type: ignore
-        embed_text = (
-            f"{skill_name} skill (from {repo_name})\n\n"
-            f"{description}\n\n{summary[:300]}"
-        )
-        rel_path = str(target.relative_to(vault)).replace(os.sep, "/")
-        vec_index.enqueue(vault, rel_path, "upsert", text=embed_text)
-    except Exception as e:  # pragma: no cover
-        print(f"warning: vec-index enqueue failed: {e}", file=sys.stderr)
-
     return {
         "action": "written",
         "target": str(target),

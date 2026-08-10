@@ -175,7 +175,7 @@ fi
 # lookup. On a stock macOS box that resolves to Apple's /usr/bin/python3, whose
 # sqlite3 is built without `--enable-loadable-sqlite-extensions` and therefore
 # has no `enable_load_extension` at all. sqlite-vec is a loadable native
-# extension, so `vec_index._open_index()` returned None on every call and every
+# extension, so the vector index could never open, and every
 # caller read that as the graceful "index not built yet" skip — semantic recall
 # was structurally unreachable, silently, against a fully healthy 1035-row
 # index. See harness/hooks/lib/resolve-python.sh for the resolution order and

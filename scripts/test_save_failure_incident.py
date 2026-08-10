@@ -19,7 +19,7 @@ if str(_SKILL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SKILL_SCRIPTS))
 
 import save  # noqa: E402
-import vec_index  # noqa: E402
+import graph_snapshot  # noqa: E402
 
 
 class TestFailureIncidentFingerprint(unittest.TestCase):
@@ -46,7 +46,7 @@ class TestFailureIncidentFingerprint(unittest.TestCase):
             self.vault, "failure-incident", "crash-report",
             "ValueError in classify", group="personal", fingerprint="abc123",
         )
-        meta = vec_index._extract_meta_from_file(target)
+        meta = graph_snapshot._extract_meta_from_file(target)
         self.assertEqual(meta["fingerprint"], "abc123")
 
     def test_fingerprint_auto_computed_when_not_provided(self):

@@ -142,7 +142,7 @@ class TestAbstractionAltitude(unittest.TestCase):
         content = "widget subsystem overview and quirks"
         (self.vault / "personal" / "reference" / "_index.md").write_bytes(content.encode("utf-8"))
         (self.vault / "personal" / "reference" / "zzznote.md").write_bytes(content.encode("utf-8"))
-        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         by_path = {r["path"]: r for r in results}
         self.assertIn("personal/reference/_index.md", by_path)
         self.assertIn("personal/reference/zzznote.md", by_path)
@@ -167,7 +167,7 @@ class TestFallbackCascade(unittest.TestCase):
         (self.vault / "personal" / "reference" / "a.md").write_bytes(
             b"widget subsystem details",
         )
-        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         self.assertTrue(results)
         # BM25 always contributes here (shared terms, no sqlite-vec
         # dependency). Vector similarity additionally contributing depends
@@ -197,7 +197,7 @@ class TestFallbackCascade(unittest.TestCase):
         # surface the entry via the sqlite-tier fallback rather than
         # returning nothing.
         results = recall.query(
-            vault=self.vault, query_text="zzzznomatchzzzz", k=5, mode="stub",
+            vault=self.vault, query_text="zzzznomatchzzzz", k=5,
             filter_expr="kind=convention",
         )
         paths = [r["path"] for r in results]
@@ -235,7 +235,7 @@ class TestTimeWeightedRetrieval(unittest.TestCase):
             "tags: []\ngroup: personal\nslug: fresh-note\nalways_load: false\n---\n\n"
             + content + "\n"
         ).encode("utf-8"))
-        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         by_path = {r["path"]: r for r in results}
         self.assertIn("personal/reference/stale-note.md", by_path)
         self.assertIn("personal/reference/fresh-note.md", by_path)
@@ -255,7 +255,7 @@ class TestTimeWeightedRetrieval(unittest.TestCase):
             "tags: []\ngroup: personal\nslug: old-decision\nalways_load: false\n"
             "lifecycle_tier: durable\n---\n\n" + content + "\n"
         ).encode("utf-8"))
-        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5, mode="stub")
+        results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         by_path = {r["path"]: r for r in results}
         self.assertEqual(by_path["personal/reference/old-decision.md"]["decay_score"], 1.0)
 

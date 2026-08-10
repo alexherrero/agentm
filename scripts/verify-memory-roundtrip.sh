@@ -3,23 +3,18 @@
 # on a throwaway fixture vault (Hardening I #45 task 7).
 #
 # Drives the REAL memory-skill CLIs through a full lifecycle:
-#   embed (stub) → save → recall-by-content → reflect → vec-index build →
-#   (vec nearest-neighbor read-back) → vault_lint clean
+#   embed (stub) → save → recall-by-content → reflect → vault_lint clean
 # proving the engine's scripts wire together — the gap the unit suite leaves
 # (each tests a function in isolation; nothing exercises save→recall→reflect→
-# vec_index→lint as one flow). Mirrors the verify-v4.sh / verify-phases.sh
+# lint as one flow). Mirrors the verify-v4.sh / verify-phases.sh
 # PASS/FAIL skeleton.
 #
 # Hermetic: a `mktemp` vault, no network, no real vault, no sub-agent dispatch.
-# Embedding uses the deterministic **stub** mode (`--mode stub`) — a hash-based
-# 1024-d vector — so the round-trip never downloads a model.
-#
-# The vec-index backend (sqlite-vec) needs a Python whose `sqlite3` supports
-# `enable_load_extension` (Apple's system Python disables it; CI may not install
-# sqlite-vec). When the backend is unavailable the engine graceful-skips to
-# keyword recall BY DESIGN — so the nearest-neighbor read-back is asserted only
-# when the backend is operational and LOGGED AS SKIPPED otherwise (never silently
-# dropped). The build/enqueue path + keyword recall are exercised unconditionally.
+# `embed.py` is still exercised in its deterministic **stub** mode
+# (`--mode stub`) — a hash-based 1024-d vector, no model download. Nothing in
+# recall consumes an embedding any more (the vector index was removed; see
+# wiki/designs/agentm-rescope-week1-experiment.md), but `notes_link_discovery
+# --embeddings` still does, so the module keeps a round-trip check here.
 #
 # Usage:   bash scripts/verify-memory-roundtrip.sh
 # Exit:    0 iff every (non-skipped) check passes.
@@ -90,7 +85,7 @@ assert_exists "save: entry written under the vault" "${SAVED_PATH:-$ENTRY}"
 assert_exists "save: entry under personal/reference/" "$ENTRY"
 
 # ── C. recall by content: the saved entry is surfaced (keyword path) ────────
-RECALL="$(mem recall.py query "deployment runbook staging gate" -k 5 --mode stub 2>/dev/null)"
+RECALL="$(mem recall.py query "deployment runbook staging gate" -k 5 2>/dev/null)"
 assert_contains "recall: saved entry surfaced by content" "$RECALL" "deploy-runbook"
 
 # ── C2. kind-scoped recall: --filter kind=<kind> narrows to that kind only ──
@@ -101,7 +96,7 @@ assert_contains "recall: saved entry surfaced by content" "$RECALL" "deploy-runb
 # distinctive phrase, proves the filter narrows by kind rather than content.
 SECOND_BODY="This howto also mentions the deployment runbook staging gate procedure, but it is not the reference entry."
 printf '%s\n' "$SECOND_BODY" | mem save.py howto rotate-api-keys --tags "security" --body-file - >/dev/null 2>&1
-KIND_FILTERED="$(mem recall.py query "deployment runbook staging gate" -k 5 --mode stub --filter "kind=reference" 2>/dev/null)"
+KIND_FILTERED="$(mem recall.py query "deployment runbook staging gate" -k 5 --filter "kind=reference" 2>/dev/null)"
 if printf '%s' "$KIND_FILTERED" | grep -qF -- "deploy-runbook" && ! printf '%s' "$KIND_FILTERED" | grep -qF -- "rotate-api-keys"; then
   pass "recall: --filter kind=reference includes the matching kind and excludes the other kind"
 else
@@ -117,56 +112,6 @@ printf '%s\n%s\n' \
 REFLECT="$(mem reflect.py "$V/transcript.jsonl" --summary --route 2>/dev/null)"; RC=$?
 assert_equals  "reflect: --route exits 0 on a vault" "$RC" "0"
 assert_contains "reflect: emits a summary pass record" "$REFLECT" '"pass": "summary"'
-
-# ── E. vec-index: build path (enqueue) + nearest-neighbor read-back ─────────
-# full-sync --rebuild enqueues every not-indexed entry for re-embed (no
-# sqlite-vec needed for the queue) — exercises the embed-enqueue path.
-FS="$(mem vec_index.py full-sync --rebuild 2>/dev/null)"
-ENQ="$(printf '%s' "$FS" | "$PY" -c "import json,sys
-try: print(json.load(sys.stdin).get('enqueued', 0))
-except Exception: print(0)" 2>/dev/null)"
-if [ "${ENQ:-0}" -ge 1 ] 2>/dev/null; then
-  pass "vec-index: saved entry enqueued for embed"
-else
-  fail "vec-index: saved entry enqueued for embed" "enqueued=$ENQ from: $(printf '%s' "$FS" | cut -c1-160)"
-fi
-# drain attempts to embed+upsert; exits 0 whether the backend is present or not.
-mem vec_index.py drain --mode stub >/dev/null 2>&1
-RC=$?
-assert_equals "vec-index: drain is non-blocking (exit 0)" "$RC" "0"
-# The engine reports whether the vec backend is actually operational here.
-SIZE_JSON="$(mem vec_index.py size 2>/dev/null)"
-SIZE="$(printf '%s' "$SIZE_JSON" | "$PY" -c "import json,sys
-try:
-    d=json.load(sys.stdin); s=d.get('size')
-    print(s if s is not None else 'null')
-except Exception: print('null')" 2>/dev/null)"
-if [ "$SIZE" != "null" ] && [ "${SIZE:-0}" -ge 1 ] 2>/dev/null; then
-  # Backend operational → assert the nearest-neighbor read-back. Stub embeddings
-  # are a hash of the text, so the query must use the entry's OWN indexed
-  # embed-text ({slug} [{tags}]\n\n{first_para}, via the engine's extractor) —
-  # then the index returns the entry as its nearest neighbor with sim≈1.0. Piped
-  # (not via a shell var) so trailing bytes match exactly.
-  pass "vec-index: built index holds the seeded entry (size=$SIZE)"
-  NN="$("$PY" -c "import sys, pathlib; sys.path.insert(0, '$S'); import vec_index
-sys.stdout.write(vec_index._extract_embed_text_from_file(pathlib.Path('$ENTRY')))" 2>/dev/null \
-        | mem recall.py query - -k 5 --mode stub 2>/dev/null)"
-  SIM="$(printf '%s' "$NN" | "$PY" -c "import json,sys
-best=0.0
-for line in sys.stdin:
-    line=line.strip()
-    if not line: continue
-    try:
-        d=json.loads(line)
-    except Exception: continue
-    if 'deploy-runbook' in (d.get('slug','')+d.get('path','')):
-        best=max(best, float(d.get('sim',0) or 0))
-print('yes' if best > 0 else 'no')" 2>/dev/null)"
-  assert_equals "vec-index: entry returned as its nearest neighbor (sim>0)" "$SIM" "yes"
-else
-  skip "vec-index: nearest-neighbor read-back" \
-       "vec backend unavailable (sqlite-vec extension not loadable on this Python; engine reports: $(printf '%s' "$SIZE_JSON" | cut -c1-100)) — recall verified via the keyword path above"
-fi
 
 # ── F. vault_lint: the round-trip left the vault clean ──────────────────────
 LINT="$(mem vault_lint.py --format json 2>/dev/null)"; RC=$?

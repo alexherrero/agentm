@@ -3,9 +3,8 @@
 
 PLAN-auto-org-dedup-and-lint task 1. The `fingerprint` frontmatter field
 has existed as an optional caller-supplied passthrough since V6-11
-(`save.py` threads it; `vec_index.py` reserves an `entry_meta` column
-commented "NULL until a writer populates it"), but nothing anywhere in
-this codebase ever COMPUTED one. This module is that writer: a stable
+(`save.py` threads it into frontmatter), but nothing anywhere in this
+codebase ever COMPUTED one. This module is that writer: a stable
 sha256 over a note's normalized body text, wired into `save_entry()` so
 every new note carries a real value automatically.
 

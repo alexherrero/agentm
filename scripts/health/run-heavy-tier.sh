@@ -164,7 +164,6 @@ report_fault() {  # report_fault <suite> <axis> <env-var> <interpreter> <script>
 }
 report_fault "verify-hook-resolution" "memory persist+recall" "VERIFY_HOOK_RESOLUTION_FAULT" bash "verify-hook-resolution.sh"
 report_fault "verify-state-routing"   "safety/recoverability"  "VERIFY_STATE_ROUTING_FAULT"   bash "verify-state-routing.sh"
-report_fault "verify-vec-index"       "memory freshness+experience" "VERIFY_VEC_INDEX_FAULT"  bash "verify-vec-index.sh"
 report_fault "verify-reflection"      "memory persist+recall"  "VERIFY_REFLECTION_FAULT"      bash "verify-reflection.sh"
 report_fault "verify-mcp-surface"     "capability function"    "VERIFY_MCP_SURFACE_FAULT"     "$PY" "verify-mcp-surface.py"
 

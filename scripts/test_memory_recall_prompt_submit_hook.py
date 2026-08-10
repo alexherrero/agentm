@@ -49,7 +49,7 @@ partial ranking. These tests say nothing about that case.
 
 That last claim was true of the *walk* and false of everything preceding it,
 which is what made the injection assertions flaky. A recall pays a fixed cost
-before the walk starts — importing embed/vec_index, opening the vec index — and
+before the walk starts, and
 that cost does not shrink with the corpus, so a two-entry fixture vault does not
 escape it. On a loaded runner it can consume the entire budget on its own, at
 which point the walk is discarded before entry 0 and the hook prints nothing.
@@ -119,7 +119,7 @@ _BUDGET_MS = _read_declared_budget_ms()
 
 # What the behavioral tests run under. Ten times the production budget and two
 # orders of magnitude above the fixed cost a recall pays before its corpus walk
-# starts (importing embed/vec_index, opening the vec index — 25-42ms on an idle
+# starts (25-42ms on an idle
 # M-series Mac, more under CI load), but still below the engine's
 # VEC_COLD_EMBED_MIN_BUDGET_MS, so the vec half is declined on affordability
 # exactly as in production rather than buying a real cold model load.

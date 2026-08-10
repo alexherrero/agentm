@@ -76,15 +76,10 @@ _SKILL_SCRIPTS = _HERE.parent / "harness" / "skills" / "memory" / "scripts"
 if str(_SKILL_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SKILL_SCRIPTS))
 
-import embed  # noqa: E402
 import recall  # noqa: E402
-import vec_index  # noqa: E402
 
 # 10x the production interactive budget, for the tests whose subject is what a
-# completed search reports rather than how long one takes. Deliberately still
-# below VEC_COLD_EMBED_MIN_BUDGET_MS, so the vec half is declined on
-# affordability here exactly as it is in production -- widening past that would
-# change which streams run and make these different tests. Same figure and same
+# completed search reports rather than how long one takes. Same figure and same
 # reasoning as the hook suites' fixtures (PR #418).
 _GENEROUS_BUDGET_MS = 3000
 
@@ -113,108 +108,6 @@ class _EmbedSpy:
     def __call__(self, text, *, mode=None):
         self.calls += 1
         return [0.0] * embed.EMBEDDING_DIM
-
-
-class VecSearchAdmissionTests(unittest.TestCase):
-    """Rule 1: cheap checks run before expensive ones."""
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.vault = Path(self._tmp.name) / "vault"
-        _write_entry(self.vault / "personal", "zorbulax", "The zorbulax subsystem needs a reset.")
-        self.spy = _EmbedSpy()
-        self._real_embed = embed.embed_text
-        self._real_resident = embed.local_model_is_resident
-        self._real_open = vec_index._open_index
-        embed.embed_text = self.spy
-        self.addCleanup(self._tmp.cleanup)
-        self.addCleanup(self._restore)
-
-    def _restore(self):
-        embed.embed_text = self._real_embed
-        embed.local_model_is_resident = self._real_resident
-        vec_index._open_index = self._real_open
-
-    def test_unopenable_index_skips_the_embedding_entirely(self):
-        """The headline regression: no index means no embedding cost.
-
-        This is the exact shape of GH #92 on macOS system Python, whose sqlite3
-        has no `enable_load_extension`, so `_open_index` returns None on every
-        call forever. Embedding first meant paying ~3900ms per prompt to build
-        a vector that was then thrown away unused.
-        """
-        vec_index._open_index = lambda vault: None
-        status: dict = {}
-        with _a_budget_of(300) as deadline:
-            results = recall._vec_search(
-                self.vault, "zorbulax", k=5,
-                deadline=deadline, status=status,
-            )
-        self.assertEqual(results, {})
-        self.assertEqual(
-            self.spy.calls, 0,
-            "embed_text was called despite the index being unopenable — the "
-            "cheap check must precede the expensive one, or the 4s-per-prompt "
-            "cost is back",
-        )
-        self.assertFalse(status["ran"])
-        self.assertIn("sqlite-vec", status["reason"])
-
-    def test_cold_model_is_declined_under_an_interactive_budget(self):
-        """A cold load cannot fit 300ms, so it is not started."""
-        vec_index._open_index = lambda vault: _FakeConn()
-        embed.local_model_is_resident = lambda mode=None: False
-        status: dict = {}
-        with _a_budget_of(300) as deadline:
-            results = recall._vec_search(
-                self.vault, "zorbulax", k=5,
-                deadline=deadline, status=status,
-            )
-        self.assertEqual(results, {})
-        self.assertEqual(
-            self.spy.calls, 0,
-            "a cold model load was started inside a 300ms budget it cannot "
-            "possibly fit",
-        )
-        self.assertFalse(status["ran"])
-        self.assertIn("not loaded", status["reason"])
-
-    def test_cold_model_is_attempted_when_the_budget_can_absorb_it(self):
-        """The `query` CLI's 10s budget still gets real semantic search.
-
-        The fix must not become "never embed" — an explicit operator-initiated
-        search can afford the load, and that is where semantic ranking earns
-        its cost. Without this test, hard-declining every cold embed would look
-        like a pass.
-        """
-        vec_index._open_index = lambda vault: _FakeConn()
-        embed.local_model_is_resident = lambda mode=None: False
-        status: dict = {}
-        with _a_budget_of(recall.QUERY_CLI_BUDGET_MS) as deadline:
-            recall._vec_search(
-                self.vault, "zorbulax", k=5,
-                deadline=deadline, status=status,
-            )
-        self.assertEqual(
-            self.spy.calls, 1,
-            "a 10s budget can absorb a ~3.9s cold load; declining it would "
-            "strip semantic recall from the query CLI too",
-        )
-
-    def test_warm_model_is_used_even_on_a_tight_budget(self):
-        """~15ms warm fits 300ms comfortably; only the cold path is refused."""
-        vec_index._open_index = lambda vault: _FakeConn()
-        embed.local_model_is_resident = lambda mode=None: True
-        with _a_budget_of(300) as deadline:
-            recall._vec_search(self.vault, "zorbulax", k=5, deadline=deadline)
-        self.assertEqual(self.spy.calls, 1)
-
-    def test_no_deadline_means_no_admission_gate(self):
-        """A caller that passes no deadline has opted out of budgeting."""
-        vec_index._open_index = lambda vault: _FakeConn()
-        embed.local_model_is_resident = lambda mode=None: False
-        recall._vec_search(self.vault, "zorbulax", k=5, deadline=None)
-        self.assertEqual(self.spy.calls, 1)
 
 
 class _FakeConn:
@@ -499,19 +392,14 @@ class TransparencyTests(unittest.TestCase):
         entry 0. Asserting injection under a budget the machine can actually
         meet keeps the behavior and drops the performance claim.
 
-        Still below VEC_COLD_EMBED_MIN_BUDGET_MS, so the vec half is declined on
-        affordability here exactly as it is in production — widening past that
-        would change which streams run and make this a different test.
         """
         stdout, stderr = self._run("how do I reset zorbulax", _GENEROUS_BUDGET_MS)
         self._require_a_completed_search(stderr)
         self.assertIn("zorbulax", stdout)
         self.assertIn("Loaded 1 relevant entries", stderr)
-        # The admission contract, pinned independently of the clock: the vec
-        # half must have declined rather than run, so a future budget that
-        # silently crossed VEC_COLD_EMBED_MIN_BUDGET_MS fails here instead of
-        # quietly buying a cold model load.
-        self.assertIn("semantic:", stderr)
+        # There is one stream now that the vector half is gone, so a run that
+        # loaded an entry must not report any stream as blocked.
+        self.assertNotIn("NOTHING WAS SEARCHED", stderr)
 
     def test_an_overrun_is_reported_even_when_no_stream_was_attempted(self):
         """The forced-overrun path still has to announce its overrun.
@@ -556,7 +444,6 @@ class TransparencyTests(unittest.TestCase):
         self.assertIn("Loaded 0 relevant entries", stderr)
         self.assertIn("NOTHING WAS SEARCHED", stderr)
         self.assertIn("this is not an empty vault", stderr)
-        self.assertIn("semantic:", stderr)
         self.assertIn("lexical:", stderr)
         self.assertIn("WARNING", stderr)
 
@@ -581,29 +468,6 @@ class TransparencyTests(unittest.TestCase):
         self._require_a_completed_search(stderr)
         self.assertIn("Loaded 0 relevant entries", stderr)
         self.assertNotIn("NOTHING WAS SEARCHED", stderr)
-
-
-class ResidencyProbeTests(unittest.TestCase):
-    """`local_model_is_resident` must never trigger the load it measures."""
-
-    def test_probe_is_false_before_any_local_embed(self):
-        # Whether sentence-transformers is importable is machine-dependent, so
-        # assert the invariant that holds either way: the probe answers without
-        # importing the package itself.
-        if "sentence_transformers" in sys.modules:
-            self.skipTest("sentence-transformers already imported in this process")
-        self.assertFalse(embed.local_model_is_resident("local"))
-        self.assertNotIn(
-            "sentence_transformers", sys.modules,
-            "the residency probe imported the very package it exists to avoid "
-            "loading",
-        )
-
-    def test_stub_mode_is_always_resident(self):
-        self.assertTrue(embed.local_model_is_resident("stub"))
-
-    def test_unknown_mode_is_not_resident_and_does_not_raise(self):
-        self.assertFalse(embed.local_model_is_resident("nonsense-mode"))
 
 
 if __name__ == "__main__":

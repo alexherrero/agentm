@@ -28,7 +28,7 @@ from pathlib import Path
 # so the memory skill carries its own copy; scripts/check-vault-lock-parity.sh
 # enforces byte-identity between the two. Inject this dir so the sibling import
 # resolves however save.py is invoked (subprocess or imported-by-hook). Mirrors
-# recall.py's vec_index/embed sys.path injection.
+# recall.py's own sys.path injection.
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -259,36 +259,20 @@ def save_entry(
     # one (auto-org part 3 task 1). An explicit caller-supplied value
     # always wins — the diagnostics recall ladder passes a semantic
     # incident join key, not a content hash, and must keep doing so.
-    # Best-effort: a fingerprint failure must never block the write
-    # (matches the vec-enqueue block's own posture below). Runs after the
-    # failure-incident scrub above so the hash reflects the scrubbed body
-    # actually written.
-    auto_fingerprinted = False
+    # Best-effort: a fingerprint failure must never block the write. Runs
+    # after the failure-incident scrub above so the hash reflects the
+    # scrubbed body actually written.
     if fingerprint is None:
         try:
             from fingerprint import compute_fingerprint  # type: ignore
             fingerprint = compute_fingerprint(body)
-            auto_fingerprinted = True
         except Exception as e:  # pragma: no cover
             print(f"warning: fingerprint computation failed: {e}", file=sys.stderr)
 
-    # Write-time dedup guard scope (auto-org part 3 task 2) — the check
-    # itself runs below, INSIDE the write's own single vault_mutex
-    # acquisition (one lock round-trip per save, and the find+reinforce
-    # +write decision is one atomic critical section). Guard scope:
-    # auto-computed fingerprints only (a caller-supplied semantic key
-    # keeps its own workflow's semantics), plain creates only (no
-    # supersedes chain, not always-load — curated standing rules are
-    # never dedup candidates, matching the design's exemption list).
-    # Exact-only by the plan's Locked design call (fuzzy merges need a
-    # model verdict; a near-match reinforce here would discard real
-    # differences without one) — near-duplicates write normally and the
-    # weekly cluster pass owns them. A same-slug collision still raises
-    # FileExistsError below BEFORE the guard can see it — the evolve/
-    # consolidate collision contracts depend on that error, and the
-    # guard's target is the different-slug duplicate (the suffix-family
-    # problem), not re-saves of the same path.
-    guard_active = auto_fingerprinted and supersedes is None and not always_load
+    # `dedup_info` still reports a verdict so callers keep their contract;
+    # with the write-time guard gone it is always False here. A same-slug
+    # collision still raises FileExistsError below — the evolve/consolidate
+    # collision contracts depend on that error and are unaffected.
     if dedup_info is not None:
         dedup_info["deduplicated"] = False
 
@@ -348,50 +332,16 @@ def save_entry(
         # and the loser sees the winner (once indexed) rather than both
         # writing. Fails open: any guard error → the write proceeds
         # (favor false-negative; the weekly pass catches what this misses).
-        if guard_active:
-            try:
-                import dedup_guard  # type: ignore
-                existing_rel = dedup_guard.find_vault_duplicate(vault, fingerprint)
-                if existing_rel is not None:
-                    dedup_guard.reinforce(vault / existing_rel)
-                    if dedup_info is not None:
-                        dedup_info["deduplicated"] = True
-                        dedup_info["existing_path"] = str(vault / existing_rel)
-                    return vault / existing_rel
-            except Exception as e:  # pragma: no cover
-                print(f"warning: dedup guard failed open (write proceeds): {e}", file=sys.stderr)
+        # The write-time dedup guard went with the vector index: the
+        # `entry_meta` table it looked a fingerprint up in was that index's
+        # own, and no other fingerprint->path lookup exists in the tree.
+        # Scanning 8k+ notes on every save is not an acceptable substitute,
+        # so permanent-memory writes no longer dedup at write time and the
+        # weekly cluster pass owns the duplicates this used to catch.
+        # `capture.py`'s own inbox guard is unaffected — it scans a small
+        # staging dir, never the index. See the amendment log in
+        # wiki/designs/agentm-rescope-week1-experiment.md.
         backend.write(locator, content)
-
-    # rel_path is a trivial derivation (target was built from vault above, so
-    # relative_to can't raise) — computed unconditionally, before either the
-    # enqueue try/except block below, so it's available even if that block
-    # fails before reaching its own assignment.
-    rel_path = str(target.relative_to(vault)).replace(os.sep, "/")
-
-    # Enqueue async embedding + vec-index upsert (task 4), and (auto-org
-    # part 2 task 3) flag it for the write-time linker. File write is
-    # complete; queueing is fast + synchronous + never raises on missing
-    # deps (queue is JSONL append; sqlite-vec required only at drain time).
-    # Operators run `python3 vec_index.py drain` (or future idle-time hook)
-    # to actually process the queue. `link=True` costs nothing extra here —
-    # it's a flag on the SAME record; the actual nearest-neighbor query +
-    # "Related" line write happens at drain time, reusing the embedding
-    # drain already computes for the upsert (write_time_linker.py), never a
-    # second synchronous embed call on the save path itself.
-    try:
-        import vec_index  # type: ignore
-        # Embed text = title-frontmatter-tags + body's first paragraph
-        # (per parent design's Infrastructure section). For v1 we use
-        # the slug + tags + first 500 chars of body — captures enough
-        # semantic content for recall without huge embedding inputs.
-        first_para = body[:500]
-        tag_str = ", ".join(tags) if tags else ""
-        embed_text = f"{slug} [{tag_str}]\n\n{first_para}"
-        vec_index.enqueue(vault, rel_path, "upsert", text=embed_text, link=True)
-    except Exception as e:  # pragma: no cover
-        # Queueing should never fail in practice, but if it does (e.g.
-        # vault filesystem read-only), log + continue. File write succeeded.
-        print(f"warning: queue append failed: {e}", file=sys.stderr)
 
     return target
 

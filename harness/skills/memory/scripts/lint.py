@@ -82,10 +82,11 @@ _CONTRADICTION_CHECK_IDS = frozenset(
 _QUALITY_WEIGHTS = {"completeness": 0.4, "linked": 0.3, "freshness": 0.3}
 _COMPLETENESS_PENALTY_PER_VIOLATION = 0.25
 
-# The graph-snapshot cross-check's per-cycle sample cap (task 9): "since
-# three features now lean on it" (write_time_linker's write-time rebuild,
-# dream.py's link-improvement sweep, and this module's own orphan check) —
-# 25 matches every other batched check in this design's own precedent.
+# The graph-snapshot cross-check's per-cycle sample cap (task 9). Three
+# features leaned on the snapshot when this was written; two of them (the
+# write-time linker and dream.py's link-improvement sweep) went with the
+# vector stack, leaving this module's own orphan check. The cap stays at 25,
+# which matches every other batched check in this design's own precedent.
 _GRAPH_SNAPSHOT_CROSS_CHECK_BATCH_CAP = 25
 
 
@@ -138,12 +139,12 @@ def _find_miscased_wikilinks(model) -> list:
     byte-for-byte adds risk for little payoff, so those stay in
     `vault_lint.check_wikilinks`'s ordinary unresolved-link bucket
     instead of being auto-repaired. Also skips any match inside a
-    fenced code block (reusing `write_time_linker._fenced_ranges` /
-    `_in_any_range` — the identical fence-exclusion this skill's
-    link-improvement sweep already relies on, adversarial review found
-    missing here): a wikilink shown as a worked example in a fence is
+    fenced code block (`markdown_spans.fenced_ranges` / `in_any_range`,
+    the same fence-exclusion every other markup edit in this skill uses;
+    adversarial review found it missing here): a wikilink shown as a
+    worked example in a fence is
     documentation, not a real link, and must never be auto-rewritten."""
-    import write_time_linker  # noqa: E402  (lazy — same skill dir)
+    import markdown_spans  # noqa: E402  (lazy — same skill dir)
 
     found = []
     for entry in model.entries:
@@ -151,9 +152,9 @@ def _find_miscased_wikilinks(model) -> list:
             raw = entry.path.read_text(encoding="utf-8")
         except OSError:
             continue
-        fenced = write_time_linker._fenced_ranges(raw)
+        fenced = markdown_spans.fenced_ranges(raw)
         for m in vault_lint._WIKILINK_RE.finditer(raw):
-            if write_time_linker._in_any_range(m.start(), fenced):
+            if markdown_spans.in_any_range(m.start(), fenced):
                 continue
             full = m.group(1)
             if "|" in full or "#" in full or "^" in full:

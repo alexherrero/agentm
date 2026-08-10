@@ -359,7 +359,6 @@ class TestRecallPayloadIntegration(unittest.TestCase):
             query_text="widget subsystem",
             k=5,
             dedup_paths=set(),
-            mode="stub",
         )
         self.assertTrue(results, "expected at least one recall hit for the seeded fixture")
         for r in results:

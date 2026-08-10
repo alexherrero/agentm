@@ -1,11 +1,20 @@
 #!/usr/bin/env python3
 """V5-3 A2 index-invariant gate.
 
-Asserts that the vector index lives at a device-local path (never inside
-the vault) — Tier.LOCAL_INDEX contract (storage_seam.py).  The embedding
-queue stays vault-local; only the SQLite DB must not sync.
+Asserts that a derived SQLite store lives at a device-local path, never
+inside the vault — the Tier.LOCAL_INDEX contract (storage_seam.py). SQLite
+on cloud-sync is a known corruption pattern, so the rule is about the file
+type, not about any one feature.
 
-Runs entirely from path arithmetic — no sqlite-vec required.
+This gate was written against `vec_index.py`, which owned the only such store
+and the helper that placed it. That module was removed with the vector stack
+(see wiki/designs/agentm-rescope-week1-experiment.md), and `graph_snapshot.py`
+inherited both the helper and the contract — its snapshot DB sits in the same
+device-local root under the same rule. The invariant outlived the subsystem
+that motivated it, so it is pinned against its current owner rather than
+retired alongside the old one.
+
+Runs entirely from path arithmetic — no backend required.
 """
 from __future__ import annotations
 
@@ -14,102 +23,82 @@ import tempfile
 import unittest
 from pathlib import Path
 
-# The vec_index module lives in harness/skills/memory/scripts/.
+# graph_snapshot lives in harness/skills/memory/scripts/.
 _REPO_ROOT = Path(__file__).resolve().parent.parent
-_VEC_SCRIPTS = _REPO_ROOT / "harness" / "skills" / "memory" / "scripts"
-if str(_VEC_SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(_VEC_SCRIPTS))
+_SKILL_SCRIPTS = _REPO_ROOT / "harness" / "skills" / "memory" / "scripts"
+if str(_SKILL_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_SKILL_SCRIPTS))
 
-import vec_index  # noqa: E402
+import graph_snapshot  # noqa: E402
 
 
 class TestA2IndexInvariant(unittest.TestCase):
-    """The A2 index invariant: index is device-local, never in the vault."""
+    """The A2 index invariant: derived stores are device-local, never in the vault."""
 
-    def test_index_path_not_inside_vault(self) -> None:
-        """_index_path(vault) must not be a descendant of the vault dir."""
+    def test_snapshot_path_not_inside_vault(self) -> None:
+        """The snapshot path must not be a descendant of the vault dir."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "TestVault"
             vault.mkdir()
-            idx = vec_index._index_path(vault)
-            # The index must NOT be inside the vault directory.
+            snap = graph_snapshot._snapshot_path(vault)
             try:
-                idx.relative_to(vault)
+                snap.relative_to(vault)
                 self.fail(
-                    f"_index_path({vault}) = {idx} is inside the vault — "
+                    f"_snapshot_path({vault}) = {snap} is inside the vault — "
                     "SQLite on cloud-sync is a corruption pattern. "
-                    "The index must live under ~/.agentm/memory/_meta/."
+                    "Derived stores must live under ~/.agentm/memory/_meta/."
                 )
             except ValueError:
                 pass  # relative_to raises ValueError when not a descendant
 
-    def test_index_path_is_device_local(self) -> None:
-        """_index_path(vault) must be under ~/.agentm/memory/_meta/."""
+    def test_snapshot_path_is_device_local(self) -> None:
+        """The snapshot path must be under ~/.agentm/memory/_meta/."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "TestVault"
             vault.mkdir()
-            idx = vec_index._index_path(vault)
+            snap = graph_snapshot._snapshot_path(vault)
             expected_root = Path.home() / ".agentm" / "memory" / "_meta"
             try:
-                idx.relative_to(expected_root)
+                snap.relative_to(expected_root)
             except ValueError:
                 self.fail(
-                    f"_index_path({vault}) = {idx} is not under "
-                    f"{expected_root}. The index must be device-local."
+                    f"_snapshot_path({vault}) = {snap} is not under "
+                    f"{expected_root}. Derived stores must be device-local."
                 )
 
-    def test_queue_path_stays_in_vault(self) -> None:
-        """_queue_path(vault) must stay inside the vault (JSONL is safe to sync)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "TestVault"
-            vault.mkdir()
-            q = vec_index._queue_path(vault)
-            try:
-                q.relative_to(vault)
-            except ValueError:
-                self.fail(
-                    f"_queue_path({vault}) = {q} is outside the vault. "
-                    "The embedding queue should remain vault-local."
-                )
-
-    def test_two_vaults_have_distinct_index_paths(self) -> None:
-        """Different vault paths must produce different local index dirs."""
+    def test_two_vaults_have_distinct_store_paths(self) -> None:
+        """Different vault paths must produce different local store dirs."""
         with tempfile.TemporaryDirectory() as tmp:
             v1 = Path(tmp) / "VaultA"
             v2 = Path(tmp) / "VaultB"
             v1.mkdir()
             v2.mkdir()
             self.assertNotEqual(
-                vec_index._index_path(v1),
-                vec_index._index_path(v2),
-                "Two different vaults must not share an index path.",
+                graph_snapshot._snapshot_path(v1),
+                graph_snapshot._snapshot_path(v2),
+                "Two different vaults must not share a store path.",
             )
 
-    def test_index_filename(self) -> None:
-        """The index file must be named vec-index.db."""
-        with tempfile.TemporaryDirectory() as tmp:
-            vault = Path(tmp) / "TestVault"
-            vault.mkdir()
-            self.assertEqual(vec_index._index_path(vault).name, "vec-index.db")
+    def test_rebuild_leaves_no_sqlite_file_in_the_vault(self) -> None:
+        """A real rebuild must not create any .db inside the vault.
 
-    def test_rebuild_index_skipped_without_sqlite_vec(self) -> None:
-        """rebuild_index returns skipped dict when sqlite-vec unavailable.
-
-        This confirms the function executes without creating a vault-local DB.
-        Even when skipped, no vec-index.db should appear in the vault.
+        The strongest form of the invariant: not "the path arithmetic is
+        right" but "running the thing did not write a database into a synced
+        directory." Path arithmetic can be correct while some other write in
+        the same function lands in the wrong place.
         """
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "TestVault"
-            vault.mkdir()
-            result = vec_index.rebuild_index(vault)
-            # If sqlite-vec is missing (common in CI), the result is skipped.
-            # If sqlite-vec IS present, result has new_dim / entries_dropped.
-            # Either way, the vault must NOT contain a vec-index.db.
-            vault_db = vault / "_meta" / "vec-index.db"
-            self.assertFalse(
-                vault_db.exists(),
-                f"rebuild_index created vec-index.db inside the vault at "
-                f"{vault_db}. The index must be device-local only.",
+            (vault / "personal" / "reference").mkdir(parents=True)
+            (vault / "personal" / "reference" / "note.md").write_text(
+                "---\nkind: reference\nslug: note\n---\n\nbody\n", encoding="utf-8"
+            )
+            graph_snapshot.rebuild(vault)
+            strays = sorted(p for p in vault.rglob("*.db"))
+            self.assertEqual(
+                strays, [],
+                f"rebuild() wrote SQLite file(s) inside the vault: {strays}. "
+                "Derived stores must be device-local only.",
             )
 
 

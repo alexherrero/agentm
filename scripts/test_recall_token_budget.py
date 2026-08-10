@@ -345,7 +345,6 @@ class TestPromptSubmitTokenBudget(unittest.TestCase):
                     prompt="zorptackle",
                     budget_ms=5000,
                     token_budget=120,
-                    mode="stub",
                     stdout=stdout,
                     stderr=stderr,
                 )
@@ -368,7 +367,6 @@ class TestPromptSubmitTokenBudget(unittest.TestCase):
                     prompt="zorptackle",
                     budget_ms=5000,
                     token_budget=10_000,
-                    mode="stub",
                     stdout=stdout,
                     stderr=stderr,
                 )

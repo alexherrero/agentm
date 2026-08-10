@@ -163,9 +163,11 @@ DEFAULT_REVERT_TTL_DAYS = 14.0
 # improvement mutation only ever ADDS a wikilink (never marks or flags a
 # relationship needing the operator's own judgment), it's revert-logged
 # through the identical record_and_apply pre-image pair every other stage
-# here uses, and `merge_related_slugs` is idempotent by construction (a
-# proposal re-applied against already-linked content is a captured no-op,
-# never a duplicate line).
+# here uses, and the Related-line merge it performed was idempotent by
+# construction (a proposal re-applied against already-linked content is a
+# captured no-op, never a duplicate line). The link-improvement stage itself
+# was removed with the vector index it ranked candidates from; this note
+# stays because the membership basis it records still governs the set.
 # `suffix_backlog_drain` (auto-organization part 3, task 6 —
 # PLAN-auto-org-dedup-and-lint.md) joins the set on task 3's own,
 # already-approved basis for `inbox_collapse`: fingerprint-exact family
@@ -663,12 +665,14 @@ def check_tidying_anomaly(vault_path: Path, current_count: int) -> AnomalyCheckR
 
 # -----------------------------------------------------------------------------
 # Sampled higher-tier audit (task 9, part 3). Each cycle, a capped batch of
-# this cycle's applied links/merges gets a higher-tier-model agree/disagree
-# verdict; the disagreement rate is itself a meter, and past a threshold the
-# ambiguous bands narrow toward deterministic-only automatically (raising
-# write_time_linker's own `LINK_SIMILARITY_FLOOR` via a persisted override
-# -- see `write_time_linker.link_similarity_floor`'s own docstring), flagging
-# the console.
+# this cycle's applied merges gets a higher-tier-model agree/disagree
+# verdict; the disagreement rate is itself a meter, recorded each cycle.
+#
+# Past a threshold this used to narrow the write-time linker's similarity
+# band toward deterministic-only automatically. That linker ranked candidates
+# out of the vector index and was removed with it (see
+# `wiki/designs/agentm-rescope-week1-experiment.md`), so there is no band left
+# to narrow; the rate is still recorded, and `narrowed` is now always False.
 #
 # `higher_tier_model_available()` is always False today, for the identical
 # reason `dream.cheap_model_tier_available()` is: research before this task
@@ -684,7 +688,7 @@ def check_tidying_anomaly(vault_path: Path, current_count: int) -> AnomalyCheckR
 # -----------------------------------------------------------------------------
 
 SAMPLED_AUDIT_BATCH_CAP = 25  # matches every other batched-check precedent in this design
-SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD = 0.2  # >20% disagreement narrows the band
+SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD = 0.2  # >20% disagreement is the meter's alarm line
 
 
 @dataclass
@@ -752,9 +756,10 @@ def run_sampled_audit(vault_path: Path, applied_items: list) -> SampledAuditResu
     site), in deterministic order (sorted by `index`, matching every
     other capped-batch stage's own convention -- draining coverage over
     successive cycles, not one true-random draw per run). Asks the
-    higher tier for a verdict on each; on a disagreement rate above
-    `SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD`, narrows `write_time_linker`'s
-    similarity floor via a persisted override and returns `narrowed=True`.
+    higher tier for a verdict on each. `SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD`
+    is the line the rate is read against; nothing acts on it automatically
+    since the band it used to narrow went with the vector stack, so
+    `narrowed` is always False.
 
     Records this cycle's rate into a trailing history sidecar regardless
     of whether the tier was available (an unavailable-tier cycle simply
@@ -780,20 +785,10 @@ def run_sampled_audit(vault_path: Path, applied_items: list) -> SampledAuditResu
     rate = disagree / len(sample)
     _record_sampled_audit_rate(vault_path, rate)
 
+    # The band this used to narrow belonged to the write-time linker, which
+    # went with the vector index it queried. The rate above is still the
+    # meter; nothing acts on it automatically any more.
     narrowed = False
-    if rate > SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD:
-        import write_time_linker  # noqa: E402  (lazy -- same skill dir)
-
-        current_floor = write_time_linker.link_similarity_floor(vault_path)
-        new_floor = min(
-            current_floor + write_time_linker._LINK_BAND_NARROWING_STEP,
-            write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD - write_time_linker._LINK_BAND_NARROWING_STEP,
-        )
-        atomic_write(
-            Path(vault_path) / write_time_linker._LINK_BAND_NARROWING_REL,
-            json.dumps({"floor_override": new_floor}),
-        )
-        narrowed = True
 
     return SampledAuditResult(
         sampled_count=len(sample), agree_count=agree, disagree_count=disagree,

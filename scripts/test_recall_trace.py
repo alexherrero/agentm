@@ -63,7 +63,6 @@ class TestPackedCaptureAlignment(unittest.TestCase):
                 prompt=token,
                 budget_ms=5000,
                 token_budget=token_budget,
-                mode="stub",
                 stdout=io.StringIO(),
                 stderr=io.StringIO(),
             )
@@ -112,7 +111,7 @@ class TestPackedCaptureAlignment(unittest.TestCase):
             _write_entry(vault, "personal/solo.md", f"{token} " + "content " * 20)
 
             captured = self._run_and_capture(vault, token, token_budget=0)
-            direct = recall.query(vault=vault, query_text=token, k=5, mode="stub")
+            direct = recall.query(vault=vault, query_text=token, k=5)
 
             self.assertEqual(len(captured["hits"]), 1)
             hit = captured["hits"][0]

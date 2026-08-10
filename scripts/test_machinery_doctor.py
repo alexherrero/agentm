@@ -503,13 +503,12 @@ class MemoryHookInterpreterTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def _fake_interpreter(self, *, ext: bool, vec: bool, version: str = "3.13.13") -> Path:
-        """Stands in for a Python whose sqlite3 has (or lacks) extension
-        support. The check runs `<interp> -c <probe>` and parses stdout as
-        JSON, so emitting that JSON directly is the same contract a real
-        interpreter satisfies."""
+    def _fake_interpreter(self, *, version: str = "3.13.13") -> Path:
+        """Stands in for a runnable Python. The check runs `<interp> -c
+        <probe>` and parses stdout as JSON, so emitting that JSON directly is
+        the same contract a real interpreter satisfies."""
         p = self.repo / "fake-python"
-        payload = json.dumps({"ext": ext, "vec": vec, "version": version})
+        payload = json.dumps({"version": version})
         p.write_text(f"#!/bin/sh\ncat <<'EOF'\n{payload}\nEOF\n", encoding="utf-8")
         p.chmod(0o755)
         return p
@@ -519,30 +518,15 @@ class MemoryHookInterpreterTests(unittest.TestCase):
         r.write_text(f"#!/usr/bin/env bash\nprintf '%s\\n' '{prints}'\n", encoding="utf-8")
         r.chmod(0o755)
 
-    def test_ok_when_resolved_interpreter_loads_sqlite_vec(self):
-        interp = self._fake_interpreter(ext=True, vec=True)
+    def test_ok_when_the_resolved_interpreter_runs(self):
+        """The sqlite-vec half of this row went with the vector index; what
+        remains is the half that made the original outage possible, which is
+        that the hooks run whatever the resolver prints."""
+        interp = self._fake_interpreter()
         self._write_resolver(str(interp))
         c = md.check_memory_hook_interpreter(self.repo)
         self.assertEqual(c.status, "OK")
-        self.assertIn("reachable", c.detail)
-
-    def test_fail_when_interpreter_cannot_load_extensions(self):
-        """Apple's system Python: the original bug, exactly."""
-        interp = self._fake_interpreter(ext=False, vec=False, version="3.9.6")
-        self._write_resolver(str(interp))
-        c = md.check_memory_hook_interpreter(self.repo)
-        self.assertEqual(c.status, "FAIL")
-        self.assertIn("enable_load_extension", c.detail)
-
-    def test_fail_when_extension_capable_but_sqlite_vec_missing(self):
-        """A distinct, separately-actionable failure — one pip install away,
-        so the check must not collapse it into the unfixable case above."""
-        interp = self._fake_interpreter(ext=True, vec=False)
-        self._write_resolver(str(interp))
-        c = md.check_memory_hook_interpreter(self.repo)
-        self.assertEqual(c.status, "FAIL")
-        self.assertIn("pip install sqlite-vec", c.detail)
-        self.assertNotIn("no sqlite3.enable_load_extension", c.detail)
+        self.assertIn("working interpreter", c.detail)
 
     def test_warn_when_resolver_is_absent(self):
         c = md.check_memory_hook_interpreter(self.repo)
@@ -561,12 +545,13 @@ class MemoryHookInterpreterTests(unittest.TestCase):
         self._write_resolver("/nonexistent/python3")
         c = md.check_memory_hook_interpreter(self.repo)
         self.assertEqual(c.status, "FAIL")
-        self.assertIn("could not probe", c.detail)
+        self.assertIn("could not run it", c.detail)
 
     def test_names_the_override_as_the_cause_when_one_is_set(self):
-        """An operator who pointed $AGENTM_PYTHON at a broken interpreter must
-        be told that is why, or the row sends them hunting the wrong thing."""
-        interp = self._fake_interpreter(ext=False, vec=False)
+        """An operator who pointed $AGENTM_PYTHON somewhere must be told that
+        is what selected the interpreter, or the row sends them hunting the
+        wrong thing."""
+        interp = self._fake_interpreter()
         self._write_resolver(str(interp))
         prior = os.environ.get("AGENTM_PYTHON")
         os.environ["AGENTM_PYTHON"] = str(interp)
@@ -577,7 +562,7 @@ class MemoryHookInterpreterTests(unittest.TestCase):
                 os.environ.pop("AGENTM_PYTHON", None)
             else:
                 os.environ["AGENTM_PYTHON"] = prior
-        self.assertEqual(c.status, "FAIL")
+        self.assertEqual(c.status, "OK")
         self.assertIn("override", c.detail)
 
     def test_delegates_rather_than_reimplementing_the_probe(self):
@@ -585,7 +570,7 @@ class MemoryHookInterpreterTests(unittest.TestCase):
         interpreter the hooks never actually pick. Proven by making the fixture
         resolver the *only* thing that could have produced the answer: it names
         an interpreter that exists nowhere in normal resolution."""
-        interp = self._fake_interpreter(ext=True, vec=True, version="9.9.9")
+        interp = self._fake_interpreter(version="9.9.9")
         self._write_resolver(str(interp))
         c = md.check_memory_hook_interpreter(self.repo)
         self.assertEqual(c.status, "OK")

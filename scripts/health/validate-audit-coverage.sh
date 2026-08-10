@@ -4,8 +4,12 @@
 #
 # SCOPE (operator-confirmed 2026-07-03; updated 2026-07-05 — PLAN-r2-ledger-
 # and-dist task 7): the audit's ledger names 11 verified blockers total. Only
-# 5 have any code presence in THIS repo, and this script covers exactly those:
-#   agTrack#0, agentmEngine#0, agentmEngine#1, agentmExperience#0, voice#0
+# 4 still have code presence in THIS repo, and this script covers exactly those:
+#   agTrack#0, agentmEngine#0, agentmEngine#1, voice#0
+# agentmExperience#0 (the vec-index drain being dead) was the fifth until the
+# vector stack was removed — see wiki/designs/agentm-rescope-week1-experiment.md.
+# The subsystem it guarded no longer exists, so there is nothing left to
+# regress and no check to keep; it is retired rather than reported skipped.
 # The other 6 are out of reach for an agentm-repo verify script — but 3 of
 # them now have dashboard visibility from the OTHER side of the seam:
 #   cricketsPluginsA#0, cricketsPluginsA#1, cricketsPluginsB#0 — crickets-repo
@@ -22,7 +26,7 @@
 #     concept for a stale sentence, and no corresponding PASS/FAIL check
 #     record the health-score schema could represent. Residual out-of-scope
 #     count: 3 (not 6).
-# This script covers the 5 in-scope blockers and explicitly reports the
+# This script covers the 4 in-scope blockers and explicitly reports the
 # residual 3 as out of scope — never silently omitted.
 #
 # Detection mechanism differs per blocker (documented per-check below,
@@ -30,14 +34,13 @@
 #   - agentmEngine#0 (hook dual-key read): VERIFY_HOOK_RESOLUTION_FAULT=1
 #     makes verify-hook-resolution.sh's own assertions fail (a genuine red
 #     cell) — the fix is config-triggerable, so a live fault toggle exists.
-#   - agentmEngine#1 (never-demote swallow) + agentmExperience#0 (drain
-#     dead): the underlying guards are now STRUCTURAL (no config toggle
-#     reverts them — confirmed when these were built), so their own
-#     verify-*.sh fault modes pass cleanly (proving detection works, not
-#     proving red). Coverage here is the unconditional, always-run
-#     assertion in each script (verify-state-routing.sh case D;
-#     verify-vec-index.sh's drain-on-missing-vault check) — the permanent
-#     regression guard, which WOULD go red if the fix regressed.
+#   - agentmEngine#1 (never-demote swallow): the underlying guard is now
+#     STRUCTURAL (no config toggle reverts it — confirmed when it was
+#     built), so its own verify-*.sh fault mode passes cleanly (proving
+#     detection works, not proving red). Coverage here is the
+#     unconditional, always-run assertion in that script
+#     (verify-state-routing.sh case D) — the permanent regression guard,
+#     which WOULD go red if the fix regressed.
 #   - agTrack#0 (governs-index overlap) + voice#0 (recall.py priority
 #     truncation): neither has a dedicated verify-*.sh script yet. Each
 #     gets a self-contained fixture here that reproduces the historical bug
@@ -47,17 +50,17 @@
 #     for their own FAULT modes.
 #
 # ABLATE_GATES=1 (PLAN-r3-uplift-scoring task 1, R3.1a) — the mechanical-
-# uplift baseline off-state: the same 5 in-scope blockers, but the entire
-# verify/check-all battery is skipped (none of verify-hook-resolution.sh,
-# verify-state-routing.sh, verify-vec-index.sh, or check-governs-index.py
-# run). Asserts all 5 planted defects go uncaught with the battery off —
+# uplift baseline off-state: the same 4 in-scope blockers, but the entire
+# verify/check-all battery is skipped (neither verify-hook-resolution.sh,
+# verify-state-routing.sh, nor check-governs-index.py runs). Asserts all 4
+# planted defects go uncaught with the battery off —
 # the floor the gates lift above. Additive; never combined with the normal
 # run in one invocation.
 #
 # Usage:   bash scripts/health/validate-audit-coverage.sh
 #          ABLATE_GATES=1 bash scripts/health/validate-audit-coverage.sh
-# Exit:    0 iff all 5 in-scope blockers have a verified detection mechanism
-#          (or, under ABLATE_GATES=1, all 5 are confirmed uncaught).
+# Exit:    0 iff all 4 in-scope blockers have a verified detection mechanism
+#          (or, under ABLATE_GATES=1, all 4 are confirmed uncaught).
 
 set -uo pipefail
 
@@ -78,13 +81,13 @@ pass() { RESULTS+=("  PASS  $1"); PASS=$((PASS+1)); emit_jsonl_check "$1" 1; }
 fail() { RESULTS+=("  FAIL  $1"$'\n'"          ↳ $2"); FAIL=$((FAIL+1)); emit_jsonl_check "$1" 0; }
 
 if [ "${ABLATE_GATES:-}" = "1" ]; then
-  echo "validate-audit-coverage: ABLATE_GATES=1 — verify/check-all battery skipped; asserting all 5 in-scope blockers go uncaught" >&2
+  echo "validate-audit-coverage: ABLATE_GATES=1 — verify/check-all battery skipped; asserting all 4 in-scope blockers go uncaught" >&2
   # NB: the shell-level assertion ("confirmed uncaught") succeeding is
   # reported as PASS in RESULTS/PASS below, but the JSONL record's `pass`
   # field encodes whether the underlying CAPABILITY functions — which, with
   # the battery ablated, it does not. Emitting `1` here would invert the
   # mechanical-uplift signal (score_off would read as high, not low).
-  for blocker in "agentmEngine#0" "agentmEngine#1" "agentmExperience#0" "agTrack#0" "voice#0"; do
+  for blocker in "agentmEngine#0" "agentmEngine#1" "agTrack#0" "voice#0"; do
     RESULTS+=("  PASS  ablate: $blocker is NOT caught (verify/check-all battery skipped — no gate ran)")
     PASS=$((PASS+1))
     emit_jsonl_check "ablate: $blocker is NOT caught (verify/check-all battery skipped — no gate ran)" 0
@@ -92,12 +95,12 @@ if [ "${ABLATE_GATES:-}" = "1" ]; then
   echo
   if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi
   echo
-  echo "validate-audit-coverage: ablated — $PASS/5 in-scope blockers confirmed uncaught with the battery skipped"
+  echo "validate-audit-coverage: ablated — $PASS/4 in-scope blockers confirmed uncaught with the battery skipped"
   [ "$FAIL" -eq 0 ]
   exit $?
 fi
 
-echo "validate-audit-coverage: 5 of 11 audit blockers are in agentm-repo scope; 3 of the other 6 now have dashboard visibility via crickets' own suite; 3 residual out of scope (see header)." >&2
+echo "validate-audit-coverage: 4 of 11 audit blockers are in agentm-repo scope; 3 of the other 6 now have dashboard visibility via crickets' own suite; 3 residual out of scope (see header)." >&2
 
 # ── agentmEngine#0: hook dual-key read — live fault toggle produces red ───
 HR_OUT="$(VERIFY_HOOK_RESOLUTION_FAULT=1 bash "$SCRIPTS_DIR/verify-hook-resolution.sh" 2>&1)"; HR_RC=$?
@@ -113,15 +116,6 @@ if [ "$SR_RC" -eq 0 ] && printf '%s' "$SR_OUT" | grep -q "never-demote: write-st
   pass "agentmEngine#1: verify-state-routing.sh's unconditional never-demote check (case D) is live and green"
 else
   fail "agentmEngine#1: verify-state-routing.sh's unconditional never-demote check (case D) is live and green" "rc=$SR_RC; got: $(printf '%s' "$SR_OUT" | tail -3)"
-fi
-
-# ── agentmExperience#0: vec-index drain — the unconditional missing-vault
-#    check exists (VERIFY_VEC_INDEX_FAULT=1 is this blocker's own fault mode)
-VI_OUT="$(VERIFY_VEC_INDEX_FAULT=1 bash "$SCRIPTS_DIR/verify-vec-index.sh" 2>&1)"; VI_RC=$?
-if [ "$VI_RC" -eq 0 ] && printf '%s' "$VI_OUT" | grep -q "drain exits non-zero when the vault has vanished"; then
-  pass "agentmExperience#0: VERIFY_VEC_INDEX_FAULT=1 confirms drain fails loud on a vanished vault"
-else
-  fail "agentmExperience#0: VERIFY_VEC_INDEX_FAULT=1 confirms drain fails loud on a vanished vault" "rc=$VI_RC; got: $(printf '%s' "$VI_OUT" | tail -3)"
 fi
 
 # ── agTrack#0: governs-index overlap — fixture reproduces + gate catches it ─
@@ -207,5 +201,5 @@ fi
 echo
 if [ ${#RESULTS[@]} -gt 0 ]; then printf '%s\n' "${RESULTS[@]}"; fi
 echo
-echo "validate-audit-coverage: $PASS passed, $FAIL failed (5 in-scope blockers; 3 residual out of agentm-repo scope — see header)"
+echo "validate-audit-coverage: $PASS passed, $FAIL failed (4 in-scope blockers; 3 residual out of agentm-repo scope — see header)"
 [ "$FAIL" -eq 0 ]

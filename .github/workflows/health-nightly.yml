@@ -45,7 +45,7 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install dependencies (fast-tier + heavy-tier)
-        run: pip3 install pyyaml sqlite-vec fastmcp sentence-transformers
+        run: pip3 install pyyaml fastmcp sentence-transformers
       - name: Run the heavy tier
         run: bash scripts/health/run-heavy-tier.sh > /tmp/heavy-tier-macos.jsonl
       - name: Upload the macOS heavy-tier JSONL for inspection
@@ -68,7 +68,7 @@ jobs:
         # sentence-transformers (1.3GB+) is deliberately NOT installed in the
         # fast-tier CI workflows — this is the one place it's worth the cost,
         # since it's the only tier that exercises real (non-stub) embeddings.
-        run: pip install pyyaml sqlite-vec fastmcp sentence-transformers
+        run: pip install pyyaml fastmcp sentence-transformers
       - name: Run the fast tier
         run: bash scripts/health/run-fast-tier.sh > /tmp/fast-tier.jsonl
       - name: Run the heavy tier

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # moc_generator.py — V6-18 browse-first Maps of Content.
 #
-# Reads the vault (read-only, same walk roots vec_index.py's full_sync
-# uses — personal/, projects/, _idea-incubator/), groups notes by their
+# Reads the vault (read-only, over personal/, projects/ and
+# _idea-incubator/), groups notes by their
 # kind: frontmatter value (via kind_registry's known/unrecognized labeling),
 # and writes one MOC page per kind under <vault>/_moc/<kind>.md — a bullet
 # list of [[slug]] wikilinks, newest-first by `created`. Idempotent: a
@@ -21,10 +21,10 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 from kind_registry import is_kebab, is_known  # noqa: E402
 
-# Mirrors vec_index.py's full_sync walk roots exactly (agentm-memory-index.md's
-# build-from-source path) — deliberately includes _idea-incubator/, unlike
-# frontmatter_validator.py's DC-4-exempt walk. Browse-first MOCs should cover
-# every kind the memory engine actually indexes, incubator included.
+# The same three roots `graph_snapshot.py` walks — deliberately including
+# _idea-incubator/, unlike frontmatter_validator.py's DC-4-exempt walk.
+# Browse-first MOCs should cover every kind the vault actually holds,
+# incubator included.
 _WALK_SUBDIRS = ("personal", "projects", "_idea-incubator")
 
 _OUTPUT_DIRNAME = "_moc"

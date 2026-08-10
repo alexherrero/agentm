@@ -2,9 +2,11 @@
 """Unit coverage for fingerprint.py + save_entry()'s auto-population
 (PLAN-auto-org-dedup-and-lint, task 1).
 
-The end-to-end half (entry_meta.fingerprint actually populated through a
-real save_entry() -> upsert path) needs the sqlite-vec backend and skips
-gracefully on the macOS system Python, same convention as test_vec_index.py.
+The end-to-end half asserted `entry_meta.fingerprint` was populated through
+a real save_entry() -> upsert path. That table belonged to the vector index,
+which was removed (see wiki/designs/agentm-rescope-week1-experiment.md); the
+fingerprint itself is still computed and still written to frontmatter, which
+is what the remaining tests cover.
 
 Run directly:
     cd scripts && python3 -m unittest test_fingerprint
@@ -23,15 +25,6 @@ if str(_SKILL_SCRIPTS) not in sys.path:
 
 import fingerprint  # noqa: E402
 import save  # noqa: E402
-import vec_index  # noqa: E402
-
-
-def _vec_backend_available(vault: Path) -> bool:
-    conn = vec_index._open_index(vault)
-    if conn is None:
-        return False
-    conn.close()
-    return True
 
 
 class TestComputeFingerprint(unittest.TestCase):
@@ -103,20 +96,6 @@ class TestSaveEntryAutoPopulates(unittest.TestCase):
         fp1 = next(l for l in t1.read_text(encoding="utf-8").splitlines() if l.startswith("fingerprint:"))
         fp2 = next(l for l in t2.read_text(encoding="utf-8").splitlines() if l.startswith("fingerprint:"))
         self.assertEqual(fp1, fp2)
-
-    def test_entry_meta_fingerprint_column_populated_end_to_end(self):
-        if not _vec_backend_available(self.vault):
-            self.skipTest("sqlite-vec backend unavailable on this Python")
-        target = save.save_entry(self.vault, "reference", "fp-e2e", "e2e body")
-        rel = str(target.relative_to(self.vault)).replace("\\", "/")
-        vec_index.upsert_entry(self.vault, rel, [0.0] * vec_index.EMBEDDING_DIM)
-
-        conn = vec_index._open_index(self.vault)
-        row = conn.execute(
-            "SELECT fingerprint FROM entry_meta WHERE path = ?", (rel,)
-        ).fetchone()
-        conn.close()
-        self.assertEqual(row[0], fingerprint.compute_fingerprint("e2e body"))
 
 
 if __name__ == "__main__":

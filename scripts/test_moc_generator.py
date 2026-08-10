@@ -55,7 +55,7 @@ class TestBuildKindGroups(unittest.TestCase):
 
     def test_includes_idea_incubator(self):
         # Unlike frontmatter_validator.py's DC-4 exemption, moc_generator
-        # mirrors vec_index.py's full_sync walk, which DOES cover
+        # mirrors graph_snapshot's walk, which DOES cover
         # _idea-incubator/ — browse-first MOCs should include it.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)

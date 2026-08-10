@@ -97,9 +97,9 @@ assert_absent() {
 SCRATCH_HOME="$(mktemp -d)"
 SV="$(mktemp -d)"
 PROJ="$(mktemp -d)"
-# reflect-idle backgrounds detached (reparented) orchestration_idle.py /
-# vec_index.py drain jobs when MEMORY_VAULT_PATH resolves — fire-and-forget by
-# design, so cleanup can race them mid-write. Best-effort, quiet, retried once.
+# reflect-idle backgrounds a detached (reparented) orchestration_idle.py job
+# when MEMORY_VAULT_PATH resolves — fire-and-forget by design, so cleanup can
+# race it mid-write. Best-effort, quiet, retried once.
 cleanup() { rm -rf "$SCRATCH_HOME" "$SV" "$PROJ" 2>/dev/null; rm -rf "$SCRATCH_HOME" "$SV" "$PROJ" 2>/dev/null || true; }
 trap cleanup EXIT
 echo "verify-hook-resolution: scratch HOME=$SCRATCH_HOME vault=$SV project=$PROJ"

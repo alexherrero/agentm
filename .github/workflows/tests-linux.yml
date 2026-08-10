@@ -63,16 +63,12 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install Python deps
-        # sqlite-vec lets verify-memory-roundtrip.sh exercise the vec-index
-        # nearest-neighbor read-back (the setup-python build supports
-        # enable_load_extension). The e2e self-skips that sub-check if the
-        # backend can't load, so this install is an enhancement, never a hard
-        # dep. sentence-transformers is deliberately NOT installed (1.3GB+; the
+        # sentence-transformers is deliberately NOT installed (1.3GB+; the
         # e2e uses stub embed mode). fastmcp lets verify-mcp-surface.py + the
         # auto-discovered test_memory_mcp_tools.py actually run instead of
         # gracefully skipping — R1.6, this was previously never installed
         # anywhere, so those MCP contract checks silently never ran.
-        run: pip install pyyaml sqlite-vec fastmcp
+        run: pip install pyyaml fastmcp
       - name: Validate adapter frontmatter / TOML / JSON
         run: python3 scripts/validate-adapters.py
       - name: Check cross-references + hook-fragment schema parity
@@ -136,13 +132,6 @@ jobs:
         # the never-demote guard (explicit storage.backend=vault + a broken
         # vault path must fail loud, never silently write repo-local).
         run: bash scripts/verify-state-routing.sh
-      - name: verify-vec-index (drain pipeline e2e, freshness invariant)
-        # R1.4 / agentmExperience#0: save→queue→drain(stub)→index round-trip,
-        # entry_meta row assertions (SKIPPED if sqlite-vec unavailable, never
-        # dropped), and the freshness invariant. CI runs WITHOUT the fault
-        # (VERIFY_VEC_INDEX_FAULT=1 is a manual/local regression check, same
-        # convention as VERIFY_MEMORY_FAULT in verify-memory-roundtrip.sh).
-        run: bash scripts/verify-vec-index.sh
       - name: verify-reflection (tri-lane routing, machine-source filter)
         # R1.5 / agentmExperience#2 (R0.3 fix): a genuine operator preference
         # classifies HIGH and auto-saves; a subagents/-path transcript never
@@ -186,7 +175,7 @@ jobs:
         # R1.8 Task 1: the health scorecard aggregator must be deterministic —
         # two runs against the same fixture input produce byte-identical markdown.
         run: python3 scripts/health/health_score.py --check-determinism --path scripts/health/fixtures/sample-records.jsonl
-      - name: validate-audit-coverage (5 in-scope mythos-readiness blockers detectable)
+      - name: validate-audit-coverage (4 in-scope mythos-readiness blockers detectable)
         # R1.8 Task 3: proves the regression net catches what the audit caught
         # by hand, for the 5 of 11 verified blockers with code presence in
         # this repo (the other 6 are crickets-repo code or doc/content
@@ -205,9 +194,7 @@ jobs:
         # fixture project, once vault-resident + once repo-local (Hardening I #45).
         run: bash scripts/verify-phases.sh
       - name: Memory-engine round-trip e2e (verify-memory-roundtrip.sh)
-        # embed(stub)→save→recall→reflect→vec-index→lint on a fixture vault. The
-        # vec nearest-neighbor sub-check runs here (sqlite-vec installed above);
-        # it self-skips on a Python without enable_load_extension support.
+        # embed(stub)→save→recall→reflect→lint on a fixture vault.
         run: bash scripts/verify-memory-roundtrip.sh
 
   syntax:

@@ -12,7 +12,7 @@ Write path: both the document note and every chunk note go through
 `save.py`'s `save_entry()` -- these are permanent-memory writes from the
 start (unlike capture part 1's `_inbox/`-only staging writer), each
 individually validated, indexed, and one-per-file atomic via `save_entry`'s
-own `vault_lock.vault_mutex` + `vec_index.enqueue`.
+own `vault_lock.vault_mutex`.
 
 Group: every note this command writes carries `group: personal` (the
 design's own "a few older notes use a different group: name... we treat

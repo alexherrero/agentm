@@ -43,12 +43,12 @@ class TestRecallPrefixStability(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_repeated_identical_queries_return_the_same_order(self):
-        first = recall.query(vault=self.vault, query_text="shared identical content", k=10, mode="stub")
-        second = recall.query(vault=self.vault, query_text="shared identical content", k=10, mode="stub")
+        first = recall.query(vault=self.vault, query_text="shared identical content", k=10)
+        second = recall.query(vault=self.vault, query_text="shared identical content", k=10)
         self.assertEqual([r["path"] for r in first], [r["path"] for r in second])
 
     def test_tied_scores_break_by_path_alphabetically(self):
-        results = recall.query(vault=self.vault, query_text="shared identical content", k=10, mode="stub")
+        results = recall.query(vault=self.vault, query_text="shared identical content", k=10)
         paths = [r["path"] for r in results]
         self.assertEqual(paths, sorted(paths))
 
