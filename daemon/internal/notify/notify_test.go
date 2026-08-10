@@ -190,9 +190,33 @@ func TestAnUnauthenticatedRelayStillWorks(t *testing.T) {
 }
 
 func TestAMissingHostIsRefusedNotDialled(t *testing.T) {
-	err := sendSMTP(config.EmailConfig{To: "me@x", SMTPURL: "not a url at all"}, "s", "b")
+	err := sendSMTP(config.EmailConfig{To: "me@x", SMTPURL: "smtp://"}, "s", "b")
 	if err == nil {
-		t.Fatal("a malformed SMTP URL was accepted")
+		t.Fatal("an SMTP URL naming no host was accepted")
+	}
+}
+
+// TestTheRelayPasswordNeverReachesAnErrorMessage.
+//
+// The SMTP URL carries the operator's relay credential in its userinfo. An
+// error that echoes the URL puts that password wherever the error goes — a log
+// file, a status paste, a bug report. `url.Parse` embeds the string it failed
+// on, so the naive wrap leaks by default.
+func TestTheRelayPasswordNeverReachesAnErrorMessage(t *testing.T) {
+	const secret = "hunter2-the-actual-password"
+	for _, url := range []string{
+		"://" + secret + "@broken",           // unparseable
+		"smtp://user:" + secret + "@",        // parses, names no host
+		"smtp://user:" + secret + "@ho st:1", // invalid host
+	} {
+		err := sendSMTP(config.EmailConfig{To: "me@x", SMTPURL: url}, "s", "b")
+		if err == nil {
+			t.Errorf("%q was accepted", url)
+			continue
+		}
+		if strings.Contains(err.Error(), secret) {
+			t.Errorf("the relay password reached an error message: %v", err)
+		}
 	}
 }
 
