@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,10 +18,11 @@ import (
 // but the history — and the NAS backup pushed from it — described a vault
 // missing notes that existed.
 //
-// The same cutover surfaced the second defect: the commit path had no equivalent
-// of the indexer's dot-directory skip, so it batched over 1,400 transient
-// `.tmp.driveupload` files and failed on every batch with "cannot create empty
-// commit: clean working tree".
+// The same cutover surfaced the second defect: every batch failed with "cannot
+// create empty commit: clean working tree", more than 1,400 times. The guard
+// against committing nothing asked Status().IsClean(), which counts untracked
+// files — and Drive's staging directory kept the worktree full of them, so a
+// batch of unchanged notes looked committable while staging nothing.
 //
 // Both are cheap to re-introduce and expensive to notice, so both are pinned here.
 
@@ -148,6 +150,16 @@ func TestSweepDeletions_RecordsAnAbsenceThatPersists(t *testing.T) {
 // tell". Only ENOENT is evidence of absence; every other stat error means the
 // question was not answered, and unknown must never be recorded as gone.
 func TestCommit_AnUnreadablePathIsNotADeletion(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		// Windows reports a path under a non-directory as ERROR_PATH_NOT_FOUND,
+		// which Go maps to fs.ErrNotExist — so the distinction this test is about
+		// is not observable there, and there is no honest way to assert it.
+		// Such a path is quarantined rather than recorded, which is still the safe
+		// direction; it is the sharper "unknown is not gone" claim that goes
+		// untested on that platform.
+		t.Skip("Windows does not distinguish ENOTDIR from ENOENT")
+	}
+
 	r, dir := newRepo(t)
 	r.SetDeletionGrace(0)
 
