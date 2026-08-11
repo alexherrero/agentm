@@ -85,7 +85,7 @@ def _make_documenter_vault(root: Path, *, project: str = "agentm") -> Path:
     `wiki-style/`. Returns the vault path."""
     vault = root / "vault"
 
-    al = vault / "personal" / "_always-load"
+    al = vault / "memory" / "_always-load"
     al.mkdir(parents=True)
     (al / "diataxis-conventions.md").write_text(
         "# diataxis\nfour modes; never mix on one page.\n", encoding="utf-8",
@@ -94,7 +94,7 @@ def _make_documenter_vault(root: Path, *, project: str = "agentm") -> Path:
         "# writing style\nlead with the why; short sentences.\n", encoding="utf-8",
     )
 
-    base = vault / "projects" / project
+    base = vault / "desk/projects" / project
     (base / "decisions").mkdir(parents=True)
     (base / "_index.md").write_text(
         f"# {project} index\nstate: active.\n", encoding="utf-8",
@@ -110,7 +110,7 @@ def _make_documenter_vault(root: Path, *, project: str = "agentm") -> Path:
 
     # Global on-demand wiki conventions — the reserved `_global` pseudo-project
     # (the relocation target; read slug-independently, like _always-load).
-    gws = vault / "projects" / "_global" / "wiki-style"
+    gws = vault / "desk/projects" / "_global" / "wiki-style"
     gws.mkdir(parents=True)
     (gws / "house-voice.md").write_text(
         "---\ntrigger: house-voice\n---\nsecond person; cut peacock words.\n",
@@ -209,7 +209,7 @@ class TestResolveDocumenterContext(unittest.TestCase):
         # V5-3: even a fully-registered project returns None.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
-            (vault / "projects" / "bare").mkdir(parents=True)
+            (vault / "desk/projects" / "bare").mkdir(parents=True)
             with _ClearEnv(set_vars={"MEMORY_VAULT_PATH": str(vault)}):
                 bundle = hm.resolve_documenter_context("bare")
         self.assertIsNone(bundle)

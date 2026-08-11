@@ -14,13 +14,13 @@ start (unlike capture part 1's `_inbox/`-only staging writer), each
 individually validated, indexed, and one-per-file atomic via `save_entry`'s
 own `vault_lock.vault_mutex`.
 
-Group: every note this command writes carries `group: personal` (the
+Group: every note this command writes carries `group: memory` (the
 design's own "a few older notes use a different group: name... we treat
 those as legacy" note, and `save_entry`'s existing convention -- confirmed
 against the plan's grounding, not the design overview prose's looser
 "filed under personal/domains/<topic>/" phrasing, which `save_entry`'s
 group/kind/slug path formula has no way to reproduce literally without a
-per-topic group value that would violate the flat `group: personal`
+per-topic group value that would violate the flat `group: memory`
 convention every other kind in this vault uses). Topic is instead threaded
 through the slug (`<topic>-<title-slug>`, so same-topic notes sort
 together) and a `tags` entry -- the design's actual intent (discoverable-
@@ -239,7 +239,7 @@ def ingest(
     text, verbatim -- byte-for-byte reproducible modulo save_entry's own
     trailing-newline normalization) + N chunk notes (chunk body + a
     reading-order nav footer + a backlink to the document), `kind:
-    domain-reference`, `group: personal`.
+    domain-reference`, `group: memory`.
 
     When `topic` is omitted, returns a suggestion WITHOUT writing anything
     (`needs_confirmation=True`) -- the design's "the agent suggests a
@@ -277,7 +277,7 @@ def ingest(
         return IngestResult(success=False, needs_confirmation=True, suggested_topic=title_slug, title=title)
 
     doc_slug = f"{topic}-{title_slug}" if title_slug != topic else title_slug
-    group = "personal"
+    group = "memory"
     tags = [topic]
 
     chunks = chunk_text(text)

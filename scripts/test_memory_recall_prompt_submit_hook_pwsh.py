@@ -104,7 +104,7 @@ class TestMemoryRecallPromptSubmitHookPwsh(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.vault = self.root / "vault"
-        (self.vault / "personal").mkdir(parents=True)
+        (self.vault / "memory").mkdir(parents=True)
         self.proj = self.root / "proj"
         self.proj.mkdir(parents=True)
         # Lay out .claude/skills/memory/scripts/ the way a real install does
@@ -123,7 +123,7 @@ class TestMemoryRecallPromptSubmitHookPwsh(unittest.TestCase):
         )
 
     def _seed_recallable(self, *, always_load: bool = False) -> None:
-        rel = Path("personal") / "_always-load" if always_load else Path("personal")
+        rel = Path("memory") / "_always-load" if always_load else Path("memory")
         target = self.vault / rel
         target.mkdir(parents=True, exist_ok=True)
         (target / "matching-entry.md").write_text(
@@ -133,7 +133,7 @@ class TestMemoryRecallPromptSubmitHookPwsh(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (self.vault / "personal" / f"{_DISTRACTOR_SLUG}.md").write_text(
+        (self.vault / "memory" / f"{_DISTRACTOR_SLUG}.md").write_text(
             self._entry(
                 "Sourdough hydration ratios for a cold winter kitchen.",
                 name=_DISTRACTOR_SLUG,

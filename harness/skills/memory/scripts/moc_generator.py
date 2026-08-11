@@ -25,7 +25,7 @@ from kind_registry import is_kebab, is_known  # noqa: E402
 # _idea-incubator/, unlike frontmatter_validator.py's DC-4-exempt walk.
 # Browse-first MOCs should cover every kind the vault actually holds,
 # incubator included.
-_WALK_SUBDIRS = ("personal", "projects", "_idea-incubator")
+_WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
 _OUTPUT_DIRNAME = "_moc"
 
@@ -177,7 +177,7 @@ def build_arc_groups(vault_path: Path | str) -> dict[tuple[str, str], list[tuple
     _idea-incubator/ content, so this walks `projects/` alone."""
     vault = Path(vault_path)
     groups: dict[tuple[str, str], list[tuple[str, str, dict]]] = {}
-    root = vault / "projects"
+    root = vault / "desk/projects"
     if not root.is_dir():
         return groups
     for md in sorted(root.rglob("*.md")):
@@ -226,7 +226,7 @@ def _new_arc_index_frontmatter(project: str, arc: str, today: str) -> str:
         f"updated: {today}\n"
         "tags: []\n"
         f"arc: {arc}\n"
-        f"group: projects/{project}/arcs\n"
+        f"group: desk/projects/{project}/arcs\n"
         f"slug: {arc}\n"
         "always_load: false\n"
         "---\n\n"
@@ -257,7 +257,7 @@ def generate_arc_indexes(vault_path: Path | str, *, today: str) -> list[str]:
     written: list[str] = []
     for (project, arc), entries in sorted(groups.items()):
         other = sorted(arcs_to_projects[arc] - {project})
-        target = vault / "projects" / project / "arcs" / f"{arc}.md"
+        target = vault / "desk/projects" / project / "arcs" / f"{arc}.md"
         target.parent.mkdir(parents=True, exist_ok=True)
         generated = _render_arc_links(project, arc, entries, other)
         if target.is_file():

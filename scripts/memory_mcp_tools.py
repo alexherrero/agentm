@@ -277,11 +277,11 @@ def register_tools(mcp) -> None:
         if idempotency_key:
             actual_tags.append(_idem_tag(idempotency_key))
 
-        # Resolve group: personal by default; projects/<project> if given.
-        group = "personal"
+        # Resolve group: memory by default; projects/<project> if given.
+        group = "memory"
         if project:
             projects_seg = (
-                "projects" if (vault / "projects").is_dir() else "personal-projects"
+                "desk/projects" if (vault / "desk/projects").is_dir() else "personal-projects"
             )
             group = f"{projects_seg}/{project}"
 

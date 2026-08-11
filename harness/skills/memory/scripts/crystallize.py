@@ -58,7 +58,7 @@ Public surface:
                             open_threads)
         The locked five-field schema. All fields are plain strings.
 
-    crystallize_exploration(vault_path, slug, digest, *, group="personal",
+    crystallize_exploration(vault_path, slug, digest, *, group="memory",
                              tags=None) -> Path
         Writes the digest as a `kind: crystallized` entry via `save_entry`.
         Raises whatever `save_entry` raises (e.g. `FileExistsError` on a
@@ -283,7 +283,7 @@ def crystallize_exploration(
     slug: str,
     digest: CrystallizationDigest,
     *,
-    group: str = "personal",
+    group: str = "memory",
     tags: Optional[list] = None,
 ) -> Path:
     """Write `digest` as a `kind: crystallized` entry. The digest IS the
@@ -381,7 +381,7 @@ def _build_parser():
     w.add_argument("--digest-file", default=None,
                    help="markdown file with the five '## <Title>' sections "
                         "(default: read stdin)")
-    w.add_argument("--group", default="personal")
+    w.add_argument("--group", default="memory")
     w.add_argument("--tags", default=None, help="comma-separated")
 
     r = sub.add_parser("read", help="parse a crystallized entry back into its fields")

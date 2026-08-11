@@ -44,7 +44,7 @@ def _write_always_load_entry(
     status: str = "",
 ) -> Path:
     """Write a minimal always-load entry to <vault>/personal/_always-load/<slug>.md."""
-    al_dir = vault / "personal" / "_always-load"
+    al_dir = vault / "memory" / "_always-load"
     al_dir.mkdir(parents=True, exist_ok=True)
     fm_lines = [
         "---",
@@ -321,7 +321,7 @@ class TestPromptSubmitTokenBudget(unittest.TestCase):
     def _make_recall_vault(self, tmp_path: Path, n: int, token: str) -> Path:
         """Create a vault with n query-relevant entries in personal/."""
         vault = tmp_path
-        group = vault / "personal"
+        group = vault / "memory"
         group.mkdir(parents=True, exist_ok=True)
         for i in range(n):
             slug = f"recall-entry-{i:02d}"

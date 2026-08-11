@@ -116,7 +116,7 @@ def bad(desc: str, detail: str) -> None:
 
 def make_vault(root: Path) -> Path:
     vault = root / "vault"
-    (vault / "personal" / "_always-load").mkdir(parents=True)
+    (vault / "memory" / "_always-load").mkdir(parents=True)
     return vault
 
 

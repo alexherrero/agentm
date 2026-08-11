@@ -36,9 +36,9 @@ class TestBuildKindGroups(unittest.TestCase):
     def test_groups_by_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
-            _write_note(vault / "personal" / "b.md", "fix", "2026-07-02", "b")
-            _write_note(vault / "projects" / "p" / "c.md", "idea", "2026-07-01", "c")
+            _write_note(vault / "memory" / "a.md", "fix", "2026-07-01", "a")
+            _write_note(vault / "memory" / "b.md", "fix", "2026-07-02", "b")
+            _write_note(vault / "desk/projects" / "p" / "c.md", "idea", "2026-07-01", "c")
             groups = mg.build_kind_groups(vault)
             self.assertEqual(set(groups.keys()), {"fix", "idea"})
             self.assertEqual(len(groups["fix"]), 2)
@@ -47,8 +47,8 @@ class TestBuildKindGroups(unittest.TestCase):
     def test_newest_first_ordering(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "old.md", "fix", "2026-01-01", "old")
-            _write_note(vault / "personal" / "new.md", "fix", "2026-07-10", "new")
+            _write_note(vault / "memory" / "old.md", "fix", "2026-01-01", "old")
+            _write_note(vault / "memory" / "new.md", "fix", "2026-07-10", "new")
             groups = mg.build_kind_groups(vault)
             slugs = [fm["slug"] for _rel, _created, fm in groups["fix"]]
             self.assertEqual(slugs, ["new", "old"])
@@ -66,8 +66,8 @@ class TestBuildKindGroups(unittest.TestCase):
     def test_excludes_archive_and_own_output_dir(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "_archive" / "old.md", "fix", "2026-01-01", "old")
-            _write_note(vault / "personal" / "_moc" / "fix.md", "fix", "2026-01-01", "stale-moc")
+            _write_note(vault / "memory" / "_archive" / "old.md", "fix", "2026-01-01", "old")
+            _write_note(vault / "memory" / "_moc" / "fix.md", "fix", "2026-01-01", "stale-moc")
             groups = mg.build_kind_groups(vault)
             self.assertEqual(groups, {})
 
@@ -76,8 +76,8 @@ class TestGenerate(unittest.TestCase):
     def test_writes_one_page_per_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
-            _write_note(vault / "personal" / "b.md", "idea", "2026-07-01", "b")
+            _write_note(vault / "memory" / "a.md", "fix", "2026-07-01", "a")
+            _write_note(vault / "memory" / "b.md", "idea", "2026-07-01", "b")
             written = mg.generate(vault)
             self.assertEqual(set(written), {"fix", "idea"})
             self.assertTrue((vault / "_moc" / "fix.md").is_file())
@@ -86,8 +86,8 @@ class TestGenerate(unittest.TestCase):
     def test_page_contains_wikilinks_newest_first(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "old.md", "fix", "2026-01-01", "old-slug")
-            _write_note(vault / "personal" / "new.md", "fix", "2026-07-10", "new-slug")
+            _write_note(vault / "memory" / "old.md", "fix", "2026-01-01", "old-slug")
+            _write_note(vault / "memory" / "new.md", "fix", "2026-07-10", "new-slug")
             mg.generate(vault)
             content = (vault / "_moc" / "fix.md").read_text(encoding="utf-8")
             self.assertIn("[[new-slug]]", content)
@@ -105,7 +105,7 @@ class TestGenerate(unittest.TestCase):
         # pointer to the project's GitHub-wiki docs, not the vault root.)
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
+            _write_note(vault / "memory" / "a.md", "fix", "2026-07-01", "a")
             mg.generate(vault)
             content = (vault / "_moc" / "fix.md").read_text(encoding="utf-8")
             self.assertIn(mg._HOME_BACKLINK_URL, content)
@@ -120,7 +120,7 @@ class TestGenerate(unittest.TestCase):
         # from the pre-existing wiki-Home URL backlink above.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
+            _write_note(vault / "memory" / "a.md", "fix", "2026-07-01", "a")
             mg.generate(vault)
             content = (vault / "_moc" / "fix.md").read_text(encoding="utf-8")
             self.assertIn("[[Home]]", content)
@@ -128,8 +128,8 @@ class TestGenerate(unittest.TestCase):
     def test_idempotent_regeneration_is_byte_identical(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "fix", "2026-07-01", "a")
-            _write_note(vault / "personal" / "b.md", "fix", "2026-07-02", "b")
+            _write_note(vault / "memory" / "a.md", "fix", "2026-07-01", "a")
+            _write_note(vault / "memory" / "b.md", "fix", "2026-07-02", "b")
             mg.generate(vault)
             first = (vault / "_moc" / "fix.md").read_text(encoding="utf-8")
             mg.generate(vault)
@@ -139,7 +139,7 @@ class TestGenerate(unittest.TestCase):
     def test_never_touches_source_notes(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            note = vault / "personal" / "a.md"
+            note = vault / "memory" / "a.md"
             _write_note(note, "fix", "2026-07-01", "a")
             before = note.read_text(encoding="utf-8")
             mg.generate(vault)
@@ -149,7 +149,7 @@ class TestGenerate(unittest.TestCase):
     def test_malformed_kind_is_skipped_not_crashed(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            note = vault / "personal" / "a.md"
+            note = vault / "memory" / "a.md"
             note.parent.mkdir(parents=True, exist_ok=True)
             note.write_text(
                 "---\nkind: handoff-artifact (verdict memo)\nstatus: active\n"
@@ -164,7 +164,7 @@ class TestGenerate(unittest.TestCase):
     def test_unrecognized_kind_still_gets_a_page(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "made-up-kind", "2026-07-01", "a")
+            _write_note(vault / "memory" / "a.md", "made-up-kind", "2026-07-01", "a")
             written = mg.generate(vault)
             self.assertEqual(written, ["made-up-kind"])
             content = (vault / "_moc" / "made-up-kind.md").read_text(encoding="utf-8")
@@ -189,9 +189,9 @@ class TestBuildArcGroups(unittest.TestCase):
     def test_groups_by_project_and_arc(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "a.md", "wave-a", "2026-07-01")
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "b.md", "wave-a", "2026-07-02")
-            _write_project_note(vault / "projects" / "crickets" / "decisions" / "c.md", "v8", "2026-07-01")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "a.md", "wave-a", "2026-07-01")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "b.md", "wave-a", "2026-07-02")
+            _write_project_note(vault / "desk/projects" / "crickets" / "decisions" / "c.md", "v8", "2026-07-01")
             groups = mg.build_arc_groups(vault)
             self.assertEqual(set(groups.keys()), {("agentm", "wave-a"), ("crickets", "v8")})
             self.assertEqual(len(groups[("agentm", "wave-a")]), 2)
@@ -199,14 +199,14 @@ class TestBuildArcGroups(unittest.TestCase):
     def test_entries_without_arc_excluded(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "a.md", None, "2026-07-01")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "a.md", None, "2026-07-01")
             self.assertEqual(mg.build_arc_groups(vault), {})
 
     def test_newest_first_ordering(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "old.md", "wave-a", "2026-01-01", "old")
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "new.md", "wave-a", "2026-07-10", "new")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "old.md", "wave-a", "2026-01-01", "old")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "new.md", "wave-a", "2026-07-10", "new")
             groups = mg.build_arc_groups(vault)
             slugs = [fm["slug"] for _rel, _created, fm in groups[("agentm", "wave-a")]]
             self.assertEqual(slugs, ["new", "old"])
@@ -214,8 +214,8 @@ class TestBuildArcGroups(unittest.TestCase):
     def test_excludes_harness_and_archive_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "projects" / "agentm" / "_harness" / "a.md", "wave-a", "2026-07-01")
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "_archive" / "b.md", "wave-a", "2026-07-01")
+            _write_project_note(vault / "desk/projects" / "agentm" / "_harness" / "a.md", "wave-a", "2026-07-01")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "_archive" / "b.md", "wave-a", "2026-07-01")
             self.assertEqual(mg.build_arc_groups(vault), {})
 
 
@@ -223,10 +223,10 @@ class TestGenerateArcIndexes(unittest.TestCase):
     def test_writes_new_page_with_locked_frontmatter(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "a.md", "wave-a", "2026-07-01", "a")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "a.md", "wave-a", "2026-07-01", "a")
             written = mg.generate_arc_indexes(vault, today="2026-07-18")
             self.assertEqual(written, ["agentm/wave-a"])
-            content = (vault / "projects" / "agentm" / "arcs" / "wave-a.md").read_text(encoding="utf-8")
+            content = (vault / "desk/projects" / "agentm" / "arcs" / "wave-a.md").read_text(encoding="utf-8")
             self.assertIn("kind: arc-index", content)
             self.assertIn("arc: wave-a", content)
             self.assertIn("slug: wave-a", content)
@@ -235,14 +235,14 @@ class TestGenerateArcIndexes(unittest.TestCase):
     def test_rerun_preserves_hand_written_header_above_marker(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "a.md", "wave-a", "2026-07-01", "a")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "a.md", "wave-a", "2026-07-01", "a")
             mg.generate_arc_indexes(vault, today="2026-07-18")
-            target = vault / "projects" / "agentm" / "arcs" / "wave-a.md"
+            target = vault / "desk/projects" / "agentm" / "arcs" / "wave-a.md"
             existing = target.read_text(encoding="utf-8")
             hand_written = existing.replace("# wave-a — arc index\n", "# wave-a — arc index\n\nHand-written intro.\n")
             target.write_text(hand_written, encoding="utf-8")
 
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "b.md", "wave-a", "2026-07-02", "b")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "b.md", "wave-a", "2026-07-02", "b")
             mg.generate_arc_indexes(vault, today="2026-07-19")
             after = target.read_text(encoding="utf-8")
             self.assertIn("Hand-written intro.", after)
@@ -251,10 +251,10 @@ class TestGenerateArcIndexes(unittest.TestCase):
     def test_cross_repo_arc_gets_pointer_line(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_project_note(vault / "projects" / "agentm" / "decisions" / "a.md", "v8", "2026-07-01", "a")
-            _write_project_note(vault / "projects" / "crickets" / "decisions" / "c.md", "v8", "2026-07-01", "c")
+            _write_project_note(vault / "desk/projects" / "agentm" / "decisions" / "a.md", "v8", "2026-07-01", "a")
+            _write_project_note(vault / "desk/projects" / "crickets" / "decisions" / "c.md", "v8", "2026-07-01", "c")
             mg.generate_arc_indexes(vault, today="2026-07-18")
-            agentm_page = (vault / "projects" / "agentm" / "arcs" / "v8.md").read_text(encoding="utf-8")
+            agentm_page = (vault / "desk/projects" / "agentm" / "arcs" / "v8.md").read_text(encoding="utf-8")
             self.assertIn("Also stamped `arc: v8` in", agentm_page)
             self.assertIn("`crickets`", agentm_page)
 

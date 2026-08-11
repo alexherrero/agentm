@@ -396,7 +396,7 @@ def _patch_frontmatter(content: str, updates: dict) -> str:
 # -----------------------------------------------------------------------------
 
 def _inbox_dir(vault_path: Path) -> Path:
-    return Path(vault_path) / "personal" / "_inbox"
+    return Path(vault_path) / "memory" / "_inbox"
 
 
 def _iter_inbox_files(vault_path: Path) -> list:
@@ -459,7 +459,7 @@ def _build_promote_proposal(vault_path: Path, cluster_paths: list, loaded: dict,
     fm, body, _raw = loaded[hub]
     kind = fm.get("kind") or "idea"
     slug = fm.get("slug") or hub.stem
-    canonical_path = Path(vault_path) / "personal" / kind / f"{slug}.md"
+    canonical_path = Path(vault_path) / "memory" / kind / f"{slug}.md"
     if canonical_path.exists():
         return None
 
@@ -472,7 +472,7 @@ def _build_promote_proposal(vault_path: Path, cluster_paths: list, loaded: dict,
 
     derived_from = sorted(_rel(p, vault_path) for p in cluster_paths)
     fm_block = save_module._build_frontmatter(
-        kind=kind, group="personal", slug=slug, tags=[], always_load=False,
+        kind=kind, group="memory", slug=slug, tags=[], always_load=False,
         supersedes=None, derived_from=derived_from,
     )
     canonical_content = fm_block + "\n" + clean_body
@@ -808,7 +808,7 @@ def _write_needs_your_eye(vault_path: Path, items: list, *, run_id: str, now: fl
 # -----------------------------------------------------------------------------
 
 def _staging_dir(vault_path: Path, run_id: str) -> Path:
-    return Path(vault_path) / "_dream-staging" / run_id
+    return Path(vault_path) / "desk/scratch" / run_id
 
 
 def _render_digest(digest: InboxTriageDigest, *, auto_applied=None) -> str:
@@ -1118,7 +1118,7 @@ def _resolve_vault_path(arg_vault_path: str | None) -> Path | None:
 
 
 def _most_recent_run_id(vault_path: Path) -> str | None:
-    staging_root = Path(vault_path) / "_dream-staging"
+    staging_root = Path(vault_path) / "desk/scratch"
     if not staging_root.exists():
         return None
     candidates = sorted(p.name for p in staging_root.iterdir() if p.is_dir() and p.name.startswith("inbox-"))

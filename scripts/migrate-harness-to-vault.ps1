@@ -1,6 +1,6 @@
 # migrate-harness-to-vault.ps1 — Windows twin of the bash migration tool.
 #
-# Copies <target>/.harness/<file> → <vault>/projects/<slug>/_harness/<file>.
+# Copies <target>/.harness/<file> → <vault>/desk/projects/<slug>/_harness/<file>.
 # Idempotent, reversible. See migrate-harness-to-vault.sh for full
 # documentation; this script mirrors its surface area.
 #
@@ -68,7 +68,7 @@ if (-not $Slug) {
     exit 1
 }
 
-# Layout resolution: prefer projects/, fall back to personal-projects/.
+# Layout resolution: prefer desk/projects/, fall back to personal-projects/.
 $projectsNew = Join-Path $VaultPath 'projects'
 $projectsLegacy = Join-Path $VaultPath 'personal-projects'
 if (Test-Path -LiteralPath $projectsNew -PathType Container) {

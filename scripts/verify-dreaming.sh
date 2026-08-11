@@ -80,7 +80,7 @@ cp "$SV/a.md" "$BACKUPS/a-orig.md"
 # ── A/B/C. a manual /dream run stages a dedup proposal, mutates nothing,
 #          and writes a status: candidate insight ─────────────────────────
 DREAM_OUT="$("$PY" "$S/dream.py" --vault-path "$SV" --run-id verify-run 2>&1)"
-DIGEST="$SV/_dream-staging/verify-run/digest.md"
+DIGEST="$SV/desk/scratch/verify-run/digest.md"
 
 assert_eq "A. dream run exits describing the dedup proposal" \
   "$(printf '%s' "$DREAM_OUT" | grep -c 'proposal(s)')" "1"
@@ -132,7 +132,7 @@ import dream_confirm as dc
 
 vault = '$SV'
 rl = RevertLog(vault, log_root='$SCRATCH/rl-log2', lock_root='$SCRATCH/rl-lock2')
-staged_at = __import__('json').load(open(vault + '/_dream-staging/verify-expire/proposals.json'))['staged_at']
+staged_at = __import__('json').load(open(vault + '/desk/scratch/verify-expire/proposals.json'))['staged_at']
 far_future = staged_at + (dc.DEFAULT_TTL_DAYS + 1) * 86400
 try:
     dc.confirm(vault, 'verify-expire', 1, rl, now=far_future)

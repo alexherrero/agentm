@@ -60,16 +60,16 @@ class TestMemoryForgetSeamRouting(unittest.TestCase):
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(
             f"---\nkind: reference\nstatus: active\ncreated: 2026-07-06\n"
-            f"tags: {tags}\ngroup: personal\nslug: {p.stem}\nalways_load: false\n"
+            f"tags: {tags}\ngroup: memory\nslug: {p.stem}\nalways_load: false\n"
             f"---\nbody content\n",
             encoding="utf-8",
         )
         return p
 
     def test_forget_soft_deletes_through_the_seam(self):
-        entry = self._seed_entry("personal/reference/note.md")
+        entry = self._seed_entry("memory/reference/note.md")
         memory_forget = self.stub.tools["memory_forget"]
-        result = memory_forget(id="personal/reference/note.md")
+        result = memory_forget(id="memory/reference/note.md")
         self.assertEqual(result["status"], "deleted")
         self.assertFalse(result["already_deleted"])
         # NEVER unlinked — soft-delete only.
@@ -79,10 +79,10 @@ class TestMemoryForgetSeamRouting(unittest.TestCase):
         self.assertIn("deleted_at:", content)
 
     def test_forget_is_idempotent_on_an_already_deleted_entry(self):
-        self._seed_entry("personal/reference/note.md")
+        self._seed_entry("memory/reference/note.md")
         memory_forget = self.stub.tools["memory_forget"]
-        memory_forget(id="personal/reference/note.md")
-        second = memory_forget(id="personal/reference/note.md")
+        memory_forget(id="memory/reference/note.md")
+        second = memory_forget(id="memory/reference/note.md")
         self.assertTrue(second["already_deleted"])
 
     def test_forget_rejects_path_traversal(self):
@@ -93,12 +93,12 @@ class TestMemoryForgetSeamRouting(unittest.TestCase):
     def test_forget_write_is_lf_only_no_tmp_remnant(self):
         """The seam-routed write must preserve atomic_write's guarantees:
         no .tmp remnant, no CRLF translation."""
-        self._seed_entry("personal/reference/note.md")
+        self._seed_entry("memory/reference/note.md")
         memory_forget = self.stub.tools["memory_forget"]
-        memory_forget(id="personal/reference/note.md")
+        memory_forget(id="memory/reference/note.md")
         tmp_remnants = list(self.vault.rglob("*.tmp"))
         self.assertEqual(tmp_remnants, [])
-        raw = (self.vault / "personal" / "reference" / "note.md").read_bytes()
+        raw = (self.vault / "memory" / "reference" / "note.md").read_bytes()
         self.assertNotIn(b"\r\n", raw)
 
     def test_device_local_backend_is_the_wired_write_path(self):
@@ -114,7 +114,7 @@ class TestFindByIdemTagSeamRouting(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -122,14 +122,14 @@ class TestFindByIdemTagSeamRouting(unittest.TestCase):
     def test_finds_entry_by_idempotency_tag(self):
         import memory_mcp_tools as mmt
         tag = mmt._idem_tag("my-idempotency-key")
-        p = self.vault / "personal" / "reference" / "note.md"
+        p = self.vault / "memory" / "reference" / "note.md"
         p.write_text(
             f"---\nkind: reference\nstatus: active\ntags: [{tag}]\nslug: note\n---\nbody\n",
             encoding="utf-8",
         )
         result = mmt._find_by_idem_tag(self.vault, tag)
         self.assertIsNotNone(result)
-        self.assertEqual(result["id"], "personal/reference/note.md")
+        self.assertEqual(result["id"], "memory/reference/note.md")
 
     def test_no_match_returns_none(self):
         import memory_mcp_tools as mmt
@@ -140,7 +140,7 @@ class TestFindByIdemTagSeamRouting(unittest.TestCase):
         an idempotency lookup has no reason to match an archived entry."""
         import memory_mcp_tools as mmt
         tag = mmt._idem_tag("archived-key")
-        archive_dir = self.vault / "personal" / "_archive"
+        archive_dir = self.vault / "memory" / "_archive"
         archive_dir.mkdir(parents=True)
         (archive_dir / "old.md").write_text(
             f"---\nkind: reference\nstatus: superseded\ntags: [{tag}]\nslug: old\n---\nbody\n",

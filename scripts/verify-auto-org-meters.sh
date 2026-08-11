@@ -59,13 +59,13 @@ V="$(mktemp -d)"
 cleanup() { rm -rf "$V"; }
 trap cleanup EXIT
 
-mkdir -p "$V/personal/reference/_shelf" "$V/personal/reference/_archive"
-printf '%s\n' "---" "slug: linked-a" "---" "" "see [[linked-b]] for detail" > "$V/personal/reference/linked-a.md"
-printf '%s\n' "---" "slug: linked-b" "---" "" "see [[linked-a]] for detail" > "$V/personal/reference/linked-b.md"
-printf '%s\n' "---" "slug: unlinked" "---" "" "no links here" > "$V/personal/reference/unlinked.md"
-printf '%s\n' "---" "slug: shelved" "---" "" "body" > "$V/personal/reference/_shelf/shelved.md"
+mkdir -p "$V/memory/reference/_shelf" "$V/memory/reference/_archive"
+printf '%s\n' "---" "slug: linked-a" "---" "" "see [[linked-b]] for detail" > "$V/memory/reference/linked-a.md"
+printf '%s\n' "---" "slug: linked-b" "---" "" "see [[linked-a]] for detail" > "$V/memory/reference/linked-b.md"
+printf '%s\n' "---" "slug: unlinked" "---" "" "no links here" > "$V/memory/reference/unlinked.md"
+printf '%s\n' "---" "slug: shelved" "---" "" "body" > "$V/memory/reference/_shelf/shelved.md"
 ARCHIVE_CONTENT="---\nslug: archived\n---\n\noriginal archived content\n"
-printf '%b' "$ARCHIVE_CONTENT" > "$V/personal/reference/_archive/archived.md"
+printf '%b' "$ARCHIVE_CONTENT" > "$V/memory/reference/_archive/archived.md"
 
 RUN_OUT="$("$PY" -c "
 import sys, json
@@ -103,7 +103,7 @@ except Exception: print('ERR')" 2>/dev/null)"
 assert_eq "B. browse-surface: archived count" "$ARCHIVED" "1"
 
 # ── C. the acceptance test's own words: archived material is still there ───
-POST_ARCHIVE="$(cat "$V/personal/reference/_archive/archived.md")"
+POST_ARCHIVE="$(cat "$V/memory/reference/_archive/archived.md")"
 assert_contains "C. archived note's content is still readable on request (never deleted)" "$POST_ARCHIVE" "original archived content"
 
 # ── D. both meters render in the digest, not just corpus_stats ─────────────

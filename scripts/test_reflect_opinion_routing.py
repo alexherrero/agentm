@@ -47,7 +47,7 @@ class TestOpinionSupplementRouting(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="reflect-opinions-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
-        (self.root / "personal").mkdir(parents=True)
+        (self.root / "memory").mkdir(parents=True)
 
     def _route(self, cands, *, session_id=None):
         return reflect.route_candidates(
@@ -60,7 +60,7 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         stats = self._route([_cand(**_STANDARD, slug="gate-battery")])
         self.assertEqual(stats["opinion_supplements"], 1)
         self.assertEqual(stats["auto_saved"], 0, "must not also reach general memory")
-        written = self.root / "personal" / "_opinions" / "done" / "gate-battery.md"
+        written = self.root / "memory" / "_opinions" / "done" / "gate-battery.md"
         self.assertTrue(written.is_file(), f"not written: {written}")
         text = written.read_text(encoding="utf-8")
         self.assertIn("kind: opinion-supplement", text)
@@ -70,7 +70,7 @@ class TestOpinionSupplementRouting(unittest.TestCase):
     def test_ordinary_candidate_still_routes_normally(self):
         stats = self._route([_cand(**_ORDINARY, slug="vault-location")])
         self.assertEqual(stats["opinion_supplements"], 0)
-        self.assertFalse((self.root / "personal" / "_opinions").exists(),
+        self.assertFalse((self.root / "memory" / "_opinions").exists(),
                          "no lane should be created for an ordinary candidate")
 
     def test_a_coded_base_opinion_is_never_written(self):
@@ -78,11 +78,11 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         # supplements land under _opinions/<name>/, never in the repo's
         # authoritative opinions/<name>.md.
         self._route([_cand(**_STANDARD, slug="gate-battery")])
-        lane = self.root / "personal" / "_opinions" / "done"
+        lane = self.root / "memory" / "_opinions" / "done"
         self.assertTrue(lane.is_dir())
         # Nothing may be written at the lane's own name as a flat file, which
         # is the shape a base opinion takes.
-        self.assertFalse((self.root / "personal" / "_opinions" / "done.md").exists())
+        self.assertFalse((self.root / "memory" / "_opinions" / "done.md").exists())
 
     def test_low_confidence_standard_still_routes_to_the_lane(self):
         # The classifier decides the destination, not the confidence ladder —
@@ -97,7 +97,7 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         c2 = _cand(**_STANDARD, slug="dupe")
         stats = self._route([c1, c2])
         self.assertEqual(stats["opinion_supplements"], 2)
-        lane = self.root / "personal" / "_opinions" / "done"
+        lane = self.root / "memory" / "_opinions" / "done"
         self.assertTrue((lane / "dupe.md").is_file())
         self.assertTrue((lane / "dupe-1.md").is_file())
 
@@ -107,7 +107,7 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         # actually carries reflect._session_id_from_path's shape down into
         # the written entry's `sessions:` list.
         self._route([_cand(**_STANDARD, slug="gate-battery")], session_id="my-proj/abc-123")
-        written = self.root / "personal" / "_opinions" / "done" / "gate-battery.md"
+        written = self.root / "memory" / "_opinions" / "done" / "gate-battery.md"
         text = written.read_text(encoding="utf-8")
         self.assertIn("sessions: [my-proj/abc-123]", text)
 
@@ -115,7 +115,7 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         # Backward-compatible default: a caller that doesn't know a session
         # (or a pre-existing Stage-1 entry) must not error or fabricate one.
         self._route([_cand(**_STANDARD, slug="gate-battery")])
-        written = self.root / "personal" / "_opinions" / "done" / "gate-battery.md"
+        written = self.root / "memory" / "_opinions" / "done" / "gate-battery.md"
         text = written.read_text(encoding="utf-8")
         self.assertNotIn("sessions:", text)
 
@@ -148,7 +148,7 @@ class TestSupplementRoundTrip(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="reflect-roundtrip-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
-        (self.root / "personal").mkdir(parents=True)
+        (self.root / "memory").mkdir(parents=True)
         if str(_HERE) not in sys.path:
             sys.path.insert(0, str(_HERE))
 
@@ -160,13 +160,13 @@ class TestSupplementRoundTrip(unittest.TestCase):
             mode=reflect.ROUTE_MODE_AUTO,
             stdin=io.StringIO(), stdout=io.StringIO(), stderr=io.StringIO(),
         )
-        lane = self.root / "personal" / "_opinions" / "done"
+        lane = self.root / "memory" / "_opinions" / "done"
         # The resolver reads <supplement_dir>/<name>.md, so the served file
         # for opinion "done" is the lane dir's own <name>.md. reflect writes
         # per-candidate files inside the lane; a triage pass composes them
         # into that single entry (Stage 2+). Prove the plumbing with the
         # composed shape the resolver actually consumes.
-        composed = self.root / "personal" / "_opinions" / "done.md"
+        composed = self.root / "memory" / "_opinions" / "done.md"
         composed.write_text(
             "---\nkind: opinion-supplement\n---\n\n"
             + (lane / "gate-battery.md").read_text(encoding="utf-8").split("---", 2)[-1].strip()
@@ -174,7 +174,7 @@ class TestSupplementRoundTrip(unittest.TestCase):
             encoding="utf-8",
         )
         res = opinion_resolver.opinion_resolve(
-            "done", supplement_dir=self.root / "personal" / "_opinions"
+            "done", supplement_dir=self.root / "memory" / "_opinions"
         )
         self.assertEqual(res["reason"], "served")
         self.assertIsNotNone(res["supplement"])

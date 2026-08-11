@@ -112,7 +112,7 @@ def _resolve_cadence_days(arg_days: int | None) -> int:
 
 
 def _whitelist_path(vault: Path) -> Path:
-    return vault / "personal" / "skill-discovery-sources.md"
+    return vault / "memory" / "skill-discovery-sources.md"
 
 
 def _cache_root(vault: Path) -> Path:

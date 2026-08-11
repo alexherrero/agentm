@@ -161,7 +161,7 @@ PROMOTED_STATUSES = frozenset({
 # Where a mid-word slug is evidence of a fragment. Both directories were filled
 # by the same miner, and a note whose filename starts partway into a word
 # ("rver-s-vault-hardwiring-can-t-1") was cut out of a longer sentence.
-FRAGMENT_SLUG_DIRS = ("personal/idea", "personal/fix")
+FRAGMENT_SLUG_DIRS = ("memory/idea", "memory/fix")
 
 # Short words that legitimately start a slug, so a real note is not read as a
 # truncation just for beginning with one.
@@ -286,7 +286,7 @@ def classify_document(rel, raw):
     if status in PENALIZED_STATUSES:
         flags.add("status")
 
-    if rel.startswith("_dream-staging/") and (
+    if rel.startswith("desk/scratch/") and (
         rel.endswith(".proposal.md") or _PROPOSAL_RE.match(after)
     ):
         flags.add("staging")

@@ -89,8 +89,8 @@ class TestA2IndexInvariant(unittest.TestCase):
         """
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "TestVault"
-            (vault / "personal" / "reference").mkdir(parents=True)
-            (vault / "personal" / "reference" / "note.md").write_text(
+            (vault / "memory" / "reference").mkdir(parents=True)
+            (vault / "memory" / "reference" / "note.md").write_text(
                 "---\nkind: reference\nslug: note\n---\n\nbody\n", encoding="utf-8"
             )
             graph_snapshot.rebuild(vault)

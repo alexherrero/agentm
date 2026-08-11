@@ -141,7 +141,7 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.vault = self.root / "vault"
-        (self.vault / "personal").mkdir(parents=True)
+        (self.vault / "memory").mkdir(parents=True)
         self.proj = self.root / "proj"
         (self.proj / ".harness").mkdir(parents=True)
         # Fake HOME → .agentm-config.json points the memory-script resolver at THIS repo.
@@ -170,7 +170,7 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
         instead — the SessionStart hook already injected it, so prompt-submit
         must dedup it away.
         """
-        rel = Path("personal") / "_always-load" if always_load else Path("personal")
+        rel = Path("memory") / "_always-load" if always_load else Path("memory")
         target = self.vault / rel
         target.mkdir(parents=True, exist_ok=True)
         (target / "matching-entry.md").write_text(
@@ -180,7 +180,7 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
             ),
             encoding="utf-8",
         )
-        (self.vault / "personal" / f"{_DISTRACTOR_SLUG}.md").write_text(
+        (self.vault / "memory" / f"{_DISTRACTOR_SLUG}.md").write_text(
             self._entry(
                 "Sourdough hydration ratios for a cold winter kitchen.",
                 name=_DISTRACTOR_SLUG,
@@ -338,7 +338,7 @@ class TestMemoryRecallPromptSubmitHook(unittest.TestCase):
         # lifecycle tracking do write their own sidecars under _meta/, so the
         # invariant that matters is that no seeded ENTRY changes.
         self._seed_recallable()
-        entries = sorted((self.vault / "personal").rglob("*.md"))
+        entries = sorted((self.vault / "memory").rglob("*.md"))
         before = {p: p.read_bytes() for p in entries}
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)

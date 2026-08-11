@@ -69,7 +69,7 @@ try:
 except Exception:  # pragma: no cover — degrade gracefully if the ideas surface path is unresolvable
     append_idea_to_surface = None  # type: ignore[assignment]
 
-_INBOX_SUBDIR = ("personal", "_inbox")
+_INBOX_SUBDIR = ("memory", "_inbox")
 # A retroactive /review found the original plain "## Fetched content"
 # markdown heading collides with real content: any candidate whose own
 # body already contains that exact string (an article ABOUT markdown

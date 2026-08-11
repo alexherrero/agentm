@@ -43,7 +43,7 @@ class TestMemoryRecallSessionStartHook(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.vault = self.root / "vault"
-        (self.vault / "projects").mkdir(parents=True)
+        (self.vault / "desk/projects").mkdir(parents=True)
         self.proj = self.root / "proj"
         (self.proj / ".harness").mkdir(parents=True)
         # Fake HOME → .agentm-config.json points the memory-script resolver at THIS repo.
@@ -58,7 +58,7 @@ class TestMemoryRecallSessionStartHook(unittest.TestCase):
         self.tmp.cleanup()
 
     def _seed_always_load(self) -> None:
-        al = self.vault / "personal" / "_always-load"
+        al = self.vault / "memory" / "_always-load"
         al.mkdir(parents=True, exist_ok=True)
         (al / "conv.md").write_text(
             "---\nname: conv\ndescription: a test convention\nmetadata:\n  type: reference\n---\n\n"

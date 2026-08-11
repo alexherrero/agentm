@@ -93,7 +93,7 @@ class StaysInDryRunTests(unittest.TestCase):
             self.assertFalse(outcome.ran)
             # The command was never executed at all — proves dry_run truly
             # short-circuits before subprocess.run, not just "ran quietly".
-            self.assertFalse((vault / "_dream-staging").exists())
+            self.assertFalse((vault / "desk/scratch").exists())
 
 
 class SameShapeAsManualRunTests(unittest.TestCase):
@@ -164,7 +164,7 @@ class SameShapeAsManualRunTests(unittest.TestCase):
             self.assertTrue(outcome.ran)
             self.assertEqual(outcome.exit_code, 0)
 
-            staging_runs = list((job_vault / "_dream-staging").iterdir())
+            staging_runs = list((job_vault / "desk/scratch").iterdir())
             # A weekly cycle now stages TWO runs -- dream's own plus the
             # folded inbox-triage sub-run (auto-org part 3 task 4). This
             # test's intent is the DREAM digest's shape parity; select it

@@ -208,7 +208,7 @@ class LexicalCompletenessTests(unittest.TestCase):
         # Enough entries that a mid-walk deadline leaves a real remainder.
         for i in range(120):
             _write_entry(
-                self.vault / "personal", f"entry-{i:03d}",
+                self.vault / "memory", f"entry-{i:03d}",
                 f"Entry {i} discusses quokka migration and zorbulax resets.",
             )
         self.addCleanup(self._tmp.cleanup)
@@ -334,7 +334,7 @@ class TransparencyTests(unittest.TestCase):
         self.tmp = Path(self._tmp.name)
         self.vault = self.tmp / "vault"
         _write_entry(
-            self.vault / "personal", "zorbulax",
+            self.vault / "memory", "zorbulax",
             "The zorbulax subsystem requires a manual reset after a cold boot.",
         )
         self.addCleanup(self._tmp.cleanup)

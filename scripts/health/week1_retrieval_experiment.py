@@ -10,7 +10,7 @@ what it answered.
         --gold-set scripts/health/fixtures/week1-gold/gold-set.json --arm A
 
     # against the live vault or any post-2026-08-10 snapshot, whose root is the
-    # whole Obsidian folder and which therefore answers `Agent/projects/…`:
+    # whole Obsidian folder and which therefore answers `Agent/desk/projects/…`:
     python3 scripts/health/week1_retrieval_experiment.py \
         --gold-set scripts/health/fixtures/week1-gold/gold-set.json \
         --expected-path-prefix Agent --arm A
@@ -150,7 +150,7 @@ def load_gold_set(path, expected_path_prefix=""):
     The labels are written relative to the agent's own tree — `personal/…`,
     `projects/…` — which was the vault root until the 2026-08-10 git-transport
     cutover moved the root up to the whole Obsidian folder. A daemon serving the
-    new root answers `Agent/projects/…`, and `score_at_k` matches by exact string
+    new root answers `Agent/desk/projects/…`, and `score_at_k` matches by exact string
     equality, so the same labels need `Agent/` in front of them to score that
     corpus and nothing in front of them to score a pre-cutover snapshot.
 

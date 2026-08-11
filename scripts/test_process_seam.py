@@ -87,7 +87,7 @@ class _SeamFixture(unittest.TestCase):
             json.dumps({"vault_project": _SLUG}) + "\n", encoding="utf-8"
         )
         self.vault = self.root / "vault"
-        self.vault_harness = self.vault / "projects" / _SLUG / "_harness"
+        self.vault_harness = self.vault / "desk/projects" / _SLUG / "_harness"
         self.vault_harness.mkdir(parents=True)
         self._prev_vault = os.environ.get("MEMORY_VAULT_PATH")
         self._unset_vault()  # default posture: memory absent
@@ -123,7 +123,7 @@ class _SeamFixture(unittest.TestCase):
 
     def _seed_always_load(self, body: str = "- a test convention\n") -> None:
         """Give `phase_recall` something to return: one always-load entry."""
-        al = self.vault / "personal" / "_always-load"
+        al = self.vault / "memory" / "_always-load"
         al.mkdir(parents=True, exist_ok=True)
         (al / "test-conv.md").write_text(body, encoding="utf-8")
 

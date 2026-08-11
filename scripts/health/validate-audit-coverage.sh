@@ -155,10 +155,10 @@ fi
 # ── voice#0: recall.py always-load truncation — priority-aware fix + a
 #    read-only reproduction of the pre-fix (alphabetical + hard-break) shape
 VOICE_VAULT="$(mktemp -d)"
-mkdir -p "$VOICE_VAULT/personal/_always-load"
+mkdir -p "$VOICE_VAULT/memory/_always-load"
 PADDING="$(printf 'x%.0s' $(seq 1 400))"
-printf -- '---\npriority: low\n---\n%s\n' "$PADDING" > "$VOICE_VAULT/personal/_always-load/aaa-low.md"
-printf -- '---\npriority: high\n---\n%s\n' "$PADDING" > "$VOICE_VAULT/personal/_always-load/zzz-high.md"
+printf -- '---\npriority: low\n---\n%s\n' "$PADDING" > "$VOICE_VAULT/memory/_always-load/aaa-low.md"
+printf -- '---\npriority: high\n---\n%s\n' "$PADDING" > "$VOICE_VAULT/memory/_always-load/zzz-high.md"
 
 VOICE_CURRENT="$("$PY" -c "
 import sys, pathlib; sys.path.insert(0, '$SCRIPTS_DIR/../harness/skills/memory/scripts')

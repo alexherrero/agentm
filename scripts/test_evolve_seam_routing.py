@@ -34,7 +34,7 @@ class TestEvolveInPlace(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_in_place_evolve_archives_old_and_writes_new(self):
-        original = save.save_entry(self.vault, "reference", "my-note", "original body", group="personal")
+        original = save.save_entry(self.vault, "reference", "my-note", "original body", group="memory")
         new_path, archive_path = evolve.evolve_entry(
             self.vault, original, "evolved body", "testing the seam-routed write path",
         )
@@ -48,7 +48,7 @@ class TestEvolveInPlace(unittest.TestCase):
         self.assertIn("status: superseded", archive_content)
 
     def test_renamed_evolve_writes_new_slug_and_removes_old(self):
-        original = save.save_entry(self.vault, "reference", "old-slug", "original body", group="personal")
+        original = save.save_entry(self.vault, "reference", "old-slug", "original body", group="memory")
         new_path, archive_path = evolve.evolve_entry(
             self.vault, original, "evolved body", "renaming", new_slug="new-slug",
         )
@@ -61,7 +61,7 @@ class TestEvolveInPlace(unittest.TestCase):
         """The seam-routed write must preserve the same LF-only, byte-exact
         guarantee atomic_write always gave — no accidental newline
         translation introduced by the DeviceLocalBackend indirection."""
-        original = save.save_entry(self.vault, "reference", "my-note", "line one\nline two", group="personal")
+        original = save.save_entry(self.vault, "reference", "my-note", "line one\nline two", group="memory")
         new_path, _ = evolve.evolve_entry(self.vault, original, "line a\nline b", "reason")
         raw = new_path.read_bytes()
         self.assertNotIn(b"\r\n", raw)

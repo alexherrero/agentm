@@ -18,7 +18,7 @@ same invisible surface.
 This module is the visible half: a tight one-liner emitted by the ALREADY-VISIBLE
 `harness-context-session-start` hook (the "[agentm] Project state" line the
 operator does see), reading the digest ladder's own delivered artifacts —
-`<vault>/_briefs/*-digest-*.md` (the notes `inbox_digest.py` writes) and the
+`<vault>/desk/briefs/*-digest-*.md` (the notes `inbox_digest.py` writes) and the
 park-state files (`window_park.py`) — never a new telemetry source.
 
 Contract, mirroring every other hook-invoked script here:
@@ -45,7 +45,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 
 # The digest-note slug shape `inbox_digest.digest_slug()` writes:
-# `YYYYMMDD-digest-<cadence>` (park notes share `_briefs/` but not `-digest-`).
+# `YYYYMMDD-digest-<cadence>` (park notes share `desk/briefs/` but not `-digest-`).
 _DIGEST_SLUG_RE = re.compile(r"^(\d{4})(\d{2})(\d{2})-digest-([a-z0-9]+)$")
 # Finest cadence first — "the day's headline" prefers the daily digest.
 _CADENCE_PRIORITY = {"daily": 0, "3day": 1, "weekly": 2, "monthly": 3}
@@ -114,12 +114,12 @@ def _safe_read(path: Path) -> str:
 
 
 def latest_digest(vault: Path) -> "dict | None":
-    """The newest delivered digest note under `<vault>/_briefs/`, or None.
+    """The newest delivered digest note under `<vault>/desk/briefs/`, or None.
 
     Newest by slug date; ties (same date, multiple cadences) resolve to the
     finest cadence — "the day's headline" is the daily digest when one landed.
     Returns {date, cadence, slug, path, mtime, spend, events, headline}."""
-    d = Path(vault) / "_briefs"
+    d = Path(vault) / "desk/briefs"
     if not d.is_dir():
         return None
     best = None  # (date, -cadence_priority_inverted) tuple for max()

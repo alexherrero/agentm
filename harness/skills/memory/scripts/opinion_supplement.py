@@ -240,7 +240,7 @@ def _read_coded_base(opinion: str, *, root: Optional[Path] = None) -> Optional[s
 def lane_dirs(vault_path: Path) -> list:
     """Every per-opinion lane directory, `<vault>/personal/_opinions/<name>/`
     — NOT the composed `<name>.md` served files, which sit beside them."""
-    base = Path(vault_path) / "personal" / "_opinions"
+    base = Path(vault_path) / "memory" / "_opinions"
     if not base.is_dir():
         return []
     return sorted(p for p in base.iterdir() if p.is_dir())
@@ -423,7 +423,7 @@ def process_lane(
     current promoted set) — the same "only propose on an actual change"
     convention every other dreaming stage follows."""
     vault_path = Path(vault_path)
-    lane_dir = vault_path / "personal" / "_opinions" / opinion
+    lane_dir = vault_path / "memory" / "_opinions" / opinion
     if not lane_dir.is_dir():
         return None
     loaded = _load_lane(lane_dir)
@@ -530,7 +530,7 @@ def process_lane(
     # is exactly what keeps a single opinion's whole cycle safe to bundle
     # as one proposal (see LaneCycleResult's own docstring).
     all_promoted = [(loaded[p][0], loaded[p][1]) for p in already_promoted] + newly_promoted
-    served_path = vault_path / "personal" / "_opinions" / f"{opinion}.md"
+    served_path = vault_path / "memory" / "_opinions" / f"{opinion}.md"
 
     if all_promoted:
         new_served_content = _compose_served_file(opinion, all_promoted)
@@ -594,7 +594,7 @@ def lane_health(vault_path: Path, opinion: str) -> dict:
     base_proposal_count = sum(
         1 for p in read_base_proposals(vault_path) if p.get("opinion") == opinion
     )
-    lane_dir = vault_path / "personal" / "_opinions" / opinion
+    lane_dir = vault_path / "memory" / "_opinions" / opinion
     if not lane_dir.is_dir():
         return {
             "opinion": opinion, "lane_depth": 0, "promoted_count": 0,

@@ -15,7 +15,7 @@
 # `AGENTM_INSTALL_PREFIX`) with a `.agentm-config.json` carrying ONLY the
 # plugin-namespaced key (+ `source_clones.agentm` so the hooks find the
 # scripts without a real skill install) and a scratch vault seeded with an
-# always-load entry + a personal/reference entry. Runs all four hook scripts
+# always-load entry + a memory/reference entry. Runs all four hook scripts
 # against it (env -u MEMORY_VAULT_PATH — the config-read path must be what
 # resolves the vault, not a leaked env var) and asserts each one actually used
 # the vault:
@@ -128,13 +128,13 @@ json.dump({'plugins.obsidian-vault.vault_path': '$SV', 'source_clones': {'agentm
 fi
 
 # ── seed the scratch vault ──────────────────────────────────────────────────
-mkdir -p "$SV/personal/_always-load"
+mkdir -p "$SV/memory/_always-load"
 printf -- '---\nkind: convention\ntags: []\n---\nHOOK-RESOLUTION-CANARY: always-load entry loaded via the dual-key vault_path read.\n' \
-  > "$SV/personal/_always-load/hook-resolution-canary.md"
+  > "$SV/memory/_always-load/hook-resolution-canary.md"
 
-mkdir -p "$SV/personal/reference"
+mkdir -p "$SV/memory/reference"
 printf -- '---\nkind: reference\ntags: [hook-resolution]\n---\nHOOK-RESOLUTION-CANARY reference entry: deploy runbook staging gate lives here.\n' \
-  > "$SV/personal/reference/hook-resolution-canary-ref.md"
+  > "$SV/memory/reference/hook-resolution-canary-ref.md"
 
 SESSION_ID="00000000-0000-0000-0000-000000000001"
 # The real Claude Code slug: '/' and '.' both become '-', no extra prefix.

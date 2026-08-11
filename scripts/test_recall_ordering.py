@@ -30,12 +30,12 @@ class TestRecallPrefixStability(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
         # Three entries with IDENTICAL body text -> identical keyword AND
         # (stub-mode) vector scores -> a genuine 3-way tie on combined score,
         # so any non-deterministic ordering would show up as flaky failures.
         for name in ("charlie", "alpha", "bravo"):
-            (self.vault / "personal" / "reference" / f"{name}.md").write_text(
+            (self.vault / "memory" / "reference" / f"{name}.md").write_text(
                 "shared identical content for the tie-break test", encoding="utf-8",
             )
 

@@ -56,18 +56,18 @@ import week1_search_shim as ws  # noqa: E402
 def _make_vault(tmp):
     """A five-note vault with hand-known contents, so rankings can be asserted."""
     v = Path(tmp) / "vault"
-    (v / "personal" / "_always-load").mkdir(parents=True)
-    (v / "projects").mkdir(parents=True)
+    (v / "memory" / "_always-load").mkdir(parents=True)
+    (v / "desk/projects").mkdir(parents=True)
     notes = {
-        "personal/_always-load/commit-no-coauthor-trailer.md":
+        "memory/_always-load/commit-no-coauthor-trailer.md":
             "---\nkind: convention\ntags: [git, commits]\n---\n"
             "Do not append a Co-Authored-By trailer to git commit messages.\n",
-        "personal/_always-load/wake-on-ci-pattern.md":
+        "memory/_always-load/wake-on-ci-pattern.md":
             "---\nkind: convention\n---\n"
             "Never mark a task done speculatively. Wait for the check suite.\n",
-        "projects/unrelated-gardening.md":
+        "desk/projects/unrelated-gardening.md":
             "---\nkind: note\n---\nTomatoes want full sun and deep watering.\n",
-        "projects/long-note.md":
+        "desk/projects/long-note.md":
             "---\nkind: note\n---\n" + ("filler paragraph.\n\n" * 200)
             + "\nThe mooring permit was refused by the harbour authority.\n",
         ".hidden/should-not-be-indexed.md": "secret\n",
@@ -249,10 +249,10 @@ class TestCorpusWalk(unittest.TestCase):
             v = _make_vault(tmp)
             rels = sorted(p.relative_to(v).as_posix() for p in wc.iter_markdown_paths(v))
             self.assertEqual(rels, [
-                "personal/_always-load/commit-no-coauthor-trailer.md",
-                "personal/_always-load/wake-on-ci-pattern.md",
-                "projects/long-note.md",
-                "projects/unrelated-gardening.md",
+                "desk/projects/long-note.md",
+                "desk/projects/unrelated-gardening.md",
+                "memory/_always-load/commit-no-coauthor-trailer.md",
+                "memory/_always-load/wake-on-ci-pattern.md",
             ])
 
     def test_exclude_dir_removes_a_subtree(self):
@@ -261,7 +261,7 @@ class TestCorpusWalk(unittest.TestCase):
             rels = [p.relative_to(v).as_posix()
                     for p in wc.iter_markdown_paths(v, exclude_dirs=["_always-load"])]
             self.assertEqual(sorted(rels),
-                             ["projects/long-note.md", "projects/unrelated-gardening.md"])
+                             ["desk/projects/long-note.md", "desk/projects/unrelated-gardening.md"])
 
     def test_fingerprint_changes_when_a_note_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -270,7 +270,7 @@ class TestCorpusWalk(unittest.TestCase):
             before = wc.corpus_fingerprint(paths, v)
             self.assertEqual(before, wc.corpus_fingerprint(paths, v))
             time.sleep(0.01)
-            (v / "projects" / "unrelated-gardening.md").write_text(
+            (v / "desk/projects" / "unrelated-gardening.md").write_text(
                 "Tomatoes and also basil.\n", encoding="utf-8")
             self.assertNotEqual(before, wc.corpus_fingerprint(paths, v))
 
@@ -278,8 +278,8 @@ class TestCorpusWalk(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             v = _make_vault(tmp)
             rel, title, body = wc.read_document(
-                v / "personal" / "_always-load" / "wake-on-ci-pattern.md", v)
-            self.assertEqual(rel, "personal/_always-load/wake-on-ci-pattern.md")
+                v / "memory" / "_always-load" / "wake-on-ci-pattern.md", v)
+            self.assertEqual(rel, "memory/_always-load/wake-on-ci-pattern.md")
             self.assertIn("wake on ci pattern", title)
             self.assertIn("kind: convention", body)
 
@@ -302,7 +302,7 @@ class TestLexicalSearch(unittest.TestCase):
         results, note = wc.search_lexical(self.conn, "Co-Authored-By trailer", k=3)
         self.assertIsNotNone(note, "hyphenated query should have needed sanitizing")
         self.assertEqual(results[0]["path"],
-                         "personal/_always-load/commit-no-coauthor-trailer.md")
+                         "memory/_always-load/commit-no-coauthor-trailer.md")
 
     def test_score_is_positive_and_larger_is_better(self):
         results, _ = wc.search_lexical(self.conn, "commit messages trailer", k=3)
@@ -313,7 +313,7 @@ class TestLexicalSearch(unittest.TestCase):
         # The passage sits after ~3,400 characters of filler. A fixed leading
         # window would miss it; FTS5 indexes the whole document.
         results, _ = wc.search_lexical(self.conn, "mooring permit harbour", k=3)
-        self.assertEqual(results[0]["path"], "projects/long-note.md")
+        self.assertEqual(results[0]["path"], "desk/projects/long-note.md")
 
     def test_unmatched_query_returns_nothing_rather_than_guessing(self):
         results, _ = wc.search_lexical(self.conn, "quantum chromodynamics", k=5)
@@ -333,7 +333,7 @@ class TestLexicalSearch(unittest.TestCase):
         results, note = wc.search_lexical(self.conn, '"git commit messages"', k=3)
         self.assertIsNone(note, "valid FTS5 should not be rewritten")
         self.assertEqual(results[0]["path"],
-                         "personal/_always-load/commit-no-coauthor-trailer.md")
+                         "memory/_always-load/commit-no-coauthor-trailer.md")
 
     def test_index_is_reused_when_the_corpus_is_unchanged(self):
         conn2, n2 = wc.build_lexical_index(self.vault, Path(self.tmp.name) / "lex.db")
@@ -341,7 +341,7 @@ class TestLexicalSearch(unittest.TestCase):
         conn2.close()
 
     def test_index_rebuilds_when_a_note_changes(self):
-        (self.vault / "projects" / "new-note.md").write_text(
+        (self.vault / "desk/projects" / "new-note.md").write_text(
             "---\nkind: note\n---\nA brand new note.\n", encoding="utf-8")
         # setUp's connection is closed first: nothing in production holds a
         # second handle on an index that is being rebuilt, and leaving one open
@@ -430,10 +430,10 @@ class TestVectorCacheIsIncremental(unittest.TestCase):
         _, doc_paths, vectors = self._build()
         self.assertEqual(len(self.embedded), vectors.shape[0])
         self.assertEqual(set(doc_paths), {
-            "personal/_always-load/commit-no-coauthor-trailer.md",
-            "personal/_always-load/wake-on-ci-pattern.md",
-            "projects/long-note.md",
-            "projects/unrelated-gardening.md"})
+            "memory/_always-load/commit-no-coauthor-trailer.md",
+            "memory/_always-load/wake-on-ci-pattern.md",
+            "desk/projects/long-note.md",
+            "desk/projects/unrelated-gardening.md"})
 
     def test_an_unchanged_corpus_embeds_nothing_the_second_time(self):
         _, _, first = self._build()
@@ -445,14 +445,14 @@ class TestVectorCacheIsIncremental(unittest.TestCase):
         self._build()
         # mtime moves, content does not — the cache keys on content, so this
         # must not trigger an embed. A Google-Drive sync does exactly this.
-        p = self.vault / "projects" / "unrelated-gardening.md"
+        p = self.vault / "desk/projects" / "unrelated-gardening.md"
         os.utime(p, (time.time() + 10, time.time() + 10))
         self._build()
         self.assertEqual(self.embedded, [])
 
     def test_only_the_edited_note_is_re_embedded(self):
         _, first_paths, _ = self._build()
-        (self.vault / "projects" / "unrelated-gardening.md").write_text(
+        (self.vault / "desk/projects" / "unrelated-gardening.md").write_text(
             "---\nkind: note\n---\nTomatoes, basil, and a new thought.\n",
             encoding="utf-8")
         _, doc_paths, _ = self._build()
@@ -464,20 +464,20 @@ class TestVectorCacheIsIncremental(unittest.TestCase):
 
     def test_a_new_note_is_embedded_and_the_rest_are_not(self):
         _, first_paths, _ = self._build()
-        (self.vault / "projects" / "fresh.md").write_text(
+        (self.vault / "desk/projects" / "fresh.md").write_text(
             "---\nkind: note\n---\nA brand new thought.\n", encoding="utf-8")
         _, doc_paths, _ = self._build()
         self.assertEqual(len(self.embedded), 1)
         self.assertIn("brand new thought", self.embedded[0])
         self.assertEqual(len(doc_paths), len(first_paths) + 1)
-        self.assertIn("projects/fresh.md", doc_paths)
+        self.assertIn("desk/projects/fresh.md", doc_paths)
 
     def test_a_deleted_notes_rows_are_dropped(self):
         self._build()
-        (self.vault / "projects" / "unrelated-gardening.md").unlink()
+        (self.vault / "desk/projects" / "unrelated-gardening.md").unlink()
         _, doc_paths, vectors = self._build()
         self.assertEqual(self.embedded, [])
-        self.assertNotIn("projects/unrelated-gardening.md", doc_paths)
+        self.assertNotIn("desk/projects/unrelated-gardening.md", doc_paths)
         self.assertEqual(vectors.shape[0], len(doc_paths))
 
     def test_rows_stay_aligned_with_their_documents_after_a_partial_rebuild(self):
@@ -490,11 +490,11 @@ class TestVectorCacheIsIncremental(unittest.TestCase):
         """
         import chunking
         self._build()
-        (self.vault / "projects" / "zebra.md").write_text(
+        (self.vault / "desk/projects" / "zebra.md").write_text(
             "---\nkind: note\n---\nZebras are striped.\n", encoding="utf-8")
         # Edit one existing note too, so the rebuild mixes all three cases:
         # reused rows, a re-embedded note, and a brand new one.
-        (self.vault / "projects" / "unrelated-gardening.md").write_text(
+        (self.vault / "desk/projects" / "unrelated-gardening.md").write_text(
             "---\nkind: note\n---\nTomatoes, and now also rhubarb.\n", encoding="utf-8")
         enc, doc_paths, vectors = self._build()
         self.assertEqual(vectors.shape[0], len(doc_paths))
@@ -650,7 +650,7 @@ class TestDaemonSocket(unittest.TestCase):
                                       "query": "Co-Authored-By trailer", "k": 2})
                 self.assertTrue(r["ok"])
                 self.assertEqual(r["results"][0]["path"],
-                                 "personal/_always-load/commit-no-coauthor-trailer.md")
+                                 "memory/_always-load/commit-no-coauthor-trailer.md")
             finally:
                 try:
                     wd.request(sock, {"op": "shutdown"}, timeout=10)
@@ -982,29 +982,29 @@ class TestClassifyDocument(unittest.TestCase):
     def test_body_opening_with_a_miner_lead_in_is_a_fragment(self):
         for opener in ("User stated:", "Fix observed:", "User corrected the agent:"):
             raw = f"---\nkind: fix\n---\n{opener} ...something clipped mid-sentence\n"
-            self.assertEqual(wc.classify_document("personal/_inbox/x.md", raw),
+            self.assertEqual(wc.classify_document("memory/_inbox/x.md", raw),
                              {"fragment"}, opener)
 
     def test_mining_frontmatter_is_a_fragment_even_without_the_lead_in(self):
         raw = "---\nkind: idea\nmining_confidence: HIGH\n---\nA perfectly ordinary body.\n"
-        self.assertEqual(wc.classify_document("personal/_inbox/y.md", raw), {"fragment"})
+        self.assertEqual(wc.classify_document("memory/_inbox/y.md", raw), {"fragment"})
 
     def test_mid_word_slug_under_a_miner_directory_is_a_fragment(self):
         raw = "---\nkind: idea\n---\nrver's vault-hardwiring can't degrade\n"
         self.assertEqual(
-            wc.classify_document("personal/idea/rver-s-vault-hardwiring-can-t-1.md", raw),
+            wc.classify_document("memory/idea/rver-s-vault-hardwiring-can-t-1.md", raw),
             {"fragment"})
 
     def test_an_ellipsis_opener_under_a_miner_directory_is_a_fragment(self):
         raw = "---\nkind: idea\n---\n...processed in order. This is useful for bridges\n"
         self.assertEqual(
-            wc.classify_document("personal/idea/processed-in-order-this-is-useful-1.md",
+            wc.classify_document("memory/idea/processed-in-order-this-is-useful-1.md",
                                  raw),
             {"fragment"})
 
     def test_a_real_looking_slug_outside_a_miner_directory_is_not_a_fragment(self):
         raw = "---\nkind: convention\nstatus: active\n---\nOrdinary prose.\n"
-        self.assertEqual(wc.classify_document("personal/_always-load/ps-tooling.md", raw),
+        self.assertEqual(wc.classify_document("memory/_always-load/ps-tooling.md", raw),
                          set())
 
     def test_a_short_real_word_does_not_read_as_a_truncation(self):
@@ -1016,14 +1016,14 @@ class TestClassifyDocument(unittest.TestCase):
     def test_each_penalized_status_is_flagged(self):
         for status in ("unfiled", "inbox", "superseded", "expired"):
             raw = f"---\nkind: convention\nstatus: {status}\n---\n# Real note\n\nProse.\n"
-            self.assertEqual(wc.classify_document("personal/x.md", raw),
+            self.assertEqual(wc.classify_document("memory/x.md", raw),
                              {"status"}, status)
 
     def test_an_active_note_carries_no_class(self):
-        self.assertEqual(wc.classify_document("projects/a/design.md", _REAL_NOTE), set())
+        self.assertEqual(wc.classify_document("desk/projects/a/design.md", _REAL_NOTE), set())
 
     def test_a_note_can_carry_several_classes(self):
-        self.assertEqual(wc.classify_document("personal/_inbox/never-cache-1.md",
+        self.assertEqual(wc.classify_document("memory/_inbox/never-cache-1.md",
                                               _FRAGMENT_NOTE),
                          {"fragment", "status"})
 
@@ -1031,12 +1031,12 @@ class TestClassifyDocument(unittest.TestCase):
         raw = "# Proposal 132: inbox_merge / merge\n\nnever-cache-1.md and never-cache.md\n"
         self.assertEqual(
             wc.classify_document(
-                "_dream-staging/inbox-20260712/132-inbox_merge-merge.proposal.md", raw),
+                "desk/scratch/inbox-20260712/132-inbox_merge-merge.proposal.md", raw),
             {"staging"})
 
     def test_a_proposal_outside_dream_staging_is_not_staged(self):
         raw = "# Proposal 132: something\n\nbody\n"
-        self.assertEqual(wc.classify_document("projects/x/proposal.md", raw), set())
+        self.assertEqual(wc.classify_document("desk/projects/x/proposal.md", raw), set())
 
 
 class TestShapeRuleGatedOnStatus(unittest.TestCase):
@@ -1053,29 +1053,29 @@ class TestShapeRuleGatedOnStatus(unittest.TestCase):
 
     def test_a_promoted_fragment_is_classed_apart_from_an_unfiled_one(self):
         self.assertEqual(
-            wc.classify_document("personal/preferences/always-absolute.md",
+            wc.classify_document("memory/preferences/always-absolute.md",
                                  self.PROMOTED_FRAGMENT),
             {"fragment-promoted"})
         self.assertEqual(
-            wc.classify_document("personal/_inbox/never-cache-1.md", _FRAGMENT_NOTE),
+            wc.classify_document("memory/_inbox/never-cache-1.md", _FRAGMENT_NOTE),
             {"fragment", "status"})
 
     def test_every_promoted_status_gates_the_shape_rule(self):
         for status in sorted(wc.PROMOTED_STATUSES):
             raw = (f"---\nkind: fix\nstatus: {status}\n---\n"
                    "Fix observed: ...something clipped\n")
-            self.assertEqual(wc.classify_document("personal/fix/x.md", raw),
+            self.assertEqual(wc.classify_document("memory/fix/x.md", raw),
                              {"fragment-promoted"}, status)
 
     def test_the_recommended_weights_spare_a_promoted_fragment(self):
-        flags = wc.classify_document("personal/preferences/always-absolute.md",
+        flags = wc.classify_document("memory/preferences/always-absolute.md",
                                      self.PROMOTED_FRAGMENT)
         self.assertEqual(
             wc.penalty_multiplier(flags, wc.DEFAULT_PENALTY_WEIGHTS), 1.0,
             "the recommended shape must leave a filed note's score untouched")
 
     def test_the_as_measured_weights_demote_it(self):
-        flags = wc.classify_document("personal/preferences/always-absolute.md",
+        flags = wc.classify_document("memory/preferences/always-absolute.md",
                                      self.PROMOTED_FRAGMENT)
         self.assertAlmostEqual(
             wc.penalty_multiplier(flags, wc.AS_MEASURED_PENALTY_WEIGHTS), 0.30)
@@ -1092,7 +1092,7 @@ class TestShapeRuleGatedOnStatus(unittest.TestCase):
                 flags)
 
     def test_an_unfiled_fragment_is_still_demoted_under_both(self):
-        flags = wc.classify_document("personal/_inbox/x.md", _FRAGMENT_NOTE)
+        flags = wc.classify_document("memory/_inbox/x.md", _FRAGMENT_NOTE)
         for preset in (wc.DEFAULT_PENALTY_WEIGHTS, wc.AS_MEASURED_PENALTY_WEIGHTS):
             self.assertLess(wc.penalty_multiplier(flags, preset), 0.3)
 
@@ -1101,10 +1101,10 @@ class TestShapeRuleGatedOnStatus(unittest.TestCase):
         so the CLI validates against this set. It has to stay complete."""
         emitted = set()
         for rel, raw in (
-            ("personal/_inbox/a.md", _FRAGMENT_NOTE),
-            ("personal/preferences/b.md", self.PROMOTED_FRAGMENT),
-            ("_dream-staging/x/1.proposal.md", "# Proposal 1: merge\n\nbody\n"),
-            ("personal/c.md", "---\nstatus: expired\n---\n# Real\n\nProse.\n"),
+            ("memory/_inbox/a.md", _FRAGMENT_NOTE),
+            ("memory/preferences/b.md", self.PROMOTED_FRAGMENT),
+            ("desk/scratch/x/1.proposal.md", "# Proposal 1: merge\n\nbody\n"),
+            ("memory/c.md", "---\nstatus: expired\n---\n# Real\n\nProse.\n"),
         ):
             emitted |= wc.classify_document(rel, raw)
         self.assertEqual(emitted, set(wc.PENALTY_CLASSES))
@@ -1133,14 +1133,14 @@ def _make_penalty_vault(tmp):
     This is the shape the live vault has, reproduced small enough to assert on.
     """
     v = Path(tmp) / "vault"
-    (v / "personal" / "_inbox").mkdir(parents=True)
-    (v / "personal" / "_always-load").mkdir(parents=True)
+    (v / "memory" / "_inbox").mkdir(parents=True)
+    (v / "memory" / "_always-load").mkdir(parents=True)
     for i in range(4):
-        (v / "personal" / "_inbox" / f"never-cache-{i}.md").write_text(
+        (v / "memory" / "_inbox" / f"never-cache-{i}.md").write_text(
             "---\nkind: preferences\nstatus: inbox\nmining_confidence: LOW\n---\n"
             "User stated: ...vault path vault path never cache the vault path\n",
             encoding="utf-8")
-    (v / "personal" / "_always-load" / "vault-path-convention.md").write_text(
+    (v / "memory" / "_always-load" / "vault-path-convention.md").write_text(
         "---\nkind: convention\nstatus: active\n---\n"
         "# Vault path convention\n\n" + ("Unrelated background prose. " * 60)
         + "\nResolve the vault path at runtime.\n",
@@ -1163,13 +1163,13 @@ class TestRankPenalty(unittest.TestCase):
     def test_flags_are_stored_for_the_fragments_only(self):
         self.assertEqual(
             set(self.flags),
-            {f"personal/_inbox/never-cache-{i}.md" for i in range(4)})
-        self.assertEqual(self.flags["personal/_inbox/never-cache-0.md"],
+            {f"memory/_inbox/never-cache-{i}.md" for i in range(4)})
+        self.assertEqual(self.flags["memory/_inbox/never-cache-0.md"],
                          frozenset({"fragment", "status"}))
 
     def test_without_the_penalty_the_fragments_bury_the_real_note(self):
         results, _ = wc.search_lexical(self.conn, "vault path", k=3)
-        self.assertTrue(all(r["path"].startswith("personal/_inbox/") for r in results),
+        self.assertTrue(all(r["path"].startswith("memory/_inbox/") for r in results),
                         [r["path"] for r in results])
 
     def test_the_penalty_lifts_the_real_note_to_the_top(self):
@@ -1177,7 +1177,7 @@ class TestRankPenalty(unittest.TestCase):
             self.conn, "vault path", k=3, doc_flags=self.flags,
             penalty={"fragment": 0.3, "status": 0.6})
         self.assertEqual(results[0]["path"],
-                         "personal/_always-load/vault-path-convention.md")
+                         "memory/_always-load/vault-path-convention.md")
 
     def test_demoted_notes_are_still_returned(self):
         """The whole point. A demoted note ranks lower; it does not disappear."""
@@ -1186,21 +1186,21 @@ class TestRankPenalty(unittest.TestCase):
             penalty={"fragment": 0.3, "status": 0.6})
         self.assertEqual(len(results), 5)
         self.assertEqual(
-            {r["path"] for r in results if r["path"].startswith("personal/_inbox/")},
-            {f"personal/_inbox/never-cache-{i}.md" for i in range(4)})
+            {r["path"] for r in results if r["path"].startswith("memory/_inbox/")},
+            {f"memory/_inbox/never-cache-{i}.md" for i in range(4)})
 
     def test_a_penalized_note_that_is_the_only_match_still_comes_back_first(self):
         results, _ = wc.search_lexical(
             self.conn, "mining_confidence", k=5, doc_flags=self.flags,
             penalty={"fragment": 0.01, "status": 0.01})
         self.assertTrue(results)
-        self.assertTrue(results[0]["path"].startswith("personal/_inbox/"))
+        self.assertTrue(results[0]["path"].startswith("memory/_inbox/"))
 
     def test_the_adjusted_score_and_the_reason_are_both_reported(self):
         results, _ = wc.search_lexical(
             self.conn, "vault path", k=5, doc_flags=self.flags,
             penalty={"fragment": 0.5, "status": 0.5})
-        demoted = next(r for r in results if r["path"].startswith("personal/_inbox/"))
+        demoted = next(r for r in results if r["path"].startswith("memory/_inbox/"))
         self.assertEqual(demoted["penalty"], "fragment,status")
         self.assertAlmostEqual(demoted["score"], round(demoted["raw_score"] * 0.25, 4),
                                places=3)
@@ -1222,7 +1222,7 @@ class TestRankPenalty(unittest.TestCase):
             self.conn, "vault path", k=1, doc_flags=self.flags,
             penalty={"fragment": 0.3, "status": 0.6})
         self.assertEqual(results[0]["path"],
-                         "personal/_always-load/vault-path-convention.md")
+                         "memory/_always-load/vault-path-convention.md")
 
 
 class TestLexicalVariants(unittest.TestCase):
@@ -1258,7 +1258,7 @@ class TestLexicalVariants(unittest.TestCase):
         conn, _ = self._build("baseline")
         try:
             results, _ = wc.search_lexical(conn, "watering tomatoes", k=3)
-            self.assertEqual(results[0]["path"], "projects/unrelated-gardening.md")
+            self.assertEqual(results[0]["path"], "desk/projects/unrelated-gardening.md")
         finally:
             conn.close()
 
@@ -1279,7 +1279,7 @@ class TestLexicalVariants(unittest.TestCase):
             self.assertEqual(cols, ["path", "title", "meta", "body"])
             row = conn.execute(
                 "SELECT meta FROM docs WHERE path = ?",
-                ("personal/_always-load/commit-no-coauthor-trailer.md",)).fetchone()
+                ("memory/_always-load/commit-no-coauthor-trailer.md",)).fetchone()
             self.assertEqual(row[0], "git commits")
         finally:
             conn.close()
@@ -1353,7 +1353,7 @@ class TestWindowsFileHandles(unittest.TestCase):
             conn1.close()
             self.assertEqual(n1, 4)
 
-            (vault / "projects" / "new-note.md").write_text(
+            (vault / "desk/projects" / "new-note.md").write_text(
                 "---\nkind: note\n---\nA brand new note about mooring.\n",
                 encoding="utf-8")
 
@@ -1373,7 +1373,7 @@ class TestWindowsFileHandles(unittest.TestCase):
                 self.assertTrue(calls, "the rebuild never tried to unlink")
                 self.assertEqual(n2, 5, "the rebuilt index is missing the new note")
                 results, _ = wc.search_lexical(conn2, "mooring", k=3)
-                self.assertEqual(results[0]["path"], "projects/new-note.md")
+                self.assertEqual(results[0]["path"], "desk/projects/new-note.md")
                 # The docflags table has to come back too, or a penalized run
                 # silently serves an unpenalized ranking.
                 self.assertEqual(
@@ -1487,7 +1487,7 @@ class TestQueryModes(unittest.TestCase):
     def test_or_mode_still_ranks_the_note_that_matches_most_terms_first(self):
         results, _ = wc.search_lexical(
             self.conn, "tomatoes full sun watering", k=4, query_mode="or")
-        self.assertEqual(results[0]["path"], "projects/unrelated-gardening.md")
+        self.assertEqual(results[0]["path"], "desk/projects/unrelated-gardening.md")
 
     def test_or_mode_leaves_a_single_term_query_alone(self):
         as_is, _ = wc.search_lexical(self.conn, "tomatoes", k=3)
@@ -1629,7 +1629,7 @@ class TestMissingPrefixHint(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             v = self._vault(td, "Agent/personal/a.md", "Other/thing.md")
             hint = w1.hint_for_missing_prefix(
-                ["personal/a.md", "personal/gone.md"], v, "")
+                ["memory/a.md", "memory/gone.md"], v, "")
         self.assertIn("real label drift", hint)
         self.assertNotIn("--expected-path-prefix Agent", hint)
 

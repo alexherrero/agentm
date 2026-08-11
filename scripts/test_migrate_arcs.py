@@ -76,7 +76,7 @@ class TestPlanStamp(unittest.TestCase):
     def test_high_confidence_tag_match(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "a.md", tags="[wave-a]")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "a.md", tags="[wave-a]")
             plan = ma.plan_stamp(vault, "agentm")
             self.assertEqual(len(plan.rows), 1)
             self.assertEqual(plan.rows[0].confidence, "HIGH")
@@ -85,7 +85,7 @@ class TestPlanStamp(unittest.TestCase):
     def test_already_stamped_entry_is_skip(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "a.md", arc="v8")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "a.md", arc="v8")
             plan = ma.plan_stamp(vault, "agentm")
             self.assertEqual(plan.rows[0].confidence, "SKIP")
             self.assertEqual(plan.rows[0].proposed, "v8")
@@ -93,22 +93,22 @@ class TestPlanStamp(unittest.TestCase):
     def test_no_signal_is_unmatched(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "a.md", tags="[unrelated]")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "a.md", tags="[unrelated]")
             plan = ma.plan_stamp(vault, "agentm")
             self.assertEqual(plan.rows[0].confidence, "UNMATCHED")
 
     def test_only_scans_decisions_and_designs(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "other" / "a.md", tags="[wave-a]")
+            _write(vault / "desk/projects" / "agentm" / "other" / "a.md", tags="[wave-a]")
             plan = ma.plan_stamp(vault, "agentm")
             self.assertEqual(plan.rows, [])
 
     def test_apply_writes_only_high_and_medium(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            high = vault / "projects" / "agentm" / "decisions" / "a.md"
-            unmatched = vault / "projects" / "agentm" / "decisions" / "b.md"
+            high = vault / "desk/projects" / "agentm" / "decisions" / "a.md"
+            unmatched = vault / "desk/projects" / "agentm" / "decisions" / "b.md"
             _write(high, tags="[wave-a]")
             _write(unmatched, tags="[unrelated]")
             plan = ma.plan_stamp(vault, "agentm")
@@ -145,7 +145,7 @@ class TestPlanAndApplyArchiveGroup(unittest.TestCase):
     def test_matched_file_proposed_high(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            archive = vault / "projects" / "agentm" / "_harness" / "archive"
+            archive = vault / "desk/projects" / "agentm" / "_harness" / "archive"
             f = archive / "PLAN.archive.20260718-wave-a-something.md"
             f.parent.mkdir(parents=True)
             f.write_text("stub\n", encoding="utf-8")
@@ -158,7 +158,7 @@ class TestPlanAndApplyArchiveGroup(unittest.TestCase):
     def test_unmatched_slug_not_moved_by_apply(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            archive = vault / "projects" / "agentm" / "_harness" / "archive"
+            archive = vault / "desk/projects" / "agentm" / "_harness" / "archive"
             f = archive / "PLAN.archive.20260718-totally-unregistered-thing.md"
             f.parent.mkdir(parents=True)
             f.write_text("stub\n", encoding="utf-8")
@@ -170,7 +170,7 @@ class TestPlanAndApplyArchiveGroup(unittest.TestCase):
     def test_apply_actually_moves_the_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            archive = vault / "projects" / "agentm" / "_harness" / "archive"
+            archive = vault / "desk/projects" / "agentm" / "_harness" / "archive"
             f = archive / "PLAN.archive.20260718-wave-a-something.md"
             f.parent.mkdir(parents=True)
             f.write_text("stub content\n", encoding="utf-8")
@@ -184,7 +184,7 @@ class TestPlanAndApplyArchiveGroup(unittest.TestCase):
     def test_no_date_prefix_slug_is_unmatched_not_crashed(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            archive = vault / "projects" / "agentm" / "_harness" / "archive"
+            archive = vault / "desk/projects" / "agentm" / "_harness" / "archive"
             f = archive / "PLAN.archive..md"  # degenerate: empty slug after date-prefix strip
             f.parent.mkdir(parents=True)
             f.write_text("stub\n", encoding="utf-8")
@@ -194,7 +194,7 @@ class TestPlanAndApplyArchiveGroup(unittest.TestCase):
 
 class TestPlanAndApplyDesignsMove(unittest.TestCase):
     def _seed_design_folder(self, vault: Path, project: str, arc: str) -> Path:
-        src = vault / "projects" / project / "_harness" / "designs" / arc
+        src = vault / "desk/projects" / project / "_harness" / "designs" / arc
         (src / "notes.md").parent.mkdir(parents=True, exist_ok=True)
         (src / "notes.md").write_text("design content\n", encoding="utf-8")
         return src
@@ -209,7 +209,7 @@ class TestPlanAndApplyDesignsMove(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
             self._seed_design_folder(vault, "agentm", "wave-a")
-            dest = vault / "projects" / "agentm" / "_harness" / "archive" / "designs" / "wave-a"
+            dest = vault / "desk/projects" / "agentm" / "_harness" / "archive" / "designs" / "wave-a"
             dest.mkdir(parents=True)
             plan = ma.plan_designs_move(vault, "agentm", "wave-a")
             self.assertTrue(plan.errors)
@@ -218,23 +218,23 @@ class TestPlanAndApplyDesignsMove(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
             self._seed_design_folder(vault, "agentm", "wave-a")
-            referrer = vault / "projects" / "agentm" / "decisions" / "linker.md"
+            referrer = vault / "desk/projects" / "agentm" / "decisions" / "linker.md"
             _write(referrer, body="see [_harness/designs/wave-a/notes.md] for detail\n")
             plan = ma.plan_designs_move(vault, "agentm", "wave-a")
             paths = [r.path for r in plan.rows]
-            self.assertIn("projects/agentm/decisions/linker.md", paths)
+            self.assertIn("desk/projects/agentm/decisions/linker.md", paths)
 
     def test_apply_moves_folder_and_rewrites_external_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
             src = self._seed_design_folder(vault, "agentm", "wave-a")
-            referrer = vault / "projects" / "agentm" / "decisions" / "linker.md"
+            referrer = vault / "desk/projects" / "agentm" / "decisions" / "linker.md"
             _write(referrer, body="see _harness/designs/wave-a/notes.md for detail\n")
             plan = ma.plan_designs_move(vault, "agentm", "wave-a")
             ma.apply_designs_move(vault, "agentm", "wave-a", plan)
 
             self.assertFalse(src.is_dir())
-            dest = vault / "projects" / "agentm" / "_harness" / "archive" / "designs" / "wave-a"
+            dest = vault / "desk/projects" / "agentm" / "_harness" / "archive" / "designs" / "wave-a"
             self.assertTrue((dest / "notes.md").is_file())
             self.assertEqual((dest / "notes.md").read_text(encoding="utf-8"), "design content\n")
 
@@ -254,7 +254,7 @@ class TestPlanAndApplyDesignsMove(unittest.TestCase):
             plan = ma.plan_designs_move(vault, "agentm", "wave-a")
             ma.apply_designs_move(vault, "agentm", "wave-a", plan)
 
-            dest = vault / "projects" / "agentm" / "_harness" / "archive" / "designs" / "wave-a"
+            dest = vault / "desk/projects" / "agentm" / "_harness" / "archive" / "designs" / "wave-a"
             new_text = (dest / "notes.md").read_text(encoding="utf-8")
             self.assertIn("_harness/archive/designs/wave-a/notes.md", new_text)
 

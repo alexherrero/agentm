@@ -71,9 +71,9 @@ class TestRecordRecall(unittest.TestCase):
 
     def test_hits_provided_lands_in_the_row_alongside_hit_slugs(self):
         hits = [
-            {"slug": "a", "path": "personal/a.md", "sim": 0.81, "keyword": 12.3,
+            {"slug": "a", "path": "memory/a.md", "sim": 0.81, "keyword": 12.3,
              "combined": 0.0163, "rank": 1, "lifecycle_tier": "volatile", "decay_score": 0.94},
-            {"slug": "b", "path": "projects/agentm/b.md", "sim": 0.0, "keyword": 8.1,
+            {"slug": "b", "path": "desk/projects/agentm/b.md", "sim": 0.0, "keyword": 8.1,
              "combined": 0.0157, "rank": 2},
         ]
         row = rc.record_recall("q", ["a", "b"], hits=hits, now=_NOW, history_path=self.history_path)

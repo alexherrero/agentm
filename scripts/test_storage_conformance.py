@@ -107,7 +107,7 @@ def _make_scratch_vault_backend(case: unittest.TestCase) -> "vbs.VaultBackend":
     case.addCleanup(tmp.cleanup)
     base = Path(tmp.name)
     return vbs.VaultBackend(
-        root=base / "vault" / "projects" / "agentm",
+        root=base / "vault" / "desk/projects" / "agentm",
         lock_root=base / "locks",
     )
 

@@ -246,18 +246,18 @@ def promote_idea(
     if not vault.exists():
         raise FileNotFoundError(f"vault path does not exist: {vault}")
 
-    incubator_dir = vault / "personal" / "_idea-incubator" / slug
+    incubator_dir = vault / "memory" / "_idea-incubator" / slug
     if not incubator_dir.exists() or not incubator_dir.is_dir():
         raise FileNotFoundError(
             f"incubator entry not found: {incubator_dir} "
             f"(check slug spelling; list entries with "
-            f"`ls {vault}/personal/_idea-incubator/`)"
+            f"`ls {vault}/_idea-incubator/`)"
         )
 
-    project_dir = vault / "personal" / "projects" / slug
+    project_dir = vault / "memory" / "projects" / slug
     if project_dir.exists():
         raise FileExistsError(
-            f"projects/{slug}/ already exists at {project_dir}; "
+            f"desk/projects/{slug}/ already exists at {project_dir}; "
             f"pick a different slug or remove the existing dir first"
         )
 
@@ -265,7 +265,7 @@ def promote_idea(
     project_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(incubator_dir), str(project_dir))
 
-    new_prefix = f"personal/projects/{slug}/"
+    new_prefix = f"memory/projects/{slug}/"
 
     # Annotate Ideas.md section. Pass the already-resolved `vault` so the
     # default can't diverge from the vault actually used for the promotion.
@@ -354,7 +354,7 @@ def gc_idea_incubator(
     Non-TTY contexts default every prompt to 'keep' — never silent deletion.
     """
     vault = _resolve_vault_path(str(vault_path) if vault_path else None)
-    incubator_root = vault / "personal" / "_idea-incubator"
+    incubator_root = vault / "memory" / "_idea-incubator"
     stats = {"scanned": 0, "kept": 0, "archived": 0, "deleted": 0}
     if not incubator_root.exists():
         return stats

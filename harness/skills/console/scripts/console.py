@@ -405,7 +405,7 @@ def count_inbox(vault: Path) -> int:
     implementations are now duplicates that happen to agree; this one is
     left as-is rather than importing the other, to keep console.py's own
     dependency footprint self-contained."""
-    d = vault / "personal" / "_inbox"
+    d = vault / "memory" / "_inbox"
     if not d.is_dir():
         return 0
     try:
@@ -458,7 +458,7 @@ def watchlist_summary(vault: "Path | None") -> str:
 
 
 def newest_curated_entries(vault: Path, n: int = 5) -> list:
-    personal = vault / "personal"
+    personal = vault / "memory"
     if not personal.is_dir():
         return []
     candidates = []
@@ -629,7 +629,7 @@ _H1_RE = re.compile(r"^#\s+(.+)$", re.MULTILINE)
 
 
 def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
-    """Reads `<vault>/_briefs/*.md` (`inbox_digest.py` / `window_park.py`'s
+    """Reads `<vault>/desk/briefs/*.md` (`inbox_digest.py` / `window_park.py`'s
     shared write target, L1/F2 fix) and reports the most recent one by
     filename -- slugs are `YYYYMMDD-...`, so lexicographic sort is
     chronological. This is the one section `render_terminal`/
@@ -637,10 +637,10 @@ def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
     seen, not one more entry a triage pass could bury."""
     if vault is None:
         return "Latest brief: n/a (no vault resolved)"
-    briefs_dir = vault / "_briefs"
+    briefs_dir = vault / "desk/briefs"
     briefs = sorted(briefs_dir.glob("*.md")) if briefs_dir.is_dir() else []
     if not briefs:
-        return "Latest brief: dark -- no _briefs/*.md yet (no digest or park job has fired on this machine)"
+        return "Latest brief: dark -- no desk/briefs/*.md yet (no digest or park job has fired on this machine)"
     latest = briefs[-1]
     try:
         text = latest.read_text(encoding="utf-8")

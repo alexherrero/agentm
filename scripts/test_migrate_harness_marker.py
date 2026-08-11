@@ -40,9 +40,9 @@ class TestMigrateMarkerRepoLocal(unittest.TestCase):
             '{"vault_project": "fixture"}', encoding="utf-8"
         )
         self.vault = self.root / "vault"
-        (self.vault / "projects").mkdir(parents=True)
+        (self.vault / "desk/projects").mkdir(parents=True)
         self.repo_marker = self.target / ".harness" / ".project-mode"
-        self.vault_marker = self.vault / "projects" / "fixture" / "_harness" / ".project-mode"
+        self.vault_marker = self.vault / "desk/projects" / "fixture" / "_harness" / ".project-mode"
 
     def tearDown(self) -> None:
         self.tmp.cleanup()
@@ -58,7 +58,7 @@ class TestMigrateMarkerRepoLocal(unittest.TestCase):
     def test_rollback_writes_repo_local_marker(self) -> None:
         # Rollback's guard requires a vault-side _harness/ to exist (something to
         # roll back). Create it — but the marker must NOT be written there.
-        (self.vault / "projects" / "fixture" / "_harness").mkdir(parents=True)
+        (self.vault / "desk/projects" / "fixture" / "_harness").mkdir(parents=True)
         r = self._run("--rollback")
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertTrue(self.repo_marker.is_file(), "repo-local marker not written")

@@ -15,7 +15,7 @@
 # Runs the REAL `harness_memory.py` / `project_config.py` CLIs against a `mktemp`
 # scratch — never a real vault, never the network, never a sub-agent dispatch.
 # The whole suite runs TWICE:
-#   • vault pass  — MEMORY_VAULT_PATH set; state lands <vault>/projects/<slug>/_harness/
+#   • vault pass  — MEMORY_VAULT_PATH set; state lands <vault>/desk/projects/<slug>/_harness/
 #   • local pass  — device state_mode:local, NO vault; state lands <repo>/.harness/
 # so a write that lands in the wrong place (or a vault-assumption that breaks
 # without a vault) fails loudly in one of the two passes.
@@ -154,7 +154,7 @@ run_lifecycle() {
 
 # ── PASS 1: vault-resident ───────────────────────────────────────────────────
 echo "verify-phases: ── pass 1/2 — vault-resident ──"
-V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/projects"
+V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/desk/projects"
 V_PROJ="$SCRATCH/vault-proj"; mkdir -p "$V_PROJ/.harness"
 printf '{"vault_project": "%s"}\n' "$SLUG" > "$V_PROJ/.harness/project.json"
 # Toolkit path lets the post-release dispatch resolve orchestration_phase.py.
@@ -165,14 +165,14 @@ _VP_SHIM="$SCRATCH/vault-plugin"
 mkdir -p "$_VP_SHIM"
 printf 'from vault_backend_stub import VaultBackend\nPROTOCOL = "vault"\n' > "$_VP_SHIM/storage_vault.py"
 MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT" "HARNESS_MEMORY_TOOLKIT_PATH=$S" "OBSIDIAN_VAULT_SCRIPTS=$_VP_SHIM")
-run_lifecycle "[vault]" "$V_PROJ" "$V_VAULT/projects/$SLUG/_harness" 1
+run_lifecycle "[vault]" "$V_PROJ" "$V_VAULT/desk/projects/$SLUG/_harness" 1
 # The vault repo_registry seam fired (cross-device index).
 assert_exists "[vault] setup: repo_registry index written" "$V_VAULT/_meta/repos.json"
 # ADR 0020 (reverses V5-3 DC-1): a synced backend routes state into the vault
 # _harness/; the device-local .harness/ stays the thin {vault_project} pointer and
 # must NOT carry the kernel-written plan state.
 assert_exists "[vault] isolation: vault _harness/ written by kernel (ADR 0020)" \
-  "$V_VAULT/projects/$SLUG/_harness/PLAN.md"
+  "$V_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
 assert_absent "[vault] isolation: device-local .harness/ free of kernel plan state" \
   "$V_PROJ/.harness/PLAN.md"
 

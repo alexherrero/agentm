@@ -76,14 +76,14 @@ class RedTestFixtureExplorationTests(_CrystallizeTestBase):
         content_files = [f for f in new_files if not f.startswith("_meta")]
         self.assertEqual(
             content_files,
-            ["personal/crystallized/revert-log-locking-discipline.md"],
+            ["memory/crystallized/revert-log-locking-discipline.md"],
         )
 
     def test_entry_lands_at_the_as_built_group_kind_slug_path(self) -> None:
         path = cz.crystallize_exploration(self.vault, "revert-log-locking-discipline", _FIXTURE_DIGEST)
         self.assertEqual(
             path,
-            self.vault / "personal" / "crystallized" / "revert-log-locking-discipline.md",
+            self.vault / "memory" / "crystallized" / "revert-log-locking-discipline.md",
         )
         self.assertIn("kind: crystallized", path.read_text(encoding="utf-8"))
 
@@ -96,7 +96,7 @@ class RedTestFixtureExplorationTests(_CrystallizeTestBase):
 
 class MalformedDigestTests(_CrystallizeTestBase):
     def test_missing_section_raises_malformed_digest_error(self) -> None:
-        entry = self.vault / "personal" / "crystallized" / "incomplete.md"
+        entry = self.vault / "memory" / "crystallized" / "incomplete.md"
         entry.parent.mkdir(parents=True, exist_ok=True)
         entry.write_text(
             "---\nkind: crystallized\n---\n"

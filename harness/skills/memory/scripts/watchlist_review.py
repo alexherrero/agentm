@@ -71,7 +71,7 @@ def _resolve_vault_path(arg_path: str | None) -> Path:
 
 
 def _watchlist_root(vault: Path) -> Path:
-    return vault / "personal" / "_skill-watchlist"
+    return vault / "memory" / "_skill-watchlist"
 
 
 def _general_watchlist_root(vault: Path) -> Path:
@@ -79,7 +79,7 @@ def _general_watchlist_root(vault: Path) -> Path:
     forward-learning pipeline's ideas/patterns/references (generalized
     beyond skills; `forward_learning.py` is the sole writer). Same entry
     shape, same review verbs; this CLI scans both roots as one surface."""
-    return vault / "personal" / "_watchlist"
+    return vault / "memory" / "_watchlist"
 
 
 def _watchlist_roots(vault: Path) -> list[Path]:

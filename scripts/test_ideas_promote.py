@@ -44,14 +44,14 @@ class TestPromoteIdea(unittest.TestCase):
     def test_promote_moves_incubator_to_projects(self):
         result = ideas_promote.promote_idea(self.slug, vault_path=self.vault, mode="silent")
         self.assertTrue(result["promoted"])
-        project_dir = self.vault / "personal" / "projects" / self.slug
-        incubator_dir = self.vault / "personal" / "_idea-incubator" / self.slug
-        self.assertTrue(project_dir.is_dir(), "promoted idea must land in personal/projects/")
+        project_dir = self.vault / "memory" / "projects" / self.slug
+        incubator_dir = self.vault / "memory" / "_idea-incubator" / self.slug
+        self.assertTrue(project_dir.is_dir(), "promoted idea must land in memory/projects/")
         self.assertFalse(incubator_dir.exists(), "promoted idea must no longer live in _idea-incubator/")
 
     def test_promote_preserves_skeleton_files(self):
         ideas_promote.promote_idea(self.slug, vault_path=self.vault, mode="silent")
-        project_dir = self.vault / "personal" / "projects" / self.slug
+        project_dir = self.vault / "memory" / "projects" / self.slug
         self.assertTrue((project_dir / "_index.md").is_file())
 
     def test_promote_missing_incubator_entry_raises(self):
@@ -59,7 +59,7 @@ class TestPromoteIdea(unittest.TestCase):
             ideas_promote.promote_idea("does-not-exist", vault_path=self.vault, mode="silent")
 
     def test_promote_existing_project_dir_raises(self):
-        (self.vault / "personal" / "projects" / self.slug).mkdir(parents=True)
+        (self.vault / "memory" / "projects" / self.slug).mkdir(parents=True)
         with self.assertRaises(FileExistsError):
             ideas_promote.promote_idea(self.slug, vault_path=self.vault, mode="silent")
 

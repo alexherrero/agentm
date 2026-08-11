@@ -35,7 +35,7 @@ _CLEAN_FM = [
     "created: 2026-05-19",
     "updated: 2026-05-19",
     "tags: [dev-flow, docs]",
-    "group: personal",
+    "group: memory",
     "slug: {slug}",
     "always_load: true",
 ]
@@ -49,7 +49,7 @@ class _Vault:
     def __enter__(self) -> Path:
         self._td = tempfile.TemporaryDirectory()
         self.root = Path(self._td.name)
-        (self.root / "personal" / "_always-load").mkdir(parents=True)
+        (self.root / "memory" / "_always-load").mkdir(parents=True)
         return self.root
 
     def __exit__(self, *exc):
@@ -68,7 +68,7 @@ def _ids(findings, severity=None):
 class TestGateAndParse(unittest.TestCase):
     def test_clean_entry_no_findings(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/foo.md", _clean("foo"))
+            _write(v, "memory/_always-load/foo.md", _clean("foo"))
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 1)
             self.assertEqual(findings, [], _ids(findings))
@@ -76,7 +76,7 @@ class TestGateAndParse(unittest.TestCase):
     def test_free_form_note_skipped(self):
         with _Vault() as v:
             # No frontmatter trio -> operator personal note -> skipped.
-            (v / "personal" / "my-note.md").write_text(
+            (v / "memory" / "my-note.md").write_text(
                 "# Just my thoughts\n\nno frontmatter here\n", encoding="utf-8")
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
@@ -86,14 +86,14 @@ class TestGateAndParse(unittest.TestCase):
     def test_partial_frontmatter_skipped(self):
         with _Vault() as v:
             # Has `kind` but not the full trio -> not an agent entry.
-            _write(v, "personal/p.md", ["kind: note"])
+            _write(v, "memory/p.md", ["kind: note"])
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
             self.assertEqual(model.skipped, 1)
 
     def test_excluded_dirs_skipped(self):
         with _Vault() as v:
-            _write(v, "personal/_idea-incubator/x.md", _clean("x"))
+            _write(v, "memory/_idea-incubator/x.md", _clean("x"))
             _write(v, "_meta/y.md", _clean("y"))
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
@@ -102,8 +102,8 @@ class TestGateAndParse(unittest.TestCase):
         # L7: vault_lint.py was the one walker (unlike recall.py /
         # frontmatter_validator.py) that still descended into _archive/.
         with _Vault() as v:
-            _write(v, "personal/_archive/old.md", _clean("old"))
-            _write(v, "projects/_archive/proj/notes/z.md", _clean("z"))
+            _write(v, "memory/_archive/old.md", _clean("old"))
+            _write(v, "desk/projects/_archive/proj/notes/z.md", _clean("z"))
             model, findings = _lint(v)
             self.assertEqual(len(model.entries), 0)
 
@@ -115,14 +115,14 @@ class TestGateAndParse(unittest.TestCase):
         # supplement is text the agent reads as its own standards: no lint
         # stage may touch it (same rationale as dream.py's exclusion).
         with _Vault() as v:
-            _write(v, "personal/_opinions/plain-english/lane-entry.md", [
+            _write(v, "memory/_opinions/plain-english/lane-entry.md", [
                 "kind: opinion-supplement",
                 "status: proposed",
                 "created: 2026-07-25T10:00:00+00:00",
                 "slug: lane-entry",
                 "opinion: plain-english",
             ])
-            (v / "personal" / "_opinions" / "plain-english.md").write_text(
+            (v / "memory" / "_opinions" / "plain-english.md").write_text(
                 "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nServed.\n",
                 encoding="utf-8")
             model, findings = _lint(v)
@@ -168,7 +168,9 @@ class TestExcludeDirsParity(unittest.TestCase):
         either of those facts, and this test protects the exclusion."""
         import dream
         import frontmatter_validator
-        for name in ("_crystallize-staging", "_opinions", "_inbox", "_dream-staging"):
+        # "scratch", not "desk/scratch": these sets are matched per path
+        # segment, so a two-segment entry would match nothing.
+        for name in ("_crystallize-staging", "_opinions", "_inbox", "scratch"):
             for mod, dirs in (
                 ("vault_lint", vl._EXCLUDE_DIRS),
                 ("dream", dream._EXCLUDE_DIRS),
@@ -182,7 +184,7 @@ class TestChecks(unittest.TestCase):
     def test_required_field_missing(self):
         with _Vault() as v:
             fm = [l for l in _clean("a") if not l.startswith("tags:")]
-            _write(v, "personal/_always-load/a.md", fm)
+            _write(v, "memory/_always-load/a.md", fm)
             _, findings = _lint(v)
             self.assertIn("required-field", _ids(findings, "error"))
 
@@ -191,7 +193,7 @@ class TestChecks(unittest.TestCase):
             fm = _clean("b")
             fm[0] = "kind: Bad_Kind"
             fm[4] = "tags: [Bad_Tag, ok]"
-            _write(v, "personal/_always-load/b.md", fm)
+            _write(v, "memory/_always-load/b.md", fm)
             _, findings = _lint(v)
             kebab = [f for f in findings if f.check_id == "kebab-case"]
             self.assertGreaterEqual(len(kebab), 2)
@@ -200,13 +202,13 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("c")
             fm[0], fm[1] = fm[1], fm[0]  # swap kind/status
-            _write(v, "personal/_always-load/c.md", fm)
+            _write(v, "memory/_always-load/c.md", fm)
             _, findings = _lint(v)
             self.assertIn("field-order", _ids(findings, "warn"))
 
     def test_slug_filename_mismatch(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/d.md", _clean("not-d"))
+            _write(v, "memory/_always-load/d.md", _clean("not-d"))
             _, findings = _lint(v)
             self.assertIn("slug-filename", _ids(findings, "warn"))
 
@@ -214,7 +216,7 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("e")
             fm[2] = "created: 2026/05/19"
-            _write(v, "personal/_always-load/e.md", fm)
+            _write(v, "memory/_always-load/e.md", fm)
             _, findings = _lint(v)
             self.assertIn("date-format", _ids(findings, "error"))
 
@@ -222,7 +224,7 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("f")
             fm[3] = "updated: 2026-05-01"  # before created 2026-05-19
-            _write(v, "personal/_always-load/f.md", fm)
+            _write(v, "memory/_always-load/f.md", fm)
             _, findings = _lint(v)
             self.assertTrue(any(f.check_id == "date-format" and f.severity == "warn" for f in findings))
 
@@ -230,21 +232,21 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("g")
             fm[1] = "status: active | resolved | superseded"
-            _write(v, "personal/_always-load/g.md", fm)
+            _write(v, "memory/_always-load/g.md", fm)
             _, findings = _lint(v)
             self.assertIn("placeholder-value", _ids(findings, "warn"))
 
     def test_schema_drift_unknown_key(self):
         with _Vault() as v:
             fm = _clean("h") + ["mystery: value"]
-            _write(v, "personal/_always-load/h.md", fm)
+            _write(v, "memory/_always-load/h.md", fm)
             _, findings = _lint(v)
             self.assertIn("schema-drift", _ids(findings, "warn"))
 
     def test_wikilink_resolution(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/real-slug.md", _clean("real-slug"))
-            _write(v, "personal/_always-load/linker.md", _clean("linker"),
+            _write(v, "memory/_always-load/real-slug.md", _clean("real-slug"))
+            _write(v, "memory/_always-load/linker.md", _clean("linker"),
                    body="see [[real-slug]] and [[ghost]]\n")
             _, findings = _lint(v)
             wl = [f for f in findings if f.check_id == "wikilink-resolution"]
@@ -254,8 +256,8 @@ class TestChecks(unittest.TestCase):
     def test_wikilink_path_style_and_excluded_targets(self):
         with _Vault() as v:
             # A real target inside an EXCLUDED-from-lint dir is still a valid link target.
-            _write(v, "personal/_idea-incubator/cluster/_index.md", _clean("idx"))
-            _write(v, "personal/_always-load/k.md", _clean("k"),
+            _write(v, "memory/_idea-incubator/cluster/_index.md", _clean("idx"))
+            _write(v, "memory/_always-load/k.md", _clean("k"),
                    body="see [[_idea-incubator/cluster/_index]] and [[nope/missing]]\n")
             _, findings = _lint(v)
             wl = [f for f in findings if f.check_id == "wikilink-resolution"]
@@ -269,8 +271,8 @@ class TestChecks(unittest.TestCase):
             (obs / ".obsidian").mkdir()
             (obs / "Ideas.md").write_text("# Ideas\n", encoding="utf-8")  # outside AgentMemory
             vault = obs / "AgentMemory"
-            (vault / "personal" / "_always-load").mkdir(parents=True)
-            _write(vault, "personal/_always-load/m.md", _clean("m"),
+            (vault / "memory" / "_always-load").mkdir(parents=True)
+            _write(vault, "memory/_always-load/m.md", _clean("m"),
                    body="see [[Ideas#some heading]] and [[ghost-note]]\n")
             _, findings = vl.lint_vault(vault)
             wl = [f for f in findings if f.check_id == "wikilink-resolution"]
@@ -280,15 +282,15 @@ class TestChecks(unittest.TestCase):
     def test_supersede_dangling(self):
         with _Vault() as v:
             fm = _clean("newer") + ["supersedes: nonexistent-slug"]
-            _write(v, "personal/_always-load/newer.md", fm)
+            _write(v, "memory/_always-load/newer.md", fm)
             _, findings = _lint(v)
             self.assertIn("supersede-integrity", _ids(findings, "error"))
 
     def test_supersede_target_still_active(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/old.md", _clean("old"))  # status active
+            _write(v, "memory/_always-load/old.md", _clean("old"))  # status active
             fm = _clean("new2") + ["supersedes: old"]
-            _write(v, "personal/_always-load/new2.md", fm)
+            _write(v, "memory/_always-load/new2.md", fm)
             _, findings = _lint(v)
             self.assertTrue(any(
                 f.check_id == "supersede-integrity" and f.severity == "warn" for f in findings))
@@ -299,9 +301,9 @@ class TestChecks(unittest.TestCase):
         # stem+slug union; the "still active" warn must resolve by stem too.
         with _Vault() as v:
             fm_target = _clean("real-old")  # slug=real-old, status active
-            _write(v, "personal/_always-load/oldfile.md", fm_target)  # stem=oldfile != slug
+            _write(v, "memory/_always-load/oldfile.md", fm_target)  # stem=oldfile != slug
             fm = _clean("newer3") + ["supersedes: oldfile"]  # references by stem
-            _write(v, "personal/_always-load/newer3.md", fm)
+            _write(v, "memory/_always-load/newer3.md", fm)
             _, findings = _lint(v)
             sup = [f for f in findings if f.check_id == "supersede-integrity"]
             # NOT flagged dangling (stem resolves) AND the still-active warn fires.
@@ -312,8 +314,8 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm_a = _clean("cycle-a") + ["supersedes: cycle-b"]
             fm_b = _clean("cycle-b") + ["supersedes: cycle-a"]
-            _write(v, "personal/_always-load/cycle-a.md", fm_a)
-            _write(v, "personal/_always-load/cycle-b.md", fm_b)
+            _write(v, "memory/_always-load/cycle-a.md", fm_a)
+            _write(v, "memory/_always-load/cycle-b.md", fm_b)
             _, findings = _lint(v)
             cycle = [f for f in findings if f.check_id == "supersede-cycle"]
             self.assertEqual(len(cycle), 2)  # reported from both members
@@ -321,13 +323,13 @@ class TestChecks(unittest.TestCase):
 
     def test_supersede_no_cycle_on_a_clean_chain(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/head.md", _clean("head") + ["supersedes: mid"])
+            _write(v, "memory/_always-load/head.md", _clean("head") + ["supersedes: mid"])
             fm_mid = _clean("mid")
             fm_mid[1] = "status: superseded"  # so the dangling-status check doesn't fire here
-            _write(v, "personal/_always-load/mid.md", fm_mid + ["supersedes: tail"])
+            _write(v, "memory/_always-load/mid.md", fm_mid + ["supersedes: tail"])
             fm_tail = _clean("tail")
             fm_tail[1] = "status: superseded"
-            _write(v, "personal/_always-load/tail.md", fm_tail)
+            _write(v, "memory/_always-load/tail.md", fm_tail)
             _, findings = _lint(v)
             self.assertNotIn("supersede-cycle", _ids(findings))
 
@@ -335,11 +337,11 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm_old = _clean("forked-old")
             fm_old[1] = "status: superseded"
-            _write(v, "personal/_always-load/forked-old.md", fm_old)
+            _write(v, "memory/_always-load/forked-old.md", fm_old)
             fm_a = _clean("forker-a") + ["supersedes: forked-old"]
             fm_b = _clean("forker-b") + ["supersedes: forked-old"]
-            _write(v, "personal/_always-load/forker-a.md", fm_a)
-            _write(v, "personal/_always-load/forker-b.md", fm_b)
+            _write(v, "memory/_always-load/forker-a.md", fm_a)
+            _write(v, "memory/_always-load/forker-b.md", fm_b)
             _, findings = _lint(v)
             fork = [f for f in findings if f.check_id == "supersede-fork"]
             self.assertEqual(len(fork), 2)  # reported from both claimants
@@ -349,8 +351,8 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm_old = _clean("single-old")
             fm_old[1] = "status: superseded"
-            _write(v, "personal/_always-load/single-old.md", fm_old)
-            _write(v, "personal/_always-load/single-new.md", _clean("single-new") + ["supersedes: single-old"])
+            _write(v, "memory/_always-load/single-old.md", fm_old)
+            _write(v, "memory/_always-load/single-new.md", _clean("single-new") + ["supersedes: single-old"])
             _, findings = _lint(v)
             self.assertNotIn("supersede-fork", _ids(findings))
 
@@ -358,7 +360,7 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("orphan-superseded")
             fm[1] = "status: superseded"
-            _write(v, "personal/_always-load/orphan-superseded.md", fm)
+            _write(v, "memory/_always-load/orphan-superseded.md", fm)
             _, findings = _lint(v)
             dangling = [f for f in findings if f.check_id == "dangling-supersession"]
             self.assertEqual(len(dangling), 1)
@@ -368,8 +370,8 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm_old = _clean("backed-old")
             fm_old[1] = "status: superseded"
-            _write(v, "personal/_always-load/backed-old.md", fm_old)
-            _write(v, "personal/_always-load/backed-new.md", _clean("backed-new") + ["supersedes: backed-old"])
+            _write(v, "memory/_always-load/backed-old.md", fm_old)
+            _write(v, "memory/_always-load/backed-new.md", _clean("backed-new") + ["supersedes: backed-old"])
             _, findings = _lint(v)
             self.assertNotIn("dangling-supersession", _ids(findings))
 
@@ -377,7 +379,7 @@ class TestChecks(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("mystery")
             fm[0] = "kind: totally-made-up-kind"
-            _write(v, "personal/_always-load/mystery.md", fm)
+            _write(v, "memory/_always-load/mystery.md", fm)
             _, findings = _lint(v)
             kt = [f for f in findings if f.check_id == "kind-taxonomy"]
             self.assertEqual(len(kt), 1)
@@ -385,7 +387,7 @@ class TestChecks(unittest.TestCase):
 
     def test_kind_taxonomy_known_kind_passes(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/ordinary.md", _clean("ordinary"))  # kind: convention
+            _write(v, "memory/_always-load/ordinary.md", _clean("ordinary"))  # kind: convention
             _, findings = _lint(v)
             self.assertNotIn("kind-taxonomy", _ids(findings))
 
@@ -398,21 +400,21 @@ class TestChecks(unittest.TestCase):
 
     def test_arc_registry_known_value_passes(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/p.md", self._with_arc("p", "wave-a"))
+            _write(v, "memory/_always-load/p.md", self._with_arc("p", "wave-a"))
             _, findings = _lint(v)
             self.assertNotIn("arc-registry", _ids(findings))
 
     def test_arc_registry_absent_arc_passes(self):
         # arc: is optional — most entries carry none, and that's not a finding.
         with _Vault() as v:
-            _write(v, "personal/_always-load/q.md", _clean("q"))
+            _write(v, "memory/_always-load/q.md", _clean("q"))
             _, findings = _lint(v)
             self.assertNotIn("arc-registry", _ids(findings))
 
     def test_arc_registry_non_kebab_value_is_error(self):
         with _Vault() as v:
             fm = self._with_arc("r", "Not_Kebab")
-            _write(v, "personal/_always-load/r.md", fm)
+            _write(v, "memory/_always-load/r.md", fm)
             _, findings = _lint(v)
             arc_findings = [f for f in findings if f.check_id == "arc-registry"]
             self.assertEqual(len(arc_findings), 1)
@@ -421,7 +423,7 @@ class TestChecks(unittest.TestCase):
     def test_arc_registry_unrecognized_value_is_error(self):
         with _Vault() as v:
             fm = self._with_arc("s", "some-made-up-arc")
-            _write(v, "personal/_always-load/s.md", fm)
+            _write(v, "memory/_always-load/s.md", fm)
             _, findings = _lint(v)
             arc_findings = [f for f in findings if f.check_id == "arc-registry"]
             self.assertEqual(len(arc_findings), 1)
@@ -436,7 +438,7 @@ class TestCalibration(unittest.TestCase):
         with _Vault() as v:
             fm = _clean("_index")
             fm[0] = "kind: project-index"
-            _write(v, "projects/foo/_index.md", fm)
+            _write(v, "desk/projects/foo/_index.md", fm)
             _, findings = _lint(v)
             kebab = [f for f in findings if f.check_id == "kebab-case"]
             self.assertEqual(kebab, [], [f.message for f in kebab])
@@ -444,12 +446,12 @@ class TestCalibration(unittest.TestCase):
     def test_deep_group_path_allowed(self):
         with _Vault() as v:
             fm = _clean("a-decision")
-            fm[5] = "group: projects/agent-m-v4/decisions"
-            _write(v, "personal/_always-load/a-decision.md", fm)
+            fm[5] = "group: desk/projects/agent-m-v4/decisions"
+            _write(v, "memory/_always-load/a-decision.md", fm)
             _, findings = _lint(v)
             self.assertFalse(any(f.check_id == "kebab-case" and "group" in f.message for f in findings))
         # save.py's validator accepts it too (single source of truth).
-        save._validate_group("projects/agent-m-v4/decisions")  # must not raise
+        save._validate_group("desk/projects/agent-m-v4/decisions")  # must not raise
 
 
 class TestAuditReport(unittest.TestCase):
@@ -482,7 +484,7 @@ class TestAuditReport(unittest.TestCase):
 
     def test_audit_writes_only_the_report(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/a.md", _clean("a"))
+            _write(v, "memory/_always-load/a.md", _clean("a"))
             before = {p: p.read_bytes() for p in v.rglob("*.md")}
             with tempfile.TemporaryDirectory() as outdir:
                 out = Path(outdir) / "report.md"
@@ -495,7 +497,7 @@ class TestAuditReport(unittest.TestCase):
 
     def test_audit_default_path_under_meta(self):
         with _Vault() as v:
-            _write(v, "personal/_always-load/a.md", _clean("a"))
+            _write(v, "memory/_always-load/a.md", _clean("a"))
             rc = vl.main(["--audit", "--vault", str(v)])
             self.assertEqual(rc, 0)
             reports = list((v / "_meta").glob("vault-lint-*.md"))
@@ -516,7 +518,7 @@ class TestSchemaPin(unittest.TestCase):
 
     def test_build_frontmatter_emits_locked_order(self):
         fm = save._build_frontmatter(
-            kind="k", group="personal", slug="s", tags=["a"],
+            kind="k", group="memory", slug="s", tags=["a"],
             always_load=False, supersedes="some/path.md",
         )
         keys = [line.split(":", 1)[0] for line in fm.splitlines()
@@ -540,7 +542,7 @@ class TestSchemaPin(unittest.TestCase):
 
     def test_build_frontmatter_emits_fingerprint_when_provided(self):
         fm = save._build_frontmatter(
-            kind="failure-incident", group="personal", slug="s", tags=[],
+            kind="failure-incident", group="memory", slug="s", tags=[],
             always_load=False, supersedes=None, fingerprint="abc123",
         )
         keys = [line.split(":", 1)[0] for line in fm.splitlines()

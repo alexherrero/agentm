@@ -144,7 +144,7 @@ def _compose_entry(fm: dict, body: str) -> str:
 
 def _compute_archive_path(vault: Path, old_relative: Path, today: str) -> Path:
     """Compute archive path; append -N suffix if collision (same-day re-evolve)."""
-    archive_base = vault / "personal" / "_archive" / old_relative
+    archive_base = vault / "memory" / "_archive" / old_relative
     candidate = archive_base.with_suffix(f"{archive_base.suffix}.{today}.md")
     suffix_n = 2
     while candidate.exists():
@@ -256,7 +256,7 @@ def evolve_entry(
         "created": today,
         "updated": today,
         "tags": fm.get("tags", []),
-        "group": fm.get("group", "personal"),
+        "group": fm.get("group", "memory"),
         "slug": new_slug if new_slug else fm.get("slug"),
         "always_load": fm.get("always_load", False),
         "supersedes": str(archive_relative).replace(os.sep, "/"),

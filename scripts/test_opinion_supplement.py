@@ -46,7 +46,7 @@ class _SupplementTestBase(unittest.TestCase):
     def _write_entry(self, opinion: str, slug: str, title: str, body: str, *,
                       created: str = "2026-01-01T00:00:00+00:00",
                       sessions: "list | None" = None) -> Path:
-        lane = self.vault / "personal" / "_opinions" / opinion
+        lane = self.vault / "memory" / "_opinions" / opinion
         lane.mkdir(parents=True, exist_ok=True)
         sessions_line = f"sessions: [{', '.join(sessions)}]\n" if sessions else ""
         content = _ENTRY_TEMPLATE.format(
@@ -68,10 +68,10 @@ class RecurrenceGateTests(_SupplementTestBase):
                            sessions=["proj/s1"])
         result = self._process("good")
         self.assertIsNotNone(result)
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         self.assertFalse(served.exists())
         patched = dict(result.mutations)
-        solo_path = self.vault / "personal" / "_opinions" / "good" / "solo.md"
+        solo_path = self.vault / "memory" / "_opinions" / "good" / "solo.md"
         self.assertIn("status: parked", patched[solo_path])
 
     def test_two_distinct_sessions_promotes(self) -> None:
@@ -82,11 +82,11 @@ class RecurrenceGateTests(_SupplementTestBase):
                            created="2026-01-02T00:00:00+00:00", sessions=["proj/s2"])
         result = self._process("good")
         self.assertIsNotNone(result)
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         patched = dict(result.mutations)
         self.assertIn(served, patched)
         self.assertIn("Always run the linter", patched[served])
-        survivor = self.vault / "personal" / "_opinions" / "good" / "a1.md"
+        survivor = self.vault / "memory" / "_opinions" / "good" / "a1.md"
         self.assertIn("status: promoted", patched[survivor])
 
     def test_same_session_twice_does_not_satisfy_the_gate(self) -> None:
@@ -99,7 +99,7 @@ class RecurrenceGateTests(_SupplementTestBase):
         self._write_entry("good", "a2", "Rule", "Always run the linter before committing!",
                            created="2026-01-02T00:00:00+00:00", sessions=["proj/s1"])
         result = self._process("good")
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         self.assertFalse(served.exists())
         if result is not None:
             patched = dict(result.mutations)
@@ -111,7 +111,7 @@ class RecurrenceGateTests(_SupplementTestBase):
         self._write_base("good", "Always write a test for new behavior.")
         self._write_entry("good", "legacy", "Rule", "Always run the linter before committing.")
         result = self._process("good")
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         self.assertFalse(served.exists())
         if result is not None:
             self.assertNotIn(served, dict(result.mutations))
@@ -123,7 +123,7 @@ class RecurrenceGateTests(_SupplementTestBase):
         self._write_entry("good", "b1", "Rule B", "Never merge without an approving review.",
                            sessions=["proj/s2"])
         result = self._process("good")
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         self.assertFalse(served.exists())
         if result is not None:
             self.assertNotIn(served, dict(result.mutations))
@@ -146,7 +146,7 @@ class ContradictionCheckTests(_SupplementTestBase):
                            created="2026-01-02T00:00:00+00:00", sessions=["proj/s2"])
         result = self._process("recoverable")
         self.assertIsNotNone(result)
-        served = self.vault / "personal" / "_opinions" / "recoverable.md"
+        served = self.vault / "memory" / "_opinions" / "recoverable.md"
         self.assertFalse(served.exists(), "a contradicting group must never be served")
         self.assertEqual(len(result.base_change_proposals), 1)
         self.assertEqual(result.base_change_proposals[0]["opinion"], "recoverable")
@@ -185,7 +185,7 @@ class ContradictionCheckTests(_SupplementTestBase):
         result = self._process("recoverable")
         self.assertIsNotNone(result)
         self.assertEqual(result.base_change_proposals, [])
-        served = self.vault / "personal" / "_opinions" / "recoverable.md"
+        served = self.vault / "memory" / "_opinions" / "recoverable.md"
         self.assertIn(served, dict(result.mutations))
 
     def test_opposite_polarity_without_shared_anchor_is_not_flagged(self) -> None:
@@ -211,7 +211,7 @@ class CompositionTests(_SupplementTestBase):
         self._write_entry("done", "a2", "Gate rule", "Always run the full gate battery before committing.",
                            created="2026-01-02T00:00:00+00:00", sessions=["proj/s2"])
         result = self._process("done")
-        served = self.vault / "personal" / "_opinions" / "done.md"
+        served = self.vault / "memory" / "_opinions" / "done.md"
         content = dict(result.mutations)[served]
         self.assertEqual(content.count("Always run the full gate battery"), 1)
 
@@ -236,13 +236,13 @@ class CompositionTests(_SupplementTestBase):
 
     def test_empty_promoted_set_removes_the_served_file(self) -> None:
         self._write_base("done", "Ship only what passes the gate battery.")
-        served = self.vault / "personal" / "_opinions" / "done.md"
+        served = self.vault / "memory" / "_opinions" / "done.md"
         served.parent.mkdir(parents=True, exist_ok=True)
         served.write_text("---\nkind: opinion-supplement\nstatus: promoted\n---\n\nStale content.\n",
                            encoding="utf-8")
         # No lane entries at all with status promoted -- self-healing must
         # remove the now-orphaned served file.
-        (self.vault / "personal" / "_opinions" / "done").mkdir(parents=True, exist_ok=True)
+        (self.vault / "memory" / "_opinions" / "done").mkdir(parents=True, exist_ok=True)
         result = osup.process_lane(self.vault, "done", root=self.repo_root)
         self.assertIsNotNone(result)
         self.assertIn(served, dict(result.mutations))
@@ -256,7 +256,7 @@ class CompositionTests(_SupplementTestBase):
         self._write_entry("bogus", "a2", "Rule", "Always do the thing!",
                            created="2026-01-02T00:00:00+00:00", sessions=["proj/s2"])
         result = osup.process_lane(self.vault, "bogus", root=self.repo_root)
-        served = self.vault / "personal" / "_opinions" / "bogus.md"
+        served = self.vault / "memory" / "_opinions" / "bogus.md"
         self.assertFalse(served.exists())
         if result is not None:
             self.assertNotIn(served, dict(result.mutations))
@@ -264,7 +264,7 @@ class CompositionTests(_SupplementTestBase):
 
 class HealthAndBaseProposalsTests(_SupplementTestBase):
     def test_lane_health_counts_by_status(self) -> None:
-        lane = self.vault / "personal" / "_opinions" / "done"
+        lane = self.vault / "memory" / "_opinions" / "done"
         lane.mkdir(parents=True)
         (lane / "a.md").write_text(
             "---\nkind: opinion-supplement\nstatus: promoted\nrefs: [PR-1]\n---\nA\n", encoding="utf-8")
@@ -304,7 +304,7 @@ class HealthAndBaseProposalsTests(_SupplementTestBase):
 
 class LaneDirsTests(_SupplementTestBase):
     def test_lane_dirs_lists_only_directories(self) -> None:
-        base = self.vault / "personal" / "_opinions"
+        base = self.vault / "memory" / "_opinions"
         (base / "good").mkdir(parents=True)
         (base / "done").mkdir(parents=True)
         base.mkdir(parents=True, exist_ok=True)

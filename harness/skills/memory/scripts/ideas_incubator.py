@@ -262,7 +262,7 @@ def create_incubator_skeleton(
     if not slug:
         slug = _slugify(title)
 
-    incubator_root = vault / "personal" / "_idea-incubator"
+    incubator_root = vault / "memory" / "_idea-incubator"
     incubator_root.mkdir(parents=True, exist_ok=True)
 
     # Collision suffix (<slug>, <slug>-2, ...) — safe since slug-collision

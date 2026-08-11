@@ -191,7 +191,7 @@ def save_entry(
     slug: str,
     body: str,
     *,
-    group: str = "personal",
+    group: str = "memory",
     always_load: bool = False,
     tags: list[str] | None = None,
     supersedes: str | None = None,
@@ -279,7 +279,7 @@ def save_entry(
     # Compute target path. --always-load overrides --group: routes to
     # personal/_always-load/<slug>.md regardless of group.
     if always_load:
-        target = vault / "personal" / "_always-load" / f"{slug}.md"
+        target = vault / "memory" / "_always-load" / f"{slug}.md"
     else:
         target = vault / group / kind / f"{slug}.md"
 
@@ -363,7 +363,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--group",
-        default="personal",
+        default="memory",
         help="memory group (default: personal)",
     )
     parser.add_argument(

@@ -46,7 +46,7 @@ class TestCaptureInboxGuard(unittest.TestCase):
         self.assertTrue(r1.success and r2.success)
         self.assertTrue(r2.deduplicated)
         self.assertEqual(r2.path, r1.path)
-        inbox_files = list((self.vault / "personal" / "_inbox").glob("*.md"))
+        inbox_files = list((self.vault / "memory" / "_inbox").glob("*.md"))
         self.assertEqual(len(inbox_files), 1)
         self.assertIn("occurrences: 2", r1.path.read_text(encoding="utf-8"))
 

@@ -258,7 +258,7 @@ class AutoAppliedBatch:
 
 
 def _staging_dir(vault_path: Path, run_id: str) -> Path:
-    return Path(vault_path) / "_dream-staging" / run_id
+    return Path(vault_path) / "desk/scratch" / run_id
 
 
 def _manifest_path(vault_path: Path, run_id: str) -> Path:
@@ -827,7 +827,7 @@ def cleanup_applied_batches(
     or concurrently-touched staging dir never blocks cleanup of the rest.
     """
     now = now if now is not None else time.time()
-    staging_root = Path(vault_path) / "_dream-staging"
+    staging_root = Path(vault_path) / "desk/scratch"
     if not staging_root.is_dir():
         return []
 

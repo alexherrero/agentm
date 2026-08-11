@@ -88,7 +88,7 @@ class WriteParkNoteTests(unittest.TestCase):
         }
         target = wp.write_park_note(self.vault, state, now=_NOW)
         self.assertIsNotNone(target)
-        self.assertEqual(target.parent, self.vault / "_briefs")
+        self.assertEqual(target.parent, self.vault / "desk/briefs")
         content = target.read_text(encoding="utf-8")
         self.assertIn("kind: brief", content)
         self.assertIn("park_plan: myplan", content)

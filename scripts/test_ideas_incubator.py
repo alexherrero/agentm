@@ -38,7 +38,7 @@ class TestCreateIncubatorSkeleton(unittest.TestCase):
             vault_path=self.vault,
         )
         self.assertTrue(target.is_dir())
-        self.assertEqual(target.parent, self.vault / "personal" / "_idea-incubator")
+        self.assertEqual(target.parent, self.vault / "memory" / "_idea-incubator")
         for name in ("_index.md", "research-pending.md", "related-memoryvault.md", "related-obsidian.md"):
             self.assertTrue((target / name).is_file(), f"missing {name}")
 

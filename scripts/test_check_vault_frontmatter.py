@@ -164,11 +164,11 @@ class TestWalkScope(unittest.TestCase):
         # `_EXCLUDE_DIRS` frozenset holding `_harness`, and that is exactly
         # where the broken notes were found. Inheriting it would be the bug.
         excluded_by_the_other_linters = [
-            "_harness", "_meta", "_inbox", "_archive", "_dream-staging",
+            "_harness", "_meta", "_inbox", "_archive", "desk/scratch",
             "_opinions", "_idea-incubator", "_crystallize-staging",
         ]
         notes = {
-            f"projects/agentm/{d}/broken.md": "---\nstatus: a: b\n---\n"
+            f"desk/projects/agentm/{d}/broken.md": "---\nstatus: a: b\n---\n"
             for d in excluded_by_the_other_linters
         }
         with tempfile.TemporaryDirectory() as tmp:

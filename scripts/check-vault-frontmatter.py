@@ -332,18 +332,18 @@ def resolve_vault(explicit: str | None) -> Path | None:
 # exclude — a scanner that inherited `_EXCLUDE_DIRS` fails here.
 _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
     (
-        "personal/clean.md",
+        "memory/clean.md",
         "---\nkind: reference\ntitle: A clean note\ntags: [one, two]\n---\n\nBody.\n",
         [],
     ),
     (
-        "projects/agentm/_harness/designs/parse-error.md",
+        "desk/projects/agentm/_harness/designs/parse-error.md",
         "---\nstatus: rendered 2026-07-06: the judgment layer for the re-audit\n"
         "kind: design\n---\n\nAn unquoted scalar holding a colon-space.\n",
         [("parse-error", None)],
     ),
     (
-        "projects/agentm/_harness/designs/truncated.md",
+        "desk/projects/agentm/_harness/designs/truncated.md",
         # `prd:` is file line 3 — fence, kind, prd.
         "---\nkind: design\nprd: <none, codified from ROADMAP item #13 plus the "
         "predecessor>\n---\n\nThe value ends at the issue reference.\n",
@@ -362,31 +362,31 @@ _FIXTURES: list[tuple[str, str, list[tuple[str, int | None]]]] = [
         [],
     ),
     (
-        "personal/quoted-hash.md",
+        "memory/quoted-hash.md",
         '---\nkind: reference\ntitle: "Writer #2 plus source resolution"\n'
         "---\n\nQuoted, so the hash is literal.\n",
         [],
     ),
     (
-        "personal/list-truncated.md",
+        "memory/list-truncated.md",
         # The bad item is file line 5 — fence, kind, aliases, clean item, bad item.
         "---\nkind: reference\naliases:\n  - a clean alias\n  - an alias #7 with "
         "more text\n---\n\nOne list item truncates.\n",
         [("truncated-value", 5)],
     ),
     (
-        "personal/value-eaten.md",
+        "memory/value-eaten.md",
         # `title:` is file line 3 — fence, kind, title.
         "---\nkind: reference\ntitle: #13\n---\n\nThe whole value is eaten.\n",
         [("truncated-value", 3)],
     ),
     (
-        "personal/explicit-null.md",
+        "memory/explicit-null.md",
         "---\nkind: reference\ntitle: null\n---\n\nA real null is not a defect.\n",
         [],
     ),
     (
-        "personal/no-frontmatter.md",
+        "memory/no-frontmatter.md",
         "# Just a heading\n\nNo fence at all.\n",
         [],
     ),

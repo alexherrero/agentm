@@ -212,12 +212,12 @@ class HarnessStateDirResolution(unittest.TestCase):
         backend = VaultBackend(root=self.vault, lock_root=self.root / "locks")
         resolution = {
             "backend": backend,
-            "project_locator": Locator("projects/repo"),
+            "project_locator": Locator("desk/projects/repo"),
             "project_root": self.proj,
         }
         self.assertEqual(
             hm.harness_state_dir(resolution),
-            self.vault / "projects" / "repo" / "_harness",
+            self.vault / "desk/projects" / "repo" / "_harness",
         )
 
     def test_local_mode_dir(self) -> None:

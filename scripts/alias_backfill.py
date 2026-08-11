@@ -99,7 +99,7 @@ ARTIFACT_PREFIXES = {
     # and rewritten wholesale by auto-organization whenever it runs.
     "_moc/": "regenerated link index",
     # Staging exhaust for proposals that are themselves a penalized class.
-    "_dream-staging/": "dream-staging digest",
+    "desk/scratch/": "dream-staging digest",
     # Machine lint and link-suggestion reports, dated and superseded weekly.
     "_meta/archive/": "machine lint report",
     "_meta/vault-lint-": "machine lint report",

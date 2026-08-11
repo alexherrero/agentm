@@ -37,7 +37,7 @@ class TestGraphSnapshot(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -48,32 +48,32 @@ class TestGraphSnapshot(unittest.TestCase):
         path.write_text(body, encoding="utf-8")
 
     def test_round_trip_incoming_and_orphans(self):
-        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nno links here")
-        self._write("personal/reference/note-b.md", "---\nslug: note-b\n---\nsee [[note-a]] for context")
-        self._write("personal/reference/note-c.md", "---\nslug: note-c\n---\nnothing points here, points nowhere")
+        self._write("memory/reference/note-a.md", "---\nslug: note-a\n---\nno links here")
+        self._write("memory/reference/note-b.md", "---\nslug: note-b\n---\nsee [[note-a]] for context")
+        self._write("memory/reference/note-c.md", "---\nslug: note-c\n---\nnothing points here, points nowhere")
 
         stats = graph_snapshot.rebuild(self.vault)
         self.assertEqual(stats.files_touched, 3)
 
         # Reload via a fresh call (no in-process cache to coast on).
-        incoming = graph_snapshot.incoming(self.vault, "personal/reference/note-a.md")
-        self.assertEqual(incoming, ["personal/reference/note-b.md"])
+        incoming = graph_snapshot.incoming(self.vault, "memory/reference/note-a.md")
+        self.assertEqual(incoming, ["memory/reference/note-b.md"])
 
         orphaned = graph_snapshot.orphans(self.vault)
-        self.assertEqual(orphaned, ["personal/reference/note-c.md"])
+        self.assertEqual(orphaned, ["memory/reference/note-c.md"])
         # note-a has an incoming edge, note-b has an outgoing edge -- neither is an orphan.
-        self.assertNotIn("personal/reference/note-a.md", orphaned)
-        self.assertNotIn("personal/reference/note-b.md", orphaned)
+        self.assertNotIn("memory/reference/note-a.md", orphaned)
+        self.assertNotIn("memory/reference/note-b.md", orphaned)
 
     def test_touched_paths_reports_only_newly_extracted_files(self):
         # The "arrived or changed since the last cycle" signal task 4's
         # weekly sweep needs, sourced from this rebuild rather than a
         # second staleness tracker.
-        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody a")
-        self._write("personal/reference/note-b.md", "---\nslug: note-b\n---\nbody b")
+        self._write("memory/reference/note-a.md", "---\nslug: note-a\n---\nbody a")
+        self._write("memory/reference/note-b.md", "---\nslug: note-b\n---\nbody b")
         first = graph_snapshot.rebuild(self.vault)
         self.assertEqual(sorted(first.touched_paths), [
-            "personal/reference/note-a.md", "personal/reference/note-b.md",
+            "memory/reference/note-a.md", "memory/reference/note-b.md",
         ])
 
         # Nothing changed -- a second rebuild touches nothing.
@@ -81,42 +81,42 @@ class TestGraphSnapshot(unittest.TestCase):
         self.assertEqual(second.touched_paths, [])
 
         # Only the newly-added file shows up in touched_paths.
-        self._write("personal/reference/note-c.md", "---\nslug: note-c\n---\nbody c")
+        self._write("memory/reference/note-c.md", "---\nslug: note-c\n---\nbody c")
         third = graph_snapshot.rebuild(self.vault)
-        self.assertEqual(third.touched_paths, ["personal/reference/note-c.md"])
+        self.assertEqual(third.touched_paths, ["memory/reference/note-c.md"])
 
     def test_outgoing_returns_stored_edges(self):
-        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody")
-        self._write("personal/reference/note-b.md", "---\nslug: note-b\n---\nsee [[note-a]]")
+        self._write("memory/reference/note-a.md", "---\nslug: note-a\n---\nbody")
+        self._write("memory/reference/note-b.md", "---\nslug: note-b\n---\nsee [[note-a]]")
         graph_snapshot.rebuild(self.vault)
 
-        edges = graph_snapshot.outgoing(self.vault, "personal/reference/note-b.md")
+        edges = graph_snapshot.outgoing(self.vault, "memory/reference/note-b.md")
         self.assertEqual(len(edges), 1)
-        self.assertEqual(edges[0].source_path, "personal/reference/note-b.md")
+        self.assertEqual(edges[0].source_path, "memory/reference/note-b.md")
         self.assertEqual(edges[0].target, "note-a")
 
     def test_targeted_incremental_touches_only_given_paths(self):
-        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody a")
-        self._write("personal/reference/note-b.md", "---\nslug: note-b\n---\nbody b")
-        self._write("personal/reference/note-c.md", "---\nslug: note-c\n---\nbody c")
+        self._write("memory/reference/note-a.md", "---\nslug: note-a\n---\nbody a")
+        self._write("memory/reference/note-b.md", "---\nslug: note-b\n---\nbody b")
+        self._write("memory/reference/note-c.md", "---\nslug: note-c\n---\nbody c")
         graph_snapshot.rebuild(self.vault)  # initial full population
 
-        self._write("personal/reference/note-d.md", "---\nslug: note-d\n---\nsee [[note-a]]")
-        stats = graph_snapshot.rebuild(self.vault, paths=["personal/reference/note-d.md"])
+        self._write("memory/reference/note-d.md", "---\nslug: note-d\n---\nsee [[note-a]]")
+        stats = graph_snapshot.rebuild(self.vault, paths=["memory/reference/note-d.md"])
         self.assertEqual(stats.files_touched, 1)
         self.assertEqual(stats.edges_written, 1)
 
         # note-d is now visible to a query without any other file being re-touched.
-        incoming = graph_snapshot.incoming(self.vault, "personal/reference/note-a.md")
-        self.assertIn("personal/reference/note-d.md", incoming)
+        incoming = graph_snapshot.incoming(self.vault, "memory/reference/note-a.md")
+        self.assertIn("memory/reference/note-d.md", incoming)
 
     def test_incremental_rebuild_touches_fewer_files_than_a_full_rebuild(self):
         for i in range(5):
-            self._write(f"personal/reference/note-{i}.md", f"---\nslug: note-{i}\n---\nbody {i}")
+            self._write(f"memory/reference/note-{i}.md", f"---\nslug: note-{i}\n---\nbody {i}")
         graph_snapshot.rebuild(self.vault)  # initial full population, 5 files
 
-        self._write("personal/reference/note-new.md", "---\nslug: note-new\n---\nsee [[note-0]]")
-        incremental_stats = graph_snapshot.rebuild(self.vault, paths=["personal/reference/note-new.md"])
+        self._write("memory/reference/note-new.md", "---\nslug: note-new\n---\nsee [[note-0]]")
+        incremental_stats = graph_snapshot.rebuild(self.vault, paths=["memory/reference/note-new.md"])
 
         # A from-scratch full rebuild over the same 6-file corpus must touch
         # every file -- the coarse contrast the plan's verification criteria
@@ -129,38 +129,38 @@ class TestGraphSnapshot(unittest.TestCase):
         self.assertLess(incremental_stats.files_touched, full_stats.files_touched)
 
     def test_full_rebuild_is_a_noop_on_unchanged_files(self):
-        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody")
+        self._write("memory/reference/note-a.md", "---\nslug: note-a\n---\nbody")
         graph_snapshot.rebuild(self.vault)
         stats = graph_snapshot.rebuild(self.vault)  # nothing changed since last rebuild
         self.assertEqual(stats.files_touched, 0)
 
     def test_full_rebuild_drops_deleted_files(self):
-        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody")
-        self._write("personal/reference/note-b.md", "---\nslug: note-b\n---\nsee [[note-a]]")
+        self._write("memory/reference/note-a.md", "---\nslug: note-a\n---\nbody")
+        self._write("memory/reference/note-b.md", "---\nslug: note-b\n---\nsee [[note-a]]")
         graph_snapshot.rebuild(self.vault)
 
-        (self.vault / "personal" / "reference" / "note-b.md").unlink()
+        (self.vault / "memory" / "reference" / "note-b.md").unlink()
         stats = graph_snapshot.rebuild(self.vault)
         self.assertEqual(stats.nodes_removed, 1)
 
-        incoming = graph_snapshot.incoming(self.vault, "personal/reference/note-a.md")
+        incoming = graph_snapshot.incoming(self.vault, "memory/reference/note-a.md")
         self.assertEqual(incoming, [])
 
     def test_targeted_rebuild_of_a_deleted_path_removes_it(self):
-        self._write("personal/reference/note-a.md", "---\nslug: note-a\n---\nbody")
+        self._write("memory/reference/note-a.md", "---\nslug: note-a\n---\nbody")
         graph_snapshot.rebuild(self.vault)
-        (self.vault / "personal" / "reference" / "note-a.md").unlink()
+        (self.vault / "memory" / "reference" / "note-a.md").unlink()
 
-        stats = graph_snapshot.rebuild(self.vault, paths=["personal/reference/note-a.md"])
+        stats = graph_snapshot.rebuild(self.vault, paths=["memory/reference/note-a.md"])
         self.assertEqual(stats.nodes_removed, 1)
-        self.assertEqual(graph_snapshot.outgoing(self.vault, "personal/reference/note-a.md"), [])
+        self.assertEqual(graph_snapshot.outgoing(self.vault, "memory/reference/note-a.md"), [])
 
     def test_inbox_and_archive_excluded_from_full_walk(self):
-        (self.vault / "personal" / "_inbox").mkdir(parents=True)
-        self._write("personal/_inbox/staged.md", "---\nslug: staged\n---\nbody")
-        (self.vault / "personal" / "_archive").mkdir(parents=True)
-        self._write("personal/_archive/old.md", "---\nslug: old\n---\nbody")
-        self._write("personal/reference/real.md", "---\nslug: real\n---\nbody")
+        (self.vault / "memory" / "_inbox").mkdir(parents=True)
+        self._write("memory/_inbox/staged.md", "---\nslug: staged\n---\nbody")
+        (self.vault / "memory" / "_archive").mkdir(parents=True)
+        self._write("memory/_archive/old.md", "---\nslug: old\n---\nbody")
+        self._write("memory/reference/real.md", "---\nslug: real\n---\nbody")
 
         stats = graph_snapshot.rebuild(self.vault)
         self.assertEqual(stats.files_touched, 1)  # only real.md

@@ -130,11 +130,11 @@ SESSION_KEY="session-a/transcript"
 # seed_vault <vault-dir> — a scratch vault primed for a hermetic chain run.
 seed_vault() {
   local v="$1"
-  mkdir -p "$v/personal" "$v/_meta/skill-discovery-cache/fixture-source"
+  mkdir -p "$v/memory" "$v/_meta/skill-discovery-cache/fixture-source"
   # Comments-only whitelist: discover_skills.py seeds its 4 network sources only
   # when this file is absent, so writing it first is what keeps the run offline.
   printf '# Skill-discovery sources\n# verify-idle-chain fixture: intentionally no URLs.\n' \
-    > "$v/personal/skill-discovery-sources.md"
+    > "$v/memory/skill-discovery-sources.md"
   # Fresh cadence state so --cadence-check returns before fetching. The
   # schema_version key is load-bearing: _load_state discards any state without
   # it, which silently re-enables the network.
@@ -242,7 +242,7 @@ seed_vault "$C_VAULT"; seed_transcripts "$C_TR"
 "$PY" -c "
 import re, sys
 from pathlib import Path
-p = Path('$C_VAULT/personal/auto-orchestration-config.md')
+p = Path('$C_VAULT/memory/auto-orchestration-config.md')
 text, n = re.subn(r'enable_idle_chain\s*=\s*\w+', 'enable_idle_chain = false', p.read_text())
 if n != 1:
     sys.exit('fixture: expected exactly 1 enable_idle_chain key in the seeded config, found %d' % n)

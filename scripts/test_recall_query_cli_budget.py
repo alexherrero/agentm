@@ -51,8 +51,8 @@ class TestQueryCliBudgetSurvivesSlowEmbed(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
-        (self.vault / "personal" / "reference" / "deploy-runbook.md").write_text(
+        (self.vault / "memory" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference" / "deploy-runbook.md").write_text(
             "the deployment runbook staging gate lives at ops/deploy.md",
             encoding="utf-8",
         )
@@ -79,7 +79,7 @@ class TestQueryCliBudgetSurvivesSlowEmbed(unittest.TestCase):
                 deadline=deadline,
             )
         paths = [r["path"] for r in results]
-        self.assertIn("personal/reference/deploy-runbook.md", paths)
+        self.assertIn("memory/reference/deploy-runbook.md", paths)
 
     def test_old_tight_budget_would_have_starved_the_same_slow_embed_call(self):
         # Documents the mechanism the fix addresses: reproduces the bug
@@ -165,8 +165,8 @@ class TestInteractiveBudgetEnvReachesTheEngine(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         root = Path(self._tmp.name)
         self.vault = root / "vault"
-        (self.vault / "personal").mkdir(parents=True)
-        (self.vault / "personal" / "zorbulax-note.md").write_text(
+        (self.vault / "memory").mkdir(parents=True)
+        (self.vault / "memory" / "zorbulax-note.md").write_text(
             "---\nname: zorbulax-note\nkind: convention\n"
             "description: a fixture entry\n---\n\n"
             f"{self._SENTINEL} the zorbulax protocol governs widget alignment.\n",

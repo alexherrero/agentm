@@ -109,7 +109,7 @@ def write_park_note(vault_path: "str | Path", state: dict, *, now: "datetime | N
     vault = Path(vault_path)
     if not vault.is_dir():
         return None
-    briefs_dir = vault / "_briefs"
+    briefs_dir = vault / "desk/briefs"
     briefs_dir.mkdir(parents=True, exist_ok=True)
     slug = _park_note_slug(state["plan"], now)
     target = briefs_dir / f"{slug}.md"

@@ -104,7 +104,7 @@ REQUIRED_UNIVERSAL_FIELDS: tuple[str, ...] = (
 # Vault walk roots + excludes. These mirrored `vec_index.py`'s full-sync walk
 # until that module was removed; the same three roots are now shared with
 # `graph_snapshot.py`, which is the walk to keep this in step with.
-_WALK_SUBDIRS = ("personal", "projects", "_idea-incubator")
+_WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
 
 def is_kebab(value: str) -> bool:

@@ -34,7 +34,7 @@ _CLEAN_FM = (
     "created: 2025-01-01\n"
     "updated: 2025-01-01\n"
     "tags: []\n"
-    "group: personal\n"
+    "group: memory\n"
     "slug: {slug}\n"
     "always_load: false\n"
 )
@@ -50,10 +50,10 @@ class _LintFixtureTestBase(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def _write(self, name: str, content: str) -> Path:
-        path = self.vault / "personal" / "reference" / name
+        path = self.vault / "memory" / "reference" / name
         path.write_text(content, encoding="utf-8")
         return path
 
@@ -82,12 +82,12 @@ class SeededRotFixtureTests(_LintFixtureTestBase):
         self.report = lint.run_lint(self.vault)
 
     def test_orphan_reported(self) -> None:
-        self.assertIn("personal/reference/orphan.md", self.report.orphans)
+        self.assertIn("memory/reference/orphan.md", self.report.orphans)
 
     def test_miscased_link_auto_repairs_not_surfaced_as_error(self) -> None:
         self.assertEqual(len(self.report.repairs), 1)
         entry, old_raw, new_raw = self.report.repairs[0]
-        self.assertEqual(entry.rel, "personal/reference/miscased-source.md")
+        self.assertEqual(entry.rel, "memory/reference/miscased-source.md")
         self.assertIn("[[Correct-Target]]", old_raw)
         self.assertIn("[[correct-target]]", new_raw)
 
@@ -100,10 +100,10 @@ class SeededRotFixtureTests(_LintFixtureTestBase):
 
     def test_genuinely_broken_link_surfaces_never_repaired(self) -> None:
         repaired_rels = {entry.rel for entry, _old, _new in self.report.repairs}
-        self.assertNotIn("personal/reference/broken-source.md", repaired_rels)
+        self.assertNotIn("memory/reference/broken-source.md", repaired_rels)
         broken = [
             f for f in self.report.findings
-            if f.check_id == "wikilink-resolution" and f.entry_path == "personal/reference/broken-source.md"
+            if f.check_id == "wikilink-resolution" and f.entry_path == "memory/reference/broken-source.md"
         ]
         self.assertEqual(len(broken), 1)
         self.assertEqual(broken[0].severity, "error")
@@ -111,17 +111,17 @@ class SeededRotFixtureTests(_LintFixtureTestBase):
     def test_contradiction_surfaces_without_auto_resolution(self) -> None:
         dangling = [f for f in self.report.findings if f.check_id == "dangling-supersession"]
         self.assertEqual(len(dangling), 1)
-        self.assertEqual(dangling[0].entry_path, "personal/reference/dangling-superseded.md")
+        self.assertEqual(dangling[0].entry_path, "memory/reference/dangling-superseded.md")
         self.assertEqual(dangling[0].severity, "warn")
         self.assertEqual(self.report.contradiction_count, 1)
         # No mutation was ever proposed for it -- surfaced only.
         repaired_rels = {entry.rel for entry, _old, _new in self.report.repairs}
-        self.assertNotIn("personal/reference/dangling-superseded.md", repaired_rels)
+        self.assertNotIn("memory/reference/dangling-superseded.md", repaired_rels)
 
     def test_out_of_registry_kind_appears_in_report(self) -> None:
         kt = [f for f in self.report.findings if f.check_id == "kind-taxonomy"]
         self.assertEqual(len(kt), 1)
-        self.assertEqual(kt[0].entry_path, "personal/reference/mystery-kind.md")
+        self.assertEqual(kt[0].entry_path, "memory/reference/mystery-kind.md")
 
 
 class GraphSnapshotCrossCheckTests(_LintFixtureTestBase):
@@ -142,7 +142,7 @@ class GraphSnapshotCrossCheckTests(_LintFixtureTestBase):
 
         drift = [f for f in report.findings if f.check_id == "graph-snapshot-drift"]
         self.assertEqual(len(drift), 1)
-        self.assertEqual(drift[0].entry_path, "personal/reference/linking-note.md")
+        self.assertEqual(drift[0].entry_path, "memory/reference/linking-note.md")
         self.assertEqual(drift[0].severity, "warn")
 
     def test_second_scan_after_the_rebuild_finds_no_drift(self) -> None:
@@ -173,7 +173,7 @@ class GraphSnapshotCrossCheckTests(_LintFixtureTestBase):
             attempted = json.loads(
                 (self.vault / "_meta" / "graph-snapshot-cross-check-state.json").read_text(encoding="utf-8")
             )["attempted"]
-            if "personal/reference/zzz-last.md" in attempted:
+            if "memory/reference/zzz-last.md" in attempted:
                 reached = True
                 break
         self.assertTrue(reached, "an entry past the batch cap was never reached by the rotation")
@@ -203,7 +203,7 @@ class GraphSnapshotCrossCheckTests(_LintFixtureTestBase):
         for _ in range(3):  # the rotation needs at most 1 more cycle to reach zzz-linking-note
             report = lint.run_lint(self.vault)
             drift = {f.entry_path for f in report.findings if f.check_id == "graph-snapshot-drift"}
-            if "personal/reference/zzz-linking-note.md" in drift:
+            if "memory/reference/zzz-linking-note.md" in drift:
                 found = True
                 break
         self.assertTrue(found, "drift introduced between cycles was never caught once the rotation reached it")
@@ -265,7 +265,7 @@ class FencedCodeRepairSafetyTests(_LintFixtureTestBase):
 
         self.assertEqual(len(report.repairs), 1)
         entry, old_raw, new_raw = report.repairs[0]
-        self.assertEqual(entry.rel, "personal/reference/mixed-source.md")
+        self.assertEqual(entry.rel, "memory/reference/mixed-source.md")
         # The prose occurrence was repaired...
         self.assertEqual(
             new_raw.count("See [[correct-target]] for detail."), 1,
@@ -284,7 +284,7 @@ class FencedCodeRepairSafetyTests(_LintFixtureTestBase):
         report = lint.run_lint(self.vault)
 
         repaired_rels = {entry.rel for entry, _old, _new in report.repairs}
-        self.assertNotIn("personal/reference/fenced-only.md", repaired_rels)
+        self.assertNotIn("memory/reference/fenced-only.md", repaired_rels)
 
 
 class AliasedCollisionFindingTests(_LintFixtureTestBase):
@@ -318,13 +318,13 @@ class AliasedCollisionFindingTests(_LintFixtureTestBase):
         # -- it was never repaired, so it must never read as resolved.
         errors = [
             f for f in report.findings
-            if f.severity == "error" and f.entry_path == "personal/reference/both-forms.md"
+            if f.severity == "error" and f.entry_path == "memory/reference/both-forms.md"
         ]
         self.assertEqual(len(errors), 1)
         # Exactly one info note for the repaired occurrence, not zero and not two.
         infos = [
             f for f in report.findings
-            if f.severity == "info" and f.entry_path == "personal/reference/both-forms.md"
+            if f.severity == "info" and f.entry_path == "memory/reference/both-forms.md"
         ]
         self.assertEqual(len(infos), 1)
 
@@ -342,7 +342,7 @@ class CliAndWeeklyStageParityTests(_LintFixtureTestBase):
         self.assertEqual(len(proposals), len(cli_report.repairs))
         self.assertEqual(proposals[0].stage, "lint")
         self.assertEqual(proposals[0].kind, "wikilink_repair")
-        self.assertEqual(proposals[0].paths, ["personal/reference/miscased-source.md"])
+        self.assertEqual(proposals[0].paths, ["memory/reference/miscased-source.md"])
 
         self.assertEqual(stats["lint_orphan_count"], len(cli_report.orphans))
         self.assertEqual(stats["lint_contradiction_count"], cli_report.contradiction_count)
@@ -374,7 +374,7 @@ class WeeklyAutoApplyIntegrationTests(_LintFixtureTestBase):
 
     def test_miscased_repair_auto_applies_and_reverts(self) -> None:
         self._seed_rot()
-        source_path = self.vault / "personal" / "reference" / "miscased-source.md"
+        source_path = self.vault / "memory" / "reference" / "miscased-source.md"
 
         digest, batch = dream.run_dream_and_auto_apply(
             self.vault, run_id="run-lint-1", revert_log=self.revert_log,

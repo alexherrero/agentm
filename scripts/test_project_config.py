@@ -158,7 +158,7 @@ class TestIsRegistered(unittest.TestCase):
 class TestWriteLoadRoundtrip(unittest.TestCase):
     def test_write_then_load_idempotent(self):
         with tempfile.TemporaryDirectory() as td:
-            vp = Path(td) / "projects" / "demo"
+            vp = Path(td) / "desk/projects" / "demo"
             resolution = {"slug": "demo", "vault_path": vp, "project_root": Path(td), "layout": "new"}
             pj = {"vault_project": "demo", "github": {"number": 2}}
             block = pc.build_enablement_block(_empty_proposal(), now="2026-05-29T00:00:00Z")
@@ -175,7 +175,7 @@ class TestWriteLoadRoundtrip(unittest.TestCase):
 
     def test_load_absent_returns_empty(self):
         with tempfile.TemporaryDirectory() as td:
-            vp = Path(td) / "projects" / "demo"
+            vp = Path(td) / "desk/projects" / "demo"
             resolution = {"slug": "demo", "vault_path": vp, "project_root": Path(td), "layout": "new"}
             self.assertEqual(pc.load_project_json(resolution), {})
 
@@ -185,7 +185,7 @@ class TestRegisterIntegration(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             vault = root / "vault"
-            (vault / "projects" / "demo").mkdir(parents=True)
+            (vault / "desk/projects" / "demo").mkdir(parents=True)
             repo = root / "repo"
             (repo / ".harness").mkdir(parents=True)
             (repo / ".harness" / "project.json").write_text(
@@ -210,7 +210,7 @@ class TestRegisterIntegration(unittest.TestCase):
             # ADR 0020 (reverses V5-3 DC-1): a synced backend routes the rich
             # project.json to <vault>/projects/<slug>/_harness/. The device-local
             # .harness/project.json stays the thin {vault_project} routing pointer.
-            vault_pj = vault / "projects" / "demo" / "_harness" / "project.json"
+            vault_pj = vault / "desk/projects" / "demo" / "_harness" / "project.json"
             self.assertTrue(vault_pj.is_file())
             data = json.loads(vault_pj.read_text(encoding="utf-8"))
             self.assertIn("skills", data)
@@ -240,8 +240,8 @@ class TestRegisterIntegration(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             vault = root / "vault"
-            (vault / "projects" / "demo" / "_harness").mkdir(parents=True)
-            vault_pj = vault / "projects" / "demo" / "_harness" / "project.json"
+            (vault / "desk/projects" / "demo" / "_harness").mkdir(parents=True)
+            vault_pj = vault / "desk/projects" / "demo" / "_harness" / "project.json"
             vault_pj.write_text(
                 json.dumps({
                     "vault_project": "demo",

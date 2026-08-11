@@ -26,7 +26,7 @@ cd "$HERE"
 # "$MEMORY_VAULT_PATH"`) then silently expands to an empty string, which
 # Path("") resolves to cwd (scripts/, per the cd above) -- inbox_digest.py's
 # own is_dir() check passes on that and writes a real note into
-# scripts/_briefs/ instead of the actual vault, exit 0, no error anywhere.
+# scripts/desk/briefs/ instead of the actual vault, exit 0, no error anywhere.
 # Same category of bug as the --jobs-dir fix above (an environment-poor
 # launcher's assumptions baked into a script that has to be launcher-
 # agnostic) -- resolve it here via the canonical resolver rather than
@@ -34,13 +34,13 @@ cd "$HERE"
 #
 # The resolver is memory_root(), not vault_path(): $MEMORY_VAULT_PATH names the
 # agent's own tree to every consumer that reads it -- recall.py, reflect.py,
-# capture.py and inbox_digest.py all join `personal/`, `_meta/` or `_briefs/`
+# capture.py and inbox_digest.py all join `memory/`, `_meta/` or `desk/briefs/`
 # onto it -- so an export is already a memory root, which is exactly what
 # memory_root()'s contract says. Exporting vault_path() here put a *vault* root
 # in a variable read as a *memory* root, and after the 2026-08-10 git-transport
 # cutover made those two different directories it sent every runner-launched job
-# one level too high: the 2026-08-10 daily digest landed in `<vault>/_briefs/`
-# instead of `<vault>/Agent/_briefs/`. The reflect/recall hooks were corrected at
+# one level too high: the 2026-08-10 daily digest landed in `<vault>/desk/briefs/`
+# instead of `<vault>/Agent/desk/briefs/`. The reflect/recall hooks were corrected at
 # the cutover and already join the configured prefix; the runner was the last
 # unpatched export. memory_root() falls back to vault_path() when the config key
 # is unset, so an install whose vault root IS its memory root is unchanged.

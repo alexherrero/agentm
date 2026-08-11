@@ -132,7 +132,7 @@ def _has_vault_shape(p: Path) -> bool:
     try:
         if (p / "_meta" / "repos.json").is_file():
             return True
-        if (p / "personal").is_dir():
+        if (p / "memory").is_dir():
             return True
     except OSError:
         return False

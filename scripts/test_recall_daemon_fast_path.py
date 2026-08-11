@@ -22,7 +22,7 @@ Four things here are easy to get wrong and each has its own test:
 
   2. **Daemon paths are not vault paths.** Since the git-transport cutover the
      daemon indexes the Obsidian root while recall is pointed at the memory root
-     beneath it, so the daemon says `Agent/personal/x.md` where every downstream
+     beneath it, so the daemon says `Agent/memory/x.md` where every downstream
      consumer expects `personal/x.md`. Getting this wrong does not crash; it
      silently reads nothing and looks like an empty result.
 
@@ -122,11 +122,11 @@ class _VaultFixture(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name) / "Vault"
         self.vault = self.root / "Agent"
-        _write(self.vault / "personal" / "zorbulax.md", "The zorbulax subsystem.")
-        _write(self.vault / "personal" / "retired.md", "Old news.", status="superseded")
-        _write(self.vault / "personal" / "_inbox" / "unfiled.md", "Unfiled zorbulax.")
-        _write(self.vault / "personal" / "_archive" / "old.md", "Archived zorbulax.")
-        _write(self.vault / "_dream-staging" / "batch" / "prop.md", "Proposal copy.")
+        _write(self.vault / "memory" / "zorbulax.md", "The zorbulax subsystem.")
+        _write(self.vault / "memory" / "retired.md", "Old news.", status="superseded")
+        _write(self.vault / "memory" / "_inbox" / "unfiled.md", "Unfiled zorbulax.")
+        _write(self.vault / "memory" / "_archive" / "old.md", "Archived zorbulax.")
+        _write(self.vault / "desk/scratch" / "batch" / "prop.md", "Proposal copy.")
         _write(self.root / "Church" / "talk.md", "A talk about patterns.")
 
     def _run(self, fake, **kw):
@@ -166,7 +166,7 @@ class QueryExtractionTests(unittest.TestCase):
 
     def test_a_contentless_prompt_does_not_reach_the_daemon(self):
         """Better to fall back than to search for the empty string."""
-        fake = _FakeDaemon(stdout=_payload("Agent/personal/zorbulax.md"))
+        fake = _FakeDaemon(stdout=_payload("Agent/memory/zorbulax.md"))
         status: dict = {}
         with tempfile.TemporaryDirectory() as tmp:
             with unittest.mock.patch.object(recall.subprocess, "run", fake):
@@ -193,27 +193,27 @@ class PathTranslationTests(_VaultFixture):
     """Rule 2: daemon paths are re-expressed relative to the memory root."""
 
     def test_the_memory_root_prefix_is_stripped(self):
-        out = self._run(_FakeDaemon(stdout=_payload("Agent/personal/zorbulax.md")))
-        self.assertEqual([r["path"] for r in out], ["personal/zorbulax.md"])
+        out = self._run(_FakeDaemon(stdout=_payload("Agent/memory/zorbulax.md")))
+        self.assertEqual([r["path"] for r in out], ["memory/zorbulax.md"])
         self.assertEqual(out[0]["slug"], "zorbulax")
 
     def test_the_translated_path_resolves_under_the_vault(self):
         """The real assertion behind the rename: the file can then be read."""
-        out = self._run(_FakeDaemon(stdout=_payload("Agent/personal/zorbulax.md")))
+        out = self._run(_FakeDaemon(stdout=_payload("Agent/memory/zorbulax.md")))
         self.assertTrue((self.vault / out[0]["path"]).is_file())
 
     def test_a_daemon_rooted_at_the_memory_root_needs_no_stripping(self):
         """`memory_root` unset — the install that never moved."""
         with unittest.mock.patch.object(
-            recall.subprocess, "run", _FakeDaemon(stdout=_payload("personal/zorbulax.md"))
+            recall.subprocess, "run", _FakeDaemon(stdout=_payload("memory/zorbulax.md"))
         ):
             out = recall._daemon_search(
                 vault=self.vault, query_text="zorbulax", status={}
             )
-        self.assertEqual([r["path"] for r in out], ["personal/zorbulax.md"])
+        self.assertEqual([r["path"] for r in out], ["memory/zorbulax.md"])
 
     def test_a_path_that_resolves_nowhere_is_dropped_not_guessed(self):
-        out = self._run(_FakeDaemon(stdout=_payload("Agent/personal/ghost.md")))
+        out = self._run(_FakeDaemon(stdout=_payload("Agent/memory/ghost.md")))
         self.assertEqual(out, [])
 
 
@@ -222,13 +222,13 @@ class ScopeTests(_VaultFixture):
 
     def test_notes_outside_the_memory_root_are_dropped_by_default(self):
         out = self._run(_FakeDaemon(
-            stdout=_payload("Church/talk.md", "Agent/personal/zorbulax.md")
+            stdout=_payload("Church/talk.md", "Agent/memory/zorbulax.md")
         ))
-        self.assertEqual([r["path"] for r in out], ["personal/zorbulax.md"])
+        self.assertEqual([r["path"] for r in out], ["memory/zorbulax.md"])
 
     def test_scope_vault_admits_them_and_marks_them_external(self):
         out = self._run(
-            _FakeDaemon(stdout=_payload("Church/talk.md", "Agent/personal/zorbulax.md")),
+            _FakeDaemon(stdout=_payload("Church/talk.md", "Agent/memory/zorbulax.md")),
             scope="vault",
         )
         self.assertEqual(len(out), 2)
@@ -250,38 +250,38 @@ class HygieneTests(_VaultFixture):
 
     def test_dream_staging_inbox_and_archive_are_all_excluded(self):
         out = self._run(_FakeDaemon(stdout=_payload(
-            "Agent/_dream-staging/batch/prop.md",
-            "Agent/personal/_inbox/unfiled.md",
-            "Agent/personal/_archive/old.md",
-            "Agent/personal/zorbulax.md",
+            "Agent/desk/scratch/batch/prop.md",
+            "Agent/memory/_inbox/unfiled.md",
+            "Agent/memory/_archive/old.md",
+            "Agent/memory/zorbulax.md",
         )))
-        self.assertEqual([r["path"] for r in out], ["personal/zorbulax.md"])
+        self.assertEqual([r["path"] for r in out], ["memory/zorbulax.md"])
 
     def test_inbox_and_archive_reopen_on_request(self):
         out = self._run(
             _FakeDaemon(stdout=_payload(
-                "Agent/personal/_inbox/unfiled.md",
-                "Agent/personal/_archive/old.md",
+                "Agent/memory/_inbox/unfiled.md",
+                "Agent/memory/_archive/old.md",
             )),
             include_inbox=True, include_archive=True,
         )
         self.assertEqual(
             [r["path"] for r in out],
-            ["personal/_inbox/unfiled.md", "personal/_archive/old.md"],
+            ["memory/_inbox/unfiled.md", "memory/_archive/old.md"],
         )
 
     def test_dream_staging_stays_excluded_even_then(self):
         """It is staging content, surfaced to the agent under no flag."""
         out = self._run(
-            _FakeDaemon(stdout=_payload("Agent/_dream-staging/batch/prop.md")),
+            _FakeDaemon(stdout=_payload("Agent/desk/scratch/batch/prop.md")),
             include_inbox=True, include_archive=True,
         )
         self.assertEqual(out, [])
 
     def test_always_load_entries_are_deduped_away(self):
         out = self._run(
-            _FakeDaemon(stdout=_payload("Agent/personal/zorbulax.md")),
-            dedup_paths={"personal/zorbulax.md"},
+            _FakeDaemon(stdout=_payload("Agent/memory/zorbulax.md")),
+            dedup_paths={"memory/zorbulax.md"},
         )
         self.assertEqual(out, [])
 
@@ -347,7 +347,7 @@ class PromptSubmitIntegrationTests(_VaultFixture):
         spy = unittest.mock.Mock(side_effect=AssertionError("query() was called"))
         with unittest.mock.patch.object(recall, "query", spy):
             rc, out, err = self._submit(
-                _FakeDaemon(stdout=_payload("Agent/personal/zorbulax.md"))
+                _FakeDaemon(stdout=_payload("Agent/memory/zorbulax.md"))
             )
         self.assertEqual(rc, 0)
         self.assertIn("zorbulax", out)
@@ -356,7 +356,7 @@ class PromptSubmitIntegrationTests(_VaultFixture):
 
     def test_the_searched_terms_are_reported_not_the_prompt(self):
         _, _, err = self._submit(
-            _FakeDaemon(stdout=_payload("Agent/personal/zorbulax.md")),
+            _FakeDaemon(stdout=_payload("Agent/memory/zorbulax.md")),
             prompt="what did we decide about zorbulax?",
         )
         self.assertIn("terms: 'decide zorbulax'", err)
@@ -371,7 +371,7 @@ class PromptSubmitIntegrationTests(_VaultFixture):
 
     def test_a_superseded_entry_cannot_return_through_the_faster_engine(self):
         _, out, err = self._submit(_FakeDaemon(stdout=_payload(
-            "Agent/personal/retired.md", "Agent/personal/zorbulax.md"
+            "Agent/memory/retired.md", "Agent/memory/zorbulax.md"
         )))
         self.assertNotIn("Old news", out)
         self.assertIn("Loaded 1 relevant", err)
@@ -379,7 +379,7 @@ class PromptSubmitIntegrationTests(_VaultFixture):
     def test_a_daemon_hit_reports_its_score_and_never_a_zero_sim(self):
         """`sim=0.00` would read as a semantic match that failed."""
         _, out, _ = self._submit(
-            _FakeDaemon(stdout=_payload("Agent/personal/zorbulax.md"))
+            _FakeDaemon(stdout=_payload("Agent/memory/zorbulax.md"))
         )
         self.assertIn("score=20.00 daemon-lexical", out)
         self.assertNotIn("sim=", out)
@@ -399,7 +399,7 @@ class PromptSubmitIntegrationTests(_VaultFixture):
             heat_policy, "record_hit", lambda vault, slug: seen.append(slug)
         ):
             _, _, err = self._submit(_FakeDaemon(stdout=_payload(
-                "Church/talk.md", "Agent/personal/zorbulax.md"
+                "Church/talk.md", "Agent/memory/zorbulax.md"
             )))
         self.assertIn("Loaded 2 relevant", err)
         self.assertEqual(seen, ["zorbulax"])

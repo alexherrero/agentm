@@ -70,7 +70,10 @@ from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task
 # standalone copies of this set (same-dir convention — see moc_generator.py's
 # precedent note); test_vault_lint.py's parity tests pin all three together.
 _EXCLUDE_DIRS = frozenset(
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive",
+    # NOTE: matched per path SEGMENT, so this holds the last component of the
+    # scratch space ("scratch"), not its "desk/scratch" spelling — a
+    # two-segment entry here silently matches nothing.
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "scratch", "_archive",
      "_opinions", "_crystallize-staging"}
 )
 
@@ -91,10 +94,10 @@ _ALIASES_RE = re.compile(r"^aliases:\s*\[([^\]]*)\]\s*$", re.M)
 
 # --scope → directory subset under the vault root.
 _SCOPE_DIRS = {
-    "all": ["personal", "projects"],
-    "always-load": ["personal/_always-load"],
-    "projects": ["projects"],
-    "personal": ["personal"],
+    "all": ["memory", "desk/projects"],
+    "always-load": ["memory/_always-load"],
+    "projects": ["desk/projects"],
+    "memory": ["memory"],
     # No entry-walk roots: the bespoke idea-ledger pass walks its own root
     # (see lint_vault). Link resolution still indexes the whole Obsidian vault.
     "incubator": [],

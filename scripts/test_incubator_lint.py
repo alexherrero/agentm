@@ -88,8 +88,8 @@ class _Vault:
         self._td = tempfile.TemporaryDirectory()
         self._prev = os.environ.pop("IDEAS_SURFACE_PATH", None)
         self.root = Path(self._td.name) / "Obsidian" / "Agent"
-        (self.root / "personal").mkdir(parents=True)
-        (self.root / "projects").mkdir(parents=True)
+        (self.root / "memory").mkdir(parents=True)
+        (self.root / "desk/projects").mkdir(parents=True)
         # The real layout: the memory vault sits inside the Obsidian vault, and
         # Ideas.md sits at that Obsidian root beside `.obsidian/`. The marker is
         # what makes the Ideas.md fallback trust this parent at all.
@@ -458,10 +458,10 @@ class TestDiscovery(unittest.TestCase):
         """ideas_incubator.py still writes to personal/_idea-incubator, so the
         nested layout has to resolve too."""
         with _Vault() as v:
-            _write(v, "personal/_idea-incubator/doom-llm-npcs/_index.md", _REAL_INDEX)
+            _write(v, "memory/_idea-incubator/doom-llm-npcs/_index.md", _REAL_INDEX)
             roots = il.find_incubator_roots(v)
             self.assertEqual([r.relative_to(v).as_posix() for r in roots],
-                             ["personal/_idea-incubator"])
+                             ["memory/_idea-incubator"])
 
     def test_no_ledger_is_not_an_error(self):
         with _Vault() as v:
@@ -505,7 +505,7 @@ class TestVaultLintIntegration(unittest.TestCase):
                    _REAL_INDEX.replace("doom-llm-npcs", "blog-author")
                               .replace("status: research-complete",
                                        "status: research-pending"))
-            _, findings = vl.lint_vault(v, scope="personal")
+            _, findings = vl.lint_vault(v, scope="memory")
             self.assertEqual([f for f in findings
                               if f.check_id.startswith("incubator-")], [])
 
@@ -516,9 +516,9 @@ class TestAliasAwareResolution(unittest.TestCase):
 
     def test_alias_target_resolves(self):
         with _Vault() as v:
-            _write(v, "personal/notes/2026-07-05-docs-prose-style.md",
+            _write(v, "memory/notes/2026-07-05-docs-prose-style.md",
                    "---\nkind: convention\nstatus: active\ncreated: 2026-07-05\n"
-                   "updated: 2026-07-05\ntags: [voice]\ngroup: personal\n"
+                   "updated: 2026-07-05\ntags: [voice]\ngroup: memory\n"
                    "slug: 2026-07-05-docs-prose-style\n"
                    "aliases: [docs-prose-style]\n---\n\nBody.\n")
             model = vl.build_model(v)
@@ -527,9 +527,9 @@ class TestAliasAwareResolution(unittest.TestCase):
     def test_unaliased_missing_target_still_fails(self):
         """Alias support must not turn the check into a rubber stamp."""
         with _Vault() as v:
-            _write(v, "personal/notes/a.md",
+            _write(v, "memory/notes/a.md",
                    "---\nkind: convention\nstatus: active\ncreated: 2026-07-05\n"
-                   "updated: 2026-07-05\ntags: [x]\ngroup: personal\nslug: a\n"
+                   "updated: 2026-07-05\ntags: [x]\ngroup: memory\nslug: a\n"
                    "aliases: [alpha]\n---\n\nBody.\n")
             model = vl.build_model(v)
             self.assertTrue(vl._wikilink_resolves("alpha", model))
@@ -537,9 +537,9 @@ class TestAliasAwareResolution(unittest.TestCase):
 
     def test_alias_list_is_split_on_commas(self):
         with _Vault() as v:
-            _write(v, "personal/notes/s.md",
+            _write(v, "memory/notes/s.md",
                    "---\nkind: convention\nstatus: active\ncreated: 2026-07-05\n"
-                   "updated: 2026-07-05\ntags: [x]\ngroup: personal\nslug: s\n"
+                   "updated: 2026-07-05\ntags: [x]\ngroup: memory\nslug: s\n"
                    "aliases: [scheduled-agentm-skills, scheduled-agentic-harness-skills]\n"
                    "---\n\nBody.\n")
             model = vl.build_model(v)

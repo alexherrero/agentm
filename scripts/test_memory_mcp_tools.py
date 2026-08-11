@@ -52,7 +52,7 @@ def _make_vault(tmp: Path) -> Path:
     vault = tmp / "vault"
     vault.mkdir()
     # Minimum required dirs so save_entry + recall don't fail.
-    (vault / "personal" / "_always-load").mkdir(parents=True)
+    (vault / "memory" / "_always-load").mkdir(parents=True)
     return vault
 
 
@@ -220,13 +220,13 @@ class TestMemoryCapture(unittest.IsolatedAsyncioTestCase):
         async with Client(transport) as client:
             res = await self._call_capture(client, content="a captured thought")
         self.assertTrue(res["success"])
-        self.assertIn("personal/_inbox/", res["id"])
+        self.assertIn("memory/_inbox/", res["id"])
         entry_path = self._vault / res["id"]
         self.assertTrue(entry_path.is_file())
         # Never lands under personal/capture/ or personal/idea/ — those
         # would be memory_append's territory, not this tool's.
-        self.assertFalse((self._vault / "personal" / "capture").exists())
-        self.assertFalse((self._vault / "personal" / "idea").exists())
+        self.assertFalse((self._vault / "memory" / "capture").exists())
+        self.assertFalse((self._vault / "memory" / "idea").exists())
 
     async def test_idea_kind_stages_to_inbox_too(self):
         transport = FastMCPTransport(_srv.mcp)

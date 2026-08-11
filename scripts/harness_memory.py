@@ -160,7 +160,7 @@ _RECALL_QUERIES = {
 }
 
 # Always-load conventions live at personal/_always-load/.
-_ALWAYS_LOAD_REL = ("personal", "_always-load")
+_ALWAYS_LOAD_REL = ("memory", "_always-load")
 
 # Cursor file relative to project root.
 _CURSOR_REL = (".harness", ".promoted-progress-cursor")
@@ -289,7 +289,7 @@ def _read_config_memory_root(install_prefix: Optional[Path] = None) -> str:
 
     Returns "" when the key is absent, empty, or unusable — meaning the memory
     root is the vault root itself. There is deliberately no fallback to a
-    default like "personal": a wrong sub-root silently relocates the whole
+    default like "memory": a wrong sub-root silently relocates the whole
     corpus, and an absent key must mean "unchanged", never a guess.
 
     Graceful-skips silently on any I/O or parse error — never raises.
@@ -321,6 +321,84 @@ def _read_config_memory_root(install_prefix: Optional[Path] = None) -> str:
     if not rel or ".." in rel.split("/"):
         return ""
     return rel
+
+
+# The agent tree's own sub-spaces, named rather than spelled at 172 call sites.
+#
+# Before this existed the layout was hardcoded — `vault / "memory"`, and a
+# `group` argument whose value was also a directory name — so moving a space
+# meant editing every caller and any miss silently split the corpus in two. That
+# is not hypothetical: it happened on 2026-08-10, twice, and the second time
+# left 102 files shadowing same-named entries with different bodies while both
+# halves looked healthy in isolation.
+#
+# The defaults below describe the PRE-stage-2 layout, so an install that never
+# sets the key behaves exactly as it did. `plugins.obsidian-vault.spaces`
+# overrides them per space; unknown names fall through to their own name, which
+# is what keeps a space nobody has migrated yet resolving to where it already is.
+_PLUGIN_SPACES_KEY = "plugins.obsidian-vault.spaces"
+
+_DEFAULT_SPACES = {
+    "memory": "memory",
+    "projects": "desk/projects",
+    "briefs": "desk/briefs",
+    "scratch": "desk/scratch",
+}
+
+
+def _read_config_spaces(install_prefix: Optional[Path] = None) -> dict:
+    """Read the space-name overrides. Graceful-skips to {} on anything unusable."""
+    if install_prefix is None:
+        install_prefix = _agentm_install_prefix()
+    config_path = install_prefix / ".agentm-config.json"
+    if not config_path.is_file():
+        return {}
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    raw = data.get(_PLUGIN_SPACES_KEY)
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for name, value in raw.items():
+        if not isinstance(name, str) or not isinstance(value, str):
+            continue
+        candidate = value.strip().replace("\\", "/")
+        # Same absoluteness rule as the memory root, and for the same reason: a
+        # value that escapes the tree is a configuration error, not an alternate
+        # spelling of a place inside it.
+        if not candidate or candidate.startswith("/") or ":" in candidate:
+            continue
+        rel = candidate.strip("/")
+        if not rel or ".." in rel.split("/"):
+            continue
+        out[name] = rel
+    return out
+
+
+def space(name: str) -> str:
+    """Return the memory-root-relative path of a named space.
+
+    Callers addressing the agent's own sub-trees should ask for them by name —
+    `space("memory")` — rather than spelling the directory. What the name
+    resolves to is then one config key rather than a sweep across the codebase.
+    """
+    return _read_config_spaces().get(name) or _DEFAULT_SPACES.get(name, name)
+
+
+def space_dir(name: str) -> Optional[Path]:
+    """The absolute path of a named space, or None when no vault resolves.
+
+    Returns None on the same condition as `memory_root()`, so every existing
+    graceful-skip on a falsy vault keeps working unchanged.
+    """
+    root = memory_root()
+    if root is None:
+        return None
+    return root.joinpath(*space(name).split("/"))
 
 
 def memory_root() -> Optional[Path]:
@@ -479,7 +557,7 @@ def is_available() -> bool:
 # `personal-projects/` → `projects/`. During the transition window (operators
 # who haven't yet run rename-vault-personal-projects.sh), the legacy name
 # remains as a fallback — see `_vault_projects_dir()` below.
-_VAULT_PROJECTS_REL_NEW = "projects"
+_VAULT_PROJECTS_REL_NEW = "desk/projects"
 _VAULT_PROJECTS_REL_LEGACY = "personal-projects"
 
 
@@ -511,7 +589,7 @@ def resolve_project(context: Optional[dict] = None) -> dict:
     Resolution chain (V5-6 de-vaulting — routing plane onto the storage seam):
       1. Read the project slug via `vault_project.read_vault_project(cwd)`.
       2. Obtain the active StorageBackend via backend_selection.select_backend().
-      3. Resolve `backend.resolve("projects", slug)` (new) or
+      3. Resolve `backend.resolve("desk/projects", slug)` (new) or
          `backend.resolve("personal-projects", slug)` (legacy fallback).
       4. Build the resolution dict.
 
@@ -1411,7 +1489,7 @@ def _invoke_toolkit_save(
     save_py = tk / "save.py"
     if not save_py.is_file():
         return 127
-    # Resolve which projects-dir segment to use (post-V4 #26 "projects" preferred;
+    # Resolve which projects-dir segment to use (post-V4 #26 "desk/projects" preferred;
     # falls back to legacy "personal-projects" if rename not yet run). Inlined
     # here because _vault_projects_dir now takes a StorageBackend (V5-6).
     projects_segment = (

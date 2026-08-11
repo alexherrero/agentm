@@ -56,7 +56,7 @@ class TestMemoryReflectStopHookPwsh(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.vault = self.root / "vault"
-        (self.vault / "personal").mkdir(parents=True)
+        (self.vault / "memory").mkdir(parents=True)
         (self.vault / "_inbox").mkdir(parents=True)
         self.proj = self.root / "proj"
         (self.proj / ".harness").mkdir(parents=True)

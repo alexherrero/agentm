@@ -100,7 +100,7 @@ def _frontmatter_value(content: str, field: str) -> str | None:
 # Mirrors kind_registry.py's walk roots exactly (agentm-memory-index.md's
 # build-from-source path) — `arc:` only ever appears on a permanent
 # decisions/designs entry, but the walk itself is the same corpus.
-_WALK_SUBDIRS = ("personal", "projects", "_idea-incubator")
+_WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
 
 def audit(vault_path: Path | str) -> dict:

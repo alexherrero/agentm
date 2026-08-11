@@ -218,7 +218,7 @@ def _stem(token: str) -> str:
 # Path convention: always-load entries live under <vault>/personal/_always-load/.
 # Group-scoped _always-load/ dirs (e.g. work-public/_always-load/) are reserved
 # for future per-group recall; v0.1.0 hardwires personal/.
-_ALWAYS_LOAD_REL = Path("personal") / "_always-load"
+_ALWAYS_LOAD_REL = Path("memory") / "_always-load"
 
 # Directories excluded from recall walks unconditionally. _dream-staging/
 # is always excluded (L1/F4 fix: dream.py already excludes it from its own
@@ -232,7 +232,12 @@ _ALWAYS_LOAD_REL = Path("personal") / "_always-load"
 # `_INCLUDE_ARCHIVE_DIR_NAME` below. _shelf/ was never in this set and
 # needs no change: the shelf is a browse convention, not a search boundary,
 # so shelved artifacts stay in everyday search by construction.
-_EXCLUDE_DIR_NAMES = {"_dream-staging"}
+# Matched against a single directory NAME, not a relative path, so this holds
+# the last segment of the scratch space rather than its full `desk/scratch`
+# spelling. The stage-2 migration moved that space one level down and briefly
+# put the two-segment path here, which silently matched nothing and let dream
+# exhaust back into recall.
+_EXCLUDE_DIR_NAMES = {"scratch"}
 _INBOX_DIR_NAME = "_inbox"
 _INCLUDE_ARCHIVE_DIR_NAME = "_archive"
 
@@ -1120,12 +1125,23 @@ def parse_filter(expr: str | None) -> dict[str, str]:
     return criteria
 
 
+_PROJECTS_GROUP_PREFIX = "desk/projects/"
+
+
 def _derive_project(group_value: str) -> str | None:
-    """`projects/<slug>/...` -> `<slug>`; None for any other group."""
-    if not group_value or not group_value.startswith("projects/"):
+    """`desk/projects/<slug>/...` -> `<slug>`; None for any other group.
+
+    The slug is taken as the first segment after the projects space rather than
+    at a fixed index. The space gained a level at the stage-2 migration, and an
+    index that happened to be right for `projects/<slug>` silently returned the
+    literal "projects" for `desk/projects/<slug>` — a filter that matches
+    nothing rather than one that errors.
+    """
+    if not group_value or not group_value.startswith(_PROJECTS_GROUP_PREFIX):
         return None
-    parts = group_value.split("/")
-    return parts[1] if len(parts) >= 2 and parts[1] else None
+    rest = group_value[len(_PROJECTS_GROUP_PREFIX):]
+    slug = rest.split("/", 1)[0]
+    return slug or None
 
 
 def _entry_matches_filter(fm: dict[str, str], criteria: dict[str, str]) -> bool:
@@ -1546,7 +1562,7 @@ def _daemon_root_for(vault: Path, rel_posix: str) -> Path | None:
 
     The daemon indexes from its own configured root, which since the
     git-transport cutover is the Obsidian root — one level above the memory
-    root recall is pointed at. So the daemon says `Agent/personal/x.md` where
+    root recall is pointed at. So the daemon says `Agent/memory/x.md` where
     recall wants `personal/x.md`.
 
     Rather than re-reading the kernel config (recall.py resolves its vault from

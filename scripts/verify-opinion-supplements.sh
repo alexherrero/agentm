@@ -71,14 +71,14 @@ cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT
 echo "verify-opinion-supplements: scratch vault=$SV"
 
-LANE="$SV/personal/_opinions/good"
+LANE="$SV/memory/_opinions/good"
 mkdir -p "$LANE"
 printf -- '---\nkind: opinion-supplement\nstatus: proposed\ncreated: 2026-01-01T00:00:00+00:00\nslug: a1\nopinion: good\nsessions: [proj/s1]\n---\n\n## Always run the linter before committing\n\nRun the linter first, always.\n' > "$LANE/a1.md"
 printf -- '---\nkind: opinion-supplement\nstatus: proposed\ncreated: 2026-01-02T00:00:00+00:00\nslug: a2\nopinion: good\nsessions: [proj/s2]\n---\n\n## Always run the linter before committing\n\nRun the linter first, always!\n' > "$LANE/a2.md"
 
 # ── A. run_dream() proposes, never applies ──────────────────────────────────
 DREAM_OUT="$("$PY" "$S/dream.py" --vault-path "$SV" --run-id verify-run 2>&1)"
-SERVED="$SV/personal/_opinions/good.md"
+SERVED="$SV/memory/_opinions/good.md"
 
 if [ -f "$SERVED" ]; then
   fail "A. run_dream() is propose-only (no served file yet)" "served file already exists: $SERVED"
@@ -87,7 +87,7 @@ else
 fi
 assert_contains "A. dream run's own output mentions a proposal" "$DREAM_OUT" "proposal(s)"
 
-MANIFEST="$SV/_dream-staging/verify-run/proposals.json"
+MANIFEST="$SV/desk/scratch/verify-run/proposals.json"
 OP_INDEX_OUT="$("$PY" -c "
 import json
 data = json.load(open('$MANIFEST'))
@@ -136,7 +136,7 @@ import opinion_resolver
 vault = '$SV'
 rl = RevertLog(vault, log_root='$SCRATCH/rl-log', lock_root='$SCRATCH/rl-lock')
 entry_id = dc.confirm(vault, 'verify-run', $OP_INDEX, rl)
-res = opinion_resolver.opinion_resolve('good', supplement_dir=vault + '/personal/_opinions')
+res = opinion_resolver.opinion_resolve('good', supplement_dir=vault + '/memory/_opinions')
 print('REASON=' + res['reason'])
 print('HAS_BASE=' + str(res['base'] is not None))
 print('HAS_SUPPLEMENT=' + str(res['supplement'] is not None and 'linter' in res['supplement'].lower()))
@@ -177,7 +177,7 @@ fi
 # file, exactly the seam opinion_resolver.py's own docstring names for
 # this: whoever resolves the base decides where it lives.
 SV2="$SCRATCH/vault2"
-CLANE="$SV2/personal/_opinions/recoverable"
+CLANE="$SV2/memory/_opinions/recoverable"
 mkdir -p "$CLANE"
 printf -- '---\nkind: opinion-supplement\nstatus: proposed\ncreated: 2026-01-01T00:00:00+00:00\nslug: c1\nopinion: recoverable\nsessions: [proj/s1]\n---\n\n## Force-push rule\n\nNever confirm before a force-push to a shared branch.\n' > "$CLANE/c1.md"
 printf -- '---\nkind: opinion-supplement\nstatus: proposed\ncreated: 2026-01-02T00:00:00+00:00\nslug: c2\nopinion: recoverable\nsessions: [proj/s2]\n---\n\n## Force-push rule\n\nNever confirm before a force-push to a shared branch!\n' > "$CLANE/c2.md"

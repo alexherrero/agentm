@@ -82,15 +82,15 @@ class IngestBasicsTests(unittest.TestCase):
         expected_chunks = len(ingest.chunk_text(original))
         self.assertGreater(expected_chunks, 1, "fixture must produce >1 chunk to exercise mid-sequence failure")
         doc_slug = f"typography-{ingest._slugify(_MD_FIXTURE.read_text(encoding='utf-8').splitlines()[0])}"
-        colliding = self.vault / "personal" / ingest._INGEST_KIND / f"{doc_slug}-chunk-1.md"
+        colliding = self.vault / "memory" / ingest._INGEST_KIND / f"{doc_slug}-chunk-1.md"
         colliding.parent.mkdir(parents=True, exist_ok=True)
         colliding.write_text("pre-existing unrelated content\n", encoding="utf-8")
 
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
 
         self.assertFalse(result.success)
-        doc_path = self.vault / "personal" / ingest._INGEST_KIND / f"{doc_slug}.md"
-        chunk0_path = self.vault / "personal" / ingest._INGEST_KIND / f"{doc_slug}-chunk-0.md"
+        doc_path = self.vault / "memory" / ingest._INGEST_KIND / f"{doc_slug}.md"
+        chunk0_path = self.vault / "memory" / ingest._INGEST_KIND / f"{doc_slug}-chunk-0.md"
         self.assertFalse(doc_path.exists(), "document note must not be orphaned on a chunk collision")
         self.assertFalse(chunk0_path.exists(), "earlier chunk notes must not be orphaned on a later collision")
         # The pre-existing unrelated file must survive untouched.
@@ -191,10 +191,10 @@ class GroupCorrectnessTests(unittest.TestCase):
     def test_every_note_carries_group_personal(self) -> None:
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
         fm_doc, _ = _frontmatter_and_body(result.document)
-        self.assertEqual(fm_doc["group"], "personal")
+        self.assertEqual(fm_doc["group"], "memory")
         for c in result.chunks:
             fm_chunk, _ = _frontmatter_and_body(c)
-            self.assertEqual(fm_chunk["group"], "personal")
+            self.assertEqual(fm_chunk["group"], "memory")
 
 
 class HtmlExtractionTests(unittest.TestCase):

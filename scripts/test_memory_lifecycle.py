@@ -48,36 +48,36 @@ class TestTierClassification(unittest.TestCase):
 
     def test_explicit_durable_tag(self):
         fm = _fm(lifecycle_tier="durable")
-        self.assertTrue(is_decay_exempt(fm, "personal/preferences/some-note.md"))
-        self.assertEqual(lifecycle_tier_for(fm, "personal/preferences/some-note.md"), "durable")
+        self.assertTrue(is_decay_exempt(fm, "memory/preferences/some-note.md"))
+        self.assertEqual(lifecycle_tier_for(fm, "memory/preferences/some-note.md"), "durable")
 
     def test_explicit_volatile_tag(self):
         fm = _fm(lifecycle_tier="volatile")
-        self.assertFalse(is_decay_exempt(fm, "personal/preferences/some-note.md"))
-        self.assertEqual(lifecycle_tier_for(fm, "personal/preferences/some-note.md"), "volatile")
+        self.assertFalse(is_decay_exempt(fm, "memory/preferences/some-note.md"))
+        self.assertEqual(lifecycle_tier_for(fm, "memory/preferences/some-note.md"), "volatile")
 
     def test_default_absent_field_is_volatile(self):
         fm = _fm()
-        self.assertFalse(is_decay_exempt(fm, "personal/insight/some-note.md"))
-        self.assertEqual(lifecycle_tier_for(fm, "personal/insight/some-note.md"), "volatile")
+        self.assertFalse(is_decay_exempt(fm, "memory/insight/some-note.md"))
+        self.assertEqual(lifecycle_tier_for(fm, "memory/insight/some-note.md"), "volatile")
 
     def test_error_history_kind_is_decay_exempt(self):
         # error-history proxy: kind == failure-incident (gate #2, FABLE R1).
         fm = _fm(kind="failure-incident")
-        self.assertTrue(is_decay_exempt(fm, "personal/diagnostics/some-incident.md"))
-        self.assertEqual(lifecycle_tier_for(fm, "personal/diagnostics/some-incident.md"), "durable")
+        self.assertTrue(is_decay_exempt(fm, "memory/diagnostics/some-incident.md"))
+        self.assertEqual(lifecycle_tier_for(fm, "memory/diagnostics/some-incident.md"), "durable")
 
     def test_architecture_decisions_path_is_decay_exempt(self):
         # architecture-decisions proxy: a decisions/ path segment (gate #2, FABLE R1).
         fm = _fm()  # no explicit tag, no special kind — path alone must exempt it.
-        self.assertTrue(is_decay_exempt(fm, "projects/agentm/decisions/some-call.md"))
-        self.assertEqual(lifecycle_tier_for(fm, "projects/agentm/decisions/some-call.md"), "durable")
+        self.assertTrue(is_decay_exempt(fm, "desk/projects/agentm/decisions/some-call.md"))
+        self.assertEqual(lifecycle_tier_for(fm, "desk/projects/agentm/decisions/some-call.md"), "durable")
 
     def test_decisions_path_exemption_is_directory_segment_not_substring(self):
         # A path merely containing the substring "decisions" without a real
         # directory segment must NOT be exempt (avoid over-matching).
         fm = _fm()
-        self.assertFalse(is_decay_exempt(fm, "personal/my-decisions-log.md"))
+        self.assertFalse(is_decay_exempt(fm, "memory/my-decisions-log.md"))
 
 
 class TestDecayScore(unittest.TestCase):
@@ -95,10 +95,10 @@ class TestDecayScore(unittest.TestCase):
         # decays no matter how much time passes with no access.
         fm = _fm(kind="failure-incident", created="2020-01-01")
         score_soon = compute_decay_score(
-            self.vault, "incident-a", fm, "personal/diag/incident-a.md", now="2020-01-02"
+            self.vault, "incident-a", fm, "memory/diag/incident-a.md", now="2020-01-02"
         )
         score_far = compute_decay_score(
-            self.vault, "incident-a", fm, "personal/diag/incident-a.md", now="2030-01-01"
+            self.vault, "incident-a", fm, "memory/diag/incident-a.md", now="2030-01-01"
         )
         self.assertEqual(score_soon, 1.0)
         self.assertEqual(score_far, 1.0)
@@ -107,13 +107,13 @@ class TestDecayScore(unittest.TestCase):
         # Red-test (task 3 verification, bullet 2): architecture-decisions
         # never decay no matter how much time passes with no access.
         fm = _fm(created="2020-01-01")
-        rel = "projects/agentm/decisions/some-call.md"
+        rel = "desk/projects/agentm/decisions/some-call.md"
         score_far = compute_decay_score(self.vault, "some-call", fm, rel, now="2035-01-01")
         self.assertEqual(score_far, 1.0)
 
     def test_volatile_entry_decays_from_created_when_never_accessed(self):
         fm = _fm(created="2026-01-01")
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
         # Exactly one half-life elapsed with no recorded access.
         now = "2026-01-01"
         import datetime
@@ -125,7 +125,7 @@ class TestDecayScore(unittest.TestCase):
 
     def test_volatile_entry_no_history_defaults_fresh(self):
         fm = {"kind": "insight"}  # no created, no sidecar entry.
-        rel = "personal/insight/no-dates.md"
+        rel = "memory/insight/no-dates.md"
         score = compute_decay_score(self.vault, "no-dates", fm, rel, now="2026-06-01")
         self.assertEqual(score, 1.0)
 
@@ -137,14 +137,14 @@ class TestDecayScore(unittest.TestCase):
         # have. Caught by this task's own real-vault eval: it silently
         # demoted an accurate, same-day-edited hit out of the top-5.
         fm = _fm(created="2020-01-01", updated="2026-06-01")
-        rel = "personal/insight/maintained-doc.md"
+        rel = "memory/insight/maintained-doc.md"
         # "now" equals `updated`, not `created` -- should be fully fresh.
         score = compute_decay_score(self.vault, "maintained-doc", fm, rel, now="2026-06-01")
         self.assertEqual(score, 1.0)
 
     def test_falls_back_to_created_when_updated_absent(self):
         fm = _fm(created="2026-01-01")  # no `updated` key at all.
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
         import datetime
         later = (
             datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=DECAY_HALF_LIFE_DAYS)
@@ -168,7 +168,7 @@ class TestSteppedDecayScore(unittest.TestCase):
 
     def _score_at(self, days_elapsed: int) -> float:
         fm = _fm(created="2026-01-01")
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
         import datetime
         later = (
             datetime.date.fromisoformat("2026-01-01") + datetime.timedelta(days=days_elapsed)
@@ -194,13 +194,13 @@ class TestSteppedDecayScore(unittest.TestCase):
 
     def test_decay_exempt_entry_is_always_full_strength(self):
         fm = _fm(kind="failure-incident", created="2020-01-01")
-        rel = "personal/diag/incident-a.md"
+        rel = "memory/diag/incident-a.md"
         score = compute_decay_score_stepped(self.vault, "incident-a", fm, rel, now="2035-01-01")
         self.assertEqual(score, 1.0)
 
     def test_no_anchor_defaults_fresh(self):
         fm = {"kind": "insight"}  # no created, no sidecar entry.
-        rel = "personal/insight/no-dates.md"
+        rel = "memory/insight/no-dates.md"
         score = compute_decay_score_stepped(self.vault, "no-dates", fm, rel, now="2026-06-01")
         self.assertEqual(score, 1.0)
 
@@ -208,7 +208,7 @@ class TestSteppedDecayScore(unittest.TestCase):
         # The two curves share the exact same anchor-resolution chain — an
         # access recorded via record_recall_access() must reset both.
         fm = _fm(created="2020-01-01")
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
         stale = compute_decay_score_stepped(self.vault, "some-note", fm, rel, now="2026-01-01")
         self.assertEqual(stale, 0.0625)
 
@@ -233,7 +233,7 @@ class TestShadowModeComparison(unittest.TestCase):
 
     def test_both_curves_compute_and_delta_is_correct(self):
         fm = _fm(created="2026-01-01")
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
         import datetime
         # 200 days: exponential is well past its 30-day half-life; stepped
         # is still in the "half strength to 1y" band (200 > 182).
@@ -253,14 +253,14 @@ class TestShadowModeComparison(unittest.TestCase):
 
     def test_exempt_entry_shows_no_delta(self):
         fm = _fm(kind="failure-incident", created="2020-01-01")
-        rel = "personal/diag/incident-a.md"
+        rel = "memory/diag/incident-a.md"
         result = compute_decay_score_shadow(self.vault, "incident-a", fm, rel, now="2035-01-01")
         self.assertEqual(result, {"old": 1.0, "new": 1.0, "delta": 0.0, "exempt": True})
 
     def test_shadow_comparison_never_mutates_the_sidecar(self):
         # A read-only comparison must not itself count as an access.
         fm = _fm(created="2020-01-01")
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
         compute_decay_score_shadow(self.vault, "some-note", fm, rel, now="2026-01-01")
         sidecar = self.vault / LIFECYCLE_SIDECAR_NAME
         self.assertFalse(sidecar.exists())
@@ -278,7 +278,7 @@ class TestAccessDrivenReset(unittest.TestCase):
 
     def test_genuine_recall_access_resets_volatile_clock(self):
         fm = _fm(created="2020-01-01")
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
         # Long-decayed before any access.
         stale_score = compute_decay_score(self.vault, "some-note", fm, rel, now="2026-01-01")
         self.assertLess(stale_score, 0.01)
@@ -292,7 +292,7 @@ class TestAccessDrivenReset(unittest.TestCase):
         # recording an access on a decay-exempt entry must not write the
         # sidecar at all.
         fm = _fm(kind="failure-incident", created="2020-01-01")
-        rel = "personal/diag/incident-a.md"
+        rel = "memory/diag/incident-a.md"
         record_recall_access(self.vault, "incident-a", fm, rel, today="2026-06-01")
         sidecar = self.vault / LIFECYCLE_SIDECAR_NAME
         self.assertFalse(sidecar.exists())
@@ -303,7 +303,7 @@ class TestAccessDrivenReset(unittest.TestCase):
         # walk or an index rebuild reading the file's content directly —
         # must never reset the decay clock. Only calling the function does.
         fm = _fm(created="2020-01-01")
-        rel = "personal/insight/some-note.md"
+        rel = "memory/insight/some-note.md"
 
         # Simulate a lint walk: read the file's content directly (the exact
         # thing vault_lint.build_model() does) without calling into lifecycle.py.
@@ -333,18 +333,18 @@ class TestRecallPayloadIntegration(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self.tmp.name) / "vault"
-        (self.vault / "personal" / "insight").mkdir(parents=True)
-        (self.vault / "projects" / "agentm" / "decisions").mkdir(parents=True)
+        (self.vault / "memory" / "insight").mkdir(parents=True)
+        (self.vault / "desk/projects" / "agentm" / "decisions").mkdir(parents=True)
         # write_bytes (LF-only), not write_text — real "---\n"-delimited
         # frontmatter must survive byte-for-byte on every OS.
-        (self.vault / "personal" / "insight" / "widget-notes.md").write_bytes((
+        (self.vault / "memory" / "insight" / "widget-notes.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
-            "tags: [widget]\ngroup: personal\nslug: widget-notes\nalways_load: false\n---\n\n"
+            "tags: [widget]\ngroup: memory\nslug: widget-notes\nalways_load: false\n---\n\n"
             "Notes about the widget subsystem and its quirks.\n"
         ).encode("utf-8"))
-        (self.vault / "projects" / "agentm" / "decisions" / "widget-call.md").write_bytes((
+        (self.vault / "desk/projects" / "agentm" / "decisions" / "widget-call.md").write_bytes((
             "---\nkind: convention\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
-            "tags: [widget]\ngroup: personal\nslug: widget-call\nalways_load: false\n---\n\n"
+            "tags: [widget]\ngroup: memory\nslug: widget-call\nalways_load: false\n---\n\n"
             "Decided the widget subsystem uses approach B, not approach A.\n"
         ).encode("utf-8"))
 
@@ -367,7 +367,7 @@ class TestRecallPayloadIntegration(unittest.TestCase):
             self.assertIn(r["lifecycle_tier"], ("durable", "volatile"))
 
         by_path = {r["path"]: r for r in results}
-        decisions_result = by_path.get("projects/agentm/decisions/widget-call.md")
+        decisions_result = by_path.get("desk/projects/agentm/decisions/widget-call.md")
         if decisions_result is not None:
             self.assertEqual(decisions_result["lifecycle_tier"], "durable")
             self.assertEqual(decisions_result["decay_score"], 1.0)

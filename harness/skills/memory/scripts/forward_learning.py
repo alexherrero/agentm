@@ -124,7 +124,7 @@ _FETCH_TIMEOUT_SEC = 10
 
 SOURCES_CONFIG_REL = Path("_meta") / "forward-learning-sources.json"
 STATE_REL = Path("_meta") / "forward-learning-cache" / "state.json"
-WATCHLIST_REL = Path("personal") / "_watchlist"
+WATCHLIST_REL = Path("memory") / "_watchlist"
 
 VALID_KINDS = ("idea", "pattern", "reference")
 VALID_TYPES = ("feed", "repo", "web")

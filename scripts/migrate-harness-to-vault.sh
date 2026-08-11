@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # migrate-harness-to-vault.sh — V4 #26 per-project state migration.
 #
-# Copies <target>/.harness/<file> → <vault>/projects/<slug>/_harness/<file>
+# Copies <target>/.harness/<file> → <vault>/desk/projects/<slug>/_harness/<file>
 # for the locked file set. Idempotent (safe to re-run) + reversible
 # (--rollback writes the repo-local .project-mode=local marker so the dispatcher
 # reads from the legacy path again). The mode marker is always repo-local
@@ -117,17 +117,23 @@ if [[ -z "$SLUG" ]]; then
     exit 1
 fi
 
-# Prefer post-V4 #26 layout; fall back to legacy.
-if [[ -d "$VAULT_PATH/projects" ]]; then
+# Newest layout first, then each older one it might still be sitting in. The
+# stage-2 four-space migration (2026-08-10) moved the projects space down a
+# level to desk/projects/; V4 #26 had already renamed personal-projects/ to
+# projects/. A vault that has not been migrated keeps working on its own rung.
+if [[ -d "$VAULT_PATH/desk/projects" ]]; then
+    PROJECT_DIR="$VAULT_PATH/desk/projects/$SLUG"
+    PROJECTS_SEGMENT="desk/projects"
+elif [[ -d "$VAULT_PATH/projects" ]]; then
     PROJECT_DIR="$VAULT_PATH/projects/$SLUG"
     PROJECTS_SEGMENT="projects"
 elif [[ -d "$VAULT_PATH/personal-projects" ]]; then
     PROJECT_DIR="$VAULT_PATH/personal-projects/$SLUG"
     PROJECTS_SEGMENT="personal-projects"
 else
-    # Empty vault — assume post-rename layout.
-    PROJECT_DIR="$VAULT_PATH/projects/$SLUG"
-    PROJECTS_SEGMENT="projects"
+    # Empty vault — assume the current layout.
+    PROJECT_DIR="$VAULT_PATH/desk/projects/$SLUG"
+    PROJECTS_SEGMENT="desk/projects"
 fi
 HARNESS_DIR="$PROJECT_DIR/_harness"
 MARKER="$HARNESS_DIR/.migrated-from-pre-v4.1"

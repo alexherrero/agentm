@@ -8,7 +8,7 @@
 # **slug == origin basename**. This gate is the executable enforcement: if the
 # full-chain slug (an explicit `vault_project` / github.repo override) diverges from
 # the origin basename, a worker in a worktree would silently write its plans/progress
-# under the WRONG `projects/<slug>/` (parent Risk #1). The gate fails loudly on
+# under the WRONG `desk/projects/<slug>/` (parent Risk #1). The gate fails loudly on
 # divergence rather than letting a wrong-slug write land.
 #
 # Delegates the comparison to `vault_project.py check-worktree-slug` (the shared

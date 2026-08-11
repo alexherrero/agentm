@@ -60,9 +60,9 @@ class DeviceLocalSeamVerbs(unittest.TestCase):
         self.assertTrue(fresh.is_dir())
 
     def test_resolve_makes_a_locator_from_parts(self) -> None:
-        loc = self.b.resolve("projects", "agentm", "PLAN.md")
+        loc = self.b.resolve("desk/projects", "agentm", "PLAN.md")
         self.assertIsInstance(loc, ss.Locator)
-        self.assertEqual(loc.key, "projects/agentm/PLAN.md")
+        self.assertEqual(loc.key, "desk/projects/agentm/PLAN.md")
         self.assertEqual(self.b.resolve().key, "")  # no parts → root
 
     def test_write_then_read_round_trips(self) -> None:

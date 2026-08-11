@@ -561,7 +561,7 @@ def _save_candidate_to_inbox(
     # _always-load/, not a kind subdir. Use group=personal + kind=_inbox.
     # save_entry validates kind as kebab-case ([a-z0-9-]+) — "_inbox" has
     # underscore, fails validation. Bypass via direct file write.
-    inbox_dir = vault / "personal" / "_inbox"
+    inbox_dir = vault / "memory" / "_inbox"
     inbox_dir.mkdir(parents=True, exist_ok=True)
     target = inbox_dir / f"{candidate.slug}.md"
     if target.exists():
@@ -649,7 +649,7 @@ def _save_candidate_to_opinions(
     permanently reads as zero sessions and can only ever contribute to,
     never complete, a recurrence group on its own.
     """
-    lane = vault / "personal" / "_opinions" / opinion
+    lane = vault / "memory" / "_opinions" / opinion
     try:
         lane.mkdir(parents=True, exist_ok=True)
     except OSError as e:
@@ -727,7 +727,7 @@ def _save_candidate_canonical(
             kind=candidate.category,
             slug=candidate.slug,
             body=candidate.body,
-            group="personal",
+            group="memory",
         )
     except (FileExistsError, ValueError, FileNotFoundError) as e:
         print(

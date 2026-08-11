@@ -43,7 +43,7 @@ class FrontmatterFieldOrderTests(unittest.TestCase):
 class BuildFrontmatterProvenanceTests(unittest.TestCase):
     def _build(self, **overrides):
         kwargs = dict(
-            kind="domain-reference", group="personal", slug="test-slug",
+            kind="domain-reference", group="memory", slug="test-slug",
             tags=[], always_load=False, supersedes=None,
         )
         kwargs.update(overrides)

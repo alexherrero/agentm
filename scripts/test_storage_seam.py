@@ -134,8 +134,8 @@ class LocatorType(unittest.TestCase):
         self.assertEqual(ss.normalize_key("/leading/slash"), "leading/slash")
 
     def test_parts_and_name(self) -> None:
-        loc = ss.Locator("projects/agentm/_harness/PLAN.md")
-        self.assertEqual(loc.parts, ("projects", "agentm", "_harness", "PLAN.md"))
+        loc = ss.Locator("desk/projects/agentm/_harness/PLAN.md")
+        self.assertEqual(loc.parts, ("desk", "projects", "agentm", "_harness", "PLAN.md"))
         self.assertEqual(loc.name, "PLAN.md")
 
     def test_child_appends_and_normalizes(self) -> None:
@@ -184,9 +184,9 @@ class SeamVerbs(unittest.TestCase):
         self.b = _MemoryBackend()
 
     def test_resolve_makes_a_locator_from_parts(self) -> None:
-        loc = self.b.resolve("projects", "agentm", "PLAN.md")
+        loc = self.b.resolve("desk", "projects", "agentm", "PLAN.md")
         self.assertIsInstance(loc, ss.Locator)
-        self.assertEqual(loc.key, "projects/agentm/PLAN.md")
+        self.assertEqual(loc.key, "desk/projects/agentm/PLAN.md")
         self.assertEqual(self.b.resolve().key, "")  # no parts → root
 
     def test_write_then_read_round_trips(self) -> None:

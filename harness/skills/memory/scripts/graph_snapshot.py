@@ -80,7 +80,7 @@ def _vault_projects_dir(vault: Path) -> Path:
     in harness_memory.py; duplicated here to avoid cross-script import
     coupling within the memory skill scripts dir.
     """
-    new = vault / "projects"
+    new = vault / "desk/projects"
     if new.is_dir():
         return new
     legacy = vault / "personal-projects"
@@ -142,7 +142,7 @@ def _extract_meta_from_file(file_path: Path) -> dict:
 
     meta["group_name"] = group_value
     meta["tags"] = json.dumps(tags)
-    if group_value and group_value.startswith("projects/"):
+    if group_value and group_value.startswith("desk/projects/"):
         parts = group_value.split("/")
         meta["project"] = parts[1] if len(parts) >= 2 and parts[1] else None
     return meta
@@ -198,7 +198,7 @@ def _walk_vault_paths(vault: Path) -> list[str]:
     Returns vault-relative POSIX path strings.
     """
     walk_roots: list[Path] = []
-    private = vault / "personal"
+    private = vault / "memory"
     if private.is_dir():
         walk_roots.append(private)
     projects = _vault_projects_dir(vault)

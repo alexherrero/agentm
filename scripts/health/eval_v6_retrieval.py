@@ -64,7 +64,7 @@ HEALTH_AXIS = "memory persist+recall"
 # correction is a new hashed version, never a v0 mutation). Resolved here,
 # at eval time, instead.
 _PLACEHOLDER_PREFIX = "<vault>/"
-_PLACEHOLDER_REAL_PREFIX = "projects/agentm/"
+_PLACEHOLDER_REAL_PREFIX = "desk/projects/agentm/"
 
 # Same non-mutation policy applies to genuine drift: these four notes moved
 # under the vault's own close-out archiving convention (AGENTS.md's "writes
@@ -74,14 +74,14 @@ _PLACEHOLDER_REAL_PREFIX = "projects/agentm/"
 # this is a real move, not a deletion, and is corrected here rather than by
 # editing v0.
 _ARCHIVED_PATH_CORRECTIONS = {
-    "projects/agentm/_harness/PLAN-wave-e-v6-index.md":
-        "projects/agentm/_harness/archive/wave-e/PLAN.archive.20260707-wave-e-v6-index.md",
-    "projects/agentm/_harness/PLAN.archive.20260705-r3-uplift-scoring.md":
-        "projects/agentm/_harness/archive/roadmap-finish/PLAN.archive.20260705-r3-uplift-scoring.md",
-    "projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md":
-        "projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
-    "projects/agentm/_harness/designs/v5-acceleration-plan.md":
-        "projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
+    "desk/projects/agentm/_harness/PLAN-wave-e-v6-index.md":
+        "desk/projects/agentm/_harness/archive/wave-e/PLAN.archive.20260707-wave-e-v6-index.md",
+    "desk/projects/agentm/_harness/PLAN.archive.20260705-r3-uplift-scoring.md":
+        "desk/projects/agentm/_harness/archive/roadmap-finish/PLAN.archive.20260705-r3-uplift-scoring.md",
+    "desk/projects/agentm/_harness/designs/v5-3-storage-cutover/design-doc.md":
+        "desk/projects/agentm/_harness/archive/designs/v5-3-storage-cutover/design-doc.md",
+    "desk/projects/agentm/_harness/designs/v5-acceleration-plan.md":
+        "desk/projects/agentm/_harness/archive/designs/v5-acceleration-plan.md",
 }
 
 

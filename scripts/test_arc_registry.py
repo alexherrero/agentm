@@ -64,9 +64,9 @@ class TestAudit(unittest.TestCase):
     def test_counts_known_arc(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "a.md", "wave-a")
-            _write(vault / "projects" / "agentm" / "decisions" / "b.md", "wave-a")
-            _write(vault / "projects" / "agentm" / "decisions" / "c.md", "v8")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "a.md", "wave-a")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "b.md", "wave-a")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "c.md", "v8")
             result = ar.audit(vault)
             self.assertEqual(result["total_stamped"], 3)
             self.assertEqual(result["by_arc"], {"wave-a": 2, "v8": 1})
@@ -76,14 +76,14 @@ class TestAudit(unittest.TestCase):
     def test_entry_with_no_arc_field_not_counted(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "a.md", None)
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "a.md", None)
             result = ar.audit(vault)
             self.assertEqual(result["total_stamped"], 0)
 
     def test_unrecognized_arc_flagged_but_still_kebab(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "a.md", "some-new-arc")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "a.md", "some-new-arc")
             result = ar.audit(vault)
             self.assertEqual(result["total_stamped"], 1)
             self.assertEqual(result["by_arc"], {"some-new-arc": 1})
@@ -94,7 +94,7 @@ class TestAudit(unittest.TestCase):
     def test_malformed_arc_not_counted_in_by_arc(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "a.md", "Not_Kebab")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "a.md", "Not_Kebab")
             result = ar.audit(vault)
             self.assertEqual(result["total_stamped"], 1)
             self.assertEqual(result["by_arc"], {})
@@ -105,14 +105,14 @@ class TestAudit(unittest.TestCase):
     def test_archive_dir_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "agentm" / "decisions" / "_archive" / "old.md", "wave-a")
+            _write(vault / "desk/projects" / "agentm" / "decisions" / "_archive" / "old.md", "wave-a")
             result = ar.audit(vault)
             self.assertEqual(result["total_stamped"], 0)
 
     def test_plan_archive_files_skipped(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            p = vault / "projects" / "agentm" / "_harness" / "PLAN.archive.20260718-foo.md"
+            p = vault / "desk/projects" / "agentm" / "_harness" / "PLAN.archive.20260718-foo.md"
             _write(p, "wave-a")
             result = ar.audit(vault)
             self.assertEqual(result["total_stamped"], 0)

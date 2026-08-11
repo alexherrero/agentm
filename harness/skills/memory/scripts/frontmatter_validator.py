@@ -24,7 +24,7 @@ from kind_registry import is_kebab, is_known, REQUIRED_UNIVERSAL_FIELDS  # noqa:
 # excludes _idea-incubator, which carries a documented bespoke frontmatter
 # shape (DC-4 exemption) this validator's universal-field check would
 # otherwise false-positive against.
-_DEFAULT_SCOPE_DIRS = ("personal", "projects")
+_DEFAULT_SCOPE_DIRS = ("memory", "desk/projects")
 
 # Mirrors vault_lint.py's _EXCLUDE_DIRS exactly (DC-4): these subdirectories
 # carry non-memory-entry content (harness state, dev-loop infra, staging
@@ -36,7 +36,10 @@ _DEFAULT_SCOPE_DIRS = ("personal", "projects")
 # violations. A deliberate standalone copy, not an import (same-dir
 # convention); test_vault_lint.py's parity test pins it to vault_lint.py's.
 _EXCLUDE_DIRS = frozenset(
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive",
+    # NOTE: matched per path SEGMENT, so this holds the last component of the
+    # scratch space ("scratch"), not its "desk/scratch" spelling — a
+    # two-segment entry here silently matches nothing.
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "scratch", "_archive",
      "_opinions", "_crystallize-staging"}
 )
 

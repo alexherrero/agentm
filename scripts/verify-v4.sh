@@ -60,7 +60,7 @@ echo "verify-v4: scratch vault = $SV"
 
 # ── A. config seed + parse ──────────────────────────────────────────────────
 "$PY" "$S/auto_orchestration.py" --vault-path "$SV" seed-config >/dev/null 2>&1
-[ -f "$SV/personal/auto-orchestration-config.md" ] \
+[ -f "$SV/memory/auto-orchestration-config.md" ] \
   && pass "config: seed-config materializes the operator config" \
   || fail "config: seed-config materializes the operator config" "no file created"
 CFG="$("$PY" "$S/auto_orchestration.py" --vault-path "$SV" show-config 2>/dev/null)"
@@ -82,7 +82,7 @@ assert_contains "idle: bounded (--max-batches)"                 "$IDLE" '"--max-
 assert_contains "idle: bounded (--limit)"                       "$IDLE" '"--limit"'
 
 # ── G-seed: minimal inbox signal so emit-gating check has content ────────────
-mkdir -p "$SV/personal/_inbox"; for i in $(seq 1 10); do echo x > "$SV/personal/_inbox/e$i.md"; done
+mkdir -p "$SV/memory/_inbox"; for i in $(seq 1 10); do echo x > "$SV/memory/_inbox/e$i.md"; done
 
 # ── G. emit gating (shifted-guard + cooldown) + atomic state ────────────────
 # (run last — these mutate the scratch STATE file)

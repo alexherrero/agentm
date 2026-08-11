@@ -39,7 +39,7 @@ import recall  # noqa: E402
 
 def _write_entry(vault: Path, slug: str, body: str, *, priority: str | None = None) -> Path:
     """Write a minimal always-load entry, optionally with `priority:` frontmatter."""
-    al_dir = vault / "personal" / "_always-load"
+    al_dir = vault / "memory" / "_always-load"
     al_dir.mkdir(parents=True, exist_ok=True)
     fm_lines = ["---", f"name: {slug}", f"description: test entry {slug}"]
     if priority:

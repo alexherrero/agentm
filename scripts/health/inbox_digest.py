@@ -192,7 +192,7 @@ def write_digest_note(vault_path: "str | Path", cadence: str, body: str, *, now:
     vault = Path(vault_path)
     if not vault.is_dir():
         return None
-    briefs_dir = vault / "_briefs"
+    briefs_dir = vault / "desk/briefs"
     briefs_dir.mkdir(parents=True, exist_ok=True)
     slug = digest_slug(cadence, now)
     target = briefs_dir / f"{slug}.md"

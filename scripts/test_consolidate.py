@@ -43,7 +43,7 @@ def _write_entry(vault: Path, rel: str, body: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes((
         "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
-        "tags: []\ngroup: personal\nslug: " + Path(rel).stem + "\nalways_load: false\n---\n\n"
+        "tags: []\ngroup: memory\nslug: " + Path(rel).stem + "\nalways_load: false\n---\n\n"
         + body + "\n"
     ).encode("utf-8"))
 
@@ -59,17 +59,17 @@ class TestFindRecurringTargets(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_target_below_recurrence_floor_not_returned(self):
-        _write_entry(self.vault, "personal/insight/a.md", "See [[shared-topic]] for context.")
-        _write_entry(self.vault, "personal/insight/b.md", "See [[shared-topic]] again.")
+        _write_entry(self.vault, "memory/insight/a.md", "See [[shared-topic]] for context.")
+        _write_entry(self.vault, "memory/insight/b.md", "See [[shared-topic]] again.")
         recurring = consolidate.find_recurring_targets(
-            self.vault, ["personal/insight/a.md", "personal/insight/b.md"], min_recurrence=3,
+            self.vault, ["memory/insight/a.md", "memory/insight/b.md"], min_recurrence=3,
         )
         self.assertEqual(recurring, {})
 
     def test_target_at_recurrence_floor_is_returned(self):
         for name in ("a", "b", "c"):
-            _write_entry(self.vault, f"personal/insight/{name}.md", "See [[shared-topic]] here.")
-        paths = [f"personal/insight/{n}.md" for n in ("a", "b", "c")]
+            _write_entry(self.vault, f"memory/insight/{name}.md", "See [[shared-topic]] here.")
+        paths = [f"memory/insight/{n}.md" for n in ("a", "b", "c")]
         recurring = consolidate.find_recurring_targets(self.vault, paths, min_recurrence=3)
         self.assertIn("shared-topic", recurring)
         self.assertEqual(recurring["shared-topic"], sorted(paths))
@@ -78,8 +78,8 @@ class TestFindRecurringTargets(unittest.TestCase):
         # Code-block placeholders (graph.py's own trap-rejection) must not
         # count toward recurrence, even if they'd superficially repeat.
         for name in ("a", "b", "c"):
-            _write_entry(self.vault, f"personal/insight/{name}.md", "`- relation_type [[Target]]`")
-        paths = [f"personal/insight/{n}.md" for n in ("a", "b", "c")]
+            _write_entry(self.vault, f"memory/insight/{name}.md", "`- relation_type [[Target]]`")
+        paths = [f"memory/insight/{n}.md" for n in ("a", "b", "c")]
         recurring = consolidate.find_recurring_targets(self.vault, paths, min_recurrence=3)
         self.assertEqual(recurring, {})
 
@@ -92,7 +92,7 @@ class TestConsolidateTarget(unittest.TestCase):
         self.vault.mkdir(parents=True)
         self.log_root = Path(self._tmp.name) / "revert-log"
         self.revert_log = RevertLog(self.vault, log_root=self.log_root)
-        self.sources = [f"personal/insight/{n}.md" for n in ("a", "b", "c")]
+        self.sources = [f"memory/insight/{n}.md" for n in ("a", "b", "c")]
         for rel in self.sources:
             _write_entry(self.vault, rel, "See [[shared-topic]] here.")
 
@@ -109,7 +109,7 @@ class TestConsolidateTarget(unittest.TestCase):
         consolidate.consolidate_target(
             self.vault, self.revert_log, "run1", "shared-topic", self.sources,
         )
-        target_path = self.vault / "personal" / DIGEST_KIND_DIR / "consolidated-shared-topic.md"
+        target_path = self.vault / "memory" / DIGEST_KIND_DIR / "consolidated-shared-topic.md"
         self.assertTrue(target_path.exists())
         content = target_path.read_text(encoding="utf-8")
         self.assertIn("lifecycle_tier: durable", content)
@@ -142,7 +142,7 @@ class TestConsolidateTarget(unittest.TestCase):
         consolidate.consolidate_target(
             self.vault, self.revert_log, "run1", "shared-topic", self.sources,
         )
-        target_path = self.vault / "personal" / DIGEST_KIND_DIR / "consolidated-shared-topic.md"
+        target_path = self.vault / "memory" / DIGEST_KIND_DIR / "consolidated-shared-topic.md"
         digest = parse_digest(target_path)
         self.assertIn("shared-topic", digest.question)
         self.assertIn("3", digest.findings)
@@ -152,7 +152,7 @@ class TestConsolidateTarget(unittest.TestCase):
         entry_id = consolidate.consolidate_target(
             self.vault, self.revert_log, "run1", "shared-topic", self.sources,
         )
-        target_path = self.vault / "personal" / DIGEST_KIND_DIR / "consolidated-shared-topic.md"
+        target_path = self.vault / "memory" / DIGEST_KIND_DIR / "consolidated-shared-topic.md"
         self.assertTrue(target_path.exists())
 
         # If this write went through revert_log.record_and_apply (not a

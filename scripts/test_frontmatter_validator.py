@@ -84,17 +84,17 @@ class TestValidateVault(unittest.TestCase):
     def test_clean_vault_returns_empty(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "personal" / "a.md", _VALID_FM)
+            _write(vault / "memory" / "a.md", _VALID_FM)
             self.assertEqual(fv.validate_vault(vault), {})
 
     def test_dirty_vault_reports_by_relative_path(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "personal" / "a.md", _VALID_FM)
-            _write(vault / "projects" / "p" / "b.md",
+            _write(vault / "memory" / "a.md", _VALID_FM)
+            _write(vault / "desk/projects" / "p" / "b.md",
                    _VALID_FM.replace("kind: fix", "kind: made-up"))
             results = fv.validate_vault(vault)
-            self.assertEqual(list(results.keys()), ["projects/p/b.md"])
+            self.assertEqual(list(results.keys()), ["desk/projects/p/b.md"])
 
     def test_idea_incubator_excluded_from_default_scope(self):
         # DC-4 exemption (matches vault_lint.py's _SCOPE_DIRS["all"]):
@@ -109,7 +109,7 @@ class TestValidateVault(unittest.TestCase):
     def test_validate_vault_never_writes_to_any_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            note = vault / "personal" / "a.md"
+            note = vault / "memory" / "a.md"
             _write(note, _VALID_FM.replace("kind: fix", "kind: bad kind"))
             before = note.read_text(encoding="utf-8")
             fv.validate_vault(vault)
@@ -125,25 +125,25 @@ class TestValidateVault(unittest.TestCase):
         # harness state files nested under projects/<repo>/_harness/.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "projects" / "some-repo" / "_harness" / "PLAN.md", "# Plan\n\nno frontmatter here\n")
-            _write(vault / "personal" / "_meta" / "notes.md", "no frontmatter here\n")
-            _write(vault / "personal" / "_inbox" / "capture.md", "no frontmatter here\n")
-            _write(vault / "personal" / "_dream-staging" / "proposal.md", "no frontmatter here\n")
+            _write(vault / "desk/projects" / "some-repo" / "_harness" / "PLAN.md", "# Plan\n\nno frontmatter here\n")
+            _write(vault / "memory" / "_meta" / "notes.md", "no frontmatter here\n")
+            _write(vault / "memory" / "_inbox" / "capture.md", "no frontmatter here\n")
+            _write(vault / "desk/scratch" / "proposal.md", "no frontmatter here\n")
             # Accumulate-loop supplement lanes: bespoke shape (no
             # updated/tags/group) that must not be held to the universal
             # contract — mirrors vault_lint.py's own _opinions exclusion.
-            _write(vault / "personal" / "_opinions" / "plain-english" / "lane-entry.md",
+            _write(vault / "memory" / "_opinions" / "plain-english" / "lane-entry.md",
                    "---\nkind: opinion-supplement\nstatus: proposed\n"
                    "created: 2026-07-25T10:00:00+00:00\nslug: lane-entry\n---\n\nbody\n")
-            _write(vault / "personal" / "_opinions" / "plain-english.md",
+            _write(vault / "memory" / "_opinions" / "plain-english.md",
                    "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nServed.\n")
             self.assertEqual(fv.validate_vault(vault), {})
 
     def test_excludes_archive_dir_and_plan_archive_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write(vault / "personal" / "_archive" / "old.md", "kind: bad kind\n")
-            _write(vault / "personal" / "PLAN.archive.20260101-x.md", "kind: bad kind\n")
+            _write(vault / "memory" / "_archive" / "old.md", "kind: bad kind\n")
+            _write(vault / "memory" / "PLAN.archive.20260101-x.md", "kind: bad kind\n")
             self.assertEqual(fv.validate_vault(vault), {})
 
 

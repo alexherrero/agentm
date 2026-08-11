@@ -103,7 +103,7 @@ class _VaultFixture(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self.tmp.name)
-        self.always_load = self.vault / "personal" / "_always-load"
+        self.always_load = self.vault / "memory" / "_always-load"
         self.always_load.mkdir(parents=True)
 
     def tearDown(self) -> None:

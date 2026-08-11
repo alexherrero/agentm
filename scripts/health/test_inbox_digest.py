@@ -140,7 +140,7 @@ class WriteDigestNoteTests(unittest.TestCase):
     def test_writes_note_with_expected_frontmatter(self):
         target = idg.write_digest_note(self.vault, "daily", "body text\n", now=_NOW)
         self.assertIsNotNone(target)
-        self.assertEqual(target.parent, self.vault / "_briefs")
+        self.assertEqual(target.parent, self.vault / "desk/briefs")
         content = target.read_text(encoding="utf-8")
         self.assertIn("kind: brief", content)
         self.assertIn("status: active", content)
@@ -151,7 +151,7 @@ class WriteDigestNoteTests(unittest.TestCase):
         t1 = idg.write_digest_note(self.vault, "daily", "first\n", now=_NOW)
         t2 = idg.write_digest_note(self.vault, "daily", "second\n", now=_NOW)
         self.assertEqual(t1, t2)
-        files = list((self.vault / "_briefs").glob("*digest-daily*"))
+        files = list((self.vault / "desk/briefs").glob("*digest-daily*"))
         self.assertEqual(len(files), 1)
         self.assertIn("first", files[0].read_text(encoding="utf-8"))  # not overwritten
 
@@ -237,7 +237,7 @@ class MainCliTests(unittest.TestCase):
             "--history-path", str(self.tmp / "hist.jsonl"),
         ])
         self.assertEqual(rc, 0)
-        self.assertTrue(list((self.vault / "_briefs").glob("*.md")))
+        self.assertTrue(list((self.vault / "desk/briefs").glob("*.md")))
 
 
 if __name__ == "__main__":

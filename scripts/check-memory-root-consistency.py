@@ -3,21 +3,30 @@
 
 Two consumers read the kernel config and mean different things by it. The Go
 daemon indexes `plugins.obsidian-vault.vault_path` as a whole tree and expresses
-where it *writes* through `daemon.spaces`. The Python stack derives its entire
-layout — personal/, projects/, _meta/, _moc/, _briefs/ — from
-`plugins.obsidian-vault.memory_root`.
+where it *writes* through `daemon.spaces`. The Python stack derives its layout
+from `plugins.obsidian-vault.memory_root` plus the space names in
+`plugins.obsidian-vault.spaces`.
 
-Nothing structural forces those two answers to agree, and when they disagreed on
-2026-08-10 the corpus forked: the daemon kept writing to `Agent/personal/` while
-the Python reflection hooks wrote a shadow `personal/` at the vault root, same
-slugs, different bodies. Both halves looked healthy in isolation. That is the
-failure this gate exists to make impossible to reintroduce quietly.
+Nothing structural forces those two answers to agree, and twice on 2026-08-10
+they did not. First the roots disagreed: the daemon kept writing to
+`Agent/personal/` while the Python reflection hooks wrote a shadow `personal/`
+at the vault root — same slugs, different bodies, 102 files. Then, during the
+stage-2 migration, the *names* disagreed while both roots were correct, and the
+runner re-seeded a config and five inbox entries into an `Agent/memory/` that
+was not yet the real one. Both halves looked healthy in isolation both times.
 
-The invariant: `daemon.spaces["memory"]` must live at or beneath `memory_root`.
+Two invariants, because the first one alone did not catch the second failure:
+
+1. Every `daemon.spaces` value lives at or beneath `memory_root`.
+2. Where both stacks name a space, they must resolve it to the same directory.
+   `daemon.spaces["memory"] = Agent/memory` sits beneath memory_root `Agent`
+   perfectly well while the Python stack writes `Agent/personal`. Containment is
+   not agreement.
 
 Absent keys are not failures. An install that never set `memory_root` has a
 memory root equal to the vault root, and every space is trivially beneath it —
-that is the pre-cutover topology and it is still correct.
+that is the pre-cutover topology and it is still correct. A space the Python
+side does not name falls through to its built-in default and is not compared.
 
 Usage:
     python3 scripts/check-memory-root-consistency.py [--config PATH]
@@ -36,6 +45,7 @@ from pathlib import Path
 _VAULT_PATH_KEY = "plugins.obsidian-vault.vault_path"
 _MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
 _SPACES_KEY = "daemon.spaces"
+_PY_SPACES_KEY = "plugins.obsidian-vault.spaces"
 
 
 def _norm(rel: str) -> str:
@@ -72,6 +82,9 @@ def check(config_path: Path) -> int:
         # The daemon falls back to its own defaults; nothing to cross-check.
         return 0
 
+    py_spaces_raw = data.get(_PY_SPACES_KEY)
+    py_spaces = py_spaces_raw if isinstance(py_spaces_raw, dict) else {}
+
     failures: list[str] = []
     for name, raw in sorted(spaces.items()):
         if not isinstance(raw, str):
@@ -81,17 +94,36 @@ def check(config_path: Path) -> int:
         if not memory_root:
             # Memory root is the vault root — every space is beneath it.
             continue
-        if space == memory_root or space.startswith(memory_root + "/"):
+        if not (space == memory_root or space.startswith(memory_root + "/")):
+            failures.append(
+                f'  {_SPACES_KEY}["{name}"] = "{space}" is outside memory_root '
+                f'"{memory_root}"'
+            )
             continue
-        failures.append(
-            f'  {_SPACES_KEY}["{name}"] = "{space}" is outside memory_root '
-            f'"{memory_root}"'
-        )
+
+        # Containment is not agreement. `daemon.spaces["memory"] = Agent/memory`
+        # sits beneath memory_root `Agent` perfectly well while the Python stack
+        # writes to `Agent/personal`, and the corpus forks with both halves
+        # looking healthy. That is not hypothetical: the stage-2 migration
+        # produced exactly that fork for fourteen minutes on 2026-08-10, and the
+        # containment rule above passed throughout. Compare the names.
+        py_raw = py_spaces.get(name)
+        if not isinstance(py_raw, str):
+            continue  # unset on the Python side means "use the built-in default"
+        py_full = _norm(f"{memory_root}/{_norm(py_raw)}")
+        if py_full != space:
+            failures.append(
+                f'  space "{name}": the daemon writes "{space}" but the Python '
+                f'stack writes "{py_full}" ({_PY_SPACES_KEY}["{name}"] = '
+                f'"{_norm(py_raw)}" under memory_root "{memory_root}")'
+            )
 
     if not failures:
         where = memory_root or "(vault root)"
+        agreed = sum(1 for n in spaces if isinstance(py_spaces.get(n), str))
         print(f"check-memory-root-consistency: clean (memory_root {where}; "
-              f"{len(spaces)} space(s) beneath it)")
+              f"{len(spaces)} space(s) beneath it, {agreed} name-matched "
+              f"against the Python stack)")
         return 0
 
     print("check-memory-root-consistency: the daemon and the Python stack "

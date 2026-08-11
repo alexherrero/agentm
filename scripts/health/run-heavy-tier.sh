@@ -84,9 +84,9 @@ echo "run-heavy-tier: starting (nightly-only, never a merge gate)" >&2
 echo "run-heavy-tier: [1/4] real-embedding recall…" >&2
 if "$PY" -c "import sentence_transformers" >/dev/null 2>&1; then
   RE_VAULT="$(mktemp -d)"
-  mkdir -p "$RE_VAULT/personal/reference"
+  mkdir -p "$RE_VAULT/memory/reference"
   printf 'the deployment runbook staging gate lives at ops/deploy.md\n' \
-    > "$RE_VAULT/personal/reference/deploy-runbook.md"
+    > "$RE_VAULT/memory/reference/deploy-runbook.md"
   RE_OUT="$(MEMORY_VAULT_PATH="$RE_VAULT" "$PY" "$S/recall.py" query "deployment runbook staging gate" -k 5 2>&1)"; RE_RC=$?
   rm -rf "$RE_VAULT"
   if [ "$RE_RC" -eq 0 ] && printf '%s' "$RE_OUT" | grep -q "deploy-runbook"; then
@@ -103,7 +103,7 @@ fi
 echo "run-heavy-tier: [2/4] live MCP daemon round-trip…" >&2
 if "$PY" -c "import fastmcp, uvicorn" >/dev/null 2>&1; then
   MCP_VAULT="$(mktemp -d)"
-  mkdir -p "$MCP_VAULT/personal/_always-load"
+  mkdir -p "$MCP_VAULT/memory/_always-load"
   MCP_TOKEN="heavy-tier-$$-$(date +%s 2>/dev/null || echo static)"
   MCP_PORT="$(( (RANDOM % 5000) + 20000 ))"
   MCP_LOG="$(mktemp)"

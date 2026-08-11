@@ -105,13 +105,13 @@ class _InboxTriageTestBase(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
         self.root = Path(self._tmp.name)
         self.vault = self.root / "vault"
-        (self.vault / "personal" / "_inbox").mkdir(parents=True)
+        (self.vault / "memory" / "_inbox").mkdir(parents=True)
         self.log_root = self.root / "revert-log"
         self.lock_root = self.root / "locks"
         self.revert_log = RevertLog(self.vault, log_root=self.log_root, lock_root=self.lock_root)
 
     def _inbox_dir(self) -> Path:
-        return self.vault / "personal" / "_inbox"
+        return self.vault / "memory" / "_inbox"
 
     def _write_inbox(
         self, slug: str, *, kind: str = "idea", confidence: str = "LOW",
@@ -315,15 +315,15 @@ class PromoteReusesCanonicalConventionTests(_InboxTriageTestBase):
         stats = it.review_inbox_triage(self.vault, digest.run_id, self.revert_log, stdin=stdin, stdout=io.StringIO())
         self.assertEqual(stats["confirmed"], 1)
 
-        canonical = self.vault / "personal" / "workflow" / "h.md"
+        canonical = self.vault / "memory" / "workflow" / "h.md"
         self.assertTrue(canonical.exists(), "promote must land at <vault>/<group>/<kind>/<slug>.md, save.py's own convention")
         fm, body = it._parse_frontmatter(canonical.read_text(encoding="utf-8"))
         # Same locked field order save._build_frontmatter emits.
         self.assertEqual(fm["kind"], "workflow")
         self.assertEqual(fm["status"], "active")
-        self.assertEqual(fm["group"], "personal")
+        self.assertEqual(fm["group"], "memory")
         self.assertEqual(fm["slug"], "h")
-        self.assertIn("personal/_inbox/h.md", fm["derived_from"])
+        self.assertIn("memory/_inbox/h.md", fm["derived_from"])
         self.assertIn("Always run tests before pushing.", body)
         self.assertNotIn("Mining metadata", body, "the triage instrumentation must not leak into the canonical entry")
 
@@ -332,7 +332,7 @@ class PromoteReusesCanonicalConventionTests(_InboxTriageTestBase):
         self.assertEqual(self._status(self._inbox_dir() / "h.md"), "promoted")
 
     def test_promote_skips_rather_than_overwrites_an_existing_canonical_collision(self) -> None:
-        collision = self.vault / "personal" / "fix" / "dup-slug.md"
+        collision = self.vault / "memory" / "fix" / "dup-slug.md"
         collision.parent.mkdir(parents=True)
         collision.write_text("---\nkind: fix\nslug: dup-slug\n---\n\npre-existing canonical entry\n", encoding="utf-8")
 
@@ -434,7 +434,7 @@ class BacklogPromoteAndMergeAutoApplyTests(_InboxTriageTestBase):
         self.assertEqual(digest.proposals[0].stage, it.PROMOTE_STAGE)
         self.assertEqual(len(batch.items), 1, "a backlog-shaped promote candidate must auto-apply, no confirm call")
 
-        canonical = self.vault / "personal" / "workflow" / "h.md"
+        canonical = self.vault / "memory" / "workflow" / "h.md"
         self.assertTrue(canonical.exists(), "promote must have applied with zero operator action")
         self.assertEqual(self._status(self._inbox_dir() / "h.md"), "promoted")
 
@@ -508,10 +508,10 @@ class ReviewFlowTests(_InboxTriageTestBase):
         stats = it.review_inbox_triage(self.vault, digest.run_id, self.revert_log, stdin=stdin, stdout=io.StringIO())
         self.assertEqual(stats, {"total": 1, "confirmed": 1, "rejected": 0, "skipped": 0, "errors": 0})
 
-        canonical = self.vault / "personal" / "workflow" / "h.md"
+        canonical = self.vault / "memory" / "workflow" / "h.md"
         self.assertTrue(canonical.exists())
 
-        state = json.loads((self.vault / "_dream-staging" / digest.run_id / "state.json").read_text(encoding="utf-8"))
+        state = json.loads((self.vault / "desk/scratch" / digest.run_id / "state.json").read_text(encoding="utf-8"))
         entry_id = state["1"]["entry_id"]
         self.revert_log.revert(digest.run_id, entry_id)
 
@@ -596,11 +596,11 @@ class NoAutoApplyStillProposesOnlyTests(_InboxTriageTestBase):
             self.assertEqual(p.status, "pending", "--no-auto-apply must leave every proposal pending")
 
         # Nothing applied -- neither the promote nor the expire mutation.
-        self.assertFalse((self.vault / "personal" / "workflow" / "h.md").exists())
+        self.assertFalse((self.vault / "memory" / "workflow" / "h.md").exists())
         self.assertEqual(self._status(self._inbox_dir() / "h.md"), "inbox")
         self.assertEqual(self._status(self._inbox_dir() / "z.md"), "inbox")
 
-        digest_text = (self.vault / "_dream-staging" / run_id / "digest.md").read_text(encoding="utf-8")
+        digest_text = (self.vault / "desk/scratch" / run_id / "digest.md").read_text(encoding="utf-8")
         self.assertNotIn("AUTO-APPLIED", digest_text)
 
 
@@ -645,7 +645,7 @@ class ManualCliPathsTests(_InboxTriageTestBase):
         self.assertEqual(rc, 0)
         confirm_result = json.loads(buf_confirm.getvalue())
         self.assertEqual(confirm_result["action"], "confirmed")
-        self.assertTrue((self.vault / "personal" / "workflow" / "h.md").exists())
+        self.assertTrue((self.vault / "memory" / "workflow" / "h.md").exists())
 
         # --reject the other proposal directly.
         reject_entry = next(p for p in payload if p["stage"] != it.PROMOTE_STAGE)
@@ -873,12 +873,12 @@ class TriageFoldsIntoDreamingTests(_InboxTriageTestBase):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp2:
             vault2 = Path(tmp2) / "vault"
-            (vault2 / "personal" / "_inbox").mkdir(parents=True)
+            (vault2 / "memory" / "_inbox").mkdir(parents=True)
             for slug, created, body in (
                 ("dup", "2026-07-01T00:00:00+00:00", base),
                 ("dup-1", "2026-07-02T00:00:00+00:00", f"  {base}"),
             ):
-                (vault2 / "personal" / "_inbox" / f"{slug}.md").write_text(
+                (vault2 / "memory" / "_inbox" / f"{slug}.md").write_text(
                     _INBOX_TEMPLATE.format(
                         kind="idea", created_line=f"created: {created}\n", slug=slug,
                         confidence="LOW", occurrences=1, body=body,
@@ -894,8 +894,8 @@ class TriageFoldsIntoDreamingTests(_InboxTriageTestBase):
                 lock_root=lock2,
             )
             standalone_statuses = {
-                "dup": it._current_status(vault2 / "personal" / "_inbox" / "dup.md"),
-                "dup-1": it._current_status(vault2 / "personal" / "_inbox" / "dup-1.md"),
+                "dup": it._current_status(vault2 / "memory" / "_inbox" / "dup.md"),
+                "dup-1": it._current_status(vault2 / "memory" / "_inbox" / "dup-1.md"),
             }
 
         self.assertEqual(weekly_statuses, standalone_statuses)

@@ -46,10 +46,10 @@ class NeedsYourEyeThreeSurfacesTests(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "_inbox").mkdir(parents=True)
+        (self.vault / "memory" / "_inbox").mkdir(parents=True)
 
     def _write_inbox(self, slug: str, body: str) -> Path:
-        path = self.vault / "personal" / "_inbox" / f"{slug}.md"
+        path = self.vault / "memory" / "_inbox" / f"{slug}.md"
         path.write_text(_INBOX_TEMPLATE.format(slug=slug, body=body), encoding="utf-8")
         return path
 
@@ -96,7 +96,7 @@ class NeedsYourEyeThreeSurfacesTests(unittest.TestCase):
         from datetime import datetime, timezone
 
         # Minimal digest note so build_brief has a headline to anchor on.
-        briefs = self.vault / "_briefs"
+        briefs = self.vault / "desk/briefs"
         briefs.mkdir(parents=True)
         (briefs / "20260719-digest-daily.md").write_text(
             "# Daily digest — all quiet\n\nNothing notable.\n", encoding="utf-8"

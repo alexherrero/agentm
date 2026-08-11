@@ -72,7 +72,7 @@ class TestCrystallizeCLI(unittest.TestCase):
         self.root = Path(tempfile.mkdtemp(prefix="crystallize-cli-"))
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.vault = self.root / "vault"
-        (self.vault / "personal").mkdir(parents=True)
+        (self.vault / "memory").mkdir(parents=True)
         self.digest_file = self.root / "d.md"
         self.digest_file.write_text(_DIGEST, encoding="utf-8")
 
@@ -126,7 +126,7 @@ class TestCrystallizeCLI(unittest.TestCase):
         self.assertEqual(Path(out.strip()).read_text(encoding="utf-8"), original)
 
     def test_read_of_a_malformed_entry_fails_loudly(self):
-        stray = self.vault / "personal" / "not-a-digest.md"
+        stray = self.vault / "memory" / "not-a-digest.md"
         stray.write_text("---\nkind: crystallized\n---\n\njust prose\n", encoding="utf-8")
         rc, _out, err = _run(["read", str(stray)])
         self.assertEqual(rc, 1)

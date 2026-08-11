@@ -54,10 +54,10 @@ class TestParseFilter(unittest.TestCase):
 
 class TestDeriveProject(unittest.TestCase):
     def test_projects_group_yields_slug(self):
-        self.assertEqual(recall._derive_project("projects/agentm/decisions"), "agentm")
+        self.assertEqual(recall._derive_project("desk/projects/agentm/decisions"), "agentm")
 
     def test_non_project_group_yields_none(self):
-        self.assertIsNone(recall._derive_project("personal/reference"))
+        self.assertIsNone(recall._derive_project("memory/reference"))
 
     def test_empty_group_yields_none(self):
         self.assertIsNone(recall._derive_project(""))
@@ -75,12 +75,12 @@ class TestEntryMatchesFilter(unittest.TestCase):
         self.assertFalse(recall._entry_matches_filter(fm, {"kind": "reference", "status": "superseded"}))
 
     def test_project_derived_from_group(self):
-        fm = {"group": "projects/sherwood/decisions"}
+        fm = {"group": "desk/projects/sherwood/decisions"}
         self.assertTrue(recall._entry_matches_filter(fm, {"project": "sherwood"}))
         self.assertFalse(recall._entry_matches_filter(fm, {"project": "agentm"}))
 
     def test_multiple_criteria_all_must_match(self):
-        fm = {"kind": "reference", "group": "projects/agentm/decisions", "tags": "[security]"}
+        fm = {"kind": "reference", "group": "desk/projects/agentm/decisions", "tags": "[security]"}
         self.assertTrue(recall._entry_matches_filter(
             fm, {"kind": "reference", "project": "agentm", "tag": "security"}))
         self.assertFalse(recall._entry_matches_filter(
@@ -93,8 +93,8 @@ class TestGrepSearchWithFilter(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "projects" / "agentm" / "decisions").mkdir(parents=True)
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "desk/projects" / "agentm" / "decisions").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -112,12 +112,12 @@ class TestGrepSearchWithFilter(unittest.TestCase):
 
     def test_filter_narrows_grep_results_by_project(self):
         self._write(
-            "projects/agentm/decisions/a.md",
-            "kind: reference\nstatus: active\ntags: []\ngroup: projects/agentm/decisions\n",
+            "desk/projects/agentm/decisions/a.md",
+            "kind: reference\nstatus: active\ntags: []\ngroup: desk/projects/agentm/decisions\n",
         )
         self._write(
-            "personal/reference/b.md",
-            "kind: reference\nstatus: active\ntags: []\ngroup: personal/reference\n",
+            "memory/reference/b.md",
+            "kind: reference\nstatus: active\ntags: []\ngroup: memory/reference\n",
         )
         tokens = recall._tokenize("widget content")
         unfiltered = recall._grep_search(self.vault, tokens)
@@ -126,20 +126,20 @@ class TestGrepSearchWithFilter(unittest.TestCase):
         filtered = recall._grep_search(
             self.vault, tokens, filter_criteria={"project": "agentm"},
         )
-        self.assertEqual(list(filtered.keys()), ["projects/agentm/decisions/a.md"])
+        self.assertEqual(list(filtered.keys()), ["desk/projects/agentm/decisions/a.md"])
 
     def test_filter_by_tag(self):
         self._write(
-            "projects/agentm/decisions/tagged.md",
-            "kind: reference\nstatus: active\ntags: [security]\ngroup: projects/agentm/decisions\n",
+            "desk/projects/agentm/decisions/tagged.md",
+            "kind: reference\nstatus: active\ntags: [security]\ngroup: desk/projects/agentm/decisions\n",
         )
         self._write(
-            "personal/reference/untagged.md",
-            "kind: reference\nstatus: active\ntags: []\ngroup: personal/reference\n",
+            "memory/reference/untagged.md",
+            "kind: reference\nstatus: active\ntags: []\ngroup: memory/reference\n",
         )
         tokens = recall._tokenize("widget content")
         filtered = recall._grep_search(self.vault, tokens, filter_criteria={"tag": "security"})
-        self.assertEqual(list(filtered.keys()), ["projects/agentm/decisions/tagged.md"])
+        self.assertEqual(list(filtered.keys()), ["desk/projects/agentm/decisions/tagged.md"])
 
 
 class TestQueryFilterIntegration(unittest.TestCase):
@@ -150,26 +150,26 @@ class TestQueryFilterIntegration(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "projects" / "agentm" / "decisions").mkdir(parents=True)
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "desk/projects" / "agentm" / "decisions").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def test_query_with_filter_expr_narrows_results(self):
-        (self.vault / "projects" / "agentm" / "decisions" / "match.md").write_bytes(
+        (self.vault / "desk/projects" / "agentm" / "decisions" / "match.md").write_bytes(
             ("---\nkind: reference\nstatus: active\ntags: []\n"
-             "group: projects/agentm/decisions\n---\nwidget content here").encode("utf-8")
+             "group: desk/projects/agentm/decisions\n---\nwidget content here").encode("utf-8")
         )
-        (self.vault / "personal" / "reference" / "nomatch.md").write_bytes(
+        (self.vault / "memory" / "reference" / "nomatch.md").write_bytes(
             ("---\nkind: reference\nstatus: active\ntags: []\n"
-             "group: personal/reference\n---\nwidget content here too").encode("utf-8")
+             "group: memory/reference\n---\nwidget content here too").encode("utf-8")
         )
         results = recall.query(
             vault=self.vault, query_text="widget content", filter_expr="project=agentm",
         )
         paths = [r["path"] for r in results]
-        self.assertEqual(paths, ["projects/agentm/decisions/match.md"])
+        self.assertEqual(paths, ["desk/projects/agentm/decisions/match.md"])
 
     def test_query_raises_filter_error_for_malformed_expression(self):
         with self.assertRaises(recall.FilterError):

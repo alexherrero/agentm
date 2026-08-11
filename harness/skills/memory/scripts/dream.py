@@ -99,7 +99,9 @@ COMPRESSION_CHAIN_MIN_LENGTH = 3
 # `_stage_opinion_supplement()` owns this directory exclusively, mirroring
 # `_inbox`'s own exclusion + dedicated-owner pattern above.
 _EXCLUDE_DIRS = frozenset(
-    {"_idea-incubator", "_meta", "_harness", "_inbox", "_dream-staging", "_archive",
+    # Matched per path SEGMENT, so this holds the scratch space's last
+    # component ("scratch"), not its "desk/scratch" spelling.
+    {"_idea-incubator", "_meta", "_harness", "_inbox", "scratch", "_archive",
      "_dream", ".obsidian", "_opinions", "_crystallize-staging"}
 )
 
@@ -489,10 +491,14 @@ def _archived_path(rel_path: Path) -> Path:
     itself (a naive "after the first segment" rule would turn `foo.md`
     into the nonsensical `foo.md/_archive`)."""
     parts = rel_path.parts
-    if len(parts) >= 2 and parts[0] == "personal":
+    if len(parts) >= 2 and parts[0] == "memory":
         tier_len = 1
-    elif len(parts) >= 3 and parts[0] == "projects":
-        tier_len = 2
+    elif len(parts) >= 4 and parts[:2] == ("desk", "projects"):
+        # The projects space gained a level at the stage-2 migration
+        # (`projects/<slug>/` -> `desk/projects/<slug>/`), so the tier prefix
+        # that must stay in front of the inserted directory is three segments
+        # rather than two.
+        tier_len = 3
     else:
         tier_len = 0
     return Path(*parts[:tier_len], "_archive", *parts[tier_len:])
@@ -532,10 +538,14 @@ def _shelved_path(rel_path: Path) -> Path:
     instead of `_archive` — same two real tier-root conventions, same
     bare-root fallback."""
     parts = rel_path.parts
-    if len(parts) >= 2 and parts[0] == "personal":
+    if len(parts) >= 2 and parts[0] == "memory":
         tier_len = 1
-    elif len(parts) >= 3 and parts[0] == "projects":
-        tier_len = 2
+    elif len(parts) >= 4 and parts[:2] == ("desk", "projects"):
+        # The projects space gained a level at the stage-2 migration
+        # (`projects/<slug>/` -> `desk/projects/<slug>/`), so the tier prefix
+        # that must stay in front of the inserted directory is three segments
+        # rather than two.
+        tier_len = 3
     else:
         tier_len = 0
     return Path(*parts[:tier_len], "_shelf", *parts[tier_len:])
@@ -1195,7 +1205,7 @@ def _render_manifest(digest: DreamDigest, staged_at: float) -> str:
 
 
 def _stage_digest_and_staging(vault_path: Path, digest: DreamDigest) -> Path:
-    staging_dir = vault_path / "_dream-staging" / digest.run_id
+    staging_dir = vault_path / "desk/scratch" / digest.run_id
     digest_path = staging_dir / "digest.md"
     atomic_write(digest_path, _render_digest(digest))
     atomic_write(staging_dir / "proposals.json", _render_manifest(digest, time.time()))
@@ -1411,7 +1421,7 @@ def run_dream_and_auto_apply(
         json.dumps({"run_id": digest.run_id, **digest.sampled_audit}, indent=2),
     )
 
-    staging_dir = vault_path / "_dream-staging" / digest.run_id
+    staging_dir = vault_path / "desk/scratch" / digest.run_id
     atomic_write(
         staging_dir / "digest.md",
         _render_digest(digest, auto_applied=batch, anomalies=anomalies),

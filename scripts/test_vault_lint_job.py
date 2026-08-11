@@ -92,10 +92,10 @@ class SameShapeAsManualRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             vault = root / "vault"
-            (vault / "personal").mkdir(parents=True)
-            (vault / "personal" / "solo.md").write_text(
+            (vault / "memory").mkdir(parents=True)
+            (vault / "memory" / "solo.md").write_text(
                 "---\nkind: convention\nstatus: active\ncreated: 2026-01-01\n"
-                "updated: 2026-01-01\ntags: [dev-flow]\ngroup: personal\n"
+                "updated: 2026-01-01\ntags: [dev-flow]\ngroup: memory\n"
                 "slug: solo\n---\n\nOnly one entry.\n",
                 encoding="utf-8",
             )

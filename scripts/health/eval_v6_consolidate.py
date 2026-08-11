@@ -42,8 +42,8 @@ if str(_MEMORY_SCRIPTS) not in sys.path:
 HEALTH_SUITE = "eval-v6-consolidate"
 HEALTH_AXIS = "memory persist+recall"
 
-_RECURRING_SOURCES = [f"personal/insight/episodic-{n}.md" for n in range(1, 4)]
-_FILLER_SOURCES = [f"personal/insight/filler-{n}.md" for n in range(1, 6)]
+_RECURRING_SOURCES = [f"memory/insight/episodic-{n}.md" for n in range(1, 4)]
+_FILLER_SOURCES = [f"memory/insight/filler-{n}.md" for n in range(1, 6)]
 
 
 def _write_entry(vault: Path, rel: str, body: str) -> None:
@@ -54,7 +54,7 @@ def _write_entry(vault: Path, rel: str, body: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes((
         "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
-        "tags: []\ngroup: personal\nslug: " + Path(rel).stem + "\nalways_load: false\n---\n\n"
+        "tags: []\ngroup: memory\nslug: " + Path(rel).stem + "\nalways_load: false\n---\n\n"
         + body + "\n"
     ).encode("utf-8"))
 
@@ -102,7 +102,7 @@ def run_eval() -> dict:
         after_results = recall.query(vault=vault, query_text=query_text, k=5, mode="stub")
         after_corpus_size = sum(1 for _ in vault.rglob("*.md"))
         after_paths = [r["path"] for r in after_results]
-        consolidated_path = "personal/crystallized/consolidated-widget-migration-pattern.md"
+        consolidated_path = "memory/crystallized/consolidated-widget-migration-pattern.md"
         consolidated_found = consolidated_path in after_paths
         sources_still_findable = sum(1 for r in _RECURRING_SOURCES if r in after_paths)
 

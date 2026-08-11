@@ -134,7 +134,7 @@ def _file_status(path: Path) -> str | None:
 def find_inbox_duplicate(vault_path: Path | str, fingerprint: str) -> Path | None:
     """Absolute path of an inbox candidate whose fingerprint matches, or
     None. A plain scan — the inbox is a small staging area by design."""
-    inbox = Path(vault_path) / "personal" / "_inbox"
+    inbox = Path(vault_path) / "memory" / "_inbox"
     if not inbox.is_dir():
         return None
     for md in sorted(inbox.glob("*.md")):

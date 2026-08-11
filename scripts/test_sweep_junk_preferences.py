@@ -20,13 +20,13 @@ import sweep_junk_preferences as sjp  # noqa: E402
 
 _JUNK_BODY = (
     "---\nkind: preferences\nstatus: active\ncreated: 2026-06-30\nupdated: 2026-06-30\n"
-    "tags: []\ngroup: personal\nslug: never-touched-in-the-e505bd3\nalways_load: false\n---\n\n"
+    "tags: []\ngroup: memory\nslug: never-touched-in-the-e505bd3\nalways_load: false\n---\n\n"
     "User stated: ...was never touched in the e505bd3..HEAD range...\n"
 )
 
 _REAL_BODY = (
     "---\nkind: preferences\nstatus: active\ncreated: 2026-06-30\nupdated: 2026-06-30\n"
-    "tags: []\ngroup: personal\nslug: never-commit-directly-to-main\nalways_load: false\n---\n\n"
+    "tags: []\ngroup: memory\nslug: never-commit-directly-to-main\nalways_load: false\n---\n\n"
     "Manually written: never commit directly to main without a PR.\n"
 )
 
@@ -36,7 +36,7 @@ class TestSweepJunkPreferences(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self.tmp.name) / "vault"
-        self.prefs = self.vault / "personal" / "preferences"
+        self.prefs = self.vault / "memory" / "preferences"
         self.prefs.mkdir(parents=True)
 
     def tearDown(self) -> None:
@@ -55,7 +55,7 @@ class TestSweepJunkPreferences(unittest.TestCase):
         self.assertNotIn(real, found)
 
     def test_wrong_directory_not_flagged(self) -> None:
-        other_dir = self.vault / "personal" / "_inbox"
+        other_dir = self.vault / "memory" / "_inbox"
         other_dir.mkdir(parents=True)
         stray = other_dir / "never-something.md"
         stray.write_text(_JUNK_BODY, encoding="utf-8")
@@ -74,7 +74,7 @@ class TestSweepJunkPreferences(unittest.TestCase):
         n = sjp.sweep(self.vault, apply=True, stdout=io.StringIO())
         self.assertEqual(n, 1)
         self.assertFalse(junk.exists())
-        dest = self.vault / "personal" / "_archive" / "preferences" / "never-touched-in-the-e505bd3.md"
+        dest = self.vault / "memory" / "_archive" / "preferences" / "never-touched-in-the-e505bd3.md"
         self.assertTrue(dest.exists())
         self.assertEqual(dest.read_text(encoding="utf-8"), _JUNK_BODY)
 
@@ -98,7 +98,7 @@ class TestSweepJunkPreferences(unittest.TestCase):
 
     def test_collision_gets_numeric_suffix(self) -> None:
         junk = self._write("never-touched-in-the-e505bd3.md", _JUNK_BODY)
-        archive_dir = self.vault / "personal" / "_archive" / "preferences"
+        archive_dir = self.vault / "memory" / "_archive" / "preferences"
         archive_dir.mkdir(parents=True)
         (archive_dir / "never-touched-in-the-e505bd3.md").write_text("pre-existing", encoding="utf-8")
         sjp.sweep(self.vault, apply=True, stdout=io.StringIO())

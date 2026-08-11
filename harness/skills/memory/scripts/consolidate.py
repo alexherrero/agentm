@@ -46,7 +46,7 @@ Public API:
   find_recurring_targets(vault, episodic_paths, *, min_recurrence=MIN_RECURRENCE)
       -> dict[str, list[str]]
   consolidate_target(vault, revert_log, run_id, target, source_paths, *,
-                      group="personal") -> str  # returns the revert-log entry_id
+                      group="memory") -> str  # returns the revert-log entry_id
 """
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ def consolidate_target(
     target: str,
     source_paths: list[str],
     *,
-    group: str = "personal",
+    group: str = "memory",
 ) -> str:
     """Promote a recurring `target` to a semantic-tier consolidated entry.
 

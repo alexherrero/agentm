@@ -94,7 +94,7 @@ class TestAudit(unittest.TestCase):
     def test_audit_never_writes_to_the_vault(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            note = vault / "personal" / "a.md"
+            note = vault / "memory" / "a.md"
             _write_note(note, "fix")
             before = note.read_text(encoding="utf-8")
             kr.audit(vault)
@@ -104,9 +104,9 @@ class TestAudit(unittest.TestCase):
     def test_audit_counts_known_kinds_by_frequency(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "fix")
-            _write_note(vault / "personal" / "b.md", "fix")
-            _write_note(vault / "projects" / "p" / "c.md", "idea")
+            _write_note(vault / "memory" / "a.md", "fix")
+            _write_note(vault / "memory" / "b.md", "fix")
+            _write_note(vault / "desk/projects" / "p" / "c.md", "idea")
             result = kr.audit(vault)
             self.assertEqual(result["by_kind"], {"fix": 2, "idea": 1})
             self.assertEqual(result["total_files"], 3)
@@ -116,7 +116,7 @@ class TestAudit(unittest.TestCase):
     def test_audit_flags_unrecognized_valid_kebab_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "a.md", "made-up-kind")
+            _write_note(vault / "memory" / "a.md", "made-up-kind")
             result = kr.audit(vault)
             self.assertEqual(len(result["unrecognized"]), 1)
             self.assertEqual(result["unrecognized"][0][1], "made-up-kind")
@@ -127,7 +127,7 @@ class TestAudit(unittest.TestCase):
     def test_audit_flags_malformed_kind(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            note = vault / "personal" / "a.md"
+            note = vault / "memory" / "a.md"
             note.parent.mkdir(parents=True, exist_ok=True)
             note.write_text(
                 "---\nkind: handoff-artifact (verdict memo)\nstatus: active\n"
@@ -143,8 +143,8 @@ class TestAudit(unittest.TestCase):
     def test_audit_excludes_archive_dir_and_plan_archive_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            _write_note(vault / "personal" / "_archive" / "old.md", "fix")
-            archived_plan = vault / "personal" / "PLAN.archive.20260101-x.md"
+            _write_note(vault / "memory" / "_archive" / "old.md", "fix")
+            archived_plan = vault / "memory" / "PLAN.archive.20260101-x.md"
             _write_note(archived_plan, "workflow")
             result = kr.audit(vault)
             self.assertEqual(result["by_kind"], {})

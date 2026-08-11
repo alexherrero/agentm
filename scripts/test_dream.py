@@ -173,16 +173,16 @@ class OpinionsDirExclusionTests(_DreamTestBase):
     its own standards."""
 
     def test_iter_entries_skips_opinions_dir(self) -> None:
-        (self.vault / "personal" / "_opinions" / "done").mkdir(parents=True)
-        self._write("personal/_opinions/done/lesson.md", "---\nkind: opinion-supplement\n---\nAlways X.\n")
-        self._write("personal/_opinions/done.md", "---\nkind: opinion-supplement\n---\nServed.\n")
+        (self.vault / "memory" / "_opinions" / "done").mkdir(parents=True)
+        self._write("memory/_opinions/done/lesson.md", "---\nkind: opinion-supplement\n---\nAlways X.\n")
+        self._write("memory/_opinions/done.md", "---\nkind: opinion-supplement\n---\nServed.\n")
         self._write("ordinary.md", "---\nkind: workflow\n---\nUnrelated content.\n")
         entries = dream._iter_entries(self.vault)
         rels = {p.relative_to(self.vault) for p in entries}
         self.assertEqual(rels, {Path("ordinary.md")})
 
     def test_run_dream_never_proposes_a_general_stage_merge_inside_the_opinions_lane(self) -> None:
-        (self.vault / "personal" / "_opinions" / "done").mkdir(parents=True)
+        (self.vault / "memory" / "_opinions" / "done").mkdir(parents=True)
         # A near-verbatim pair that would trip dedup's own 0.92 threshold if
         # the general corpus still walked this directory. The dedicated
         # opinion_promote stage (Stages 2-3) is EXPECTED to process this
@@ -192,8 +192,8 @@ class OpinionsDirExclusionTests(_DreamTestBase):
         # in here, since general dedup's own merge shape would concatenate
         # bodies and write **Related:** lines a served supplement was never
         # meant to carry.
-        self._write("personal/_opinions/done/a.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first.\n")
-        self._write("personal/_opinions/done/b.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first!\n")
+        self._write("memory/_opinions/done/a.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first.\n")
+        self._write("memory/_opinions/done/b.md", "---\nkind: opinion-supplement\n---\nAlways run the gates first!\n")
         digest = dream.run_dream(self.vault, run_id="run-opinions-exclusion")
         general_stages = {
             "dedup", "contradiction_triage", "compression", "tidying",
@@ -208,12 +208,12 @@ class OpinionSupplementStageTests(_DreamTestBase):
     `run_dream()`'s own hand-wired sequence (locked calls 4, 5, 7, 9)."""
 
     def _write_lane_pair(self, opinion="good"):
-        lane = self.vault / "personal" / "_opinions" / opinion
+        lane = self.vault / "memory" / "_opinions" / opinion
         lane.mkdir(parents=True)
         for slug, session, created in (("a1", "proj/s1", "2026-01-01T00:00:00+00:00"),
                                         ("a2", "proj/s2", "2026-01-02T00:00:00+00:00")):
             self._write(
-                f"personal/_opinions/{opinion}/{slug}.md",
+                f"memory/_opinions/{opinion}/{slug}.md",
                 "---\nkind: opinion-supplement\nstatus: proposed\n"
                 f"created: {created}\nslug: {slug}\nopinion: {opinion}\n"
                 f"sessions: [{session}]\n---\n\n"
@@ -231,7 +231,7 @@ class OpinionSupplementStageTests(_DreamTestBase):
     def test_run_dream_never_applies_the_opinion_promote_proposal(self) -> None:
         self._write_lane_pair()
         dream.run_dream(self.vault, run_id="run-opinion-propose-only")
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         self.assertFalse(served.exists(), "run_dream must be propose-only")
 
     def test_opinion_promote_is_confirm_gated_not_auto_applied(self) -> None:
@@ -242,7 +242,7 @@ class OpinionSupplementStageTests(_DreamTestBase):
             self.vault, run_id="run-opinion-auto-apply",
             log_root=self.vault.parent / "revert-log", lock_root=self.vault.parent / "locks",
         )
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         self.assertFalse(served.exists(), "opinion_promote must never auto-apply")
         self.assertNotIn("opinion_promote", batch.stages)
         pending = [p for p in digest.proposals if p.stage == "opinion_promote"]
@@ -256,7 +256,7 @@ class OpinionSupplementStageTests(_DreamTestBase):
         idx = next(i for i, p in enumerate(digest.proposals, start=1) if p.stage == "opinion_promote")
         rl = RevertLog(self.vault, log_root=self.vault.parent / "revert-log")
         dream_confirm.confirm(self.vault, digest.run_id, idx, rl)
-        served = self.vault / "personal" / "_opinions" / "good.md"
+        served = self.vault / "memory" / "_opinions" / "good.md"
         self.assertTrue(served.is_file())
         self.assertIn("Run the linter first, always.", served.read_text(encoding="utf-8"))
 
@@ -288,7 +288,7 @@ class CliTests(_DreamTestBase):
         self._write("a.md", "---\nkind: workflow\n---\nJust one file.\n")
         rc = dream.main(["--vault-path", str(self.vault), "--run-id", "cli-run"])
         self.assertEqual(rc, 0)
-        self.assertTrue((self.vault / "_dream-staging" / "cli-run" / "digest.md").exists())
+        self.assertTrue((self.vault / "desk/scratch" / "cli-run" / "digest.md").exists())
 
     def test_main_no_vault_path_errors(self) -> None:
         import os
@@ -321,12 +321,12 @@ class CliTests(_DreamTestBase):
         ])
         self.assertEqual(rc, 0)
 
-        digest_text = (self.vault / "_dream-staging" / "cli-auto-run" / "digest.md").read_text(encoding="utf-8")
+        digest_text = (self.vault / "desk/scratch" / "cli-auto-run" / "digest.md").read_text(encoding="utf-8")
         self.assertIn("Auto-expired this run", digest_text)
         self.assertIn("AUTO-APPLIED", digest_text)
 
         auto_expired = json.loads(
-            (self.vault / "_dream-staging" / "cli-auto-run" / "auto-expired.json").read_text(encoding="utf-8")
+            (self.vault / "desk/scratch" / "cli-auto-run" / "auto-expired.json").read_text(encoding="utf-8")
         )
         self.assertEqual(auto_expired["count"], 1)
         # "stages" reports the full AUTO_APPLY_STAGES watched set for this
@@ -358,8 +358,8 @@ class CliTests(_DreamTestBase):
             "--vault-path", str(self.vault), "--run-id", "cli-no-auto-run", "--no-auto-apply",
         ])
         self.assertEqual(rc, 0)
-        self.assertFalse((self.vault / "_dream-staging" / "cli-no-auto-run" / "auto-expired.json").exists())
-        digest_text = (self.vault / "_dream-staging" / "cli-no-auto-run" / "digest.md").read_text(encoding="utf-8")
+        self.assertFalse((self.vault / "desk/scratch" / "cli-no-auto-run" / "auto-expired.json").exists())
+        digest_text = (self.vault / "desk/scratch" / "cli-no-auto-run" / "digest.md").read_text(encoding="utf-8")
         self.assertNotIn("AUTO-APPLIED", digest_text)
         self.assertIn("staged — NOT applied; operator confirmation required", digest_text)
 
@@ -439,12 +439,12 @@ class ArchivedPathTests(unittest.TestCase):
     """Task 3's pure path-transform helper — no vault, no I/O."""
 
     def test_personal_tier_inserts_archive_after_personal(self) -> None:
-        got = dream._archived_path(Path("personal/preferences/foo.md"))
-        self.assertEqual(got, Path("personal/_archive/preferences/foo.md"))
+        got = dream._archived_path(Path("memory/preferences/foo.md"))
+        self.assertEqual(got, Path("memory/_archive/preferences/foo.md"))
 
     def test_projects_tier_inserts_archive_after_the_project_segment(self) -> None:
-        got = dream._archived_path(Path("projects/agentm/idea/foo.md"))
-        self.assertEqual(got, Path("projects/agentm/_archive/idea/foo.md"))
+        got = dream._archived_path(Path("desk/projects/agentm/idea/foo.md"))
+        self.assertEqual(got, Path("desk/projects/agentm/_archive/idea/foo.md"))
 
     def test_bare_root_file_archives_at_the_root_not_after_the_filename(self) -> None:
         # A naive "insert after the first segment" rule would produce the
@@ -453,8 +453,8 @@ class ArchivedPathTests(unittest.TestCase):
         self.assertEqual(got, Path("_archive/foo.md"))
 
     def test_personal_tier_with_no_kind_subfolder(self) -> None:
-        got = dream._archived_path(Path("personal/foo.md"))
-        self.assertEqual(got, Path("personal/_archive/foo.md"))
+        got = dream._archived_path(Path("memory/foo.md"))
+        self.assertEqual(got, Path("memory/_archive/foo.md"))
 
 
 class TidyingStageBandTests(_DreamTestBase):
@@ -518,8 +518,8 @@ class TidyingStageBandTests(_DreamTestBase):
         self.assertEqual(previews, [])
 
     def test_decisions_path_exempt_entry_never_archived(self) -> None:
-        (self.vault / "projects" / "agentm" / "decisions").mkdir(parents=True)
-        self._write_aged("projects/agentm/decisions/old-call.md", 5000)
+        (self.vault / "desk/projects" / "agentm" / "decisions").mkdir(parents=True)
+        self._write_aged("desk/projects/agentm/decisions/old-call.md", 5000)
         proposals, previews = self._run_stage()
         self.assertEqual(proposals, [])
         self.assertEqual(previews, [])
@@ -636,14 +636,14 @@ class ArtifactShelfBandTests(_DreamTestBase):
         self.assertIn(str(dest), mutated_paths)
 
     def test_personal_and_projects_tier_shelf_insertion(self) -> None:
-        self.assertEqual(dream._shelved_path(Path("personal/foo.md")), Path("personal/_shelf/foo.md"))
+        self.assertEqual(dream._shelved_path(Path("memory/foo.md")), Path("memory/_shelf/foo.md"))
         self.assertEqual(
-            dream._shelved_path(Path("projects/agentm/notes/foo.md")),
-            Path("projects/agentm/_shelf/notes/foo.md"),
+            dream._shelved_path(Path("desk/projects/agentm/notes/foo.md")),
+            Path("desk/projects/agentm/_shelf/notes/foo.md"),
         )
 
     def test_unshelved_path_is_the_exact_inverse(self) -> None:
-        for original in (Path("personal/foo.md"), Path("projects/agentm/notes/foo.md"), Path("bare.md")):
+        for original in (Path("memory/foo.md"), Path("desk/projects/agentm/notes/foo.md"), Path("bare.md")):
             shelved = dream._shelved_path(original)
             self.assertEqual(dream._unshelved_path(shelved), original)
 
@@ -911,16 +911,16 @@ class MultiStageAnomalyBreakerIntegrationTests(_DreamTestBase):
         base = f"family-{index:02d}"
         body = f"identical legacy content, family {index}\n"
         self._write(
-            f"personal/reference/{base}.md",
+            f"memory/reference/{base}.md",
             f"---\nkind: reference\nslug: {base}\nstatus: active\ncreated: 2025-01-01\n---\n{body}",
         )
         self._write(
-            f"personal/reference/{base}_1.md",
+            f"memory/reference/{base}_1.md",
             f"---\nkind: reference\nslug: {base}_1\nstatus: active\ncreated: 2025-06-01\n---\n{body}",
         )
 
     def test_suffix_backlog_drain_spike_trips_independently_of_tidying(self) -> None:
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
         # Seed a "usual" baseline of 1 suffix-family collapse per cycle for
         # suffix_backlog_drain; tidying gets no history at all (cold start).
         for _ in range(self.dc.ANOMALY_MIN_HISTORY + 2):
@@ -966,17 +966,17 @@ class SuffixBacklogDrainTests(_DreamTestBase):
 
     def setUp(self) -> None:
         super().setUp()
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
         for i in range(self._N):
             base = f"family-{i:02d}"
             body = f"identical legacy content, family {i}\n"
             self._write(
-                f"personal/reference/{base}.md",
+                f"memory/reference/{base}.md",
                 f"---\nkind: reference\nslug: {base}\nstatus: active\n"
                 f"created: 2025-01-01\n---\n{body}",
             )
             self._write(
-                f"personal/reference/{base}_1.md",
+                f"memory/reference/{base}_1.md",
                 f"---\nkind: reference\nslug: {base}_1\nstatus: active\n"
                 f"created: 2025-06-01\n---\n{body}",
             )
@@ -994,7 +994,7 @@ class SuffixBacklogDrainTests(_DreamTestBase):
     def test_exactly_cap_collapses_remainder_carries_over_no_reprocess(self) -> None:
         proposals_1 = self._run_cycle()
         self.assertEqual(len(proposals_1), dream._SUFFIX_BACKLOG_BATCH_CAP)
-        expected_first_batch = {f"personal/reference/family-{i:02d}.md" for i in range(25)}
+        expected_first_batch = {f"memory/reference/family-{i:02d}.md" for i in range(25)}
         self.assertEqual({p.paths[0] for p in proposals_1}, expected_first_batch)
         for p in proposals_1:
             self.assertEqual(p.stage, "suffix_backlog_drain")
@@ -1011,18 +1011,18 @@ class SuffixBacklogDrainTests(_DreamTestBase):
         # already collapsed in cycle 1 is reprocessed.
         proposals_2 = self._run_cycle()
         self.assertEqual(len(proposals_2), self._N - dream._SUFFIX_BACKLOG_BATCH_CAP)
-        expected_second_batch = {f"personal/reference/family-{i:02d}.md" for i in range(25, self._N)}
+        expected_second_batch = {f"memory/reference/family-{i:02d}.md" for i in range(25, self._N)}
         self.assertEqual({p.paths[0] for p in proposals_2}, expected_second_batch)
 
     def test_survivor_is_earliest_by_created_and_stays_unmutated(self) -> None:
         proposals = self._run_cycle()
-        p = next(p for p in proposals if p.paths[0] == "personal/reference/family-00.md")
+        p = next(p for p in proposals if p.paths[0] == "memory/reference/family-00.md")
         mutated = {str(path.relative_to(self.vault)).replace("\\", "/") for path, _c in p.mutations}
-        self.assertNotIn("personal/reference/family-00.md", mutated)
-        self.assertIn("personal/reference/family-00_1.md", mutated)
+        self.assertNotIn("memory/reference/family-00.md", mutated)
+        self.assertIn("memory/reference/family-00_1.md", mutated)
         # The canonical's own file on disk is untouched by the proposal
         # (mutations only ever target copies).
-        original = (self.vault / "personal/reference/family-00.md").read_text(encoding="utf-8")
+        original = (self.vault / "memory/reference/family-00.md").read_text(encoding="utf-8")
         self.assertIn("status: active", original)
 
     def test_always_load_notes_excluded_from_collapse(self) -> None:
@@ -1035,7 +1035,7 @@ class SuffixBacklogDrainTests(_DreamTestBase):
         proposals = self._run_cycle()
         touched = {p for prop in proposals for p in prop.paths}
         self.assertNotIn("_always-load/pinned.md", touched)
-        family_0 = next(p for p in proposals if p.paths[0] == "personal/reference/family-00.md")
+        family_0 = next(p for p in proposals if p.paths[0] == "memory/reference/family-00.md")
         self.assertEqual(len(family_0.mutations), 1)  # still just the one _1 copy
 
 
@@ -1119,9 +1119,9 @@ class BrowseSurfaceCountsTests(_DreamTestBase):
         return path
 
     def test_three_states_counted_correctly(self) -> None:
-        self._write("personal/reference/live.md", "---\nslug: live\n---\nbody\n")
-        self._write("personal/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
-        self._write("personal/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
+        self._write("memory/reference/live.md", "---\nslug: live\n---\nbody\n")
+        self._write("memory/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
+        self._write("memory/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
 
         entries = dream._iter_entries(self.vault)
         counts = dream._browse_surface_counts(self.vault, entries)
@@ -1134,7 +1134,7 @@ class BrowseSurfaceCountsTests(_DreamTestBase):
         # The acceptance test in the operator's own words: aged material
         # sits in the archive, still there on request -- never deleted.
         archived_path = self._write(
-            "personal/reference/_archive/archived.md", "---\nslug: archived\n---\noriginal content\n"
+            "memory/reference/_archive/archived.md", "---\nslug: archived\n---\noriginal content\n"
         )
         entries = dream._iter_entries(self.vault)
         dream._browse_surface_counts(self.vault, entries)  # never mutates anything
@@ -1149,9 +1149,9 @@ class BrowseSurfaceCountsTests(_DreamTestBase):
         self.assertEqual(counts["browse_archived_count"], 0)
 
     def test_counts_land_in_the_digest(self) -> None:
-        self._write("personal/reference/live.md", "---\nslug: live\n---\nbody\n")
-        self._write("personal/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
-        self._write("personal/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
+        self._write("memory/reference/live.md", "---\nslug: live\n---\nbody\n")
+        self._write("memory/reference/_shelf/shelved.md", "---\nslug: shelved\n---\nbody\n")
+        self._write("memory/reference/_archive/archived.md", "---\nslug: archived\n---\nbody\n")
 
         digest = dream.run_dream(self.vault, run_id="run-browse-1")
         digest_text = digest.digest_path.read_text(encoding="utf-8")

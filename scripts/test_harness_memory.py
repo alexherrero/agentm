@@ -60,8 +60,8 @@ def tearDownModule() -> None:  # noqa: N802
 def _make_vault(root: Path, *, project: str = "fixture-project") -> Path:
     """Build a minimal MemoryVault under `root`. Returns the vault path."""
     vault = root / "vault"
-    (vault / "personal" / "_always-load").mkdir(parents=True)
-    (vault / "personal" / "_always-load" / "coding-style.md").write_text(
+    (vault / "memory" / "_always-load").mkdir(parents=True)
+    (vault / "memory" / "_always-load" / "coding-style.md").write_text(
         "# coding style\nuse stdlib; kebab-case slugs.\n",
         encoding="utf-8",
     )
@@ -879,7 +879,7 @@ class TestCLI(unittest.TestCase):
                 "stale repo PLAN content\n", encoding="utf-8"
             )
             vault = _make_vault_new_layout(Path(tmp), project="fixture")
-            vault_harness = vault / "projects" / "fixture" / "_harness"
+            vault_harness = vault / "desk/projects" / "fixture" / "_harness"
             vault_harness.mkdir(parents=True)
             # LF-only bytes: VaultBackend read is byte-exact, so seed exactly as
             # production's atomic_write would (write_text emits CRLF on Windows,
@@ -986,9 +986,9 @@ class TestCLI(unittest.TestCase):
 def _make_vault_new_layout(root: Path, *, project: str = "fixture-project") -> Path:
     """Build a vault using the post-V4 #26 `projects/` layout (no legacy dir)."""
     vault = root / "vault"
-    (vault / "personal" / "_always-load").mkdir(parents=True)
-    (vault / "projects" / project / "decisions").mkdir(parents=True)
-    (vault / "projects" / project / "_index.md").write_text(
+    (vault / "memory" / "_always-load").mkdir(parents=True)
+    (vault / "desk/projects" / project / "decisions").mkdir(parents=True)
+    (vault / "desk/projects" / project / "_index.md").write_text(
         f"# {project} index\nv4.1.0+ layout\n",
         encoding="utf-8",
     )
@@ -1005,11 +1005,13 @@ class TestVaultProjectsDir(unittest.TestCase):
     def test_prefers_new_projects_dir_when_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "projects").mkdir(parents=True)
+            (root / "desk/projects").mkdir(parents=True)
             backend = self._make_backend(root)
             result = hm._vault_projects_dir(backend)
             from storage_seam import Locator
-            self.assertEqual(result, Locator("projects"))
+            self.assertEqual(result, Locator("desk/projects"))
+            # `.name` is the last segment; the space gained a level at the
+            # stage-2 migration, so the full locator is what pins the contract.
             self.assertEqual(result.name, "projects")
 
     def test_falls_back_to_legacy_personal_projects(self) -> None:
@@ -1026,12 +1028,12 @@ class TestVaultProjectsDir(unittest.TestCase):
         """Locked semantics: if both dirs exist, new layout wins (legacy is stale)."""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "projects").mkdir(parents=True)
+            (root / "desk/projects").mkdir(parents=True)
             (root / "personal-projects").mkdir(parents=True)
             backend = self._make_backend(root)
             result = hm._vault_projects_dir(backend)
             from storage_seam import Locator
-            self.assertEqual(result, Locator("projects"))
+            self.assertEqual(result, Locator("desk/projects"))
 
     def test_returns_new_locator_when_neither_present(self) -> None:
         """Empty backend: return the new Locator (so write callers target post-V4 layout)."""
@@ -1040,21 +1042,21 @@ class TestVaultProjectsDir(unittest.TestCase):
             backend = self._make_backend(root)
             result = hm._vault_projects_dir(backend)
             from storage_seam import Locator
-            self.assertEqual(result, Locator("projects"))
+            self.assertEqual(result, Locator("desk/projects"))
 
     def test_parallel_run_vault_backend_maps_to_same_path(self) -> None:
         """LC-7 parallel-run: vault backend Locator maps to the same path as the old vault_path (V5-6)."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
-            (vault / "projects").mkdir(parents=True)
+            (vault / "desk/projects").mkdir(parents=True)
             from vault_backend_stub import VaultBackend
             backend = VaultBackend(root=vault)
             loc = hm._vault_projects_dir(backend)
-            # The Locator key is "projects" — on the vault backend this maps to
+            # The Locator key is "desk/projects" — on the vault backend this maps to
             # <vault>/projects, exactly the same directory the old Path returned.
-            self.assertEqual(loc.key, "projects")
+            self.assertEqual(loc.key, "desk/projects")
             # Confirm the vault backend maps it to the same physical path.
-            expected_path = vault / "projects"
+            expected_path = vault / "desk/projects"
             actual_path = vault / Path(*loc.parts) if loc.parts else vault
             self.assertEqual(actual_path, expected_path)
 
@@ -1125,7 +1127,7 @@ class TestResolveProject(unittest.TestCase):
                     hm.resolve_project({"cwd": project_root})
 
     def test_resolves_new_layout(self) -> None:
-        """Vault backend has projects/<slug>/ → layout='new', project_locator.key='projects/fixture'."""
+        """Vault backend has projects/<slug>/ → layout='new', project_locator.key='desk/projects/fixture'."""
         with tempfile.TemporaryDirectory() as tmp:
             project_root = Path(tmp) / "project"
             project_root.mkdir()
@@ -1139,7 +1141,7 @@ class TestResolveProject(unittest.TestCase):
                 resolution = hm.resolve_project({"cwd": project_root})
         self.assertEqual(resolution["slug"], "fixture")
         from storage_seam import Locator
-        self.assertEqual(resolution["project_locator"], Locator("projects/fixture"))
+        self.assertEqual(resolution["project_locator"], Locator("desk/projects/fixture"))
         self.assertIs(resolution["backend"], backend)
         self.assertEqual(resolution["layout"], "new")
 
@@ -1177,7 +1179,7 @@ class TestResolveProject(unittest.TestCase):
                 resolution = hm.resolve_project({"cwd": project_root})
         self.assertEqual(resolution["slug"], "new-project")
         from storage_seam import Locator
-        self.assertEqual(resolution["project_locator"], Locator("projects/new-project"))
+        self.assertEqual(resolution["project_locator"], Locator("desk/projects/new-project"))
         self.assertEqual(resolution["layout"], "new")
 
 
@@ -1198,7 +1200,7 @@ class TestReadStateFile(unittest.TestCase):
     def test_returns_empty_when_neither_path_present(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             resolution = {
-                "vault_path": Path(tmp) / "vault" / "projects" / "p",
+                "vault_path": Path(tmp) / "vault" / "desk/projects" / "p",
                 "project_root": Path(tmp) / "project",
             }
             (Path(tmp) / "project").mkdir()
@@ -1211,7 +1213,7 @@ class TestReadStateFile(unittest.TestCase):
             (project / ".harness").mkdir(parents=True)
             (project / ".harness" / "PLAN.md").write_text("device-local content", encoding="utf-8")
             resolution = {
-                "vault_path": Path(tmp) / "vault" / "projects" / "p",
+                "vault_path": Path(tmp) / "vault" / "desk/projects" / "p",
                 "project_root": project,
             }
             with io.StringIO() as buf:
@@ -1261,7 +1263,7 @@ class TestReadStateFile(unittest.TestCase):
             prefix.mkdir()
             (prefix / ".agentm-config.json").write_text(
                 json.dumps({"state_mode": "local"}), encoding="utf-8")
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
             project = Path(tmp) / "project"
@@ -1279,7 +1281,7 @@ class TestReadStateFile(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             prefix = Path(tmp) / "prefix"
             prefix.mkdir()  # empty config dir → no device state_mode
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
             project = Path(tmp) / "project"
@@ -1322,7 +1324,7 @@ class TestReadStateFile(unittest.TestCase):
         """DC-2: with a vault present and vault content, a repo-local marker still
         routes the read to <repo>/.harness/."""
         with tempfile.TemporaryDirectory() as tmp:
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             (vp / "_harness" / "PLAN.md").write_text("vault content", encoding="utf-8")
             project = Path(tmp) / "project"
@@ -1343,7 +1345,7 @@ class TestWriteStateFile(unittest.TestCase):
         """ADR 0020: a stale ``vault_path`` key with NO synced ``backend`` writes
         to <project_root>/.harness/ — only a synced backend routes to the vault."""
         with tempfile.TemporaryDirectory() as tmp:
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             project = Path(tmp) / "project"
             project.mkdir()
             resolution = {"vault_path": vp, "project_root": project}
@@ -1384,7 +1386,7 @@ class TestWriteStateFile(unittest.TestCase):
             prefix.mkdir()
             (prefix / ".agentm-config.json").write_text(
                 json.dumps({"state_mode": "local"}), encoding="utf-8")
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             project = Path(tmp) / "project"
             project.mkdir()
@@ -1414,7 +1416,7 @@ class TestWriteStateFile(unittest.TestCase):
         """DC-2: a repo-local marker is authoritative even when a vault exists —
         the write goes repo-local, the vault is untouched."""
         with tempfile.TemporaryDirectory() as tmp:
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
@@ -1434,7 +1436,7 @@ class TestWriteStateFile(unittest.TestCase):
             prefix.mkdir()
             (prefix / ".agentm-config.json").write_text(
                 json.dumps({"state_mode": "local"}), encoding="utf-8")
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
@@ -1475,7 +1477,7 @@ class TestWriteStateFile(unittest.TestCase):
             prefix.mkdir()
             (prefix / ".agentm-config.json").write_text(
                 json.dumps({"state_mode": "local"}), encoding="utf-8")
-            vp = Path(tmp) / "vault" / "projects" / "p"
+            vp = Path(tmp) / "vault" / "desk/projects" / "p"
             (vp / "_harness").mkdir(parents=True)
             project = Path(tmp) / "project"
             (project / ".harness").mkdir(parents=True)
@@ -1511,7 +1513,7 @@ class TestStateBackendRouting(unittest.TestCase):
         from storage_seam import Locator
         return {
             "backend": backend,
-            "project_locator": Locator("projects/fixture"),
+            "project_locator": Locator("desk/projects/fixture"),
             "project_root": project_root,
         }
 
@@ -1522,13 +1524,13 @@ class TestStateBackendRouting(unittest.TestCase):
             resolution = self._resolution(backend, Path(tmp) / "project")
             self.assertEqual(
                 hm.harness_state_dir(resolution),
-                vault / "projects" / "fixture" / "_harness",
+                vault / "desk/projects" / "fixture" / "_harness",
             )
 
     def test_read_routes_to_vault_and_wins_over_repo(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp) / "vault"
-            harness = vault / "projects" / "fixture" / "_harness"
+            harness = vault / "desk/projects" / "fixture" / "_harness"
             harness.mkdir(parents=True)
             # LF-only bytes (not write_text, which emits CRLF on Windows): the
             # VaultBackend read is byte-exact for CAS integrity, so the fixture
@@ -1561,7 +1563,7 @@ class TestStateBackendRouting(unittest.TestCase):
             backend = self._vault_backend(vault, Path(tmp) / "locks")
             resolution = self._resolution(backend, project)
             target = hm.write_state_file(resolution, "PLAN.md", "via backend\n")
-            expected = vault / "projects" / "fixture" / "_harness" / "PLAN.md"
+            expected = vault / "desk/projects" / "fixture" / "_harness" / "PLAN.md"
             self.assertEqual(target, expected)
             self.assertEqual(expected.read_text(encoding="utf-8"), "via backend\n")
             # Repo-local .harness/ untouched — the write landed in the vault only.
@@ -1608,7 +1610,7 @@ class TestStateBackendRouting(unittest.TestCase):
             target = hm.write_state_file(resolution, "PLAN.md", "stays local\n")
             self.assertEqual(target, project / ".harness" / "PLAN.md")
             self.assertFalse(
-                (vault / "projects" / "fixture" / "_harness" / "PLAN.md").exists()
+                (vault / "desk/projects" / "fixture" / "_harness" / "PLAN.md").exists()
             )
 
 

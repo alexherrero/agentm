@@ -70,7 +70,7 @@ class TestBM25Search(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -85,7 +85,7 @@ class TestBM25Search(unittest.TestCase):
         # (vault_lock.atomic_write) are bytes-mode, LF-only, by design; this
         # matches that convention instead of Python's platform-dependent
         # text-mode translation.
-        (self.vault / "personal" / "reference" / f"{name}.md").write_bytes(body.encode("utf-8"))
+        (self.vault / "memory" / "reference" / f"{name}.md").write_bytes(body.encode("utf-8"))
 
     def test_stemming_matches_suffixed_forms(self):
         # Query "running" should match a document containing "runs" via the
@@ -93,8 +93,8 @@ class TestBM25Search(unittest.TestCase):
         self._write("a", "the process keeps running all day")
         self._write("b", "nothing relevant here at all")
         results = recall._bm25_search(self.vault, ["running"])
-        self.assertIn("personal/reference/a.md", results)
-        self.assertNotIn("personal/reference/b.md", results)
+        self.assertIn("memory/reference/a.md", results)
+        self.assertNotIn("memory/reference/b.md", results)
 
     def test_rare_term_scores_higher_than_common_term_at_equal_tf(self):
         # "quokka" appears in only one doc (rare -> high IDF); "the" isn't a
@@ -108,8 +108,8 @@ class TestBM25Search(unittest.TestCase):
         # "rare" contains the query's rare term (quokka appears in only
         # this one doc) plus the common term -> should outscore "common"
         # despite common's higher raw term-frequency of "widget" alone.
-        self.assertIn("personal/reference/rare.md", results)
-        self.assertGreater(results["personal/reference/rare.md"], results.get("personal/reference/common.md", 0.0))
+        self.assertIn("memory/reference/rare.md", results)
+        self.assertGreater(results["memory/reference/rare.md"], results.get("memory/reference/common.md", 0.0))
 
     def test_no_query_tokens_returns_empty(self):
         self._write("a", "some content")
@@ -128,7 +128,7 @@ class TestAbstractionAltitude(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -140,15 +140,15 @@ class TestAbstractionAltitude(unittest.TestCase):
         # beyond the body and confound the comparison) — the only intended
         # difference between the two entries is anchor-vs-not.
         content = "widget subsystem overview and quirks"
-        (self.vault / "personal" / "reference" / "_index.md").write_bytes(content.encode("utf-8"))
-        (self.vault / "personal" / "reference" / "zzznote.md").write_bytes(content.encode("utf-8"))
+        (self.vault / "memory" / "reference" / "_index.md").write_bytes(content.encode("utf-8"))
+        (self.vault / "memory" / "reference" / "zzznote.md").write_bytes(content.encode("utf-8"))
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         by_path = {r["path"]: r for r in results}
-        self.assertIn("personal/reference/_index.md", by_path)
-        self.assertIn("personal/reference/zzznote.md", by_path)
+        self.assertIn("memory/reference/_index.md", by_path)
+        self.assertIn("memory/reference/zzznote.md", by_path)
         self.assertGreater(
-            by_path["personal/reference/_index.md"]["combined"],
-            by_path["personal/reference/zzznote.md"]["combined"],
+            by_path["memory/reference/_index.md"]["combined"],
+            by_path["memory/reference/zzznote.md"]["combined"],
         )
 
 
@@ -158,13 +158,13 @@ class TestFallbackCascade(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def test_hybrid_tier_when_both_signals_present(self):
-        (self.vault / "personal" / "reference" / "a.md").write_bytes(
+        (self.vault / "memory" / "reference" / "a.md").write_bytes(
             b"widget subsystem details",
         )
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
@@ -184,10 +184,10 @@ class TestFallbackCascade(unittest.TestCase):
         # comment for why: this entry's real "---\n"-delimited frontmatter
         # must survive byte-for-byte for _parse_frontmatter's status/kind
         # filtering to work on every OS.
-        (self.vault / "personal" / "reference" / "a.md").write_bytes(
+        (self.vault / "memory" / "reference" / "a.md").write_bytes(
             (
                 "---\nkind: convention\nstatus: active\ncreated: 2026-01-01\n"
-                "updated: 2026-01-01\ntags: []\ngroup: personal\nslug: a\n"
+                "updated: 2026-01-01\ntags: []\ngroup: memory\nslug: a\n"
                 "always_load: false\n---\n\ncompletely unrelated filler text\n"
             ).encode("utf-8"),
         )
@@ -205,7 +205,7 @@ class TestFallbackCascade(unittest.TestCase):
         # happened to produce nonzero similarity anyway — assert it's found
         # one way or another (the cascade must not lose a filter-matching
         # entry outright).
-        self.assertIn("personal/reference/a.md", paths)
+        self.assertIn("memory/reference/a.md", paths)
 
 
 class TestTimeWeightedRetrieval(unittest.TestCase):
@@ -216,7 +216,7 @@ class TestTimeWeightedRetrieval(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -225,39 +225,39 @@ class TestTimeWeightedRetrieval(unittest.TestCase):
         # write_bytes (LF-only), not write_text — real "---\n"-delimited
         # frontmatter must survive byte-for-byte on every OS.
         content = "widget subsystem overview and quirks"
-        (self.vault / "personal" / "reference" / "stale-note.md").write_bytes((
+        (self.vault / "memory" / "reference" / "stale-note.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2020-01-01\nupdated: 2020-01-01\n"
-            "tags: []\ngroup: personal\nslug: stale-note\nalways_load: false\n---\n\n"
+            "tags: []\ngroup: memory\nslug: stale-note\nalways_load: false\n---\n\n"
             + content + "\n"
         ).encode("utf-8"))
-        (self.vault / "personal" / "reference" / "fresh-note.md").write_bytes((
+        (self.vault / "memory" / "reference" / "fresh-note.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2026-01-01\nupdated: 2026-01-01\n"
-            "tags: []\ngroup: personal\nslug: fresh-note\nalways_load: false\n---\n\n"
+            "tags: []\ngroup: memory\nslug: fresh-note\nalways_load: false\n---\n\n"
             + content + "\n"
         ).encode("utf-8"))
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         by_path = {r["path"]: r for r in results}
-        self.assertIn("personal/reference/stale-note.md", by_path)
-        self.assertIn("personal/reference/fresh-note.md", by_path)
+        self.assertIn("memory/reference/stale-note.md", by_path)
+        self.assertIn("memory/reference/fresh-note.md", by_path)
         self.assertLess(
-            by_path["personal/reference/stale-note.md"]["decay_score"],
-            by_path["personal/reference/fresh-note.md"]["decay_score"],
+            by_path["memory/reference/stale-note.md"]["decay_score"],
+            by_path["memory/reference/fresh-note.md"]["decay_score"],
         )
         self.assertGreater(
-            by_path["personal/reference/fresh-note.md"]["combined"],
-            by_path["personal/reference/stale-note.md"]["combined"],
+            by_path["memory/reference/fresh-note.md"]["combined"],
+            by_path["memory/reference/stale-note.md"]["combined"],
         )
 
     def test_durable_entry_ignores_staleness_entirely(self):
         content = "widget subsystem overview and quirks"
-        (self.vault / "personal" / "reference" / "old-decision.md").write_bytes((
+        (self.vault / "memory" / "reference" / "old-decision.md").write_bytes((
             "---\nkind: insight\nstatus: active\ncreated: 2020-01-01\nupdated: 2020-01-01\n"
-            "tags: []\ngroup: personal\nslug: old-decision\nalways_load: false\n"
+            "tags: []\ngroup: memory\nslug: old-decision\nalways_load: false\n"
             "lifecycle_tier: durable\n---\n\n" + content + "\n"
         ).encode("utf-8"))
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         by_path = {r["path"]: r for r in results}
-        self.assertEqual(by_path["personal/reference/old-decision.md"]["decay_score"], 1.0)
+        self.assertEqual(by_path["memory/reference/old-decision.md"]["decay_score"], 1.0)
 
 
 class TestChunkedBM25MaxPassage(unittest.TestCase):
@@ -267,7 +267,7 @@ class TestChunkedBM25MaxPassage(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name) / "vault"
-        (self.vault / "personal" / "reference").mkdir(parents=True)
+        (self.vault / "memory" / "reference").mkdir(parents=True)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -275,9 +275,9 @@ class TestChunkedBM25MaxPassage(unittest.TestCase):
     def test_finds_relevant_passage_past_the_old_500_char_window(self):
         filler = ("This paragraph is unrelated filler content padding the entry. " * 10)
         buried = "\n\n".join([filler] * 3) + "\n\nquokka migration patterns discussed here in depth.\n\n" + filler
-        (self.vault / "personal" / "reference" / "long-entry.md").write_bytes(buried.encode("utf-8"))
+        (self.vault / "memory" / "reference" / "long-entry.md").write_bytes(buried.encode("utf-8"))
         results = recall._bm25_search(self.vault, ["quokka", "migration"])
-        self.assertIn("personal/reference/long-entry.md", results)
+        self.assertIn("memory/reference/long-entry.md", results)
 
 
 if __name__ == "__main__":

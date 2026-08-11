@@ -99,11 +99,11 @@ def _adapt_state_root(vault: Path) -> Path:
 
 
 def _trusted_sources_path(vault: Path) -> Path:
-    return vault / "personal" / "trusted-sources.md"
+    return vault / "memory" / "trusted-sources.md"
 
 
 def _skill_watchlist_root(vault: Path) -> Path:
-    return vault / "personal" / "_skill-watchlist"
+    return vault / "memory" / "_skill-watchlist"
 
 
 def _personal_skills_root(vault: Path) -> Path:
@@ -111,7 +111,7 @@ def _personal_skills_root(vault: Path) -> Path:
 
 
 def _always_load_root(vault: Path) -> Path:
-    return vault / "personal" / "_always-load"
+    return vault / "memory" / "_always-load"
 
 
 def _utcnow_iso() -> str:

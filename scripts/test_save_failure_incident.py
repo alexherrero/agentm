@@ -37,14 +37,14 @@ class TestFailureIncidentFingerprint(unittest.TestCase):
     def test_fingerprint_lands_in_frontmatter(self):
         target = save.save_entry(
             self.vault, "failure-incident", "crash-report",
-            "ValueError in classify", group="personal", fingerprint="abc123",
+            "ValueError in classify", group="memory", fingerprint="abc123",
         )
         self.assertIn("fingerprint: abc123", target.read_text(encoding="utf-8"))
 
     def test_fingerprint_round_trips_through_extract_meta(self):
         target = save.save_entry(
             self.vault, "failure-incident", "crash-report",
-            "ValueError in classify", group="personal", fingerprint="abc123",
+            "ValueError in classify", group="memory", fingerprint="abc123",
         )
         meta = graph_snapshot._extract_meta_from_file(target)
         self.assertEqual(meta["fingerprint"], "abc123")
@@ -61,7 +61,7 @@ class TestFailureIncidentFingerprint(unittest.TestCase):
         from privacy_scrub import scrub_pii
         target = save.save_entry(
             self.vault, "failure-incident", "crash-report",
-            "ValueError in classify", group="personal",
+            "ValueError in classify", group="memory",
         )
         content = target.read_text(encoding="utf-8")
         expected = fp_mod.compute_fingerprint(scrub_pii("ValueError in classify"))
@@ -84,7 +84,7 @@ class TestFailureIncidentScrub(unittest.TestCase):
         target = save.save_entry(
             self.vault, "failure-incident", "crash-report",
             "traceback: alex@example.com hit /Users/alexherrero/project/file.py",
-            group="personal",
+            group="memory",
         )
         content = target.read_text(encoding="utf-8")
         self.assertNotIn("alex@example.com", content)
@@ -96,7 +96,7 @@ class TestFailureIncidentScrub(unittest.TestCase):
         target = save.save_entry(
             self.vault, "reference", "a-note",
             "contact alex@example.com if this ever happens",
-            group="personal",
+            group="memory",
         )
         content = target.read_text(encoding="utf-8")
         self.assertIn("alex@example.com", content)
@@ -110,10 +110,10 @@ class TestFailureIncidentScrub(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 save.save_entry(
                     self.vault, "failure-incident", "should-not-land",
-                    "alex@example.com", group="personal",
+                    "alex@example.com", group="memory",
                 )
             self.assertFalse(
-                (self.vault / "personal" / "failure-incident" / "should-not-land.md").exists()
+                (self.vault / "memory" / "failure-incident" / "should-not-land.md").exists()
             )
         finally:
             del sys.modules["privacy_scrub"]

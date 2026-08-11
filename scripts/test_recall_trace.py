@@ -74,15 +74,15 @@ class TestPackedCaptureAlignment(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             vault = Path(d)
             token = "zorptackle"
-            _write_entry(vault, "personal/dup.md", f"{token} first copy " + "w" * 100)
-            _write_entry(vault, "personal/sub/dup.md", f"{token} second copy " + "w" * 100)
+            _write_entry(vault, "memory/dup.md", f"{token} first copy " + "w" * 100)
+            _write_entry(vault, "memory/sub/dup.md", f"{token} second copy " + "w" * 100)
 
             captured = self._run_and_capture(vault, token, token_budget=0)
 
             self.assertIsNotNone(captured.get("hits"))
             self.assertEqual(len(captured["hits"]), 2)
             paths = {h["path"] for h in captured["hits"]}
-            self.assertEqual(paths, {"personal/dup.md", "personal/sub/dup.md"})
+            self.assertEqual(paths, {"memory/dup.md", "memory/sub/dup.md"})
             for h in captured["hits"]:
                 self.assertEqual(h["slug"], "dup")
             ranks = sorted(h["rank"] for h in captured["hits"])
@@ -95,7 +95,7 @@ class TestPackedCaptureAlignment(unittest.TestCase):
             vault = Path(d)
             token = "zorptackle"
             for i in range(3):
-                _write_entry(vault, f"personal/big-{i}.md", f"{token} " + "w" * 500 + f" {i}")
+                _write_entry(vault, f"memory/big-{i}.md", f"{token} " + "w" * 500 + f" {i}")
 
             captured = self._run_and_capture(vault, token, token_budget=150)
 
@@ -108,7 +108,7 @@ class TestPackedCaptureAlignment(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             vault = Path(d)
             token = "zorptackle"
-            _write_entry(vault, "personal/solo.md", f"{token} " + "content " * 20)
+            _write_entry(vault, "memory/solo.md", f"{token} " + "content " * 20)
 
             captured = self._run_and_capture(vault, token, token_budget=0)
             direct = recall.query(vault=vault, query_text=token, k=5)
@@ -179,11 +179,11 @@ class TestTraceReader(unittest.TestCase):
         self.assertIn("recalled before trace capture landed", out)
 
     def test_normal_case_shows_score_breakdown_at_fixed_precision(self):
-        hit = {"slug": "s", "path": "personal/s.md", "sim": 0.812345, "keyword": 12.345,
+        hit = {"slug": "s", "path": "memory/s.md", "sim": 0.812345, "keyword": 12.345,
                "combined": 0.0163456, "rank": 1, "lifecycle_tier": "volatile"}
         recall_counter.record_recall("q", ["s"], hits=[hit], history_path=self.history_path)
         out = self._run("s")
-        self.assertIn("path: personal/s.md", out)
+        self.assertIn("path: memory/s.md", out)
         self.assertIn("sim=0.81", out)
         self.assertIn("keyword=12.3", out)
         self.assertIn("combined=0.0163", out)
@@ -214,13 +214,13 @@ class TestTraceReader(unittest.TestCase):
         """A single recall event where two distinct-path entries share a
         slug (task 2's exact scenario) must surface both, not just one."""
         hits = [
-            {"slug": "dup", "path": "personal/dup.md", "rank": 1},
-            {"slug": "dup", "path": "personal/sub/dup.md", "rank": 2},
+            {"slug": "dup", "path": "memory/dup.md", "rank": 1},
+            {"slug": "dup", "path": "memory/sub/dup.md", "rank": 2},
         ]
         recall_counter.record_recall("q", ["dup", "dup"], hits=hits, history_path=self.history_path)
         out = self._run("dup")
-        self.assertIn("personal/dup.md", out)
-        self.assertIn("personal/sub/dup.md", out)
+        self.assertIn("memory/dup.md", out)
+        self.assertIn("memory/sub/dup.md", out)
         self.assertEqual(out.count("### dup @"), 2)
 
 

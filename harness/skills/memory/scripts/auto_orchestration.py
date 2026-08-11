@@ -85,7 +85,7 @@ def state_path(vault: Path) -> Path:
 
 
 def config_path(vault: Path) -> Path:
-    return Path(vault) / "personal" / _CONFIG_FILENAME
+    return Path(vault) / "memory" / _CONFIG_FILENAME
 
 
 # ── state ───────────────────────────────────────────────────────────────────

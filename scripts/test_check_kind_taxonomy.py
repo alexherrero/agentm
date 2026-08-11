@@ -47,8 +47,8 @@ class TestCheckKindTaxonomyAlwaysExitsZero(unittest.TestCase):
     def test_clean_vault_exits_zero(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            (vault / "personal").mkdir()
-            (vault / "personal" / "a.md").write_text(
+            (vault / "memory").mkdir()
+            (vault / "memory" / "a.md").write_text(
                 "---\nkind: fix\nstatus: active\ncreated: 2026-07-10\n---\n\nbody\n",
                 encoding="utf-8",
             )
@@ -60,8 +60,8 @@ class TestCheckKindTaxonomyAlwaysExitsZero(unittest.TestCase):
         # (malformed / unrecognized kind values) must never fail the battery.
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            (vault / "personal").mkdir()
-            (vault / "personal" / "a.md").write_text(
+            (vault / "memory").mkdir()
+            (vault / "memory" / "a.md").write_text(
                 "---\nkind: handoff-artifact (verdict memo)\nstatus: active\ncreated: 2026-07-10\n---\n\nbody\n",
                 encoding="utf-8",
             )

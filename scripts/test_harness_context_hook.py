@@ -36,7 +36,7 @@ class TestHarnessContextHook(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.vault = self.root / "vault"
-        (self.vault / "projects").mkdir(parents=True)  # mark the projects layout
+        (self.vault / "desk/projects").mkdir(parents=True)  # mark the projects layout
         self.proj = self.root / "myfixtureproj"
         self.proj.mkdir()
         # Tier-1 slug for the fixture project.

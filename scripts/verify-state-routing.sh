@@ -4,7 +4,7 @@
 #
 # Matrix (real CLIs against a scratch vault + scratch device-local project):
 #   A. storage.backend resolves to `vault` (via $MEMORY_VAULT_PATH) → state lands
-#      at <vault>/projects/<slug>/_harness/, never the repo-local .harness/.
+#      at <vault>/desk/projects/<slug>/_harness/, never the repo-local .harness/.
 #   B. `.harness/.project-mode=local` opts out even with a vault configured →
 #      state lands repo-local, proving the opt-out still wins over a synced backend.
 #   C. no backend configured at all (fresh device) → device-local default.
@@ -101,13 +101,13 @@ hm() { env -u MEMORY_VAULT_PATH AGENTM_INSTALL_PREFIX="$FRESH_PREFIX" "${MODE_EN
   HARNESS_MEMORY_TOOLKIT_PATH="$S" OBSIDIAN_VAULT_SCRIPTS="$SHIM" "$PY" "$HM" "$@"; }
 
 if [ "$FAULT" != "1" ]; then
-  # ── A. vault backend routes into <vault>/projects/<slug>/_harness/ ─────────
-  V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/projects"
+  # ── A. vault backend routes into <vault>/desk/projects/<slug>/_harness/ ─────────
+  V_VAULT="$SCRATCH/vault"; mkdir -p "$V_VAULT/desk/projects"
   V_PROJ="$SCRATCH/proj-vault"; seed_project "$V_PROJ"
   MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT")
   printf '%s' "$PLAN_BODY" | hm write-state --project-root "$V_PROJ" PLAN.md >/dev/null
-  assert_exists "A. vault backend: state lands in <vault>/projects/<slug>/_harness/" \
-    "$V_VAULT/projects/$SLUG/_harness/PLAN.md"
+  assert_exists "A. vault backend: state lands in <vault>/desk/projects/<slug>/_harness/" \
+    "$V_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
   assert_absent "A. vault backend: repo-local .harness/ carries no kernel state" \
     "$V_PROJ/.harness/PLAN.md"
 
@@ -118,7 +118,7 @@ if [ "$FAULT" != "1" ]; then
   assert_exists "B. .project-mode=local: state lands repo-local despite vault configured" \
     "$L_PROJ/.harness/PLAN.md"
   assert_absent "B. .project-mode=local: nothing written under the vault for this project" \
-    "$V_VAULT/projects/stateroutedemo-local/_harness/PLAN.md"
+    "$V_VAULT/desk/projects/stateroutedemo-local/_harness/PLAN.md"
 
   # ── C. no backend configured at all → device-local default ─────────────────
   N_PROJ="$SCRATCH/proj-none"; seed_project "$N_PROJ"

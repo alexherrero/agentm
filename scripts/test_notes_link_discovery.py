@@ -143,13 +143,13 @@ class TestAgentMemoryExcluded(unittest.TestCase):
                    "Confirmation is a covenant ordinance conferring the sacrament gift.")
             # An agent entry that shares the SAME distinctive vocabulary — must
             # still never appear as a source or target (hard domain boundary).
-            _write(obsidian_root, "Agent/personal/agent-note.md",
+            _write(obsidian_root, "Agent/memory/agent-note.md",
                    "Covenant ordinance sacrament covenant ordinance sacrament.",
                    fm={"kind": "convention", "status": "active", "created": "2026-05-29"})
             vault = obsidian_root / "Agent"
             notes, sugg = nld.discover(vault, min_score=0.05, top=40)
             rels = {n.rel for n in notes}
-            self.assertNotIn("personal/agent-note", rels,
+            self.assertNotIn("memory/agent-note", rels,
                              "agent vault entry leaked into the corpus")
             for s in sugg:
                 self.assertNotIn("agent-note", s.a_rel)
@@ -363,7 +363,7 @@ class TestReport(unittest.TestCase):
         outside = Path("/tmp/Obsidian/Church/note.md")
         self.assertFalse(nld.is_safe_report_path(outside, vault, set()))
         # A corpus member inside the vault is still refused.
-        note = vault / "personal" / "note.md"
+        note = vault / "memory" / "note.md"
         self.assertFalse(nld.is_safe_report_path(note, vault, {note.resolve()}))
 
     def test_report_cli_writes_only_to_meta(self):

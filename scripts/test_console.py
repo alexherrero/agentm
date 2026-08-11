@@ -270,7 +270,7 @@ class MemoryActivityTests(unittest.TestCase):
         self.assertEqual(c.count_inbox(self.vault), 0)
 
     def test_count_inbox_counts_personal_inbox_excludes_index(self):
-        d = self.vault / "personal" / "_inbox"
+        d = self.vault / "memory" / "_inbox"
         d.mkdir(parents=True)
         (d / "a.md").write_text("x", encoding="utf-8")
         (d / "b.md").write_text("x", encoding="utf-8")
@@ -291,11 +291,11 @@ class MemoryActivityTests(unittest.TestCase):
 
     def test_count_incubator_ignores_personal_nested(self):
         # Confirms this reads root _idea-incubator, not personal/_idea-incubator.
-        (self.vault / "personal" / "_idea-incubator" / "idea-one").mkdir(parents=True)
+        (self.vault / "memory" / "_idea-incubator" / "idea-one").mkdir(parents=True)
         self.assertEqual(c.count_incubator(self.vault), 0)
 
     def test_newest_curated_entries_excludes_staging_dirs(self):
-        personal = self.vault / "personal"
+        personal = self.vault / "memory"
         (personal / "insight").mkdir(parents=True)
         (personal / "insight" / "keep.md").write_text("x", encoding="utf-8")
         (personal / "_inbox").mkdir(parents=True)
@@ -309,7 +309,7 @@ class MemoryActivityTests(unittest.TestCase):
         # is configuration the agent reads as its own standards, not a note
         # a human browses -- it must never show up as a "newest curated
         # entry" alongside real memory.
-        personal = self.vault / "personal"
+        personal = self.vault / "memory"
         (personal / "_opinions" / "good").mkdir(parents=True)
         (personal / "_opinions" / "good" / "lesson.md").write_text("x", encoding="utf-8")
         (personal / "_opinions" / "good.md").write_text("served", encoding="utf-8")
@@ -542,11 +542,11 @@ class BriefSectionTests(unittest.TestCase):
     def test_dark_when_no_briefs(self):
         out = c.section_brief(self.vault)
         self.assertIn("dark", out)
-        self.assertIn("_briefs", out)
+        self.assertIn("desk/briefs", out)
 
     def test_picks_latest_by_filename_and_extracts_title(self):
-        briefs = self.vault / "_briefs"
-        briefs.mkdir()
+        briefs = self.vault / "desk/briefs"
+        briefs.mkdir(parents=True)
         (briefs / "20260711-digest-daily.md").write_text(
             "---\nkind: brief\n---\n\n# Observability digest — daily (spend and run summary)\n",
             encoding="utf-8",

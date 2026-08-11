@@ -114,12 +114,12 @@ class GateTests(unittest.TestCase):
     def test_reapply_asks_the_gate_before_writing_anything(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp, "vault")
-            (vault / "personal").mkdir(parents=True)
-            note = vault / "personal" / "n.md"
+            (vault / "memory").mkdir(parents=True)
+            note = vault / "memory" / "n.md"
             note.write_text(NOTE, encoding="utf-8")
             journal = Path(tmp, "j.jsonl")
             journal.write_text(json.dumps({
-                "path": "personal/n.md", "outcome": "aliased", "op": "insert",
+                "path": "memory/n.md", "outcome": "aliased", "op": "insert",
                 "aliases": ["cost of a write"],
                 "sha_before": hashlib.sha256(NOTE.encode()).hexdigest(),
                 "sha_after": "0" * 64,
@@ -136,8 +136,8 @@ class GateTests(unittest.TestCase):
     def test_a_dry_run_does_not_need_the_gate(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp, "vault")
-            (vault / "personal").mkdir(parents=True)
-            (vault / "personal" / "n.md").write_text(NOTE, encoding="utf-8")
+            (vault / "memory").mkdir(parents=True)
+            (vault / "memory" / "n.md").write_text(NOTE, encoding="utf-8")
             journal = Path(tmp, "j.jsonl")
             journal.write_text("", encoding="utf-8")
             with mock.patch.object(ab.subprocess, "run",
@@ -190,7 +190,7 @@ class RenderTests(unittest.TestCase):
 class CleanTests(unittest.TestCase):
     def setUp(self):
         self.note = ab.Candidate(
-            path="personal/preferences/use-edit-not-write.md",
+            path="memory/preferences/use-edit-not-write.md",
             flags=["fragment-promoted"],
             status="active",
         )
@@ -310,7 +310,7 @@ class ArtifactRuleTests(unittest.TestCase):
         for rel, reason in (
             ("_moc/convention.md", "regenerated link index"),
             ("_meta/skill-discovery-cache/x/diff-2026-06-15.md", "raw upstream README diff"),
-            ("_dream-staging/abc/digest.md", "dream-staging digest"),
+            ("desk/scratch/abc/digest.md", "dream-staging digest"),
             ("_meta/archive/vault-lint-2026-05-29.md", "machine lint report"),
             ("_meta/vault-lint-2026-07-15.md", "machine lint report"),
         ):
@@ -319,10 +319,10 @@ class ArtifactRuleTests(unittest.TestCase):
 
     def test_real_documents_are_not_excluded(self):
         for rel in (
-            "projects/agentm/_harness/archive/v5/PLAN.archive.20260618.md",
-            "projects/blog/_harness/progress.md",
+            "desk/projects/agentm/_harness/archive/v5/PLAN.archive.20260618.md",
+            "desk/projects/blog/_harness/progress.md",
             "_vault-archive/ag-design-history/memory-os-architecture.md",
-            "personal/trusted-sources.md",
+            "memory/trusted-sources.md",
             "_meta/how-to-use-agentmemory.md",
         ):
             with self.subTest(rel=rel):
@@ -350,8 +350,8 @@ class RevertTests(unittest.TestCase):
     def _run(self, mutate=None, op="insert", original=NOTE):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp, "vault")
-            (vault / "personal").mkdir(parents=True)
-            note = vault / "personal" / "n.md"
+            (vault / "memory").mkdir(parents=True)
+            note = vault / "memory" / "n.md"
             aliases = ["don't rewrite whole files", "cost of a write"]
             after = (
                 ab.create_frontmatter_block(original, aliases)
@@ -363,7 +363,7 @@ class RevertTests(unittest.TestCase):
             journal.write_text(
                 json.dumps(
                     {
-                        "path": "personal/n.md",
+                        "path": "memory/n.md",
                         "outcome": "aliased",
                         "op": op,
                         "aliases": aliases,
@@ -406,8 +406,8 @@ class ReapplyTests(unittest.TestCase):
     def _round_trip(self, op="insert", original=NOTE, mutate=None):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp, "vault")
-            (vault / "personal").mkdir(parents=True)
-            note = vault / "personal" / "n.md"
+            (vault / "memory").mkdir(parents=True)
+            note = vault / "memory" / "n.md"
             aliases = ["don't rewrite whole files", "cost of a write"]
             after = (
                 ab.create_frontmatter_block(original, aliases)
@@ -418,7 +418,7 @@ class ReapplyTests(unittest.TestCase):
             journal = Path(tmp, "j.jsonl")
             journal.write_text(
                 json.dumps({
-                    "path": "personal/n.md", "outcome": "aliased", "op": op,
+                    "path": "memory/n.md", "outcome": "aliased", "op": op,
                     "aliases": aliases,
                     "sha_before": hashlib.sha256(original.encode()).hexdigest(),
                     "sha_after": hashlib.sha256(after.encode()).hexdigest(),
@@ -457,15 +457,15 @@ class ReapplyTests(unittest.TestCase):
         """Running it twice must not write a second aliases line."""
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp, "vault")
-            (vault / "personal").mkdir(parents=True)
-            note = vault / "personal" / "n.md"
+            (vault / "memory").mkdir(parents=True)
+            note = vault / "memory" / "n.md"
             aliases = ["cost of a write"]
             after = ab.insert_aliases(NOTE, aliases)
             note.write_text(after, encoding="utf-8")
             journal = Path(tmp, "j.jsonl")
             journal.write_text(
                 json.dumps({
-                    "path": "personal/n.md", "outcome": "aliased", "op": "insert",
+                    "path": "memory/n.md", "outcome": "aliased", "op": "insert",
                     "aliases": aliases,
                     "sha_before": hashlib.sha256(NOTE.encode()).hexdigest(),
                     "sha_after": hashlib.sha256(after.encode()).hexdigest(),
@@ -482,15 +482,15 @@ class ReapplyTests(unittest.TestCase):
     def test_dry_run_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp, "vault")
-            (vault / "personal").mkdir(parents=True)
-            note = vault / "personal" / "n.md"
+            (vault / "memory").mkdir(parents=True)
+            note = vault / "memory" / "n.md"
             aliases = ["cost of a write"]
             after = ab.insert_aliases(NOTE, aliases)
             note.write_text(after, encoding="utf-8")
             journal = Path(tmp, "j.jsonl")
             journal.write_text(
                 json.dumps({
-                    "path": "personal/n.md", "outcome": "aliased", "op": "insert",
+                    "path": "memory/n.md", "outcome": "aliased", "op": "insert",
                     "aliases": aliases,
                     "sha_before": hashlib.sha256(NOTE.encode()).hexdigest(),
                     "sha_after": hashlib.sha256(after.encode()).hexdigest(),

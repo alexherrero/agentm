@@ -213,7 +213,7 @@ def _build_entry_content(
         f"created: {today}\n"
         f"updated: {today}\n"
         "tags: [skill, personal-skills, auto-indexed]\n"
-        f"group: personal-skills/{repo_name}\n"
+        f"group: memory-skills/{repo_name}\n"
         f"slug: {skill_name}\n"
         "always_load: false\n"
         f"source_path: {source_path}\n"

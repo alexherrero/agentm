@@ -145,7 +145,7 @@ def capture(
 
         now = now or datetime.now(timezone.utc)
         resolved_slug = slug or _slugify(content, now=now)
-        inbox_dir = vault / "personal" / "_inbox"
+        inbox_dir = vault / "memory" / "_inbox"
         inbox_dir.mkdir(parents=True, exist_ok=True)
 
         # resolve+write held under the vault's mutex (matching save_entry's

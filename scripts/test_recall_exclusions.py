@@ -46,16 +46,16 @@ class TestIterEntryPathsExclusions(unittest.TestCase):
         p.write_text("---\nkind: note\n---\nbody\n", encoding="utf-8")
 
     def test_dream_staging_subtree_excluded(self):
-        self._write("personal/reference/live-note.md")
-        self._write("_dream-staging/inbox-20260712-abc/123-proposal.md")
+        self._write("memory/reference/live-note.md")
+        self._write("desk/scratch/inbox-20260712-abc/123-proposal.md")
         paths = recall._iter_entry_paths(self.vault)
         names = {p.name for p in paths}
         self.assertIn("live-note.md", names)
         self.assertNotIn("123-proposal.md", names)
 
     def test_archive_subtree_still_excluded(self):
-        self._write("personal/reference/live-note.md")
-        self._write("projects/foo/_archive/old.md")
+        self._write("memory/reference/live-note.md")
+        self._write("desk/projects/foo/_archive/old.md")
         paths = recall._iter_entry_paths(self.vault)
         names = {p.name for p in paths}
         self.assertIn("live-note.md", names)
@@ -64,7 +64,7 @@ class TestIterEntryPathsExclusions(unittest.TestCase):
     def test_archive_subtree_reopens_with_include_archive(self):
         # Task 5: _archive/ is independently reopenable, mirroring _inbox/'s
         # existing include_inbox toggle exactly.
-        self._write("projects/foo/_archive/old.md")
+        self._write("desk/projects/foo/_archive/old.md")
         paths = recall._iter_entry_paths(self.vault, include_archive=True)
         names = {p.name for p in paths}
         self.assertIn("old.md", names)
@@ -72,7 +72,7 @@ class TestIterEntryPathsExclusions(unittest.TestCase):
     def test_shelf_subtree_never_excluded(self):
         # Task 5: the shelf is a browse convention, not a search boundary —
         # no toggle needed, it's simply never in the exclusion set.
-        self._write("personal/_shelf/old-plan.md")
+        self._write("memory/_shelf/old-plan.md")
         paths = recall._iter_entry_paths(self.vault)
         names = {p.name for p in paths}
         self.assertIn("old-plan.md", names)
@@ -97,23 +97,23 @@ class TestQueryEndToEndArchiveAndShelf(unittest.TestCase):
         p.write_text(f"---\nkind: note\nslug: {Path(rel).stem}\n---\n{body}\n", encoding="utf-8")
 
     def test_shelved_artifact_found_by_ordinary_search(self):
-        self._write("personal/_shelf/old-plan.md", "widget subsystem retry logic notes")
+        self._write("memory/_shelf/old-plan.md", "widget subsystem retry logic notes")
         results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         paths = {r["path"] for r in results}
-        self.assertIn("personal/_shelf/old-plan.md", paths)
+        self.assertIn("memory/_shelf/old-plan.md", paths)
 
     def test_archived_memory_not_found_by_default_but_found_with_include_archive(self):
-        self._write("personal/_archive/old-widget.md", "widget subsystem retry logic notes")
+        self._write("memory/_archive/old-widget.md", "widget subsystem retry logic notes")
         default_results = recall.query(vault=self.vault, query_text="widget subsystem", k=5)
         self.assertNotIn(
-            "personal/_archive/old-widget.md", {r["path"] for r in default_results}
+            "memory/_archive/old-widget.md", {r["path"] for r in default_results}
         )
 
         reopened_results = recall.query(
             vault=self.vault, query_text="widget subsystem", k=5, include_archive=True,
         )
         self.assertIn(
-            "personal/_archive/old-widget.md", {r["path"] for r in reopened_results}
+            "memory/_archive/old-widget.md", {r["path"] for r in reopened_results}
         )
 
 
@@ -143,21 +143,21 @@ class TestInboxExclusion(unittest.TestCase):
         p.write_text("---\nkind: note\n---\nbody\n", encoding="utf-8")
 
     def test_inbox_subtree_excluded_at_any_depth(self):
-        self._write("personal/reference/live-note.md")
-        self._write("personal/_inbox/candidate.md")
-        self._write("personal/_inbox/ingested/typography/domain-reference/deep.md")
+        self._write("memory/reference/live-note.md")
+        self._write("memory/_inbox/candidate.md")
+        self._write("memory/_inbox/ingested/typography/domain-reference/deep.md")
         names = {p.name for p in recall._iter_entry_paths(self.vault)}
         self.assertIn("live-note.md", names)
         self.assertNotIn("candidate.md", names)
         self.assertNotIn("deep.md", names)
 
     def test_inbox_subtree_reopens_with_include_inbox(self):
-        self._write("personal/_inbox/candidate.md")
+        self._write("memory/_inbox/candidate.md")
         names = {p.name for p in recall._iter_entry_paths(self.vault, include_inbox=True)}
         self.assertIn("candidate.md", names)
 
     def test_inbox_substring_in_a_filename_is_not_the_directory(self):
-        self._write("personal/reference/inbox-notes.md")
+        self._write("memory/reference/inbox-notes.md")
         names = {p.name for p in recall._iter_entry_paths(self.vault)}
         self.assertIn("inbox-notes.md", names)
 
