@@ -263,3 +263,146 @@ func waitForCommit(t *testing.T, dir, path string) (subject, body string) {
 		time.Sleep(250 * time.Millisecond)
 	}
 }
+
+// TestGit_NonMarkdownIsCommitted is the whole point of the committer/indexer
+// split. The daemon used to commit markdown only, while `agentmd gate
+// corpus-write` refused on anything git reported dirty, so every non-markdown
+// file fell in the gap: written, never committed, permanently dirty, gate shut.
+// The gate has no override, so a single config edit could hold it closed
+// indefinitely — which is what it did during the stage-1 four-space migration,
+// twice in one session.
+func TestGit_NonMarkdownIsCommitted(t *testing.T) {
+	bin := buildDaemon(t)
+	env := newVault(t)
+	gitInit(t, env.vault)
+
+	d := start(t, bin, env)
+	defer d.kill(t)
+
+	// Not markdown, so it never enters the index — but git can see it, so the
+	// gate can see it, so the daemon has to be able to clear it.
+	rel := "_meta/repos.json"
+	env.write(t, rel, "{\n  \"version\": 1,\n  \"repos\": []\n}\n")
+
+	waitForCommit(t, env.vault, rel)
+}
+
+// TestGit_AnIgnoredFileIsNeverCommitted holds the other side of the same line.
+// With the committer asking git rather than filtering by extension, `.gitignore`
+// becomes the policy surface — so a file it excludes must stay excluded, and the
+// daemon must not decide on its own that a rebuildable cache belongs in history.
+func TestGit_AnIgnoredFileIsNeverCommitted(t *testing.T) {
+	bin := buildDaemon(t)
+	env := newVault(t)
+	gitInit(t, env.vault)
+	env.write(t, ".gitignore", "*.cache\n")
+
+	d := start(t, bin, env)
+	defer d.kill(t)
+
+	env.write(t, "personal/rebuildable.cache", "regenerate me\n")
+
+	// A real note afterwards, so the pipeline has demonstrably run past the
+	// ignored file rather than merely not having reached it yet.
+	rel := "personal/2026/08/a-real-note.md"
+	env.write(t, rel, `---
+type: idea
+status: unfiled
+captured: 2026-08-10T09:00:00Z
+---
+The note that is actually a note.
+`)
+	waitForCommit(t, env.vault, rel)
+
+	cmd := exec.Command("git", "log", "--all", "--pretty=format:", "--name-only")
+	cmd.Dir = env.vault
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git log: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "rebuildable.cache") {
+		t.Errorf("a gitignored file was committed; .gitignore is supposed to be "+
+			"the policy surface.\n  history: %s", out)
+	}
+}
+
+// TestGit_AnUntrackedDotDirectoryFileIsNeverCommitted is the narrow rule that
+// keeps the committer's new reach from re-opening the cutover's worst failure.
+// Drive stages every upload through `.tmp.driveupload`, and a vault whose
+// .gitignore is missing or wrong would otherwise write that churn — above 1,400
+// files at its peak — into history, which is the one thing here with no undo.
+// The test deliberately runs without a .gitignore, because the daemon's own
+// guard is what is under test.
+func TestGit_AnUntrackedDotDirectoryFileIsNeverCommitted(t *testing.T) {
+	bin := buildDaemon(t)
+	env := newVault(t)
+	gitInit(t, env.vault)
+
+	d := start(t, bin, env)
+	defer d.kill(t)
+
+	env.write(t, ".tmp.driveupload/9001.md", "in flight\n")
+
+	rel := "personal/2026/08/a-real-note.md"
+	env.write(t, rel, `---
+type: idea
+status: unfiled
+captured: 2026-08-10T09:00:00Z
+---
+The note that is actually a note.
+`)
+	waitForCommit(t, env.vault, rel)
+
+	if paths := committedPaths(t, env.vault); len(paths) > 0 {
+		t.Errorf("untracked sync-client staging reached history: %v", paths)
+	}
+}
+
+// TestGit_ATrackedDotDirectoryFileIsMaintained is the other half of that rule.
+// Trackedness is the test rather than a list of directory names: `.obsidian/`
+// holds both `workspace.json`, which churns per focus change and is ignored, and
+// `app.json`, which the operator deliberately versions. Once a file there is
+// tracked, the daemon keeps it up to date — otherwise an Obsidian settings edit
+// would sit dirty forever and hold the gate shut, which is exactly the bug.
+func TestGit_ATrackedDotDirectoryFileIsMaintained(t *testing.T) {
+	bin := buildDaemon(t)
+	env := newVault(t)
+	gitInit(t, env.vault)
+
+	// Tracked by hand first, the way a real vault's .obsidian/app.json got there.
+	env.write(t, ".obsidian/app.json", "{\"alwaysUpdateLinks\": true}\n")
+	for _, args := range [][]string{
+		{"add", ".obsidian/app.json"},
+		{"commit", "-m", "track the Obsidian config"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = env.vault
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	d := start(t, bin, env)
+	defer d.kill(t)
+
+	env.write(t, ".obsidian/app.json",
+		"{\"alwaysUpdateLinks\": true, \"userIgnoreFilters\": [\"Agent/personal\"]}\n")
+
+	// Nothing wakes on a dot directory — a long Drive sync would keep resetting
+	// the debounce and starve the commit — so this arrives on the reconcile
+	// tick's commit instead. That is the floor the rule depends on.
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		cmd := exec.Command("git", "status", "--porcelain", "--", ".obsidian/app.json")
+		cmd.Dir = env.vault
+		out, err := cmd.CombinedOutput()
+		if err == nil && len(strings.TrimSpace(string(out))) == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("a tracked file under a dot directory stayed dirty, so the "+
+				"gate would stay shut on it.\n  git status: %s", out)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}

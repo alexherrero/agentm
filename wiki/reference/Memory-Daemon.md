@@ -219,7 +219,7 @@ agentmd gate corpus-write
 It refuses on two conditions, which mean the same thing:
 
 - `git-degraded` — the vault is not a repository, or has no commits. There is nothing to revert to.
-- `uncommitted-changes` — the worktree already carries edits, so undoing the job and undoing whatever else is in flight would be one command. Let the daemon commit them (it does so within a second of the last write) or commit them yourself.
+- `uncommitted-changes` — the worktree already carries edits, so undoing the job and undoing whatever else is in flight would be one command. Let the daemon commit them: within a second of the last write for an ordinary file, or on the next reconcile pass for a tracked file under a dot directory. The one case it will not act on by itself is a file under a dot directory that git does not track yet — commit that one yourself, or add it to `.gitignore`. See [What gets committed](#what-gets-committed).
 
 There is no override flag. What is being checked is whether an undo exists at all, and a gate with a `--force` is a gate that documents the thing it was meant to prevent.
 
@@ -242,7 +242,7 @@ Two mechanisms, and only one is the guarantee.
 
 The filesystem notifier makes an edit visible in under a second when it fires. It cannot be relied on: the vault sits on a cloud-sync mount where events are dropped and coalesced, and on macOS each watched directory costs a file descriptor.
 
-The periodic reconcile pass is the guarantee. It walks the vault, compares mtime and size against the index, and adds, updates, or drops whatever disagrees. On an unchanged corpus it is a stat-and-compare. Both paths commit what they find — a change the notifier missed would otherwise be indexed and never committed, which is the half of the vault with no undo.
+The periodic reconcile pass is the guarantee. It walks the vault, compares mtime and size against the index, and adds, updates, or drops whatever disagrees. On an unchanged corpus it is a stat-and-compare. Both paths finish by committing — a change the notifier missed would otherwise be indexed and never committed, which is the half of the vault with no undo.
 
 `agentmd status` reports how many directories were actually watched, how many could not be, and what the last pass did.
 
@@ -250,7 +250,19 @@ The periodic reconcile pass is the guarantee. It walks the vault, compares mtime
 
 Every change is committed with an `origin:` trailer naming where it came from: `capture` for the daemon's own writes, `phone` for anything under `daemon.phone_paths`, `self-probe` for the daily round-trip check, `local-edit` for everything else.
 
-The vault is not yet a git repository, and the daemon will not create one — that migration is a deliberate later step. Until it runs, `serve` logs `git DEGRADED` at every start, each batch reports that it was indexed and not committed, `agentmd status` reports `degraded: not a repository`, and `agentmd gate corpus-write` refuses. There is no undo for a bad write until the vault becomes a repository.
+### What gets committed
+
+**Whatever git reports dirty**, not whatever the indexer accepted. Those are different questions and conflating them was a real defect: until 2026-08-10 an event had to be markdown to reach the commit path, while `agentmd gate corpus-write` refused on anything `git status` could see. Every non-markdown file fell in the gap — written, never committed, permanently dirty, gate shut, with no override to get past it.
+
+So indexing and committing are now separate decisions. Only markdown is indexed, because FTS5 has no use for a PNG. Any change to a tracked tree wakes the committer, which then asks git what is actually dirty and commits that.
+
+`.gitignore` is the policy surface. The daemon holds no second opinion about which files belong in history — which is also where the older question of whether runtime state belongs in the undo story is answered, file by file, by a list you already edit and version.
+
+One rule sits above `.gitignore`, and it is a safety rail rather than a policy: **a file under a dot directory is committed only if git already tracks it.** Drive stages every upload through `.tmp.driveupload`, and that churn peaked above 1,400 files during the git-transport cutover; a vault whose ignore list is missing or wrong would otherwise write all of it permanently into history. Trackedness is the test rather than a list of directory names, because it puts the line where intent already is — `.obsidian/app.json` is tracked because someone chose to version it, so the daemon maintains it, while `.tmp.driveupload/3700.md` is untracked because nobody chose anything. The cost, accepted: a genuinely new file under a dot directory has to be committed by hand once, after which the daemon keeps it current.
+
+Dot directories never wake the committer either, so a tracked file under one is picked up by the reconcile pass rather than within a second. A long sync would otherwise keep resetting the debounce and starve the very commit this exists to make.
+
+A file large enough to be surprising is committed and **logged as a warning**, not skipped. Skipping was considered and rejected: a skipped file stays dirty, and a dirty worktree shuts the gate, which is the defect this design removes. Committing is also the recoverable direction — `.gitignore` plus `git rm --cached` undoes it with the control you already use, whereas a gate held shut by a file the daemon refuses to touch has no lever at all.
 
 ## Capture dates
 

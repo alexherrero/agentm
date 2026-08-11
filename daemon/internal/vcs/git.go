@@ -206,6 +206,37 @@ func (r *Repo) Dirty() ([]string, error) {
 	return r.foldStatus(status)
 }
 
+// Tracked reports whether git already has an index entry for this path.
+//
+// The caller that needs this is the committer's dot-directory rule: a file under
+// a dot directory that git already tracks is one the operator deliberately
+// versioned (`.obsidian/app.json`), while an untracked file appearing there is
+// the sync client's transport churn (`.tmp.driveupload/…`), which peaked above
+// 1,400 files during the git-transport cutover and must never enter history.
+// Trackedness is the distinction; a hardcoded list of sync-client directory
+// names would go stale the first time a client renamed one.
+//
+// Checked against the composed spelling, since that is what the index holds.
+func (r *Repo) Tracked(rel string) bool {
+	if !r.available {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	idx, err := r.repo.Storer.Index()
+	if err != nil {
+		// Unknown is not "untracked": refusing to commit a real file because the
+		// index momentarily would not open is the wrong way to be wrong, and the
+		// caller only consults this for dot-directory paths anyway.
+		return false
+	}
+	if _, err := idx.Entry(r.composed(rel)); err == nil {
+		return true
+	}
+	return false
+}
+
 // Commit stages the given vault-relative paths and records one commit attributed
 // to `origin`.
 //

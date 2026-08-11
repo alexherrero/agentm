@@ -114,8 +114,12 @@ func Evaluate(cfg *config.Config) (Result, error) {
 				"%d path(s) carry uncommitted changes, so undoing this job and undoing "+
 					"whatever else is in the worktree would be the same operation: %s",
 				len(dirty), sample(dirty)),
-			Remedy: "let the daemon commit them (it does so within a second of the last " +
-				"write), or commit them yourself",
+			Remedy: "let the daemon commit them — within a second of the last write for " +
+				"an ordinary file, or on the next reconcile pass for a tracked file " +
+				"under a dot directory. The one case it will not act on by itself is a " +
+				"file under a dot directory that git does not track yet, since that is " +
+				"how a sync client's staging churn would otherwise enter history: " +
+				"commit that one yourself, or add it to .gitignore",
 		})
 		return res, ErrRefused
 	}

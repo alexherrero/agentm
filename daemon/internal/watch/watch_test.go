@@ -21,17 +21,21 @@ func TestRelevant_DriveStagingChurnIsIgnored(t *testing.T) {
 	w := New(&config.Config{VaultPath: vault}, nil, nil, nil)
 
 	cases := []struct {
-		name string
-		rel  string
-		op   fsnotify.Op
-		want string // "" means the event must be dropped
-		why  string
+		name  string
+		rel   string
+		op    fsnotify.Op
+		want  string // the path to index; "" means nothing is indexed
+		index bool
+		wake  bool // whether the event should start a debounce window
+		why   string
 	}{
 		{
-			name: "an ordinary note",
-			rel:  "personal/2026/08/a-note.md",
-			op:   fsnotify.Write,
-			want: "personal/2026/08/a-note.md",
+			name:  "an ordinary note",
+			rel:   "personal/2026/08/a-note.md",
+			op:    fsnotify.Write,
+			want:  "personal/2026/08/a-note.md",
+			index: true,
+			wake:  true,
 		},
 		{
 			name: "drive staging at the vault root",
@@ -49,7 +53,9 @@ func TestRelevant_DriveStagingChurnIsIgnored(t *testing.T) {
 			name: "obsidian's own state",
 			rel:  ".obsidian/workspace.md",
 			op:   fsnotify.Write,
-			why:  "the same skip the reconcile walk already applies",
+			why: "a dot directory never wakes the committer — a long Drive sync " +
+				"would otherwise keep resetting the debounce and starve the commit. " +
+				"Tracked files under one reach a commit via the reconcile tick.",
 		},
 		{
 			name: "a dotfile",
@@ -60,6 +66,12 @@ func TestRelevant_DriveStagingChurnIsIgnored(t *testing.T) {
 			name: "a non-markdown file",
 			rel:  "personal/attachment.png",
 			op:   fsnotify.Write,
+			wake: true,
+			why: "not indexed — FTS5 has no use for a PNG — but a real change to a " +
+				"tracked tree, so it wakes the committer, which then asks git what " +
+				"is dirty. Before this split the same .md test answered both " +
+				"questions, and every non-markdown file sat uncommitted forever " +
+				"while the gate refused on it.",
 		},
 		{
 			name: "a permission change on a real note",
@@ -75,17 +87,24 @@ func TestRelevant_DriveStagingChurnIsIgnored(t *testing.T) {
 				Name: filepath.Join(vault, filepath.FromSlash(tc.rel)),
 				Op:   tc.op,
 			}
-			rel, ok := w.relevant(ev)
+			rel, index, wake := w.relevant(ev)
+			if index != tc.index {
+				t.Errorf("%s: indexed=%v, want %v.\n  %s", tc.rel, index, tc.index, tc.why)
+			}
+			if wake != tc.wake {
+				t.Errorf("%s: woke the committer=%v, want %v.\n  %s",
+					tc.rel, wake, tc.wake, tc.why)
+			}
 			if tc.want == "" {
-				if ok || rel != "" {
-					t.Errorf("%s reached the index and commit path (rel=%q, ok=%v).\n  %s",
-						tc.rel, rel, ok, tc.why)
+				if rel != "" {
+					t.Errorf("%s resolved to %q but must not be indexed.\n  %s",
+						tc.rel, rel, tc.why)
 				}
 				return
 			}
-			if !ok || rel != tc.want {
-				t.Errorf("%s was dropped or mis-resolved: rel=%q ok=%v, want %q",
-					tc.rel, rel, ok, tc.want)
+			if rel != tc.want {
+				t.Errorf("%s was dropped or mis-resolved: rel=%q, want %q",
+					tc.rel, rel, tc.want)
 			}
 		})
 	}
@@ -103,9 +122,9 @@ func TestRelevant_ACreatedDotDirectoryIsNotWatched(t *testing.T) {
 		Name: filepath.Join(vault, ".tmp.driveupload"),
 		Op:   fsnotify.Create,
 	}
-	if rel, ok := w.relevant(ev); ok || rel != "" {
+	if rel, index, wake := w.relevant(ev); index || wake || rel != "" {
 		t.Errorf("a staging directory was picked up as a new subtree to watch "+
-			"(rel=%q, ok=%v)", rel, ok)
+			"(rel=%q, index=%v, wake=%v)", rel, index, wake)
 	}
 }
 
@@ -117,8 +136,9 @@ func TestRelevant_PathsOutsideTheVaultAreDropped(t *testing.T) {
 	w := New(&config.Config{VaultPath: vault}, nil, nil, nil)
 
 	outside := filepath.Join(filepath.Dir(vault), "elsewhere", "a-note.md")
-	if rel, ok := w.relevant(fsnotify.Event{Name: outside, Op: fsnotify.Write}); ok {
-		t.Errorf("a path outside the vault was accepted as %q", rel)
+	if rel, index, wake := w.relevant(fsnotify.Event{Name: outside, Op: fsnotify.Write}); index || wake {
+		t.Errorf("a path outside the vault was accepted as %q (index=%v, wake=%v)",
+			rel, index, wake)
 	}
 }
 
