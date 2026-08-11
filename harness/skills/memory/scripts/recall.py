@@ -253,6 +253,71 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
+# An entry too big to inject whole is excerpted rather than dropped (see
+# `_apply_token_budget`'s second pass). The excerpt may claim at most this share
+# of the budget, so one enormous hit cannot swallow the room several oversized
+# hits should be splitting — 1/k at the default k, which is the fair share in
+# the case that motivated this: every hit oversized, every slot yielding nothing.
+_EXCERPT_BUDGET_SHARE = 1.0 / DEFAULT_K
+
+# Below this an excerpt is not worth emitting: the header and the truncation
+# marker are themselves ~65 tokens, and an allowance that leaves room for little
+# else spends a slot on ceremony instead of content.
+_MIN_EXCERPT_TOKENS = 200
+
+# Headroom over `token_budget` for the bounded entry read in `prompt_submit`.
+# Covers the frontmatter (which is stripped before the body is measured, so it
+# is not part of the budget but is part of the bytes) plus a margin, and
+# guarantees the read cap sits strictly above the largest block that could ever
+# fit whole — see the read-cap comment in `prompt_submit`.
+_ENTRY_READ_SLACK_CHARS = 8192
+
+# Marker that opens an excerpted block's body. Leads the body rather than
+# trailing it: the agent has to know a block is partial before reading it, not
+# after acting on it.
+_EXCERPT_MARKER = "> [!NOTE] Excerpt only"
+
+
+def _truncate_to_tokens(text: str, allowance_tokens: int) -> str:
+    """Cut `text` down to at most `allowance_tokens` estimated tokens.
+
+    Breaks on the last whitespace before the limit so an excerpt does not end
+    mid-word, but only when that boundary is actually near the limit — a run of
+    text with no whitespace in its last quarter should lose a few characters,
+    not a quarter of its allowance. Returns `text` unchanged when it already
+    fits, "" for a non-positive allowance.
+    """
+    if allowance_tokens <= 0:
+        return ""
+    limit = allowance_tokens * 4  # `_estimate_tokens` is len(chars) // 4
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    boundary = max(cut.rfind(" "), cut.rfind("\n"))
+    if boundary >= int(limit * 0.75):
+        cut = cut[:boundary]
+    return cut.rstrip()
+
+
+def _read_entry_head(path: Path, max_chars: int) -> tuple[str, bool]:
+    """Read `path`, stopping after `max_chars` characters.
+
+    Returns `(text, was_clipped)`. A `max_chars` of 0 or less reads the whole
+    file, which is what an unlimited token budget asks for.
+
+    Text mode, not bytes: the cut then falls on a character boundary and can
+    never split a multi-byte character in half. Reading one character past the
+    cap is how the clipped flag is learned without a second syscall.
+    """
+    if max_chars <= 0:
+        return path.read_text(encoding="utf-8"), False
+    with path.open("r", encoding="utf-8") as fh:
+        text = fh.read(max_chars + 1)
+    if len(text) > max_chars:
+        return text[:max_chars], True
+    return text, False
+
+
 # Always-load priority tiers (R0.8 / voice#0). `priority:` frontmatter maps
 # to a sort rank consumed before the token budget: `high` first, unset/
 # unrecognized in the middle, `low` last — so a large low-priority entry
@@ -320,6 +385,8 @@ def _apply_token_budget(
     blocks: list[str],
     slugs: list,
     token_budget: int,
+    *,
+    excerpt=None,
 ) -> tuple[list[str], list, int]:
     """Fit blocks into the token budget (highest-salience/priority first).
 
@@ -329,6 +396,21 @@ def _apply_token_budget(
     a large one overflows, rather than the entire tail being dropped at the
     first entry that doesn't fit. Returns (kept_blocks, kept_slugs,
     omitted_count); output order matches the input order (not a repack).
+
+    `excerpt`, when given, gives those skipped blocks a second pass rather than
+    leaving them dropped. It is called as `excerpt(index, allowance_tokens)` and
+    returns a smaller replacement block for `blocks[index]`, or None when it
+    cannot build one — in which case that block stays omitted, exactly as
+    before. Passing nothing keeps the skip-only behavior.
+
+    Two passes, not one, and the order matters. Whole blocks are packed first,
+    so nothing that fits today starts arriving excerpted tomorrow; only the
+    budget those blocks left over is spent on excerpts, and a single hit may
+    claim at most `_EXCERPT_BUDGET_SHARE` of the whole budget so several
+    oversized hits split the remainder instead of the first one taking it all.
+    The problem this solves is a block that can never fit at any budget — a
+    1MB append-only log the daemon ranks highly for many queries — spending one
+    of k retrieval slots and yielding nothing at all.
 
     `slugs` is measured only by its length matching `blocks` — each element
     rides along with its block and is never itself inspected — so a caller
@@ -340,16 +422,37 @@ def _apply_token_budget(
     """
     if token_budget <= 0 or not blocks:
         return blocks, slugs, 0
-    kept_blocks: list[str] = []
-    kept_slugs: list[str] = []
+    kept: dict[int, str] = {}
+    overflowed: list[int] = []
     tokens_used = 0
-    for block, slug in zip(blocks, slugs):
+    for i, block in enumerate(blocks):
         est = _estimate_tokens(block)
         if tokens_used + est > token_budget:
-            continue  # this one doesn't fit — a smaller later entry still might
-        kept_blocks.append(block)
-        kept_slugs.append(slug)
+            overflowed.append(i)  # doesn't fit — a smaller later entry still might
+            continue
+        kept[i] = block
         tokens_used += est
+
+    if excerpt is not None:
+        cap = max(1, int(token_budget * _EXCERPT_BUDGET_SHARE))
+        for i in overflowed:
+            allowance = min(cap, token_budget - tokens_used)
+            if allowance < _MIN_EXCERPT_TOKENS:
+                # `tokens_used` only grows, so nothing later in the order will
+                # clear the floor either.
+                break
+            piece = excerpt(i, allowance)
+            if not piece:
+                continue
+            est = _estimate_tokens(piece)
+            if tokens_used + est > token_budget:
+                continue
+            kept[i] = piece
+            tokens_used += est
+
+    order = sorted(kept)
+    kept_blocks = [kept[i] for i in order]
+    kept_slugs = [slugs[i] for i in order]
     omitted = len(blocks) - len(kept_blocks)
     return kept_blocks, kept_slugs, omitted
 
@@ -519,6 +622,12 @@ def session_start(
     # Fit as many as possible within budget (skip-and-continue — see
     # _apply_token_budget); this is no longer a "highest N survive, tail
     # dropped" truncation, it's a best-fit pass over the priority order.
+    #
+    # No `excerpt=` here, deliberately. An always-load entry is a standing
+    # convention the agent is meant to follow, and half a rule is worse than a
+    # named absence — an excerpt that stops before "except when X" reads as the
+    # whole rule. A recall hit is context rather than instruction, so
+    # `prompt_submit` does excerpt; this side stays all-or-nothing.
     blocks, loaded_slugs, token_budget_omitted = _apply_token_budget(
         blocks, loaded_slugs, token_budget
     )
@@ -1198,7 +1307,13 @@ def query(
     return merged[:k]
 
 
-def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
+def _format_recall_result(
+    result: dict,
+    body: str,
+    fm: dict[str, str],
+    *,
+    excerpt_of_tokens: int | None = None,
+) -> str:
     """Format a single recall result for stdout injection.
 
     Header includes slug + kind + the ranking evidence so the agent sees why
@@ -1228,8 +1343,57 @@ def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
         header += f", tier: {result['lifecycle_tier']}"
     if result.get("external"):
         header += ", outside the memory root"
+    if excerpt_of_tokens is not None:
+        header += f", excerpt of ~{excerpt_of_tokens:,} tokens"
     header += ")"
     return f"{header}\n\n{body.strip()}"
+
+
+def _build_excerpt_block(
+    result: dict,
+    fm: dict[str, str],
+    body: str,
+    *,
+    allowance_tokens: int,
+    full_tokens: int,
+    token_budget: int,
+) -> str | None:
+    """Build a partial block for a hit that will not fit whole.
+
+    Composition, in the order the agent reads it: the marker, so "this is
+    partial" arrives before the content; then the daemon's match snippet when
+    there is one, because it is centred on the region that matched and a head
+    excerpt of a long append-only log is centred on its oldest lines instead;
+    then as much of the entry's opening as the allowance still affords, which
+    at least says what the document is.
+
+    Returns None when the allowance cannot cover the marker and header, so the
+    caller omits the entry rather than emitting a block that is all frame.
+    """
+    marker = (
+        f"{_EXCERPT_MARKER} — this entry is ~{full_tokens:,} tokens, past this "
+        f"recall's {token_budget:,}-token budget. Read "
+        f"`{result.get('path', '?')}` in the vault for anything not shown here."
+    )
+    parts = [marker]
+    snippet = (result.get("snippet") or "").strip()
+    if snippet:
+        parts.append(f"**Matched here:** {snippet}")
+
+    scaffold = _format_recall_result(
+        result, "\n\n".join(parts), fm, excerpt_of_tokens=full_tokens
+    )
+    # Reserve the separator and ellipsis the body append costs, so the finished
+    # block lands under the allowance rather than one rounding away from it.
+    remaining = allowance_tokens - _estimate_tokens(scaffold) - 4
+    if remaining <= 0:
+        return None
+    head = _truncate_to_tokens(body.strip(), remaining)
+    if head:
+        parts.append(head + " …")
+    return _format_recall_result(
+        result, "\n\n".join(parts), fm, excerpt_of_tokens=full_tokens
+    )
 
 
 def trace(
@@ -1441,7 +1605,9 @@ def _daemon_search(
     Returns results in the same shape `query()` returns — `path` (vault-relative
     POSIX), `slug`, `sim`, `keyword`, `combined` — so every downstream consumer
     works unchanged, plus `score`/`source` recording that this ranking came from
-    the daemon's BM25 rather than this module's sim+keyword merge.
+    the daemon's BM25 rather than this module's sim+keyword merge, plus
+    `snippet` when the daemon returned one (the match-centred extract
+    `_build_excerpt_block` prefers over a head excerpt).
 
     Returns None when the daemon could not answer, which is the caller's signal
     to fall back to the in-process engine. **None and [] are different answers,
@@ -1553,6 +1719,14 @@ def _daemon_search(
             # Not a curated memory entry: readable and rankable, but it gets no
             # heat count and no decay-clock reset (see prompt_submit).
             entry["external"] = True
+        snippet = item.get("snippet")
+        if isinstance(snippet, str) and snippet.strip():
+            # Carried for the excerpt path alone (`_build_excerpt_block`). The
+            # daemon computes it with FTS5's `snippet()` around the matched
+            # region, which is the one view of an oversized entry that is about
+            # the query rather than about the top of the file. Whitespace is
+            # collapsed because it arrives folded across the note's line breaks.
+            entry["snippet"] = " ".join(snippet.split())
         out.append(entry)
 
     if status is not None:
@@ -1683,6 +1857,18 @@ def prompt_submit(
     raw_blocks: list[str] = []
     raw_slugs: list[str] = []
     raw_hits: list[dict] = []
+    raw_sources: list[dict] = []  # excerpt inputs, index-aligned with raw_blocks
+    # Reading a whole entry only to learn it cannot be injected is I/O spent
+    # reaching a conclusion the file's size already gives away, and the live
+    # vault's `_harness/progress.md` is a megabyte the daemon ranks highly for a
+    # great many queries. So read a bounded head instead. `token_budget` tokens
+    # is the largest block that could ever fit whole, and the slack sits above
+    # it — which means any read that gets clipped here produces a block that
+    # overflows the first pass of `_apply_token_budget` by construction, and
+    # lands in the excerpt pass rather than being mistaken for a whole entry.
+    read_cap_chars = (
+        0 if token_budget <= 0 else token_budget * 4 + _ENTRY_READ_SLACK_CHARS
+    )
     # Part G (#46): lazy-import heat_policy for on-demand hit recording.
     # Best-effort — missing heat_policy never blocks the recall pipeline.
     try:
@@ -1701,7 +1887,12 @@ def prompt_submit(
     for rank, result in enumerate(results, start=1):
         md_path = vault / result["path"]
         try:
-            content = md_path.read_text(encoding="utf-8")
+            content, clipped = _read_entry_head(md_path, read_cap_chars)
+            # Only the clipped case needs the file's true size, and only to
+            # report it. `st_size` is bytes where `_estimate_tokens` counts
+            # characters; they agree on ASCII and the figure is printed as an
+            # estimate either way.
+            full_chars = md_path.stat().st_size if clipped else len(content)
         except (OSError, UnicodeDecodeError):
             continue
         fm, body = _parse_frontmatter(content)
@@ -1714,7 +1905,20 @@ def prompt_submit(
             continue
         raw_blocks.append(_format_recall_result(result, body, fm))
         raw_slugs.append(result["slug"])
-        raw_hits.append({**result, "rank": rank})
+        # The daemon's snippet rides on `result` for the excerpt path only. The
+        # ledger records evidence about a hit, not the hit's own text, so it
+        # stays out of what gets written there.
+        raw_hits.append(
+            {**{k: v for k, v in result.items() if k != "snippet"}, "rank": rank}
+        )
+        raw_sources.append(
+            {
+                "result": result,
+                "fm": fm,
+                "body": body,
+                "full_tokens": max(1, full_chars // 4),
+            }
+        )
         # Record the on-demand hit for heat tracking (best-effort). Skipped for
         # `external` hits — notes outside the memory root are readable context,
         # not curated memory, and heat/decay bookkeeping on them would score a
@@ -1738,11 +1942,37 @@ def prompt_submit(
     # entry's evidence to a kept slug. _apply_token_budget only ever
     # measures `blocks`, so packing this payload cannot change which
     # blocks survive (recall-trace, Loose Ends Release 8).
+    #
+    # A hit that overflows is excerpted rather than dropped (`excerpt=` below).
+    # All-or-nothing per entry meant an entry too large to ever fit — the
+    # vault's megabyte-scale `progress.md`, which the daemon ranks highly for
+    # many queries — spent one of k slots and injected nothing, so a recall
+    # could honestly report five hits and hand the agent an empty context.
+    kept_pairs_in = list(zip(raw_slugs, raw_hits))
+
+    def _excerpt_for(index: int, allowance_tokens: int) -> str | None:
+        source = raw_sources[index]
+        block = _build_excerpt_block(
+            source["result"],
+            source["fm"],
+            source["body"],
+            allowance_tokens=allowance_tokens,
+            full_tokens=source["full_tokens"],
+            token_budget=token_budget,
+        )
+        if block is not None:
+            # Marked on the hit itself, so the count below reflects what
+            # survived the budget rather than what was offered to it — and so
+            # `memory-recall trace` can say a hit surfaced only in part.
+            kept_pairs_in[index][1]["excerpt"] = True
+        return block
+
     blocks, kept_pairs, token_budget_omitted = _apply_token_budget(
-        raw_blocks, list(zip(raw_slugs, raw_hits)), token_budget
+        raw_blocks, kept_pairs_in, token_budget, excerpt=_excerpt_for
     )
     loaded_slugs = [slug for slug, _hit in kept_pairs]
     kept_hits = [hit for _slug, hit in kept_pairs]
+    token_budget_excerpted = sum(1 for _slug, hit in kept_pairs if hit.get("excerpt"))
 
     # L1 (ledger ruling 6): one per-recall counter event, query hashed (never
     # raw text) + the slugs actually surfaced after truncation. Best-effort,
@@ -1767,9 +1997,15 @@ def prompt_submit(
             if recall_status.get("engine") == "daemon"
             else "semantic+keyword merge"
         )
+        shown = f"top {len(blocks)} by {ranked_by}"
+        if token_budget_excerpted > 0:
+            shown += (
+                f"; {token_budget_excerpted} too large to inject whole and shown "
+                "as excerpts"
+            )
         print(
-            f"The following entries match your prompt (top {len(blocks)} by "
-            f"{ranked_by}; deduped against always-load set).",
+            f"The following entries match your prompt ({shown}; deduped against "
+            "always-load set).",
             file=stdout,
         )
         print("", file=stdout)
@@ -1841,10 +2077,18 @@ def prompt_submit(
         transparency += (
             f" (WARNING: {budget_ms}ms time budget exceeded)"
         )
+    # Excerpted and omitted are named separately, never summed. An excerpted
+    # entry contributed content the agent can act on; an omitted one
+    # contributed nothing. One count covering both would restate the problem
+    # this change exists to fix as though it were still the answer.
+    budget_notes = []
+    if token_budget_excerpted > 0:
+        budget_notes.append(f"{token_budget_excerpted} entries excerpted to fit")
     if token_budget_omitted > 0:
+        budget_notes.append(f"{token_budget_omitted} entries omitted")
+    if budget_notes:
         transparency += (
-            f" (token budget: {token_budget_omitted} entries omitted; "
-            f"budget={token_budget:,})"
+            f" (token budget: {', '.join(budget_notes)}; budget={token_budget:,})"
         )
     print(transparency, file=stderr)
     return 0
