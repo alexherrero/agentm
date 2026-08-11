@@ -98,6 +98,10 @@ def main(argv=None):
     ap.add_argument("--no-url", required=True)
     ap.add_argument("--al-vault", required=True)
     ap.add_argument("--gold-set", required=True)
+    ap.add_argument("--expected-path-prefix", default="",
+                    help="prepended to every expected path; pass 'Agent' when the "
+                         "corpus root is the whole vault rather than the agent tree "
+                         "(post-2026-08-10 layout)")
     ap.add_argument("--week1-report", required=True,
                     help="the 2026-08-06 Opus Arm A scorecard, for its recorded queries")
     ap.add_argument("--surface-replay", action="store_true",
@@ -108,6 +112,12 @@ def main(argv=None):
 
     gold = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
     gold = gold["entries"] if isinstance(gold, dict) else gold
+    _prefix = (args.expected_path_prefix or "").strip().strip("/")
+    if _prefix:
+        for g in gold:
+            g["expected_note_paths"] = [
+                f"{_prefix}/{p}" for p in g.get("expected_note_paths", [])
+            ]
     by_id = {g["id"]: g for g in gold}
 
     w1 = json.loads(Path(args.week1_report).read_text(encoding="utf-8"))

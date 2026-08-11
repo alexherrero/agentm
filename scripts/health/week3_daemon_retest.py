@@ -379,6 +379,10 @@ def main(argv=None):
         description="Run the week-1 gold set against a running agentmd daemon.",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--gold-set", required=True)
+    ap.add_argument("--expected-path-prefix", default="",
+                    help="prepended to every expected path; pass 'Agent' when the "
+                         "corpus root is the whole vault rather than the agent tree "
+                         "(post-2026-08-10 layout)")
     ap.add_argument("--daemon-url", required=True,
                     help="the daemon's MCP endpoint, e.g. http://127.0.0.1:51468/mcp")
     ap.add_argument("--copy-name", required=True,
@@ -392,9 +396,30 @@ def main(argv=None):
     ap.add_argument("--quiet", action="store_true")
     args = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
-    entries = w1.load_gold_set(args.gold_set)
+    entries = w1.load_gold_set(args.gold_set, args.expected_path_prefix)
     if args.limit:
         entries = entries[:args.limit]
+
+    # The same fail-loud week1 does, and for a sharper reason here: this harness
+    # spends a driver call per question against a real model, so a root mismatch
+    # left undetected buys a full-price run whose every score is a labeling
+    # artefact. Check before the first call, not after the last.
+    served = daemon_status(args.daemon_url).get("vault", "")
+    if served:
+        missing = w1.check_expected_paths_exist(entries, Path(served))
+        if missing:
+            print(
+                f"[week3] ERROR: {len(missing)} expected note path(s) in "
+                f"{Path(args.gold_set).name} do not exist in the corpus the daemon "
+                f"is serving ({served}). Every question pointing at one would score "
+                f"as a retrieval miss that is really a labeling error. Missing:\n  "
+                + "\n  ".join(missing[:20])
+                + (f"\n  … and {len(missing) - 20} more" if len(missing) > 20 else ""),
+                file=sys.stderr)
+            print(w1.hint_for_missing_prefix(missing, Path(served),
+                                             args.expected_path_prefix),
+                  file=sys.stderr)
+            return 2
 
     report = run_copy(
         entries, daemon_url=args.daemon_url, label=args.label,

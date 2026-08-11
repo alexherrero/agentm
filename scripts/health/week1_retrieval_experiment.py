@@ -5,8 +5,15 @@ Implements `wiki/designs/agentm-rescope-week1-experiment.md`. Takes a gold set
 and an arm, drives an agent over the vault with that arm's tools, and scores
 what it answered.
 
+    # against a pre-cutover snapshot, whose root IS the agent tree:
     python3 scripts/health/week1_retrieval_experiment.py \
         --gold-set scripts/health/fixtures/week1-gold/gold-set.json --arm A
+
+    # against the live vault or any post-2026-08-10 snapshot, whose root is the
+    # whole Obsidian folder and which therefore answers `Agent/projects/…`:
+    python3 scripts/health/week1_retrieval_experiment.py \
+        --gold-set scripts/health/fixtures/week1-gold/gold-set.json \
+        --expected-path-prefix Agent --arm A
 
 Both arms are the same driver — `claude -p`, at most six tool calls per
 question, answering with the note paths it believes are correct or with "no
@@ -136,8 +143,22 @@ def resolve_vault(arg_vault_path=None):
     return Path(p)
 
 
-def load_gold_set(path):
-    """Load and validate a gold set. Raises SystemExit with every problem at once."""
+def load_gold_set(path, expected_path_prefix=""):
+    """Load and validate a gold set. Raises SystemExit with every problem at once.
+
+    `expected_path_prefix` is prepended to every `expected_note_paths` entry.
+    The labels are written relative to the agent's own tree — `personal/…`,
+    `projects/…` — which was the vault root until the 2026-08-10 git-transport
+    cutover moved the root up to the whole Obsidian folder. A daemon serving the
+    new root answers `Agent/projects/…`, and `score_at_k` matches by exact string
+    equality, so the same labels need `Agent/` in front of them to score that
+    corpus and nothing in front of them to score a pre-cutover snapshot.
+
+    Keeping one labeled set and varying the prefix is deliberate. A second copy
+    of the file with the paths rewritten drifts the moment either copy is
+    relabeled, and the drift is invisible: both files stay valid JSON and both
+    keep scoring, just against different ground truth.
+    """
     path = Path(path)
     if not path.exists():
         raise SystemExit(f"[week1] gold set not found: {path}")
@@ -163,6 +184,13 @@ def load_gold_set(path):
             problems.append(f"{where}: source {src!r} not in {sorted(VALID_SOURCES)}")
     if problems:
         raise SystemExit("[week1] gold set is invalid:\n  " + "\n  ".join(problems))
+
+    prefix = (expected_path_prefix or "").strip().strip("/")
+    if prefix:
+        for e in entries:
+            e["expected_note_paths"] = [
+                f"{prefix}/{p}" for p in e["expected_note_paths"]
+            ]
     return entries
 
 
@@ -180,6 +208,44 @@ def check_expected_paths_exist(entries, vault):
             if not (vault / p).exists():
                 missing.add(p)
     return sorted(missing)
+
+
+def hint_for_missing_prefix(missing, vault, current_prefix=""):
+    """Diagnose a whole-set miss as a root mismatch, and name the fix.
+
+    Every expected path missing at once almost never means the corpus lost every
+    labeled note. It means the gold set and the corpus disagree about where the
+    root is — which is what the 2026-08-10 cutover did to every label written
+    before it. Left as a bare "N paths missing" list that reads as catastrophe;
+    the difference between the two is one directory level, so say which.
+
+    Searches the corpus's own top-level directories rather than assuming
+    `Agent/`, so it keeps working if the tree is ever renamed again.
+    """
+    if not missing:
+        return ""
+    probe = list(missing)[:20]
+    if current_prefix:
+        stripped = [p[len(current_prefix.strip('/')) + 1:] for p in probe
+                    if p.startswith(current_prefix.strip('/') + "/")]
+        if stripped and all((vault / p).exists() for p in stripped):
+            return (f"\n[week1] HINT: every missing path resolves with no prefix. "
+                    f"Drop --expected-path-prefix {current_prefix!r} — this corpus is "
+                    f"rooted at the agent tree, not the whole vault.")
+    try:
+        tops = sorted(d.name for d in vault.iterdir() if d.is_dir()
+                      and not d.name.startswith("."))
+    except OSError:
+        return ""
+    for top in tops:
+        if all((vault / top / p).exists() for p in probe):
+            return (f"\n[week1] HINT: every missing path resolves under {top!r}. "
+                    f"Re-run with --expected-path-prefix {top} — the gold set is "
+                    f"labeled relative to that subtree, and this corpus is rooted "
+                    f"one level above it.")
+    return ("\n[week1] HINT: no single top-level directory resolves them all, so "
+            "this is real label drift rather than a root mismatch. Check whether "
+            "the notes moved or were archived.")
 
 
 # ---------------------------------------------------------------------------
@@ -736,6 +802,10 @@ def main(argv=None):
         description="Run one arm of the week-1 retrieval experiment.",
         formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--gold-set", required=True, help="path to the gold-set JSON")
+    ap.add_argument("--expected-path-prefix", default="",
+                    help="prepended to every expected path; pass 'Agent' when the "
+                         "corpus root is the whole vault rather than the agent tree "
+                         "(post-2026-08-10 layout)")
     ap.add_argument("--arm", required=True, choices=("A", "B"))
     ap.add_argument("--vault-path", default=None,
                     help="override; normally resolved from the kernel config")
@@ -795,7 +865,7 @@ def main(argv=None):
         penalty = None
 
     vault = resolve_vault(args.vault_path)
-    entries = load_gold_set(args.gold_set)
+    entries = load_gold_set(args.gold_set, args.expected_path_prefix)
     if args.limit:
         entries = entries[:args.limit]
 
@@ -808,6 +878,8 @@ def main(argv=None):
             f"labeling error, and the arms could not be compared honestly. "
             f"Missing:\n  " + "\n  ".join(missing),
             file=sys.stderr)
+        print(hint_for_missing_prefix(missing, vault, args.expected_path_prefix),
+              file=sys.stderr)
         return 2
 
     if args.arm == "B" and args.embed_mode == "stub":

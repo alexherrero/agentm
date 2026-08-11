@@ -1549,5 +1549,94 @@ class TestSurfaceStats(unittest.TestCase):
         self.assertIsNone(w1._surface_stats([])["flagged_share"])
 
 
+GOLD_TWO_ENTRIES = {
+    "entries": [
+        {"id": "q1", "question": "where is the vault path convention?",
+         "expected_note_paths": ["personal/_always-load/vault-path.md"],
+         "stratum": "distinctive-token", "source": "transcript"},
+        {"id": "q2", "question": "nothing answers this",
+         "expected_note_paths": [], "stratum": "negative", "source": "transcript"},
+    ]
+}
+
+
+class TestExpectedPathPrefix(unittest.TestCase):
+    """One labeled set, two corpus roots.
+
+    Labels are relative to the agent tree; the 2026-08-10 cutover moved the
+    corpus root one level above it. Every expected path below is written out by
+    hand rather than built by calling the prefix logic being tested.
+    """
+
+    def _gold_file(self, td: str) -> Path:
+        p = Path(td) / "gold.json"
+        p.write_text(json.dumps(GOLD_TWO_ENTRIES), encoding="utf-8")
+        return p
+
+    def test_no_prefix_leaves_paths_untouched(self):
+        with tempfile.TemporaryDirectory() as td:
+            entries = w1.load_gold_set(self._gold_file(td))
+        self.assertEqual(entries[0]["expected_note_paths"],
+                         ["personal/_always-load/vault-path.md"])
+
+    def test_prefix_is_prepended(self):
+        with tempfile.TemporaryDirectory() as td:
+            entries = w1.load_gold_set(self._gold_file(td), "Agent")
+        self.assertEqual(entries[0]["expected_note_paths"],
+                         ["Agent/personal/_always-load/vault-path.md"])
+
+    def test_prefix_slashes_do_not_double_up(self):
+        with tempfile.TemporaryDirectory() as td:
+            entries = w1.load_gold_set(self._gold_file(td), "/Agent/")
+        self.assertEqual(entries[0]["expected_note_paths"],
+                         ["Agent/personal/_always-load/vault-path.md"])
+
+    def test_negative_stratum_stays_empty_under_a_prefix(self):
+        """An empty expected list means 'no note answers this' — prefixing it
+        must not invent a path, or the negative stratum stops being negative."""
+        with tempfile.TemporaryDirectory() as td:
+            entries = w1.load_gold_set(self._gold_file(td), "Agent")
+        self.assertEqual(entries[1]["expected_note_paths"], [])
+
+
+class TestMissingPrefixHint(unittest.TestCase):
+    """A whole-set miss is a root mismatch, and the hint has to say which way."""
+
+    def _vault(self, td: str, *rel: str) -> Path:
+        v = Path(td)
+        for r in rel:
+            p = v / r
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x", encoding="utf-8")
+        return v
+
+    def test_names_the_subtree_that_would_resolve(self):
+        with tempfile.TemporaryDirectory() as td:
+            v = self._vault(td, "Agent/personal/a.md", "Agent/personal/b.md")
+            hint = w1.hint_for_missing_prefix(
+                ["personal/a.md", "personal/b.md"], v, "")
+        self.assertIn("--expected-path-prefix Agent", hint)
+
+    def test_tells_you_to_drop_a_prefix_that_should_not_be_there(self):
+        with tempfile.TemporaryDirectory() as td:
+            v = self._vault(td, "personal/a.md")
+            hint = w1.hint_for_missing_prefix(["Agent/personal/a.md"], v, "Agent")
+        self.assertIn("Drop --expected-path-prefix", hint)
+
+    def test_real_drift_is_not_reported_as_a_root_mismatch(self):
+        """No single top-level directory resolves them — that is label drift,
+        and calling it a prefix problem would send the reader the wrong way."""
+        with tempfile.TemporaryDirectory() as td:
+            v = self._vault(td, "Agent/personal/a.md", "Other/thing.md")
+            hint = w1.hint_for_missing_prefix(
+                ["personal/a.md", "personal/gone.md"], v, "")
+        self.assertIn("real label drift", hint)
+        self.assertNotIn("--expected-path-prefix Agent", hint)
+
+    def test_no_missing_paths_produces_no_hint(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.assertEqual(w1.hint_for_missing_prefix([], Path(td), ""), "")
+
+
 if __name__ == "__main__":
     unittest.main()

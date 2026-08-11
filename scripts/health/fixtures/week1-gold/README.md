@@ -4,41 +4,54 @@ Ground truth for the week-1 retrieval experiment
 (`wiki/designs/agentm-rescope-week1-experiment.md`). Read by
 `scripts/health/week1_retrieval_experiment.py`.
 
-Three files live here:
+Two files live here:
 
 | file | what it is |
 | --- | --- |
 | `gold-set.json` | the real 60-question set, hand-labeled. A durable artifact — it outlives this experiment and becomes the ongoing recall scorecard. |
-| `gold-set-vault-root.json` | the same 60 questions with every expected path prefixed `Agent/`. Same labels, same strata — only the path root differs. |
 | `smoke-set.json` | eight throwaway questions written to test the runner. Not a gold set. Nothing measured against it is a result. |
 
-## Which gold set to pass
+## The path root is a flag, not a second file
 
-`score_at_k` matches expected paths against answered paths by **exact string
-equality** — no normalization, no prefix stripping. So the file you pass has to
-share a root with the corpus the daemon is serving, and neither harness defaults
-`--gold-set`: you always name one.
+Expected paths are labeled relative to **the agent's own tree** — `personal/…`,
+`projects/…`, `external/…`. That was the vault root until the 2026-08-10
+git-transport cutover moved the root up to the whole Obsidian folder, after
+which a daemon answers `Agent/projects/…`. `score_at_k` matches by **exact
+string equality**, so the labels have to agree with the corpus about where the
+root is.
+
+One labeled set covers both. Pass `--expected-path-prefix` when the corpus is
+rooted above the agent tree:
 
 | corpus | root it serves | pass |
 | --- | --- | --- |
-| `week1-corpus-20260807.tar.gz` | the agent tree | `gold-set.json` |
-| `week3-retest-20260808.tar.gz` | the agent tree | `gold-set.json` |
-| `stage1-pre-20260810.tar.gz` | the whole vault | `gold-set-vault-root.json` |
-| `stage1-post-20260810.tar.gz` | the whole vault | `gold-set-vault-root.json` |
-| the live vault | the whole vault | `gold-set-vault-root.json` |
+| `week1-corpus-20260807.tar.gz` | the agent tree | *(no prefix)* |
+| `week3-retest-20260808.tar.gz` | the agent tree | *(no prefix)* |
+| `stage1-pre-20260810.tar.gz` | the whole vault | `--expected-path-prefix Agent` |
+| `stage1-post-20260810.tar.gz` | the whole vault | `--expected-path-prefix Agent` |
+| the live vault | the whole vault | `--expected-path-prefix Agent` |
 
-The split exists because the 2026-08-10 git-transport cutover moved the vault
-root up from the agent's own tree to the whole Obsidian folder, so the daemon
-now answers `Agent/projects/…` where it used to answer `projects/…`. The two
-frozen week-1/week-3 snapshots keep the old root forever — that is what a frozen
-snapshot is for — so the original labels stay correct for them and are left
-byte-identical, per this repo's fixture discipline: a correction is a new file,
-never a mutation of the pinned one.
+A second copy of the file with the paths rewritten was tried on 2026-08-10 and
+retired the same day: two hand-synced 60-question sets drift the moment either
+is relabeled, and the drift is silent, since both stay valid JSON and both keep
+scoring — against different ground truth. A flag cannot drift from itself.
 
-Against the live vault the original set scores **0/64** and has since the
-cutover. That is a stale label, not a retrieval regression, and any scorecard run
-against the live vault before 2026-08-10 that looked catastrophic should be
-re-read with that in mind.
+## Getting the root wrong is loud
+
+Every harness resolves expected paths against the corpus **before** the first
+driver call and aborts with exit 2 if any are missing, rather than spending a
+full run to produce scores that are labeling artefacts. The error names the
+prefix that would have worked, discovered by searching the corpus's own
+top-level directories rather than assuming `Agent/`:
+
+```
+[week1] ERROR: 64 expected note path(s) … do not exist in the vault.
+[week1] HINT: every missing path resolves under 'Agent'. Re-run with
+        --expected-path-prefix Agent — the gold set is labeled relative to
+        that subtree, and this corpus is rooted one level above it.
+```
+
+That precheck is why a root mismatch costs one second instead of a scorecard.
 
 ## Schema
 
