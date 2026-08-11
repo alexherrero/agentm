@@ -53,7 +53,7 @@ Synchronously writes a markdown entry to MemoryVault. File write returns immedia
 |---|---|---|---|
 | `<kind>` | yes | — | Entry kind (preference / workflow / fix / domain-reference / idea / etc.). Subdir name under the chosen group. |
 | `<slug>` | yes | — | Kebab-case identifier; filename stem. Validated as `^[a-z0-9-]+$`. |
-| `--group <group>` | no | `personal-private` | Memory group: `personal-private` / `personal-skills` / `projects/<project-slug>`. |
+| `--group <group>` | no | `personal-private` | Memory group: `personal-private` / `personal-skills` / `desk/projects/<project-slug>`. |
 | `--always-load` | no | false | Routes to `MemoryVault/personal-private/_always-load/<slug>.md` and sets `always_load: true` frontmatter — entry gets injected at SessionStart per the recall-loop part. Overrides `--group` (always lands in `_always-load`). |
 | `--vault-path <path>` | no | from config | Absolute path to the MemoryVault folder. Resolution order: `--vault-path` arg > `MEMORY_VAULT_PATH` env var > `~/.config/crickets/memory.yml` `vault_path:` key > error. |
 | `--tags <tag1,tag2>` | no | empty list | Comma-separated tags; written to `tags:` frontmatter list. |
@@ -65,7 +65,7 @@ The entry body (free-form markdown after the YAML frontmatter) comes from stdin 
 
 **Step 1 — Resolve vault path.** Walk the resolution order: `--vault-path` arg → `MEMORY_VAULT_PATH` env var → `~/.config/crickets/memory.yml` (`vault_path:` key). If none found, halt with `"No vault path resolved. Set --vault-path, MEMORY_VAULT_PATH, or ~/.config/crickets/memory.yml vault_path: <path>."`. Verify the resolved path exists and is a directory; halt otherwise with a clear error.
 
-**Step 2 — Validate inputs.** `<kind>` and `<slug>` must match `^[a-z0-9-]+$` (kebab-case). `--group` (if provided) must match `^[a-z0-9-]+(/[a-z0-9-]+)?$` (kebab-case; one optional `/<project-slug>` segment for `projects/<slug>`). Tags (if provided) each must match `^[a-z0-9-]+$`. Halt on any validation failure with a clear error pointing at the offending arg.
+**Step 2 — Validate inputs.** `<kind>` and `<slug>` must match `^[a-z0-9-]+$` (kebab-case). `--group` (if provided) must match `^[a-z0-9-]+(/[a-z0-9-]+)?$` (kebab-case; one optional `/<project-slug>` segment for `desk/projects/<slug>`). Tags (if provided) each must match `^[a-z0-9-]+$`. Halt on any validation failure with a clear error pointing at the offending arg.
 
 **Step 3 — Compute target path.** Two cases:
 
@@ -294,7 +294,7 @@ python3 skills/memory/scripts/ingest.py <url-or-file> \
 
 - **The full-document note** (`kind: domain-reference`, `group: personal`) — the complete extracted text, verbatim. HTML content is tag-stripped (a lightweight `<title>`/paragraph extractor, not a readability algorithm — scripts and styles are dropped, everything else becomes plain text); a local plain-text or markdown file passes through unmodified.
 - **The chunk notes** (same `kind`/`group`) — one per `chunking.py`'s `chunk_text()` output, each carrying a footer that links back to the full document and to its immediate reading-order neighbors (previous/next only — the first chunk has no "previous," the last has no "next," so the chain never cycles).
-- **Every note** carries `source_url`/`source_fetched` when the source was a URL (omitted for local files), and a `tags: [<topic>]` entry. Slugs are `<topic>-<title-slug>` for the document and `<topic>-<title-slug>-chunk-N` for each chunk, so same-topic ingests sort together even though they share the flat `group: personal` every other kind in this vault uses (the design's own "filed under `personal/domains/<topic>/`" phrasing describes the *intent* — discoverable by topic — which this achieves through slug-prefixing and tagging rather than a new per-topic directory layer `save_entry`'s `group`/`kind`/`slug` path formula has no clean way to produce without breaking the flat-`group`-per-kind convention every other entry follows).
+- **Every note** carries `source_url`/`source_fetched` when the source was a URL (omitted for local files), and a `tags: [<topic>]` entry. Slugs are `<topic>-<title-slug>` for the document and `<topic>-<title-slug>-chunk-N` for each chunk, so same-topic ingests sort together even though they share the flat `group: personal` every other kind in this vault uses (the design's own "filed under `memory/domains/<topic>/`" phrasing describes the *intent* — discoverable by topic — which this achieves through slug-prefixing and tagging rather than a new per-topic directory layer `save_entry`'s `group`/`kind`/`slug` path formula has no clean way to produce without breaking the flat-`group`-per-kind convention every other entry follows).
 
 #### Failure modes (graceful)
 
@@ -670,7 +670,7 @@ Output: one JSON record per line (`{"pass": "memory", "category": ..., "confiden
 
 ### `/memory promote`
 
-Graduates an `_idea-incubator/<slug>/` entry to a real project at `projects/<slug>/` + annotates the corresponding `Ideas.md` section. Plan #7a part 4 ships this body + the canonical Python implementation at `skills/memory/scripts/ideas_promote.py`.
+Graduates an `_idea-incubator/<slug>/` entry to a real project at `desk/projects/<slug>/` + annotates the corresponding `Ideas.md` section. Plan #7a part 4 ships this body + the canonical Python implementation at `skills/memory/scripts/ideas_promote.py`.
 
 #### Invocation shape
 
@@ -688,7 +688,7 @@ Graduates an `_idea-incubator/<slug>/` entry to a real project at `projects/<slu
 
 **Step 1 — Resolve vault path** via the chain `--vault-path` arg → `MEMORY_VAULT_PATH` env. Halt with clear next-step on failure.
 
-**Step 2 — Verify incubator entry exists** at `<vault>/personal-private/_idea-incubator/<slug>/`. If missing, halt with `"incubator entry not found: <path> (check slug; list with ls _idea-incubator/)"`. If a `projects/<slug>/` already exists, halt to avoid clobber — operator picks a new slug or removes the existing.
+**Step 2 — Verify incubator entry exists** at `<vault>/personal-private/_idea-incubator/<slug>/`. If missing, halt with `"incubator entry not found: <path> (check slug; list with ls _idea-incubator/)"`. If a `desk/projects/<slug>/` already exists, halt to avoid clobber — operator picks a new slug or removes the existing.
 
 **Step 3 — Move the directory.** `shutil.move(_idea-incubator/<slug>, projects/<slug>)`. Cross-filesystem-safe (uses copy + delete fallback). Atomic at the OS level for same-FS moves.
 
@@ -730,7 +730,7 @@ Action: [k]eep (defer) / [a]rchive / [d]elete (default: k):
 #### Failure modes (graceful)
 
 - **Slug not found** → halt step 2 with the actual path that was checked.
-- **Target collision** (`projects/<slug>/` exists) → halt with operator next-step.
+- **Target collision** (`desk/projects/<slug>/` exists) → halt with operator next-step.
 - **Cross-filesystem move** → falls back to copy+delete via shutil.move; slow but correct.
 - **Ideas.md missing** → ideas_annotation = "no_ideas_file"; promotion otherwise succeeds.
 - **A3 boundary denied** for Ideas.md write → ideas_annotation = "denied"; promotion otherwise succeeds (operator can manually annotate).
@@ -974,7 +974,7 @@ Output: one JSON per candidate at `<vault>/_meta/skill-discovery-cache/adapt-sta
 Caller dispatches `adapt-evaluator` (see [`agents/adapt-evaluator.md`](../../agents/adapt-evaluator.md)). The sub-agent:
 
 1. **Reads** each enriched candidate JSON.
-2. **Cross-references** the operator's vault (`personal-skills/` / `personal-private/_always-load/` / `projects/<repo>/conventions.md`) for fit.
+2. **Cross-references** the operator's vault (`personal-skills/` / `personal-private/_always-load/` / `desk/projects/<repo>/conventions.md`) for fit.
 3. **Classifies** with semantic judgment (HIGH / MEDIUM / LOW) — overrides Pass 1's rubric verdict when context warrants.
 4. **Writes** the watchlist entry to `<vault>/personal-private/_skill-watchlist/<source-slug>/<pattern-slug>.md` (HIGH + MEDIUM only; LOW dropped silently).
 
@@ -1071,7 +1071,7 @@ Bulk-triage `<vault>/personal/_inbox/` — the long-promised follow-up named as 
 - **merge** — a near-duplicate PAIR (similarity above threshold, not part of a larger reinforcing cluster) is proposed for merge — reuses `dream.py`'s own `difflib`-based dedup stage against the inbox pool, not a second similarity implementation.
 - **expire** — stale and unreinforced past a TTL (default 90 days since the entry's own `created` timestamp) is proposed for in-place archival (`status: expired` — never a physical delete or move).
 
-Every proposal stages through the exact `_dream-staging/<run_id>/` contract dreaming already built (`dream_confirm.py`'s `list_pending` / `confirm` / `auto_apply_batch` run unmodified against an inbox-triage run).
+Every proposal stages through the exact `desk/scratch/<run_id>/` contract dreaming already built (`dream_confirm.py`'s `list_pending` / `confirm` / `auto_apply_batch` run unmodified against an inbox-triage run).
 
 **Auto-apply is now the default (operator ruling, 2026-07-11, second pass).** The first-ever run shipped confirm-gated: every disposition proposed against the pre-existing backlog — 1,565 notes across 635 proposals — stayed pending for an explicit human confirm, regardless of kind. The operator personally reviewed and confirmed that entire first-run backlog with zero errors, then directed that confirm-gating retire going forward. **Every disposition — promote, merge, and expire alike — now auto-applies by default**, regardless of whether the source entry predates or postdates the first-run **cutover marker** (`_meta/inbox-triage-cutover.json`, stamped once, never overwritten). The cutover marker still exists and still labels which era an expire proposal's source entry belongs to (`inbox_expire` vs `inbox_expire_backlog`), but that label is now informational only — it no longer gates whether a proposal applies. Pass `--no-auto-apply` to fall back to propose-only (nothing applies until an explicit `--confirm`).
 

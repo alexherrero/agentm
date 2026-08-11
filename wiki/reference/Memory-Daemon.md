@@ -99,7 +99,7 @@ Four properties are load-bearing:
 
 - **Strength does not matter.** A 125-point sweep produced four distinct outcomes, and every weight at or below 0.6 ranked identically. There is no tuning knob because there is nothing behind one.
 - **Multiply over an over-fetch.** 200 rows are fetched, each score multiplied by the product of its classes' weights, then re-sorted. Re-ranking only the top k cannot promote the note the fragments were hiding.
-- **Filing overrides shape.** `fragment-promoted` carries no weight, so a fragment-shaped note that filing promoted keeps its score. That protects 1,288 notes, including 229 of the 232 in `personal/preferences/` — the promotion pipeline promoted their bodies verbatim, so they look mined and are filed.
+- **Filing overrides shape.** `fragment-promoted` carries no weight, so a fragment-shaped note that filing promoted keeps its score. That protects 1,288 notes, including 229 of the 232 in `memory/preferences/` — the promotion pipeline promoted their bodies verbatim, so they look mined and are filed.
 - **Never exclude.** A penalized note that is the best thing the corpus has still comes back first. Exclusion is what left recall returning nothing for four months.
 
 There is no OR query rewrite. It read as the largest available win on one run; replicated six times it is +1.25 points at p = 0.46 and costs 18.8 points of correct rejection, because a search that never returns empty hands the agent five plausible notes and it names one. When a query matches nothing, `memory_search` says so and suggests fewer or different terms instead.
@@ -171,7 +171,7 @@ RED
   index    9159 documents · last pass 41s ago        (red past 15m0s)
   git      degraded: not a repository
            no undo for a bad write, and `agentmd gate corpus-write` refuses
-  probe    ok 3h0m0s ago (round trip 11ms) · personal/2026/08/agentm-self-probe-….md
+  probe    ok 3h0m0s ago (round trip 11ms) · memory/2026/08/agentm-self-probe-….md
 ```
 
 **The thresholds are age-dominant.** Under a standing daily ingest, fifty fresh unfiled items every morning is an ordinary Tuesday; the oldest unfiled item being three days old means filing stalled. The count threshold is a backstop at a thousand — at fifty a day it takes twenty dead days to reach, by which point age has been red for seventeen of them, so it fires on its own only when a producer wrote thousands of items at once.

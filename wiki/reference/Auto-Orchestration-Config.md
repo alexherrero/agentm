@@ -82,4 +82,4 @@ The idle chain runs these bounded steps in order. The `enable_idle_chain` toggle
 
 - [Auto-orchestration](Auto-Orchestration) explains what these knobs change. It shows why the surface never nags.
 - [Tune auto-orchestration](Tune-Auto-Orchestration) provides the recipe for editing the config.
-- [AgentMemory context payload](AgentMemory-Context-Payload) details the vault folder map. These files reference the `_inbox/`, `_idea-incubator/`, `_meta/`, and `personal/` paths.
+- [AgentMemory context payload](AgentMemory-Context-Payload) details the vault folder map. These files reference the `_inbox/`, `_idea-incubator/`, `_meta/`, and `memory/` paths.
