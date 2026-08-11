@@ -405,5 +405,492 @@ class TestCLITokenBudget(unittest.TestCase):
         self.assertEqual(args.token_budget, 8000)
 
 
+# ---------------------------------------------------------------------------
+# Unit tests for _truncate_to_tokens
+# ---------------------------------------------------------------------------
+
+class TestTruncateToTokens(unittest.TestCase):
+    def test_shorter_than_allowance_is_unchanged(self):
+        text = "the quick brown fox"
+        self.assertEqual(recall._truncate_to_tokens(text, 100), text)
+
+    def test_cuts_to_allowance(self):
+        text = "word " * 1000  # 5000 chars
+        out = recall._truncate_to_tokens(text, 100)  # 100 tokens = 400 chars
+        self.assertLessEqual(len(out), 400)
+        self.assertGreater(len(out), 0)
+
+    def test_cuts_on_a_word_boundary(self):
+        text = "alpha bravo charlie delta echo foxtrot golf hotel india juliet " * 20
+        out = recall._truncate_to_tokens(text, 20)  # 80 chars
+        # No partial word at the end: the last token must be a real word.
+        self.assertIn(out.split()[-1], text.split())
+
+    def test_hard_cut_when_no_boundary_is_near(self):
+        # One unbroken run — there is no whitespace to break on, so it must
+        # still respect the allowance rather than returning the whole string.
+        text = "x" * 5000
+        out = recall._truncate_to_tokens(text, 50)
+        self.assertEqual(len(out), 200)
+
+    def test_non_positive_allowance_returns_empty(self):
+        self.assertEqual(recall._truncate_to_tokens("anything", 0), "")
+        self.assertEqual(recall._truncate_to_tokens("anything", -5), "")
+
+    def test_result_fits_the_allowance_it_was_given(self):
+        text = "lorem ipsum dolor sit amet " * 500
+        for allowance in (10, 37, 100, 250):
+            out = recall._truncate_to_tokens(text, allowance)
+            self.assertLessEqual(recall._estimate_tokens(out), allowance)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _read_entry_head (the bounded read that keeps an unusable
+# entry from costing a full-file read inside a 300ms hook budget)
+# ---------------------------------------------------------------------------
+
+class TestReadEntryHead(unittest.TestCase):
+    def _tmpfile(self, d: Path, text: str) -> Path:
+        p = d / "entry.md"
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def test_small_file_is_read_whole_and_not_flagged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self._tmpfile(Path(d), "hello world")
+            text, clipped = recall._read_entry_head(p, 1000)
+            self.assertEqual(text, "hello world")
+            self.assertFalse(clipped)
+
+    def test_large_file_is_clipped_and_flagged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self._tmpfile(Path(d), "y" * 10_000)
+            text, clipped = recall._read_entry_head(p, 500)
+            self.assertEqual(len(text), 500)
+            self.assertTrue(clipped)
+
+    def test_exactly_at_cap_is_not_flagged(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self._tmpfile(Path(d), "z" * 500)
+            text, clipped = recall._read_entry_head(p, 500)
+            self.assertEqual(len(text), 500)
+            self.assertFalse(clipped)
+
+    def test_zero_cap_reads_the_whole_file(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self._tmpfile(Path(d), "q" * 10_000)
+            text, clipped = recall._read_entry_head(p, 0)
+            self.assertEqual(len(text), 10_000)
+            self.assertFalse(clipped)
+
+    def test_multibyte_characters_are_never_split(self):
+        # A byte-mode cut at 500 would land mid-character and raise or mangle;
+        # a character-mode cut cannot.
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            p = self._tmpfile(Path(d), "é" * 2_000)
+            text, clipped = recall._read_entry_head(p, 501)
+            self.assertTrue(clipped)
+            self.assertEqual(text, "é" * 501)
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for _build_excerpt_block
+# ---------------------------------------------------------------------------
+
+class TestBuildExcerptBlock(unittest.TestCase):
+    def _result(self, **over) -> dict:
+        base = {
+            "path": "personal/huge-log.md",
+            "slug": "huge-log",
+            "sim": 0.0,
+            "keyword": 0,
+            "combined": 9.5,
+            "score": 9.5,
+            "source": "daemon",
+        }
+        base.update(over)
+        return base
+
+    def test_marker_names_the_scale_and_the_path(self):
+        block = recall._build_excerpt_block(
+            self._result(), {"kind": "unknown"}, "body text here " * 100,
+            allowance_tokens=800, full_tokens=255_271, token_budget=20_000,
+        )
+        self.assertIsNotNone(block)
+        self.assertIn(recall._EXCERPT_MARKER, block)
+        self.assertIn("255,271", block)          # the entry's real scale
+        self.assertIn("20,000", block)           # the budget it did not fit
+        self.assertIn("personal/huge-log.md", block)  # where to read the rest
+
+    def test_header_declares_the_block_partial(self):
+        block = recall._build_excerpt_block(
+            self._result(), {"kind": "project"}, "body " * 500,
+            allowance_tokens=800, full_tokens=90_000, token_budget=20_000,
+        )
+        header = block.splitlines()[0]
+        self.assertIn("excerpt of ~90,000 tokens", header)
+
+    def test_daemon_snippet_is_carried_into_the_excerpt(self):
+        snippet = "… the [vault] [git] directory sits outside the sync set …"
+        block = recall._build_excerpt_block(
+            self._result(snippet=snippet), {"kind": "unknown"}, "unrelated head " * 200,
+            allowance_tokens=800, full_tokens=255_271, token_budget=20_000,
+        )
+        self.assertIn(snippet, block)
+
+    def test_head_of_the_body_follows_when_there_is_room(self):
+        block = recall._build_excerpt_block(
+            self._result(), {"kind": "unknown"}, "DISTINCTIVEOPENING then more text " * 50,
+            allowance_tokens=800, full_tokens=255_271, token_budget=20_000,
+        )
+        self.assertIn("DISTINCTIVEOPENING", block)
+
+    def test_block_fits_the_allowance_it_was_given(self):
+        for allowance in (200, 400, 800, 4_000):
+            block = recall._build_excerpt_block(
+                self._result(snippet="… some [match] context …"),
+                {"kind": "unknown", "tags": "[a, b]"},
+                "filler content " * 5_000,
+                allowance_tokens=allowance, full_tokens=255_271, token_budget=20_000,
+            )
+            self.assertIsNotNone(block)
+            self.assertLessEqual(
+                recall._estimate_tokens(block), allowance,
+                msg=f"excerpt overran its {allowance}-token allowance",
+            )
+
+    def test_returns_none_when_the_allowance_cannot_cover_the_frame(self):
+        block = recall._build_excerpt_block(
+            self._result(path="personal/" + "deep/" * 60 + "entry.md"),
+            {"kind": "unknown"}, "body " * 100,
+            allowance_tokens=20, full_tokens=255_271, token_budget=20_000,
+        )
+        self.assertIsNone(block)
+
+
+# ---------------------------------------------------------------------------
+# _apply_token_budget's excerpt pass (the fix for oversized entries burning a
+# top-k slot and injecting nothing)
+# ---------------------------------------------------------------------------
+
+class TestApplyTokenBudgetExcerpt(unittest.TestCase):
+    def _blocks(self, sizes: list[int]) -> tuple[list[str], list[str]]:
+        blocks = [f"slug-{i:02d} " + "x" * (sz - 8) for i, sz in enumerate(sizes)]
+        slugs = [f"slug-{i:02d}" for i in range(len(sizes))]
+        return blocks, slugs
+
+    def test_without_an_excerpt_callable_oversized_blocks_are_still_omitted(self):
+        """The default contract is unchanged: no callable, no second pass."""
+        blocks, slugs = self._blocks([400_000, 400, 400])
+        kb, ks, omitted = recall._apply_token_budget(blocks, slugs, 20_000)
+        self.assertEqual(omitted, 1)
+        self.assertEqual(ks, ["slug-01", "slug-02"])
+
+    def test_an_unfittable_block_is_excerpted_instead_of_omitted(self):
+        blocks, slugs = self._blocks([400_000, 400, 400])
+        kb, ks, omitted = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=lambda i, n: f"EXCERPT-{i}",
+        )
+        self.assertEqual(omitted, 0)
+        self.assertEqual(ks, ["slug-00", "slug-01", "slug-02"])
+        self.assertEqual(kb[0], "EXCERPT-0")
+
+    def test_excerpt_keeps_the_salience_position(self):
+        """An excerpt is emitted where the entry ranked, not appended at the end."""
+        blocks, slugs = self._blocks([400, 400_000, 400])
+        kb, ks, _ = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=lambda i, n: f"EXCERPT-{i}",
+        )
+        self.assertEqual(ks, ["slug-00", "slug-01", "slug-02"])
+        self.assertEqual(kb[1], "EXCERPT-1")
+
+    def test_every_slot_yields_content_when_every_hit_is_oversized(self):
+        """The reported failure: 5 hits, all oversized, nothing injected."""
+        blocks, slugs = self._blocks([400_000] * 5)
+        kb, ks, omitted = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=lambda i, n: "e" * (n * 4),
+        )
+        self.assertEqual(omitted, 0)
+        self.assertEqual(len(kb), 5)
+        for block in kb:
+            self.assertGreater(recall._estimate_tokens(block), 0)
+
+    def test_whole_blocks_are_packed_before_excerpts(self):
+        """Anything that fits today keeps arriving whole — no fidelity regression."""
+        blocks, slugs = self._blocks([400_000, 40_000])  # 100k tokens, 10k tokens
+        kb, _, _ = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=lambda i, n: f"EXCERPT-{i}",
+        )
+        self.assertEqual(kb[0], "EXCERPT-0")      # can never fit → excerpted
+        self.assertEqual(kb[1], blocks[1])        # fits whole → untouched
+
+    def test_allowance_is_capped_at_a_share_of_the_budget(self):
+        """One enormous hit cannot claim the room several should be splitting."""
+        seen: list[int] = []
+
+        def _excerpt(i: int, n: int) -> str:
+            seen.append(n)
+            return "e" * (n * 4)
+
+        blocks, slugs = self._blocks([400_000] * 3)
+        recall._apply_token_budget(blocks, slugs, 20_000, excerpt=_excerpt)
+        cap = int(20_000 * recall._EXCERPT_BUDGET_SHARE)
+        self.assertEqual(len(seen), 3)
+        for allowance in seen:
+            self.assertLessEqual(allowance, cap)
+
+    def test_allowance_never_exceeds_what_the_budget_has_left(self):
+        seen: list[int] = []
+
+        def _excerpt(i: int, n: int) -> str:
+            seen.append(n)
+            return "e" * (n * 4)
+
+        # One whole block eats most of the budget; the excerpt gets the rest.
+        blocks, slugs = self._blocks([400_000, 76_000])  # 100k tokens, 19k tokens
+        kb, _, _ = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=_excerpt,
+        )
+        self.assertEqual(len(seen), 1)
+        self.assertLessEqual(seen[0], 20_000 - 19_000)
+        self.assertLessEqual(
+            sum(recall._estimate_tokens(b) for b in kb), 20_000
+        )
+
+    def test_total_never_exceeds_the_budget(self):
+        blocks, slugs = self._blocks([400_000] * 8)
+        kb, _, _ = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=lambda i, n: "e" * (n * 4),
+        )
+        self.assertLessEqual(
+            sum(recall._estimate_tokens(b) for b in kb), 20_000
+        )
+
+    def test_excerpt_declining_leaves_the_entry_omitted(self):
+        """A None from the callable is an honest omission, not a silent empty block."""
+        blocks, slugs = self._blocks([400_000, 400])
+        kb, ks, omitted = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=lambda i, n: None,
+        )
+        self.assertEqual(omitted, 1)
+        self.assertEqual(ks, ["slug-01"])
+
+    def test_excerpt_pass_stops_below_the_minimum_useful_allowance(self):
+        """A budget with no room left for a meaningful excerpt asks for none."""
+        seen: list[int] = []
+
+        def _excerpt(i: int, n: int) -> str:
+            seen.append(n)
+            return "e" * (n * 4)
+
+        # A whole block leaves under _MIN_EXCERPT_TOKENS of the budget.
+        leftover = recall._MIN_EXCERPT_TOKENS - 10
+        blocks, slugs = self._blocks([400_000, (20_000 - leftover) * 4])
+        _, _, omitted = recall._apply_token_budget(
+            blocks, slugs, 20_000, excerpt=_excerpt,
+        )
+        self.assertEqual(seen, [])
+        self.assertEqual(omitted, 1)
+
+    def test_zero_budget_is_still_unlimited_with_an_excerpt_callable(self):
+        blocks, slugs = self._blocks([400_000] * 3)
+        kb, ks, omitted = recall._apply_token_budget(
+            blocks, slugs, 0, excerpt=lambda i, n: "EXCERPT",
+        )
+        self.assertEqual(omitted, 0)
+        self.assertEqual(kb, blocks)
+
+
+# ---------------------------------------------------------------------------
+# prompt_submit end-to-end: an oversized hit injects an excerpt, not nothing
+# ---------------------------------------------------------------------------
+
+class TestPromptSubmitOversizedEntries(unittest.TestCase):
+    """The measured failure: a hit too large for the budget spent a top-k slot
+    and injected nothing, so recall reported hits and handed over no content.
+
+    `_daemon_search` is patched in every test here. Left alone it shells out to
+    a real `agentmd` whose index covers the operator's vault, not the fixture —
+    so on a daemon-backed machine the assertions would be about someone else's
+    corpus, and on a machine without one they would be about a different code
+    path than the machine next to it.
+    """
+
+    TOKEN_BUDGET = 4_000
+
+    def _make_vault(self, tmp_path: Path, *, big: int, small: int, token: str) -> Path:
+        vault = tmp_path
+        group = vault / "personal"
+        group.mkdir(parents=True, exist_ok=True)
+        for i in range(big):
+            # 30,000 chars ≈ 7,500 tokens: past the budget, and past the
+            # bounded-read cap (budget×4 + slack), so the clipped-read path runs.
+            body = f"{token} OPENINGMARKER{i} " + ("filler words here " * 1_650)
+            (group / f"big-{i:02d}.md").write_text(
+                f"---\nname: big-{i:02d}\nkind: project\ntags: [test]\n---\n\n{body}",
+                encoding="utf-8",
+            )
+        for i in range(small):
+            body = f"{token} SMALLBODY{i} " + ("brief " * 40)
+            (group / f"small-{i:02d}.md").write_text(
+                f"---\nname: small-{i:02d}\nkind: feedback\ntags: [test]\n---\n\n{body}",
+                encoding="utf-8",
+            )
+        return vault
+
+    def _run(self, vault: Path, prompt: str, *, daemon_results=None):
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.object(recall_counter, "record_recall", lambda *a, **kw: {}), \
+                mock.patch.object(
+                    recall, "_daemon_search", lambda **kw: daemon_results):
+            recall.prompt_submit(
+                vault=vault,
+                prompt=prompt,
+                budget_ms=10_000,
+                token_budget=self.TOKEN_BUDGET,
+                stdout=stdout,
+                stderr=stderr,
+            )
+        return stdout.getvalue(), stderr.getvalue()
+
+    def test_every_oversized_hit_injects_an_excerpt(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=5, small=0, token="zorptackle")
+            out, err = self._run(vault, "zorptackle")
+            self.assertIn("Loaded 5 relevant entries", err)
+            self.assertEqual(out.count(recall._EXCERPT_MARKER), 5)
+            for i in range(5):
+                self.assertIn(f"big-{i:02d}", out)
+
+    def test_stderr_reports_excerpting_rather_than_omission(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=5, small=0, token="zorptackle")
+            _, err = self._run(vault, "zorptackle")
+            self.assertIn("5 entries excerpted to fit", err)
+            self.assertNotIn("entries omitted", err)
+
+    def test_stdout_preamble_says_how_many_are_partial(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=3, small=0, token="zorptackle")
+            out, _ = self._run(vault, "zorptackle")
+            self.assertIn("3 too large to inject whole and shown as excerpts", out)
+
+    def test_excerpt_carries_content_not_just_a_marker(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=1, small=0, token="zorptackle")
+            out, _ = self._run(vault, "zorptackle")
+            self.assertIn("OPENINGMARKER0", out)
+
+    def test_small_hits_stay_whole_alongside_excerpted_ones(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=2, small=3, token="zorptackle")
+            out, err = self._run(vault, "zorptackle")
+            self.assertIn("2 entries excerpted to fit", err)
+            for i in range(3):
+                self.assertIn(f"SMALLBODY{i}", out)
+
+    def test_injection_stays_within_the_token_budget(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=5, small=0, token="zorptackle")
+            out, _ = self._run(vault, "zorptackle")
+            # Preamble ceremony is small and constant; the entry blocks are
+            # what the budget governs.
+            self.assertLess(recall._estimate_tokens(out), self.TOKEN_BUDGET + 200)
+
+    def test_oversized_entry_is_not_read_whole(self):
+        """The bounded read is the point: the slot must be cheap, not just used."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=1, small=0, token="zorptackle")
+            out, _ = self._run(vault, "zorptackle")
+            cap = self.TOKEN_BUDGET * 4 + recall._ENTRY_READ_SLACK_CHARS
+            self.assertLess(len(out), cap)
+
+    def test_daemon_snippet_reaches_the_excerpt(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=1, small=0, token="zorptackle")
+            snippet = "… a [zorptackle] deep inside the log …"
+            out, _ = self._run(
+                vault, "zorptackle",
+                daemon_results=[{
+                    "path": "personal/big-00.md", "slug": "big-00",
+                    "sim": 0.0, "keyword": 0, "combined": 9.0, "score": 9.0,
+                    "source": "daemon", "snippet": snippet,
+                }],
+            )
+            self.assertIn(snippet, out)
+            self.assertIn(recall._EXCERPT_MARKER, out)
+
+    def test_no_hits_still_reports_an_empty_recall_plainly(self):
+        """"Nothing matched" must stay distinguishable from "matched but partial"."""
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=2, small=0, token="zorptackle")
+            out, err = self._run(vault, "nothingmatchesthisword")
+            self.assertIn("Loaded 0 relevant entries: (none)", err)
+            self.assertNotIn("excerpted", err)
+            self.assertNotIn(recall._EXCERPT_MARKER, out)
+
+    def test_excerpted_hits_are_marked_in_the_recall_ledger(self):
+        """`memory-recall trace` should be able to say a hit surfaced only in part."""
+        import tempfile
+        recorded: dict = {}
+
+        def _capture(prompt, slugs, hits=None):
+            recorded["hits"] = hits or []
+            return {}
+
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=2, small=2, token="zorptackle")
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with mock.patch.object(recall_counter, "record_recall", _capture), \
+                    mock.patch.object(recall, "_daemon_search", lambda **kw: None):
+                recall.prompt_submit(
+                    vault=vault, prompt="zorptackle", budget_ms=10_000,
+                    token_budget=self.TOKEN_BUDGET, stdout=stdout, stderr=stderr,
+                )
+        excerpted = [h for h in recorded["hits"] if h.get("excerpt")]
+        self.assertEqual(len(excerpted), 2)
+        self.assertTrue(all(h["slug"].startswith("big-") for h in excerpted))
+
+    def test_snippet_text_is_kept_out_of_the_recall_ledger(self):
+        """The ledger records why a hit surfaced, never the entry's own text."""
+        import tempfile
+        recorded: dict = {}
+
+        def _capture(prompt, slugs, hits=None):
+            recorded["hits"] = hits or []
+            return {}
+
+        with tempfile.TemporaryDirectory() as d:
+            vault = self._make_vault(Path(d), big=1, small=0, token="zorptackle")
+            stdout, stderr = io.StringIO(), io.StringIO()
+            daemon = [{
+                "path": "personal/big-00.md", "slug": "big-00", "sim": 0.0,
+                "keyword": 0, "combined": 9.0, "score": 9.0, "source": "daemon",
+                "snippet": "… secret note text …",
+            }]
+            with mock.patch.object(recall_counter, "record_recall", _capture), \
+                    mock.patch.object(recall, "_daemon_search", lambda **kw: daemon):
+                recall.prompt_submit(
+                    vault=vault, prompt="zorptackle", budget_ms=10_000,
+                    token_budget=self.TOKEN_BUDGET, stdout=stdout, stderr=stderr,
+                )
+        self.assertEqual(len(recorded["hits"]), 1)
+        self.assertNotIn("snippet", recorded["hits"][0])
+
+
 if __name__ == "__main__":
     unittest.main()
