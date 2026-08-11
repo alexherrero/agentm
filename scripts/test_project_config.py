@@ -8,6 +8,7 @@ a fixture vault.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sys
@@ -23,6 +24,44 @@ if str(_HERE) not in sys.path:
 import detect_project as dp  # noqa: E402
 import project_config as pc  # noqa: E402
 import repo_registry  # noqa: E402
+
+
+@contextlib.contextmanager
+def no_vault_configured():
+    """Resolve as if no vault existed, without reaching the operator's install.
+
+    Popping `$MEMORY_VAULT_PATH` alone does not achieve that. `vault_path()` has
+    a second resolution path — `$AGENTM_INSTALL_PREFIX/.agentm-config.json`,
+    defaulting to `~/.claude` — so a test that pops only the env var still
+    resolves the real vault, and `register()` then writes its throwaway fixture
+    into the live repo registry under a `/var/folders/.../T/tmpXXXX/repo` path
+    that is dead the moment the test exits. That churn re-dirties
+    `Agent/_meta/repos.json` on every run, and since the daemon commits markdown
+    only it sits uncommitted and holds `agentmd gate corpus-write` shut.
+
+    Both variables have to be redirected for "no vault" to mean it. Use this
+    rather than hand-rolling the pop; `check-registry-hygiene` fails the battery
+    if a leak reaches the live registry anyway.
+    """
+    import harness_memory as hm
+    old_vault = os.environ.get("MEMORY_VAULT_PATH")
+    old_prefix = os.environ.get("AGENTM_INSTALL_PREFIX")
+    with tempfile.TemporaryDirectory() as prefix:
+        os.environ.pop("MEMORY_VAULT_PATH", None)
+        os.environ["AGENTM_INSTALL_PREFIX"] = prefix
+        hm._reset_warn_state()
+        try:
+            yield Path(prefix)
+        finally:
+            if old_vault is None:
+                os.environ.pop("MEMORY_VAULT_PATH", None)
+            else:
+                os.environ["MEMORY_VAULT_PATH"] = old_vault
+            if old_prefix is None:
+                os.environ.pop("AGENTM_INSTALL_PREFIX", None)
+            else:
+                os.environ["AGENTM_INSTALL_PREFIX"] = old_prefix
+            hm._reset_warn_state()
 
 
 def _empty_proposal() -> dp.ProposedConfig:
@@ -265,20 +304,13 @@ class TestRegisterNoVault(unittest.TestCase):
         return repo
 
     def test_register_completes_with_repo_local_marker_no_vault(self) -> None:
-        import harness_memory as hm
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             repo = self._make_repo(root, "novault-marker")
             # Per-repo override marker signals local mode (DC-2) — no vault needed.
             (repo / ".harness" / ".project-mode").write_text("local", encoding="utf-8")
-            old_env = os.environ.get("MEMORY_VAULT_PATH")
-            os.environ.pop("MEMORY_VAULT_PATH", None)
-            hm._reset_warn_state()
-            try:
+            with no_vault_configured():
                 config = pc.register(repo, registered_via="auto-detect")
-            finally:
-                if old_env is not None:
-                    os.environ["MEMORY_VAULT_PATH"] = old_env
             # Enablement block landed in the repo-local project.json (no ValueError).
             legacy = json.loads((repo / ".harness" / "project.json").read_text(encoding="utf-8"))
             self.assertIn("skills", legacy)
@@ -288,30 +320,16 @@ class TestRegisterNoVault(unittest.TestCase):
     def test_register_completes_with_device_state_mode_no_vault(self) -> None:
         # The actual `install.sh --local-state` flow: device-level state_mode in
         # .agentm-config.json (no per-repo marker), no vault → register succeeds.
-        import harness_memory as hm
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             repo = self._make_repo(root, "novault-device")
-            prefix = root / "prefix"
-            prefix.mkdir()
-            (prefix / ".agentm-config.json").write_text(
-                json.dumps({"schema_version": 2, "mode": "release", "state_mode": "local"}),
-                encoding="utf-8",
-            )
-            old_vault = os.environ.get("MEMORY_VAULT_PATH")
-            old_prefix = os.environ.get("AGENTM_INSTALL_PREFIX")
-            os.environ.pop("MEMORY_VAULT_PATH", None)
-            os.environ["AGENTM_INSTALL_PREFIX"] = str(prefix)
-            hm._reset_warn_state()
-            try:
+            with no_vault_configured() as prefix:
+                (prefix / ".agentm-config.json").write_text(
+                    json.dumps({"schema_version": 2, "mode": "release",
+                                "state_mode": "local"}),
+                    encoding="utf-8",
+                )
                 config = pc.register(repo, registered_via="auto-detect")
-            finally:
-                if old_vault is not None:
-                    os.environ["MEMORY_VAULT_PATH"] = old_vault
-                if old_prefix is None:
-                    os.environ.pop("AGENTM_INSTALL_PREFIX", None)
-                else:
-                    os.environ["AGENTM_INSTALL_PREFIX"] = old_prefix
             legacy = json.loads((repo / ".harness" / "project.json").read_text(encoding="utf-8"))
             self.assertIn("skills", legacy)
             self.assertEqual(legacy["vault_project"], "novault-device")
@@ -550,15 +568,8 @@ class TestRedetectIntegration(unittest.TestCase):
 
     def _run(self, fn):
         """Run `fn` with no vault configured (repo-local state mode)."""
-        import harness_memory as hm
-        old_env = os.environ.get("MEMORY_VAULT_PATH")
-        os.environ.pop("MEMORY_VAULT_PATH", None)
-        hm._reset_warn_state()
-        try:
+        with no_vault_configured():
             return fn()
-        finally:
-            if old_env is not None:
-                os.environ["MEMORY_VAULT_PATH"] = old_env
 
     def test_surface_then_apply_lifecycle(self):
         with tempfile.TemporaryDirectory() as td:

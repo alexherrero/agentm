@@ -70,6 +70,7 @@ gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py
+gate "check-registry-hygiene (no throwaway temp path registered as a repo)" "$PY" scripts/check-registry-hygiene.py
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
 gate "check-slop (--strict)"                    "$PY" scripts/check-slop.py --strict --wiki-root wiki wiki
