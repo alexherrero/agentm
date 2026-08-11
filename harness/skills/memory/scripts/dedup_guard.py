@@ -17,20 +17,19 @@ regression part 2 eliminated. Near-duplicates still write normally and
 flow to the weekly cluster pass (task 3), where the verdict/needs-your-eye
 machinery owns them.
 
-Two lookup surfaces, one per write path:
+One lookup surface remains:
 
-  - `find_vault_duplicate` — permanent-memory writes (`save_entry`).
-    Looks up `entry_meta.fingerprint` (the column task 1 gave a universal
-    writer) via the vec-index DB, then RE-VERIFIES against the live file
-    (the index lags drain; a stale row must never cause a reinforce
-    against content that has since changed — same live-revalidation
-    posture `drain_queue` itself takes). Graceful-skip when sqlite-vec is
-    unavailable: returns None, the write proceeds, the weekly pass caches
-    the miss. Favor false-negative over false-positive throughout (the
-    plan's own risk rule).
   - `find_inbox_duplicate` — capture's staging writes. A direct
     frontmatter scan of `personal/_inbox/` (small by design — triage
-    drains it; the index deliberately never contains inbox candidates).
+    drains it).
+
+Its sibling `find_vault_duplicate`, which guarded permanent-memory writes
+(`save_entry`), went with the vector index: it resolved a fingerprint
+through that index's own `entry_meta` table, and no other fingerprint->path
+lookup exists in the tree. A scan is not a substitute at 8k+ notes on every
+save, so permanent-memory writes no longer dedup at write time and the
+weekly cluster pass owns those duplicates. See the amendment log in
+`wiki/designs/agentm-rescope-week1-experiment.md`.
 
 `reinforce` is the one mutation: occurrences+1 (absent = 1) and a fresh
 `updated` stamp, patched in place. Callers hold `vault_mutex` around the
@@ -56,17 +55,6 @@ _OCCURRENCES_RE = re.compile(r"^occurrences: (\d+)$", re.MULTILINE)
 _UPDATED_RE = re.compile(r"^updated: .*$", re.MULTILINE)
 _FINGERPRINT_LINE_RE = re.compile(r"^fingerprint: (\S+)$", re.MULTILINE)
 _STATUS_LINE_RE = re.compile(r"^status: (\S+)$", re.MULTILINE)
-
-# The only statuses a duplicate may reinforce into. A review of this
-# guard's first version found the matching was status-blind: a re-capture
-# of a triage-expired thought reinforced the tombstone (status stayed
-# `expired`, so it could never re-enter triage — violating capture.py's
-# "a capture is never silently dropped" contract), and a re-save of
-# `status: deleted`/`superseded` content was swallowed into a note recall
-# filters out. A dead note is not a duplicate target; the arriving note
-# writes normally and lives its own life.
-_REINFORCEABLE_STATUSES = frozenset({"active", "inbox"})
-
 
 def _frontmatter_span(content: str) -> tuple[int, int] | None:
     """(start, end) offsets of the frontmatter text between the `---`
@@ -141,42 +129,6 @@ def _file_status(path: Path) -> str | None:
         return None
     m = _STATUS_LINE_RE.search(content[span[0]:span[1]])
     return m.group(1) if m else None
-
-
-def _is_reinforceable(path: Path) -> bool:
-    """A note may only absorb a duplicate when it is alive (status in
-    `_REINFORCEABLE_STATUSES`) and not a curated always-load standing rule
-    — the design's exemption list applies to the MATCH TARGET, not just
-    the arriving note (review-caught: the first version enforced it only
-    on the arriving side)."""
-    if "_always-load" in path.parts:
-        return False
-    return _file_status(path) in _REINFORCEABLE_STATUSES
-
-
-def find_vault_duplicate(vault_path: Path | str, fingerprint: str) -> str | None:
-    """Vault-relative path of an existing entry whose LIVE fingerprint
-    equals `fingerprint` and which is a legitimate reinforce target
-    (alive, not curated — see `_is_reinforceable`), or None. Index-first
-    (one SQL lookup), then live-file re-verification; graceful None when
-    sqlite-vec is absent."""
-    import vec_index  # local import — graceful-skip machinery lives there
-
-    vault = Path(vault_path)
-    conn = vec_index._open_index(vault)
-    if conn is None:
-        return None
-    try:
-        rows = conn.execute(
-            "SELECT path FROM entry_meta WHERE fingerprint = ?", (fingerprint,)
-        ).fetchall()
-    finally:
-        conn.close()
-    for (rel_path,) in rows:
-        live = vault / rel_path
-        if live_content_fingerprint(live) == fingerprint and _is_reinforceable(live):
-            return rel_path
-    return None
 
 
 def find_inbox_duplicate(vault_path: Path | str, fingerprint: str) -> Path | None:

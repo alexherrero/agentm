@@ -459,7 +459,7 @@ def discover(vault: Path, *, min_score: float = _DEFAULT_MIN_SCORE,
 #
 # Domain separation (DC-2): the personal-notes embeddings live in their OWN
 # cache under <vault>/_meta/notes-embeddings.json — never the AgentMemory
-# sqlite-vec index (vec_index.py). The cache is a derived artifact keyed by
+# AgentMemory index. The cache is a derived artifact keyed by
 # content hash, so re-runs only re-embed changed notes; it is NEVER a write to a
 # personal note.
 #
@@ -530,7 +530,7 @@ def embed_corpus(notes: list, *, mode: Optional[str] = None,
     hits with fresh-dim embeds — and `_cosine_unit`'s zip would truncate the
     mismatch into garbage scores. So fresh embeds define the authoritative dim
     this run; any reused cache entry whose dim differs is re-embedded (mirrors
-    vec_index.py's dim-mismatch rebuild). The returned dict is always uniform."""
+    a dim-mismatch rebuild). The returned dict is always uniform."""
     import embed  # same skill dir; lazy so TF-IDF-only paths never import torch
 
     cache = _load_embed_cache(cache_path)

@@ -1,17 +1,16 @@
 ---
 title: memory index — design
-status: launched
+status: superseded
 kind: design
 scope: feature
 area: agentm/memory-index
-governs:
-  - harness/skills/memory/scripts/vec_index.py
+governs: []
 parent: agentm-hld.md
 seeded: 2026-06-26
 approved: 2026-06-26
 ---
 
-> **The memory index (V6-11) is the SQLite metadata table that lets recall filter by `kind`, `project`, `tag`, and `status` in one query alongside the vector search — replacing the grep-over-frontmatter pass.** **Built 2026-07-06.** It lifts the queued V6 plan into a tracked design, reconciled to the built index and extended with the fingerprint column + two new memory kinds; parent [agentm HLD](agentm-hld), sibling to [memory system](agentm-memory-system).
+> **The memory index (V6-11) was the SQLite metadata table that let recall filter by `kind`, `project`, `tag`, and `status` in one query alongside the vector search.** **Built 2026-07-06; retired 2026-08-10** with the vector index it sat beside — see the amendment log. `--filter` survives on the corpus walk, which applies the same criteria as it goes. It lifts the queued V6 plan into a tracked design, reconciled to the built index and extended with the fingerprint column + two new memory kinds; parent [agentm HLD](agentm-hld), sibling to [memory system](agentm-memory-system).
 
 # AgentM Memory Index Design
 
@@ -132,6 +131,8 @@ The [memory system](agentm-memory-system) reserves a `DerivedMaintenance` extens
 **2026-07-07 — `session-cost` retarget delivered (AA3, `PLAN-observability-ledger` agentm half).** Flips the AA2 entry below from "stops being written once the plan lands" to as-built: both repo halves have merged (crickets' writer/reader repoint, agentm's runner-hosted SQLite aggregator over the resulting event log), so `session-cost` is now confirmed vestigial rather than merely scheduled to become so. Left as a reserved value (no data migration needed — the vault entries already written stay as historical record) rather than removed from the taxonomy.
 
 **2026-07-07 — `session-cost` kind marked vestigial (AA2).** The Autonomy arc's [observability design](agentm-autonomy.md) retargets token-audit's session-cost capture off the vault onto a device-local telemetry ledger; this kind stops being written once `PLAN-observability-ledger` lands the move. Left as a reserved value (no data migration needed — the vault entries already written stay as historical record) rather than removed from the taxonomy.
+
+- **2026-08-10 — retired with the vector stack; `--filter` survives on the walk.** The metadata table this design specifies lived in `vec_index.py`'s database, joined to the vector `MATCH` by row id — so when the vector stack was removed (see [week-1 experiment](agentm-rescope-week1-experiment)) the table went with it. **What survives:** the `--filter` grammar and its semantics. `parse_filter` and `_entry_matches_filter` are unchanged in `recall.py`, and `_bm25_search`/`_grep_search` each apply the criteria as they walk — the path that was always the fallback when sqlite-vec was absent is now the only implementation. **What is gone:** `_vec_search_filtered`'s single-query SQL join, which was the optimization this design existed to add, and the eight `entry_meta` columns behind it. The one non-filter dependent, `dedup_guard.find_vault_duplicate`, resolved a fingerprint through the same table and had no other lookup available; it is gone too, recorded in the week-1 amendment log. **Why `superseded` rather than an edit in place:** the objective section's premise — that a structured filter needs a SQL table beside a vector index — is what stopped being true, not a detail inside it. `governs:` drops to `[]` rather than moving to `recall.py`: the surviving grammar lives there, but `agentm-memory-system.md` already governs the whole `harness/skills/memory/scripts/` directory, and a retired design should not hold a live file — the same shape [recall trace](agentm-recall-trace) already uses. *Re-audit trigger:* a corpus large enough that the filter walk stops fitting an interactive budget, which is the condition that would justify an index again — and it would be a fresh one, not this design.
 
 - **2026-07-06 — built (AG Wave B leader 3/5).** `_migrate_v6_11` (additive `ALTER TABLE ADD COLUMN`, guarded, mirrors the existing `_migrate_pre_v37` pattern) + `_ensure_v6_11_indexes` + `_extract_meta_from_file` (frontmatter → the eight columns, `project` derived from `group:`) ship in `vec_index.py`; `upsert_entry` populates them. The hybrid `--filter` path ships in `recall.py` (`parse_filter` / `_entry_matches_filter` / `_vec_search_filtered`) — a single SQL `WHERE` joined with the vector `MATCH`, grep-fallback preserved. `session-cost` and `failure-incident` are recognized `kind` values; the latter's mandatory privacy scrub ships as a self-contained `privacy_scrub.py` (agentm-native regex redaction — composing crickets' `privacy` capability directly would invert the one-way capability bridge, since agentm must never import crickets code). `governs:` now points at `vec_index.py`. **Operator-facing CLI subcommands (`/memory search --tag --project`, `/memory list --kind --updated-since`) are not built** — those are a thin wrapper layer above `recall.py query --filter`, which works end-to-end. *Re-audit trigger:* reconcile onto `DerivedMaintenance` when the seam path is implemented (unchanged from the 2026-06-26 entry below); confirm the operator-facing CLI wrapper if/when it's authored.
 

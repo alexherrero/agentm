@@ -44,10 +44,10 @@ Obsidian itself is a separate, optional add-on that sits on top of *either* a Dr
    python3 scripts/agentm_config.py --vault-path "$HOME/Library/CloudStorage/GoogleDrive-<your-account>/My Drive/Obsidian/Vault"
    ```
 
-4. **Confirm the search index stays out of Drive.** agentm keeps the vector index device-local at `~/.agentm/memory/_meta/` (filename `vec-index.db`) — outside the vault, so Drive never syncs it and there is nothing to exclude. Verify it's there, not under *My Drive*:
+4. **Confirm the derived stores stay out of Drive.** agentm keeps its derived SQLite stores device-local at `~/.agentm/memory/_meta/` — outside the vault, so Drive never syncs them and there is nothing to exclude. SQLite on cloud sync is a known corruption pattern, which is why the split exists. Verify they're there, not under *My Drive*:
 
    ```sh
-   ls ~/.agentm/memory/_meta/    # the index lives here, on this machine only
+   ls ~/.agentm/memory/_meta/    # derived stores live here, on this machine only
    ```
 
 5. **(Optional) Open the vault in Obsidian** on this computer: *Open folder as vault* → select the folder you moved into *My Drive*. Do this only if you use Obsidian ([Set up Obsidian on the vault](Use-Obsidian-With-The-Vault)); the vault syncs regardless.

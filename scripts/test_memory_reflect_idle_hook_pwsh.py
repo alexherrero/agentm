@@ -3,7 +3,7 @@
 
 pwsh twin of test_memory_reflect_idle_hook.py. Same relative-path resolution
 divergence as the other three pwsh hooks tested this plan: reflect.py /
-orchestration_idle.py / vec_index.py are all resolved relative to cwd
+orchestration_idle.py are all resolved relative to cwd
 (.claude/skills/memory/scripts/...), not the source_clones.agentm bridge the
 bash hook's own fixture uses — so this fixture copies the real memory
 scripts tree into place instead of faking HOME's .agentm-config.json.
@@ -160,18 +160,15 @@ class TestMemoryReflectIdleHookPwsh(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertTrue(m.is_file(), "marker touched despite unresolvable reflect.py")
 
-    def test_drain_call_is_wired_and_detached(self) -> None:
+    def test_hook_does_not_invoke_the_removed_vector_index(self) -> None:
+        """Mirrors the bash twin: this pinned the drain's wiring until the
+        vector stack was removed, and now pins its absence — a surviving call
+        would resolve to a missing script and fail quietly every idle pass."""
         source = _HOOK.read_text(encoding="utf-8")
-        self.assertIn("VecIndexPy", source)
-        drain_line = next(
-            (ln for ln in source.splitlines()
-             if "VecIndexPy" in ln and re.search(r"\bdrain\b", ln)),
-            None,
-        )
-        self.assertIsNotNone(drain_line, "no line invokes vec_index.py drain")
-        self.assertIn("Start-Process", drain_line)
+        self.assertNotIn("VecIndexPy", source)
+        self.assertNotIn("vec_index", source)
 
-    def test_drain_call_does_not_block_hook_exit(self) -> None:
+    def test_hook_still_exits_clean_without_the_drain(self) -> None:
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
 

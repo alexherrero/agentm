@@ -531,16 +531,21 @@ def check_crickets_coordination_suite(crickets_root: Optional[Path]) -> Check:
 
 
 def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
-    """Can the interpreter the memory hooks actually run open the vector index?
+    """Does the interpreter the memory hooks actually run work at all?
 
-    This is the check that would have caught a silent, years-long outage. The
-    hooks used to end in a bare `python3`, a PATH lookup that resolves to
-    Apple's system Python on a stock macOS box. That build has no
-    `sqlite3.Connection.enable_load_extension` at all, sqlite-vec is a loadable
-    native extension, so `vec_index._open_index()` returned None on every call
-    — and every caller treats None as the graceful "index not built yet" skip.
-    Nothing went red. Recall just quietly never used the 1035-row index sitting
-    healthy on disk. `/doctor` had no row that would have said so.
+    This row exists because of a silent, years-long outage. The hooks used to
+    end in a bare `python3`, a PATH lookup that resolves to Apple's system
+    Python on a stock macOS box, and the vector index could never load there —
+    so recall quietly returned nothing while every caller treated the failure
+    as a graceful "not built yet" skip. Nothing went red, and `/doctor` had no
+    row that would have said so.
+
+    The vector index is gone (see wiki/designs/agentm-rescope-week1-
+    experiment.md), so the sqlite-vec half of that question is moot. The half
+    that is not moot is the one that made the outage possible: the hooks run
+    whatever this resolver prints, and if that is not a working interpreter
+    every memory hook fails the same quiet way. So this now asserts exactly
+    that much, and stops asserting an extension nothing loads any more.
 
     It delegates rather than re-derives. The interpreter is whatever
     `harness/hooks/lib/resolve-python.sh` prints — the same script the hooks
@@ -550,8 +555,9 @@ def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
     already has a scar from.
 
     Statuses:
-      OK    the resolved interpreter loads sqlite-vec — the index is reachable
-      FAIL  it cannot, naming which half is missing and the one-line fix
+      OK    the resolved interpreter runs
+      FAIL  the resolver printed nothing, could not be run, or named an
+            interpreter that does not execute
       WARN  the resolver is absent (partial checkout/install), so the hooks are
             on the bare-`python3` floor and this can't say what that resolves to
     """
@@ -562,7 +568,7 @@ def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
         return Check(
             name, "WARN",
             f"{resolver} missing — the memory hooks fall back to a bare `python3`, "
-            "which on macOS is Apple's system Python and cannot load sqlite-vec",
+            "whatever that resolves to on this box",
         )
     try:
         resolved = subprocess.run(
@@ -575,46 +581,20 @@ def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
         return Check(name, "FAIL", f"{resolver} printed nothing — it must always print an interpreter")
 
     # Ask the resolved interpreter itself, rather than inferring from its name.
-    # A path tells you nothing about how its sqlite3 was compiled.
     probe = (
-        "import json, sqlite3, sys\n"
-        "out = {'ext': hasattr(sqlite3.Connection, 'enable_load_extension'), 'vec': False,\n"
-        "       'version': '.'.join(str(p) for p in sys.version_info[:3])}\n"
-        "try:\n"
-        "    import sqlite_vec\n"
-        "    out['vec'] = True\n"
-        "except Exception:\n"
-        "    pass\n"
-        "print(json.dumps(out))\n"
+        "import json, sys\n"
+        "print(json.dumps({'version': '.'.join(str(p) for p in sys.version_info[:3])}))\n"
     )
     try:
         proc = subprocess.run([resolved, "-c", probe], capture_output=True, text=True, timeout=60)
         info = json.loads(proc.stdout.strip())
     except (OSError, subprocess.SubprocessError, ValueError) as e:
-        return Check(name, "FAIL", f"resolved to `{resolved}` but could not probe it ({e})")
+        return Check(name, "FAIL", f"resolved to `{resolved}` but could not run it ({e})")
 
     where = f"`{resolved}` (Python {info.get('version', '?')})"
     override = os.environ.get("AGENTM_PYTHON") or os.environ.get("AGENT_TOOLKIT_PYTHON")
-    via = f" — selected by your $AGENTM_PYTHON/$AGENT_TOOLKIT_PYTHON override" if override else ""
-
-    if not info.get("ext"):
-        return Check(
-            name, "FAIL",
-            f"{where} has no sqlite3.enable_load_extension{via}, so sqlite-vec can never load and "
-            "semantic recall silently returns nothing against a healthy index. Install an "
-            "extension-capable Python (`brew install python`, pyenv, or a python.org build) or point "
-            "$AGENTM_PYTHON at one",
-        )
-    if not info.get("vec"):
-        return Check(
-            name, "FAIL",
-            f"{where} supports extension loading but has no sqlite_vec module{via} — semantic recall "
-            f"is a no-op until it is installed: `{resolved} -m pip install sqlite-vec`",
-        )
-    return Check(
-        name, "OK",
-        f"{where} loads sqlite-vec{via} — the vector index is reachable from the memory hooks",
-    )
+    via = " — selected by your $AGENTM_PYTHON/$AGENT_TOOLKIT_PYTHON override" if override else ""
+    return Check(name, "OK", f"{where} runs{via} — the memory hooks have a working interpreter")
 
 
 # ── composition ───────────────────────────────────────────────────────────

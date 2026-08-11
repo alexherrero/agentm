@@ -184,29 +184,22 @@ class TestMemoryReflectIdleHook(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertTrue(m.is_file(), "marker touched despite unresolvable reflect.py")
 
-    # ── vec-index drain wiring (R0.2 / agentmExperience#0) ───────────────────
+    # ── vector-stack removal (was: vec-index drain wiring) ───────────────────
 
-    def test_drain_call_is_wired_and_detached(self) -> None:
-        """Regression guard: pre-R0.2 nothing in the production code path ever
-        called `drain_queue` — this asserts the hook source actually invokes
-        `vec_index.py drain`, backgrounded (never blocks the hook). Functional
-        correctness of drain_queue itself is covered by test_vec_drain.py;
-        this guards the wiring, not the drain logic."""
+    def test_hook_does_not_invoke_the_removed_vector_index(self) -> None:
+        """This guarded the opposite condition until the vector stack was
+        removed: pre-R0.2 nothing ever called `drain_queue`, so the hook was
+        made to fire one and this pinned the wiring. `vec_index.py` no longer
+        exists, so the same line would now resolve to nothing and fail
+        silently on every idle pass — exactly the class of quiet breakage this
+        test was written to prevent. It pins the removal instead."""
         source = _HOOK.read_text(encoding="utf-8")
-        self.assertIn("VEC_INDEX_PY", source)
-        # The drain invocation is background-detached (subshell + &), same
-        # shape as the pre-existing orchestration_idle.py chain launch.
-        drain_line = next(
-            (ln for ln in source.splitlines()
-             if "VEC_INDEX_PY" in ln and re.search(r"\bdrain\b", ln)),
-            None,
-        )
-        self.assertIsNotNone(drain_line, "no line invokes vec_index.py drain")
-        self.assertIn("&", drain_line)
+        self.assertNotIn("VEC_INDEX_PY", source)
+        self.assertNotIn("vec_index", source)
 
-    def test_drain_call_does_not_block_hook_exit(self) -> None:
-        # A real (empty) vault + no queue file: the backgrounded drain call
-        # must not slow or block the hook's own exit.
+    def test_hook_still_exits_clean_without_the_drain(self) -> None:
+        # A real (empty) vault: removing the backgrounded drain must not have
+        # disturbed the hook's own exit path.
         r = self._run_hook(self._env())
         self.assertEqual(r.returncode, 0, r.stderr)
 

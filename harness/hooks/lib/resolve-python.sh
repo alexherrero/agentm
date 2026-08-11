@@ -9,24 +9,27 @@
 # report a healthy interpreter the hooks never actually pick; delegating means
 # the check cannot drift from the behavior it is checking.
 #
-# WHY THIS EXISTS. The vec-index backend needs
-# `sqlite3.Connection.enable_load_extension` — sqlite-vec is a loadable native
-# extension, so without it `vec_index._open_index()` returns None on every call
-# and every caller reads that as the graceful "index not built yet" skip.
-# Apple's macOS system Python is built without
-# `--enable-loadable-sqlite-extensions` and so lacks the method entirely. The
-# hooks used to end in a bare `exec python3 …`, which PATH-resolves to
-# /usr/bin/python3 on a stock macOS box, so semantic recall was structurally
-# unreachable there — silently, because the graceful skip is indistinguishable
-# from an empty index. Confirmed 2026-08-02 against a 1035-row index that read
-# as `{"size": 1035}` under Homebrew's python3.13 and
-# `{"size": null, "note": "sqlite-vec unavailable"}` under Apple's, same script,
-# same vault.
+# WHY THIS EXISTS. The hooks used to end in a bare `exec python3 …`, which
+# PATH-resolves to /usr/bin/python3 on a stock macOS box — Apple's system
+# Python, a deliberately minimal build. That was found in 2026-08-02 as the
+# cause of a silent recall outage: the vector index could not load its native
+# sqlite extension there, and every caller read the failure as the graceful
+# "index not built yet" skip, so nothing ever went red.
+#
+# That index has since been removed (see wiki/designs/agentm-rescope-week1-
+# experiment.md), so the specific dependency is gone. The resolver stays, and
+# so does its probe, because the probe was never really about one extension:
+# an interpreter whose sqlite3 was built with loadable-extension support is a
+# real Python install, and Apple's stub is the one that isn't. Every memory
+# hook runs on whatever this prints, so picking the real install still matters.
+# The probe is kept as-is rather than loosened — changing what it selects would
+# be a behavior change with nothing behind it.
 #
 # RESOLUTION ORDER.
 #   1. $AGENTM_PYTHON          — explicit operator override, honored as given
 #   2. $AGENT_TOOLKIT_PYTHON   — back-compat alias for the same knob
-#   3. first candidate whose sqlite3 build supports extension loading
+#   3. first candidate whose sqlite3 build supports extension loading — the
+#      proxy for "a real Python install" (see WHY THIS EXISTS above)
 #   4. bare `python3` — today's behavior, the floor
 #
 # An explicit override wins outright whenever it is executable. It is not
@@ -114,7 +117,7 @@ for _c in "${_candidates[@]}"; do
     fi
 done
 
-# Floor: today's behavior. vec_index.py's own graceful skip still applies, so
-# this is never worse than what the hooks did before this resolver existed.
+# Floor: today's behavior — never worse than what the hooks did before this
+# resolver existed.
 printf '%s\n' "python3"
 exit 0

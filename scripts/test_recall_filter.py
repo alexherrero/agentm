@@ -3,7 +3,7 @@
 AG Wave B leader 3/5): parse_filter, _entry_matches_filter (the grep-fallback
 predicate), and the CLI's --filter wiring. The SQL-joined vec half
 (_vec_search_filtered) needs the real sqlite-vec backend and is covered by
-a graceful-skip integration test, same convention as test_vec_index.py.
+a graceful-skip integration test.
 
 Run directly:
     cd scripts && python3 -m unittest test_recall_filter
@@ -167,14 +167,13 @@ class TestQueryFilterIntegration(unittest.TestCase):
         )
         results = recall.query(
             vault=self.vault, query_text="widget content", filter_expr="project=agentm",
-            mode="stub",
         )
         paths = [r["path"] for r in results]
         self.assertEqual(paths, ["projects/agentm/decisions/match.md"])
 
     def test_query_raises_filter_error_for_malformed_expression(self):
         with self.assertRaises(recall.FilterError):
-            recall.query(vault=self.vault, query_text="widget", filter_expr="garbage", mode="stub")
+            recall.query(vault=self.vault, query_text="widget", filter_expr="garbage")
 
 
 if __name__ == "__main__":

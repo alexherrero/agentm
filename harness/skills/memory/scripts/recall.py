@@ -5,27 +5,25 @@
 #   - the SessionStart hook (subcommand: session-start; plan #7a part 2 task 1).
 #   - the UserPromptSubmit hook (subcommand: prompt-submit; plan #7a part 2
 #     task 2 ships the scaffold, task 3 wires the recall engine).
-#   - the operator-facing `query` subcommand (manual semantic search; plan
+#   - the operator-facing `query` subcommand (manual lexical search; plan
 #     #7a part 2 task 3). Future `/memory search` sub-command in the memory
 #     skill will be a thin wrapper around this.
 #
-# Recall engine (5-step algorithm per locked design call C2):
+# Recall engine. This was a hybrid of a vector stream and a lexical one until
+# the vector stack was removed (see `wiki/designs/agentm-rescope-week1-
+# experiment.md`); what remains is lexical throughout:
 #   1. Tokenize query.
-#   2. Embed query (api / local / stub) + sqlite-vec top-k by cosine sim.
-#   3. Grep + frontmatter scan in parallel — keyword match count per entry,
-#      filter `status: superseded`, exclude `_archive/` and `_inbox/` by
-#      default (each independently reopenable: --include-archive /
-#      --include-inbox).
-#   4. Merge: combined = sim × 0.7 + keyword × 0.3 (per design doc;
-#      Tech Debt #7 — tune from real use).
-#   5. Dedup against caller-provided path set (always-load), return top-K.
+#   2. BM25 corpus walk — per-entry score, filter `status: superseded`,
+#      exclude `_archive/` and `_inbox/` by default (each independently
+#      reopenable: --include-archive / --include-inbox).
+#   3. Rank-normalize via RRF, apply altitude boost + lifecycle decay.
+#   4. Dedup against caller-provided path set (always-load), return top-K.
 #
 # All steps degrade gracefully:
-#   - sqlite-vec missing / embedding mode unavailable → grep-only recall.
-#   - Time budget exceeded → return whatever results gathered so far.
+#   - Time budget exceeded → the walk is discarded rather than ranked partially.
 #   - Vault path unresolvable → exit 0 with no output (never blocks hooks).
 #
-# Vault resolution chain (matches save.py / vec_index.py):
+# Vault resolution chain (matches save.py):
 #   1. --vault-path arg (highest priority; overrides env).
 #   2. MEMORY_VAULT_PATH env var.
 #   3. No fallback — return None (caller decides what to do).
@@ -50,10 +48,9 @@ import sys
 import time
 from pathlib import Path, PurePosixPath
 
-# embed.py + vec_index.py live in this same scripts/ dir — sys.path-injected
-# import so the recall engine can pull in shared helpers (embedding modes,
-# sqlite-vec connection open, EMBEDDING_DIM). Lazy imports inside functions
-# so a missing dep doesn't break module-level load (mirrors vec_index.py).
+# Sibling modules live in this same scripts/ dir — sys.path-injected import so
+# the recall engine can pull in shared helpers. Lazy imports inside functions so
+# a missing optional dep doesn't break module-level load.
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -65,32 +62,19 @@ SESSION_START_BUDGET_MS = 500
 PROMPT_SUBMIT_BUDGET_MS = 300
 
 # The standalone `query` CLI subcommand is an explicit, operator-initiated
-# search, so it can afford a cold sentence-transformers load (~3.9s measured
-# on an M-series Mac) to get real semantic ranking. The two interactive hooks
-# above cannot.
-#
-# An earlier version of this comment claimed the hooks "run inside a session
-# where one likely already loaded" — that was wrong, and it is the assumption
-# this whole budget rested on. Each hook invocation is a FRESH PROCESS, so the
-# model is cold every single time. Nothing is ever carried between prompts.
+# search, so it can afford a full corpus walk (~3.1s measured on an M-series
+# Mac) where the two interactive hooks above cannot. This budget was sized for
+# a cold sentence-transformers load instead, back when the subcommand was the
+# one surface that could reach the vector index; the walk it now covers is the
+# same order of magnitude, so the number stands on its own terms.
 QUERY_CLI_BUDGET_MS = 10_000
 
 # Stream admission (GH #92). A recall stream runs to completion or does not run
 # at all; recall never emits a ranking derived from a partially-searched
 # corpus. See `query()` for why partial is not merely "degraded" here.
 #
-# Measured costs that set these numbers (M-series Mac, 1745-entry vault):
-#   cold sentence-transformers load + encode ... ~3900ms
-#   warm encode (model already resident) ......... ~15ms
+# Measured cost that sets these numbers (M-series Mac, 1745-entry vault):
 #   full BM25 corpus walk ....................... ~3050ms
-#   sqlite-vec MATCH given an embedding ............ ~2ms
-#
-# A cold embed is attempted only when the remaining budget could plausibly
-# absorb it. This is deliberately generous: the failure it prevents is
-# spending an entire interactive budget on a load that then gets discarded,
-# and a caller with less than this much budget could not have used the result.
-VEC_COLD_EMBED_MIN_BUDGET_MS = 5_000
-
 # Default top-K per locked design call (plan #7a part 2 recall-loop).
 DEFAULT_K = 5
 
@@ -187,22 +171,6 @@ last week today yesterday tomorrow
 DAEMON_SCOPE_ENV = "RECALL_DAEMON_SCOPE"
 DAEMON_SCOPE_DEFAULT = "memory-root"
 
-# Merge formula weights (per locked design call — recall-loop.md):
-#   combined = sim × SIM_WEIGHT + keyword × KEYWORD_WEIGHT
-# Tuned 2026-05-20 during plan #7a part 5 task 6 (seed-pass validation)
-# against 47 seeded entries + 10 sample queries. The original 0.7/0.3
-# values over-weighted unbounded keyword counts: 3 of 10 queries had the
-# highest-sim target NOT at #1 because raw-count keyword matches in tangential
-# entries (4-6 token overlaps on common words like "convention" / "phase" /
-# "report") pushed them above the higher-sim true target by 0.1+ on the
-# combined score. Re-tuned to sim-dominant 0.85/0.05 — semantic similarity
-# carries the ranking; raw keyword count contributes as a small tiebreaker
-# rather than a primary signal. All 10 sample queries now hit top-1 (or
-# correctly miss for the off-vault query). See PLAN.md task 6 narrative for
-# the full validation log.
-SIM_WEIGHT = 0.85
-KEYWORD_WEIGHT = 0.05
-
 # V6-3 (PLAN-wave-e-v6-index task 5): Reciprocal Rank Fusion replaces the
 # weighted-sum merge above as the live ranking formula. RRF combines ranked
 # lists without needing their raw scores to be on comparable scales — each
@@ -210,15 +178,6 @@ KEYWORD_WEIGHT = 0.05
 # across streams. k=60 is the literature default (Cormack et al. 2009);
 # kept as a named, tunable constant rather than inlined.
 RRF_K = 60
-
-# MemoryOS 4-level fallback cascade (memory-os-architecture-scan.md,
-# already-logged prior art): hybrid (BM25+vector both live) -> dense
-# (vector-only) -> lexical (BM25-only) -> sqlite (unranked metadata filter
-# match only, when both ranked signals are empty).
-_FALLBACK_HYBRID = "hybrid"
-_FALLBACK_DENSE = "dense"
-_FALLBACK_LEXICAL = "lexical"
-_FALLBACK_SQLITE = "sqlite"
 
 # Tencent abstraction-altitude (memory-os-architecture-scan.md): query the
 # abstracted layer first, drill to raw on demand. Realized here as a rank
@@ -278,19 +237,6 @@ _INBOX_DIR_NAME = "_inbox"
 _INCLUDE_ARCHIVE_DIR_NAME = "_archive"
 
 
-def _is_inbox_path(rel_path: str) -> bool:
-    """True if `_inbox` appears as a path component in a POSIX-style
-    relative path string (as stored in `entry_meta.path`). A defense-in-
-    depth backstop for `_vec_search`/`_vec_search_filtered`: those two
-    query the vector index directly by rowid and have no path-walk to
-    apply `_iter_entry_paths`'s own `_inbox` exclusion to (unlike
-    `_bm25_search`/`_grep_search`, which already honor `include_inbox`).
-    Found by a retroactive /review: nothing indexes `_inbox` content
-    today (`capture.py`'s writer never calls `vec_index.enqueue`), but
-    if anything ever did, an unfiltered vec-search result set would
-    surface it in ordinary semantic recall with no exclusion at all."""
-    return _INBOX_DIR_NAME in Path(rel_path).parts
-
 # Tokenization for grep search: split on non-alphanumeric, lowercase, drop
 # tokens shorter than _MIN_TOKEN_LEN. Skipping classical stopword filtering
 # in v1 — keep tokenization simple + greppable; tune via real-use feedback.
@@ -347,11 +293,10 @@ def _resolve_budget_ms(arg_value: int | None, default: int) -> int:
 
     This exists because the budget is a production tuning constant that a test
     driving the hook end-to-end would otherwise race. The setup a recall pays
-    before the corpus walk even starts — importing embed/vec_index, opening the
-    vec index, and on hosts where sqlite-vec loads, creating the index DB and
-    loading a native extension — is a FIXED cost, independent of corpus size.
-    Measured at 25-42ms of the 300ms prompt-submit budget on an idle M-series
-    Mac, and larger on Windows, where sqlite-vec actually loads. On a loaded CI
+    before the corpus walk even starts is a FIXED cost, independent of corpus
+    size. It was 25-42ms of the 300ms prompt-submit budget on an idle M-series
+    Mac when opening the vector index dominated it, and is smaller now that
+    nothing loads a native extension. On a loaded CI
     runner it can consume the whole budget, at which point `_bm25_search` finds
     the deadline already elapsed, reports `walked 0 of N`, and `query()`
     discards the stream — so recall emits nothing on a two-entry fixture vault
@@ -717,7 +662,7 @@ def _iter_entry_paths(
     out: list[Path] = []
     if not vault.exists():
         return out
-    from storage_device_local import DeviceLocalBackend  # noqa: E402 (lazy, mirrors _vec_search's pattern)
+    from storage_device_local import DeviceLocalBackend  # noqa: E402 (lazy)
     backend = DeviceLocalBackend(root=vault)
 
     def _walk(locator) -> None:
@@ -826,8 +771,8 @@ def _bm25_search(
     frequency saturation (k1) + document-length normalization (b) + inverse
     document frequency, computed over this query's own matched-candidate set
     (a single-walk approximation — a persistent corpus-wide IDF index is a
-    separate future build, analogous to vec_index.py's sqlite-vec index;
-    this keeps the same one-walk cost `_grep_search` already had). Query and
+    separate future build; this keeps the same one-walk cost `_grep_search`
+    already had). Query and
     document tokens are both stemmed (`_stem`) before matching.
 
     Returns {relative_path_posix: bm25_score}, score > 0 only.
@@ -994,9 +939,9 @@ def _metadata_filter_only(
     include_inbox: bool = False,
     include_archive: bool = False,
 ) -> list[str]:
-    """MemoryOS fallback level 4 (V6-3): an unranked `--filter`-only match,
-    used only when neither BM25 nor vector search produced any candidate for
-    a query that does carry filter criteria. No relevance ranking — just
+    """MemoryOS fallback's last level (V6-3): an unranked `--filter`-only
+    match, used only when BM25 produced no candidate for a query that does
+    carry filter criteria. No relevance ranking — just
     "these entries match the filter," the same degrade sqlite-only browsing
     would be without any query text at all.
     """
@@ -1021,19 +966,20 @@ def _metadata_filter_only(
 
 
 # -----------------------------------------------------------------------------
-# V6-11 hybrid --filter path (agentm-memory-index.md): a `--filter` expression
-# compiles to one SQL WHERE over the entry_meta metadata table, joined with
-# the vector MATCH, in a single query — replacing the grep-over-frontmatter
-# pass for the filtered case. Grep stays the graceful fallback when
-# sqlite-vec is absent, applying the same criteria as it walks.
+# V6-11 --filter path (agentm-memory-index.md): a `--filter` expression parses
+# to a set of frontmatter criteria the corpus walk applies as it goes. This
+# compiled to a SQL WHERE joined with a vector MATCH while the vector index
+# existed; the walk was always the fallback for that path and is now the only
+# implementation, applying the same criteria.
 # -----------------------------------------------------------------------------
 
 class FilterError(ValueError):
     """A `--filter` expression is malformed or names an unknown key."""
 
 
-# Filter key -> entry_meta column. `tag` is special-cased (checks membership
-# in the JSON-array `tags` column, not an equality match).
+# Supported filter keys -> the frontmatter field each one matches. `tag` is
+# special-cased (membership in the `tags` list, not an equality match) and so
+# is absent here; `parse_filter` allows it explicitly.
 _FILTER_FIELD_MAP: dict[str, str] = {
     "kind": "kind", "project": "project", "status": "status", "group": "group_name",
 }
@@ -1066,9 +1012,7 @@ def parse_filter(expr: str | None) -> dict[str, str]:
 
 
 def _derive_project(group_value: str) -> str | None:
-    """Mirrors vec_index._extract_meta_from_file's derivation — duplicated
-    (not imported) because the two live in different script directories and
-    this is three lines, not worth the cross-dir coupling."""
+    """`projects/<slug>/...` -> `<slug>`; None for any other group."""
     if not group_value or not group_value.startswith("projects/"):
         return None
     parts = group_value.split("/")
@@ -1092,334 +1036,6 @@ def _entry_matches_filter(fm: dict[str, str], criteria: dict[str, str]) -> bool:
     return True
 
 
-def _vec_search_filtered(
-    vault: Path,
-    query_text: str,
-    criteria: dict[str, str],
-    *,
-    k: int,
-    deadline: float | None = None,
-    mode: str | None = None,
-    status: dict | None = None,
-    stderr=sys.stderr,
-) -> dict[str, float]:
-    """Like `_vec_search`, but the SQL joins `entry_meta` and applies
-    `criteria` as an additional `WHERE` — one query, not a post-filter.
-
-    Same admission discipline as `_vec_search` (GH #92): the index is opened
-    before the query is embedded, and a cold model load is declined when the
-    remaining budget could not absorb it.
-    """
-    def _skip(reason: str) -> dict[str, float]:
-        if status is not None:
-            status.update({"ran": False, "reason": reason})
-        return {}
-
-    try:
-        from embed import (  # type: ignore
-            EmbeddingUnavailable,
-            embed_text,
-            local_model_is_resident,
-        )
-        from vec_index import _open_index  # type: ignore
-    except ImportError:
-        return _skip("embed/vec_index module unavailable")
-
-    if deadline is not None and time.monotonic() >= deadline:
-        return _skip("budget already exhausted before vec search")
-
-    conn = _open_index(vault)
-    if conn is None:
-        return _skip(
-            "vector index unavailable (sqlite-vec could not load; a sqlite3 "
-            "built with enable_load_extension is required)"
-        )
-    try:
-        if not local_model_is_resident(mode):
-            remaining_ms = (
-                None if deadline is None
-                else (deadline - time.monotonic()) * 1000.0
-            )
-            if remaining_ms is not None and remaining_ms < VEC_COLD_EMBED_MIN_BUDGET_MS:
-                return _skip(
-                    f"embedding model not loaded; a cold load needs roughly "
-                    f"{VEC_COLD_EMBED_MIN_BUDGET_MS}ms and only "
-                    f"{remaining_ms:.0f}ms of budget remained"
-                )
-        try:
-            embedding = embed_text(query_text, mode=mode)
-        except EmbeddingUnavailable as e:
-            print(f"[recall.query] embedding unavailable: {e}", file=stderr)
-            return _skip(f"embedding unavailable: {e}")
-        except Exception as e:  # noqa: BLE001 — degraded-graceful catch-all
-            print(f"[recall.query] embedding raised {type(e).__name__}: {e}", file=stderr)
-            return _skip(f"embedding raised {type(e).__name__}")
-        if status is not None:
-            status.update({"ran": True, "reason": ""})
-
-        emb_blob = json.dumps(embedding)
-        where_parts: list[str] = []
-        params: list = [emb_blob, k]
-        for key, value in criteria.items():
-            if key == "tag":
-                where_parts.append("entry_meta.tags LIKE ?")
-                params.append(f'%"{value}"%')
-            else:
-                where_parts.append(f"entry_meta.{_FILTER_FIELD_MAP[key]} = ?")
-                params.append(value)
-        where_sql = (" AND " + " AND ".join(where_parts)) if where_parts else ""
-        sql = (
-            "SELECT entries.rowid, distance, entry_meta.path FROM entries "
-            "JOIN entry_meta ON entries.rowid = entry_meta.rowid "
-            "WHERE embedding MATCH ? AND k = ?" + where_sql + " ORDER BY distance"
-        )
-        try:
-            rows = conn.execute(sql, params).fetchall()
-        except sqlite3.OperationalError as e:
-            print(f"[recall.query] filtered vec search SQL error: {e}", file=stderr)
-            return _skip(f"filtered vec search SQL error: {e}")
-        results: dict[str, float] = {}
-        for _rowid, distance, path in rows:
-            if _is_inbox_path(path):
-                continue
-            results[path] = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
-        return results
-    finally:
-        conn.close()
-
-
-def _vec_search(
-    vault: Path,
-    query_text: str,
-    *,
-    k: int,
-    deadline: float | None = None,
-    mode: str | None = None,
-    status: dict | None = None,
-    stderr=sys.stderr,
-) -> dict[str, float]:
-    """Embed the query + search the vec-index for top-k nearest entries.
-
-    Returns {relative_path_posix: similarity_score}. similarity_score is
-    in [0, 1] where 1 = most similar — an approximation of cosine
-    similarity derived from vec0's raw L2 distance (see the conversion
-    comment below; embeddings are unit vectors, so L2-based ranking
-    matches cosine-based ranking even though the metric itself is L2).
-
-    Returns {} (silently) under any of:
-      - sqlite-vec not installed / Apple system Python missing
-        enable_load_extension
-      - embedding mode unavailable (no API key, no local model)
-      - query embedding raises any other exception
-      - deadline elapsed before vec search completes
-      - the query embedding is cold and the remaining budget cannot absorb
-        a model load (`VEC_COLD_EMBED_MIN_BUDGET_MS`)
-
-    All failures degrade gracefully — caller falls back to grep-only.
-
-    `status`, when passed, is populated with `{"ran": bool, "reason": str}`
-    so the caller can tell the operator WHY the vec half contributed nothing.
-    A silent zero and an unavailable index are indistinguishable otherwise —
-    which is exactly how GH #92 stayed invisible under green CI.
-
-    Cheap checks run before expensive ones (GH #92). The index is opened
-    BEFORE the query is embedded, because opening costs ~1ms and embedding
-    costs ~3900ms cold — and on any host whose sqlite3 cannot load
-    extensions (macOS system Python, notably) the index can never open, so
-    embedding first meant paying the full model load to produce a vector that
-    had nowhere to go.
-    """
-    def _skip(reason: str) -> dict[str, float]:
-        if status is not None:
-            status.update({"ran": False, "reason": reason})
-        return {}
-
-    # Lazy imports — keep module-level load fast even if deps missing.
-    try:
-        from embed import (  # type: ignore
-            EmbeddingUnavailable,
-            embed_text,
-            local_model_is_resident,
-        )
-        from vec_index import _open_index  # type: ignore
-    except ImportError:
-        return _skip("embed/vec_index module unavailable")
-
-    if deadline is not None and time.monotonic() >= deadline:
-        return _skip("budget already exhausted before vec search")
-
-    # Cheap check first: can the index be opened at all? On a host without
-    # extension-loading sqlite3 this is a hard no, and it costs ~1ms to find
-    # out instead of ~3900ms.
-    conn = _open_index(vault)
-    if conn is None:
-        return _skip(
-            "vector index unavailable (sqlite-vec could not load; a sqlite3 "
-            "built with enable_load_extension is required)"
-        )
-
-    try:
-        # Affordability check: a cold model load cannot fit an interactive
-        # budget. Declining costs nothing and leaves the whole budget to the
-        # lexical stream; attempting it consumes the budget and then discards
-        # the result at the next deadline check.
-        if not local_model_is_resident(mode):
-            remaining_ms = (
-                None if deadline is None
-                else (deadline - time.monotonic()) * 1000.0
-            )
-            if remaining_ms is not None and remaining_ms < VEC_COLD_EMBED_MIN_BUDGET_MS:
-                return _skip(
-                    f"embedding model not loaded; a cold load needs roughly "
-                    f"{VEC_COLD_EMBED_MIN_BUDGET_MS}ms and only "
-                    f"{remaining_ms:.0f}ms of budget remained"
-                )
-
-        # Try to embed the query. EmbeddingUnavailable is the soft-fail path.
-        try:
-            embedding = embed_text(query_text, mode=mode)
-        except EmbeddingUnavailable as e:
-            print(f"[recall.query] embedding unavailable: {e}", file=stderr)
-            return _skip(f"embedding unavailable: {e}")
-        except Exception as e:  # noqa: BLE001 — degraded-graceful catch-all
-            print(f"[recall.query] embedding raised {type(e).__name__}: {e}", file=stderr)
-            return _skip(f"embedding raised {type(e).__name__}")
-
-        # NOTE: no deadline re-check here. The embedding has already been paid
-        # for and the remaining work (one indexed MATCH) costs ~2ms; throwing
-        # the result away at this point would discard the entire cost of the
-        # step for no saving. Budget is enforced by declining to START the
-        # expensive work above, not by abandoning it once spent.
-        if status is not None:
-            status.update({"ran": True, "reason": ""})
-        emb_blob = json.dumps(embedding)
-        # sqlite-vec MATCH operator: top-k nearest by distance.
-        # `vec0` virtual tables expose `distance` (lower = closer).
-        try:
-            cursor = conn.execute(
-                "SELECT entries.rowid, distance "
-                "FROM entries "
-                "WHERE embedding MATCH ? AND k = ? "
-                "ORDER BY distance",
-                (emb_blob, k),
-            )
-            rows = cursor.fetchall()
-        except sqlite3.OperationalError as e:
-            print(f"[recall.query] vec search SQL error: {e}", file=stderr)
-            return _skip(f"vec search SQL error: {e}")
-        results: dict[str, float] = {}
-        for rowid, distance in rows:
-            # Look up the path for this rowid.
-            meta_cursor = conn.execute(
-                "SELECT path FROM entry_meta WHERE rowid = ?", (rowid,)
-            )
-            meta_row = meta_cursor.fetchone()
-            if not meta_row:
-                continue
-            rel_path = meta_row[0]
-            if _is_inbox_path(rel_path):
-                continue
-            # Convert distance to similarity. vec0's default metric for
-            # FLOAT[N] columns (no distance_metric= override) is raw L2,
-            # not cosine — verified empirically against sqlite-vec v0.1.9.
-            # BGE-large's encode() pipeline ends in a Normalize module
-            # (modules.json), so stored and query embeddings are unit
-            # vectors; for unit vectors L2 = sqrt(2 * cosine_distance), so
-            # ordering by L2 matches ordering by cosine distance. The
-            # `1 - distance/2` below approximates cosine similarity (the
-            # exact conversion is `1 - distance**2/2`) — rank order
-            # survives, but the reported score isn't exactly cosine
-            # similarity.
-            sim = max(0.0, min(1.0, 1.0 - (distance / 2.0)))
-            results[rel_path] = sim
-        return results
-    finally:
-        conn.close()
-
-
-def _drift_check_vec_hits(
-    vault: Path,
-    vec_results: dict[str, float],
-    *,
-    deadline: float | None = None,
-    stderr=sys.stderr,
-) -> dict[str, float]:
-    """V4 #37 task 5: per-hit drift check + grep-only fallback.
-
-    For each path in `vec_results`, compares the source file's mtime against
-    the row's `indexed_at`. Drifted entries are:
-      - enqueued for re-embed via `vec_index.enqueue(..., op="upsert")`
-      - removed from `vec_results` (so the merge step uses keyword-only
-        score for that entry — the file's content is re-read at grep time
-        anyway, so the result remains useful)
-
-    A transparency stderr line is emitted iff any drift was detected.
-
-    Budget-aware: if `deadline` elapses mid-check, aborts the remaining
-    drift-checks + returns whatever state was reached. Drift-not-checked
-    entries stay in `vec_results` with their original vec score (better-
-    than-nothing fallback per locked design).
-
-    Graceful-skip: if vec_index can't be imported (sqlite-vec missing /
-    install-skipped), the input dict is returned unchanged.
-
-    Per V4 #37 plan #21 task 5.
-    """
-    if not vec_results:
-        return vec_results
-    try:
-        import vec_index  # type: ignore
-    except ImportError:
-        return vec_results
-
-    drifted_count = 0
-    aborted = False
-    fresh_results: dict[str, float] = {}
-
-    for path, sim in vec_results.items():
-        if deadline is not None and time.monotonic() >= deadline:
-            # Budget exhausted — return what we've computed + carry the rest
-            # through unchanged (better-than-nothing per the design call).
-            aborted = True
-            fresh_results[path] = sim
-            continue
-        try:
-            drifted = vec_index.is_entry_drifted(vault, path)
-        except Exception:  # noqa: BLE001 — defensive; never break recall on drift-check failure
-            # Treat as not-drifted on exception (drift-check is best-effort).
-            fresh_results[path] = sim
-            continue
-        if drifted:
-            drifted_count += 1
-            # Enqueue for re-embed via the existing async path. Extract
-            # embed-text matching save.py's `{slug} [tags]\n\n{first_para}`
-            # format so the re-embed produces a consistent vector shape.
-            try:
-                src = vault / path
-                embed_text = vec_index._extract_embed_text_from_file(src)
-                vec_index.enqueue(vault, path, "upsert", text=embed_text)
-            except Exception as exc:  # noqa: BLE001
-                print(
-                    f"[recall] drift-detect enqueue failed for {path}: {exc}",
-                    file=stderr,
-                )
-            # Drop from vec_results — current query falls back to grep-only.
-        else:
-            fresh_results[path] = sim
-
-    if drifted_count > 0:
-        notice = (
-            f"[recall] {drifted_count} entries flagged for re-embed "
-            f"(drift detected); falling back to grep-only for those hits"
-        )
-        if aborted:
-            remaining = len(vec_results) - len(fresh_results) - drifted_count
-            notice += f"; drift-check budget-aborted with {remaining} hits unchecked"
-        print(notice, file=stderr)
-
-    return fresh_results
-
-
 def query(
     *,
     vault: Path,
@@ -1429,88 +1045,50 @@ def query(
     include_inbox: bool = False,
     include_archive: bool = False,
     deadline: float | None = None,
-    mode: str | None = None,
     filter_expr: str | None = None,
     status: dict | None = None,
     stderr=sys.stderr,
 ) -> list[dict]:
-    """Run the 5-step recall engine.
+    """Run the in-process recall engine.
 
-    Steps (per locked design call C2 / recall-loop.md §recall-engine):
+    Steps (recall-loop.md §recall-engine, minus the vector stream this
+    engine fused with until that stack was removed):
       1. Tokenize query (lightweight; doesn't need to be in budget).
-      2. Vec search — embed query + sqlite-vec top-k by cosine similarity.
-         Returns {} on any failure (graceful — caller falls back).
-      3. Grep + frontmatter search — walk vault, count keyword matches
-         per entry; filter `status: superseded`; respect `_inbox/` flag.
-      4. Merge — union of both result sets; combined score =
-         sim × SIM_WEIGHT + keyword × KEYWORD_WEIGHT.
-      5. Dedup against `dedup_paths` (typically the always-load set);
+      2. BM25 corpus walk — score each entry; filter `status: superseded`;
+         respect the `_inbox/` and `_archive/` flags.
+      3. Rank-normalize via RRF, then apply the altitude boost and the
+         lifecycle decay multiplier.
+      4. Dedup against `dedup_paths` (typically the always-load set);
          sort by combined score; return top-k.
 
     Returns a list of dicts:
         [{"path": "<vault-relative-POSIX>", "slug": "<slug>",
-          "sim": <float in [0,1]>, "keyword": <int>,
-          "combined": <float>}, ...]
-    sorted by combined score descending.
+          "sim": 0.0, "keyword": <float>, "combined": <float>}, ...]
+    sorted by combined score descending. `sim` is retained at zero for
+    result-shape compatibility with `trace` and the recall counter; nothing
+    computes a similarity any more.
 
-    Degraded-graceful: if vec search fails, returns grep-only results
-    (still scored via the merge formula with sim=0 for all entries).
+    `filter_expr` (V6-11 recall, agentm-memory-index.md): a
+    `tag=security AND project=sherwood`-shaped expression, applied by the
+    corpus walk as it goes. Raises `FilterError` on a malformed expression —
+    fail loud at parse time, before the search runs.
 
-    `filter_expr` (V6-11 hybrid recall, agentm-memory-index.md): a
-    `tag=security AND project=sherwood`-shaped expression. When present, the
-    vec half runs as one SQL query joining `entry_meta`'s `WHERE` with the
-    vector `MATCH` (replacing the grep-over-frontmatter pass for the
-    filtered case); the grep half (still run as the graceful fallback when
-    sqlite-vec is unavailable) applies the same criteria as it walks.
-    Raises `FilterError` on a malformed expression — fail loud at parse
-    time, before either search runs.
-
-    Stream admission (GH #92). Each half runs to completion or does not
-    contribute: a vec half that cannot afford a cold model load is declined
-    before it spends the budget, and a lexical half whose corpus walk was cut
-    short by the deadline has its results DISCARDED rather than fused. The
-    alternative — fusing whatever the walk reached — silently returns an
-    arbitrary walk-order-determined ranking that is indistinguishable from a
-    real one. `status`, when passed, records what each half did so the caller
-    can tell the operator "found nothing" apart from "could not search".
+    Stream admission (GH #92). The walk runs to completion or does not
+    contribute: a corpus walk cut short by the deadline has its results
+    DISCARDED rather than returned. The alternative — ranking whatever the
+    walk reached — silently returns an arbitrary walk-order-determined
+    ranking that is indistinguishable from a real one. `status`, when passed,
+    records what it did so the caller can tell the operator "found nothing"
+    apart from "could not search".
     """
     if status is not None:
-        status.update({"vec": {}, "lexical": {}, "searched": False})
+        status.update({"lexical": {}, "searched": False})
     if dedup_paths is None:
         dedup_paths = set()
     if not query_text or not query_text.strip():
         return []
     query_tokens = _tokenize(query_text)
     criteria = parse_filter(filter_expr)
-
-    # Vec search first — typically dominates the time budget (network /
-    # model-load latency on the embed call). Done before grep so we can
-    # short-circuit on budget overrun and still return grep results
-    # (grep is fast — typical <50ms on <100 entries).
-    vec_status: dict = {"ran": True, "reason": ""}
-    if criteria:
-        vec_results = _vec_search_filtered(
-            vault, query_text, criteria, k=max(k * 2, 10),
-            deadline=deadline, mode=mode, status=vec_status, stderr=stderr,
-        )
-    else:
-        vec_results = _vec_search(
-            vault, query_text, k=max(k * 2, 10),
-            deadline=deadline, mode=mode, status=vec_status, stderr=stderr,
-        )
-    if status is not None:
-        status["vec"] = dict(vec_status)
-
-    # V4 #37: per-hit drift check. Each vec result's source file mtime is
-    # compared against the row's indexed_at; drifted hits enqueue for
-    # re-embed + get dropped from vec_results (the current query falls
-    # back to grep-only for those entries — content still searched at
-    # query time, just not vec-scored against a stale embedding). Cheap:
-    # one os.stat per hit. Budget-aware: aborts remaining drift-checks
-    # if deadline elapsed (returns whatever drift-checks completed).
-    vec_results = _drift_check_vec_hits(
-        vault, vec_results, deadline=deadline, stderr=stderr,
-    )
 
     # BM25 lexical search — independently scored. This is a full corpus walk:
     # it costs roughly 3050ms on a 1745-entry vault, NOT the "<50ms" an
@@ -1538,16 +1116,15 @@ def query(
         bm25_results = {}
     if status is not None:
         status["lexical"] = dict(bm25_status)
-        status["searched"] = bool(vec_status.get("ran")) or bm25_status["complete"]
+        status["searched"] = bm25_status["complete"]
 
     # V6-3 (PLAN-wave-e-v6-index task 5): RRF fusion replaces the old
-    # weighted-sum merge (sim × 0.85 + keyword × 0.05), with the MemoryOS
-    # 4-level fallback cascade choosing which streams actually feed it.
-    if vec_results and bm25_results:
-        fused = _rrf_fuse(vec_results, bm25_results)
-    elif vec_results:
-        fused = _rrf_fuse(vec_results)
-    elif bm25_results:
+    # weighted-sum merge (sim × 0.85 + keyword × 0.05). The cascade used to
+    # choose between a vector stream and this one; since the vector stack was
+    # removed there is a single ranked stream, and RRF over one source is just
+    # a rank normalization of it — kept rather than inlined so the metadata-
+    # filter-only fallback below still sits behind the same shape.
+    if bm25_results:
         fused = _rrf_fuse(bm25_results)
     elif criteria:
         # Level 4: neither ranked signal produced anything -- an unranked
@@ -1583,7 +1160,12 @@ def query(
     for path in all_paths:
         if path in dedup_paths:
             continue
-        sim = vec_results.get(path, 0.0)
+        # No embedding stands behind any hit now that the vector stack is
+        # gone, so zero is the true value rather than a failed match — the
+        # same reasoning the daemon path already applies to its own hits.
+        # The key stays for result-shape compatibility with `trace` and the
+        # recall counter; `_format_recall_result` declines to print it.
+        sim = 0.0
         keyword = bm25_results.get(path, 0.0)
         slug = Path(path).stem
 
@@ -1623,10 +1205,12 @@ def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
     this entry was recalled. Body follows verbatim (frontmatter stripped by
     caller).
 
-    The evidence differs by engine, and quoting the wrong one is a small lie
-    that reads as a real signal: a daemon-ranked hit has no embedding behind it,
-    so it reports its BM25 score rather than a `sim` of 0.00 that would look
-    like a semantic match that failed.
+    Both engines are lexical, so neither reports a similarity. Quoting one
+    would be a small lie that reads as a real signal: no embedding stands
+    behind either hit, and a `sim` of 0.00 looks like a semantic match that
+    failed rather than one that was never attempted. This held for the daemon
+    from the start and now holds for the in-process engine too, since the
+    vector stack it used to fuse with was removed.
     """
     kind = fm.get("kind", "unknown")
     tags = fm.get("tags", "")
@@ -1636,7 +1220,7 @@ def _format_recall_result(result: dict, body: str, fm: dict[str, str]) -> str:
     else:
         header = (
             f"### {result['slug']} (kind: {kind}, "
-            f"sim={result['sim']:.2f}, keywords={result['keyword']}"
+            f"keywords={result['keyword']}"
         )
     if tags and tags not in {"[]", ""}:
         header += f", tags: {tags}"
@@ -1995,7 +1579,6 @@ def prompt_submit(
     token_budget: int = DEFAULT_TOKEN_BUDGET,
     include_inbox: bool = False,
     include_archive: bool = False,
-    mode: str | None = None,
     stdout=sys.stdout,
     stderr=sys.stderr,
 ) -> int:
@@ -2083,7 +1666,6 @@ def prompt_submit(
                     include_inbox=include_inbox,
                     include_archive=include_archive,
                     deadline=deadline,
-                    mode=mode,
                     status=recall_status,
                     stderr=stderr,
                 )
@@ -2236,19 +1818,16 @@ def prompt_submit(
     # genuinely held nothing relevant or no search had actually run. Name the
     # blocked streams whenever nothing was loaded and something was blocked.
     blocked: list[str] = []
-    vec_status = recall_status.get("vec") or {}
     lexical_status = recall_status.get("lexical") or {}
-    if vec_status.get("ran") is False and vec_status.get("reason"):
-        blocked.append(f"semantic: {vec_status['reason']}")
     if lexical_status.get("complete") is False:
         blocked.append(
             f"lexical: discarded, walked {lexical_status.get('walked', 0)} of "
             f"{lexical_status.get('total', 0)} entries before the budget elapsed"
         )
-    # "Nothing was searched" is reserved for the case where NO stream completed.
-    # A vec half that could not run while the lexical half walked the whole
-    # corpus is a coverage caveat, not a failed search — the vault really was
-    # searched, just by one stream instead of two.
+    # "Nothing was searched" is reserved for the case where no stream completed.
+    # With the vector stack gone the in-process engine has exactly one stream,
+    # so a blocked stream and an unsearched vault now coincide — the branch is
+    # kept because the daemon path can still report a search this one did not.
     searched = recall_status.get("searched", True)
     if blocked and not searched:
         transparency += (
@@ -2355,8 +1934,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                    help="include _inbox/ entries in the search (default: excluded)")
     q.add_argument("--include-archive", action="store_true",
                    help="include _archive/ entries in the search (default: excluded)")
-    q.add_argument("--mode", choices=["local", "stub"], default=None,
-                   help="embedding mode override (default: local; see embed.py for details)")
     q.add_argument("--filter", dest="filter_expr", default=None,
                    help="hybrid filter, e.g. 'tag=security AND project=sherwood' "
                         "(supported keys: tag, kind, project, status, group)")
@@ -2439,7 +2016,6 @@ def main(argv: list[str] | None = None) -> int:
                 include_inbox=args.include_inbox,
                 include_archive=args.include_archive,
                 deadline=deadline,
-                mode=args.mode,
                 filter_expr=args.filter_expr,
             )
         except FilterError as e:

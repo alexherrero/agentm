@@ -9,8 +9,6 @@
 #        (project-personal dir mirrors save.py's group/kind hierarchy;
 #        the spec called for projects/<slug>/ — slug becomes a
 #        project dir at the canonical location).
-#      - Recalculates vec-index entries for the moved files (paths
-#        changed, so old keys are stale + new keys need upsert).
 #      - Annotates the corresponding Ideas.md section (real Obsidian vault
 #        root, one directory above the resolved MemoryVault path) with
 #        `→ promoted YYYY-MM-DD to projects/<slug>/` (requires
@@ -23,7 +21,7 @@
 #      - Entries older than `gc_months` (default 6) get presented to the
 #        operator with Keep / Archive / Delete prompt.
 #      - Archive: moves to _idea-incubator/_archive/<slug>/.
-#      - Delete: rm -rf the dir + delete vec-index entries.
+#      - Delete: rm -rf the dir.
 #      - Keep: no-op (touches `_index.md` mtime so future GC passes
 #        respect the operator's decision).
 #      - Never silent deletion — non-TTY contexts default to Keep.
@@ -147,55 +145,6 @@ def _parse_iso_date(s: str) -> datetime | None:
         return None
 
 
-def _vec_index_reflect_move(
-    vault: Path, old_prefix: str, new_prefix: str
-) -> dict:
-    """Re-key vec-index entries from old path prefix to new prefix.
-
-    For each entry whose path starts with `old_prefix`, queue a delete
-    (old path) + an upsert (new path; embed text computed from the
-    new file's content at drain time). Returns stats dict
-    {deleted: N, queued_upsert: N} so the operator can verify.
-
-    Graceful-skip if vec-index unavailable (no sqlite-vec) — operator
-    runs `python3 vec_index.py drain` later or it's a no-op until a
-    capable environment runs reindex.
-    """
-    stats = {"deleted": 0, "queued_upsert": 0, "skipped": 0}
-    try:
-        import vec_index  # type: ignore
-    except ImportError:
-        stats["skipped"] = -1  # signal: vec_index module missing
-        return stats
-
-    # Walk the new location (post-move) to find files we need to re-key.
-    new_dir = vault / new_prefix
-    if not new_dir.exists():
-        return stats
-    for path in new_dir.rglob("*"):
-        if not path.is_file() or not path.suffix == ".md":
-            continue
-        new_rel = str(path.relative_to(vault)).replace(os.sep, "/")
-        old_rel = new_rel.replace(new_prefix, old_prefix, 1)
-        # Delete old path from index (best-effort).
-        try:
-            if vec_index.delete_entry(vault, old_rel):
-                stats["deleted"] += 1
-        except Exception:
-            pass
-        # Queue an upsert for the new path. embed text: slug + first 500
-        # chars of body. Reads body from the new location.
-        try:
-            content = path.read_text(encoding="utf-8")
-            body = content.split("---\n", 2)[-1] if content.startswith("---\n") else content
-            embed_text = f"{path.stem}\n\n{body[:500]}"
-            vec_index.enqueue(vault, new_rel, "upsert", text=embed_text)
-            stats["queued_upsert"] += 1
-        except Exception:
-            pass
-    return stats
-
-
 def _annotate_ideas_md_section(
     ideas_path: Path, slug: str, project_path: str, *, mode: str | None,
     stdin=None, stdout=None,
@@ -285,7 +234,6 @@ def promote_idea(
             "promoted": bool,
             "incubator_dir": "<source path>",
             "project_dir": "<destination path>",
-            "vec_index": {...},
             "ideas_annotation": "written" | "denied" | "section_not_found" | "no_ideas_file",
         }
 
@@ -317,10 +265,7 @@ def promote_idea(
     project_dir.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(incubator_dir), str(project_dir))
 
-    # Recalculate vec-index entries.
-    old_prefix = f"personal/_idea-incubator/{slug}/"
     new_prefix = f"personal/projects/{slug}/"
-    vec_stats = _vec_index_reflect_move(vault, old_prefix, new_prefix)
 
     # Annotate Ideas.md section. Pass the already-resolved `vault` so the
     # default can't diverge from the vault actually used for the promotion.
@@ -338,7 +283,6 @@ def promote_idea(
         "promoted": True,
         "incubator_dir": str(incubator_dir),
         "project_dir": str(project_dir),
-        "vec_index": vec_stats,
         "ideas_annotation": ideas_annotation,
     }
 
@@ -462,7 +406,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
         description=(
             "/memory promote idea <slug> + incubator GC. Promotes "
             "_idea-incubator/<slug>/ → projects/<slug>/ with "
-            "Ideas.md annotation (A3 boundary check) + vec-index recalc. "
+            "Ideas.md annotation (A3 boundary check). "
             "GC subcommand prompts for Keep/Archive/Delete on entries "
             "older than 6 months. Plan #7a part 4 task 4."
         ),

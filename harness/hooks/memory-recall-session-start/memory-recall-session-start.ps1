@@ -17,7 +17,7 @@ if (-not (Get-Command python3 -ErrorAction SilentlyContinue) -and
 # which is a PATH lookup. On macOS that resolves to Apple's system Python,
 # whose sqlite3 is built without `--enable-loadable-sqlite-extensions` and so
 # has no `enable_load_extension` at all; sqlite-vec is a loadable native
-# extension, so `vec_index._open_index()` returned None on every call and every
+# extension, so the vector index could never open, and every
 # caller read that as the graceful "index not built yet" skip. Semantic recall
 # was structurally unreachable, silently, against a fully healthy index. The
 # property is a build flag, not an OS, so this Windows half probes rather than

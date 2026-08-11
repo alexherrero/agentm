@@ -3,14 +3,13 @@
 organization part 1, task 2).
 
 The V6-3 old-formula-vs-new-formula comparison (this module's original
-behavior) needs a real vault with a populated vec-index and is exercised
-against the operator's real vault, not unit-tested here (matches this
-module's existing convention — no test file existed for it before this
-task). What's unit-testable without any vault at all is the NEW seam this
-task adds: run_eval()'s injectable old_top_k_fn/new_top_k_fn parameters,
-the decay-curve context manager, and the --decay-curve CLI dispatch — all
-exercised here with fake, deterministic top-k functions so no recall.py /
-vec-index dependency is needed.
+behavior) is gone: its old side reconstructed a weighted sum over the vector
+search, and that stack was removed (see
+wiki/designs/agentm-rescope-week1-experiment.md). What remains, and what was
+always the unit-testable part, is the seam: run_eval()'s injectable
+old_top_k_fn/new_top_k_fn parameters, the decay-curve context manager, and
+the --decay-curve CLI dispatch — all exercised here with fake, deterministic
+top-k functions so no recall.py dependency is needed.
 """
 from __future__ import annotations
 
@@ -104,12 +103,17 @@ class TestRunEvalInjectableTopKFns(unittest.TestCase):
         self.assertGreater(acc["new_r_at_5"], 0.0)
         self.assertGreater(result["discovery_rate"]["rate"], 0.0)
 
-    def test_default_top_k_fns_are_the_legacy_v6_3_pair(self):
-        # Unchanged default behavior — no --decay-curve flag, no injected
-        # fns — must still resolve to the original V6-3 comparison pair.
+    def test_default_top_k_fns_both_resolve_to_the_live_pipeline(self):
+        # The V6-3 comparison had a reconstructed old formula on one side
+        # (weighted sum over `_vec_search` + `_grep_search`). That formula's
+        # inputs went with the vector stack — see
+        # wiki/designs/agentm-rescope-week1-experiment.md — so it cannot be
+        # reconstructed, and the uninjected default is now the live pipeline
+        # on both sides. Pinned so a caller relying on the defaults gets a
+        # self-comparison rather than a silently half-broken one.
         import inspect
         sig = inspect.signature(ev.run_eval)
-        self.assertIs(sig.parameters["old_top_k_fn"].default, ev._old_formula_top_k)
+        self.assertIs(sig.parameters["old_top_k_fn"].default, ev._new_formula_top_k)
         self.assertIs(sig.parameters["new_top_k_fn"].default, ev._new_formula_top_k)
 
 
@@ -130,7 +134,7 @@ _FAKE_RESULT = {
 class TestDecayCurveCLIDispatch(unittest.TestCase):
     """Verifies main() selects the right top_k_fn pair without ever running
     a real query — run_eval() itself is mocked out entirely, so no
-    recall.py / vec-index dependency is needed for these CLI-dispatch tests."""
+    recall.py dependency is needed for these CLI-dispatch tests."""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

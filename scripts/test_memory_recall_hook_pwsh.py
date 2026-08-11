@@ -8,7 +8,7 @@ resolves recall.py via a RELATIVE path from the invocation cwd
 config-bridge the bash hook and its test fixture use. The fixture here
 copies the real memory scripts tree into the fixture project's
 .claude/skills/memory/scripts/ instead of faking HOME, so recall.py finds
-its sibling modules (embed.py, vec_index.py, ...) the same way a real
+its sibling modules the same way a real
 install lays them out.
 
 Skipped when pwsh isn't on PATH (runs on macOS CI too, not Windows-only).

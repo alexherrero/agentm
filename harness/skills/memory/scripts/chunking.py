@@ -7,7 +7,7 @@ paragraph-aware chunking against the `entry_meta` table's existing columns
 time rather than persisting chunk boundaries as new `entry_meta` columns
 (an honest, named scope cut: a persistent chunk-storage schema + chunk-
 level vector embeddings is a separate, larger future build spanning
-vec_index.py's migration path and the embed/index pipeline, not something
+the old vector index's migration path and embed pipeline, not something
 this task's time budget covers).
 
 Why chunking, concretely: task 5's V6-20 eval showed recall gaps traceable

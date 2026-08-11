@@ -40,7 +40,7 @@ Auto-recall happens via the [SessionStart + UserPromptSubmit hooks](https://gith
 
 ### `/memory save`
 
-Synchronously writes a markdown entry to MemoryVault. File write returns immediately (<50ms target); embedding + vec-index update are async and deferred (the actual embedding integration lands in task 4 of plan #7a part 1; until then the embedding step is a no-op stub that logs `"embedding queued (deferred to task 4)"`).
+Synchronously writes a markdown entry to MemoryVault. File write returns immediately (<50ms target). There is no indexing step: the vector index a save used to enqueue against was removed (see [the week-1 experiment design](../../../wiki/designs/agentm-rescope-week1-experiment.md)), and recall searches the corpus itself.
 
 #### Invocation
 
@@ -108,7 +108,7 @@ Trailing newline at EOF.
 
 **Step 7 — Write file.** Use the Write tool to create the file at the computed target path. Verify the write succeeded (Write tool returns success/error). File write is synchronous; on success, the file is on disk before the next step.
 
-**Step 8 — Queue async embedding + vec-index update.** Until task 4 of this plan lands (embedding integration), this step is a no-op stub: log `"embedding queued (deferred to task 4)"` and continue. After task 4 ships, this step kicks off an async embedding call to the configured provider (Anthropic API default; local sentence-transformers fallback per `memory.use_api_embeddings`) and writes the embedding to `MemoryVault/_meta/vec-index.db` via sqlite-vec. The async-ness ensures file write is never blocked by network or vec-index latency.
+**Step 8 — (removed).** A save used to enqueue an embedding here, drained later into a sqlite-vec index. That whole path is gone; the file write is the entire write contract now.
 
 **Step 9 — Return confirmation.** Report success to the operator with:
 
@@ -120,7 +120,6 @@ Saved entry to <relative-path-from-vault-root>/<slug>.md
   flags: <always-load-and-supersedes-if-set>
 ```
 
-Plus the deferred-embedding note: `"(Embedding deferred to plan #7a part 1 task 4; index will populate on next reindex.)"`.
 
 #### Tool allowlist
 
@@ -185,7 +184,6 @@ CI per-OS times, manual verification scenarios, negative-test results when relev
 
 **Step 7** — Write file at the target path. ✓
 
-**Step 8** — Log `"embedding queued (deferred to task 4)"`.
 
 **Step 9** — Report:
 
@@ -212,7 +210,6 @@ Saved entry to personal-private/_always-load/paragraph-long-status-narratives.md
 `/memory save` must NOT:
 
 - **Overwrite an existing entry** — Step 4 collision check is the hard gate.
-- **Block on embedding** — Step 8 is async-deferred; file write must complete before any network call.
 - **Coerce slugs** — operator provides exact slug; validator rejects, never auto-lowercases or strips characters.
 - **Default vault path to `cwd` or `~`** — explicit resolution chain; no implicit defaults that could write to wrong directories.
 - **Modify Document History or other special files** in the vault — `/memory save` is a single-file-write primitive; cross-file ops are for `/memory evolve` (task 3) + the reflection sidecar (plan #7a part 3).
@@ -370,7 +367,7 @@ The new entry's body comes from `--body-file` (or stdin via `-`).
 
 The Python-side script (`scripts/evolve.py`) does both write + unlink atomically via `os.rename` + temp-file pattern — see the Python-side script section below.
 
-**Step 7 — Queue async vec-index update for both files.** Until task 4 lands, this step is a no-op stub: log `"vec-index update queued for: <new-path>, <archive-path> (deferred to task 4)"`. After task 4, both files get re-indexed: archive is marked status:superseded (so recall filters skip it) + new entry is freshly indexed.
+**Step 7 — (removed).** Both files used to be re-indexed here. Recall reads the corpus directly now, so the archive's `status: superseded` frontmatter is the only thing that keeps it out of results.
 
 **Step 8 — Return confirmation.**
 
@@ -465,7 +462,6 @@ New body (from stdin).
 
 **Step 6** — Write archive → overwrite old path with new content.
 
-**Step 7** — Log `"vec-index update queued for: ... (deferred to task 4)"`.
 
 **Step 8** — Confirm:
 
@@ -674,7 +670,7 @@ Output: one JSON record per line (`{"pass": "memory", "category": ..., "confiden
 
 ### `/memory promote`
 
-Graduates an `_idea-incubator/<slug>/` entry to a real project at `projects/<slug>/` + annotates the corresponding `Ideas.md` section + recalculates vec-index entries. Plan #7a part 4 ships this body + the canonical Python implementation at `skills/memory/scripts/ideas_promote.py`.
+Graduates an `_idea-incubator/<slug>/` entry to a real project at `projects/<slug>/` + annotates the corresponding `Ideas.md` section. Plan #7a part 4 ships this body + the canonical Python implementation at `skills/memory/scripts/ideas_promote.py`.
 
 #### Invocation shape
 
@@ -696,16 +692,13 @@ Graduates an `_idea-incubator/<slug>/` entry to a real project at `projects/<slu
 
 **Step 3 — Move the directory.** `shutil.move(_idea-incubator/<slug>, projects/<slug>)`. Cross-filesystem-safe (uses copy + delete fallback). Atomic at the OS level for same-FS moves.
 
-**Step 4 — Recalculate vec-index entries.** For each `.md` file under the new `projects/<slug>/` location: enqueue `op: delete` for the old path (`personal-private/_idea-incubator/<slug>/...`) + `op: upsert` for the new path with re-embedded text. Operator runs `python3 vec_index.py drain --vault-path <vault>` (or future idle-hook drain) to actually process. Graceful-skip if `vec_index` module missing.
-
-**Step 5 — Annotate Ideas.md section.** Find the section whose wikilink references `_idea-incubator/<slug>/_index.md`; append `→ promoted YYYY-MM-DD to personal-private/projects/<slug>/` annotation right after the wikilink line. **Permeable-boundary check fires here** (Ideas.md is outside MemoryVault — the A3 helper `confirm_write_outside_memoryvault()` confirms via `--mode` resolution). If denied, the move + vec-index recalc already happened — the operator can manually annotate; the return value indicates "ideas_annotation: denied".
+**Step 4 — Annotate Ideas.md section.** Find the section whose wikilink references `_idea-incubator/<slug>/_index.md`; append `→ promoted YYYY-MM-DD to personal-private/projects/<slug>/` annotation right after the wikilink line. **Permeable-boundary check fires here** (Ideas.md is outside MemoryVault — the A3 helper `confirm_write_outside_memoryvault()` confirms via `--mode` resolution). If denied, the move already happened — the operator can manually annotate; the return value indicates "ideas_annotation: denied".
 
 **Step 6 — Return confirmation.** Display:
 
 ```
 Promoted <slug> to personal-private/projects/<slug>/
   incubator_dir → moved
-  vec_index: <stats>
   ideas_annotation: written | denied | section_not_found
 ```
 
@@ -731,7 +724,7 @@ Action: [k]eep (defer) / [a]rchive / [d]elete (default: k):
 
 - **Keep**: `_index.md` mtime touched (entry exits the GC window; re-evaluated in 6 months).
 - **Archive**: moves to `_idea-incubator/_archive/<slug>/` (preserves history, excludes from active recall).
-- **Delete**: `rm -rf` the dir (irreversible — vec-index entries pointing at deleted paths become orphans on next drain).
+- **Delete**: `rm -rf` the dir (irreversible).
 - **Default (non-TTY or empty input)**: Keep — locked design call B1.i is *never silent deletion*; without operator confirmation the entry stays.
 
 #### Failure modes (graceful)
@@ -739,7 +732,6 @@ Action: [k]eep (defer) / [a]rchive / [d]elete (default: k):
 - **Slug not found** → halt step 2 with the actual path that was checked.
 - **Target collision** (`projects/<slug>/` exists) → halt with operator next-step.
 - **Cross-filesystem move** → falls back to copy+delete via shutil.move; slow but correct.
-- **vec-index unavailable** → recalc step is no-op + returns `{"skipped": -1}` stat; operator runs reindex later.
 - **Ideas.md missing** → ideas_annotation = "no_ideas_file"; promotion otherwise succeeds.
 - **A3 boundary denied** for Ideas.md write → ideas_annotation = "denied"; promotion otherwise succeeds (operator can manually annotate).
 
@@ -801,7 +793,7 @@ last_indexed: <today UTC>
 
 Body shape: title `# <skill-name> (skill pointer)` + an "auto-indexed; do not edit by hand" note + a metadata block (repo / version / hosts) + the description from frontmatter + the extracted summary.
 
-**Step 9 — Enqueue vec-index upsert** with embed text `<slug> skill (from <repo>)\n\n<description>\n\n<summary[:300]>`. Graceful-skip on any enqueue failure — the file write is the contract; embedding is best-effort.
+**Step 9 — (removed).** An indexed skill used to be enqueued for embedding here; the file write is the whole contract now.
 
 #### Failure modes (graceful)
 
@@ -1145,7 +1137,7 @@ python3 harness/skills/memory/scripts/recall.py heat-pin <slug> [--vault-path <p
 
 ### `/memory lint`
 
-Reports vault-wide rot the write-time guards can't catch on their own: orphans (notes with zero links in either direction — the same pool `dream.py`'s link-improvement backfill already drains directly, reported here for visibility rather than as a second feed), broken wikilinks, supersede-chain contradictions (a cycle, a fork where two entries both claim to supersede the same note, or a `status: superseded` note with no `supersedes:` backing it anywhere), a kind outside the known-kinds registry, and a per-note quality score (frontmatter completeness + link presence + `lifecycle.compute_decay_score`'s staleness axis). Canonical implementation at `skills/memory/scripts/lint.py` (`run_lint()`), composing `vault_lint.py`'s structural check suite, `graph_snapshot.orphans()`, and a new composite score — auto-organization part 3, task 7.
+Reports vault-wide rot the write-time guards can't catch on their own: orphans (notes with zero links in either direction), broken wikilinks, supersede-chain contradictions (a cycle, a fork where two entries both claim to supersede the same note, or a `status: superseded` note with no `supersedes:` backing it anywhere), a kind outside the known-kinds registry, and a per-note quality score (frontmatter completeness + link presence + `lifecycle.compute_decay_score`'s staleness axis). Canonical implementation at `skills/memory/scripts/lint.py` (`run_lint()`), composing `vault_lint.py`'s structural check suite, `graph_snapshot.orphans()`, and a new composite score — auto-organization part 3, task 7.
 
 **One thing on this list gets fixed automatically, everything else is surfaced only.** A mis-cased wikilink (`[[Wrong-Case]]` where `[[Correct-Case]]` is the sole vault-wide case-insensitive match, no alias, no anchor) auto-corrects and revert-logs — a string fact, not a judgment call. An unresolved link with no unique case-insensitive match, a contradiction, an out-of-registry kind, and every orphan stay exactly as reported; deciding what to do about them is an editorial call this engine never makes for you.
 
@@ -1179,7 +1171,7 @@ python3 harness/skills/memory/scripts/lint.py [--vault-path <path>] [--apply]
 
 Manual semantic query against the vault — the read primitive that complements `/memory save`'s write. Useful when the automatic recall (via UserPromptSubmit hook) didn't surface what you wanted, or when you want to inspect what's in the vault without re-loading via a session prompt.
 
-Calls the same recall engine the UserPromptSubmit hook uses: sqlite-vec primary + grep + frontmatter alongside, merge results via the locked rank-merge formula (`sim × 0.7 + keyword × 0.3`), dedup, return top-K (K=5 default).
+Calls the same recall engine the UserPromptSubmit hook uses: a BM25 walk over the corpus with frontmatter filtering, rank-normalized via RRF, deduped, returning top-K (K=5 default). On a daemon-backed machine the hook asks `agentmd` first and only falls back to this engine.
 
 **Planned invocation shape** (subject to refinement in plan #7a part 2):
 
@@ -1201,9 +1193,9 @@ Mechanics, for reference: the advisory mutex is a `mkdir` lockdir at `~/.cache/a
 
 ## Tool allowlist
 
-**`Read, Write, Edit, Glob, Grep`** — no Bash. Same restriction as `/design` skill. The skill body never invokes shell commands directly; Python scripts under `skills/memory/scripts/` (added in tasks 2-4) handle the heavy lifting (file ops via Python's `os` / `pathlib`; embedding API calls via Python `requests` or vendor SDK; sqlite-vec via the `sqlite-vec` Python wheel).
+**`Read, Write, Edit, Glob, Grep`** — no Bash. Same restriction as `/design` skill. The skill body never invokes shell commands directly; Python scripts under `skills/memory/scripts/` (added in tasks 2-4) handle the heavy lifting (file ops via Python's `os` / `pathlib`).
 
-Python-side scripts can use whatever they need (network for embedding API, filesystem for vec-index, subprocess for `pip install <pkg>` on first invocation if needed) — the allowlist restriction is on the SKILL.md body itself, not the dispatched scripts.
+Python-side scripts can use whatever they need (filesystem, subprocess for `pip install <pkg>` on first invocation if needed) — the allowlist restriction is on the SKILL.md body itself, not the dispatched scripts.
 
 ## Host scope
 

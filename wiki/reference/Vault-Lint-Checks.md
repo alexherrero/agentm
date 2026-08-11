@@ -13,7 +13,6 @@ The catalog of read-only checks `vault_lint.py` runs over agent-shaped MemoryVau
 | Does the lint ever edit the vault? | `vault_lint.py` itself never does — read-only / surface-only (DC-1), reports + suggests only. The composed `/memory lint` engine layered on top (`lint.py`, auto-organization part 3 task 7) auto-corrects exactly one narrow, safe case — a mis-cased wikilink with a single unambiguous target — revert-logged; every other finding, from either layer, stays surfaced-only by design. |
 | Where does the schema come from? | `save.py` — the lint imports its validators + `FRONTMATTER_FIELD_ORDER` / `REQUIRED_FRONTMATTER_FIELDS` so the two can't drift (DC-2). |
 | How do I run a full audit report? | See [Audit the vault](Audit-The-Vault). |
-| How do I check vec-index freshness? | `python3 harness/skills/memory/scripts/vault_lint.py --check-freshness` (or `--format json`). |
 | How do I also get orphans, contradictions, and a quality score? | `/memory lint` (`harness/skills/memory/scripts/lint.py`) composes this catalog's `supersede-cycle` / `supersede-fork` / `dangling-supersession` / `kind-taxonomy` checks with `graph_snapshot.orphans()` and a per-note quality score, on demand or via the weekly dreaming cycle — see the memory skill's `/memory lint` section. |
 | Related pages | [Audit the vault](Audit-The-Vault) |
 
@@ -75,17 +74,6 @@ All four carry the same five-field core — `kind`, `status`, `slug`, `created`,
 **What is deliberately not checked.** `Ideas.md` has no frontmatter and none is expected — it lives at the Obsidian root, outside the memory vault. And `_summary.md` body structure is not checked at all: the `idea-incubator-summary-doc` convention prescribes five sections (Research scope / Key findings / Recommendations / Open questions / Confidence level), but only one of the five real summaries uses them. Enforcing that shape would flag four good files, so the rules follow the corpus and leave body structure alone.
 
 `Ideas.md` is located by `--ideas-path`, then `$IDEAS_SURFACE_PATH`, then the vault's parent directory — the last only when that parent actually holds a `.obsidian/`, so a scratch vault never adopts an unrelated `Ideas.md` sitting beside it.
-
-## Vault-wide freshness check
-
-`--check-freshness` is a different shape of check from the table above: a single vault-wide ratio, not a per-entry finding. It computes the vec-index freshness ratio via `vec_index.find_drifted_entries()` — `up_to_date / (up_to_date + drifted + not_indexed)` — and reports it in either output format:
-
-- `--format json` — `{"up_to_date": .., "drifted": .., "not_indexed": .., "ratio": ..}`
-- `--format text` — a one-line summary
-
-Below a ratio of `0.80` it prints a WARN suggesting `full-sync --rebuild` then `drain` to catch the index back up. Like every other `vault_lint.py` mode, it is advisory — the process exits `0` regardless of the ratio; a behind index is recoverable, not broken.
-
-It is also wired into `doctor`'s default-mode structural checks (item 7 in `harness/skills/doctor.md`) so a drifted index surfaces within a day on the operator's own machine without a manual run.
 
 ## Related
 

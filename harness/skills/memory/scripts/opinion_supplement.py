@@ -37,9 +37,8 @@ str | None)` pairs — the exact shape `dream.Proposal.mutations` and
 `_stage_opinion_supplement()` wraps this module's output in a `Proposal`
 and stages it through the SAME propose-then-confirm mechanism every other
 stage uses. This module itself never writes a vault entry directly and
-never imports `dream` (a leaf module, like `lifecycle.py` /
-`write_time_linker.py` — `dream.py` imports leaf modules, never the
-reverse).
+never imports `dream` (a leaf module, like `lifecycle.py` — `dream.py`
+imports leaf modules, never the reverse).
 
 Stdlib-only. No model call anywhere in this module.
 """
@@ -82,8 +81,9 @@ __all__ = [
 # existing constant, exactly as this design's own text says. Re-audit once
 # real lane volume exists (the design's own carried-forward trigger).
 
-# The linker's own confident band (write_time_linker.py), not dedup's
-# near-verbatim 0.92 (dream.DEDUP_SIMILARITY_THRESHOLD) — the same lesson
+# The write-time linker's own confident band, inherited from that module
+# before it was removed with the vector stack; not dedup's near-verbatim
+# 0.92 (dream.DEDUP_SIMILARITY_THRESHOLD) — the same lesson
 # mined from two different sessions is paraphrased, not duplicated, so the
 # near-verbatim threshold would under-merge it. Re-audit trigger (locked
 # call 4): tighten if unrelated standards merge as real lane volume arrives;

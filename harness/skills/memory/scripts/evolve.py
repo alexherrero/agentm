@@ -33,7 +33,7 @@ from pathlib import Path
 # so the memory skill carries its own copy; scripts/check-vault-lock-parity.sh
 # enforces byte-identity between the two. Inject this dir so the sibling import
 # resolves however evolve.py is invoked (subprocess or imported-by-hook).
-# Mirrors recall.py's vec_index/embed sys.path injection.
+# Mirrors recall.py's own sys.path injection.
 _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
@@ -289,38 +289,6 @@ def evolve_entry(
             # Renamed: write the new path, then delete the old.
             backend.write(backend.resolve(*new_path.relative_to(vault).parts), new_content)
             old.unlink()
-
-    # Enqueue async vec-index ops (task 4):
-    #   - delete old entry's index row (if path changed; or upsert if in-place)
-    #   - upsert new entry's index row
-    #   - upsert archive entry's index row (archive is searchable too, but
-    #     recall filters skip status:superseded by default — index entry
-    #     exists for `/memory search --include-superseded` future use)
-    try:
-        import vec_index  # type: ignore
-        new_rel = str(new_path.relative_to(vault)).replace(os.sep, "/")
-        archive_rel = str(archive_path.relative_to(vault)).replace(os.sep, "/")
-        old_rel = str(old.relative_to(vault)).replace(os.sep, "/") if new_path != old else None
-
-        new_tags = new_fm.get("tags") or []
-        tag_str = ", ".join(str(t) for t in new_tags) if new_tags else ""
-        new_first_para = new_body[:500]
-        new_slug_val = new_fm.get("slug", "")
-        new_embed_text = f"{new_slug_val} [{tag_str}]\n\n{new_first_para}"
-        vec_index.enqueue(vault, new_rel, "upsert", text=new_embed_text)
-
-        old_first_para = body[:500]
-        old_tags = archive_fm.get("tags") or []
-        old_tag_str = ", ".join(str(t) for t in old_tags) if old_tags else ""
-        old_slug_val = archive_fm.get("slug", "")
-        archive_embed_text = f"{old_slug_val} [{old_tag_str}]\n\n{old_first_para}"
-        vec_index.enqueue(vault, archive_rel, "upsert", text=archive_embed_text)
-
-        if old_rel is not None:
-            # Rename case: delete old index row (the file is gone from old_rel).
-            vec_index.enqueue(vault, old_rel, "delete")
-    except Exception as e:  # pragma: no cover
-        print(f"warning: queue append failed: {e}", file=sys.stderr)
 
     return (new_path, archive_path)
 

@@ -5,19 +5,22 @@
 # call this rather than each re-deriving a candidate list, for the same reason
 # the bash half exists once: a second implementation is a second thing to drift.
 #
-# WHY THIS EXISTS. The vec-index backend needs
-# `sqlite3.Connection.enable_load_extension`; sqlite-vec is a loadable native
-# extension, so an interpreter built without it makes `vec_index._open_index()`
-# return None forever, which every caller reads as the graceful "index not built
-# yet" skip. The failure is silent. Apple's macOS system Python is the case that
-# prompted this, but the property is not macOS-specific — any sqlite3 built
-# without `--enable-loadable-sqlite-extensions` behaves the same way, so the
-# Windows half probes rather than assumes.
+# WHY THIS EXISTS. A silent recall outage in 2026-08 traced back to the hooks
+# running whatever bare `python3` resolved to — on macOS, Apple's deliberately
+# minimal system build, where the vector index could never load its native
+# sqlite extension and every caller read the failure as a graceful skip.
+#
+# That index has since been removed (see wiki/designs/agentm-rescope-week1-
+# experiment.md). The resolver and its probe stay: an sqlite3 built with
+# `--enable-loadable-sqlite-extensions` is the marker of a real Python install,
+# and every memory hook runs on whatever this prints. The property is not
+# macOS-specific, so the Windows half probes rather than assumes.
 #
 # RESOLUTION ORDER.
 #   1. $env:AGENTM_PYTHON        — explicit operator override, honored as given
 #   2. $env:AGENT_TOOLKIT_PYTHON — back-compat alias for the same knob
-#   3. first candidate whose sqlite3 build supports extension loading
+#   3. first candidate whose sqlite3 build supports extension loading — the
+#      proxy for "a real Python install" (see WHY THIS EXISTS above)
 #   4. `python3`, else `python` — the pre-resolver behavior, the floor
 #
 # An explicit override wins outright whenever it resolves to something
@@ -69,7 +72,7 @@ foreach ($c in $candidates) {
 }
 
 # 4 — floor: exactly what the hooks did before this resolver existed.
-# vec_index.py's own graceful skip still applies, so this is never worse.
+# This is never worse than the pre-resolver behavior.
 if (Get-Command python3 -ErrorAction SilentlyContinue) {
     Write-Output 'python3'
 } else {

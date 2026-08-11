@@ -4,15 +4,15 @@
 PLAN-auto-org-write-time-linking task 2. `graph.py`'s `extract_edges()` is a
 pure, stateless, in-memory extractor with exactly one caller today
 (`consolidate.py`, fresh per run) — there is no derived, persisted snapshot
-anywhere. This module adds one, as a device-local SQLite store mirroring
-`vec_index.py`'s own `_LOCAL_INDEX_ROOT` pattern (same "SQLite on cloud sync
-corrupts" rationale — this file lives beside `vec-index.db`, not in the
-vault).
+anywhere. This module adds one, as a device-local SQLite store under
+`~/.agentm/memory/_meta/` ("SQLite on cloud sync corrupts", so it never lives
+in the vault).
 
-Two consumers this snapshot exists for (this plan's later tasks): the
-write-time linker (task 3) and the weekly link-improvement sweep (task 4)
-both need cheap "who links to X" / "who is an orphan" answers without a
-full-vault walk-and-reparse on every cycle.
+The two consumers this snapshot was built for — the write-time linker and the
+weekly link-improvement sweep — were removed along with the vector stack they
+rode on (see `wiki/designs/agentm-rescope-week1-experiment.md`). It is kept
+because `consolidate.py` and the orphan reporting still read it, and because
+the walk it maintains is the only cheap "who links to X" answer in the tree.
 
 `consolidate.py`'s existing in-memory `graph.extract_edges_for_paths()` call
 is left as-is (confirmed at /work time, per the plan's own note) — it scores
@@ -20,13 +20,11 @@ recurrence over a caller-supplied, situational `episodic_paths` subset, which
 doesn't map cleanly onto "the whole persisted graph."
 
 Rebuild has two modes:
-  - `rebuild(vault)` (no `paths`): walks the vault (same walk roots +
-    exclusions as `vec_index.find_drifted_entries`), re-extracts only files
+  - `rebuild(vault)` (no `paths`): walks the vault, re-extracts only files
     whose mtime is newer than what's stored, and drops nodes whose source
-    file is gone. This is the weekly-sweep shape.
+    file is gone. This is the full-sweep shape.
   - `rebuild(vault, paths=[...])`: skips the walk entirely and re-extracts
-    exactly the given paths. This is the write-time-linker shape — a single
-    just-saved note, no full-vault cost anywhere near the save path.
+    exactly the given paths — a single just-saved note, no full-vault cost.
 
 Public API:
   rebuild(vault_path, *, paths=None) -> RebuildStats
@@ -37,6 +35,8 @@ Public API:
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sqlite3
 import sys
 from dataclasses import dataclass
@@ -48,12 +48,106 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 import graph  # noqa: E402
-from vec_index import _extract_meta_from_file, _local_index_dir, _vault_projects_dir  # noqa: E402
 
 _SNAPSHOT_FILENAME = "graph-snapshot.db"
 
-# Same exclusions as vec_index.find_drifted_entries's walk, kept in sync
-# deliberately — a path that's staged-not-reviewed (_inbox) or historical
+# Device-local store root: SQLite on cloud-sync is a known corruption pattern,
+# so the snapshot never lives in the vault. Mirrors the V5-1 storage-seam
+# Tier.LOCAL_INDEX "never sync" contract. These three helpers were imported
+# from `vec_index.py` until that module was removed; none of them was ever
+# vector-specific, so they moved here rather than going with it.
+_LOCAL_INDEX_ROOT = Path.home() / ".agentm" / "memory" / "_meta"
+
+# The metadata columns extracted from an entry's frontmatter.
+_META_COLUMNS: tuple[str, ...] = (
+    "kind", "status", "slug", "project", "created", "tags", "group_name", "fingerprint",
+)
+
+
+def _local_index_dir(vault: Path) -> Path:
+    """Device-local dir for this vault's derived stores.
+
+    Named by vault path so multiple vaults don't collide. Uses a short hash
+    suffix to survive vault-root renames without breaking the namespace.
+    """
+    key = f"{vault.resolve().name}-{hashlib.sha256(str(vault.resolve()).encode()).hexdigest()[:8]}"
+    return _LOCAL_INDEX_ROOT / key
+
+
+def _vault_projects_dir(vault: Path) -> Path:
+    """Return <vault>/projects/ (post-V4 #26 canonical) if present, else
+    <vault>/personal-projects/ (legacy fallback). Mirrors the same helper
+    in harness_memory.py; duplicated here to avoid cross-script import
+    coupling within the memory skill scripts dir.
+    """
+    new = vault / "projects"
+    if new.is_dir():
+        return new
+    legacy = vault / "personal-projects"
+    if legacy.is_dir():
+        return legacy
+    return new  # neither exists; return new (preferred) for caller's mkdir
+
+
+def _extract_meta_from_file(file_path: Path) -> dict:
+    """Extract the metadata columns from a memory entry's frontmatter.
+
+    Stdlib-only inline parse (avoid importing yaml, ADR 0001). Best-effort:
+    an unreadable or frontmatter-less file returns a dict of `None`s (never
+    raises) so a metadata-extraction failure never blocks its caller.
+
+    `project` is derived, not read directly — the frontmatter has no
+    `project:` field (see `save.py`'s `FRONTMATTER_FIELD_ORDER`); a `group:`
+    value of the vault's `projects/<slug>/...` shape yields `project=<slug>`,
+    everything else (personal/, incubator/, …) yields `project=None`.
+    """
+    empty = {c: None for c in _META_COLUMNS}
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except OSError:
+        return empty
+    if not text.startswith("---\n"):
+        return empty
+    end = text.find("\n---\n", 4)
+    if end == -1:
+        return empty
+    fm_text = text[4:end]
+
+    meta = dict(empty)
+    meta["slug"] = file_path.stem
+    group_value: str | None = None
+    tags: list[str] = []
+    for line in fm_text.splitlines():
+        line = line.strip()
+        if ":" not in line:
+            continue
+        key, _, val = line.partition(":")
+        key = key.strip()
+        val = val.strip().strip("'\"")
+        if key == "kind":
+            meta["kind"] = val
+        elif key == "status":
+            meta["status"] = val
+        elif key == "slug":
+            meta["slug"] = val
+        elif key == "created":
+            meta["created"] = val
+        elif key == "group":
+            group_value = val
+        elif key == "fingerprint":
+            meta["fingerprint"] = val
+        elif key == "tags":
+            if val.startswith("[") and val.endswith("]"):
+                tags = [t.strip().strip("'\"") for t in val[1:-1].split(",") if t.strip()]
+
+    meta["group_name"] = group_value
+    meta["tags"] = json.dumps(tags)
+    if group_value and group_value.startswith("projects/"):
+        parts = group_value.split("/")
+        meta["project"] = parts[1] if len(parts) >= 2 and parts[1] else None
+    return meta
+
+# A path that's staged-not-reviewed (_inbox) or historical
 # (_archive, PLAN.archive.*.md) is never a graph node either.
 _EXCLUDED_DIR_NAMES = frozenset({"_archive", "_inbox"})
 
@@ -98,7 +192,7 @@ def _open(vault: Path) -> sqlite3.Connection:
 
 
 def _walk_vault_paths(vault: Path) -> list[str]:
-    """Same walk roots as vec_index.find_drifted_entries: personal/,
+    """Walk roots: personal/,
     projects/<slug>/ (or legacy personal-projects/), _idea-incubator/;
     excludes _archive/, _inbox/ (at any depth) and PLAN.archive.*.md.
     Returns vault-relative POSIX path strings.
@@ -169,7 +263,7 @@ def rebuild(vault_path: Path | str, *, paths: list[str] | None = None) -> Rebuil
 
     `paths=[...]`: targeted mode. No walk — re-extracts exactly the given
     vault-relative paths (a path that no longer exists on disk is treated
-    as a deletion, mirroring vec_index.drain_queue's stale-upsert-becomes-
+    as a deletion, mirroring the stale-upsert-becomes-
     delete convention). This is the cheap path the write-time linker uses
     for a single just-saved note.
 

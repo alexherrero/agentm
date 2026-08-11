@@ -147,37 +147,9 @@ def _emit_jsonl(jsonl_out: str | None, check: str, passed: bool, weight: float =
         fh.write(json.dumps(record) + "\n")
 
 
-def _old_formula_top_k(vault: Path, query_text: str, k: int = 5) -> list[str]:
-    """Reconstructs the pre-task-5 merge (sim x 0.85 + keyword x 0.05, raw
-    _grep_search keyword count) — recall.py's live query() no longer runs
-    this path, but every piece it was built from (_vec_search, _grep_search,
-    the SIM_WEIGHT/KEYWORD_WEIGHT constants) is still present, unchanged, so
-    this is a faithful reconstruction of the OLD baseline for comparison,
-    not an approximation.
-    """
-    import recall
-
-    query_tokens = recall._tokenize(query_text)
-    try:
-        vec_results = recall._vec_search(vault, query_text, k=max(k * 2, 10), mode="local")
-    except Exception:
-        vec_results = {}
-    grep_results = recall._grep_search(vault, query_tokens)
-    all_paths = set(vec_results.keys()) | set(grep_results.keys())
-    scored = []
-    for path in all_paths:
-        sim = vec_results.get(path, 0.0)
-        keyword = grep_results.get(path, 0)
-        combined = sim * recall.SIM_WEIGHT + keyword * recall.KEYWORD_WEIGHT
-        if combined > 0:
-            scored.append((path, sim, combined))
-    scored.sort(key=lambda r: (-r[2], -r[1], r[0]))
-    return [p for p, _, _ in scored[:k]]
-
-
 def _new_formula_top_k(vault: Path, query_text: str, k: int = 5) -> list[str]:
     import recall
-    results = recall.query(vault=vault, query_text=query_text, k=k, mode="local")
+    results = recall.query(vault=vault, query_text=query_text, k=k)
     return [r["path"] for r in results]
 
 
@@ -224,7 +196,7 @@ def run_eval(
     vault: Path,
     query_set_path: Path,
     *,
-    old_top_k_fn=_old_formula_top_k,
+    old_top_k_fn=_new_formula_top_k,
     new_top_k_fn=_new_formula_top_k,
 ) -> dict:
     doc = json.loads(query_set_path.read_text(encoding="utf-8"))

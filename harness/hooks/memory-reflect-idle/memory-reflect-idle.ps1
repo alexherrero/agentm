@@ -118,39 +118,5 @@ if ((Test-Path $OrchIdlePy) -and $VaultEnv) {
     }
 }
 
-# ── Vec-index drift sweep (V4 #37 task 6) ─────────────────────────────────
-# Fire vec_index.py full-sync (read-only; no --rebuild) so drift
-# accumulation surfaces non-blockingly. Graceful-skip if MEMORY_VAULT_PATH
-# unset / vec_index.py absent / sqlite-vec unavailable. Operators with
-# drift accumulation run `vec_index.py full-sync --rebuild` to enqueue.
-$VecIndexPy = ".claude/skills/memory/scripts/vec_index.py"
-if ((Test-Path $VecIndexPy) -and $VaultEnv) {
-    try {
-        $driftJson = & $Py $VecIndexPy "--vault-path" $VaultEnv "full-sync" 2>$null
-        if ($driftJson) {
-            $parsed = $driftJson | ConvertFrom-Json -ErrorAction SilentlyContinue
-            if ($parsed -and (($parsed.drifted_count -gt 0) -or ($parsed.not_indexed_count -gt 0))) {
-                [Console]::Error.WriteLine("[memory-reflect-idle] vec-index drift sweep: $($parsed.drifted_count) drifted + $($parsed.not_indexed_count) not-indexed (run ``pwsh -File $VecIndexPy full-sync --rebuild`` to enqueue for re-embed)")
-            }
-        }
-    } catch {
-        # Non-fatal — the hook never blocks on drift-sweep failure.
-    }
-}
-
-# ── Embedding-queue drain (R0.2 / agentmExperience#0) ─────────────────────
-# Pre-fix, nothing in the production code path ever called `drain_queue` —
-# the queue grew unboundedly and the device-local index stayed empty. Fire
-# a drain pass detached (Start-Process, non-blocking) so a slow local-model
-# embed never blocks the idle hook. Same graceful-skip guard as the
-# full-sync sweep above: requires MEMORY_VAULT_PATH + vec_index.py;
-# internally no-ops if sqlite-vec / the embedding backend is unavailable.
-if ((Test-Path $VecIndexPy) -and $VaultEnv) {
-    try {
-        Start-Process -FilePath $Py -ArgumentList @($VecIndexPy, "--vault-path", $VaultEnv, "drain") -WindowStyle Hidden -ErrorAction SilentlyContinue | Out-Null
-    } catch {
-        # Non-fatal — the hook never blocks on the drain launch.
-    }
-}
 
 exit 0

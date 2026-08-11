@@ -31,7 +31,7 @@ Two fixture differences from the bash twin, both load-bearing:
 3. It sets an explicit RECALL_BUDGET_MS. The recall engine's 300ms
    prompt-submit budget is a production tuning constant, not the behavior these
    tests assert, and driving the hook end-to-end raced it: recall pays a FIXED
-   setup cost before the corpus walk starts (importing embed/vec_index, opening
+   setup cost before the corpus walk starts (opening
    the vec index, and where sqlite-vec actually loads — Windows, not macOS
    system Python — creating the index DB and loading a native extension). That
    cost is independent of corpus size, so a two-entry fixture vault does not

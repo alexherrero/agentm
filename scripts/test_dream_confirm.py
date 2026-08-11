@@ -665,9 +665,12 @@ class SampledAuditTests(_DreamConfirmTestBase):
         self.assertFalse(result.narrowed)
         self.assertFalse((self.vault / "_meta" / "link-band-narrowing.json").exists())
 
-    def test_high_disagreement_rate_narrows_and_writes_directive(self) -> None:
-        import write_time_linker
-
+    def test_high_disagreement_rate_is_measured_but_narrows_nothing(self) -> None:
+        """This asserted the opposite until the vector stack was removed. The
+        band it narrowed was the write-time linker's similarity floor, and the
+        linker ranked candidates out of the vector index; both are gone, so a
+        high rate is still measured and reported and there is nothing left for
+        it to act on. The rate itself stays pinned — it is the meter."""
         items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
         # 5/10 disagree = 50%, above the 20% threshold.
         verdicts = iter(["disagree"] * 5 + ["agree"] * 5)
@@ -677,14 +680,8 @@ class SampledAuditTests(_DreamConfirmTestBase):
 
         self.assertEqual(result.sampled_count, 10)
         self.assertAlmostEqual(result.disagreement_rate, 0.5)
-        self.assertTrue(result.narrowed)
-
-        # The floor actually narrowed -- read back via the real reader,
-        # not just the raw JSON, since that's what _stage_link_improvement
-        # actually consumes.
-        narrowed_floor = write_time_linker.link_similarity_floor(self.vault)
-        self.assertGreater(narrowed_floor, write_time_linker.LINK_SIMILARITY_FLOOR)
-        self.assertLess(narrowed_floor, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
+        self.assertGreater(result.disagreement_rate, dc.SAMPLED_AUDIT_DISAGREEMENT_THRESHOLD)
+        self.assertFalse(result.narrowed)
 
     def test_batch_cap_bounds_the_sample_deterministically(self) -> None:
         items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(40)]
@@ -697,19 +694,6 @@ class SampledAuditTests(_DreamConfirmTestBase):
              unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=_judge):
             result = dc.run_sampled_audit(self.vault, items)
         self.assertEqual(result.sampled_count, dc.SAMPLED_AUDIT_BATCH_CAP)
-
-    def test_successive_narrowings_compound_but_never_cross_the_confident_threshold(self) -> None:
-        import write_time_linker
-
-        items = [{"index": i, "stage": "link_improvement", "summary": f"item {i}"} for i in range(10)]
-        verdicts_always_disagree = lambda s: "disagree"  # 100% disagreement every cycle
-        with unittest.mock.patch.object(dc, "higher_tier_model_available", return_value=True), \
-             unittest.mock.patch.object(dc, "judge_applied_mutation", side_effect=verdicts_always_disagree):
-            for _ in range(20):  # far more than enough narrowing steps to hit the ceiling
-                dc.run_sampled_audit(self.vault, items)
-
-        floor = write_time_linker.link_similarity_floor(self.vault)
-        self.assertLess(floor, write_time_linker.CONFIDENT_SIMILARITY_THRESHOLD)
 
 
 if __name__ == "__main__":

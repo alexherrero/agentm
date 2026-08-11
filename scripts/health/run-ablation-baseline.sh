@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-ablation-baseline.sh — for each of the four R3.1a subsystems (vectors,
+# run-ablation-baseline.sh — for each of the three R3.1a subsystems (
 # reflection, gates, evidence-tracker), run its verify script twice — once
 # on, once with its ABLATE_*=1 off-switch — score each run's check records
 # through health_score.py's own axis-scoring path, and emit one ablation
@@ -69,15 +69,6 @@ on, off = $on, $off
 print(json.dumps({'subsystem': '$subsystem', 'axis': '$axis', 'score_on': on, 'score_off': off, 'uplift': round(on - off, 2)}))
 " | tee ${OUT:+-a "$OUT"}
 }
-
-echo "run-ablation-baseline: vectors — on/off pair" >&2
-ON_JSONL="$(mktemp)"; OFF_JSONL="$(mktemp)"
-bash "$SCRIPTS_DIR/verify-vec-index.sh" --jsonl-out "$ON_JSONL" >&2 || true
-ABLATE_VECTORS=1 bash "$SCRIPTS_DIR/verify-vec-index.sh" --jsonl-out "$OFF_JSONL" >&2 || true
-emit_record "vectors" "memory freshness+experience" \
-  "$(score_axis "$ON_JSONL" "memory freshness+experience")" \
-  "$(score_axis "$OFF_JSONL" "memory freshness+experience")"
-rm -f "$ON_JSONL" "$OFF_JSONL"
 
 echo "run-ablation-baseline: reflection — on/off pair" >&2
 ON_JSONL="$(mktemp)"; OFF_JSONL="$(mktemp)"

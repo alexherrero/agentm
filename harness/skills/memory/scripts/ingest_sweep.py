@@ -12,8 +12,7 @@ separate jobs" instruction):
      `## Fetched content` heading) -- no new file, no new directory. The
      candidate is already recall-invisible (it's in `_inbox/`, and
      `recall.py`'s existing exclusion already covers it) and was never
-     vec_index-enqueued (`capture.py`'s writer never calls
-     `vec_index.enqueue`), so staging needs zero new mechanism.
+     indexed anywhere, so staging needs zero new mechanism.
   2. Clip-skips-fetch: a `source: clipper` candidate already carries its
      full content inline -- same in-place staging patch, no network call.
   3. Promote: a candidate staged for at least one full sweep cycle, still

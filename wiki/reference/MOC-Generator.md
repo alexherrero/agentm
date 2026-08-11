@@ -15,7 +15,7 @@
 | What generates the MOCs? | `harness/skills/memory/scripts/moc_generator.py` — `build_kind_groups(vault_path)` (`moc_generator.py:89`) + `generate(vault_path)` (`moc_generator.py:136`). |
 | How do I run it? | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path>` (CLI-invokable; no hook or scheduling wiring in this plan). |
 | Where do the generated pages live? | `<vault>/_moc/<kind>.md` — one page per distinct `kind` (`_OUTPUT_DIRNAME`, `moc_generator.py:30`). |
-| Does it read the whole vault, or something narrower? | The same read-only walk `vec_index.py`'s `full_sync` uses — `personal/`, `projects/`, `_idea-incubator/` (`_WALK_SUBDIRS`, `moc_generator.py:28`). Deliberately wider than `frontmatter_validator.py`'s DC-4-exempt walk (task 2) — MOCs should cover everything the memory engine indexes, incubator included. |
+| Does it read the whole vault, or something narrower? | A read-only walk over `personal/`, `projects/`, `_idea-incubator/` (`_WALK_SUBDIRS`, `moc_generator.py:28`) — the same three roots `graph_snapshot.py` walks. Deliberately wider than `frontmatter_validator.py`'s DC-4-exempt walk (task 2) — MOCs should cover every kind the vault holds, incubator included. |
 | Is it safe to re-run? | Yes — idempotent. Regenerating overwrites only the `_moc/*.md` pages it owns; it never touches source notes. Confirmed byte-identical by `test_idempotent_regeneration_is_byte_identical` and never-mutates-sources by `test_never_touches_source_notes` (`scripts/test_moc_generator.py`). |
 | What order are entries listed in? | Newest-first by `created`, within each kind group. |
 | Does it label unrecognized kinds? | Yes, via the [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()` — an unrecognized kind's page header reads `<kind> (unrecognized kind)`. |
@@ -55,7 +55,7 @@ An unrecognized kind's header instead reads `# MOC — made-up-kind (unrecognize
 
 ## Walk roots — deliberately wider than the validator's (task 2)
 
-`_WALK_SUBDIRS` (`moc_generator.py:28`) is `("personal", "projects", "_idea-incubator")`. This matches `vec_index.py`'s `full_sync` walk exactly. This is a deliberate difference from `frontmatter_validator.py`'s narrower DC-4-exempt walk (task 2, which excludes `_idea-incubator` among other dirs). Browse-first MOCs cover everything the memory engine actually indexes. This includes the incubator. `test_includes_idea_incubator` in `scripts/test_moc_generator.py:56-64` is the regression test for this.
+`_WALK_SUBDIRS` (`moc_generator.py:28`) is `("personal", "projects", "_idea-incubator")`. This matches `graph_snapshot.py`'s walk. This is a deliberate difference from `frontmatter_validator.py`'s narrower DC-4-exempt walk (task 2, which excludes `_idea-incubator` among other dirs). Browse-first MOCs cover every kind the vault actually holds. This includes the incubator. `test_includes_idea_incubator` in `scripts/test_moc_generator.py:56-64` is the regression test for this.
 
 The walk also skips any path with an `_archive` or `_moc` path segment (`_walk_notes`, `moc_generator.py:56-65`). This prevents a regeneration from folding its own prior output back in as a source note. It also skips `PLAN.archive.*` files. This mirrors `kind_registry.py`'s own walk excludes.
 

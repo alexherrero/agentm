@@ -31,11 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       # windows-latest ships pwsh 7+ and Python preinstalled.
       - name: Install Python deps (for validate script)
-        # sqlite-vec lets verify-memory-roundtrip.sh exercise the vec-index
-        # nearest-neighbor read-back on Windows too; the e2e self-skips it
-        # if the runner's Python can't load extensions (enhancement, never
-        # a hard dep) — same convention tests-mac.yml already uses.
-        run: python -m pip install pyyaml sqlite-vec
+        run: python -m pip install pyyaml
       - name: Run smoke-install (pwsh) + post-install integrity
         shell: pwsh
         run: pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1

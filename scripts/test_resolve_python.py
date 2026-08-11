@@ -112,7 +112,7 @@ class ResolvePythonTests(unittest.TestCase):
         )
 
     def test_floor_when_nothing_on_path_is_capable(self):
-        """Never worse than the pre-resolver behavior: vec_index.py's own
+        """Never worse than the pre-resolver behavior: the callers' own
         graceful skip still applies downstream."""
         self._fake("python3", capable=False)
         self._assert_capable_or_floor(self._run())
