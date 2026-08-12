@@ -4,37 +4,51 @@ Ground truth for the week-1 retrieval experiment
 (`wiki/designs/agentm-rescope-week1-experiment.md`). Read by
 `scripts/health/week1_retrieval_experiment.py`.
 
-Two files live here:
+Three files live here:
 
 | file | what it is |
 | --- | --- |
-| `gold-set.json` | the real 60-question set, hand-labeled. A durable artifact — it outlives this experiment and becomes the ongoing recall scorecard. |
+| `gold-set.json` | the original 60-question set, hand-labeled, **pinned**. Labeled against the agent tree as the two pre-cutover snapshots still hold it. Do not relabel it; they cannot move. |
+| `gold-set-v2.json` | the merged 84-question set (2026-08-12), labeled against `goldv2-20260812`. The 60 originals re-resolved, plus a `research-corpus` stratum and negatives grown 8 → 20. This is the one to score current work against. |
 | `smoke-set.json` | eight throwaway questions written to test the runner. Not a gold set. Nothing measured against it is a result. |
 
-## The path root is a flag, not a second file
+## Why v2 is a new file rather than an edit
 
-Expected paths are labeled relative to **the agent's own tree** — `personal/…`,
-`projects/…`, `external/…`. That was the vault root until the 2026-08-10
-git-transport cutover moved the root up to the whole Obsidian folder, after
-which a daemon answers `Agent/projects/…`. `score_at_k` matches by **exact
-string equality**, so the labels have to agree with the corpus about where the
-root is.
+Labels are paths, and paths are a rendering of location rather than identity.
+Slugs would be the obvious stable key and they do not work: 1,008 of 7,377
+distinct slugs collide across the tree, because every project carries an
+`_index` and a `conventions`. So there is no ID to key on, and a gold set is
+labeled **against one named corpus**. Scoring a different corpus needs an
+explicit recorded remap, never a silent transform.
 
-One labeled set covers both. Pass `--expected-path-prefix` when the corpus is
-rooted above the agent tree:
+The stage-2 move and the rehoming pass together relocated every path in the
+original set: 56 of 64 by the mechanical space rename, 6 more by unique
+basename lookup, and 2 by explicit record where the rehoming re-slugged a
+domain index. All 84 questions' targets resolve in `goldv2-20260812`.
 
-| corpus | root it serves | pass |
+## Which set, which corpus, which flag
+
+`score_at_k` matches by **exact string equality**, so labels must agree with the
+corpus about where every note sits. Two different mismatches can arise, and they
+have different answers.
+
+**A different root** is a flag. `--expected-path-prefix Agent` covers a corpus
+rooted at the whole vault rather than the agent tree — the 2026-08-10 cutover's
+only effect on labels. A prefix cannot drift from itself, which is why an
+early second copy of the file with rewritten paths was retired the same day.
+
+**A different layout** is a different corpus, and needs its own labeled set.
+The stage-2 move and the rehoming pass relocated notes *within* the tree, which
+no prefix can express. That is what `gold-set-v2.json` is.
+
+| corpus | score with | flag |
 | --- | --- | --- |
-| `week1-corpus-20260807.tar.gz` | the agent tree | *(no prefix)* |
-| `week3-retest-20260808.tar.gz` | the agent tree | *(no prefix)* |
-| `stage1-pre-20260810.tar.gz` | the whole vault | `--expected-path-prefix Agent` |
-| `stage1-post-20260810.tar.gz` | the whole vault | `--expected-path-prefix Agent` |
-| the live vault | the whole vault | `--expected-path-prefix Agent` |
-
-A second copy of the file with the paths rewritten was tried on 2026-08-10 and
-retired the same day: two hand-synced 60-question sets drift the moment either
-is relabeled, and the drift is silent, since both stay valid JSON and both keep
-scoring — against different ground truth. A flag cannot drift from itself.
+| `week1-corpus-20260807.tar.gz` | `gold-set.json` | *(none)* |
+| `week3-retest-20260808.tar.gz` | `gold-set.json` | *(none)* |
+| `stage1-pre-20260810.tar.gz` | `gold-set.json` | `--expected-path-prefix Agent` |
+| `stage1-post-20260810.tar.gz` | `gold-set.json` | `--expected-path-prefix Agent` |
+| `goldv2-20260812.tar.gz` | `gold-set-v2.json` | *(none — labels are absolute)* |
+| the live vault | `gold-set-v2.json` | *(none, while live matches goldv2)* |
 
 ## Getting the root wrong is loud
 
