@@ -133,3 +133,96 @@ gitignored for that reason, not by oversight.
 Requires a running daemon serving the goldv2 corpus. The corpus is archived at
 `<vault>/_meta/corpus-snapshots/goldv2-20260812.tar.gz`; restore it and point a
 daemon at it to reproduce this exactly rather than against a drifted live vault.
+
+
+---
+
+# 3a experiment: term-selection fusion — refuted, and it re-aims the plan
+
+Run 2026-08-12 on the same frozen corpus, rule written before the code:
+*converts ≥10 of the wrong-doc non-candidates into top-5 hits without dropping
+the negative floor below 7/20.*
+
+## What was tested, in order, and what each step killed
+
+**IDF-aware selection: refuted before implementation.** The plan was to keep
+the rarest terms. Measured document frequencies for `rc09` say that picks
+exactly the wrong ones — `picked` (df 77) and `background` (df 175) are the
+two rarest *and* the two absent from the target, while the winning triple
+`gemini model always` includes the corpus's 823- and 4,206-document terms.
+Rarity does not predict presence in the answer. No code was written.
+
+**The oracle ceiling is enormous.** For each of the 53 non-candidate misses,
+is there *any* subset of the same extracted terms that reaches top-5?
+**45 of 53.** The information is already in the query; ANDing all six destroys
+it. Winning subsets are mostly 2–3 terms. This means term selection, not
+vocabulary, is the dominant lexical defect — and it contradicts this file's
+earlier claim that 40 of 57 misses need "vocabulary bridging only."
+
+**Implementable fusion captures half the ceiling.** Issue every n-term subset
+and fuse. RRF dilutes badly (2-term 28%, 3-term 11%) because a document
+appearing in many mediocre sub-rankings outranks one placing first in a single
+precise sub-query. Max-score fusion — best single piece of evidence wins —
+reaches **23/53 (43%)** at both n=2 and n=3.
+
+**On the full gold set it fails its own rule.**
+
+| | baseline | max-score fusion, 2-term |
+|---|---:|---:|
+| distinctive-token | 3/12 | 7/12 |
+| episodic-temporal | 3/12 | 6/12 |
+| pure-paraphrase | 1/18 | 5/18 |
+| research-corpus | 0/12 | 6/12 |
+| research-density | 0/10 | 3/10 |
+| **R@5** | **10.9%** | **42.2%** |
+| **negative rejection** | **35%** | **0%** |
+
+Recall nearly quadrupled and rejection went to zero — every one of the 20
+negatives returned a confident wrong answer. The pre-registered floor was
+7/20. **Rejected.** This is the OR rewrite's trade at larger magnitude, and
+the rule existing in advance is the only reason it was not shipped on the
+strength of "+31 points."
+
+## Why no score floor rescues it, and what that implies
+
+Sweeping a floor over the fused top-1 score:
+
+| floor | R@5 | rejection |
+|---:|---:|---:|
+| none | 42.2% | 0% |
+| 14 | 20.3% | 45% |
+| 16 | 7.8% | 60% |
+| 20 | 1.6% | 100% |
+
+The reason is visible in the distributions: **negatives score higher than
+answerable questions.** Median top-1 is 15.1 for negatives against 13.2 for
+answerables; the highest-scoring negative (19.5) beats the lowest-scoring
+answerable (7.9) by a wide margin. The two classes overlap almost completely
+and are ordered the wrong way.
+
+That is not a tuning problem. **BM25 measures term-match strength, not
+answer-existence.** A plausible question about a well-discussed topic with no
+specific answer — "what is our retention policy for daemon request logs" —
+matches many documents strongly. A question answered by one small atomic note
+matches one document weakly. Ranking by match strength therefore ranks
+negatives *above* positives, and no monotone threshold on that score can
+separate them.
+
+Floor 14 is a genuine Pareto improvement over baseline on both axes
+(20.3%/45% against 10.9%/35%), and it is **not recommended for shipping**: the
+constant was chosen by looking at this sweep, on 84 questions, which is
+fitting to the answer sheet.
+
+## What this licenses
+
+- **Do not ship 3a.** Its own rule refuted it, and the floor variant is
+  overfitted.
+- **The sidecar case is now made by our own data, not by AgentKV's.** A cosine
+  similarity is a similarity; BM25 is a match strength. Their `< 0.55`
+  threshold assumes a signal ours does not have, which is also the most likely
+  explanation for their rejection sitting at 20% in every arm — their floor was
+  not doing work either. **Send this section back to them.**
+- **The lexical channel still has 45/53 of unrealized headroom**, unreachable
+  by any policy that cannot tell a good subset from a bad one at query time.
+  An agent can, by iterating — which is exactly why the week-1 agent-layer
+  number is 0.725 and this hook-layer number is 0.109. The hook has no driver.
