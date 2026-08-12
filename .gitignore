@@ -11,3 +11,9 @@ node_modules/
 # Python build artifacts (memory skill scripts compile on first run)
 __pycache__/
 *.pyc
+
+# Per-question retrieval scorecards mirror vault note paths, including the
+# operator's own Personal/ notes, into a public repo. Aggregates live in
+# results/*/NOTES.md; the detail lives vault-side at
+# <vault>/Agent/_meta/health/goldv2/. Added 2026-08-12.
+scripts/health/results/**/*.json

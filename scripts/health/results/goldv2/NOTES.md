@@ -95,8 +95,15 @@ is exactly the trade AgentKV measured at 20% on their corpus.
 ```bash
 python3 scripts/health/retrieval_scorecard.py \
     --gold-set scripts/health/fixtures/week1-gold/gold-set-v2.json \
-    --json scripts/health/results/goldv2/baseline-fts5-20260812.json
+    --json "$MEMORY_VAULT_PATH/_meta/health/goldv2/baseline-fts5-20260812.json"
 ```
+
+**Per-question detail is not committed.** A scorecard names the note behind
+every hit and miss, which mirrors vault paths — the operator's own `Personal/`
+notes among them — into a public repo. The aggregates in this file are the
+public artifact; the detail lives at
+`<vault>/Agent/_meta/health/goldv2/`. `scripts/health/results/**/*.json` is
+gitignored for that reason, not by oversight.
 
 Requires a running daemon serving the goldv2 corpus. The corpus is archived at
 `<vault>/_meta/corpus-snapshots/goldv2-20260812.tar.gz`; restore it and point a

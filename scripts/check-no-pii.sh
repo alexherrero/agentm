@@ -72,7 +72,12 @@ PATTERNS=(
     'personal-path-mac|/Users/[a-zA-Z][a-zA-Z0-9_-]+/'
     'personal-path-linux|/home/[a-zA-Z][a-zA-Z0-9_-]+/'
     'personal-path-windows|C:\\{1,2}Users\\{1,2}[a-zA-Z][a-zA-Z0-9_-]+'
-    'openai-key|sk-[a-zA-Z0-9_-]{20,}'
+    # OpenAI keys are `sk-` plus base62 with no hyphens. Allowing hyphens
+    # made every kebab-case slug ending in `...sk-` a finding — the real
+    # example was a note named `desk-documents-outrank-...`, where `sk-`
+    # falls mid-word. Requiring no hyphen keeps every real key and drops
+    # the whole false-positive class.
+    'openai-key|sk-[a-zA-Z0-9_]{20,}'
     'github-token|gh[psuro]_[a-zA-Z0-9_-]{20,}'
     'gitlab-token|glpat-[a-zA-Z0-9_-]{20,}'
     'aws-access-key|AKIA[A-Z0-9]{16}'
