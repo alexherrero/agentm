@@ -60,17 +60,42 @@ eligible to satisfy the AND.
 An empty answer is honest. A wrong neighbour is not. Three quarters of this
 harness's failures are the dishonest kind.
 
-## What this licenses, and what it does not
+## Candidacy analysis (2026-08-12, second pass) — this re-ranks the levers
 
-Licensed, because the mechanism is isolated and the corpus is frozen:
+For every miss, does the target appear *anywhere* in the top 50, or is it not
+a candidate at all? The answer decides whether ranking levers or vocabulary
+levers can help, and it was measured before choosing:
 
-- **AgentKV's score-thresholded OR fallback** now has a named defect to fix.
-  Their floor constant does not transfer (see the reciprocal handoff), but the
-  shape does — with a floor derived from our own score distribution.
-- **A space-aware rank signal** has a measured target: 27 of 44 wrong
-  neighbours are `desk/`.
-- **Hybrid retrieval** is aimed at the paraphrase and research strata, which
-  read 5.6% and 0.0% — the two the AND requirement hurts most.
+| class | n | what could fix it |
+|---|---:|---|
+| target a candidate, outranked (ranks 8, 9, 34, 39) | 4 | re-ranking (space-aware, length norm) |
+| target absent from top-50, query returned nothing | 13 | OR-on-empty fallback |
+| target absent from top-50, query returned wrong docs | **40** | **vocabulary bridging only** |
+
+The two cheap levers are therefore bounded: perfect re-ranking recovers at
+most 4 misses, a perfect OR-on-empty fallback at most 13, and **the two
+together cap at 37.5% R@5** — while 40 of 57 misses (70%) are untouchable by
+both, because the AND already returned confident wrong documents, so the
+fallback never fires and no re-ordering can surface a note that is not a
+candidate.
+
+A first version of this file called the OR fallback "the highest-value lever."
+That was wrong, and the candidacy split is what showed it. The 27-of-44
+desk/ figure stands as a fact about what the wrong answers look like, not
+about what a desk demotion can recover.
+
+Two probes on the 40+13 non-candidates:
+
+- Keeping only the N longest question terms (a crude distinctiveness proxy)
+  creates candidacy in 3 of 53 cases — the length heuristic is not the lever.
+- Term *selection* is: rc09's six-term query misses entirely, but the right
+  three of those six (`gemini model always`) hit the target at rank 1. The
+  index knows document frequencies, so IDF-aware selection inside
+  `_daemon_query_terms` is cheap, testable on this harness, and plausibly
+  recovers the partial-overlap subset. It cannot touch the zero-overlap
+  strata: `pure-paraphrase` is zero-overlap **by labeling rule**, so
+  single-shot lexical failure there is close to definitional — the only
+  bridges are aliases written in question vocabulary, or vectors.
 
 Not licensed:
 
