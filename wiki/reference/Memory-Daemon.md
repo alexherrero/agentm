@@ -250,6 +250,12 @@ The periodic reconcile pass is the guarantee. It walks the vault, compares mtime
 
 Every change is committed with an `origin:` trailer naming where it came from: `capture` for the daemon's own writes, `phone` for anything under `daemon.phone_paths`, `self-probe` for the daily round-trip check, `local-edit` for everything else.
 
+### Sharing the repository with your own git
+
+The daemon is not the only git client in the vault — you run `git` there too — so it speaks git's own concurrency protocol rather than assuming it is alone. Every index-mutating operation holds `.git/index.lock` (the same file C-git takes) for its whole read-modify-write span, and writes the index by temp-file-and-rename so a concurrent `git status` never reads a torn file. go-git does neither on its own; the daemon adds both, which is what stops a daemon commit cycle that overlaps your `git rm` from silently discarding your staging — the clobber that fired twice during the 2026-08-11 rehoming pass.
+
+When something else holds the lock, the daemon waits up to 10 seconds with backoff, then skips the cycle with a WARN naming the lock and its age, and retries on the next debounce or reconcile. It never steals the lock: a lock that will not clear is either a live git operation or a crashed one, and both deserve a human look. If the daemon logs that warning repeatedly and no git command is running, the lock is stale — remove it by hand.
+
 ### What gets committed
 
 **Whatever git reports dirty**, not whatever the indexer accepted. Those are different questions and conflating them was a real defect: until 2026-08-10 an event had to be markdown to reach the commit path, while `agentmd gate corpus-write` refused on anything `git status` could see. Every non-markdown file fell in the gap — written, never committed, permanently dirty, gate shut, with no override to get past it.

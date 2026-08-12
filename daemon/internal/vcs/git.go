@@ -5,15 +5,17 @@
 // the record of what changed the vault and why, and a bad write is one revert
 // away.
 //
-// Two facts about the current machine shape this package. The vault still lives
-// on a cloud-sync mount and is not yet a git repository; moving it to local disk
-// inside one is a later step, explicitly deferred. And the daemon must never
-// create that repository on its own initiative — initializing git under 8,864
-// files on a synced mount is exactly the unilateral migration the build sequence
-// says not to perform. So a missing repository is a capability the daemon reports
-// as unavailable, loudly and on every status surface, rather than a condition it
-// silently fixes or silently ignores. Principle 4: a missing capability degrades
-// visibly, never silently.
+// Two facts about the machine shape this package. The vault is a repository
+// whose object database lives outside the tree (`git init --separate-git-dir`,
+// reached through the `.git` pointer file) because the tree itself sits in a
+// Drive-synced folder that cannot exclude a subdirectory. And the daemon is not
+// the only git client — the operator's CLI works in the same repository, so
+// this package speaks git's own concurrency protocol (index.lock plus
+// rename-atomic index writes; see indexlock.go) rather than assuming it is
+// alone. A vault that is not a repository is a capability the daemon reports as
+// unavailable, loudly and on every status surface — never a condition it
+// silently fixes by initializing one. Principle 4: a missing capability
+// degrades visibly, never silently.
 package vcs
 
 import (
@@ -80,6 +82,13 @@ type Repo struct {
 	available bool
 	reason    string
 
+	// gitDir is the resolved git directory — the home of index.lock, the
+	// mutual exclusion this package shares with every other git client on the
+	// machine (see indexlock.go). Empty when the fallback plain open ran, in
+	// which case locking degrades to the old unguarded behavior.
+	gitDir   string
+	lockWait time.Duration
+
 	// precompose folds paths to NFC before they are compared or staged, which is
 	// what git does on macOS and go-git does nowhere. See normalize.go.
 	precompose bool
@@ -117,10 +126,12 @@ func Open(vaultRoot string) *Repo {
 	}
 	// DetectDotGit stays off on purpose: it would walk upward and happily adopt
 	// some unrelated ancestor repository, committing vault contents into it.
-	repo, err := git.PlainOpen(vaultRoot)
+	// openAtomic resolves .git itself (directory, or the separate-git-dir
+	// pointer file) and never walks upward either.
+	repo, gitDir, err := openAtomic(vaultRoot)
 	switch {
 	case err == nil:
-		r.repo, r.available = repo, true
+		r.repo, r.gitDir, r.available = repo, gitDir, true
 		r.precompose = resolvePrecompose(repo)
 	case errors.Is(err, git.ErrRepositoryNotExists):
 		r.reason = fmt.Sprintf(
@@ -258,6 +269,16 @@ func (r *Repo) Commit(origin Origin, paths []string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// The whole read-modify-write runs under git's own index.lock, so a CLI
+	// `git rm` landing mid-cycle is either fully before this (we read it and
+	// commit it) or fully after (it finds a consistent index) — never silently
+	// overwritten by a write built from a stale read.
+	unlock, err := r.lockIndex()
+	if err != nil {
+		return "", fmt.Errorf("commit skipped: %w", err)
+	}
+	defer unlock()
+
 	wt, err := r.repo.Worktree()
 	if err != nil {
 		return "", fmt.Errorf("worktree: %w", err)
@@ -351,6 +372,12 @@ func (r *Repo) SweepDeletions() ([]SweepCommit, error) {
 	}
 
 	r.mu.Lock()
+	unlock, lockErr := r.lockIndex()
+	if lockErr != nil {
+		r.mu.Unlock()
+		return nil, fmt.Errorf("sweep skipped: %w", lockErr)
+	}
+	defer unlock()
 	defer r.mu.Unlock()
 	if len(r.pendingDeletes) == 0 {
 		return nil, nil
