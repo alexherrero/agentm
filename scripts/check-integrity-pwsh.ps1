@@ -94,17 +94,18 @@ foreach ($f in $ps1Files) {
 }
 Write-Host "    $ps1Count installed .ps1 files parse"
 
-# ── 4. Required utility-command / agent / skill files non-empty ──────────
+# ── 4. Required agent / skill files non-empty ────────────────────────────
 # The phase-gated dev loop (plan/work/review/release/bugfix) + the review
 # sub-agents were slimmed out in the V5 unbundling (now provided by the crickets
 # developer-workflows / code-review plugins), so they no longer install. The
-# surviving harness-vendored surface is: the recent-wiki-changes utility
-# command, the memory-engine sub-agents, the shared skill (doctor), and the
-# Antigravity rules + Gemini settings.json. (The four-mode diataxis-migration
-# skill retired to crickets' wiki-maintenance in the V5 docs slim.)
-Write-Host '  [integrity] utility + agent + skill files non-empty'
+# surviving harness-vendored surface is: the memory-engine sub-agents, the
+# shared skill (doctor), and the Antigravity rules + Gemini settings.json. (The
+# four-mode diataxis-migration skill retired to crickets' wiki plugin in the V5
+# docs slim; the recent-wiki-changes utility command + the wiki-author skill
+# retired to that same plugin on 2026-08-12 — agentm now vendors no claude-code
+# command at all.)
+Write-Host '  [integrity] agent + skill files non-empty'
 $requiredNonEmpty = @(
-    '.claude/commands/recent-wiki-changes.md',
     '.claude/agents/adapt-evaluator.md',
     '.claude/skills/doctor/SKILL.md',
     '.agents/rules/harness.md',

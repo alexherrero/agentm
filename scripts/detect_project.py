@@ -50,8 +50,11 @@ from typing import Callable, Optional
 # -----------------------------------------------------------------------------
 
 # Skills subject to per-project enablement. Harness-utility skills (doctor,
-# wiki-author) are always-on tooling and intentionally not listed — they aren't
-# gated per project.
+# console) are always-on tooling and intentionally not listed — they aren't
+# gated per project. (`wiki-author` used to be named here as always-on tooling;
+# it retired to crickets' `wiki` plugin on 2026-08-12. It is deliberately NOT
+# added to ENABLEABLE_SKILLS below — the R-wiki detection rule already gates
+# wiki authoring through `diataxis-author`, and agentm no longer ships either.)
 ENABLEABLE_SKILLS: tuple[str, ...] = (
     "memory",
     "design",

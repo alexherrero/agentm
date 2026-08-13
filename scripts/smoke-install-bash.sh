@@ -33,7 +33,6 @@ expected=(
   .harness/hooks/precompact.ps1
   .harness/hooks/session-start-compact.sh
   .harness/hooks/session-start-compact.ps1
-  .claude/commands/recent-wiki-changes.md
   .claude/agents/adapt-evaluator.md
   .claude/skills/doctor/SKILL.md
   .claude/settings.json
@@ -136,7 +135,11 @@ if grep -q "created .claude/settings.json with harness hooks" "$SCRATCH/.rerun.l
   echo "FAIL: re-run recreated settings.json (should be idempotent)" >&2
   exit 1
 fi
-if grep -q "created .claude/commands/recent-wiki-changes.md" "$SCRATCH/.rerun.log"; then
+# Probe a surviving cp_managed file. This probed the recent-wiki-changes slash
+# command until the 2026-08-12 wiki-dupe retire removed agentm's last
+# claude-code command; adapt-evaluator.md is cp_managed the same way, so it
+# probes the same semantics.
+if grep -q "created .claude/agents/adapt-evaluator.md" "$SCRATCH/.rerun.log"; then
   echo "FAIL: re-run recreated managed file (should be kept)" >&2
   exit 1
 fi

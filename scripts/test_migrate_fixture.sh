@@ -59,9 +59,12 @@ AGENT_FILES=(
     "$AGENTM/harness/agents/memory-idea-researcher.md"
     "$AGENTM/harness/agents/adapt-evaluator.md"
 )
-COMMAND_FILES=(
-    "$AGENTM/adapters/claude-code/commands/recent-wiki-changes.md"
-)
+# agentm ships NO claude-code commands since the 2026-08-12 wiki-dupe retire
+# (recent-wiki-changes moved to crickets' `wiki` plugin), so there is no
+# agentm-sourced command to seed the fixture with. The empty .claude/commands/
+# dir created above still exercises the empty-parent cleanup this script
+# asserts at the end. Kept as an array so a future command re-seeds trivially.
+COMMAND_FILES=()
 SKILL_DIRS=(
     # Pick one whose source is in agentm; one from crickets.
 )
@@ -79,9 +82,13 @@ crickets_hook="$(find "$CRICKETS/hooks" -mindepth 1 -maxdepth 1 -type d 2>/dev/n
 for f in "${AGENT_FILES[@]}"; do
     [[ -f "$f" ]] && cp "$f" "$FAKE_TARGET/.claude/agents/$(basename "$f")"
 done
-for f in "${COMMAND_FILES[@]}"; do
-    [[ -f "$f" ]] && cp "$f" "$FAKE_TARGET/.claude/commands/$(basename "$f")"
-done
+# Length-guarded: expanding an empty array is an unbound-variable error under
+# `set -u` on bash 3.2 (macOS's /bin/bash), and COMMAND_FILES is now empty.
+if (( ${#COMMAND_FILES[@]} )); then
+    for f in "${COMMAND_FILES[@]}"; do
+        [[ -f "$f" ]] && cp "$f" "$FAKE_TARGET/.claude/commands/$(basename "$f")"
+    done
+fi
 for d in "${SKILL_DIRS[@]}"; do
     [[ -d "$d" ]] && cp -R "$d" "$FAKE_TARGET/.claude/skills/$(basename "$d")"
 done

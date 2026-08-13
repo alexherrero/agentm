@@ -4,7 +4,7 @@ How the phases, adapters, templates, scripts, and this wiki interact — the nar
 
 ## Two sources of truth → adapters → target project
 
-Since the V5 unbundling there are two canonical sources, not one: crickets' developer-workflows plugin owns the phase specs (`/plan` · `/work` · `/review` · `/release` · `/bugfix`); this repo's `harness/agents/*.md` and `harness/skills/*.md` own the memory-engine sub-agents and skills (`adapt-evaluator`, `memory-idea-researcher`, `doctor`, `memory`, `design`, `wiki-author`). Each adapter is a thin shim that *points* at whichever canonical spec it needs rather than restating it.
+Since the V5 unbundling there are two canonical sources, not one: crickets' developer-workflows plugin owns the phase specs (`/plan` · `/work` · `/review` · `/release` · `/bugfix`); this repo's `harness/agents/*.md` and `harness/skills/*.md` own the memory-engine sub-agents and skills (`adapt-evaluator`, `memory-idea-researcher`, `doctor`, `memory`, `design`, `console`). Each adapter is a thin shim that *points* at whichever canonical spec it needs rather than restating it.
 
 ```
          ┌────────────────────────────┐   ┌────────────────────────────┐

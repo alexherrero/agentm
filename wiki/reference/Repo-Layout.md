@@ -34,7 +34,7 @@ agentm/
 ├── requirements.txt            # Python deps for scripts/ + harness/
 ├── harness/                   # canonical specs (source of truth)
 │   ├── agents/                # canonical sub-agent specs (see roster below)
-│   ├── skills/                # canonical skill specs (see roster below) — design, doctor, memory, wiki-author, console
+│   ├── skills/                # canonical skill specs (see roster below) — design, doctor, memory, console
 │   ├── hooks/                 # canonical hook specs (harness-context, memory-recall x2, memory-reflect x2)
 │   ├── plugins/                # example-plugin — a reference plugin skeleton
 │   ├── principles.md          # the design calls behind the harness
@@ -78,14 +78,14 @@ Each adapter ships only agentm's *own* surfaces. This changed in the V5 unbundli
 
 | Adapter | Ships (agentm's own surfaces) |
 |---|---|
-| `adapters/claude-code/` | the `recent-wiki-changes` utility command (`.claude/commands/`) · the `doctor` skill (`.claude/skills/doctor/`) |
+| `adapters/claude-code/` | the `doctor` skill (`.claude/skills/doctor/`). No commands — the last one, `recent-wiki-changes`, retired to crickets' `wiki` plugin on 2026-08-12 |
 | `adapters/antigravity/` | the always-on rules — operating contract + vault context (`.agents/rules/{harness,agentmemory-context}.md`); the `workflows/` + `skills/` dirs were removed in the slim |
 
 A third directory, `adapters/gemini/`, remains in the tree. This is **not a supported host**. Agentm dropped the Gemini CLI in v2.4.0. You can read about this in [Compatibility](Compatibility). The project keeps this directory pending reconciliation.
 
 **Canonical sub-agents** (`harness/agents/`): These are `adapt-evaluator` and `memory-idea-researcher`. They act as the memory-engine pair. The crickets plugins provide the review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter`. These plugins are code-review, developer-workflows, and wiki-maintenance. This separation happened in the V5 unbundling. You can read the [AgentM HLD](agentm-hld) for more details.
 
-**Canonical skills** (`harness/skills/`): These include `design`, `doctor`, `memory`, `wiki-author`, and `console`. The crickets `releasing-conventions` plugin provides `ship-release`. Agentm gracefully skips this if you do not pair crickets. Agentm recommends it by name. This matches the recommendation style for `dependabot-fixer` and `pii-scrubber`. The crickets `wiki-maintenance` plugin provides `diataxis-author` for wiki authoring in the exact same way.
+**Canonical skills** (`harness/skills/`): These include `design`, `doctor`, `memory`, and `console`. The crickets `releasing-conventions` plugin provides `ship-release`. Agentm gracefully skips this if you do not pair crickets. Agentm recommends it by name. This matches the recommendation style for `dependabot-fixer` and `pii-scrubber`. The crickets `wiki` plugin provides `diataxis-author` and `wiki-author` for wiki authoring in the exact same way — `wiki-author` retired its agentm copy on 2026-08-12, having drifted behind the plugin's.
 
 ## Related
 

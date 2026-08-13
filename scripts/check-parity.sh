@@ -34,10 +34,13 @@ cd "$HARNESS_ROOT"
 
 CANON_SKILLS=(doctor)
 
-# Utility slash commands (V4 #30 plan 2 task 7+) — claude-code only.
-# Live in adapters/claude-code/commands/. Antigravity + Gemini operators
-# invoke the underlying scripts directly.
-CANON_UTIL_COMMANDS=(recent-wiki-changes)
+# Utility slash commands — the set is now EMPTY. `recent-wiki-changes` was the
+# last one agentm vendored; it retired to crickets' `wiki` plugin (2026-08-12),
+# which ships the command AND its own recent-wiki-changes.{sh,ps1} carrying a
+# find_agentm_script resolver. agentm keeps scripts/recent-wiki-changes.{sh,ps1}
+# as the direct-invocation surface for Antigravity + Gemini operators — only the
+# claude-code slash command was a duplicate, and only it was retired.
+CANON_UTIL_COMMANDS=()
 
 fail=0
 
@@ -72,9 +75,20 @@ assert_set() {
 }
 
 echo "== claude-code =="
-# Claude-code commands = the utility commands only (the phase commands were
-# slimmed out in V5; recent-wiki-changes is claude-code-only).
-assert_set "claude-code/commands" adapters/claude-code/commands md "${CANON_UTIL_COMMANDS[@]}"
+# Claude-code commands: agentm ships NONE. The phase commands were slimmed out
+# in V5; the last utility command (recent-wiki-changes) retired to crickets'
+# `wiki` plugin in 2026-08-12's dupe retire. Asserted directly rather than via
+# assert_set: expanding an empty array under `set -u` is an unbound-variable
+# error on bash 3.2 (macOS's /bin/bash), so the empty case needs its own check
+# — and this still catches a regression that re-vendors a command here.
+if [[ -d adapters/claude-code/commands ]] && \
+   compgen -G "adapters/claude-code/commands/*.md" >/dev/null; then
+  echo "FAIL [claude-code/commands]: agentm vendors no claude-code commands, but found:" >&2
+  ls adapters/claude-code/commands/*.md | sed 's/^/    /' >&2
+  fail=1
+else
+  echo "    OK [claude-code/commands] — 0 entries (crickets-provided)"
+fi
 assert_set "claude-code/skills"   adapters/claude-code/skills   ""  "${CANON_SKILLS[@]}"
 
 echo "== antigravity =="

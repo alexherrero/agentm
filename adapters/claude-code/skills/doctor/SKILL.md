@@ -17,7 +17,7 @@ You are running the `doctor` skill. Full canonical spec: `harness/skills/doctor.
 
 | Host | Detect (disk marker) | Phase commands | Sub-agents | Skills | Hooks |
 |---|---|---|---|---|---|
-| **Claude Code** | `.claude/agents/` or `.claude/skills/` present | `$ROOT/commands/*.md` (only `recent-wiki-changes`; dev-loop commands crickets-provided) | `$ROOT/agents/*.md` (memory agents; review agents crickets-provided) | `$ROOT/skills/*/` | `$ROOT/hooks/` + `settings.json` |
+| **Claude Code** | `.claude/agents/` or `.claude/skills/` present | `$ROOT/commands/*.md` (none harness-vendored; all crickets-provided) | `$ROOT/agents/*.md` (memory agents; review agents crickets-provided) | `$ROOT/skills/*/` | `$ROOT/hooks/` + `settings.json` |
 | **Antigravity** | `.agents/rules/` present, no `.claude/` | crickets-provided (`.agents/workflows/*.md` if paired) | `.agents/skills/*/` (memory agents; review agents crickets-provided) | `.agents/skills/*/` | none — skip |
 | **Gemini CLI** | `.gemini/settings.json` present, no `.claude/` | crickets-provided (`.gemini/commands/*.toml` if paired) | crickets-provided (`.gemini/agents/*.md` if paired) | `.agents/skills/*/` (shared delivery) | none — skip |
 
@@ -34,9 +34,9 @@ Expected name sets:
 
 | Surface | Required (harness-shipped) | Crickets-provided / optional (graceful-skip if absent — never FAIL) |
 |---|---|---|
-| `$ROOT/commands/*.md` | — (`recent-wiki-changes` optional, V4 #30 plan 2 / v4.4.0+) | `bugfix, plan, release, review, setup, work` (crickets developer-workflows — moved out of agentm in the V5 dev-loop slim) |
+| `$ROOT/commands/*.md` | — (agentm vendors no commands) | `bugfix, plan, release, review, setup, work` (crickets developer-workflows — moved out of agentm in the V5 dev-loop slim); `recent-wiki-changes` (crickets wiki — retired from agentm 2026-08-12) |
 | `$ROOT/agents/*.md` | `adapt-evaluator, memory-idea-researcher` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / developer-workflows); `diataxis-evaluator, documenter, evaluator` (crickets wiki-maintenance) |
-| `$ROOT/skills/*/` | `doctor, wiki-author` (wiki-author since V4 #30 plan 2 / v4.4.0) | `design, memory` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber, ship-release` (crickets — `diataxis-author` absorbs the retired four-mode `migrate-to-diataxis` migration; `ship-release` fully crickets-owned since 2026-07-01) |
+| `$ROOT/skills/*/` | `doctor` | `design, memory` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber, ship-release, wiki-author` (crickets — `diataxis-author` absorbs the retired four-mode `migrate-to-diataxis` migration; `ship-release` fully crickets-owned since 2026-07-01; `wiki-author` fully crickets-owned since 2026-08-12) |
 
 The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — sub-agents *and* skills both live under `.agents/skills/*/` (the same Required name sets apply); on **Gemini** the required skills come from the shared `.agents/skills/*/` delivery. The dev-loop surfaces (phase commands + review agents) are crickets-provided on every host — `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, never FAIL.
 
@@ -164,9 +164,9 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
   state mode:         vault-resident   (or: legacy .harness/)
 
   structural:
-    phase-commands    [OK]  recent-wiki-changes present; 6 dev-loop commands crickets-provided ([SKIP] if unpaired)
+    phase-commands    [OK]  0 harness-vendored; 6 dev-loop + recent-wiki-changes crickets-provided ([SKIP] if unpaired)
     sub-agents        [OK]  2/2 required (adapt-evaluator, memory-idea-researcher); review agents crickets-provided
-    skills            [OK]  3/3 required, optional present
+    skills            [OK]  1/1 required, optional present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     storage           [OK]  selected backend 'vault' (existing vault_path) — registered; seeded from <vault>
     host wiring       [OK]  AGENTS.md + CLAUDE.md
