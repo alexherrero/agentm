@@ -294,22 +294,30 @@ class TestDevloopSlimRetired(unittest.TestCase):
     def test_migrate_to_diataxis_doctor_reframe(self):
         """migrate-to-diataxis left the required-skills set (docs slim, DC-3).
 
-        The skill is deleted; doctor's harness-required skills are now `doctor,
-        wiki-author`. The bare name may survive only as crickets-provider
+        The skill is deleted; the bare name may survive only as crickets-provider
         graceful prose (where the capability went) — both surfaces phrase that
         via crickets' `diataxis-author`, which absorbed the migration.
+
+        The literal pinned here is doctor's harness-required *skills* set. It
+        was `doctor, wiki-author` until the 2026-08-12 wiki-dupe retire moved
+        `wiki-author` to crickets' `wiki` plugin; the set is now `doctor` alone,
+        so each surface is pinned by the phrasing that declares it (the two
+        surfaces word it differently — prose bullet vs table row).
         """
-        required_skills = "doctor, wiki-author"
-        for rel in (
-            "harness/skills/doctor.md",
-            "adapters/claude-code/skills/doctor/SKILL.md",
-        ):
+        required_decl = {
+            "harness/skills/doctor.md":
+                "**Skills** (required, harness-shipped): `doctor`.",
+            "adapters/claude-code/skills/doctor/SKILL.md":
+                "| `$ROOT/skills/*/` | `doctor` |",
+        }
+        for rel, decl in required_decl.items():
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn(
-                required_skills,
+                decl,
                 text,
-                f"{rel}: after the docs slim the harness-required skills must be "
-                f"`{required_skills}` (the four-mode migration skill retired to "
+                f"{rel}: after the docs slim + the wiki-dupe retire the "
+                "harness-required skills set must be `doctor` alone (the "
+                "four-mode migration skill and wiki-author both retired to "
                 "crickets).",
             )
             self.assertIn(

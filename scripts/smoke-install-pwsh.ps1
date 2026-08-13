@@ -31,7 +31,6 @@ try {
         '.harness/hooks/precompact.ps1',
         '.harness/hooks/session-start-compact.sh',
         '.harness/hooks/session-start-compact.ps1',
-        '.claude/commands/recent-wiki-changes.md',
         '.claude/agents/adapt-evaluator.md',
         '.claude/skills/doctor/SKILL.md',
         '.claude/settings.json',
