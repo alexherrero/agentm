@@ -226,3 +226,49 @@ fitting to the answer sheet.
   by any policy that cannot tell a good subset from a bad one at query time.
   An agent can, by iterating — which is exactly why the week-1 agent-layer
   number is 0.725 and this hook-layer number is 0.109. The hook has no driver.
+
+
+---
+
+# Arm comparison, per stratum (2026-08-12)
+
+All arms on the frozen `goldv2-20260812` corpus, same questions, same
+`recall._daemon_query_terms` extraction. Deterministic; one run is exact.
+`oracle` is not an arm — it is the best any subset of the same extracted terms
+could do, and exists to bound what term selection can ever achieve.
+
+| arm | distinctive | episodic | paraphrase | research-corpus | research-density | **overall** | rejection |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| and-of-6 (production) | 25% | 25% | 6% | 0% | 0% | **10.9%** | 35% |
+| rrf fusion, 2-term | 58% | 42% | 17% | 33% | 20% | **32.8%** | 0% |
+| max fusion, 2-term | 58% | 50% | 28% | 50% | 30% | **42.2%** | 0% |
+| max fusion + floor 14 | 33% | 17% | 11% | 25% | 20% | **20.3%** | 45% |
+| max fusion + floor 16 | 17% | 8% | 0% | 8% | 10% | **7.8%** | 60% |
+| *oracle (best subset)* | *92%* | *83%* | *67%* | *100%* | *80%* | ***82.8%*** | — |
+
+Two patterns, and both are the point.
+
+**Recall and rejection move against each other, with no arm in the corner.**
+Every configuration that raises recall drops rejection and vice versa. Only
+`floor 14` beats production on both axes, and its constant was chosen by
+reading this sweep, so it is fitted to the answer sheet and not shippable.
+
+**The oracle sits far above every implementable arm** — 82.8% against the best
+real arm's 42.2%. The information needed is present in the extracted terms for
+53 of 64 questions; no query-time policy recovers more than half of it, because
+choosing the right subset requires knowing which terms appear in the answer.
+An agent discovers that by iterating; a single-shot hook cannot.
+
+**A column is missing on purpose.** There is no hybrid or vector arm here
+because none exists yet. That column is what the sidecar plan is for, and the
+gap between 42.2% and 82.8% is the space it has to compete in.
+
+## Why AgentKV's numbers do not transfer
+
+Their FTS5-only arm scored 68.57% overall; ours scores 10.9% on the same
+architecture. The difference is corpus: 120 notes against 9,971. On a small
+corpus an AND over six terms still leaves candidates; on ours it leaves only
+documents long enough to contain every term. Their hybrid headline (82.86%)
+happens to land near our *oracle ceiling* (82.8%), which is a coincidence of
+two unrelated quantities and should not be read as a target we have reached
+in principle. Compare shapes and mechanisms with them; do not compare levels.
