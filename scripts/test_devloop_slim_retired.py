@@ -16,7 +16,7 @@ and says nothing about it — if crickets is absent, a bare agentm simply has no
 The same unbundling retired the **docs-slim residue** — agentm's four-mode
 `migrate-to-diataxis` skill (`harness/skills/migrate-to-diataxis.md` + its
 Claude Code adapter copy). Its one-shot wiki conversion is now provided by
-crickets' `wiki-maintenance` / `diataxis-author` (`/diataxis migrate`). Unlike
+crickets' `wiki` / `diataxis-author` (`/diataxis migrate`). Unlike
 the dev-loop clean-delete, the *bare name* `migrate-to-diataxis` legitimately
 survives in `doctor`'s graceful crickets-provider prose (telling an operator
 who had it pre-V5 where the capability went) — only the deleted FILE paths are

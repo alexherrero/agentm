@@ -4,7 +4,7 @@
 The anti-slop prose gate + its rule pack are mechanism owned by crickets
 (voice-cascade-architecture.md: voice is a crickets-side capability) — see
 crickets `scripts/check-slop.py` for the real implementation and
-`src/wiki-maintenance/skills/diataxis-author/style/voice-rules.json` for the
+`src/wiki/skills/diataxis-author/style/voice-rules.json` for the
 one shared rule pack. This file locates the crickets sibling checkout and
 delegates to it, so agentm's own wiki/ gets the same gate without a second
 copy of the rule pack or the scanning logic (mirrors the existing cross-repo

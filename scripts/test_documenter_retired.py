@@ -3,10 +3,10 @@
 
 agentm used to vendor its own copy of the `documenter` sub-agent — one harness
 spec plus three adapter copies — of a sub-agent crickets now owns canonically
-at `crickets/src/wiki-maintenance/agents/documenter.md`. The seven-section
+at `crickets/src/wiki/agents/documenter.md`. The seven-section
 convergence follow-on (disposition (b), the ADR 0006 single-source move)
 removed agentm's four copies and rewired every live dispatch site to defer to
-crickets' `wiki-maintenance:documenter` with the graceful-skip contract
+crickets' `wiki:documenter` with the graceful-skip contract
 (suggest-then-skip when crickets is absent — never hard-fail). It mirrors the
 `diataxis-author` retire (see test_diataxis_author_retired.py).
 
@@ -21,7 +21,7 @@ local copy or a dangling path dependency on one:
      pseudo-phase on it. Only the four vanished local file paths are forbidden.
 
      NOTE on the needle choice: crickets' canonical path
-     `src/wiki-maintenance/agents/documenter.md` *contains* the suffix
+     `src/wiki/agents/documenter.md` *contains* the suffix
      `agents/documenter.md`, so a bare-suffix scan would false-positive on
      every legitimate crickets redirect URL. The guard therefore anchors on
      the four exact deleted-local prefixes, which the crickets path never
@@ -115,7 +115,7 @@ class TestDocumenterRetired(unittest.TestCase):
             self.assertFalse(
                 (ROOT / rel).exists(),
                 f"agentm's vendored documenter copy `{rel}` must be retired "
-                "(disposition (b)); crickets' wiki-maintenance plugin is the "
+                "(disposition (b)); crickets' wiki plugin is the "
                 "single source.",
             )
 
@@ -124,7 +124,7 @@ class TestDocumenterRetired(unittest.TestCase):
 
         The bare sub-agent name `documenter` is allowed (crickets provides it,
         the phase specs dispatch it by name); crickets' canonical
-        `src/wiki-maintenance/agents/documenter.md` is allowed (it's the
+        `src/wiki/agents/documenter.md` is allowed (it's the
         redirect target). Only the four deleted local paths are forbidden.
         """
         offenders = []
@@ -143,7 +143,7 @@ class TestDocumenterRetired(unittest.TestCase):
             offenders,
             [],
             "Dangling reference to a retired local documenter path in live "
-            "surface(s) — rewire to crickets' wiki-maintenance:documenter with "
+            "surface(s) — rewire to crickets' wiki:documenter with "
             "graceful-skip:\n" + "\n".join(offenders),
         )
 

@@ -1,6 +1,6 @@
 # Documentation convention
 
-How every project installed with this harness documents itself. Shipped as a scaffold by `install.sh`, maintained at phase boundaries by crickets' `wiki-maintenance:documenter` sub-agent (graceful-skip when crickets is absent), synced to the GitHub Wiki on push.
+How every project installed with this harness documents itself. Shipped as a scaffold by `install.sh`, maintained at phase boundaries by crickets' `wiki:documenter` sub-agent (graceful-skip when crickets is absent), synced to the GitHub Wiki on push.
 
 ## Purpose
 
@@ -60,7 +60,7 @@ The four always-present sections (how-to · reference · designs · explanation)
 Pages outside these six sections are not part of the convention — either file them under the correct section or add a subdir with a rationale in that section's `README.md`.
 
 > [!NOTE]
-> **Authoring tooling lives in crickets.** The six-section authoring + maintenance tooling is crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin (the `diataxis-author` skill + `/diataxis` commands). agentm's duplicate four-mode copy was retired toward it. Harness wiki-authoring now **defers to crickets with the crickets-split graceful-skip**: when crickets is installed it drives mode selection + section-template choice; when it is absent the harness suggests installing it and falls back — never hard-fails. The deterministic gate stays agentm's own six-folder [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py), unchanged by the retire.
+> **Authoring tooling lives in crickets.** The six-section authoring + maintenance tooling is crickets' canonical [`wiki`](https://github.com/alexherrero/crickets/tree/main/src/wiki) plugin (the `diataxis-author` skill + `/diataxis` commands). agentm's duplicate four-mode copy was retired toward it. Harness wiki-authoring now **defers to crickets with the crickets-split graceful-skip**: when crickets is installed it drives mode selection + section-template choice; when it is absent the harness suggests installing it and falls back — never hard-fails. The deterministic gate stays agentm's own six-folder [`scripts/check-wiki.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-wiki.py), unchanged by the retire.
 
 ### Filename rules
 
@@ -75,7 +75,7 @@ Pages outside these six sections are not part of the convention — either file 
 
 ## Templates
 
-Every wiki file starts with `#` H1 + a one-paragraph summary. No YAML front-matter. The core shapes below cover the common cases; section-specific templates follow crickets' canonical `wiki-maintenance` set rather than a fixed count:
+Every wiki file starts with `#` H1 + a one-paragraph summary. No YAML front-matter. The core shapes below cover the common cases; section-specific templates follow crickets' canonical `wiki` set rather than a fixed count:
 
 ### Template 1 — "Page" (the default)
 
@@ -186,7 +186,7 @@ The wiki `Home.md` is the **canonical home page**, and the repo's root `README.m
 
 ## The `documenter` sub-agent
 
-**Canonical spec lives in crickets.** The `documenter` sub-agent is crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin ([`src/wiki-maintenance/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki-maintenance/agents/documenter.md)). agentm's duplicate four-mode copy was retired toward it (crickets-split single-source). The harness now **dispatches it with the crickets-split graceful-skip**: when crickets is installed the documenter performs the structural wiki write; when it is absent the harness suggests installing crickets and skips the write — never hard-fails. Scope, tools, and guardrails are defined in that canonical spec — this section is the integration surface.
+**Canonical spec lives in crickets.** The `documenter` sub-agent is crickets' canonical [`wiki`](https://github.com/alexherrero/crickets/tree/main/src/wiki) plugin ([`src/wiki/agents/documenter.md`](https://github.com/alexherrero/crickets/blob/main/src/wiki/agents/documenter.md)). agentm's duplicate four-mode copy was retired toward it (crickets-split single-source). The harness now **dispatches it with the crickets-split graceful-skip**: when crickets is installed the documenter performs the structural wiki write; when it is absent the harness suggests installing crickets and skips the write — never hard-fails. Scope, tools, and guardrails are defined in that canonical spec — this section is the integration surface.
 
 **Write scope:** `wiki/**` and `.harness/project.json`. Nothing else in the repo.
 
@@ -264,11 +264,11 @@ Only populated if the user opts into project creation at `/setup`. Absent otherw
 - **Docs alongside code in `/work`'s implement step.** Biases the implementer toward confirming the plan. Phase-bounded only.
 - **LLM-as-judge for doc quality.** `/release`'s docsub pass is adversarial-framed ("find what wasn't documented") but not a quality score.
 - **Ad-hoc sections beyond the six** (a "glossary" or "changelog" section). The six-section taxonomy (the crickets conventions [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) domain) is the contract; glossaries live under `reference/`, changelogs under `reference/Completed-Features.md`.
-- **A hardcoded template count.** Page, Status, Decision-record, and How-to cover the common shapes; section-specific templates follow crickets' canonical `wiki-maintenance` set rather than a fixed number the sub-agent must memorize.
+- **A hardcoded template count.** Page, Status, Decision-record, and How-to cover the common shapes; section-specific templates follow crickets' canonical `wiki` set rather than a fixed number the sub-agent must memorize.
 
 ## Migrating an existing install
 
-Projects installed from an earlier harness version have the old four-mode subdir layout (`tutorials/` · `how-to/` · `reference/` · `explanation/`), and older ones a pre-Diátaxis audience-based layout. Migration to the six-section frame is a one-shot, preview-first, non-destructive conversion provided by crickets' canonical [`wiki-maintenance`](https://github.com/alexherrero/crickets/tree/main/src/wiki-maintenance) plugin — `/diataxis migrate` (**graceful-skip**: when crickets is not installed there is no migration command — agentm no longer ships its own four-mode migration skill, fully retired in the V5 docs slim toward crickets' canonical converter).
+Projects installed from an earlier harness version have the old four-mode subdir layout (`tutorials/` · `how-to/` · `reference/` · `explanation/`), and older ones a pre-Diátaxis audience-based layout. Migration to the six-section frame is a one-shot, preview-first, non-destructive conversion provided by crickets' canonical [`wiki`](https://github.com/alexherrero/crickets/tree/main/src/wiki) plugin — `/diataxis migrate` (**graceful-skip**: when crickets is not installed there is no migration command — agentm no longer ships its own four-mode migration skill, fully retired in the V5 docs slim toward crickets' canonical converter).
 
 The migration:
 

@@ -6,7 +6,7 @@
 #   skills:         doctor
 #                   (dependabot-fixer + ship-release migrated to crickets
 #                    in v2.0.0 — see ADR 0006; the four-mode diataxis-migration
-#                    skill retired to crickets' wiki-maintenance in the V5
+#                    skill retired to crickets' wiki in the V5
 #                    docs slim)
 #   util-commands:  recent-wiki-changes  (claude-code only)
 #

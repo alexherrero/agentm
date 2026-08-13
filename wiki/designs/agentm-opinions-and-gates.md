@@ -102,7 +102,7 @@ The named opinions, listed like capabilities — what each holds, who asks for i
 
 - **Coded bases (in agentm / its tools today):** `AGENTS.md` + `harness/principles.md` (conventions + engineering discipline) · `scripts/check-all.sh` + `wiki/reference/CI-Gates.md` (the *done* battery) · crickets `code-review` + `wiki/explanation/Why-Adversarial-Review.md` (the *good* contract) · `~/.claude/CLAUDE.md` opusplan + `heat_policy.py` (the *efficient* levers) · crickets `developer-workflows` (*how we engineer*)
 - **Stored supplement (the learned layer):** agentm's memory — whichever backend it's connected to (device-local or the vault, via the seam); e.g. the learned conventions in `personal/_always-load/` (`docs-prose-style.md`)
-- **The base ⊕ overlay precedent:** crickets `wiki-maintenance` `diataxis-author` — `style_resolver.py` composing `style/base-style-guide.md` with a learned overlay; opinions reuse this compose shape
+- **The base ⊕ overlay precedent:** crickets `wiki` `diataxis-author` — `style_resolver.py` composing `style/base-style-guide.md` with a learned overlay; opinions reuse this compose shape
 - **The by-name seam:** `find_capability.py` → `capability_resolver.py` — the one-way bridge a thin `opinion` lookup rides
 - **The accumulate loop's full spec:** the [Experience design](agentm-experience-and-dreaming.md) § The Experience → Opinions accumulate loop; original source draft at vault `_harness/designs/architecture-governance/ACCUMULATE-LOOP-SPEC-DRAFT.md`
 

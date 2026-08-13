@@ -2,10 +2,10 @@
 """Retire-invariant guard for the duplicate `diataxis-author` skill copy.
 
 The four-mode `diataxis-author` skill was a vendored copy of a skill crickets
-now owns canonically at seven-section (`crickets/src/wiki-maintenance/`). The
+now owns canonically at seven-section (`crickets/src/wiki/`). The
 seven-section-convergence retire (part 2/4, ADR 0004 Amendment 2026-06-11)
 removed agentm's copy and rewired every live call site to defer to crickets'
-`wiki-maintenance` plugin with the ADR 0006 graceful-skip (suggest-then-skip
+`wiki` plugin with the ADR 0006 graceful-skip (suggest-then-skip
 when crickets is absent — never hard-fail).
 
 These tests pin that invariant so a later change can't silently re-introduce
@@ -90,7 +90,7 @@ class TestDiataxisAuthorRetired(unittest.TestCase):
         self.assertFalse(
             (ROOT / "harness" / "skills" / "diataxis-author").exists(),
             "agentm's diataxis-author copy must be retired (disposition (b)); "
-            "crickets' wiki-maintenance plugin is the single source.",
+            "crickets' wiki plugin is the single source.",
         )
 
     def test_no_dangling_path_in_live_surfaces(self):
@@ -114,7 +114,7 @@ class TestDiataxisAuthorRetired(unittest.TestCase):
             [],
             "Dangling reference to the retired local path "
             f"`{RETIRED_PATH}/` in live surface(s) — rewire to crickets' "
-            "wiki-maintenance plugin with graceful-skip:\n"
+            "wiki plugin with graceful-skip:\n"
             + "\n".join(offenders),
         )
 

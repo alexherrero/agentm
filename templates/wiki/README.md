@@ -5,7 +5,7 @@ How this project documents itself. This `wiki/` folder is the source of truth fo
 This scaffold follows the six-section documentation taxonomy — one reader intent per page, never mixed. See the crickets [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) convention for the rationale (it converges the older four-mode Diátaxis layout onto crickets' frame).
 
 > [!NOTE]
-> **Authoring tooling lives in crickets.** Page authoring + the structural lint are owned by [`crickets`](https://github.com/alexherrero/crickets)' `wiki-maintenance` plugin (ADR 0006 single-source). If crickets is paired, use its `/wiki-init` to scaffold the two conditional sections (architecture/operational) and provision wiki-sync CI; if it isn't, the harness degrades gracefully (graceful-skip) and this native scaffold stands on its own. The lint gate is `scripts/check-wiki.py`.
+> **Authoring tooling lives in crickets.** Page authoring + the structural lint are owned by [`crickets`](https://github.com/alexherrero/crickets)' `wiki` plugin (ADR 0006 single-source). If crickets is paired, use its `/wiki-init` to scaffold the two conditional sections (architecture/operational) and provision wiki-sync CI; if it isn't, the harness degrades gracefully (graceful-skip) and this native scaffold stands on its own. The lint gate is `scripts/check-wiki.py`.
 
 ## Two readers, one surface
 
@@ -41,7 +41,7 @@ The `.diataxis` marker file in this folder enables structural-lint enforcement o
 
 ## Templates
 
-Every page starts with `# H1 — <Title>` and a one-paragraph summary. **No YAML front-matter.** crickets' `wiki-maintenance` plugin ships the canonical, evolving set; the shapes below are the load-bearing ones a fresh scaffold needs.
+Every page starts with `# H1 — <Title>` and a one-paragraph summary. **No YAML front-matter.** crickets' `wiki` plugin ships the canonical, evolving set; the shapes below are the load-bearing ones a fresh scaffold needs.
 
 ### Onboarding walkthrough (how-to/, tutorial-shaped)
 
@@ -150,7 +150,7 @@ This replaces the retired ADR model. The why-not + re-audit discipline carries o
 ## Who maintains what
 
 - **Humans** may edit any wiki file anytime.
-- **Crickets' `wiki-maintenance:documenter` sub-agent** (when crickets is installed; graceful-skip otherwise) updates pages at phase boundaries only — never during `/work`'s implement step:
+- **Crickets' `wiki:documenter` sub-agent** (when crickets is installed; graceful-skip otherwise) updates pages at phase boundaries only — never during `/work`'s implement step:
   - `/setup` — populates a seed onboarding walkthrough + reference + explanation from the codebase.
   - `/plan` — creates pending how-to pages and reference rows for the plan's tasks.
   - `/work` (post-gates) — flips pending how-tos to implemented, fills reference tables.
