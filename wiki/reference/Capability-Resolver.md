@@ -28,7 +28,7 @@
 
 | Parameter | Type | Detail |
 |---|---|---|
-| `name` | `str` | The capability key to probe (e.g. `"developer-workflows"`, `"code-review"`). |
+| `name` | `str` | The capability key to probe (e.g. `"development-lifecycle"`, `"code-review"`). |
 | `version` | `str \| None` | Version-range constraint (e.g. `">= 1.2"`). When `None`, any installed version satisfies. Evaluated by `satisfies()` — see [Version matching](#version-matching) below. |
 | `registry` | `dict \| None` | Pre-built registry from `build_registry()`. When `None`, builds on each call. Inject when calling in a loop to avoid repeated I/O. |
 

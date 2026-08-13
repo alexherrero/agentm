@@ -1,9 +1,9 @@
 <!-- mode: index -->
 # Toolkit interface ↔ crickets
 
-_The seam with the sibling crickets toolkit — agentm owns the durable state substrate and memory engine the phases run on; crickets' developer-workflows plugin owns the phase loop itself, plus the skills, agents, and hooks that ride on it, and neither requires the other._
+_The seam with the sibling crickets toolkit — agentm owns the durable state substrate and memory engine the phases run on; crickets' development-lifecycle plugin owns the phase loop itself, plus the skills, agents, and hooks that ride on it, and neither requires the other._
 
-`agentm` is the memory-engine substrate; **crickets** is the toolkit that ships the phase-gated workflow (`/plan` · `/work` · `/review` · `/release` · `/bugfix`) and the customizations that run inside it. The two are **siblings, not layers** — each ships and versions independently, and neither requires the other to be installed. Since the V5 unbundling, crickets' developer-workflows plugin owns the phases and their canonical specs; agentm owns the on-disk state layout and memory engine those phases read and write.
+`agentm` is the memory-engine substrate; **crickets** is the toolkit that ships the phase-gated workflow (`/plan` · `/work` · `/review` · `/release` · `/bugfix`) and the customizations that run inside it. The two are **siblings, not layers** — each ships and versions independently, and neither requires the other to be installed. Since the V5 unbundling, crickets' development-lifecycle plugin owns the phases and their canonical specs; agentm owns the on-disk state layout and memory engine those phases read and write.
 
 ## How it works
 
@@ -11,8 +11,8 @@ The seam is graceful-skip in both directions, so each side works alone:
 
 | Direction | Mechanism |
 |---|---|
-| **developer-workflows → other crickets plugins** | a phase spec *suggests* a sibling crickets primitive (e.g. `/release` suggests `ship-release`) and graceful-skips when it's absent. |
-| **crickets → agentm** | developer-workflows' phases read and write agentm's on-disk state layout (`.harness/PLAN.md`, `progress.md`) and call into the memory engine; both graceful-skip when agentm isn't installed. |
+| **development-lifecycle → other crickets plugins** | a phase spec *suggests* a sibling crickets primitive (e.g. `/release` suggests `ship-release`) and graceful-skips when it's absent. |
+| **crickets → agentm** | development-lifecycle' phases read and write agentm's on-disk state layout (`.harness/PLAN.md`, `progress.md`) and call into the memory engine; both graceful-skip when agentm isn't installed. |
 
 Because the dependency is soft in every direction, a bare agentm memory engine runs with no phase loop installed, and the phase loop goes quiet on a project with no memory-engine state to read. Neither hard-wires to the other.
 

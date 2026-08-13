@@ -15,10 +15,10 @@ Antigravity's native surface maps as follows. Since the V5 unbundling ([ADR 0011
 | Always-on operating contract | Rules (`.agents/rules/*.md`) | `agentm` |
 | Utility skills (doctor, memory, design, console) | Skills (`.agents/skills/<name>/SKILL.md`) | `agentm` |
 | Wiki authoring (wiki-author, diataxis-author) | Skills | crickets **wiki** |
-| Phase loop (setup/plan/work/review/release/bugfix) | Workflows | crickets **developer-workflows** |
-| Review sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | crickets **code-review** / **developer-workflows** |
+| Phase loop (setup/plan/work/review/release/bugfix) | Workflows | crickets **development-lifecycle** |
+| Review sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | crickets **code-review** / **development-lifecycle** |
 
-Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief: …"*, when the crickets developer-workflows plugin is installed). Invoke a skill when its trigger conditions match, or explicitly (*"use the doctor skill to check the install"*).
+Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief: …"*, when the crickets development-lifecycle plugin is installed). Invoke a skill when its trigger conditions match, or explicitly (*"use the doctor skill to check the install"*).
 
 ## Non-negotiables (from [`harness/principles.md`](../../harness/principles.md))
 

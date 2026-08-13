@@ -114,7 +114,7 @@ A single primary source per principle, grouped by where it lives today. Repo pat
 **crickets repo**
 - `src/code-review/agents/adversarial-reviewer.md`, `wiki/explanation/Why-Adversarial-Review.md` (P4)
 - `src/developer-safety/skills/recoverability/SKILL.md` (P5, primary), `hooks/commit-on-stop/hook.md` (P5)
-- `src/developer-workflows/commands/{work,bugfix,release,review}.md` (P4, P5)
+- `src/development-lifecycle/commands/{work,bugfix,release,review}.md` (P4, P5)
 - [crickets-composition](https://github.com/alexherrero/crickets/wiki/crickets-composition) (P6) — the `enhances:` soft-composition design (subsumed `developer-plugin-suite.md`, AG Wave 2)
 - [development-lifecycle](https://github.com/alexherrero/crickets/wiki/crickets-development-lifecycle) (P9 — phase-aware model routing) · [build-system](https://github.com/alexherrero/crickets/wiki/crickets-build-system) (P6 — native plugin distribution)
 

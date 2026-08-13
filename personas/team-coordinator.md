@@ -2,13 +2,13 @@
 kind: persona
 name: team-coordinator
 requires: [queue_status_lite]
-enhances: [developer-workflows, github-projects]
+enhances: [development-lifecycle, github-projects]
 description: >
   The standing concern that turns raw multi-worker status into decision-ready
   recommendations. Reads the vault, computes the answers, and hands the operator
   a ready-to-act standup, an overlap verdict, and a merge order. Advisory only —
   zero execution authority. The first composed persona: soft-depends on
-  developer-workflows (the dev-loop surface) and github-projects (the board
+  development-lifecycle (the dev-loop surface) and github-projects (the board
   display), and hard-depends on queue_status_lite (the substrate read model).
 tier: T2
 opinions: [how-we-engineer]
@@ -95,7 +95,7 @@ quoting the reason for each position.
 `requires: [queue_status_lite]` — the substrate read model is the one hard dep.
 The `check-personas` gate enforces `requires ⊆ substrate-native`.
 
-`enhances: [developer-workflows, github-projects]` — soft deps, per ADR 0016
+`enhances: [development-lifecycle, github-projects]` — soft deps, per ADR 0016
 DC-3. Absent enhances entries are not errors: the persona degrades gracefully
 (no dev-loop command surface, no board display), and the three capability scripts
 still work by reading the vault directly.

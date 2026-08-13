@@ -84,7 +84,7 @@ try {
     }
 
     # V5 dev-loop slim: the phase commands + review sub-agents must NOT install.
-    # They moved to the crickets developer-workflows / code-review plugins.
+    # They moved to the crickets development-lifecycle / code-review plugins.
     $slimmed = @(
         '.claude/commands/plan.md',
         '.claude/commands/work.md',

@@ -132,7 +132,7 @@ class TestWikiDupesRetired(unittest.TestCase):
             found,
             [],
             "agentm ships no claude-code commands (the phase commands went to "
-            "crickets' developer-workflows in the V5 slim; recent-wiki-changes "
+            "crickets' development-lifecycle in the V5 slim; recent-wiki-changes "
             f"went to crickets' wiki plugin in 2026-08-12's retire). Found: {found}",
         )
 

@@ -700,7 +700,7 @@
         {
           "n": 3,
           "tool": "search_lexical",
-          "query": "templates full abbreviated design-doc developer-workflows",
+          "query": "templates full abbreviated design-doc development-lifecycle",
           "n_results": 8,
           "ms": 35.9
         },
@@ -1640,7 +1640,7 @@
         {
           "n": 2,
           "tool": "search_lexical",
-          "query": "\"developer-workflows\" OR \"developer workflows\" automatic gate",
+          "query": "\"development-lifecycle\" OR \"developer workflows\" automatic gate",
           "n_results": 8,
           "ms": 19.9
         }

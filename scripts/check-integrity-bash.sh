@@ -94,7 +94,7 @@ echo "    $sh_count installed .sh files parse"
 # ── 4. Required agent / skill files non-empty ────────────────────────────
 # The phase-gated dev loop (plan/work/review/release/bugfix) + the review
 # sub-agents were slimmed out in the V5 unbundling (now provided by the crickets
-# developer-workflows / code-review plugins), so they no longer install. The
+# development-lifecycle / code-review plugins), so they no longer install. The
 # surviving harness-vendored surface is: the memory-engine sub-agents, the
 # shared skill (doctor), and the Antigravity rules + Gemini settings.json. (The
 # four-mode diataxis-migration skill retired to crickets' wiki plugin in the V5

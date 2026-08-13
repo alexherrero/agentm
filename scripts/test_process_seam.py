@@ -2,7 +2,7 @@
 """Contract tests for `process_seam` (V5-4 task 1) — the memory↔process client seam.
 
 `process_seam` is the small, **read-only**, **graceful-no-op** view a *process*
-(the crickets developer-workflows phases today; the V5-9 MCP server tomorrow)
+(the crickets development-lifecycle phases today; the V5-9 MCP server tomorrow)
 calls instead of reaching into the memory engine. These tests pin its contract:
 
   - `offer_save_here` — advisory-only ([LC-2]): returns enriched save *candidates*

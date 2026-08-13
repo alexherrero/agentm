@@ -84,7 +84,7 @@ for p in "${leaks[@]}"; do
 done
 
 # ── V5 dev-loop slim: the phase commands + review sub-agents must NOT install ─
-# These moved to the crickets developer-workflows / code-review plugins. A fresh
+# These moved to the crickets development-lifecycle / code-review plugins. A fresh
 # agentm install vendors none of them on any host.
 slimmed=(
   .claude/commands/plan.md

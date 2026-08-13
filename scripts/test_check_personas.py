@@ -69,7 +69,7 @@ _NON_SUBSTRATE_REQUIRE = """\
 kind: persona
 name: bad-persona
 requires:
-  - developer-workflows
+  - development-lifecycle
 enhances: []
 ---
 
