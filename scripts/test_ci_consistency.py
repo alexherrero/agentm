@@ -77,6 +77,10 @@ UNIT_WRAPPED = {
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",
     "check-opinion-honesty.py": "test_check_opinion_honesty.py",
     "check-slop.py": "test_check_slop.py",
+    # Needs crickets' real plugin set as ground truth, so it graceful-skips
+    # wherever the sibling checkout is absent — including CI. Same posture (and
+    # same reason) as check-slop.py's delegation to the crickets-side scanner.
+    "check-crickets-plugin-refs.py": "test_check_crickets_plugin_refs.py",
     "check-storage-seam-no-path-leak.py": "test_storage_seam.py",
     "check-worktree-slug.sh": "test_worktree_slug_probe.py",
 }

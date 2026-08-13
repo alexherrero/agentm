@@ -6,7 +6,7 @@ agentm used to vendor the full phase-gated dev loop — the six phase commands
 (`adversarial-reviewer` / `-cross` / `explorer`), and the `evidence-tracker`
 hook — across all three host adapters plus the shared `harness/` source. The V5
 "unbundling" (ROADMAP bucket ⑤) removed every one of those copies: they are now
-provided solely by the launched + dogfood-proven crickets **developer-workflows**
+provided solely by the launched + dogfood-proven crickets **development-lifecycle**
 / **code-review** plugins. Per DC-2 the slim is a *clean delete*, not a
 graceful-skip-with-pointer: agentm ships no invocation surface for the dev loop
 and says nothing about it — if crickets is absent, a bare agentm simply has no
@@ -154,7 +154,7 @@ class TestDevloopSlimRetired(unittest.TestCase):
             self.assertFalse(
                 (ROOT / rel).exists(),
                 f"agentm's vendored dev-loop primitive `{rel}` must be retired "
-                "(V5 dev-loop slim); the crickets developer-workflows / "
+                "(V5 dev-loop slim); the crickets development-lifecycle / "
                 "code-review plugins are the sole providers.",
             )
 
@@ -269,18 +269,18 @@ class TestDevloopSlimRetired(unittest.TestCase):
                 phase_commands,
                 text,
                 f"{rel}: the six phase commands `{phase_commands}` must be named "
-                "as crickets-provided (developer-workflows).",
+                "as crickets-provided (development-lifecycle).",
             )
             self.assertIn(
                 review_agents,
                 text,
                 f"{rel}: the review agents `{review_agents}` must be named as "
-                "crickets-provided (code-review / developer-workflows).",
+                "crickets-provided (code-review / development-lifecycle).",
             )
             self.assertIn(
-                "developer-workflows",
+                "development-lifecycle",
                 text,
-                f"{rel}: the doctor must name the crickets developer-workflows "
+                f"{rel}: the doctor must name the crickets development-lifecycle "
                 "plugin as the dev-loop provider.",
             )
             # The phase commands must NOT be re-listed as harness-required.

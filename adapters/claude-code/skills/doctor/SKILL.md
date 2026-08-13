@@ -34,8 +34,8 @@ Expected name sets:
 
 | Surface | Required (harness-shipped) | Crickets-provided / optional (graceful-skip if absent — never FAIL) |
 |---|---|---|
-| `$ROOT/commands/*.md` | — (agentm vendors no commands) | `bugfix, plan, release, review, setup, work` (crickets developer-workflows — moved out of agentm in the V5 dev-loop slim); `recent-wiki-changes` (crickets wiki — retired from agentm 2026-08-12) |
-| `$ROOT/agents/*.md` | `adapt-evaluator, memory-idea-researcher` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / developer-workflows); `diataxis-evaluator, documenter, evaluator` (crickets wiki) |
+| `$ROOT/commands/*.md` | — (agentm vendors no commands) | `bugfix, plan, release, review, setup, work` (crickets development-lifecycle — moved out of agentm in the V5 dev-loop slim); `recent-wiki-changes` (crickets wiki — retired from agentm 2026-08-12) |
+| `$ROOT/agents/*.md` | `adapt-evaluator, memory-idea-researcher` (memory engine) | `adversarial-reviewer, adversarial-reviewer-cross, explorer` (crickets code-review / development-lifecycle); `diataxis-evaluator, documenter, evaluator` (crickets wiki) |
 | `$ROOT/skills/*/` | `doctor` | `design, memory` (harness compound); `dependabot-fixer, diataxis-author, pii-scrubber, ship-release, wiki-author` (crickets — `diataxis-author` absorbs the retired four-mode `migrate-to-diataxis` migration; `ship-release` fully crickets-owned since 2026-07-01; `wiki-author` fully crickets-owned since 2026-08-12) |
 
 The table above is written with Claude Code's surfaces (`commands` / `agents` / `skills`); on **Antigravity** map them per the detection table — sub-agents *and* skills both live under `.agents/skills/*/` (the same Required name sets apply); on **Gemini** the required skills come from the shared `.agents/skills/*/` delivery. The dev-loop surfaces (phase commands + review agents) are crickets-provided on every host — `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, never FAIL.
@@ -92,7 +92,7 @@ Run in order. Stop at first foundational failure — structural breakage makes l
 
 ### 1. `explorer` dispatch
 
-**Graceful-skip if not installed.** `explorer` moved to the crickets developer-workflows plugin in the V5 dev-loop slim. If the sub-agent isn't present, report **skip** (*"explorer not found — install crickets developer-workflows to enable this probe"*), never FAIL — a bare agentm install legitimately has no `explorer` (DC-2).
+**Graceful-skip if not installed.** `explorer` moved to the crickets development-lifecycle plugin in the V5 dev-loop slim. If the sub-agent isn't present, report **skip** (*"explorer not found — install crickets development-lifecycle to enable this probe"*), never FAIL — a bare agentm install legitimately has no `explorer` (DC-2).
 
 If installed, dispatch `explorer` with:
 > *Return the absolute path of `README.md` and `AGENTS.md` at the repo root. One sentence each, no commentary.*
@@ -174,7 +174,7 @@ doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemin
     machinery         [OK]  3 OK, 12 WARN, 0 FAIL, 0 UNVERIFIED (python3 scripts/machinery_doctor.py)
 
   live probes (--live):
-    explorer          [SKIP] crickets developer-workflows not installed
+    explorer          [SKIP] crickets development-lifecycle not installed
     adversarial       [SKIP] crickets code-review not installed
     ship-release      [OK]   1.8s  — proposed v0.9.0, no tag written
     migrate-diataxis  [OK]   0.9s  — no-op (marker present)

@@ -79,7 +79,7 @@ All four keys are now live. `--notify-enabled`: [`scripts/health/session_notify.
 
 ## Phase commands
 
-The agentm installer does **not** ship the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`). You will find this loop in the crickets **developer-workflows** plugin. You can read about the V5 unbundling in the [AgentM HLD](agentm-hld). The agentm repository no longer vendors the phase specs. Instead, the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`). Your phases run against this substrate.
+The agentm installer does **not** ship the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`). You will find this loop in the crickets **development-lifecycle** plugin. You can read about the V5 unbundling in the [AgentM HLD](agentm-hld). The agentm repository no longer vendors the phase specs. Instead, the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`). Your phases run against this substrate.
 
 ## Exit codes
 

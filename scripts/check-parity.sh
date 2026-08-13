@@ -12,7 +12,7 @@
 #
 # The phase-gated dev loop (setup/plan/work/review/release/bugfix) and the
 # three review sub-agents (adversarial-reviewer / -cross / explorer) are NO
-# LONGER vendored by agentm — they moved to the crickets developer-workflows /
+# LONGER vendored by agentm — they moved to the crickets development-lifecycle /
 # code-review plugins in the V5 slim. agentm is unaware of them (DC-2): there
 # is nothing to parity-check here. The adapters/{gemini,antigravity} command /
 # workflow / agent dirs are intentionally gone; their absence is pinned by

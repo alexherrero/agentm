@@ -48,7 +48,7 @@ opinion_available(name) -> bool               # boolean surface (mirrors capabil
 
 `scripts/agentm-opinion.sh` wraps `opinion_resolver.py` (exit `0` served · `1` unavailable · `2` usage), mirroring `agentm-capability.sh` and `agentm-governs.sh`.
 
-Crickets reaches the resolver through a thin bridge that mirrors the crickets-side `find_capability.py` (in `developer-workflows`) — path-fallback discovery, graceful-skip when agentm is absent. The direction is one-way: crickets depends on agentm in a single direction.
+Crickets reaches the resolver through a thin bridge that mirrors the crickets-side `find_capability.py` (in `development-lifecycle`) — path-fallback discovery, graceful-skip when agentm is absent. The direction is one-way: crickets depends on agentm in a single direction.
 
 ### What an opinion is — the entry schema
 

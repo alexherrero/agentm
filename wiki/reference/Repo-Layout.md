@@ -7,7 +7,7 @@ This page shows the top-level layout of agentm on disk. You can read [How the pi
 
 | Question | Answer |
 |---|---|
-| Where does a phase spec live? | Not in agentm — the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) ships in the crickets **developer-workflows** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)). agentm owns the durable state substrate the phases run on, not the specs. |
+| Where does a phase spec live? | Not in agentm — the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) ships in the crickets **development-lifecycle** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)). agentm owns the durable state substrate the phases run on, not the specs. |
 | Where does an adapter live? | [`adapters/<host>/`](https://github.com/alexherrero/agentm/tree/main/adapters) — `claude-code`, `antigravity` (the two supported hosts). |
 | Where does the install scaffold live? | [`templates/`](https://github.com/alexherrero/agentm/tree/main/templates) — state files, hooks, wiki scaffold. |
 | Where does the test infra live? | [`scripts/`](https://github.com/alexherrero/agentm/tree/main/scripts) — **never propagated to target projects**. |
@@ -74,7 +74,7 @@ agentm/
 
 ## The supported adapters
 
-Each adapter ships only agentm's *own* surfaces. This changed in the V5 unbundling. You can read about this in the [AgentM HLD](agentm-hld). The phase-gated dev loop moved to the crickets developer-workflows plugin. The review sub-agents moved to the crickets code-review plugin. You do not need to parity-check those features here. The `scripts/test_devloop_slim_retired.py` script pins their absence. You can run [`scripts/check-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-parity.sh) to assert that the remaining features match across hosts.
+Each adapter ships only agentm's *own* surfaces. This changed in the V5 unbundling. You can read about this in the [AgentM HLD](agentm-hld). The phase-gated dev loop moved to the crickets development-lifecycle plugin. The review sub-agents moved to the crickets code-review plugin. You do not need to parity-check those features here. The `scripts/test_devloop_slim_retired.py` script pins their absence. You can run [`scripts/check-parity.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/check-parity.sh) to assert that the remaining features match across hosts.
 
 | Adapter | Ships (agentm's own surfaces) |
 |---|---|
@@ -83,9 +83,9 @@ Each adapter ships only agentm's *own* surfaces. This changed in the V5 unbundli
 
 A third directory, `adapters/gemini/`, remains in the tree. This is **not a supported host**. Agentm dropped the Gemini CLI in v2.4.0. You can read about this in [Compatibility](Compatibility). The project keeps this directory pending reconciliation.
 
-**Canonical sub-agents** (`harness/agents/`): These are `adapt-evaluator` and `memory-idea-researcher`. They act as the memory-engine pair. The crickets plugins provide the review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter`. These plugins are code-review, developer-workflows, and wiki. This separation happened in the V5 unbundling. You can read the [AgentM HLD](agentm-hld) for more details.
+**Canonical sub-agents** (`harness/agents/`): These are `adapt-evaluator` and `memory-idea-researcher`. They act as the memory-engine pair. The crickets plugins provide the review sub-agents (`explorer`, `adversarial-reviewer`, `adversarial-reviewer-cross`) and `documenter`. These plugins are code-review, development-lifecycle, and wiki. This separation happened in the V5 unbundling. You can read the [AgentM HLD](agentm-hld) for more details.
 
-**Canonical skills** (`harness/skills/`): These include `design`, `doctor`, `memory`, and `console`. The crickets `releasing-conventions` plugin provides `ship-release`. Agentm gracefully skips this if you do not pair crickets. Agentm recommends it by name. This matches the recommendation style for `dependabot-fixer` and `pii-scrubber`. The crickets `wiki` plugin provides `diataxis-author` and `wiki-author` for wiki authoring in the exact same way — `wiki-author` retired its agentm copy on 2026-08-12, having drifted behind the plugin's.
+**Canonical skills** (`harness/skills/`): These include `design`, `doctor`, `memory`, and `console`. The crickets `conventions` plugin provides `ship-release`. Agentm gracefully skips this if you do not pair crickets. Agentm recommends it by name. This matches the recommendation style for `dependabot-fixer` and `pii-scrubber`. The crickets `wiki` plugin provides `diataxis-author` and `wiki-author` for wiki authoring in the exact same way — `wiki-author` retired its agentm copy on 2026-08-12, having drifted behind the plugin's.
 
 ## Related
 

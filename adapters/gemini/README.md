@@ -1,6 +1,6 @@
 # Gemini CLI adapter
 
-Adapter for running agentm in [Google Gemini CLI](https://geminicli.com/). Since the V5 unbundling this adapter is **slim**: it ships the `AGENTS.md` context wiring (`settings.json`) plus the shared utility skills. The phase-gated dev loop (setup/plan/work/review/release/bugfix) and the review sub-agents are no longer vendored by agentm — they're provided by the crickets developer-workflows / code-review plugins.
+Adapter for running agentm in [Google Gemini CLI](https://geminicli.com/). Since the V5 unbundling this adapter is **slim**: it ships the `AGENTS.md` context wiring (`settings.json`) plus the shared utility skills. The phase-gated dev loop (setup/plan/work/review/release/bugfix) and the review sub-agents are no longer vendored by agentm — they're provided by the crickets development-lifecycle / code-review plugins.
 
 ## What this adapter ships
 
@@ -13,7 +13,7 @@ The shared skill is delivered to `.agents/skills/` by `install.sh` / `install.ps
 
 ## Why the dev loop isn't here (V5 unbundling)
 
-agentm's repositioning in V5 is "storage-agnostic memory OS + plugin host". The phase commands that used to live in `adapters/gemini/commands/` (TOML) and the sub-agents in `adapters/gemini/agents/` (`explorer` / `adversarial-reviewer` / `adversarial-reviewer-cross`) moved to the crickets **developer-workflows** and **code-review** plugins. A bare agentm install is intentionally unaware of that dev loop: it's optional, provided by crickets when installed, with no pointer and no requirement from agentm's side.
+agentm's repositioning in V5 is "storage-agnostic memory OS + plugin host". The phase commands that used to live in `adapters/gemini/commands/` (TOML) and the sub-agents in `adapters/gemini/agents/` (`explorer` / `adversarial-reviewer` / `adversarial-reviewer-cross`) moved to the crickets **development-lifecycle** and **code-review** plugins. A bare agentm install is intentionally unaware of that dev loop: it's optional, provided by crickets when installed, with no pointer and no requirement from agentm's side.
 
 If you want the full plan/work/review/release loop in Gemini CLI, install the crickets developer plugins alongside agentm.
 

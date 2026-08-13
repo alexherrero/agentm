@@ -23,7 +23,7 @@ A single session should do exactly one of: scaffold, plan, implement, review, re
 - Fresh context at each boundary is cheaper and more reliable than trying to compact across roles. ([Trail of Bits' fresh-session discipline](https://github.com/trailofbits/claude-code-config) — "interview first, implement second, in a clean session.")
 - When something goes wrong, you can see *which phase* broke.
 
-**The five verbs:** `setup / plan / work / review / release`, plus a `bugfix` pipeline for triage-first work. Borrowed from [Chachamaru127/claude-code-harness](https://github.com/Chachamaru127/claude-code-harness). Since the V5 unbundling, the phase loop itself ships from the companion crickets `developer-workflows` plugin — this repo owns the state substrate and memory engine the phases run on, not the phase specs.
+**The five verbs:** `setup / plan / work / review / release`, plus a `bugfix` pipeline for triage-first work. Borrowed from [Chachamaru127/claude-code-harness](https://github.com/Chachamaru127/claude-code-harness). Since the V5 unbundling, the phase loop itself ships from the companion crickets `development-lifecycle` plugin — this repo owns the state substrate and memory engine the phases run on, not the phase specs.
 
 ## 3. Single-threaded for coherence, fan-out only for read-only breadth
 

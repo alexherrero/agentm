@@ -4,7 +4,7 @@ Universal instructions for AI coding agents working in a project using `agentm`.
 
 ## What this harness is
 
-A phase-gated workflow with on-disk state — single-threaded, one phase per session, with context carried between sessions on disk rather than in the conversation. Since the V5 unbundling the phase loop itself (Setup · Plan · Work · Review · Release · Bugfix) is provided by the companion crickets **developer-workflows** / **code-review** plugins; `agentm` owns the durable state substrate and the memory engine those phases run on. The plugins are optional — a bare `agentm` is the memory engine alone.
+A phase-gated workflow with on-disk state — single-threaded, one phase per session, with context carried between sessions on disk rather than in the conversation. Since the V5 unbundling the phase loop itself (Setup · Plan · Work · Review · Release · Bugfix) is provided by the companion crickets **development-lifecycle** / **code-review** plugins; `agentm` owns the durable state substrate and the memory engine those phases run on. The plugins are optional — a bare `agentm` is the memory engine alone.
 
 ## Phases (hard boundaries)
 
@@ -15,7 +15,7 @@ A phase-gated workflow with on-disk state — single-threaded, one phase per ses
 5. **Release** — pre-merge gate. Clean tree, all verification passes, changelog updated.
 6. **Bugfix** — a different pipeline: Report → Analyze → Fix → Verify. Used instead of Plan+Work for bugs.
 
-Each phase's canonical spec ships in the crickets **developer-workflows** plugin (Claude Code slash commands, Antigravity entrypoints) — `agentm` no longer vendors them, having retired the byte-duplicated copies in the V5 unbundling.
+Each phase's canonical spec ships in the crickets **development-lifecycle** plugin (Claude Code slash commands, Antigravity entrypoints) — `agentm` no longer vendors them, having retired the byte-duplicated copies in the V5 unbundling.
 
 ## Non-negotiable rules
 
@@ -75,21 +75,21 @@ your-project/
 ├── AGENTS.md               # this file (or a pointer to it)
 ├── CLAUDE.md               # Claude Code entry point — points back here
 └── .claude/
-    ├── commands/           # slash commands (Claude Code) — phase commands come from crickets developer-workflows
+    ├── commands/           # slash commands (Claude Code) — phase commands come from crickets development-lifecycle
     ├── agents/             # sub-agents (Claude Code) — memory-engine: adapt-evaluator, memory-idea-researcher (review agents come from crickets)
     └── skills/             # auto-triggered skills (Claude Code) — e.g. doctor (dev/docs skills come from crickets)
 ```
 
 ## How to invoke phases
 
-These entrypoints are provided by the crickets **developer-workflows** plugin — a bare `agentm` does not ship them:
+These entrypoints are provided by the crickets **development-lifecycle** plugin — a bare `agentm` does not ship them:
 
 - **Claude Code:** `/plan <brief>`, `/work`, `/review`, `/release`, `/bugfix <report>`.
 - **Antigravity / tools without slash commands:** prompt the agent with "Run the plan phase" (or work / review / etc.); the agent reads the plugin's phase spec and follows it.
 
 ## Personal customizations
 
-Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo (since v2.0.0); since the V5 unbundling the phase loop lives there too. Install both repos as siblings (e.g. `~/Antigravity/agentm/`, `~/Antigravity/crickets/`) to get the full set. The developer-workflows `/release` and `/work` phases reference `ship-release` (also from crickets) as a graceful-skip suggestion — neither requires the other to exist.
+Skills, sub-agents, hooks, MCP servers, slash commands, bundles, etc. live in the sibling [`crickets`](https://github.com/alexherrero/crickets) repo (since v2.0.0); since the V5 unbundling the phase loop lives there too. Install both repos as siblings (e.g. `~/Antigravity/agentm/`, `~/Antigravity/crickets/`) to get the full set. The development-lifecycle `/release` and `/work` phases reference `ship-release` (also from crickets) as a graceful-skip suggestion — neither requires the other to exist.
 
 ## Core principles (why the harness looks like this)
 

@@ -116,4 +116,4 @@ Entry cap is a separate constraint (default 5 per phase) — if you need more en
 - [Memory System design — Auto-context into harness phases](agentm-memory-system) — 5 locked design calls + load-bearing assumptions.
 - [crickets Cross-Repo Memory Protocol](https://github.com/alexherrero/crickets/blob/main/wiki/explanation/Cross-Repo-Memory-Protocol.md) — toolkit-side contract documentation.
 - [crickets `/memory` skill](https://github.com/alexherrero/crickets/blob/main/skills/memory/SKILL.md) — the underlying save/recall surface that `harness_memory.py` shells out to.
-- Phase specs: the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) ships in the crickets **developer-workflows** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)).
+- Phase specs: the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`) ships in the crickets **development-lifecycle** plugin since the V5 unbundling (the [AgentM HLD](agentm-hld)).

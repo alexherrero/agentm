@@ -9,7 +9,7 @@ Checks:
   - Every remaining skill maps to a canonical spec under harness/skills/.
 
 The phase-gated dev loop + the review sub-agents were slimmed out of agentm in
-the V5 unbundling (moved to the crickets developer-workflows / code-review
+the V5 unbundling (moved to the crickets development-lifecycle / code-review
 plugins). Their adapter surfaces (gemini/commands, claude-code/agents,
 gemini/agents, antigravity/workflows, antigravity/skills) no longer exist, so
 they are not validated here; their absence is pinned by

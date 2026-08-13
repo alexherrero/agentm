@@ -161,7 +161,7 @@ class ResolveActivePlanPrecedence(unittest.TestCase):
 
 class ResolveActivePlanCLI(unittest.TestCase):
     """The `resolve-active-plan` CLI verb (V5-10 part 1) — the bash-reachable
-    wrapper the crickets developer-workflows bridge shells to so phase specs can
+    wrapper the crickets development-lifecycle bridge shells to so phase specs can
     target named plans without reimplementing resolution.
 
     Hermetic via **local mode** (`.harness/.project-mode = local`): resolution

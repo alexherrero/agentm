@@ -36,6 +36,22 @@ Underneath: re-running `install.sh` deleted every plugin-namespaced key from `~/
   **Consequence for the adapter shape:** `recent-wiki-changes` was the last command agentm vendored, so `adapters/claude-code/commands/` is now gone entirely and agentm ships no Claude Code slash command at all. `validate-adapters` and `check-parity` drop that surface the same way the V5 slim dropped the phase commands; both doctor surfaces re-categorize `wiki-author` from harness-required to crickets-provided (graceful-skip when crickets is unpaired, never FAIL). Pinned by `scripts/test_wiki_dupes_retired.py`, following the `diataxis-author` retire's guard pattern.
 
 
+### Added
+
+- **A gate for the one thing a crickets plugin rename actually breaks** ([`scripts/check-crickets-plugin-refs.py`](scripts/check-crickets-plugin-refs.py)) — the `wiki-maintenance` → `wiki` drift fixed above shipped two 404 links and six unresolvable dispatch instructions, and nothing in either repo would have caught it: `check-references.py` does not resolve cross-repo URLs, and a plugin qualifier is prose everywhere it appears.
+
+  The gate checks the two shapes that break, and **only** those. A GitHub URL into `crickets/{tree,blob}/main/src/<name>/` where that directory no longer exists — a renamed plugin takes its directory with it. And a `<name>:<primitive>` dispatch where `<name>` is not a current crickets plugin — hosts namespace primitives by the *plugin* name, so a stale qualifier resolves to nothing and the promised graceful-skip degrades into a hard miss.
+
+  **It deliberately does not flag a bare old plugin name in prose.** crickets keeps old names alive as declared capability *aliases* — `development-lifecycle` declares both `developer-workflows` and `development-lifecycle`, `wiki` declares `wiki-maintenance`, `conventions` declares `releasing-conventions` — so every capability probe against an old name still resolves, verified through `capability_resolver.capability_available`. Flagging them would fight that backward-compatibility mechanism and bury the two real failures in noise. This mirrors the scope crickets' own `check-no-dangling-name.py` sets for itself: a reference is a violation only when it resolves to **nothing**.
+
+  Graceful-skips where no crickets checkout is reachable, since it needs the real plugin set as ground truth and a hardcoded list would be the very drift it exists to prevent — so it is `UNIT_WRAPPED` rather than a CI step, the same posture as `check-slop.py`. Verified against the real historical regressions: reintroducing either shape into `harness/documentation.md` makes it fail.
+
+### Changed
+
+- **Plugin references now name the plugins crickets actually ships** (52 files) — `developer-workflows` → `development-lifecycle` and `releasing-conventions` → `conventions`, following the same rename that took `wiki-maintenance` → `wiki`.
+
+  **This was stale prose, not breakage.** The capability aliases meant every probe kept resolving, and a scan for the two breaking shapes found none for either name. What it did do was tell a reader to install a plugin under a name `claude plugin install` would reject. The arc names (`developer-workflows-autonomy`) are untouched — they are closed-arc vault folders that merely share the old plugin's name, like `wiki-maintenance-provisioning` before them.
+
 ### Fixed
 
 - **`daemon` CI, red on all three runners since [`9db7cb3`](https://github.com/alexherrero/agentm/commit/9db7cb3)** (`daemon/go.mod`) — that commit added a direct import of `github.com/go-git/go-billy/v5/osfs` in `internal/vcs/indexlock.go` without re-tidying, so `go.mod` kept the module marked `// indirect`. The workflow's *"Dependencies are pinned and tidy"* step runs `go mod tidy` and diffs the result, so it failed on every push from then on — the daemon was never broken, only its dependency classification. The fix is the one line tidy produces: drop the marker. `go.sum` is unchanged; no version moved, nothing added or removed.
