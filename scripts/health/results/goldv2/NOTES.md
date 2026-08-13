@@ -167,15 +167,15 @@ reaches **23/53 (43%)** at both n=2 and n=3.
 
 **On the full gold set it fails its own rule.**
 
-| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) |
-|---|---:|---:|---:|
-| distinctive-token | 3/12 | 7/12 | 7/12 |
-| episodic-temporal | 3/12 | 6/12 | 6/12 |
-| pure-paraphrase | 1/18 | 5/18 | 5/18 |
-| research-corpus | 0/12 | 6/12 | 6/12 |
-| research-density | 0/10 | 3/10 | 3/10 |
-| **R@5** | **10.9%** | **42.2%** | **42.2%** |
-| **negative rejection** | **35%** | **0%** | **0%** |
+| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF |
+|---|---:|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 |
+| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 |
+| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 |
+| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 |
+| research-density | 0/10 | 3/10 | 3/10 | 6/10 |
+| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** |
+| **negative rejection** | **35%** | **0%** | **0%** | **0%** |
 
 Recall nearly quadrupled and rejection went to zero — every one of the 20
 negatives returned a confident wrong answer. The pre-registered floor was
@@ -235,6 +235,110 @@ fitting to the answer sheet.
   by any policy that cannot tell a good subset from a bad one at query time.
   An agent can, by iterating — which is exactly why the week-1 agent-layer
   number is 0.725 and this hook-layer number is 0.109. The hook has no driver.
+
+## The dense arm's scope is the dominant variable, and it can regress the baseline
+
+Measured on 2026-08-12 while building the `+vector RRF` rung. The design's
+original call was that the vector arm covers `memory/` only, because memory
+notes are atomic by capture doctrine and `desk/` would need a chunking policy.
+Cross-tabulating the gold set against that scope, before writing any code,
+refutes it: the 64 answerable questions expect 90 note paths, and they sit
+**`desk/` 60 · `memory/` 25 · `external/` 5**. Per stratum, the number of
+questions with *any* answer inside `memory/`:
+
+| stratum | n | lexical hits | reachable in `memory/` | ceiling |
+|---|---:|---:|---:|---:|
+| pure-paraphrase | 18 | 5 | 5 | **8** |
+| research-corpus | 12 | 6 | 12 | 12 |
+| distinctive-token | 12 | 7 | 1 | 8 |
+| episodic-temporal | 12 | 6 | 1 | 6 |
+| research-density | 10 | 3 | 0 | 3 |
+
+The ceiling column is the union — every question the lexical arm already hits
+plus every question a *perfect* `memory/`-only dense arm could reach. It caps
+the whole ladder at **37/64 = 57.8%** against a 70–90% target band, and it puts
+the step-2 rule's `paraphrase ≥50%` clause (9 of 18) above a ceiling of 8. That
+clause was unreachable by construction, not merely hard.
+
+Building it both ways then produced the sharper finding. A `memory/`-only dense
+arm does not merely under-reach; it **regresses the lexical baseline**:
+
+| arm | R@5 |
+|---|---:|
+| `lexical-fusion` (no dense arm) | 27/64 = 42.2% |
+| `+ dense arm, `memory/` only | 26/64 = 40.6% |
+| `+ dense arm, `memory/` + `desk/` + `external/` | 35/64 = 54.7% |
+
+The mechanism is reciprocal-rank displacement, and it is a property of RRF
+rather than of the model. The dense arm returns its 50 best candidates for
+every query, always — cosine similarity has no natural empty result, so there
+is always a top 50. For a question whose answer lives outside the embedded
+scope, those 50 are all noise, and a noise document at dense rank 1 scores
+1/61 = 0.0164 against a *correct* lexical hit at rank 3 scoring 1/63 = 0.0159.
+The correct answer is displaced by a document the dense arm was never in a
+position to judge.
+
+Two things follow. **A dense arm narrower than the question distribution is
+worse than no dense arm**, which is the opposite of the intuition that a
+partial vector index is a partial improvement. And the cross-encoder floor at
+step 3 is doing more work than the design assumed: it is not only the rejection
+gate for negatives, it is the only thing that can stop the dense arm from
+promoting confident noise on questions it cannot answer.
+
+## Bake-off: EmbeddingGemma-300M against Qwen3-Embedding-0.6B
+
+Both on the frozen corpus, same questions, same scope, same RRF. The decisive
+run is the last one in this table: **identical 2,048-token window, identical
+`memory/` + `desk/` + `external/` scope, complete backfills on both sides, on an
+otherwise-idle machine**, which isolates model quality from every other variable.
+
+| | EmbeddingGemma-300M-Q8_0 | Qwen3-Embedding-0.6B-Q8_0 |
+|---|---:|---:|
+| research-corpus (`memory/` scope, own windows) | 9/12 = 75.0% | 8/12 = 66.7% |
+| full gold set (`memory/` scope, own windows) | 26/64 = 40.6% | 24/64 = 37.5% |
+| **full gold set (wide scope, window parity)** | **35/64 = 54.7%** | **24/64 = 37.5%** |
+| distinctive-token · episodic · paraphrase · research-corpus · density | **8/12 · 7/12 · 7/18 · 7/12 · 6/10** | 6/12 · 5/12 · 5/18 · 5/12 · 3/10 |
+| dimensions | 768 | 1024 |
+| disk | 333 MB | 639 MB |
+| backfill throughput | ~101 notes/s | ~24 notes/s |
+
+The first two rows are one and two questions apart — not real differences, and
+they are recorded rather than leaned on. The parity row is: **EmbeddingGemma
+wins every stratum**, by 11 questions overall. Qwen at parity scores 37.5%,
+which is *below* the 42.2% lexical-fusion baseline, meaning its dense arm is a
+net loss on this corpus — the same reciprocal-rank displacement described above,
+except caused by a weaker model rather than a narrow scope.
+
+The operational case points the same way and is worth recording because it very
+nearly produced the opposite verdict. Qwen's only design advantage over
+EmbeddingGemma is a longer context window, and **that window is not usable on
+this hardware**: batch buffers are sized from the context, and at `-b/-ub 8192`
+the model took a `kIOGPUCommandBufferCallbackErrorPageFault` six requests into
+an idle machine with 37 GB free. 4096 faulted the same way one request later.
+llama.cpp says of that state, "recreate the backend to recover" — the process
+never serves again, so the symptom is hybrid retrieval *down* rather than slow.
+A window whose compute buffer faults is not a window, so the axis Qwen was
+nominated for does not exist here; run at the window that does work, it loses on
+quality anyway.
+
+**EmbeddingGemma is pinned**, at 768 dimensions and a 2,048-token window, which
+truncates 562 of 9,473 notes (5.9%) to their head. The Metal fault is worth
+re-testing on other hardware — it is a property of the model-and-Metal pairing,
+not of the weights — but nothing about the parity result depends on it.
+
+Two measurement bugs were found and fixed on the way, both of which had made a
+working model look broken:
+
+- **`-b` and `-ub` both bound a sequence, and only `-ub` was being set.** The
+  logical batch defaults to 2048 whatever the context is, so an 8k-window model
+  was rejecting 3,600-token notes. The symptom reads as a model fault; it is a
+  launch-argument fault.
+- **A wedged `llama-server` answers `GET /health` with 200 while failing every
+  embedding.** A supervisor trusting `/health` reports `embedder ok (warm)`
+  indefinitely while every search silently falls back to lexical. Liveness now
+  comes from the work — three consecutive failed embeddings condemn the child —
+  and the scorecard refuses to publish a hybrid column when any query fell back,
+  rather than reporting a lexical run under a hybrid header.
 
 
 ---

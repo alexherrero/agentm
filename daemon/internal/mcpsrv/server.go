@@ -8,6 +8,7 @@
 package mcpsrv
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -41,6 +42,7 @@ type Server struct {
 	log     *slog.Logger
 	status  StatusFunc
 	probe   ProbeFunc
+	embed   EmbedFunc
 	onWrite func(rel string)
 	started time.Time
 	version string
@@ -58,6 +60,16 @@ func New(cfg *config.Config, idx *index.Index, cp *capture.Capturer, log *slog.L
 // the probe talks to this server over HTTP and therefore cannot exist until the
 // listener does.
 func (s *Server) SetProbe(fn ProbeFunc) { s.probe = fn }
+
+// EmbedFunc turns a query into a vector and names the model that produced it. It
+// returns a nil vector when there is no warm embedder, which is what makes a
+// hybrid search degrade to its lexical arm rather than fail.
+type EmbedFunc func(ctx context.Context, text string) ([]float32, string)
+
+// SetEmbedder wires the vector arm. A function rather than the supervisor itself,
+// so this package keeps knowing nothing about child processes — it asks for a
+// vector and is told either a vector or nothing.
+func (s *Server) SetEmbedder(fn EmbedFunc) { s.embed = fn }
 
 // Handler wires the routes.
 func (s *Server) Handler() http.Handler {
@@ -268,9 +280,13 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if a.K > 50 {
 		a.K = 50
 	}
-	out, err := s.idx.Search(index.Query{
-		Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode,
-	})
+	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode}
+	if a.Mode == index.ModeHybrid && s.embed != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		q.Vector, q.EmbedModel = s.embed(ctx, a.Query)
+	}
+	out, err := s.idx.Search(q)
 	if err != nil {
 		return nil, err
 	}

@@ -28,10 +28,35 @@ func newTestIndex(tb testing.TB) *Index {
 
 func addNote(tb testing.TB, x *Index, rel, title, body string) {
 	tb.Helper()
+	addNoteAt(tb, x, rel, title, body, 1)
+}
+
+// addNoteAt is addNote with an explicit mtime, for the tests that need one note
+// to look edited relative to another.
+func addNoteAt(tb testing.TB, x *Index, rel, title, body string, mtimeNS int64) {
+	tb.Helper()
 	n := note.Note{
 		Rel:            rel,
 		Title:          title,
 		Body:           body,
+		Captured:       time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		CapturedSource: "mtime",
+	}
+	if err := x.Upsert(n, mtimeNS, int64(len(body))); err != nil {
+		tb.Fatalf("indexing %s: %v", rel, err)
+	}
+}
+
+// addPenalizedNote writes a note carrying explicit rank-penalty classes, so a
+// test can arrange a demotion without depending on the classifier's heuristics
+// happening to fire on the fixture's prose.
+func addPenalizedNote(tb testing.TB, x *Index, rel, title, body string, flags ...string) {
+	tb.Helper()
+	n := note.Note{
+		Rel:            rel,
+		Title:          title,
+		Body:           body,
+		Flags:          flags,
 		Captured:       time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		CapturedSource: "mtime",
 	}
@@ -393,12 +418,24 @@ func TestFusionSingleTermFallsBackToAnd(t *testing.T) {
 
 // TestUnknownSearchModeIsAnError — a typo must not silently serve AND results
 // while the caller believes it measured something else.
+//
+// The example used to be "hybrid", which was unrecognized when this was written
+// and is a real mode now. A misspelling of it is the same test: the fixture had
+// to move because the contract grew, and the thing being asserted did not.
 func TestUnknownSearchModeIsAnError(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "target.md", "alpha beta", "alpha beta")
 
-	if _, err := x.Search(Query{Text: "alpha beta", K: 5, Mode: "hybrid"}); err == nil {
+	_, err := x.Search(Query{Text: "alpha beta", K: 5, Mode: "hybrd"})
+	if err == nil {
 		t.Fatal("an unrecognized mode must be an error, not a silent fallback")
+	}
+	// The message names every mode that does exist, so the caller can see what
+	// they meant to type rather than going to read the source.
+	for _, want := range []string{ModeAnd, ModeFusion, ModeHybrid} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name mode %q", err, want)
+		}
 	}
 }
 

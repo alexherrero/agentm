@@ -37,10 +37,35 @@ type Result struct {
 // measurement to date scores. ModeFusion is quarantined behind an explicit flag:
 // on the gold set it nearly quadrupled R@5 and took correct rejection from 35% to
 // zero, so it must never become the default by omission.
+// ModeHybrid adds the dense-vector arm and fuses it with the lexical one by
+// reciprocal rank. It requires a warm embedder; without one it degrades to
+// ModeFusion rather than failing, because a hybrid search that errors when a
+// model is loading would make this daemon less reliable than the lexical-only
+// one it replaces.
 const (
 	ModeAnd    = "and"
 	ModeFusion = "fusion"
+	ModeHybrid = "hybrid"
 )
+
+// rrfK is the reciprocal-rank-fusion constant, at the value the method was
+// published with.
+//
+// RRF is the default because it is calibration-free: it reads ranks, never
+// scores, so it cannot be broken by two arms whose scores live on different
+// scales. Score fusion was examined and its portability trap measured — AgentKV's
+// sigmoid constants, fitted to a 120-note corpus, saturate on ours, mapping every
+// match to ~1.0 and collapsing the lexical channel to a presence bit. A
+// recalibrated score-fusion arm may run as a comparison; it never ships as the
+// default on constants fitted elsewhere.
+//
+// Note this is a different question from the one the *lexical* arm settled. There,
+// fusing fifteen two-term sub-queries by RRF diluted badly and max-score won,
+// because a document appearing in many mediocre sub-rankings outranked one placing
+// first in a single precise sub-query. Those sub-rankings are fifteen views of one
+// channel; these are two genuinely independent channels, which is the case RRF is
+// for.
+const rrfK = 60
 
 // Query is one search request.
 type Query struct {
@@ -54,6 +79,20 @@ type Query struct {
 	// Mode selects how the terms are combined. Empty means ModeAnd, so every
 	// existing caller keeps the semantics it was measured under.
 	Mode string
+
+	// Vector is the query's embedding, supplied by the caller. ModeHybrid needs
+	// it; every other mode ignores it.
+	//
+	// The index does not embed anything itself. Keeping the model on the caller's
+	// side is what lets this package stay a pure SQLite consumer with no notion of
+	// a child process, and it is what makes the vector arm testable against
+	// hand-written vectors instead of against whatever a 600MB model happens to
+	// think today.
+	Vector []float32
+	// EmbedModel names the vectors to compare against. A query embedded by one
+	// model and scored against another's rows is not a weak search, it is a
+	// meaningless one, so the model is matched in SQL rather than assumed.
+	EmbedModel string
 }
 
 // SearchOutcome carries the hits plus whatever the driver needs to know about how
@@ -98,8 +137,11 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 		return x.searchAnd(text, k, after, before)
 	case ModeFusion:
 		return x.searchFusion(text, k, after, before)
+	case ModeHybrid:
+		return x.searchHybrid(text, k, after, before, q)
 	default:
-		return out, fmt.Errorf("unknown search mode %q (want %q or %q)", q.Mode, ModeAnd, ModeFusion)
+		return out, fmt.Errorf("unknown search mode %q (want %q, %q or %q)",
+			q.Mode, ModeAnd, ModeFusion, ModeHybrid)
 	}
 }
 
@@ -276,6 +318,138 @@ func (x *Index) searchFusion(text string, k int, after, before string) (SearchOu
 		out.Note = "0 results. No two terms of this query appear together in any one note."
 	}
 	return out, nil
+}
+
+// rrfDepth is how deep each arm is read before fusion.
+//
+// Fifty rather than the full over-fetch window because reciprocal rank decays: a
+// document at rank 50 contributes 1/110 against rank 1's 1/61, so the rows below
+// it cannot change an ordering, and reading them costs a cosine over the whole
+// table for nothing. Fifty per arm still leaves up to a hundred distinct
+// candidates, which is the pool the cross-encoder rerank draws its top twenty
+// from at the next rung.
+const rrfDepth = 50
+
+// searchHybrid runs the lexical and dense arms independently and fuses them by
+// reciprocal rank.
+//
+// The two arms fail in different directions, which is the whole reason for
+// running both. Lexical finds a note that shares a rare word and misses one that
+// says the same thing differently; dense crosses the vocabulary gap and is
+// indifferent to exactly the distinctive token a lexical query was built around.
+// RRF asks each arm where a document placed rather than how confident it was, so
+// neither arm's score scale can drown the other.
+//
+// Degrading rather than failing is deliberate. Without a query vector — no model
+// installed, a child still loading, a crash-looping server — this returns the
+// lexical arm and says so in the note. A caller that asked for hybrid and got
+// hybrid-minus-one-arm has a worse search; a caller that got an error has none.
+func (x *Index) searchHybrid(text string, k int, after, before string, q Query) (SearchOutcome, error) {
+	lexical, err := x.searchFusion(text, rrfDepth, after, before)
+	if err != nil {
+		return lexical, err
+	}
+
+	if len(q.Vector) == 0 {
+		out := lexical
+		if len(out.Results) > k {
+			out.Results = out.Results[:k]
+		}
+		out.Note = joinNotes(out.Note,
+			"hybrid was requested but no query vector was available; "+
+				"this is the lexical arm alone (check `agentmd status` for the embedder)")
+		return out, nil
+	}
+
+	dense, err := x.VectorSearch(q.Vector, q.EmbedModel, rrfDepth, after, before)
+	if err != nil {
+		return lexical, err
+	}
+	// The rank penalty is applied inside each arm rather than after fusion. RRF
+	// reads positions, so a demotion that lands after the ranks are taken would
+	// have no effect at all — the penalized note would already have contributed
+	// its rank-1 reciprocal.
+	dense = penalizeAndRank(dense, rrfDepth)
+
+	fused := fuseRRF(lexical.Results, dense)
+	out := SearchOutcome{Results: fused, Matched: len(fused)}
+	if len(out.Results) > k {
+		out.Results = out.Results[:k]
+	}
+
+	// Snippets come from the lexical arm's own expressions. A note the dense arm
+	// found and the lexical arm did not has no matching phrase to highlight —
+	// that is what crossing a vocabulary gap means — so it comes back without one
+	// rather than with a misleading extract of its opening line.
+	byPath := make(map[string]string, len(lexical.Results))
+	for _, r := range lexical.Results {
+		byPath[r.Path] = r.Snippet
+	}
+	for i := range out.Results {
+		out.Results[i].Snippet = byPath[out.Results[i].Path]
+	}
+
+	if len(out.Results) == 0 {
+		out.Note = "0 results. Neither the lexical nor the dense arm matched anything."
+	}
+	return out, nil
+}
+
+// fuseRRF combines ranked lists by reciprocal rank fusion.
+//
+// Each list contributes 1/(k + rank) per document, ranks being 1-based. A
+// document in both lists gets both terms, which is the entire mechanism: agreement
+// between two independent retrievers is the signal, and neither list's scores are
+// consulted.
+//
+// The returned rows carry the fused score in Score and the arm's own score in
+// RawScore, so a call log shows both what ordered the result and what the
+// evidence underneath it was.
+func fuseRRF(lists ...[]Result) []Result {
+	type acc struct {
+		row   Result
+		score float64
+	}
+	byPath := map[string]*acc{}
+	order := []string{}
+	for _, list := range lists {
+		for i, r := range list {
+			a, seen := byPath[r.Path]
+			if !seen {
+				a = &acc{row: r}
+				byPath[r.Path] = a
+				order = append(order, r.Path)
+			}
+			a.score += 1 / float64(rrfK+i+1)
+		}
+	}
+	out := make([]Result, 0, len(order))
+	for _, p := range order {
+		a := byPath[p]
+		a.row.RawScore = a.row.Score
+		a.row.Score = a.score
+		out = append(out, a.row)
+	}
+	// Ties broken by path so the ordering is total and a re-run is identical —
+	// RRF produces exact ties routinely, since two documents at the same rank in
+	// the same single list get the same score.
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Score != out[j].Score {
+			return out[i].Score > out[j].Score
+		}
+		return out[i].Path < out[j].Path
+	})
+	return out
+}
+
+func joinNotes(a, b string) string {
+	switch {
+	case a == "":
+		return b
+	case b == "":
+		return a
+	}
+	return a + "; " + b
 }
 
 // fillFusedSnippets highlights each surviving row under the subset that won it,

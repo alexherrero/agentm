@@ -152,6 +152,18 @@ func (x *Index) migrate() error {
 			size          INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS docmeta_captured ON docmeta(captured)`,
 		`CREATE INDEX IF NOT EXISTS docmeta_status ON docmeta(status)`,
+		// The vector arm. One row per embedded note, keyed by the same id the
+		// lexical side uses, so the join is a primary-key lookup and a deleted
+		// note takes its vector with it. `model` is stored per row rather than
+		// once for the table because a half-finished model swap is a real state
+		// and it should be countable, not inferred from vectors that rank oddly.
+		`CREATE TABLE IF NOT EXISTS embeddings (
+				doc_id    INTEGER PRIMARY KEY,
+				model     TEXT NOT NULL,
+				dim       INTEGER NOT NULL,
+				mtime_ns  INTEGER NOT NULL,
+				vec       BLOB NOT NULL)`,
+		`CREATE INDEX IF NOT EXISTS embeddings_model ON embeddings(model)`,
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
 	}
 	for _, s := range stmts {
@@ -279,6 +291,9 @@ func (x *Index) Delete(rel string) error {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM docs WHERE rowid = ?`, id); err != nil {
+		return err
+	}
+	if err := deleteVectorLocked(tx, id); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`DELETE FROM docmeta WHERE id = ?`, id); err != nil {

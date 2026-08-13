@@ -789,6 +789,13 @@ func start(t *testing.T, bin string, env *vaultEnv, extraEnv ...string) *proc {
 		"--index", env.index,
 		"--port", "0",
 		"--reconcile", "1s",
+		// No model. `serve` otherwise discovers whatever embedder is installed
+		// and spawns it, so this suite would load a 333MB model per daemon it
+		// starts — slow everywhere, and on a developer machine it competes with
+		// whatever real work is running for the same GPU. Nothing here exercises
+		// the vector arm; the tests that do live in internal/embed and drive an
+		// httptest server.
+		"-no-embedder",
 	)
 	p.cmd.Env = append(os.Environ(), extraEnv...)
 	stdout, err := p.cmd.StdoutPipe()

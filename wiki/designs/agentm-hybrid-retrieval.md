@@ -72,14 +72,31 @@ resident process, a dependency this daemon cannot version or fold into its own
 health honestly.
 
 The vector store is deliberately boring: embeddings in a plain SQLite table,
-brute-force cosine over the memory space. At ~10,000 notes × 384 dimensions
-that is ~15MB and microseconds per query. No ANN library, no new index format,
-and the store stays a deletable cache rebuilt from files.
+brute-force cosine over the embedded spaces. At 9,473 notes × 768 dimensions
+that is 29MB of vectors inside a 98MB index, and single-digit milliseconds per
+query. No ANN library, no new index format, and the store stays a deletable
+cache rebuilt from files.
 
-**Scope: the vector arm covers `memory/` only.** Memory notes are atomic by
-capture doctrine, so they embed whole — no chunking policy. `desk/` and the
-rest stay lexical. This is the dodge the AgentKV comparison surfaced: atomic
-capture is an embedding strategy, not just a filing one.
+**Scope: the vector arm covers `memory/`, `desk/` and `external/`.** The
+original call was `memory/` only, on the reasoning that memory notes are atomic
+by capture doctrine and so embed whole while `desk/` would need a chunking
+policy. Building it that way refuted the call on its own gold set. The set's 64
+answerable questions expect 90 note paths, and 65 of them are in `desk/` or
+`external/` against 25 in `memory/` — so a `memory/`-only arm cannot reach most
+of what it is scored on, and worse, it *actively regresses* the baseline: at
+42.2% for lexical fusion alone, adding a `memory/`-only dense arm scored 40.6%.
+The mechanism is reciprocal-rank displacement. The dense arm returns its 50 best
+candidates for every query whether or not any of them is relevant, and for a
+question answered in `desk/` those 50 are all noise that outranks a correct
+lexical hit sitting at rank 3. Widening the scope to where the answers actually
+live took the same arm to 54.7%.
+
+What survives of the original reasoning is the part about length, and it is now
+a measured cost rather than an exclusion: `desk/` runs 589 tokens at the median
+against `memory/`'s 187, so 562 of 9,473 notes (5.9%) exceed the embedder's
+window and are embedded from their head. `_meta/` and `_vault-archive/` stay
+out — `_meta`'s p90 is 203,000 tokens, which is the case a chunking policy
+genuinely exists for, and there is still no chunking policy.
 
 ## Fusion and rejection, with the failed alternatives on record
 
@@ -121,15 +138,15 @@ not transfer and are never targets; AgentKV's FTS baseline reads 62.86% where
 ours reads 10.9% on identical architecture, because 120 notes against 9,971
 changes what an AND leaves standing.
 
-| step | column | rule that must hold |
-|---|---|---|
-| 0 | `and-of-6` | measured: 10.9% R@5 / 35% rejection |
-| 1 | `lexical-fusion` | reproduces ~42% in-daemon, flag-gated, hook untouched |
-| 2 | `+vector RRF` | paraphrase ≥50%, research-corpus ≥58%, distinctive-token does not regress |
-| 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ step 2 |
-| 4 | `+temporal` | episodic ≥60%, others flat |
-| 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 |
-| 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression |
+| step | column | rule that must hold | measured |
+|---|---|---|---|
+| 0 | `and-of-6` | measured: 10.9% R@5 / 35% rejection | 10.9% / 35% |
+| 1 | `lexical-fusion` | reproduces ~42% in-daemon, flag-gated, hook untouched | 42.2% / 0% — met |
+| 2 | `+vector RRF` | paraphrase ≥50%, research-corpus ≥58%, distinctive-token does not regress | 54.7% overall; research-corpus 58.3% and distinctive-token 8/12 met, **paraphrase 38.9% missed** |
+| 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ step 2 | |
+| 4 | `+temporal` | episodic ≥60%, others flat | |
+| 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 | |
+| 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
 
 Step 6 exists because the two layers have disagreed once already: the alias
 backfill was slightly better at the tool level and 3.85 points worse at the
@@ -143,12 +160,21 @@ on the paraphrase strata.
 
 ## Distribution
 
-`install.sh --daemon` grows the model leg: fetch a pinned `llama-server` build
-and the two GGUF models (~5MB + 30–130MB) into `~/.local/share/agentm/models/`
-with checksums; `--no-embedder` opts out; an install without models runs
-lexical-only and says so on every status surface. Model selection (embedder and
-reranker both) happens at build time via a short bake-off on the
-research-corpus stratum, not by reputation.
+`install.sh --daemon` grows the model leg: fetch the pinned embedding GGUF into
+`~/.local/share/agentm/models/`, verified by SHA-256, discarding the file on a
+mismatch rather than keeping it — a GGUF that is subtly not the one we pinned
+produces vectors that are merely worse, and every search still answers, which is
+the failure nobody notices for months. `--no-embedder` opts out, and an install
+without the model runs lexical-only and says so on every status surface.
+
+The real size envelope is larger than the ~5MB + 30–130MB first sketched here.
+The selected embedder is **333MB** on disk, and `llama-server` is not built by
+the installer at all: it is a cgo project, and building it is exactly what the
+daemon's static pure-Go constraint exists to avoid, so its absence is reported
+rather than repaired (`brew install llama.cpp` on macOS).
+
+Model selection happens at build time via a bake-off on the research-corpus
+stratum, not by reputation — see the amendment log for the one that ran.
 
 ## Out of scope, with owners
 
@@ -172,6 +198,47 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-12 · the vector arm's scope widened from `memory/` to `memory/` +
+  `desk/` + `external/`, and the step-2 rule's paraphrase clause recorded as
+  missed.** Building the rung refuted the scope call on this design's own gold
+  set. 65 of the 90 expected answer paths are in `desk/` or `external/`, so a
+  `memory/`-only arm could not reach most of what it was scored on — and it did
+  not merely under-reach, it regressed the lexical baseline, 42.2% → 40.6%, by
+  reciprocal-rank displacement: the dense arm returns 50 candidates for every
+  query whether or not any is relevant, and a noise document at dense rank 1
+  outscores a correct lexical hit at rank 3. Widening to where the answers live
+  gives **54.7%**. Why not keep the narrow scope and re-word the rule: a rung
+  that regresses the rung below it is not a rung. Why not add chunking and take
+  `_meta/` too: its p90 is 203,000 tokens, which is a real chunking problem and
+  out of scope here. Residual cost, measured: 562 of 9,473 notes (5.9%) exceed
+  the embedder's window and are embedded from their head. **Re-audit trigger:**
+  a chunking policy landing, or the gold set being re-labelled against a corpus
+  with a different answer distribution.
+
+- **2026-08-12 · EmbeddingGemma-300M pinned as the embedder; Qwen3-Embedding-
+  0.6B declined.** The bake-off on the research-corpus stratum came in one
+  question apart (9/12 against 8/12), which is not a difference, so it was rerun
+  at full parity — identical window, identical scope, complete backfills, idle
+  machine. There EmbeddingGemma wins **every stratum** and the full set 35/64
+  against 24/64. Qwen's 37.5% is below the 42.2% lexical baseline, so its dense
+  arm is a net loss on this corpus. Why not Qwen despite the longer window: the
+  window is what its candidacy rested on and it is unusable here — batch buffers
+  size from the context, and at `-b/-ub 8192` it takes a Metal page fault six
+  requests into an idle machine, after which llama.cpp requires a process
+  restart. That made the parity comparison necessary and the parity comparison
+  settled it on quality regardless. EmbeddingGemma is also half the disk, ~4x the
+  throughput, and 25% smaller vectors. **Re-audit trigger:** different GPU
+  hardware or a llama.cpp release that fixes the fault would make Qwen's window
+  testable again, but its quality would have to beat 35/64 to matter.
+
+- **2026-08-12 · the cross-encoder floor is load-bearing earlier than stated.**
+  Step 3's floor was specified as the rejection gate for negatives. The
+  displacement finding above makes it also the only thing that stops the dense
+  arm promoting confident noise on questions it cannot answer, since cosine
+  similarity has no natural empty result. This raises the cost of step 3 failing
+  its own rule: it would leave both problems open, not one. **Re-audit trigger:**
+  step 3's measured rejection.
 
 - **2026-08-12 · seeded.** Written after the goldv2 measurement campaign:
   baseline, candidacy analysis, fusion arms, floor sweep, and the oracle

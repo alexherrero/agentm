@@ -47,6 +47,64 @@ const (
 	GitDegraded = "degraded"
 )
 
+// Embedder is the vector arm's state, reported on the status surface.
+//
+// Reported loudly and never paged about, which is the same treatment git
+// degradation gets and for the same reason: retrieval falling back to its lexical
+// arm is a capability quietly going missing, so it has to be visible — but it is
+// not the operator being woken up, because nothing is being lost and the daemon
+// still answers every search.
+type Embedder struct {
+	// State is one of off / starting / warm / degraded. `off` is a working
+	// install with no model, not a fault.
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
+	Model  string `json:"model,omitempty"`
+	// Vectors and InScope make coverage a sentence rather than a bare count —
+	// "7,391 of 9,473" says something a lone "7,391" does not.
+	Vectors  int `json:"vectors"`
+	InScope  int `json:"in_scope"`
+	Stale    int `json:"stale"`
+	Dim      int `json:"dim,omitempty"`
+	Restarts int `json:"restarts"`
+}
+
+// Hybrid reports whether the vector arm can actually serve a search: a warm
+// model is necessary and vectors to compare against are too. A warm embedder over
+// an empty table is a search that silently returns its lexical arm.
+func (e Embedder) Hybrid() bool { return e.State == "warm" && e.Vectors > 0 }
+
+// String is the status line's one-liner.
+func (e Embedder) String() string {
+	switch e.State {
+	case "off":
+		return "off — hybrid unavailable, lexical-only"
+	case "warm":
+		s := fmt.Sprintf("ok (warm) · %s", e.Model)
+		if e.InScope > 0 {
+			s += fmt.Sprintf(" · %d/%d embedded", e.Vectors, e.InScope)
+		}
+		if e.Stale > 0 {
+			s += fmt.Sprintf(" · %d stale", e.Stale)
+		}
+		if e.Vectors == 0 {
+			s += " — no vectors yet, run `agentmd embed`"
+		}
+		return s
+	case "starting":
+		return "starting — loading weights, hybrid off until warm"
+	default:
+		s := "DEGRADED — hybrid off, lexical-only"
+		if e.Detail != "" {
+			s += " (" + e.Detail + ")"
+		}
+		if e.Restarts > 0 {
+			s += fmt.Sprintf(" · %d restarts", e.Restarts)
+		}
+		return s
+	}
+}
+
 // Thresholds are what turns a number red.
 type Thresholds struct {
 	UnfiledAge   time.Duration `json:"unfiled_age"`
@@ -144,6 +202,7 @@ type Report struct {
 	Queue      Queue      `json:"queue"`
 	Index      Freshness  `json:"index"`
 	Git        Git        `json:"git"`
+	Embedder   Embedder   `json:"embedder"`
 	Probe      ProbeState `json:"probe"`
 	Thresholds Thresholds `json:"thresholds"`
 }
@@ -188,6 +247,11 @@ type Input struct {
 	GitAvailable bool
 	GitReason    string
 
+	// Embedder is passed through rather than derived: the supervisor owns the
+	// child's state and the index owns the vector counts. Health reports both and
+	// is a second source of truth about neither.
+	Embedder Embedder
+
 	Probe      ProbeState
 	ProbeAt    time.Time
 	Thresholds Thresholds
@@ -212,8 +276,9 @@ func Evaluate(in Input) Report {
 			Documents: in.Documents,
 			Errors:    in.LastReconcileErrors,
 		},
-		Git:   Git{State: GitHealthy},
-		Probe: in.Probe,
+		Git:      Git{State: GitHealthy},
+		Embedder: in.Embedder,
+		Probe:    in.Probe,
 	}
 
 	if !in.GitAvailable {

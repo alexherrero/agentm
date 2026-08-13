@@ -50,6 +50,13 @@ if str(_MEMORY_SCRIPTS) not in sys.path:
 import recall  # noqa: E402  (production query-term extraction)
 
 
+# The daemon's own words when a hybrid search ran without its vector arm. Matched
+# rather than inferred: a run that silently became lexical partway through would
+# otherwise be published as a hybrid column, and the number would be wrong in the
+# one direction nobody checks — downward, which reads as "the model did not help."
+DEGRADED_MARK = "lexical arm alone"
+
+
 def to_query(question: str) -> str:
     """Reduce a question to the terms the production hook would search for.
 
@@ -89,12 +96,13 @@ def search(query: str, k: int, mode: str = "and",
     out = proc.stdout
     brace = out.find("{")
     if brace < 0:
-        return [], elapsed
+        return [], elapsed, ""
     try:
         doc = json.loads(out[brace:])
     except json.JSONDecodeError:
-        return [], elapsed
-    return [r.get("path", "") for r in (doc.get("results") or [])], elapsed
+        return [], elapsed, ""
+    return ([r.get("path", "") for r in (doc.get("results") or [])],
+            elapsed, doc.get("note") or "")
 
 
 def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) -> dict:
@@ -102,7 +110,7 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) ->
     for e in entries:
         expected = e.get("expected_note_paths") or []
         query = to_query(e["question"])
-        ranked, ms = search(query, k, mode, target) if query else ([], 0.0)
+        ranked, ms, note = search(query, k, mode, target) if query else ([], 0.0, "")
         hits = [p for p in expected if p in ranked]
         first = min((ranked.index(p) + 1 for p in hits), default=None)
         rows.append({
@@ -119,6 +127,10 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) ->
             "top": ranked[:k],
             "ms": round(ms, 1),
             "alias_overlap": e.get("alias_overlap"),
+            # The daemon says so when it served a mode it could not fully honor.
+            # Carried per row because a run that degraded halfway is the case
+            # this is here to catch, and an aggregate would hide which half.
+            "degraded": DEGRADED_MARK in note,
         })
     return {"rows": rows}
 
@@ -130,7 +142,16 @@ def render(result: dict, k: int) -> str:
         by[r["stratum"]].append(r)
 
     mode = result.get("mode", "and")
-    out = [f"retrieval scorecard — lexical (FTS5), mode={mode}, k={k}, no model in the loop",
+    # The header has to stop claiming "no model in the loop" once there is one.
+    # A hybrid column filed under a lexical banner is the kind of mislabel that
+    # survives into a design doc and gets cited as a lexical result.
+    if mode == "hybrid":
+        channel = f"hybrid (FTS5 + dense vectors, RRF), embedder={result.get('embed_model') or '?'}"
+        caveat = "the dense arm is a local embedding model; retrieval is still deterministic"
+    else:
+        channel = f"lexical (FTS5)"
+        caveat = "no model in the loop"
+    out = [f"retrieval scorecard — {channel}, mode={mode}, k={k}, {caveat}",
            "queries reduced by recall._daemon_query_terms, as the prompt-submit hook does", ""]
     out.append(f"{'stratum':<20}{'n':>4}{'hit@k':>9}{'rate':>9}")
     out.append("-" * 42)
@@ -257,7 +278,7 @@ def main(argv=None) -> int:
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--stratum", default=None, help="score only this stratum")
     ap.add_argument("--json", dest="json_out", default=None)
-    ap.add_argument("--mode", default="and", choices=["and", "fusion"],
+    ap.add_argument("--mode", default="and", choices=["and", "fusion", "hybrid"],
                     help="which daemon search mode to score — the arm")
     ap.add_argument("--arm-label", default=None,
                     help="column header used by --append-notes (defaults to --mode)")
@@ -268,11 +289,25 @@ def main(argv=None) -> int:
     ap.add_argument("--index", default=None,
                     help="index file for that vault; required with --vault so the "
                          "live index is not overwritten")
+    ap.add_argument("--embedder-url", default=None,
+                    help="embedding server to attach to for --mode hybrid. Without it "
+                         "each of the 84 queries spawns and loads its own model, which "
+                         "prices a run in model loads rather than in searches")
+    ap.add_argument("--embed-model", default=None,
+                    help="which model's vectors to score against; must be the model the "
+                         "index was embedded with")
     args = ap.parse_args(argv)
 
     if bool(args.vault) != bool(args.index):
         ap.error("--vault and --index go together: a vault override without its own "
                  "index writes the snapshot's index over the live one")
+    if args.mode == "hybrid" and not args.embedder_url:
+        # Refused rather than allowed-but-slow. A hybrid run without a warm server
+        # still produces numbers, and they would be a model load per query on a
+        # machine already busy — the kind of run that gets abandoned halfway and
+        # half-reported.
+        ap.error("--mode hybrid needs --embedder-url; start one with "
+                 "`llama-server -m <gguf> --embeddings --pooling mean -np 1 -c <ctx> -ub <ctx>`")
 
     doc = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
     entries = doc["entries"] if isinstance(doc, dict) else doc
@@ -283,12 +318,31 @@ def main(argv=None) -> int:
         return 2
 
     target = ("--vault", args.vault, "--index", args.index) if args.vault else ()
+    if args.embedder_url:
+        target += ("-embedder-url", args.embedder_url)
+    if args.embed_model:
+        target += ("-embed-model", args.embed_model)
     result = score(entries, args.k, args.mode, target)
     result["vault"] = args.vault
     result["gold_set"] = Path(args.gold_set).name
     result["corpus"] = (doc.get("$corpus") or {}).get("name") if isinstance(doc, dict) else None
     result["k"] = args.k
     result["mode"] = args.mode
+    result["embed_model"] = args.embed_model
+    # A hybrid run that lost its vector arm partway through is a lexical run
+    # wearing a hybrid label. Refuse to publish it rather than writing a column
+    # whose number is real and whose name is wrong — the ladder's whole value is
+    # that each column means what its header says.
+    degraded = [r["id"] for r in result["rows"] if r.get("degraded")]
+    if degraded:
+        print(f"\nREFUSING TO REPORT: {len(degraded)} of {len(result['rows'])} queries "
+              f"fell back to the lexical arm — the embedder was not serving.",
+              file=sys.stderr)
+        print(f"  first affected: {', '.join(degraded[:5])}", file=sys.stderr)
+        print("  a llama-server can answer /health with 200 while failing every "
+              "embedding; check the server log, restart it, and re-run.", file=sys.stderr)
+        return 3
+
     print(render(result, args.k))
     if args.json_out:
         Path(args.json_out).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
