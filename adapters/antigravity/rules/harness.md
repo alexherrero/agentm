@@ -27,7 +27,7 @@ Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief
 3. **Gates before commit.** Typecheck, lint, tests must be green before a task is marked `[x]`.
 4. **Never edit or delete a failing test to make it pass.** If a test is wrong, surface it and stop.
 5. **Adversarial review framing is literal.** The code contains bugs; find them. Rubber-stamp reviews are a failure of rigor.
-6. **`/work` does not touch `wiki/`.** Documentation updates are phase-boundary-only — crickets' `wiki-maintenance:documenter` (graceful-skip if the `wiki-maintenance` plugin is absent) runs post-gates in `/work`, full-pass in `/release`.
+6. **`/work` does not touch `wiki/`.** Documentation updates are phase-boundary-only — crickets' `wiki:documenter` (graceful-skip if the `wiki` plugin is absent) runs post-gates in `/work`, full-pass in `/release`.
 
 ## State files
 

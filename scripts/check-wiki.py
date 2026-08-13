@@ -63,7 +63,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-# cwd-relative default: this gate is bundled in the wiki-maintenance plugin and
+# cwd-relative default: this gate is bundled in the wiki plugin and
 # runs from an arbitrary repo's root, so its own file location says nothing about
 # the repo under check. --root overrides; repo_root (for rule l) is wiki_root.parent.
 DEFAULT_WIKI = Path("wiki")

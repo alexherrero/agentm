@@ -3,7 +3,7 @@
 Welcome to this project's wiki — human-and-agent-readable documentation for this codebase. The sections below follow the six-section taxonomy (the crickets [`documentation`](https://github.com/alexherrero/crickets/wiki/crickets-conventions) convention): each page is written for a single reader intent — doing, looking up, or understanding — and never mixes intents.
 
 > [!NOTE]
-> This page is maintained by crickets' `wiki-maintenance:documenter` sub-agent (when crickets is installed) at phase boundaries. Humans may edit it directly; the sub-agent preserves human edits. `Home` is curated — it surfaces the pages a reader acts on, not every page; the [sidebar](_Sidebar) is the complete sitemap.
+> This page is maintained by crickets' `wiki:documenter` sub-agent (when crickets is installed) at phase boundaries. Humans may edit it directly; the sub-agent preserves human edits. `Home` is curated — it surfaces the pages a reader acts on, not every page; the [sidebar](_Sidebar) is the complete sitemap.
 
 ## 🔧 Trying to do something?
 

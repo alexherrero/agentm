@@ -1,5 +1,5 @@
 # agentm's Architecture manifest — the six structural components of the harness,
-# in locked order. Read by `wiki-init` (crickets' wiki-maintenance plugin) to
+# in locked order. Read by `wiki-init` (crickets' wiki plugin) to
 # scaffold and render the Architecture section of this wiki.
 #
 # All six are free-formed under `components:` with NO `pillars:` toggles — on
