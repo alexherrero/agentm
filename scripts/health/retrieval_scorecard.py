@@ -64,11 +64,27 @@ def to_query(question: str) -> str:
     return recall._daemon_query_terms(question)
 
 
-def search(query: str, k: int) -> tuple[list[str], float]:
-    """Top-k paths for a query, and the wall time in milliseconds."""
+def search(query: str, k: int, mode: str = "and",
+           target: tuple = ()) -> tuple[list[str], float]:
+    """Top-k paths for a query, and the wall time in milliseconds.
+
+    The arm is selected by the daemon's own `-mode` flag rather than simulated
+    here. An arm the scorecard implements itself is an arm nobody can ship: the
+    2-term fusion numbers in `results/goldv2/NOTES.md` were produced by a
+    throwaway driver, so "does the daemon do what the experiment did" had no
+    answer until the mode existed in the daemon and this script stopped
+    reimplementing it.
+
+    `target` carries --vault/--index through to the daemon. Without it every arm
+    scores whatever vault the kernel config resolves, which is the live one and
+    drifts between runs; the ladder's columns are only comparable because each is
+    pointed at the same frozen snapshot. The index has to be named too — it does
+    not derive from the vault path, so a vault override alone would write the
+    snapshot's index over the operator's live one.
+    """
     started = time.monotonic()
-    proc = subprocess.run(["agentmd", "search", "-json", "-k", str(k), query],
-                          capture_output=True, text=True)
+    argv = ["agentmd", "search", "-json", "-mode", mode, "-k", str(k), *target, query]
+    proc = subprocess.run(argv, capture_output=True, text=True)
     elapsed = (time.monotonic() - started) * 1000.0
     out = proc.stdout
     brace = out.find("{")
@@ -81,12 +97,12 @@ def search(query: str, k: int) -> tuple[list[str], float]:
     return [r.get("path", "") for r in (doc.get("results") or [])], elapsed
 
 
-def score(entries: list[dict], k: int) -> dict:
+def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) -> dict:
     rows = []
     for e in entries:
         expected = e.get("expected_note_paths") or []
         query = to_query(e["question"])
-        ranked, ms = search(query, k) if query else ([], 0.0)
+        ranked, ms = search(query, k, mode, target) if query else ([], 0.0)
         hits = [p for p in expected if p in ranked]
         first = min((ranked.index(p) + 1 for p in hits), default=None)
         rows.append({
@@ -113,7 +129,8 @@ def render(result: dict, k: int) -> str:
     for r in rows:
         by[r["stratum"]].append(r)
 
-    out = [f"retrieval scorecard — lexical (FTS5), k={k}, no model in the loop",
+    mode = result.get("mode", "and")
+    out = [f"retrieval scorecard — lexical (FTS5), mode={mode}, k={k}, no model in the loop",
            "queries reduced by recall._daemon_query_terms, as the prompt-submit hook does", ""]
     out.append(f"{'stratum':<20}{'n':>4}{'hit@k':>9}{'rate':>9}")
     out.append("-" * 42)
@@ -163,13 +180,99 @@ def render(result: dict, k: int) -> str:
     return "\n".join(out)
 
 
+def arm_cells(result: dict, k: int) -> dict:
+    """The cells this run contributes to the arm table, keyed by row label."""
+    rows = result["rows"]
+    by = collections.defaultdict(list)
+    for r in rows:
+        by[r["stratum"]].append(r)
+
+    cells = {}
+    for stratum, rs in by.items():
+        pos = [r for r in rs if not r["is_negative"]]
+        if pos:
+            cells[stratum] = f"{sum(1 for r in pos if r['hit'])}/{len(pos)}"
+    scored = [r for r in rows if not r["is_negative"]]
+    if scored:
+        hits = sum(1 for r in scored if r["hit"])
+        cells[f"R@{k}"] = f"**{hits / len(scored):.1%}**"
+    negs = [r for r in rows if r["is_negative"]]
+    if negs:
+        c = sum(1 for r in negs if r["correct_rejection"])
+        cells["negative rejection"] = f"**{c / len(negs):.0%}**"
+    return cells
+
+
+def _row_label(line: str) -> str:
+    return line.split("|")[1].strip().strip("*") if line.count("|") >= 2 else ""
+
+
+def append_arm_column(notes: Path, label: str, cells: dict) -> None:
+    """Add one column to the arm table in NOTES.md, in place.
+
+    The table is located by its `R@k` row rather than by line number, so an edit
+    anywhere above it cannot silently write the column into a different table —
+    this file has several, and the ladder appends to exactly one of them.
+
+    A stratum the arm table names but this run did not score gets an em dash. A
+    blank would read as a zero, and a zero is a result.
+    """
+    lines = notes.read_text(encoding="utf-8").splitlines()
+
+    blocks, start = [], None
+    for i, line in enumerate(lines + [""]):
+        if line.startswith("|"):
+            if start is None:
+                start = i
+        elif start is not None:
+            blocks.append((start, i))
+            start = None
+
+    target = None
+    for lo, hi in blocks:
+        if any(_row_label(lines[i]).startswith("R@") for i in range(lo, hi)):
+            target = (lo, hi)
+            break
+    if target is None:
+        raise SystemExit(f"no arm table (a table carrying an R@k row) found in {notes}")
+
+    lo, hi = target
+    for i in range(lo, hi):
+        line = lines[i].rstrip()
+        if not line.endswith("|"):
+            continue
+        bare = line.replace("|", "").replace(" ", "")
+        if bare and set(bare) <= set("-:"):
+            lines[i] = line + "---:|"
+        elif i == lo:
+            lines[i] = line + f" {label} |"
+        else:
+            lines[i] = line + f" {cells.get(_row_label(line), '—')} |"
+    notes.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--gold-set", required=True)
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--stratum", default=None, help="score only this stratum")
     ap.add_argument("--json", dest="json_out", default=None)
+    ap.add_argument("--mode", default="and", choices=["and", "fusion"],
+                    help="which daemon search mode to score — the arm")
+    ap.add_argument("--arm-label", default=None,
+                    help="column header used by --append-notes (defaults to --mode)")
+    ap.add_argument("--append-notes", default=None,
+                    help="append this run as a column to the arm table in this NOTES.md")
+    ap.add_argument("--vault", default=None,
+                    help="vault to score — pass the restored corpus snapshot, never the live vault")
+    ap.add_argument("--index", default=None,
+                    help="index file for that vault; required with --vault so the "
+                         "live index is not overwritten")
     args = ap.parse_args(argv)
+
+    if bool(args.vault) != bool(args.index):
+        ap.error("--vault and --index go together: a vault override without its own "
+                 "index writes the snapshot's index over the live one")
 
     doc = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
     entries = doc["entries"] if isinstance(doc, dict) else doc
@@ -179,14 +282,21 @@ def main(argv=None) -> int:
         print("no entries to score", file=sys.stderr)
         return 2
 
-    result = score(entries, args.k)
+    target = ("--vault", args.vault, "--index", args.index) if args.vault else ()
+    result = score(entries, args.k, args.mode, target)
+    result["vault"] = args.vault
     result["gold_set"] = Path(args.gold_set).name
     result["corpus"] = (doc.get("$corpus") or {}).get("name") if isinstance(doc, dict) else None
     result["k"] = args.k
+    result["mode"] = args.mode
     print(render(result, args.k))
     if args.json_out:
         Path(args.json_out).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
         print(f"\nwrote {args.json_out}")
+    if args.append_notes:
+        label = args.arm_label or args.mode
+        append_arm_column(Path(args.append_notes), label, arm_cells(result, args.k))
+        print(f"\nappended column {label!r} to {args.append_notes}")
     return 0
 
 

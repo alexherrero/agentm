@@ -267,6 +267,141 @@ func TestSearchDoesNotPriceTheOverfetchWindow(t *testing.T) {
 }
 
 // BenchmarkSearchLargeNotes is the human-readable version of the test above.
+// The fusion mode. These pin the four claims task 1 makes: it finds what AND
+// cannot, it is strictly opt-in, it ranks by best-single-evidence rather than by
+// how many subsets agree, and an unrecognized mode is an error rather than a
+// silent fallback.
+
+// paths pulls the result paths out in rank order, for assertions that care about
+// ordering rather than scores.
+func paths(rs []Result) []string {
+	out := make([]string, len(rs))
+	for i, r := range rs {
+		out[i] = r.Path
+	}
+	return out
+}
+
+// TestFusionFindsWhatAndCannot is the whole reason the mode exists: the terms are
+// spread across the corpus, so no note contains all three and the implicit AND
+// returns nothing, while the note holding two of them is right there.
+func TestFusionFindsWhatAndCannot(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "alpha beta notes", "alpha beta appear together here")
+	addNote(t, x, "other.md", "unrelated", "gamma appears alone over here")
+
+	const q = "alpha beta gamma"
+
+	andOut, err := x.Search(Query{Text: q, K: 5})
+	if err != nil {
+		t.Fatalf("and search: %v", err)
+	}
+	if len(andOut.Results) != 0 {
+		t.Fatalf("AND should find nothing (no note has all three terms), got %v",
+			paths(andOut.Results))
+	}
+
+	fusedOut, err := x.Search(Query{Text: q, K: 5, Mode: ModeFusion})
+	if err != nil {
+		t.Fatalf("fusion search: %v", err)
+	}
+	if got := paths(fusedOut.Results); len(got) == 0 || got[0] != "target.md" {
+		t.Fatalf("fusion should rank target.md first, got %v", got)
+	}
+}
+
+// TestFusionIsOptIn guards the ground rule that production recall does not move
+// until the cutover. An empty mode and an explicit "and" must be the same search.
+func TestFusionIsOptIn(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "alpha beta notes", "alpha beta appear together here")
+
+	const q = "alpha beta gamma"
+	for _, mode := range []string{"", ModeAnd} {
+		out, err := x.Search(Query{Text: q, K: 5, Mode: mode})
+		if err != nil {
+			t.Fatalf("mode %q: %v", mode, err)
+		}
+		if len(out.Results) != 0 {
+			t.Fatalf("mode %q must keep AND semantics and return nothing, got %v",
+				mode, paths(out.Results))
+		}
+	}
+}
+
+// TestFusionRanksByBestEvidenceNotAgreement is the RRF decision, made testable.
+// `spread.md` carries all three terms, so every one of the three subsets finds
+// it; `precise.md` carries only two, so exactly one subset does — but that one
+// match is far stronger. Max-score must prefer precise.md. A count- or
+// rank-averaging fusion would prefer spread.md, which is the dilution the
+// measurement rejected.
+func TestFusionRanksByBestEvidenceNotAgreement(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "precise.md", "alpha beta", "alpha beta")
+	addNote(t, x, "spread.md", "notes", "alpha "+filler(4000)+" beta "+filler(4000)+" gamma")
+
+	out, err := x.Search(Query{Text: "alpha beta gamma", K: 5, Mode: ModeFusion})
+	if err != nil {
+		t.Fatalf("fusion search: %v", err)
+	}
+	got := paths(out.Results)
+	if len(got) != 2 {
+		t.Fatalf("both notes should be candidates, got %v", got)
+	}
+	if got[0] != "precise.md" {
+		t.Fatalf("max-score fusion must rank the single strong match first; got %v", got)
+	}
+	if out.Results[0].Score <= out.Results[1].Score {
+		t.Fatalf("precise.md should outscore spread.md, got %.4f vs %.4f",
+			out.Results[0].Score, out.Results[1].Score)
+	}
+}
+
+// TestFusionSnippetComesFromTheWinningSubset — the highlight should show the
+// evidence that actually ranked the row, not some other pairing of the terms.
+func TestFusionSnippetComesFromTheWinningSubset(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "notes", "alpha beta appear together in this sentence")
+
+	out, err := x.Search(Query{Text: "alpha beta gamma", K: 5, Mode: ModeFusion})
+	if err != nil {
+		t.Fatalf("fusion search: %v", err)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("expected one hit, got %v", paths(out.Results))
+	}
+	snip := out.Results[0].Snippet
+	if !strings.Contains(snip, "[alpha]") || !strings.Contains(snip, "[beta]") {
+		t.Fatalf("snippet should highlight the winning subset's terms, got %q", snip)
+	}
+}
+
+// TestFusionSingleTermFallsBackToAnd — one term has no two-term subset, and
+// returning nothing for it would be a worse answer than the term's own ranking.
+func TestFusionSingleTermFallsBackToAnd(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "alpha notes", "alpha appears here")
+
+	out, err := x.Search(Query{Text: "alpha", K: 5, Mode: ModeFusion})
+	if err != nil {
+		t.Fatalf("fusion search: %v", err)
+	}
+	if got := paths(out.Results); len(got) != 1 || got[0] != "target.md" {
+		t.Fatalf("single-term fusion should fall back to AND, got %v", got)
+	}
+}
+
+// TestUnknownSearchModeIsAnError — a typo must not silently serve AND results
+// while the caller believes it measured something else.
+func TestUnknownSearchModeIsAnError(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "alpha beta", "alpha beta")
+
+	if _, err := x.Search(Query{Text: "alpha beta", K: 5, Mode: "hybrid"}); err == nil {
+		t.Fatal("an unrecognized mode must be an error, not a silent fallback")
+	}
+}
+
 func BenchmarkSearchLargeNotes(b *testing.B) {
 	x := newTestIndex(b)
 	buildBigVault(b, x, 24, 1_200_000, 8)

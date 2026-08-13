@@ -244,6 +244,12 @@ type searchArgs struct {
 	K      int    `json:"k"`
 	After  string `json:"after"`
 	Before string `json:"before"`
+	// Mode is accepted but deliberately absent from the published inputSchema
+	// below. A measurement driver can ask for fusion explicitly; the agent is not
+	// told the option exists, because advertising it would let the prompt-submit
+	// path adopt a mode with 0% correct rejection before the ladder has earned
+	// the rerank and floor that make it safe. The schema entry lands at cutover.
+	Mode string `json:"mode"`
 }
 
 func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
@@ -263,7 +269,7 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 		a.K = 50
 	}
 	out, err := s.idx.Search(index.Query{
-		Text: a.Query, K: a.K, After: a.After, Before: a.Before,
+		Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode,
 	})
 	if err != nil {
 		return nil, err

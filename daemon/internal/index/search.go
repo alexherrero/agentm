@@ -33,6 +33,15 @@ type Result struct {
 	rowid int64
 }
 
+// The search modes. ModeAnd is what the prompt-submit hook runs and what every
+// measurement to date scores. ModeFusion is quarantined behind an explicit flag:
+// on the gold set it nearly quadrupled R@5 and took correct rejection from 35% to
+// zero, so it must never become the default by omission.
+const (
+	ModeAnd    = "and"
+	ModeFusion = "fusion"
+)
+
 // Query is one search request.
 type Query struct {
 	Text string
@@ -42,6 +51,9 @@ type Query struct {
 	// second-weakest stratum at 0.42–0.54 R@5.
 	After  string
 	Before string
+	// Mode selects how the terms are combined. Empty means ModeAnd, so every
+	// existing caller keeps the semantics it was measured under.
+	Mode string
 }
 
 // SearchOutcome carries the hits plus whatever the driver needs to know about how
@@ -58,8 +70,41 @@ type SearchOutcome struct {
 
 var ftsTokenRe = regexp.MustCompile(`[A-Za-z0-9_]+`)
 
-// Search runs BM25 over FTS5, applies the measured rank penalty, and returns the
-// top k.
+// Search dispatches on the query's mode, after the validation both paths share.
+func (x *Index) Search(q Query) (SearchOutcome, error) {
+	out := SearchOutcome{Results: []Result{}}
+
+	text := strings.TrimSpace(q.Text)
+	if text == "" {
+		out.Note = "empty query"
+		return out, nil
+	}
+	k := q.K
+	if k <= 0 {
+		k = 5
+	}
+
+	after, err := normalizeBound(q.After)
+	if err != nil {
+		return out, fmt.Errorf("after: %w", err)
+	}
+	before, err := normalizeBound(q.Before)
+	if err != nil {
+		return out, fmt.Errorf("before: %w", err)
+	}
+
+	switch q.Mode {
+	case "", ModeAnd:
+		return x.searchAnd(text, k, after, before)
+	case ModeFusion:
+		return x.searchFusion(text, k, after, before)
+	default:
+		return out, fmt.Errorf("unknown search mode %q (want %q or %q)", q.Mode, ModeAnd, ModeFusion)
+	}
+}
+
+// searchAnd runs BM25 over FTS5, applies the measured rank penalty, and returns
+// the top k.
 //
 // The penalty fetches Overfetch rows rather than k, multiplies each score by the
 // weight its classes earn, re-sorts, and takes the top k. Rows are re-ordered and
@@ -84,27 +129,8 @@ var ftsTokenRe = regexp.MustCompile(`[A-Za-z0-9_]+`)
 // and 1,784ms ranked-with-snippets, because the matched set included notes of
 // 1.0–1.3 MB. Six of 206 benchmark queries cost four to six seconds each. Rank
 // first and the scan is priced for the five rows anyone will read.
-func (x *Index) Search(q Query) (SearchOutcome, error) {
+func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutcome, error) {
 	out := SearchOutcome{Results: []Result{}}
-
-	text := strings.TrimSpace(q.Text)
-	if text == "" {
-		out.Note = "empty query"
-		return out, nil
-	}
-	k := q.K
-	if k <= 0 {
-		k = 5
-	}
-
-	after, err := normalizeBound(q.After)
-	if err != nil {
-		return out, fmt.Errorf("after: %w", err)
-	}
-	before, err := normalizeBound(q.Before)
-	if err != nil {
-		return out, fmt.Errorf("before: %w", err)
-	}
 
 	limit := note.Overfetch
 	if k > limit {
@@ -118,7 +144,31 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	out.Note = note1
 	out.Matched = len(rows)
 
-	// The penalty. Roughly twenty lines, worth +3.75 points of R@5 at p = 0.0195.
+	out.Results = penalizeAndRank(rows, k)
+
+	// matchExpr is the expression FTS5 actually ran, which is the sanitized one
+	// when the original was not valid syntax. Snippets have to be produced by the
+	// same expression that produced the rows, or they would highlight different
+	// phrases than the ranking saw.
+	if err := x.fillSnippets(matchExpr, out.Results); err != nil {
+		return out, err
+	}
+
+	if len(out.Results) == 0 && out.Note == "" {
+		out.Note = "0 results. FTS5 requires every term to appear in the same note, " +
+			"so a long phrasing often matches nothing — try two or three distinctive " +
+			"words, then a different vocabulary for the same idea. Answer \"nothing " +
+			"found\" only after distinct vocabularies have failed."
+	}
+	return out, nil
+}
+
+// penalizeAndRank applies the measured class penalty, orders by the adjusted
+// score, and truncates to k. Both modes share it, so a note is demoted the same
+// way whichever path surfaced it.
+//
+// Roughly twenty lines, worth +3.75 points of R@5 at p = 0.0195.
+func penalizeAndRank(rows []Result, k int) []Result {
 	for i := range rows {
 		flags := splitFlags(rows[i].Penalty)
 		mult := note.Multiplier(flags)
@@ -149,23 +199,125 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	if len(rows) > k {
 		rows = rows[:k]
 	}
-	out.Results = rows
+	return rows
+}
 
-	// matchExpr is the expression FTS5 actually ran, which is the sanitized one
-	// when the original was not valid syntax. Snippets have to be produced by the
-	// same expression that produced the rows, or they would highlight different
-	// phrases than the ranking saw.
-	if err := x.fillSnippets(matchExpr, out.Results); err != nil {
+// searchFusion issues every two-term subset of the query as its own AND search
+// and keeps, for each document, the best score any single subset gave it.
+//
+// The motivation is measured rather than theoretical. For 45 of 53 gold-set
+// misses some subset of the same extracted terms already reaches the top 5, so
+// ANDing all six destroys information the query already carries — term selection,
+// not vocabulary, is the dominant lexical defect.
+//
+// Max-score rather than RRF, also measured. RRF dilutes badly here (2-term 28%,
+// 3-term 11%) because a document appearing in many mediocre sub-rankings outranks
+// one placing first in a single precise sub-query. Keeping the best single piece
+// of evidence recovers 23 of those 53 at both n=2 and n=3.
+//
+// What it costs is why it is not the default: on the same gold set it took
+// correct rejection from 35% to 0%, because a query that can always find two
+// co-occurring words never returns empty.
+func (x *Index) searchFusion(text string, k int, after, before string) (SearchOutcome, error) {
+	terms := dedupeTerms(ftsTokenRe.FindAllString(text, -1))
+	if len(terms) < 2 {
+		// One term has no two-term subset, and the fused ranking for it is just
+		// that term's own. Fall back rather than return nothing.
+		return x.searchAnd(text, k, after, before)
+	}
+
+	out := SearchOutcome{Results: []Result{}}
+	limit := note.Overfetch
+	if k > limit {
+		limit = k
+	}
+
+	// Keyed by path: a document is one candidate however many subsets found it.
+	// The winning subset rides along so its own expression can highlight the
+	// snippet — the evidence that ranked the row is the evidence shown.
+	type candidate struct {
+		row  Result
+		expr string
+	}
+	best := make(map[string]candidate)
+	for i := 0; i < len(terms); i++ {
+		for j := i + 1; j < len(terms); j++ {
+			expr := `"` + terms[i] + `" "` + terms[j] + `"`
+			rows, err := x.runMatch(expr, after, before, limit)
+			if err != nil {
+				// One subset FTS5 will not accept is not a failed search; the
+				// other subsets still carry the query.
+				continue
+			}
+			for _, r := range rows {
+				if prev, seen := best[r.Path]; !seen || r.Score > prev.row.Score {
+					best[r.Path] = candidate{row: r, expr: expr}
+				}
+			}
+		}
+	}
+	out.Matched = len(best)
+
+	rows := make([]Result, 0, len(best))
+	wonBy := make(map[string]string, len(best))
+	for path, c := range best {
+		rows = append(rows, c.row)
+		wonBy[path] = c.expr
+	}
+	// The penalty is a per-document constant, so applying it once after the max
+	// gives the same ordering as applying it to every sub-query and maxing those.
+	out.Results = penalizeAndRank(rows, k)
+
+	if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
 		return out, err
 	}
 
-	if len(out.Results) == 0 && out.Note == "" {
-		out.Note = "0 results. FTS5 requires every term to appear in the same note, " +
-			"so a long phrasing often matches nothing — try two or three distinctive " +
-			"words, then a different vocabulary for the same idea. Answer \"nothing " +
-			"found\" only after distinct vocabularies have failed."
+	if len(out.Results) == 0 {
+		out.Note = "0 results. No two terms of this query appear together in any one note."
 	}
 	return out, nil
+}
+
+// fillFusedSnippets highlights each surviving row under the subset that won it,
+// grouped so the cost is one query per distinct winning subset rather than one
+// per row.
+func (x *Index) fillFusedSnippets(rows []Result, wonBy map[string]string) error {
+	byExpr := make(map[string][]Result)
+	for _, r := range rows {
+		expr := wonBy[r.Path]
+		byExpr[expr] = append(byExpr[expr], r)
+	}
+	snippets := make(map[string]string, len(rows))
+	for expr, group := range byExpr {
+		if err := x.fillSnippets(expr, group); err != nil {
+			return err
+		}
+		for _, r := range group {
+			if r.Snippet != "" {
+				snippets[r.Path] = r.Snippet
+			}
+		}
+	}
+	for i := range rows {
+		rows[i].Snippet = snippets[rows[i].Path]
+	}
+	return nil
+}
+
+// dedupeTerms drops repeats while keeping first-seen order, so a query saying the
+// same word twice does not pay for a subset pairing it with itself.
+func dedupeTerms(terms []string) []string {
+	seen := make(map[string]bool, len(terms))
+	out := make([]string, 0, len(terms))
+	for _, t := range terms {
+		key := strings.ToLower(t)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, t)
+	}
+	return out
 }
 
 // match runs the query, retrying a syntax error with its terms quoted. It

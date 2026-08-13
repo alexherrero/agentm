@@ -167,21 +167,30 @@ reaches **23/53 (43%)** at both n=2 and n=3.
 
 **On the full gold set it fails its own rule.**
 
-| | baseline | max-score fusion, 2-term |
-|---|---:|---:|
-| distinctive-token | 3/12 | 7/12 |
-| episodic-temporal | 3/12 | 6/12 |
-| pure-paraphrase | 1/18 | 5/18 |
-| research-corpus | 0/12 | 6/12 |
-| research-density | 0/10 | 3/10 |
-| **R@5** | **10.9%** | **42.2%** |
-| **negative rejection** | **35%** | **0%** |
+| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) |
+|---|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 7/12 |
+| episodic-temporal | 3/12 | 6/12 | 6/12 |
+| pure-paraphrase | 1/18 | 5/18 | 5/18 |
+| research-corpus | 0/12 | 6/12 | 6/12 |
+| research-density | 0/10 | 3/10 | 3/10 |
+| **R@5** | **10.9%** | **42.2%** | **42.2%** |
+| **negative rejection** | **35%** | **0%** | **0%** |
 
 Recall nearly quadrupled and rejection went to zero — every one of the 20
 negatives returned a confident wrong answer. The pre-registered floor was
 7/20. **Rejected.** This is the OR rewrite's trade at larger magnitude, and
 the rule existing in advance is the only reason it was not shipped on the
 strength of "+31 points."
+
+The third column is the same arm run through `agentmd -mode fusion` instead of
+the throwaway driver, and it reproduces the simulation cell for cell rather than
+within noise — the ladder's first rung, quarantined behind a flag the
+prompt-submit hook does not set. The `and` arm re-scored at 10.9% on the same
+restored corpus after the refactor, which is what makes "the hook path is
+unchanged" a measurement rather than a claim. Fusion is also *cheaper* here
+(p90 24.4ms against the baseline's 79.2ms): fifteen two-term queries each seek a
+short doclist, where one six-term query scans a long one.
 
 ## Why no score floor rescues it, and what that implies
 

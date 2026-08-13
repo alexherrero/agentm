@@ -317,6 +317,8 @@ func cmdSearch(args []string) error {
 	k := fs.Int("k", 5, "how many results")
 	after := fs.String("after", "", "only notes captured on or after this date")
 	before := fs.String("before", "", "only notes captured before this date")
+	mode := fs.String("mode", index.ModeAnd,
+		"how to combine terms: `and` (every term in one note) or `fusion` (best two-term subset)")
 	asJSON := fs.Bool("json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -333,7 +335,9 @@ func cmdSearch(args []string) error {
 	defer idx.Close()
 	_ = cfg
 
-	out, err := idx.Search(index.Query{Text: query, K: *k, After: *after, Before: *before})
+	out, err := idx.Search(index.Query{
+		Text: query, K: *k, After: *after, Before: *before, Mode: *mode,
+	})
 	if err != nil {
 		return err
 	}
