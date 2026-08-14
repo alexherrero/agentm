@@ -1109,3 +1109,117 @@ them honestly rather than by loosening the gate. Per-question JSON at
 repo; the true end-to-end latency sample's raw per-question timings live in
 the session scratchpad (`hook_e2e_latency.py`, `hook_e2e_latency_result.json`),
 not archived — reproducible from the gold set and the installed hook alone.
+
+## Follow-up: the `k`-scaling cliff task 5 flagged — diagnosed and fixed
+
+**The suspected mechanism is refuted; the cost is `snippet()`, and it tracks
+term occurrences rather than note size.** Task 5 named hybrid's fixed
+`rrfDepth = 50` and asked what in `searchFusion` scaled with `k`. Nothing in
+the ranking does. The over-fetch window is `max(note.Overfetch, k)` and
+`note.Overfetch` is 200, so every `k` at or below 200 issues an identical
+ranking query. Phase-split on `rd03`, same corpus, same terms:
+
+| phase | k=10 | k=50 |
+|---|---|---|
+| subset sweep (`runMatch` × 15) | 24.4ms | 22.9ms |
+| `penalizeAndRank` | 0.4ms | 0.3ms |
+| `fillFusedSnippets` | **1.3ms** | **6,476.9ms** |
+| `matched` | 936 | 936 |
+
+`matched` is identical, the sweep is flat, and the entire difference is the
+snippet pass. Swept across `k` ∈ {10, 20, 30, 40, 50} the ranking stays inside
+22.7–24.4ms while the total goes 26ms → 6,500ms.
+
+**Occurrences, not bytes — established on a within-document control rather
+than a correlation.** Timed through the system `sqlite3` CLI, outside the Go
+code entirely, so the instrument is not the implementation agreeing with
+itself. Ranking the full 200-row window costs 3ms. Then one document
+(`punkpeye-awesome-mcp-servers/2026-07-08.md`, 1,032,973 bytes) held fixed
+while only the query changes:
+
+| match expression | occurrences in that doc | `snippet()` |
+|---|---|---|
+| `"server" "model"` | 7,647 × 296 | **223ms** |
+| `"collapse" "model"` | 3 × 296 | 10ms |
+| `"collapse" "output"` | 3 × 35 | 10ms |
+
+Same bytes, 22× spread. Size only correlates because large notes tend to
+contain common terms many times over.
+
+**The falsifying case that settles it.** `dt11`'s returned window is *larger*
+in bytes than `rd03`'s and far cheaper: 29 rows / 13.2 MB / 1,165 term
+occurrences at 242ms, against `rd03`'s 50 rows / 11.9 MB / 100,110
+occurrences at 6,446ms. A bytes-driven account predicts `dt11` is the
+expensive one. It is not.
+
+**The fix, and what it deliberately does not change.** Ranking and snippeting
+split: `searchAnd` and `searchFusion` each grow a ranking half (`andRanked`,
+`fusionRanked`) returning the winning match expression per row, and the
+wrapper snippets exactly what it returns. `searchHybrid` reads its lexical arm
+to `rrfDepth` for the ranks RRF needs, fuses, truncates to `k`, and snippets
+those rows alone — where before it received fifty already-snippeted rows and
+discarded all but `k`. `rrfDepth` and the over-fetch policy are both
+unchanged: the depth was never the cost, so no recall was traded for the
+latency, and the pre-registered rule governing a change to either is
+untriggered. Snippet eligibility is deliberately kept to the lexical arm's own
+returned rows. `fusionRanked`'s `wonBy` covers every candidate the sweep
+considered — 936 on `rd03` — so snippeting straight from it would newly
+highlight a row that matched lexically below the fusion window and was
+promoted into the result by the dense arm. That may be an improvement, but it
+changes what gets injected into a prompt, and this is a latency fix; widening
+it is its own change to propose and score.
+
+**Row-level re-scoring of all four landed columns, before and after.**
+Aggregates agreeing is not rows agreeing — task 2.5 had stratum counts look
+flat while `rc08` and `ep05` silently swapped — so this compares returned
+paths, snippet text, scores and per-question hit vectors, not just verdicts.
+84 questions × 4 arms = 336 rows per binary, frozen corpus, dense arm live
+against the resident embedder on 8901:
+
+| column | R@5 before | R@5 after | rows differing |
+|---|---|---|---|
+| `and` | 7/64 = 0.109 | 7/64 = 0.109 | 0 |
+| `fusion` | 27/64 = 0.422 | 27/64 = 0.422 | 0 |
+| `+lex3` | 32/64 = 0.500 | 32/64 = 0.500 | 0 |
+| `hybrid --question` | 48/64 = 0.750 | 48/64 = 0.750 | 0 |
+
+Zero differences in any compared field across all 336 rows. The reproduced
+figures also match the landed record independently — `and` at the recorded
+10.9% baseline and `hybrid --question` at `+question`'s recorded 48/64 —
+which is the check that the reconstructed index is the same one those columns
+were scored against.
+
+**Latency on the production call shape.** Measured as `recall._daemon_search`
+actually issues it — `-k 10 -mode hybrid -question <raw prompt>`, terms
+positional, embedder live — because that subprocess is what the 250ms budget
+bounds. An earlier pass of this investigation reported 1 → 0 from a
+`-no-embedder` run at the same `k`; that shape skips the dense arm and pays no
+embedding round-trip, and it understated `dt11`, which sits at 242ms without
+the round-trip and 295ms with it. The production shape:
+
+| | p50 | p90 | max | over 250ms |
+|---|---|---|---|---|
+| before | 87.6ms | 96.1ms | 6,322.8ms | **2** (`dt11` 295ms, `rd03` 6,323ms) |
+| after | 77.9ms | 86.3ms | **110.3ms** | **0** |
+
+**A larger, older hazard, not fixed here.** The same mechanism ships on `main`,
+predates this plan, and needs no deep `k` — only one large note carrying a
+common query term near the top. On `main`'s own binary against this corpus,
+`agentmd search -k 5 "mcp servers"` costs 10.0s and `-k 50` costs 43.3s,
+because three of that query's top five are ~1 MB lists in which "servers"
+occurs thousands of times. Reachable through MCP `memory_search`, whose `k` is
+caller-supplied and clamped to 50 with no budget to bound it. Left as an
+operator call because every remedy — size- or occurrence-capped snippets,
+chunking large notes in the lexical index as task 3 already does for the
+vector arm, or lowering the MCP clamp — changes which text an agent reads.
+
+**Ops.** Corpus rebuilt from the pinned snapshot rather than reused: 9,971
+docs and 11,761 chunk vectors, both matching task 5's recorded counts exactly,
+embedded with `embeddinggemma-300M-Q8_0` against the resident daemon's warm
+child on 8901. Before/after binaries built from `6d0b0c9` and the fix commit
+and confirmed distinct by hash. `Index.snippetedDocs` already documented this
+invariant — "called for the k rows a caller reads and not for the 200-row
+over-fetch window" — and nothing asserted on it for the fusion or hybrid
+paths, which is how the regression reached a shipped column;
+`snippetcost_test.go` now pins it per mode and fails on the pre-fix code with
+`snippet() saw 50 documents for a k=5 search`.
