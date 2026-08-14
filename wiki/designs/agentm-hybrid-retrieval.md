@@ -164,7 +164,7 @@ changes what an AND leaves standing.
 | 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | **met, well past the floor** — 75.0% (48/64), pure-paraphrase 61.1% (11/18), every stratum improved and none regressed (12 gained / 0 lost). 11 of the 16 diagnosed dense-top-5 candidates converted. |
 | 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | **refuted** — 76.6% (49/64), net +1 against a required net +3. Regression clause held (no stratum lost more than one); the overall floor did not. 3 of the 7 diagnosed candidates converted (`dt07`, `dt10`, `rc03`); 2 unrelated losses (`pp02`, `rd04`) to reciprocal-rank displacement. Code kept, quarantined behind `-lex3` — see the amendment log. |
 | 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | **met, both clauses** — p50/p90 213.8ms/222.4ms end-to-end through the installed hook (n=84); every stratum within one question of `+question` (73.4% overall, 47/64). Honest-empty on the 20 negatives: 0/20 genuine. See NOTES.md for the per-question diff and the latency-cliff finding it also surfaced. |
-| 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | |
+| 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | **met** — 73.4% (47/64), byte-identical to `hook e2e` on all 84 rows. The extractor never fires on this gold set (0 questions match), so the "14 at-risk" estimate does not hold up — see the amendment log. Shipped wired. |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
 
 Step 6 exists because the two layers have disagreed once already: the alias
@@ -221,6 +221,30 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-14 · step 5.5 (temporal wiring) measured: rule met, byte-identical
+  to `hook e2e`, and the extractor never fires on this gold set.**
+  `_extract_temporal_bound` (`harness/skills/memory/scripts/recall.py`) is a
+  deterministic, model-free regex-and-calendar extractor wired unconditionally
+  into `_daemon_search`: on a confident match it adds `-after`/`-before` to
+  the daemon call; on no match — the outcome for every one of the 84 goldv2
+  questions — the call is unchanged. Verified two ways: calling the function
+  directly against all 84 questions returns `None` for each one, and diffing
+  a full `--via-hook` rescoring against `hook-e2e-20260814.json` row for row
+  (hit, rank, top-5 path list, correct_rejection) finds 0 of 84 differ. No
+  stratum regressed, none gained, and the pre-registered "14 at-risk" / "5
+  upside" figures do not hold up: they came from an unpreserved keyword-style
+  probe, and this task's own worked example — "when did I decide X" bounds
+  nothing, "what did I decide last week" bounds something — is exactly the
+  distinction that probe collapsed. Every episodic-temporal gold question,
+  including `ep09` (the diagnosis's one named upside candidate), is the
+  first shape: it asks FOR a date rather than supplying one to bound with.
+  Stays wired rather than reverted — it clears the non-regression bar
+  byte-identically, so there is no regression to protect against by
+  disconnecting it, and it is real, tested infrastructure that will matter
+  on casual production prompts this gold set (standalone written questions)
+  cannot represent. Full derivation, the keyword-scan cross-check, and the
+  ops trail in NOTES.md's own "Task 5.5" section.
 
 - **2026-08-14 · step 5 (hook cutover) measured: rule met on both clauses.**
   The prompt-submit hook's daemon call switches from `-mode`'s implicit

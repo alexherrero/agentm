@@ -167,15 +167,15 @@ reaches **23/53 (43%)** at both n=2 and n=3.
 
 **On the full gold set it fails its own rule.**
 
-| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking | +rerank+floor | +question | +lex3 | hook e2e |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 | 7/12 | 9/12 | 11/12 | 8/12 |
-| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 | 7/12 | 9/12 | 9/12 | 8/12 |
-| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 | 6/18 | 11/18 | 10/18 | 12/18 |
-| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 | 3/12 | 10/12 | 11/12 | 10/12 |
-| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 | 2/10 | 9/10 | 8/10 | 9/10 |
-| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** | **75.0%** | **76.6%** | **73.4%** |
-| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** | **40%** | **0%** | **0%** | **0%** |
+| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking | +rerank+floor | +question | +lex3 | hook e2e | +temporal |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 | 7/12 | 9/12 | 11/12 | 8/12 | 8/12 |
+| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 | 7/12 | 9/12 | 9/12 | 8/12 | 8/12 |
+| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 | 6/18 | 11/18 | 10/18 | 12/18 | 12/18 |
+| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 | 3/12 | 10/12 | 11/12 | 10/12 | 10/12 |
+| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 | 2/10 | 9/10 | 8/10 | 9/10 | 9/10 |
+| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** | **75.0%** | **76.6%** | **73.4%** | **73.4%** |
+| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** | **40%** | **0%** | **0%** | **0%** | **0%** |
 
 Recall nearly quadrupled and rejection went to zero — every one of the 20
 negatives returned a confident wrong answer. The pre-registered floor was
@@ -1109,3 +1109,105 @@ them honestly rather than by loosening the gate. Per-question JSON at
 repo; the true end-to-end latency sample's raw per-question timings live in
 the session scratchpad (`hook_e2e_latency.py`, `hook_e2e_latency_result.json`),
 not archived — reproducible from the gold set and the installed hook alone.
+
+## Task 5.5: temporal wiring — non-regression, and the extractor never fires on this gold set
+
+**Rule met, and provably rather than vacuously.** No stratum regresses against
+`hook e2e`: distinctive-token 8/12, episodic-temporal 8/12, pure-paraphrase
+12/18, research-corpus 10/12, research-density 9/10, overall R@5 47/64 =
+73.4%, negative rejection 0/20 — every cell identical to `hook e2e`. Landed
+as the `+temporal` column above. The mechanism is `_extract_temporal_bound`
+(`harness/skills/memory/scripts/recall.py`), a deterministic, model-free
+regex-and-calendar-arithmetic extractor wired unconditionally into
+`_daemon_search`: when it resolves a confident bound from the raw prompt, the
+daemon call gains `-after`/`-before`; when it does not, the call is
+byte-identical to before this task. **On this gold set it never resolves a
+bound at all** — verified two independent ways, not merely asserted: (1)
+calling `_extract_temporal_bound` directly against all 84 gold questions
+returns `None` for every one of them; (2) diffing the `+temporal` run against
+`hook-e2e-20260814.json` row for row — `hit`, `first_hit_rank`, the full
+top-5 path list, and `correct_rejection` — finds **0 of 84 rows differ**. The
+row-level proof is the one that matters: an aggregate match can hide a
+one-for-one swap (the `ep05`/`ep03` lesson task 2.5 already paid for), and
+this task checked the stronger claim rather than the weaker one.
+
+**The pre-registered "14 at-risk" and "5 misses" figures do not survive
+contact with a real extractor, and the task's own worked example says why.**
+The pre-task-4 diagnosis that produced those numbers ran from an unpreserved
+scratchpad probe (`task4_risk.py`), not from a resolvable-phrase parser, and
+this task's own design considerations name the exact distinction that probe
+collapsed: *"'When did I decide X' bounds nothing; 'what did I decide last
+week' bounds something."* Every one of the 12 episodic-temporal gold
+questions, and every other question the old diagnosis flagged (`dt09`,
+`rd05`, `rd06`, `rd08`, `rd09`, `rd10`), is the first shape — an open
+question asking FOR a date (`ep02` "When did I start working on shrimpi",
+`ep06` "When was the last time we worked on dev-setup", `dt09` "before the
+wiki pass ran in the worker", `rd05` "after the first save") — not a phrase
+SUPPLYING one to filter with. None contains "last week", a month name
+adjacent to "in"/"since", a bare year, or any other phrase this task's
+pattern set recognizes; a broad keyword scan across all 84 questions for
+`yesterday|today|last\s+\w+|this\s+(week|month|year)|past\s+\w+|since\s+\w+|
+ago|<month names>|<4-digit year>` confirms only three hits in the entire gold
+set (`ep03` "since my last blog post", `ep06` "the last time", `ng08` "the
+last 5 security vulnerabilities") and each is independently unresolvable: an
+event reference standing in for the very date being asked about, an open
+temporal question, and "last" modifying a count rather than a day/week/month
+unit, respectively — all three correctly abstain under
+`_extract_temporal_bound` too (pinned as explicit test cases, not just
+observed). The empirical at-risk set is **0, not 14**; the empirical upside
+is **0, not 5** — including `ep09` ("When did we re-write agentm the first
+time?"), the diagnosis's one supposedly-unique recovery candidate, which is
+the identical "asks for a date" shape and does not convert here either. No
+stratum table of before/after ranks follows because there is nothing in it:
+zero questions moved, in either direction.
+
+**This is a real extractor, not a no-op built to pass trivially.** It
+recognizes the five phrase shapes the task named — "last week", "in June",
+"yesterday", "since March", "in 2026" — plus their closest unambiguous
+siblings (today, this/last week/month/year, since an explicit ISO date, a
+bounded past-N days/weeks/months), each pinned by a hand-derived-literal test
+in `scripts/test_recall_temporal.py` (37 tests). It resolves month names with
+no year by rolling back to last year's occurrence when the named month has
+not started yet this year (`_resolve_month_year`), refuses any bound whose
+`after` falls on or after `now`'s own date (a future-dated bound could only
+ever guarantee zero hits), and requires a trigger word ("in", "since",
+"last", "this", "past") to sit immediately before the date token with
+nothing between them — "in June" bounds, "the June release" does not match
+at all, which is what keeps a topic label from being misread as a
+capture-date constraint. The one residual ambiguity adjacency cannot resolve
+— a trigger word used conversationally rather than temporally, e.g.
+"interested in June's numbers" — is named in the function's own docstring as
+a known, accepted risk; this gold set happens not to contain an instance of
+it, and the non-regression measurement, not the heuristic alone, is what
+would catch it if a future corpus did. The reference instant is injectable
+(`now=`) specifically so none of this depended on the day the suite happened
+to run.
+
+**Why it stays wired rather than reverted.** The plan's own framing is that
+an extractor which cannot clear the non-regression bar should stay unwired;
+this one clears it byte-identically, so there is no failure to protect
+against by disconnecting it. It is real, tested, production-reachable code
+that will matter on traffic this gold set cannot represent — real prompts
+carry "last week" and "yesterday" as casual asides far more often than a
+gold set written as standalone questions does, which is the reason this rung
+was sequenced after the hook cutover in the first place.
+
+**Ops.** Corpus and index rebuilt fresh for this task (the prior session's
+scratch index does not persist across sessions) — `agentmd reindex` against
+`~/.agentm/corpus-snapshots/Vault` (9,971 docs, verified against the docmeta
+count and the gold set's pinned `$corpus` block) followed by `agentmd embed`
+scoped to `Agent/memory,Agent/desk,Agent/external`: 9,473 notes embedded,
+564 chunked into 11,761 chunk vectors, 269 emergency shortenings — identical
+to task 2.5's original backfill counts, confirming a faithful rebuild. No
+stray `llama-server` processes before or after (one resident process
+throughout, the operator's own `agentmd serve`, attached to via its fixed
+loopback port rather than spawned fresh). `degraded: []` on the landed run.
+The same pre-existing `rrfDepth=50` latency-cliff population task 5 named
+(`dt11`, `rd03`) reproduced on this machine under the scorecard's default
+250ms `--via-hook` budget — expected, not a new defect, and out of this
+task's scope per the plan's own instruction; scored instead under a generous
+10000ms `--via-hook-budget-ms` so a query slow for reasons unrelated to
+correctness is never miscounted as a miss, exactly as task 5's own rule
+required for the identical reason. Per-question JSON at
+`<vault>/Agent/_meta/health/goldv2/temporal-20260814.json`, never in the
+repo.
