@@ -115,10 +115,21 @@ floor placement can fix it — on a single-owner corpus whose negative questions
 are by design about topics the corpus is saturated with, positives and hard
 negatives interleave on cross-encoder score in *either* query format (measured
 0.003–0.959 against 0.267–0.906). Similarity is not answerhood. The LLM gate
-on the deliberate path is therefore **load-bearing**, and the fast path
-currently ships with no rejection gate at all — the hook-cutover step owns the
-injection policy that follows from that (inject-with-metadata and let the
-reading agent judge, or hold the lexical arm's honest-empty where it occurs).
+on the deliberate path is therefore **load-bearing**, and the fast path ships
+with no rejection gate at all.
+
+**What the fast path does instead, decided 2026-08-14: inject with metadata.**
+The hook returns its top-k labelled — each hit's score, its space, and an
+explicit statement that these are candidates matched by similarity rather than
+verified answers — and passes through unchanged the honest empty the lexical
+arm already produces on its own. It does not manufacture a rejection. This
+inverts the original design above, and the inversion is the measurement's
+doing: a floor placed without separation drops true answers at the same rate as
+wrong ones, whereas the agent reading a labelled injection can make the
+answerhood judgment the cross-encoder cannot — which is precisely the
+capability the deliberate path's 0.725 already demonstrates. Rejection is the
+LLM gate's job; the fast path's job is to be honest about what it is handing
+over.
 
 ## LLM judgment stages, cast and placed
 
@@ -152,8 +163,8 @@ changes what an AND leaves standing.
 | 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. Post-mortem (2026-08-14): partly a query-format test artifact, structurally a similarity≠answerhood interleave — see the amendment log. |
 | 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | **met, well past the floor** — 75.0% (48/64), pure-paraphrase 61.1% (11/18), every stratum improved and none regressed (12 gained / 0 lost). 11 of the 16 diagnosed dense-top-5 candidates converted. |
 | 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | **refuted** — 76.6% (49/64), net +1 against a required net +3. Regression clause held (no stratum lost more than one); the overall floor did not. 3 of the 7 diagnosed candidates converted (`dt07`, `dt10`, `rc03`); 2 unrelated losses (`pp02`, `rd04`) to reciprocal-rank displacement. Code kept, quarantined behind `-lex3` — see the amendment log. |
+| 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | |
 | 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | |
-| 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 | |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
 
 Step 6 exists because the two layers have disagreed once already: the alias
