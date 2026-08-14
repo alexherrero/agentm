@@ -1,9 +1,11 @@
 package index
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // The vector arm is tested against hand-written vectors rather than against a
@@ -121,6 +123,38 @@ func TestVectorSearchSkipsWrongWidth(t *testing.T) {
 	}
 }
 
+// A note's several chunks must collapse to one result, scored by whichever
+// chunk matches best — not the first chunk scanned, not an average, and not
+// once per chunk.
+func TestVectorSearchScoresNoteByBestChunk(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "memory/multi.md", "multi", "body")
+	id := docID(t, x, "memory/multi.md")
+
+	// Chunk 0 is 90° off the query; chunk 1 is a perfect match.
+	if err := x.PutVectors("m", []VectorRow{
+		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(0, 1, 0)},
+		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(1, 0, 0)},
+	}); err != nil {
+		t.Fatalf("PutVectors: %v", err)
+	}
+
+	got, err := x.VectorSearch(unit(1, 0, 0), "m", 5, "", "")
+	if err != nil {
+		t.Fatalf("VectorSearch: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d results, want exactly 1 (one note, however many chunks): %v", len(got), got)
+	}
+	if got[0].Path != "memory/multi.md" {
+		t.Fatalf("got %s, want memory/multi.md", got[0].Path)
+	}
+	if diff := got[0].Score - 1.0; diff > 0.001 || diff < -0.001 {
+		t.Errorf("score = %.4f, want ~1.0 — the perfect-match chunk must win, not the 90°-off one",
+			got[0].Score)
+	}
+}
+
 func TestScopeSelectsPendingNotes(t *testing.T) {
 	x := newTestIndex(t)
 	addNote(t, x, "memory/in.md", "in", "body")
@@ -189,6 +223,41 @@ func TestScopeMatchesDirectoryBoundaries(t *testing.T) {
 	}
 }
 
+// A note with several chunks must be one pending entry, not one per stale
+// chunk — PendingEmbeds hands a note-shaped list to the backfill loop, and a
+// duplicate entry there would re-chunk and re-embed the same note twice in one
+// pass.
+func TestPendingEmbedsTreatsMultiChunkNoteAsOneUnit(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "memory/multi.md", "multi", "body")
+	id := docID(t, x, "memory/multi.md")
+
+	if err := x.PutVectors("m", []VectorRow{
+		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(1, 0, 0)},
+		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(0, 1, 0)},
+	}); err != nil {
+		t.Fatalf("PutVectors: %v", err)
+	}
+	pending, err := x.PendingEmbeds("m", []string{"memory"}, 0)
+	if err != nil {
+		t.Fatalf("PendingEmbeds: %v", err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("a note whose chunks are all current is pending: %v", pending)
+	}
+
+	// Edit the note: both chunks are now stale, and it must come back as
+	// exactly one pending entry.
+	addNoteAt(t, x, "memory/multi.md", "multi", "edited body", 2)
+	pending, err = x.PendingEmbeds("m", []string{"memory"}, 0)
+	if err != nil {
+		t.Fatalf("PendingEmbeds: %v", err)
+	}
+	if len(pending) != 1 || pending[0].Path != "memory/multi.md" {
+		t.Fatalf("got %v, want exactly one pending entry for memory/multi.md", pending)
+	}
+}
+
 // A re-indexed note must come back as pending: its vector describes the previous
 // revision. This is the whole staleness contract, and getting it wrong means an
 // edited note keeps answering with what it used to say.
@@ -218,6 +287,44 @@ func TestReindexedNoteBecomesPending(t *testing.T) {
 	}
 	if !strings.Contains(pending[0].Body, "second") {
 		t.Fatalf("pending body is the old revision: %q", pending[0].Body)
+	}
+}
+
+// A note re-embedded with fewer chunks than it had before must not leave the
+// extra ones behind. PutVectors replaces a note's whole chunk set rather than
+// upserting individual chunk_idx values into it precisely to prevent this.
+func TestPutVectorsReplacesShrunkChunkSet(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "memory/shrinks.md", "shrinks", "body")
+	id := docID(t, x, "memory/shrinks.md")
+
+	if err := x.PutVectors("m", []VectorRow{
+		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(1, 0, 0)},
+		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(0, 1, 0)},
+		{DocID: id, ChunkIdx: 2, MtimeNS: 1, Vec: unit(0, 0, 1)},
+	}); err != nil {
+		t.Fatalf("PutVectors (3 chunks): %v", err)
+	}
+	var n int
+	if err := x.db.QueryRow(`SELECT count(*) FROM embeddings WHERE doc_id = ?`, id).Scan(&n); err != nil {
+		t.Fatalf("counting: %v", err)
+	}
+	if n != 3 {
+		t.Fatalf("after the first write: %d chunk rows, want 3", n)
+	}
+
+	// Re-embed as if the note (or the chunking policy) now produces one chunk.
+	if err := x.PutVectors("m", []VectorRow{
+		{DocID: id, ChunkIdx: 0, MtimeNS: 2, Vec: unit(1, 1, 1)},
+	}); err != nil {
+		t.Fatalf("PutVectors (1 chunk): %v", err)
+	}
+	if err := x.db.QueryRow(`SELECT count(*) FROM embeddings WHERE doc_id = ?`, id).Scan(&n); err != nil {
+		t.Fatalf("counting: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("after re-embedding with fewer chunks: %d chunk row(s) survived, want 1 "+
+			"(chunk_idx 1 and 2 are orphans)", n)
 	}
 }
 
@@ -263,11 +370,43 @@ func TestVectorStatsCountsCoverage(t *testing.T) {
 	if st.Vectors != 1 {
 		t.Errorf("Vectors = %d, want 1", st.Vectors)
 	}
+	if st.Notes != 1 {
+		t.Errorf("Notes = %d, want 1", st.Notes)
+	}
 	if st.Dim != 3 {
 		t.Errorf("Dim = %d, want 3", st.Dim)
 	}
 	if st.Complete() {
 		t.Error("Complete() is true with one of two notes embedded")
+	}
+}
+
+// Vectors counts chunk rows; Notes counts notes. A note split into several
+// chunks must move only the first, or the status line would report more notes
+// "embedded" than the scope actually contains.
+func TestVectorStatsNotesCountsNotesNotChunks(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "memory/chunked.md", "chunked", "body")
+	id := docID(t, x, "memory/chunked.md")
+	if err := x.PutVectors("m", []VectorRow{
+		{DocID: id, ChunkIdx: 0, MtimeNS: 1, Vec: unit(1, 0, 0)},
+		{DocID: id, ChunkIdx: 1, MtimeNS: 1, Vec: unit(0, 1, 0)},
+	}); err != nil {
+		t.Fatalf("PutVectors: %v", err)
+	}
+	st, err := x.VectorStats("m", []string{"memory"})
+	if err != nil {
+		t.Fatalf("VectorStats: %v", err)
+	}
+	if st.Vectors != 2 {
+		t.Errorf("Vectors = %d, want 2 (one row per chunk)", st.Vectors)
+	}
+	if st.Notes != 1 {
+		t.Errorf("Notes = %d, want 1 (one note, however many chunks)", st.Notes)
+	}
+	if !st.Complete() {
+		t.Error("Complete() is false with the only in-scope note fully embedded, " +
+			"chunked or not")
 	}
 }
 
@@ -293,20 +432,61 @@ func TestVectorBlobRoundTrip(t *testing.T) {
 	}
 }
 
-func TestTruncateForModelCutsOnRuneBoundary(t *testing.T) {
-	// A window of 65 tokens leaves a 3-byte budget after the 64-token headroom,
-	// landing mid-rune in a string of 3-byte characters.
-	s := strings.Repeat("→", 10) // 3 bytes each
-	got, cut := TruncateForModel(s, 65)
-	if !cut {
-		t.Fatal("a 30-byte string was not cut to a 3-byte budget")
+// A note that already fits the window must come back byte-for-byte as the same
+// single string EmbedText has always produced — the common case (94% of the
+// corpus) has to be unchanged by chunking existing at all.
+func TestChunkTextReturnsWholeNoteWhenItFits(t *testing.T) {
+	got := ChunkText("title", "short body", 2048)
+	want := EmbedText("title", "short body")
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("ChunkText = %v, want exactly one chunk %q", got, want)
 	}
-	if got != "→" {
-		t.Fatalf("got %q, want exactly one rune", got)
+}
+
+// A long body must split into overlapping, title-carrying pieces at the exact
+// offsets the budget and overlap formulas produce. Pinned to literal slice
+// expressions of the fixture rather than re-derived from the implementation:
+// budget=(74-64)*3=30, prefix="T\n\n"=3 bytes, bodyBudget=27, overlap=27/10=2.
+func TestChunkTextSplitsLongBodyWithOverlapAndTitleOnEveryChunk(t *testing.T) {
+	var body strings.Builder
+	for i := 0; i < 20; i++ {
+		fmt.Fprintf(&body, "A%02d", i) // 20 unique 3-byte markers, 60 bytes total
 	}
-	for _, r := range got {
-		if r == '�' {
-			t.Fatal("truncation split a rune")
+	b := body.String()
+
+	got := ChunkText("T", b, 74)
+	want := []string{
+		"T\n\n" + b[0:27],
+		"T\n\n" + b[25:52],
+		"T\n\n" + b[50:60],
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %d chunks, want %d: %q", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("chunk %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+// No chunk may split a multi-byte rune, however the byte budget lands relative
+// to one. This is the same hazard TruncateForModel used to guard against a
+// single time; chunking hits it at every internal boundary.
+func TestChunkTextNeverSplitsARune(t *testing.T) {
+	body := strings.Repeat("→", 20) // 3-byte rune, 60 bytes, 20 runes
+	// budget=(76-64)*3=36; prefix="AB\n\n"=4; bodyBudget=32, which is not a
+	// multiple of 3 — the first cut target lands mid-rune by construction.
+	got := ChunkText("AB", body, 76)
+	if len(got) < 2 {
+		t.Fatalf("fixture did not force a split: got %d chunk(s)", len(got))
+	}
+	for i, c := range got {
+		if !utf8.ValidString(c) {
+			t.Errorf("chunk %d is not valid UTF-8: %q", i, c)
+		}
+		if strings.ContainsRune(c, utf8.RuneError) {
+			t.Errorf("chunk %d contains the UTF-8 replacement rune: %q", i, c)
 		}
 	}
 }

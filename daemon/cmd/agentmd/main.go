@@ -594,9 +594,14 @@ func cmdEmbed(args []string) error {
 	fmt.Printf("embedded %d notes with %s (%d dims) in %s\n",
 		rep.Embedded, rep.Model, rep.Dim, rep.ElapsedS)
 	fmt.Printf("scope %s\n", strings.Join(rep.Scope, ", "))
-	if rep.Truncated > 0 {
-		fmt.Printf("%d note(s) were longer than the model's %d-token window and were "+
-			"embedded from their head\n", rep.Truncated, sup.Model().CtxTokens)
+	if rep.Chunked > 0 {
+		fmt.Printf("%d note(s) were longer than the model's %d-token window and were split "+
+			"into %d chunks total instead of being truncated\n",
+			rep.Chunked, sup.Model().CtxTokens, rep.Chunks)
+	}
+	if rep.Shortened > 0 {
+		fmt.Printf("%d chunk(s) were rejected at their first size and re-sent shorter "+
+			"before the server accepted them\n", rep.Shortened)
 	}
 	if rep.Failed > 0 {
 		fmt.Printf("%d note(s) could not be embedded at all and were skipped — they stay "+

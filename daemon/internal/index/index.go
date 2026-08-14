@@ -152,17 +152,23 @@ func (x *Index) migrate() error {
 			size          INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS docmeta_captured ON docmeta(captured)`,
 		`CREATE INDEX IF NOT EXISTS docmeta_status ON docmeta(status)`,
-		// The vector arm. One row per embedded note, keyed by the same id the
-		// lexical side uses, so the join is a primary-key lookup and a deleted
-		// note takes its vector with it. `model` is stored per row rather than
-		// once for the table because a half-finished model swap is a real state
-		// and it should be countable, not inferred from vectors that rank oddly.
+		// The vector arm. Keyed by (doc_id, chunk_idx) rather than doc_id alone: a
+		// note longer than the embedder's window gets several chunk rows instead
+		// of one vector truncated from its head, and chunk_idx 0 is the whole note
+		// for everything that fits — the common case is unchanged in shape.
+		// `doc_id` is still the same id the lexical side uses, so deleting a
+		// note's docmeta row takes every one of its chunk rows with it. `model` is
+		// stored per row rather than once for the table because a half-finished
+		// model swap is a real state and it should be countable, not inferred from
+		// vectors that rank oddly.
 		`CREATE TABLE IF NOT EXISTS embeddings (
-				doc_id    INTEGER PRIMARY KEY,
-				model     TEXT NOT NULL,
-				dim       INTEGER NOT NULL,
-				mtime_ns  INTEGER NOT NULL,
-				vec       BLOB NOT NULL)`,
+				doc_id     INTEGER NOT NULL,
+				chunk_idx  INTEGER NOT NULL DEFAULT 0,
+				model      TEXT NOT NULL,
+				dim        INTEGER NOT NULL,
+				mtime_ns   INTEGER NOT NULL,
+				vec        BLOB NOT NULL,
+				PRIMARY KEY (doc_id, chunk_idx))`,
 		`CREATE INDEX IF NOT EXISTS embeddings_model ON embeddings(model)`,
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
 	}

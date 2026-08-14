@@ -32,7 +32,13 @@ import (
 // the file, which costs a lexical rebuild of seconds and a re-embed of minutes —
 // the re-embed being the expensive half, and the reason a future schema change
 // that does not touch vectors is worth making additively rather than by bump.
-const SchemaVersion = "3"
+//
+// 4 lets `embeddings` hold several rows per note, keyed by (doc_id, chunk_idx)
+// instead of doc_id alone, so a note longer than the embedder's window is
+// covered by several chunk vectors instead of one truncated from its head. Same
+// reason for the bump as 3: the table is a cache, so discarding and re-embedding
+// is the correct migration for a shape change, not a schema patch.
+const SchemaVersion = "4"
 
 // DefaultPort is the port the retired FastMCP daemon used. The real daemon takes
 // the name and the port when that one is retired; `agentmd retire` is what makes

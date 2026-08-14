@@ -161,7 +161,11 @@ func embedderHealth(sup *embed.Supervisor, idx *index.Index, cfg *config.Config)
 	if err != nil {
 		return out
 	}
-	out.Vectors, out.InScope, out.Stale, out.Dim = stats.Vectors, stats.InScope, stats.Stale, stats.Dim
+	// health.Embedder.Vectors is documented as a coverage count ("X of Y
+	// embedded"), so it reads VectorStats.Notes — distinct notes with a current
+	// embedding — not the raw chunk-row count. A note split into several chunks
+	// must not inflate what the status line reports as covered.
+	out.Vectors, out.InScope, out.Stale, out.Dim = stats.Notes, stats.InScope, stats.Stale, stats.Dim
 	return out
 }
 
@@ -226,12 +230,27 @@ func embedBatch(
 
 // backfillReport is what one embedding pass did.
 type backfillReport struct {
-	Model     string   `json:"model"`
-	Dim       int      `json:"dim"`
-	Scope     []string `json:"scope"`
-	Embedded  int      `json:"embedded"`
-	Truncated int      `json:"truncated"`
-	Remaining int      `json:"remaining"`
+	Model string   `json:"model"`
+	Dim   int      `json:"dim"`
+	Scope []string `json:"scope"`
+	// Embedded counts notes, not chunks: a note split into several chunks is
+	// still one embedded note.
+	Embedded int `json:"embedded"`
+	// Chunks is the total number of chunk vectors written this run. Equal to
+	// Embedded when every note fit the window in one piece; larger whenever
+	// Chunked is nonzero.
+	Chunks int `json:"chunks"`
+	// Chunked counts notes that did not fit the model's window in one piece and
+	// were split into more than one chunk — the population this daemon used to
+	// silently truncate from the head before chunking existed. Reported rather
+	// than absorbed, same as the truncation count it replaces.
+	Chunked int `json:"chunked"`
+	// Shortened counts individual chunks the server rejected at their first
+	// size, which then had to be halved down (EmbedRetryCut) before it accepted
+	// them — the up-front byte-budget estimate turning out wrong for that one
+	// piece of text, not a note being split into chunks.
+	Shortened int `json:"shortened,omitempty"`
+	Remaining int `json:"remaining"`
 	// Failed counts notes the model refused even after shortening. They stay
 	// pending rather than being marked done, so a later run retries them — but
 	// they are reported, because a note the vector arm cannot see is invisible
@@ -244,18 +263,19 @@ type backfillReport struct {
 	ElapsedS string        `json:"elapsed"`
 }
 
-// runBackfill embeds every in-scope note that has no current vector.
+// runBackfill embeds every in-scope note that has no current embedding.
 //
 // It walks in batches and commits each batch, so an interrupted run keeps what it
 // finished rather than restarting from nothing — at ten thousand notes and a
 // model that takes minutes, "resume" is the difference between a maintenance
 // task and a ceremony.
 //
-// Truncation is counted and reported rather than silently absorbed. A note longer
-// than the model's window is embedded from its head, which is a real answer for a
-// note whose subject is stated up front and a bad one for a long document that
-// buries its point — either way the operator should be able to see how many are
-// in that category rather than discovering it as unexplained misses.
+// A note longer than the model's window is split into several chunks
+// (index.ChunkText) rather than truncated from its head, so none of it goes
+// unembedded. Chunk counts are still reported rather than silently absorbed,
+// the same discipline the truncation counter this replaces already applied —
+// the operator should be able to see how many notes needed more than one
+// vector rather than discovering it as unexplained misses.
 func runBackfill(
 	ctx context.Context, idx *index.Index, sup *embed.Supervisor,
 	scope []string, batch int, limit int, log *slog.Logger,
@@ -286,14 +306,25 @@ func runBackfill(
 			break
 		}
 
-		texts := make([]string, len(pending))
+		// Each note becomes one or more window-sized chunks, every one carrying
+		// the title. embedBatch keeps treating "texts" as one flat list — a text
+		// is a text whether it is a whole short note or one slice of a long one
+		// — so textNote and textChunk are what let this loop find its way back
+		// from a flat embedding result to which note, and which chunk of it,
+		// each vector belongs to.
+		var texts []string
+		var textNote []int
+		var textChunk []int
 		for i, d := range pending {
-			t, cut := index.TruncateForModel(
-				index.EmbedText(d.Title, d.Body), model.CtxTokens)
-			if cut {
-				rep.Truncated++
+			chunks := index.ChunkText(d.Title, d.Body, model.CtxTokens)
+			if len(chunks) > 1 {
+				rep.Chunked++
 			}
-			texts[i] = t
+			for ci, c := range chunks {
+				texts = append(texts, c)
+				textNote = append(textNote, i)
+				textChunk = append(textChunk, ci)
+			}
 		}
 
 		vecs, shortened, failed, err := embedBatch(ctx, sup, texts)
@@ -301,39 +332,58 @@ func runBackfill(
 			return rep, fmt.Errorf("embedding %d notes starting at %s: %w",
 				len(pending), pending[0].Path, err)
 		}
-		rep.Truncated += shortened
-		skipped := make(map[int]bool, len(failed))
-		for _, i := range failed {
-			skipped[i] = true
-			rep.Failed++
-			if len(rep.FailedPaths) < 20 {
-				rep.FailedPaths = append(rep.FailedPaths, pending[i].Path)
-			}
-			if log != nil {
-				log.Warn("could not embed note; skipping it and moving on",
-					"path", pending[i].Path)
-			}
+		rep.Shortened += shortened
+
+		// A note with any failed chunk is skipped whole, not partially stored.
+		// A partial chunk set is worse than none: it looks exactly like a note
+		// the model ranked poorly rather than one a fraction of whose content
+		// was silently never given a vector.
+		failedNote := make(map[int]bool, len(failed))
+		for _, ti := range failed {
+			failedNote[textNote[ti]] = true
 		}
-		rows := make([]index.VectorRow, 0, len(pending))
 		for i, d := range pending {
-			if skipped[i] {
+			if !failedNote[i] {
 				continue
 			}
-			rows = append(rows, index.VectorRow{DocID: d.ID, MtimeNS: d.MtimeNS, Vec: vecs[i]})
+			rep.Failed++
+			if len(rep.FailedPaths) < 20 {
+				rep.FailedPaths = append(rep.FailedPaths, d.Path)
+			}
+			if log != nil {
+				log.Warn("could not embed note; skipping it and moving on", "path", d.Path)
+			}
+		}
+
+		rows := make([]index.VectorRow, 0, len(texts))
+		embeddedNotes := make(map[int]bool, len(pending))
+		for ti := range texts {
+			ni := textNote[ti]
+			if failedNote[ni] {
+				continue
+			}
+			rows = append(rows, index.VectorRow{
+				DocID:    pending[ni].ID,
+				ChunkIdx: textChunk[ti],
+				MtimeNS:  pending[ni].MtimeNS,
+				Vec:      vecs[ti],
+			})
+			embeddedNotes[ni] = true
 		}
 		if err := idx.PutVectors(model.Name, rows); err != nil {
 			return rep, err
 		}
-		rep.Embedded += len(rows)
+		rep.Embedded += len(embeddedNotes)
+		rep.Chunks += len(rows)
 
-		// A batch of nothing but failures would otherwise loop forever: the notes
+		// A batch that embedded no note would otherwise loop forever: the notes
 		// stay pending by design, so the next query returns the same ones. Stop
 		// and report instead of spinning.
-		if len(rows) == 0 {
+		if len(embeddedNotes) == 0 {
 			rep.Stalled = true
 			break
 		}
-		if log != nil && rep.Embedded%500 < len(rows) {
+		if log != nil && rep.Embedded%500 < len(embeddedNotes) {
 			log.Info("embedding", "done", rep.Embedded, "last", pending[len(pending)-1].Path)
 		}
 	}

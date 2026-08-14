@@ -15,17 +15,22 @@ import (
 // That is what buys the right to discard it on a schema change instead of
 // carrying a migration.
 //
-// The store is deliberately boring — one row per note, brute-force cosine over
-// the whole table. At ten thousand notes and a thousand dimensions that is forty
-// megabytes and a few milliseconds a query. An ANN index would add a second index
-// format, a build step, and a recall/latency knob to defend, to save time nobody
-// is currently spending.
+// The store is deliberately boring — one or more rows per note (several when a
+// note is longer than the embedder's window and gets chunked), brute-force
+// cosine over the whole table, and a note scores by its best-matching chunk. At
+// ten thousand notes and a thousand dimensions that is forty megabytes and a few
+// milliseconds a query. An ANN index would add a second index format, a build
+// step, and a recall/latency knob to defend, to save time nobody is currently
+// spending.
 
-// VectorRow is one note's embedding, ready to store.
+// VectorRow is one chunk's embedding, ready to store. A note that fits the
+// embedder's window in one piece has exactly one VectorRow at ChunkIdx 0; a
+// longer note has several, one per window-sized slice ChunkText produced.
 type VectorRow struct {
-	DocID   int64
-	MtimeNS int64
-	Vec     []float32
+	DocID    int64
+	ChunkIdx int
+	MtimeNS  int64
+	Vec      []float32
 }
 
 // PendingDoc is a note the vector arm has not embedded yet, or has embedded from
@@ -40,19 +45,30 @@ type PendingDoc struct {
 
 // VectorStats is the vector arm's account of itself for the status surface.
 type VectorStats struct {
-	Model   string `json:"model,omitempty"`
-	Vectors int    `json:"vectors"`
-	Dim     int    `json:"dim,omitempty"`
+	Model string `json:"model,omitempty"`
+	// Vectors is the raw row count for this model — one per chunk, so a note
+	// split into three chunks contributes three. Storage accounting reads this;
+	// coverage reads Notes.
+	Vectors int `json:"vectors"`
+	// Notes is how many distinct in-scope notes have a current embedding (at
+	// least one chunk stored at the note's present mtime), so "7,391 of 9,473
+	// embedded" is a sentence about notes, not an inflated count of chunks.
+	Notes int `json:"notes"`
+	Dim   int `json:"dim,omitempty"`
 	// InScope is how many notes the configured scope covers, so "7,391 of 9,473
 	// embedded" is a sentence the status line can say rather than implying
 	// completeness from a bare count.
 	InScope int `json:"in_scope"`
-	Stale   int `json:"stale"`
+	// Stale counts distinct notes, not rows: a stale note's several chunks all
+	// carry the same outdated mtime (PutVectors replaces a note's whole chunk
+	// set at once), so counting rows here would overstate staleness by the
+	// average chunk count.
+	Stale int `json:"stale"`
 }
 
-// Complete reports whether every in-scope note has a current vector.
+// Complete reports whether every in-scope note has a current embedding.
 func (v VectorStats) Complete() bool {
-	return v.InScope > 0 && v.Vectors >= v.InScope && v.Stale == 0
+	return v.InScope > 0 && v.Notes >= v.InScope && v.Stale == 0
 }
 
 // encodeVec packs a vector as little-endian float32.
@@ -127,8 +143,16 @@ func (x *Index) InScopeCount(scope []string) (int, error) {
 	return n, err
 }
 
-// PendingEmbeds returns in-scope notes with no vector, or whose vector was
-// computed from an older revision of the file.
+// PendingEmbeds returns in-scope notes with no current embedding: never
+// embedded, or embedded from an older revision of the file.
+//
+// "Current" is NOT EXISTS a chunk row at the note's present mtime, rather than a
+// join on doc_id alone, because a chunked note's rows share one doc_id — a join
+// would return that note once per chunk, and a WHERE that only compared one
+// arbitrary row's mtime could pass a note whose chunk set is half-stale. Every
+// chunk of one embedding pass is written with the same mtime_ns (PutVectors
+// replaces a note's whole chunk set atomically), so NOT EXISTS a matching row is
+// exactly "this note's stored chunks, if any, are not the current revision."
 //
 // Staleness is keyed on the same mtime the lexical reconcile pass compares, so a
 // note that was re-indexed is also re-embedded, and one that was merely re-walked
@@ -140,11 +164,12 @@ func (x *Index) PendingEmbeds(model string, scope []string, limit int) ([]Pendin
 		SELECT m.id, m.path, d.title, d.body, m.mtime_ns
 		FROM docmeta m
 		JOIN docs d ON d.rowid = m.id
-		LEFT JOIN embeddings e ON e.doc_id = m.id AND e.model = ?
 		WHERE ` + where + `
-		  AND (e.doc_id IS NULL OR e.mtime_ns <> m.mtime_ns)
+		  AND NOT EXISTS (
+		        SELECT 1 FROM embeddings e
+		         WHERE e.doc_id = m.id AND e.model = ? AND e.mtime_ns = m.mtime_ns)
 		ORDER BY m.path`
-	full := append([]any{model}, args...)
+	full := append(append([]any{}, args...), model)
 	if limit > 0 {
 		q += ` LIMIT ?`
 		full = append(full, limit)
@@ -169,7 +194,15 @@ func (x *Index) PendingEmbeds(model string, scope []string, limit int) ([]Pendin
 	return out, rows.Err()
 }
 
-// PutVectors stores a batch of embeddings in one transaction.
+// PutVectors stores a batch of chunk embeddings in one transaction, replacing
+// each note's whole chunk set rather than upserting individual chunks into it.
+//
+// Every doc_id present in rows has its existing chunk rows deleted before the
+// new ones for that doc_id are inserted. A note that shrinks from three chunks
+// to one on re-embed — a heavy edit, or a change to this package's own chunking
+// — would otherwise leave chunk_idx 1 and 2 behind: rows no query deletes,
+// invisible to every count, and still there to be scored the next time this
+// note is searched.
 func (x *Index) PutVectors(model string, rows []VectorRow) error {
 	if len(rows) == 0 {
 		return nil
@@ -183,21 +216,39 @@ func (x *Index) PutVectors(model string, rows []VectorRow) error {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare(
-		`INSERT INTO embeddings(doc_id, model, dim, mtime_ns, vec) VALUES(?, ?, ?, ?, ?)
-		 ON CONFLICT(doc_id) DO UPDATE SET
+	del, err := tx.Prepare(`DELETE FROM embeddings WHERE doc_id = ?`)
+	if err != nil {
+		return err
+	}
+	defer del.Close()
+
+	ins, err := tx.Prepare(
+		`INSERT INTO embeddings(doc_id, chunk_idx, model, dim, mtime_ns, vec)
+		 VALUES(?, ?, ?, ?, ?, ?)
+		 ON CONFLICT(doc_id, chunk_idx) DO UPDATE SET
 		   model=excluded.model, dim=excluded.dim,
 		   mtime_ns=excluded.mtime_ns, vec=excluded.vec`)
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer ins.Close()
 
+	// Cleared once per doc_id, before that doc_id's first insert — clearing
+	// again on a later row for the same note would delete the chunk this same
+	// call just wrote.
+	cleared := make(map[int64]bool, len(rows))
 	for _, r := range rows {
 		if len(r.Vec) == 0 {
 			continue
 		}
-		if _, err := stmt.Exec(r.DocID, model, len(r.Vec), r.MtimeNS, encodeVec(r.Vec)); err != nil {
+		if !cleared[r.DocID] {
+			if _, err := del.Exec(r.DocID); err != nil {
+				return err
+			}
+			cleared[r.DocID] = true
+		}
+		if _, err := ins.Exec(
+			r.DocID, r.ChunkIdx, model, len(r.Vec), r.MtimeNS, encodeVec(r.Vec)); err != nil {
 			return err
 		}
 	}
@@ -239,9 +290,17 @@ func (x *Index) VectorStats(model string, scope []string) (VectorStats, error) {
 	if s.Vectors > 0 {
 		s.Model = model
 	}
+
+	notesArgs := append([]any{model}, args...)
+	if err := x.db.QueryRow(
+		`SELECT count(DISTINCT m.id) FROM docmeta m
+		   JOIN embeddings e ON e.doc_id = m.id AND e.model = ? AND e.mtime_ns = m.mtime_ns
+		  WHERE `+where, notesArgs...).Scan(&s.Notes); err != nil {
+		return s, err
+	}
 	staleArgs := append([]any{model}, args...)
 	if err := x.db.QueryRow(
-		`SELECT count(*) FROM docmeta m
+		`SELECT count(DISTINCT m.id) FROM docmeta m
 		   JOIN embeddings e ON e.doc_id = m.id AND e.model = ?
 		  WHERE `+where+` AND e.mtime_ns <> m.mtime_ns`, staleArgs...).Scan(&s.Stale); err != nil {
 		return s, err
@@ -249,14 +308,20 @@ func (x *Index) VectorStats(model string, scope []string) (VectorStats, error) {
 	return s, nil
 }
 
-// VectorSearch ranks the whole vector table against a query vector by cosine and
-// returns the top k.
+// VectorSearch ranks the vector table against a query vector by cosine and
+// returns the top k notes, each scored by its best-matching chunk.
 //
 // The scan streams rows out of SQLite and scores them as it goes rather than
 // materializing the table in memory. That keeps a one-shot process from paying a
 // forty-megabyte load before its first comparison, and it removes the cache
 // invalidation a resident copy would need — the correct vector set is whatever
 // the table currently holds, by construction.
+//
+// A note longer than the embedder's window has several chunk rows sharing one
+// doc_id; only the best-scoring one survives before the top-k cut, so a long
+// note contributes exactly one candidate to the ranking however many chunks
+// back it — the same one-path-per-hit shape every other arm returns, extended
+// to notes the embedder could not see whole.
 //
 // Vectors are unit length when stored, so the dot product is the cosine. A row
 // whose width disagrees with the query's is skipped rather than scored: it was
@@ -285,7 +350,12 @@ func (x *Index) VectorSearch(q []float32, model string, k int, after, before str
 	// a vector per row would make the garbage collector the dominant cost of a
 	// search that is otherwise arithmetic.
 	buf := make([]float32, len(q))
-	var out []Result
+	// best-per-note, keyed by doc_id (Result.rowid). A map rather than relying on
+	// scan order because chunk rows for the same note are not guaranteed
+	// adjacent — SQLite is free to return the table scan in whatever order it
+	// finds rows.
+	best := make(map[int64]Result)
+	var order []int64
 	for rows.Next() {
 		var r Result
 		var blob []byte
@@ -302,12 +372,21 @@ func (x *Index) VectorSearch(q []float32, model string, k int, after, before str
 		}
 		r.Score = dot
 		r.RawScore = dot
-		out = append(out, r)
+		if prev, seen := best[r.rowid]; !seen || dot > prev.Score {
+			if !seen {
+				order = append(order, r.rowid)
+			}
+			best[r.rowid] = r
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
 
+	out := make([]Result, 0, len(order))
+	for _, id := range order {
+		out = append(out, best[id])
+	}
 	sort.SliceStable(out, func(i, j int) bool {
 		if out[i].Score != out[j].Score {
 			return out[i].Score > out[j].Score
@@ -384,21 +463,6 @@ func EmbedText(title, body string) string {
 // exists to avoid, so this is an estimate backed by a retry (see EmbedRetryCut)
 // rather than a bound anything relies on.
 const charsPerToken = 3
-
-// TruncateForModel cuts an embedding input to what the model's context window can
-// actually see, and reports whether it cut.
-func TruncateForModel(s string, ctxTokens int) (string, bool) {
-	if ctxTokens <= 0 {
-		return s, false
-	}
-	// Headroom for the prompt scaffolding the model wraps around this, plus the
-	// special tokens it adds either side.
-	budget := (ctxTokens - 64) * charsPerToken
-	if budget <= 0 || len(s) <= budget {
-		return s, false
-	}
-	return cutOnRune(s, budget), true
-}
 
 // EmbedRetryCut shortens a text that the server rejected as too long.
 //

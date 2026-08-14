@@ -167,15 +167,15 @@ reaches **23/53 (43%)** at both n=2 and n=3.
 
 **On the full gold set it fails its own rule.**
 
-| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF |
-|---|---:|---:|---:|---:|
-| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 |
-| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 |
-| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 |
-| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 |
-| research-density | 0/10 | 3/10 | 3/10 | 6/10 |
-| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** |
-| **negative rejection** | **35%** | **0%** | **0%** | **0%** |
+| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking |
+|---|---:|---:|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 |
+| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 |
+| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 |
+| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 |
+| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 |
+| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** |
+| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** |
 
 Recall nearly quadrupled and rejection went to zero — every one of the 20
 negatives returned a confident wrong answer. The pre-registered floor was
