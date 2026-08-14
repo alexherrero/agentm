@@ -151,7 +151,8 @@ changes what an AND leaves standing.
 | 2 | `+vector RRF` | paraphrase ≥50%, research-corpus ≥58%, distinctive-token does not regress | 54.7% overall; research-corpus 58.3% and distinctive-token 8/12 met, **paraphrase 38.9% missed** |
 | 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. Post-mortem (2026-08-14): partly a query-format test artifact, structurally a similarity≠answerhood interleave — see the amendment log. |
 | 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | **met, well past the floor** — 75.0% (48/64), pure-paraphrase 61.1% (11/18), every stratum improved and none regressed (12 gained / 0 lost). 11 of the 16 diagnosed dense-top-5 candidates converted. |
-| 4 | `+temporal` | episodic ≥60%, others flat | |
+| 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | |
+| 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | |
 | 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 | |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
 
@@ -209,6 +210,38 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-14 · step 4 is now 3-term subset fusion; temporal wiring is
+  re-scoped as a non-regression change and moved after the cutover. The
+  70–90% target band is reachable; >90% is not, inside this design.** The
+  operator set a >90% recall goal, which forced an honest sizing of what
+  remains after `+question`'s 75.0%. Three measurements decided it. **(1)
+  Temporal is a filter, not a retrieval channel** — applied to a query that
+  already succeeds it either changes nothing or deletes the answer, and can
+  only add a hit where a temporally-wrong note outranks the right one, which
+  is not why any remaining question misses. Measured: 14 currently-passing
+  questions carry a date phrase and are at risk, against 5 date-phrase misses
+  of which ~1 (`ep09`) is not otherwise reachable. Its rule (episodic ≥60%)
+  was already satisfied at 75.0% before any code, so it could not
+  discriminate — a rung that cannot fail is not a rung. **(2) 3-term subsets
+  reach 7 of the 16 remaining misses**, all outside the five written off as
+  vocabulary-bridging, and cover two of the three episodic misses without any
+  temporal wiring. That is the largest addressable set left, so it takes
+  position 4. **(3) The ceiling is now legible and the target must move.**
+  Perfect 3-term conversion gives 55/64 = 85.9%; at task 3.5's observed 11/16
+  fusion-conversion rate, realistically ~83%, plus temporal's unique `ep09`.
+  The residue — `pp05`, `pp09`, `pp17` and the five written-off — is
+  pure-paraphrase and vocabulary bridging, which this design explicitly
+  scoped to the alias/filing arc. **So the stated 70–90% band stands as
+  reachable and >90% does not belong to this design**; recording that here
+  rather than letting the next rung chase it. Why not run temporal anyway
+  since it is written: its expected value is negative against a stratum that
+  just went 7/12 → 9/12, and deferring costs nothing because the
+  `after:`/`before:` bounds already exist for callers that set them.
+  **Re-audit trigger:** if the hook cutover shows real prompts carrying date
+  phrases far more often than the gold set's standalone questions do, step
+  5.5's upside is larger than measured here and its sizing should be redone
+  against hook traffic rather than against the gold set.
 
 - **2026-08-14 · step 3.5 (question passthrough) measured: 75.0% R@5, well
   past its own floor, zero stratum regressions.** `agentmd search -question`
