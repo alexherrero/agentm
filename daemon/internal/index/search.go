@@ -190,6 +190,28 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 // 1.0–1.3 MB. Six of 206 benchmark queries cost four to six seconds each. Rank
 // first and the scan is priced for the five rows anyone will read.
 func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutcome, error) {
+	out, wonBy, err := x.andRanked(text, k, after, before)
+	if err != nil {
+		return out, err
+	}
+
+	// The expression FTS5 actually ran, which is the sanitized one when the
+	// original was not valid syntax. Snippets have to be produced by the same
+	// expression that produced the rows, or they would highlight different
+	// phrases than the ranking saw.
+	if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// andRanked is searchAnd's ranking half, without the snippet pass: it returns the
+// penalized top k and the match expression that won each row.
+//
+// The split exists because a snippet is priced per document scanned, not per row
+// returned, so it must never be computed for a row the caller will not see. See
+// fusionRanked, which the same reasoning splits for the same reason.
+func (x *Index) andRanked(text string, k int, after, before string) (SearchOutcome, map[string]string, error) {
 	out := SearchOutcome{Results: []Result{}}
 
 	limit := note.Overfetch
@@ -199,19 +221,18 @@ func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutco
 
 	rows, matchExpr, note1, err := x.match(text, after, before, limit)
 	if err != nil {
-		return out, err
+		return out, nil, err
 	}
 	out.Note = note1
 	out.Matched = len(rows)
 
 	out.Results = penalizeAndRank(rows, k)
 
-	// matchExpr is the expression FTS5 actually ran, which is the sanitized one
-	// when the original was not valid syntax. Snippets have to be produced by the
-	// same expression that produced the rows, or they would highlight different
-	// phrases than the ranking saw.
-	if err := x.fillSnippets(matchExpr, out.Results); err != nil {
-		return out, err
+	// One expression won every row here, unlike fusion's per-subset map, but the
+	// shape is shared so both paths snippet through one function.
+	wonBy := make(map[string]string, len(out.Results))
+	for _, r := range out.Results {
+		wonBy[r.Path] = matchExpr
 	}
 
 	if len(out.Results) == 0 && out.Note == "" {
@@ -220,7 +241,7 @@ func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutco
 			"words, then a different vocabulary for the same idea. Answer \"nothing " +
 			"found\" only after distinct vocabularies have failed."
 	}
-	return out, nil
+	return out, wonBy, nil
 }
 
 // penalizeAndRank applies the measured class penalty, orders by the adjusted
@@ -292,11 +313,36 @@ func penalizeAndRank(rows []Result, k int) []Result {
 // three terms has no triple regardless of lex3 and falls through unchanged: the
 // bound `l := j + 1; l < len(terms)` is simply never satisfied.
 func (x *Index) searchFusion(text string, k int, after, before string, lex3 bool) (SearchOutcome, error) {
+	out, wonBy, err := x.fusionRanked(text, k, after, before, lex3)
+	if err != nil {
+		return out, err
+	}
+	if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// fusionRanked is searchFusion's ranking half, without the snippet pass: it
+// returns the penalized top k and the subset expression that won each row.
+//
+// The split is what keeps a hybrid search's cost proportional to what its caller
+// asked for. `snippet()` scans the document it is called on looking for match
+// positions, so the pass is priced per document snippeted and, within a
+// document, by how often the query's terms occur in it — not by how many rows
+// were returned, and not by note size. Measured on one 1 MB note with only the
+// query changing: 223ms when its two terms occur 7,647 and 296 times, 10ms when
+// they occur 3 and 296. searchHybrid reads this arm to rrfDepth (50) because RRF
+// needs the ranks, but shows the caller k; snippeting all 50 there cost 6.4s
+// against 26ms of ranking on the operator's corpus. Ranking is flat in k — the
+// over-fetch window is note.Overfetch regardless — so every bit of that was
+// decorative text for rows nobody would see.
+func (x *Index) fusionRanked(text string, k int, after, before string, lex3 bool) (SearchOutcome, map[string]string, error) {
 	terms := dedupeTerms(ftsTokenRe.FindAllString(text, -1))
 	if len(terms) < 2 {
 		// One term has no two-term subset, and the fused ranking for it is just
 		// that term's own. Fall back rather than return nothing.
-		return x.searchAnd(text, k, after, before)
+		return x.andRanked(text, k, after, before)
 	}
 
 	out := SearchOutcome{Results: []Result{}}
@@ -348,14 +394,10 @@ func (x *Index) searchFusion(text string, k int, after, before string, lex3 bool
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	out.Results = penalizeAndRank(rows, k)
 
-	if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
-		return out, err
-	}
-
 	if len(out.Results) == 0 {
 		out.Note = "0 results. No two terms of this query appear together in any one note."
 	}
-	return out, nil
+	return out, wonBy, nil
 }
 
 // rrfDepth is how deep each arm is read before fusion.
@@ -383,7 +425,10 @@ const rrfDepth = 50
 // lexical arm and says so in the note. A caller that asked for hybrid and got
 // hybrid-minus-one-arm has a worse search; a caller that got an error has none.
 func (x *Index) searchHybrid(text string, k int, after, before string, q Query) (SearchOutcome, error) {
-	lexical, err := x.searchFusion(text, rrfDepth, after, before, q.Lex3)
+	// Ranked, not snippeted. This arm is read to rrfDepth for its ranks; the
+	// snippet pass runs once at the end, over the k rows that actually survive
+	// fusion — see fusionRanked for what snippeting all fifty costs.
+	lexical, wonBy, err := x.fusionRanked(text, rrfDepth, after, before, q.Lex3)
 	if err != nil {
 		return lexical, err
 	}
@@ -396,6 +441,9 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		out.Note = joinNotes(out.Note,
 			"hybrid was requested but no query vector was available; "+
 				"this is the lexical arm alone (check `agentmd status` for the embedder)")
+		if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
+			return out, err
+		}
 		return out, nil
 	}
 
@@ -415,16 +463,30 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		out.Results = out.Results[:k]
 	}
 
-	// Snippets come from the lexical arm's own expressions. A note the dense arm
-	// found and the lexical arm did not has no matching phrase to highlight —
-	// that is what crossing a vocabulary gap means — so it comes back without one
+	// Snippets come from the lexical arm's own expressions, and are computed here
+	// rather than inside that arm so the scan is priced for the k rows the caller
+	// receives instead of for all rrfDepth candidates. A note the dense arm found
+	// and the lexical arm did not has no matching phrase to highlight — that is
+	// what crossing a vocabulary gap means — so it comes back without a snippet
 	// rather than with a misleading extract of its opening line.
-	byPath := make(map[string]string, len(lexical.Results))
+	//
+	// Eligibility is the lexical arm's own returned rows, not every candidate it
+	// considered. fusionRanked's wonBy covers all of them — for a broad query that
+	// is hundreds — so snippeting straight from it would hand a highlighted extract
+	// to a row that matched lexically far below the fusion window and was promoted
+	// here by the dense arm, where before this change it came back bare. That may
+	// well be the better answer, but it is a change to what gets injected into a
+	// prompt, and this is a latency fix; widening the coverage is its own change to
+	// propose and score. Restricting to lexical.Results reproduces the previous
+	// emitted content exactly.
+	eligible := make(map[string]string, len(lexical.Results))
 	for _, r := range lexical.Results {
-		byPath[r.Path] = r.Snippet
+		if expr, ok := wonBy[r.Path]; ok {
+			eligible[r.Path] = expr
+		}
 	}
-	for i := range out.Results {
-		out.Results[i].Snippet = byPath[out.Results[i].Path]
+	if err := x.fillFusedSnippets(out.Results, eligible); err != nil {
+		return out, err
 	}
 
 	if len(out.Results) == 0 {

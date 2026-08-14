@@ -222,6 +222,106 @@ at capture time are already standing practice and need no build.
 
 *Newest first.*
 
+- **2026-08-14 · the step-5 latency cliff root-caused: it is `snippet()`, not
+  `rrfDepth`, and the fix costs no recall.** Step 5 flagged a 6-second cliff on
+  3 of 84 gold questions and named hybrid's fixed fusion depth as the suspect,
+  with a follow-up to investigate `searchFusion`'s `k`-scaling. That follow-up
+  ran, and the suspected mechanism is refuted. The lexical arm's over-fetch
+  window is `max(note.Overfetch, k)`, so for every `k` at or below 200 the
+  ranking query is *identical* — measured flat at 22.7–24.4ms across
+  `k` ∈ {10, 20, 30, 40, 50} on the frozen `goldv2-20260812` corpus, while total
+  time went 26ms → 6,500ms over the same sweep. All of the growth is the snippet
+  pass.
+
+  What drives that pass is **how often the query's terms occur in a document,
+  not how large the document is** — established on a within-document control
+  rather than a correlation, and timed through the system `sqlite3` CLI so the
+  instrument is not the implementation agreeing with itself. Ranking the full
+  200-row window costs 3ms. Holding one 1,032,973-byte note fixed and changing
+  only the query, `snippet()` costs 223ms under `"server" "model"` (7,647 × 296
+  occurrences) and 10ms under `"collapse" "model"` (3 × 296) — same bytes, 22×
+  spread. The falsifying case settles it: `dt11`'s returned window is *larger*
+  in bytes than `rd03`'s and far cheaper — 29 rows / 13.2 MB / 1,165 occurrences
+  at 242ms against `rd03`'s 50 rows / 11.9 MB / 100,110 occurrences at 6,446ms.
+  A size-driven account predicts the wrong one. Size correlates only because
+  large notes tend to contain common terms many times over.
+
+  **What changed.** Ranking and snippeting are now separate steps, and the
+  snippet pass runs once, over exactly the rows the caller receives.
+  `searchAnd` and `searchFusion` each split into a ranking half (`andRanked`,
+  `fusionRanked`) that returns the winning match expression per row, plus a thin
+  wrapper that snippets what it is about to return. `searchHybrid` reads its
+  lexical arm to `rrfDepth` for the ranks RRF needs, then fuses, truncates to
+  `k`, and snippets those rows alone — where it previously received fifty
+  already-snippeted rows and discarded all but `k` of them.
+
+  Snippet eligibility is deliberately kept to the lexical arm's own returned
+  rows. `fusionRanked`'s `wonBy` covers every candidate the subset sweep
+  considered — 936 on `rd03` — so snippeting straight from it would newly
+  highlight a row that matched lexically below the fusion window and was
+  promoted into the result by the dense arm, which previously came back bare.
+  That may well be the better answer, but it changes what gets injected into a
+  prompt, and this is a latency fix; widening the coverage is its own change to
+  propose and score. It is the one place where the obvious reading of "pass
+  `wonBy` straight through" silently alters emitted content, so it is pinned by
+  a test rather than left to the next reader's judgement.
+
+  **Latency on the production call shape.** Measured as `recall._daemon_search`
+  actually issues it — `-k 10 -mode hybrid -question <raw prompt>`, embedder
+  live — because that subprocess is what the 250ms budget bounds. p50 87.6ms →
+  77.9ms, p90 96.1ms → 86.3ms, max 6,322.8ms → **110.3ms**, and questions over
+  budget **2 → 0** (`dt11` at 295ms and `rd03` at 6,323ms before; none after).
+  An earlier pass of this work reported 1 → 0 from a `-no-embedder` run: that
+  shape skips the dense arm and pays no embedding round-trip, and it understated
+  `dt11`, which sits at 242ms without the round-trip and 295ms with it. A
+  production claim has to be measured on the production path.
+
+  **No column moves, measured rather than argued.** The reasoning that ranks are
+  free is sound, but "a latency fix that costs no recall" is exactly the claim
+  that should be measured, because that is the shape the error would take if the
+  reasoning were quietly wrong. All four landed columns were re-scored on before
+  and after binaries against the frozen corpus with the dense arm live — 84
+  questions × 4 arms = 336 rows each — compared per question rather than in
+  aggregate, and on returned paths, snippet text, scores and hit vectors rather
+  than verdicts alone, since task 2.5 had stratum counts look flat while `rc08`
+  and `ep05` silently swapped. **Zero rows differ in any field.** `and` 7/64,
+  `fusion` 27/64, `+lex3` 32/64, `hybrid --question` 48/64, identical on both
+  sides; those also reproduce the landed record independently, which is the
+  check that the rebuilt index is the one those columns were scored against.
+  Per-question tables are in NOTES.md rather than repeated here.
+
+  **Why not lower `rrfDepth`.** Because the depth was never the cost. Fifty
+  ranks are free — reading the arm deeper does not touch the over-fetch window,
+  which is 200 either way — so trading measured recall for latency would have
+  bought nothing that decoupling the snippet pass did not buy outright. The
+  pre-registered rule that a change to `rrfDepth` or the over-fetch policy must
+  state its expectation before measuring is untriggered here: neither was
+  changed, and both keep the values step 2 chose.
+
+  **A larger, older hazard is now on record, and is not fixed here.** The same
+  mechanism ships on `main` today, predates this plan entirely, and is worse
+  there, because it does not need a deep `k` to fire — it only needs one note in
+  the top few rows carrying a query term thousands of times. Measured on `main`'s
+  own binary against the same corpus, `agentmd search -k 5 "mcp servers"` costs
+  **10.0 seconds** and `-k 50` costs **43.3 seconds**, because three of that
+  query's top five are ~1 MB server lists in which "servers" occurs in the
+  thousands. This is reachable in production: the MCP `memory_search` tool takes
+  a caller-supplied `k` clamped to 50, and has no equivalent of the
+  prompt-submit hook's 250ms subprocess budget to bound it. It is left unfixed
+  deliberately — every remedy changes which text an agent reads (cap snippets by
+  size or occurrence count, chunk large notes in the lexical index as step 3
+  already does for the vector arm, or lower the MCP clamp), and that is a
+  product call for the operator rather than a refactor. **Re-audit trigger:** a
+  `memory_search` or CLI call that visibly stalls, or corpus growth that puts
+  term-dense notes of this shape into ordinary top-5 results.
+
+  **The invariant is now executable.** `Index.snippetedDocs` already existed and
+  already documented this exact rule — "it is called for the k rows a caller
+  reads and not for the 200-row over-fetch window" — and nothing asserted on it
+  for the fusion or hybrid paths, which is how the regression reached a shipped
+  column. `snippetcost_test.go` pins it per mode, and fails on the pre-fix code
+  with `snippet() saw 50 documents for a k=5 search` for both hybrid branches
+  while passing for `and` and `fusion`, which were always correct.
 - **2026-08-14 · step 5.5 (temporal wiring) measured: rule met, byte-identical
   to `hook e2e`, and the extractor never fires on this gold set.**
   `_extract_temporal_bound` (`harness/skills/memory/scripts/recall.py`) is a
