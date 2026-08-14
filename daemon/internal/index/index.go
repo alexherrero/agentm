@@ -622,6 +622,31 @@ func (x *Index) Stats() (Stats, error) {
 	return s, nil
 }
 
+// DocText returns a note's title and body as currently indexed, for a caller
+// that needs to re-derive something from the text itself rather than from
+// what Search already computed over it — the cross-encoder rerank's chunk
+// regeneration is the first of these. This package does not chunk or embed
+// anything on its own (see the vector arm's own doc comment on why: staying
+// a pure SQLite consumer is what keeps every model a caller-side concern),
+// so it hands back the raw text and lets the caller call index.ChunkText
+// itself, exactly as it already supplies its own query vector.
+//
+// ok is false when the path is not indexed — vanished between the search
+// that found it and this call, which is a live race rather than a fault, or
+// never indexed at all.
+func (x *Index) DocText(path string) (title, body string, ok bool, err error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+	err = x.db.QueryRow(`SELECT title, body FROM docs WHERE path = ?`, path).Scan(&title, &body)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", false, nil
+	}
+	if err != nil {
+		return "", "", false, err
+	}
+	return title, body, true, nil
+}
+
 // Paths returns every indexed path, sorted. Used by the parity command.
 func (x *Index) Paths() ([]string, error) {
 	x.mu.Lock()

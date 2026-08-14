@@ -105,6 +105,17 @@ type SearchOutcome struct {
 	Note string `json:"note,omitempty"`
 	// Matched is how many rows the over-fetch window saw before re-ranking.
 	Matched int `json:"matched"`
+
+	// RerankMS and RerankPairs describe a cross-encoder pass, when one ran.
+	// This package never sets them itself — reranking is a caller-side
+	// concern for the same layering reason ModeHybrid's query vector is
+	// computed by the caller (see the vector arm's own doc comment): this
+	// package stays a pure SQLite consumer with no notion of a child
+	// process. A caller that reranked fills these in before returning its
+	// own SearchOutcome, so `agentmd search -mode rerank -json` can report
+	// milliseconds per (query, chunk) pair without a second round trip.
+	RerankMS    float64 `json:"rerank_ms,omitempty"`
+	RerankPairs int     `json:"rerank_pairs,omitempty"`
 }
 
 var ftsTokenRe = regexp.MustCompile(`[A-Za-z0-9_]+`)

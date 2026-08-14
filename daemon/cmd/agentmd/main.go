@@ -352,8 +352,10 @@ func cmdSearch(args []string) error {
 	before := fs.String("before", "", "only notes captured before this date")
 	mode := fs.String("mode", index.ModeAnd,
 		"how to combine terms: `and` (every term in one note), `fusion` (best two-term subset), "+
-			"or `hybrid` (fusion + dense vectors, fused by reciprocal rank)")
+			"`hybrid` (fusion + dense vectors, fused by reciprocal rank), or "+
+			"`rerank` (hybrid's fused top-20, cross-encoder reranked and floored)")
 	ef := bindEmbedderFlags(fs)
+	rf := bindRerankerFlags(fs)
 	asJSON := fs.Bool("json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -369,9 +371,22 @@ func cmdSearch(args []string) error {
 	}
 	defer idx.Close()
 
-	q := index.Query{Text: query, K: *k, After: *after, Before: *before, Mode: *mode}
-	if *mode == index.ModeHybrid {
-		ctx, cancel := context.WithCancel(context.Background())
+	// "rerank" is a CLI-level arm, not an index.Query.Mode — see modeRerank's
+	// doc comment. It runs the index's own hybrid mode at the rerank depth
+	// rather than the caller's requested k, since the cross-encoder needs the
+	// fused top-20 to have anything worth reranking; the caller's k is applied
+	// after the floor, in rerankFused.
+	rerankRequested := *mode == modeRerank
+	innerMode, innerK := *mode, *k
+	if rerankRequested {
+		innerMode, innerK = index.ModeHybrid, rerankDepth
+	}
+
+	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode}
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if innerMode == index.ModeHybrid {
+		ctx, cancel = context.WithCancel(context.Background())
 		defer cancel()
 		// A one-shot hybrid search has to have a model in hand before it can ask
 		// anything, so unlike `serve` it waits. Attaching to a running server via
@@ -389,6 +404,20 @@ func cmdSearch(args []string) error {
 	out, err := idx.Search(q)
 	if err != nil {
 		return err
+	}
+
+	if rerankRequested {
+		// ctx is never nil here: rerankRequested forces innerMode ==
+		// ModeHybrid above, which is what set it.
+		rsup, err := startReranker(ctx, cfg, *rf, quietLogger(), 3*time.Minute)
+		if err != nil {
+			return err
+		}
+		defer rsup.Close()
+		out, err = rerankFused(ctx, idx, rsup, query, out, *k)
+		if err != nil {
+			return err
+		}
 	}
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(out)

@@ -167,15 +167,15 @@ reaches **23/53 (43%)** at both n=2 and n=3.
 
 **On the full gold set it fails its own rule.**
 
-| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking |
-|---|---:|---:|---:|---:|---:|
-| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 |
-| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 |
-| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 |
-| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 |
-| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 |
-| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** |
-| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** |
+| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking | +rerank+floor |
+|---|---:|---:|---:|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 | 7/12 |
+| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 | 7/12 |
+| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 | 6/18 |
+| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 | 3/12 |
+| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 | 2/10 |
+| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** |
+| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** | **40%** |
 
 Recall nearly quadrupled and rejection went to zero — every one of the 20
 negatives returned a confident wrong answer. The pre-registered floor was
@@ -385,3 +385,201 @@ documents long enough to contain every term. Their hybrid headline (82.86%)
 happens to land near our *oracle ceiling* (82.8%), which is a coincidence of
 two unrelated quantities and should not be read as a target we have reached
 in principle. Compare shapes and mechanisms with them; do not compare levels.
+
+---
+
+# Task 3: cross-encoder rerank + floor — refuted
+
+Run 2026-08-13 on the same frozen corpus, rule re-anchored before any code
+(see the plan's task 3, *"Re-anchored 2026-08-13, before any task-3 code"*):
+**negative rejection ≥70% (≥14/20 return nothing) while overall R@5 ≥ the
+`+chunking` column (36/64 = 56.2%).**
+
+## Recovery ceiling, measured before the floor was chosen
+
+Scored the chunked hybrid arm at `k=20` and counted, for each of the 28
+current `+chunking` misses, whether an expected note appears anywhere in the
+fused top-20. **14 of 28 reachable** — that is the rerank's entire recovery
+ceiling; the other 14 are not candidates fusion ever retrieved, and no
+reranker can surface what fusion never returned. Even a perfect reranker
+recovering all 14 caps the ladder at 50/64 = 78.1%, before any floor removes
+a single false positive.
+
+**Watchlist, both checked reachable before scoring.** `ep05` (episodic, the
+`ep03`-masked displacement casualty) sits at fused rank 6; `rc08`
+(research-corpus, the rank-5-to-outside-top-5 casualty) sits at fused rank 7.
+Both inside the top-20, so both are fair tests of the mechanism.
+
+## Bake-off: jina wins both axes and is far cheaper; neither clears the rule
+
+`bge-reranker-v2-m3-Q8_0` and `jina-reranker-v2-base-multilingual-Q8_0`, both
+already installed with verified hashes (see progress-hybrid-retrieval.md's
+task-3 prerequisites). Full 84-question run, both models, same fused
+candidates, same floor-derivation discipline:
+
+| | bge-reranker-v2-m3 | jina-reranker-v2-base-multilingual |
+|---|---:|---:|
+| distinctive-token | 7/12 | 7/12 |
+| episodic-temporal | 7/12 | 7/12 |
+| pure-paraphrase | 6/18 | 6/18 |
+| research-corpus | 3/12 | 3/12 |
+| research-density | 1/10 | 2/10 |
+| **R@5** | **32.8%** (21/64) | **39.1%** (25/64) |
+| **negative rejection** | **10%** (2/20) | **40%** (8/20) |
+| CE ms/pair, p50 / p90 | 125.5 / 176.0 | 17.7 / 30.0 |
+| mean pairs/query | 58.8 | 98.8 |
+| whole-search latency, p50 / p90 | 7.5s / 15.0s | 2.1s / 4.0s |
+
+jina wins on R@5, wins on rejection, and is roughly 7x cheaper per pair
+despite averaging *more* pairs per query — its own context window is 1024
+tokens against bge's 2048 (measured, see `daemon/internal/rerank/model.go`'s
+catalog comment; `llama-server`'s `/props` reports `n_ctx: 1024` for jina
+regardless of the `-c 2048` launch flag, the identical
+smaller-than-launched-window phenomenon task 2 found on EmbeddingGemma), so
+its chunks are smaller and there are more of them. **jina is the model that
+would ship if either did**; neither clears the rule, so neither ships. The
+`+rerank+floor` column above is jina's run.
+
+## Three defect hypotheses, ruled out before accepting the numbers
+
+A cross-encoder measured at +1.93 relevant / −11.04 irrelevant on its own
+probe does not plausibly halve recall on every stratum by wiring alone —
+that is the shape of a bug, not a model verdict, and task 2's own precedent
+(three defects, "two of which made a working model look broken") is reason
+enough to check before writing anything down.
+
+1. **Pair count.** `rerank_pairs` ran 20-136 (mean 58.8-98.8), which reads
+   large against "the fused top-20." Verified via the daemon's own `matched`
+   field, which is separate from `rerank_pairs`: `matched` was 20 on every
+   query that reached the reranker — exactly 20 fused *candidates*, always.
+   `rerank_pairs` is those 20 candidates chunk-expanded (the pre-registered
+   policy below), and running that far above 20 is `research-corpus` and
+   `research-density`'s own long documents, not a wrong candidate set.
+2. **Floor scale.** Verified two points directly against the daemon's raw
+   JSON output: `rc08`'s candidate scored bge raw −4.005 → sigmoid 0.0179,
+   correctly below the 0.10 floor; a returned negative (`ng15`, "rollback
+   procedure fts5 index schema changes") scored raw −0.708 → sigmoid 0.330,
+   correctly above it. The arithmetic is right on both sides of the floor;
+   the floor is simply too low to catch this negative, which is the finding
+   below, not a bug.
+3. **Chunk vs. head.** `TestRerankFusedScoresCandidateByBestChunk`
+   (`daemon/cmd/agentmd/rerank_test.go`) pins a long candidate whose answer
+   text sits past the first chunk and asserts it still survives — passing,
+   plus the pair counts above are direct evidence multi-chunk scoring is
+   really happening, not a single head chunk repeated.
+
+All three ruled out. The numbers are a measurement.
+
+## The chunk-scoring policy, pre-registered
+
+`Result` carries no chunk index — verified (`ChunkIdx` exists on `VectorRow`,
+not on `Result`). Policy chosen before scoring: **every fused candidate is
+re-chunked from the index's own stored text (`Index.DocText`, new) using the
+same `ChunkText` the embedder uses, CE-scored chunk by chunk, and kept at its
+best-scoring chunk** — the identical "score a note by its best chunk" rule
+`VectorSearch` already applies to the dense arm, now applied to the
+cross-encoder. This is uniform regardless of which arm surfaced a candidate:
+a lexical-only hit is chunked and scored exactly like a dense hit, because
+both are just text fetched fresh from the index at rerank time. Capped at 20
+chunks per candidate (`maxChunksPerCandidate`) so one out-of-scope file the
+lexical arm alone surfaces (never bounded by the embedder's own chunking)
+cannot dominate a single query's pair budget; never observed to bind on an
+in-scope note.
+
+**A finding the implementation forced, not anticipated.** The cross-encoder
+scores query and document as one joined sequence — unlike the embedder,
+which scores them in two separate passes each fitting the window whole — so
+a chunk sized to the embedder's own budget left no room for the query once
+the two shared a sequence: the first real query tried overflowed the
+physical batch on 5 of 43 real candidate chunks. Fixed with a 128-token
+reserve subtracted before chunking for rerank specifically
+(`rerankQueryReserve`) plus a per-document shorten-and-retry fallback
+(`scoreDocuments`, mirroring `embedBatch`'s identical fallback for the
+embedder's own budget-estimate error) as the real backstop — the reserve
+only decides how often that backstop has to run, not whether the system is
+correct.
+
+## Why the floor derivation looked clean off-gold and wasn't enough
+
+Twelve answerable and twelve negative (query, passage) pairs, built from the
+frozen corpus, excluding every gold-set expected-answer path and every gold
+question's own phrasing (never swept against gold). bge separated sharply —
+negatives at or below sigmoid 0.0237, answerables at or above 0.9374 except
+one genuine hard case at 0.2520 — so the floor was derived from bge's own
+measured gap (0.10) rather than the literature's ~0.35 prior, which would
+have discarded that hard case. jina's own probe distribution was more
+compressed (negatives mostly under 0.05, one hard case at 0.2251; answerables
+0.4677-0.8686) and the 0.35 prior survived its own sanity check there
+unchanged.
+
+**The probe's negatives were the easy kind.** Every off-gold negative was a
+genuine topic mismatch (a homelab question against a blog-ads plan; "what is
+the capital of France" against a workflow note). The gold set's 20 negatives
+are the hard kind: plausible questions about topics the corpus *does*
+discuss at length but does not specifically answer — `ng15` above, or `ng09`
+("decide rate limiting daemon http surface" against a real MCP-memory-server
+research note). A general-purpose cross-encoder trained on natural-language
+query-passage relevance reads "topically adjacent, densely related internal
+engineering corpus" as relevant enough to clear a floor calibrated against
+obviously-unrelated pairs. This is measurably the same failure the design
+document already named for BM25 — *"a plausible question about a
+well-discussed topic outscores a question answered by one small note"* —
+recurring one layer up, on a signal the design's own premise (*"a
+cross-encoder score is a calibrated relevance judgment... the signal a BM25
+floor pretends to be and measurably is not"*) expected to be immune to it.
+
+## Recovered vs. lost, against `+chunking`'s 36 hits
+
+| | bge | jina |
+|---|---:|---:|
+| of 14 reachable misses, recovered | 3 (`ep05`, `pp06`, `pp10`) | 2 (`ep05`, `pp05`) |
+| of 36 `+chunking` hits, lost | 18 | 13 |
+| net R@5 | 36 − 18 + 3 = 21/64 | 36 − 13 + 2 = 25/64 |
+
+**Watchlist verdict.** Both models recover `ep05` — real evidence the
+mechanism does what a reranker is for when it works: a topically-related
+wrong chunk outranking the right note, reversed. Neither recovers `rc08`;
+both floor it to empty (bge sigmoid 0.0179, jina's candidate scored
+similarly below its 0.35 floor). `rc08` was reachable, so this is a genuine
+recovery failure, not an unreachable target reported as one — the mechanism
+tried and the cross-encoder was simply not confident in the correct pairing
+for a `_daemon_query_terms`-reduced query against a short, abstractly-worded
+note.
+
+**The dominant failure mode is ranking, not the floor.** Of jina's 39
+misses, 21 were the cross-encoder outranking a wrong candidate above the
+right one (survived the floor, lost the ranking) against 18 floored to
+empty; bge split 31 outranked against 12 floored. Even a floor of zero would
+not have rescued most of this loss — the cross-encoder's own relevance
+ordering disagrees with the gold labels more often than fusion's did, which
+a floor cannot fix by being better placed.
+
+## Verdict
+
+**Refuted, on both clauses, for both candidates.** jina — the model that
+would ship — reaches 39.1% R@5 against a ≥56.2% requirement and 40%
+rejection against a ≥70% requirement. Per the plan's own ground rule, this
+is recorded and reverted rather than shipped on partial credit; no rerank
+mode reaches production. Per the design's own amendment log entry (dated
+2026-08-12, *"the cross-encoder floor is load-bearing earlier than
+stated"*), this **promotes the deliberate path's LLM rejection gate from
+optional to load-bearing** — the fast path's own rejection story (both the
+BM25 floor and now the CE floor) does not hold on this corpus, so a
+consumer that needs correct rejection has to pay for judgment rather than a
+score threshold.
+
+**What this does not refute.** The dense arm (`+vector RRF`, `+chunking`)
+stands; nothing here touches fusion or the vector arm's own 56.2%. `ep05`'s
+recovery is real evidence the rerank mechanism is not broken in principle —
+it is under-powered against this corpus's topical density and this query
+representation, not inert.
+
+**For task 4.** The hook-latency question is now separately urgent: jina's
+own CE cost alone runs p50 17.7ms/pair x ~99 pairs/query mean ≈ 1.7s, and
+bge's p50 125ms/pair x ~59 pairs/query mean ≈ 7.4s — both far past the
+300ms warm budget task 5 has to clear, before counting fusion, embedding, or
+CLI overhead. Since rerank does not ship, this is not task 5's problem to
+solve today, but it is the reason a floor-only, no-rerank hook path (fusion
++ vector + a BM25-style floor, or the LLM gate directly) is worth
+considering there rather than assuming rerank was simply pending a latency
+optimization.

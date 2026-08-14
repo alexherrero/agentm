@@ -143,7 +143,7 @@ changes what an AND leaves standing.
 | 0 | `and-of-6` | measured: 10.9% R@5 / 35% rejection | 10.9% / 35% |
 | 1 | `lexical-fusion` | reproduces ~42% in-daemon, flag-gated, hook untouched | 42.2% / 0% — met |
 | 2 | `+vector RRF` | paraphrase ≥50%, research-corpus ≥58%, distinctive-token does not regress | 54.7% overall; research-corpus 58.3% and distinctive-token 8/12 met, **paraphrase 38.9% missed** |
-| 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ step 2 | |
+| 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. |
 | 4 | `+temporal` | episodic ≥60%, others flat | |
 | 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 | |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
@@ -198,6 +198,37 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-13 · step 3's cross-encoder floor is refuted; the deliberate
+  path's LLM rejection gate is promoted from optional to load-bearing.**
+  Bake-off between `bge-reranker-v2-m3` and `jina-reranker-v2-base-
+  multilingual`, both scored on the full 84-question gold set with a floor
+  derived off-gold before either run. jina won both axes and ran roughly 7x
+  cheaper per pair, and still reached only 39.1% R@5 against the ≥56.2%
+  requirement and 40% rejection against ≥70% (bge: 32.8% / 10%). Three defect
+  hypotheses (wrong candidate count, floor scale, head-only chunk blindness)
+  were checked directly against the daemon's own JSON output and a targeted
+  unit test before accepting the numbers — none held; see
+  `scripts/health/results/goldv2/NOTES.md`'s task-3 section for the full
+  investigation. The mechanism is not inert: both models recovered the `ep05`
+  watchlist casualty, real evidence a topically-related wrong chunk can be
+  outranked by the right note when the cross-encoder is confident. It mostly
+  is not confident enough on this corpus — a general-purpose cross-encoder
+  reads "topically adjacent, densely related internal engineering document"
+  as relevant enough to survive an off-gold-calibrated floor, which is
+  measurably the same failure this design already named for BM25 (*"a
+  plausible question about a well-discussed topic outscores a question
+  answered by one small note"*) recurring on the signal meant to be immune to
+  it. Why not raise the floor to fix rejection: the dominant failure mode
+  (21-31 of the misses, both models) is the cross-encoder outranking a wrong
+  candidate above the right one, which survives any floor placement — the
+  ranking itself disagrees with the gold labels, not merely the threshold.
+  Why not ship the better-of-two anyway: the rule is a rule, not a
+  leaderboard, and the ladder's own principle is that a rung failing its
+  rule is not a rung. **Re-audit trigger:** a fine-tuned or larger
+  cross-encoder, or a query representation richer than
+  `_daemon_query_terms`'s reduced keywords — both out of this design's
+  current scope, recorded as live hypotheses rather than ruled out.
 
 - **2026-08-12 · the vector arm's scope widened from `memory/` to `memory/` +
   `desk/` + `external/`, and the step-2 rule's paraphrase clause recorded as

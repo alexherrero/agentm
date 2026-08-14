@@ -50,11 +50,15 @@ if str(_MEMORY_SCRIPTS) not in sys.path:
 import recall  # noqa: E402  (production query-term extraction)
 
 
-# The daemon's own words when a hybrid search ran without its vector arm. Matched
-# rather than inferred: a run that silently became lexical partway through would
-# otherwise be published as a hybrid column, and the number would be wrong in the
-# one direction nobody checks — downward, which reads as "the model did not help."
-DEGRADED_MARK = "lexical arm alone"
+# The daemon's own words when an arm ran without one of its children. Matched
+# rather than inferred: a run that silently lost an arm partway through would
+# otherwise be published under the full arm's label, and the number would be
+# wrong in the one direction nobody checks — downward, which reads as "the
+# model did not help." Two markers: the dense arm falling back to lexical
+# (task 2), and the cross-encoder pass falling back to unreranked hybrid
+# (task 3) — either one means a `+rerank+floor` column would be reporting a
+# weaker arm than its own header claims.
+DEGRADED_MARKS = ("lexical arm alone", "no reranker was available")
 
 
 def to_query(question: str) -> str:
@@ -72,8 +76,10 @@ def to_query(question: str) -> str:
 
 
 def search(query: str, k: int, mode: str = "and",
-           target: tuple = ()) -> tuple[list[str], float]:
-    """Top-k paths for a query, and the wall time in milliseconds.
+           target: tuple = ()) -> tuple[list[str], float, str, float | None, int | None]:
+    """Top-k paths for a query, the wall time in milliseconds, the daemon's
+    note, and — for `-mode rerank` only — the cross-encoder's own wall time
+    and pair count for this one query.
 
     The arm is selected by the daemon's own `-mode` flag rather than simulated
     here. An arm the scorecard implements itself is an arm nobody can ship: the
@@ -96,13 +102,14 @@ def search(query: str, k: int, mode: str = "and",
     out = proc.stdout
     brace = out.find("{")
     if brace < 0:
-        return [], elapsed, ""
+        return [], elapsed, "", None, None
     try:
         doc = json.loads(out[brace:])
     except json.JSONDecodeError:
-        return [], elapsed, ""
+        return [], elapsed, "", None, None
     return ([r.get("path", "") for r in (doc.get("results") or [])],
-            elapsed, doc.get("note") or "")
+            elapsed, doc.get("note") or "",
+            doc.get("rerank_ms"), doc.get("rerank_pairs"))
 
 
 def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) -> dict:
@@ -110,7 +117,10 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) ->
     for e in entries:
         expected = e.get("expected_note_paths") or []
         query = to_query(e["question"])
-        ranked, ms, note = search(query, k, mode, target) if query else ([], 0.0, "")
+        if query:
+            ranked, ms, note, rerank_ms, rerank_pairs = search(query, k, mode, target)
+        else:
+            ranked, ms, note, rerank_ms, rerank_pairs = [], 0.0, "", None, None
         hits = [p for p in expected if p in ranked]
         first = min((ranked.index(p) + 1 for p in hits), default=None)
         rows.append({
@@ -126,11 +136,13 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) ->
             "expected": expected,
             "top": ranked[:k],
             "ms": round(ms, 1),
+            "rerank_ms": rerank_ms,
+            "rerank_pairs": rerank_pairs,
             "alias_overlap": e.get("alias_overlap"),
             # The daemon says so when it served a mode it could not fully honor.
             # Carried per row because a run that degraded halfway is the case
             # this is here to catch, and an aggregate would hide which half.
-            "degraded": DEGRADED_MARK in note,
+            "degraded": any(mark in note for mark in DEGRADED_MARKS),
         })
     return {"rows": rows}
 
@@ -145,7 +157,12 @@ def render(result: dict, k: int) -> str:
     # The header has to stop claiming "no model in the loop" once there is one.
     # A hybrid column filed under a lexical banner is the kind of mislabel that
     # survives into a design doc and gets cited as a lexical result.
-    if mode == "hybrid":
+    if mode == "rerank":
+        channel = (f"hybrid + cross-encoder rerank + floor, "
+                   f"embedder={result.get('embed_model') or '?'}, "
+                   f"reranker={result.get('rerank_model') or '?'}")
+        caveat = "two local models, no network, no LLM call; retrieval is still deterministic"
+    elif mode == "hybrid":
         channel = f"hybrid (FTS5 + dense vectors, RRF), embedder={result.get('embed_model') or '?'}"
         caveat = "the dense arm is a local embedding model; retrieval is still deterministic"
     else:
@@ -177,6 +194,19 @@ def render(result: dict, k: int) -> str:
     lat = sorted(r["ms"] for r in rows)
     out += ["", f"latency  p50 {lat[len(lat)//2]:.1f}ms   p90 "
                 f"{lat[int(len(lat)*0.9)]:.1f}ms   max {lat[-1]:.1f}ms  (includes CLI startup)"]
+
+    # CE ms/pair: task 5's 300ms feasibility question is priced per pair, not
+    # per query, since a query's pair count varies with how many fused
+    # candidates had more than one chunk. Each row contributes its own
+    # ms-per-pair, so the p50/p90 here is a distribution over queries of "how
+    # long did this query's cross-encoder pass take, divided by how many
+    # pairs it scored" — not a single aggregate hiding per-query variance.
+    ce = sorted(r["rerank_ms"] / r["rerank_pairs"] for r in rows
+                if r.get("rerank_ms") is not None and r.get("rerank_pairs"))
+    if ce:
+        pairs = [r["rerank_pairs"] for r in rows if r.get("rerank_pairs")]
+        out += ["", f"CE ms/pair  p50 {ce[len(ce)//2]:.2f}   p90 {ce[int(len(ce)*0.9)]:.2f}"
+                    f"   (n={len(ce)} queries, {sum(pairs)/len(pairs):.1f} pairs/query mean)"]
 
     overlap = [r for r in rows if r.get("alias_overlap") is not None]
     if overlap:
@@ -278,7 +308,7 @@ def main(argv=None) -> int:
     ap.add_argument("--k", type=int, default=5)
     ap.add_argument("--stratum", default=None, help="score only this stratum")
     ap.add_argument("--json", dest="json_out", default=None)
-    ap.add_argument("--mode", default="and", choices=["and", "fusion", "hybrid"],
+    ap.add_argument("--mode", default="and", choices=["and", "fusion", "hybrid", "rerank"],
                     help="which daemon search mode to score — the arm")
     ap.add_argument("--arm-label", default=None,
                     help="column header used by --append-notes (defaults to --mode)")
@@ -296,18 +326,28 @@ def main(argv=None) -> int:
     ap.add_argument("--embed-model", default=None,
                     help="which model's vectors to score against; must be the model the "
                          "index was embedded with")
+    ap.add_argument("--reranker-url", default=None,
+                    help="reranking server to attach to for --mode rerank. Without it "
+                         "each of the 84 queries spawns and loads its own model")
+    ap.add_argument("--rerank-model", default=None,
+                    help="which reranker model to score with; carries its own floor "
+                         "(daemon/internal/rerank/model.go) — never a runtime knob")
     args = ap.parse_args(argv)
 
     if bool(args.vault) != bool(args.index):
         ap.error("--vault and --index go together: a vault override without its own "
                  "index writes the snapshot's index over the live one")
-    if args.mode == "hybrid" and not args.embedder_url:
-        # Refused rather than allowed-but-slow. A hybrid run without a warm server
-        # still produces numbers, and they would be a model load per query on a
-        # machine already busy — the kind of run that gets abandoned halfway and
+    if args.mode in ("hybrid", "rerank") and not args.embedder_url:
+        # Refused rather than allowed-but-slow. A hybrid (or rerank, which
+        # runs hybrid underneath) run without a warm server still produces
+        # numbers, and they would be a model load per query on a machine
+        # already busy — the kind of run that gets abandoned halfway and
         # half-reported.
-        ap.error("--mode hybrid needs --embedder-url; start one with "
+        ap.error(f"--mode {args.mode} needs --embedder-url; start one with "
                  "`llama-server -m <gguf> --embeddings --pooling mean -np 1 -c <ctx> -ub <ctx>`")
+    if args.mode == "rerank" and not args.reranker_url:
+        ap.error("--mode rerank needs --reranker-url; start one with "
+                 "`llama-server -m <gguf> --rerank -np 1 -c 2048 -b 2048 -ub 2048`")
 
     doc = json.loads(Path(args.gold_set).read_text(encoding="utf-8"))
     entries = doc["entries"] if isinstance(doc, dict) else doc
@@ -322,6 +362,10 @@ def main(argv=None) -> int:
         target += ("-embedder-url", args.embedder_url)
     if args.embed_model:
         target += ("-embed-model", args.embed_model)
+    if args.reranker_url:
+        target += ("-reranker-url", args.reranker_url)
+    if args.rerank_model:
+        target += ("-rerank-model", args.rerank_model)
     result = score(entries, args.k, args.mode, target)
     result["vault"] = args.vault
     result["gold_set"] = Path(args.gold_set).name
@@ -329,18 +373,22 @@ def main(argv=None) -> int:
     result["k"] = args.k
     result["mode"] = args.mode
     result["embed_model"] = args.embed_model
-    # A hybrid run that lost its vector arm partway through is a lexical run
-    # wearing a hybrid label. Refuse to publish it rather than writing a column
-    # whose number is real and whose name is wrong — the ladder's whole value is
-    # that each column means what its header says.
+    result["rerank_model"] = args.rerank_model
+    # An arm that lost a child partway through is a weaker arm wearing a
+    # stronger label — hybrid that silently fell back to lexical, or rerank
+    # that silently fell back to unreranked hybrid. Refuse to publish it
+    # rather than writing a column whose number is real and whose name is
+    # wrong — the ladder's whole value is that each column means what its
+    # header says.
     degraded = [r["id"] for r in result["rows"] if r.get("degraded")]
     if degraded:
         print(f"\nREFUSING TO REPORT: {len(degraded)} of {len(result['rows'])} queries "
-              f"fell back to the lexical arm — the embedder was not serving.",
+              f"fell back to a weaker arm than -mode {args.mode} claims — a child "
+              f"(embedder or reranker) was not serving.",
               file=sys.stderr)
         print(f"  first affected: {', '.join(degraded[:5])}", file=sys.stderr)
         print("  a llama-server can answer /health with 200 while failing every "
-              "embedding; check the server log, restart it, and re-run.", file=sys.stderr)
+              "real request; check the server log, restart it, and re-run.", file=sys.stderr)
         return 3
 
     print(render(result, args.k))

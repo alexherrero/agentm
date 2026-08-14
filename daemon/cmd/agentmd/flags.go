@@ -68,7 +68,7 @@ func splitPositional(args []string) (positional string, rest []string) {
 // Booleans do not; everything else this command set defines does.
 func takesValue(name string) bool {
 	switch name {
-	case "json", "dry-run", "verbose", "from-scratch", "help", "h", "no-embedder", "reset":
+	case "json", "dry-run", "verbose", "from-scratch", "help", "h", "no-embedder", "no-reranker", "reset":
 		return false
 	}
 	return true
@@ -84,6 +84,20 @@ func bindEmbedderFlags(fs *flag.FlagSet) *embedderFlags {
 		"which embedding model to use (default: whatever is installed)")
 	fs.BoolVar(&f.off, "no-embedder", false,
 		"run lexical-only even if a model is installed")
+	return f
+}
+
+// bindRerankerFlags registers the cross-encoder's overrides, mirroring
+// bindEmbedderFlags exactly — same three-way shape (attach / name / off) for
+// the same reason: a second supervised child, resolved the same way.
+func bindRerankerFlags(fs *flag.FlagSet) *rerankerFlags {
+	f := &rerankerFlags{}
+	fs.StringVar(&f.url, "reranker-url", "",
+		"attach to a reranking server already running here instead of spawning one")
+	fs.StringVar(&f.model, "rerank-model", "",
+		"which reranker model to use (default: whatever is installed)")
+	fs.BoolVar(&f.off, "no-reranker", false,
+		"skip cross-encoder reranking even if a model is installed")
 	return f
 }
 

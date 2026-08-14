@@ -439,6 +439,38 @@ func TestUnknownSearchModeIsAnError(t *testing.T) {
 	}
 }
 
+// DocText hands back exactly what Search indexed, so a caller re-deriving
+// chunks for the cross-encoder rerank scores the same text the fused
+// candidate was actually found under.
+func TestDocTextReturnsWhatWasIndexed(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "note.md", "a title", "a body")
+
+	title, body, ok, err := x.DocText("note.md")
+	if err != nil {
+		t.Fatalf("DocText: %v", err)
+	}
+	if !ok {
+		t.Fatal("DocText reported an indexed note as not found")
+	}
+	if title != "a title" || body != "a body" {
+		t.Fatalf("DocText = %q, %q; want %q, %q", title, body, "a title", "a body")
+	}
+}
+
+// A path that vanished between the search that found it and this call is a
+// live race, not an error the caller should have to unwrap.
+func TestDocTextReportsMissingPathAsNotFound(t *testing.T) {
+	x := newTestIndex(t)
+	_, _, ok, err := x.DocText("never-indexed.md")
+	if err != nil {
+		t.Fatalf("DocText on a missing path returned an error instead of ok=false: %v", err)
+	}
+	if ok {
+		t.Fatal("DocText reported a never-indexed path as found")
+	}
+}
+
 func BenchmarkSearchLargeNotes(b *testing.B) {
 	x := newTestIndex(b)
 	buildBigVault(b, x, 24, 1_200_000, 8)

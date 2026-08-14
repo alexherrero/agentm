@@ -138,6 +138,25 @@ type Config struct {
 	// See defaultEmbedScope for why it is three names and not the whole tree.
 	EmbedScope []string
 
+	// --- the reranker ---------------------------------------------------
+
+	// RerankEnabled is the off switch, mirroring EmbedEnabled: true by
+	// default, since an install with no reranker weights on disk already
+	// runs without one, so the switch exists for the case where the weights
+	// are present and the operator wants them left alone.
+	RerankEnabled bool
+
+	// RerankModel names the reranker weights. Empty means "discover whatever
+	// is installed" — the ordinary case once install.sh grows the reranker
+	// leg.
+	RerankModel string
+
+	// RerankerURL attaches to a rerank server someone else is running
+	// instead of spawning a child. Same reason EmbedderURL exists: the
+	// measurement harness scores 84 questions against one warm model rather
+	// than paying a model load per query.
+	RerankerURL string
+
 	// ConfigPath is the file the above was read from, for reporting.
 	ConfigPath string
 }
@@ -367,6 +386,14 @@ func Load(opts Options) (*Config, error) {
 	}
 	if len(c.EmbedScope) == 0 {
 		c.EmbedScope = defaultEmbedScope(strVal(raw, "plugins.obsidian-vault.memory_root"))
+	}
+
+	// --- the reranker ---------------------------------------------------
+	c.RerankModel = strVal(raw, "daemon.rerank_model")
+	c.RerankerURL = strVal(raw, "daemon.reranker_url")
+	c.RerankEnabled = true
+	if b, ok := raw["daemon.rerank_enabled"].(bool); ok {
+		c.RerankEnabled = b
 	}
 
 	for _, d := range []struct {
