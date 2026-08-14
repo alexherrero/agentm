@@ -275,6 +275,11 @@ type searchArgs struct {
 	// exists until the hook cutover earns it a place in the schema. Query keeps
 	// driving the lexical arms unconditionally either way.
 	Question string `json:"question"`
+	// Lex3 is accepted on the same unpublished seam as Mode and Question: a
+	// measurement driver can widen the lexical arm from 2-term to 2- and 3-term
+	// subsets (task 4, column `+lex3`) before the ladder has earned it a place
+	// the agent can see.
+	Lex3 bool `json:"lex3"`
 }
 
 func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
@@ -293,7 +298,7 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if a.K > 50 {
 		a.K = 50
 	}
-	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode}
+	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode, Lex3: a.Lex3}
 	if a.Mode == index.ModeHybrid && s.embed != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

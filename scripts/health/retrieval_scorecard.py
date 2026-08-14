@@ -76,7 +76,8 @@ def to_query(question: str) -> str:
 
 
 def search(query: str, k: int, mode: str = "and", target: tuple = (),
-           question: str | None = None) -> tuple[list[str], float, str, float | None, int | None]:
+           question: str | None = None,
+           lex3: bool = False) -> tuple[list[str], float, str, float | None, int | None]:
     """Top-k paths for a query, the wall time in milliseconds, the daemon's
     note, and — for `-mode rerank` only — the cross-encoder's own wall time
     and pair count for this one query.
@@ -100,11 +101,18 @@ def search(query: str, k: int, mode: str = "and", target: tuple = (),
     driving the lexical arms exactly as it always has. Passed straight through
     rather than reimplemented for the same reason `mode` is: the daemon owns
     the mechanism, this script only asks for it.
+
+    `lex3`, when true, is passed as the daemon's own `-lex3` flag (task 4) —
+    `fusion`/`hybrid`'s lexical arm widens from 2-term to 2- and 3-term subsets.
+    Same reasoning as `question`: the daemon owns the widening, this script
+    only asks for it.
     """
     started = time.monotonic()
     argv = ["agentmd", "search", "-json", "-mode", mode, "-k", str(k), *target]
     if question:
         argv += ["-question", question]
+    if lex3:
+        argv.append("-lex3")
     argv.append(query)
     proc = subprocess.run(argv, capture_output=True, text=True)
     elapsed = (time.monotonic() - started) * 1000.0
@@ -122,7 +130,7 @@ def search(query: str, k: int, mode: str = "and", target: tuple = (),
 
 
 def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
-          pass_question: bool = False) -> dict:
+          pass_question: bool = False, lex3: bool = False) -> dict:
     rows = []
     for e in entries:
         expected = e.get("expected_note_paths") or []
@@ -132,7 +140,8 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
         # natural question, not the AND-terms built for FTS5.
         question = e["question"] if pass_question else None
         if query:
-            ranked, ms, note, rerank_ms, rerank_pairs = search(query, k, mode, target, question)
+            ranked, ms, note, rerank_ms, rerank_pairs = search(
+                query, k, mode, target, question, lex3)
         else:
             ranked, ms, note, rerank_ms, rerank_pairs = [], 0.0, "", None, None
         hits = [p for p in expected if p in ranked]
@@ -141,6 +150,7 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
             "id": e["id"], "stratum": e["stratum"], "question": e["question"],
             "query": query,
             "question_passed": bool(question),
+            "lex3": lex3,
             "is_negative": not expected,
             # A negative is "correct" when the tool returned nothing at all.
             # See the module docstring for why that is a floor, not a verdict.
@@ -189,6 +199,11 @@ def render(result: dict, k: int) -> str:
     # the mode-vs-caveat check above already exists to prevent one layer up.
     if result.get("question_passed"):
         channel += ", dense arm embeds the natural question"
+    # Same reasoning as the question_passed note above: a +lex3 column filed
+    # without saying so reads as an ordinary fusion/hybrid run, and the whole
+    # point of the flag is that it is never on by default.
+    if result.get("lex3"):
+        channel += ", lexical arm widened to 2- and 3-term subsets"
     out = [f"retrieval scorecard — {channel}, mode={mode}, k={k}, {caveat}",
            "queries reduced by recall._daemon_query_terms, as the prompt-submit hook does " +
            ("(lexical arms) / passed through verbatim to the dense arm (task 3.5)"
@@ -360,6 +375,11 @@ def main(argv=None) -> int:
                     help="pass the gold question through as the daemon's -question flag "
                          "(task 3.5); the dense arm embeds it instead of the reduced "
                          "terms, which keep driving the lexical arms unchanged")
+    ap.add_argument("--lex3", action="store_true",
+                    help="pass the daemon's own -lex3 flag (task 4): widen "
+                         "fusion/hybrid's lexical arm from 2-term to 2- and 3-term "
+                         "subsets; false (the default) reproduces lexical-fusion/"
+                         "+question exactly")
     args = ap.parse_args(argv)
 
     if bool(args.vault) != bool(args.index):
@@ -371,6 +391,12 @@ def main(argv=None) -> int:
         # asked for question-passthrough and silently scored a mode with no
         # dense arm to pass it to would publish a column mislabeled by intent.
         ap.error("--question only affects a dense arm; pass --mode hybrid or --mode rerank")
+    if args.lex3 and args.mode not in ("fusion", "hybrid", "rerank"):
+        # Same reasoning as --question above: and-mode has no lexical-fusion
+        # arm to widen, so --lex3 there would silently do nothing rather than
+        # what the flag's name promises.
+        ap.error("--lex3 only affects a lexical-fusion arm; pass --mode fusion, "
+                 "--mode hybrid or --mode rerank")
     if args.mode in ("hybrid", "rerank") and not args.embedder_url:
         # Refused rather than allowed-but-slow. A hybrid (or rerank, which
         # runs hybrid underneath) run without a warm server still produces
@@ -400,7 +426,8 @@ def main(argv=None) -> int:
         target += ("-reranker-url", args.reranker_url)
     if args.rerank_model:
         target += ("-rerank-model", args.rerank_model)
-    result = score(entries, args.k, args.mode, target, pass_question=args.question)
+    result = score(entries, args.k, args.mode, target, pass_question=args.question,
+                   lex3=args.lex3)
     result["vault"] = args.vault
     result["gold_set"] = Path(args.gold_set).name
     result["corpus"] = (doc.get("$corpus") or {}).get("name") if isinstance(doc, dict) else None
@@ -409,6 +436,7 @@ def main(argv=None) -> int:
     result["embed_model"] = args.embed_model
     result["rerank_model"] = args.rerank_model
     result["question_passed"] = args.question
+    result["lex3"] = args.lex3
     # An arm that lost a child partway through is a weaker arm wearing a
     # stronger label — hybrid that silently fell back to lexical, or rerank
     # that silently fell back to unreranked hybrid. Refuse to publish it

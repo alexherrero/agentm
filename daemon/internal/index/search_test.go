@@ -416,6 +416,135 @@ func TestFusionSingleTermFallsBackToAnd(t *testing.T) {
 	}
 }
 
+// TestFusionLex3FindsWhatTwoTermSubsetsCannot is task 4's whole mechanism made
+// testable. target.md carries all three query terms; each competitor is built
+// (by repeated terms, raising term frequency) to beat target.md on exactly one
+// of its three pairs, while holding only two of the three query terms so it can
+// never itself benefit from a triple. Under 2-term-only fusion every pair
+// target.md could win is already won by a dedicated competitor, so it loses
+// every one of them. Only the triple sums all three terms' evidence — one term
+// more than any single pair offers — and that is enough to beat all three.
+func TestFusionLex3FindsWhatTwoTermSubsetsCannot(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "compAB.md", "notes", "alpha alpha alpha beta beta beta")
+	addNote(t, x, "compAG.md", "notes", "alpha alpha alpha gamma gamma gamma")
+	addNote(t, x, "compBG.md", "notes", "beta beta beta gamma gamma gamma")
+	addNote(t, x, "target.md", "notes", "alpha beta gamma")
+
+	const q = "alpha beta gamma"
+
+	without, err := x.Search(Query{Text: q, K: 1, Mode: ModeFusion})
+	if err != nil {
+		t.Fatalf("2-term fusion: %v", err)
+	}
+	if got := paths(without.Results); len(got) != 1 || got[0] == "target.md" {
+		t.Fatalf("2-term-only fusion should not rank target.md first — no pair "+
+			"beats its dedicated competitor — got %v", got)
+	}
+
+	with, err := x.Search(Query{Text: q, K: 1, Mode: ModeFusion, Lex3: true})
+	if err != nil {
+		t.Fatalf("lex3 fusion: %v", err)
+	}
+	if got := paths(with.Results); len(got) != 1 || got[0] != "target.md" {
+		t.Fatalf("lex3 should let the triple's summed evidence beat every "+
+			"single-pair competitor, got %v", got)
+	}
+}
+
+// TestFusionLex3IsOptIn guards the same ground rule TestFusionIsOptIn guards
+// for fusion itself, one level up: task 1's `lexical-fusion` column and task
+// 3.5's `+question` column were both measured with Lex3 unset, so the zero
+// value must reproduce plain 2-term fusion and must not let the triple leak
+// through by default.
+func TestFusionLex3IsOptIn(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "compAB.md", "notes", "alpha alpha alpha beta beta beta")
+	addNote(t, x, "compAG.md", "notes", "alpha alpha alpha gamma gamma gamma")
+	addNote(t, x, "compBG.md", "notes", "beta beta beta gamma gamma gamma")
+	addNote(t, x, "target.md", "notes", "alpha beta gamma")
+
+	const q = "alpha beta gamma"
+	implicit, err := x.Search(Query{Text: q, K: 1, Mode: ModeFusion})
+	if err != nil {
+		t.Fatalf("Lex3 omitted: %v", err)
+	}
+	explicit, err := x.Search(Query{Text: q, K: 1, Mode: ModeFusion, Lex3: false})
+	if err != nil {
+		t.Fatalf("Lex3: false: %v", err)
+	}
+	if got, want := paths(implicit.Results), paths(explicit.Results); got[0] != want[0] {
+		t.Fatalf("Lex3 omitted must match Lex3: false explicitly; got %v vs %v", got, want)
+	}
+	if got := paths(implicit.Results); got[0] == "target.md" {
+		t.Fatalf("without Lex3, target.md must not rank first — got %v", got)
+	}
+}
+
+// TestFusionLex3FallsBackCleanlyBelowThreeTerms — a query under three terms has
+// no triple, so Lex3 must not change its result at all: the inner loop's own
+// bound (`l := j + 1; l < len(terms)`) is simply never satisfied.
+func TestFusionLex3FallsBackCleanlyBelowThreeTerms(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "alpha beta notes", "alpha beta appear together here")
+	addNote(t, x, "other.md", "unrelated", "gamma appears alone over here")
+
+	const q = "alpha beta"
+	without, err := x.Search(Query{Text: q, K: 5, Mode: ModeFusion})
+	if err != nil {
+		t.Fatalf("2-term query, Lex3 false: %v", err)
+	}
+	with, err := x.Search(Query{Text: q, K: 5, Mode: ModeFusion, Lex3: true})
+	if err != nil {
+		t.Fatalf("2-term query, Lex3 true: %v", err)
+	}
+	got, want := paths(with.Results), paths(without.Results)
+	if len(got) != len(want) || (len(got) > 0 && got[0] != want[0]) {
+		t.Fatalf("a 2-term query has no triple; Lex3 must not change the result, "+
+			"got %v want %v", got, want)
+	}
+}
+
+// TestFusionLex3SingleTermStillFallsBackToAnd — one term has no pair or triple
+// either; Lex3 must not disturb the single-term AND fallback.
+func TestFusionLex3SingleTermStillFallsBackToAnd(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "alpha notes", "alpha appears here")
+
+	out, err := x.Search(Query{Text: "alpha", K: 5, Mode: ModeFusion, Lex3: true})
+	if err != nil {
+		t.Fatalf("fusion search: %v", err)
+	}
+	if got := paths(out.Results); len(got) != 1 || got[0] != "target.md" {
+		t.Fatalf("single-term fusion should fall back to AND regardless of Lex3, got %v", got)
+	}
+}
+
+// TestFusionLex3SnippetComesFromTheWinningTriple mirrors
+// TestFusionSnippetComesFromTheWinningSubset for the 3-term case: the highlight
+// must show the evidence that actually won the row, not one of its pairs.
+func TestFusionLex3SnippetComesFromTheWinningTriple(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "target.md", "notes", "alpha beta gamma appear together in this sentence")
+
+	// delta never appears, so every subset touching it contributes nothing for
+	// this note; the only document in the index still has to have its own best
+	// subset be the triple, not one of its pairs, for this to test what it claims.
+	out, err := x.Search(Query{Text: "alpha beta gamma delta", K: 5, Mode: ModeFusion, Lex3: true})
+	if err != nil {
+		t.Fatalf("lex3 fusion search: %v", err)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("expected one hit, got %v", paths(out.Results))
+	}
+	snip := out.Results[0].Snippet
+	for _, term := range []string{"[alpha]", "[beta]", "[gamma]"} {
+		if !strings.Contains(snip, term) {
+			t.Fatalf("snippet should highlight the winning triple's terms, got %q", snip)
+		}
+	}
+}
+
 // TestUnknownSearchModeIsAnError — a typo must not silently serve AND results
 // while the caller believes it measured something else.
 //

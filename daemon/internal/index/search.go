@@ -79,6 +79,13 @@ type Query struct {
 	// Mode selects how the terms are combined. Empty means ModeAnd, so every
 	// existing caller keeps the semantics it was measured under.
 	Mode string
+	// Lex3 widens ModeFusion's subset set from 2-term to 2- and 3-term (task 4,
+	// column `+lex3`), and carries through to ModeHybrid's lexical arm, which is
+	// searchFusion underneath. False is the byte-identical default every
+	// existing caller keeps unset: `lexical-fusion` (task 1) and `+question`
+	// (task 3.5) were both measured with it off, and neither column may move by
+	// a single row for this one to ship.
+	Lex3 bool
 
 	// Vector is the query's embedding, supplied by the caller. ModeHybrid needs
 	// it; every other mode ignores it.
@@ -147,7 +154,7 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 	case "", ModeAnd:
 		return x.searchAnd(text, k, after, before)
 	case ModeFusion:
-		return x.searchFusion(text, k, after, before)
+		return x.searchFusion(text, k, after, before, q.Lex3)
 	case ModeHybrid:
 		return x.searchHybrid(text, k, after, before, q)
 	default:
@@ -255,8 +262,9 @@ func penalizeAndRank(rows []Result, k int) []Result {
 	return rows
 }
 
-// searchFusion issues every two-term subset of the query as its own AND search
-// and keeps, for each document, the best score any single subset gave it.
+// searchFusion issues every two-term subset of the query — and, when lex3 is
+// set, every three-term subset too — as its own AND search and keeps, for each
+// document, the best score any single subset gave it.
 //
 // The motivation is measured rather than theoretical. For 45 of 53 gold-set
 // misses some subset of the same extracted terms already reaches the top 5, so
@@ -271,7 +279,19 @@ func penalizeAndRank(rows []Result, k int) []Result {
 // What it costs is why it is not the default: on the same gold set it took
 // correct rejection from 35% to 0%, because a query that can always find two
 // co-occurring words never returns empty.
-func (x *Index) searchFusion(text string, k int, after, before string) (SearchOutcome, error) {
+//
+// lex3 (task 4, column `+lex3`) widens the subset set without touching the
+// 2-term shape task 1 and task 3.5 were measured under: the inner triple loop
+// below runs only when lex3 is true, so with it false this function issues the
+// identical sequence of sub-queries it always has. A 3-term subset can surface a
+// candidate the 2-term subsets structurally cannot: every document matching a
+// triple also matches each of its three pairs, but `runMatch`'s over-fetch
+// window is finite, and a document crowded past that window by stronger 2-term
+// competitors can still be within it under the far more selective 3-term
+// query — that gap, not a ranking preference, is the mechanism. A query under
+// three terms has no triple regardless of lex3 and falls through unchanged: the
+// bound `l := j + 1; l < len(terms)` is simply never satisfied.
+func (x *Index) searchFusion(text string, k int, after, before string, lex3 bool) (SearchOutcome, error) {
 	terms := dedupeTerms(ftsTokenRe.FindAllString(text, -1))
 	if len(terms) < 2 {
 		// One term has no two-term subset, and the fused ranking for it is just
@@ -293,18 +313,25 @@ func (x *Index) searchFusion(text string, k int, after, before string) (SearchOu
 		expr string
 	}
 	best := make(map[string]candidate)
+	consider := func(expr string) {
+		rows, err := x.runMatch(expr, after, before, limit)
+		if err != nil {
+			// One subset FTS5 will not accept is not a failed search; the
+			// other subsets still carry the query.
+			return
+		}
+		for _, r := range rows {
+			if prev, seen := best[r.Path]; !seen || r.Score > prev.row.Score {
+				best[r.Path] = candidate{row: r, expr: expr}
+			}
+		}
+	}
 	for i := 0; i < len(terms); i++ {
 		for j := i + 1; j < len(terms); j++ {
-			expr := `"` + terms[i] + `" "` + terms[j] + `"`
-			rows, err := x.runMatch(expr, after, before, limit)
-			if err != nil {
-				// One subset FTS5 will not accept is not a failed search; the
-				// other subsets still carry the query.
-				continue
-			}
-			for _, r := range rows {
-				if prev, seen := best[r.Path]; !seen || r.Score > prev.row.Score {
-					best[r.Path] = candidate{row: r, expr: expr}
+			consider(quoteTerms(terms[i], terms[j]))
+			if lex3 {
+				for l := j + 1; l < len(terms); l++ {
+					consider(quoteTerms(terms[i], terms[j], terms[l]))
 				}
 			}
 		}
@@ -356,7 +383,7 @@ const rrfDepth = 50
 // lexical arm and says so in the note. A caller that asked for hybrid and got
 // hybrid-minus-one-arm has a worse search; a caller that got an error has none.
 func (x *Index) searchHybrid(text string, k int, after, before string, q Query) (SearchOutcome, error) {
-	lexical, err := x.searchFusion(text, rrfDepth, after, before)
+	lexical, err := x.searchFusion(text, rrfDepth, after, before, q.Lex3)
 	if err != nil {
 		return lexical, err
 	}
@@ -487,6 +514,16 @@ func (x *Index) fillFusedSnippets(rows []Result, wonBy map[string]string) error 
 		rows[i].Snippet = snippets[rows[i].Path]
 	}
 	return nil
+}
+
+// quoteTerms quotes each term and joins with a space — FTS5's implicit AND —
+// so a 2-term and a 3-term subset build their match expression the same way.
+func quoteTerms(terms ...string) string {
+	quoted := make([]string, len(terms))
+	for i, t := range terms {
+		quoted[i] = `"` + t + `"`
+	}
+	return strings.Join(quoted, " ")
 }
 
 // dedupeTerms drops repeats while keeping first-seen order, so a query saying the

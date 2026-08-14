@@ -195,3 +195,30 @@ func TestHybridPenalizesInsideTheDenseArm(t *testing.T) {
 			"penalty was applied after the ranks were taken", out.Results[0].Path)
 	}
 }
+
+// TestHybridLex3WidensTheDegradedLexicalArm confirms Query.Lex3 reaches
+// searchHybrid's own internal searchFusion call, not just the top-level
+// ModeFusion dispatch. The no-vector degrade path is what lets this run without
+// an embedder: hybrid-minus-the-dense-arm is exactly the same searchFusion call
+// ModeFusion makes, at rrfDepth instead of k, so the fixture from
+// TestFusionLex3FindsWhatTwoTermSubsetsCannot proves the same thing here.
+func TestHybridLex3WidensTheDegradedLexicalArm(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "compAB.md", "notes", "alpha alpha alpha beta beta beta")
+	addNote(t, x, "compAG.md", "notes", "alpha alpha alpha gamma gamma gamma")
+	addNote(t, x, "compBG.md", "notes", "beta beta beta gamma gamma gamma")
+	addNote(t, x, "target.md", "notes", "alpha beta gamma")
+
+	const q = "alpha beta gamma"
+	out, err := x.Search(Query{Text: q, K: 1, Mode: ModeHybrid, Lex3: true})
+	if err != nil {
+		t.Fatalf("hybrid (degraded to lexical) with Lex3: %v", err)
+	}
+	if got := paths(out.Results); len(got) != 1 || got[0] != "target.md" {
+		t.Fatalf("hybrid's degraded lexical arm should widen the same way "+
+			"ModeFusion's does, got %v", got)
+	}
+	if !strings.Contains(out.Note, "lexical arm alone") {
+		t.Errorf("note = %q; this test relies on the no-vector degrade path", out.Note)
+	}
+}

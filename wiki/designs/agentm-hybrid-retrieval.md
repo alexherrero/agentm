@@ -151,7 +151,7 @@ changes what an AND leaves standing.
 | 2 | `+vector RRF` | paraphrase ≥50%, research-corpus ≥58%, distinctive-token does not regress | 54.7% overall; research-corpus 58.3% and distinctive-token 8/12 met, **paraphrase 38.9% missed** |
 | 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. Post-mortem (2026-08-14): partly a query-format test artifact, structurally a similarity≠answerhood interleave — see the amendment log. |
 | 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | **met, well past the floor** — 75.0% (48/64), pure-paraphrase 61.1% (11/18), every stratum improved and none regressed (12 gained / 0 lost). 11 of the 16 diagnosed dense-top-5 candidates converted. |
-| 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | |
+| 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | **refuted** — 76.6% (49/64), net +1 against a required net +3. Regression clause held (no stratum lost more than one); the overall floor did not. 3 of the 7 diagnosed candidates converted (`dt07`, `dt10`, `rc03`); 2 unrelated losses (`pp02`, `rd04`) to reciprocal-rank displacement. Code kept, quarantined behind `-lex3` — see the amendment log. |
 | 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | |
 | 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 | |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
@@ -210,6 +210,53 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-14 · step 4 (3-term subset fusion) measured: refuted on the
+  overall floor, regression clause held.** `agentmd search -lex3` (and the
+  matching unpublished MCP argument) widens `fusion`'s — and through it
+  `hybrid`'s — lexical arm from 2-term to 2- and 3-term subsets of the
+  query's extracted terms, still max-score across all of them; `false`
+  reproduced `lexical-fusion` and `+question` byte-identically, row for row
+  (0 differences across 84 rows each), before the new column was scored.
+  Result: overall R@5 48/64 → **49/64 = 76.6%** against a required ≥51/64
+  (net +3) — **net +1**, a floor miss. No stratum regressed by more than one
+  question (pure-paraphrase and research-density each −1, inside tolerance),
+  so the regression clause that worried the task text most did not trip;
+  the floor clause did. Per-question: 3 gained (`dt07`, `dt10`, `rc03`), 2
+  lost (`pp02`, `rd04`) to reciprocal-rank displacement — both were already
+  at the edge of the window (rank 3, rank 5) under `+question`, and one new
+  competitive candidate from the widened lexical arm was enough to push each
+  out. The diagnosis's 7 candidates were re-derived against the branch build
+  before trusting them and reproduced exactly (same ids, same ranks), but
+  only 3 converted: the isolated-triple probe tests one subset's reachability
+  in its own private search, while the shipped mechanism issues every 2- and
+  3-term subset simultaneously in one max-score ranking, so a candidate's
+  isolated rank-1 subset must still outscore whatever the *other* 34 subsets
+  of a 6-term query surface. `dt02`'s own winning triple ranks its answer 1st
+  in isolation (raw score 11.4) but loses the full competition to unrelated
+  cache-snapshot documents another subset scores at 21.0+. Why not sweep a
+  parameter (RRF depth, candidate cap) to try to close the gap: the plan's
+  own ground rule forbids tuning against the gold set to rescue a refuted
+  rule, and the shortfall is a floor miss, not evidence of a fixable defect —
+  the mechanism worked as designed and simply did not clear its own bar.
+  **Code kept, not reverted** — quarantined behind `-lex3` (CLI flag,
+  unpublished MCP argument), which the hook does not request and the
+  published tool schema does not expose, so nothing about production
+  behavior changes; the same reasoning that kept step 3's refuted rerank
+  code in the tree. Lexical-only latency for the widened arm: p50 26.4ms,
+  p90 39.8ms (baseline, lex3 off: p50 18.1ms, p90 23.7ms) — far inside the
+  hook's 300ms budget, so task 5 does not inherit a latency concern from
+  this, only a recall one. **Generalizable finding, worth carrying past this
+  task:** isolated single-configuration reachability is a weak proxy for a
+  max-score-across-many-configurations mechanism's actual outcome, because
+  every other configuration's candidates compete in the same final ranking —
+  any future diagnosis of this shape should expect the same optimistic gap.
+  **Re-audit trigger:** none — the ladder's remaining target is unaffected,
+  since `+question` (75.0%) is still the highest column and the design's own
+  2026-08-14 sizing already priced >90% as unreachable inside this design
+  regardless of whether step 4 converted. Full investigation, including the
+  isolated-vs-competitive rank table: `scripts/health/results/goldv2/
+  NOTES.md` § "Task 4: three-term subset fusion — refuted".
 
 - **2026-08-14 · step 4 is now 3-term subset fusion; temporal wiring is
   re-scoped as a non-regression change and moved after the cutover. The

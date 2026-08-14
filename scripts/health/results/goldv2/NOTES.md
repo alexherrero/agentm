@@ -167,15 +167,15 @@ reaches **23/53 (43%)** at both n=2 and n=3.
 
 **On the full gold set it fails its own rule.**
 
-| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking | +rerank+floor | +question |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 | 7/12 | 9/12 |
-| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 | 7/12 | 9/12 |
-| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 | 6/18 | 11/18 |
-| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 | 3/12 | 10/12 |
-| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 | 2/10 | 9/10 |
-| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** | **75.0%** |
-| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** | **40%** | **0%** |
+| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking | +rerank+floor | +question | +lex3 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 | 7/12 | 9/12 | 11/12 |
+| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 | 7/12 | 9/12 | 9/12 |
+| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 | 6/18 | 11/18 | 10/18 |
+| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 | 3/12 | 10/12 | 11/12 |
+| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 | 2/10 | 9/10 | 8/10 |
+| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** | **75.0%** | **76.6%** |
+| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** | **40%** | **0%** | **0%** |
 
 Recall nearly quadrupled and rejection went to zero — every one of the 20
 negatives returned a confident wrong answer. The pre-registered floor was
@@ -806,3 +806,215 @@ every run. Scored via `retrieval_scorecard.py --mode hybrid --question
 --index <scratch index>`, re-run twice and confirmed bit-identical (same
 hits, same ranks) before landing the column. Per-question JSON at
 `<vault>/Agent/_meta/health/goldv2/question-20260814.json`, never in the repo.
+
+---
+
+# Task 4: three-term subset fusion — refuted
+
+Run 2026-08-14, rule pre-registered in the plan before any code: **overall R@5
+≥ 51/64 (79.7%) — net +3 over `+question`'s 48; no stratum regresses by more
+than one question; and the per-question gain/loss diff is published by id.**
+
+## The mechanism
+
+`agentmd search -lex3` (and the matching unpublished argument on the MCP
+`mode` seam) widens `fusion`'s — and, through it, `hybrid`'s lexical arm's —
+subset set from every 2-term combination of the query's extracted terms to
+every 2- **and** 3-term combination, still max-score across all of them. The
+implementation is one new nested loop inside `searchFusion`'s existing
+double loop (`daemon/internal/index/search.go`): for terms `i < j`, a third
+index `l := j + 1; l < len(terms)` issues the triple `(i, j, l)` only when
+`lex3` is true, so a query under three terms has no triple and the bound is
+simply never satisfied — no special-cased fallback was needed. `searchHybrid`
+threads `Query.Lex3` to its own internal `searchFusion` call, so the flag
+reaches the hybrid arm the same way `-question` does.
+
+## Absence proven byte-identical, both existing columns
+
+Before scoring the new column, the branch build was run against the same
+index with `-lex3` **absent** on both of the columns this rung could have
+disturbed, and diffed row-by-row against each one's own saved per-question
+JSON:
+
+| column | mode | aggregate | rows compared | differences |
+|---|---|---:|---:|---:|
+| `lexical-fusion` (task 1) | `-mode fusion` | 27/64 = 42.2% | 84 | **0** |
+| `+question` (task 3.5) | `-mode hybrid -question` | 48/64 = 75.0% | 84 | **0** |
+
+Same 84 rows, same hits, same top-k path lists in both cases — the same
+discipline task 1 and task 3.5 used, applied here before the new column was
+allowed to touch either. This is also structurally guaranteed by the diff
+itself: the inner triple loop is dead code when `lex3` is false, not a
+differently-parameterized version of the old code path.
+
+## The result
+
+| stratum | `+question` | `+lex3` | Δ |
+|---|---:|---:|---:|
+| distinctive-token | 9/12 | 11/12 | +2 |
+| episodic-temporal | 9/12 | 9/12 | 0 |
+| pure-paraphrase | 11/18 | 10/18 | **−1** |
+| research-corpus | 10/12 | 11/12 | +1 |
+| research-density | 9/10 | 8/10 | **−1** |
+| **R@5** | **75.0%** (48/64) | **76.6%** (49/64) | **+1** |
+| negative rejection | 0% | 0% | 0 |
+
+**Net +1 against a required net +3 (51/64).** The regression clause itself
+held — pure-paraphrase and research-density each lost exactly one question,
+inside the ≤1-question tolerance, and neither is the clause that failed.
+What failed is the overall floor: three gains bought by two losses is not
+enough margin. Re-run twice more after the number first landed (three runs
+total, including the one that produced this column) and confirmed
+bit-identical row-for-row every time — this is a measurement, not a fluke of
+one process's timing.
+
+## Per-question diff (mandatory clause): 3 gained, 2 lost
+
+| id | stratum | direction |
+|---|---|---|
+| dt07 | distinctive-token | gained |
+| dt10 | distinctive-token | gained |
+| rc03 | research-corpus | gained |
+| pp02 | pure-paraphrase | **lost** |
+| rd04 | research-density | **lost** |
+
+`rc08` and `ep05` — the recurring watch-list items from task 2.5's and task
+3's displacement casualties, both recovered by task 3.5 — are untouched
+here: neither appears in either column above, so both stay converted.
+
+## Re-deriving the diagnosis's 7: exact reproduction, and why only 3 of 7 converted
+
+The task text named 7 candidates — `dt02`, `dt10`, `pp10`, `rc03` at rank 1,
+`dt07` at rank 3, `ep07` at rank 3, `ep08` at rank 5 — each reached by *some*
+3-term subset in its own isolated `-mode and` search. Re-derived against the
+branch build before trusting those ids, using the diagnosis's own method
+(every 3-term combination of the query's extracted terms, each issued as its
+own isolated AND search, best rank kept): **the same 7, at the same ranks,
+exactly.** `dt02` → rank 1 via `rag tutorials folder`; `dt10` → rank 1 via
+`coord through wave`; `pp10` → rank 1 via `use vault place`; `rc03` → rank 1
+via `stops system handing`; `dt07` → rank 3; `ep07` → rank 3; `ep08` → rank
+5. The diagnosis was accurate about isolated reachability.
+
+**Only 3 of the 7 converted: `dt07`, `dt10`, `rc03`.** The isolated-triple
+probe is not the production mechanism, and the gap between the two explains
+the shortfall. `searchFusion` issues *every* 2- and 3-term subset of a query
+simultaneously and keeps, per document, the best score *any* subset gave it
+— for a 6-term query that is 15 pairs plus 20 triples, 35 sub-queries
+competing in one max-score ranking, not one triple scored in isolation.
+Re-running the 7 through the real competitive search (`-mode fusion -lex3`,
+full 35-subset competition, `k=50` to see past the top-5 cut) instead of each
+one's own private triple:
+
+| id | isolated rank (own triple alone) | competitive rank (all subsets, `k=50`) | converted in `+lex3`? |
+|---|---:|---:|---|
+| dt02 | 1 | 31 | no |
+| dt07 | 3 | 25 | **yes** |
+| dt10 | 1 | 2 | **yes** |
+| ep07 | 3 | not in top 50 | no |
+| ep08 | 5 | 6 | no |
+| pp10 | 1 | 6 | no |
+| rc03 | 1 | 35 | **yes** |
+
+`dt02` is the clearest illustration. Its winning triple, `rag tutorials
+folder`, ranks the expected note 1st in an isolated search at raw score
+11.42. Under the full 6-term query's 35-subset competition, *other* triples
+(ones not involving any of `rag`/`tutorials`/`folder`) surface unrelated
+`Agent/_meta/skill-discovery-cache/shubhamsaboo-awesome-llm-apps/*.md`
+snapshots scoring 21.0–21.1 — nearly double — because those subsets match a
+common phrase repeated across several dated cache snapshots of the same
+upstream page. Max-score fusion is exactly "best single piece of evidence
+wins," so those higher-scoring, unrelated candidates win the ranking outright
+and the correct answer never reaches the fused top-50, let alone top-5.
+
+Conversion also does not track lexical rank monotonically once RRF enters:
+`rc03` converts from a **lexical** rank of 35 (a small RRF contribution,
+1/(60+35)), while `ep08` and `pp10` — lexically much stronger at rank 6 —
+do not convert. RRF rewards a candidate both arms agree on over one arm's
+strong opinion (`fuseRRF`'s own doc comment), so a mediocre-but-present
+lexical rank combined with a strong dense-arm rank can outscore a
+lexically-strong candidate the dense arm ranks poorly. This is the same
+"agreement over a single first place" property `TestRRFPrefersAgreementOverASingleFirstPlace`
+pins in `hybrid_test.go` — task 4 is the first time it has been observed
+working *against* a diagnosed candidate rather than for one.
+
+## The two regressions: reciprocal-rank displacement, named in advance
+
+Both losses were borderline hits under `+question`, and both were displaced
+by a new candidate the widened lexical arm handed to RRF — exactly the
+mechanism the plan's own "regression clause is the real test" section warned
+about before any code existed.
+
+**`pp02`** ("Where did we store the worktree rules...?", expected
+`worktrees-never-auto.md`) sat at rank 3 under `+question`. Under `+lex3`, two
+new documents enter the fused top-5 —
+`crickets/_harness/archive/worktree-native-flow/PLAN.archive.20260706-worktree-native-flow.md`
+and `agentm/_harness/designs/architecture-governance/worktree-native-verdict-draft.md`
+— and the expected note is pushed out of the top 5 entirely.
+
+**`rd04`** ("...which model only wants the instruction sentence glued onto the
+query...?", expected `bge-small-optional-query-instruction.md`) sat at rank 5
+under `+question` — already the last slot. Under `+lex3`, a single new
+candidate, `_harness/designs/roadmap-research-2026-06/R01-retrieval-and-knowledge-graph.md`,
+enters at rank 2 and pushes everything down one, dropping the expected note
+past the cut.
+
+Both were already at the edge of the window (rank 3, rank 5) before the
+widening, which is precisely why one new competitive candidate was enough:
+the same displacement risk task 2's `memory/`-only regression and task 2.5's
+`rc08`/`ep05` swaps demonstrated, now observed a third time in the plan this
+rung's own text predicted it for.
+
+## Verdict
+
+**Refuted on the overall floor; the regression clause held.** 49/64 = 76.6%
+against a required ≥51/64 (79.7%); net +1 against a required net +3. No
+stratum lost more than one question, so the tripwire clause the task's own
+risk section was most worried about did not fire — the shortfall is a floor
+miss, not a regression-clause miss, and the two are different failures with
+different implications. Per the plan's ground rule, this closes as a finding,
+recorded rather than shipped: `-lex3` is not requested by the hook and never
+will be by default, matching `-mode fusion`, `-mode rerank`, and `-question`
+before it. The code is kept rather than reverted — the same reasoning task
+3's refuted `-mode rerank` used: it is quarantined behind an explicit flag
+(CLI) and an unpublished argument (MCP) neither the hook nor the published
+tool schema exposes, so its presence changes no production behavior, and it
+is real, tested infrastructure that produced the measurement rather than a
+throwaway driver. No parameter was swept against the gold set to try to
+rescue the floor — the diagnosis's own "do not sweep to rescue" instruction
+was honored by stopping here rather than tuning `rrfDepth`, the candidate cap,
+or anything else against the answer sheet.
+
+**What this licenses, and what it does not.** The mechanistic finding —
+isolated single-subset reachability is a weak proxy for a max-score fusion's
+actual competitive outcome, because every other subset's candidates are
+competing in the same ranking — generalizes beyond this task. Any future
+diagnosis that probes "does *some* configuration reach the answer" before a
+change that issues *many* configurations simultaneously should expect the
+same gap, roughly in the direction task 4 measured it (isolated-reachable ⊅
+converts). It does not touch fusion or the dense arm's own standing 75.0%;
+`+question` remains the last shipped rung.
+
+## Ops
+
+**Lexical-only latency, the widened arm's own cost.** `-mode fusion` (lex3
+off, re-measured on this machine alongside the rest of this task rather than
+carried over from task 1's number): p50 18.1ms, p90 23.7ms — consistent with
+task 1's original p90 24.4ms, confirming comparable machine load rather than
+a faster or slower run skewing the comparison. `-mode fusion -lex3` (the
+widened arm): **p50 26.4ms, p90 39.8ms, max 69.5ms** — roughly 1.7x the
+baseline's p90 against 2.3x the sub-query count (35 vs 15 for a 6-term
+query), both far inside the hook's 300ms budget. Task 5 can treat the
+widening as free on latency grounds; it simply does not clear its own recall
+bar.
+
+Corpus and index unchanged from task 3.5 (9,971 docs, 9,473 embedded notes,
+11,761 chunk vectors, schema 4) — verified against the corpus's own docmeta
+count before scoring, no rebuild needed, since this rung changes only the
+query side. Embedder: EmbeddingGemma-300M-Q8_0 at `-np 1 -c 2048 -b 2048 -ub
+2048`; no stray `llama-server` processes confirmed before starting it and
+none accumulated afterward; `degraded: []` on every run. Scored via
+`retrieval_scorecard.py --mode hybrid --question --lex3 --embedder-url ...
+--embed-model embeddinggemma-300M-Q8_0 --vault <corpus> --index <scratch
+index>`, run three times total and confirmed bit-identical (same hits, same
+ranks) before landing the column. Per-question JSON at
+`<vault>/Agent/_meta/health/goldv2/lex3-20260814.json`, never in the repo.

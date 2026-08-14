@@ -359,6 +359,9 @@ func cmdSearch(args []string) error {
 		"natural-language question; when set, `hybrid`/`rerank`'s dense arm embeds this "+
 			"instead of the terms query below, truncated to the embedder's window — the "+
 			"lexical arms always search the terms below regardless")
+	lex3 := fs.Bool("lex3", false,
+		"widen `fusion`/`hybrid`'s lexical arm from 2-term to 2- and 3-term subsets "+
+			"(task 4, column `+lex3`); false reproduces `lexical-fusion`/`+question` exactly")
 	ef := bindEmbedderFlags(fs)
 	rf := bindRerankerFlags(fs)
 	asJSON := fs.Bool("json", false, "emit JSON")
@@ -387,7 +390,7 @@ func cmdSearch(args []string) error {
 		innerMode, innerK = index.ModeHybrid, rerankDepth
 	}
 
-	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode}
+	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3}
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if innerMode == index.ModeHybrid {
