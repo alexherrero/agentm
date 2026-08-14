@@ -222,6 +222,47 @@ at capture time are already standing practice and need no build.
 
 *Newest first.*
 
+- **2026-08-14 · step 5's deferred latency finding, root-caused and fixed: the
+  snippet pass belongs to the caller's `k`, not to `rrfDepth`.** The 6-second
+  stall on 3 of 84 gold questions was never the FTS5 query planner and never
+  `rrfDepth` itself. `searchFusion` issues its sub-queries at
+  `max(note.Overfetch, k)`, and `Overfetch` is 200, so the ranking query is
+  byte-identical at k=10 and k=50; the phase split on `rd03` puts 6,417ms of a
+  6,474ms search inside `fillFusedSnippets` and 23.5ms in `runMatch`. The cost
+  is `snippet()`, which FTS5 prices per document scanned — it walks each
+  phrase's position list to choose the window — so it tracks *how often the
+  query's terms occur in the documents being highlighted*. Document bytes alone
+  do not predict it: `dt11`'s discarded tail is a comparable fourteen megabytes
+  and costs 261ms, because those megabytes carry 1,165 term occurrences against
+  `rd03`'s 100,110. What made it reach production is a layering error rather
+  than a constant — `searchHybrid` reads `rrfDepth` rows from its lexical arm as
+  an RRF input and keeps `k` of the fused list, but was highlighting all
+  `rrfDepth` of them first, so every hybrid query paid a k=50 snippet pass no
+  matter what the caller asked for. `fuseLexical` now returns the ranking and
+  each row's winning subset expression without highlighting anything, and both
+  callers fill snippets once, over the rows they actually return. This is the
+  same discipline `searchAnd` has documented since the 575x over-fetch finding
+  ("rank first and the scan is priced for the five rows anyone will read"),
+  applied one level up: fusion-as-an-RRF-input is a ranking stage, not a
+  presentation stage. **`rrfDepth` stays 50** — it was never the cost, and
+  lowering it would change ranking. Measured on the frozen corpus: `rd03`
+  6,474ms → 126ms, worst gold question 5,419ms → 549ms, and through the real
+  hook path max 6,411ms → 110ms with questions over the 250ms budget going 2 →
+  0. All four landed columns re-scored byte-identical — `baseline` 10.9% /
+  35% rejection, `lexical-fusion` 42.2%, `+lex3` 76.6%, `hook e2e` 73.4% /
+  0 degraded — with the per-question hit vectors and returned paths identical
+  before and after, which is what makes this a latency fix and not a retrieval
+  change. One deliberate behavioral improvement: a note the dense arm surfaced
+  that *did* match lexically but ranked below the lexical window now carries a
+  snippet, where before only the lexical top-`rrfDepth` did. That matches what
+  the code already said it wanted — a note "the dense arm found and the lexical
+  arm did not" has nothing to highlight — and such notes still come back
+  without one. **Re-audit trigger:** a rung that reads more than `k` rows out of
+  a stage that highlights them, or any future caller of `fuseLexical` that
+  forgets to fill snippets at all; `TestHybridSnippetsOnlyTheRowsItReturns`
+  pins the count, and two sibling tests pin that the returned rows are still
+  highlighted, including the single-term fallback path.
+
 - **2026-08-14 · step 5 (hook cutover) measured: rule met on both clauses.**
   The prompt-submit hook's daemon call switches from `-mode`'s implicit
   `and` default to `-mode hybrid -question <raw prompt>` — the `+question`

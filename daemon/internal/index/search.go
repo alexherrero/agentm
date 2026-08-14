@@ -190,6 +190,26 @@ func (x *Index) Search(q Query) (SearchOutcome, error) {
 // 1.0–1.3 MB. Six of 206 benchmark queries cost four to six seconds each. Rank
 // first and the scan is priced for the five rows anyone will read.
 func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutcome, error) {
+	out, matchExpr, err := x.rankAnd(text, k, after, before)
+	if err != nil {
+		return out, err
+	}
+
+	// matchExpr is the expression FTS5 actually ran, which is the sanitized one
+	// when the original was not valid syntax. Snippets have to be produced by the
+	// same expression that produced the rows, or they would highlight different
+	// phrases than the ranking saw.
+	if err := x.fillSnippets(matchExpr, out.Results); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// rankAnd is searchAnd's ranking half, without the snippet pass. It returns the
+// expression FTS5 accepted so whichever caller ends up owning the rows can
+// highlight them under it — see fuseLexical for why that is not always this
+// function's own caller.
+func (x *Index) rankAnd(text string, k int, after, before string) (SearchOutcome, string, error) {
 	out := SearchOutcome{Results: []Result{}}
 
 	limit := note.Overfetch
@@ -199,20 +219,12 @@ func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutco
 
 	rows, matchExpr, note1, err := x.match(text, after, before, limit)
 	if err != nil {
-		return out, err
+		return out, "", err
 	}
 	out.Note = note1
 	out.Matched = len(rows)
 
 	out.Results = penalizeAndRank(rows, k)
-
-	// matchExpr is the expression FTS5 actually ran, which is the sanitized one
-	// when the original was not valid syntax. Snippets have to be produced by the
-	// same expression that produced the rows, or they would highlight different
-	// phrases than the ranking saw.
-	if err := x.fillSnippets(matchExpr, out.Results); err != nil {
-		return out, err
-	}
 
 	if len(out.Results) == 0 && out.Note == "" {
 		out.Note = "0 results. FTS5 requires every term to appear in the same note, " +
@@ -220,7 +232,7 @@ func (x *Index) searchAnd(text string, k int, after, before string) (SearchOutco
 			"words, then a different vocabulary for the same idea. Answer \"nothing " +
 			"found\" only after distinct vocabularies have failed."
 	}
-	return out, nil
+	return out, matchExpr, nil
 }
 
 // penalizeAndRank applies the measured class penalty, orders by the adjusted
@@ -292,11 +304,53 @@ func penalizeAndRank(rows []Result, k int) []Result {
 // three terms has no triple regardless of lex3 and falls through unchanged: the
 // bound `l := j + 1; l < len(terms)` is simply never satisfied.
 func (x *Index) searchFusion(text string, k int, after, before string, lex3 bool) (SearchOutcome, error) {
+	out, wonBy, err := x.fuseLexical(text, k, after, before, lex3)
+	if err != nil {
+		return out, err
+	}
+	if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+// fuseLexical is searchFusion's ranking half, returning the rows and the subset
+// expression that won each one without highlighting any of them.
+//
+// The split exists because snippet() is priced per document scanned, and the
+// caller — not this function — knows how many of these rows anyone will read.
+// searchFusion asks for its own k and highlights all of them. searchHybrid asks
+// for rrfDepth, uses the ranking as one RRF input, and keeps only the top k of
+// the fused list, so highlighting all rrfDepth of them would compute a snippet
+// for rows that are about to be discarded.
+//
+// That waste is not hypothetical. On the frozen gold corpus, `-mode fusion`
+// over the terms of one research question spent 6,417ms of a 6,474ms search
+// inside the snippet pass at k=50 against 2.9ms at k=10 — the ranking query
+// underneath is identical at both, since it is issued at max(Overfetch, k) and
+// Overfetch is 200. The cost tracks how many times the query's terms occur in
+// the documents being highlighted, because FTS5 walks each phrase's position
+// list to choose the window: that question's rank-11-to-50 tail was twelve
+// megabytes of vendored awesome-list caches carrying 100,110 occurrences of its
+// terms, where a question whose tail was a comparable fourteen megabytes but
+// only 1,165 occurrences cost 261ms. Ranking is what rrfDepth is for; the
+// snippet is what the caller reads.
+func (x *Index) fuseLexical(text string, k int, after, before string, lex3 bool) (SearchOutcome, map[string]string, error) {
 	terms := dedupeTerms(ftsTokenRe.FindAllString(text, -1))
 	if len(terms) < 2 {
 		// One term has no two-term subset, and the fused ranking for it is just
 		// that term's own. Fall back rather than return nothing.
-		return x.searchAnd(text, k, after, before)
+		out, expr, err := x.rankAnd(text, k, after, before)
+		if err != nil {
+			return out, nil, err
+		}
+		// Every row came from the one expression, so the caller highlights them
+		// the same way it highlights a real fusion — one wonBy shape for both.
+		wonBy := make(map[string]string, len(out.Results))
+		for _, r := range out.Results {
+			wonBy[r.Path] = expr
+		}
+		return out, wonBy, nil
 	}
 
 	out := SearchOutcome{Results: []Result{}}
@@ -348,14 +402,10 @@ func (x *Index) searchFusion(text string, k int, after, before string, lex3 bool
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	out.Results = penalizeAndRank(rows, k)
 
-	if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
-		return out, err
-	}
-
 	if len(out.Results) == 0 {
 		out.Note = "0 results. No two terms of this query appear together in any one note."
 	}
-	return out, nil
+	return out, wonBy, nil
 }
 
 // rrfDepth is how deep each arm is read before fusion.
@@ -383,7 +433,7 @@ const rrfDepth = 50
 // lexical arm and says so in the note. A caller that asked for hybrid and got
 // hybrid-minus-one-arm has a worse search; a caller that got an error has none.
 func (x *Index) searchHybrid(text string, k int, after, before string, q Query) (SearchOutcome, error) {
-	lexical, err := x.searchFusion(text, rrfDepth, after, before, q.Lex3)
+	lexical, wonBy, err := x.fuseLexical(text, rrfDepth, after, before, q.Lex3)
 	if err != nil {
 		return lexical, err
 	}
@@ -392,6 +442,9 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		out := lexical
 		if len(out.Results) > k {
 			out.Results = out.Results[:k]
+		}
+		if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
+			return out, err
 		}
 		out.Note = joinNotes(out.Note,
 			"hybrid was requested but no query vector was available; "+
@@ -415,16 +468,14 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 		out.Results = out.Results[:k]
 	}
 
-	// Snippets come from the lexical arm's own expressions. A note the dense arm
-	// found and the lexical arm did not has no matching phrase to highlight —
-	// that is what crossing a vocabulary gap means — so it comes back without one
-	// rather than with a misleading extract of its opening line.
-	byPath := make(map[string]string, len(lexical.Results))
-	for _, r := range lexical.Results {
-		byPath[r.Path] = r.Snippet
-	}
-	for i := range out.Results {
-		out.Results[i].Snippet = byPath[out.Results[i].Path]
+	// Snippets come from the lexical arm's own expressions, and are computed here
+	// rather than inside that arm because only now is it settled which rows
+	// survive — see fuseLexical. A note the dense arm found and the lexical arm
+	// did not has no matching phrase to highlight — that is what crossing a
+	// vocabulary gap means — so it has no entry in wonBy and comes back without a
+	// snippet rather than with a misleading extract of its opening line.
+	if err := x.fillFusedSnippets(out.Results, wonBy); err != nil {
+		return out, err
 	}
 
 	if len(out.Results) == 0 {

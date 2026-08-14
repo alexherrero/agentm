@@ -1109,3 +1109,91 @@ them honestly rather than by loosening the gate. Per-question JSON at
 repo; the true end-to-end latency sample's raw per-question timings live in
 the session scratchpad (`hook_e2e_latency.py`, `hook_e2e_latency_result.json`),
 not archived — reproducible from the gold set and the installed hook alone.
+
+## Task 5 follow-up: the `rrfDepth` latency cliff, root-caused and fixed
+
+**The finding task 5 flagged was real, and the mechanism is not the one the
+symptom suggested.** `-mode fusion -k 50` costing 6+ seconds where `-k 10`
+costs 35ms on identical terms looks like an FTS5 query-planner effect — a
+large `LIMIT` against a broad `MATCH` abandoning an early exit and sorting the
+whole matched set. It is not. `searchFusion` issues every sub-query at
+`max(note.Overfetch, k)`, and `Overfetch` is 200, so **the ranking query is
+byte-identical at k=10 and k=50** and the planner never sees a different
+`LIMIT`. Splitting the phases on `rd03`'s terms against the frozen corpus:
+
+| phase | k=10 | k=50 |
+| --- | --- | --- |
+| `runMatch` (all 15 two-term sub-queries) | 50.5ms | 23.5ms |
+| `penalizeAndRank` | 0.3ms | 0.2ms |
+| `fillFusedSnippets` | **2.9ms** | **6417.5ms** |
+
+`matched` is 936 in both. The whole cliff is `snippet()`.
+
+**What `snippet()` is priced by: term occurrences, not rows and not bytes.**
+FTS5 walks each phrase's position list within a document to choose the window,
+so the cost tracks how often the query's own terms appear in the documents
+being highlighted. Ranks 11–50 of `rd03` are 12.8MB of vendored
+`punkpeye-awesome-mcp-servers` caches (~1.3MB each) against 18.6KB for ranks
+1–10 — but bytes alone are refuted as the explanation by `dt11`, whose
+top-50 window is a *larger* 13.9MB and costs 261ms. The separator is
+occurrences: 100,110 for `rd03` against 1,165 for `dt11`, an 86x gap at
+comparable size. Across all 84 questions Spearman against measured latency is
+0.57 for occurrences and 0.55 for bytes — neither separates the crowded 20–60ms
+band, but at the tail `rd03` is first on both latency and occurrences, at 27x
+the next question's occurrence count.
+
+**Why it reached production was a layering error, not the constant.**
+`searchHybrid` reads `rrfDepth` (50) rows from its lexical arm purely as an RRF
+input and keeps `k` of the fused list — but highlighted all 50 first, so every
+`-mode hybrid` query paid a k=50 snippet pass regardless of the caller's `k`
+(the hook asks for 10). `searchFusion` split into `fuseLexical`, which returns
+the ranking plus each row's winning subset expression and highlights nothing;
+`searchFusion` and `searchHybrid` each fill snippets once, over the rows they
+actually return. `rrfDepth` stays 50 — it was never the cost, and changing it
+would change ranking. This is the same rule `searchAnd` has carried since the
+575x over-fetch finding, applied one level up.
+
+**Measured, frozen corpus (`goldv2-20260812`), same index as tasks 4–5:**
+
+| | before | after |
+| --- | --- | --- |
+| `-mode fusion -k 50`, `rd03` terms | 6336ms | 6343ms (unchanged by design) |
+| `-mode fusion -k 10`, same terms | 49ms | 50ms |
+| `-mode hybrid -k 10`, same terms | 6464ms | **127ms** |
+| worst gold question (`--mode hybrid --question --lex3`) | 5419ms | **549ms** |
+| p50 / p90 over 84 | 100.8 / 122.2ms | **85.5 / 97.9ms** |
+| through the real hook (`--via-hook`), max | 6411ms | **110ms** |
+| through the real hook, questions over the 250ms budget | 2 | **0** |
+
+`-mode fusion -k 50` is deliberately untouched: a caller that asks for fifty
+highlighted rows is asking for the work, and after the fix nothing in the
+product does.
+
+**Recall is unchanged, and that is the acceptance gate.** All four landed
+columns re-scored on both binaries against this same corpus and reproduce the
+arm table exactly — `baseline` 3/12 · 3/12 · 1/18 · 0/12 · 0/10, R@5 10.9%,
+rejection 7/20; `lexical-fusion` 7/12 · 6/12 · 5/18 · 6/12 · 3/10, R@5 42.2%,
+rejection 0/20; `+lex3` 11/12 · 9/12 · 10/18 · 11/12 · 8/10, R@5 49/64 = 76.6%;
+`hook e2e` 8/12 · 8/12 · 12/18 · 10/12 · 9/10, R@5 47/64 = 73.4%, `degraded: []`.
+Per-question hit vectors and returned paths are identical before and after on
+both hybrid columns, which is what makes this a latency fix rather than a
+retrieval change.
+
+**One deliberate behavioral difference, in the snippet only.** A note the dense
+arm surfaced that *did* match lexically but ranked below the lexical window now
+comes back highlighted; before, only the lexical top-`rrfDepth` carried
+snippets, so it came back bare. On `rd03` that is exactly one row of ten
+(`inbox-20260724-.../digest.md`). This matches what the code already said it
+wanted — a note "the dense arm found and the lexical arm did not" has no
+matching phrase to highlight — and those notes still come back without one. It
+affects the injected excerpt, never which notes are recalled.
+
+**Ops.** No reindex; corpus and index unchanged from tasks 4–5, scored against
+the resident daemon's own warm embedder on 8901. Before/after binaries were
+built from the two commits and shadowed onto `PATH` per run rather than
+installed, so the resident `agentmd serve` was never disturbed. Regression
+coverage is a document *count*, not a clock:
+`TestHybridSnippetsOnlyTheRowsItReturns` fails on the pre-fix code with
+"hybrid snippeted 50 documents for a k=5 search", and two siblings pin that
+the returned rows are still highlighted, including the single-term fallback
+that now routes through `rankAnd`.

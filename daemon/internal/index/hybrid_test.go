@@ -1,6 +1,7 @@
 package index
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -220,5 +221,101 @@ func TestHybridLex3WidensTheDegradedLexicalArm(t *testing.T) {
 	}
 	if !strings.Contains(out.Note, "lexical arm alone") {
 		t.Errorf("note = %q; this test relies on the no-vector degrade path", out.Note)
+	}
+}
+
+// Hybrid must price its snippet pass for the k rows the caller receives, not for
+// the rrfDepth rows its lexical arm ranks internally.
+//
+// searchHybrid reads rrfDepth rows from the lexical arm purely as an RRF input
+// and then keeps k of the fused list, so highlighting all rrfDepth of them
+// computes a snippet for rows nobody will ever see. snippet() is priced per
+// document scanned, which is what makes that waste unbounded rather than merely
+// untidy: on the frozen gold corpus one research question's discarded tail was
+// twelve megabytes of vendored awesome-list caches carrying 100,110 occurrences
+// of its own terms, and highlighting them cost 6,417ms of a 6,474ms search that
+// returns in 127ms once the pass is priced for k.
+//
+// The counter is asserted rather than the clock. The defect is "how many
+// documents were handed to snippet()", and a timing test measures that only
+// indirectly — and flakily, since the cost depends on how large the discarded
+// documents happen to be.
+func TestHybridSnippetsOnlyTheRowsItReturns(t *testing.T) {
+	x := newTestIndex(t)
+	// More matching notes than the lexical arm's own window, so a hybrid search
+	// that priced snippets at rrfDepth would have rrfDepth of them to price.
+	for i := 0; i < rrfDepth+10; i++ {
+		addNote(t, x, fmt.Sprintf("memory/n%02d.md", i), probeQuery,
+			"the homelab server runs in the closet")
+	}
+	if err := x.PutVectors("m", []VectorRow{
+		{DocID: docID(t, x, "memory/n00.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
+	}); err != nil {
+		t.Fatalf("PutVectors: %v", err)
+	}
+
+	const k = 5
+	before := x.snippeted()
+	out, err := x.Search(Query{
+		Text: probeQuery, K: k, Mode: ModeHybrid, Vector: unit(1, 0, 0), EmbedModel: "m",
+	})
+	if err != nil {
+		t.Fatalf("hybrid: %v", err)
+	}
+	if len(out.Results) != k {
+		t.Fatalf("returned %d rows, want %d — the fixture must fill the k window",
+			len(out.Results), k)
+	}
+	if got := x.snippeted() - before; got > k {
+		t.Fatalf("hybrid snippeted %d documents for a k=%d search; it is pricing the "+
+			"rrfDepth (%d) fusion window again rather than the rows it returns",
+			got, k, rrfDepth)
+	}
+}
+
+// The rows hybrid does return must still be highlighted. Pricing the snippet
+// pass for k is only correct if it still happens — an optimization that returned
+// k rows with no snippets at all would pass the counter assertion above while
+// silently stripping the extract recall.py prefers over a head excerpt.
+func TestHybridStillHighlightsTheRowsItReturns(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "memory/hit.md", probeQuery, "the homelab server runs in the closet")
+	if err := x.PutVectors("m", []VectorRow{
+		{DocID: docID(t, x, "memory/hit.md"), MtimeNS: 1, Vec: unit(1, 0, 0)},
+	}); err != nil {
+		t.Fatalf("PutVectors: %v", err)
+	}
+	out, err := x.Search(Query{
+		Text: probeQuery, K: 5, Mode: ModeHybrid, Vector: unit(1, 0, 0), EmbedModel: "m",
+	})
+	if err != nil {
+		t.Fatalf("hybrid: %v", err)
+	}
+	if len(out.Results) == 0 {
+		t.Fatal("no results")
+	}
+	if !strings.Contains(out.Results[0].Snippet, "[homelab]") {
+		t.Errorf("snippet = %q, want the query's own terms highlighted",
+			out.Results[0].Snippet)
+	}
+}
+
+// A one-term query has no two-term subset, so the lexical arm falls back to the
+// plain AND ranking. That fallback moved behind fuseLexical when the snippet
+// pass was hoisted to the caller, and it has to keep carrying the expression its
+// rows were matched under — otherwise a single-word prompt comes back through
+// hybrid with every snippet silently empty.
+func TestHybridSingleTermQueryStillHighlights(t *testing.T) {
+	x := newTestIndex(t)
+	addNote(t, x, "memory/hit.md", "homelab", "the homelab runs in the closet")
+	out, err := x.Search(Query{Text: "homelab", K: 5, Mode: ModeHybrid})
+	if err != nil {
+		t.Fatalf("hybrid: %v", err)
+	}
+	if len(out.Results) == 0 {
+		t.Fatal("no results")
+	}
+	if !strings.Contains(out.Results[0].Snippet, "[homelab]") {
+		t.Errorf("snippet = %q, want the single term highlighted", out.Results[0].Snippet)
 	}
 }
