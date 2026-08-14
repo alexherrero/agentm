@@ -107,19 +107,25 @@ maps to ~1.0 and the lexical channel collapses to a presence bit. A
 recalibrated score-fusion arm may run as a comparison; it never ships as the
 default on constants fitted elsewhere.
 
-**The cross-encoder floor is the fast path's rejection gate.** Its threshold is
-chosen *before* the gold run — from the literature prior (~0.35) checked
-against the score distribution on off-gold probe queries — never by sweeping
-the gold set, which is fitting to the answer sheet. If the floor fails to
-separate negatives the way the BM25 floor failed, that is a finding, and the
-LLM gate on the deliberate path becomes load-bearing rather than optional.
+**The cross-encoder floor was to be the fast path's rejection gate, and it is
+refuted** (2026-08-13, mechanism completed 2026-08-14 — see the amendment log).
+The conditional this section always carried fired: the floor fails to separate
+negatives the way the BM25 floor failed, and the post-mortem showed why no
+floor placement can fix it — on a single-owner corpus whose negative questions
+are by design about topics the corpus is saturated with, positives and hard
+negatives interleave on cross-encoder score in *either* query format (measured
+0.003–0.959 against 0.267–0.906). Similarity is not answerhood. The LLM gate
+on the deliberate path is therefore **load-bearing**, and the fast path
+currently ships with no rejection gate at all — the hook-cutover step owns the
+injection policy that follows from that (inject-with-metadata and let the
+reading agent judge, or hold the lexical arm's honest-empty where it occurs).
 
 ## LLM judgment stages, cast and placed
 
 | stage | model | where | why |
 |---|---|---|---|
 | query expansion | none standing | driver in-session; deterministic extractor in the hook; job-inline in background | the iterating agent *is* expansion — measured at 0.725 |
-| rejection gate | Claude Haiku 4.5, JSON, low effort | deliberate path only, via `claude -p` | binary keep/drop over ≤20 chunks is a Haiku-shaped judgment |
+| rejection gate | Claude Haiku 4.5, JSON, low effort | deliberate path only, via `claude -p` — **load-bearing** since the CE floor's refutation | binary keep/drop over ≤20 chunks is a Haiku-shaped judgment; answerhood, which the CE post-mortem showed similarity cannot proxy |
 | filing / invalidation | Sonnet 5, batched | dreaming's filing pass, propose→confirm, behind the corpus-write gate | supersede/merge is the judgment regex mining failed at; wrong supersede loses a true fact |
 
 The layering rule that governs all of it: **the daemon touches local models
@@ -143,7 +149,8 @@ changes what an AND leaves standing.
 | 0 | `and-of-6` | measured: 10.9% R@5 / 35% rejection | 10.9% / 35% |
 | 1 | `lexical-fusion` | reproduces ~42% in-daemon, flag-gated, hook untouched | 42.2% / 0% — met |
 | 2 | `+vector RRF` | paraphrase ≥50%, research-corpus ≥58%, distinctive-token does not regress | 54.7% overall; research-corpus 58.3% and distinctive-token 8/12 met, **paraphrase 38.9% missed** |
-| 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. |
+| 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. Post-mortem (2026-08-14): partly a query-format test artifact, structurally a similarity≠answerhood interleave — see the amendment log. |
+| 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | |
 | 4 | `+temporal` | episodic ≥60%, others flat | |
 | 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 | |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
@@ -153,10 +160,14 @@ backfill was slightly better at the tool level and 3.85 points worse at the
 agent level. A retrieval-layer win is necessary, never sufficient.
 
 Targets: every stratum in the 70–90% band at the hook layer; rejection ≥70%
-from the cross-encoder floor now, ≥90% where the LLM gate runs. The 82.8%
-oracle is the lexical-subset ceiling, not the hybrid ceiling — the vector arm
-reaches notes with zero term overlap, so exceeding it is possible and expected
-on the paraphrase strata.
+now belongs to the deliberate-path LLM gate (the CE floor that was to deliver
+it on the fast path is refuted), ≥90% where that gate runs. The 82.8% oracle
+is the lexical-subset ceiling, not the hybrid ceiling — the vector arm reaches
+notes with zero term overlap, so exceeding it is possible and expected on the
+paraphrase strata. The 78.1% figure recorded during step 3 (answers present in
+the fused top-20) was a property of the terms-shaped candidate pool, not of
+the corpus: the step-3.5 reach diagnosis found 22 of the 28 remaining misses
+reachable once the dense arm is queried with the natural question.
 
 ## Distribution
 
@@ -198,6 +209,42 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-14 · the 2026-08-13 entry's re-audit trigger fired: the query
+  representation was the artifact, and correcting for it licenses step 3.5.**
+  Operator-directed post-mortem of the step-3 refutation. What changed: the
+  refutation *stands* but its recorded cause was incomplete. Four findings.
+  (1) The test fed both cross-encoders `_daemon_query_terms`' reduced
+  keywords, never the natural question — `cmdSearch` has one query string for
+  all arms. Counterfactual on the same note and model: rd08's correct answer
+  scores sigmoid 0.000 under the terms query and 0.959 under the question.
+  Every floored-to-empty positive traces to this. (2) The artifact was also
+  throttling the **dense arm**, which embedded the same keyword string:
+  probing the 28 remaining misses with the question embedded instead puts the
+  expected note in the dense top-5 outright for 16 of them (rd10: dense rank
+  3,019 → 1) and inside RRF depth for 22 of 28 counting 3-term lexical
+  subsets. (3) Two findings survive any format fix and keep the CE dead:
+  positives and hard negatives interleave on CE score in either format
+  (0.003–0.959 vs 0.267–0.906 — similarity is not answerhood on a corpus
+  whose negatives are topic-saturated by design), and max-over-chunks hands
+  long documents an extreme-value subsidy that displaced 1.4KB notes with
+  39KB roadmaps even under natural questions. (4) The jina GGUF conversion is
+  compromised (canonical pair 0.843 vs bge's 0.9996) — its step-3 numbers
+  understate the model; immaterial to the verdict since healthy bge
+  interleaves too. **Step 3.5 added to the ladder** (question passthrough:
+  dense arm embeds the natural question, lexical arms keep the terms; rule in
+  the table, pre-registered before any implementation). Why not re-run the CE
+  with the fix instead: at a measured ~18–125 ms/pair it cannot clear the
+  hook's 300ms budget in any configuration, and its rejection story is dead
+  on the interleave — the ordering question it could still answer is worth at
+  most a parked experiment. Why not add 3-term lexical subsets in the same
+  rung: one mechanism per rung keeps the column attributable; triples (14/28
+  reachable, heavily overlapping the dense gains) stay licensed and parked.
+  **Re-audit trigger:** if step 3.5's implemented column falls well short of
+  the diagnosis (16 direct dense-top-5 candidates), the gap is fusion
+  friction — revisit RRF depth or per-arm contribution *off-gold* before
+  concluding the diagnosis over-promised. Full mechanism record:
+  `scripts/health/results/goldv2/NOTES.md` § "Task 3 post-mortem".
 
 - **2026-08-13 · step 3's cross-encoder floor is refuted; the deliberate
   path's LLM rejection gate is promoted from optional to load-bearing.**

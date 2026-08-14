@@ -583,3 +583,91 @@ solve today, but it is the reason a floor-only, no-rerank hook path (fusion
 + vector + a BM25-style floor, or the LLM gate directly) is worth
 considering there rather than assuming rerank was simply pending a latency
 optimization.
+
+---
+
+# Task 3 post-mortem: the refutation stands, its cause was half-recorded — and the fix is a recall rung
+
+Run 2026-08-14, operator-directed, after the refutation landed. The operator's
+challenge: CE rerank works elsewhere, so suspect the test before the technique.
+The suspicion was right in part, and following it found the next rung.
+
+## The test fed both models keyword soup
+
+`cmdSearch` has one query string for all three arms, and the scorecard passes
+`recall._daemon_query_terms(question)` — the hook's extracted AND-terms. Every
+CE pair was therefore `("circumstances automatically invoke worktrees", chunk)`.
+Both rerankers are trained on natural-language query/passage pairs; the task-3
+verification checked the candidate set, the floor's scale, and chunk coverage,
+but never the query string itself. Counterfactual, same note, same model (bge):
+
+| question | terms query | natural question |
+|---|---:|---:|
+| rd08 correct note | sig 0.000 (floored) | sig **0.959** |
+| rc09 correct note | sig 0.003 (floored) | sig 0.197 |
+
+The floored-to-empty class (6 bge / 7 jina true positives returning nothing) is
+this artifact. The 2026-08-13 amendment named "a query representation richer
+than the reduced keywords" as a live re-audit hypothesis; it fired.
+
+## What survives the artifact — three structural findings
+
+**No floor separates positives from negatives in either format.** bge under
+natural questions: correct notes score 0.003–0.959; hard negatives' best
+candidates score 0.267–0.906 — fully interleaved. A negative about worktrees
+finds worktree docs at 0.906 while ep03's true answer scores 0.008. On a
+single-owner corpus whose negatives are by design about topics the corpus is
+saturated with, topical relevance and answerhood come apart, and a
+similarity-trained CE measures the former. The rejection clause is dead at any
+threshold; only an answerhood judgment (the deliberate-path LLM gate) can
+deliver it.
+
+**The demotions are a length subsidy.** Every bge demotion winner was a
+22–39KB roadmap or plan archive displacing a 1.4–11KB note. Max-over-chunks
+gives a 20-chunk document twenty noisy draws at its maximum; an atomic note
+gets one. Persists under natural questions on the probes. Max-chunk CE scoring
+is structurally anti-correlated with atomic capture.
+
+**The jina conversion is compromised.** Canonical textbook pair: bge sig
+0.9996, jina sig 0.843, with plausibly-relevant chunks pinned at ~0.34 —
+against its own 0.35 floor. Its arm understates the model; do not re-run jina
+from the gpustack GGUF. (Immaterial to the refutation: the healthy bge
+interleaves too.)
+
+Loss decomposition against +chunking's 36 hits: bge kept 18 / demoted 12 /
+floored 6; jina kept 23 / 6 / 7. With 50 of 64 answers in the fused top-20, a
+zero-signal reranker expects ~12.5/64 (19.5%); bge landed 21/64 — nearer noise
+than the 78.1% ceiling.
+
+## The reach diagnosis: the artifact was also throttling the dense arm
+
+The same terms string is what the dense arm embedded
+(`task: search result | query: <terms>`). The reduction exists for FTS5's AND;
+applying it to the embedder was incidental. Probing the 28 +chunking misses
+with the natural question embedded instead (raw cosine over the task-2.5 chunk
+vectors, best-chunk-per-note, penalties not applied — diagnosis, not the
+production path):
+
+| measure | terms | natural question |
+|---|---:|---:|
+| expected note in dense top-50 (RRF depth) | 15/28 | **22/28** |
+| expected note in dense **top-5 directly** | — | **16/28** |
+
+Individual moves: rd10 dense rank 3,019 → **1**; rd03 360 → 1; rd04 376 → 1;
+dt12 122 → 1; rc03 109 → 2. Separately, some 3-term subset of the extracted
+terms reaches lexical top-5 for 14/28 (2-term fusion is implemented; triples
+are not). Union of the two mechanisms: 22 of 28 misses become reachable. The
+78.1% "ceiling" was a property of the terms-shaped candidate pool, not of the
+corpus.
+
+Residue neither mechanism reaches: pp07, pp15, pp16, rc01, rd01 (+ep09 at
+dense 7) — the alias/filing arc's territory, correctly out of scope.
+
+## What this licenses
+
+Step 3.5 (question passthrough): the daemon accepts the natural question
+alongside the terms; the dense arm embeds the question; the lexical arms keep
+the terms. No new model, no constant to derive, and the production hook already
+holds the raw prompt. Pre-registered rule in the design ladder. CE rerank
+stays parked: even fixed, it cannot clear the 300ms hook budget at ~18–125
+ms/pair, and its rejection story is dead above.
