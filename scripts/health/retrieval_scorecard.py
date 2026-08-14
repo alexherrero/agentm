@@ -75,8 +75,8 @@ def to_query(question: str) -> str:
     return recall._daemon_query_terms(question)
 
 
-def search(query: str, k: int, mode: str = "and",
-           target: tuple = ()) -> tuple[list[str], float, str, float | None, int | None]:
+def search(query: str, k: int, mode: str = "and", target: tuple = (),
+           question: str | None = None) -> tuple[list[str], float, str, float | None, int | None]:
     """Top-k paths for a query, the wall time in milliseconds, the daemon's
     note, and — for `-mode rerank` only — the cross-encoder's own wall time
     and pair count for this one query.
@@ -94,9 +94,18 @@ def search(query: str, k: int, mode: str = "and",
     pointed at the same frozen snapshot. The index has to be named too — it does
     not derive from the vault path, so a vault override alone would write the
     snapshot's index over the operator's live one.
+
+    `question`, when given, is passed as the daemon's own `-question` flag
+    (task 3.5) — the dense arm embeds it instead of `query`, and `query` keeps
+    driving the lexical arms exactly as it always has. Passed straight through
+    rather than reimplemented for the same reason `mode` is: the daemon owns
+    the mechanism, this script only asks for it.
     """
     started = time.monotonic()
-    argv = ["agentmd", "search", "-json", "-mode", mode, "-k", str(k), *target, query]
+    argv = ["agentmd", "search", "-json", "-mode", mode, "-k", str(k), *target]
+    if question:
+        argv += ["-question", question]
+    argv.append(query)
     proc = subprocess.run(argv, capture_output=True, text=True)
     elapsed = (time.monotonic() - started) * 1000.0
     out = proc.stdout
@@ -112,13 +121,18 @@ def search(query: str, k: int, mode: str = "and",
             doc.get("rerank_ms"), doc.get("rerank_pairs"))
 
 
-def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) -> dict:
+def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
+          pass_question: bool = False) -> dict:
     rows = []
     for e in entries:
         expected = e.get("expected_note_paths") or []
         query = to_query(e["question"])
+        # The gold question passed through verbatim, not to_query's reduction
+        # of it — task 3.5's whole point is that the dense arm sees the
+        # natural question, not the AND-terms built for FTS5.
+        question = e["question"] if pass_question else None
         if query:
-            ranked, ms, note, rerank_ms, rerank_pairs = search(query, k, mode, target)
+            ranked, ms, note, rerank_ms, rerank_pairs = search(query, k, mode, target, question)
         else:
             ranked, ms, note, rerank_ms, rerank_pairs = [], 0.0, "", None, None
         hits = [p for p in expected if p in ranked]
@@ -126,6 +140,7 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = ()) ->
         rows.append({
             "id": e["id"], "stratum": e["stratum"], "question": e["question"],
             "query": query,
+            "question_passed": bool(question),
             "is_negative": not expected,
             # A negative is "correct" when the tool returned nothing at all.
             # See the module docstring for why that is a floor, not a verdict.
@@ -168,8 +183,17 @@ def render(result: dict, k: int) -> str:
     else:
         channel = f"lexical (FTS5)"
         caveat = "no model in the loop"
+    # The header must say when the dense arm embedded the natural question
+    # instead of the reduced terms (task 3.5) — otherwise a +question column
+    # reads as an ordinary hybrid run, which is exactly the kind of mislabel
+    # the mode-vs-caveat check above already exists to prevent one layer up.
+    if result.get("question_passed"):
+        channel += ", dense arm embeds the natural question"
     out = [f"retrieval scorecard — {channel}, mode={mode}, k={k}, {caveat}",
-           "queries reduced by recall._daemon_query_terms, as the prompt-submit hook does", ""]
+           "queries reduced by recall._daemon_query_terms, as the prompt-submit hook does " +
+           ("(lexical arms) / passed through verbatim to the dense arm (task 3.5)"
+            if result.get("question_passed") else ""),
+           ""]
     out.append(f"{'stratum':<20}{'n':>4}{'hit@k':>9}{'rate':>9}")
     out.append("-" * 42)
     scored = [r for r in rows if not r["is_negative"]]
@@ -332,11 +356,21 @@ def main(argv=None) -> int:
     ap.add_argument("--rerank-model", default=None,
                     help="which reranker model to score with; carries its own floor "
                          "(daemon/internal/rerank/model.go) — never a runtime knob")
+    ap.add_argument("--question", action="store_true",
+                    help="pass the gold question through as the daemon's -question flag "
+                         "(task 3.5); the dense arm embeds it instead of the reduced "
+                         "terms, which keep driving the lexical arms unchanged")
     args = ap.parse_args(argv)
 
     if bool(args.vault) != bool(args.index):
         ap.error("--vault and --index go together: a vault override without its own "
                  "index writes the snapshot's index over the live one")
+    if args.question and args.mode not in ("hybrid", "rerank"):
+        # Not a daemon error — and-mode ignores an unrecognized dense-arm
+        # concern harmlessly, at the daemon level — but a scorecard run that
+        # asked for question-passthrough and silently scored a mode with no
+        # dense arm to pass it to would publish a column mislabeled by intent.
+        ap.error("--question only affects a dense arm; pass --mode hybrid or --mode rerank")
     if args.mode in ("hybrid", "rerank") and not args.embedder_url:
         # Refused rather than allowed-but-slow. A hybrid (or rerank, which
         # runs hybrid underneath) run without a warm server still produces
@@ -366,7 +400,7 @@ def main(argv=None) -> int:
         target += ("-reranker-url", args.reranker_url)
     if args.rerank_model:
         target += ("-rerank-model", args.rerank_model)
-    result = score(entries, args.k, args.mode, target)
+    result = score(entries, args.k, args.mode, target, pass_question=args.question)
     result["vault"] = args.vault
     result["gold_set"] = Path(args.gold_set).name
     result["corpus"] = (doc.get("$corpus") or {}).get("name") if isinstance(doc, dict) else None
@@ -374,6 +408,7 @@ def main(argv=None) -> int:
     result["mode"] = args.mode
     result["embed_model"] = args.embed_model
     result["rerank_model"] = args.rerank_model
+    result["question_passed"] = args.question
     # An arm that lost a child partway through is a weaker arm wearing a
     # stronger label — hybrid that silently fell back to lexical, or rerank
     # that silently fell back to unreranked hybrid. Refuse to publish it

@@ -64,7 +64,14 @@ func (s *Server) SetProbe(fn ProbeFunc) { s.probe = fn }
 // EmbedFunc turns a query into a vector and names the model that produced it. It
 // returns a nil vector when there is no warm embedder, which is what makes a
 // hybrid search degrade to its lexical arm rather than fail.
-type EmbedFunc func(ctx context.Context, text string) ([]float32, string)
+//
+// It takes the terms query and, separately, whatever question the caller
+// supplied (task 3.5) rather than a single already-chosen text, because only
+// the function's owner (main.go, which holds the embedder and therefore knows
+// its window) can decide which one to embed and how much of it fits. This
+// package still knows nothing about child processes or their windows — it
+// hands both strings across the seam and is told back a vector.
+type EmbedFunc func(ctx context.Context, query, question string) ([]float32, string)
 
 // SetEmbedder wires the vector arm. A function rather than the supervisor itself,
 // so this package keeps knowing nothing about child processes — it asks for a
@@ -262,6 +269,12 @@ type searchArgs struct {
 	// path adopt a mode with 0% correct rejection before the ladder has earned
 	// the rerank and floor that make it safe. The schema entry lands at cutover.
 	Mode string `json:"mode"`
+	// Question is accepted on the same unpublished seam as Mode, for the same
+	// reason: a measurement driver can ask the dense arm to embed the natural
+	// question (task 3.5) instead of Query; the agent is not told the argument
+	// exists until the hook cutover earns it a place in the schema. Query keeps
+	// driving the lexical arms unconditionally either way.
+	Question string `json:"question"`
 }
 
 func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
@@ -284,7 +297,7 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if a.Mode == index.ModeHybrid && s.embed != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		q.Vector, q.EmbedModel = s.embed(ctx, a.Query)
+		q.Vector, q.EmbedModel = s.embed(ctx, a.Query, a.Question)
 	}
 	out, err := s.idx.Search(q)
 	if err != nil {

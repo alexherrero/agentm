@@ -464,6 +464,24 @@ func EmbedText(title, body string) string {
 // rather than a bound anything relies on.
 const charsPerToken = 3
 
+// windowHeadroom is tokens reserved, out of a model's context window, for the
+// prompt scaffolding and special tokens the model wraps around whatever text
+// it embeds — Model.WrapQuery's or Model.WrapDoc's own prefix, plus whatever
+// the server's own template adds beyond that. Chosen once, here, for both
+// callers windowBudget serves.
+const windowHeadroom = 64
+
+// windowBudget converts a context window in tokens into a byte budget for the
+// text a caller is about to hand the model, reserving windowHeadroom tokens
+// for the wrapping every embedded text gets. ChunkText (splits text too long
+// to fit into several pieces) and TruncateQuery (cuts it to one, for the
+// caller that only ever wants a single piece) both derive their budget from
+// here rather than each carrying its own headroom constant — one notion of
+// the window, not two.
+func windowBudget(ctxTokens int) int {
+	return (ctxTokens - windowHeadroom) * charsPerToken
+}
+
 // EmbedRetryCut shortens a text that the server rejected as too long.
 //
 // Halving rather than shaving: the estimate was wrong by an unknown factor, and
@@ -488,4 +506,22 @@ func cutOnRune(s string, n int) string {
 		n--
 	}
 	return s[:n]
+}
+
+// TruncateQuery defensively cuts a query to a model's window budget before it
+// is embedded, on a rune boundary.
+//
+// Every query embedded before task 3.5 was a handful of AND-reduced terms,
+// always far short of any model's window, so nothing needed this. Task 3.5
+// embeds the natural question instead (see queryEmbedText, cmd/agentmd), and
+// the production hook will eventually hand this path a whole pasted prompt —
+// unbounded in a way the terms string never was. A query embeds as exactly
+// one vector, so unlike ChunkText there is no "best of several pieces" to
+// keep afterward; only the piece that fits, taken from the head, matters.
+func TruncateQuery(text string, ctxTokens int) string {
+	budget := windowBudget(ctxTokens)
+	if budget <= 0 || len(text) <= budget {
+		return text
+	}
+	return cutOnRune(text, budget)
 }

@@ -167,15 +167,15 @@ reaches **23/53 (43%)** at both n=2 and n=3.
 
 **On the full gold set it fails its own rule.**
 
-| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking | +rerank+floor |
-|---|---:|---:|---:|---:|---:|---:|
-| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 | 7/12 |
-| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 | 7/12 |
-| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 | 6/18 |
-| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 | 3/12 |
-| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 | 2/10 |
-| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** |
-| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** | **40%** |
+| | baseline | max-score fusion, 2-term | lexical-fusion (in-daemon) | +vector RRF | +chunking | +rerank+floor | +question |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 7/12 | 8/12 | 8/12 | 7/12 | 9/12 |
+| episodic-temporal | 3/12 | 6/12 | 6/12 | 7/12 | 7/12 | 7/12 | 9/12 |
+| pure-paraphrase | 1/18 | 5/18 | 5/18 | 7/18 | 9/18 | 6/18 | 11/18 |
+| research-corpus | 0/12 | 6/12 | 6/12 | 7/12 | 6/12 | 3/12 | 10/12 |
+| research-density | 0/10 | 3/10 | 3/10 | 6/10 | 6/10 | 2/10 | 9/10 |
+| **R@5** | **10.9%** | **42.2%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** | **75.0%** |
+| **negative rejection** | **35%** | **0%** | **0%** | **0%** | **0%** | **40%** | **0%** |
 
 Recall nearly quadrupled and rejection went to zero — every one of the 20
 negatives returned a confident wrong answer. The pre-registered floor was
@@ -671,3 +671,138 @@ the terms. No new model, no constant to derive, and the production hook already
 holds the raw prompt. Pre-registered rule in the design ladder. CE rerank
 stays parked: even fixed, it cannot clear the 300ms hook budget at ~18–125
 ms/pair, and its rejection story is dead above.
+
+---
+
+# Task 3.5: question passthrough — column `+question`, rule met well past the floor
+
+Run 2026-08-14, rule pre-registered in the plan before any code: **overall R@5
+≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by
+more than one question, and the per-question gain/loss diff is published with
+the column.**
+
+## The mechanism
+
+`agentmd search -question "<the natural question>"` (and the matching
+argument on the MCP `mode` seam, still unpublished) hands the daemon the
+question alongside the extracted terms. When present, the dense arm embeds
+`WrapQuery(question)` instead of `WrapQuery(terms)`, truncated defensively to
+the embedder's window first — `index.TruncateQuery`, which reuses `ChunkText`'s
+own budget arithmetic (`windowBudget`, `daemon/internal/index/vector.go`)
+rather than a second notion of the window. The lexical arms never see the
+question: `index.Query.Text` is set from the terms in both the CLI (`main.go`)
+and the MCP handler (`mcpsrv/server.go`), and the question is consumed only on
+the branch that decides what to embed — `queryEmbedText`
+(`daemon/cmd/agentmd/embedder.go`).
+
+## Absence proven byte-identical, not merely claimed
+
+Before scoring the new column, the branch build was run against the same
+index with no `-question` flag and diffed against the landed `+chunking`
+column's own per-question JSON — same 84 rows, same hits, same top-k path
+lists, zero differences. This is the same discipline task 1 used to prove the
+hook path unchanged after the fusion refactor (re-scoring `and` at exactly
+10.9%), applied here at the row level rather than only the aggregate: 36/64
+both times, and the 28 miss ids are the identical 28 miss ids.
+
+## The result
+
+| stratum | `+chunking` | `+question` | Δ |
+|---|---:|---:|---:|
+| distinctive-token | 8/12 | 9/12 | +1 |
+| episodic-temporal | 7/12 | 9/12 | +2 |
+| pure-paraphrase | 9/18 | 11/18 | +2 |
+| research-corpus | 6/12 | 10/12 | +4 |
+| research-density | 6/10 | 9/10 | +3 |
+| **R@5** | **56.2%** (36/64) | **75.0%** (48/64) | **+12** |
+| negative rejection | 0% | 0% | 0 |
+
+Every clause clears with room to spare: overall R@5 is 12.5 points above the
+62.5% floor (net +12 against the +4 floor); pure-paraphrase is 11.1 points
+above its 50% floor; and no stratum regressed at all, so the "no more than one
+question" tolerance was never tested. Negative rejection was already 0% at
+`+chunking` and stays 0% — unchanged, not a new failure, and not part of this
+rung's rule (that clause belongs to the deliberate-path LLM gate now, per the
+2026-08-13 amendment).
+
+## Per-question diff — published by id, the `ep05` lesson applied
+
+**12 gained, 0 lost.** A flat or improving stratum total cannot be trusted to
+mean "no swap happened" (task 2.5's `ep05`/`ep03` lesson) — here every stratum
+improved, so the diff was checked question by question rather than inferred
+from the totals holding.
+
+| id | stratum | gained via |
+|---|---|---|
+| dt12 | distinctive-token | diagnosed (dense top-5 under question, rank 1) |
+| ep04 | episodic-temporal | diagnosed (dense top-5, rank 1) |
+| ep05 | episodic-temporal | **not diagnosed** — dense rank 19 alone (inside RRF depth, outside top-5); reached the fused top-5 through the lexical arm's own contribution |
+| pp06 | pure-paraphrase | diagnosed (dense top-5, rank 1) |
+| pp13 | pure-paraphrase | diagnosed (dense top-5, rank 1) |
+| rc04 | research-corpus | diagnosed (dense top-5, rank 1) |
+| rc06 | research-corpus | diagnosed (dense top-5, rank 2) |
+| rc08 | research-corpus | diagnosed (dense top-5, rank 1) |
+| rc12 | research-corpus | diagnosed (dense top-5, rank 1) |
+| rd03 | research-density | diagnosed (dense top-5, rank 1) |
+| rd04 | research-density | diagnosed (dense top-5, rank 1) |
+| rd10 | research-density | diagnosed (dense top-5, rank 1) |
+
+Two are worth naming individually. **`rc08`** is the research-corpus question
+("What is the actual complaint about retrieval-augmented generation for
+memory?") that task 3's cross-encoder investigation floored to empty under
+both bake-off candidates — a genuine CE recovery failure, honestly reported at
+the time. It is recovered here, by a mechanism with no cross-encoder in it at
+all. **`ep05`** ("Why did I choose to split agentm into two repos and when?")
+is the question task 3's rerank recovered and this rung was not expected to,
+by the diagnosis's own accounting — its dense rank under the question (19) is
+inside RRF's depth-50 window but not the top-5 the diagnosis counted directly,
+so its recovery here is fusion synergy (the lexical arm's contribution lifting
+a moderately-ranked dense candidate the rest of the way), not the diagnosed
+mechanism. Recorded because the diagnosis is a probe, not the production path,
+and this is exactly the kind of gain a probe restricted to one arm cannot see.
+
+## Convergence against the diagnosis: 11 of 16
+
+The post-mortem's reach diagnosis (raw cosine, best-chunk-per-note, no
+fusion, no penalty — a probe) found the expected note in the dense top-5
+directly for 16 of the 28 `+chunking` misses when the question was embedded
+instead of the terms. Re-run against the same index and embedder to recover
+the exact id set (not saved from the original session): `dt07, dt12, ep04,
+pp05, pp06, pp09, pp13, pp17, rc03, rc04, rc06, rc08, rc12, rd03, rd04, rd10`
+— and the re-probe reproduced the diagnosis's own headline numbers exactly
+(16/28 top-5, 22/28 top-50), confirming it before using it as a checklist.
+
+**11 of those 16 converted** to actual hits in the landed column (all except
+`ep05`, which is not on this list — see above). **5 did not**: `dt07`,
+`pp05`, `pp09`, `pp17`, `rc03`. Each was dense-top-5 by raw cosine but did not
+survive reciprocal-rank fusion into the daemon's actual top-5 — the lexical
+arm's own ranking, or another candidate's combined rank, won the fusion for
+that query. This is fusion friction, named and expected: the rule's own +4-net
+floor was set deliberately below the diagnosis's 16 direct candidates for
+exactly this reason, and 11/16 converting plus one synergy gain (`ep05`) is
+well inside that tolerance rather than a shortfall requiring investigation.
+The design's own re-audit trigger ("falls well short of the 16 direct
+candidates") did not fire, so RRF depth and per-arm contribution were not
+touched, per the plan's explicit instruction not to sweep either against the
+gold set.
+
+The remaining 16 misses split into the 5 fusion-friction cases above and 11
+the diagnosis never claimed: `dt02`, `dt10`, `pp07`, `pp10`, `pp15`, `pp16`,
+`ep07`, `ep08`, `ep09`, `rc01`, `rd01` — outside dense top-50 entirely for
+most of them, and previously named as the alias/filing arc's territory for
+`pp07`, `pp15`, `pp16`, `rc01`, `rd01` specifically. Untouched by this rung by
+design.
+
+## Ops
+
+Reused the task-2.5 chunked index verbatim (9,971 docs, 9,473 embedded notes,
+11,761 chunk vectors, schema 4) — verified against the corpus's docmeta count
+and the gold set's pinned `$corpus` block before scoring, no rebuild needed,
+since this rung changes only the query side. Embedder: EmbeddingGemma-300M-Q8_0
+at `-np 1 -c 2048 -b 2048 -ub 2048`, confirmed no stray `llama-server`
+processes before starting it and none accumulated afterward. `degraded: []` on
+every run. Scored via `retrieval_scorecard.py --mode hybrid --question
+--embedder-url ... --embed-model embeddinggemma-300M-Q8_0 --vault <corpus>
+--index <scratch index>`, re-run twice and confirmed bit-identical (same
+hits, same ranks) before landing the column. Per-question JSON at
+`<vault>/Agent/_meta/health/goldv2/question-20260814.json`, never in the repo.

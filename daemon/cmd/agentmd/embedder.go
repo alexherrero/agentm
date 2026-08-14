@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
@@ -118,6 +119,29 @@ func startEmbedder(
 	}
 	st, detail := sup.State()
 	return sup, fmt.Errorf("embedder did not become warm in %s (state %s: %s)", wait, st, detail)
+}
+
+// queryEmbedText decides what text the dense arm embeds — task 3.5's
+// question-passthrough rung.
+//
+// The natural question, when the caller supplied one (CLI `-question`, MCP's
+// unpublished `question` argument on the same seam `mode` already uses),
+// truncated defensively to the model's own window before it is wrapped: the
+// production hook will eventually hand this path a whole pasted prompt, and
+// that input is not bounded the way a terms string always has been. The
+// extracted terms otherwise — returned exactly as given, which is what makes
+// "no question supplied" byte-identical to every measurement before this
+// task rather than merely close to it.
+//
+// The lexical arms never see this decision. They search index.Query.Text,
+// which every caller sets from the terms and never from the question — the
+// AND/fusion term reduction is correct for FTS5 and this task does not touch
+// it.
+func queryEmbedText(terms, question string, ctxTokens int) string {
+	if q := strings.TrimSpace(question); q != "" {
+		return index.TruncateQuery(q, ctxTokens)
+	}
+	return terms
 }
 
 // embedQuery embeds one search query, returning nil when there is no embedder.

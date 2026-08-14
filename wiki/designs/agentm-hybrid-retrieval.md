@@ -150,7 +150,7 @@ changes what an AND leaves standing.
 | 1 | `lexical-fusion` | reproduces ~42% in-daemon, flag-gated, hook untouched | 42.2% / 0% — met |
 | 2 | `+vector RRF` | paraphrase ≥50%, research-corpus ≥58%, distinctive-token does not regress | 54.7% overall; research-corpus 58.3% and distinctive-token 8/12 met, **paraphrase 38.9% missed** |
 | 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. Post-mortem (2026-08-14): partly a query-format test artifact, structurally a similarity≠answerhood interleave — see the amendment log. |
-| 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | |
+| 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | **met, well past the floor** — 75.0% (48/64), pure-paraphrase 61.1% (11/18), every stratum improved and none regressed (12 gained / 0 lost). 11 of the 16 diagnosed dense-top-5 candidates converted. |
 | 4 | `+temporal` | episodic ≥60%, others flat | |
 | 5 | `hook e2e` | p50/p90 <300ms warm, strata within noise of step 4 | |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
@@ -209,6 +209,45 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-14 · step 3.5 (question passthrough) measured: 75.0% R@5, well
+  past its own floor, zero stratum regressions.** `agentmd search -question`
+  (and the matching unpublished MCP argument, on the same seam `mode`
+  already uses) hands the daemon the natural question alongside the
+  AND-reduced terms; the dense arm embeds `WrapQuery(question)`, defensively
+  truncated to the embedder's window by reusing `ChunkText`'s own budget
+  arithmetic (`windowBudget`, `daemon/internal/index/vector.go`) rather than
+  inventing a second notion of the window. The lexical arms are untouched:
+  `index.Query.Text` is set from the terms in every caller and never from the
+  question, so `-mode and`/`fusion` are provably unaffected — re-scored with
+  no `-question` flag, the branch build reproduced `+chunking`'s own
+  per-question JSON bit-for-bit (same 84 rows, same hits, same ranked lists),
+  not merely the same aggregate. Landed as the `+question` column in
+  `scripts/health/results/goldv2/NOTES.md`. Result: overall R@5 36/64 →
+  **48/64 = 75.0%** (rule: ≥40/64), pure-paraphrase 9/18 → **11/18 = 61.1%**
+  (rule: ≥9/18), every stratum improved and none regressed (rule: none
+  regress by more than one question) — 12 gained, 0 lost, published by
+  question id. Of the diagnosis's 16 dense-top-5 candidates, **11
+  converted**; the other 5 (`dt07`, `pp05`, `pp09`, `pp17`, `rc03`) were
+  dense-top-5 by raw cosine but did not survive RRF fusion into the final
+  top-5 — the fusion friction the rule's own +4 floor (deliberately below
+  the diagnosis's 16) was sized to tolerate. One gain, `ep05`, converted
+  through fusion synergy rather than the diagnosed mechanism: dense rank 19
+  alone, inside RRF depth but not top-5 by itself, yet the lexical arm's own
+  contribution lifted it into the fused top-5 — the same `ep05` step 3's
+  cross-encoder recovered. `rc08`, the case both rerank candidates floored
+  to empty in step 3's investigation, is also recovered here, by a mechanism
+  with no cross-encoder in it at all. Why not raise the rule's floor now
+  that the diagnosis under-promised relative to the result: the floor was
+  fixed before scoring specifically so a strong result would not
+  retroactively read as merely clearing a bar tuned to the outcome; the
+  result stands on its own margin instead. **Re-audit trigger:** none
+  fired — the diagnosis's own named trigger ("falls well short of the 16
+  direct candidates") did not occur (11 of 16 converted, and the overall
+  rule cleared at roughly 3x its required margin), so fusion friction (RRF
+  depth, per-arm contribution) was not investigated and remains untouched,
+  per the plan's explicit scope fence. Full per-question detail:
+  `<vault>/Agent/_meta/health/goldv2/question-20260814.json`.
 
 - **2026-08-14 · the 2026-08-13 entry's re-audit trigger fired: the query
   representation was the artifact, and correcting for it licenses step 3.5.**

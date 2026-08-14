@@ -296,7 +296,8 @@ func cmdServe(args []string) error {
 	// The vector arm, behind the same seam. A caller asking for hybrid before the
 	// child is warm gets a nil vector and therefore the lexical arm, which is the
 	// degradation the mode is specified to have rather than an error.
-	srv0.SetEmbedder(func(ctx context.Context, text string) ([]float32, string) {
+	srv0.SetEmbedder(func(ctx context.Context, query, question string) ([]float32, string) {
+		text := queryEmbedText(query, question, embedder.Model().CtxTokens)
 		return embedQuery(ctx, embedder, text), embedder.Model().Name
 	})
 	srv := &http.Server{
@@ -354,6 +355,10 @@ func cmdSearch(args []string) error {
 		"how to combine terms: `and` (every term in one note), `fusion` (best two-term subset), "+
 			"`hybrid` (fusion + dense vectors, fused by reciprocal rank), or "+
 			"`rerank` (hybrid's fused top-20, cross-encoder reranked and floored)")
+	question := fs.String("question", "",
+		"natural-language question; when set, `hybrid`/`rerank`'s dense arm embeds this "+
+			"instead of the terms query below, truncated to the embedder's window — the "+
+			"lexical arms always search the terms below regardless")
 	ef := bindEmbedderFlags(fs)
 	rf := bindRerankerFlags(fs)
 	asJSON := fs.Bool("json", false, "emit JSON")
@@ -397,7 +402,7 @@ func cmdSearch(args []string) error {
 			return err
 		}
 		defer sup.Close()
-		q.Vector = embedQuery(ctx, sup, query)
+		q.Vector = embedQuery(ctx, sup, queryEmbedText(query, *question, sup.Model().CtxTokens))
 		q.EmbedModel = sup.Model().Name
 	}
 

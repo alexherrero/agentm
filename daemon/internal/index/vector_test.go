@@ -491,6 +491,69 @@ func TestChunkTextNeverSplitsARune(t *testing.T) {
 	}
 }
 
+// A question far short of the window — every one before task 3.5 — must come
+// back byte-for-byte unchanged. This is the "byte-identical when the question
+// is absent or short" claim task 3.5's own rule requires, pinned as a test
+// rather than left as a narrative.
+func TestTruncateQueryReturnsTextUnchangedWhenItFits(t *testing.T) {
+	got := TruncateQuery("gemini model always", 2048)
+	if got != "gemini model always" {
+		t.Fatalf("TruncateQuery = %q, want the input unchanged", got)
+	}
+}
+
+// A question longer than the window must cut at the exact byte offset the
+// budget formula produces. Pinned to a hand-derived literal rather than
+// re-derived from the implementation, the same discipline
+// TestChunkTextSplitsLongBodyWithOverlapAndTitleOnEveryChunk uses for
+// ChunkText: budget=(100-64)*3=108.
+func TestTruncateQueryCutsToHandDerivedBudget(t *testing.T) {
+	text := strings.Repeat("x", 200)
+	got := TruncateQuery(text, 100)
+	want := text[:108]
+	if got != want {
+		t.Fatalf("TruncateQuery returned %d bytes, want the hand-derived 108-byte cut (got %q)",
+			len(got), got)
+	}
+}
+
+// No cut may split a multi-byte rune, the same hazard ChunkText guards
+// against at every internal boundary — TruncateQuery only ever makes one cut,
+// but it is the same cut and the same hazard.
+func TestTruncateQueryNeverSplitsARune(t *testing.T) {
+	text := strings.Repeat("→", 20) // 3-byte rune, 60 bytes, 20 runes
+	// budget=(76-64)*3=36, not a multiple of 3 — the cut target lands mid-rune
+	// by construction, the same fixture TestChunkTextNeverSplitsARune uses.
+	got := TruncateQuery(text, 76)
+	if len(got) >= len(text) {
+		t.Fatalf("fixture did not force a cut: got %d of %d bytes", len(got), len(text))
+	}
+	if !utf8.ValidString(got) {
+		t.Fatalf("TruncateQuery split a rune: %q", got)
+	}
+	if strings.ContainsRune(got, utf8.RuneError) {
+		t.Fatalf("TruncateQuery result contains the UTF-8 replacement rune: %q", got)
+	}
+}
+
+// TruncateQuery and ChunkText must derive the identical budget from the same
+// window, because task 3.5 was built by reusing ChunkText's own budget
+// arithmetic rather than inventing a second notion of the window (see
+// windowBudget, vector.go). Asserted directly rather than trusted from the
+// two functions' doc comments: for a body with no title, ChunkText's first
+// chunk and TruncateQuery's cut of the same text must be the same string.
+func TestTruncateQuerySharesChunkTextsBudget(t *testing.T) {
+	text := strings.Repeat("y", 500)
+	for _, ctx := range []int{76, 100, 2048} {
+		chunked := ChunkText("", text, ctx)
+		truncated := TruncateQuery(text, ctx)
+		if chunked[0] != truncated {
+			t.Errorf("ctxTokens=%d: ChunkText's first chunk (%d bytes) != TruncateQuery's cut (%d bytes)",
+				ctx, len(chunked[0]), len(truncated))
+		}
+	}
+}
+
 func TestEmbedRetryCutHalvesAndTerminates(t *testing.T) {
 	s := strings.Repeat("a", 100)
 	for i := 0; i < 10 && s != ""; i++ {

@@ -51,9 +51,12 @@ func ChunkText(title, body string, ctxTokens int) []string {
 	if ctxTokens <= 0 {
 		return []string{whole}
 	}
-	// Same formula this package used for TruncateForModel: headroom for the
-	// prompt scaffolding and special tokens the model wraps around each chunk.
-	budget := (ctxTokens - 64) * charsPerToken
+	// windowBudget (vector.go): headroom for the prompt scaffolding and
+	// special tokens the model wraps around each chunk — the same headroom
+	// TruncateQuery budgets a query against, so a note's chunking and a
+	// question's defensive truncation (task 3.5) draw on one shared notion of
+	// the window rather than two.
+	budget := windowBudget(ctxTokens)
 	if budget <= 0 || len(whole) <= budget {
 		return []string{whole}
 	}
