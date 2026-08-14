@@ -263,17 +263,22 @@ type searchArgs struct {
 	K      int    `json:"k"`
 	After  string `json:"after"`
 	Before string `json:"before"`
-	// Mode is accepted but deliberately absent from the published inputSchema
-	// below. A measurement driver can ask for fusion explicitly; the agent is not
-	// told the option exists, because advertising it would let the prompt-submit
-	// path adopt a mode with 0% correct rejection before the ladder has earned
-	// the rerank and floor that make it safe. The schema entry lands at cutover.
+	// Mode is published in the inputSchema below as of the hook cutover
+	// (task 5). It was accepted-but-hidden from task 1 onward: advertising it
+	// earlier would have let the agent opt into a mode with 0% correct
+	// rejection before the ladder had a rung that earned it. The rung that was
+	// meant to earn it — a cross-encoder floor — was refuted (task 3); what
+	// actually made this safe to publish is the fast path's own injection
+	// policy (inject with metadata, never a manufactured empty — see the
+	// prompt-submit hook), which does not depend on `mode` carrying any
+	// rejection guarantee. `rerank` is deliberately not one of the published
+	// enum values: the MCP surface has no reranker child wired to it, and
+	// rerank does not ship to the hook either (refuted, task 3).
 	Mode string `json:"mode"`
-	// Question is accepted on the same unpublished seam as Mode, for the same
-	// reason: a measurement driver can ask the dense arm to embed the natural
-	// question (task 3.5) instead of Query; the agent is not told the argument
-	// exists until the hook cutover earns it a place in the schema. Query keeps
-	// driving the lexical arms unconditionally either way.
+	// Question is published on the same seam as Mode, for the same reason and
+	// as of the same cutover: a caller can ask the dense arm to embed the
+	// natural question (task 3.5) instead of Query. Query keeps driving the
+	// lexical arms unconditionally either way.
 	Question string `json:"question"`
 	// Lex3 is accepted on the same unpublished seam as Mode and Question: a
 	// measurement driver can widen the lexical arm from 2-term to 2- and 3-term
@@ -376,6 +381,7 @@ func toolSpecs() []map[string]any {
 				"- Iterate. If the first phrasing comes back empty or thin, try a different vocabulary for the same idea — the note may have been written in words the question does not use.",
 				"- Do not stop at the first plausible hit when the question deserves better, and answer \"nothing found\" only after two or three distinct vocabularies have failed.",
 				"- For a question about when something happened or what was decided in a period, bound it with after/before. Episodic questions are time questions.",
+				"- If the exact-terms default (mode \"and\") comes back empty or thin and you suspect a vocabulary gap rather than an absent fact, retry with mode \"hybrid\" and question set to the full natural-language question — it adds a dense-vector arm that can find a note with no term overlap at all. Results from any mode are candidates matched by similarity, not verified answers; judge them, don't just relay them.",
 			}, "\n"),
 			"inputSchema": map[string]any{
 				"type": "object",
@@ -395,6 +401,14 @@ func toolSpecs() []map[string]any {
 					"before": map[string]any{
 						"type":        "string",
 						"description": "Only notes captured before this date (YYYY-MM-DD or RFC3339).",
+					},
+					"mode": map[string]any{
+						"type": "string", "enum": []string{"and", "fusion", "hybrid"}, "default": "and",
+						"description": "\"and\" (default) requires every query term in one note. \"fusion\" best-matches any subset of terms — looser than \"and\", still exact-word. \"hybrid\" adds a dense-vector arm on top of fusion, fused by reciprocal rank — set `question` alongside it so the vector arm embeds the real question rather than `query`'s bare terms.",
+					},
+					"question": map[string]any{
+						"type":        "string",
+						"description": "The full natural-language question, used only when mode is \"hybrid\": the dense arm embeds this instead of query. query keeps driving the exact-term arms unchanged either way.",
 					},
 				},
 				"required": []string{"query"},

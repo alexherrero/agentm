@@ -40,7 +40,11 @@ type Supervisor struct {
 	model  Model
 	binary string
 	ctxN   int
-	log    *slog.Logger
+	// port is the fixed loopback port to bind the child to. Zero (the default
+	// for every caller but `serve`, per Options.Port) asks the kernel for a
+	// free one instead — see runOnce.
+	port int
+	log  *slog.Logger
 
 	mu       sync.RWMutex
 	state    State
@@ -86,7 +90,9 @@ type Options struct {
 	// Binary is the llama-server executable. Empty resolves it from PATH.
 	Binary string
 	// Port is the loopback port. Zero picks a free one, which is the normal case:
-	// nothing else needs to find this process.
+	// nothing else needs to find this process. `serve` is the exception — it
+	// passes DefaultAttachPort so a one-shot `agentmd search -mode hybrid` has
+	// somewhere fixed to attach to (see cmd/agentmd's cmdServe/cmdSearch).
 	Port int
 	// Logger receives child lifecycle events.
 	Logger *slog.Logger
@@ -114,6 +120,7 @@ func New(o Options) *Supervisor {
 		model:  o.Model,
 		binary: binary,
 		ctxN:   o.Model.CtxTokens,
+		port:   o.Port,
 		log:    log,
 		state:  StateOff,
 		done:   make(chan struct{}),
@@ -261,9 +268,12 @@ func (s *Supervisor) supervise(ctx context.Context) {
 // runOnce spawns the child, waits for health, and blocks until it exits. The
 // bool reports whether the child ever became healthy.
 func (s *Supervisor) runOnce(ctx context.Context) (served bool, err error) {
-	port, err := freePort()
-	if err != nil {
-		return false, err
+	port := s.port
+	if port == 0 {
+		port, err = freePort()
+		if err != nil {
+			return false, err
+		}
 	}
 	base := "http://127.0.0.1:" + strconv.Itoa(port)
 

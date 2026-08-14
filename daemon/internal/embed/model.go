@@ -95,6 +95,28 @@ var catalog = map[string]Model{
 	},
 }
 
+// DefaultAttachPort is the fixed loopback port `serve` binds its own spawned
+// embedder to when nothing more specific is configured, and the port a
+// one-shot `agentmd search -mode hybrid` attaches to by default when no
+// `-embedder-url`/`daemon.embedder_url` says otherwise (see cmdServe and
+// cmdSearch in cmd/agentmd). Every other spawn — `agentmd embed`'s backfill,
+// and any explicit `--embedder-url` measurement run — is unaffected and keeps
+// picking a free port, so a bulk backfill never contends with the resident
+// daemon's own embedder for the same port.
+//
+// The number matches the port this project's own measurement runs have used
+// throughout the hybrid-retrieval plan (NOTES.md), chosen for that continuity
+// rather than any technical requirement.
+//
+// Without this, a one-shot hook-issued search has no way to find the
+// long-lived embedder `serve` already keeps warm: that supervisor spawns its
+// child on a kernel-assigned random port (see freePort in supervisor.go),
+// which is opaque to any other process. Fixing the port is what turns "the
+// daemon spawns and supervises the child" into something a second process can
+// also reach, without standing up the second independently-managed process
+// the design declined.
+const DefaultAttachPort = 8901
+
 // DefaultModelDir is where install.sh puts the weights. Resolved from $HOME
 // rather than written as a literal, for the same reason no vault path is ever a
 // constant here.

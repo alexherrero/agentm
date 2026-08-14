@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/embed"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 )
 
@@ -75,5 +77,61 @@ func TestQueryEmbedTextDoesNotTruncateAShortQuestion(t *testing.T) {
 	got := queryEmbedText("terms", question, 2048)
 	if got != question {
 		t.Fatalf("queryEmbedText = %q, want the short question unchanged", got)
+	}
+}
+
+// embedderSpawnPort / embedderAttachDefault (task 5's hook cutover) are what
+// let a one-shot `agentmd search -mode hybrid` — the shape the prompt-submit
+// hook issues — attach to the resident `agentmd serve` daemon's own embedder
+// instead of loading a fresh model per query. serve spawns on the fixed port;
+// a bare search attaches to it by default. Both stay inert (0 / "") once an
+// operator has already pointed resolution somewhere explicit, so neither
+// function ever second-guesses a real -embedder-url or daemon.embedder_url.
+
+func TestEmbedderSpawnPortDefaultsWhenNothingElseResolves(t *testing.T) {
+	got := embedderSpawnPort(embedderFlags{}, &config.Config{})
+	if got != embed.DefaultAttachPort {
+		t.Fatalf("embedderSpawnPort = %d, want the fixed default %d", got, embed.DefaultAttachPort)
+	}
+}
+
+func TestEmbedderSpawnPortStaysFreeWhenFlagURLIsSet(t *testing.T) {
+	got := embedderSpawnPort(embedderFlags{url: "http://127.0.0.1:9"}, &config.Config{})
+	if got != 0 {
+		t.Fatalf("embedderSpawnPort = %d, want 0 (free port) once -embedder-url is set", got)
+	}
+}
+
+func TestEmbedderSpawnPortStaysFreeWhenConfigURLIsSet(t *testing.T) {
+	got := embedderSpawnPort(embedderFlags{}, &config.Config{EmbedderURL: "http://127.0.0.1:9"})
+	if got != 0 {
+		t.Fatalf("embedderSpawnPort = %d, want 0 (free port) once daemon.embedder_url is set", got)
+	}
+}
+
+func TestEmbedderAttachDefaultPointsAtTheFixedPortWhenNothingElseResolves(t *testing.T) {
+	got := embedderAttachDefault(embedderFlags{}, &config.Config{})
+	want := "http://127.0.0.1:8901"
+	if got != want {
+		t.Fatalf("embedderAttachDefault = %q, want %q", got, want)
+	}
+	// embedderSpawnPort must agree with this exact number, or serve would bind
+	// somewhere a bare search's default never looks.
+	if embed.DefaultAttachPort != 8901 {
+		t.Fatalf("embed.DefaultAttachPort = %d, this test's %q is now stale", embed.DefaultAttachPort, want)
+	}
+}
+
+func TestEmbedderAttachDefaultDefersToAnExplicitFlagURL(t *testing.T) {
+	got := embedderAttachDefault(embedderFlags{url: "http://127.0.0.1:9"}, &config.Config{})
+	if got != "" {
+		t.Fatalf("embedderAttachDefault = %q, want \"\" once -embedder-url is already set", got)
+	}
+}
+
+func TestEmbedderAttachDefaultDefersToConfigURL(t *testing.T) {
+	got := embedderAttachDefault(embedderFlags{}, &config.Config{EmbedderURL: "http://127.0.0.1:9"})
+	if got != "" {
+		t.Fatalf("embedderAttachDefault = %q, want \"\" once daemon.embedder_url is already set", got)
 	}
 }

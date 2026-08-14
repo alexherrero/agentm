@@ -163,7 +163,7 @@ changes what an AND leaves standing.
 | 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. Post-mortem (2026-08-14): partly a query-format test artifact, structurally a similarity≠answerhood interleave — see the amendment log. |
 | 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | **met, well past the floor** — 75.0% (48/64), pure-paraphrase 61.1% (11/18), every stratum improved and none regressed (12 gained / 0 lost). 11 of the 16 diagnosed dense-top-5 candidates converted. |
 | 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | **refuted** — 76.6% (49/64), net +1 against a required net +3. Regression clause held (no stratum lost more than one); the overall floor did not. 3 of the 7 diagnosed candidates converted (`dt07`, `dt10`, `rc03`); 2 unrelated losses (`pp02`, `rd04`) to reciprocal-rank displacement. Code kept, quarantined behind `-lex3` — see the amendment log. |
-| 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | |
+| 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | **met, both clauses** — p50/p90 213.8ms/222.4ms end-to-end through the installed hook (n=84); every stratum within one question of `+question` (73.4% overall, 47/64). Honest-empty on the 20 negatives: 0/20 genuine. See NOTES.md for the per-question diff and the latency-cliff finding it also surfaced. |
 | 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
 
@@ -221,6 +221,102 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-14 · step 5 (hook cutover) measured: rule met on both clauses.**
+  The prompt-submit hook's daemon call switches from `-mode`'s implicit
+  `and` default to `-mode hybrid -question <raw prompt>` — the `+question`
+  arm. p50/p90 213.8ms/222.4ms end-to-end through the *installed* hook
+  (n=84, real shell-wrapper invocations, bash+python startup included); every
+  stratum within one question of `+question` (73.4% overall, 47/64, against
+  75.0%). Honest-empty on the 20 negatives: 0/20 genuine (the daemon
+  searched and found something every time — unchanged since `-mode fusion`'s
+  own 0% since step 1, not a new trade this step makes). MCP `mode`/`question`
+  published in the tool `inputSchema` (`and`/`fusion`/`hybrid`; `rerank`
+  excluded — refuted, not wired to the MCP surface; `lex3` stays unpublished,
+  refuted and default-off). Full per-question diff, the hygiene-filter
+  explanation for the diff's 3 "losses" (none are real — see NOTES.md), and a
+  latency-cliff finding in hybrid's own fixed `rrfDepth=50` (task 2,
+  independent of this step) are in NOTES.md's own "Task 5" section rather
+  than repeated here.
+
+  **Two infrastructure gaps found and closed, both prerequisites the design
+  did not anticipate needing.** First: a one-shot `agentmd search -mode
+  hybrid` (what the hook issues) had no way to reach the resident `agentmd
+  serve` daemon's own warm embedder — that child binds a kernel-assigned
+  random port, opaque to any other process, so a bare hook invocation would
+  have spawned and loaded a fresh model on every single prompt. Fixed by
+  giving `serve` a fixed loopback port to spawn on (`embed.DefaultAttachPort`,
+  8901 — matching the port this plan's own measurement runs have used
+  throughout) and a matching default on the one-shot search path
+  (`embedderAttachDefault`/`embedderSpawnPort`, `cmd/agentmd`); inert for
+  every other caller (an explicit `--embedder-url`, `agentmd embed`'s own
+  backfill) so no prior task's measurement or reproduction is affected.
+  Second: `embed.Options.Port` existed and was documented but was never
+  wired to the supervisor that actually spawns the child — `New` never
+  copied it and `runOnce` always called `freePort`, a latent dead field
+  caught while building the fix above, not something this step's own change
+  introduced.
+
+  **The operator's live vault had never been embedded.** All of tasks 2
+  through 4's measurements ran against the frozen corpus snapshot or scratch
+  indexes; nothing had ever backfilled the real, live vault. Cutting over
+  without doing so would have shipped `-mode hybrid` against zero vectors —
+  a cosmetic cutover, behaviorally identical to fusion-only.
+  Backfilled: 12,301 notes, 0 failed, 5m45s warm, same scope as every other
+  task (`Agent/memory`, `Agent/desk`, `Agent/external`). Separately, the
+  live kernel config had no `daemon.embed_model` pinned, and both bake-off
+  candidates' GGUFs are present on this machine from task 2/3's own toolchain
+  state — `embed.Discover`'s deterministic tie-break sorts by model name
+  ascending, and `"Qwen3-..."` sorts before `"embeddinggemma-..."`
+  byte-wise, so an unpinned install would have silently resolved to the
+  refuted, unstable candidate. Pinned explicitly
+  (`daemon.embed_model: embeddinggemma-300M-Q8_0`) rather than left to
+  chance.
+
+  **Verification, not assertion.** `agentmd status` showed no `embedder`
+  line at all before this task (the running daemon predated the entire
+  ladder — binary dated before task 1); after rebuild+reinstall+kickstart,
+  `embedder ok (warm) · embeddinggemma-300M-Q8_0 · 12301/12301 embedded`,
+  and a live `agentmd search -mode hybrid` against the real vault returned
+  real, relevant hits with `matched: 97` and no degrade note. The real
+  installed hook script, invoked end-to-end with a live prompt, reported
+  `engine: daemon, mode=hybrid` and the injection carried the new
+  metadata (`score=... daemon-hybrid, space: ...`) and disclaimer line —
+  the installed hook, not a facsimile of it.
+
+  **Injection policy shipped as specified — inject with metadata, never a
+  manufactured empty.** Each daemon-sourced hit's header now reports its
+  effective mode (`daemon-hybrid`, or `daemon-lexical` when the dense arm
+  had nothing to embed with mid-query — the daemon's own `note`, matched
+  rather than inferred) and its space (`memory`/`desk`/`external`/… — the
+  literal top-level directory, honest about hits outside the vector arm's
+  own three-space scope). The whole injection carries one disclaimer
+  sentence when the daemon answered: these are candidates matched by
+  similarity, not verified answers. No threshold was added anywhere in this
+  change; an honest empty from the lexical arm passes through exactly as it
+  did before.
+
+  `retrieval_scorecard.py` gained `--via-hook` (scores through
+  `recall._daemon_search` — the hook's own code — instead of shelling to
+  `agentmd search` directly, which is what "scored through the hook rather
+  than the CLI" means) and `--via-hook-budget-ms` (a generous per-query
+  override for the correctness pass alone, so the rare latency-cliff outlier
+  is never confused with a genuine miss; the latency clause is still
+  measured under the real, unmodified 250ms budget, separately, against the
+  installed hook). `DEGRADED_MARKS` gained a third marker for a silently
+  skipped `--via-hook` query, mirroring the existing child-not-serving
+  refuse-to-publish gate.
+
+  **A pre-existing test hermeticity gap, exposed rather than caused.** Three
+  tests (`test_recall_trace.py`, `test_recall_stream_admission.py`) called
+  the real `prompt_submit()` without mocking `subprocess.run`, relying on
+  the daemon declining by accident — true only because the previously
+  installed (pre-ladder) binary rejected the now-standard `-mode`/`-question`
+  flags as unrecognized. A working rebuilt daemon no longer declines by
+  accident, so these tests started answering from the real live vault
+  instead of their own tempdir fixtures. Fixed by mocking `subprocess.run`
+  to force the decline deliberately, restoring the hermeticity both files'
+  own docstrings already claimed.
 
 - **2026-08-14 · step 4 (3-term subset fusion) measured: refuted on the
   overall floor, regression clause held.** `agentmd search -lex3` (and the

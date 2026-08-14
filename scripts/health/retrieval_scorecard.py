@@ -54,11 +54,13 @@ import recall  # noqa: E402  (production query-term extraction)
 # rather than inferred: a run that silently lost an arm partway through would
 # otherwise be published under the full arm's label, and the number would be
 # wrong in the one direction nobody checks — downward, which reads as "the
-# model did not help." Two markers: the dense arm falling back to lexical
-# (task 2), and the cross-encoder pass falling back to unreranked hybrid
-# (task 3) — either one means a `+rerank+floor` column would be reporting a
-# weaker arm than its own header claims.
-DEGRADED_MARKS = ("lexical arm alone", "no reranker was available")
+# model did not help." Three markers: the dense arm falling back to lexical
+# (task 2), the cross-encoder pass falling back to unreranked hybrid (task 3),
+# and (task 5) `_daemon_search` declining to run a `--via-hook` query at all
+# (timeout, missing binary) — a silently-skipped query would otherwise be
+# indistinguishable from a real, searched miss, and a `hook e2e` column has to
+# know the difference before it is trusted.
+DEGRADED_MARKS = ("lexical arm alone", "no reranker was available", "(hook skipped:")
 
 
 def to_query(question: str) -> str:
@@ -129,8 +131,75 @@ def search(query: str, k: int, mode: str = "and", target: tuple = (),
             doc.get("rerank_ms"), doc.get("rerank_pairs"))
 
 
+def search_via_hook(question_text: str, k: int, vault: str, index: str,
+                     budget_ms: int | None = None,
+                     ) -> tuple[list[str], float, str, float | None, int | None]:
+    """Top-k paths for one gold question, scored through recall.py's own
+    `_daemon_search` — the hook's real code path — instead of shelling to
+    `agentmd search` directly.
+
+    `search()` above proves the daemon can answer a query; this proves
+    recall.py's own terms-extraction (`_daemon_query_terms`), its `-mode
+    hybrid -question` wiring (task 5's cutover), and its 250ms subprocess
+    budget (`DAEMON_BUDGET_MS`) produce the same answer the installed hook
+    would — which is what task 5's rule means by "scored through the hook
+    rather than the CLI." `question_text` is the gold question's raw text,
+    unreduced: `_daemon_search` derives its own lexical terms internally,
+    exactly as the real hook does, so handing it anything already reduced
+    would double-apply the reduction to the wrong argument.
+
+    `vault`/`index` are the frozen corpus's own root and index file, required
+    (never the live vault — see main()'s enforcement). They reach the daemon
+    as `_daemon_search`'s `daemon_vault`/`daemon_index` escape hatch, and
+    `vault` doubles as `_daemon_search`'s own relativization root: passing the
+    corpus ROOT rather than its `Agent/` subdirectory is deliberate — it is
+    what makes `_daemon_search`'s returned paths come back
+    `Agent/...`-prefixed, comparable to `expected_note_paths` with no second
+    transform (see `_daemon_root_for`'s own root-or-parents search: `vault`
+    resolves on the first try instead of stripping a level).
+
+    Timing wraps the whole `_daemon_search` call, which is dominated by its
+    own internal `subprocess.run` — the same cost the real hook pays, run from
+    an already-warm interpreter rather than one recall.py's own shell wrapper
+    would have to start fresh each time. See the task's close-out for the
+    separate true end-to-end sampling that timing gap is why this script does
+    not claim to answer alone.
+
+    `budget_ms`, when given, overrides `_daemon_search`'s own default
+    (`DAEMON_BUDGET_MS`, 250ms — the real hook's own subprocess timeout).
+    Task 5's rule is two independent clauses on purpose ("both halves
+    matter"): correctness (do the right strata come back) and latency (is it
+    fast). A pathological query's cost belongs to the second clause, not the
+    first — a fusion candidate pool cheap at k=10 but expensive at hybrid's
+    internal k=50 (rrfDepth, search.go) for a term combination common enough
+    in-corpus can cost seconds, confirmed directly against `-mode fusion -k
+    50` alone, no dense arm involved. The production hook is unaffected
+    either way (its own 250ms budget already bounds and gracefully falls
+    back), but a *strata* column scored at that same 250ms would silently
+    misreport a slow-but-correct answer as a miss, conflating "hybrid did not
+    find it" with "hybrid took too long to ask." The correctness pass this
+    parameter serves is deliberately generous so a genuine miss and a timeout
+    are never the same bucket; the latency clause is measured separately,
+    under the real unmodified budget, against the installed hook.
+    """
+    status: dict = {}
+    started = time.monotonic()
+    kwargs = {} if budget_ms is None else {"budget_ms": budget_ms}
+    hits = recall._daemon_search(
+        vault=Path(vault), query_text=question_text, k=k,
+        daemon_vault=vault, daemon_index=index, status=status, **kwargs,
+    )
+    elapsed = (time.monotonic() - started) * 1000.0
+    if hits is None:
+        note = f"(hook skipped: {status.get('reason', '?')})"
+        return [], elapsed, note, None, None
+    return ([h["path"] for h in hits], elapsed, status.get("note", ""), None, None)
+
+
 def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
-          pass_question: bool = False, lex3: bool = False) -> dict:
+          pass_question: bool = False, lex3: bool = False,
+          via_hook: bool = False, vault: str | None = None, index: str | None = None,
+          via_hook_budget_ms: int | None = None) -> dict:
     rows = []
     for e in entries:
         expected = e.get("expected_note_paths") or []
@@ -139,7 +208,16 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
         # of it — task 3.5's whole point is that the dense arm sees the
         # natural question, not the AND-terms built for FTS5.
         question = e["question"] if pass_question else None
-        if query:
+        if via_hook:
+            # search_via_hook derives its own terms from the raw question
+            # internally (recall._daemon_search calling _daemon_query_terms),
+            # exactly as the installed hook does — `query` here is computed
+            # only so this row still records what that reduction produced,
+            # for the console render's miss report and for parity with every
+            # other mode's row shape.
+            ranked, ms, note, rerank_ms, rerank_pairs = search_via_hook(
+                e["question"], k, vault, index, budget_ms=via_hook_budget_ms)
+        elif query:
             ranked, ms, note, rerank_ms, rerank_pairs = search(
                 query, k, mode, target, question, lex3)
         else:
@@ -193,6 +271,13 @@ def render(result: dict, k: int) -> str:
     else:
         channel = f"lexical (FTS5)"
         caveat = "no model in the loop"
+    # Task 5's rule is "scored through the hook rather than the CLI" — a
+    # `hook e2e` column that read identically to an ordinary --mode hybrid run
+    # would hide the one thing that column exists to prove: that recall.py's
+    # own terms-extraction, mode/question wiring, and subprocess budget
+    # produced these numbers, not a bare CLI invocation.
+    if result.get("via_hook"):
+        channel += ", via the installed hook's own code path (recall._daemon_search)"
     # The header must say when the dense arm embedded the natural question
     # instead of the reduced terms (task 3.5) — otherwise a +question column
     # reads as an ordinary hybrid run, which is exactly the kind of mislabel
@@ -380,6 +465,22 @@ def main(argv=None) -> int:
                          "fusion/hybrid's lexical arm from 2-term to 2- and 3-term "
                          "subsets; false (the default) reproduces lexical-fusion/"
                          "+question exactly")
+    ap.add_argument("--via-hook", action="store_true",
+                    help="score through recall.py's own _daemon_search (task 5's "
+                         "'scored through the hook rather than the CLI') instead of "
+                         "shelling to agentmd search directly; requires --mode hybrid "
+                         "--question --vault --index, and ignores --embedder-url/"
+                         "--reranker-url/--lex3, none of which recall.py's own call "
+                         "ever forwards")
+    ap.add_argument("--via-hook-budget-ms", type=int, default=None,
+                    help="override _daemon_search's own subprocess timeout "
+                         "(default: DAEMON_BUDGET_MS, 250ms, the real hook's own "
+                         "budget) for the correctness/strata pass, so a query slow "
+                         "for reasons unrelated to whether hybrid found the right "
+                         "answer is not miscounted as a miss. The latency clause "
+                         "must still be measured separately, under the real budget, "
+                         "against the installed hook — this flag only affects "
+                         "--via-hook")
     args = ap.parse_args(argv)
 
     if bool(args.vault) != bool(args.index):
@@ -397,7 +498,29 @@ def main(argv=None) -> int:
         # what the flag's name promises.
         ap.error("--lex3 only affects a lexical-fusion arm; pass --mode fusion, "
                  "--mode hybrid or --mode rerank")
-    if args.mode in ("hybrid", "rerank") and not args.embedder_url:
+    if args.via_hook:
+        # recall._daemon_search hardcodes -mode hybrid -question internally
+        # (the hook cutover) — a --via-hook run under any other --mode/
+        # --question combination would silently score hybrid+question anyway
+        # while its own metadata claimed something else.
+        if args.mode != "hybrid" or not args.question:
+            ap.error("--via-hook always scores -mode hybrid -question (that is "
+                     "the hook's own behavior); pass --mode hybrid --question")
+        if args.lex3:
+            ap.error("--via-hook has no -lex3 wiring — recall._daemon_search never "
+                     "sends it, so --lex3 here would silently do nothing")
+        if not (args.vault and args.index):
+            ap.error("--via-hook needs --vault and --index — recall._daemon_search "
+                     "must be pointed at the frozen corpus explicitly, the same "
+                     "reason --mode hybrid needs --vault/--index for every other run")
+        if args.embedder_url or args.reranker_url:
+            ap.error("--via-hook ignores --embedder-url/--reranker-url — "
+                     "recall._daemon_search never forwards either; the daemon "
+                     "resolves its own embedder (see embedderAttachDefault, "
+                     "cmd/agentmd) the same way a real hook invocation would")
+    elif args.via_hook_budget_ms is not None:
+        ap.error("--via-hook-budget-ms only affects --via-hook")
+    if args.mode in ("hybrid", "rerank") and not args.embedder_url and not args.via_hook:
         # Refused rather than allowed-but-slow. A hybrid (or rerank, which
         # runs hybrid underneath) run without a warm server still produces
         # numbers, and they would be a model load per query on a machine
@@ -427,7 +550,8 @@ def main(argv=None) -> int:
     if args.rerank_model:
         target += ("-rerank-model", args.rerank_model)
     result = score(entries, args.k, args.mode, target, pass_question=args.question,
-                   lex3=args.lex3)
+                   lex3=args.lex3, via_hook=args.via_hook, vault=args.vault, index=args.index,
+                   via_hook_budget_ms=args.via_hook_budget_ms)
     result["vault"] = args.vault
     result["gold_set"] = Path(args.gold_set).name
     result["corpus"] = (doc.get("$corpus") or {}).get("name") if isinstance(doc, dict) else None
@@ -437,6 +561,7 @@ def main(argv=None) -> int:
     result["rerank_model"] = args.rerank_model
     result["question_passed"] = args.question
     result["lex3"] = args.lex3
+    result["via_hook"] = args.via_hook
     # An arm that lost a child partway through is a weaker arm wearing a
     # stronger label — hybrid that silently fell back to lexical, or rerank
     # that silently fell back to unreranked hybrid. Refuse to publish it
@@ -445,9 +570,12 @@ def main(argv=None) -> int:
     # header says.
     degraded = [r["id"] for r in result["rows"] if r.get("degraded")]
     if degraded:
+        reason = ("a query was silently skipped instead of searched (see each "
+                  "row's own note — a daemon timeout or missing binary)"
+                  if args.via_hook else
+                  "a child (embedder or reranker) was not serving")
         print(f"\nREFUSING TO REPORT: {len(degraded)} of {len(result['rows'])} queries "
-              f"fell back to a weaker arm than -mode {args.mode} claims — a child "
-              f"(embedder or reranker) was not serving.",
+              f"fell back to a weaker arm than -mode {args.mode} claims — {reason}.",
               file=sys.stderr)
         print(f"  first affected: {', '.join(degraded[:5])}", file=sys.stderr)
         print("  a llama-server can answer /health with 200 while failing every "

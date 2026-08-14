@@ -96,6 +96,20 @@ DEFAULT_TOKEN_BUDGET = 20_000
 # measurement already includes the spawn.
 DAEMON_BIN = "agentmd"
 
+# Hook cutover (hybrid-retrieval plan, task 5): the daemon call that used to
+# rely on `-mode`'s default (`and`, 10.9% R@5) now asks explicitly for the
+# arm the ladder measured at 75.0% — lexical fusion plus a dense-vector arm,
+# fused by reciprocal rank. `-lex3` (task 4, refuted) stays off; nothing here
+# ever passes it. One place to flip back to "and" if the installed rule ever
+# needs reverting.
+DAEMON_SEARCH_MODE = "hybrid"
+
+# The Go index's own words for "the dense arm was asked for but had nothing to
+# embed with" (daemon/internal/index/search.go, searchHybrid) — matched so a
+# degrade is reported honestly (daemon-lexical, not daemon-hybrid) rather than
+# claimed. Substring, not equality: the note can be joined with others.
+_DAEMON_HYBRID_DEGRADE_MARK = "no query vector was available"
+
 # Most of the 300ms goes to the daemon, and the split is deliberately lopsided.
 #
 # The fallback's value is almost entirely in the daemon-is-absent case, and that
@@ -1323,6 +1337,21 @@ def query(
     return merged[:k]
 
 
+def _hit_space(rel_path: str) -> str:
+    """Which top-level space a hit's vault-relative path falls under.
+
+    The daemon's dense arm covers three named spaces — `memory/`, `desk/`,
+    `external/`, the scope task 2 landed — but the lexical arms range over the
+    whole indexed tree, so a hit can fall outside those three (`_meta/`, for
+    instance). Reporting the literal first path segment either way is more
+    honest than forcing an unmatched hit into one of the three names; it is
+    also the metadata task 5's injection policy asks for regardless of which
+    arm actually found this particular hit.
+    """
+    parts = PurePosixPath(rel_path).parts
+    return parts[0] if parts else "?"
+
+
 def _format_recall_result(
     result: dict,
     body: str,
@@ -1336,18 +1365,24 @@ def _format_recall_result(
     this entry was recalled. Body follows verbatim (frontmatter stripped by
     caller).
 
-    Both engines are lexical, so neither reports a similarity. Quoting one
-    would be a small lie that reads as a real signal: no embedding stands
-    behind either hit, and a `sim` of 0.00 looks like a semantic match that
-    failed rather than one that was never attempted. This held for the daemon
-    from the start and now holds for the in-process engine too, since the
-    vector stack it used to fuse with was removed.
+    Neither engine reports a similarity score in the `sim` sense. Quoting one
+    would be a small lie that reads as a real signal: the in-process engine
+    fuses no vector stream at all, and a daemon hit's `score` is an RRF-fused
+    rank (or a raw BM25 rank in `and`/`fusion`), never a cosine — so a `sim` of
+    0.00 would look like a semantic match that failed rather than one that was
+    never computed that way. A daemon-sourced hit instead carries `mode`
+    (`hybrid` when the dense arm actually had a vector to fuse with, `lexical`
+    when it degraded mid-query — see `_daemon_search`) and its `space`
+    (`memory`/`desk`/`external`/…), per the hook cutover's injection policy:
+    label what a hit is, rather than asserting it is correct.
     """
     kind = fm.get("kind", "unknown")
     tags = fm.get("tags", "")
     if result.get("source") == "daemon":
         score = result.get("score", result.get("combined", 0.0))
-        header = f"### {result['slug']} (kind: {kind}, score={score:.2f} daemon-lexical"
+        mode = result.get("mode", "lexical")
+        header = f"### {result['slug']} (kind: {kind}, score={score:.2f} daemon-{mode}"
+        header += f", space: {_hit_space(result.get('path', ''))}"
     else:
         header = (
             f"### {result['slug']} (kind: {kind}, "
@@ -1615,6 +1650,8 @@ def _daemon_search(
     budget_ms: int = DAEMON_BUDGET_MS,
     scope: str | None = None,
     status: dict | None = None,
+    daemon_vault: str | None = None,
+    daemon_index: str | None = None,
 ) -> list[dict] | None:
     """Ask the agentm daemon for the top-k entries relevant to `query_text`.
 
@@ -1623,13 +1660,28 @@ def _daemon_search(
     works unchanged, plus `score`/`source` recording that this ranking came from
     the daemon's BM25 rather than this module's sim+keyword merge, plus
     `snippet` when the daemon returned one (the match-centred extract
-    `_build_excerpt_block` prefers over a head excerpt).
+    `_build_excerpt_block` prefers over a head excerpt), plus `mode` — the
+    effective arm this particular answer came from (`hybrid`, or `lexical` when
+    the dense arm had nothing to embed with; see `_DAEMON_HYBRID_DEGRADE_MARK`).
 
     Returns None when the daemon could not answer, which is the caller's signal
     to fall back to the in-process engine. **None and [] are different answers,
     and `prompt_submit` branches on which one it gets** (GH #92): None is "no
     search happened", [] is "the daemon searched and nothing admissible matched".
     Collapsing them is how a broken recall reports itself as an empty vault.
+
+    `query_text` drives both arms, exactly as the production hook hands them:
+    the lexical arms search `_daemon_query_terms(query_text)` (the reduction
+    FTS5 needs), and the dense arm embeds `query_text` itself, whole, via the
+    daemon's own `-question` (task 3.5) — the whole reason this function takes
+    the raw prompt rather than a pre-reduced query string.
+
+    `daemon_vault`/`daemon_index`, when both given, are passed straight through
+    as the daemon's own `-vault`/`-index` — a measurement-only escape hatch
+    mirroring `retrieval_scorecard.py`'s `--vault`/`--index` (task 1), for a
+    driver that needs to score the frozen gold corpus rather than whatever
+    vault the daemon's own kernel config resolves. The production hook never
+    passes these: it always wants the daemon's live-config vault.
     """
     dedup_paths = dedup_paths or set()
     scope = (
@@ -1647,14 +1699,20 @@ def _daemon_search(
     if not search_terms:
         return _skip("prompt carried no content words to search for")
 
+    argv = [
+        DAEMON_BIN, "search", "-json",
+        "-k", str(max(1, k) * DAEMON_OVERFETCH),
+        "-mode", DAEMON_SEARCH_MODE,
+        "-question", query_text,
+    ]
+    if daemon_vault and daemon_index:
+        argv += ["-vault", daemon_vault, "-index", daemon_index]
+    argv.append(search_terms)
+
     started = time.monotonic()
     try:
         proc = subprocess.run(
-            [
-                DAEMON_BIN, "search", "-json",
-                "-k", str(max(1, k) * DAEMON_OVERFETCH),
-                search_terms,
-            ],
+            argv,
             capture_output=True,
             text=True,
             timeout=budget_ms / 1000.0,
@@ -1680,6 +1738,17 @@ def _daemon_search(
     raw = payload.get("results") if isinstance(payload, dict) else None
     if not isinstance(raw, list):
         return _skip(f"{DAEMON_BIN} response carried no results array")
+
+    # The daemon says so, in `note`, when hybrid was requested but the dense
+    # arm had nothing to embed with (search.go's searchHybrid) — the same
+    # graceful degrade an absent/off embedder always produced, now reachable
+    # mid-query too (a wedged or not-yet-warm child). Every hit from this one
+    # response shares the same effective mode, so it is computed once here
+    # rather than per hit — there is no per-result arm-attribution field to
+    # read it from individually.
+    note = payload.get("note") if isinstance(payload, dict) else None
+    note = note if isinstance(note, str) else ""
+    effective_mode = "lexical" if _DAEMON_HYBRID_DEGRADE_MARK in note else DAEMON_SEARCH_MODE
 
     root: Path | None = None
     seen: set[str] = set()
@@ -1730,6 +1799,7 @@ def _daemon_search(
             "combined": score,
             "score": score,
             "source": "daemon",
+            "mode": effective_mode,
         }
         if external:
             # Not a curated memory entry: readable and rankable, but it gets no
@@ -1756,6 +1826,8 @@ def _daemon_search(
             "returned": len(raw),
             "admitted": len(out),
             "matched": payload.get("matched"),
+            "mode": effective_mode,
+            "note": note,
         })
     return out
 
@@ -2008,11 +2080,10 @@ def prompt_submit(
             file=stdout,
         )
         print("", file=stdout)
-        ranked_by = (
-            "daemon lexical rank"
-            if recall_status.get("engine") == "daemon"
-            else "semantic+keyword merge"
-        )
+        if recall_status.get("engine") == "daemon":
+            ranked_by = f"daemon {daemon_status.get('mode', 'lexical')} rank"
+        else:
+            ranked_by = "semantic+keyword merge"
         shown = f"top {len(blocks)} by {ranked_by}"
         if token_budget_excerpted > 0:
             shown += (
@@ -2024,6 +2095,20 @@ def prompt_submit(
             "always-load set).",
             file=stdout,
         )
+        if recall_status.get("engine") == "daemon":
+            # Injection policy (hook cutover, task 5): inject with metadata,
+            # never a manufactured empty. There is no rejection floor on this
+            # path — task 3's cross-encoder investigation found positives and
+            # hard negatives interleave at every threshold, so a floor would
+            # drop true answers at the same rate as wrong ones. The honest
+            # move is to label what these are and let the reading agent judge,
+            # not to guess silently on its behalf.
+            print(
+                "These are candidates matched by similarity (lexical and/or "
+                "dense vector), not verified answers — judge them, don't just "
+                "relay them.",
+                file=stdout,
+            )
         print("", file=stdout)
         for i, block in enumerate(blocks):
             if i > 0:
@@ -2054,12 +2139,21 @@ def prompt_submit(
     if recall_status.get("engine") == "daemon":
         # The searched terms are quoted because they are not the prompt: the
         # daemon is asked with content words only, and an operator debugging a
-        # miss needs to see what was actually looked for.
+        # miss needs to see what was actually looked for. `mode` is what the
+        # strata clause in task 5's rule exists to catch: a cutover that
+        # silently degrades to a weaker arm than it believes it shipped would
+        # otherwise be invisible here. The daemon's own `note`, when it sent
+        # one, says why — most often that the dense arm had nothing to embed
+        # with (check `agentmd status`'s embedder line).
         transparency += (
             f" (engine: daemon, {daemon_status.get('elapsed_ms', 0.0):.0f}ms, "
+            f"mode={daemon_status.get('mode', '')}, "
             f"scope={daemon_status.get('scope', DAEMON_SCOPE_DEFAULT)}, "
             f"terms: {daemon_status.get('terms', '')!r})"
         )
+        note = daemon_status.get("note")
+        if note:
+            transparency += f" [{note}]"
     elif daemon_status.get("reason"):
         transparency += (
             f" (engine: in-process — daemon declined: {daemon_status['reason']})"

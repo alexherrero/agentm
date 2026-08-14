@@ -341,11 +341,25 @@ class TransparencyTests(unittest.TestCase):
 
     def _run(self, prompt: str, budget_ms: int):
         import io
+        import unittest.mock
+
         out, err = io.StringIO(), io.StringIO()
-        recall.prompt_submit(
-            vault=self.vault, prompt=prompt, budget_ms=budget_ms,
-            stdout=out, stderr=err,
-        )
+        # This class is about the in-process engine's own admission contract
+        # (module docstring: "hermetic... no network"), so the daemon fast
+        # path recall.py tries first has to be forced to decline rather than
+        # left to whatever `agentmd` happens to be on the test runner's PATH.
+        # Before the hybrid-retrieval cutover, an installed daemon that
+        # rejected `-mode`/`-question` as unknown flags made this true by
+        # accident; a daemon that recognizes them (and finds a real answer in
+        # whatever vault it resolves — never this test's tempdir fixture) no
+        # longer declines on its own, so the fixture now says so directly.
+        with unittest.mock.patch.object(
+            recall.subprocess, "run", side_effect=FileNotFoundError()
+        ):
+            recall.prompt_submit(
+                vault=self.vault, prompt=prompt, budget_ms=budget_ms,
+                stdout=out, stderr=err,
+            )
         return out.getvalue(), err.getvalue()
 
     def _require_a_completed_search(self, stderr: str) -> None:

@@ -250,6 +250,39 @@ func TestSupervisorWithoutModelIsOff(t *testing.T) {
 	}
 }
 
+// Options.Port must actually reach the supervisor that spawns the child — a
+// regression caught while wiring task 5's fixed embedder port: the field
+// existed on Options and was documented, but New never copied it onto the
+// Supervisor and runOnce called freePort unconditionally, so passing a
+// non-zero Port silently did nothing. Testing runOnce's own port selection
+// end-to-end would mean actually spawning llama-server (this file's own
+// header explains why nothing else here does that); this checks the wiring
+// runOnce reads instead, the same altitude the rest of this package tests at.
+func TestNewStoresTheConfiguredPort(t *testing.T) {
+	m, err := Lookup(t.TempDir(), "embeddinggemma-300M-Q8_0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Options{Model: m, Port: 8901})
+	if s.port != 8901 {
+		t.Fatalf("port = %d, want the configured 8901", s.port)
+	}
+}
+
+// Zero must stay zero — the "pick a free one" default every caller but
+// `serve` relies on (a bulk backfill, an explicit --embedder-url measurement
+// run) must not regress into always binding the fixed port.
+func TestNewDefaultsToNoConfiguredPort(t *testing.T) {
+	m, err := Lookup(t.TempDir(), "embeddinggemma-300M-Q8_0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := New(Options{Model: m})
+	if s.port != 0 {
+		t.Fatalf("port = %d, want 0 (unset) when Options.Port is not given", s.port)
+	}
+}
+
 // A model whose weights return the wrong width must be refused rather than
 // stored. Vectors of an unexpected dimension are not a weak signal; they are a
 // different geometry, and they surface hundreds of notes later.

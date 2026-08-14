@@ -184,6 +184,13 @@ func cmdServe(args []string) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// A bare hook-issued `agentmd search -mode hybrid` (see cmdSearch) has no
+	// way to find this process's embedder once it spawns one — the child binds
+	// a kernel-assigned port that only this process knows. Fixing the port
+	// this daemon spawns on to a well-known default is what lets that one-shot
+	// caller attach instead of loading its own model per query.
+	ef.port = embedderSpawnPort(*ef, cfg)
+
 	// The embedder is started but never waited on. A cold 600MB model takes tens
 	// of seconds, and a daemon that refused to answer lexical searches until its
 	// vector arm warmed up would be strictly worse than the lexical-only daemon
@@ -399,7 +406,12 @@ func cmdSearch(args []string) error {
 		// A one-shot hybrid search has to have a model in hand before it can ask
 		// anything, so unlike `serve` it waits. Attaching to a running server via
 		// -embedder-url is what keeps a measurement run from paying one model load
-		// per query.
+		// per query — and a bare invocation with no explicit pointer (this is
+		// what the prompt-submit hook issues) defaults to the resident `agentmd
+		// serve` daemon's own embedder (embedderAttachDefault/embedderSpawnPort).
+		if u := embedderAttachDefault(*ef, cfg); u != "" {
+			ef.url = u
+		}
 		sup, err := startEmbedder(ctx, cfg, *ef, quietLogger(), 3*time.Minute)
 		if err != nil {
 			return err

@@ -20,6 +20,15 @@ type embedderFlags struct {
 	url   string
 	model string
 	off   bool
+	// port is the fixed loopback port to spawn a NEW child on, when spawning
+	// is what resolution does (no attach URL resolved). Zero — the default
+	// for every command except `serve` — keeps picking a free one, unchanged.
+	// Not a CLI flag: `serve` is the only caller that ever sets it (see
+	// cmdServe), and exposing the daemon's own bind port on the command line
+	// would invite exactly the collision this value exists to let OTHER
+	// commands (the backfill, an explicit-URL measurement run) avoid by
+	// always getting an isolated, unshared child.
+	port int
 }
 
 // resolveEmbedder turns config plus flags into a supervisor.
@@ -78,7 +87,7 @@ func resolveEmbedder(
 	if url != "" {
 		return embed.Attach(url, model), nil
 	}
-	return embed.New(embed.Options{Model: model, Logger: log}), nil
+	return embed.New(embed.Options{Model: model, Port: f.port, Logger: log}), nil
 }
 
 // startEmbedder resolves and starts one, waiting up to `wait` for it to go warm.
@@ -119,6 +128,47 @@ func startEmbedder(
 	}
 	st, detail := sup.State()
 	return sup, fmt.Errorf("embedder did not become warm in %s (state %s: %s)", wait, st, detail)
+}
+
+// embedderAttachTarget reports whether resolution already has somewhere
+// explicit to point the embedder: an -embedder-url flag, or daemon.embedder_url
+// in config. Shared by the two functions below so they agree about what counts
+// as "already resolved" without duplicating the check.
+func embedderAttachTarget(f embedderFlags, cfg *config.Config) bool {
+	return f.url != "" || cfg.EmbedderURL != ""
+}
+
+// embedderSpawnPort is the port `serve` should spawn its own embedder on, so a
+// one-shot hybrid search (see embedderAttachDefault) has somewhere fixed to
+// attach to instead of loading its own model per query.
+//
+// Returns 0 — pick a free one, the default for every command but `serve` —
+// once something already resolves an explicit attach target: spawning on a
+// fixed port would then be moot, and worse, would collide with whatever the
+// operator pointed EmbedderURL at instead.
+func embedderSpawnPort(f embedderFlags, cfg *config.Config) int {
+	if embedderAttachTarget(f, cfg) {
+		return 0
+	}
+	return embed.DefaultAttachPort
+}
+
+// embedderAttachDefault is the URL a one-shot `agentmd search -mode hybrid`
+// should attach to when nothing more specific was given — the resident
+// `agentmd serve` daemon's own embedder, which embedderSpawnPort binds to this
+// same fixed port for exactly this reason. Attaching never blocks: if nothing
+// is listening there (serve is down, or hasn't bound an embedder), the first
+// embed call fails fast and the search degrades to its lexical arm, the same
+// graceful path a genuinely absent embedder always took.
+//
+// Returns "" once something already resolves an explicit target, leaving it
+// untouched — an operator's own -embedder-url or daemon.embedder_url is never
+// second-guessed.
+func embedderAttachDefault(f embedderFlags, cfg *config.Config) string {
+	if embedderAttachTarget(f, cfg) {
+		return ""
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d", embed.DefaultAttachPort)
 }
 
 // queryEmbedText decides what text the dense arm embeds — task 3.5's
