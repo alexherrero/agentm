@@ -44,7 +44,13 @@ REQUIRED_SUBSTRINGS = (
     "six-section",            # the frame is named
     "architecture.yml",       # the Architecture conditional gate
     "non-public visibility",  # the Operational conditional gate
-    "wiki-maintenance",       # the crickets authoring-tooling pointer
+    "wiki:documenter",        # the crickets authoring-tooling pointer, by its
+                              # NAMESPACED dispatch form. Pinned as the plugin
+                              # qualifier + name because that is the part that
+                              # actually has to be right: the plugin was renamed
+                              # wiki-maintenance -> wiki, and a stale qualifier
+                              # names a plugin no host can resolve. A bare
+                              # "wiki" here would be trivially satisfied.
     "graceful-skip",          # the crickets-absent dependency note
     ".diataxis-conventions.md",  # preserved I/O property: per-repo override
     "Preview-before-write",   # preserved I/O property: per-write approval gate

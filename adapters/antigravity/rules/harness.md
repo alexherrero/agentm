@@ -13,11 +13,12 @@ Antigravity's native surface maps as follows. Since the V5 unbundling ([ADR 0011
 | Surface | Antigravity primitive | Provided by |
 |---|---|---|
 | Always-on operating contract | Rules (`.agents/rules/*.md`) | `agentm` |
-| Utility skills (doctor, memory, design, wiki-author) | Skills (`.agents/skills/<name>/SKILL.md`) | `agentm` |
-| Phase loop (setup/plan/work/review/release/bugfix) | Workflows | crickets **developer-workflows** |
-| Review sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | crickets **code-review** / **developer-workflows** |
+| Utility skills (doctor, memory, design, console) | Skills (`.agents/skills/<name>/SKILL.md`) | `agentm` |
+| Wiki authoring (wiki-author, diataxis-author) | Skills | crickets **wiki** |
+| Phase loop (setup/plan/work/review/release/bugfix) | Workflows | crickets **development-lifecycle** |
+| Review sub-agents (explorer, adversarial-reviewer, adversarial-reviewer-cross) | Skills | crickets **code-review** / **development-lifecycle** |
 
-Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief: …"*, when the crickets developer-workflows plugin is installed). Invoke a skill when its trigger conditions match, or explicitly (*"use the doctor skill to check the install"*).
+Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief: …"*, when the crickets development-lifecycle plugin is installed). Invoke a skill when its trigger conditions match, or explicitly (*"use the doctor skill to check the install"*).
 
 ## Non-negotiables (from [`harness/principles.md`](../../harness/principles.md))
 
@@ -26,7 +27,7 @@ Invoke a workflow by name from the chat (e.g. *"run the plan workflow with brief
 3. **Gates before commit.** Typecheck, lint, tests must be green before a task is marked `[x]`.
 4. **Never edit or delete a failing test to make it pass.** If a test is wrong, surface it and stop.
 5. **Adversarial review framing is literal.** The code contains bugs; find them. Rubber-stamp reviews are a failure of rigor.
-6. **`/work` does not touch `wiki/`.** Documentation updates are phase-boundary-only — crickets' `wiki-maintenance:documenter` (graceful-skip if the `wiki-maintenance` plugin is absent) runs post-gates in `/work`, full-pass in `/release`.
+6. **`/work` does not touch `wiki/`.** Documentation updates are phase-boundary-only — crickets' `wiki:documenter` (graceful-skip if the `wiki` plugin is absent) runs post-gates in `/work`, full-pass in `/release`.
 
 ## State files
 

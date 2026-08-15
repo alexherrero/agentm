@@ -4,12 +4,12 @@ How the phases, adapters, templates, scripts, and this wiki interact — the nar
 
 ## Two sources of truth → adapters → target project
 
-Since the V5 unbundling there are two canonical sources, not one: crickets' developer-workflows plugin owns the phase specs (`/plan` · `/work` · `/review` · `/release` · `/bugfix`); this repo's `harness/agents/*.md` and `harness/skills/*.md` own the memory-engine sub-agents and skills (`adapt-evaluator`, `memory-idea-researcher`, `doctor`, `memory`, `design`, `wiki-author`). Each adapter is a thin shim that *points* at whichever canonical spec it needs rather than restating it.
+Since the V5 unbundling there are two canonical sources, not one: crickets' development-lifecycle plugin owns the phase specs (`/plan` · `/work` · `/review` · `/release` · `/bugfix`); this repo's `harness/agents/*.md` and `harness/skills/*.md` own the memory-engine sub-agents and skills (`adapt-evaluator`, `memory-idea-researcher`, `doctor`, `memory`, `design`, `console`). Each adapter is a thin shim that *points* at whichever canonical spec it needs rather than restating it.
 
 ```
          ┌────────────────────────────┐   ┌────────────────────────────┐
          │  crickets                  │   │  agentm                    │
-         │  developer-workflows       │   │  harness/agents/*.md       │
+         │  development-lifecycle       │   │  harness/agents/*.md       │
          │  (phase specs — source     │   │  harness/skills/*.md       │
          │   of truth for /plan etc.) │   │  (memory-engine — source   │
          │                            │   │   of truth for sub-agents  │
@@ -39,7 +39,7 @@ Since the V5 unbundling there are two canonical sources, not one: crickets' deve
          └───────────────────────────────────────────┘
 ```
 
-This holds together because every adapter file is expected to cite either a crickets developer-workflows phase-spec path or an agentm `harness/<agents|skills>/` path, and [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter points at a spec that doesn't exist. That's what keeps the two supported adapters — [Claude Code and Antigravity](Compatibility) — in lockstep: they are pointers at the same canonical text, not parallel rewrites. Adding a host is a matter of writing pointers rather than re-authoring the workflow.
+This holds together because every adapter file is expected to cite either a crickets development-lifecycle phase-spec path or an agentm `harness/<agents|skills>/` path, and [`scripts/check-references.py`](https://github.com/alexherrero/agentm/blob/main/scripts/check-references.py) fails CI if an adapter points at a spec that doesn't exist. That's what keeps the two supported adapters — [Claude Code and Antigravity](Compatibility) — in lockstep: they are pointers at the same canonical text, not parallel rewrites. Adding a host is a matter of writing pointers rather than re-authoring the workflow.
 
 ## The installer boundary
 

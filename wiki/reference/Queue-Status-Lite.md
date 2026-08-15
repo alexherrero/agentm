@@ -10,7 +10,7 @@ The `/queue-status-lite` command provides a read-only dashboard. It lists every 
 | Script (agentm-shipped) | `scripts/queue_status_lite.py` |
 | Invocation | `python3 scripts/queue_status_lite.py [--harness-dir PATH]` |
 | `--harness-dir PATH` | the `_harness/` directory to enumerate; omit to resolve from cwd via `harness_state_dir` |
-| Slash-command surface | `/queue-status-lite` — **crickets-provided** (developer-workflows plugin), wraps this script |
+| Slash-command surface | `/queue-status-lite` — **crickets-provided** (development-lifecycle plugin), wraps this script |
 | Reads | every `PLAN*.md` in the resolved `_harness/` (named + unnamed) |
 | Per plan, reports | plan name · its `Status:` line · the head (most-recent entry) of the matching `progress*.md` |
 | Writes | **none** — read-only; the fixture is byte-identical before/after a run |

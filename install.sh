@@ -703,7 +703,7 @@ cp_user_walk "$HARNESS_ROOT/templates/wiki" "wiki"
 # conflict-merger-session-start hook re-homed to the crickets obsidian-vault
 # plugin in V5-2 task 2 — vault-specific machinery left the kernel. The
 # ship-release skill re-homed the other direction: its local copy retired
-# 2026-07-01, folded into crickets' releasing-conventions skill of the same
+# 2026-07-01, folded into crickets' conventions skill of the same
 # name, which now covers both discipline and mechanics.)
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +

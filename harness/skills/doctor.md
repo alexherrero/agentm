@@ -24,7 +24,7 @@ Before any checks run, `doctor` detects which adapter is installed by looking fo
 | Antigravity | `<project>/.agents/rules/` + `<project>/.agents/skills/` | `~/.agents/rules/` + `~/.agents/skills/` |
 | Gemini | `<project>/.gemini/settings.json` + `<project>/.agents/skills/` | `~/.gemini/settings.json` + `~/.agents/skills/` |
 
-**Post-slim marker shift (V5 dev-loop slim).** The dev-loop primitives — phase commands (`.claude/commands/`, `.gemini/commands/`, `.agents/workflows/`) and the review sub-agents — are no longer agentm's install marker: they moved to the crickets developer-workflows / code-review plugins and may or may not be present. agentm's *durable* surface is the memory-engine sub-agents (`.claude/agents/`), the shared skills (`.claude/skills/` + `.agents/skills/`), and the host wiring (Antigravity `.agents/rules/`, Gemini `.gemini/settings.json`). Detect on those. A crickets-installed `.agents/workflows/` or `.gemini/commands/` may coexist but does not, on its own, indicate an agentm install.
+**Post-slim marker shift (V5 dev-loop slim).** The dev-loop primitives — phase commands (`.claude/commands/`, `.gemini/commands/`, `.agents/workflows/`) and the review sub-agents — are no longer agentm's install marker: they moved to the crickets development-lifecycle / code-review plugins and may or may not be present. agentm's *durable* surface is the memory-engine sub-agents (`.claude/agents/`), the shared skills (`.claude/skills/` + `.agents/skills/`), and the host wiring (Antigravity `.agents/rules/`, Gemini `.gemini/settings.json`). Detect on those. A crickets-installed `.agents/workflows/` or `.gemini/commands/` may coexist but does not, on its own, indicate an agentm install.
 
 **Install scope detection (V4 #30 v4.3.0+).** Since v4.3.0, `install.sh --scope user` is the default. When the project-scope path is empty or absent but the user-scope path has the expected primitives, doctor reports `scope: user` and runs the full structural battery against `~/.claude/` (or the host equivalent). When both scopes have primitives, doctor reports `scope: mixed` and validates each scope's set independently. When neither has primitives, abort with `doctor: no harness adapter found at project or user scope — run install.sh first`.
 
@@ -34,9 +34,9 @@ Multiple adapters may be present in the same project (the installer supports tha
 
 For each detected adapter, verify the expected name set is present and each file parses. The expected sets come from the same source as `scripts/check-parity.sh`:
 
-- **Phase commands** (harness-vendored): `recent-wiki-changes` (V4 #30 plan 2, v4.4.0+) is the only phase/utility command agentm still vendors — graceful-skip if absent on a pre-v4.4.0 install. The six phase-gated dev-loop commands (`bugfix, plan, release, review, setup, work`) moved to the crickets **developer-workflows** plugin in the V5 dev-loop slim — report `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, **never FAIL**. A bare agentm install has no dev-loop commands and that is the expected, healthy shape (DC-2: agentm is unaware of the dev loop, no pointer, no requirement).
-- **Sub-agents** (required, harness-shipped): `adapt-evaluator, memory-idea-researcher` — the memory-engine sub-agents agentm keeps. Crickets-provided (graceful-skip if crickets is not paired, **never FAIL**): `adversarial-reviewer, adversarial-reviewer-cross, explorer` (code-review / developer-workflows — moved out of agentm in the V5 dev-loop slim) and `diataxis-evaluator, documenter, evaluator` (wiki-maintenance — `documenter` retired from agentm in the seven-section convergence, canonical in crickets' `wiki-maintenance` plugin).
-- **Skills** (required, harness-shipped): `doctor, wiki-author` (wiki-author landed in V4 #30 plan 2 / v4.4.0). Optional harness-shipped compound skills: `design, memory` — graceful-skip if absent (they may be deferred via `install.sh --no-compound-skills` or similar). Optional crickets-shipped skills: `dependabot-fixer, diataxis-author, pii-scrubber, ship-release` — graceful-skip if crickets is not paired (`diataxis-author` retired from agentm in the seven-section convergence and absorbs the old four-mode `migrate-to-diataxis` migration via `/diataxis migrate`; canonical in crickets' `wiki-maintenance` plugin; `ship-release` retired its agentm-local copy 2026-07-01 and is now fully owned by crickets' `releasing-conventions` skill of the same name, covering both discipline and mechanics).
+- **Phase commands**: agentm vendors **none**. `recent-wiki-changes` was the last one and retired to crickets' **wiki** plugin (2026-08-12) — report it `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, **never FAIL**. The six phase-gated dev-loop commands (`bugfix, plan, release, review, setup, work`) moved to the crickets **development-lifecycle** plugin in the V5 dev-loop slim — report `[OK] present` if crickets is paired, `[SKIP] not installed` if absent, **never FAIL**. A bare agentm install has no dev-loop commands and that is the expected, healthy shape (DC-2: agentm is unaware of the dev loop, no pointer, no requirement).
+- **Sub-agents** (required, harness-shipped): `adapt-evaluator, memory-idea-researcher` — the memory-engine sub-agents agentm keeps. Crickets-provided (graceful-skip if crickets is not paired, **never FAIL**): `adversarial-reviewer, adversarial-reviewer-cross, explorer` (code-review / development-lifecycle — moved out of agentm in the V5 dev-loop slim) and `diataxis-evaluator, documenter, evaluator` (wiki — `documenter` retired from agentm in the seven-section convergence, canonical in crickets' `wiki` plugin).
+- **Skills** (required, harness-shipped): `doctor`. Optional harness-shipped compound skills: `design, memory` — graceful-skip if absent (they may be deferred via `install.sh --no-compound-skills` or similar). Optional crickets-shipped skills: `dependabot-fixer, diataxis-author, pii-scrubber, ship-release, wiki-author` — graceful-skip if crickets is not paired (`diataxis-author` retired from agentm in the seven-section convergence and absorbs the old four-mode `migrate-to-diataxis` migration via `/diataxis migrate`; canonical in crickets' `wiki` plugin; `wiki-author` retired its agentm-local copy 2026-08-12 to that same plugin, which had already diverged ahead of it; `ship-release` retired its agentm-local copy 2026-07-01 and is now fully owned by crickets' `conventions` skill of the same name, covering both discipline and mechanics).
 
 For each expected item:
 1. The file exists at the adapter-specific path (project scope or user scope, whichever the install resolved to).
@@ -103,7 +103,7 @@ Run in order. First failure stops the battery for that adapter (the rest will on
 
 ### Probe 1: `explorer` sub-agent dispatch
 
-**Graceful-skip if not installed.** `explorer` moved to the crickets developer-workflows plugin in the V5 dev-loop slim. If the sub-agent isn't present in any host's agent paths, report **skip** with reason: *"explorer sub-agent not found — install the crickets developer-workflows plugin to enable this probe."* Never FAIL on its absence — a bare agentm install legitimately has no `explorer` (DC-2).
+**Graceful-skip if not installed.** `explorer` moved to the crickets development-lifecycle plugin in the V5 dev-loop slim. If the sub-agent isn't present in any host's agent paths, report **skip** with reason: *"explorer sub-agent not found — install the crickets development-lifecycle plugin to enable this probe."* Never FAIL on its absence — a bare agentm install legitimately has no `explorer` (DC-2).
 
 If installed: dispatch the `explorer` sub-agent with a trivial prompt that only requires filesystem access:
 
@@ -141,7 +141,7 @@ If installed: invoke `ship-release --dry-run`. This should compute a proposed ve
 
 ### Probe 4: diataxis migration preview (crickets-provided — graceful-skip)
 
-agentm no longer ships a migration skill — the four-mode `migrate-to-diataxis` retired to crickets' `wiki-maintenance` (`/diataxis migrate`) in the V5 docs slim. If that skill is absent (a bare agentm install), **skip** this probe — report `[SKIP] not installed`, never FAIL. If crickets is paired, optionally invoke `/diataxis migrate --preview` against the current `wiki/`; with the `wiki/.diataxis` marker present it should no-op cleanly with "already migrated".
+agentm no longer ships a migration skill — the four-mode `migrate-to-diataxis` retired to crickets' `wiki` (`/diataxis migrate`) in the V5 docs slim. If that skill is absent (a bare agentm install), **skip** this probe — report `[SKIP] not installed`, never FAIL. If crickets is paired, optionally invoke `/diataxis migrate --preview` against the current `wiki/`; with the `wiki/.diataxis` marker present it should no-op cleanly with "already migrated".
 
 **Pass criteria:** the probe is skipped on a bare agentm; or, when crickets is paired, the migration preview detects the marker and proposes no moves.
 **Fail signals:** doctor hard-FAILs because the migration skill is absent (it must graceful-skip), or a paired crickets migration proposes re-classifications of already-placed files.
@@ -227,9 +227,9 @@ doctor: <adapter> — <PASS|FAIL>
   state mode:         vault-resident   (or: legacy .harness/)
 
   structural:
-    phase-commands    [OK]  recent-wiki-changes present; 6 dev-loop commands crickets-provided ([SKIP] if unpaired)
+    phase-commands    [OK]  0 harness-vendored; 6 dev-loop + recent-wiki-changes crickets-provided ([SKIP] if unpaired)
     sub-agents        [OK]  2/2 required (adapt-evaluator, memory-idea-researcher); review agents crickets-provided
-    skills            [OK]  2/2 required (doctor, wiki-author);
+    skills            [OK]  1/1 required (doctor);
                             2 optional harness-shipped + crickets present
     state files       [OK]  vault-resident — <vault>/projects/<slug>/_harness/
     worktree-slug     [OK]  slug 'agentm' == origin basename — worktree-safe
@@ -248,7 +248,7 @@ doctor: <adapter> — <PASS|FAIL>
                             # Stop hook referencing session-cost-capture.sh — re-run the wiring step"
 
   live probes (--live):
-    explorer          [SKIP] crickets developer-workflows not installed — probe needs the explorer sub-agent
+    explorer          [SKIP] crickets development-lifecycle not installed — probe needs the explorer sub-agent
     adversarial       [SKIP] crickets code-review not installed — probe needs the adversarial-reviewer sub-agent
     ship-release      [OK]   1.8s  — proposed v0.9.0, no tag written
     migrate-diataxis  [OK]   0.9s  — no-op (marker present)

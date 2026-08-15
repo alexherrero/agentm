@@ -2,7 +2,7 @@
 """process_seam — the memory↔process client seam (V5-4).
 
 A small, **read-only**, **graceful-no-op** view that a *process* (the crickets
-developer-workflows phases today; the V5-9 MCP server + plugins tomorrow) calls
+development-lifecycle phases today; the V5-9 MCP server + plugins tomorrow) calls
 instead of reaching into the memory engine's internals. It exports two
 functions over the DC-7-frozen public memory API:
 

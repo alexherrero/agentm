@@ -2,19 +2,24 @@
 """Validate adapter files parse and have required keys.
 
 Checks:
-  - Markdown YAML frontmatter (claude-code/commands, antigravity/rules)
-    parses; has the required keys.
+  - Markdown YAML frontmatter (antigravity/rules) parses; has the required keys.
   - SKILL.md files (claude-code/skills) have name + description frontmatter.
   - JSON (templates/features.json, adapters/gemini/settings.json,
     templates/hooks/settings-fragment-*.json) parses.
   - Every remaining skill maps to a canonical spec under harness/skills/.
 
 The phase-gated dev loop + the review sub-agents were slimmed out of agentm in
-the V5 unbundling (moved to the crickets developer-workflows / code-review
+the V5 unbundling (moved to the crickets development-lifecycle / code-review
 plugins). Their adapter surfaces (gemini/commands, claude-code/agents,
 gemini/agents, antigravity/workflows, antigravity/skills) no longer exist, so
 they are not validated here; their absence is pinned by
 scripts/test_devloop_slim_retired.py.
+
+claude-code/commands went the same way on 2026-08-12: `recent-wiki-changes` was
+the last command agentm vendored, and it retired to crickets' `wiki` plugin
+(which already shipped a newer copy). agentm now ships no claude-code command at
+all, so that surface is likewise not validated here; its absence is pinned by
+scripts/test_wiki_dupes_retired.py.
 
 Exits non-zero on first failure; prints what and where.
 """
@@ -132,11 +137,10 @@ def check_canonical_backing() -> None:
 
 # ── main ────────────────────────────────────────────────────────────────────
 def main() -> int:
-    # Markdown + frontmatter — required keys differ by surface:
-    # - Claude Code slash commands: description (filename IS the name)
-    # - Antigravity rules: trigger (the "always_on" signal)
-    validate_md_frontmatter("adapters/claude-code/commands", "description")
-    validate_md_frontmatter("adapters/antigravity/rules",    "trigger")
+    # Markdown + frontmatter. Only Antigravity rules remain — required key is
+    # `trigger` (the "always_on" signal). The Claude Code slash-command surface
+    # was dropped in 2026-08-12's wiki-dupe retire (see module docstring).
+    validate_md_frontmatter("adapters/antigravity/rules", "trigger")
 
     # Skills (SKILL.md)
     validate_skill_dirs("adapters/claude-code/skills")

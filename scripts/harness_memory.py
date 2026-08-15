@@ -1780,7 +1780,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     # resolve-active-plan (V5-10 part 1): emit the active (PLAN, progress) path
-    # pair so the crickets developer-workflows phase specs can target named
+    # pair so the crickets development-lifecycle phase specs can target named
     # plans without reimplementing resolution — they shell to this verb (the
     # function `resolve_active_plan` itself is not otherwise reachable from a
     # bash spec). Precedence is owned here: explicit --plan → worktree

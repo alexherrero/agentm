@@ -48,7 +48,7 @@ opinion_available(name) -> bool               # boolean surface (mirrors capabil
 
 `scripts/agentm-opinion.sh` wraps `opinion_resolver.py` (exit `0` served · `1` unavailable · `2` usage), mirroring `agentm-capability.sh` and `agentm-governs.sh`.
 
-Crickets reaches the resolver through a thin bridge that mirrors the crickets-side `find_capability.py` (in `developer-workflows`) — path-fallback discovery, graceful-skip when agentm is absent. The direction is one-way: crickets depends on agentm in a single direction.
+Crickets reaches the resolver through a thin bridge that mirrors the crickets-side `find_capability.py` (in `development-lifecycle`) — path-fallback discovery, graceful-skip when agentm is absent. The direction is one-way: crickets depends on agentm in a single direction.
 
 ### What an opinion is — the entry schema
 
@@ -66,7 +66,7 @@ composes: []               # optional — sub-providers folded into the served c
 The standard prose — the coded base of the opinion.
 ```
 
-The served composite is **the base body ⊕ the learned supplement**, folded by the same mechanism crickets' `style_resolver.py` (in `wiki-maintenance`'s diataxis-author) already uses for the prose-style base⊕overlay. Two storage layers:
+The served composite is **the base body ⊕ the learned supplement**, folded by the same mechanism crickets' `style_resolver.py` (in `wiki`'s diataxis-author) already uses for the prose-style base⊕overlay. Two storage layers:
 
 - **The coded base** ships as `opinions/<name>.md` in the agentm repo — the durable seed, the same for every install, changed only by a check-in.
 - **The learned supplement** lives in the memory backend through the storage seam — an `opinions/` area beside the always-load conventions, written by Experience over time. The resolver reads it; it never writes it.
@@ -181,7 +181,7 @@ Plus **`test_opinion_resolver.py`**, copying `test_governs_resolver.py` (served 
 ## Dependencies
 
 - **rides the one-way capability bridge** — crickets' `find_capability.py` → agentm's `capability_resolver.py`; the opinion lookup rides the same path crickets already uses to reach agentm.
-- **rides the style base⊕overlay fold** — crickets' `style_resolver.py` (wiki-maintenance) is the compose precedent for base ⊕ supplement.
+- **rides the style base⊕overlay fold** — crickets' `style_resolver.py` (wiki) is the compose precedent for base ⊕ supplement.
 - **rides the memory engine** — the learned supplement is a memory entry in the `opinions/` area, through the storage seam ([memory system](agentm-memory-system)).
 - **binds through** the persona `opinions:` manifest axis ([personas](agentm-personas)) and the composition `requires:`/`enhances:` edges ([composition](https://github.com/alexherrero/crickets/wiki/crickets-composition)).
 - **`efficient` composes** [model + effort routing](agentm-model-effort-routing) (the tier scale — itself `[PENDING-IMPL]`) and `token-audit` (the measurement).
@@ -220,7 +220,7 @@ Plus **`test_opinion_resolver.py`**, copying `test_governs_resolver.py` (served 
 
 ## References
 
-- **The resolver precedents to copy:** agentm `scripts/governs_resolver.py` + `test_governs_resolver.py` (markdown-data resolve-by-name, never-raise) · agentm `scripts/capability_resolver.py` with crickets' `find_capability.py` (the one-way bridge) · crickets `style_resolver.py` (wiki-maintenance / diataxis-author — the base⊕overlay fold) · agentm `scripts/capability_version_match.py` (graceful-degrade matching)
+- **The resolver precedents to copy:** agentm `scripts/governs_resolver.py` + `test_governs_resolver.py` (markdown-data resolve-by-name, never-raise) · agentm `scripts/capability_resolver.py` with crickets' `find_capability.py` (the one-way bridge) · crickets `style_resolver.py` (wiki / diataxis-author — the base⊕overlay fold) · agentm `scripts/capability_version_match.py` (graceful-degrade matching)
 - **The guard to reconcile:** crickets `scripts/check-capability-naming.py` (the reserved `OPINION_NAMES` set)
 - **The coded bases today:** `AGENTS.md` + `harness/principles.md` · `scripts/check-all.sh` + `wiki/reference/CI-Gates.md` (*done*) · crickets `code-review` (*good*) · `harness/skills/memory/scripts/heat_policy.py` + opusplan (*efficient* levers) · `development-lifecycle` (*how we engineer*)
 - **Up:** [opinions pillar](agentm-opinions-and-gates) (the `[PENDING-IMPL]` this implements) · [agentm HLD](agentm-hld) §Opinions

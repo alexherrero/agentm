@@ -7,7 +7,7 @@ plus four activation-axis shape checks (agentm-persona-activation.md):
   1. requires ⊆ substrate-native — every entry in `requires:` must resolve to
      the stem of a file in `scripts/` (as `<stem>.py` or `<stem>.sh`). This
      mechanically holds the agentm-no-hard-dep-on-crickets invariant: a requires:
-     entry that names a crickets capability (e.g. "developer-workflows") has no
+     entry that names a crickets capability (e.g. "development-lifecycle") has no
      file under scripts/ and will be rejected.
 
   2. No always-load — a persona manifest must not declare `always_load: true`

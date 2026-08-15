@@ -6,7 +6,7 @@ agentm used to vendor the full phase-gated dev loop — the six phase commands
 (`adversarial-reviewer` / `-cross` / `explorer`), and the `evidence-tracker`
 hook — across all three host adapters plus the shared `harness/` source. The V5
 "unbundling" (ROADMAP bucket ⑤) removed every one of those copies: they are now
-provided solely by the launched + dogfood-proven crickets **developer-workflows**
+provided solely by the launched + dogfood-proven crickets **development-lifecycle**
 / **code-review** plugins. Per DC-2 the slim is a *clean delete*, not a
 graceful-skip-with-pointer: agentm ships no invocation surface for the dev loop
 and says nothing about it — if crickets is absent, a bare agentm simply has no
@@ -16,7 +16,7 @@ and says nothing about it — if crickets is absent, a bare agentm simply has no
 The same unbundling retired the **docs-slim residue** — agentm's four-mode
 `migrate-to-diataxis` skill (`harness/skills/migrate-to-diataxis.md` + its
 Claude Code adapter copy). Its one-shot wiki conversion is now provided by
-crickets' `wiki-maintenance` / `diataxis-author` (`/diataxis migrate`). Unlike
+crickets' `wiki` / `diataxis-author` (`/diataxis migrate`). Unlike
 the dev-loop clean-delete, the *bare name* `migrate-to-diataxis` legitimately
 survives in `doctor`'s graceful crickets-provider prose (telling an operator
 who had it pre-V5 where the capability went) — only the deleted FILE paths are
@@ -154,7 +154,7 @@ class TestDevloopSlimRetired(unittest.TestCase):
             self.assertFalse(
                 (ROOT / rel).exists(),
                 f"agentm's vendored dev-loop primitive `{rel}` must be retired "
-                "(V5 dev-loop slim); the crickets developer-workflows / "
+                "(V5 dev-loop slim); the crickets development-lifecycle / "
                 "code-review plugins are the sole providers.",
             )
 
@@ -269,18 +269,18 @@ class TestDevloopSlimRetired(unittest.TestCase):
                 phase_commands,
                 text,
                 f"{rel}: the six phase commands `{phase_commands}` must be named "
-                "as crickets-provided (developer-workflows).",
+                "as crickets-provided (development-lifecycle).",
             )
             self.assertIn(
                 review_agents,
                 text,
                 f"{rel}: the review agents `{review_agents}` must be named as "
-                "crickets-provided (code-review / developer-workflows).",
+                "crickets-provided (code-review / development-lifecycle).",
             )
             self.assertIn(
-                "developer-workflows",
+                "development-lifecycle",
                 text,
-                f"{rel}: the doctor must name the crickets developer-workflows "
+                f"{rel}: the doctor must name the crickets development-lifecycle "
                 "plugin as the dev-loop provider.",
             )
             # The phase commands must NOT be re-listed as harness-required.
@@ -294,22 +294,30 @@ class TestDevloopSlimRetired(unittest.TestCase):
     def test_migrate_to_diataxis_doctor_reframe(self):
         """migrate-to-diataxis left the required-skills set (docs slim, DC-3).
 
-        The skill is deleted; doctor's harness-required skills are now `doctor,
-        wiki-author`. The bare name may survive only as crickets-provider
+        The skill is deleted; the bare name may survive only as crickets-provider
         graceful prose (where the capability went) — both surfaces phrase that
         via crickets' `diataxis-author`, which absorbed the migration.
+
+        The literal pinned here is doctor's harness-required *skills* set. It
+        was `doctor, wiki-author` until the 2026-08-12 wiki-dupe retire moved
+        `wiki-author` to crickets' `wiki` plugin; the set is now `doctor` alone,
+        so each surface is pinned by the phrasing that declares it (the two
+        surfaces word it differently — prose bullet vs table row).
         """
-        required_skills = "doctor, wiki-author"
-        for rel in (
-            "harness/skills/doctor.md",
-            "adapters/claude-code/skills/doctor/SKILL.md",
-        ):
+        required_decl = {
+            "harness/skills/doctor.md":
+                "**Skills** (required, harness-shipped): `doctor`.",
+            "adapters/claude-code/skills/doctor/SKILL.md":
+                "| `$ROOT/skills/*/` | `doctor` |",
+        }
+        for rel, decl in required_decl.items():
             text = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIn(
-                required_skills,
+                decl,
                 text,
-                f"{rel}: after the docs slim the harness-required skills must be "
-                f"`{required_skills}` (the four-mode migration skill retired to "
+                f"{rel}: after the docs slim + the wiki-dupe retire the "
+                "harness-required skills set must be `doctor` alone (the "
+                "four-mode migration skill and wiki-author both retired to "
                 "crickets).",
             )
             self.assertIn(

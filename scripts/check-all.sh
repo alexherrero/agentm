@@ -71,6 +71,10 @@ gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py
 gate "check-registry-hygiene (no throwaway temp path registered as a repo)" "$PY" scripts/check-registry-hygiene.py
+# Graceful-skips (PASS) when no crickets checkout is reachable — it needs
+# crickets' real plugin set as ground truth, and a hardcoded list would be the
+# very drift it exists to catch. Same posture as check-slop.py's delegation.
+gate "check-crickets-plugin-refs (no dead crickets link / stale plugin qualifier)" "$PY" scripts/check-crickets-plugin-refs.py
 gate "check-no-pii (--all)"                    bash scripts/check-no-pii.sh --all
 gate "check-wiki (--strict)"                   "$PY" scripts/check-wiki.py --strict
 gate "check-slop (--strict)"                    "$PY" scripts/check-slop.py --strict --wiki-root wiki wiki

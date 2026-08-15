@@ -61,20 +61,20 @@ triggers: []
 
 ### Example: the first real composed persona (`personas/team-coordinator.md`)
 
-Shipped in V5-11. Hard-requires `queue_status_lite` (agentm-native); soft-composes `developer-workflows` and `github-projects` via `enhances:`.
+Shipped in V5-11. Hard-requires `queue_status_lite` (agentm-native); soft-composes `development-lifecycle` and `github-projects` via `enhances:`.
 
 ```yaml
 ---
 kind: persona
 name: team-coordinator
 requires: [queue_status_lite]
-enhances: [developer-workflows, github-projects]
+enhances: [development-lifecycle, github-projects]
 description: >
   The standing concern that turns raw multi-worker status into decision-ready
   recommendations. Reads the vault, computes the answers, and hands the operator
   a ready-to-act standup, an overlap verdict, and a merge order. Advisory only —
   zero execution authority. The first composed persona: soft-depends on
-  developer-workflows (the dev-loop surface) and github-projects (the board
+  development-lifecycle (the dev-loop surface) and github-projects (the board
   display), and hard-depends on queue_status_lite (the substrate read model).
 tier: T2
 opinions: [how-we-engineer]

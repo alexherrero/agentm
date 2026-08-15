@@ -358,7 +358,7 @@ Copy-AdapterDirs  (Join-Path $HarnessRoot 'adapters/claude-code/skills')        
 # Antigravity 2.0 default; legacy .agent/ wiped on -Update). Only the always-on
 # rules ship here now — the phase-gated dev-loop workflows + review sub-agents
 # (formerly adapters/antigravity/{workflows,skills}) were slimmed out in the V5
-# unbundling; that surface is provided by the crickets developer-workflows /
+# unbundling; that surface is provided by the crickets development-lifecycle /
 # code-review plugins. The shared skill (doctor) still lands in
 # .agents/skills/ via the dedicated delivery loop below.
 Copy-AdapterFiles (Join-Path $HarnessRoot 'adapters/antigravity/rules')     '*.md' '.agents/rules'
@@ -379,7 +379,7 @@ foreach ($name in @('doctor')) {
 # (delivered above) and the AGENTS.md context wiring from settings.json. The
 # phase-command + sub-agent surfaces (formerly adapters/gemini/{commands,agents})
 # were slimmed out in the V5 unbundling — that dev loop is provided by the
-# crickets developer-workflows / code-review plugins, not vendored here.
+# crickets development-lifecycle / code-review plugins, not vendored here.
 New-Item -ItemType Directory -Path '.gemini' -Force | Out-Null
 Copy-UserFile     (Join-Path $HarnessRoot 'adapters/gemini/settings.json') '.gemini/settings.json'
 
@@ -397,7 +397,7 @@ Copy-UserWalk (Join-Path $HarnessRoot 'templates/wiki') 'wiki'
 # conflict-merger-session-start hook re-homed to the crickets obsidian-vault
 # plugin in V5-2 task 2 — vault-specific machinery left the kernel. The
 # ship-release skill re-homed the other direction: its local copy retired
-# 2026-07-01, folded into crickets' releasing-conventions skill of the same
+# 2026-07-01, folded into crickets' conventions skill of the same
 # name, which now covers both discipline and mechanics.)
 #
 # Only dispatches entries with crickets-shape frontmatter (kind: <type> +

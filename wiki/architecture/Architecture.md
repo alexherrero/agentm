@@ -40,7 +40,7 @@ Everything inherits the shared [Foundations](agentm-foundations-hld), and the [A
 
 - [AgentMemory](AgentMemory) — the four-pillar substrate, read top-down.
 - [Device-Wide Substrate](Device-Wide-Substrate) — the per-device install that every project on the machine shares.
-- [Phases](Phases) — the phase-gated workflow surface crickets' developer-workflows plugin composes onto this substrate.
+- [Phases](Phases) — the phase-gated workflow surface crickets' development-lifecycle plugin composes onto this substrate.
 - [Orchestration and Auto-Detection](Orchestration-And-Auto-Detection) — how a session proposes and runs automatic work.
 - [Host adapters](Host-Adapters) — how a single canonical spec reaches each supported host.
 - [Toolkit interface ↔ crickets](Toolkit-Interface) — the seam with the sibling crickets toolkit.
