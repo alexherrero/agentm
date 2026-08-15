@@ -53,42 +53,52 @@ agentm classifies every memory on **three independent axes**: by **kind** (what 
 | Tier | What it holds | Where | The agent's hand |
 |---|---|---|---|
 | **T1 — personal** | the operator's own notes | the Obsidian vault *above* `Agent/` (its siblings) | reads + links; **writes only when told**, through a separate seam call |
-| **T2 — curated / collaborative** | designs · plans · roadmaps, and the operator-directives the agent follows (voice, conventions, preferences) | the `Agent/` root — *our* shared drive | writes as needed and **reports each change in the digest**; revertable |
-| **T3 — agentm-sole** | the agent's own learned memory + insights | `Agent/Memory/` | writes, curates, and prunes freely; no notice |
+| **T2 — curated / collaborative** | designs · plans · roadmaps, and the operator-directives the agent follows (voice, conventions, preferences) | `Agent/desk/` — *our* shared working surface | writes as needed and **reports each change in the digest**; revertable |
+| **T3 — agentm-sole** | the agent's own learned memory + insights | `Agent/memory/` | writes, curates, and prunes freely; no notice |
 
 Personal (T1) sits *outside* agentm's `vault_path` (which is `Agent/`), so it is out of reach by default, not by policy alone. The agent writes there only through an **explicit, separate storage-seam call** that an operator request authorizes — keeping agent-controlled and user-controlled space cleanly apart (the [memory-storage-seam design](memory-storage-seam.md)). Autonomous jobs work mostly in T3; when a job changes T2, that change lands in the digest for the operator to see and revert.
 
-![The three ownership tiers as a vault hierarchy: the operator's personal vault at the top (T1, untouched), the Agent/ shared drive inside it (T2, agent writes and reports), and Agent/Memory/ within that (T3, the agent's own memory); kind is the orthogonal third axis carried in each entry's frontmatter](diagrams/agentm-memory-layers.svg)
+![The three ownership tiers as a vault hierarchy: the operator's personal vault at the top (T1, untouched), the Agent/ shared drive inside it (T2, agent writes and reports), and Agent/memory/ within that (T3, the agent's own memory); kind is the orthogonal third axis carried in each entry's frontmatter](diagrams/agentm-memory-layers.svg)
 
 *The diagram shows the nested ownership tiers (containment = autonomy) below the durability line; **kind is the orthogonal third axis**, carried in each entry's frontmatter.*
 
 ### The vault layout
 
-The structure is opinionated — the agent controls most of it, so the design fixes the shape:
+The structure is opinionated — the agent controls most of it, so the design fixes the shape.
+
+Paths below are written against the two resolvers rather than any machine's
+literal layout — `vault_path()` is the Obsidian vault and git root,
+`memory_root()` is the agent's tree one level inside it. They are **not** the
+same directory, and addressing the wrong one silently mis-roots every
+vault-relative path (see the vault-path convention in `AGENTS.md`).
 
 ```
-.../Obsidian/                    T1 personal — the operator's vault; agentm does not touch it
-├── Church/ · Home/ · Tech/ · …    the operator's own notes
-└── Agent/                       T2 curated — agentm's vault_path; the shared drive
-    ├── projects/<project>/        designs · plans (_harness) · roadmap · progress
-    ├── _always-load/              operator-directives the agent follows (voice, conventions, non-negotiables)
-    ├── preferences/ · feedback/   more operator-directives
-    ├── _archive/                  retired curated content (cold; recall skips it)
-    └── Memory/                  T3 agentm-sole — the agent's own memory
+<vault_path>/                    T1 personal — the operator's vault; agentm does not touch it
+├── Calendar/ · Personal/ · …      the operator's own folders and loose notes
+└── Agent/  = <memory_root>      the agent's tree — everything below is agentm's
+    ├── desk/                    T2 curated — the shared working surface
+    │   ├── projects/<project>/    designs · plans (_harness) · roadmap · progress
+    │   ├── projects/_global/      cross-project stores (e.g. wiki-style voice overlays)
+    │   └── briefs/ · scratch/     short-lived working material
+    ├── external/                  third-party sources the agent reads but never authors
+    ├── _meta/                     device-local sidecars — health, caches, snapshots; derived, never synced as truth
+    ├── _dream/                    dreaming output
+    ├── _vault-archive/            retired curated content (cold; recall skips it)
+    └── memory/                  T3 agentm-sole — the agent's own memory
         ├── _always-load/          the heat-promoted floor (flat — kind is not a subfolder here)
-        ├── <kind>/<slug>.md       the leaf: kind is the subfolder (insight/, domain-reference/, crystallized/, …)
+        ├── <kind>/<slug>.md       the leaf: kind is the subfolder (insight/, feedback/, workflow/, fix/, …)
+        ├── <year>/<month>/        the dated subtree
         ├── _inbox/                raw reflection candidates (recall-excluded by default)
+        ├── _watchlist/ · _opinions/   staged candidates and accumulated opinions
         ├── _idea-incubator/       agent-incubated ideas
-        ├── _index.md              a generated map of contents, rebuilt from frontmatter (never hand-kept)
-        ├── _archive/              the cold zone (recall skips it)
-        └── _meta/                 device-local sidecars — vector index, heat, embedding queue; derived, never synced as truth
+        └── _archive/              the cold zone (recall skips it)
 ```
 
-**T2 (curated) shape.** Curated content lives under `projects/<project>/` — each project carrying `designs/`, plans in `_harness/`, a `roadmap`, and a `progress` log — or in a named directive space at the `Agent/` root. No loose notes at the root. The operator-directives the agent follows (voice, conventions, preferences, feedback) are curated: the operator owns them, the agent refines them and reports the change.
+**T2 (curated) shape.** Curated content lives under `desk/projects/<project>/` — each project carrying `designs/`, plans in `_harness/`, a `roadmap`, and a `progress` log — alongside the shorter-lived `desk/briefs/` and `desk/scratch/`. No loose notes at the root. The operator-directives the agent follows (voice, conventions, preferences, feedback) are curated: the operator owns them, the agent refines them and reports the change. **Where those directives now sit is an open question** — the four-space migration moved them under `memory/`, which this design labels T3, so either the paths or the tier boundary need an owner's ruling; the amendment log records it rather than guessing.
 
-**T3 (Memory) leaves** reuse the live entry convention — `<kind>/<slug>.md` with the locked frontmatter (below); **kind is the subfolder**, because kind drives recall. The reserved leading-underscore folders (`_always-load`, `_inbox`, `_archive`, `_idea-incubator`, `_meta`) are recall-aware. `crystallized/` now serves two writers — the phase-close digest and, as of V6-4 (2026-07-07), episodic-to-semantic consolidation, which reuses the same `kind: crystallized` + five-field digest shape for its promoted entries rather than adding a separate `semantic/` folder. `procedural/` (distilled how-to, the next tier up) stays designed-for — see *How it grows*.
+**T3 (memory) leaves** reuse the live entry convention — `<kind>/<slug>.md` with the locked frontmatter (below); **kind is the subfolder**, because kind drives recall. The reserved leading-underscore folders (`_always-load`, `_inbox`, `_archive`, `_idea-incubator`, `_watchlist`, `_opinions`) are recall-aware. `_meta/` is **not** among them any more — it sits at the `Agent/` root beside `memory/`, since device-local sidecars are derived state for the whole tree rather than memory leaves. `crystallized/` now serves two writers — the phase-close digest and, as of V6-4 (2026-07-07), episodic-to-semantic consolidation, which reuses the same `kind: crystallized` + five-field digest shape for its promoted entries rather than adding a separate `semantic/` folder. `procedural/` (distilled how-to, the next tier up) stays designed-for — see *How it grows*.
 
-**Archive at every tier.** Each tier carries a cold `_archive/` for retired content. Recall **skips it by default**, so the record stays cheap to load as it grows; it opens only on deep research, an explicit ask, or granted permission. Nothing is hard-deleted — "prune" means *move to `_archive/`* (markdown stays the source of truth; the revert-log is the undo). The per-tier archive policy follows the autonomy gradient: **T1** archives only on an operator-confirmed proposal; **T2** archives a curated artifact when its successor supersedes it; **T3** the agent archives its own cold entries on its own. *Capture* describes the decay pipeline that feeds the archive.
+**Archive at every tier.** Each tier carries a cold archive for retired content — `_vault-archive/` at the `Agent/` root, `memory/_archive/` inside the memory tree, and a `_archive/` beside the projects in `desk/`. Recall **skips them by default**, so the record stays cheap to load as it grows; it opens only on deep research, an explicit ask, or granted permission. Nothing is hard-deleted — "prune" means *move to `_archive/`* (markdown stays the source of truth; the revert-log is the undo). The per-tier archive policy follows the autonomy gradient: **T1** archives only on an operator-confirmed proposal; **T2** archives a curated artifact when its successor supersedes it; **T3** the agent archives its own cold entries on its own. *Capture* describes the decay pipeline that feeds the archive.
 
 ### Arcs — temporal grouping as metadata, not folders
 
@@ -203,6 +213,8 @@ That is the trajectory toward a true knowledge base: a typed, densely-linked, in
 - V5-14 — storage-convergence (memory-entry seam adoption + MCP re-platform); ROADMAP-MASTER ⑤
 
 ## Amendment log
+
+**2026-08-15 — the vault-layout diagram is reconciled to the four-space vault, and rewritten against the resolvers so it cannot go stale this way again.** The layout block still described the pre-migration tree: a `.../Obsidian/` root, `Agent/projects/`, `Agent/_archive/`, and an `Agent/Memory/` holding `_meta/`. None of those paths exist. The vault root moved off the cloud mount, `projects/` became `desk/projects/`, `personal/` became `memory/`, the curated archive became `_vault-archive/`, and `_meta/` moved up beside `memory/` rather than inside it. `external/` and `_dream/` were not in the diagram at all. Verified by walking the live vault on 2026-08-15. **Paths are now written as `<vault_path>/` and `<memory_root>/` rather than a literal root** — the two resolvers the code actually uses, which also makes the `vault_path`-vs-`memory_root` distinction explicit at the point of most confusion. The old block labelled `Agent/` as "agentm's vault_path", which had become simply wrong: `Agent/` is the *memory root*, one level inside the vault path, and that specific confusion mis-roots every vault-relative path when it is made in code. *Why not just substitute the new literal:* a literal is what went stale, and the vault has now moved twice; naming the resolver means the next move invalidates no prose. *What is deliberately left unresolved:* the four-space migration moved the operator-directive spaces (`preferences/`, `feedback/`) under `memory/`, which this design labels T3 agentm-sole, while the tier model calls those directives T2 curated. Either the paths or the tier boundary is wrong, and that is an ownership ruling rather than a documentation fix, so the body now names the open question instead of quietly re-assigning a tier. *Re-audit trigger:* `memory/_always-load/` is empty on the operator's machine as of this amendment — expected for a heat-promoted floor with nothing yet promoted, but if it is still empty when the heat policy has had time to run, the promotion path is not working and the floor is a fiction the diagram is asserting.
 
 **2026-08-14 — a config pointer that still resolves, just not to the live vault, is now a doctor row rather than nothing at all.** The vault-path convention says *resolve, don't recall*, and `check-no-hardcoded-vault-path` enforces it across tracked files. Neither reaches the place it actually broke. Both repos' gitignored `.harness/project.json` still named the retired Google Drive root after the vault moved and its internal layout was reorganized (`projects/` → `desk/projects/`); the old directory had not been deleted, so every read succeeded and returned a tree frozen on the day of the move — the agentm board-items file was twelve days stale before anyone looked. Nothing raised, because nothing was broken in the way software usually breaks. **The detector is `machinery_doctor.py`'s `project-json-pointers:{repo,vault}` rows**, which take each reachable `project.json` and ask whether its path-valued keys still land inside the vault this machine resolves right now — failing both on a path that is gone and on one that exists outside the live vault. *Why not extend the existing gate:* it walks the filesystem and prunes `.harness/` by name, so gitignore is not what excludes it, and the directory legitimately holds `progress.md` and archived plans whose prose quotes retired paths while narrating migrations — scanning it would false-positive on exactly the write-ups that describe these fixes. It also only recognizes the retired cloud-drive mount literal, so a move between two plain local roots would pass it untouched; it protects what ships, which is a different question from whether this machine points at the right place. *Why the two surfaces are checked separately:* `MEMORY_VAULT_PATH` and `items_source` are validated against `memory_root()` while `IDEAS_SURFACE_PATH` is validated against `vault_path()`, because `Ideas.md` is the operator's own note one level above the memory tree and collapsing them would flag a correct install. *Re-audit triggers:* the path-valued key list is hand-written, so a fourth pointer key added to `project.json` gets no coverage until someone extends `_PROJECT_JSON_PATH_KEYS` — revisit whether it should derive from the consumers when a fourth appears; and discovery reaches the vault-resident config through `_VAULT_PROJECTS_REL_NEW`, so a further layout migration needs that constant to move with it or the vault-side row silently stops being emitted.
 
