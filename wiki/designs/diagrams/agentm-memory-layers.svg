@@ -23,9 +23,9 @@
 
   <!-- T3 agentm-sole (inner) -->
   <rect x="124" y="212" width="572" height="148" rx="10" fill="#EAF1FB" stroke="#2F6FBA" stroke-width="1.5"/>
-  <text x="144" y="234" font-size="12.5" font-weight="700" fill="#1B3A5B">T3 · agentm-sole — Agent/Memory/</text>
+  <text x="144" y="234" font-size="12.5" font-weight="700" fill="#1B3A5B">T3 · agentm-sole — Agent/memory/</text>
   <text x="144" y="251" font-size="9.5" font-style="italic" fill="#5E7A99">the agent's own learned memory + insights — writes, curates, prunes freely (no notice)</text>
-  <text x="144" y="277" font-size="9.5" fill="#3C5E80">leaves: &lt;kind&gt;/&lt;slug&gt;.md · reserved: _always-load · _inbox · _idea-incubator · _index · _meta · _archive</text>
+  <text x="144" y="277" font-size="9.5" fill="#3C5E80">leaves: &lt;kind&gt;/&lt;slug&gt;.md · reserved: _always-load · _inbox · _idea-incubator · _watchlist · _opinions · _archive</text>
   <text x="144" y="296" font-size="9.5" fill="#3C5E80">consolidation kinds (designed-for): crystallized/ · procedural/</text>
   <text x="144" y="332" font-size="9" font-style="italic" fill="#5E7A99">the deeper in, the freer the agent's hand</text>
 
