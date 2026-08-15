@@ -1591,7 +1591,10 @@ published by id; no stratum regresses by more than one question.**
 ## What this measures, and what it deliberately is not
 
 Eight gold questions (`pp05`, `pp07`, `pp09`, `pp15`, `pp16`, `pp17`, `rc01`,
-`rd01`) were unreachable by every mechanism the ladder shipped. This rung
+`rd01`) miss on the ladder's best retrieval-layer column, `+question`. Seven of
+them miss on every shipped column; `pp05` is the exception, landing at rank 5 on
+`hook e2e` — the set was drawn from the `+question` arm's misses, so it is in
+here on that arm's evidence. This rung
 hand-writes ideal `aliases:` frontmatter for them — one note per question, in
 the vocabulary each question actually uses — on a copy of the frozen corpus,
 and scores once. A hand-written ideal alias is the most favourable input any
