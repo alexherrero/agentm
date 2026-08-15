@@ -1723,7 +1723,7 @@ Per-question detail, including the authored alias text, at
 `<vault>/Agent/_meta/health/goldv2/alias-oracle-20260814.json`, never in the
 repo.
 
-## What this licenses
+## What this licenses (alias oracle)
 
 `alias-pilot` is licensed to build — the thread is real, and a mechanism that
 gets anywhere near this text converts questions. It inherits two constraints
@@ -1734,3 +1734,126 @@ license is any claim about the −3.85-point bulk-backfill precedent: writing
 eight ideal aliases and writing 1,930 generated ones are different experiments,
 and the pilot still has to demonstrate it is not the second one wearing a new
 name.
+
+---
+
+# Elicitation mini-gate — refuted at 69.2% against an 80% bar
+
+Run 2026-08-14, Thread A of the rejection-and-vocabulary arc
+(`wiki/designs/agentm-rejection-and-vocabulary.md` §2). Rule pre-registered in
+the design, and the wording frozen in `1d8b9de` before the arm ran: **mean
+negative rejection ≥80% AND the canary answerable mean within one question of
+its own baseline slice, both clauses, arm difference by exact permutation
+test.**
+
+**Both clauses fail. The rung closes refuted.**
+
+| | baseline (n=6) | elicitation (n=6) | bar | |
+|---|---:|---:|---:|---|
+| negative rejection | 62.5% | **69.2%** | ≥80% | FAILED |
+| canary hits /15 | 13.17 | **12.00** | ±1 | FAILED (−1.17) |
+
+Exact permutation test over all 924 label assignments, two-sided: rejection
+**p = 0.0823**, canary **p = 0.1450**. Neither arm difference is distinguishable
+from noise at n=6, so the honest reading is not "it helped a little and cost a
+little" — it is that six replicates cannot separate either effect from zero.
+
+## The gain is two questions, not a general lift
+
+This is the finding the headline hides, and the reason per-question diffs are
+published rather than stratum means.
+
++6.7 points is **+8 net rejections across 120 trials**, and two questions supply
+seven of them: `ng03` 1/6 → 5/6 and `ng16` 3/6 → 6/6. Three more gain a single
+trial each (`ng02`, `ng09`, `ng11`), `ng06` loses two (5/6 → 3/6), and **14 of
+20 negatives are unchanged**. A mean would have reported a broad improvement the
+per-question data does not support.
+
+**And the questions that were always wrong stayed always wrong.** `ng07`,
+`ng14` and `ng17` were rejected in 0 of 6 baseline replicates and 0 of 6
+elicitation replicates. The design named `ng14` and `ng17` specifically as
+negatives that never escalated; the tool text did not reach them at all. Whatever
+they are failing on, it is not a shortage of permission to say no.
+
+## The canary loss is mostly not over-rejection
+
+Clause (b) exists to catch a fix that buys rejection by destroying true answers.
+That did happen — but only three times in 90 trials: `ep02` twice and `rc01`
+once, all on questions the baseline hit 6/6. The rest of the −1.17 is the agent
+naming *different wrong notes* (`dt01` 6→5, `pp02` 5→3, `pp03` 6→5), which is
+ordinary churn rather than the failure mode the clause was written for.
+
+`rc02`, this rung's named watchlist case, moved 0/6 → 1/6. Not enough to read as
+an effect.
+
+## What did change: the variance collapsed
+
+Baseline rejection across its six replicates spread **55–75%**. The elicitation
+arm sits at **65–70%** — five replicates at 0.70 and one at 0.65. Behaviour
+became markedly more consistent even though the mean never approached the bar.
+Recorded because it is a real property of the change, not because it rescues the
+result: a tighter distribution around a failing mean is still a failing mean.
+
+## The prior that was recorded before the run, and held
+
+Written into the pre-registration before the arm existed: the driver's own
+system prompt **already** ends with *"Answering 'no answer found' when nothing
+fits is correct and expected for some questions. A confident wrong path is worse
+than admitting the vault does not cover it."* The 62.5% baseline was measured
+with that sentence in place. So the tool description was always additive to an
+existing permission rather than filling a silence, and the headroom available to
+it was smaller than the design's framing implied.
+
+What the new text adds is not permission but the answerhood *test* — how to tell
+a related note from an answering one. The result says that distinction, stated
+in a tool description, does not by itself convert an agent that has already
+decided to answer.
+
+## Instrument
+
+**Index equivalence was verified rather than assumed.** The baseline replicate
+JSONs record `index_documents: null`, so provenance could not be read off them —
+but both arms log every served call with its query string and its exact result
+paths. **31 queries were issued verbatim in both arms** at the same `k`/`mode`,
+and every one returned an **identical result list**. The arm difference is
+therefore not an index difference. This cost nothing and touched neither the
+embedder nor the running replicates.
+
+Two setup faults were caught before they could contaminate the run. The gate
+daemon initially tried to **spawn** its own embedder on the port the live
+daemon's embedder already holds; the child exited instantly and retried in a
+loop, and every `hybrid` call silently degraded to the lexical arm. Since the
+baseline driver issued 39 `hybrid` calls in r1 alone, running that way would
+have measured a retrieval regression wearing an elicitation label. Fixed by
+attaching to the resident embedder. Separately, the arm runs against
+`~/.agentm/corpus-snapshots/Vault` — the copy the baseline used — and *not* the
+alias-oracle copy, which carries eight hand-written aliases and would have mixed
+a vocabulary change into a rejection measurement.
+
+Corpus copy differs from the archived snapshot by one file: a daemon self-probe
+note, which rotates in place so the count holds at 9,971. Probe notes are
+excluded from census counts but **not** from search, so both arms carry one and
+it is recorded rather than called pristine. Integrity clean across all six
+replicates — no hook events, no tool escapes, no budget leaks, no driver errors;
+two replicates logged one question that wanted more calls. Cost **$24.41**
+against the plan's ~$21 estimate. Per-question detail at
+`<vault>/Agent/_meta/health/goldv2/minigate-result-20260814.json`.
+
+## Consequence
+
+The wording is **reverted**, not kept. The arc's own methodology is that a rung
+failing its rule closes refuted and is not shipped, and this one has no flag to
+hide behind — a tool description is either in the schema or it is not. Neither
+measured effect clears significance, and the change is not free: three trials of
+genuine over-rejection on questions the baseline always answered. Reverting is a
+revert commit plus a rebuild; the pre-change binary was kept at
+`~/.local/bin/agentmd.pre-elicitation` throughout for exactly this outcome.
+
+What this does **not** refute is the design's underlying claim that the
+interactive surface can be helped by what the tool says to it. It refutes this
+wording, at this strength, measured this way — and it says where the remaining
+rejection failure is not: `ng07`, `ng14` and `ng17` never moved, so the residue
+is not an elicitation problem. Thread A's other half, the deliberate-path
+labeller, is unaffected: it is a different surface with a different lever, and
+the probe evidence behind it (85.0% projected rejection against a cross-encoder's
+40%) is untouched by this result.

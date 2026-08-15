@@ -218,10 +218,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 			"serverInfo":      map[string]any{"name": "agentm", "version": s.version},
 			"instructions": "Two tools. Search before you answer from assumption, and " +
 				"iterate: try two or three distinct vocabularies for the same idea " +
-				"before concluding the memory does not exist. Results are ranked by " +
-				"similarity, so check that a note answers the question before naming " +
-				"it — concluding that nothing answers it is a correct outcome, and " +
-				"better than naming the closest match. Capture is instant and " +
+				"before concluding the memory does not exist. Capture is instant and " +
 				"free — it never waits on a model or the network.",
 		}
 	case "ping":
@@ -316,49 +313,8 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	// The answerhood check, at the point of use. The empty-result notes the
-	// index already writes coach "answer nothing found only after distinct
-	// vocabularies have failed" — but every one of the 45 agent-layer rejection
-	// failures came back NON-empty, so that coaching never ran on the calls that
-	// actually went wrong. This is the annotation for the other case.
-	//
-	// It lives here rather than in index.Search because the MCP surface is the
-	// one the interactive agent holds. The prompt-submit hook shells `agentmd
-	// search` (recall.py, DAEMON_BIN) rather than calling MCP, so scoping the
-	// annotation to this handler leaves the hook's payload byte-identical by
-	// construction instead of by argument — and the hook is separately gated and
-	// out of this change's scope.
-	if len(out.Results) > 0 {
-		out.Note = joinNote(out.Note, answerhoodNote)
-	}
 	return toolOK(out)
 }
-
-// joinNote appends a second sentence to a note, the same join search.go's own
-// unexported joinNotes performs — duplicated rather than exported across the
-// package boundary, following the precedent cmd/agentmd/rerank.go already set
-// for the same six lines.
-func joinNote(a, b string) string {
-	switch {
-	case a == "":
-		return b
-	case b == "":
-		return a
-	}
-	return a + "; " + b
-}
-
-// answerhoodNote rides every non-empty search result.
-//
-// Deliberately short: it is paid on every call, and its whole job is to put the
-// relatedness/answerhood distinction in front of the agent at the moment it is
-// looking at candidates, which is where the judgment is actually made. It must
-// not contain any DEGRADED_MARKS substring (retrieval_scorecard.py) or
-// recall.py's _DAEMON_HYBRID_DEGRADE_MARK — a scorecard row would read as
-// degraded and refuse to publish.
-const answerhoodNote = "Ranked by similarity — these are candidates, not " +
-	"answers. Check that a note answers the question before naming it; if none " +
-	"does, say so rather than naming the closest."
 
 func (s *Server) toolCapture(raw json.RawMessage) (any, error) {
 	var req capture.Request
@@ -423,13 +379,9 @@ func toolSpecs() []map[string]any {
 				"How to use it well:",
 				"- Terms are ANDed. Every word must appear in the same note, so a long natural-language question usually matches nothing. Search two or three distinctive words instead.",
 				"- Iterate. If the first phrasing comes back empty or thin, try a different vocabulary for the same idea — the note may have been written in words the question does not use.",
+				"- Do not stop at the first plausible hit when the question deserves better, and answer \"nothing found\" only after two or three distinct vocabularies have failed.",
 				"- For a question about when something happened or what was decided in a period, bound it with after/before. Episodic questions are time questions.",
-				"- If the exact-terms default (mode \"and\") comes back empty or thin and you suspect a vocabulary gap rather than an absent fact, retry with mode \"hybrid\" and question set to the full natural-language question — it adds a dense-vector arm that can find a note with no term overlap at all.",
-				"",
-				"Before naming a note, check that it answers:",
-				"- Ranking measures similarity, so results come back related to the question whether or not any of them answers it. Relatedness is what the index gives you; answerhood is yours to judge.",
-				"- A related note is not an answer. Naming the closest match when none of them answers is the most common way this tool is misused: it reads as a confident answer and it is wrong.",
-				"- \"Nothing here answers this\" is a correct and expected outcome, not a failure to search hard enough. Reach it deliberately — when nothing answers, escalate once (a different vocabulary, then mode \"hybrid\" with question set); if that still returns only related notes, say that nothing answers it rather than naming the closest one.",
+				"- If the exact-terms default (mode \"and\") comes back empty or thin and you suspect a vocabulary gap rather than an absent fact, retry with mode \"hybrid\" and question set to the full natural-language question — it adds a dense-vector arm that can find a note with no term overlap at all. Results from any mode are candidates matched by similarity, not verified answers; judge them, don't just relay them.",
 			}, "\n"),
 			"inputSchema": map[string]any{
 				"type": "object",
