@@ -92,10 +92,10 @@ wrong verdict stays recoverable because the reader can still see what was
 judged. This is the same call the fast path already made when it chose
 inject-with-metadata over a manufactured empty.
 
-**Thread B — vocabulary, bounded before built.** Eight questions are
-unreachable because no shipped mechanism crosses their vocabulary gap
-(`pure-paraphrase` is zero-overlap by labelling rule, and these particular
-notes miss on the dense arm too). Rung 0 is an oracle: hand-written ideal
+**Thread B — vocabulary, bounded before built.** Eight questions miss on the
+ladder's best retrieval-layer column because no shipped mechanism crosses their
+vocabulary gap (`pure-paraphrase` is zero-overlap by labelling rule, and these
+particular notes miss on the dense arm too). Rung 0 is an oracle: hand-written ideal
 aliases for exactly those eight notes, on a frozen-corpus copy, scored once.
 If perfect aliases cannot convert them, no alias engine can, and the thread
 re-scopes before anything is built. Only if the oracle licenses it does the
@@ -137,10 +137,10 @@ for it; per-question detail stays vault-side.
 #### 1. Alias oracle — rung 0, the ceiling before the mechanism
 
 Copy the frozen `goldv2-20260812` corpus. Hand-write ideal `aliases:`
-frontmatter — question-vocabulary phrasings — for exactly the eight
-unreachable notes (`pp05`, `pp07`, `pp09`, `pp15`, `pp16`, `pp17`, `rc01`,
-`rd01`; all eight verified admitted by recall's hygiene filter, which places
-the gap in vocabulary). Rebuild a scratch index and assert integrity the
+frontmatter — question-vocabulary phrasings — for exactly the eight notes
+behind the `+question` arm's vocabulary misses (`pp05`, `pp07`, `pp09`, `pp15`,
+`pp16`, `pp17`, `rc01`, `rd01`; all eight verified admitted by recall's hygiene
+filter, which places the gap in vocabulary). Rebuild a scratch index and assert integrity the
 arc's own way: 9,971 docs, and a file-level diff against the archived snapshot
 showing exactly the eight edited notes differ. Re-score the `+question` arm
 and the hook-shaped path.
@@ -416,7 +416,9 @@ interleave: rung 0 and the elicitation rung have no ordering dependency.
 
 ### Documentation Plan
 
-This page; `wiki/designs/Designs.md` and `_Sidebar.md` entries;
+This page; a `_Sidebar.md` entry nested under Rescope, which is where the whole
+Rescope family lives — none of its members appear in `Designs.md`'s flat table,
+and this design follows the family rather than making itself the exception;
 `agentm-hybrid-retrieval.md` gains an amendment-log pointer marking its open
 rejection question as owned here; `scripts/health/results/goldv2/NOTES.md`
 gains one section per measured rung, as always; a how-to note for brief
@@ -455,3 +457,4 @@ at 1,930-note scale once already. Nothing in this design is unrecoverable.
 | Date | Change | Status |
 |---|---|---|
 | 2026-08-14 | Initial draft created via `/design author`, from the next-arc brief, the hybrid-retrieval close-out, and the Haiku answerhood probe. Four operator calls locked at authoring: both rejection surfaces with matched levers (labeller, never deleter); two-clause close gate (blended ≥0.725 and answerable-only ≥90%); alias oracle as rung 0 inside the arc; one published design. Author signaled ready for review, then ran the two-step cross-model prose pass: Gemini simplified against the operator's voice pack inlined verbatim, and its findings were applied here selectively — the banned term and eight contrastive tags were real and fixed, while its own rewrite was declined for introducing corporate register, for reaching for a word on the banned-vocabulary canon, and for flattening the Alternatives reasoning into filler. `check-slop` clean apart from one antithesis inside the exempt Alternatives section. Operator read the design and approved it as final the same day; publication pre-flight found no internal-work references beyond the one already-published peer-system name, no PII, and no absolute paths. Translated to 4 parts via `/design translate`: alias-oracle, rejection, alias-pilot, arc-close — §2 and §3 grouped as one rejection part since they share a story and neither blocks the other, and the oracle kept separate from the pilot it gates. Sequenced into 4 plans via `/design sequence`; `alias-oracle` active at `_harness/PLAN.md`, the other three queued at `_harness/designs/agentm-rejection-and-vocabulary/queued-plans/`. | final |
+| 2026-08-14 | **Rung 0 (§1, alias oracle) closes with its rule met, and §4 is licensed to build.** Measured on a fresh copy of the frozen corpus that reproduced both landed columns row for row (0 of 84 differing) before a single alias was written: 7 of 8 targets convert on the `+question` arm (75.0% → 85.9% R@5) and 8 of 8 on the hook-shaped arm (73.4% → 84.4%), with zero questions lost, no stratum regressing, and one harmless rank move (`pp13` 3 → 4). The one non-conversion, `pp07`, was diagnosed rather than counted: its alias made the note **rank 1 on the lexical arm**, from outside the lexical top-50, and RRF with the dense arm put it 7th — fusion friction, not a vocabulary gap. Measured for all eight rather than inferred from the one: every target goes from outside the lexical top-50 to the top two (seven at rank 1, `pp17` at 2), so the vocabulary bound is effectively 8 of 8 and §4's ceiling is set by fusion rather than by alias quality. §1's refutation branch does not fire; the recall clause of the §5 close gate is not re-priced. Nothing shipped: the authored aliases are gold-informed by construction and stay in the scratch copy and the vault-side detail, per this design's own gold-blindness boundary, which §4 still inherits in full. **Also corrected here:** the Documentation Plan claimed a `Designs.md` entry this design does not have and should not have — the whole Rescope family is sidebar-only, and adding rows for this design and its parent alone would have left four siblings absent, so the text now names the family's actual convention rather than the flat-table one. Re-audit triggers: a change to RRF depth or per-arm contribution (which would move `pp07`'s bound), and any §4 result that reaches this ceiling, since a mechanism matching a gold-informed oracle is a signal to check the mechanism for gold leakage. **One factual correction the rung surfaced,** reconciled in the body above: the Overview and §1 called the eight "unreachable," and seven of them are, but `pp05` lands at rank 5 on the shipped `hook e2e` column. The set was drawn from the `+question` arm's misses, which is the accurate framing and is now what both places say. It does not change the rung, the rule, or the result — `pp05` was scored on both arms and converts on both. Full narrative and the measured table: `scripts/health/results/goldv2/NOTES.md` § "Alias oracle"; per-question detail at `<vault>/Agent/_meta/health/goldv2/alias-oracle-20260814.json`. | final |

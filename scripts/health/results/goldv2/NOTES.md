@@ -1577,3 +1577,160 @@ first refutation in this plan that is not quarantined behind an unpublished
 flag, because the surface it tests (the published `mode`/`question` MCP
 schema) is already live. Recorded, not shipped as a pass, per the plan's own
 rule that a rung failing its rule is not a rung.**
+
+---
+
+# Alias oracle — rung 0 of rejection-and-vocabulary, rule met at 7 of 8
+
+Run 2026-08-14, the first rung of the arc after hybrid retrieval
+(`wiki/designs/agentm-rejection-and-vocabulary.md` §1). Rule pre-registered in
+the design and in the plan before any alias text was written: **at least 6 of
+the 8 targets convert to top-5 hits; no currently-passing question is lost,
+published by id; no stratum regresses by more than one question.**
+
+## What this measures, and what it deliberately is not
+
+Eight gold questions (`pp05`, `pp07`, `pp09`, `pp15`, `pp16`, `pp17`, `rc01`,
+`rd01`) miss on the ladder's best retrieval-layer column, `+question`, which is
+where the set came from. Seven of them miss on every shipped column as well;
+`pp05` is the exception, landing at rank 5 on `hook e2e`.
+
+This rung hand-writes ideal `aliases:` frontmatter for those eight — one note
+per question, in the vocabulary each question actually uses — on a copy of the
+frozen corpus, and scores once. A hand-written ideal alias is the most
+favourable input any alias engine could ever produce, so the result bounds the
+whole vocabulary thread from above before an engine exists. It is the same move
+the term-subset oracle made when it bounded the lexical thread at 82.8%.
+
+**Nothing here ships, and the authored text is quarantined.** The aliases were
+written with the gold questions in view. That is the licence this rung claims —
+the same one the candidacy analysis and the k=20 reachability count already
+carry — and it is exactly what disqualifies the text from reaching a shipped
+mechanism. The alias text lives in the scratch corpus copy and in the vault-side
+detail JSON, never in this repo, and must not become few-shot examples for the
+filing pilot, which the design requires to be constructed blind to the gold set.
+
+**It is also not a new ladder column, and is not appended to the final
+scorecard above.** That table records what shipped and what was refuted. This
+is a diagnostic ceiling.
+
+## The measured result
+
+| | `+question` baseline | `+question` + ideal aliases | hook e2e baseline | hook e2e + ideal aliases |
+|---|---:|---:|---:|---:|
+| distinctive-token | 9/12 | 9/12 | 8/12 | 8/12 |
+| episodic-temporal | 9/12 | 9/12 | 8/12 | 8/12 |
+| pure-paraphrase | 11/18 | **16/18** | 12/18 | **17/18** |
+| research-corpus | 10/12 | **11/12** | 10/12 | **11/12** |
+| research-density | 9/10 | **10/10** | 9/10 | **10/10** |
+| **R@5** | **75.0%** (48/64) | **85.9%** (55/64) | **73.4%** (47/64) | **84.4%** (54/64) |
+| negative rejection | 0/20 | 0/20 | 0/20 | 0/20 |
+
+**All three clauses met, on both arms.**
+
+## Per question, by id — every movement, not a stratum total
+
+A flat aggregate hid a one-for-one swap in this project once already
+(`rc08`/`ep05`), so gains and losses are published by id.
+
+| target | `+question` rank | hook rank |
+|---|---|---|
+| `pp05` | miss → **1** | 5 → **1** (already a hit on this arm) |
+| `pp07` | miss → miss | miss → **5** |
+| `pp09` | miss → **1** | miss → **1** |
+| `pp15` | miss → **1** | miss → **1** |
+| `pp16` | miss → **1** | miss → **1** |
+| `pp17` | miss → **2** | miss → **2** |
+| `rc01` | miss → **1** | miss → **1** |
+| `rd01` | miss → **1** | miss → **1** |
+
+Seven of eight convert on `+question`. On the hook arm `pp05` was already a hit
+at rank 5 — it is in the target set because the set was drawn from the
+`+question` arm's misses — so that arm goes from 1 of 8 to **8 of 8**.
+
+**Losses: none, on either arm.** No question that passed at baseline fails
+after the aliases, and no non-target question changed state in either
+direction. One rank moved without changing state: `pp13` 3 → 4 on both arms.
+That is the reciprocal-rank displacement clause (b) exists to catch, showing up
+at a magnitude that costs nothing — worth recording precisely because the same
+mechanism has cost this project hits three times.
+
+## `pp07` is fusion friction, not a vocabulary gap
+
+The one non-conversion looked systematic — its aliased `+question` top-5 is
+byte-identical to its baseline top-5, as though the alias had done nothing at
+all — so the instrument was checked before the result was written down.
+
+The alias worked perfectly. For the gold query's own terms
+(`agentm never fully realize vault vision`), `F1-REAUDIT.md` is **outside the
+lexical top-50 on the baseline index and rank 1 on the aliased index**
+(`agentmd search -mode fusion -k 50 -no-embedder`, both indexes). Reciprocal-rank
+fusion with the dense arm — where the note ranks poorly — placed it **7th**
+overall. The hook arm excludes `_archive/` and `_inbox/` subtrees by default
+(`recall.py`, over-fetching 2× to compensate), which removes two intervening
+notes, and the same note lands **5th** there.
+
+That is not a one-note observation. Measured for all eight, the aliased note's
+rank on the lexical arm alone:
+
+| | `pp05` | `pp07` | `pp09` | `pp15` | `pp16` | `pp17` | `rc01` | `rd01` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline | >50 | >50 | >50 | >50 | >50 | >50 | >50 | >50 |
+| aliased | 1 | 1 | 1 | 1 | 1 | 2 | 1 | 1 |
+
+Every one of the eight goes from outside the lexical top-50 of a 9,971-note
+corpus to the top two, seven of them to rank 1. `pp17` is second to
+`Agent/memory/preferences/don-t-do-automaticaly-and-why.md` — a captured memory
+of the operator's own question, which is a reasonable thing to rank first and
+which the fused arm also puts above it.
+
+So the vocabulary bound is effectively 8 of 8, and the residual miss is a
+ranking property of RRF — the fusion-friction territory this ladder already
+mapped in the `+question` post-mortem — rather than anything an alias engine
+could fix. **This is the finding that shapes the filing pilot more than the
+count does**: the pilot's ceiling is set by fusion, not by how good its alias
+text is.
+
+## Ops
+
+Corpus restored from `<vault>/Agent/_meta/corpus-snapshots/goldv2-20260812.tar.gz`
+to a scratch location distinct from the copies previous rungs used. Index built
+from scratch and asserted by direct `sqlite3` count before any scoring — 9,971
+docs, 9,473 embedded notes, 11,761 chunk vectors, the three figures every prior
+rung recorded; **identical after the aliases**, so no note crossed a chunk
+boundary. Embedder: EmbeddingGemma-300M-Q8_0 at `-np 1 -c 2048 -b 2048 -ub 2048`,
+the resident child on the fixed loopback port, no stray `llama-server` processes
+before or after. `degraded: []` on all four runs.
+
+**Baseline reproduced before a single alias was written**: the fresh copy scores
+`question-20260814.json` and `hook-e2e-20260814.json` **row for row, 0 of 84
+differing on either arm** — `hit`, `first_hit_rank`, `correct_rejection`,
+`returned`, and the full ordered top-5. That is what makes any later movement
+attributable to the aliases rather than to the environment. Both aliased arms
+were re-run once and are bit-identical, 0 of 84 rows differing.
+
+**The edit is exactly eight notes and exactly one field.** A file-level md5
+manifest of all 9,971 notes taken before authoring, diffed after, names eight
+changed files, and each one's content diff touches only `aliases:`. One target
+(`progress-model-routing-and-levers.md`) had no frontmatter at all and gained a
+block containing only that field — deliberately nothing else, since a `status:`
+or `mining_confidence:` line would move the note's rank-penalty class and make
+the conversion attributable to a promotion rather than to vocabulary. Checked
+rather than reasoned about: `docmeta.flags` is empty for all eight notes in both
+indexes.
+
+Per-question detail, including the authored alias text, at
+`<vault>/Agent/_meta/health/goldv2/alias-oracle-20260814.json`, never in the
+repo.
+
+## What this licenses
+
+`alias-pilot` is licensed to build — the thread is real, and a mechanism that
+gets anywhere near this text converts questions. It inherits two constraints
+from this rung: it must be constructed blind to the gold set (the design's own
+gold-blindness boundary), and its ceiling is bounded by fusion rather than by
+alias quality, which `pp07` demonstrates concretely. What this rung does **not**
+license is any claim about the −3.85-point bulk-backfill precedent: writing
+eight ideal aliases and writing 1,930 generated ones are different experiments,
+and the pilot still has to demonstrate it is not the second one wearing a new
+name.
