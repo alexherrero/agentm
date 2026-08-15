@@ -1591,16 +1591,16 @@ published by id; no stratum regresses by more than one question.**
 ## What this measures, and what it deliberately is not
 
 Eight gold questions (`pp05`, `pp07`, `pp09`, `pp15`, `pp16`, `pp17`, `rc01`,
-`rd01`) miss on the ladder's best retrieval-layer column, `+question`. Seven of
-them miss on every shipped column; `pp05` is the exception, landing at rank 5 on
-`hook e2e` — the set was drawn from the `+question` arm's misses, so it is in
-here on that arm's evidence. This rung
-hand-writes ideal `aliases:` frontmatter for them — one note per question, in
-the vocabulary each question actually uses — on a copy of the frozen corpus,
-and scores once. A hand-written ideal alias is the most favourable input any
-alias engine could ever produce, so the result bounds the whole vocabulary
-thread from above before an engine exists. It is the same move the term-subset
-oracle made when it bounded the lexical thread at 82.8%.
+`rd01`) miss on the ladder's best retrieval-layer column, `+question`, which is
+where the set came from. Seven of them miss on every shipped column as well;
+`pp05` is the exception, landing at rank 5 on `hook e2e`.
+
+This rung hand-writes ideal `aliases:` frontmatter for those eight — one note
+per question, in the vocabulary each question actually uses — on a copy of the
+frozen corpus, and scores once. A hand-written ideal alias is the most
+favourable input any alias engine could ever produce, so the result bounds the
+whole vocabulary thread from above before an engine exists. It is the same move
+the term-subset oracle made when it bounded the lexical thread at 82.8%.
 
 **Nothing here ships, and the authored text is quarantined.** The aliases were
 written with the gold questions in view. That is the licence this rung claims —
