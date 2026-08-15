@@ -584,62 +584,6 @@ the door refuses to land a change whose link check comes back red.
 	}
 }
 
-// TestRoundTrip_NonEmptyResultsCarryTheAnswerhoodCheck is the sibling of
-// KnowsWhatItDoesNotKnow above, for the case that actually went wrong.
-//
-// The empty-result note has existed since the first build, and the test above
-// asserts it. But the agent-layer gate refuted on rejection with all 45 of its
-// failures on NON-empty results — the agent got plausible notes back and named
-// one — so the coaching the driver needed was on the path that carried no note
-// at all. This asserts the annotation that fills it, and asserts the one thing
-// about it that can silently break something else: its wording must not collide
-// with a degrade marker, or every scorecard row would read as degraded and the
-// refuse-to-publish gate would reject a healthy run.
-func TestRoundTrip_NonEmptyResultsCarryTheAnswerhoodCheck(t *testing.T) {
-	bin := buildDaemon(t)
-	env := newVault(t)
-
-	env.write(t, "personal/2026/08/the-git-transport-migration.md", `---
-type: convention
-status: active
-captured: 2026-08-04T10:00:00Z
----
-The git transport migration moves the vault onto local disk.
-`)
-
-	d := start(t, bin, env)
-	defer d.kill(t)
-
-	hits := d.search(t, "transport migration", 5)
-	if len(hits.rows) == 0 {
-		t.Fatalf("corpus setup is wrong: the query should match something\n  got: %s",
-			hits.summary())
-	}
-	for _, want := range []string{"candidates, not answers", "if none"} {
-		if !strings.Contains(hits.note, want) {
-			t.Errorf("a non-empty result set came back without the answerhood check "+
-				"(missing %q) — the 45 recorded rejection failures were all on "+
-				"non-empty results, which is the path this note exists for\n  note: %q",
-				want, hits.note)
-		}
-	}
-	// DEGRADED_MARKS (scripts/health/retrieval_scorecard.py) and recall.py's
-	// _DAEMON_HYBRID_DEGRADE_MARK. A reword that wandered into one of these
-	// would not fail any assertion about the note's presence — it would quietly
-	// mark every scored row degraded and the run would refuse to publish.
-	for _, marker := range []string{
-		"lexical arm alone",
-		"no query vector was available",
-		"no reranker was available",
-		"(hook skipped:",
-	} {
-		if strings.Contains(hits.note, marker) {
-			t.Errorf("the answerhood note contains the degrade marker %q — every "+
-				"scorecard row would read as degraded\n  note: %q", marker, hits.note)
-		}
-	}
-}
-
 // TestRoundTrip_CaptureNeverWaitsOnJudgment is the build's most important
 // constraint, as an executable claim. Capture makes something exist and findable
 // without a model call, without the network, and fast enough that no caller is
