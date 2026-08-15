@@ -1,7 +1,7 @@
 <!-- mode: reference -->
 # Memory daemon (`agentmd`) reference
 
-The resident Go process that watches the vault, maintains one FTS5 index, and serves two MCP tools. It is the only thing that runs git against the vault.
+The resident Go process that watches the vault, maintains one FTS5 index, and serves two MCP tools. It is the only thing that runs git against the vault. Search runs lexical-only unless a local embedding model is installed, in which case one supervised child process gives it a second, dense-vector search mode — see [The embedder child](#the-embedder-child).
 
 Source lives in [`daemon/`](https://github.com/alexherrero/agentm/tree/main/daemon). Design: [AgentM Rescope — Storage Topology](agentm-rescope-topology).
 
@@ -13,6 +13,7 @@ Source lives in [`daemon/`](https://github.com/alexherrero/agentm/tree/main/daem
 | Serves | `http://127.0.0.1:7821/mcp` (loopback only; non-local requests get 403) |
 | MCP tools | `memory_search`, `memory_capture` |
 | Index | one SQLite FTS5 file, outside the vault, deletable and rebuildable |
+| Embedder | optional supervised `llama-server` child, EmbeddingGemma-300M — attach or spawn; `--no-embedder` stays lexical-only |
 | Vault path | resolved at every start from `plugins.obsidian-vault.vault_path` |
 
 ```bash
@@ -45,6 +46,8 @@ It builds `~/.local/bin/agentmd`, writes `~/Library/LaunchAgents/com.agentm.daem
 
 The refresh is deliberately non-fatal. A missing Go toolchain or a failed build prints a warning naming the fix and lets the install finish, because a project install should not die over the daemon, and a broken build must never take down a daemon that is currently working. The build goes to a sibling path and only replaces the live binary once it has succeeded.
 
+The same run also fetches the embedder: `embeddinggemma-300M-Q8_0.gguf` (~330MB, one time) from `ggml-org/embeddinggemma-300M-GGUF`, to a temp path, SHA-256-verified, then moved into place — an install never loads an unverified or half-downloaded model. `llama-server` itself is not built here (it is a cgo project, which the daemon's static-Go constraint exists to avoid); if it is missing from `PATH` (macOS: `brew install llama.cpp`), the fetch still succeeds but every status surface reports the embedder off and searches run lexical-only until it is installed. Pass `--no-embedder` to skip the model fetch on purpose.
+
 Pass `--no-daemon` to skip the refresh for one run; the daemon keeps whatever binary it has. Logs go to `~/Library/Logs/agentm/daemon.log`.
 
 ```bash
@@ -58,7 +61,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | Command | What it does |
 |---|---|
 | `serve` | Watch, index, serve MCP, commit. Prints `listening http://…` once the index is caught up. |
-| `search <terms>` | One-shot query against the index. `-k`, `--after`, `--before`, `--json`. |
+| `search <terms>` | One-shot query against the index. `-k`, `-mode`, `-question`, `--after`, `--before`, `--json`. |
 | `capture <text>` | One-shot capture. Reads stdin when given no argument. |
 | `reindex` | Full reconcile. `--from-scratch` deletes the index first, proving it rebuilds from the files. |
 | `status` | Ask a running daemon for its state. Exits 3 when anything is red. `--json` for the raw document. |
@@ -84,6 +87,16 @@ Both settings are measured rather than chosen. Porter stemming is worth +5.7 hit
 
 The index file is not in the vault. It is a cache, and a database on a synced mount is a known corruption pattern. Delete it and the next start rebuilds it: 8,864 files in about 2.6 seconds, or 39ms for an unchanged corpus.
 
+## The embedder child
+
+Hybrid search is optional and additive: the daemon is still pure Go (`CGO_ENABLED=0`), and everything above works with no model installed at all. When one is, the daemon supervises exactly **one** child process — a `llama-server` running the pinned `embeddinggemma-300M-Q8_0.gguf` (768 dimensions, 2,048-token window) — never two. A cross-encoder reranker was built and bake-off-tested (`daemon/internal/rerank/`), but its rejection floor could not separate true answers from hard negatives on this corpus at any threshold; it is refuted, kept as quarantined research code behind an unpublished flag, and `agentmd serve` never spawns it. See [AgentM Hybrid Retrieval](agentm-hybrid-retrieval) for the measurement.
+
+`agentmd serve` binds the child it starts to a fixed loopback port (`8901`) so a one-shot `agentmd search -mode hybrid` — the prompt-submit hook's own call shape — attaches to that same warm model instead of loading a fresh 330MB copy per query. `--embedder-url` overrides the attach target; `--no-embedder` (also an `install.sh` flag) skips the model download entirely and runs lexical-only, a fully supported configuration that says so on every status surface.
+
+Liveness comes from the work, not from `/health`: a wedged `llama-server` answers `/health` with 200 while failing every real embedding, so three consecutive failed embeddings — not an HTTP code — condemn the child and trigger a restart with exponential backoff. `agentmd status` reports `embedder ok (warm) · <model> · N/M embedded` or `DEGRADED — hybrid off` with the reason; the same detail is on `/status` as `health.embedder`.
+
+Notes longer than the window are split into overlapping chunks (the model's own byte budget, 1/10 overlap) rather than truncated — a note scores by its single best-matching chunk. The vector arm is scoped to `Agent/memory`, `Agent/desk`, and `Agent/external`; `_meta/` and `_vault-archive/` are never embedded.
+
 ## The rank penalty
 
 Miner fragments are short and quote the operator's own words, so BM25 ranks them above the filed notes that answer the question. Demoting them is worth +3.75 points of R@5 at p = 0.0195, measured over six replicates per arm.
@@ -108,10 +121,14 @@ There is no OR query rewrite. It read as the largest available win on one run; r
 
 | Param | Type | Default | Notes |
 |---|---|---|---|
-| `query` | `str` | required | Two to five distinctive words. Terms are ANDed. |
+| `query` | `str` | required | Two to five distinctive words. Always drives the lexical arms, regardless of `mode`. |
+| `mode` | `str` | `and` | `and` — every term in one note (the original, still-default behavior). `fusion` — best 2-term subset wins, max-score across all subsets. `hybrid` — `fusion` plus a dense-vector arm, combined by reciprocal rank fusion. |
+| `question` | `str` | — | The full natural-language question. Read only when `mode` is `hybrid`: the dense arm embeds this instead of `query`. Omit it and hybrid embeds `query` instead — never an error, just a weaker dense arm. |
 | `k` | `int` | `5` | Capped at 50. |
 | `after` | `str` | — | Capture date on or after. `YYYY-MM-DD` or RFC3339. |
 | `before` | `str` | — | Capture date before. |
+
+Two more knobs exist in the code and are deliberately not in this table: a `-lex3` flag (widens `fusion`'s subset search from 2-term to 2- and 3-term) and a `rerank` mode (cross-encoder rerank with a score floor). Neither is in `memory_search`'s published schema and neither is requested by the prompt-submit hook — `lex3` missed its own recall floor by two questions, and `rerank` could not separate true answers from hard negatives at any threshold. Both stay in the tree as tested, working code reachable only from `agentmd search` directly: a refuted rung is still worth keeping when it costs nothing in production. See [AgentM Hybrid Retrieval](agentm-hybrid-retrieval).
 
 Returns `{results, note, matched}`. Each result carries `path`, `score`, `raw_score`, `penalty`, `captured`, `captured_source`, and `snippet`. `score` is the penalized score and larger is better; `raw_score` is the value before demotion, so a penalty is visible rather than inferred from a number moving.
 
@@ -300,4 +317,5 @@ There is no bearer token, on purpose. It would gate other processes running as t
 
 - [AgentM Rescope — Storage Topology](agentm-rescope-topology) — the daemon's design.
 - [AgentM Rescope — The Memory Engine](agentm-rescope-memory) — layout, frontmatter, capture doctrine.
+- [AgentM Hybrid Retrieval](agentm-hybrid-retrieval) — the recall ladder that added the embedder child, the search modes, and their measurements.
 - [CI gates](CI-Gates) — `check-daemon` runs the battery below.

@@ -2,7 +2,7 @@
 # install.sh — install or update agentm in a target project.
 #
 # Usage:
-#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] [--daemon|--no-daemon] <target-project-path>
+#   /path/to/agentm/install.sh [--hooks] [--update] [--local-state] [--daemon|--no-daemon] [--no-embedder] <target-project-path>
 #
 # Options:
 #   --hooks    Install the PostToolUse/PreCompact/SessionStart hooks into
@@ -29,6 +29,13 @@
 #              of the harness is also a refresh of the daemon — the binary is
 #              built from daemon/, and stale source would otherwise keep running
 #              indefinitely with nothing saying so.
+#
+#   --no-embedder
+#              Skip fetching the embedding model. The daemon then runs
+#              lexical-only: hybrid retrieval is unavailable and every status
+#              surface says so, which is a working install rather than a broken
+#              one. Use it on a machine that should not spend ~330MB of disk,
+#              or where the model would be fetched over a metered link.
 #
 #   --no-daemon  Skip that automatic refresh for this run. The daemon keeps
 #              running whatever binary it already has.
@@ -60,6 +67,7 @@ LOCAL_STATE=0          # Hardening I #44 task 4: --local-state → repo-local (v
 INSTALL_MCP_SERVER=0   # RETIRED — refuses; the Python server it served is gone
 INSTALL_DAEMON=0       # --daemon → build the Go daemon + install the launchd agent
 NO_DAEMON=0            # --no-daemon → skip the automatic refresh of an installed daemon
+NO_EMBEDDER=0          # --no-embedder → do not fetch the embedding model; run lexical-only
 TARGET=""
 SCOPE="project"  # V4 #30 task 8: --scope user|project. Default 'project' for
                  # v4.3.0 backward compat; default flips to 'user' in a future
@@ -76,6 +84,7 @@ while [[ $# -gt 0 ]]; do
     --mcp-server) INSTALL_MCP_SERVER=1; shift ;;
     --daemon) INSTALL_DAEMON=1; shift ;;
     --no-daemon) NO_DAEMON=1; shift ;;
+    --no-embedder) NO_EMBEDDER=1; shift ;;
     --scope)
       if [[ -z "${2:-}" ]]; then
         echo "Error: --scope requires a value (user|project)" >&2
@@ -118,7 +127,7 @@ done
 # --scope user doesn't require a positional TARGET (install prefix is ~/.claude/);
 # --scope project requires one.
 if [[ "$SCOPE" == "project" && -z "$TARGET" ]]; then
-  echo "Usage: $0 [--hooks] [--update] [--local-state] [--daemon|--no-daemon] [--scope user|project] <target-project-path>" >&2
+  echo "Usage: $0 [--hooks] [--update] [--local-state] [--daemon|--no-daemon] [--no-embedder] [--scope user|project] <target-project-path>" >&2
   echo "  --scope user: install customizations to ~/.claude/ (target not required)" >&2
   echo "  --scope project (default): install to <target>/.claude/" >&2
   exit 1
@@ -1129,6 +1138,83 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
     rm -f "$DAEMON_BIN.new"
     daemon_fail "the daemon build failed; the existing binary was left in place"
   fi
+fi
+
+# ── the embedding model: fetched once, verified by checksum ─────────────────
+# The daemon runs models as supervised children, so the weights are data the
+# install fetches rather than code it builds. One model, pinned by SHA-256.
+#
+# A checksum mismatch deletes the file and fails rather than keeping it. A GGUF
+# that is subtly not what we pinned produces vectors that are merely wrong —
+# every search still answers, just worse — which is the failure mode nobody
+# notices for months.
+#
+# Never fatal in refresh mode, and never fatal at all when the fetch is what
+# fails: an install without the model is the lexical-only daemon, which is a
+# supported configuration that says so on every status surface.
+
+MODEL_DIR="$HOME/.local/share/agentm/models"
+# Pinned by the bake-off in the hybrid-retrieval plan, task 2. EmbeddingGemma
+# won on the frozen goldv2 corpus; the hash is the file that was measured, not
+# one copied from a model card.
+MODEL_FILE="embeddinggemma-300M-Q8_0.gguf"
+MODEL_SHA="b5ce9d77a3fc4b3b39ccb5643c36777911cc4eb46a66962eadfa3f5f60490d63"
+MODEL_URL="https://huggingface.co/ggml-org/embeddinggemma-300M-GGUF/resolve/main/$MODEL_FILE"
+
+if [[ "$DAEMON_MODE" != "none" && $NO_EMBEDDER -eq 0 ]]; then
+  model_sha256() {
+    if command -v shasum >/dev/null 2>&1; then
+      shasum -a 256 "$1" | awk '{print $1}'
+    elif command -v sha256sum >/dev/null 2>&1; then
+      sha256sum "$1" | awk '{print $1}'
+    else
+      echo ""
+    fi
+  }
+
+  if [[ -f "$MODEL_DIR/$MODEL_FILE" ]] && [[ "$(model_sha256 "$MODEL_DIR/$MODEL_FILE")" == "$MODEL_SHA" ]]; then
+    echo "    embedding model already present and verified ($MODEL_FILE)"
+  elif ! command -v curl >/dev/null 2>&1; then
+    echo "==> NOTE: curl is missing, so the embedding model was not fetched." >&2
+    echo "    The daemon runs lexical-only until it is. Hybrid retrieval is off." >&2
+  else
+    mkdir -p "$MODEL_DIR"
+    echo "==> Fetching the embedding model (~330MB, one time)…"
+    # To a temp path, then verified, then moved. A half-downloaded GGUF at the
+    # real path would be loaded on the next start and fail as a model bug.
+    if curl -fsSL --retry 2 -o "$MODEL_DIR/$MODEL_FILE.part" "$MODEL_URL"; then
+      GOT="$(model_sha256 "$MODEL_DIR/$MODEL_FILE.part")"
+      if [[ -z "$GOT" ]]; then
+        echo "==> NOTE: no sha256 tool available, so the model could not be verified." >&2
+        echo "    Not installing it — an unverified model is worse than none." >&2
+        rm -f "$MODEL_DIR/$MODEL_FILE.part"
+      elif [[ "$GOT" == "$MODEL_SHA" ]]; then
+        mv -f "$MODEL_DIR/$MODEL_FILE.part" "$MODEL_DIR/$MODEL_FILE"
+        echo "    verified and installed $MODEL_DIR/$MODEL_FILE"
+      else
+        rm -f "$MODEL_DIR/$MODEL_FILE.part"
+        echo "==> WARNING: the embedding model failed its checksum and was discarded." >&2
+        echo "    expected $MODEL_SHA" >&2
+        echo "    got      $GOT" >&2
+        echo "    The daemon runs lexical-only. Re-run to retry." >&2
+      fi
+    else
+      echo "==> NOTE: the embedding model could not be downloaded." >&2
+      echo "    The daemon runs lexical-only until it is; re-run to retry." >&2
+    fi
+  fi
+
+  # llama-server is the runtime the weights need. It is not built here — it is a
+  # cgo project, and building it is exactly what the daemon's static pure-Go
+  # constraint exists to avoid — so its absence is reported, not repaired.
+  if ! command -v llama-server >/dev/null 2>&1; then
+    echo "==> NOTE: llama-server is not on PATH, so hybrid retrieval stays off." >&2
+    echo "    Install it (macOS: brew install llama.cpp) and the daemon picks it up" >&2
+    echo "    on its next start. Until then every status surface reports the" >&2
+    echo "    embedder as off and searches run lexical-only." >&2
+  fi
+elif [[ "$DAEMON_MODE" != "none" && $NO_EMBEDDER -eq 1 ]]; then
+  echo "==> --no-embedder: skipping the embedding model. The daemon runs lexical-only."
 fi
 
 if [[ "$DAEMON_MODE" != "none" ]]; then

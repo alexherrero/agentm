@@ -27,7 +27,18 @@ import (
 // query rather than a folder, and asking it through the rank-penalty flags —
 // which lump `unfiled` together with `superseded` and `expired` — counted
 // retired notes as waiting ones.
-const SchemaVersion = "2"
+//
+// 3 adds the `embeddings` table for the vector arm. Bumping the version discards
+// the file, which costs a lexical rebuild of seconds and a re-embed of minutes —
+// the re-embed being the expensive half, and the reason a future schema change
+// that does not touch vectors is worth making additively rather than by bump.
+//
+// 4 lets `embeddings` hold several rows per note, keyed by (doc_id, chunk_idx)
+// instead of doc_id alone, so a note longer than the embedder's window is
+// covered by several chunk vectors instead of one truncated from its head. Same
+// reason for the bump as 3: the table is a cache, so discarding and re-embedding
+// is the correct migration for a shape change, not a schema patch.
+const SchemaVersion = "4"
 
 // DefaultPort is the port the retired FastMCP daemon used. The real daemon takes
 // the name and the port when that one is retired; `agentmd retire` is what makes
@@ -107,6 +118,45 @@ type Config struct {
 	// silent skip rather than an error.
 	Email EmailConfig
 
+	// --- the vector arm -----------------------------------------------------
+
+	// EmbedEnabled is the off switch. True by default: an install with no model
+	// on disk already runs lexical-only, so the switch exists for the case where
+	// the weights are present and the operator wants them left alone.
+	EmbedEnabled bool
+
+	// EmbedModel names the weights. Empty means "discover whatever is installed",
+	// which is the ordinary case — install.sh puts exactly one there.
+	EmbedModel string
+
+	// EmbedderURL attaches to an embedding server someone else is running instead
+	// of spawning a child. The measurement harness uses it to score 84 questions
+	// against one warm model rather than 84 model loads.
+	EmbedderURL string
+
+	// EmbedScope is the set of vault-relative directories the vector arm covers.
+	// See defaultEmbedScope for why it is three names and not the whole tree.
+	EmbedScope []string
+
+	// --- the reranker ---------------------------------------------------
+
+	// RerankEnabled is the off switch, mirroring EmbedEnabled: true by
+	// default, since an install with no reranker weights on disk already
+	// runs without one, so the switch exists for the case where the weights
+	// are present and the operator wants them left alone.
+	RerankEnabled bool
+
+	// RerankModel names the reranker weights. Empty means "discover whatever
+	// is installed" — the ordinary case once install.sh grows the reranker
+	// leg.
+	RerankModel string
+
+	// RerankerURL attaches to a rerank server someone else is running
+	// instead of spawning a child. Same reason EmbedderURL exists: the
+	// measurement harness scores 84 questions against one warm model rather
+	// than paying a model load per query.
+	RerankerURL string
+
 	// ConfigPath is the file the above was read from, for reporting.
 	ConfigPath string
 }
@@ -158,6 +208,36 @@ var Types = []string{"preference", "workflow", "idea", "fix", "convention", "ref
 // no file move, so a wrong default is cheap and a refused capture is not.
 const DefaultType = "preference"
 
+// defaultEmbedScope is the part of the vault the vector arm covers when the
+// config does not say.
+//
+// It is derived from `memory_root` rather than written as a literal, for the same
+// reason no vault path is ever a constant here: the root has moved twice, and a
+// hardcoded `Agent/memory` would resolve to nothing on the next move — silently,
+// because an empty scope embeds zero notes and a vector arm with no vectors looks
+// exactly like one that is merely cold.
+//
+// The three names are the spaces whose notes embed whole. `memory` is atomic by
+// capture doctrine. `desk` and `external` are not atomic and are included anyway,
+// because the gold set's answers live there — 65 of 90 expected paths, against 25
+// in `memory` — so a scope excluding them measures a vector arm that cannot reach
+// most of what it is being scored on. What is deliberately absent is `_meta`,
+// whose notes run to 200,000 tokens and would be embedded as a single centroid;
+// that is the case a chunking policy exists for, and there is no chunking policy.
+func defaultEmbedScope(memoryRoot string) []string {
+	root := strings.Trim(filepath.ToSlash(strings.TrimSpace(memoryRoot)), "/")
+	names := []string{"memory", "desk", "external"}
+	out := make([]string, 0, len(names))
+	for _, n := range names {
+		if root == "" {
+			out = append(out, n)
+			continue
+		}
+		out = append(out, root+"/"+n)
+	}
+	return out
+}
+
 func defaultSpaces() map[string]string {
 	// The current vault layout. After the migration this becomes
 	// {"memory": "Agent/memory", "desk": "Agent/desk"} in the config file.
@@ -190,6 +270,7 @@ func Load(opts Options) (*Config, error) {
 		ConfigPath:      cfgPath,
 		Spaces:          defaultSpaces(),
 		Shard:           "date",
+		EmbedEnabled:    true,
 		Port:            DefaultPort,
 		ReconcileEvery:  5 * time.Minute,
 		UnfiledAgeRed:   DefaultUnfiledAgeRed,
@@ -288,6 +369,31 @@ func Load(opts Options) (*Config, error) {
 				c.PhonePaths = append(c.PhonePaths, strings.Trim(filepath.ToSlash(s), "/"))
 			}
 		}
+	}
+
+	// --- the vector arm -----------------------------------------------------
+	c.EmbedModel = strVal(raw, "daemon.embed_model")
+	c.EmbedderURL = strVal(raw, "daemon.embedder_url")
+	if b, ok := raw["daemon.embed_enabled"].(bool); ok {
+		c.EmbedEnabled = b
+	}
+	if arr, ok := raw["daemon.embed_scope"].([]any); ok {
+		for _, v := range arr {
+			if s, ok := v.(string); ok && s != "" {
+				c.EmbedScope = append(c.EmbedScope, strings.Trim(filepath.ToSlash(s), "/"))
+			}
+		}
+	}
+	if len(c.EmbedScope) == 0 {
+		c.EmbedScope = defaultEmbedScope(strVal(raw, "plugins.obsidian-vault.memory_root"))
+	}
+
+	// --- the reranker ---------------------------------------------------
+	c.RerankModel = strVal(raw, "daemon.rerank_model")
+	c.RerankerURL = strVal(raw, "daemon.reranker_url")
+	c.RerankEnabled = true
+	if b, ok := raw["daemon.rerank_enabled"].(bool); ok {
+		c.RerankEnabled = b
 	}
 
 	for _, d := range []struct {

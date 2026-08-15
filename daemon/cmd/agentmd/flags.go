@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -67,10 +68,43 @@ func splitPositional(args []string) (positional string, rest []string) {
 // Booleans do not; everything else this command set defines does.
 func takesValue(name string) bool {
 	switch name {
-	case "json", "dry-run", "verbose", "from-scratch", "help", "h":
+	case "json", "dry-run", "verbose", "from-scratch", "help", "h", "no-embedder", "no-reranker", "reset":
 		return false
 	}
 	return true
+}
+
+// bindEmbedderFlags registers the vector arm's overrides. Shared by every
+// command that can touch it so the spelling cannot drift between them.
+func bindEmbedderFlags(fs *flag.FlagSet) *embedderFlags {
+	f := &embedderFlags{}
+	fs.StringVar(&f.url, "embedder-url", "",
+		"attach to an embedding server already running here instead of spawning one")
+	fs.StringVar(&f.model, "embed-model", "",
+		"which embedding model to use (default: whatever is installed)")
+	fs.BoolVar(&f.off, "no-embedder", false,
+		"run lexical-only even if a model is installed")
+	return f
+}
+
+// bindRerankerFlags registers the cross-encoder's overrides, mirroring
+// bindEmbedderFlags exactly — same three-way shape (attach / name / off) for
+// the same reason: a second supervised child, resolved the same way.
+func bindRerankerFlags(fs *flag.FlagSet) *rerankerFlags {
+	f := &rerankerFlags{}
+	fs.StringVar(&f.url, "reranker-url", "",
+		"attach to a reranking server already running here instead of spawning one")
+	fs.StringVar(&f.model, "rerank-model", "",
+		"which reranker model to use (default: whatever is installed)")
+	fs.BoolVar(&f.off, "no-reranker", false,
+		"skip cross-encoder reranking even if a model is installed")
+	return f
+}
+
+// quietLogger keeps the child's lifecycle chatter off a one-shot command's
+// stdout, where it would land in the middle of the JSON a caller is parsing.
+func quietLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 }
 
 // markPortSet records whether --port was actually given, so a config-file port is

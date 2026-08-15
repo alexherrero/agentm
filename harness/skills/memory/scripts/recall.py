@@ -46,6 +46,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 
 # Sibling modules live in this same scripts/ dir — sys.path-injected import so
@@ -95,6 +96,20 @@ DEFAULT_TOKEN_BUDGET = 20_000
 # harness_memory back. A subprocess keeps it dependency-free, and the 12ms
 # measurement already includes the spawn.
 DAEMON_BIN = "agentmd"
+
+# Hook cutover (hybrid-retrieval plan, task 5): the daemon call that used to
+# rely on `-mode`'s default (`and`, 10.9% R@5) now asks explicitly for the
+# arm the ladder measured at 75.0% — lexical fusion plus a dense-vector arm,
+# fused by reciprocal rank. `-lex3` (task 4, refuted) stays off; nothing here
+# ever passes it. One place to flip back to "and" if the installed rule ever
+# needs reverting.
+DAEMON_SEARCH_MODE = "hybrid"
+
+# The Go index's own words for "the dense arm was asked for but had nothing to
+# embed with" (daemon/internal/index/search.go, searchHybrid) — matched so a
+# degrade is reported honestly (daemon-lexical, not daemon-hybrid) rather than
+# claimed. Substring, not equality: the note can be joined with others.
+_DAEMON_HYBRID_DEGRADE_MARK = "no query vector was available"
 
 # Most of the 300ms goes to the daemon, and the split is deliberately lopsided.
 #
@@ -1323,6 +1338,21 @@ def query(
     return merged[:k]
 
 
+def _hit_space(rel_path: str) -> str:
+    """Which top-level space a hit's vault-relative path falls under.
+
+    The daemon's dense arm covers three named spaces — `memory/`, `desk/`,
+    `external/`, the scope task 2 landed — but the lexical arms range over the
+    whole indexed tree, so a hit can fall outside those three (`_meta/`, for
+    instance). Reporting the literal first path segment either way is more
+    honest than forcing an unmatched hit into one of the three names; it is
+    also the metadata task 5's injection policy asks for regardless of which
+    arm actually found this particular hit.
+    """
+    parts = PurePosixPath(rel_path).parts
+    return parts[0] if parts else "?"
+
+
 def _format_recall_result(
     result: dict,
     body: str,
@@ -1336,18 +1366,24 @@ def _format_recall_result(
     this entry was recalled. Body follows verbatim (frontmatter stripped by
     caller).
 
-    Both engines are lexical, so neither reports a similarity. Quoting one
-    would be a small lie that reads as a real signal: no embedding stands
-    behind either hit, and a `sim` of 0.00 looks like a semantic match that
-    failed rather than one that was never attempted. This held for the daemon
-    from the start and now holds for the in-process engine too, since the
-    vector stack it used to fuse with was removed.
+    Neither engine reports a similarity score in the `sim` sense. Quoting one
+    would be a small lie that reads as a real signal: the in-process engine
+    fuses no vector stream at all, and a daemon hit's `score` is an RRF-fused
+    rank (or a raw BM25 rank in `and`/`fusion`), never a cosine — so a `sim` of
+    0.00 would look like a semantic match that failed rather than one that was
+    never computed that way. A daemon-sourced hit instead carries `mode`
+    (`hybrid` when the dense arm actually had a vector to fuse with, `lexical`
+    when it degraded mid-query — see `_daemon_search`) and its `space`
+    (`memory`/`desk`/`external`/…), per the hook cutover's injection policy:
+    label what a hit is, rather than asserting it is correct.
     """
     kind = fm.get("kind", "unknown")
     tags = fm.get("tags", "")
     if result.get("source") == "daemon":
         score = result.get("score", result.get("combined", 0.0))
-        header = f"### {result['slug']} (kind: {kind}, score={score:.2f} daemon-lexical"
+        mode = result.get("mode", "lexical")
+        header = f"### {result['slug']} (kind: {kind}, score={score:.2f} daemon-{mode}"
+        header += f", space: {_hit_space(result.get('path', ''))}"
     else:
         header = (
             f"### {result['slug']} (kind: {kind}, "
@@ -1535,6 +1571,219 @@ def trace(
     return 0
 
 
+# --- temporal bound extraction (task 5.5, hybrid-retrieval plan) -----------
+# Deterministic date-phrase extraction feeding the `-after`/`-before` bounds
+# `agentmd search` already accepts (index.Query.After/Before, search.go) but
+# the hook never set on its own. Re-scoped as non-regression, not a recall
+# rung: a date bound is a filter, not a retrieval channel — applied to a
+# query that already succeeds it either changes nothing or removes the
+# answer, so a wrong bound is strictly worse than none. Every pattern below
+# is built to abstain, not to guess.
+_MONTH_NAMES: dict[str, int] = {
+    "january": 1, "jan": 1,
+    "february": 2, "feb": 2,
+    "march": 3, "mar": 3,
+    "april": 4, "apr": 4,
+    "may": 5,
+    "june": 6, "jun": 6,
+    "july": 7, "jul": 7,
+    "august": 8, "aug": 8,
+    "september": 9, "sep": 9, "sept": 9,
+    "october": 10, "oct": 10,
+    "november": 11, "nov": 11,
+    "december": 12, "dec": 12,
+}
+_MONTH_ALTERNATION = "|".join(sorted(_MONTH_NAMES, key=len, reverse=True))
+
+
+def _month_start(year: int, month: int) -> date:
+    return date(year, month, 1)
+
+
+def _add_months(d: date, months: int) -> date:
+    # Every caller hands this a day-1 date, so plain month/year rollover
+    # arithmetic is exact — no need to worry about a day that doesn't exist
+    # in the target month.
+    m = d.month - 1 + months
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return date(y, m, 1)
+
+
+def _resolve_month_year(month: int, year: int | None, today: date) -> tuple[int, int]:
+    """A bare month name with no year needs one inferred. A note can never be
+    captured in the future, so a month that has not started yet this year
+    almost certainly means last year's — otherwise this year's."""
+    if year is not None:
+        return year, month
+    y = today.year
+    if month > today.month:
+        y -= 1
+    return y, month
+
+
+def _extract_temporal_bound(
+    text: str, *, now: datetime | None = None
+) -> tuple[str, str] | None:
+    """Deterministically resolve one calendar bound from a natural-language
+    prompt, or abstain with None.
+
+    Returns `(after, before)` as `YYYY-MM-DD` strings, ready for the daemon's
+    own `-after`/`-before` flags — `after` is inclusive of that day, `before`
+    is exclusive, matching `normalizeBound`'s documented semantics (search.go)
+    exactly, so nothing is reformatted on the Go side. `before` is `""` when
+    the phrase has no natural upper bound ("since March" means March onward,
+    not March alone) — `normalizeBound("")` is itself "no bound", so an empty
+    string here reaches Go as absence, not as a literal empty-string date.
+
+    No model, no network: a fixed set of regexes plus calendar arithmetic on
+    `datetime.date`, priced in microseconds. Deliberately narrow — this
+    recognizes the phrase shapes task 5.5 was scoped around ("last week", "in
+    June", "yesterday", "since March", "in 2026") and their closest
+    unambiguous siblings (today, this/last week/month/year, since <ISO date>,
+    a bounded past-N days/weeks/months). Anything else abstains, including
+    every "when did I ...", "how long has it been since my last ...", "the
+    last time we ..." shape in this plan's own gold set: those ASK for a
+    date, they do not SUPPLY one to bound with, and the fix for an
+    unanswerable "when" is retrieval finding the note, not a filter that
+    presupposes its answer. That is also the plan's own worked example —
+    "when did I decide X" bounds nothing, "what did I decide last week"
+    bounds something — realized here as two disjoint phrase classes rather
+    than a judgment call at runtime.
+
+    Content vs. constraint: every trigger ("in", "since", "last", "this",
+    "past") must sit immediately before the date token, with nothing between
+    them. "in June" bounds; "the June release" does not match at all — no
+    trigger word precedes "June" — which is what keeps a topic label from
+    being misread as a capture-date constraint. The residual case adjacency
+    cannot separate — a trigger word used conversationally rather than
+    temporally, e.g. "interested in June's numbers" — is a known, accepted
+    risk named in the task's close-out; the non-regression measurement that
+    ships alongside this function is the real backstop, not this heuristic
+    alone.
+
+    A resolved `after` later than `now`'s own date is refused outright:
+    nothing is ever captured in the future, so a bound of that shape could
+    only guarantee zero hits, which is worse than not bounding at all.
+
+    `now` is the reference instant every relative phrase resolves against —
+    injectable so tests are never time-dependent; defaults to the real UTC
+    instant. Bounds are computed in UTC throughout, matching capturedFormat's
+    own UTC convention (index.go) — the same "no client timezone available"
+    choice `normalizeBound` already makes for a bare date.
+    """
+    if now is None:
+        now = datetime.now(timezone.utc)
+    today = now.date()
+    t = text.lower()
+
+    def ok(after_d: date) -> bool:
+        return after_d <= today
+
+    def iso(d: date) -> str:
+        return d.strftime("%Y-%m-%d")
+
+    week_start = today - timedelta(days=today.weekday())  # Monday, ISO-style
+    this_month = _month_start(today.year, today.month)
+    this_year = date(today.year, 1, 1)
+
+    relative_after: dict[str, date] = {
+        "today": today,
+        "yesterday": today - timedelta(days=1),
+        "this week": week_start,
+        "last week": week_start - timedelta(days=7),
+        "this month": this_month,
+        "last month": _add_months(this_month, -1),
+        "this year": this_year,
+        "last year": date(today.year - 1, 1, 1),
+    }
+    relative_before: dict[str, date] = {
+        "today": today + timedelta(days=1),
+        "yesterday": today,
+        "this week": week_start + timedelta(days=7),
+        "last week": week_start,
+        "this month": _add_months(this_month, 1),
+        "last month": this_month,
+        "this year": date(today.year + 1, 1, 1),
+        "last year": this_year,
+    }
+    # Longest phrase first so "this week" is tried before a hypothetical
+    # shorter alternative could shadow it — not load-bearing today (no
+    # relative phrase here is a prefix of another) but cheap to keep true.
+    phrase_re = "|".join(
+        k.replace(" ", r"\s+") for k in sorted(relative_after, key=len, reverse=True)
+    )
+
+    # Priority order matters: "since <phrase>" must be checked before the
+    # bare phrase table below it, because "last week" is a literal substring
+    # of "since last week" and the bare check would otherwise fire first and
+    # hand back a closed range where the open one ("since" = onward, no
+    # upper bound) is what the word actually means.
+
+    m = re.search(r"\bsince\s+(\d{4}-\d{2}-\d{2})\b", t)
+    if m:
+        try:
+            after_d = datetime.strptime(m.group(1), "%Y-%m-%d").date()
+        except ValueError:
+            return None
+        return (iso(after_d), "") if ok(after_d) else None
+
+    m = re.search(r"\bsince\s+(" + phrase_re + r")\b", t)
+    if m:
+        after_d = relative_after[re.sub(r"\s+", " ", m.group(1))]
+        return (iso(after_d), "") if ok(after_d) else None
+
+    m = re.search(r"\bsince\s+(" + _MONTH_ALTERNATION + r")\b(?:\s+(\d{4}))?", t)
+    if m:
+        y, mo = _resolve_month_year(_MONTH_NAMES[m.group(1)],
+                                     int(m.group(2)) if m.group(2) else None, today)
+        after_d = date(y, mo, 1)
+        return (iso(after_d), "") if ok(after_d) else None
+
+    m = re.search(r"\bsince\s+(\d{4})\b", t)
+    if m:
+        after_d = date(int(m.group(1)), 1, 1)
+        return (iso(after_d), "") if ok(after_d) else None
+
+    # Bare relative phrases: both a lower and an upper bound.
+    m = re.search(r"\b(" + phrase_re + r")\b", t)
+    if m:
+        key = re.sub(r"\s+", " ", m.group(1))
+        after_d = relative_after[key]
+        return (iso(after_d), iso(relative_before[key])) if ok(after_d) else None
+
+    # "past N day(s)/week(s)/month(s)": open-ended, like "since".
+    m = re.search(r"\bpast\s+(\d{1,3})\s+day(?:s)?\b", t)
+    if m:
+        after_d = today - timedelta(days=int(m.group(1)))
+        return (iso(after_d), "") if ok(after_d) else None
+    m = re.search(r"\bpast\s+(\d{1,3})\s+week(?:s)?\b", t)
+    if m:
+        after_d = today - timedelta(weeks=int(m.group(1)))
+        return (iso(after_d), "") if ok(after_d) else None
+    m = re.search(r"\bpast\s+(\d{1,3})\s+month(?:s)?\b", t)
+    if m:
+        after_d = _add_months(this_month, -int(m.group(1)))
+        return (iso(after_d), "") if ok(after_d) else None
+
+    # "in <Month>[ <Year>]": bounded to that one month.
+    m = re.search(r"\bin\s+(" + _MONTH_ALTERNATION + r")\b(?:\s+(\d{4}))?", t)
+    if m:
+        y, mo = _resolve_month_year(_MONTH_NAMES[m.group(1)],
+                                     int(m.group(2)) if m.group(2) else None, today)
+        after_d = date(y, mo, 1)
+        return (iso(after_d), iso(_add_months(after_d, 1))) if ok(after_d) else None
+
+    # "in <Year>": bounded to that one year.
+    m = re.search(r"\bin\s+(\d{4})\b", t)
+    if m:
+        year = int(m.group(1))
+        after_d = date(year, 1, 1)
+        return (iso(after_d), iso(date(year + 1, 1, 1))) if ok(after_d) else None
+
+    return None
+
+
 def _daemon_query_terms(prompt: str, cap: int = DAEMON_QUERY_TERM_CAP) -> str:
     """Reduce a user prompt to the content words the daemon should search for.
 
@@ -1615,6 +1864,8 @@ def _daemon_search(
     budget_ms: int = DAEMON_BUDGET_MS,
     scope: str | None = None,
     status: dict | None = None,
+    daemon_vault: str | None = None,
+    daemon_index: str | None = None,
 ) -> list[dict] | None:
     """Ask the agentm daemon for the top-k entries relevant to `query_text`.
 
@@ -1623,13 +1874,36 @@ def _daemon_search(
     works unchanged, plus `score`/`source` recording that this ranking came from
     the daemon's BM25 rather than this module's sim+keyword merge, plus
     `snippet` when the daemon returned one (the match-centred extract
-    `_build_excerpt_block` prefers over a head excerpt).
+    `_build_excerpt_block` prefers over a head excerpt), plus `mode` — the
+    effective arm this particular answer came from (`hybrid`, or `lexical` when
+    the dense arm had nothing to embed with; see `_DAEMON_HYBRID_DEGRADE_MARK`).
 
     Returns None when the daemon could not answer, which is the caller's signal
     to fall back to the in-process engine. **None and [] are different answers,
     and `prompt_submit` branches on which one it gets** (GH #92): None is "no
     search happened", [] is "the daemon searched and nothing admissible matched".
     Collapsing them is how a broken recall reports itself as an empty vault.
+
+    `query_text` drives both arms, exactly as the production hook hands them:
+    the lexical arms search `_daemon_query_terms(query_text)` (the reduction
+    FTS5 needs), and the dense arm embeds `query_text` itself, whole, via the
+    daemon's own `-question` (task 3.5) — the whole reason this function takes
+    the raw prompt rather than a pre-reduced query string.
+
+    `daemon_vault`/`daemon_index`, when both given, are passed straight through
+    as the daemon's own `-vault`/`-index` — a measurement-only escape hatch
+    mirroring `retrieval_scorecard.py`'s `--vault`/`--index` (task 1), for a
+    driver that needs to score the frozen gold corpus rather than whatever
+    vault the daemon's own kernel config resolves. The production hook never
+    passes these: it always wants the daemon's live-config vault.
+
+    `query_text` is also handed to `_extract_temporal_bound` (task 5.5); when
+    it resolves a confident calendar bound, `-after`/`-before` are added to
+    the daemon call. This is deliberately unconditional — every caller of
+    `_daemon_search`, including `retrieval_scorecard.py --via-hook`, exercises
+    the real fast-path behavior rather than an opt-in a measurement run could
+    forget to enable. On no match (the overwhelming common case) neither flag
+    is sent, and the call is byte-identical to before this task.
     """
     dedup_paths = dedup_paths or set()
     scope = (
@@ -1646,15 +1920,28 @@ def _daemon_search(
     search_terms = _daemon_query_terms(query_text)
     if not search_terms:
         return _skip("prompt carried no content words to search for")
+    temporal = _extract_temporal_bound(query_text)
+
+    argv = [
+        DAEMON_BIN, "search", "-json",
+        "-k", str(max(1, k) * DAEMON_OVERFETCH),
+        "-mode", DAEMON_SEARCH_MODE,
+        "-question", query_text,
+    ]
+    if temporal is not None:
+        after, before = temporal
+        if after:
+            argv += ["-after", after]
+        if before:
+            argv += ["-before", before]
+    if daemon_vault and daemon_index:
+        argv += ["-vault", daemon_vault, "-index", daemon_index]
+    argv.append(search_terms)
 
     started = time.monotonic()
     try:
         proc = subprocess.run(
-            [
-                DAEMON_BIN, "search", "-json",
-                "-k", str(max(1, k) * DAEMON_OVERFETCH),
-                search_terms,
-            ],
+            argv,
             capture_output=True,
             text=True,
             timeout=budget_ms / 1000.0,
@@ -1680,6 +1967,17 @@ def _daemon_search(
     raw = payload.get("results") if isinstance(payload, dict) else None
     if not isinstance(raw, list):
         return _skip(f"{DAEMON_BIN} response carried no results array")
+
+    # The daemon says so, in `note`, when hybrid was requested but the dense
+    # arm had nothing to embed with (search.go's searchHybrid) — the same
+    # graceful degrade an absent/off embedder always produced, now reachable
+    # mid-query too (a wedged or not-yet-warm child). Every hit from this one
+    # response shares the same effective mode, so it is computed once here
+    # rather than per hit — there is no per-result arm-attribution field to
+    # read it from individually.
+    note = payload.get("note") if isinstance(payload, dict) else None
+    note = note if isinstance(note, str) else ""
+    effective_mode = "lexical" if _DAEMON_HYBRID_DEGRADE_MARK in note else DAEMON_SEARCH_MODE
 
     root: Path | None = None
     seen: set[str] = set()
@@ -1730,6 +2028,7 @@ def _daemon_search(
             "combined": score,
             "score": score,
             "source": "daemon",
+            "mode": effective_mode,
         }
         if external:
             # Not a curated memory entry: readable and rankable, but it gets no
@@ -1753,9 +2052,12 @@ def _daemon_search(
             "elapsed_ms": elapsed_ms,
             "scope": scope,
             "terms": search_terms,
+            "temporal": temporal,
             "returned": len(raw),
             "admitted": len(out),
             "matched": payload.get("matched"),
+            "mode": effective_mode,
+            "note": note,
         })
     return out
 
@@ -2008,11 +2310,10 @@ def prompt_submit(
             file=stdout,
         )
         print("", file=stdout)
-        ranked_by = (
-            "daemon lexical rank"
-            if recall_status.get("engine") == "daemon"
-            else "semantic+keyword merge"
-        )
+        if recall_status.get("engine") == "daemon":
+            ranked_by = f"daemon {daemon_status.get('mode', 'lexical')} rank"
+        else:
+            ranked_by = "semantic+keyword merge"
         shown = f"top {len(blocks)} by {ranked_by}"
         if token_budget_excerpted > 0:
             shown += (
@@ -2024,6 +2325,20 @@ def prompt_submit(
             "always-load set).",
             file=stdout,
         )
+        if recall_status.get("engine") == "daemon":
+            # Injection policy (hook cutover, task 5): inject with metadata,
+            # never a manufactured empty. There is no rejection floor on this
+            # path — task 3's cross-encoder investigation found positives and
+            # hard negatives interleave at every threshold, so a floor would
+            # drop true answers at the same rate as wrong ones. The honest
+            # move is to label what these are and let the reading agent judge,
+            # not to guess silently on its behalf.
+            print(
+                "These are candidates matched by similarity (lexical and/or "
+                "dense vector), not verified answers — judge them, don't just "
+                "relay them.",
+                file=stdout,
+            )
         print("", file=stdout)
         for i, block in enumerate(blocks):
             if i > 0:
@@ -2054,12 +2369,28 @@ def prompt_submit(
     if recall_status.get("engine") == "daemon":
         # The searched terms are quoted because they are not the prompt: the
         # daemon is asked with content words only, and an operator debugging a
-        # miss needs to see what was actually looked for.
+        # miss needs to see what was actually looked for. `mode` is what the
+        # strata clause in task 5's rule exists to catch: a cutover that
+        # silently degrades to a weaker arm than it believes it shipped would
+        # otherwise be invisible here. The daemon's own `note`, when it sent
+        # one, says why — most often that the dense arm had nothing to embed
+        # with (check `agentmd status`'s embedder line).
         transparency += (
             f" (engine: daemon, {daemon_status.get('elapsed_ms', 0.0):.0f}ms, "
+            f"mode={daemon_status.get('mode', '')}, "
             f"scope={daemon_status.get('scope', DAEMON_SCOPE_DEFAULT)}, "
             f"terms: {daemon_status.get('terms', '')!r})"
         )
+        # Only named when the extractor actually matched (task 5.5) — the
+        # overwhelming common case is no bound at all, and printing that on
+        # every single prompt would bury the rare line worth reading.
+        temporal = daemon_status.get("temporal")
+        if temporal:
+            after, before = temporal
+            transparency += f" (temporal: after={after or '—'} before={before or '—'})"
+        note = daemon_status.get("note")
+        if note:
+            transparency += f" [{note}]"
     elif daemon_status.get("reason"):
         transparency += (
             f" (engine: in-process — daemon declined: {daemon_status['reason']})"

@@ -57,7 +57,17 @@ class TestPackedCaptureAlignment(unittest.TestCase):
             captured["hits"] = hits
             return {}
 
-        with mock.patch.object(recall_counter, "record_recall", _fake_record):
+        # This class is about the in-process engine's own hit-packing
+        # (module docstring: "the capture half of recall-trace"), so the
+        # daemon fast path prompt_submit() tries first has to be forced to
+        # decline — otherwise it answers from whatever real vault `agentmd`
+        # resolves rather than this test's tempdir fixture, and `captured`
+        # never fills. Before the hybrid-retrieval cutover, an installed
+        # daemon that rejected `-mode`/`-question` as unknown flags made the
+        # decline happen by accident; a daemon that recognizes them no
+        # longer obliges, so the fixture says so directly.
+        with mock.patch.object(recall_counter, "record_recall", _fake_record), \
+             mock.patch.object(recall.subprocess, "run", side_effect=FileNotFoundError()):
             recall.prompt_submit(
                 vault=vault,
                 prompt=token,

@@ -146,6 +146,15 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 		b.WriteString("           no undo for a bad write, and `agentmd gate corpus-write` refuses\n")
 	}
 
+	fmt.Fprintf(&b, "  embedder %s\n", rep.Embedder)
+	if rep.Embedder.State == "degraded" {
+		// The same shape as the git line above: a degraded capability says what
+		// stops working, because "degraded" on its own is a word a reader has to
+		// go and interpret at exactly the moment they are least able to.
+		b.WriteString("           searches still answer, from the lexical arm only — " +
+			"paraphrases and vocabulary gaps will miss\n")
+	}
+
 	fmt.Fprintf(&b, "  probe    %s\n", describeProbe(rep))
 
 	if len(rep.Alerts) > 0 {

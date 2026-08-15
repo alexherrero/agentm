@@ -8,6 +8,7 @@
 package mcpsrv
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -41,6 +42,7 @@ type Server struct {
 	log     *slog.Logger
 	status  StatusFunc
 	probe   ProbeFunc
+	embed   EmbedFunc
 	onWrite func(rel string)
 	started time.Time
 	version string
@@ -58,6 +60,23 @@ func New(cfg *config.Config, idx *index.Index, cp *capture.Capturer, log *slog.L
 // the probe talks to this server over HTTP and therefore cannot exist until the
 // listener does.
 func (s *Server) SetProbe(fn ProbeFunc) { s.probe = fn }
+
+// EmbedFunc turns a query into a vector and names the model that produced it. It
+// returns a nil vector when there is no warm embedder, which is what makes a
+// hybrid search degrade to its lexical arm rather than fail.
+//
+// It takes the terms query and, separately, whatever question the caller
+// supplied (task 3.5) rather than a single already-chosen text, because only
+// the function's owner (main.go, which holds the embedder and therefore knows
+// its window) can decide which one to embed and how much of it fits. This
+// package still knows nothing about child processes or their windows — it
+// hands both strings across the seam and is told back a vector.
+type EmbedFunc func(ctx context.Context, query, question string) ([]float32, string)
+
+// SetEmbedder wires the vector arm. A function rather than the supervisor itself,
+// so this package keeps knowing nothing about child processes — it asks for a
+// vector and is told either a vector or nothing.
+func (s *Server) SetEmbedder(fn EmbedFunc) { s.embed = fn }
 
 // Handler wires the routes.
 func (s *Server) Handler() http.Handler {
@@ -244,6 +263,28 @@ type searchArgs struct {
 	K      int    `json:"k"`
 	After  string `json:"after"`
 	Before string `json:"before"`
+	// Mode is published in the inputSchema below as of the hook cutover
+	// (task 5). It was accepted-but-hidden from task 1 onward: advertising it
+	// earlier would have let the agent opt into a mode with 0% correct
+	// rejection before the ladder had a rung that earned it. The rung that was
+	// meant to earn it — a cross-encoder floor — was refuted (task 3); what
+	// actually made this safe to publish is the fast path's own injection
+	// policy (inject with metadata, never a manufactured empty — see the
+	// prompt-submit hook), which does not depend on `mode` carrying any
+	// rejection guarantee. `rerank` is deliberately not one of the published
+	// enum values: the MCP surface has no reranker child wired to it, and
+	// rerank does not ship to the hook either (refuted, task 3).
+	Mode string `json:"mode"`
+	// Question is published on the same seam as Mode, for the same reason and
+	// as of the same cutover: a caller can ask the dense arm to embed the
+	// natural question (task 3.5) instead of Query. Query keeps driving the
+	// lexical arms unconditionally either way.
+	Question string `json:"question"`
+	// Lex3 is accepted on the same unpublished seam as Mode and Question: a
+	// measurement driver can widen the lexical arm from 2-term to 2- and 3-term
+	// subsets (task 4, column `+lex3`) before the ladder has earned it a place
+	// the agent can see.
+	Lex3 bool `json:"lex3"`
 }
 
 func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
@@ -262,9 +303,13 @@ func (s *Server) toolSearch(raw json.RawMessage) (any, error) {
 	if a.K > 50 {
 		a.K = 50
 	}
-	out, err := s.idx.Search(index.Query{
-		Text: a.Query, K: a.K, After: a.After, Before: a.Before,
-	})
+	q := index.Query{Text: a.Query, K: a.K, After: a.After, Before: a.Before, Mode: a.Mode, Lex3: a.Lex3}
+	if a.Mode == index.ModeHybrid && s.embed != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		q.Vector, q.EmbedModel = s.embed(ctx, a.Query, a.Question)
+	}
+	out, err := s.idx.Search(q)
 	if err != nil {
 		return nil, err
 	}
@@ -336,6 +381,7 @@ func toolSpecs() []map[string]any {
 				"- Iterate. If the first phrasing comes back empty or thin, try a different vocabulary for the same idea — the note may have been written in words the question does not use.",
 				"- Do not stop at the first plausible hit when the question deserves better, and answer \"nothing found\" only after two or three distinct vocabularies have failed.",
 				"- For a question about when something happened or what was decided in a period, bound it with after/before. Episodic questions are time questions.",
+				"- If the exact-terms default (mode \"and\") comes back empty or thin and you suspect a vocabulary gap rather than an absent fact, retry with mode \"hybrid\" and question set to the full natural-language question — it adds a dense-vector arm that can find a note with no term overlap at all. Results from any mode are candidates matched by similarity, not verified answers; judge them, don't just relay them.",
 			}, "\n"),
 			"inputSchema": map[string]any{
 				"type": "object",
@@ -355,6 +401,14 @@ func toolSpecs() []map[string]any {
 					"before": map[string]any{
 						"type":        "string",
 						"description": "Only notes captured before this date (YYYY-MM-DD or RFC3339).",
+					},
+					"mode": map[string]any{
+						"type": "string", "enum": []string{"and", "fusion", "hybrid"}, "default": "and",
+						"description": "\"and\" (default) requires every query term in one note. \"fusion\" best-matches any subset of terms — looser than \"and\", still exact-word. \"hybrid\" adds a dense-vector arm on top of fusion, fused by reciprocal rank — set `question` alongside it so the vector arm embeds the real question rather than `query`'s bare terms.",
+					},
+					"question": map[string]any{
+						"type":        "string",
+						"description": "The full natural-language question, used only when mode is \"hybrid\": the dense arm embeds this instead of query. query keeps driving the exact-term arms unchanged either way.",
 					},
 				},
 				"required": []string{"query"},

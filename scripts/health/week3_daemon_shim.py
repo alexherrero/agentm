@@ -16,6 +16,11 @@ the same budget instead of doubling it.
 one JSON line: the query, how many results came back, which of them the daemon
 had demoted, and how long the daemon took. That file is the scorecard's
 `tool_call_log`, and it is what the runner checks the driver transcript against.
+As of the task-6 hybrid non-regression run, it also records `mode` and whether
+`question` was passed — the hybrid cutover (task 5) published both as optional
+`memory_search` arguments the *driver* now decides whether to use, so a run
+against this daemon needs its own record of what the agent actually chose,
+rather than assuming hybrid was exercised because the daemon can serve it.
 
 `memory_capture` is filtered out of `tools/list`. The corpus under measurement
 is a frozen snapshot, and a tool that can write to it does not belong in front
@@ -130,6 +135,13 @@ def _handle(req):
             "k": args.get("k"),
             "after": args.get("after"),
             "before": args.get("before"),
+            # Which mode the driver actually chose, and whether it bothered to pass
+            # the natural question hybrid needs — the two facts task 6's dense-arm
+            # liveness claim rests on. Not inferred from the daemon's response: a
+            # degrade to lexical-only would still return 200 results, so the mode
+            # the caller *asked for* is the only honest signal here.
+            "mode": args.get("mode"),
+            "question_passed": bool((args.get("question") or "").strip()),
             "n_results": len(results),
             "matched": payload.get("matched"),
             "note": payload.get("note"),

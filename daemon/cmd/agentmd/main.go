@@ -25,6 +25,7 @@ import (
 
 	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/embed"
 	"github.com/alexherrero/agentm/daemon/internal/gate"
 	"github.com/alexherrero/agentm/daemon/internal/health"
 	"github.com/alexherrero/agentm/daemon/internal/index"
@@ -45,6 +46,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd search     one-shot search against the index
   agentmd capture    one-shot capture
   agentmd reindex    rebuild the index from the files
+  agentmd embed      compute the vector arm's embeddings for in-scope notes
   agentmd status     ask a running daemon how it is doing
   agentmd probe      run the round-trip self-probe now
   agentmd gate       ask whether a corpus-wide write job may start
@@ -69,6 +71,8 @@ func main() {
 		err = cmdCapture(os.Args[2:])
 	case "reindex":
 		err = cmdReindex(os.Args[2:])
+	case "embed":
+		err = cmdEmbed(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
 	case "probe":
@@ -126,6 +130,7 @@ func cmdServe(args []string) error {
 		"how often to evaluate the queue thresholds and run the self-probe if it is due")
 	fs.DurationVar(&opts.ProbeEvery, "probe-every", 0,
 		"how often the round-trip self-probe runs")
+	ef := bindEmbedderFlags(fs)
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -170,6 +175,37 @@ func cmdServe(args []string) error {
 		// capability that is quietly missing is the exact failure mode principle 4
 		// exists to prevent.
 		log.Warn("git DEGRADED — no commits, no undo", "reason", repo.Status())
+	}
+
+	// Signals are wired before the embedder so the child process is born under the
+	// context that Ctrl-C cancels. A model spawned outside it would outlive the
+	// daemon that spawned it, which is the one way a supervised child becomes
+	// exactly the independently-managed resident process the design declined.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// A bare hook-issued `agentmd search -mode hybrid` (see cmdSearch) has no
+	// way to find this process's embedder once it spawns one — the child binds
+	// a kernel-assigned port that only this process knows. Fixing the port
+	// this daemon spawns on to a well-known default is what lets that one-shot
+	// caller attach instead of loading its own model per query.
+	ef.port = embedderSpawnPort(*ef, cfg)
+
+	// The embedder is started but never waited on. A cold 600MB model takes tens
+	// of seconds, and a daemon that refused to answer lexical searches until its
+	// vector arm warmed up would be strictly worse than the lexical-only daemon
+	// this replaces. Hybrid turns itself on when the child reports warm.
+	embedder, err := resolveEmbedder(cfg, *ef, log)
+	if err != nil {
+		return err
+	}
+	embedder.Start(ctx)
+	defer embedder.Close()
+	if st, detail := embedder.State(); st == embed.StateOff {
+		log.Info("embedder off — hybrid unavailable, lexical-only", "reason", detail)
+	} else {
+		log.Info("embedder starting", "model", embedder.Model().Name,
+			"scope", strings.Join(cfg.EmbedScope, ","))
 	}
 
 	cp := capture.New(cfg, idx)
@@ -239,6 +275,7 @@ func cmdServe(args []string) error {
 		if st, ok := prober.Load(); ok {
 			in.Probe, in.ProbeAt = probe.AsHealth(st, true)
 		}
+		in.Embedder = embedderHealth(embedder, idx, cfg)
 		return health.Evaluate(in)
 	}
 
@@ -263,13 +300,17 @@ func cmdServe(args []string) error {
 
 	srv0 := mcpsrv.New(cfg, idx, cp, log, statusFn, w.MarkSelfWritten, version)
 	srv0.SetProbe(func() (any, error) { return prober.Run(time.Now()) })
+	// The vector arm, behind the same seam. A caller asking for hybrid before the
+	// child is warm gets a nil vector and therefore the lexical arm, which is the
+	// degradation the mode is specified to have rather than an error.
+	srv0.SetEmbedder(func(ctx context.Context, query, question string) ([]float32, string) {
+		text := queryEmbedText(query, question, embedder.Model().CtxTokens)
+		return embedQuery(ctx, embedder, text), embedder.Model().Name
+	})
 	srv := &http.Server{
 		Handler:           srv0.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	go func() {
 		if err := w.Run(ctx); err != nil {
@@ -317,6 +358,19 @@ func cmdSearch(args []string) error {
 	k := fs.Int("k", 5, "how many results")
 	after := fs.String("after", "", "only notes captured on or after this date")
 	before := fs.String("before", "", "only notes captured before this date")
+	mode := fs.String("mode", index.ModeAnd,
+		"how to combine terms: `and` (every term in one note), `fusion` (best two-term subset), "+
+			"`hybrid` (fusion + dense vectors, fused by reciprocal rank), or "+
+			"`rerank` (hybrid's fused top-20, cross-encoder reranked and floored)")
+	question := fs.String("question", "",
+		"natural-language question; when set, `hybrid`/`rerank`'s dense arm embeds this "+
+			"instead of the terms query below, truncated to the embedder's window — the "+
+			"lexical arms always search the terms below regardless")
+	lex3 := fs.Bool("lex3", false,
+		"widen `fusion`/`hybrid`'s lexical arm from 2-term to 2- and 3-term subsets "+
+			"(task 4, column `+lex3`); false reproduces `lexical-fusion`/`+question` exactly")
+	ef := bindEmbedderFlags(fs)
+	rf := bindRerankerFlags(fs)
 	asJSON := fs.Bool("json", false, "emit JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -331,11 +385,59 @@ func cmdSearch(args []string) error {
 		return err
 	}
 	defer idx.Close()
-	_ = cfg
 
-	out, err := idx.Search(index.Query{Text: query, K: *k, After: *after, Before: *before})
+	// "rerank" is a CLI-level arm, not an index.Query.Mode — see modeRerank's
+	// doc comment. It runs the index's own hybrid mode at the rerank depth
+	// rather than the caller's requested k, since the cross-encoder needs the
+	// fused top-20 to have anything worth reranking; the caller's k is applied
+	// after the floor, in rerankFused.
+	rerankRequested := *mode == modeRerank
+	innerMode, innerK := *mode, *k
+	if rerankRequested {
+		innerMode, innerK = index.ModeHybrid, rerankDepth
+	}
+
+	q := index.Query{Text: query, K: innerK, After: *after, Before: *before, Mode: innerMode, Lex3: *lex3}
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if innerMode == index.ModeHybrid {
+		ctx, cancel = context.WithCancel(context.Background())
+		defer cancel()
+		// A one-shot hybrid search has to have a model in hand before it can ask
+		// anything, so unlike `serve` it waits. Attaching to a running server via
+		// -embedder-url is what keeps a measurement run from paying one model load
+		// per query — and a bare invocation with no explicit pointer (this is
+		// what the prompt-submit hook issues) defaults to the resident `agentmd
+		// serve` daemon's own embedder (embedderAttachDefault/embedderSpawnPort).
+		if u := embedderAttachDefault(*ef, cfg); u != "" {
+			ef.url = u
+		}
+		sup, err := startEmbedder(ctx, cfg, *ef, quietLogger(), 3*time.Minute)
+		if err != nil {
+			return err
+		}
+		defer sup.Close()
+		q.Vector = embedQuery(ctx, sup, queryEmbedText(query, *question, sup.Model().CtxTokens))
+		q.EmbedModel = sup.Model().Name
+	}
+
+	out, err := idx.Search(q)
 	if err != nil {
 		return err
+	}
+
+	if rerankRequested {
+		// ctx is never nil here: rerankRequested forces innerMode ==
+		// ModeHybrid above, which is what set it.
+		rsup, err := startReranker(ctx, cfg, *rf, quietLogger(), 3*time.Minute)
+		if err != nil {
+			return err
+		}
+		defer rsup.Close()
+		out, err = rerankFused(ctx, idx, rsup, query, out, *k)
+		if err != nil {
+			return err
+		}
 	}
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(out)
@@ -451,6 +553,122 @@ func cmdReindex(args []string) error {
 	}
 	blob, _ := json.MarshalIndent(st, "", "  ")
 	fmt.Println(string(blob))
+	return nil
+}
+
+// cmdEmbed computes the vector arm's embeddings for every in-scope note that
+// does not have a current one.
+//
+// It is a separate command rather than part of reindex because the two have
+// different costs by two orders of magnitude. Rebuilding the lexical index over
+// ten thousand notes is seconds and happens on any schema change; embedding the
+// same corpus is minutes of model time, and folding it into reindex would make
+// every routine rebuild pay for it.
+func cmdEmbed(args []string) error {
+	fs := newFlagSet("embed")
+	opts := bindCommon(fs)
+	ef := bindEmbedderFlags(fs)
+	batch := fs.Int("batch", 16, "how many notes to embed per request")
+	limit := fs.Int("limit", 0, "stop after this many notes (0 = all)")
+	scope := fs.String("embed-scope", "",
+		"comma-separated vault-relative directories to embed (default: the configured scope). "+
+			"Two models compared on different scopes are not compared at all, so a bake-off "+
+			"names this explicitly rather than inheriting it")
+	reset := fs.Bool("reset", false,
+		"discard every stored vector first — required when changing models, since "+
+			"vectors from two models are not comparable")
+	asJSON := fs.Bool("json", false, "emit the report as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	sup, err := startEmbedder(ctx, cfg, *ef, log, 3*time.Minute)
+	if err != nil {
+		return err
+	}
+	defer sup.Close()
+	if st, detail := sup.State(); st != embed.StateWarm {
+		return fmt.Errorf("no embedder to run the backfill with (state %s: %s)", st, detail)
+	}
+
+	if *reset {
+		if err := idx.DropVectors(); err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "discarded every stored vector")
+	}
+
+	// A model swap without --reset would leave the table holding two geometries
+	// at once. That is not a search that is a bit worse; the arms would rank
+	// against different spaces and the result would be arbitrary, so it is
+	// refused rather than warned about.
+	models, err := idx.VectorModels()
+	if err != nil {
+		return err
+	}
+	for _, m := range models {
+		if m != sup.Model().Name {
+			return fmt.Errorf(
+				"the index already holds vectors from %q and this run would add %q; "+
+					"vectors from two models are not comparable — re-run with -reset",
+				m, sup.Model().Name)
+		}
+	}
+
+	embedScope := cfg.EmbedScope
+	if *scope != "" {
+		embedScope = splitList(*scope)
+	}
+
+	rep, err := runBackfill(ctx, idx, sup, embedScope, *batch, *limit, log)
+	if err != nil {
+		return err
+	}
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(rep)
+	}
+	fmt.Printf("embedded %d notes with %s (%d dims) in %s\n",
+		rep.Embedded, rep.Model, rep.Dim, rep.ElapsedS)
+	fmt.Printf("scope %s\n", strings.Join(rep.Scope, ", "))
+	if rep.Chunked > 0 {
+		fmt.Printf("%d note(s) were longer than the model's %d-token window and were split "+
+			"into %d chunks total instead of being truncated\n",
+			rep.Chunked, sup.Model().CtxTokens, rep.Chunks)
+	}
+	if rep.Shortened > 0 {
+		fmt.Printf("%d chunk(s) were rejected at their first size and re-sent shorter "+
+			"before the server accepted them\n", rep.Shortened)
+	}
+	if rep.Failed > 0 {
+		fmt.Printf("%d note(s) could not be embedded at all and were skipped — they stay "+
+			"pending, so a later run retries them:\n", rep.Failed)
+		for _, p := range rep.FailedPaths {
+			fmt.Printf("  %s\n", p)
+		}
+		if rep.Failed > len(rep.FailedPaths) {
+			fmt.Printf("  … and %d more\n", rep.Failed-len(rep.FailedPaths))
+		}
+	}
+	if rep.Stalled {
+		fmt.Println("stopped early: an entire batch failed, so the run would have looped " +
+			"over the same notes. The embedder may be out of memory — try a smaller -batch.")
+	}
+	if rep.Remaining > 0 {
+		fmt.Printf("%d still pending\n", rep.Remaining)
+	}
 	return nil
 }
 
