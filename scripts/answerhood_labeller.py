@@ -72,6 +72,13 @@ count from, a list to count, a record to compare — as long as the note contain
 answer is derived from. It does not answer if it is merely about a related topic, mentions \
 the subject in passing, or discusses the area without containing what was asked.
 
+These notes are dated records of work as it happened, and a note's own date is evidence. \
+So when the question asks WHEN something happened, a candidate that records that thing \
+answers it if its date establishes when — whether the date is stated in the note, in its \
+filename, or in its path. You do not need the note to say "this happened on" in so many \
+words; a decision recorded in a note dated the day it was taken tells the reader when it \
+was taken.
+
 It is normal and correct for NONE of them to answer. Many questions have no answer in this \
 corpus at all. If no candidate answers the question, return an empty list.
 
@@ -247,8 +254,18 @@ def call_model(prompt: str, timeout: float = 120.0) -> tuple[str, float, str]:
 
 
 def label(question: str, candidates: list[Candidate],
-          *, timeout: float = 120.0, caller=call_model) -> LabelResult:
+          *, timeout: float = 120.0, caller=call_model,
+          df: dict[str, int] | None = None, n_docs: int = 0) -> LabelResult:
     """Attach a verdict to every candidate. Never drops one.
+
+    `df`/`n_docs` let a caller supply document frequencies computed over a wider
+    pool than one call's candidates. **This matters more than it looks.** Built
+    per call over <=20 candidates, IDF flattens toward uniform and the selector
+    degrades back toward the raw counts the probe had to correct — measured on
+    the episodic slice, 49.7% of long notes get a *different* excerpt depending
+    on which pool the frequencies came from. A consumer that can afford a corpus
+    or batch-wide table should pass one; the per-call default is the honest
+    fallback for a consumer that cannot, not the recommended path.
 
     `caller` is injected so the tests can drive the parse and degrade paths
     without a model in the loop — the two behaviours worth pinning are what
@@ -261,7 +278,8 @@ def label(question: str, candidates: list[Candidate],
     kept = candidates[:MAX_CANDIDATES]
     truncated = len(candidates) - len(kept)
 
-    df, n_docs = build_df([c.text for c in kept if c.text])
+    if df is None or n_docs <= 0:
+        df, n_docs = build_df([c.text for c in kept if c.text])
     blocks = []
     for i, c in enumerate(kept, 1):
         body = excerpt(c.text, question, df, n_docs).strip() if c.text else "(unavailable)"
