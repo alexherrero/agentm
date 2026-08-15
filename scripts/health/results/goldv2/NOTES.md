@@ -1660,19 +1660,33 @@ all — so the instrument was checked before the result was written down.
 
 The alias worked perfectly. For the gold query's own terms
 (`agentm never fully realize vault vision`), `F1-REAUDIT.md` is **outside the
-lexical top-10 on the baseline index and rank 1 on the aliased index**
-(`agentmd search -mode fusion -k 10 -no-embedder`, both indexes). Reciprocal-rank
+lexical top-50 on the baseline index and rank 1 on the aliased index**
+(`agentmd search -mode fusion -k 50 -no-embedder`, both indexes). Reciprocal-rank
 fusion with the dense arm — where the note ranks poorly — placed it **7th**
 overall. The hook arm excludes `_archive/` and `_inbox/` subtrees by default
 (`recall.py`, over-fetching 2× to compensate), which removes two intervening
 notes, and the same note lands **5th** there.
 
-So the vocabulary bound is effectively 8 of 8: an ideal alias made every one of
-the eight the best lexical answer in a 9,971-note corpus. The residual miss is a
-ranking property of RRF, which is the `+rerank+floor` and fusion-friction
-territory this ladder already mapped, and it is not something an alias engine
-can fix. **This is the finding that shapes the filing pilot more than the count
-does** — the pilot's ceiling is set by fusion, not by how good its alias text is.
+That is not a one-note observation. Measured for all eight, the aliased note's
+rank on the lexical arm alone:
+
+| | `pp05` | `pp07` | `pp09` | `pp15` | `pp16` | `pp17` | `rc01` | `rd01` |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline | >50 | >50 | >50 | >50 | >50 | >50 | >50 | >50 |
+| aliased | 1 | 1 | 1 | 1 | 1 | 2 | 1 | 1 |
+
+Every one of the eight goes from outside the lexical top-50 of a 9,971-note
+corpus to the top two, seven of them to rank 1. `pp17` is second to
+`Agent/memory/preferences/don-t-do-automaticaly-and-why.md` — a captured memory
+of the operator's own question, which is a reasonable thing to rank first and
+which the fused arm also puts above it.
+
+So the vocabulary bound is effectively 8 of 8, and the residual miss is a
+ranking property of RRF — the fusion-friction territory this ladder already
+mapped in the `+question` post-mortem — rather than anything an alias engine
+could fix. **This is the finding that shapes the filing pilot more than the
+count does**: the pilot's ceiling is set by fusion, not by how good its alias
+text is.
 
 ## Ops
 
