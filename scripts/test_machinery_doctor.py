@@ -16,6 +16,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import machinery_doctor as md
 
@@ -576,6 +577,130 @@ class MemoryHookInterpreterTests(unittest.TestCase):
         self.assertEqual(c.status, "OK")
         self.assertIn("9.9.9", c.detail)
         self.assertIn(str(interp), c.detail)
+
+
+class ProjectJsonPointerTests(unittest.TestCase):
+    """The 2026-08-14 staleness shape: a pointer at a path that still EXISTS
+    but sits outside the live vault, so every read returns a frozen tree and
+    nothing ever raises."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        root = Path(self._tmp.name)
+        self.vault = root / "Vault"
+        self.mem = self.vault / "Agent"
+        self.mem.mkdir(parents=True)
+        # A real, populated tree OUTSIDE the vault -- the retired vault root.
+        self.stale = root / "OldDrive" / "Agent"
+        self.stale.mkdir(parents=True)
+        (self.stale / "board-items.json").write_text("[]", encoding="utf-8")
+        self.cfg = root / "project.json"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _check(self, payload: dict):
+        self.cfg.write_text(json.dumps(payload), encoding="utf-8")
+        return md.check_project_json_pointers(
+            self.cfg, "test", vault_root=self.vault, mem_root=self.mem,
+        )
+
+    def test_ok_when_every_pointer_is_inside_the_vault(self):
+        items = self.mem / "desk" / "projects" / "p" / "_harness"
+        items.mkdir(parents=True)
+        (items / "board-items.json").write_text("[]", encoding="utf-8")
+        (self.vault / "Ideas.md").write_text("# Ideas", encoding="utf-8")
+        c = self._check({
+            "items_source": str(items / "board-items.json"),
+            "env": {"MEMORY_VAULT_PATH": str(self.mem),
+                    "IDEAS_SURFACE_PATH": str(self.vault / "Ideas.md")},
+        })
+        self.assertEqual(c.status, "OK")
+        self.assertIn("3 vault pointer(s)", c.detail)
+
+    def test_fail_when_pointer_exists_but_is_outside_the_vault(self):
+        c = self._check({"env": {"MEMORY_VAULT_PATH": str(self.stale)}})
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("outside", c.detail)
+        self.assertIn("reads as valid", c.detail)
+
+    def test_fail_when_pointer_names_a_missing_path(self):
+        c = self._check({"items_source": str(self.mem / "gone" / "board-items.json")})
+        self.assertEqual(c.status, "FAIL")
+        self.assertIn("does not exist", c.detail)
+
+    def test_memory_and_vault_surfaces_are_distinguished(self):
+        """A file at the vault root is legitimate for IDEAS_SURFACE_PATH and
+        wrong for items_source. Collapsing both onto one root -- in either
+        direction -- flips exactly one of these two assertions."""
+        stray = self.vault / "Ideas.md"
+        stray.write_text("# Ideas", encoding="utf-8")
+        ok = self._check({"env": {"IDEAS_SURFACE_PATH": str(stray)}})
+        self.assertEqual(ok.status, "OK")
+        bad = self._check({"items_source": str(stray)})
+        self.assertEqual(bad.status, "FAIL")
+        self.assertIn("outside", bad.detail)
+
+    def test_warn_when_no_vault_resolves(self):
+        """Drives the real resolution path with the resolver returning nothing,
+        rather than passing None -- which the signature reads as "not supplied,
+        go resolve" and would quietly measure this machine's own vault."""
+        import harness_memory
+        self.cfg.write_text(json.dumps({"items_source": "/nowhere"}), encoding="utf-8")
+        with mock.patch.object(harness_memory, "vault_path", return_value=None), \
+             mock.patch.object(harness_memory, "memory_root", return_value=None):
+            c = md.check_project_json_pointers(self.cfg, "test")
+        self.assertEqual(c.status, "WARN")
+        self.assertIn("no vault resolves", c.detail)
+
+    def test_warn_when_the_resolver_raises(self):
+        """On a machine with no storage backend installed `vault_path()` raises
+        rather than returning None. A doctor row degrades to WARN there; it must
+        not propagate and take the whole inventory down with it."""
+        import harness_memory
+        self.cfg.write_text(json.dumps({"items_source": "/nowhere"}), encoding="utf-8")
+        boom = harness_memory.StorageBackendNotInstalledError("no backend")
+        with mock.patch.object(harness_memory, "vault_path", side_effect=boom):
+            c = md.check_project_json_pointers(self.cfg, "test")
+        self.assertEqual(c.status, "WARN")
+
+    def test_warn_on_unparseable_json(self):
+        self.cfg.write_text("{not json", encoding="utf-8")
+        c = md.check_project_json_pointers(
+            self.cfg, "test", vault_root=self.vault, mem_root=self.mem,
+        )
+        self.assertEqual(c.status, "WARN")
+
+    def test_ok_when_config_carries_no_pointer_keys(self):
+        c = self._check({"vault_project": "p", "github": {"number": 2}})
+        self.assertEqual(c.status, "OK")
+        self.assertIn("no vault pointers", c.detail)
+
+    def test_discovery_falls_back_to_main_clone_from_a_worktree(self):
+        """`.harness/` is gitignored, so a linked worktree has none. Discovery
+        must still find the main clone's config rather than emitting no row."""
+        main = Path(self._tmp.name) / "clone"
+        main.mkdir()
+        _init_repo(main)
+        (main / "README.md").write_text("x", encoding="utf-8")
+        env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
+               "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e"}
+        subprocess.run(["git", "add", "-A"], cwd=main, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=main, check=True, env=env)
+        (main / ".harness").mkdir()
+        (main / ".harness" / "project.json").write_text(
+            json.dumps({"vault_project": "p"}), encoding="utf-8")
+        wt = Path(self._tmp.name) / "wt"
+        subprocess.run(["git", "worktree", "add", "-q", str(wt), "-b", "b"],
+                       cwd=main, check=True, env=env)
+        self.assertFalse((wt / ".harness" / "project.json").is_file())
+        found = md.project_json_configs(wt, mem_root=self.mem)
+        # Resolved both sides: on macOS a tempdir is /var/... but git reports
+        # the /private/var/... realpath, and that difference is not the subject.
+        self.assertEqual(
+            [((main / ".harness" / "project.json").resolve(), "repo")],
+            [(p.resolve(), label) for p, label in found],
+        )
 
 
 class RealRepoSmokeTests(unittest.TestCase):

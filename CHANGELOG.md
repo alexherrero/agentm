@@ -46,6 +46,14 @@ Underneath: re-running `install.sh` deleted every plugin-namespaced key from `~/
 
   Graceful-skips where no crickets checkout is reachable, since it needs the real plugin set as ground truth and a hardcoded list would be the very drift it exists to prevent — so it is `UNIT_WRAPPED` rather than a CI step, the same posture as `check-slop.py`. Verified against the real historical regressions: reintroducing either shape into `harness/documentation.md` makes it fail.
 
+- **A doctor row for a config pointer that still resolves, just not to the live vault** ([`scripts/machinery_doctor.py`](scripts/machinery_doctor.py)) — this is the same shape as the notification jobs above, one layer down. After the vault moved off the Google Drive mount and its internal layout was reorganized, both repos' `.harness/project.json` files still named the old root. That directory had not been deleted, so every read succeeded and returned a tree frozen on the day of the move. On 2026-08-14 the agentm board-items file it pointed at was twelve days stale, and nothing had raised in the meantime.
+
+  Wrong content is worse than missing content, because it arrives looking valid. The two new rows take each reachable `project.json` — the repo-local one and the vault-resident one — and ask whether its path-valued keys still land inside the vault this machine resolves right now. A path that is simply gone fails; so does one that exists but sits outside the vault, which is the case that had no detector at all.
+
+  **No existing gate could have caught it.** `check-no-hardcoded-vault-path` walks the filesystem and prunes `.harness/` by name, so its exclusion has nothing to do with the directory being gitignored, and it only recognizes the retired `/Library/CloudStorage/` literal in any case — a future move between two plain local roots would pass it untouched. That gate protects what ships; this row asks whether this machine is pointed at the right place, which is a different question and needs a different check.
+
+  `MEMORY_VAULT_PATH` and `items_source` are checked against `memory_root()`, while `IDEAS_SURFACE_PATH` is checked against `vault_path()`, because `Ideas.md` is the operator's own note one level above the memory tree and collapsing the two surfaces would flag a correct install. Discovery falls back to the main clone when run from a linked worktree, which carries no `.harness/` of its own — otherwise the row would silently vanish in exactly the worktree-native sessions this repo runs by default. Verified against the live defect it was written for: it fails the vault-resident config that is still stale today, and passes the repo-local one already corrected.
+
 ### Changed
 
 - **Plugin references now name the plugins crickets actually ships** (52 files) — `developer-workflows` → `development-lifecycle` and `releasing-conventions` → `conventions`, following the same rename that took `wiki-maintenance` → `wiki`.
