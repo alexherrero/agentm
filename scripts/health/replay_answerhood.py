@@ -101,6 +101,11 @@ def main(argv=None) -> int:
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--limit", type=int, default=None,
                     help="first N units only — for a cheap smoke run")
+    ap.add_argument("--exclude-stratum", default=None,
+                    help="skip this stratum. Used to avoid re-buying a slice "
+                         "already measured under the same frozen prompt — the "
+                         "episodic run that froze the prompt is a valid task-6 "
+                         "measurement and does not need paying for twice")
     ap.add_argument("--stratum", default=None,
                     help="score only this stratum; prompt refinement runs on the "
                          "episodic-temporal slice alone, for cents, before the "
@@ -153,6 +158,8 @@ Return only JSON, no prose, no code fence: {{"keep": [indices of candidates to k
     units = units_from(replicates)
     if args.stratum:
         units = [u for u in units if u["stratum"] == args.stratum]
+    if args.exclude_stratum:
+        units = [u for u in units if u["stratum"] != args.exclude_stratum]
     if args.half:
         units = [u for u in units if u["half"] == args.half]
     if args.limit:
