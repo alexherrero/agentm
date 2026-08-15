@@ -597,6 +597,179 @@ def check_memory_hook_interpreter(repo: Optional[Path] = None) -> Check:
     return Check(name, "OK", f"{where} runs{via} — the memory hooks have a working interpreter")
 
 
+# ── project.json vault pointers ─────────────────────────────────────────────
+# Path-valued keys on a `project.json`, each paired with the vault surface it
+# must sit under. `MEMORY_VAULT_PATH` names the memory tree itself and
+# `items_source` addresses per-project state inside it, so both belong under
+# `harness_memory.memory_root()`. `IDEAS_SURFACE_PATH` is the operator's own
+# note at the vault root, one level ABOVE the memory tree — checking it against
+# the memory root would flag a correctly-configured install.
+_PROJECT_JSON_PATH_KEYS = (
+    ("items_source", "memory"),
+    ("env.MEMORY_VAULT_PATH", "memory"),
+    ("env.IDEAS_SURFACE_PATH", "vault"),
+)
+
+
+def _dotted(cfg: dict, key: str):
+    """Read a one-level-dotted key (`env.MEMORY_VAULT_PATH`). None if absent."""
+    node = cfg
+    for part in key.split("."):
+        if not isinstance(node, dict) or part not in node:
+            return None
+        node = node[part]
+    return node if isinstance(node, str) and node.strip() else None
+
+
+def _is_under(child: Path, parent: Path) -> bool:
+    """True when `child` is `parent` or sits beneath it, comparing resolved
+    paths so a symlinked vault root doesn't read as out-of-tree."""
+    try:
+        child_r, parent_r = child.resolve(), parent.resolve()
+    except OSError:
+        return False
+    return child_r == parent_r or parent_r in child_r.parents
+
+
+def check_project_json_pointers(
+    config_path: Path, label: str, *,
+    vault_root: Optional[Path] = None,
+    mem_root: Optional[Path] = None,
+) -> Check:
+    """Do this `project.json`'s vault pointers still aim at the live vault?
+
+    This row exists because of a silent 12-day staleness (2026-08-14). After the
+    vault moved off the Google Drive mount and its internal layout was
+    reorganized (`projects/` → `desk/projects/`), both `.harness/project.json`
+    files still named the old root. That path *still existed on disk*, so
+    nothing raised: every read simply returned a tree frozen at the day of the
+    move. Wrong content is worse than absent content, because it reads as valid.
+
+    No existing gate could have caught it. `check-no-hardcoded-vault-path` walks
+    the filesystem and prunes `.harness/` by name (`_SKIP_DIRS`), and it only
+    recognizes the retired cloud-drive mount literal anyway — a future move
+    between two plain local roots would sail past it. This asks the general
+    question instead: does each configured path exist, and does it sit inside
+    the vault this machine actually resolves right now?
+
+    Statuses:
+      OK          every path-valued key present resolves inside the live vault
+      FAIL        a key names a path that is missing, or one that exists but
+                  lies outside the resolved vault — the silent-staleness shape
+      WARN        no vault resolves on this machine, or the file won't parse,
+                  so there is nothing to check the pointers against
+    """
+    name = f"project-json-pointers:{label}"
+    if vault_root is None or mem_root is None:
+        try:
+            import harness_memory as _hm  # noqa: PLC0415 — optional, resolved per call
+            vault_root = vault_root if vault_root is not None else _hm.vault_path()
+            mem_root = mem_root if mem_root is not None else _hm.memory_root()
+        except Exception as e:  # noqa: BLE001 — a doctor row never raises
+            return Check(name, "WARN", f"could not resolve the vault ({e})")
+    if vault_root is None or mem_root is None:
+        return Check(
+            name, "WARN",
+            "no vault resolves on this machine — nothing to validate these "
+            "pointers against (set one via `python3 scripts/agentm_config.py --vault-path`)",
+        )
+    try:
+        cfg = json.loads(Path(config_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        return Check(name, "WARN", f"{config_path} unreadable ({e})")
+    if not isinstance(cfg, dict):
+        return Check(name, "WARN", f"{config_path} is not a JSON object")
+
+    roots = {"vault": Path(vault_root), "memory": Path(mem_root)}
+    problems: list = []
+    checked = 0
+    for key, surface in _PROJECT_JSON_PATH_KEYS:
+        raw = _dotted(cfg, key)
+        if raw is None:
+            continue  # not every project.json carries every key
+        checked += 1
+        target, root = Path(os.path.expanduser(raw)), roots[surface]
+        if not target.exists():
+            problems.append(f"{key} → {raw} (does not exist)")
+        elif not _is_under(target, root):
+            problems.append(f"{key} → {raw} (exists, but outside {root} — stale pointer, reads as valid)")
+    if not checked:
+        return Check(name, "OK", f"{config_path} carries no vault pointers to validate")
+    if problems:
+        return Check(
+            name, "FAIL",
+            f"{config_path}: " + "; ".join(problems)
+            + f" — re-point at the resolved vault ({mem_root})",
+        )
+    return Check(name, "OK", f"{checked} vault pointer(s) in {config_path} resolve inside {vault_root}")
+
+
+def _main_worktree_root(repo: Path) -> Optional[Path]:
+    """The main clone's root, for a `repo` that may be a linked worktree.
+    `--git-common-dir` points at the shared `.git` in every worktree; its
+    parent is the checkout that owns the gitignored `.harness/`. None when
+    git can't answer."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(repo), "rev-parse", "--git-common-dir"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    raw = out.stdout.strip()
+    if out.returncode != 0 or not raw:
+        return None
+    common = Path(raw)
+    if not common.is_absolute():
+        common = (repo / common).resolve()
+    return common.parent
+
+
+def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list:
+    """Every `project.json` this repo's config is reachable through: the
+    repo-local `.harness/` one, plus the vault-resident one for the same
+    project slug (post-V4-#26 both exist and both are read by callers, so a
+    row that covered only one would miss the other's drift).
+
+    `.harness/` is gitignored, so a linked worktree does not carry the file —
+    and agentm runs worktree-native by default. Falling back to the main
+    clone keeps the row present in a worktree session instead of silently
+    emitting nothing, which is the exact failure shape this check exists for.
+    """
+    found: list = []
+    local = repo / ".harness" / "project.json"
+    slug = repo.name
+    if not local.is_file():
+        main_root = _main_worktree_root(repo)
+        if main_root is not None and main_root != repo:
+            candidate = main_root / ".harness" / "project.json"
+            if candidate.is_file():
+                local, slug = candidate, main_root.name
+    if local.is_file():
+        found.append((local, "repo"))
+        try:
+            cfg = json.loads(local.read_text(encoding="utf-8"))
+            if isinstance(cfg, dict) and isinstance(cfg.get("vault_project"), str):
+                slug = cfg["vault_project"]
+        except (OSError, ValueError):
+            pass
+    # Read the layout constant unconditionally, so an injected `mem_root`
+    # (tests) traverses the same relative path production does.
+    try:
+        import harness_memory as _hm  # noqa: PLC0415
+        projects_rel = getattr(_hm, "_VAULT_PROJECTS_REL_NEW", "desk/projects")
+        if mem_root is None:
+            mem_root = _hm.memory_root()
+    except Exception:  # noqa: BLE001 — no vault reachable; the local row still stands
+        return found
+    if mem_root is None:
+        return found
+    vault_cfg = Path(mem_root).joinpath(*projects_rel.split("/"), slug, "_harness", "project.json")
+    if vault_cfg.is_file():
+        found.append((vault_cfg, "vault"))
+    return found
+
+
 # ── composition ───────────────────────────────────────────────────────────
 def run_inventory(
     repo: Optional[Path] = None, *, state_root: Optional[Path] = None,
@@ -621,6 +794,8 @@ def run_inventory(
         checks.append(check_job_config(repo, job_name, keys_label, install_prefix=install_prefix))
     checks.append(check_unattended_merge_gate(repo))
     checks.append(check_memory_hook_interpreter(repo))
+    for config_path, label in project_json_configs(repo):
+        checks.append(check_project_json_pointers(config_path, label))
     crickets_check = check_crickets_sibling()
     checks.append(crickets_check)
     crickets_root = find_crickets_root()
