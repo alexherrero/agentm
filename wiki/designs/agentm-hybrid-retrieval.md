@@ -1,9 +1,9 @@
 ---
 title: AgentM Hybrid Retrieval — the recall ladder
-status: proposed
+status: launched
 kind: design
 scope: architecture
-area: agentm
+area: agentm/memory-index
 parent: agentm-rescope-topology.md
 seeded: 2026-08-12
 ---
@@ -165,7 +165,7 @@ changes what an AND leaves standing.
 | 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | **refuted** — 76.6% (49/64), net +1 against a required net +3. Regression clause held (no stratum lost more than one); the overall floor did not. 3 of the 7 diagnosed candidates converted (`dt07`, `dt10`, `rc03`); 2 unrelated losses (`pp02`, `rd04`) to reciprocal-rank displacement. Code kept, quarantined behind `-lex3` — see the amendment log. |
 | 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | **met, both clauses** — p50/p90 213.8ms/222.4ms end-to-end through the installed hook (n=84); every stratum within one question of `+question` (73.4% overall, 47/64). Honest-empty on the 20 negatives: 0/20 genuine. See NOTES.md for the per-question diff and the latency-cliff finding it also surfaced. |
 | 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | **met** — 73.4% (47/64), byte-identical to `hook e2e` on all 84 rows. The extractor never fires on this gold set (0 questions match), so the "14 at-risk" estimate does not hold up — see the amendment log. Shipped wired. |
-| 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | |
+| 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | **refuted** — mean 0.6799 across 6 replicates (0.661, 0.683, 0.700, 0.679, 0.617, 0.740; only one clears the bar). Concentrated in negative rejection, 87.5% → 62.5% against the 2026-08-06 baseline; answerable-question recall through the tool is flat-to-improved (78.1% answerable-only, ahead of every retrieval-layer column). Does not implicate the hook, which is deterministic and was measured separately in step 5. |
 
 Step 6 exists because the two layers have disagreed once already: the alias
 backfill was slightly better at the tool level and 3.85 points worse at the
@@ -221,6 +221,71 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-14 · step 6 (agent-layer non-regression) measured: refuted — mean
+  0.6799 against a required ≥0.725, concentrated in negative rejection rather
+  than recall.** `week3_daemon_retest.py` (the week-1 driver harness, reused
+  unmodified) pointed at a scratch `agentmd serve` bound to the frozen goldv2
+  corpus, `claude -p --model opus`, 6-call budget, 6 replicates of all 84
+  questions. Before scoring: `/status` confirmed the embedder warm and
+  attached (`vectors: 9473, stale: 0`), and a live differential call on `pp02`
+  — miss under `and` mode with the exact recorded query terms, hit at rank 3
+  under `hybrid` with the question passed, reproducing `question-20260814.json`
+  byte-for-byte — proved the dense arm reachable rather than assumed it, the
+  same discipline the `-no-embedder` lesson (below) exists to enforce.
+
+  **The numbers, both ways.** Blended (the rule's own denominator: 84
+  questions, negatives scored 1.0/0.0 into the same average as answerable
+  questions, exactly how the 2026-08-06 baseline computed 0.725): mean 0.6799,
+  individual replicates 0.6607/0.6825/0.7004/0.6786/0.6171/0.7401 — five of
+  six below the bar. Read the retrieval-ladder's own way (R@5 over the 64
+  answerable questions, rejection over the 20 negatives separately): 78.1%
+  answerable-only R@5 — ahead of every retrieval-layer column in this design,
+  including `+question`'s 75.0% — against 62.5% negative rejection.
+  **Answerable-question recall is not the problem.**
+
+  **Compared directly against the actual 2026-08-06 run**
+  (`scripts/health/results/week1/opus-arm-a.json`, read from disk rather than
+  quoted from this doc's own §Why-now numbers): every answerable stratum moved
+  by single digits either way (pure-paraphrase actually gained, 47.2% →
+  52.8%, consistent with what a dense arm is for) — negative rejection is the
+  one double-digit move, 87.5% → 62.5%, and it is the whole gap. Two things
+  are both true: goldv2's negative stratum was deliberately grown from 8 to 20
+  and hardened at exactly AgentKV's own request (§2 of the reciprocal
+  handoff), so part of this is a harder population, not a pure regression;
+  and the rule is measured against today's frozen corpus regardless, which is
+  the same standard every other rung in this ladder was held to. The harder
+  population explains the direction: it does not pass the gate.
+
+  **The obvious mechanism does not hold.** This ladder has measured
+  `fusion`/`hybrid` at ~0% retrieval-layer negative rejection since step 1, so
+  the first hypothesis was that agent access to those modes poisons agent-layer
+  rejection the same way. Instrumented directly (`week3_daemon_shim.py` now
+  logs `mode`/`question_passed` per served call) rather than inferred: negatives
+  where the agent used `fusion`/`hybrid` at least once rejected *better*
+  (77.2%) than negatives where it stayed on the default `and` mode the whole
+  time (14.3%) — the opposite of the hypothesis. Read cautiously (thoroughness
+  and correct judgment plausibly share a common cause this data cannot
+  separate), but it rules out the specific story this design would have told
+  first. **Root cause of the negative-rejection drop is open, not resolved.**
+  Across all 1,795 served calls, 79.9% never set `mode` at all — an agent with
+  a published, documented escalation path mostly does not take it, which is
+  itself worth carrying forward past this task.
+
+  **What is not refuted, and what does not change.** The hook (step 5) is
+  deterministic — it always calls `-mode hybrid -question`, with no agent
+  discretion — and was already separately measured and passed; nothing here
+  touches that measurement or that code path. Nothing is reverted: the
+  refutation is about whether *today's* agent-layer performance clears a bar
+  set eight days earlier from a smaller, easier, differently-composed gold
+  set, not evidence that any shipped mechanism actively makes things worse.
+  Full investigation, the per-stratum table against the actual
+  historical JSON, and the mode-usage correlation:
+  `scripts/health/results/goldv2/NOTES.md` § "Task 6: agent-layer
+  non-regression — refuted". **Re-audit trigger:** any change to the
+  `memory_search` tool description's escalation guidance, since the dominant
+  finding here is usage rate, not retrieval quality, and a description change
+  is the cheapest lever on usage rate that this investigation did not try.
 
 - **2026-08-14 · the step-5 latency cliff root-caused: it is `snippet()`, not
   `rrfDepth`, and the fix costs no recall.** Step 5 flagged a 6-second cliff on

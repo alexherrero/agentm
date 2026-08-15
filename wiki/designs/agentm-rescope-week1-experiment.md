@@ -208,6 +208,37 @@ The gold set is the ongoing scorecard principle 3 requires, not a one-time artif
 
 ## Amendment log
 
+- **2026-08-14 - standing-scorecard run #3: the step-6 non-regression gate the
+  entry below promised is discharged, and it is refuted.** `agentm-hybrid-
+  retrieval.md`'s ladder measured every retrieval-layer rung against the frozen
+  `goldv2-20260812` corpus and shipped the hook cutover; this run is this
+  design's own contribution — re-running the driver harness below (`claude -p`,
+  6-call budget, this file's own scoring code, unmodified since 2026-08-06)
+  against a daemon serving that same corpus. Six Opus replicates, all 84
+  questions each: mean R@5 **0.6799** against the required ≥0.725 — refuted,
+  five of six replicates below the bar. Read the same way the harness has
+  always read it (blended: negatives scored into the same average as
+  answerable questions, which is how 0.725 itself was computed), not the
+  retrieval-ladder's separate R@5-plus-rejection convention. The shortfall is
+  concentrated in negative rejection (87.5% in the original 2026-08-06 run,
+  measured directly from `scripts/health/results/week1/opus-arm-a.json`, down
+  to 62.5% here) rather than answerable-question recall, which is
+  flat-to-improved. Two confounds are real and named rather than hidden: the
+  negative stratum grew from 8 to 20 and was deliberately hardened between the
+  two runs (this design's own §2, adopting AgentKV's ask), and the corpus grew
+  too — so this is not a clean two-arm comparison on one frozen population,
+  the way the week-3 retest below was. The obvious mechanism (agent access to
+  `fusion`/`hybrid`, ~0% negative rejection at the retrieval layer since
+  goldv2's own step 1) does not explain it — negatives where the agent used
+  those modes rejected *better* (77.2%) than negatives where it stayed on
+  plain `and` (14.3%). Root cause open. Full write-up:
+  `agentm-hybrid-retrieval.md`'s own 2026-08-14 amendment and
+  `scripts/health/results/goldv2/NOTES.md` § "Task 6". *Re-audit trigger:*
+  same as the sibling entry — a change to `memory_search`'s escalation
+  guidance, since under-use of the published `mode`/`question` parameters
+  (79.9% of served calls set no mode at all) is the more actionable finding
+  than anything about retrieval quality.
+
 - **2026-08-12 - the re-open condition fired on our own scorecard, and the ruling is superseded for the hook path.** This design's rule — FTS5-only, sidecar declined — always carried one exit: a driver weaker than Opus calling `memory_search`. The prompt-submit hook is that driver taken to zero, and the goldv2 campaign measured it: 10.9% R@5 single-shot against 0.725 with the agent iterating, an 82.8% oracle over term subsets no implementable selection policy can reach half of, fusion arms that buy recall only by zeroing rejection, and a floor sweep proving BM25 cannot price answer-existence because negatives outscore answerables. The decision this document deferred is now made in `agentm-hybrid-retrieval.md`: dual retrieval with RRF, a cross-encoder floor for fast-path rejection, models as supervised children of the daemon, `memory/`-scoped vectors. **What stands unchanged here:** the agent-layer 0.725 and the ruling it produced for that layer; the alias-backfill refutation and its question-vocabulary diagnosis (now standing capture practice); the scorecard discipline itself, which is how the exit condition got observed instead of asserted. The ladder's step 6 re-runs this design's own driver harness, n>=6, as the non-regression gate.
 
 - **2026-08-11 - the research stratum has its first real data, and the large-corpus failure mode is worse than a miss.** Two article ingests, distilled into atomic `reference` memories landing `active`, then probed with concept-phrased questions. **What works:** every alias written at capture time returns its own note at rank 1, twelve for twelve. **What fails, and how it fails depends on corpus size.** Against a handful of notes, a question in unanticipated vocabulary returns nothing — FTS5 ANDs its terms, so one out-of-vocabulary content word empties the result set before ranking is consulted. Against the live 9,900-note corpus the same question returns a confident wrong neighbor instead: "how often should consolidation run" answered with a prose style guide, "why did we decide against a vector database" answered with a storage-seam design doc while the note that actually answers it never reached the top five. **The competitor is identified and it is not fragments.** `Agent/desk/` documents took all five slots on every unanticipated-phrasing probe. A 38KB design document accumulates more BM25 term-frequency mass than a 1.1KB focused note, and desk carries no rank penalty — the penalty classes cover miner fragments, unfiled status and dream staging, so a finished design doc is legitimately unpenalized and that is precisely why it wins. **Why this sharpens rather than settles the sidecar question:** an empty answer is honest and a wrong neighbor is not, so the cost of lexical-only recall is higher than the earlier small-corpus probe suggested — but it also surfaces a cheaper lever than embeddings, a space-aware signal ranking `memory/` above `desk/` for memory-shaped questions, which nothing has measured. **What it still does not establish:** fifteen notes and two dozen probes is a demonstration, not a measurement. The standing FTS5-only rule is unchanged. *Re-audit:* a scored research-stratum block in the gold set, which should now carry both treatments — question-sourced aliases and a space-aware rank signal — since this run cannot separate them. *Note on the corpus:* the first ingest's six notes were removed at the operator's request (wrong source article); the second ingest's nine remain, and the alias result held identically across both.

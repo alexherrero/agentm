@@ -1324,3 +1324,256 @@ over-fetch window" — and nothing asserted on it for the fusion or hybrid
 paths, which is how the regression reached a shipped column;
 `snippetcost_test.go` now pins it per mode and fails on the pre-fix code with
 `snippet() saw 50 documents for a k=5 search`.
+
+## Task 6: agent-layer non-regression — refuted
+
+**Rule:** agent-layer R@5 ≥ 0.725 (the week-1 Opus baseline), n≥6 replicates,
+frozen corpus, budget-enforced, against the hybrid daemon.
+
+**Refuted.** Mean R@5 across 6 replicates: **0.6799**, against the required
+≥0.725 — five of six replicates fall short individually (0.6607, 0.6825,
+0.6786, 0.6171, and 0.7004 land under the bar; only 0.7401 clears it). This is
+recorded as a finding, not shipped as a pass, per the plan's own ground rule.
+The shortfall does not touch the hook: the prompt-submit path is deterministic
+(it always calls `-mode hybrid -question`, with no agent discretion involved)
+and was separately measured and passed in task 5. What this task measures is a
+different, adjacent surface — an interactive agent's own use of the
+`memory_search` MCP tool, now that `mode`/`question` are published on it — and
+that surface does not clear its bar.
+
+### Proving the dense arm was live before trusting any number
+
+Two checks, both against a dedicated scratch `agentmd serve` instance
+(`--vault ~/.agentm/corpus-snapshots/Vault --index <task6 copy of task 5.5's
+verified index> --embedder-url http://127.0.0.1:8901`, port 18821 — a
+research instance separate from the operator's resident daemon, attached to
+its same warm embedder child rather than spawning a second one):
+
+1. `/status` reported `embedder: {state: warm, detail: "attached to
+   http://127.0.0.1:8901", vectors: 9473, in_scope: 9473, stale: 0}` before any
+   scoring began.
+2. A live differential call, not an assertion: `pp02` ("Where did we store the
+   worktree rules and can we change them depending on how agentm is
+   installed/configured?", expected `Agent/memory/2026/05/
+   worktrees-never-auto.md`) under the exact recorded query terms
+   (`store worktree rules change depending agentm`) returns 5 confident wrong
+   neighbors under the default `and` mode (`matched: 21`, raw BM25 scores
+   13–17) and the correct note at **rank 3** under `mode: hybrid` with the
+   question passed (`matched: 89`, RRF scores in the 0.024–0.031 band — the
+   score regime alone confirms a different arm answered, not just a different
+   result set) — reproducing `question-20260814.json`'s own recorded row
+   byte-for-byte. Both the candidate set and the score shape change; the dense
+   arm is live and reachable, not silently falling back to lexical.
+
+### The named differing input, and why it is the honest one
+
+Pre-registered before scoring: `pp02` is the input that has to differ for a
+no-change result to fail. It is a **pure-paraphrase** question (by the gold
+set's own labeling rule, it shares no content word with its target note) that
+misses under every lexical variant this plan ever measured — `baseline`
+(and-of-6), `lexical-fusion` (2-term), and `+lex3` (2- and 3-term, the widest
+lexical net built in this plan) all miss it — and hits only once the dense arm
+is queried with the natural question (`+question`, rank 3). `rd04` is the same
+shape (research-density, lexically unreachable in `baseline`/`lexical-fusion`/
+`+lex3`, hit at rank 5 under `+question`). A harness blind to the dense arm —
+stubbed, degraded, or silently falling back — cannot reach either case; this
+one demonstrably does, live, immediately before the scored run.
+
+### The result, two ways
+
+The rule's own denominator is the historic one: 60 questions in 2026-08-06,
+blended — 52 answerable plus 8 negative, every negative scored as `r_at_5 =
+1.0` (correctly rejected) or `0.0` (did not), folded into the same average as
+the answerable questions. `week3_daemon_retest.py` reuses that exact
+aggregation code unmodified (`git log` over this plan's full commit range
+touches neither `week1_retrieval_experiment.py` nor
+`week3_daemon_retest.py`), so the comparison is apples-to-apples on the
+scoring code, even though the corpus and gold set are not identical
+populations (goldv2 is bigger and its negative stratum was deliberately grown
+and hardened after the original run — see below).
+
+| | R@5 |
+|---|---:|
+| r1 | 0.6607 |
+| r2 | 0.6825 |
+| r3 | 0.7004 |
+| r4 | 0.6786 |
+| r5 | 0.6171 |
+| r6 | 0.7401 |
+| **mean (n=6)** | **0.6799** |
+
+The same 6 runs, read the way every other column in this file's arm table
+reads R@5 — over the 64 answerable questions only, rejection reported
+separately — tell a different-shaped story:
+
+| | answerable-only R@5 (64Q) | negative rejection (20Q) |
+|---|---:|---:|
+| r1 | 76.6% (49/64) | 60% |
+| r2 | 78.1% (50/64) | 60% |
+| r3 | 81.2% (52/64) | 65% |
+| r4 | 78.1% (50/64) | 60% |
+| r5 | 71.9% (46/64) | 55% |
+| r6 | 82.8% (53/64) | 75% |
+| **mean** | **78.1%** | **62.5%** |
+
+**Answerable-question recall is not the problem — it is comparable to or
+better than this ladder's best retrieval-layer columns** (78.1% against
+`+question`'s 75.0% and `hook e2e`'s 73.4%). **The shortfall is concentrated
+almost entirely in negative rejection.**
+
+### Where it concentrates, against the historical baseline directly
+
+`scripts/health/results/week1/opus-arm-a.json` — the actual 2026-08-06 Opus
+Arm-A run that produced 0.725 — is still on disk and was read directly rather
+than quoted from the design doc, so this comparison is against the real
+per-stratum numbers, not a summary of them:
+
+| stratum | 2026-08-06 (lexical-only tool, n=60) | 2026-08-14 (hybrid-capable tool, n=84, mean of 6) | Δ |
+|---|---:|---:|---:|
+| distinctive-token | 91.7% (11/12) | 87.5% | −4.2 |
+| pure-paraphrase | 47.2% (8.5/18) | 52.8% | **+5.6** |
+| episodic-temporal | 58.3% (7/12) | 55.8% | −2.5 |
+| research-density | 100% (10/10) | 93.3% | −6.7 |
+| research-corpus | *(stratum did not exist)* | 71.5% | — |
+| **negative rejection** | **87.5% (7/8)** | **62.5% (12.5/20)** | **−25.0** |
+
+Every answerable stratum moved by single-digit points either way — noise, or
+in pure-paraphrase's case a real gain, consistent with what a dense arm is
+for. Negative rejection is the one double-digit move, and it moved the wrong
+way, hard. Two things are true about that stratum at once: it is genuinely a
+harder population now (goldv2 grew it from 8 to 20 specifically at AgentKV's
+own request — "both harnesses grow the negative stratum to n≥20 before anyone
+tunes a threshold" — and the added 12 are deliberately the hard kind, "topics
+the corpus discusses at length but does not specifically answer," per this
+file's own task-3 section), and the rule is measured against today's frozen
+goldv2 corpus regardless, which is the same standard every other column in
+this ladder was held to. The harder population explains the direction; it
+does not retroactively pass the gate.
+
+### What does not explain it
+
+The obvious hypothesis — that giving the agent access to `fusion`/`hybrid`
+(which this entire ladder has measured at ~0% negative rejection every time
+it was scored at the retrieval layer, since task 1) poisons the agent's own
+rejection the same way — does not survive checking. Instrumented via a
+one-line addition to `week3_daemon_shim.py`'s call log (`mode`,
+`question_passed`, alongside the fields it already recorded), so this is
+measured from the actual served calls, not inferred:
+
+| | correctly rejected |
+|---|---:|
+| negatives where the agent used `fusion`/`hybrid` at least once | 77.2% (71/92) |
+| negatives where the agent used only the default `and` mode | **14.3%** (4/28) |
+
+The opposite of the naive hypothesis: negatives the agent explored more
+thoroughly (touching the wider modes at some point in its up-to-6 calls)
+rejected *better*, not worse. Two of the four questions missed in all six
+replicates — `ng14` ("Which encryption scheme did we choose for the vault at
+rest?") and `ng17` ("What did we agree on for multi-user access control in
+the vault?") — never once triggered `fusion`/`hybrid` in any of the 6 runs;
+the agent's first `and`-mode search returned something plausible-sounding
+every time and it never pressed further. Read cautiously — this correlates
+thoroughness with correct rejection, and an agent thorough enough to reach for
+a second search mode is plausibly also the kind of agent that reasons more
+carefully about the answer, which is a confound this data cannot separate
+from a causal claim about mode choice itself. What it does rule out is the
+specific mechanism this ladder would have predicted first. **The root cause of
+the negative-rejection drop is not fully resolved by this task**, and is
+named as the open question rather than a guess dressed as a finding.
+
+Across all 1,795 served calls in the 6 runs: 1,434 (79.9%) never set `mode` at
+all (the published default, `and`); 142 (7.9%) used `fusion`; 219 (12.2%) used
+`hybrid` with the question passed. The agent, even with `mode`/`question`
+published on the tool and the tool description's own guidance to escalate on
+a thin result, mostly does not reach for hybrid search — which is itself
+worth carrying forward: publishing a capability in a tool schema is not the
+same as an agent reliably using it.
+
+### Six always-missed answerable questions, cross-checked against this
+### ladder's own written-off set
+
+`pp05`, `pp07`, `pp09` (all pure-paraphrase) and `rc02` (research-corpus)
+missed in all 6 replicates. `pp05` and `pp07` are on this plan's own
+previously-recorded "alias/filing arc" write-off list (task 3's post-mortem
+and the pre-task-4 diagnosis both name them as unreachable by any mechanism
+this design scoped in) — consistent with, not contradicted by, the agent
+layer's own result. `pp09` and `rc02` are new to this list; both are
+vocabulary-bridging cases of the same shape.
+
+### Verdict
+
+**The rule fails, recorded rather than relaxed.** Nothing is reverted by this
+task: the hook (task 5) is a separate, deterministic path that does not
+depend on an agent's mode choice and was already separately measured and
+passed; the mode/question MCP schema (also task 5) causes no regression on
+its own terms (fusion/hybrid usage correlates with *better* rejection, not
+worse); and answerable-question recall through the tool is flat-to-improved
+against the original baseline. What is refuted is the specific claim this
+task set out to test — that today's agent-layer performance, measured the
+same way the original 0.725 was measured, clears that bar — and it does not.
+This is the operator's call to make with the finding in hand, not a call this
+task makes for them by unwinding five already-shipped, CI-green tasks on one
+measurement that carries a real population confound.
+
+### Ops
+
+Corpus and index reused verbatim from task 5.5 (9,971 docs, 9,473 embedded
+notes, 11,761 chunk vectors) — verified directly via `sqlite3` against the
+index file before serving from it (`SELECT COUNT(*) FROM docmeta` → 9971,
+`SELECT COUNT(DISTINCT doc_id) FROM embeddings` → 9473, `SELECT COUNT(*) FROM
+embeddings` → 11761 — all three match every prior rung's recorded figures
+exactly), then confirmed a second way by the scratch daemon's own startup log
+(`index ready documents=9971 added=0 updated=0 removed=0`). No stray
+`llama-server` processes before starting (one resident child on 8901
+throughout, shared rather than duplicated); 0 embedder restarts across the
+full run. All 6 replicates: `INTEGRITY: clean` (0 hook violations, 0 tool
+escapes, 0 tool-call-count mismatches, 0 budget leaks, 0 driver errors).
+Driver: `claude -p --model opus`, 6-call budget, `--settings
+'{"disableAllHooks":true}'` plus the harness's own `permissions.deny` list, so
+neither the operator's own recall hook nor the deferred-tool surface can leak
+context into the driver. Total cost across all 6 replicates: $50.68; total
+wall time: 10,784s (~3h across 6 concurrent replicate processes against one
+shared daemon). Raw per-replicate scorecards (full per-question detail,
+`tool_call_log`, and the `mode`/`question_passed` instrumentation) at
+`<vault>/Agent/_meta/health/goldv2/agent-layer-r{1..6}-20260814.json`, never
+in the repo.
+
+## Final scorecard
+
+*The spreadsheet-style summary: every landed and refuted rung, in one table,
+as the plan closes.* Refuted columns (`+rerank+floor`, `+lex3`) are included
+alongside the shipped ones, not omitted.
+
+| | baseline | lexical-fusion | +vector RRF | +chunking | +rerank+floor (refuted) | +question | +lex3 (refuted) | hook e2e | +temporal | agent layer (n=6 mean) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| distinctive-token | 3/12 | 7/12 | 8/12 | 8/12 | 7/12 | 9/12 | 11/12 | 8/12 | 8/12 | 87.5% |
+| episodic-temporal | 3/12 | 6/12 | 7/12 | 7/12 | 7/12 | 9/12 | 9/12 | 8/12 | 8/12 | 55.8% |
+| pure-paraphrase | 1/18 | 5/18 | 7/18 | 9/18 | 6/18 | 11/18 | 10/18 | 12/18 | 12/18 | 52.8% |
+| research-corpus | 0/12 | 6/12 | 7/12 | 6/12 | 3/12 | 10/12 | 11/12 | 10/12 | 10/12 | 71.5% |
+| research-density | 0/10 | 3/10 | 6/10 | 6/10 | 2/10 | 9/10 | 8/10 | 9/10 | 9/10 | 93.3% |
+| **R@5 (retrieval layer: 64Q; agent layer: blended 84Q mean)** | **10.9%** | **42.2%** | **54.7%** | **56.2%** | **39.1%** | **75.0%** | **76.6%** | **73.4%** | **73.4%** | **68.0%** |
+| negative rejection | 35% | 0% | 0% | 0% | 40% | 0% | 0% | 0% | 0% | 62.5% |
+| status | shipped | shipped | shipped | shipped | **refuted** | shipped | **refuted** | shipped | shipped | **refuted — see Task 6** |
+
+The agent-layer column is not directly comparable cell-for-cell to the
+retrieval-layer columns to its left — it is a 6-replicate mean of a
+stochastic agent driving a tool over up to 6 calls, scored blended (84
+questions, negatives included in the same average) rather than the
+retrieval-layer convention of R@5-over-64-plus-rejection-over-20 reported
+separately. Its own answerable-only reading (78.1%, negative rejection 62.5%
+— see the Task 6 section above) is the one to set beside the other columns'
+own R@5/rejection pairs. The blended 68.0% is what the rule (≥72.5%) is
+actually checked against, and it is the number that refutes.
+
+**The ladder, read honestly, end to end: 10.9% → 75.0% shipped at the
+retrieval layer, with the largest single gain (+19 points, `+question`) coming
+directly from the query-format artifact task 3's own failure exposed, and
+task 4's failure catching a probe-methodology error that would otherwise have
+propagated into `+lex3` and every rung after it. Two of eight rungs closed
+refuted (`+rerank+floor`, `+lex3`) and both kept their code behind flags the
+hook does not set — no production behavior changed on either refutation. The
+ninth and final gate, agent-layer non-regression, also closes refuted — the
+first refutation in this plan that is not quarantined behind an unpublished
+flag, because the surface it tests (the published `mode`/`question` MCP
+schema) is already live. Recorded, not shipped as a pass, per the plan's own
+rule that a rung failing its rule is not a rung.**
