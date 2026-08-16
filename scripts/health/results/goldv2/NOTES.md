@@ -2452,3 +2452,131 @@ Per-question detail for all 84 questions on both arms, the per-target directory
 token analysis with document frequencies, and the corpus-wide new-signal
 measurement at `<vault>/Agent/_meta/health/goldv2/path-signal-20260816.json`,
 never in the repo.
+
+# Chunk-lexical indexing — refuted: the mechanism that helps its targets also
+
+promotes coincidental noise, and clause (a) caught it
+
+Retrieval-competition arc, section 1. The dense arm already chunks (11,761
+chunk vectors over 9,473 embedded notes; 564 notes split); the lexical arm
+scored whole documents, so a long document's accumulated term-frequency mass
+was not fully discounted by FTS5's fixed `b = 0.75` length normalisation.
+This rung added a chunk-level lexical arm — a separate FTS5 table, `docs`
+untouched — fused into `+question`/hook hybrid search behind a `-chunk-lex`
+flag, default off.
+
+## Task 1: the pre-flight probe changed the plan before any Go code existed
+
+The plan's own size-ratio heuristic (a miss whose expected note is short and
+whose top-5 contains a document several times its size) produced 9
+candidates. Checking each against the actually-scored mechanism (2-term
+subset fusion, `-lex3` off) found 5 of the 9 are pure dense-arm displacement
+— the winning long document never appears in the lexical-fusion candidate
+pool under any subset, at any depth. Chunking the lexical arm cannot touch a
+document the lexical arm never finds. **Lexical reachability has to gate the
+derivation, not size ratio alone**; a future rung with a similar "long
+document displaces short one" shape should check this before counting a
+target as its own.
+
+Of the 4 real candidates, the literature-standard aggregation (MaxP — rank by
+best chunk score) was directly measured and rejected: on all 4, the long
+document's own densest chunk out-scored the short document's, not from many
+noisy draws (the cross-encoder's own failure mode, Task 3 above) but because
+that one chunk simply contained the winning term pair more times, in less
+text. **Best-chunk RANK fused by RRF** was registered instead — the
+mechanism that actually helped: two targets' expected notes had a
+whole-document rank outside the production `rrfDepth=50` window (76, 86 —
+zero fusion contribution today) that compressed to inside it (17, 45) once
+ranked chunk-vs-chunk instead of document-vs-document, independent of
+whether the specific competing long document still won its own local
+comparison (it did, at rank 5 and rank 2).
+
+## A real bug, found and fixed, that turned out not to be the story
+
+Building the arm, `chunks.body` was populated from `ChunkText`'s return
+value, which prefixes the note's title onto every chunk — correct for the
+dense arm's single embedded string, but stored verbatim in a *lexical* body
+column (alongside title in its own column) it double-counted every title
+term. Fixed with a new `ChunkBody` helper sharing `ChunkText`'s boundary
+math but returning raw body slices; re-verified against the flag-off no-op
+control (still 0/84 diff). Fixing it moved the regression from 39/64 to
+40/64 on `+question` — real, but not remotely the dominant effect, which
+cost a second ~5-minute re-embed cycle to learn.
+
+## The measured result
+
+| stratum | `+question` control | `+question` signal | hook control | hook signal |
+|---|---:|---:|---:|---:|
+| distinctive-token | 9/12 | 9/12 | 8/12 | 8/12 |
+| episodic-temporal | 9/12 | 8/12 | 8/12 | 6/12 |
+| pure-paraphrase | 11/18 | 8/18 | 12/18 | 8/18 |
+| research-corpus | 10/12 | 8/12 | 10/12 | 8/12 |
+| research-density | 9/10 | 7/10 | 9/10 | 7/10 |
+| **R@5** | **75.0%** (48/64) | **62.5%** (40/64) | **73.4%** (47/64) | **57.8%** (37/64) |
+| negative rejection | 0/20 | 0/20 | 0/20 | 0/20 |
+
+## Why: rank compression cannot tell relevance from coincidence
+
+Traced on a lost hit, `dt12` ("agentm agent right" → `agentm agent right`).
+Control correctly ranks the expected note (`agent-m-crickets-branding.md`)
+3rd. Signal-on displaces it with a Windows/PowerShell administration note —
+"Find Specific Rights Delegations" — that has nothing to do with AgentM. In
+Windows-admin vocabulary, "agent" (a delegation agent) and "right" (an
+access right) co-occur densely in that note's own short, single, undiluted
+chunk, earning it the best bm25 score in the corpus for that pair and,
+because it is short, a corpus-wide rank good enough to cross into the fusion
+window — the identical mechanism task 1 measured helping its two intended
+targets. **Rank compression rewards any locally-dense chunk, whether the
+density reflects genuine topical relevance or two moderately common words
+landing near each other in an unrelated short note.** Task 1's probe could
+not have caught this: it measured only the 4 hand-picked candidates the
+mechanism was built to help, never the other 60 already-correct questions —
+which is exactly what clause (a)'s non-regression check exists for.
+
+## Clause by clause
+
+**(a) Non-regression — FAILED.** R@5 −12.5pp (`+question`), −15.6pp (hook).
+Worst stratum move −3 (pure-paraphrase, question) / −4 (pure-paraphrase,
+hook), both past the −1 floor by a wide margin.
+
+**(b) Conversion — FAILED.** Neither `dt07` nor `pp16` (the registered
+positive-prediction set) converted, on either arm.
+
+**(c) Prediction, two halves — FAILED.** Positive half 0 of 2 — closes the
+rung refuted on this clause alone, per the arc-wide rule that a positive
+half of 0 closes refuted regardless of the negative half. Negative half
+held 7 of 7 (`dt02`, `pp07`, `pp09`, `pp15`, `ep09`, `rd01`, `rc03`).
+
+**(d) Negatives — MET.** All 20 unchanged, per id, both arms.
+
+**(e) Latency — not measured, moot.** The rule already fails on (a)/(b)/(c);
+a latency result cannot change the ship/no-ship decision.
+
+## Verdict
+
+**Refuted, on clauses (a), (b) and (c).** Reverted rather than shipped on
+partial credit: both worktree commits (the chunk table, the fusion wiring)
+were reset out before any PR opened, so nothing reaches the live binary or
+the vault. This is the first rung in the retrieval-competition arc to refute
+on a *mechanism* rather than a missing-signal premise — the registered
+aggregation does exactly what it was measured to do for its intended
+targets, and that effect is inseparable from what it does to everything
+else it also touches. A bounded, rank-based aggregation was chosen
+specifically to avoid the cross-encoder's known many-noisy-draws failure
+mode; it does avoid that failure mode, and trades it for a different one.
+
+**What this licenses.** The design's own "residue is vocabulary-shaped by
+construction" framing (step 4's amendment-log entry) is corrected separately
+in `wiki/designs/agentm-hybrid-retrieval.md`'s own amendment log — three
+vocabulary rungs and now one competition-mechanism rung have each found a
+real, specific reason a signal reaches its target but a *different* document
+still wins, and none of the four reasons generalise into "add a bounded
+rank-based signal and the right document wins." Section 2 of the arc
+(off-gold probe set, then Vector-PRF on the dense arm) is unaffected — Vector-
+PRF works purely in vector space and shares no mechanism with this rung's
+lexical chunk-and-rank approach.
+
+Per-question detail for all 84 questions, both arms, control and signal:
+`<vault>/Agent/_meta/health/goldv2/chunk-lexical-20260816.json`, never in the
+repo. Full derivation of the aggregation choice and the dt12 trace:
+`progress.md`'s 2026-08-16 "task 5" entry.
