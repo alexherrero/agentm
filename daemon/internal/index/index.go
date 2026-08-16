@@ -25,15 +25,25 @@ import (
 
 // Column weights for bm25(), in table-column order: path, title, meta, body.
 //
-// `path` is UNINDEXED and contributes nothing regardless of weight. `title` (the
-// note's slug plus any frontmatter title) is weighted 4x above body because a
-// filename match on this vault is a strong signal — notes are named for their
-// subject — and it was measured at +3.8 hit@1. `meta` (aliases plus tags) is
-// weighted 3x above body; it measures as a no-op today because only 5.5% of the
-// corpus has anything in that column, and it is built anyway because dreaming's
-// alias backfill lands next and needs somewhere to land.
+// `title` (the note's slug plus any frontmatter title) is weighted 4x above body
+// because a filename match on this vault is a strong signal — notes are named
+// for their subject — and it was measured at +3.8 hit@1. `meta` (aliases plus
+// tags) is weighted 3x above body; it measures as a no-op today because only
+// 5.5% of the corpus has anything in that column, and it is built anyway because
+// dreaming's alias backfill lands next and needs somewhere to land.
+//
+// `path` was UNINDEXED and weight-zero until the path-signal rung, which left
+// the strongest signal here carrying nothing at all for 23 notes: an `_index.md`
+// or `_summary.md` has an indexed title of literally `index` or `summary`, and
+// its only distinguishing token sits in the directory name FTS5 never saw. It is
+// now indexed and weighted 2x above body — the midpoint between `body` and
+// `meta`, which is where a hand-authored but heavily diluted signal belongs,
+// since a path is six to eight tokens of which one or two say anything. The
+// boilerplate segments need no stoplist to keep: `agent`, `desk` and `projects`
+// appear in nearly every path, and SQLite's own bm25 floors the idf of a term
+// that common at 1e-6.
 const (
-	weightPath  = 0.0
+	weightPath  = 2.0
 	weightTitle = 4.0
 	weightMeta  = 3.0
 	weightBody  = 1.0
@@ -140,7 +150,7 @@ func schemaIsStale(db *sql.DB) (bool, error) {
 func (x *Index) migrate() error {
 	stmts := []string{
 		fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS docs USING fts5(
-			path UNINDEXED, title, meta, body, tokenize='%s')`, tokenizer),
+			path, title, meta, body, tokenize='%s')`, tokenizer),
 		`CREATE TABLE IF NOT EXISTS docmeta (
 			id            INTEGER PRIMARY KEY AUTOINCREMENT,
 			path          TEXT UNIQUE NOT NULL,

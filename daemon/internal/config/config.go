@@ -38,7 +38,16 @@ import (
 // covered by several chunk vectors instead of one truncated from its head. Same
 // reason for the bump as 3: the table is a cache, so discarding and re-embedding
 // is the correct migration for a shape change, not a schema patch.
-const SchemaVersion = "4"
+// 5 indexes the `path` column, which was UNINDEXED from the beginning. The
+// directory a note lives in is a subject signal the operator chose, and the
+// notes that need it most are the ones whose title is `index` or `summary`. A
+// column's UNINDEXED-ness is baked into the virtual table at creation, and
+// `CREATE VIRTUAL TABLE IF NOT EXISTS` would quietly leave an existing index on
+// the old shape while the new weight applied to a column still contributing
+// nothing. So the bump is the migration, and it is the only honest one. Same
+// price as 3 and 4: a lexical rebuild of seconds and a re-embed of minutes,
+// because discarding the file takes the vectors with it.
+const SchemaVersion = "5"
 
 // DefaultPort is the port the retired FastMCP daemon used. The real daemon takes
 // the name and the port when that one is retired; `agentmd retire` is what makes
