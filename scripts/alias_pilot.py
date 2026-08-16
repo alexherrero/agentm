@@ -137,9 +137,40 @@ note belongs to. Do not write aliases for the context — it is background \
 for the one note you are aliasing, not a note of its own.
 """
 
+# alias-pilot-structural, task 1. alias-pilot's own content-only prompt
+# converted 0 of 8 oracle targets; a lexical-rank diagnostic showed the
+# generated aliases never became lexically competitive because the gold
+# questions ask in a structural/meta register ("give me a LIST of my
+# PENDING ideas") the content-only prompt never targeted. This addendum is
+# pure category language — roles and template placeholders, never a gold
+# question's own words or anything shaped by one; the gold-blindness
+# boundary is unchanged and GoldBlindnessTests covers this variant too.
+STRUCTURAL_ADDENDUM = """\
+In addition to what the note is ABOUT, also consider what KIND of thing it \
+is — the role it plays for someone looking for it later, not just its \
+subject. Common roles: a LIST or INDEX of items; a SUMMARY or TLDR of a \
+larger body of work; a DECISION or PLAN record (what was decided, and \
+whether it shipped); a STATUS or CAPABILITY snapshot (does X still do Y, is \
+Z supported); an AUDIT or REVIEW of something.
 
-def build_pilot_prompt(batch: list[tuple[ab.Candidate, str]], body_chars: int) -> str:
-    parts = [ab.TASK_RULES, "\n" + CONTEXT_ADDENDUM, "\nNOTES\n"]
+At least one or two of the aliases you write should target that role \
+directly — the phrase someone uses when they remember the SHAPE of what \
+they are looking for before they remember its subject: "my list of \
+<category>", "the summary of <project>", "where we decided <topic>", "does \
+<thing> still support <capability>". Do not invent a role the note does not \
+actually have — an ordinary note is not secretly a list just because this \
+option exists; use a role phrasing only when the note genuinely reads as \
+one of these shapes.
+"""
+
+
+def build_pilot_prompt(batch: list[tuple[ab.Candidate, str]], body_chars: int,
+                        variant: str = "content") -> str:
+    parts = [ab.TASK_RULES]
+    if variant == "structural":
+        parts.append("\n" + STRUCTURAL_ADDENDUM)
+    parts.append("\n" + CONTEXT_ADDENDUM)
+    parts.append("\nNOTES\n")
     for i, (c, context) in enumerate(batch):
         head = c.head.strip()
         if len(head) > 600:
@@ -166,7 +197,7 @@ def _propose_batch(batch: list[tuple[ab.Candidate, str]], args: argparse.Namespa
     Never writes to any file — that is `apply`'s job, on a separate,
     explicit invocation.
     """
-    prompt = build_pilot_prompt(batch, args.body_chars)
+    prompt = build_pilot_prompt(batch, args.body_chars, variant=args.variant)
     notes = [c for c, _ctx in batch]
     last_err = ""
     answers: dict[int, dict] = {}
@@ -217,6 +248,7 @@ def cmd_propose(args: argparse.Namespace) -> int:
     scope = select_scope(vault, rows, args.limit)
     print(f"vault: {vault}")
     print(f"scope: {len(scope)} notes (cap {args.limit})")
+    print(f"variant: {args.variant}")
     if not scope:
         return 0
 
@@ -336,6 +368,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--timeout", type=int, default=300)
     p.add_argument("--retries", type=int, default=2)
     p.add_argument("--body-chars", type=int, default=1100)
+    p.add_argument(
+        "--variant", choices=["content", "structural"], default="content",
+        help=("content: alias-pilot's original prompt, unchanged (default). "
+              "structural: also asks for role/meta phrasings (list, index, "
+              "summary, decision record, status snapshot) alongside content."),
+    )
     p.add_argument("--journal", required=True, help="where proposals are written")
     p.set_defaults(func=cmd_propose)
 

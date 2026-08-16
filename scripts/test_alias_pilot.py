@@ -169,6 +169,26 @@ class PromptTests(unittest.TestCase):
         for i in range(3):
             self.assertIn(f"--- note id={i}", prompt)
 
+    def test_default_variant_is_content_and_omits_the_structural_addendum(self):
+        note = ab.Candidate(path="desk/projects/x/_index.md", flags=[], status="active",
+                             head="kind: index", body="Project overview.")
+        prompt = alias_pilot.build_pilot_prompt([(note, "")], 1100)
+        self.assertNotIn(alias_pilot.STRUCTURAL_ADDENDUM, prompt)
+
+    def test_explicit_content_variant_is_byte_identical_to_the_default(self):
+        note = ab.Candidate(path="desk/projects/x/_index.md", flags=[], status="active",
+                             head="kind: index", body="Project overview.")
+        default_prompt = alias_pilot.build_pilot_prompt([(note, "ctx")], 1100)
+        explicit_prompt = alias_pilot.build_pilot_prompt([(note, "ctx")], 1100, variant="content")
+        self.assertEqual(default_prompt, explicit_prompt)
+
+    def test_structural_variant_adds_the_role_addendum_without_removing_content_rules(self):
+        note = ab.Candidate(path="desk/projects/x/_index.md", flags=[], status="active",
+                             head="kind: index", body="Project overview.")
+        prompt = alias_pilot.build_pilot_prompt([(note, "")], 1100, variant="structural")
+        self.assertIn(alias_pilot.STRUCTURAL_ADDENDUM, prompt)
+        self.assertIn(ab.TASK_RULES, prompt)
+
 
 class ProposeApplyTests(unittest.TestCase):
     """Propose writes only a journal; apply is the separate, explicit write."""
@@ -378,6 +398,11 @@ class GoldBlindnessTests(unittest.TestCase):
             self.assertNotIn(term, self.SOURCE)
 
     def test_no_file_opened_during_a_full_propose_run_is_gold_or_oracle_shaped(self):
+        for variant in ("content", "structural"):
+            with self.subTest(variant=variant):
+                self._assert_propose_run_opens_no_gold_shaped_path(variant)
+
+    def _assert_propose_run_opens_no_gold_shaped_path(self, variant):
         opened: list[str] = []
         real_open = Path.open
 
@@ -409,7 +434,8 @@ class GoldBlindnessTests(unittest.TestCase):
                  mock.patch.object(ab, "call_model", return_value=canned), \
                  contextlib.redirect_stdout(io.StringIO()):
                 alias_pilot.main(["--vault", str(vault), "propose",
-                                   "--journal", str(journal), "--limit", "300"])
+                                   "--journal", str(journal), "--limit", "300",
+                                   "--variant", variant])
 
         self.assertTrue(opened, "the spy recorded no file opens at all — test is not exercising I/O")
         for p in opened:
@@ -425,17 +451,28 @@ class GoldBlindnessTests(unittest.TestCase):
             (ab.Candidate(path="external/extproj/_index.md", flags=[], status="active",
                           head="kind: index", body="External project overview."), ""),
         ]
-        prompt = alias_pilot.build_pilot_prompt(notes, 1100)
+        for variant in ("content", "structural"):
+            with self.subTest(variant=variant):
+                prompt = alias_pilot.build_pilot_prompt(notes, 1100, variant=variant)
+                for q in self.GOLD_QUESTIONS:
+                    self.assertNotIn(q, prompt)
+
+    def test_structural_addendum_is_pure_category_language(self):
+        """The addendum names roles (list, index, summary, ...) and template
+        placeholders only — never a gold question's own words."""
+        low = alias_pilot.STRUCTURAL_ADDENDUM.lower()
         for q in self.GOLD_QUESTIONS:
-            self.assertNotIn(q, prompt)
+            self.assertNotIn(q.lower(), low)
+        for term in self.BANNED_CODE_SUBSTRINGS:
+            self.assertNotIn(term.lower(), low)
 
     def test_generation_function_signatures_take_no_gold_shaped_input(self):
         """`build_pilot_prompt` and `_propose_batch` accept only (note, context)
-        pairs and generation args — there is no parameter through which a gold
-        question or a gold-set path could be threaded in the first place."""
+        pairs, a variant enum, and generation args — there is no parameter
+        through which a gold question or a gold-set path could be threaded."""
         import inspect
         sig = inspect.signature(alias_pilot.build_pilot_prompt)
-        self.assertEqual(list(sig.parameters), ["batch", "body_chars"])
+        self.assertEqual(list(sig.parameters), ["batch", "body_chars", "variant"])
         sig2 = inspect.signature(alias_pilot._propose_batch)
         self.assertEqual(list(sig2.parameters), ["batch", "args"])
 

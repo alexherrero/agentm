@@ -2143,3 +2143,118 @@ Per-question detail, including the 120 generated alias sets and the four
 lexical-rank diagnostics, at
 `<vault>/Agent/_meta/health/goldv2/alias-pilot-20260816.json`, never in the
 repo.
+
+---
+
+# Alias pilot, structural variant — refuted the same way, a sharper null
+
+Run 2026-08-16, same day, operator-approved successor to alias-pilot's own
+re-audit trigger: *"any successor alias-generation rung should pre-register
+against a **different** prompt strategy."* Same three clauses as alias-pilot,
+unchanged, on a **fresh** `goldv2-20260812` copy (the previous scratch copy
+carries alias-pilot's own aliases and cannot be reused).
+
+## The one variable that changed
+
+`alias_pilot.py propose --variant structural` — everything held constant
+(scope, gate, gold-blindness boundary, write mechanics) except the prompt,
+which gains one instruction block asking the model to also name the note's
+*role* (list/index, summary, decision/plan record, status/capability
+snapshot, audit/review) and write one or two aliases targeting that role
+directly, in template form ("my list of `<category>`", "does `<thing>` still
+support `<capability>`") — alongside the unchanged content-phrasing rules.
+Pure category language and placeholders; `GoldBlindnessTests` extended to
+cover this variant the same way it covers the original.
+
+## Ops
+
+Fresh copy restored to a scratch location distinct from alias-pilot's own.
+Index built and asserted before any alias was written: 9,971 / 9,473 / 11,761,
+exact. Baseline reproduced row-for-row against `question-20260814.json` and
+`hook-e2e-20260814.json` (0/84 differing, both arms) before writing anything.
+`propose --variant structural` selected the identical **120-note scope**
+alias-pilot's own run selected (same corpus, same fixed scope definition —
+confirms the scope itself is deterministic, only the prompt changed), all 120
+aliased. `apply --allow-ungated` wrote them; manifest-verified as exactly 120
+files changed, each touching only `aliases:`, 0 violations. Index rebuilt:
+9,971 / 9,473 unchanged, 11,762 chunk vectors (+1, same as alias-pilot's own
+run — the alias-text-crosses-a-chunk-boundary explanation applies again, same
+magnitude). Aliased index scored twice; 0/84 rows differ between runs, either
+arm.
+
+## The measured result
+
+| stratum | `+question` baseline | `+question` + structural | hook baseline | hook + structural |
+|---|---:|---:|---:|---:|
+| distinctive-token | 9/12 | 9/12 | 8/12 | 8/12 |
+| episodic-temporal | 9/12 | 9/12 | 8/12 | 8/12 |
+| pure-paraphrase | 11/18 | 11/18 | 12/18 | 12/18 |
+| research-corpus | 10/12 | 10/12 | 10/12 | 10/12 |
+| research-density | 9/10 | 9/10 | 9/10 | 9/10 |
+| **R@5** | **75.0%** (48/64) | **75.0%** (48/64) | **73.4%** (47/64) | **73.4%** (47/64) |
+| negative rejection | 0/20 | 0/20 | 0/20 | 0/20 |
+
+**Byte-identical stratum totals to alias-pilot's own content-only result.**
+
+## Clause by clause
+
+**Clause (a) — FAILED, 0 of 8 (0 of 3 in-scope), both arms.** Identical
+outcome to the content-only prompt: `pp05`, both `pp09` paths, and `pp15`
+stay misses.
+
+**Clause (b) — MET, net +0.** **Clause (c) — MET**, all 20 negatives
+unchanged. Three non-target hits moved rank (`dt06` 1→3 worse, `ep04` 3→4
+worse, `ep05` 2→1 better) and stayed hits — a different trio than
+alias-pilot's own (`ep04`, `ep05`, `pp08`), overlapping on two ids,
+reciprocal-rank displacement recurring under a different prompt, still
+costing nothing.
+
+## Why it failed again: the lexical rank still never moves, even where the wording got closer
+
+| target | note | baseline lexical rank | structural-aliased lexical rank |
+|---|---|---:|---:|
+| `pp05` | `home-tech-next/_index.md` | >50 | >50 |
+| `pp09` | `external/primos/_index.md` | >50 | >50 |
+| `pp09` | `external/primos/analysis/_summary.md` | >50 | >50 |
+| `pp15` | `PLAN.archive.20260724-loose-ends-os-install-matrix.md` | >50 | >50 |
+
+**Zero movement, identical to the content-only run — but this time the
+generated text got demonstrably closer and it still didn't move the rank.**
+`pp05`'s structural aliases include *"list of home tech sub-projects"* —
+containing "list," a term the gold query (`list pending project ideas house`)
+actually uses, unlike anything the content-only prompt produced. It made no
+lexical difference: the note is still outside the top 50 of 9,971 documents.
+The likely reason, read off the corpus rather than assumed: "list" and
+"project(s)" are both common terms across a project-heavy vault, so a thin
+one-or-two-term overlap on high-frequency terms doesn't carry enough BM25
+weight to outrank the many other documents that also contain them. This
+sharpens the earlier diagnosis rather than replacing it: it is not only that
+the content-only prompt reached for the wrong vocabulary — even a prompt that
+explicitly asks for the right *kind* of vocabulary and partially succeeds
+still loses to term-frequency competition in a corpus this size, unless the
+overlap is precise enough to include a genuinely distinguishing term.
+
+## What this licenses
+
+**A second clean null, not a second version of the backfill's damage.**
+Unchanged R@5 on both arms, no negative changed, no non-target question lost
+— exactly like alias-pilot. The scope-and-gate discipline held again.
+
+**The stronger claim, now earned by two independent prompts.** alias-pilot's
+own amendment-log entry left open whether the content-only prompt specifically
+was the problem. This rung tested that directly, changing only the prompt,
+and got the identical clause-(a) outcome. The honest reading is no longer "the
+first prompt reached for the wrong words" alone — it is that **prompting
+alone, gold-blind, has not found a way to make these three particular notes
+lexically competitive for these three particular questions**, across two
+independently pre-registered attempts. A third prompt variant is not
+foreclosed, but the burden is now on showing what would be different about it,
+not merely that it is different.
+
+**Nothing applied to the live vault**, per the design's own rule for a
+refuted rung, same as alias-pilot.
+
+Per-question detail, including all 120 generated alias sets under the
+structural variant and the four lexical-rank diagnostics, at
+`<vault>/Agent/_meta/health/goldv2/alias-pilot-structural-20260816.json`,
+never in the repo.
