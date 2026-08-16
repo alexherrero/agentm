@@ -1984,3 +1984,162 @@ The re-scope this suggests, and does **not** itself authorize: clause (b) and
 re-set them against these uniform numbers before spending anything, and should
 consider whether a labeller that never deletes needs an 80% bar on the one
 stratum where derivation, not answerhood, is the real question.
+
+---
+
+# Alias pilot — refuted on clause (a): a clean null, not the backfill repeated
+
+Run 2026-08-16, rule pre-registered in the design (§4) and the plan before any
+code: **converts ≥3 of the eight oracle-validated targets; loses zero
+currently-passing questions net, published by id; leaves the 20 negatives'
+behaviour unchanged.** A pilot that cannot beat "do nothing" closes refuted.
+
+## The mechanism, and what makes it a fair test of the family
+
+`scripts/alias_pilot.py` — a batched Sonnet 5 pass, gold-blind by construction,
+over a fixed ≤300-note scope described entirely by structural patterns (every
+`_index.md`, everything under `external/`, every `PLAN.archive.*.md` — never a
+note list), propose→confirm behind the corpus-write gate. It reuses
+`alias_backfill.py`'s generation, cleaning, and write primitives verbatim —
+same prompt rules, same alias cleaning, same frontmatter mechanics as the
+reverted 2026-08 bulk backfill — so the only variables between this pilot and
+its explicit null hypothesis are scope (targeted, not bulk) and gating
+(propose→confirm, not write-on-generate). Gold-blindness was made mechanical,
+not asserted: `test_alias_pilot.py`'s `GoldBlindnessTests` instruments every
+file a real propose run opens and checks the built prompt against the eight
+oracle questions' own literal text.
+
+## Ops
+
+Fresh copy of `goldv2-20260812` restored to a scratch location distinct from
+every prior rung's copy. Index built from scratch and asserted before any
+alias was written: 9,971 docs / 9,473 embedded notes / 11,761 chunk vectors —
+the three figures every prior rung recorded, exact. Embedder:
+EmbeddingGemma-300M-Q8_0 at `-np 1 -c 2048 -b 2048 -ub 2048`, resident, not
+spawned. `degraded: []` throughout.
+
+**Baseline reproduced before a single alias was written**: 0 of 84 rows differ
+against `question-20260814.json` and `hook-e2e-20260814.json` on either arm.
+
+`propose` selected **120 notes** in scope — not the 290 the plan's task 1
+counted against the live vault; the frozen corpus is four days younger, and
+120 is the correct number to score against, not a discrepancy. 120 of 120
+aliased, 0 skipped, 0 errored. All three of the oracle's in-scope targets
+(`pp05`, both `pp09` paths, `pp15`) are among them. `apply --allow-ungated`
+wrote them to the scratch copy — `--allow-ungated` exists because a
+bare-extracted tarball has no git history, so `agentmd gate corpus-write`
+cannot answer "does an undo exist" at all; the design's gate governs *live*
+writes, and this measurement arm is verified by the manifest diff instead,
+per the design's own Data Integrity section.
+
+**The edit is exactly 120 notes and exactly one field each.** A file-level
+md5 manifest taken before authoring, diffed after, names 120 changed files;
+a per-file check (pristine text plus exactly one inserted `aliases:` line,
+nothing else) passes for all 120, zero violations. Index rebuilt from
+scratch: 9,971 docs / 9,473 embedded notes unchanged, 11,762 chunk vectors
+(**+1**, not a defect — 120 notes gained alias text against the oracle's 8,
+and one note's addition was enough to cross a chunk boundary; explained, not
+swept past). The aliased index was scored twice; 0 of 84 rows differ between
+the two runs, on either arm.
+
+## The measured result
+
+| stratum | `+question` baseline | `+question` + pilot | hook baseline | hook + pilot |
+|---|---:|---:|---:|---:|
+| distinctive-token | 9/12 | 9/12 | 8/12 | 8/12 |
+| episodic-temporal | 9/12 | 9/12 | 8/12 | 8/12 |
+| pure-paraphrase | 11/18 | 11/18 | 12/18 | 12/18 |
+| research-corpus | 10/12 | 10/12 | 10/12 | 10/12 |
+| research-density | 9/10 | 9/10 | 9/10 | 9/10 |
+| **R@5** | **75.0%** (48/64) | **75.0%** (48/64) | **73.4%** (47/64) | **73.4%** (47/64) |
+| negative rejection | 0/20 | 0/20 | 0/20 | 0/20 |
+
+**Byte-identical stratum totals, on both arms.** Not one question changed
+hit/miss state anywhere in the 84-question set.
+
+## Clause by clause
+
+**Clause (a) — FAILED, 0 of 8 (0 of 3 in-scope) converted, both arms.** `pp05`,
+both `pp09` paths, and `pp15` — the three targets the fixed scope structurally
+reaches — stay misses after aliasing, on `+question` and on the hook arm alike.
+
+**Clause (b) — MET, net +0.** Zero currently-passing questions lost, zero
+non-target questions gained, on both arms.
+
+**Clause (c) — MET.** All 20 negatives' `correct_rejection` identical before
+and after, on both arms.
+
+**Three non-target hits moved rank by exactly one, on both arms, and stayed
+hits:** `ep04` 3→4, `ep05` 2→3, `pp08` 1→2. Reciprocal-rank displacement — the
+mechanism this project has now watched cost real hits three times — showing
+up here at a magnitude that cost nothing. Recorded because of that history,
+not because it did damage this time.
+
+## Why clause (a) failed: a vocabulary miss, not fusion friction
+
+The oracle's one non-conversion (`pp07`) was diagnosed as fusion friction: its
+hand-written alias won the lexical arm outright (rank 1, from outside the
+top 50) and still lost to reciprocal-rank fusion. The same diagnostic run
+against this pilot's three in-scope targets (`agentmd search -mode fusion -k
+50 -no-embedder`, baseline index vs aliased index) shows a different failure:
+
+| target | note | baseline lexical rank | aliased lexical rank |
+|---|---|---:|---:|
+| `pp05` | `home-tech-next/_index.md` | >50 | >50 |
+| `pp09` | `external/primos/_index.md` | >50 | >50 |
+| `pp09` | `external/primos/analysis/_summary.md` | >50 | >50 |
+| `pp15` | `PLAN.archive.20260724-loose-ends-os-install-matrix.md` | >50 | >50 |
+
+**Zero rank movement.** These aliases never became lexically competitive at
+all — the pilot didn't lose to fusion the way `pp07` did; it never reached
+fusion with a fighting chance. Reading what was generated against what the
+gold questions ask explains why. `pp05`'s question is *"Give me a list of my
+pending project ideas for the house?"* — a structural, meta-level request
+naming the note's *role* ("pending", "ideas", "list"). The generated aliases
+describe the note's *content* instead: "nas and identity consolidation plan",
+"home network umbrella project", "cloudflare tunnel for home services" —
+accurate, and useless for this query, because none share the vocabulary the
+question actually uses. `pp09` and `pp15` show the identical pattern:
+content-true aliases, meta-vocabulary miss.
+
+The prompt asks for "the phrasings someone would plausibly type when looking
+for that note" (`alias_backfill.py`'s `TASK_RULES`, reused verbatim, per
+task 2's own discipline of not re-deriving a tested primitive) — and a
+gold-blind model answers with plausible *content* phrasings. The oracle's
+hand-written aliases, gold-informed by construction, could target the exact
+idiosyncratic *framing* a real question happens to use; a mechanism blind to
+that question has no way to know the framing in advance. This is recorded as
+the finding, not chased — tuning the prompt toward these three specific
+misses now would mean reading what they need and writing back toward it, the
+same gold-informed-by-the-back-door trap task 1 declined when it fixed the
+scope before checking which widening would recover more targets.
+
+## What this does and does not license
+
+**Not the −3.85-point backfill wearing a new name.** The explicit comparison
+of record is "do nothing," and on this scorecard the pilot does exactly
+that — R@5 unchanged on both arms, no negative's behaviour changed, no
+non-target question lost. The pilot's scope-and-gate discipline (targeted,
+never bulk; propose→confirm; the manifest-verified single-field edit) kept a
+mechanism that does not clear its own bar from costing anything, which is
+itself evidence the discipline works, independent of whether this particular
+generation mechanism does.
+
+**Not a verdict on aliasing in general.** The oracle already showed the
+ceiling is real: hand-written aliases converted 7 of 8. What failed here is
+one specific, narrow generation strategy — the backfill's own content-focused
+prompt, run gold-blind — against three targets whose gold questions happen to
+ask in a structural register the prompt was never told to reach for. A
+prompt that explicitly asked for both content and structural/meta phrasings
+("what kind of thing is this — a list, a summary, a decision, a status —
+and what would someone call it") is untested, not refuted, by this run.
+
+**Per the design's own rule, this closes refuted.** Nothing is applied to the
+live vault. The alias story returns to capture-time practice only, per §4's
+own text, unless a future rung is built and pre-registers a rule against a
+different generation strategy — which is a new rung, not a re-run of this one.
+
+Per-question detail, including the 120 generated alias sets and the four
+lexical-rank diagnostics, at
+`<vault>/Agent/_meta/health/goldv2/alias-pilot-20260816.json`, never in the
+repo.
