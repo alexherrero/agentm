@@ -222,6 +222,57 @@ at capture time are already standing practice and need no build.
 
 *Newest first.*
 
+- **2026-08-16 · the "residue is vocabulary-shaped" premise is corrected, and
+  a first competition-mechanism rung (chunk-level lexical indexing) is
+  refuted in its own right.** This design's own 2026-08-14 step-4 entry
+  wrote the retrieval residue off as "pure-paraphrase and vocabulary
+  bridging," scoped to the alias/filing arc, and implicitly priced further
+  ranking mechanism out of this design's own scope on that basis. Three
+  subsequent rungs — `alias-pilot`, `alias-pilot-structural`, `path-signal`
+  (a new `retrieval-competition` arc, briefed after path-signal's finding) —
+  each assumed a signal was missing and each found it present but
+  **outranked** by a different document instead. The residue is a
+  competition problem, not a vocabulary one; the correction is inline above,
+  at the step-4 entry itself.
+
+  The retrieval-competition arc's first rung tried the obvious fix — chunk
+  the lexical arm to the same granularity the dense arm already chunks at,
+  so a long document's whole-document term-frequency mass stops crowding out
+  a short atomic note — and it is also refuted, for a mechanism-level reason
+  rather than a missing-signal one. A pre-flight probe (measured before any
+  Go code) rejected the literature-standard aggregation (MaxP) outright: on
+  every reachable target, a long document's single densest chunk out-scored
+  a short document's whole body, not from many noisy draws but because that
+  one chunk simply contained the query terms more times, in less text.
+  Rank-based aggregation (best-chunk rank fused by RRF, bounded contribution)
+  was registered instead, and it did what it was measured to do for its two
+  intended targets — and, corpus-wide, promoted a Windows/PowerShell
+  administration note into an AgentM query's top-5 because "agent" (a
+  delegation agent) and "right" (an access right) happened to co-occur
+  densely in that note's own short, undiluted chunk. **Rank compression
+  cannot distinguish a short document's density that reflects genuine
+  relevance from one that reflects coincidental common-word co-occurrence.**
+  R@5 −12.5 to −15.6 points on the two production arms; reverted before any
+  PR opened, nothing reached the live binary. Why the pre-flight probe could
+  not have caught this: it measured only the handful of candidates the
+  mechanism was built to help, never the other ~60 already-correct
+  questions — which is exactly why clause (a)'s non-regression check is the
+  arc's primary clause, not clause (b)'s conversion count.
+
+  **This design's own ladder does not yet contain a working competition
+  mechanism.** The arc continues (an off-gold probe set, then Vector-PRF on
+  the dense arm — a purely vector-space mechanism sharing no machinery with
+  chunk-lexical's approach) rather than declaring the residue permanently
+  out of reach; a design update naming a working mechanism, if one is found,
+  belongs here when it lands. **Re-audit trigger:** a future rung that finds
+  a way to weight chunk-level density by genuine topical relevance rather
+  than raw term co-occurrence (a discriminating signal this rung had none
+  of) would be the first candidate worth re-examining against this same
+  corpus. Full derivation:
+  `scripts/health/results/goldv2/NOTES.md` § "Chunk-lexical indexing —
+  refuted", and `<vault>/Agent/desk/projects/agentm/_harness/progress.md`'s
+  2026-08-16 "task 5" entry.
+
 - **2026-08-14 · step 6 (agent-layer non-regression) measured: refuted — mean
   0.6799 against a required ≥0.725, concentrated in negative rejection rather
   than recall.** `week3_daemon_retest.py` (the week-1 driver harness, reused
@@ -575,8 +626,13 @@ at capture time are already standing practice and need no build.
   fusion-conversion rate, realistically ~83%, plus temporal's unique `ep09`.
   The residue — `pp05`, `pp09`, `pp17` and the five written-off — is
   pure-paraphrase and vocabulary bridging, which this design explicitly
-  scoped to the alias/filing arc. **So the stated 70–90% band stands as
-  reachable and >90% does not belong to this design**; recording that here
+  scoped to the alias/filing arc. **[Corrected 2026-08-16 — see the
+  retrieval-competition arc's amendment below: three targeted vocabulary
+  rungs each found their signal present but outranked by a different
+  document, not missing. The residue is a competition problem this design's
+  own ladder does not yet solve, not a vocabulary gap; "vocabulary bridging"
+  undersold what was actually missing.]** **So the stated 70–90% band stands
+  as reachable and >90% does not belong to this design**; recording that here
   rather than letting the next rung chase it. Why not run temporal anyway
   since it is written: its expected value is negative against a stratum that
   just went 7/12 → 9/12, and deferring costs nothing because the
