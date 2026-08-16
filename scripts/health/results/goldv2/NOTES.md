@@ -2258,3 +2258,197 @@ Per-question detail, including all 120 generated alias sets under the
 structural variant and the four lexical-rank diagnostics, at
 `<vault>/Agent/_meta/health/goldv2/alias-pilot-structural-20260816.json`,
 never in the repo.
+
+# Path signal — refuted on clause (b): the distinguishing token was already in the body
+
+Run 2026-08-16, prompted by the reciprocal handoff's §1 finding and by the two
+alias rungs whose scoping error it explains. The FTS5 table has declared
+`docs(path UNINDEXED, title, meta, body)` with `weightPath = 0.0` since it was
+written, so the directory a note lives in has never been searchable — and 23
+notes in the corpus are `_index.md` or `_summary.md` files whose indexed title
+is literally `index` or `summary`, which leaves the strongest column at 4×
+carrying nothing for exactly the notes whose subject lives in the folder name.
+
+Four clauses, all registered in the plan before any code: **(a)** non-regression
+first, `+question` R@5 ≥ 48/64 and hook ≥ 47/64 with no stratum down more than
+one question; **(b)** at least one of `pp09` / `pp17` converts on `+question`;
+**(c)** observed movement matches the registered per-question prediction in ≥ 6
+of 8 targets, on both arms; **(d)** the 20 negatives' `correct_rejection`
+unchanged per id.
+
+## The control is a different thing here, and the difference matters
+
+Every prior rung proved absence by running the new build with its flag off and
+diffing row-for-row against the landed column. **That technique does not work
+for a schema change.** FTS5's bm25 length normalisation counts tokens across all
+indexed columns, so indexing `path` changes every document's length whatever
+weight it carries — `weightPath = 0.0` with `path` indexed is not a no-op, and a
+flag-off arm of the new build would have read as one.
+
+The control here is a pristine index built by the **unmodified `main` binary at
+`26a1499`**, not by the changed build. It reproduces both landed columns
+exactly: **0 of 84 rows differ** against `question-20260814.json` and
+`hook-e2e-20260814.json`. Its schema reads back as
+`fts5(path UNINDEXED, title, meta, body)` and its version as 4, which is the
+assertion that it is the shape it claims to be.
+
+## Ops
+
+Fresh `goldv2-20260812` restored to a scratch location distinct from every prior
+rung's copy. The corpus is not edited by this rung at all — only the schema is.
+Both indexes were built from scratch and asserted: **9,971 docs / 9,473 embedded
+notes / 11,761 chunk vectors, identical on both**, so the lexical schema changed
+and the dense arm did not, which is the integrity claim the plan asked for.
+Embedder EmbeddingGemma-300M-Q8_0 at `-np 1 -c 2048 -b 2048 -ub 2048`, resident
+and attached. The changed index reads back as `fts5(path, title, meta, body)` at
+schema version 5. Scored twice: **0 of 84 rows differ between the two runs**, on
+either arm.
+
+`weightPath = 2.0`, chosen before the run and from the weights already measured
+rather than from a sweep. A path is a hand-authored subject signal in the same
+family as a title, but it is diluted — six to eight tokens of which one or two
+say anything, against a title that is nearly all signal and a `meta` column of
+hand-written aliases with no boilerplate at all. So it sits strictly below
+`meta` and strictly above `body`, and 2.0 is that interval's midpoint. The arc
+has twice refused a constant fitted to these 84 questions, and this is the same
+refusal made in advance rather than at review.
+
+## The measured result
+
+| stratum | `+question` control | `+question` + path | hook control | hook + path |
+|---|---:|---:|---:|---:|
+| distinctive-token | 9/12 | 9/12 | 8/12 | 8/12 |
+| episodic-temporal | 9/12 | 9/12 | 8/12 | 8/12 |
+| pure-paraphrase | 11/18 | 11/18 | 12/18 | 12/18 |
+| research-corpus | 10/12 | 10/12 | 10/12 | 10/12 |
+| research-density | 9/10 | 9/10 | 9/10 | 9/10 |
+| **R@5** | **75.0%** (48/64) | **75.0%** (48/64) | **73.4%** (47/64) | **73.4%** (47/64) |
+| negative rejection | 0/20 | 0/20 | 0/20 | 0/20 |
+
+Not one of the 84 questions changed hit/miss state, on either arm. Five hits
+moved rank and stayed hits, the same five on both arms: `ep04` 3→2, `rc08` 4→3,
+`rd04` 5→4 and `rd05` 2→1 all better, `rd10` 2→3 worse.
+
+## Clause by clause
+
+**Clause (a) — MET.** R@5 flat on both arms at its floor, every stratum ±0, no
+question lost. For a change that touches every document's length normalisation
+this is the outcome worth having, and it was the least certain of the four.
+
+**Clause (b) — FAILED, 0 of 2.** Neither `pp09` nor `pp17` converted, on either
+arm. This is what refutes the rung.
+
+**Clause (c) — MET at 6 of 8, and the pass is weak in a way worth naming.** Both
+CONVERTS predictions failed and all six NOCHANGE predictions held. Clause (c)
+was written to catch *unpredicted* movement; nothing moved, so it passes on the
+strength of six correct predictions that nothing would happen. **It is not
+evidence for the mechanism here, and reading it as such would be the error the
+clause exists to prevent.** A successor rung should pair it with a clause that
+fails when a predicted movement is absent — currently that is clause (b)'s job
+alone, and only for two of the eight targets.
+
+**Clause (d) — MET.** All 20 negatives unchanged, per id.
+
+## Why it failed: the token was already matchable, from the body
+
+The registered prediction required a path token that (i) the indexed title does
+not carry, (ii) overlaps the query's extracted terms, and (iii) is rare enough
+to earn IDF weight. Re-running `probe_paths.py` against the control index
+reproduces that derivation exactly, including `primos` at df 47, `developer` at
+576 and `workflows` at 2,850. All three conditions hold.
+
+There was a fourth condition nobody wrote down, and it is false in all eight
+cases: **the token also has to not already be matchable from the note's own
+body.** The two indexes differ only in whether `path` is indexed, so for any
+token, the documents matching it in one index and not the other are exactly the
+documents for which the path made it newly matchable. Asked that way, per target
+(df measured on the changed index):
+
+| target | overlapping token | df | newly matchable from the path? |
+|---|---|---:|---|
+| `pp09` | `primos` | 47 | **no — already in the body** |
+| `pp17` | `developer` | 580 | **no — already in the body** |
+| `pp17` | `workflows` | 2,855 | **no — already in the body** |
+| `pp07`, `pp15` | `agentm` | 1,980 | no — already in the body |
+
+The only tokens the path made newly matchable for these notes are structural:
+`agent` (97.2% of the corpus), `desk` (20.8%), `projects` (17.1%), `harness`,
+`archive`, `crickets`. None of them appears in these queries, and IDF floors the
+common ones to nothing in any case. A folder named for its subject holds notes
+that talk about that subject, so the distinguishing word is already in the
+prose. The path was never the only place it lived.
+
+The lexical-arm ranks say the same thing from the other side: **all eight
+targets sit outside the top 50 on both indexes**, unmoved. The change is not
+inert — a bare `primos` query moves `external/primos/_index.md` from −10.539 to
+−10.694 and lifts `analysis/_summary.md` from 7th to 4th *within the primos
+cluster* — but it moves every note in that folder together, and the contest
+those notes lose is against documents matching `kept notes`, which the folder
+name does not touch.
+
+## What indexing the path actually added, corpus-wide
+
+Measured across all 9,971 documents rather than inferred from the eight:
+
+- **262 distinct directory tokens** in the whole corpus. The directory
+  vocabulary is far smaller than the prose vocabulary, which is the first
+  quantitative reason to expect little from it.
+- **23,238 new (document, token) matchable pairs**, and **9,819 of 9,971
+  documents — 98.5% — gained at least one.**
+- The top of that list is entirely boilerplate and machine-generated:
+  `memory` (7,019 documents), `agent` (6,461), `desk` (2,035), `inbox` (1,054),
+  `scratch` (1,052), then timestamp and hash directory names — `20260712`,
+  `17f58659`, `015948` — at 635 documents each.
+- Of the 23 `_index.md` / `_summary.md` notes this rung was built for, **22
+  gained a new matchable token**, and in every target case that token was
+  boilerplate rather than the folder's own name.
+
+So the design call was right about IDF and wrong about what would be left over.
+The boilerplate did discount itself and cost nothing, exactly as predicted —
+clause (a) is the proof of that. What the prediction missed is that once IDF has
+correctly discounted the boilerplate, there is nothing else in the path that the
+body did not already say.
+
+## Form A tested a compound, disclosed before the run
+
+The `path` column holds the whole relative path, so indexing it also re-carries
+every filename-stem token, which makes the effective weight on a title-shaped
+match 6.0 rather than 4.0 across the corpus. That was written into the plan's
+risks before the run as the first place to look if clause (a) failed. Clause (a)
+did not fail, so the compound cost nothing measurable — and the narrower variant
+the plan named as its successor (directory segments in a column of their own) is
+not worth building, since it would remove a side effect that measured at zero
+while leaving the actual cause untouched.
+
+## Verdict, and what does not ship
+
+**Refuted on clause (b).** Reverted rather than quarantined behind a flag: a
+column's UNINDEXED-ness is fixed when the virtual table is created, so there is
+nothing to hide it behind — the same reason and the same call as the elicitation
+rung's revert. Nothing reaches the live binary or the vault.
+
+## What this licenses
+
+**A third clean null in one week, and the three now share a cause.**
+`alias-pilot` and `alias-pilot-structural` wrote body vocabulary into notes whose
+problem was structural; this rung added structural vocabulary to notes whose
+distinguishing word was already in the body. All three assumed a signal was
+*missing*. In every case it was **present and outranked**. The handoff's §1 said
+so for five of the eight already — `primos` at lexical rank 1, `bm25 k1` at 1,
+`embeddings vector db` at 1 — and this rung is what makes that general rather
+than anecdotal: adding a token a document already contains does not change which
+document wins.
+
+**The next mechanism has to change the competition, not the vocabulary.** Two
+candidates remain from the handoff's §5, and this result reorders them.
+Chunk-level lexical indexing (item 2) attacks length subsidy, which is the
+mechanism by which 22–39KB roadmaps beat 1.4–11KB notes on term-frequency mass:
+a competition problem rather than a vocabulary one, and the one a 9,971-note
+corpus can measure where a 120-note vault cannot. Deterministic acronym
+extraction (item 3) is a vocabulary mechanism, and vocabulary mechanisms are now
+0 for 3 here.
+
+Per-question detail for all 84 questions on both arms, the per-target directory
+token analysis with document frequencies, and the corpus-wide new-signal
+measurement at `<vault>/Agent/_meta/health/goldv2/path-signal-20260816.json`,
+never in the repo.
