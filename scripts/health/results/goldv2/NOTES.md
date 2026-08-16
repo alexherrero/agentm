@@ -1857,3 +1857,130 @@ is not an elicitation problem. Thread A's other half, the deliberate-path
 labeller, is unaffected: it is a different surface with a different lever, and
 the probe evidence behind it (85.0% projected rejection against a cross-encoder's
 40%) is untouched by this result.
+
+---
+
+# Answerhood labeller — refuted on two clauses, and strong on four strata of five
+
+Run 2026-08-15, Thread A of the rejection-and-vocabulary arc
+(`wiki/designs/agentm-rejection-and-vocabulary.md` §3), scored by deterministic
+offline replay against the candidate sets the agent was actually served. Rule
+pre-registered, all three clauses required.
+
+| clause | measured | bar | |
+|---|---:|---:|---|
+| (a) negative trials with no candidate labelled `answers` | **82.5%** (99/120) | ≥80% | MET |
+| (b) answerable trials keeping the expected note | **84.1%** (264/314) | ≥90% | FAILED |
+| (c) episodic-temporal preserved | **54.0%** (34/63) | ≥80% | FAILED |
+
+**Refuted.** The labeller ships behind a runner-job flag that defaults off,
+which the design already specifies as "unlabelled-with-marker, exactly today's
+behavior" — the quarantine this arc applies to a rung that fails its rule.
+
+## The probe's own numbers, split by whether they were measured uniformly
+
+This is the finding that outlives the verdict, and it was diagnosed *before*
+these runs existed rather than read off them afterwards.
+
+| | probe reported | uniform replay |
+|---|---:|---:|
+| negative rejection | 82.5% | **82.5%** |
+| answers preserved | 86.6% | **84.1%** |
+| episodic-temporal | 58.7% | **54.0%** |
+
+The negative figure reproduces to the decimal. Both answerable figures come in
+low. That is exactly the shape predicted by how the probe was built: its
+negative half was measured uniformly, while its "corrected" answerable figures
+are 240 trials scored with the *thin* excerpt plus 32 rescued by the corrected
+one (272/314) — a mixed instrument its own honest-accounting section names as
+an upper bound. Task 6's clauses (b) and (c) were set against that upper bound.
+**A bar calibrated against a number that was never a baseline is a bar nobody
+could have cleared**, and that is a plan defect rather than a labeller defect.
+
+## Per stratum — the labeller fails in one place, not generally
+
+| stratum | preserved |
+|---|---:|
+| research-density | 56/56 = 100.0% |
+| research-corpus | 52/53 = 98.1% |
+| pure-paraphrase | 68/77 = 88.3% |
+| distinctive-token | 54/65 = 83.1% |
+| **episodic-temporal** | **34/63 = 54.0%** |
+
+**Excluding episodic-temporal, answerable preservation is 230/251 = 91.6% —
+above clause (b)'s own bar.** One stratum carries the entire failure of both
+failing clauses.
+
+The episodic damage is structural, exactly as the probe warned: these are
+questions whose answer is *derived* from a note rather than stated in it. Three
+prompt-level attacks on it were measured and all three failed to move the cases
+they targeted (see the task-5 record below).
+
+## Half the answerable loss is disagreement, not rejection
+
+Of the 50 unpreserved answerable trials, **29 were the labeller saying nothing
+answers** and **21 were it naming a different note as answering**. Only the
+first group is over-rejection in the sense clause (b) exists to police; the
+second is a disagreement with the gold set about which of several notes answers,
+and at least one is defensible on its face — `ep08` asks what caused a Drive
+sync failure, and the labeller named
+`drive-upload-staging-churns-transient-files-inside-the-vault.md` where gold
+names `research-concurrent-vault-writes.md`.
+
+That distinction is not used to argue the number up. It is recorded because a
+labeller that never deletes makes a wrong verdict recoverable — the note is
+still listed and readable — so the 21 disagreements cost a consumer far less
+than the 29 silences, and the two should not be priced the same.
+
+## The negatives, per question — including the three nothing else reached
+
+| | agent baseline | labeller |
+|---|---:|---:|
+| `ng14` — which encryption scheme for the vault at rest | 0/6 | **6/6** |
+| `ng07` — homelab threat intelligence | 0/6 | 2/6 |
+| `ng17` — multi-user access control | 0/6 | 1/6 |
+| `ng11` — *regression* | 4/6 | **0/6** |
+
+`ng14` is the design's two-surface thesis as a measurement. It was rejected in
+zero of six agent-layer replicates and zero of six elicitation replicates — no
+interactive lever ever touched it — and a fresh-context judgment rejects it in
+all six. `ng07` and `ng17` move only slightly, so the trio does not fall, but
+the mechanism is demonstrated rather than argued.
+
+`ng11` is the honest counterweight: the labeller never rejects a negative the
+agent usually did. A real per-question loss inside a +20-point aggregate, and
+precisely what a stratum mean would bury.
+
+## Ops
+
+Excerpting is the corrected IDF-weighted head + best-middle + tail, shared with
+the shipped labeller rather than reimplemented — the promoted replay instrument
+and the module use one selector, because the probe's first pass got that
+selector wrong and 43.2% of its apparent over-rejections were the instrument.
+Frequencies pooled over the run's whole candidate set (211–1,200 notes depending
+on slice). `degraded` 0/506 on the negative half and 2/348 on the answerable
+half, both surfacing through the visible marker rather than silently.
+
+The episodic slice reuses the run that froze the prompt (`c206b36`) rather than
+re-buying it: same prompt, same instrument, same corpus copy. Cost **$35.68**
+across the three measuring runs, against calls that price at $0.047 rather than
+the probe's $0.0048 — the corrected excerpt is ~2.8KB across up to 20 candidates
+where the probe showed one 1.2KB chunk.
+
+Per-question detail at
+`<vault>/Agent/_meta/health/goldv2/labeller-replay-{negatives,answerable}-20260815.json`.
+
+## What this licenses
+
+The judgment is real and it is worth having on the deliberate path: 82.5%
+rejection where the agent managed 62.5%, 100% and 98.1% preservation on the two
+research strata, and a complete conversion of a negative no interactive lever
+could reach. What it does not license is running unflagged over episodic
+questions, where it is wrong nearly half the time in a way three prompt
+interventions failed to shift.
+
+The re-scope this suggests, and does **not** itself authorize: clause (b) and
+(c) were priced against a mixed-instrument upper bound, so a future rung should
+re-set them against these uniform numbers before spending anything, and should
+consider whether a labeller that never deletes needs an 80% bar on the one
+stratum where derivation, not answerhood, is the real question.

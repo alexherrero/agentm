@@ -223,6 +223,46 @@ class TestLabel(unittest.TestCase):
                             for c in res.candidates[al.MAX_CANDIDATES:]))
         self.assertIn("cap", res.note)
 
+    def test_supplied_df_is_used_instead_of_the_per_call_pool(self):
+        """A caller with a wider frequency table must actually get it used.
+
+        Measured on the episodic slice: 49.7% of long notes receive a different
+        excerpt depending on which pool the frequencies came from, so this is a
+        behavioural difference and not a plumbing detail.
+        """
+        filler = "lorem ipsum dolor sit amet consectetur adipiscing elit. " * 3
+        distractor = "agentm agentm agentm notes about agentm. " + filler
+        # The sentinel rides with the decisive passage but is NOT a query term —
+        # asserting on the query word itself always passes, since the prompt
+        # quotes the question back.
+        decisive = filler * 5 + "splitting sentinelword. " + filler * 8
+        text = ("h" * al.HEAD + " " + distractor * 6 + decisive
+                + distractor * 6 + "t" * al.TAIL)
+
+        seen = {}
+
+        def caller(prompt):
+            seen["prompt"] = prompt
+            return '{"answers": []}', 0.0, ""
+
+        def prompt_with(df, n):
+            al.label("agentm splitting",
+                     [al.Candidate(path="Agent/n.md", text=text)],
+                     caller=caller, df=df, n_docs=n)
+            return seen["prompt"]
+
+        # Two explicit tables, opposite in the one term that decides selection,
+        # so the assertion rests on the supplied frequencies rather than on
+        # whatever the per-call pool happens to do with a single document.
+        rare_split = prompt_with({"agentm": 1000, "splitting": 1}, 1000)
+        rare_agentm = prompt_with({"agentm": 1, "splitting": 1000}, 1000)
+
+        self.assertIn("sentinelword", rare_split,
+                      "with the decisive term rare, its passage must be selected")
+        self.assertNotIn("sentinelword", rare_agentm,
+                         "with the decisive term common, its passage must lose — "
+                         "otherwise the supplied df never reached the selector")
+
     def test_empty_candidate_list_makes_no_call(self):
         called = []
         res = al.label("q", [], caller=lambda p: called.append(p) or ("", 0.0, ""))

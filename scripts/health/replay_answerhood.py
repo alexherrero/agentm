@@ -101,8 +101,29 @@ def main(argv=None) -> int:
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--limit", type=int, default=None,
                     help="first N units only — for a cheap smoke run")
+    ap.add_argument("--exclude-stratum", default=None,
+                    help="skip this stratum. Used to avoid re-buying a slice "
+                         "already measured under the same frozen prompt — the "
+                         "episodic run that froze the prompt is a valid task-6 "
+                         "measurement and does not need paying for twice")
+    ap.add_argument("--stratum", default=None,
+                    help="score only this stratum; prompt refinement runs on the "
+                         "episodic-temporal slice alone, for cents, before the "
+                         "full replay is bought")
+    ap.add_argument("--half", default=None, choices=["negative", "answerable"],
+                    help="score only one half. Refinement targets preservation, "
+                         "but a prompt loosened on the answerable half must then "
+                         "be re-measured on BOTH — the same knob moves each, "
+                         "which is why task 6 re-measures rejection rather than "
+                         "inheriting it")
     ap.add_argument("--dry-run", action="store_true",
                     help="build the units and print the shape without calling a model")
+    ap.add_argument("--legacy-prompt", action="store_true",
+                    help="use the original probe's strict-answerhood wording "
+                         "instead of the shipped prompt. The two differ in one "
+                         "clause — whether a derived answer counts — so running "
+                         "both over the same slice on the same instrument is "
+                         "what isolates the prompt from everything else")
     args = ap.parse_args(argv)
 
     replicates = sorted(Path(p) for p in glob.glob(args.replicates))
@@ -112,9 +133,39 @@ def main(argv=None) -> int:
     if not corpus.is_dir():
         raise SystemExit(f"corpus not found: {corpus}")
 
+    if args.legacy_prompt:
+        # The probe's exact wording, kept verbatim so the comparison is against
+        # what actually produced the recorded evidence rather than a paraphrase
+        # of it. `keep` is accepted by the shipped parser for this reason.
+        al.PROMPT = """You are a retrieval gate. A search returned candidate notes for a query. \
+For each candidate, decide whether that note actually ANSWERS the query.
+
+Keep a candidate only if a reader of that note could state the answer to the query from it.
+Drop it if it is merely about a related topic, mentions the subject in passing, or \
+discusses the area without containing the specific answer.
+
+It is normal and correct for the answer to be NONE of them. Many queries have no answer \
+in this corpus at all. If no candidate answers the query, return an empty keep list.
+
+QUERY: {question}
+
+CANDIDATES:
+{candidates}
+
+Return only JSON, no prose, no code fence: {{"keep": [indices of candidates to keep]}}"""
+        print("using the probe's original strict-answerhood prompt", flush=True)
+
     units = units_from(replicates)
+    if args.stratum:
+        units = [u for u in units if u["stratum"] == args.stratum]
+    if args.exclude_stratum:
+        units = [u for u in units if u["stratum"] != args.exclude_stratum]
+    if args.half:
+        units = [u for u in units if u["half"] == args.half]
     if args.limit:
         units = units[:args.limit]
+    if not units:
+        raise SystemExit("no units matched the given --stratum/--half filters")
     halves = defaultdict(int)
     for u in units:
         halves[u["half"]] += 1
@@ -123,10 +174,21 @@ def main(argv=None) -> int:
     if args.dry_run:
         return 0
 
+    # One document-frequency table over every note the whole run will show, the
+    # way the probe built it. Built per call over <=20 candidates instead, IDF
+    # flattens toward uniform and the selector slides back toward the raw counts
+    # the probe had to correct — measured at 49.7% of long notes receiving a
+    # different excerpt. The replay is the instrument, so it gets the good table
+    # and reports which one it used.
+    pool_paths = sorted({p for u in units for p in u["paths"][:al.MAX_CANDIDATES]})
+    pool_df, pool_n = al.build_df([load_note(corpus, p) for p in pool_paths])
+    print(f"document frequencies pooled over {len(pool_paths)} distinct notes",
+          flush=True)
+
     def run(u):
         cands = [al.Candidate(path=p, text=load_note(corpus, p))
                  for p in u["paths"][:al.MAX_CANDIDATES]]
-        res = al.label(u["question"], cands)
+        res = al.label(u["question"], cands, df=pool_df, n_docs=pool_n)
         return {**u,
                 "answering": [c.path for c in res.answering],
                 "labelled": res.labelled,
