@@ -3094,3 +3094,140 @@ retirement — accepting the current ceiling rather than paying ~$50.68/3 hours 
 confirm a number that has not moved — is now a better-evidenced option than
 holding for the next rung. **That remains the operator's call; this rung's job
 was to make it an informed one.**
+
+---
+
+# goldv3 changeover (2026-08-17) — decontaminate, relabel, re-baseline
+
+**Fixture versions change here.** `gold-set-v3.json` replaces `gold-set-v2.json`
+as the scored fixture; `goldv3-20260817.tar.gz` replaces `goldv2-20260812` as
+the corpus snapshot. Neither the daemon, the hook, nor the query paths changed
+— this is an instrument fix, not a retrieval change (`_harness/PLAN.md`,
+`touches_architecture: false`). **Comparability with every v2 number above is
+deliberately broken as of this entry**; nothing below is compared silently
+against anything above it.
+
+## Why
+
+`_harness/goldv3-diagnosis.md` (written 2026-08-17, immediately after the
+retrieval-competition arc closed above) traced the arc's 16 chronic misses to
+four causes: the gold set's own drafting message had been mined into the
+corpus as decoy preference notes (contaminating `pp17`, `pp07`, `dt04`); six
+questions had defensible-or-better answers the label didn't credit; the hook
+arm's denominator counted three questions whose only answers live in
+subtrees the hook excludes by policy; and a genuinely hard core of
+paraphrase/role-register questions remained, correctly bounded, unchanged.
+Operator-approved 2026-08-17 in full. This entry is the arc-close gate's
+"instrument is not the bug" evidence — the ladder's live numbers were real,
+but part of what they measured was measurement error, not retrieval
+failure.
+
+## Ops
+
+Task 1 purged the four decoy notes from the **live** vault (git-recoverable,
+commit `1936019`) — truncated fragments of
+the operator's 2026-08-07 gold-question-drafting message, mined as
+`kind: preferences` on the "explicit always/never directive" heuristic
+firing against an enumerated question list. A phrase-level contamination
+census (recreated from the diagnosis; the section-5 scratchpad's original
+script was gone) confirmed the four are gone and surfaced one further,
+unpurged artifact — see "The one estimate that missed, and why" below.
+
+Corpus snapshot cut fresh from the post-purge live vault (`goldv3-20260817.tar.gz`,
+same recipe as every prior snapshot: `.md` files only, no `.git`, top-level
+`Vault/` prefix). **The corpus grew organically in the five days since
+`goldv2-20260812`** — 9,971 → 15,029 files — mostly `memory/_inbox/` (9,415 of
+14,529 embedded notes), the miner's own low-confidence workflow/preference
+capture that FOLLOWUPS (b) and (c) below already name as a standing defect.
+Not curated or filtered for this snapshot; whatever the live vault held
+post-purge is what got cut, per the plan's brief.
+
+New integrity triple (the old 9,971/9,473/11,761 does not apply):
+**15,029 docmeta rows / 14,529 distinct embedded notes / 17,407 chunk
+vectors**, asserted by direct `sqlite3` count before scoring. Embedder
+attached, never spawned — the resident EmbeddingGemma-300M-Q8_0 at
+`-np 1 -c 2048 -b 2048 -ub 2048`, embed scope `Agent/memory,Agent/desk,Agent/external`
+unchanged. `degraded: []` on every run, both arms, both replicates.
+
+## The measured result
+
+| | v2 final (`goldv2-20260812`, 2026-08-16 close) | v3 opening (`goldv3-20260817`) |
+|---|---:|---:|
+| `+question` R@5 | 48/64 (75.0%) | **50/64 (78.1%)** |
+| hook e2e R@5 | 47/64 (73.4%) | **48/61 (78.7%)** — denominator now excludes the 3 `hook_reachable: false` questions (task 3), reported separately below |
+| negative rejection | scored 0/20 inline | **reported separately** as `layer: gate-only` (task 3) — still 0/20 at this layer, unchanged in substance, no longer counted inside R@5's sweep |
+
+`+question` scored twice, bit-identical (0 of 84 rows differ). Hook arm scored
+twice, bit-identical (0 of 84 rows differ). `hook-excluded (policy)`:
+`dt01`/`ep10`/`ep12`, 0/3 hit via the hook (expected — their answers live in
+hook-excluded subtrees; all three hit on `+question`, rank 1/2/1, exactly as
+Group A predicted).
+
+## Per-question delta, the 8 relabeled/expanded/rewritten entries
+
+The diagnosis predicted near-certain conversion for 5 and probabilistic
+conversion for 3. Measured against reality, honestly:
+
+| id | diagnosis prediction | v3 change | measured |
+|---|---|---|---|
+| `dt07` | near-certain | relabel to the wiki-style lesson | **converted** — rank 1 |
+| `pp09` | near-certain | prefix-accept `external/primos/` | **converted** — rank 1 (top hit is `progress.md` under the accepted prefix, not either originally-labeled file — the folder-accept doing exactly the job it was built for) |
+| `pp10` | near-certain | expand accept-set (+2 preference notes, +conversation) | **converted** — rank 1, on the added `i-want-this-context-vault-to.md` |
+| `ep08` | near-certain | expand accept-set (+2 notes) | **converted** — rank 1, on the added `vault-git-directory-sits-outside-the-drive-sync-set.md` |
+| `pp16` | near-certain | expand accept-set (+2 notes), fix 2 typos | **converted** — rank 1, on the added `R06-token-efficiency.md` |
+| `ep07` | ~70% | rewrite to "first AgentM **development** arc" | **still miss** — top-1 is `desk/projects/blog/_harness/PLAN.archive.20260627-agentm-arc.md`. The rewrite disambiguated the question's own wording but the blog's archived "Agent M arc" PLAN apparently still shares enough terms (including, plausibly, "development") to keep winning; the collision the diagnosis named is real and the one-word rewrite did not clear it. |
+| `pp07` | ~60% | restore truncated tail ("...FRIDAY") | **still miss, and not for the reason estimated** — see below, its own section |
+| `pp17` | ~40% | fix `automaticaly` → `automatically` typo | **still miss** — top-1 is `desk/projects/shrimpi/conventions/auto-sync-worktree.md`, an unrelated project's "do this automatically, don't ask first" convention note. Genuine paraphrase/vocabulary overlap, not contamination: the purge worked (the decoy is gone and does not appear anywhere in the top-5 on either arm), the typo fix removed the shared-typo lexical magnet, and the question still loses to a different note on ordinary term overlap. |
+
+**5 of 5 near-certain conversions landed exactly as predicted.** **0 of 3
+probabilistic conversions landed** — expected value from the diagnosis's own
+70%/60%/40% was ≈1.7; measured was 0. Two of the three (`ep07`, `pp17`) miss
+for reasons the diagnosis already named and correctly flagged as uncertain
+(a real competing note, not an instrument defect). The third (`pp07`) misses
+for a reason the diagnosis did not anticipate at all:
+
+### The one estimate that missed, and why: a zombie decoy
+
+`pp07`'s v3 top-1 is `desk/scratch/inbox-20260813-074616-16856bac/235-inbox_collapse-collapse.proposal.md`
+— not one of the four purged decoys, and not in the `_harness/PLAN.md`
+family of documents task 1's own contamination census flagged as worth
+checking (those documents do not appear in either arm's top-5 anywhere in
+this run; the meta-document risk the task-1 progress note raised did not
+materialize). This is a **dream/consolidation dedup proposal note** — the
+daemon's own machinery, proposing to collapse the two purged
+`never-fully-realize-the-vault-vision*.md` decoys as content-identical
+duplicates — and its body **quotes the decoy's full text verbatim**,
+FRIDAY tail and `actuall` typo included, as a "supporting excerpt." Purging
+the two source decoys in task 1 did nothing to this note, because it was
+never one of the four named paths: it is a *different* file that happens to
+embed the same contaminating text as evidence for a proposal about the
+files that got purged. The census in task 1 did in fact surface this exact
+path (`pp07 <- ...235-inbox_collapse-collapse.proposal.md`, shared phrase
+`'why did agentm never fully realize'`) — correctly left unpurged per the
+plan's locked scope ("the four purge paths, exactly... nothing else"), and
+now confirmed as the actual, sole reason `pp07` still misses. Filed as a
+sixth FOLLOWUP below — this is a defect class the original five did not
+name: dream/consolidation proposal notes can outlive and re-contaminate
+after their subject decoys are purged.
+
+## What this changes about the estimates
+
+The diagnosis's confidence calibration held for the "near-certain" tier (5/5)
+and was optimistic for the "probabilistic" tier (0/3 against an expected
+1.7) — not because the mechanisms were wrong (prefix-accept, expand-set, and
+typo-fix all worked exactly as designed everywhere they were tried), but
+because two of the three probabilistic cases face a real competing note the
+diagnosis had already flagged as a live risk, and the third faces a defect
+class nobody had found yet. `+question` R@5 moved 48/64 → 50/64 — the 5
+near-certain conversions minus the 3 still-open probabilistic misses,
+exactly as the arithmetic requires. The genuinely-hard core the arc bounded
+(`rc01`, `rd01`, `rc03`, `pp05`, `pp15`, `dt10`, plus now `ep07`/`pp07`/`pp17`
+until their specific defects are addressed) is what a future ranking-side
+rung should be judged against — not the 48/64 or 50/64 headline alone.
+
+Per-question detail for all 84 questions, both arms:
+`<vault>/Agent/_meta/health/goldv3/question-20260817.json` and
+`hook-e2e-20260817.json`, never in the repo. `_harness/goldv3-diagnosis.md` is
+executed as of this entry; `_harness/PLAN.md` tasks 1-4 (archived at
+close-out).
+

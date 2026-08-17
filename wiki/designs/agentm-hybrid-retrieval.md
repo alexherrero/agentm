@@ -148,6 +148,19 @@ background by design; that is what pays for all-day interactive autonomy.
 
 ## Measurement: the ladder is the contract
 
+**Fixture version, as of 2026-08-17: `goldv3-20260817`, not `goldv2-20260812`.**
+Steps 0–6 below are the historical record against v2 and are never rewritten —
+each was measured against the fixture that stood at the time, and that
+measurement is what it is. The goldv2 → goldv3 changeover itself shipped no
+mechanism (`touches_architecture: false`): the corpus and gold set were
+decontaminated and relabeled (four capture-contamination decoy notes purged,
+six label defects fixed, three hook-policy-only questions annotated instead
+of miscounted), not the daemon or the query paths. The live numbers today are
+the v3 opening baseline, immediately below the table — not step 6's row,
+which stays v2's own number, permanently. See
+`scripts/health/results/goldv2/NOTES.md` § "goldv3 changeover (2026-08-17)"
+for the full per-question accounting.
+
 Fixed corpus (`goldv2-20260812`, 9,971 notes, vault head `4391c9e`), fixed 84
 questions, deterministic retrieval-layer runs — one scorecard column per landed
 step, each with its rule written before its code. Levels from other systems do
@@ -170,6 +183,25 @@ changes what an AND leaves standing.
 Step 6 exists because the two layers have disagreed once already: the alias
 backfill was slightly better at the tool level and 3.85 points worse at the
 agent level. A retrieval-layer win is necessary, never sufficient.
+
+**v3 opening baseline (`goldv3-20260817`, 2026-08-17) — the changeover, not a
+ladder step.** `+question` 50/64 (78.1%, up from v2's 48/64); hook e2e 48/61
+(78.7%, denominator now excludes the 3 `hook_reachable: false` questions
+whose only answers live in hook-excluded subtrees, reported separately
+rather than counted as generic misses). Both arms scored twice,
+bit-identical. New integrity triple: 15,029 docmeta / 14,529 embedded notes
+/ 17,407 chunk vectors (up from 9,971/9,473/11,761 — organic corpus growth
+in the five days since v2, not curated). Contamination + label-defect
+correction accounts for the full movement: 5 of 5 near-certain conversions
+landed exactly as predicted (`dt07`, `pp09`, `pp10`, `ep08`, `pp16`, all
+rank 1); 0 of 3 probabilistic conversions landed (`ep07`, `pp07`, `pp17`) —
+two to competing notes already flagged as live risk, one (`pp07`) to a
+defect the diagnosis had not found: a dream/consolidation dedup-proposal
+note that quotes a purged decoy's full text verbatim and outlived the
+purge. Step 6's agent-layer arithmetic (0.6799, the arc-close gate's
+blended baseline) was computed against v2 and is now stale — any future
+re-pricing of that gate re-derives against v3, per
+`arc-close.PLAN.md`'s own dated note.
 
 Targets: every stratum in the 70–90% band at the hook layer; rejection ≥70%
 now belongs to the deliberate-path LLM gate (the CE floor that was to deliver
@@ -235,6 +267,42 @@ the burden on one is now to show what it would do differently from all three.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-17 · goldv3 changeover — decontaminate, relabel, re-baseline.**
+  Immediately after the retrieval-competition arc closed with the deterministic
+  number unmoved (previous entry), a fresh diagnosis of the 16 chronic misses
+  (`_harness/goldv3-diagnosis.md`) found the residue split four ways, only one
+  of them genuine. **The gold set had contaminated its own corpus**: the
+  message that drafted the 84 questions was itself mined by the preference
+  miner (an interrogative-as-directive bug) into four decoy notes, one of
+  which — sharing the question's own rare tokens, typos included — outranked
+  the real answer outright. **Six questions had label defects**: retrieval
+  returned right-or-defensible answers the gold set scored wrong (a
+  mislabeled note, an over-narrow accept-set, an ambiguous term, a truncated
+  question). **Three questions were a hook-policy artifact**, not a retrieval
+  miss: their only answers live in subtrees the hook excludes by design, and
+  the ladder's denominator was counting them as generic misses instead of
+  measuring the policy honestly. **A genuinely hard core of six remained
+  correctly bounded** — precise paraphrase and role-register questions with
+  correct labels, unchanged, the arc's actual finding. Purged the four decoys
+  (git-recoverable, live-vault), authored `gold-set-v3.json` as a new file
+  (v2 never edited), extended `retrieval_scorecard.py` with folder-prefix
+  acceptance / hook-denominator exclusion / gate-only negative reporting (all
+  backward-compatible no-ops on v2), cut a fresh corpus snapshot, and
+  re-baselined: `+question` 48/64 → 50/64, hook e2e 47/64 → 48/61 (honest
+  denominator). 5 of 5 near-certain label-fix conversions landed exactly as
+  predicted; 0 of 3 probabilistic ones did — two to already-flagged competing
+  notes, and one (`pp07`) to a defect the diagnosis had not found: a
+  dream/consolidation dedup-proposal note that quotes a purged decoy's full
+  text verbatim as a "supporting excerpt" and so outlived the purge, filed as
+  a sixth system-defect FOLLOWUP. **Comparability with every v2 number is
+  deliberately broken as of this changeover** — see the Measurement section's
+  fixture-version note and `scripts/health/results/goldv2/NOTES.md` § "goldv3
+  changeover (2026-08-17)" for the full per-question accounting. The
+  arc-close gate's blended 0.6799 baseline (previous entries) was computed
+  against v2 and is now stale arithmetic, not a stale conclusion — its own
+  hold header carries a dated note; re-pricing it, if it happens, re-derives
+  against v3.
 
 - **2026-08-16 · Outcome-filtered alias generation (retrieval-competition arc,
   section 5) refuted at its pre-flight probe — and with it the whole arc closes,

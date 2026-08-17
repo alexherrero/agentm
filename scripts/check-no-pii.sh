@@ -110,6 +110,7 @@ LINE_ALLOWLIST_PATTERNS=(
     # a genuine phone number that happened to sit in a path.
     '_dream(-staging)?/(inbox-|insights/)?[0-9]{8}-[0-9]{6}-[0-9a-f]{8}'  # staging dirnames + distilled insights, YYYYMMDD-HHMMSS-hash
     'memory/_inbox/[0-9]{8}-[0-9]{4}-'                                 # timestamped note filenames, YYYYMMDD-HHMM-slug
+    'desk/scratch/inbox-[0-9]{8}-[0-9]{6}-[0-9a-f]{8}'                 # scratch inbox session dirnames, same YYYYMMDD-HHMMSS-hash shape
     # Go module pseudo-versions. A dependency pinned to an untagged commit is
     # written v0.0.0-<YYYYMMDDHHMMSS>-<12 hex>, and the 14-digit timestamp's
     # leading run mimics a US phone number — so most of daemon/go.sum
