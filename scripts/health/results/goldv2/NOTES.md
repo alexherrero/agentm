@@ -2580,3 +2580,131 @@ Per-question detail for all 84 questions, both arms, control and signal:
 `<vault>/Agent/_meta/health/goldv2/chunk-lexical-20260816.json`, never in the
 repo. Full derivation of the aggregation choice and the dt12 trace:
 `progress.md`'s 2026-08-16 "task 5" entry.
+
+# Off-gold probe set + Vector-PRF — refuted: pseudo-relevance feedback
+
+amplifies noise on exactly the queries it would need to help
+
+Retrieval-competition arc, section 2. Two deliverables: (1) a durable,
+gold-blind off-gold probe set (`~/.agentm/corpus-snapshots/offgold-prf/
+scratch-scripts/offgold-probe-set.json`, 14 answerable + 6 negative pairs
+drawn from the frozen corpus, mechanically checked against all 84 gold
+questions' literal text and expected-answer paths — reusable by sections 3
+and 4, not rebuilt); (2) Vector-PRF on the dense arm — Rocchio pseudo-
+relevance feedback (`q' = α·q + β·mean(top-k)`, one re-search) behind a new
+`Query.PRF` flag, default off.
+
+## Pre-flight probe: clean, but the wrong kind of clean
+
+The off-gold probe set's dense-arm-alone top-3/top-5 clean fraction was
+14/14 (100%) — every single probe question ranked its expected note 1st.
+This licensed PRF's published Rocchio defaults (`α=1.0`, `β=0.75`, `k=3`)
+with no deviation, per the registered decision rule. Recorded honestly at
+the time, not just in hindsight: all 14 probe questions were drawn from
+research-density-style reference clusters (highly distinctive technical
+facts — `ErrEventOverflow`, `SetMaxOpenConns(1)`), the easiest shape for a
+dense embedder, mirroring gold's own research-density stratum (historically
+9–10/10) rather than its weakest stratum (pure-paraphrase). The probe set
+never measured what a dirty top-k looks like, because it never contained a
+query whose initial dense rank was mediocre — and the mechanism's actual
+failure mode, below, is exactly that case.
+
+## The measured result
+
+| stratum | `+question` control | `+question` signal | hook control | hook signal |
+|---|---:|---:|---:|---:|
+| distinctive-token | 9/12 | 9/12 | 8/12 | 8/12 |
+| episodic-temporal | 9/12 | 9/12 | 8/12 | 8/12 |
+| pure-paraphrase | 11/18 | 10/18 | 12/18 | 10/18 |
+| research-corpus | 10/12 | 9/12 | 10/12 | 9/12 |
+| research-density | 9/10 | 8/10 | 9/10 | 8/10 |
+| **R@5** | **75.0%** (48/64) | **70.3%** (45/64) | **73.4%** (47/64) | **67.2%** (43/64) |
+| negative rejection | 0/20 | 0/20 | 0/20 | 0/20 |
+
+`+question` lost `pp06`, `pp11`, `rc10`, `rd04` and gained `pp05`; hook lost
+the same four and gained nothing. Neither `ep09` nor `rc01` — the two
+questions registered before any code as PRF's plausible conversions, chosen
+because their dense-arm-alone rank was 4 (real headroom, unlike `dt07`/
+`rc03`'s already-optimal rank 1) — converted on either arm.
+
+## Why: feedback amplifies noise when the seed retrieval is already mediocre
+
+Traced `rc10` by hand ("Why does search sometimes hand back something that
+has nothing to do with the question?" → the note about search returning
+unrelated results). Its dense-arm-alone rank was 12 pre-PRF — outside its
+own top-5; the control's fused rank-2 hit came entirely from lexical-arm
+agreement, not the dense arm. PRF's own top-3 feed for this query was a
+cluster of near-duplicate `_inbox` boilerplate notes
+(`never-explains-why.md`, `never-returns-an-empty-result-set.md`/`-3.md`) —
+topically unrelated to the actual answer. Mixing the query toward their
+mean collapsed the expected note's dense rank from 12 to 2486, and the
+lexical arm's own agreement was no longer enough to rescue it in fusion.
+
+This is PRF's well-documented Achilles' heel from the IR literature —
+pseudo-relevance feedback amplifies noise exactly when the seed retrieval
+is not already good — landing on this corpus in the one shape the pre-
+flight probe could not have caught: a probe set built entirely from
+easy, rank-1 queries cannot measure what happens when the seed rank is
+mediocre, because it never contains a mediocre seed. **A mechanism whose
+own safety check is blind to its own failure mode is not a safety check
+that passed — it is a safety check that was never exercised.**
+
+## Clause by clause
+
+**(a) Non-regression — FAILED, both arms.** `+question` R@5 45/64 (70.3%),
+below the 48/64 floor. Hook 43/64 (67.2%), below the 47/64 floor. Hook's
+pure-paraphrase stratum moved −2 (12→10), past the −1 ceiling on its own —
+the primary clause fails on both the headline number and the per-stratum
+guard.
+
+**(b) Conversion — FAILED.** Neither `ep09` nor `rc01` (the registered
+positive-prediction set) converted, on either arm.
+
+**(c) Prediction, two halves — FAILED.** Positive half 0 of 2 — closes the
+rung refuted on this clause alone, per the arc-wide rule that a positive
+half of 0 closes refuted regardless of the negative half. **This is the
+third rung in a row on this exact failure mode** (`path-signal`'s positive
+half was 0 of 2; `chunk-lexical`'s was 0 of 2; this section's is 0 of 2) —
+a pattern worth naming plainly rather than treating each as an independent
+surprise. Negative half also failed independently: 57 of 62 held on
+`+question`, 58 of 62 on hook — `pp05`/`pp06`/`pp11`/`rc10`/`rd04` all moved
+unpredicted, the collateral-damage shape clause (a) exists to catch.
+
+**(d) Negatives — MET.** All 20 unchanged, per id, both arms.
+
+**(e) Latency — MET.** Signal hook p50 ~122ms / p90 ~130ms / max ~159ms,
+comfortably inside the 300ms budget (control hook p50 78ms) — a real but
+modest cost from the second vector pass. The only clause this rung passes
+cleanly.
+
+## Verdict
+
+**Refuted, on clauses (a), (b) and (c).** Reverted rather than shipped on
+partial credit, matching `chunk-lexical`'s own precedent: both worktree
+commits (the Go plumbing, the scoring-path wiring) were reset out before
+any PR opened, so nothing reaches the live binary. Unlike `chunk-lexical`
+— which helped its two intended targets while quietly breaking others —
+this rung helped **none** of its intended targets while also breaking
+others: a strictly worse failure shape. Three rungs in a row now share the
+same positive-half-zero signature, across three structurally different
+mechanisms (lexical chunk-and-rank, dense-vector pseudo-relevance
+feedback, and — before both — path-token indexing). That repetition is
+itself evidence worth carrying into the next section: a registered
+prediction that fails to fire three times running says more about how
+this arc is deriving its "plausible conversion" targets than about any
+one mechanism.
+
+**What this licenses.** The off-gold probe set survives as a durable,
+reusable artifact for sections 3 and 4 — its own limitation (only
+easy/rank-1 queries) is now a documented, known gap rather than an
+unstated assumption, and a future section that wants a genuine clean/dirty
+signal should draw its probe questions from a harder stratum shape (closer
+to pure-paraphrase's zero-overlap difficulty) before trusting a "clean"
+reading. Vector-PRF itself is closed: its published defaults amplify
+whatever the seed retrieval already contains, good or bad, and this
+corpus's own mediocre-seed queries are exactly where that bites.
+
+Per-question detail for all 84 questions, both arms, control and signal:
+`<vault>/Agent/_meta/health/goldv2/offgold-prf-20260816.json`, never in the
+repo. Full derivation, the `rc10` trace, and the probe set's own
+construction: `progress.md`'s 2026-08-16 task 1–6 entries.
