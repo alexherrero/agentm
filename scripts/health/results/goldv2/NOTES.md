@@ -2921,3 +2921,176 @@ Per-question detail for all 84 questions, both arms:
 `<vault>/Agent/_meta/health/goldv2/hyde-20260816.json`, never in the repo.
 Full derivation: `_harness/PLAN.md` tasks 1–6 (archived at close-out) and
 `progress.md`'s 2026-08-16 HyDE entries.
+
+---
+
+# Outcome-filtered alias generation (section 5) — refuted at the pre-flight
+probe, and the sharpest null of the three alias rungs
+
+Retrieval-competition arc, section 5 — the conditional rung, run under explicit
+operator approval after sections 1–4 left the alias oracle's eight unconverted
+in the live system. Rule pre-registered and **committed before any alias text
+existed** (`RULE-alias-outcome-filter.md`, `c70b136`).
+
+## The mechanism
+
+Generate aliases gold-blind, then keep one only if it **demonstrably works**:
+with every candidate applied and indexed on a scratch copy, query the lexical
+arm with the alias's own text and keep the alias only if its own note comes
+back in the top-5. Everything else is dropped.
+
+Structurally different from both prior alias pilots, which applied every
+generated alias unfiltered, and deliberately *not* Doc2Query--'s relevance
+filter — the SIGIR 2024 reproducibility study found relevance filtering harms
+recall-based metrics, and R@5 is recall-shaped. This asks whether the alias
+moved retrieval, not whether a model judges it relevant.
+
+Two properties are load-bearing. The filter reads an index carrying **every**
+candidate, so an alias must win under the competition it will actually face
+rather than in isolation. And it is **lexical-only**, which is what makes the
+whole pass cheap: it needs `reindex`, never `embed`.
+
+## The target set is three, and the residue was never reachable
+
+Re-derived against the corpus rather than assumed. The eligible set intersected
+with the fixed structural scope reproduces alias-pilot's recorded **120-note
+scope exactly** — the cross-check that the derivation is sound — and reaches
+only **`pp05`, `pp09`, `pp15`**.
+
+**`pp07`, `pp16`, `pp17`, `rc01`, `rd01` are outside the scope entirely.** The
+hard residue this section was briefed to attack is not reachable by this
+mechanism at all. The scope was **not** widened to reach it: choosing a
+widening after seeing which targets it would recover is the gold-informed back
+door alias-pilot's own task 1 declined. Registered up front in the rule, not
+discovered afterwards.
+
+## The result
+
+Generation: 120 of 120 aliased, 1m17s. Filter: **451 aliases kept, 101 dropped**
+(18%), 119 of 120 notes surviving.
+
+Lexical-arm rank of the expected note for the gold query's own terms, k=50:
+
+| target | note | baseline | filtered |
+|---|---|---:|---:|
+| `pp05` | `home-tech-next/_index.md` | >50 | >50 |
+| `pp09` | `external/primos/_index.md` | >50 | >50 |
+| `pp09` | `external/primos/analysis/_summary.md` | >50 | >50 |
+| `pp15` | `PLAN.archive.20260724-loose-ends-os-install-matrix.md` | >50 | >50 |
+
+**Zero movement — the same null both prior alias pilots produced.** Per the
+pre-registered rule the rung closes **refuted at the probe**, and the full
+embed + scoring run was never bought. That is the probe doing its job, not a
+truncated experiment.
+
+## The null was proven live before it was believed
+
+A flat reading is exactly what a broken instrument produces, and this project
+has been burned by that before, so the aliases were shown to be live in the
+index that was measured:
+
+- The alias text is written into the scored corpus copy (frontmatter line 10 of
+  `home-tech-next/_index.md`) and **absent from the pristine baseline copy**.
+- Querying the scored index with an alias's **own text** returns its own note at
+  **rank 1**.
+
+The filter did exactly what it promised. The promise does not transfer.
+
+## `pp09` is the finding, and it is not the earlier diagnosis repeated
+
+The structural variant's recorded diagnosis was that generated aliases lacked a
+distinguishing term. That does not apply here: `pp09`'s surviving alias carries
+`primos`, a corpus-rare term the gold query itself uses. Traced by hand rather
+than assumed:
+
+| query | baseline rank | filtered rank | documents matching |
+|---|---:|---:|---:|
+| `primos` | **1** | **1** | 47 |
+| `who are the primos` (the alias's own text) | 7 | **1** | 427 |
+| `kept notes primos` (the gold query) | >50 | >50 | 196 |
+
+The corpus **already ranks the right note first** for the distinguishing term,
+with no alias at all. The alias moves its own phrasing 7 → 1, so the mechanism
+works. The gold query still fails because fusion's two-term subset carries the
+common words (`kept`, `notes`) and dilutes the rare one.
+
+**So the residue here is not vocabulary-shaped at all — it is
+query-formulation-shaped.** No alias can help a note the corpus already ranks
+first for the term that distinguishes it. This converges with `pp07`'s
+independently-diagnosed fusion friction rather than restating the alias
+thread's vocabulary story, and it is the strongest reason yet to stop treating
+this residue as a vocabulary problem.
+
+## An instrument bug found on the way, worth inheriting
+
+The first reach-derivation reported all eight targets "missing from corpus" —
+impossible for a corpus that scores 48/64. `resolve_memory_root()` returns an
+explicit argument unchanged, and `agentmd classify --vault <vault-root>` emits
+`Agent/`-prefixed paths, which silently breaks `in_pilot_scope`'s `external/`
+prefix test and shrinks the scope from 120 to 84. **Both consumers want the
+memory root, not the vault root.** The same class of mismatch is pinned by a
+test in the filter itself: search results are vault-root-relative while journals
+are memory-root-relative, so without an explicit path prefix every alias reads
+as a failure and the run produces a silent, total null — indistinguishable from
+this rung's real result.
+
+## Ops
+
+Fresh `goldv2-20260812` copy restored to a scratch location distinct from every
+prior rung's (the restore script hard-refuses a pre-existing copy, since several
+prior copies carry generated aliases). Index built from scratch and asserted
+before anything was written: **9,971 docs / 9,473 embedded notes / 11,761 chunk
+vectors**, exact. Embedder attached, never spawned — the resident
+EmbeddingGemma-300M-Q8_0 at `-np 1 -c 2048 -b 2048 -ub 2048`. Baseline
+reproduced row-for-row before generation: **0 of 84 rows differ** on either arm,
+`+question` 48/64, hook 47/64, `degraded: []`.
+
+**No Go change, confirmed rather than assumed** — the mechanism is a
+corpus-write plus index-rebuild, so there is no `bin-sig`/`bin-main` split and
+none of the "binary must match the index it reads" trap the path-signal rung
+recorded.
+
+**Code kept, inert.** `alias_pilot.py filter` has no live caller and runs only
+when invoked, so nothing ships to the live vault, per the design's rule for a
+refuted rung. `call_model`'s neutral-cwd fix is kept on its own merits: it is a
+genuine defect, not part of this mechanism — the subprocess inherited the
+caller's working directory, so Claude Code auto-loaded this repo's CLAUDE.md and
+AGENTS.md into a generation meant to be blind to them. The HyDE probe hit the
+same leak and caught it by hand. **Both prior alias pilots predate the fix and
+were very likely contaminated the same way** — which does not overturn their
+verdicts (leaked repo context would, if anything, have helped, and they scored
+0), but is recorded so it is not rediscovered a fourth time.
+
+Per-note detail, including all 120 generated alias sets and every filter
+decision, at
+`<vault>/Agent/_meta/health/goldv2/alias-outcome-filter-20260816.json`, never in
+the repo.
+
+## What this licenses — and the arc-close gate
+
+**Three independently pre-registered alias-generation strategies have now
+produced the same null**: content-only prompting, structural/role prompting, and
+outcome-filtered generation. The third eliminated the first two's diagnosed
+failure mode by construction — every surviving alias provably retrieves its own
+note — and the gold-query rank still did not move. The honest reading is no
+longer "the prompt reached for the wrong words." It is that **alias generation
+cannot reach this residue, because the residue is not a vocabulary gap.**
+
+**All five sections of the retrieval-competition arc are now accounted for** —
+section 1 (chunk-lexical) refuted, section 2 (off-gold + Vector-PRF) refuted,
+section 3 (embedder swap) closed without a run, section 4 (HyDE) refuted on
+collateral damage after the arc's only positive prediction half, and section 5
+refuted at its probe. **The arc-close gate's release condition — "at least one
+rung that moves the deterministic retrieval-layer number" — has gone unmet
+across every section run.** The live R@5 is unchanged at 48/64 (75.0%) on
+`+question` and 47/64 (73.4%) on the hook arm, the same figures the arc opened
+with.
+
+That is the arc's answer to the question it was built to ask, and it is the
+strongest single data point for the gate re-pricing decision the operator
+flagged before this section ran: five sections, zero shipped mechanisms, and a
+gate still holding for a rung that has not arrived. Re-pricing it against
+retirement — accepting the current ceiling rather than paying ~$50.68/3 hours to
+confirm a number that has not moved — is now a better-evidenced option than
+holding for the next rung. **That remains the operator's call; this rung's job
+was to make it an informed one.**
