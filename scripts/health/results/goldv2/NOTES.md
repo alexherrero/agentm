@@ -2708,3 +2708,72 @@ Per-question detail for all 84 questions, both arms, control and signal:
 `<vault>/Agent/_meta/health/goldv2/offgold-prf-20260816.json`, never in the
 repo. Full derivation, the `rc10` trace, and the probe set's own
 construction: `progress.md`'s 2026-08-16 task 1–6 entries.
+
+# Embedder-swap probe (section 3) — closed without a run: already answered
+
+`BRIEF-retrieval-competition.md`'s section 3 proposed re-embedding the frozen
+corpus with Qwen3-Embedding-0.6B in place of EmbeddingGemma-300M, targeting
+`pure-paraphrase` — the stratum reachable only by the dense arm. Read before
+any code or re-embed, per this arc's own rule-before-work convention. Two
+things surfaced during that reading, both before any Go code or re-embed:
+
+**This exact comparison already ran, at full parity, on 2026-08-12** — before
+this arc existed. `wiki/designs/agentm-hybrid-retrieval.md`'s own 2026-08-12
+amendment-log entry and this file's "Bake-off: EmbeddingGemma-300M against
+Qwen3-Embedding-0.6B" section record it: identical 2,048-token window
+(the same constraint section 3's own brief independently arrives at, for the
+same Metal-page-fault reason), identical scope, complete backfills, idle
+machine. EmbeddingGemma won **every stratum**, 35/64 against 24/64 overall —
+and on `pure-paraphrase` specifically, the exact stratum section 3 targets,
+EmbeddingGemma scored 7/18 against Qwen's 5/18. Qwen was worse, not better, on
+the one stratum this probe existed to fix. The design doc recorded an explicit
+re-audit trigger for this decision: *"different GPU hardware or a llama.cpp
+release that fixes the fault would make Qwen's window testable again, but its
+quality would have to beat 35/64 to matter."* Neither condition has changed —
+same Mac, no llama.cpp fix recorded anywhere in this repo's history. The
+brief's own framing ("EmbeddingGemma-300M is #2 among sub-1B models") does not
+cite or reference this prior result, and the bake-off's own numbers directly
+contradict the premise that a stronger sub-1B embedder is untested territory
+here.
+
+**A web research pass found no better local-servable candidate either.**
+Google's own EmbeddingGemma paper (arXiv:2509.20354) states it is the **#1**
+text-only model under 500M parameters on MTEB English v2 at time of
+publication — not #2, correcting the brief's framing independently of the
+in-repo bake-off. More specifically relevant to this stratum: EmbeddingGemma's
+own MTEB task breakdown scores STS at 74.7 against Retrieval at 51.2 — its
+best category is exactly the semantic-similarity-under-surface-variation shape
+`pure-paraphrase` needs — and a PTEB (paraphrase-robustness) study found it has
+the smallest score drop of its size class when evaluated under paraphrasing
+versus original phrasing. That is the opposite of "this model is likely weak
+on paraphrase." Larger sub-1B candidates checked (Snowflake Arctic-Embed-L-v2.0
+at 568M) are reported losing to EmbeddingGemma on benchmark comparison despite
+being larger, and any candidate needing a meaningfully larger context window
+reopens the Metal page-fault failure mode that already ruled out Qwen3's own
+selling point.
+
+## Verdict
+
+**Closed without a run — the mechanism's answer is already on record.**
+Neither the in-repo empirical result nor the external literature that would
+license spending a re-embed and a scoring pass on this exists; both point the
+same direction the 2026-08-12 bake-off already settled. No Go code, no
+re-embed, no worktree commit. This is a probe closing on its pre-flight
+reading rather than its measured result, which the arc's own brief explicitly
+priced as an acceptable outcome for section 3 ("cheap enough that a null is
+affordable") — here the null arrived before the cost of a re-embed was paid at
+all.
+
+**What this licenses.** `pure-paraphrase`'s residue is not an embedding-model
+quality problem on this corpus — the strongest available small local-servable
+model is already deployed, and it is comparatively strong on exactly the axis
+this stratum needs. The stratum's zero-lexical-overlap-by-construction shape
+means what it needs is a query-side bridge, not better embedding geometry:
+section 4's mechanism (HyDE — embed an LLM-generated hypothetical answer
+instead of the bare question) is the one still-untried mechanism actually
+shaped for this gap, and the arc proceeds to it directly rather than running
+a fourth rung that would independently re-derive this same negative.
+**Re-audit trigger, carried forward from the 2026-08-12 entry, unchanged:**
+different GPU hardware, a llama.cpp fix for the Metal page fault, or a new
+sub-1B model that demonstrably beats EmbeddingGemma's 35/64 parity result
+would make a future embedder-swap probe worth running again.

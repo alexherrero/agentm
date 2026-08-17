@@ -222,6 +222,30 @@ at capture time are already standing practice and need no build.
 
 *Newest first.*
 
+- **2026-08-16 · embedder-swap probe (retrieval-competition arc, section 3)
+  closed without a run — the comparison it proposed already happened, in this
+  same design's own 2026-08-12 entry below.** The brief scoped section 3 as
+  re-embedding with Qwen3-Embedding-0.6B to target `pure-paraphrase`, framing
+  EmbeddingGemma-300M as "#2 among sub-1B models" and the comparison as
+  untested. Neither holds up: this design's own 2026-08-12 bake-off entry
+  already ran the identical comparison at full parity (same 2,048-token
+  window, same scope, idle machine) and EmbeddingGemma won every stratum
+  including `pure-paraphrase` itself (7/18 against Qwen's 5/18) — the recorded
+  re-audit trigger ("different hardware, a llama.cpp fix, or a candidate that
+  beats 35/64") has not fired. A web research pass added to this: Google's own
+  EmbeddingGemma paper states it is #1, not #2, under 500M params on MTEB
+  English v2, and its own task breakdown (STS 74.7 against Retrieval 51.2,
+  plus a PTEB study finding it the most paraphrase-robust in its size class)
+  runs opposite the assumption that it is comparatively weak on paraphrase.
+  No Go code, no re-embed — a probe closing on its pre-flight reading rather
+  than a measured result, which the brief itself priced as an acceptable
+  section-3 outcome. Full writeup:
+  `scripts/health/results/goldv2/NOTES.md`'s "Embedder-swap probe (section 3)
+  — closed without a run" entry. The arc proceeds directly to section 4
+  (HyDE) — a query-side bridge, the mechanism actually shaped for
+  `pure-paraphrase`'s zero-lexical-overlap gap, rather than another embedding-
+  quality lever.
+
 - **2026-08-16 · Vector-PRF (retrieval-competition arc, section 2) refuted —
   the second competition-mechanism rung, on a different arm than the first,
   refuted for a different reason.** Pseudo-relevance feedback (Rocchio
