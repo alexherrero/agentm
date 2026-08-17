@@ -48,6 +48,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import json
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -278,6 +279,93 @@ def cmd_propose(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------------------
+# outcome filter — keep an alias only if it actually retrieves its own note
+# ---------------------------------------------------------------------------
+
+
+def lexical_top_k(agentmd: str, index: str, query: str, k: int) -> list[str]:
+    """The lexical arm's top-k paths for `query`, as the index stores them.
+
+    Deliberately `-no-embedder`: the filter asks a purely lexical question
+    ("did this alias make the note findable by its own words"), so it never
+    needs the dense arm and never pays for it.
+    """
+    proc = subprocess.run(
+        [agentmd, "search", "-json", "-mode", "fusion", "-no-embedder",
+         "-k", str(k), "-index", index, query],
+        capture_output=True, text=True,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"agentmd search failed for {query!r}:\n{proc.stderr.strip()}")
+    payload = json.loads(proc.stdout or "{}")
+    return [r["path"] for r in (payload.get("results") or [])]
+
+
+def cmd_filter(args: argparse.Namespace) -> int:
+    """Keep only the aliases that demonstrably work.
+
+    Reads a propose journal and an index built over a corpus where **every**
+    candidate alias has already been applied, then asks, per alias: querying
+    the lexical arm with this alias's own text, does its own note come back in
+    the top `k`? Aliases that fail are dropped; a note whose aliases all fail
+    drops out entirely.
+
+    Two properties are load-bearing and easy to get wrong:
+
+    - **The test runs under competition.** Every candidate alias is present in
+      the index being queried, so an alias must win against the others this
+      same run generated — the condition it will actually face. Measuring a
+      candidate against an otherwise-unaliased corpus would over-state it.
+    - **It is an outcome filter, not a relevance filter.** Nothing here judges
+      whether an alias is a *good description*; it only measures whether the
+      alias moved retrieval. Doc2Query--'s relevance filtering was found to
+      harm recall-based metrics (SIGIR 2024 reproducibility study), and R@5 is
+      recall-shaped.
+
+    Gold-blind by construction: the only inputs are the propose journal, the
+    index, and each alias's own text.
+    """
+    out_journal = Path(args.out_journal)
+    out_journal.parent.mkdir(parents=True, exist_ok=True)
+    counts: Counter = Counter()
+    kept_aliases = dropped_aliases = 0
+
+    with out_journal.open("w", encoding="utf-8") as jf:
+        for line in Path(args.journal).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            rec = json.loads(line)
+            if rec.get("outcome") != "aliased":
+                continue
+            indexed_path = args.path_prefix + rec["path"]
+            survivors, dropped = [], []
+            for alias in rec["aliases"]:
+                hits = lexical_top_k(args.agentmd, args.index, alias, args.k)
+                (survivors if indexed_path in hits else dropped).append(alias)
+            kept_aliases += len(survivors)
+            dropped_aliases += len(dropped)
+            if not survivors:
+                counts["filtered-out"] += 1
+                jf.write(json.dumps({
+                    "path": rec["path"], "outcome": "filtered-out",
+                    "dropped": dropped,
+                }) + "\n")
+                continue
+            counts["kept"] += 1
+            jf.write(json.dumps({
+                "path": rec["path"], "outcome": "aliased", "op": "insert",
+                "aliases": survivors, "dropped": dropped,
+            }) + "\n")
+
+    for k, v in counts.most_common():
+        print(f"{v:7d}  {k}")
+    print(f"\naliases kept {kept_aliases}, dropped {dropped_aliases} "
+          f"(k={args.k}, lexical arm only)")
+    print(f"journal: {out_journal}")
+    return 0
+
+
 def cmd_apply(args: argparse.Namespace) -> int:
     """Apply a reviewed propose journal's `aliased` records to a target vault.
 
@@ -376,6 +464,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     p.add_argument("--journal", required=True, help="where proposals are written")
     p.set_defaults(func=cmd_propose)
+
+    f = sub.add_parser(
+        "filter",
+        help=("keep only aliases that retrieve their own note (outcome filter); "
+              "read an index built with EVERY candidate applied"),
+    )
+    f.add_argument("--journal", required=True, help="a propose journal to filter")
+    f.add_argument("--out-journal", required=True, help="filtered journal, ready to apply")
+    f.add_argument("--index", required=True,
+                   help="index over a corpus with every candidate alias applied")
+    f.add_argument("--k", type=int, default=5,
+                   help="lexical top-k an alias must reach its own note within")
+    f.add_argument("--path-prefix", default="",
+                   help=("prepended to a journal path before comparing against search "
+                         "results, which are vault-root-relative while journals are "
+                         "memory-root-relative (e.g. 'Agent/')"))
+    f.set_defaults(func=cmd_filter)
 
     a = sub.add_parser("apply", help="apply a reviewed propose journal to a target vault")
     a.add_argument("--journal", required=True, help="a propose journal to apply")

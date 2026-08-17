@@ -207,6 +207,20 @@ reflect), and the Haiku gate's rollout beyond briefs all belong to the memory
 storage / filing / dreaming arc that follows this one. Intent-sourced aliases
 at capture time are already standing practice and need no build.
 
+**Generated aliases are closed as a retrieval lever (2026-08-16).** Three
+independently pre-registered strategies — content-only prompting, structural
+prompting, and outcome-filtered generation — each returned the same null on the
+same targets, and the third eliminated the first two's diagnosed failure mode by
+construction: every alias it kept provably retrieved its own note, and the
+gold-query rank still did not move. The `pp09` trace explains why and redraws
+the problem: the corpus already ranks the right note first for the rare term
+that distinguishes it, and the gold query loses it because fusion's two-term
+subset carries the common words instead. **What remains of this residue is
+query-formulation- and fusion-shaped, not vocabulary-shaped** — the framing this
+design's own Alternatives section once argued the other way. A future rung
+belongs on the ranking side; another write-side vocabulary rung does not, and
+the burden on one is now to show what it would do differently from all three.
+
 ## Related
 
 - `agentm-rescope-week1-experiment.md` — the FTS5-only ruling this supersedes
@@ -221,6 +235,43 @@ at capture time are already standing practice and need no build.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-16 · Outcome-filtered alias generation (retrieval-competition arc,
+  section 5) refuted at its pre-flight probe — and with it the whole arc closes,
+  every section accounted for and the ladder's number unmoved.** The conditional
+  final section kept a generated alias only if, with every candidate applied and
+  indexed, the alias's own text retrieved its own note in the lexical top-5 — an
+  *outcome* filter, deliberately not Doc2Query--'s relevance filter, which the
+  SIGIR 2024 reproducibility study found harms recall-based metrics. It kept 451
+  of 552 aliases and moved the gold-query lexical rank of all three reachable
+  targets by exactly nothing (`pp05`, `pp09` ×2, `pp15`, all `>50 → >50`), the
+  same null the two prior alias prompts produced. The null was proven live
+  before it was believed: the aliases are in the scored corpus, absent from the
+  pristine baseline, and retrieve their own note at rank 1. **Why this is not
+  the earlier vocabulary diagnosis repeated:** `pp09`'s surviving alias carries
+  `primos`, a corpus-rare term the gold query uses, and the corpus *already*
+  ranks the right note first for that term alone — the gold query fails because
+  fusion's two-term subset carries the common words (`kept`, `notes`) and
+  dilutes the rare one. **The residue is query-formulation-shaped, not
+  vocabulary-shaped**, converging with `pp07`'s independently-diagnosed fusion
+  friction. Three independently pre-registered alias strategies have now
+  returned the same null, the third having eliminated the first two's diagnosed
+  failure mode by construction, so alias generation is closed as a lever on this
+  residue. Also recorded: the reachable target set was **three** — `pp07`,
+  `pp16`, `pp17`, `rc01`, `rd01` sit outside the fixed structural scope entirely,
+  and the scope was deliberately not widened to reach them (the gold-informed
+  back door). Code kept but inert (`alias_pilot.py filter` has no live caller);
+  `call_model`'s inherited-cwd leak fixed on its own merits, the same leak the
+  HyDE probe hit, which both prior alias pilots predate and were likely
+  contaminated by. **Arc verdict: all five sections are now closed — 1, 2, 4 and
+  5 refuted, 3 closed without a run — and the arc-close gate's release condition
+  ("at least one rung that moves the deterministic retrieval-layer number") went
+  unmet across every one.** The ladder's live numbers are unchanged from where
+  the arc opened: 48/64 (75.0%) on `+question`, 47/64 (73.4%) on the hook arm.
+  Re-audit trigger: a *ranking-side* mechanism (query formulation or fusion
+  weighting), not another write-side vocabulary rung — the arc has now bounded
+  that thread from three directions. See NOTES.md § "Outcome-filtered alias
+  generation (section 5)".
 
 - **2026-08-16 · HyDE probe (retrieval-competition arc, section 4) refuted
   on non-regression — the first rung in this arc whose positive prediction
