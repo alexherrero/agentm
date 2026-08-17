@@ -2777,3 +2777,147 @@ a fourth rung that would independently re-derive this same negative.
 different GPU hardware, a llama.cpp fix for the Metal page fault, or a new
 sub-1B model that demonstrably beats EmbeddingGemma's 35/64 parity result
 would make a future embedder-swap probe worth running again.
+
+# HyDE probe (section 4) — refuted on non-regression, but the first rung in
+
+this arc whose positive half is not zero
+
+Retrieval-competition arc, section 4. Generate a Haiku hypothetical
+document per question (`q' = ` a declarative, note-shaped passage that
+would answer the question, never the question itself) and embed that in
+place of the bare question — a query-side bridge for `pure-paraphrase`'s
+zero-lexical-overlap gap, the mechanism section 3's own close-out
+concluded was needed after ruling out an embedder swap.
+
+## Two instrument bugs, found and fixed before any scoring run
+
+Both surfaced during task 3's hand-read of the generated hypothetical
+documents, per this arc's own "check the instrument" discipline.
+
+**Context leakage.** The `claude -p` generation subprocess inherited the
+worktree's cwd, so Claude Code auto-loaded this repo's own CLAUDE.md and
+AGENTS.md into what was supposed to be a *blind* hypothetical generation —
+confirmed directly: an early pass's `pp15`/`pp16`/`pp09` output quoted
+`install.sh --hooks`, `/model opusplan`, and specific (wrong) repo
+structure verbatim. Fixed by running the subprocess from a neutral cwd
+with no CLAUDE.md/AGENTS.md in its parent chain. `--bare` would close the
+one remaining gap — the user's *global* `~/.claude/CLAUDE.md`, which is
+not cwd-gated — but breaks authentication in this environment (skips
+keychain reads, demands an `ANTHROPIC_API_KEY` that was not available) and
+was not used. **Residual, documented risk**: {`pp02`, `pp12`, `pp16`,
+`pp17`} show direct, specific leakage from the global CLAUDE.md's
+worktree/model-routing content; {`pp07`, `pp15`} show softer,
+structural overlap. Four of the seven positive-half target questions
+carry some degree of this risk.
+
+**Task self-awareness.** The system prompt originally named "HyDE" by
+term, and on imperative-phrased entries (`pp03`, `pp04` — "Let's update my
+voice...") the model recognized the meta-task and broke character into
+clarifying questions instead of generating a passage. Fixed by rewriting
+the prompt to never name the task and to explicitly forbid meta-commentary
+regardless of the query's grammatical form.
+
+Final generation: 84/84, 0 failures, $0.5995 total (~$0.0048–0.0094/call,
+matching the brief's estimate closely once leaked context stopped
+inflating input tokens — the first, contaminated pass cost $1.61).
+
+## The measured result
+
+No Go code needed: a substitute gold-set JSON with each entry's
+`"question"` field replaced by its cached hypothetical text (id/expected
+paths/stratum unchanged) let the existing `retrieval_scorecard.py --mode
+hybrid --question` score the signal arm unmodified.
+
+| stratum | control | signal |
+|---|---:|---:|
+| distinctive-token | 9/12 | 8/12 |
+| episodic-temporal | 9/12 | 9/12 |
+| pure-paraphrase | 11/18 | 11/18 (same rate, different composition) |
+| research-corpus | 10/12 | 8/12 |
+| research-density | 9/10 | 9/10 |
+| **R@5** | **75.0%** (48/64) | **70.3%** (45/64) |
+| negative rejection | 0/20 | 0/20 |
+
+Two signal scoring runs bit-identical (generation is cached, so everything
+downstream is deterministic and replayable).
+
+## Per question, by id
+
+**Target set** (all 7 `pure-paraphrase` misses, fusion-friction correction
+excludes none — no target sits at dense rank 1): `pp05`, `pp07`, `pp09`,
+`pp10`, `pp15`, `pp16`, `pp17`.
+
+**Converted (4 of 7):** `pp05`, `pp09`, `pp10`, `pp15`. **Still miss (3 of
+7):** `pp07`, `pp16`, `pp17` — exactly the three heaviest leak-risk
+questions from the hand-read above. The mechanism's unleaked signal
+converted every clean target it could plausibly help and nothing it
+couldn't; the leak, where it existed, did not even help.
+
+**Negative-half violations (11, outside the target set):** lost —
+`dt01`, `dt12`, `pp02`, `pp06`, `pp12`, `pp14`, `rc02`, `rc06`, `rd05`
+(hit→miss); gained — `dt10`, `rd01` (miss→hit, unpredicted). No shared
+cause across the four affected strata (dt, pp, rc, rd) the way `rc10`'s
+PRF trace found one for section 2 — collateral damage here looks diffuse
+rather than mechanism-specific.
+
+**Against the alias-oracle's own eight** (`pp05`, `pp07`, `pp09`, `pp15`,
+`pp16`, `pp17`, `rc01`, `rd01` — NOTES.md § "Alias oracle"): HyDE converts
+4 of 8 in measurement (`pp05`, `pp09`, `pp15`, `rd01`), though nothing
+ships, so all eight remain unconverted in the live system.
+
+## Clause by clause
+
+**(a) Non-regression — FAILED.** R@5 45/64 (70.3%) < 48/64 floor.
+`research-corpus` 10/12→8/12, a −2 drop, exceeds the −1-question ceiling —
+fails on both the headline number and the per-stratum guard.
+
+**(b) Conversion — MET.** 4 of 7 target-set questions converted (at least
+one required).
+
+**(c) Prediction, positive half — MET, the first in this arc.**
+Registered before scoring: at least 2 of 7 convert. Measured: 4 of 7.
+`path-signal`, `chunk-lexical`, and `offgold-and-prf` all scored 0 of N on
+this clause; this is the first positive half greater than zero.
+
+**(c) Prediction, negative half — FAILED.** Registered: the remaining 57
+answerable questions hold. Measured: 11 of 57 changed, 46/57 (80.7%)
+held — worse than section 2's own 57/62 (91.9%) held, which that
+section's close-out already judged a failure at a *better* hold rate than
+this.
+
+**(d) Negatives — MET.** All 20 `correct_rejection` values unchanged, per
+id.
+
+**(e) Latency — MOOT.** No hook floor applies; HyDE cannot reach the hook
+by the layering rule (deliberate-path only).
+
+## Verdict
+
+**Refuted, on clauses (a) and (c)'s negative half** — despite meeting (b)
+and (c)'s positive half for the first time in this arc. This is the
+`chunk-lexical` shape, not the `path-signal`/`offgold-and-prf` shape: the
+mechanism demonstrably helped its intended targets while breaking others
+it was never aimed at, across four strata with no obvious shared cause.
+No Go code was touched (confirmed: `git status`/`git diff --stat` on the
+worktree both empty) — nothing to revert.
+
+**What this licenses.** `pure-paraphrase`'s residue is reachable by a
+query-side bridge in principle — the clean conversions (`pp05`, `pp09`,
+`pp10`) are real, unleaked signal, not contamination — but this specific
+mechanism's collateral cost (9 regressions across 4 strata) is not paid
+for by 3–4 clean gains. A future HyDE-shaped rung that bounds the
+mechanism's blast radius (e.g., only substituting the query text when a
+cheap pre-check suggests the bare-question dense arm is already weak,
+rather than substituting unconditionally for every query) is the
+re-audit trigger worth naming, not a re-run of this exact form.
+Four sections into this arc (section 3 closed without a run; sections 1,
+2, and 4 all refuted on non-regression), the arc-close gate's release
+condition — "at least one rung that moves the deterministic number" — has
+gone unmet across every section run so far, worth carrying into the
+close-out's own gate assessment rather than treated as this section's
+surprise alone.
+
+Per-question detail for all 84 questions, both arms:
+`<vault>/Agent/_meta/health/goldv2/hyde-20260816.json`, never in the repo.
+Full derivation: `_harness/PLAN.md` tasks 1–6 (archived at close-out) and
+`progress.md`'s 2026-08-16 HyDE entries.

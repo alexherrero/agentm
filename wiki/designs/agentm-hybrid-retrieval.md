@@ -222,6 +222,43 @@ at capture time are already standing practice and need no build.
 
 *Newest first.*
 
+- **2026-08-16 · HyDE probe (retrieval-competition arc, section 4) refuted
+  on non-regression — the first rung in this arc whose positive prediction
+  half is not zero, but collateral damage elsewhere still sinks it.**
+  Generating a Haiku hypothetical document per question and embedding that
+  instead of the bare question converted 4 of 7 `pure-paraphrase` misses
+  (`pp05`, `pp09`, `pp10`, `pp15`) while regressing 9 questions across four
+  other strata it was never aimed at — `+question` R@5 fell to 70.3% (from
+  75.0%), and `research-corpus` alone dropped 2 questions, past the
+  1-question stratum ceiling. Two instrument bugs were found and fixed
+  before any scoring run, both worth naming for any future rung that
+  shells out to `claude -p` for generation: the subprocess inherited the
+  worktree's cwd and Claude Code auto-loaded this repo's own CLAUDE.md/
+  AGENTS.md into what was meant to be a *blind* hypothetical generation
+  (fixed with a neutral cwd; the user's global `~/.claude/CLAUDE.md`
+  remains a smaller, documented residual leak risk for 4 of the 7 target
+  questions, since closing it via `--bare` breaks authentication in this
+  environment); and naming the mechanism "HyDE" in the system prompt let
+  the model break character into meta-commentary on imperative-phrased
+  queries, fixed by never naming the task. **The three misses that stayed
+  misses were exactly the three heaviest leak-risk questions** — the
+  mechanism's unleaked signal converted everything it plausibly could and
+  nothing it couldn't, evidence the 4-of-7 conversion is genuine rather
+  than contamination. Against the alias-oracle's own eight
+  (`wiki/designs/agentm-rejection-and-vocabulary.md`'s rung 0), HyDE
+  converts 4 of 8 in measurement, though nothing ships. Full measurement:
+  `scripts/health/results/goldv2/NOTES.md`'s "HyDE probe" entry.
+  **Re-audit trigger:** a future query-side-bridge rung that bounds its own
+  blast radius — substituting the query text only when a cheap pre-check
+  suggests the bare-question dense arm is already weak, rather than
+  unconditionally for every query — is the next candidate worth testing
+  against this same corpus, not a re-run of this exact unconditional form.
+  **Four sections into the retrieval-competition arc** (section 3 closed
+  without a run; sections 1, 2, and 4 all refuted on non-regression), the
+  arc-close gate's release condition has gone unmet across every section
+  run so far — see the gate's own hold entry below for the accumulating
+  count.
+
 - **2026-08-16 · embedder-swap probe (retrieval-competition arc, section 3)
   closed without a run — the comparison it proposed already happened, in this
   same design's own 2026-08-12 entry below.** The brief scoped section 3 as
