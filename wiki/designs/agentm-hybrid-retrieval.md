@@ -222,6 +222,33 @@ at capture time are already standing practice and need no build.
 
 *Newest first.*
 
+- **2026-08-16 · Vector-PRF (retrieval-competition arc, section 2) refuted —
+  the second competition-mechanism rung, on a different arm than the first,
+  refuted for a different reason.** Pseudo-relevance feedback (Rocchio
+  `q' = α·q + β·mean(top-k)`, published defaults, registered off a
+  gold-blind probe set before any code) mixes the dense arm's own top-3
+  result vectors back into the query and re-searches once. `+question` R@5
+  fell to 70.3% (from 75.0%), hook to 67.2% (from 73.4%) — refuted on
+  non-regression before its own conversion clause even mattered (neither of
+  the two registered plausible conversions, `ep09`/`rc01`, converted).
+  Traced by hand: PRF amplifies noise when the seed dense rank is already
+  mediocre (rank 12, not top-5) by mixing the query toward whatever
+  happened to occupy the top-3 — in one traced case, a cluster of unrelated
+  boilerplate notes, collapsing the correct note's dense rank from 12 to
+  2486. The mechanism's own pre-flight probe (100% clean top-3/top-5) could
+  not have caught this: it was built entirely from easy, already-rank-1
+  queries and never contained a mediocre seed to measure against. Reverted
+  before any PR opened, matching the first competition rung's own
+  precedent. **Three rungs running now share one signature** — a
+  registered positive-prediction set that converts zero of its members
+  (`path-signal`, `chunk-lexical`, and this one) — worth carrying forward
+  as a pattern in how this arc derives "plausible conversion" targets, not
+  three independent surprises. Full measurement:
+  `scripts/health/results/goldv2/NOTES.md`'s "Off-gold probe set +
+  Vector-PRF" entry. The off-gold probe set itself survives as a reusable
+  artifact for the arc's remaining sections, its own easy-query limitation
+  now documented rather than assumed.
+
 - **2026-08-16 · the "residue is vocabulary-shaped" premise is corrected, and
   a first competition-mechanism rung (chunk-level lexical indexing) is
   refuted in its own right.** This design's own 2026-08-14 step-4 entry
