@@ -10,7 +10,29 @@ from pathlib import Path
 HERE = Path(__file__).parent
 V2_PATH = HERE / "gold-set-v2.json"
 V3_PATH = HERE / "gold-set-v3.json"
-VAULT_ROOT = Path("/Users/alex/Vault")
+
+_REPO_SCRIPTS = HERE.parent.parent.parent  # .../scripts/health/fixtures/week1-gold -> .../scripts
+if str(_REPO_SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(_REPO_SCRIPTS))
+import harness_memory  # noqa: E402  (never hardcode the vault path — see AGENTS.md)
+
+
+def resolve_vault_root() -> Path:
+    """`expected_note_paths`/`expected_note_prefixes` are vault-root-relative
+    (`Agent/...`), so this needs `vault_path()`, not `memory_root()` — the
+    latter already points *inside* `Agent/` and would double the prefix.
+    """
+    p = harness_memory.vault_path()
+    if p is None or not Path(p).is_dir():
+        raise SystemExit(
+            "[verify_gold_v3] no reachable vault. Set "
+            "plugins.obsidian-vault.vault_path via `agentm_config --vault-path` "
+            "or export $MEMORY_VAULT_PATH to the vault root (not Agent/)."
+        )
+    return Path(p)
+
+
+VAULT_ROOT = resolve_vault_root()
 
 TOUCHED_IDS = {"dt07", "pp09", "pp10", "ep08", "pp16", "ep07", "pp07", "pp17"}
 HOOK_ANNOTATED = {"dt01", "ep10", "ep12"}

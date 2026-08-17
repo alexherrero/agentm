@@ -203,6 +203,12 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
     rows = []
     for e in entries:
         expected = e.get("expected_note_paths") or []
+        # Folder-level accept (task 3, goldv3 pp09): any returned path under
+        # one of these prefixes counts as a hit alongside the exact paths.
+        # v2 entries never carry this key, so `prefixes` is always `[]` for
+        # them and every line below collapses to its old behavior exactly.
+        prefixes = e.get("expected_note_prefixes") or []
+        is_negative = not expected and not prefixes
         query = to_query(e["question"])
         # The gold question passed through verbatim, not to_query's reduction
         # of it — task 3.5's whole point is that the dense arm sees the
@@ -222,21 +228,38 @@ def score(entries: list[dict], k: int, mode: str = "and", target: tuple = (),
                 query, k, mode, target, question, lex3)
         else:
             ranked, ms, note, rerank_ms, rerank_pairs = [], 0.0, "", None, None
-        hits = [p for p in expected if p in ranked]
+        exact_hits = [p for p in expected if p in ranked]
+        prefix_hits = [p for p in ranked if p not in exact_hits
+                       and any(p.startswith(pref) for pref in prefixes)]
+        hits = exact_hits + prefix_hits
         first = min((ranked.index(p) + 1 for p in hits), default=None)
         rows.append({
             "id": e["id"], "stratum": e["stratum"], "question": e["question"],
             "query": query,
             "question_passed": bool(question),
             "lex3": lex3,
-            "is_negative": not expected,
+            "is_negative": is_negative,
+            # goldv3: a negative annotated `layer: gate-only` measures nothing
+            # at this layer by design — rejection moved to the deliberate-path
+            # gate. Reported in its own block (see render()), not folded into
+            # the ordinary "rejection (floor)" line. Never true for a v2 entry
+            # (no `layer` key), so v2's rejection reporting is untouched.
+            "gate_only": is_negative and e.get("layer") == "gate-only",
+            # goldv3 Group A (dt01/ep10/ep12): the hook arm's own recall path
+            # excludes the subtree every expected note lives in by policy, not
+            # by a retrieval defect — excluded from *that arm's* denominator
+            # only. A bare --mode run or --question without --via-hook scores
+            # these exactly as it always has; only true when via_hook is set,
+            # so a non-hook run is never affected.
+            "hook_excluded": via_hook and e.get("hook_reachable") is False,
             # A negative is "correct" when the tool returned nothing at all.
             # See the module docstring for why that is a floor, not a verdict.
-            "correct_rejection": (not ranked) if not expected else None,
-            "hit": bool(hits) if expected else None,
+            "correct_rejection": (not ranked) if is_negative else None,
+            "hit": bool(hits) if not is_negative else None,
             "first_hit_rank": first,
             "returned": len(ranked),
             "expected": expected,
+            "expected_prefixes": prefixes,
             "top": ranked[:k],
             "ms": round(ms, 1),
             "rerank_ms": rerank_ms,
@@ -296,24 +319,49 @@ def render(result: dict, k: int) -> str:
            ""]
     out.append(f"{'stratum':<20}{'n':>4}{'hit@k':>9}{'rate':>9}")
     out.append("-" * 42)
-    scored = [r for r in rows if not r["is_negative"]]
+    scored = [r for r in rows if not r["is_negative"] and not r["hook_excluded"]]
     for stratum in sorted(by):
         rs = by[stratum]
-        pos = [r for r in rs if not r["is_negative"]]
+        pos = [r for r in rs if not r["is_negative"] and not r["hook_excluded"]]
         if pos:
             h = sum(1 for r in pos if r["hit"])
             out.append(f"{stratum:<20}{len(pos):>4}{h:>9}{h/len(pos):>9.1%}")
         else:
+            neg_rows = [r for r in rs if r["is_negative"]]
+            # goldv3: a stratum whose rows are entirely gate-only negatives is
+            # reported in its own block below instead of inline here — see
+            # "gate-only" below. A v2 negative never carries `gate_only`, so
+            # this is always False there and the old inline row is unchanged.
+            if neg_rows and all(r["gate_only"] for r in neg_rows):
+                continue
             c = sum(1 for r in rs if r["correct_rejection"])
             out.append(f"{stratum:<20}{len(rs):>4}{c:>9}{c/len(rs):>9.1%}  (returned nothing)")
     out.append("-" * 42)
     hits = sum(1 for r in scored if r["hit"])
     out.append(f"{'OVERALL R@' + str(k):<20}{len(scored):>4}{hits:>9}{hits/len(scored):>9.1%}")
 
-    negs = [r for r in rows if r["is_negative"]]
+    # goldv3 Group A: reported separately from R@k above, never folded into
+    # a generic miss — see score()'s `hook_excluded` for why.
+    hook_excl = [r for r in rows if r["hook_excluded"]]
+    if hook_excl:
+        h = sum(1 for r in hook_excl if r["hit"])
+        out.append(f"{'hook-excluded (policy)':<20}{len(hook_excl):>4}{h:>9}{h/len(hook_excl):>9.1%}"
+                    "  (expected notes live in a hook-excluded subtree)")
+
+    negs = [r for r in rows if r["is_negative"] and not r["gate_only"]]
     if negs:
         c = sum(1 for r in negs if r["correct_rejection"])
         out.append(f"{'rejection (floor)':<20}{len(negs):>4}{c:>9}{c/len(negs):>9.1%}")
+
+    # goldv3: negatives annotated `layer: gate-only` measure nothing at this
+    # layer by design (rejection moved to the deliberate-path gate) — reported
+    # here, never counted inside R@k or the ordinary rejection-floor line
+    # above. Empty for a v2 gold set (no entry carries `layer`).
+    gate_only = [r for r in rows if r["gate_only"]]
+    if gate_only:
+        c = sum(1 for r in gate_only if r["correct_rejection"])
+        out.append(f"{'gate-only (not scored here)':<20}{len(gate_only):>4}{c:>9}{c/len(gate_only):>9.1%}"
+                    "  (rejection moved to the deliberate-path gate)")
 
     lat = sorted(r["ms"] for r in rows)
     out += ["", f"latency  p50 {lat[len(lat)//2]:.1f}ms   p90 "
@@ -349,7 +397,11 @@ def render(result: dict, k: int) -> str:
         for r in misses:
             out.append(f"  [{r['id']}] {r['question'][:66]}")
             out.append(f"        query  {r['query']}")
-            out.append(f"        wanted {r['expected'][0].split('/')[-1][:56]}")
+            # A prefix-only entry (goldv3 pp09-shaped) has no exact path to
+            # show; fall back to the prefix itself, marked as such.
+            wanted = r["expected"][0] if r["expected"] else \
+                (r["expected_prefixes"][0] + "**" if r["expected_prefixes"] else "?")
+            out.append(f"        wanted {wanted.split('/')[-1][:56]}")
             got = r["top"][0].split("/")[-1][:56] if r["top"] else "(nothing returned)"
             out.append(f"        got    {got}")
     return "\n".join(out)
@@ -364,14 +416,17 @@ def arm_cells(result: dict, k: int) -> dict:
 
     cells = {}
     for stratum, rs in by.items():
-        pos = [r for r in rs if not r["is_negative"]]
+        pos = [r for r in rs if not r["is_negative"] and not r["hook_excluded"]]
         if pos:
             cells[stratum] = f"{sum(1 for r in pos if r['hit'])}/{len(pos)}"
-    scored = [r for r in rows if not r["is_negative"]]
+    scored = [r for r in rows if not r["is_negative"] and not r["hook_excluded"]]
     if scored:
         hits = sum(1 for r in scored if r["hit"])
         cells[f"R@{k}"] = f"**{hits / len(scored):.1%}**"
-    negs = [r for r in rows if r["is_negative"]]
+    # goldv3: gate-only negatives measure nothing at this layer — excluded
+    # from the arm table's rejection cell the same way render() excludes them
+    # from its own "rejection (floor)" line. Always False for v2 (no `layer`).
+    negs = [r for r in rows if r["is_negative"] and not r["gate_only"]]
     if negs:
         c = sum(1 for r in negs if r["correct_rejection"])
         cells["negative rejection"] = f"**{c / len(negs):.0%}**"
