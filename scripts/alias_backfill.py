@@ -50,6 +50,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections import Counter
 from dataclasses import dataclass, field
@@ -419,6 +420,19 @@ def call_model(prompt: str, model: str, timeout: int) -> str:
     `--settings '{"disableAllHooks":true}'` is load-bearing: without it this
     project's own recall hooks fire on every invocation, which is both slow and a
     way for the vault to end up in the prompt that is writing to the vault.
+
+    The subprocess runs from a **neutral temporary directory**, which is equally
+    load-bearing and was missing until 2026-08-16. Claude Code auto-loads any
+    CLAUDE.md / AGENTS.md it finds in its working directory's parent chain, so
+    inheriting this repo's cwd silently fed the repo's own instructions into a
+    generation that is supposed to be blind to them. The HyDE probe hit exactly
+    this and caught it by hand-reading its output; both alias pilots ran before
+    the fix and were very likely contaminated the same way. A `mkdtemp()` root
+    has no such file above it.
+
+    This does not close the *global* `~/.claude/CLAUDE.md`, which is not
+    cwd-gated. `--bare` would, but it skips keychain reads and demands an
+    `ANTHROPIC_API_KEY` that is not available in this environment.
     """
     cmd = [
         "claude",
@@ -439,7 +453,9 @@ def call_model(prompt: str, model: str, timeout: int) -> str:
         "--max-turns",
         "4",
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    with tempfile.TemporaryDirectory(prefix="agentm-neutral-cwd-") as neutral:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                              cwd=neutral)
     if proc.returncode != 0:
         # A non-zero exit with an empty stderr is common enough here — usage
         # limits come back that way — that reporting only stderr produced 132

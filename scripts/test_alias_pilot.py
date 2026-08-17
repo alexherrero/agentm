@@ -477,5 +477,150 @@ class GoldBlindnessTests(unittest.TestCase):
         self.assertEqual(list(sig2.parameters), ["batch", "args"])
 
 
+class OutcomeFilterTests(unittest.TestCase):
+    """The outcome filter's contract: an alias survives only if querying the
+    lexical arm with that alias's own text returns its own note in the top k.
+
+    The searches are faked here — what is under test is the filter's decision
+    logic and its journal, not the daemon's ranking, which has its own tests.
+    """
+
+    JOURNAL = [
+        {"path": "desk/projects/works/_index.md", "outcome": "aliased", "op": "insert",
+         "aliases": ["a working alias", "a useless alias"]},
+        {"path": "desk/projects/fails/_index.md", "outcome": "aliased", "op": "insert",
+         "aliases": ["another useless alias"]},
+        {"path": "desk/projects/skipped/_index.md", "outcome": "skip-too-few",
+         "reason": "kept 1 of 3"},
+    ]
+
+    # Only "a working alias" retrieves its own note; everything else returns
+    # some other note, exactly as a lexically uncompetitive alias would.
+    FAKE_RESULTS = {
+        "a working alias": ["Agent/desk/projects/works/_index.md", "Agent/other/x.md"],
+        "a useless alias": ["Agent/other/x.md", "Agent/other/y.md"],
+        "another useless alias": ["Agent/other/x.md"],
+    }
+
+    def _run_filter(self, tmp, k=5):
+        journal = Path(tmp, "propose.jsonl")
+        journal.write_text("\n".join(json.dumps(r) for r in self.JOURNAL), encoding="utf-8")
+        out = Path(tmp, "filtered.jsonl")
+        with mock.patch.object(alias_pilot, "lexical_top_k",
+                               side_effect=lambda a, i, q, kk: self.FAKE_RESULTS[q]), \
+             contextlib.redirect_stdout(io.StringIO()):
+            alias_pilot.main(["--agentmd", "agentmd", "filter",
+                              "--journal", str(journal), "--out-journal", str(out),
+                              "--index", str(Path(tmp, "candidate.db")),
+                              "--k", str(k), "--path-prefix", "Agent/"])
+        return [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines() if x.strip()]
+
+    def test_an_alias_that_does_not_retrieve_its_own_note_is_dropped(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recs = {r["path"]: r for r in self._run_filter(tmp)}
+        kept = recs["desk/projects/works/_index.md"]
+        self.assertEqual(kept["aliases"], ["a working alias"])
+        self.assertEqual(kept["dropped"], ["a useless alias"])
+
+    def test_a_note_whose_aliases_all_fail_drops_out_entirely(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recs = {r["path"]: r for r in self._run_filter(tmp)}
+        failed = recs["desk/projects/fails/_index.md"]
+        self.assertEqual(failed["outcome"], "filtered-out")
+        self.assertNotIn("aliases", failed)
+
+    def test_non_aliased_propose_records_are_not_carried_through(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            recs = {r["path"]: r for r in self._run_filter(tmp)}
+        self.assertNotIn("desk/projects/skipped/_index.md", recs)
+
+    def test_the_comparison_respects_the_path_prefix(self):
+        """Search results are vault-root-relative, journals memory-root-relative.
+        Without the prefix, a working alias would look like a failure — which is
+        a silent, total null, the exact shape the two prior pilots produced."""
+        with tempfile.TemporaryDirectory() as tmp:
+            journal = Path(tmp, "propose.jsonl")
+            journal.write_text(json.dumps(self.JOURNAL[0]), encoding="utf-8")
+            out = Path(tmp, "filtered.jsonl")
+            with mock.patch.object(alias_pilot, "lexical_top_k",
+                                   side_effect=lambda a, i, q, kk: self.FAKE_RESULTS[q]), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                alias_pilot.main(["--agentmd", "agentmd", "filter",
+                                  "--journal", str(journal), "--out-journal", str(out),
+                                  "--index", str(Path(tmp, "candidate.db")),
+                                  "--path-prefix", ""])
+            recs = [json.loads(x) for x in out.read_text(encoding="utf-8").splitlines() if x.strip()]
+        self.assertEqual(recs[0]["outcome"], "filtered-out")
+
+    def test_lexical_top_k_never_asks_for_the_dense_arm(self):
+        """The filter's question is purely lexical, so it must not pay for — or
+        be confounded by — the dense arm."""
+        captured = {}
+
+        class Proc:
+            returncode = 0
+            stdout = '{"results": []}'
+            stderr = ""
+
+        def fake_run(cmd, **kw):
+            captured["cmd"] = cmd
+            return Proc()
+
+        with mock.patch.object(alias_pilot.subprocess, "run", fake_run):
+            alias_pilot.lexical_top_k("agentmd", "idx.db", "some alias", 5)
+        self.assertIn("-no-embedder", captured["cmd"])
+        self.assertIn("-mode", captured["cmd"])
+        self.assertEqual(captured["cmd"][captured["cmd"].index("-mode") + 1], "fusion")
+
+
+class GenerationTransportTests(unittest.TestCase):
+    """`call_model` must not inherit a working directory that has a CLAUDE.md or
+    AGENTS.md above it.
+
+    Claude Code auto-loads those from the cwd's parent chain, so an inherited
+    repo cwd silently feeds this repo's own instructions into a generation that
+    is meant to be blind to them. The HyDE probe hit exactly this; both alias
+    pilots predate the fix.
+    """
+
+    def _capture_cwd(self):
+        captured = {}
+
+        class Proc:
+            returncode = 0
+            stdout = "[]"
+            stderr = ""
+
+        def fake_run(cmd, **kw):
+            captured["cwd"] = kw.get("cwd")
+            # The directory must still exist while the subprocess would be running.
+            captured["exists"] = Path(kw["cwd"]).is_dir() if kw.get("cwd") else False
+            return Proc()
+
+        with mock.patch.object(ab.subprocess, "run", fake_run):
+            ab.call_model("a prompt", "sonnet", 60)
+        return captured
+
+    def test_call_model_runs_from_a_neutral_directory(self):
+        captured = self._capture_cwd()
+        self.assertIsNotNone(captured["cwd"], "call_model inherited the caller's cwd")
+        self.assertTrue(captured["exists"], "the neutral cwd must exist during the call")
+
+    def test_the_neutral_directory_has_no_agent_instructions_above_it(self):
+        captured = self._capture_cwd()
+        p = Path(captured["cwd"]).resolve()
+        for parent in [p, *p.parents]:
+            for name in ("CLAUDE.md", "AGENTS.md"):
+                self.assertFalse(
+                    (parent / name).is_file(),
+                    f"{parent / name} would be auto-loaded into a blind generation",
+                )
+
+    def test_the_neutral_directory_is_not_the_repository(self):
+        captured = self._capture_cwd()
+        self.assertNotEqual(Path(captured["cwd"]).resolve(),
+                            Path(__file__).resolve().parent.parent)
+
+
 if __name__ == "__main__":
     unittest.main()
