@@ -265,6 +265,24 @@ design's own Alternatives section once argued the other way. A future rung
 belongs on the ranking side; another write-side vocabulary rung does not, and
 the burden on one is now to show what it would do differently from all three.
 
+**Corrected 2026-08-17 (see the amendment log): that redrawing generalized from
+a single case and does not hold across its own population.** The `pp09` trace
+was one question. Measured across the five current misses a registered rarity
+threshold actually reaches, the corpus ranks the answer first for the question's
+rarest term on **one** of them (`dt10`, rank 1 in the term's own ranking against
+rank 20 for the two-term gold query) and on the other four the rare term **does
+not retrieve the answer note at all** — it is absent from the term's entire
+match set, not merely ranked low. `rc01`, the third member of the
+`pp09`/`dt10`/`rc01` family the FOLLOWUP named, has no term under the threshold
+at all. So for most of this residue the gap really is between the question's
+vocabulary and the answer's, and the alias arc's null is not explained away by
+fusion's term selection. **The rare-term selection family is closed — both the
+one-term sub-query candidate and the rarity-weighted-scoring candidate, the
+second by the same measurement, since re-weighting cannot promote a document a
+sub-query never returns.** What is not closed is the vocabulary gap itself; what
+is closed is the belief that a ranking-side selection change was hiding behind
+it.
+
 ## Related
 
 - `agentm-rescope-week1-experiment.md` — the FTS5-only ruling this supersedes
@@ -279,6 +297,40 @@ the burden on one is now to show what it would do differently from all three.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-17 · Fusion rare-term selection refuted at its pre-flight probe —
+  and the `pp09` diagnosis it rested on is corrected to a one-case result.**
+  The arc-close named a ranking-side rung as the one remaining legitimate
+  lever after generated aliases were closed, and this was it: alongside
+  fusion's two-term subsets, issue a one-term sub-query for any extracted term
+  below a registered document-frequency threshold, so the precision the corpus
+  already holds for a rare term stops being discarded. Lexical-only, no model
+  in the loop, and it changes the set of sub-queries rather than the
+  max-score rule the fusion arm was measured under. The threshold was fixed
+  outcome-blind at DF < 150 (under 1% of the 15,029-document corpus) from the
+  corpus's own distribution over all 84 gold queries' terms, before any
+  eligibility was computed. Five of the fourteen `+question` misses were
+  eligible; **`rc01`, one of the two candidates the FOLLOWUP named live, was
+  not** — its rarest term is `outside` at DF 254. **Gate A required the
+  labeled answer in the lexical top-5 for the question's rarest term alone on
+  more than half the eligible set, and returned 1 of 5.** Refuted at the
+  probe; the competition gate was never reached and no Go code was written.
+  The per-question trace is what matters: on `dt10` the mechanism's thesis
+  holds exactly (the answer ranks 1 for `coord` alone, and 20 for the two-term
+  gold query), while on the other four the rare term does not retrieve the
+  answer note at all — absent from its match set, not ranked low. That kills
+  the rarity-weighted-scoring candidate by the same measurement, since
+  re-weighting cannot promote a document a sub-query never returns, and it
+  corrects this design's own 2026-08-16 redrawing: "the corpus already ranks
+  the answer first for the rare term the question uses" was measured on
+  `pp09` alone and does not generalize. The probe's first run was itself
+  broken — it read the scorecard's *output* field names from the *gold set*
+  and produced a clean, false 0 of 5, the same instrument bug section 5
+  recorded — and was corrected by adding a positive control (`pp09` at rank 1
+  for `primos`) the probe now refuses to report without. **Re-audit trigger:**
+  a mechanism that closes the question-to-answer vocabulary gap itself, which
+  is what four of these five misses actually are; `dt10` alone is an instance,
+  not a rung.
 
 - **2026-08-17 · Floorless rerank refuted at its pre-flight probe —
   "similarity is not answerhood" now covers ordering, not only
