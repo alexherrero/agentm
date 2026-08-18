@@ -3218,9 +3218,39 @@ and was optimistic for the "probabilistic" tier (0/3 against an expected
 typo-fix all worked exactly as designed everywhere they were tried), but
 because two of the three probabilistic cases face a real competing note the
 diagnosis had already flagged as a live risk, and the third faces a defect
-class nobody had found yet. `+question` R@5 moved 48/64 → 50/64 — the 5
-near-certain conversions minus the 3 still-open probabilistic misses,
-exactly as the arithmetic requires. The genuinely-hard core the arc bounded
+class nobody had found yet.
+
+### Correction (2026-08-17, same day): the net is +5 −3, not +2 clean
+
+This section first read "`+question` R@5 moved 48/64 → 50/64 — the 5
+near-certain conversions minus the 3 still-open probabilistic misses, exactly
+as the arithmetic requires." **That sentence was wrong, and it hid three
+regressions.** The 3 probabilistic misses were already misses in v2, so they
+subtract nothing: 48 + 5 = 53 expected against 50 measured. A per-question
+diff of the two recorded runs gives the real movement:
+
+- **Gained (5):** `dt07`, `pp09`, `pp10`, `pp16`, `ep08` — the label fixes,
+  exactly as predicted.
+- **Lost (3):** `pp02` (was rank 3), `pp06` (was rank 5), `ep04` (was rank 3).
+
+None of the three is a mechanism regression — nothing about retrieval changed.
+All three were **displaced out of the top-5 by documents that did not exist in
+the v2 snapshot**: `pp02` by `research-worktree-pr-loop.md` /
+`worktree-native-verdict-draft.md` and two others, `pp06` by
+`github-claude-chip-resolved.md`, `ep04` by ordinary shuffling once its
+neighbours grew. The corpus grew 9,971 → 15,029 files in the five days between
+snapshots, and that growth cost three questions outright.
+
+**The interpretation this forces:** the instrument fix was worth +5; concurrent
+corpus growth was worth −3; the +2 headline is the sum of two unrelated
+effects, not a clean measurement of the relabel. It also means **the ladder's
+absolute number should be expected to drift downward over time as the vault
+grows, independent of retrieval quality** — a fixed-corpus rung stays valid
+internally (every arm scores the same frozen snapshot), but cross-snapshot
+comparisons now carry a growth term that has to be named rather than assumed
+away. Any future changeover should publish the gained/lost split, not a net.
+
+The genuinely-hard core the arc bounded
 (`rc01`, `rd01`, `rc03`, `pp05`, `pp15`, `dt10`, plus now `ep07`/`pp07`/`pp17`
 until their specific defects are addressed) is what a future ranking-side
 rung should be judged against — not the 48/64 or 50/64 headline alone.
@@ -3230,4 +3260,61 @@ Per-question detail for all 84 questions, both arms:
 `hook-e2e-20260817.json`, never in the repo. `_harness/goldv3-diagnosis.md` is
 executed as of this entry; `_harness/PLAN.md` tasks 1-4 (archived at
 close-out).
+
+## Post-baseline reach probe: the residue is ordering, not recall
+
+Run immediately after the baseline, to decide what the next rung should be
+rather than assume it. Two measurements, both against the v3 index.
+
+**Rank depth.** Scoring the same `+question` arm at wider `k`:
+
+| k | R@k | |
+|---|---:|---|
+| 1 | 28/64 | 43.8% |
+| 2 | 40/64 | 62.5% |
+| 3 | 46/64 | 71.9% |
+| 5 | 50/64 | 78.1% |
+| 10 | 55/64 | 85.9% |
+| 20 | **59/64** | **92.2%** |
+
+**Per-miss reachability.** For each of the 14 `+question` misses, the wanted
+note's rank in a k=50 pool: `pp05` 6, `pp06` 6, `ep04` 6, `rc03` 7, `pp02` 8,
+`dt10` 11, `pp17` 13, `pp07` 14, `rc01` 27, `ep07` 40, `ep09` 44. Only `pp15`
+and `rd01` are absent from the pool entirely. `dt02` is its own case — lexical
+rank **1**, yet absent from the hybrid top-50, so fusion is discarding a
+rank-1 lexical hit rather than merely diluting it.
+
+**What this settles.** The candidate pool already contains the labeled answer
+for 92.2% of answerable questions; 11 of 14 misses are in it. The remaining
+loss is overwhelmingly **ordering inside the pool**, not failure to retrieve
+into it. Three consequences, each of which redirects work that looked
+reasonable an hour earlier:
+
+1. **Another query-side bridge is the wrong rung.** HyDE-shaped mechanisms buy
+   pool *entry*, and only `pp15`/`rd01` need that. This retroactively explains
+   the HyDE probe's shape — it converted some targets and broke nine others
+   because it was paying recall cost to solve a ranking problem.
+2. **R@1, not R@5, is where the headroom is.** 22 questions sit at ranks 2–5;
+   9 more at 6–20. A perfect reorder over the k=20 pool takes R@1 from 28/64
+   to 59/64 — 31 questions, against 9 for R@5.
+3. **The remaining gold-label headroom is ~1–2 questions, and further relabel
+   is a net negative.** A mislabeled question has the system's defensible
+   answer at rank 1 and the gold pointing elsewhere; these have the *labeled*
+   answer at rank 6–44, which is the ranking signature, not the labeling one.
+   `ep04` is the one genuinely murky case (its top-3 are prose-register polish
+   plans, its label a voice convention, and neither is squarely "when the
+   cross-model pass was set up"). Left alone deliberately: the goldv3 relabel
+   was an operator-approved, evidence-backed list, and extending it by
+   accepting whatever the system returns converts the benchmark into a mirror.
+
+**Falsified on the way:** the ranking-penalty FOLLOWUP filed hours earlier
+against `status: inbox` / `mining_confidence: LOW` notes. Those are 9,415 of
+14,529 embedded notes — 65% of the corpus — but occupy **1.4%** of miss top-5
+slots, and machine-generated notes appear at statistically the same rate in
+hits (10.0%) as in misses (11.4%), so their presence does not predict
+miss-ness. The ranker is already ignoring the miner exhaust. That FOLLOWUP was
+filed on the strength of one dramatic case (`pp17`'s decoy) and does not
+generalize; it is struck rather than left to look like queued work.
+Duplicate-slug results were checked in the same pass and are also a non-issue
+(4 wasted slots across 3 questions).
 
