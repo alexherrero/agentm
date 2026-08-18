@@ -100,3 +100,168 @@ thresholding.** Not a re-discovery of step 3's finding and not a
 contradiction of it — a deeper confirmation, at the one property this
 rung's mechanism actually needed and step 3 never tested. See the
 `agentm-hybrid-retrieval.md` amendment log for the design-level statement.
+
+---
+
+# Fusion rare-term selection — refuted at the pre-flight probe, and the
+diagnosis it rested on does not survive contact with its own population
+
+Make the lexical arm privilege the term that distinguishes. Rule pre-registered
+and **committed before any probe or mechanism code existed**
+(`RULE-fusion-rare-term.md`, `35d60f2`).
+
+## The mechanism
+
+Alongside fusion's existing two-term subsets, issue a **one-term sub-query for
+every extracted term whose document frequency falls below a registered
+threshold**. Motivated by section 5's `primos` trace: the corpus returns
+`pp09`'s note at rank 1 for `primos` alone, while the gold query `kept notes
+primos` reads past 50, because the two-term subsets carry the common words and
+the max-score comparison lets a `kept`/`notes` subset outbid the one carrying
+`primos`. The precision is already in the corpus; today it is thrown away
+because no one-term sub-query exists.
+
+This changes the *set of sub-queries*, never the *scoring rule* —
+max-score-across-subsets beat RRF here by measurement and was left untouched.
+Lexical-only: no embedder, no reranker, no model of any kind.
+
+## Two corrections the plan made to its own brief, before measuring
+
+**Eligibility was split from the probe.** The brief derived the target set by
+"does the labeled answer win the lexical arm for its rare term alone," then
+gated on "does the labeled answer land in the lexical top-5 for its rare term
+alone" — the same measurement twice, a check that cannot fail. Eligibility was
+re-defined to read only query text and corpus document frequency (*would the
+mechanism fire at all?*), which is also all the mechanism knows in production.
+The probe then asks the outcome question against the labels, and can come back
+negative — which it did.
+
+**A second gate was registered for the competition.** Scoring a sub-query in
+isolation over-claims when the mechanism makes it contend; Gate B was to merge
+every sub-threshold sub-query into the two-term result by max score and re-rank.
+It was never reached.
+
+## The threshold, fixed outcome-blind
+
+**DF < 150 documents — under 1.0% of the 15,029-document corpus.** Derived from
+the corpus's own DF distribution over the extracted terms of all 84 gold
+queries, by a script reading question text and corpus only: no `expected` paths,
+no hit/miss column, no scored artifact, and no per-question output, so the value
+could not be chosen for what it recovers. Over 348 distinct terms: all-terms p25
+131 (0.87%), median 344 (2.29%); per-query rarest-term median 65 (0.43%), p75
+164 (1.09%). 150 sits essentially on the all-terms p25, at well under half the
+median term, and fires on 59 of 84 queries.
+
+`pp05` missed the line by **one document** (`house`, DF 151). Disclosed as the
+rule requires; the line was not moved.
+
+## Eligibility, and the first surprise
+
+Five of the fourteen `+question` misses are eligible: `dt10`, `pp06`, `pp07`,
+`rd01`, `rc03`. Reach gate required ≥3.
+
+**`rc01` — one of the brief's two named live candidates — never reached the
+probe.** Its rarest extracted term is `outside` at DF 254, well above the line.
+Of the `pp09`/`dt10`/`rc01` "family" the FOLLOWUP named, only `dt10` survives a
+threshold registered before anyone looked.
+
+## The result
+
+**Gate A: 1 of 5, the rule required ≥3. Refuted at the probe.** Gate B was not
+run — it is pre-registered to run only if Gate A passes, and running it anyway
+would be fishing for a second opinion the rule did not buy. Tasks 5–7 as
+originally scoped were not bought; no Go code was written.
+
+| id | rarest term | DF | rank of labeled answer, term alone, k=50 |
+|---|---|---:|---|
+| `dt10` | `coord` | 18 | **1** — pass |
+| `pp06` | `cuased` | 1 | not in top 50 |
+| `pp07` | `vision` | 85 | not in top 50 |
+| `rd01` | `ranker` | 3 | not in top 50 |
+| `rc03` | `remembers` | 146 | not in top 50 |
+
+## The probe was broken first, and that is why the null is believable
+
+The first run reported a clean **0 of 5, every answer "not in top 50."** It was
+reading `expected` / `expected_prefixes` — the field names the scorecard's
+*output rows* use — from the *gold set*, where they are `expected_note_paths` /
+`expected_note_prefixes` (`retrieval_scorecard.py:205,210`). Every comparison
+ran against an empty list. **This is the same instrument bug section 5 recorded
+for inheritance, reproduced on the first attempt**: a silent, total null
+indistinguishable from a real refutation.
+
+It was caught because a uniform zero is what a broken probe looks like. The fix
+added the **positive control** the rule should have demanded up front: `pp09`,
+the diagnosis's own worked case, whose answer the section-5 trace records at
+rank 1 for `primos` alone. The corrected probe reproduces that rank 1 exactly,
+and now refuses to report at all if the control does not reproduce. Two
+independent proofs it can see a positive — the `pp09` control at rank 1 and
+`dt10` at rank 1 — plus real score spread (`primos` returns 50 rows with 50
+distinct scores, 3.39–10.73).
+
+## Why the four failed, which is the actual finding
+
+Traced per question rather than assumed. For `pp06`, `pp07`, `rd01` and `rc03`
+the rare term **does not match the labeled answer note at all** — not "matches
+and ranks low," but absent from the term's entire FTS match set (1, 85, 3 and
+146 documents respectively, none of them the answer). No sub-query on a term can
+surface a document that term does not retrieve.
+
+`dt10` is the single case behaving exactly as the thesis predicts: `coord`
+matches 18 documents, the answer is among them and ranks **1** in the term's own
+ranking, while the two-term gold query buries it at rank **20**. That is the
+`primos` trace reproduced on a second question — one question out of five.
+
+**Section 5's diagnosis generalized from one case and does not hold across its
+own population.** "The corpus already ranks the answer note first for the rare,
+distinguishing term a question uses" was measured on `pp09` alone and then
+carried into the FOLLOWUP as a three-member family. Measured across the eligible
+five it holds for `dt10` (and `pp09`) and fails for the other four, because the
+question's rare term is simply not in the answer note. For four of five, the
+residue is a genuine question-to-answer vocabulary gap — the thing the alias arc
+attacked from the write side and could not close — rather than a fusion
+term-selection defect.
+
+## What this also settles, without a further rung
+
+**Candidate 2, rarity-weighted subset scoring, is refuted by the same
+measurement.** Re-weighting a sub-query cannot promote a document the sub-query
+never returns. For the four failures the answer is not in the rare term's result
+set at any weight. The rule registered in advance that a Gate-B-only failure
+would make candidate 2 the honest next rung; that reading does not apply,
+because the failure landed at Gate A for a stronger reason. **The rare-term
+selection family is closed, both candidates, on measurement rather than
+argument.**
+
+One detail worth carrying: `pp06`'s rarest term `cuased` is a **typo in the
+question** (DF 1), and the one document it matches is not the answer. The
+mechanism would have fired a sub-query on a misspelling and surfaced an
+unrelated note — adding noise, not merely failing to help. A rarity threshold
+cannot separate a distinguishing rare term from a typo, because both are rare.
+
+## Ops
+
+Fresh `goldv3-20260817` restore to `~/.agentm/corpus-snapshots/fusion-rare-term/`,
+a location no prior rung has used. Integrity triple exact by direct `sqlite3`
+count: **15,029 / 14,529 / 17,407**. Control binary built from untouched HEAD
+(`95e49b0`) before any edit existed and frozen aside as `bin-main`; since no Go
+code was ever written, no `bin-sig` was built and the flag-off byte-identity
+proof was never needed. Both arms scored twice before anything else: 0 of 84
+rows differ between replicates and 0 of 84 against the historical
+`question-20260817.json` / `hook-e2e-20260817.json`. `degraded: []` on all four
+runs, checked per row — it is a per-row field, and a top-level read of it is a
+vacuous pass. `PATH` pinned to the scratch binary with `which agentmd` confirmed
+before every scoring call. Embedder attached at `127.0.0.1:8901`, never spawned;
+neither embedder nor reranker was needed for the probe itself. Probe reproduces
+byte-identically across two runs. Derivation and probe scripts kept scratch-side
+at `~/.agentm/corpus-snapshots/fusion-rare-term/scratch-scripts/`, matching how
+section 5's own scripts stayed out of the repo.
+
+## What remains open
+
+`dt10` is a real instance of the mechanism's thesis and remains unconverted; one
+question is not a rung. **`dt02`** keeps its own FOLLOWUP (skill-discovery-cache
+machine exhaust, an indexing-policy question) and was reported but never
+targeted here. The **answerhood-reranker** rung
+(`_harness/BRIEF-answerhood-reranker.md`) is a sibling lever at a different
+layer, untouched by this result. Neither was built.
