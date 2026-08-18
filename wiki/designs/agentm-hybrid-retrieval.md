@@ -118,6 +118,18 @@ negatives interleave on cross-encoder score in *either* query format (measured
 on the deliberate path is therefore **load-bearing**, and the fast path ships
 with no rejection gate at all.
 
+**Sharpened 2026-08-17 (see the amendment log): "similarity is not
+answerhood" holds for ordering too, not only for thresholding.** A
+reorder-only pass — no floor, cannot evict a candidate already in the
+pool — was tested against the strictly weaker property a floor never
+needed: within one question's own pool, does the cross-encoder rank the
+labeled answer above its competitors. On the 9 reachable misses closest to
+the top of that test, it does on 4 — short of the ≥5 the rule required.
+The mechanism is bounded-safe (a permutation cannot make a reachable
+question unreachable) but not accurate enough to buy its own
+implementation. No reordering mechanism ships on the fast path as of this
+amendment.
+
 **What the fast path does instead, decided 2026-08-14: inject with metadata.**
 The hook returns its top-k labelled — each hit's score, its space, and an
 explicit statement that these are candidates matched by similarity rather than
@@ -267,6 +279,37 @@ the burden on one is now to show what it would do differently from all three.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-17 · Floorless rerank refuted at its pre-flight probe —
+  "similarity is not answerhood" now covers ordering, not only
+  thresholding.** The goldv3 reach probe (previous entry) found 11 of 14
+  `+question` misses already sitting in the k=50 pool, mostly at rank
+  6–14 — the residue looked like ordering, not recall, and the natural next
+  mechanism was a floorless reorder of the existing hybrid pool: no floor,
+  no filter, a permutation truncated to k, structurally unable to evict a
+  candidate already reachable. Before buying the implementation, the
+  pre-registered rule required a cheap probe first: for the 9 misses whose
+  labeled answer sits at k ≤ 20, score the labeled answer and its
+  question's current top-5 occupants with the shipped cross-encoder (jina)
+  and require the labeled answer to beat a majority of its own pool on ≥5
+  of 9 questions. **Measured 4 of 9** — `pp05`/`pp06`/`ep04` a clean 5/5
+  each, `dt10` a narrow 3/5, then five questions where the labeled answer
+  loses to a majority of what already outranks it, `rc01` losing to all
+  five and `pp07` losing to a dream/consolidation dedup-proposal note (the
+  sixth FOLLOWUP the goldv3 changeover filed) by the single largest margin
+  measured in either direction. The instrument was proven live first (two
+  unrelated strings scored -3.1409 vs -3.7396; every question's scores
+  show real spread), so the null is not a dead-server artifact. **The
+  distinction this sharpens:** step 3's refutation measured *cross-question
+  score comparability* (0.003–0.959 against 0.267–0.906) — whether one
+  threshold works across questions, which a floor needs. This probe
+  measured *within-question ordering* — whether the labeled answer beats
+  its own pool, one question at a time — a strictly weaker property step 3
+  never tested, and it fails too. No code ships; the rung closed at the
+  probe, before an implementation task was ever written, so there is
+  nothing to keep inert. Full record:
+  `scripts/health/results/goldv3/NOTES.md` § "Floorless rerank — refuted
+  at the pre-flight probe".
 
 - **2026-08-17 · goldv3 changeover — decontaminate, relabel, re-baseline.**
   Immediately after the retrieval-competition arc closed with the deterministic
