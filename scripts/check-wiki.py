@@ -33,11 +33,6 @@ Rules (hard = blocking under --strict; soft = always warn-only):
       complete sitemap (and, being present on every wiki page, the orphan
       guarantee). Home.md is CURATED: it is NOT required to list every page;
       completeness lives in the sidebar.                      [hard]
-  (k) Word-count ceilings:
-        tutorial ≤ 1200 words
-        how-to   ≤ 600 words
-        explanation ≤ 2000 words
-        reference: unbounded here (rule p adds a prose-word ceiling)  [soft]
   (l) The repo-root README.md, governed as a wiki-adjacent page when
       include_readme is on (the default): every relative-path markdown
       link resolves to an existing file under the repo root. Opt out
@@ -46,7 +41,7 @@ Rules (hard = blocking under --strict; soft = always warn-only):
   (p) Shape axis — a reference page should be lookup-shaped, an explanation
       page should read as prose. Warns when an explanation is table-dominated
       (a fact-dump; fenced diagrams / code don't count) or a reference is mostly
-      prose / over a prose-word ceiling. The combined plugin-reference hybrid
+      prose. The combined plugin-reference hybrid
       (## Architecture + ## Reference) is exempt.                       [soft]
 
 Usage:
@@ -78,13 +73,16 @@ _FOLDER_MODE = {
 }
 MODE_DIRS = tuple(_FOLDER_MODE)
 STRUCTURAL_BASENAMES = {"Home", "_Sidebar", "_Footer", "README"}
-WORD_CAPS = {"tutorial": 1200, "how-to": 600, "explanation": 2000}
+# Page-length ceilings were removed 2026-08-18 on the operator's ruling: they
+# fired on every substantial design in the corpus and never once identified a
+# page worth splitting. Do not re-add a word cap here. Rule (p) keeps its
+# SHAPE checks (a reference should be lookup-shaped, an explanation prose) —
+# those judge form, not length, and are a different question.
 BANNED_HOWTO_HEADINGS = {"rationale", "why", "background", "context"}
 
 # Shape axis (rule p) — soft warns. A reference page should be lookup-shaped
 # (tables / quick-ref); an explanation page should read as prose. Thresholds are
 # calibrated against the live wikis so only a genuine misfile warns.
-REFERENCE_WORD_CAP = 900        # prose words on a reference page (word_count already excludes tables/fences)
 EXPLANATION_TABLE_MAX = 0.50    # explanation with >50% table lines (of table+prose) → warn (fenced diagrams/code don't count against it)
 REFERENCE_LOOKUP_MIN = 0.12     # reference with <12% table/code lines → warn (reference-as-narrative)
 SHAPE_MIN_LINES = 12            # skip pages too small to judge a shape
@@ -420,18 +418,6 @@ def rule_j_home_sidebar(wiki_root: Path, modes: dict[Path, str | None],
                  f"per-folder); every page must be reachable within 2 levels of the sitemap")
 
 
-def rule_k_word_count(p: Path, mode: str | None, text: str,
-                      issues: list[Issue]) -> None:
-    cap = WORD_CAPS.get(mode or "")
-    if cap is None:
-        return
-    count = word_count(text)
-    if count > cap:
-        emit(issues, p, 1, "k",
-             f"{mode} page is {count} words (soft ceiling {cap}); consider splitting",
-             soft=True)
-
-
 def rule_p_shape(p: Path, mode: str | None, lines: list[str], text: str,
                  heads: list[tuple[int, int, str]], issues: list[Issue]) -> None:
     """Shape axis (rule p) — a reference page should be lookup-shaped, an
@@ -463,12 +449,6 @@ def rule_p_shape(p: Path, mode: str | None, lines: list[str], text: str,
              f"reference page is {round(prose / total * 100)}% prose — a reference "
              "should be lookup-shaped (tables / quick-ref); move the narrative to "
              "an explanation page", soft=True)
-    prose_words = word_count(text)
-    if prose_words > REFERENCE_WORD_CAP:
-        emit(issues, p, 1, "p",
-             f"reference page has {prose_words} words of prose (soft ceiling "
-             f"{REFERENCE_WORD_CAP}) — a reference should be terse; move the "
-             "narrative to an explanation page or split", soft=True)
 
 
 # L6 (proving ledger, F12): the mandated top-note shape is Status + date +
@@ -597,7 +577,6 @@ def collect_issues(wiki_root: Path) -> list[Issue]:
             rule_c_tutorial_shape(p, mode, heads, issues)
             rule_d_howto_shape(p, mode, heads, lines, issues)
             rule_e_reference_shape(p, mode, lines, heads, issues)
-            rule_k_word_count(p, mode, text, issues)
             rule_p_shape(p, mode, lines, text, heads, issues)
             rule_q_topnote_length(p, mode, lines, issues)
 
