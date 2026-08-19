@@ -15,6 +15,12 @@ Underneath: re-running `install.sh` deleted every plugin-namespaced key from `~/
 
 ### Removed
 
+- **Page-length ceilings in `check-wiki.py`** ([`check-wiki.py`](scripts/check-wiki.py)) — rule (k)'s per-mode word caps (tutorial 1,200 / how-to 600 / explanation 2,000) and rule (p)'s 900-word prose cap on reference pages are gone, on the operator's ruling that the limit was not useful.
+
+  The evidence was the corpus itself. Of 47 soft warnings the strict run reported, 46 were length; they fired on every substantial design in the tree — `agentm-experience-and-dreaming` at 22,310 words, `agentm-memory-system` at 12,524, `agentm-auto-organization` at 12,058 — and not one of them had ever caused a page to be split. A warning that fires on almost everything and changes nothing is not a signal, and it drowns the warnings that are: after the removal the strict run reports **1** soft warning instead of 47, and that one names a real drift (a top-note that grew into a changelog).
+
+  **Rule (p)'s shape checks stay.** A table-dominated explanation and a prose-dominated reference are still warned about, because those judge whether a page is the right *form* for its mode — a different question from how long it is. Rule (q)'s top-note cap stays for the same reason: it enforces a mandated shape (Status + date + one or two sentences), not a length budget. A comment where the caps used to live records the ruling so nobody re-adds them.
+
 - **The Python vector-search stack, and the two features that rode on it** ([`recall.py`](harness/skills/memory/scripts/recall.py), [`agentm-rescope-week1-experiment.md`](wiki/designs/agentm-rescope-week1-experiment.md)) — the week-1 experiment declined the vector sidecar on 2026-08-06 and the daemon shipped without one, but the Python half stayed in the tree and kept running: five writers enqueued embeddings on every write, the idle hook fired a drain, and every query opened the index.
 
   **The index held 0 rows against 8,684 notes.** The ten entries in `embedding-queue.jsonl` were not a backlog to drain — they were the visible tail of a corpus that had never been enqueued at all, so "fix the drain" meant a full 8,684-note backfill. The 47-row, 4.2MB `vec-index.db` still sitting in the vault is an orphan the V5-3 device-local move left behind; reading that file instead of the live one is what made an earlier pass report the index as merely stale.
