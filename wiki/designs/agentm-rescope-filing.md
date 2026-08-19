@@ -87,11 +87,12 @@ One deliberate divergence from the system this borrows from. That system keeps a
 │   │   ├── tasks/<slug>/       the workbench for anything that isn't a project
 │   │   └── moc-tasks.md        a map of content over active tasks
 │   └── memory/
-│       ├── semantic/           facts, principles, learned tool behaviour
-│       ├── procedural/         recipes and protocols — how to do a thing
-│       ├── entities/           one living file per person, system, repo, org
 │       ├── crystallized/       lessons dreaming distilled from repetition
-│       └── episodic/           session traces
+│       ├── entities/           one living file per person, system, repo, org
+│       ├── episodic/           session traces
+│       ├── mocs/               maps of content over the memory corpus
+│       ├── procedural/         recipes and protocols — how to do a thing
+│       └── semantic/           facts, principles, learned tool behaviour
 │
 ├── calendar/                   the episodic capture layer, by date
 ├── projects/<slug>/            only you create these
@@ -105,7 +106,11 @@ One deliberate divergence from the system this borrows from. That system keeps a
 
 #### Classes are directories; types are frontmatter
 
-The five directories under `Agent/memory/` encode **retrieval classes** — how a memory is structured and how it is found. They are not type tags. A class answers "what kind of knowing is this," and that rarely changes once written; a type answers "what shape is this note," and that changes freely.
+The six directories under `Agent/memory/` encode **retrieval classes** — how a memory is structured and how it is found. They are not type tags. A class answers "what kind of knowing is this," and that rarely changes once written; a type answers "what shape is this note," and that changes freely.
+
+Three of the six hold memories written from observation. `semantic/` holds facts, principles and learned tool behaviour. `procedural/` holds recipes and protocols — how to do a thing. `episodic/` holds session traces.
+
+The other three are **derived, and rebuildable from the first three.** `entities/` holds one living file per person, system, repository or organization, each a materialized view over the atomic facts that mention it. `crystallized/` holds the lessons dreaming distilled out of repetition, each carrying `consolidated_from` back to the traces it came from. `mocs/` holds maps of content — navigational pages over the corpus, generated rather than authored, which is why the generator excludes its own output directory from the walk that feeds it. Deleting anything in these three loses nothing that cannot be rebuilt; they are persisted because they are what recall should hit first.
 
 So the class is the directory and the type is a frontmatter field, which is what lets both "nothing moves" and "re-typing is cheap" be true at once. Re-typing edits one line. The file stays where it was born, its ID holds, and every link to it survives.
 
@@ -117,6 +122,8 @@ The six types map into the classes rather than competing with them:
 | `reference` | `memory/semantic/`, or a project's own `docs/` |
 | `workflow`, `fix` | `memory/procedural/`, as recipes and protocols |
 | `idea` | staged in `Agent/desk/` or `projects/<slug>/desk/` as an active draft |
+
+Generated pages carry no type at all. A map of content in `memory/mocs/` is navigation rather than memory — it is rebuilt from the corpus on every pass, so giving it a type would put a derived artifact into the same taxonomy as the things it indexes. It is also why nothing in `mocs/` is a candidate for enrichment: there is no judgment to make about a file that is entirely a function of other files.
 
 Six types, collapsed from the twenty-two currently live, seventeen of which exist in single digits:
 
@@ -158,7 +165,7 @@ Inside a declared project the permission is per-file-class rather than per-write
 
 When a task matures into a project, the agent authors the project documents **fresh** rather than dragging the workbench across, and the original task directory is preserved as a completed execution log. Nothing moves here either, for the same reason it does not move anywhere else.
 
-`Agent/desk/moc-tasks.md` is a map of content over active tasks, linking each to its progress log.
+`Agent/desk/moc-tasks.md` is a map of content over active tasks, linking each to its progress log and tracking what is still pending. It is a single file and it indexes *work*, which makes it a different thing from `memory/mocs/`, whose pages index *memory*. The shared word is unfortunate and worth keeping straight.
 
 #### The calendar
 
@@ -170,7 +177,7 @@ Dreaming consolidates old calendar traces into crystallized cards. **The trace i
 
 #### Events and entities
 
-Cutting across the five retrieval classes is a second distinction, about how a memory behaves over its life rather than how it is found. Most memories are events. Some are entities.
+Cutting across the six retrieval classes is a second distinction, about how a memory behaves over its life rather than how it is found. Most memories are events. Some are entities.
 
 An **event memory** is written once at capture and never edited. It may later be superseded or expired by a status change, but its body is a record of a moment and stays that way. A distilled session insight, a fix, a research summary, a fact learned from an email — all events.
 
@@ -445,5 +452,5 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
-| 2026-08-18 | Second revision, after the operator supplied the target vault's actual topology and its maintainers answered six architecture questions. The filing half is rebuilt: `standards/storage-rules.md` becomes the runtime-read source of truth for filing, memory files into five retrieval classes with type staying in frontmatter, search moves from a root boundary to an exclude list, and the project/task door, the calendar layer and the legacy mapping are all specified. Recorded two divergences held on purpose — no metadata overlay, and the inbox left as an open question with a recommendation. | draft |
+| 2026-08-18 | Second revision, after the operator supplied the target vault's actual topology and its maintainers answered six architecture questions. The filing half is rebuilt: `standards/storage-rules.md` becomes the runtime-read source of truth for filing, memory files into six retrieval classes with type staying in frontmatter, search moves from a root boundary to an exclude list, and the project/task door, the calendar layer and the legacy mapping are all specified. Recorded two divergences held on purpose — no metadata overlay, and the inbox left as an open question with a recommendation. | draft |
 | 2026-08-18 | Initial draft, bootstrapped from the memory-ingestion research arc and reconciled against the rescope designs and AgentKV's architecture. Same-day revision after operator review found Detailed Design covered the enforcement mechanism but not the filing system it enforces: added the layout, the event/entity lifecycle split, the six types and their growth rule, entity resolution and its admission test, the three derived indexes, altitude, and the status-and-decay lifecycle. Migrations gained the 22→6 mapping; Launch Plans gained the per-part measurements. | draft |
