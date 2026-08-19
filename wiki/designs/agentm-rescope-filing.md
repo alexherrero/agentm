@@ -8,7 +8,7 @@ area: agentm
 author: alexherrero
 contributors: []
 created: 2026-08-18
-updated: 2026-08-18
+updated: 2026-08-19
 last_major_revision: 2026-08-18
 prd:
 project:
@@ -566,6 +566,7 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-08-19 | Translated to 6 parts via `/design translate`: rules-and-contract, capture-and-indexes, search-and-lifecycle, enrichment, dreaming-ledger-and-sources, meters-and-scorecards. Parts live in the vault harness at `_harness/designs/agentm-rescope-filing/parts/`, following the precedent of the v5-9/v5-10/v5-11 designs — not under `wiki/`, where `check-wiki`'s recursive scan would hold build artifacts to the sidebar-reachability gate. Migration is folded into the parts that own each population rather than made a seventh part, matching the design's own "hand passes as the parts land". | final |
 | 2026-08-18 | Seventh revision, and approval. The Obsidian exclusion is reversed on the operator's ruling: nothing in the vault is excluded from Obsidian's index — the whole vault is one graph in the viewer as everywhere else — and the scorecard's rendered graph becomes a convenience view rather than a replacement. The sibling `agentm-rescope-memory.md`, which carried the original exclusion, is amended to match under the living-design convention. Operator approved the design; Status: draft → final. The inbox recommendation is ratified with the approval: the review-queue mechanism, without the directory. | final |
 | 2026-08-18 | Sixth revision: the nightly scorecards. Health and dreaming each write a date-marked report to `Agent/desk/diagnostics/`, plus stable `latest_health_scorecard` / `latest_dreaming_scorecard` copies. The health scorecard reports state — statistics, component PASS/FAIL with timings, trended search/R@5/ingestion history, the meters, and a force-directed memory graph approximating Obsidian's layout, returning the view the Obsidian exclusion took away. The dreaming scorecard reports the run — what executed, what it did in numbers and links, queue and coverage movement, spend per tier, and its own health. Monitoring re-anchored on the two reports. | draft |
 | 2026-08-18 | Fifth revision, a scope correction: enrichment improves the whole note — body, title, slug, type, tags, aliases, altitude, summary — with the guards keeping each field honest, and slug correction joining the class move under the while-unlinked rule. The idempotency story is stated as one property: note stamps, the coverage ledger and the source registry together mean a note is enriched once per version and a source is mined once per version, so tokens are never spent re-doing finished work. | draft |
