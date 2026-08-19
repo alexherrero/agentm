@@ -87,7 +87,7 @@ The same block is the single source for every enum the system checks. The frontm
 │   ├── _dream/
 │   ├── _meta/
 │   ├── desk/
-│   │   ├── diagnostics/
+│   │   ├── diagnostics/        nightly scorecards, date-marked
 │   │   ├── tasks/<slug>/       the workbench for anything that isn't a project
 │   │   └── moc-tasks.md        a map of content over active tasks
 │   └── memory/
@@ -359,6 +359,7 @@ The rescope's five jobs, plus four that come from this arc and from AgentKV:
 8. Reconcile the contract — find existing files that violate it, fix what is safe, surface what is not. This is the automated half of the hand passes.
 9. Detect slop and drift.
 10. Maintain the coverage ledger and drain the pending-work queues under their caps.
+11. Write its own scorecard to `Agent/desk/diagnostics/` — the run's full record; see the nightly scorecards.
 
 #### Model tiers, and the audit that assigns them
 
@@ -393,6 +394,18 @@ Processed means processed *at a version*. Registry rows carry the same pass-vers
 Durability follows files-are-truth. The registry table lives in the index database for fast lookup, and it is rebuildable: every memory's `source` field names the unit it came from, so scanning the corpus recovers the processed set. What a rebuild alone would lose is the zero-yield records — sources processed and found to contain nothing worth keeping — and the growing-source cursors, so those two live in a small committed file under `Agent/_meta/`, written by the daemon with attribution. Losing the table costs a re-scan; losing nothing costs memories.
 
 This is also where distill-and-discard closes cleanly: the raw source never enters the vault, the memories carry the trail back, and the registry guarantees the expensive read happens once.
+
+#### The nightly scorecards
+
+Two reports land in `Agent/desk/diagnostics/` every night, date-marked — `2026-08-19_health_scorecard.md`, `2026-08-19_dreaming_scorecard.md` — and each is also written to a stable name, `latest_health_scorecard.md` and `latest_dreaming_scorecard.md`, so the current one is always the same path. They are vault files like any other: committed with attribution, searchable, and the dated series accumulates into its own trend history, aging under the same shelf convention as the rest of the desk.
+
+**The health scorecard reports state** — what the system is tonight, whether or not anything ran. Its sections, in order: memory statistics (counts by status and by class, connected memories from the backlink index, corpus volume, and the completeness score — the sampled claim-coverage number, which is the line on this page that is allowed to go down); component health, a PASS/FAIL table with timings — the storage-rules block parses, index schema integrity, embedder reachability, the capture loop's measured milliseconds, MCP dispatch, entity-resolution accuracy against its benchmark; performance history, trended rows of search latency, gold-set R@5 and ingestion latency, which puts principle 3's own number on the page every night; the meters — diversity, drift, coverage, queue depth and age; and the memory context graph.
+
+**The memory context graph** is a force-directed render of the backlink index, laid out with an algorithm chosen to approximate Obsidian's own, so the picture reads like the graph view. That is a deliberate loop closing: `Agent/memory/` is excluded from Obsidian's index to keep the quick-switcher clean, and the nightly render gives the excluded view back — colored by class, hubs sized by degree, deterministic and zero-token from data the index already holds.
+
+**The dreaming scorecard reports a run**, and its shape is different because a run is a different thing from a state. What ran: stages executed, durations, batch status. What it did, in numbers and links: drained, promoted, merged, expired; rollups refreshed; insights written; footers and stubs; corrections applied. Queue movement: drained, deferred, dead-lettered, and coverage before and after. Spend: calls and tokens against the budget, per tier. And its own health: breaker states, anomalies, failures and retries. The morning brief stays the human-facing digest and links here; the scorecard is the full record.
+
+Delivery is a detail, storage is the contract: the file in the vault is the artifact. Mailing the health scorecard rides the daemon's existing notify seam, and an unconfigured mail path is a skip, never a failure.
 
 #### Aliases split three ways, and the split is measured
 
@@ -539,7 +552,7 @@ Two measurements run before any of it, because either can kill a recommendation.
 
 ### Monitoring and Alerting
 
-Two numbers per work queue with red thresholds, both age-dominant rather than size-dominant, because fifty fresh unfiled items on a Tuesday morning is ordinary and the oldest being three days old means the pipeline has stalled. Alongside them: per-stage coverage — the share of the eligible population that is current — enrichment failure and dead-letter counts, the three drift meters, per-cycle model spend against budget, and the round-trip probe's own number, which is the one allowed to mark things done.
+The nightly scorecards are the monitoring surface — health for state, dreaming for the run — and every number with a red threshold lives on one of them. Queue thresholds stay age-dominant rather than size-dominant, because fifty fresh unfiled items on a Tuesday morning is ordinary and the oldest being three days old means the pipeline has stalled. Alongside them: per-stage coverage, enrichment failure and dead-letter counts, the completeness score and the diversity meters, per-cycle spend against budget, and the round-trip probe's own number, which is the one allowed to mark things done.
 
 ### Logging Plan
 
@@ -553,6 +566,7 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-08-18 | Sixth revision: the nightly scorecards. Health and dreaming each write a date-marked report to `Agent/desk/diagnostics/`, plus stable `latest_health_scorecard` / `latest_dreaming_scorecard` copies. The health scorecard reports state — statistics, component PASS/FAIL with timings, trended search/R@5/ingestion history, the meters, and a force-directed memory graph approximating Obsidian's layout, returning the view the Obsidian exclusion took away. The dreaming scorecard reports the run — what executed, what it did in numbers and links, queue and coverage movement, spend per tier, and its own health. Monitoring re-anchored on the two reports. | draft |
 | 2026-08-18 | Fifth revision, a scope correction: enrichment improves the whole note — body, title, slug, type, tags, aliases, altitude, summary — with the guards keeping each field honest, and slug correction joining the class move under the while-unlinked rule. The idempotency story is stated as one property: note stamps, the coverage ledger and the source registry together mean a note is enriched once per version and a source is mined once per version, so tokens are never spent re-doing finished work. | draft |
 | 2026-08-18 | Fourth revision, on operator ruling: enrichment's product is the body — the raw capture is distilled into the memory, and the body-immutability guard from the third revision is reversed and recorded in Alternatives. Protection moves from prevention to measurement and correction: a deterministic distinctive-token preservation floor, a sampled claim-level completeness score, four corpus-level diversity meters, and a correction loop that merges duplicates, re-distills pattern-collapsed notes from source, and routes persistent drift into a self-improvement proposal. The three flagged calls (personal/ background boundary, structured rules block, ledger in the index DB) are ratified. Added the source registry: namespaced watermarks for emails, chats, session transcripts and fetched pages — content hashes for immutable units, cursors for growing ones, version-stamped so reprocessing is deliberate, with source-scoped supersession on re-ingest and a committed cursor file for what a corpus scan cannot rebuild. | draft |
 | 2026-08-18 | Third revision, a strengthening pass on six operator directives: everything searchable including a contract-exempt `personal/` (space-dampened, never read by background passes), the project-root cap removed in favour of a subfolder convention with the alignment door kept, a fail-closed validator and single-source enum block for `storage-rules.md`, the enrichment pass rebuilt as a deterministic sandwich (five pre-gates, six post-gates, additive splits, immutable bodies), homogenization given structural guards and breaker-wired meters, model tiers assigned by sampled-audit qualification with batch-API routing and three jobs pinned strong, and the coverage ledger plus pending-work queues specified for backfill, with the declare-`person` worked example. | draft |
