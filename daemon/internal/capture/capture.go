@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
@@ -78,7 +79,17 @@ var validStatuses = map[string]bool{"unfiled": true, "active": true}
 type Capturer struct {
 	cfg *config.Config
 	idx *index.Index
+
+	// refused counts captures rejected because the caller named a type and there
+	// was no contract to validate it against. Counted rather than only logged:
+	// a broken contract refusing one client's every write is the quietest way
+	// this system can be broken, and a number on the status surface is what
+	// makes it a fact instead of a hunch.
+	refused atomic.Int64
 }
+
+// RefusedCaptures is how many captures the missing contract has cost since boot.
+func (c *Capturer) RefusedCaptures() int64 { return c.refused.Load() }
 
 func New(cfg *config.Config, idx *index.Index) *Capturer {
 	return &Capturer{cfg: cfg, idx: idx}
@@ -107,10 +118,11 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	// note lands untyped and `unfiled`, which is the state filing drains anyway,
 	// and refusing it would lose a capture over a misplaced colon in a file the
 	// capture never needed.
+	contract, contractErr := c.cfg.Rules.Get()
 	noteType := strings.ToLower(strings.TrimSpace(req.Type))
 	if noteType == "" {
-		if c.cfg.Rules != nil {
-			noteType = c.cfg.Rules.DefaultType
+		if contractErr == nil {
+			noteType = contract.DefaultType
 			notes = append(notes, fmt.Sprintf(
 				"type defaulted to %q; re-typing later is a frontmatter edit with no file move",
 				noteType))
@@ -118,12 +130,13 @@ func (c *Capturer) Do(req Request) (Result, error) {
 			notes = append(notes, "filing is halted (the storage rules do not parse), so this "+
 				"landed untyped; the next pass over `unfiled` types it")
 		}
-	} else if c.cfg.Rules == nil {
+	} else if contractErr != nil {
+		c.refused.Add(1)
 		return Result{}, fmt.Errorf("cannot validate type %q — filing is halted: %w",
-			noteType, c.cfg.RulesErr)
-	} else if !c.cfg.Rules.IsMemoryType(noteType) {
+			noteType, contractErr)
+	} else if !contract.IsMemoryType(noteType) {
 		return Result{}, fmt.Errorf("type %q is not one of: %s",
-			noteType, strings.Join(c.cfg.Rules.TypesSorted(), ", "))
+			noteType, strings.Join(contract.TypesSorted(), ", "))
 	}
 
 	status := strings.ToLower(strings.TrimSpace(req.Status))

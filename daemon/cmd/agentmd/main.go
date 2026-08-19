@@ -280,6 +280,7 @@ func cmdServe(args []string) error {
 			in.Probe, in.ProbeAt = probe.AsHealth(st, true)
 		}
 		in.Embedder = embedderHealth(embedder, idx, cfg)
+		in.Contract = contractHealth(cfg, cp)
 		return health.Evaluate(in)
 	}
 

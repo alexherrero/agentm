@@ -32,6 +32,7 @@ const (
 	ReasonGitDegraded = "git-degraded"
 	ReasonDirtyTree   = "uncommitted-changes"
 	ReasonUnreadable  = "repository-unreadable"
+	ReasonNoContract  = "filing-contract-broken"
 )
 
 // Result is the gate's verdict.
@@ -67,6 +68,24 @@ var ErrRefused = errors.New("corpus-write gate refused")
 // Result is populated either way.
 func Evaluate(cfg *config.Config) (Result, error) {
 	res := Result{Gate: CorpusWrite, Vault: cfg.VaultPath, Reasons: []Reason{}}
+
+	// Checked before git, because it is the cheaper refusal and the more
+	// specific one. A corpus-wide job under a broken filing contract is worse
+	// than a corpus-wide job with no undo: every decision it makes about where
+	// something belongs is a guess, and it makes thousands of them. Reporting
+	// the halt is what health does; this is what stops it biting.
+	if cfg.Rules != nil {
+		if _, err := cfg.Rules.Get(); err != nil {
+			res.Reasons = append(res.Reasons, Reason{
+				Code:   ReasonNoContract,
+				Detail: err.Error(),
+				Remedy: "fix the storage-rules block — a corpus-wide job decides where " +
+					"thousands of memories belong, and it decides by these rules. The " +
+					"daemon re-reads the file on its next health pass; no restart",
+			})
+			return res, ErrRefused
+		}
+	}
 
 	repo := vcs.Open(cfg.VaultPath)
 	if !repo.Available() {

@@ -225,7 +225,8 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	case "ping":
 		resp.Result = map[string]any{}
 	case "tools/list":
-		resp.Result = map[string]any{"tools": toolSpecs(s.cfg.Rules)}
+		contract, _ := s.cfg.Rules.Get()
+		resp.Result = map[string]any{"tools": toolSpecs(contract)}
 	case "tools/call":
 		result, err := s.callTool(req.Params)
 		if err != nil {
