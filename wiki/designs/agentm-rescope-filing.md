@@ -34,7 +34,7 @@ The costs are known and modest. The deterministic half of enrichment is regex an
 
 ### Overview
 
-A memory arrives, and two things happen to it. The capture transaction writes the file, extracts everything a regex can extract, and returns — offline, synchronous, under a hundred milliseconds, never dropped. Then an enrichment pass runs immediately afterwards, out of band, and does the work that needs judgment: it summarizes the note, assigns its type, splits it if it is a blob, and decides whether it is good enough to be worth keeping. If that pass fails or the model is unavailable, the note simply stays `unfiled` and the nightly dreaming run picks it up. The model is never on the critical path.
+A memory arrives, and two things happen to it. The capture transaction writes the file, extracts everything a regex can extract, and returns — offline, synchronous, under a hundred milliseconds, never dropped. Then an enrichment pass runs immediately afterwards, out of band, and does the work that needs judgment: it writes the memory itself — distilling the raw capture into a well-formed body — assigns its type, splits blobs into atomic memories, and decides whether the result is good enough to keep. If that pass fails or the model is unavailable, the note simply stays `unfiled` and the nightly dreaming run picks it up. The model is never on the critical path.
 
 Dreaming runs the same enrichment code over anything still `unfiled`, and then does the work that is only possible with the whole corpus in view: deduplicating against everything, building entity rollups from their underlying facts, extracting cross-memory insights, detecting slop and drift, and reconciling files that violate the contract. One definition of well-filed, two triggers — eager and batch.
 
@@ -189,7 +189,7 @@ Dreaming consolidates old calendar traces into crystallized cards. **The trace i
 
 Cutting across the six retrieval classes is a second distinction, about how a memory behaves over its life rather than how it is found. Most memories are events. Some are entities.
 
-An **event memory** is written once at capture and never edited. It may later be superseded or expired by a status change, but its body is a record of a moment and stays that way. A distilled session insight, a fix, a research summary, a fact learned from an email — all events.
+An **event memory** is written raw at capture, distilled once by enrichment, and never edited after that. It may later be superseded or expired by a status change, but its settled body is a record of a moment and stays that way. A distilled session insight, a fix, a research summary, a fact learned from an email — all events.
 
 An **entity memory** is one living file per thing, whose body accretes over time. A person is the clearest case: "sister, Austin, two kids, changed jobs in June" is not an event, and forcing it into the event model gives two bad options — rebuild-by-supersede on every new fact, which churns filenames and links, or scatter the person across two hundred fragments and re-synthesize on every lookup.
 
@@ -210,7 +210,7 @@ aliases: [...]            # deterministic at capture; question-vocabulary later
 source: https://…         # provenance in
 derived_from: [<slug>…]   # provenance across
 altitude: canonical       # canonical | artifact
-summary: >                # 2–3 sentences, written by enrichment, grounded in the body
+summary: >                # optional — for entries long enough to need one
   …
 enriched_by: sonnet-…     # which pass produced the judgment fields
 enriched_at: 2026-08-18T…
@@ -219,7 +219,7 @@ rules_hash: 3f2a…         # content hash of storage-rules.md at judgment time
 
 `altitude` is the axis AgentKV's dampening actually rides. A convention that states a durable rule and a note distilled from one session's exhaust are both `type: workflow` today, and they should not rank alike on a general question. agentm already does a small version of this — `recall.py` carries an abstraction-altitude boost for `_index` and `_summary` anchor files — so this generalizes an idea already in the ranker rather than introducing one.
 
-`rules_hash` records which version of the storage rules the judgment was made under, which makes staleness a computation: when the rules change, every memory whose hash no longer matches is mechanically identifiable, and re-filing becomes a queue to drain instead of a guess. `summary` is capped short by schema and grounded by the post-write check — one indexed field among several, never a replacement for the body it summarizes.
+`rules_hash` records which version of the storage rules the judgment was made under, which makes staleness a computation: when the rules change, every memory whose hash no longer matches is mechanically identifiable, and re-filing becomes a queue to drain instead of a guess. `summary` is optional and most atomic memories will never carry one — a well-distilled body a paragraph long needs no digest of itself. It exists for the minority of entries long enough to want an abstract, and it is grounded by the same check the body is.
 
 `enriched_by` and `enriched_at` exist so the first prompt we write is not permanent. A better model, or a corrected prompt, can re-run enrichment over anything stamped with an older version, and the pass is idempotent by construction so re-running is always safe.
 
@@ -294,7 +294,9 @@ All of it is deterministic, offline, and incapable of failing on a network. It b
 
 #### What the enrichment pass does
 
-It runs immediately after the transaction commits, and again inside dreaming for anything still `unfiled`. Every model call sits between two deterministic walls, so the judgment is bounded before it happens and checked after.
+It runs immediately after the transaction commits, and again inside dreaming for anything still `unfiled`. **Its product is the body.** Capture writes the raw material; enrichment distills it into the memory — a well-formed, atomic, retrieval-ready note in real prose. Voice and prose matter here, because the model's writing becomes the corpus: the enrichment prompt carries the voice specification, and since the prompt's hash is part of the pass version, a voice change is a version bump that the meters can see. The raw capture survives regardless — in git at the capture commit, and reachable through `source` — so a rewrite is never a loss, and re-distilling from the original is always possible.
+
+Every model call sits between two deterministic walls, so the judgment is bounded before it happens and checked after.
 
 **Before the model sees anything:**
 
@@ -306,39 +308,39 @@ It runs immediately after the transaction commits, and again inside dreaming for
 
 **After the model answers, before anything writes:**
 
-1. Schema validation — `type` against the enum, `altitude` against its pair, the summary against its length cap. A shape violation fails the call, and a failed call leaves the note `unfiled`.
-2. Extractive grounding on the summary — every claim traceable to the body. An ungrounded span drops.
-3. Alias derivation — an alias added at enrichment must derive from the note's own vocabulary: an expansion, an abbreviation, a decomposition. An alias whose content words appear nowhere in the body is the model paraphrasing the note, which is the measured −3.85 failure, and it is rejected mechanically. Capture-time aliases carrying the asker's own phrasing are a different, permitted channel — see the alias section.
-4. Class membership — the assigned class must be one of the three observational classes. Enrichment can never file into the derived three.
-5. Body integrity — the fingerprint of the capture body, taken before the pass, must match after it. Enrichment writes frontmatter and the marked footer region; a changed body byte reverts the write and trips the breaker.
+1. Schema validation — `type` against the enum, `altitude` against its pair, every field against its shape. A violation fails the call, and a failed call leaves the raw note `unfiled`.
+2. **Distinctive-token preservation** — every code symbol, identifier, name, number, URL and date in the source must survive into the enriched body or its frontmatter. This is a token-set comparison, fully mechanical, and it is the completeness floor: the model may rewrite every sentence, and it may drop none of the tokens retrieval actually matches on. A dropped identifier fails the write.
+3. Grounding, both directions — every claim in the enriched body traceable to the source (faithfulness), and the source's claims covered by the body (completeness). The faithfulness half runs per note; the completeness half beyond the token floor is sampled and scored as a health metric, because claim-level coverage needs judgment and judgment gets audited rather than trusted.
+4. Alias vocabulary — at the eager trigger the session context is present, so aliases may carry the asker's own phrasing alongside the source's: that is the channel that measured 12/12 at rank 1. At the batch trigger the context is gone, and aliases fall back to derivation only — expansions, abbreviations, decompositions of what the source says. What stays banned at any trigger is the cold scheduled backfill, a model reading old notes and paraphrasing them — the measured −3.85.
+5. Class membership — the assigned class must be one of the three observational classes. Enrichment can never file into the derived three.
 6. Revert-log routing — every enrichment write journals through the revert log, which today covers only the confirm-gated paths and extends to enrichment with this design.
+
+Once filing settles a memory to `active`, its body is done: dreaming writes only below the fenced footer marker, and later correction happens by re-enrichment from source or by supersession, never by silent editing.
 
 The judgments themselves, each paired with the guard that checks what schema cannot:
 
 | judgment | deterministic guard | on disagreement |
 |---|---|---|
-| summarize | extractive grounding — every claim traceable to source text | ungrounded span drops; grounding beats confidence |
+| write the body | token preservation + two-way grounding | a dropped identifier or ungrounded claim fails the write; grounding beats confidence |
 | assign `type` | enum-locked to the six, validated at write | unknown fails hard; arguable goes to the queue |
 | assign `altitude` | enum-locked; defaults to `artifact` | default wins when the judgment is absent |
 | tag | vocabulary check against existing tags | novel tags allowed, surfaced in the brief |
 | split a blob | size and concept ceiling measured deterministically | over-ceiling and unsplit is flagged, never silently admitted |
 | quality verdict | answerability-shaped rather than aesthetic | a failed verdict marks the note, it never deletes it |
 
-A split is additive. When a blob becomes twelve atomic memories, the fragments carry `derived_from` back to the original, the original flips to `status: superseded`, and its body stays exactly as captured — rank-penalized, never rewritten, never deleted.
+A split is additive. When a blob becomes twelve atomic memories, the fragments carry `derived_from` back to the original, and the original flips to `status: superseded` — rank-penalized, never deleted, its raw text still in git at the capture commit.
 
 The quality verdict deserves a note, because it is the one that can go circular. A model asked whether its own output is good will say yes. The bar that is not circular is principle 3's: does this note contain what a future question would need to find it. So the verdict is answerability-shaped — could a fresh session, asking sideways, land here — rather than a judgment about prose.
 
-#### Homogenization, and the guards against it
+#### Completeness, diversity, and correcting the drift
 
-Enrichment makes notes better and makes them more alike, and only one of those is wanted. A corpus rewritten by one model under one prompt converges toward one voice — and lexical diversity is what the search index feeds on. When every note phrases things the same way, term statistics flatten, distinctive tokens stop being distinctive, and the paraphrase gap this design exists to close reopens from the other side.
+Enrichment writing the corpus raises two questions the health checks must answer continuously: did the distillation keep what mattered, and are the memories starting to sound alike. Both are measured, trended, and acted on — the design's stance here is detection and correction rather than structural prevention, because the rewrite is the product and preventing it would prevent the point.
 
-The first guard is structural, and it is the one that matters most: **the captured body is immutable.** Enrichment writes frontmatter and the fenced footer region, and the body-integrity check reverts anything else. The operator's own words and the session's actual vocabulary stay in the index verbatim; body and summary are both indexed, each with its own weight. Homogenization can only touch the derived layer, never the source.
+**Completeness.** The floor is the deterministic token-preservation gate at write time: identifiers, names, numbers, dates and URLs survive every rewrite, checked per note, zero judgment involved. Above the floor, a sampled completeness score: a periodic pass takes a sample of enriched memories, grades claim-level coverage against their sources under the audited judge, and reports the score to the health scorecard. The number can go down, and a falling month is a prompt problem to fix rather than a curiosity.
 
-The second guard shrinks the surface. Almost everything enrichment writes is structured — an enum, a list, a hash — and structure has no voice to converge. The one free-text field is the summary, capped at a few sentences by schema. A small prose surface homogenizes slowly.
+**Diversity.** The corpus is model prose now, so similarity is watched at the corpus level: the pairwise-similarity distribution across recent memories, concentration of the most common trigrams, the lexical-diversity trend of enriched bodies over time, and the dispersion of the embedding space — a tightening nearest-neighbour distribution is the early signature of a corpus converging on itself. All four are computed by dreaming, trended against a baseline frozen in the first month, and reported beside completeness.
 
-The third guard measures. Each cycle, dreaming computes three numbers over the trailing window of enrichment output: lexical diversity of summaries against lexical diversity of their bodies, because the derived layer flattening while its source stays varied is the signature; concentration of the most common trigrams across recent summaries, because converging phrasing shows up there first; and divergence of the window's term distribution from a baseline frozen in the first month. The numbers ride the digest. Crossing the trip line pauses enrichment auto-apply — the same breaker shape the anomaly guard already uses — and the pass resumes once a human has looked.
-
-If drift trips persistently, the named lever is a second model in rotation for the summary field alone. It is a lever and never a default: it doubles the operational surface for one field's benefit, so it waits for the meter to demand it.
+**Correction.** When the meters flag a too-similar cluster, dreaming does something about it, in order of severity. Genuine duplicates merge through the existing supersede machinery. Pattern-collapsed notes — distinct sources flattened into near-identical prose — are re-enriched from their originals, which is always possible because the source survives in git and through `source`; the re-run lands under a new pass version and the revert log covers it. And a persistent trend is a prompt problem, which becomes a self-improvement proposal in the brief: dreaming proposes the voice or prompt change, and a supervised session lands it. The lever of last resort stays a second model in rotation, waiting on the meters to demand it.
 
 #### What dreaming does
 
@@ -349,7 +351,7 @@ The rescope's five jobs, plus four that come from this arc and from AgentKV:
 3. Extract cross-memory insights, each carrying `derived_from`.
 4. Write tomorrow's brief.
 5. Propose changes to its own machinery, and never apply them.
-6. Inject backlink reference footers — below the marker that fences the generated region; the body above it is untouchable.
+6. Inject backlink reference footers — below the marker that fences the generated region; the settled body above it is never edited in place.
 7. Synthesize stubs for referenced-but-missing targets, so a link points at something. A stub is a template fill from the link that demanded it — zero-token; giving it substance is a rollup job that queues.
 8. Reconcile the contract — find existing files that violate it, fix what is safe, surface what is not. This is the automated half of the hand passes.
 9. Detect slop and drift.
@@ -377,6 +379,18 @@ Staleness is computed, never judged. An entity rollup records the hash of its so
 
 The worked example is the one the operator named. Declaring `person` is an edit to the storage rules. The next cycle notices the hash change and reports it. The reconcile scan queries the entity-reference index for person-shaped URIs with no entity file and enqueues one rollup job each; memories the new rules would judge differently become re-enrichment candidates, drained oldest-stamp-first under the cycle budget. Two numbers per queue ride the dashboard — depth, and age of the oldest item — with thresholds on age, because fifty fresh items on a Tuesday is a Tuesday, and an item three days old means the drain has stalled. A coverage meter per stage — the share of the eligible population that is current — is allowed to fall when the rules change and expected to climb back as the queues drain. Every capped drain logs what it deferred. Nothing is silently partial.
 
+#### Watermarks — a source is processed once
+
+Ingested sources — emails, chats, session transcripts from Claude, Gemini and Antigravity, fetched pages — are watermarked at ingest so they are never reprocessed by accident. The mechanism is a source registry, and it is the coverage ledger's outward-facing sibling: the ledger tracks work over notes the vault owns, the registry tracks material the world handed us.
+
+Every source unit gets a namespaced, stable identity: `email:<message-id>`, `claude-session:<id>`, `gemini-session:<id>`, `antigravity-session:<id>`, `url:<canonical-url>`. Two shapes of watermark cover the two shapes of source. An immutable unit — an email, a finished transcript, a fetched article — is recorded by identity plus content hash, and an identity already in the registry at the current hash is skipped without a model call. A growing unit — a live session log that appends over time — carries a cursor instead: the last processed offset or message, advanced as ingest consumes it, so each sweep picks up exactly the new tail.
+
+Processed means processed *at a version*. Registry rows carry the same pass-version stamp the coverage ledger uses, so a better model or changed rules make re-ingestion a deliberate, budgeted backfill rather than either impossible or accidental. When a source is deliberately re-ingested, its identity finds every memory the earlier pass produced — each carries the source ID in `source` — and the new distillation supersedes the old, source-scoped, so a re-run upgrades memories in place instead of duplicating them.
+
+Durability follows files-are-truth. The registry table lives in the index database for fast lookup, and it is rebuildable: every memory's `source` field names the unit it came from, so scanning the corpus recovers the processed set. What a rebuild alone would lose is the zero-yield records — sources processed and found to contain nothing worth keeping — and the growing-source cursors, so those two live in a small committed file under `Agent/_meta/`, written by the daemon with attribution. Losing the table costs a re-scan; losing nothing costs memories.
+
+This is also where distill-and-discard closes cleanly: the raw source never enters the vault, the memories carry the trail back, and the registry guarantees the expensive read happens once.
+
 #### Aliases split three ways, and the split is measured
 
 This is the one place where the evidence is unusually good, because three independent measurements agree.
@@ -384,7 +398,7 @@ This is the one place where the evidence is unusually good, because three indepe
 | approach | result | disposition |
 |---|---|---|
 | a model reads the note and writes aliases | −3.85 R@5, p = 0.0411, six replicates | **banned** |
-| aliases sourced from the asker's intent at capture | 12/12 at rank 1 across two ingests | promising, ungated |
+| aliases sourced from the asker's intent at capture | 12/12 at rank 1 across two ingests | **adopted at the eager trigger**, where session context is present; measured against the gold set before trusted at scale |
 | deterministic acronym and identifier extraction | AgentKV's measured gain, sub-60ms | **adopted, at capture** |
 
 The pattern is that a model reading a note paraphrases the note, and the gap is between the note and the operator's future question. Deterministic extraction sidesteps that entirely: it does not invent vocabulary, it surfaces vocabulary the note already contains in a form the indexes can match. Question-vocabulary accretion stays a candidate rather than a scheduled job, and it needs three guards before it writes at scale — gate on a real usage signal rather than a retrieval event, cap or decay the list, and stay blind to the gold set.
@@ -402,6 +416,8 @@ Two bands rather than one cutoff: a review band that surfaces through the existi
 **No model at ingestion; all judgment deferred to nightly dreaming.** This was the first proposal in this arc and it was wrong. It conflated the capture transaction with when filing runs — the doctrine says filing happens "later and asynchronously," which an immediate out-of-band pass satisfies completely. It also argued from cost using a statistic (most captures never promote) drawn from the very pipeline being fixed. Quality at birth is what should change that number.
 
 **Reject low-quality notes at write time.** Rejected, and the distinction matters: enrichment improves a note, rejection discards one. An unvalidated rejection is unrecoverable at the moment it matters, and it breaks the never-silently-dropped contract. Deletion decisions stay reap-later; improvement decisions happen as early as possible.
+
+**An immutable capture body.** This draft's second position, overruled by the operator, and the reversal is the right call to record honestly. The immutability guard protected lexical diversity by refusing the rewrite — but the rewrite is the product: quality at birth is what the enrichment pass exists for, and a raw capture preserved verbatim is exactly the miner-fragment corpus this arc set out to end. The protection moved from prevention to measurement — the token-preservation floor, the completeness score, the diversity meters, and a correction path that can always re-distill from source because git and the registry keep the original reachable.
 
 **Carry filing meaning in paths.** Split rather than imported wholesale. The class axis lives in directories, because epistemic class is stable enough to deserve one — that much of AgentKV's path-borne meaning survives here. Every volatile axis — type, altitude, status, intent — stays in frontmatter, where changing it is a one-line edit and no link breaks. The rejected version is the full import, where meetings and specs and working exhaust each get a folder and a re-judgment means a move.
 
@@ -441,7 +457,7 @@ Ordering matters. `standards/storage-rules.md` is written first, because it is w
 **Class assignment is close to irreversible and is made by a model.** Enrichment picks the class at capture, and a directory is the one part of the layout that does not tolerate churn. The single-move-while-unlinked rule bounds the damage, but the deeper protection is that the storage rules are yours to correct — a class that is being assigned wrongly is a rules edit, not a code fix. *Re-audit trigger: the first month in which class corrections exceed a handful.*
 
 
-**Enrichment homogenizes the corpus.** The risk this design creates rather than inherits, and it now carries three standing guards: the captured body is immutable and stays in the index verbatim, the free-text surface is one capped field, and the drift meters trip a breaker that pauses enrichment until a human looks. What stays open is calibration — the trip line is a constant nobody has measured, and the first month's frozen baseline is what makes the meters mean anything. *Re-audit trigger: the meters' first quarter of readings, and any month the summary layer's diversity falls while the body layer's holds.*
+**Enrichment homogenizes the corpus.** Sharper now than in the draft that preceded this one, because the body itself is model prose and the structural guard is deliberately gone. What stands in its place: the token-preservation floor, the completeness score, four diversity meters trended against a frozen baseline, and a correction loop that can re-distill any note from its source. The honest residual is the window between drift beginning and a meter crossing its line — during which the corpus is quietly converging — and the fact that every trip line is a constant nobody has measured yet. *Re-audit trigger: the meters' first quarter of readings, and any month completeness holds while diversity falls — the signature of confident, uniform rewriting.*
 
 **The rules file is load-bearing prose, and prose can break.** `storage-rules.md` steering the filing engine is the design's best property and its newest failure surface. The structured block and its fail-closed validator exist for exactly this: enrichment halts, notes wait as `unfiled`, and the digest names the parse failure. The residual risk is an edit that is valid and wrong, which no validator catches — the guard there is the loud hash-change announcement and the stale-count it prints beside it. *Re-audit trigger: the first rules edit that files a week of memories somewhere surprising.*
 
@@ -459,7 +475,7 @@ The capture transaction cannot fail on model or network availability — that is
 
 ### Data Integrity
 
-Files are truth and every index rebuilds from them, so a corrupt or drifted cache costs a rebuild rather than data. Every automated write commits with attribution and routes through the revert log, so a bad enrichment run is one revert away. `source` and `derived_from` are what make "why do you believe this" answerable, and an entity rollup without them is an assertion with no way back to its evidence.
+Files are truth and every index rebuilds from them, so a corrupt or drifted cache costs a rebuild rather than data. Every automated write commits with attribution and routes through the revert log, so a bad enrichment run is one revert away. `source` and `derived_from` are what make "why do you believe this" answerable, and an entity rollup without them is an assertion with no way back to its evidence. With enrichment rewriting bodies, the same two fields are what make correction possible: the raw capture sits in git at its capture commit, the source registry knows which unit produced which memories, and re-distilling from the original is always one queued job away.
 
 ### Privacy
 
@@ -509,7 +525,8 @@ Each part ships behind a named measurement, written down before the build, on a 
 | dreaming extensions | the slop detector's precision and recall against a hand-labelled stratified sample of 150–200 notes, reported by type |
 | existing content | contract conformance across the searched corpus, and the round-trip probe holding steady through the collapse |
 | model tiering | per-job agreement between the cheap and strong tiers on a real sample, meeting the pre-registered bar before the cheap tier serves alone |
-| drift meters | a frozen first-month baseline, and a trip line calibrated against it before the breaker arms |
+| completeness and diversity meters | frozen first-month baselines, trip lines calibrated against them, and a hand-graded sample validating the completeness score before it is trusted |
+| source registry | a month of live ingest with zero same-version reprocessing, verified by registry query against the ingest logs |
 
 Above all of them sits principle 3's own test, and it is the only one allowed to mark anything done: save a fact, start a fresh session, ask sideways, get it back — on the real corpus, on a schedule, as a number that can go down.
 
@@ -533,6 +550,7 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-08-18 | Fourth revision, on operator ruling: enrichment's product is the body — the raw capture is distilled into the memory, and the body-immutability guard from the third revision is reversed and recorded in Alternatives. Protection moves from prevention to measurement and correction: a deterministic distinctive-token preservation floor, a sampled claim-level completeness score, four corpus-level diversity meters, and a correction loop that merges duplicates, re-distills pattern-collapsed notes from source, and routes persistent drift into a self-improvement proposal. The three flagged calls (personal/ background boundary, structured rules block, ledger in the index DB) are ratified. Added the source registry: namespaced watermarks for emails, chats, session transcripts and fetched pages — content hashes for immutable units, cursors for growing ones, version-stamped so reprocessing is deliberate, with source-scoped supersession on re-ingest and a committed cursor file for what a corpus scan cannot rebuild. | draft |
 | 2026-08-18 | Third revision, a strengthening pass on six operator directives: everything searchable including a contract-exempt `personal/` (space-dampened, never read by background passes), the project-root cap removed in favour of a subfolder convention with the alignment door kept, a fail-closed validator and single-source enum block for `storage-rules.md`, the enrichment pass rebuilt as a deterministic sandwich (five pre-gates, six post-gates, additive splits, immutable bodies), homogenization given structural guards and breaker-wired meters, model tiers assigned by sampled-audit qualification with batch-API routing and three jobs pinned strong, and the coverage ledger plus pending-work queues specified for backfill, with the declare-`person` worked example. | draft |
 | 2026-08-18 | Second revision, after the operator supplied the target vault's actual topology and its maintainers answered six architecture questions. The filing half is rebuilt: `standards/storage-rules.md` becomes the runtime-read source of truth for filing, memory files into six retrieval classes with type staying in frontmatter, search moves from a root boundary to an exclude list, and the project/task door, the calendar layer and the legacy mapping are all specified. Recorded two divergences held on purpose — no metadata overlay, and the inbox left as an open question with a recommendation. | draft |
 | 2026-08-18 | Initial draft, bootstrapped from the memory-ingestion research arc and reconciled against the rescope designs and AgentKV's architecture. Same-day revision after operator review found Detailed Design covered the enforcement mechanism but not the filing system it enforces: added the layout, the event/entity lifecycle split, the six types and their growth rule, entity resolution and its admission test, the three derived indexes, altitude, and the status-and-decay lifecycle. Migrations gained the 22→6 mapping; Launch Plans gained the per-part measurements. | draft |
