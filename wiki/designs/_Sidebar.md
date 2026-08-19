@@ -34,6 +34,7 @@
 - [Rescope](agentm-rescope-principles)
   - [Topology](agentm-rescope-topology)
   - [Memory engine](agentm-rescope-memory)
+  - [Filing contract](agentm-rescope-filing)
   - [Week-1 retrieval experiment](agentm-rescope-week1-experiment)
   - [Hybrid retrieval — the recall ladder](agentm-hybrid-retrieval)
   - [Rejection and vocabulary](agentm-rejection-and-vocabulary)
