@@ -38,6 +38,8 @@ A memory arrives, and two things happen to it. The capture transaction writes th
 
 Dreaming runs the same enrichment code over anything still `unfiled`, and then does the work that is only possible with the whole corpus in view: deduplicating against everything, building entity rollups from their underlying facts, extracting cross-memory insights, detecting slop and drift, and reconciling files that violate the contract. One definition of well-filed, two triggers — eager and batch.
 
+Underneath both triggers is the thing being enforced: one flat memory namespace sharded by capture date, six types with a rule that stops them multiplying, two lifecycle classes (most memories are events, a few are living entities built from those events), a status ladder that ages a memory by rank rather than by moving it, and three derived indexes — chunks, backlinks and entity references — that are caches and never authoritative.
+
 The filing structure itself moves toward AgentKV's, with one deliberate difference. AgentKV reads intent from path segments: notes under `/meetings/` and `/cl_descriptions/` are dampened on general queries and boosted on matching ones, and canonical specifications get a flat lift. That works, and it is worth having. But agentm files memory by capture date precisely so that directories mean nothing and links can never break. So the same signal moves into indexed frontmatter, where it is more precise than a path — a note can sit on several axes at once, and nothing ever has to move.
 
 ### Infrastructure
@@ -63,6 +65,55 @@ Four guarantees hold across all of it. A capture is never lost, because the tran
 
 ### Detailed Design
 
+#### The layout
+
+```
+Agent/
+├── memory/
+│   ├── 2026/07/<slug>.md
+│   └── 2026/08/<slug>.md
+│
+└── desk/
+    ├── projects/<slug>/          plans · roadmaps · progress · drafts
+    ├── briefs/                   daily digests
+    └── scratch/                  gitignored
+```
+
+Memory is one flat namespace sharded by capture date, meaning the moment the daemon wrote the file rather than any claim about when the thing happened. Type changes, status changes, tags change, and a slug can be corrected; capture date cannot, because it records an event in the daemon's own life. Sharding on the one immutable property means the directory a memory is born into is the directory it dies in, which is what lets every other field be edited freely.
+
+There is no inbox and no staging directory. An unfiled memory sits in `memory/`, indexed and searchable the instant capture commits, rank-penalized until filing promotes it. Rank-penalized is a very different condition from absent: the previous layout accumulated 9,786 items in a directory that recall excluded by default, which is how the majority of what the system captured became invisible to the system that captured it. A layout with no inbox cannot repeat that. The filing queue still exists — it is a query rather than a folder.
+
+`Agent/memory/` is excluded from Obsidian's index, because six thousand files nobody opens turn the graph view into static. `Agent/desk/` stays indexed. `scratch/` is gitignored and the daemon may delete anything in it without ceremony.
+
+#### What a memory is — two lifecycle classes
+
+Most memories are events. Some are entities, and the difference is structural.
+
+An **event memory** is written once at capture and never edited. It may later be superseded or expired by a status change, but its body is a record of a moment and stays that way. A distilled session insight, a fix, a research summary, a fact learned from an email — all events.
+
+An **entity memory** is one living file per thing, whose body accretes over time. A person is the clearest case: "sister, Austin, two kids, changed jobs in June" is not an event, and forcing it into the event model gives two bad options — rebuild-by-supersede on every new fact, which churns filenames and links, or scatter the person across two hundred fragments and re-synthesize on every lookup.
+
+Entity memories are materialized views. The atomic facts stay the source of truth, each with its own `source:` provenance; the entity file is maintained by dreaming, carries `derived_from:` listing the facts it was built from, and is rebuildable from them. In doctrine it is a cache, and deleting one loses nothing. It is persisted anyway because it is what recall should hit first when the question is "who is X." ID-stability is what makes an accreting body safe — `[[sarah-<surname>]]` never breaks no matter how much the content changes.
+
+#### Types, and the rule that stops them multiplying
+
+Six types, collapsed from the twenty-two currently live, of which seventeen exist in single digits.
+
+| type | absorbs | ≈count |
+|---|---|---:|
+| `preference` | preferences, preference, feedback | 2,938 |
+| `workflow` | workflow, workflow-pattern | 1,626 |
+| `idea` | idea, insight | 742 |
+| `fix` | fix | 365 |
+| `convention` | convention, non-negotiable, design-call, decision | 36 |
+| `reference` | domain-reference, reference | 19 |
+
+The field is `type`, not `kind`, because `type` is the one field the Open Knowledge Format requires; renaming during the collapse costs nothing and makes the corpus portable.
+
+**The growth rule: a type is added when a query class needs to rank by it, and not otherwise.** That is a warrant test — a term earns its place by demonstrated need rather than by seeming reasonable — and it is the brake the previous taxonomy never had. Fifty-five values accumulated because every addition was individually defensible and nothing ever asked whether the set as a whole was still coherent. `person` is reserved under this rule and lands the day email ingest does, because "who is X" is exactly such a query class. It is not created before there is anything to put in it.
+
+The rule is enforced rather than stated. A change that adds a type must carry, in the same diff, the query class that needs it and the nearest existing type with a sentence on why that type does not fit. A deprecation table maps retired values to their replacements so the collapse is mechanical rather than a rewrite.
+
 #### The contract
 
 Every memory carries the rescope's frontmatter, plus one field this design adds:
@@ -85,6 +136,62 @@ enriched_at: 2026-08-18T…
 `altitude` is the axis AgentKV's dampening actually rides. A convention that states a durable rule and a note distilled from one session's exhaust are both `type: workflow` today, and they should not rank alike on a general question. agentm already does a small version of this — `recall.py` carries an abstraction-altitude boost for `_index` and `_summary` anchor files — so this generalizes an idea already in the ranker rather than introducing one.
 
 `enriched_by` and `enriched_at` exist so the first prompt we write is not permanent. A better model, or a corrected prompt, can re-run enrichment over anything stamped with an older version, and the pass is idempotent by construction so re-running is always safe.
+
+#### Entities, and how they get found
+
+Entity memories need something to key on, and the cheapest source is deterministic. Every note is scanned at capture for external references — issue and pull-request forms (`#123`, `owner/repo#123`), repository paths, and commit or changelist identifiers — and each match is written to an entity index keyed by a URI. This is regex over text, no model involved, and it creates no new type, so the growth rule is untouched.
+
+That index is what makes an entity timeline possible before any `person` type exists: every note that mentions a given issue or repository is one indexed lookup away, and dreaming builds the rollup from that set rather than from a directory scan.
+
+When a genuine entity type does land, it earns it against four questions, all four of which must answer yes:
+
+1. **Persistent identity** — the referent is referenceable independent of any single note about it.
+2. **Accumulating record** — multiple, temporally separated observations will attach to the same referent.
+3. **Resolution need** — it is plausibly mentioned under more than one surface string, so without a canonical record the references fragment silently.
+4. **Independent attributes** — it carries properties true of *it*, where a note only carries properties of the report.
+
+`person`, `repository` and `organization` clear all four. An arc or roadmap item fails the third and fourth, which is why the existing arc registry treats it correctly as a validated facet rather than a type. A machine or device fails the second. A model name is the close call — it passes identity and partly resolution, but what gets recorded is looked-up facts *about* models, which belongs in a `reference` note.
+
+Resolution is deterministic too: every entity note carries an `aliases:` list, and a new entity is matched against existing names and aliases before it is created. At this corpus size a normalized exact match is very likely sufficient; probabilistic record linkage is real machinery for a problem this vault does not have yet.
+
+#### The derived indexes
+
+Three indexes, all caches, all rebuildable from the files, none of them authoritative. They live in the daemon's existing store.
+
+| index | key | carries | what it buys |
+|---|---|---|---|
+| chunks | `<path>#<n>` | `header_path`, content, embedding | a focused note stops losing to a long document on term-frequency mass |
+| backlinks | `(source, target)` | link text, surrounding context | one-hop graph expansion at lookup cost, in both directions |
+| entities | `(entity_uri, path)` | — | every note mentioning an issue, repo or person, without a scan |
+
+Chunking splits along markdown header boundaries and records the heading path — `Architecture > Ingestion Pipeline` — so a match inside a long document points at the section rather than the file. This is the direct fix for the measured failure where a 38KB design document took all five top slots over a 1.1KB focused note. Atomic capture turns out to be a retrieval strategy and not only a filing one, and chunking is what extends that benefit to documents that were never atomic.
+
+Backlinks are extracted from both wikilink and markdown-link forms, with path-suffix disambiguation so `[[capture]]` resolves correctly when two files share a basename.
+
+#### Altitude, and what ranking does with it
+
+`altitude` carries the one signal this design borrows from AgentKV's directory structure. There, a note under `/meetings/` or `/cl_descriptions/` is dampened on a general question and boosted on a question that asks for it by name, while canonical specifications get a flat lift. That works, and it is worth having.
+
+Here the same distinction is a field, because the path cannot carry it — memory shards by date so directories mean nothing, and that is deliberate. A field is also more precise: a note can be a `workflow` at `artifact` altitude and change altitude later without moving.
+
+`canonical` means the note states something durable — a convention, a decided rule, a reference fact. `artifact` means it records a moment — session exhaust, a distilled meeting, a one-off observation. Ranking dampens `artifact` on a general question and lifts it when the question asks for that shape. The default is `artifact`, so a note earns `canonical` rather than assuming it.
+
+#### The lifecycle, and how a memory ages
+
+Status is the whole lifecycle. Nothing moves; every transition is a frontmatter edit.
+
+```
+unfiled ──filing──▶ active ──┬──▶ superseded   (a newer memory replaced it)
+                             └──▶ expired      (it was noise, or its window closed)
+```
+
+Alongside status, a decay score governs rank rather than existence. A memory holds full strength through six months of silence, ranks at half to a year, an eighth to three years, and a sixteenth to five — **and a sixteenth is a floor, not a waypoint.** The curve never reaches zero, because a memory that nobody has needed in four years is not worthless, only cold, and a floorless curve makes it unreachable rather than merely unlikely.
+
+One genuine recall resets the clock to zero. Only a real recall does — a lint walk, an index rebuild or a dreaming pass touching the file must never count, or the maintenance machinery quietly refreshes everything it inspects and decay stops working.
+
+Two classes never decay. Failure incidents are exempt because the whole value of an incident record is being there on the one day, years later, when the same failure recurs. Decisions are exempt for the same reason. Crystallized memories — the distilled lessons dreaming promotes out of repeated observation — are exempt because a lesson that survived being learned three times is the durable kind.
+
+Past five years of silence a memory moves to the archive, where it leaves everyday search, stays indexed, and answers an explicit archive query. **Nothing is deleted.** All three institutional reasons for mandated destruction are absent here: no discovery exposure, no meaningful storage cost, and no third-party erasure duty, since the sole subject and the sole controller are the same person. Git is the recoverability net. Deletion, if it ever happens, is the operator's own act outside the system.
 
 #### What the capture transaction does
 
@@ -110,7 +217,7 @@ It runs on a cheap model tier, immediately after the transaction commits, and ag
 | assign `altitude` | enum-locked; defaults to `artifact` | default wins when the judgment is absent |
 | tag | vocabulary check against existing tags | novel tags allowed, surfaced in the brief |
 | split a blob | size and concept ceiling measured deterministically | over-ceiling and unsplit is flagged, never silently admitted |
-| quality verdict | answerability-shaped, not aesthetic | a failed verdict marks the note, it never deletes it |
+| quality verdict | answerability-shaped rather than aesthetic | a failed verdict marks the note, it never deletes it |
 
 The quality verdict deserves a note, because it is the one that can go circular. A model asked whether its own output is good will say yes. The bar that is not circular is principle 3's: does this note contain what a future question would need to find it. So the verdict is answerability-shaped — could a fresh session, asking sideways, land here — rather than a judgment about prose.
 
@@ -142,11 +249,11 @@ The pattern is that a model reading a note paraphrases the note, and the gap is 
 
 #### The slop detector
 
-Templates are fine. What is not fine is a note that fills a template and says nothing. The detector targets content, not shape.
+Templates are fine. What is not fine is a note that fills a template and says nothing. The detector reads content and ignores shape.
 
 Template-residual ratio is the cheapest signal and the safest: how much body exists beyond the skeleton. Nearest-neighbour novelty runs in two stages, shingle overlap first and an embedding check only on what the first stage flags, which bounds the cost. A drift monitor compares a trailing window of new notes against a frozen historical baseline and answers a different question — whether the agent itself has gone formulaic. A length floor participates only as an AND-gate, never alone, because this vault's best notes are often its shortest.
 
-Two bands, not one cutoff: a review band that surfaces through the existing staging machinery, and a narrow auto-expire band for the unfilled skeleton that is also a near-copy. Even the narrow band runs confirm-gated for one supervised pass first, which is the path inbox triage already took.
+Two bands rather than one cutoff: a review band that surfaces through the existing staging machinery, and a narrow auto-expire band for the unfilled skeleton that is also a near-copy. Even the narrow band runs confirm-gated for one supervised pass first, which is the path inbox triage already took.
 
 ## Alternatives Considered
 
@@ -158,7 +265,7 @@ Two bands, not one cutoff: a review band that surfaces through the existing stag
 
 **Keep `kind` and add an orthogonal maturity field.** This was this arc's own earlier verdict and it loses to the rescope's answer. Collapsing twenty-two live types to six, with a growth rule that admits a type only when a query class needs to rank by it, is simpler and comes with its own brake. The three-axis diagnosis behind the original verdict still explains why the taxonomy grew to fifty-five; it just is not the fix.
 
-**Model-written aliases as a scheduled job.** Refuted on measurement, not argument. Reverted on the live vault; `alias_backfill.py reapply` restores them byte-identically if the question ever reopens.
+**Model-written aliases as a scheduled job.** Refuted on measurement. No argument was needed. Reverted on the live vault; `alias_backfill.py reapply` restores them byte-identically if the question ever reopens.
 
 ## Dependencies
 
@@ -166,11 +273,26 @@ The daemon must be the thing that triggers enrichment, because it already owns t
 
 ## Migrations
 
-Nothing is swept before the work. Two populations, handled differently.
+Nothing is swept before the work. Existing content moves onto the contract through hand passes as the parts land, and the two populations need different handling.
 
-The 9,786 notes under `status: inbox` need re-statusing to `unfiled`, which is a frontmatter edit rather than a move. The measurement says this population is ninety days of live churn, so most of it drains on its own once the queue is a query instead of a folder.
+**The 9,786 notes under `status: inbox`** need re-statusing to `unfiled`. That is a frontmatter edit, so no link breaks and no ID changes. The measurement says this population is roughly ninety days of live churn rather than a stuck backlog — the oldest dated entry is 86 days against a 90-day expire window — so most of it drains on its own once the queue is a query instead of a folder. What matters is that nothing is invisible in the meantime, which the no-inbox layout guarantees.
 
-The 2,821 already-searchable notes are the ones worth hand passes, because they are what recall returns today. Within them, `memory/2026`'s 197 notes are the sharpest case: none of them carries a `kind:` field at all, so they sit outside the current validation contract entirely. The twenty-two live types collapse to six as part of the same passes.
+**The 2,821 already-searchable notes** are the ones that repay hand attention, because they are what recall returns today. Within them, `memory/2026`'s 197 notes are the sharpest case: not one carries a `kind:` field, so they sit outside the current validation contract entirely and the walkers either skip them or process them partially.
+
+The type collapse runs as a mapping rather than a rewrite:
+
+| retired value | becomes | note |
+|---|---|---|
+| `preferences`, `feedback` | `preference` | plural/singular pair plus a near-synonym |
+| `workflow-pattern` | `workflow` | the pattern/instance split never earned its keep |
+| `insight` | `idea` | one holds a single note today |
+| `non-negotiable`, `design-call`, `decision` | `convention` | all four name a decided rule |
+| `domain-reference` | `reference` | |
+| `archive`, `capture` | — | never types at all; statuses in the wrong field |
+| the four `idea-incubator-*` variants | `idea` | four phases of one process |
+| the five `*-index` variants | `reference` at `canonical` altitude | navigational pages |
+
+Everything not in the table retires with the machinery that produced it, and a deprecation map records the pairing so the collapse can be applied mechanically and audited afterwards. Ordering matters: the contract and its deterministic extraction land first, so a re-typed note is validated against the new contract as it is touched rather than needing a second pass.
 
 ## Technical Debt & Risks
 
@@ -229,7 +351,18 @@ Four parts, sequenced so that each is measurable before the next depends on it.
 
 ### Launch Plans
 
-Each part ships behind its own measurement. Nothing ships on argument.
+Each part ships behind a named measurement, written down before the build, on a frozen corpus, with replicates where a model sits anywhere in the scoring path. A plan whose first step is "build it" is the failure this rescope exists to correct.
+
+| part | the number that says it worked |
+|---|---|
+| contract + deterministic extraction | acronym and identifier expansion against the frozen 60-question gold set, blind to it — the same harness the alias revert was measured on |
+| enrichment pass | promotion yield before and after; the share of captures reaching `active`, measured on a fixed window |
+| dreaming extensions | the slop detector's precision and recall against a hand-labelled stratified sample of 150–200 notes, reported by type |
+| existing content | contract conformance across the searched corpus, and the round-trip probe holding steady through the collapse |
+
+Above all of them sits principle 3's own test, and it is the only one allowed to mark anything done: save a fact, start a fresh session, ask sideways, get it back — on the real corpus, on a schedule, as a number that can go down.
+
+Two measurements run before any of it, because either can kill a recommendation. The first splits the gold set by note age and asks whether decay actually buries old notes, which decides whether the floor matters or is cosmetic. The second computes each memory's derivation depth and compares the depth of what recall returns against the depth of the corpus as a whole — if dreaming's own output systematically outranks the facts it was built from, the loop concentrates on itself, and nobody has measured whether it does.
 
 ## Operations
 
@@ -249,4 +382,4 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
-| 2026-08-18 | Initial draft, bootstrapped from the memory-ingestion research arc and reconciled against the rescope designs and AgentKV's architecture. | draft |
+| 2026-08-18 | Initial draft, bootstrapped from the memory-ingestion research arc and reconciled against the rescope designs and AgentKV's architecture. Same-day revision after operator review found Detailed Design covered the enforcement mechanism but not the filing system it enforces: added the layout, the event/entity lifecycle split, the six types and their growth rule, entity resolution and its admission test, the three derived indexes, altitude, and the status-and-decay lifecycle. Migrations gained the 22→6 mapping; Launch Plans gained the per-part measurements. | draft |
