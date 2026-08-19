@@ -62,6 +62,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+      - name: Build agentmd (the filing contract's only parser)
+        # The daemon owns the storage-rules parser, and the Python gates and
+        # tests below ask it rather than parsing the file a second time. Built
+        # from this tree, and $AGENTMD points at it, so the checks grade this
+        # diff instead of whatever binary a runner happens to have.
+        run: |
+          go -C daemon build -o "$RUNNER_TEMP/agentmd" ./cmd/agentmd
+          echo "AGENTMD=$RUNNER_TEMP/agentmd" >> "$GITHUB_ENV"
       - name: Install Python deps
         # sentence-transformers is deliberately NOT installed (1.3GB+; the
         # e2e uses stub embed mode). fastmcp lets verify-mcp-surface.py + the

@@ -64,16 +64,7 @@ type Result struct {
 	Note string `json:"note,omitempty"`
 }
 
-var (
-	slugScrubRe = regexp.MustCompile(`[^a-z0-9]+`)
-	validTypes  = func() map[string]bool {
-		m := map[string]bool{}
-		for _, t := range config.Types {
-			m[t] = true
-		}
-		return m
-	}()
-)
+var slugScrubRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // Statuses capture may land in. Deliberate capture lands `active` — a session the
 // operator directed produces memories he already approved by asking for them, and
@@ -105,16 +96,34 @@ func (c *Capturer) Do(req Request) (Result, error) {
 
 	var notes []string
 
+	// The taxonomy comes from the filing contract, not from a list in this
+	// binary — a type added to standards/storage-rules.md is accepted here on the
+	// next capture, with no release in between.
+	//
+	// When the contract will not parse, the two halves of this diverge on purpose.
+	// A caller who named a type is refused, because validating the claim is
+	// exactly what is unavailable and writing it unvalidated is the improvising
+	// the fail-closed rule exists to stop. A caller who named none is not: the
+	// note lands untyped and `unfiled`, which is the state filing drains anyway,
+	// and refusing it would lose a capture over a misplaced colon in a file the
+	// capture never needed.
 	noteType := strings.ToLower(strings.TrimSpace(req.Type))
 	if noteType == "" {
-		noteType = config.DefaultType
-		notes = append(notes, fmt.Sprintf(
-			"type defaulted to %q; re-typing later is a frontmatter edit with no file move",
-			config.DefaultType))
-	}
-	if !validTypes[noteType] {
+		if c.cfg.Rules != nil {
+			noteType = c.cfg.Rules.DefaultType
+			notes = append(notes, fmt.Sprintf(
+				"type defaulted to %q; re-typing later is a frontmatter edit with no file move",
+				noteType))
+		} else {
+			notes = append(notes, "filing is halted (the storage rules do not parse), so this "+
+				"landed untyped; the next pass over `unfiled` types it")
+		}
+	} else if c.cfg.Rules == nil {
+		return Result{}, fmt.Errorf("cannot validate type %q — filing is halted: %w",
+			noteType, c.cfg.RulesErr)
+	} else if !c.cfg.Rules.IsMemoryType(noteType) {
 		return Result{}, fmt.Errorf("type %q is not one of: %s",
-			noteType, strings.Join(config.Types, ", "))
+			noteType, strings.Join(c.cfg.Rules.TypesSorted(), ", "))
 	}
 
 	status := strings.ToLower(strings.TrimSpace(req.Status))

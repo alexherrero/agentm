@@ -18,6 +18,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // SchemaVersion is stamped into the index. A mismatch rebuilds rather than
@@ -47,6 +49,14 @@ const DefaultPort = 7821
 
 // Config is the resolved, validated runtime configuration.
 type Config struct {
+	// Rules is the filing contract, read at runtime from the vault's own
+	// standards/storage-rules.md. Nil when it would not parse — see RulesErr.
+	Rules *rules.Rules
+	// RulesErr is why the contract is unavailable, when it is. Non-nil means
+	// filing halts and a caller-supplied type cannot be validated; everything
+	// that does not read the taxonomy is unaffected.
+	RulesErr error
+
 	// VaultPath is the absolute vault root. Resolved, never a literal.
 	VaultPath string
 	// VaultSource records how VaultPath was found, so a surprising path is
@@ -199,14 +209,18 @@ type Options struct {
 	ProbeEvery     time.Duration
 }
 
-// The six types that ship at cutover. Everything else retired with the machinery
-// that produced it. A type is added when a query class needs to rank by it.
-var Types = []string{"preference", "workflow", "idea", "fix", "convention", "reference"}
-
-// DefaultType is what an unlabelled capture lands as. Capture is never blocked
-// on a caller getting the taxonomy right — re-typing is a frontmatter edit with
-// no file move, so a wrong default is cheap and a refused capture is not.
-const DefaultType = "preference"
+// loadRules attaches the filing contract to a config.
+//
+// A parse failure is recorded, not returned. The blast radius of a typo in the
+// rules file has to match what the typo actually endangers: search does not read
+// the taxonomy and keeps working, ambient capture does not supply a type and
+// keeps working, and only the two things that genuinely depend on the contract —
+// validating a caller-supplied type, and filing — stop. A daemon that refused to
+// start over a misplaced colon would take the whole memory down to protect one
+// field.
+func (c *Config) loadRules() {
+	c.Rules, c.RulesErr = rules.Load(c.VaultPath)
+}
 
 // defaultEmbedScope is the part of the vault the vector arm covers when the
 // config does not say.
@@ -451,6 +465,8 @@ func Load(opts Options) (*Config, error) {
 		SMTPURL: strings.TrimSpace(strVal(raw, "plugins.autonomy.email_smtp_url")),
 		From:    strings.TrimSpace(strVal(raw, "plugins.autonomy.email_from")),
 	}
+
+	c.loadRules()
 
 	return c, nil
 }

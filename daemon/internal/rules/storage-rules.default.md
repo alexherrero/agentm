@@ -130,6 +130,8 @@ memory_types:
   - fix
   - idea
 
+default_type: preference
+
 routing:
   preference: memory/semantic
   convention: memory/semantic
@@ -204,6 +206,12 @@ thresholds:
   decay_floor_weight: 0.0625
   archive_after_days: 1825
 ```
+
+## What `default_type` is for
+
+Capture is never blocked on a caller getting the taxonomy right. An unlabelled
+capture lands as `default_type` and says so, because re-typing is a frontmatter
+edit with no file move — a wrong default is cheap, and a refused capture is not.
 
 ## What the thresholds mean
 

@@ -1,17 +1,39 @@
 #!/usr/bin/env python3
-# kind_registry.py — V6-15 typed-object schema-registry.
-#
-# The vault's `kind:` frontmatter field has always been free-form kebab-case
-# (save.py's _validate_kebab enforces the *shape*, never a fixed set). This
-# module documents the *recognized* set — every kind value shipped code
-# actually references, plus every distinct value seeded from a real-vault
-# frequency audit at authoring time (PLAN-v6-15-v6-18-typed-object-moc, 2026-07-10)
-# — without collapsing near-duplicates or fixing malformed entries. That
-# canonicalization is an explicit operator judgment call, parked as its own
-# backlog item (agentm #273), not decided here.
-#
-# This module never mutates a vault note. `audit()` is read-only.
+"""kind_registry.py — the note-vocabulary registry, now read from the rules file.
 
+This module used to *be* the registry: a hardcoded frozenset of every value the
+corpus had accumulated, extended by hand each time an audit found a new one. It
+reached fifty-odd values that way, because every single addition was individually
+defensible and nothing ever asked whether the set still cohered.
+
+The registry now lives in `standards/storage-rules.md`, which the operator owns
+and the filing passes read at runtime. This module is the adapter: same public
+surface its four callers already use — `is_kebab`, `is_known`, `known_kinds`,
+`REQUIRED_UNIVERSAL_FIELDS`, `audit` — resolved against the rules block instead
+of against a list in this file. A value added to the rules file is recognized
+here on the next call, with no code edit in between; a value removed from it is
+recognized nowhere.
+
+Two registers back the vocabulary, and the distinction is the point:
+
+  `memory_types`   the six values a *memory* carries in its `type:` field. These
+                   assert something — a preference, a convention, a fact, a
+                   recipe, a fix, an idea — and a query can usefully rank by
+                   them. Growth is braked: a type is added when a query class
+                   needs to rank by it, and not otherwise.
+
+  `record_kinds`   the shapes a *record* carries in its `kind:` field. These
+                   record what happened — a nightly brief, a telemetry row, a
+                   session trace, an index page. They are not memories, so they
+                   carry no `type` at all.
+
+`audit()` reports a third bucket the old version had no name for: **retired**.
+A value in the rules file's deprecation map is one the collapse has a
+replacement for and has not reached yet. Reporting it as "unrecognized" would
+have made a running migration look like a taxonomy failure.
+
+This module never mutates a vault note. `audit()` is read-only.
+"""
 from __future__ import annotations
 
 import argparse
@@ -19,92 +41,42 @@ import re
 import sys
 from pathlib import Path
 
+_SCRIPTS_DIR = Path(__file__).resolve().parent
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+import storage_rules  # noqa: E402
+
 _KEBAB_SEGMENT = re.compile(r"^[a-z0-9-]+$")
 
-# Recognized kind values, seeded 2026-07-10 from:
-#   (a) values shipped code actually writes or reads (failure-incident in
-#       save.py, crystallized in crystallize.py/consolidate.py, session-cost
-#       as a vestigial reserved value per agentm-memory-index.md);
-#   (b) every distinct, validly-kebab-case value found in a frequency audit
-#       of the real vault's personal/ + projects/ trees at that date.
-# Near-duplicates (e.g. "convention" vs "conventions") are kept as SEPARATE
-# entries deliberately — this registry documents what's recognized, it does
-# not decide which spelling is canonical. See b-kind-taxonomy-canonicalization.
-KNOWN_KINDS: frozenset[str] = frozenset({
-    # Reserved values (agentm-memory-index.md, shipped code).
-    "failure-incident", "session-cost", "crystallized",
-    # L1 (proving ledger): the Morning Brief's own kind -- _briefs/ entries,
-    # distinct from "telemetry" (still used for other digest-adjacent
-    # records) so a brief is never mistaken for inbox-triage-eligible
-    # content.
-    "brief",
-    # Real-vault frequency audit (2026-07-10), validly-kebab entries only.
-    "preferences", "preference", "workflow", "workflow-pattern", "idea",
-    "fix", "research", "research-synthesis", "research-index",
-    "convention", "conventions", "skill-watchlist", "skill-watchlist-entry",
-    "skill", "domain-reference", "design", "design-call", "project-index",
-    "project", "non-negotiable", "reference", "pattern", "handoff-artifact",
-    "handoff-index", "session-handoff", "session-brief", "session-findings",
-    "decision", "decision-summary", "telemetry", "snippet", "runbook",
-    "roadmap-integration", "persona", "moc", "insight", "gap", "feedback",
-    "evidence", "conversation", "archive",
-    # _idea-incubator/ tree kinds — missed in the first personal/+projects/
-    # seed grep, caught by this module's own first real-vault audit() run
-    # (the walk correctly covers _idea-incubator/; the seed grep that
-    # authored this set did not).
-    "idea-incubator", "idea-incubator-summary", "idea-incubator-research",
-    "idea-incubator-runbook",
-    # Surfaced by vault_lint.py's new check_kind_taxonomy (auto-organization
-    # part 3, task 7 — PLAN-auto-org-dedup-and-lint.md): the first check to
-    # actually enforce this registry against a live note found "howto"
-    # in use (scripts/verify-memory-roundtrip.sh's own fixture) but never
-    # added to the 2026-07-10 seed — exactly the kind of gap this registry's
-    # own extend-as-discovered process expects.
-    "howto",
-    # Loose Ends Release 5 (#273 kind canonicalization, 2026-07-24): a full
-    # kind_registry.audit() over the live vault (3,069 files) found 15
-    # well-formed values in real use but absent from this set. Operator
-    # ruling: register the *-index family, remap the arc one-offs.
-    #
-    # "arc-index" was the largest single gap (9 files across agentm and
-    # crickets) and sits squarely in the existing *-index family alongside
-    # project-index / research-index / handoff-index. "dir-index" and
-    # "pilot-index" are the same shape.
-    "arc-index", "dir-index", "pilot-index",
-    # "capture" is registered rather than remapped, deviating from the
-    # remap-the-singletons half of that ruling, because it is not a
-    # one-off at all: it is the DEFAULT kind the production capture
-    # pipeline writes (capture.py's `kind: str = "capture"`, and the
-    # memory_append MCP tool's documented default). Remapping the single
-    # live instance would be undone by the next capture and re-flagged by
-    # lint forever. It reads as a singleton today only because captures
-    # are consumed out of _inbox/ quickly.
-    "capture",
-    # Accumulate loop, Stage 1 (v9.1.0): reflect.py's `_save_candidate_to_
-    # opinions` already writes `kind: opinion-supplement` for every
-    # standard-shaped candidate routed to an opinion's lane, but this
-    # registry never carried it -- a defect the Stages 2-3 design pass
-    # surfaced rather than invented (wiki/designs/agentm-experience-and-
-    # dreaming.md, locked call 3). One kind covers both a lane entry and
-    # the composed served file; `status:` distinguishes proposed/promoted/
-    # parked/superseded, so a second kind buys nothing a status value
-    # doesn't already.
-    "opinion-supplement",
-})
-
-# Universal frontmatter fields save.py requires on every entry, per
-# save.py's own REQUIRED_FRONTMATTER_FIELDS (FRONTMATTER_FIELD_ORDER minus
-# the optional set). Kept as a tuple, not re-imported, so this module has no
-# import-time dependency on save.py (mirrors graph.py's standalone-module
-# convention in this scripts/ dir).
-REQUIRED_UNIVERSAL_FIELDS: tuple[str, ...] = (
+# Universal frontmatter fields save.py requires on every entry, per save.py's own
+# REQUIRED_FRONTMATTER_FIELDS (FRONTMATTER_FIELD_ORDER minus the optional set).
+# Kept as a tuple, not re-imported, so this module has no import-time dependency
+# on save.py (mirrors graph.py's standalone-module convention in this dir).
+#
+# `kind` names the field as the corpus has always spelled it. A note that has
+# been through the collapse carries `type` instead, and `note_kind()` below reads
+# either — which is what lets the two field names coexist while the migration
+# runs without any caller learning about both.
+REQUIRED_UNIVERSAL_FIELDS: tuple = (
     "kind", "status", "created", "updated", "tags", "group", "slug",
 )
 
-# Vault walk roots + excludes. These mirrored `vec_index.py`'s full-sync walk
-# until that module was removed; the same three roots are now shared with
-# `graph_snapshot.py`, which is the walk to keep this in step with.
+# Vault walk roots. Shared with `graph_snapshot.py`, which is the walk to keep
+# this in step with.
 _WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
+
+
+def __getattr__(name: str):
+    """`KNOWN_KINDS` resolves lazily, against the rules file.
+
+    Lazy rather than computed at import, so a broken rules file surfaces as the
+    parse error it is — at the call that needed the vocabulary — rather than as
+    an ImportError chain three modules deep.
+    """
+    if name == "KNOWN_KINDS":
+        return storage_rules.known_values()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def is_kebab(value: str) -> bool:
@@ -112,52 +84,87 @@ def is_kebab(value: str) -> bool:
     return bool(_KEBAB_SEGMENT.match(value))
 
 
-def known_kinds() -> frozenset[str]:
-    """The recognized kind set. See module docstring for provenance."""
-    return KNOWN_KINDS
+def known_kinds() -> frozenset:
+    """Every value either register recognizes."""
+    return storage_rules.known_values()
 
 
 def is_known(kind: str) -> bool:
-    """True iff `kind` is in the recognized set (exact match, case-sensitive —
-    the registry does not normalize case; a differently-cased duplicate is a
-    distinct, unrecognized value by design)."""
-    return kind in KNOWN_KINDS
+    """True iff `kind` is currently registered — a memory type or a record kind.
+
+    Exact match, case-sensitive: the registry does not normalize case, so a
+    differently-cased duplicate is a distinct, unrecognized value by design.
+    """
+    return kind in storage_rules.known_values()
 
 
-def _frontmatter_kind(content: str) -> str | None:
-    """Extract the raw `kind:` value from a note's frontmatter, or None if
-    absent/malformed-enough that no value can be extracted at all. Returns
-    the raw string exactly as written (not stripped of malformed suffixes) —
-    audit() classifies malformed values, it does not repair them."""
+def is_retired(kind: str) -> bool:
+    """True iff `kind` is a value the collapse has a replacement for."""
+    return kind in storage_rules.rules().deprecations()
+
+
+def replacement_for(kind: str):
+    """The value that replaces a retired one, or None if it is not retired."""
+    return storage_rules.rules().resolve_deprecated(kind)
+
+
+def _frontmatter(content: str) -> dict:
+    """The note's frontmatter as raw `key: value` strings, or `{}`.
+
+    Deliberately minimal — this module classifies one field and has no business
+    parsing nested YAML. Mirrors `frontmatter_validator._parse_frontmatter`.
+    """
     if not content.startswith("---\n"):
-        return None
-    end = content.find("\n---\n", 4)
+        return {}
+    end = content.find("\n---", 4)
     if end == -1:
-        return None
+        return {}
+    fields = {}
     for line in content[4:end].split("\n"):
-        if line.startswith("kind:"):
-            return line[len("kind:"):].strip()
-    return None
+        key, sep, value = line.partition(":")
+        if sep and key and not key.startswith((" ", "\t", "#")):
+            fields[key.strip()] = value.strip()
+    return fields
+
+
+def note_kind(content: str):
+    """The raw vocabulary value from a note's frontmatter, or None.
+
+    Returns the value exactly as written — `audit()` classifies malformed values,
+    it does not repair them. Reads `type` in preference to `kind`, so a collapsed
+    note and an uncollapsed one both answer.
+    """
+    try:
+        return storage_rules.note_type(_frontmatter(content))
+    except storage_rules.ContractViolation:
+        # A note carrying both fields is a contract violation, and `audit()`
+        # surfaces it as malformed rather than silently picking a side.
+        return "<both type and kind>"
 
 
 def audit(vault_path: Path | str) -> dict:
-    """Read-only scan of the vault's kind: values. Never writes anything.
+    """Read-only scan of the corpus's vocabulary. Never writes anything.
 
-    Returns a dict: {"by_kind": {kind: count}, "malformed": [(path, raw_kind)],
-    "unrecognized": [(path, raw_kind)], "total_files": int}. "malformed" is a
-    raw kind value that fails is_kebab(); "unrecognized" is valid kebab-case
-    but not in KNOWN_KINDS. A file with no extractable kind at all is counted
-    in total_files but omitted from every other bucket (not this module's
-    job to flag missing-kind — that's frontmatter_validator.py, task 2).
+    Returns `{"by_kind", "malformed", "unrecognized", "retired", "total_files"}`.
+    `malformed` fails kebab-case; `retired` is a value the deprecation map has a
+    replacement for; `unrecognized` is valid kebab-case, not registered, and not
+    retired — the genuine "nobody knows what this is" bucket. A file with no
+    extractable value at all is counted in `total_files` and omitted from every
+    other bucket: missing-kind is `frontmatter_validator.py`'s question.
     """
     vault = Path(vault_path)
-    by_kind: dict[str, int] = {}
-    malformed: list[tuple[str, str]] = []
-    unrecognized: list[tuple[str, str]] = []
+    by_kind: dict = {}
+    malformed: list = []
+    unrecognized: list = []
+    retired: list = []
     total_files = 0
 
     if not vault.is_dir():
-        return {"by_kind": {}, "malformed": [], "unrecognized": [], "total_files": 0}
+        return {"by_kind": {}, "malformed": [], "unrecognized": [], "retired": [],
+                "total_files": 0}
+
+    known = storage_rules.known_values()
+    deprecations = storage_rules.rules().deprecations()
 
     walk_roots = [vault / d for d in _WALK_SUBDIRS if (vault / d).is_dir()]
     for root in walk_roots:
@@ -171,49 +178,61 @@ def audit(vault_path: Path | str) -> dict:
             except (OSError, UnicodeDecodeError):
                 continue
             total_files += 1
-            raw_kind = _frontmatter_kind(content)
-            if raw_kind is None:
+            raw = note_kind(content)
+            if raw is None:
                 continue
             rel = str(md.relative_to(vault)).replace("\\", "/")
-            if not is_kebab(raw_kind):
-                malformed.append((rel, raw_kind))
+            if not is_kebab(raw):
+                malformed.append((rel, raw))
                 continue
-            by_kind[raw_kind] = by_kind.get(raw_kind, 0) + 1
-            if not is_known(raw_kind):
-                unrecognized.append((rel, raw_kind))
+            by_kind[raw] = by_kind.get(raw, 0) + 1
+            if raw in deprecations:
+                retired.append((rel, raw))
+            elif raw not in known:
+                unrecognized.append((rel, raw))
 
     return {
         "by_kind": by_kind,
         "malformed": malformed,
         "unrecognized": unrecognized,
+        "retired": retired,
         "total_files": total_files,
     }
 
 
 def _print_report(result: dict) -> None:
     print(f"total files scanned: {result['total_files']}")
-    print(f"distinct known kinds found: {len(result['by_kind'])}")
+    print(f"distinct values found: {len(result['by_kind'])}")
     for kind, count in sorted(result["by_kind"].items(), key=lambda kv: -kv[1]):
         print(f"  {count:5d}  {kind}")
+    if result["retired"]:
+        counts: dict = {}
+        for _path, kind in result["retired"]:
+            counts[kind] = counts.get(kind, 0) + 1
+        print(f"\nretired — the collapse has a replacement and has not reached these: "
+              f"{len(result['retired'])} note(s)")
+        for kind, count in sorted(counts.items(), key=lambda kv: -kv[1]):
+            print(f"  {count:5d}  {kind} → {replacement_for(kind)}")
     if result["unrecognized"]:
-        print(f"\nunrecognized (valid kebab-case, not in KNOWN_KINDS): {len(result['unrecognized'])}")
+        print(f"\nunrecognized (valid kebab-case, registered nowhere, not retired): "
+              f"{len(result['unrecognized'])}")
         for path, kind in result["unrecognized"]:
-            print(f"  {path}: kind={kind!r}")
+            print(f"  {path}: {kind!r}")
     if result["malformed"]:
         print(f"\nmalformed (not valid kebab-case): {len(result['malformed'])}")
         for path, kind in result["malformed"]:
-            print(f"  {path}: kind={kind!r}")
+            print(f"  {path}: {kind!r}")
 
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="V6-15 kind-taxonomy registry")
+def _parse_args(argv: list) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="the note-vocabulary registry")
     sub = parser.add_subparsers(dest="command", required=True)
-    audit_p = sub.add_parser("audit", help="read-only scan of a vault's kind: values")
+    audit_p = sub.add_parser("audit", help="read-only scan of a vault's vocabulary")
     audit_p.add_argument("vault", help="path to the vault root")
     return parser.parse_args(argv)
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list) -> int:
     args = _parse_args(argv)
     if args.command == "audit":
         _print_report(audit(args.vault))

@@ -52,6 +52,7 @@ classes:
   crystallized: Distilled lessons.
   mocs: Maps of content.
 memory_types: [preference, convention, reference, workflow, fix, idea]
+default_type: preference
 routing:
   preference: memory/semantic
   convention: memory/semantic

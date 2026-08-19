@@ -39,8 +39,10 @@ Exit:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -49,6 +51,11 @@ sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
 
 import storage_rules  # noqa: E402
 from storage_rules import StorageRulesError  # noqa: E402
+
+# The contract the repo ships, which the daemon embeds. The gate reads it from
+# source rather than from the embedded copy so that a diff to this file is what
+# the growth rule diffs — the embedded copy is a build artifact of it.
+PACKAGED_DEFAULT = _REPO / "daemon" / "internal" / "rules" / "storage-rules.default.md"
 
 
 def _resolved_vault() -> Path | None:
@@ -71,10 +78,10 @@ def check_parse() -> list[str]:
     """Both rules files parse. Absence of the vault one is fine; corruption is not."""
     failures: list[str] = []
 
-    if not storage_rules.PACKAGED_DEFAULT.is_file():
-        return [f"the packaged default is missing: {storage_rules.PACKAGED_DEFAULT}"]
+    if not PACKAGED_DEFAULT.is_file():
+        return [f"the packaged default is missing: {PACKAGED_DEFAULT}"]
     try:
-        packaged = storage_rules.load_file(storage_rules.PACKAGED_DEFAULT)
+        packaged = storage_rules.load_file(PACKAGED_DEFAULT)
         print(f"  packaged default : OK  ({len(packaged.memory_types())} memory types, "
               f"{len(packaged.record_kinds())} record kinds, hash {packaged.content_hash()})")
     except StorageRulesError as exc:
@@ -127,7 +134,7 @@ def _default_base() -> str | None:
 
 def check_growth_rule(base: str | None) -> list[str]:
     """A type added to `memory_types` carries its warrant in the same diff."""
-    rel = str(storage_rules.PACKAGED_DEFAULT.relative_to(_REPO)).replace("\\", "/")
+    rel = str(PACKAGED_DEFAULT.relative_to(_REPO)).replace("\\", "/")
     base = base or _default_base()
     if base is None:
         print("  growth rule      : SKIP (no base ref to diff against)")
@@ -138,17 +145,23 @@ def check_growth_rule(base: str | None) -> list[str]:
         print(f"  growth rule      : SKIP (the rules file is new as of {base[:8]})")
         return []
 
+    # The contract at the base ref goes through the same parser as the current
+    # one — a temp file, because the parser reads files rather than strings and
+    # having two ways in is how the two drift.
+    with tempfile.NamedTemporaryFile("w", suffix=".md", encoding="utf-8", delete=False) as handle:
+        handle.write(previous_text)
+        previous_path = handle.name
     try:
-        previous = storage_rules.parse_block(
-            storage_rules.extract_block(previous_text, origin=f"{base}:{rel}"),
-            origin=f"{base}:{rel}")
+        previous = storage_rules.load_file(previous_path)
     except StorageRulesError as exc:
         # A broken file at the base ref is history's problem, not this diff's.
         print(f"  growth rule      : SKIP (the rules file at {base[:8]} does not parse: {exc})")
         return []
+    finally:
+        os.unlink(previous_path)
 
-    current = storage_rules.load_file(storage_rules.PACKAGED_DEFAULT)
-    added = sorted(current.memory_types() - set(previous["memory_types"]))
+    current = storage_rules.load_file(PACKAGED_DEFAULT)
+    added = sorted(current.memory_types() - previous.memory_types())
     if not added:
         print("  growth rule      : OK  (no memory type added in this diff)")
         return []

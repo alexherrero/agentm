@@ -1,71 +1,44 @@
 #!/usr/bin/env python3
-"""storage_rules.py — the runtime-read filing contract.
+"""storage_rules.py — the Python side of the filing contract.
 
-`standards/storage-rules.md` is authoritative for filing. This module resolves
-that file, extracts its fenced machine-readable block, parses it, and validates
-its shape. Everything downstream — the frontmatter validator, the kind registry,
-lint, and (from part 4) enrichment's output schema — reads its enums from here
-rather than from a hardcoded list of its own, so a type added to the rules file
-exists everywhere at once and a type absent from it exists nowhere.
+`standards/storage-rules.md` decides where a memory goes and what shape it takes,
+and it is read at runtime rather than compiled in: filing behaviour changes by
+editing markdown, with no recompile and no release.
 
-The point of the arrangement is that filing behaviour changes by editing
-markdown. No recompile, no release: the rules take effect on the next read.
+**This module does not parse that file.** The parser lives in the daemon, in Go —
+`daemon/internal/rules` — and this asks it: `agentmd rules --json`, once per run
+rather than once per note. One parser, one source of truth. A second
+implementation in Python would be a second thing to drift, and the design's whole
+claim is that a type added to the rules exists everywhere at once.
 
-Resolution order — first source that exists wins:
+What lives here is the Python-side logic the daemon has no reason to carry: how
+to read a note's own vocabulary while the corpus is half-migrated, and the hash
+watch that makes a rules edit loud in the nightly digest.
 
-  1. ``$AGENTM_STORAGE_RULES`` — an explicit path, for tests and one-off runs.
-  2. ``<vault>/standards/storage-rules.md`` — the live instance. Two probes,
-     because `$MEMORY_VAULT_PATH` names the *memory root* and the vault root is
-     its parent in the split layout (`<vault>/Agent/` holds memory, `<vault>/
-     standards/` holds the rules). A flat vault, where the two are the same
-     directory, is probed first.
-  3. The packaged default beside this skill. This is the seed a vault instance
-     is created from, and it is what makes the enums exist in a checkout with no
-     vault attached — CI, a fresh clone, a unit test.
-
-**Absence falls through; corruption halts.** A source that is not there is not
-an error, and resolution moves on. A source that *is* there and whose block will
-not parse, or parses to the wrong shape, raises `StorageRulesError` and never
-falls back to the next source — falling back would be exactly the "model reading
-a malformed rule improvises around it" failure the fail-closed design exists to
-prevent. `load()` reports which source won, so a caller running on the packaged
-default can say so rather than implying it read the operator's rules.
-
-The block is fenced as ```` ```storage-rules ```` and its body is YAML. Required
-keys are `classes`, `memory_types`, `record_kinds`, `routing`, `thresholds` and
-`deprecations`; `warrants` is required to be present but may be empty. Two
-registers carry the taxonomy:
-
-  memory_types   the six values enrichment assigns, growth-rule-braked. A note
-                 in one of the three observational classes carries one, in its
-                 `type:` field.
-  record_kinds   infrastructure record shapes — briefs, telemetry, the *-index
-                 family, personas, maps of content. These are not memories, so
-                 they carry no `type` at all; their `kind:` field names their
-                 shape. Registered here so the set is still closed and still
-                 braked, rather than growing free-form as `kind:` always has.
-
-A note carries `type` **or** `kind`, never both. That is checked by the
-frontmatter validator, not here — this module owns the vocabulary, not its use.
+**Fail-closed comes through unchanged.** When the daemon cannot resolve or parse
+a contract it exits non-zero with the reason, and this raises `StorageRulesError`
+rather than guessing — which halts filing, leaves notes `unfiled`, and puts the
+parse failure in the digest. The one thing it never does is proceed on a default
+it made up. A missing binary is the same condition for the same reason: a machine
+with no daemon has no contract to file against, and inventing one is worse than
+waiting.
 
 Usage:
-    python3 storage_rules.py --check              # resolve, parse, validate
-    python3 storage_rules.py --check PATH         # check one specific file
-    python3 storage_rules.py --show               # print the parsed block
-    python3 storage_rules.py --hash               # print the block content hash
+    python3 storage_rules.py --check     # ask, and report what came back
+    python3 storage_rules.py --show      # the parsed contract as JSON
+    python3 storage_rules.py --hash      # the contract's content hash
 
 Exit:
-    0  the rules resolve and parse
-    1  a resolved rules file failed to parse or failed shape validation
-    2  setup error (PyYAML missing, an explicit path that does not exist)
+    0  the contract resolves and parses
+    1  it does not — filing is halted, and the reason is on stderr
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
-import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -73,93 +46,102 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
-# The packaged default lives beside the skill rather than in the repo's
-# templates/ tree, so it travels with the skill wherever the skill is installed
-# and needs no cross-tree path assumption to find.
-PACKAGED_DEFAULT = _SCRIPTS_DIR.parent / "storage-rules.default.md"
+# The daemon binary, resolved the same way `recall.py` resolves it for the search
+# fast path: a bare name on PATH, overridable. `AGENTMD` is the override a test
+# or a CI step points at a freshly built binary.
+DAEMON_BIN = os.environ.get("AGENTMD", "").strip() or "agentmd"
 
-# The relative location of the rules file inside a vault. Both probes are run
-# against the resolved memory root: the flat layout first, then the split one.
-_VAULT_RELATIVE = ("standards/storage-rules.md", "../standards/storage-rules.md")
+# How long to wait. Reading and parsing one small file needs milliseconds; the
+# budget is generous because it is a hang detector, not a benchmark.
+_TIMEOUT_SECONDS = 15
 
-_BLOCK_RE = re.compile(
-    r"^```storage-rules[ \t]*\r?\n(?P<body>.*?)^```[ \t]*(?:\r?\n|\Z)",
-    re.MULTILINE | re.DOTALL,
-)
-
-_KEBAB = re.compile(r"^[a-z0-9-]+$")
-
-# Every key the block must carry. `warrants` must be present but may be empty —
-# it starts empty and fills as types are added under the growth rule.
-_REQUIRED_KEYS = ("classes", "memory_types", "record_kinds", "routing",
-                  "thresholds", "deprecations", "warrants")
-
-# The three classes enrichment may file into. The other three are derived and
-# rebuildable, and enrichment can never write there (parent design, "Class
-# membership"). Pinned here rather than read from the block: the observational/
-# derived split is a structural property of the layout, not a tunable.
+# The three classes filing may write into. The other three are derived and
+# rebuildable, and the passes that build them are the only things that write
+# there. Mirrored from `rules.ObservationalClasses` / `rules.DerivedClasses`
+# rather than read over the wire: the observational/derived split is a structural
+# property of the layout, not a tunable, and the Go validator already refuses a
+# contract that names a different six.
 OBSERVATIONAL_CLASSES = ("semantic", "procedural", "episodic")
 DERIVED_CLASSES = ("entities", "crystallized", "mocs")
 
 
 class StorageRulesError(Exception):
-    """A resolved rules file will not parse, or parsed to the wrong shape.
+    """The filing contract is unavailable — unresolvable, unparseable, or
+    unreachable.
 
     Raised rather than returned, and never swallowed into a fallback: filing
     halts, notes wait as `unfiled`, and the digest names the failure.
     """
 
 
-class StorageRules:
-    """One parsed rules file, plus where it came from."""
+class ContractViolation(Exception):
+    """A note's frontmatter breaks the contract in a way no default can paper over."""
 
-    def __init__(self, data: dict, *, source: Path, is_packaged_default: bool,
-                 block_text: str):
+
+class StorageRules:
+    """One filing contract, as the daemon reported it."""
+
+    def __init__(self, data: dict):
         self._data = data
-        self.source = source
-        self.is_packaged_default = is_packaged_default
-        self._block_text = block_text
 
     # ── the registers ──────────────────────────────────────────────────────
 
-    def classes(self) -> dict[str, str]:
+    def classes(self) -> dict:
         """`{class_name: one-line meaning}` for the six retrieval classes."""
-        return dict(self._data["classes"])
+        return dict(self._data.get("classes") or {})
 
-    def memory_types(self) -> frozenset[str]:
+    def memory_types(self) -> frozenset:
         """The enum enrichment assigns to a memory's `type:` field."""
-        return frozenset(self._data["memory_types"])
+        return frozenset(self._data.get("memory_types") or ())
 
-    def record_kinds(self) -> frozenset[str]:
+    def record_kinds(self) -> frozenset:
         """Infrastructure record shapes, carried in `kind:`. Not memories."""
-        return frozenset(self._data["record_kinds"])
+        return frozenset(self._data.get("record_kinds") or ())
 
-    def routing(self) -> dict[str, str]:
+    def default_type(self) -> str:
+        """What an unlabelled capture lands as."""
+        return self._data.get("default_type") or ""
+
+    def routing(self) -> dict:
         """`{memory_type: destination}` — where a type of memory is filed."""
-        return dict(self._data["routing"])
+        return dict(self._data.get("routing") or {})
 
     def thresholds(self) -> dict:
         """Tunables the filing passes read (sizes, ceilings, confidence bars)."""
-        return dict(self._data["thresholds"])
+        return dict(self._data.get("thresholds") or {})
 
-    def deprecations(self) -> dict[str, str]:
+    def deprecations(self) -> dict:
         """`{retired_value: replacement}` — the collapse map, mechanical."""
-        return dict(self._data["deprecations"])
+        return dict(self._data.get("deprecations") or {})
 
-    def warrants(self) -> dict[str, dict]:
+    def warrants(self) -> dict:
         """`{memory_type: {query_class, nearest, why_not}}` — the growth rule's
-        evidence. A type added to `memory_types` carries one; the gate checks
-        it in the same diff."""
+        evidence. A type added to `memory_types` carries one; the gate checks it
+        in the same diff."""
         return dict(self._data.get("warrants") or {})
+
+    # ── provenance ─────────────────────────────────────────────────────────
+
+    @property
+    def source(self) -> str:
+        """Where the contract was read from."""
+        return self._data.get("source") or ""
+
+    @property
+    def is_packaged_default(self) -> bool:
+        """True when the copy embedded in the daemon won — which means an edit to
+        the operator's own rules file is not taking effect, because there isn't
+        one."""
+        return bool(self._data.get("is_packaged_default"))
 
     # ── derived views ──────────────────────────────────────────────────────
 
-    def known_values(self) -> frozenset[str]:
+    def known_values(self) -> frozenset:
         """Every value either register recognizes. The union is what a taxonomy
         audit compares a live corpus against."""
         return self.memory_types() | self.record_kinds()
 
-    def resolve_deprecated(self, value: str) -> str | None:
+    def resolve_deprecated(self, value: str):
         """The replacement for a retired value, or None if it is not retired.
 
         Returns None for a value that is already current — callers distinguish
@@ -168,244 +150,120 @@ class StorageRules:
         return self.deprecations().get(value)
 
     def content_hash(self) -> str:
-        """The block's content hash — `rules_hash` in a memory's frontmatter.
+        """The contract's content hash — `rules_hash` in a memory's frontmatter.
 
-        Over the block's *parsed* content, canonically serialized, not its raw
-        text: reformatting the YAML or editing the prose around it must not
-        invalidate every judgment in the corpus. Changing what the block says
-        must."""
-        canonical = json.dumps(self._data, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
+        Computed by the daemon over the block's parsed content, so rewording the
+        prose or reflowing the YAML does not invalidate every judgment in the
+        corpus, and changing what the block says does."""
+        return self._data.get("hash") or ""
 
     def as_dict(self) -> dict:
-        """The parsed block, for display and for tests."""
+        """The contract, for display and for tests."""
         return dict(self._data)
 
 
-# ── parsing ────────────────────────────────────────────────────────────────
+# ── asking the daemon ──────────────────────────────────────────────────────
 
-def extract_block(text: str, *, origin: str) -> str:
-    """Pull the fenced `storage-rules` block body out of a rules file."""
-    match = _BLOCK_RE.search(text)
-    if match is None:
-        raise StorageRulesError(
-            f"{origin}: no ```storage-rules fenced block found. The machine-"
-            f"readable core is what every consumer reads; prose alone is not a "
-            f"rules file."
-        )
-    return match.group("body")
+def _ask(args: list) -> dict:
+    """Run `agentmd rules --json` and return what it said.
 
-
-def parse_block(body: str, *, origin: str) -> dict:
-    """Parse the block body as YAML and validate its shape."""
+    Every failure mode converges on one exception, because every one of them
+    means the same thing to a caller: there is no contract to file against.
+    """
+    binary = shutil.which(DAEMON_BIN) or DAEMON_BIN
+    cmd = [binary, "rules", "--json"] + args
     try:
-        import yaml
-    except ImportError as exc:  # pragma: no cover - dependency is declared
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_TIMEOUT_SECONDS)
+    except FileNotFoundError as exc:
         raise StorageRulesError(
-            f"{origin}: PyYAML is not installed, so the rules block cannot be "
-            f"parsed. Run `pip install pyyaml`."
+            f"the filing contract is unavailable: {DAEMON_BIN} is not on PATH. "
+            f"The daemon is what reads `standards/storage-rules.md`; without it "
+            f"there is no contract to file against. Set $AGENTMD to a built "
+            f"binary, or install the daemon."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise StorageRulesError(
+            f"the filing contract is unavailable: {DAEMON_BIN} did not answer "
+            f"within {_TIMEOUT_SECONDS}s."
         ) from exc
 
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip() or "no reason given"
+        raise StorageRulesError(detail)
+
     try:
-        data = yaml.safe_load(body)
-    except yaml.YAMLError as exc:
-        raise StorageRulesError(f"{origin}: the rules block is not valid YAML: {exc}") from exc
-
-    if not isinstance(data, dict):
+        return json.loads(proc.stdout)
+    except ValueError as exc:
         raise StorageRulesError(
-            f"{origin}: the rules block parsed to {type(data).__name__}, not a mapping."
-        )
-
-    _validate_shape(data, origin=origin)
-    return data
+            f"{DAEMON_BIN} answered with something that is not JSON: {exc}"
+        ) from exc
 
 
-def _validate_shape(data: dict, *, origin: str) -> None:
-    """Every required key present, and each one the right shape and vocabulary.
+def load(*, vault_path=None) -> StorageRules:
+    """Resolve the contract through the daemon. Raises when there isn't one."""
+    args = []
+    if vault_path:
+        args += ["--vault", str(vault_path)]
+    return StorageRules(_ask(args))
 
-    Shape validation is as load-bearing as the parse. A block that is valid YAML
-    but names a class that does not exist, or routes a type nowhere, is a
-    malformed rule the model would otherwise be handed to interpret.
+
+def load_file(path) -> StorageRules:
+    """Parse one specific rules file, through the daemon. Used by tests."""
+    return StorageRules(_ask(["--file", str(path)]))
+
+
+# ── reading a note's vocabulary ────────────────────────────────────────────
+#
+# The field is `type`, not `kind` — `type` is the one field the Open Knowledge
+# Format requires, and renaming during the collapse costs nothing. But a corpus
+# of sixteen thousand notes does not rename atomically, so every reader has to
+# tolerate both while the migration runs. One accessor does that, and it is the
+# only place either field name is spelled.
+
+def note_type(frontmatter: dict):
+    """What this note says it is — `type` when present, else `kind`.
+
+    Returns None when the note carries neither, which is legitimate: a capture
+    that has not been through a filing judgment yet has no type, and a great many
+    non-memory files have no reason to carry one.
+
+    Raises `ContractViolation` when a note carries **both**. Two fields that can
+    disagree about what a note is will eventually disagree, and a reader that
+    silently prefers one is how a file starts lying about itself.
     """
-    missing = [k for k in _REQUIRED_KEYS if k not in data]
-    if missing:
-        raise StorageRulesError(
-            f"{origin}: the rules block is missing required key(s): {', '.join(missing)}"
+    written_type = str(frontmatter.get("type") or "").strip()
+    written_kind = str(frontmatter.get("kind") or "").strip()
+    if written_type and written_kind:
+        raise ContractViolation(
+            f"a note carries both `type: {written_type}` and `kind: {written_kind}`. "
+            f"A note carries one or the other: `type` for a memory, `kind` for a "
+            f"record."
         )
-
-    for key in ("classes", "routing", "thresholds", "deprecations"):
-        if not isinstance(data[key], dict):
-            raise StorageRulesError(
-                f"{origin}: `{key}` must be a mapping, got {type(data[key]).__name__}."
-            )
-    for key in ("memory_types", "record_kinds"):
-        if not isinstance(data[key], list):
-            raise StorageRulesError(
-                f"{origin}: `{key}` must be a list, got {type(data[key]).__name__}."
-            )
-    if data.get("warrants") is not None and not isinstance(data["warrants"], dict):
-        raise StorageRulesError(
-            f"{origin}: `warrants` must be a mapping or empty, got "
-            f"{type(data['warrants']).__name__}."
-        )
-
-    expected_classes = set(OBSERVATIONAL_CLASSES) | set(DERIVED_CLASSES)
-    declared_classes = set(data["classes"])
-    if declared_classes != expected_classes:
-        missing_c = sorted(expected_classes - declared_classes)
-        extra_c = sorted(declared_classes - expected_classes)
-        detail = []
-        if missing_c:
-            detail.append(f"missing {', '.join(missing_c)}")
-        if extra_c:
-            detail.append(f"unknown {', '.join(extra_c)}")
-        raise StorageRulesError(
-            f"{origin}: `classes` must name exactly the six retrieval classes "
-            f"({'; '.join(detail)}). A class is a directory, and a directory is "
-            f"close to permanent — adding one is a design change, not a rules edit."
-        )
-
-    types = data["memory_types"]
-    kinds = data["record_kinds"]
-    for label, values in (("memory_types", types), ("record_kinds", kinds)):
-        for value in values:
-            if not isinstance(value, str) or not _KEBAB.match(value):
-                raise StorageRulesError(
-                    f"{origin}: `{label}` entry {value!r} is not kebab-case."
-                )
-        if len(set(values)) != len(values):
-            raise StorageRulesError(f"{origin}: `{label}` contains duplicate entries.")
-
-    overlap = set(types) & set(kinds)
-    if overlap:
-        raise StorageRulesError(
-            f"{origin}: {', '.join(sorted(overlap))} appears in both `memory_types` "
-            f"and `record_kinds`. A value is a memory type or a record kind, never "
-            f"both — the two registers are what keep `type` and `kind` from meaning "
-            f"the same thing."
-        )
-
-    unrouted = sorted(set(types) - set(data["routing"]))
-    if unrouted:
-        raise StorageRulesError(
-            f"{origin}: memory type(s) {', '.join(unrouted)} have no `routing` "
-            f"entry. A type with nowhere to go files nowhere."
-        )
-    stray_routes = sorted(set(data["routing"]) - set(types))
-    if stray_routes:
-        raise StorageRulesError(
-            f"{origin}: `routing` names {', '.join(stray_routes)}, which is not a "
-            f"memory type."
-        )
-
-    known = set(types) | set(kinds)
-    bad_targets = sorted(
-        {v for v in data["deprecations"].values() if v not in known}
-    )
-    if bad_targets:
-        raise StorageRulesError(
-            f"{origin}: `deprecations` maps to unknown value(s): "
-            f"{', '.join(bad_targets)}. A collapse map that points at a value no "
-            f"register carries is not mechanical."
-        )
-    still_live = sorted(set(data["deprecations"]) & known)
-    if still_live:
-        raise StorageRulesError(
-            f"{origin}: {', '.join(still_live)} is listed in `deprecations` and is "
-            f"also still registered. A value is retired or current, not both."
-        )
-
-    warrants = data.get("warrants") or {}
-    for name, warrant in warrants.items():
-        if not isinstance(warrant, dict):
-            raise StorageRulesError(
-                f"{origin}: warrant for {name!r} must be a mapping."
-            )
-        for field in ("query_class", "nearest", "why_not"):
-            if not str(warrant.get(field) or "").strip():
-                raise StorageRulesError(
-                    f"{origin}: warrant for {name!r} is missing `{field}`."
-                )
+    return written_type or written_kind or None
 
 
-# ── resolution ─────────────────────────────────────────────────────────────
+def is_memory(frontmatter: dict) -> bool:
+    """True when this note asserts something, as opposed to recording something.
 
-def candidate_paths(*, vault_path: Path | str | None = None) -> list[tuple[Path, bool]]:
-    """The resolution chain, in order, as `(path, is_packaged_default)` pairs.
-
-    Every candidate is returned whether or not it exists — `load()` walks the
-    list and takes the first that does. Exposed so tests and the digest can show
-    what was probed rather than only what was found.
+    Memories carry a `type` from the six; records carry a `kind`. A note carrying
+    neither is not yet either — an unjudged capture — and answers False.
     """
-    chain: list[tuple[Path, bool]] = []
-
-    explicit = os.environ.get("AGENTM_STORAGE_RULES", "").strip()
-    if explicit:
-        chain.append((Path(explicit).expanduser(), False))
-
-    root = vault_path if vault_path is not None else os.environ.get("MEMORY_VAULT_PATH", "").strip()
-    if root:
-        base = Path(root).expanduser()
-        for rel in _VAULT_RELATIVE:
-            chain.append(((base / rel).resolve(), False))
-
-    chain.append((PACKAGED_DEFAULT, True))
-    return chain
-
-
-def load(*, vault_path: Path | str | None = None) -> StorageRules:
-    """Resolve, read, parse and validate the rules. Raises on corruption.
-
-    Absence falls through to the next source. Corruption does not: the first
-    source that exists is the one that has to parse.
-    """
-    probed: list[str] = []
-    for path, is_default in candidate_paths(vault_path=vault_path):
-        probed.append(str(path))
-        try:
-            text = path.read_text(encoding="utf-8")
-        except FileNotFoundError:
-            continue
-        except (OSError, UnicodeDecodeError) as exc:
-            raise StorageRulesError(f"{path}: cannot be read: {exc}") from exc
-        block = extract_block(text, origin=str(path))
-        data = parse_block(block, origin=str(path))
-        return StorageRules(data, source=path, is_packaged_default=is_default,
-                            block_text=block)
-
-    raise StorageRulesError(
-        "no storage-rules file found, and the packaged default is missing. "
-        "Probed: " + "; ".join(probed)
-    )
-
-
-def load_file(path: Path | str) -> StorageRules:
-    """Parse one specific rules file. Used by the gate and by tests."""
-    path = Path(path)
-    try:
-        text = path.read_text(encoding="utf-8")
-    except FileNotFoundError as exc:
-        raise StorageRulesError(f"{path}: no such file") from exc
-    except (OSError, UnicodeDecodeError) as exc:
-        raise StorageRulesError(f"{path}: cannot be read: {exc}") from exc
-    block = extract_block(text, origin=str(path))
-    data = parse_block(block, origin=str(path))
-    return StorageRules(data, source=path,
-                        is_packaged_default=(path.resolve() == PACKAGED_DEFAULT.resolve()),
-                        block_text=block)
+    value = note_type(frontmatter)
+    return value is not None and value in memory_types()
 
 
 # ── module-level convenience, for the consumers ────────────────────────────
 
-_CACHE: StorageRules | None = None
+_CACHE = None
 
 
 def rules(*, refresh: bool = False) -> StorageRules:
-    """The resolved rules, cached for the process.
+    """The resolved contract, cached for the process.
 
-    Cached because the enum consumers ask for it per note, and re-reading the
-    file 16,000 times in a lint pass is pointless. `refresh=True` re-reads, which
-    is what a long-running daemon does when the watcher sees the file change.
+    Cached because the enum consumers ask per note, and spawning a subprocess
+    16,000 times in a lint pass is not a design. `refresh=True` re-asks, which is
+    what a long-running pass does when the watcher sees the rules file change.
     """
     global _CACHE
     if _CACHE is None or refresh:
@@ -413,19 +271,19 @@ def rules(*, refresh: bool = False) -> StorageRules:
     return _CACHE
 
 
-def memory_types() -> frozenset[str]:
+def memory_types() -> frozenset:
     return rules().memory_types()
 
 
-def record_kinds() -> frozenset[str]:
+def record_kinds() -> frozenset:
     return rules().record_kinds()
 
 
-def known_values() -> frozenset[str]:
+def known_values() -> frozenset:
     return rules().known_values()
 
 
-def enrichment_schema_enum() -> list[str]:
+def enrichment_schema_enum() -> list:
     """The `type` enum an enrichment output schema constrains against.
 
     A sorted list rather than a set, because a JSON Schema `enum` is an ordered
@@ -449,8 +307,7 @@ def content_hash() -> str:
 _WATCH_RELATIVE = "_meta/storage-rules-state.json"
 
 
-def hash_watch(memory_root: Path | str, *, current: str | None = None,
-               record: bool = True) -> dict:
+def hash_watch(memory_root, *, current=None, record: bool = True) -> dict:
     """Compare the current rules hash against the last one seen, and record it.
 
     Returns `{"current", "previous", "changed", "first_run"}`. The state file
@@ -493,19 +350,19 @@ def hash_watch(memory_root: Path | str, *, current: str | None = None,
 
 # ── CLI ────────────────────────────────────────────────────────────────────
 
-def _parse_args(argv: list[str]) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="the runtime-read filing contract")
+def _parse_args(argv: list) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="the Python side of the filing contract")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--check", nargs="?", const="", metavar="PATH",
-                       help="resolve (or check PATH) and validate; exit 1 on failure")
-    group.add_argument("--show", action="store_true", help="print the parsed block as JSON")
-    group.add_argument("--hash", action="store_true", help="print the block content hash")
+                       help="ask for the contract (or for PATH); exit 1 when there isn't one")
+    group.add_argument("--show", action="store_true", help="print the contract as JSON")
+    group.add_argument("--hash", action="store_true", help="print the contract's content hash")
     parser.add_argument("--vault-path", default=None,
-                        help="memory root to probe (overrides MEMORY_VAULT_PATH)")
+                        help="vault root to resolve against (overrides the daemon's own)")
     return parser.parse_args(argv)
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list) -> int:
     args = _parse_args(argv)
     try:
         loaded = load_file(args.check) if args.check else load(vault_path=args.vault_path)
@@ -520,9 +377,10 @@ def main(argv: list[str]) -> int:
         print(loaded.content_hash())
         return 0
 
-    where = "packaged default" if loaded.is_packaged_default else "vault"
-    print(f"storage-rules: OK — {loaded.source} ({where})")
+    where = "the daemon's embedded default" if loaded.is_packaged_default else loaded.source
+    print(f"storage-rules: OK — {where}")
     print(f"  memory types : {', '.join(sorted(loaded.memory_types()))}")
+    print(f"  default type : {loaded.default_type()}")
     print(f"  record kinds : {len(loaded.record_kinds())} registered")
     print(f"  deprecations : {len(loaded.deprecations())} retired values mapped")
     print(f"  rules_hash   : {loaded.content_hash()}")
