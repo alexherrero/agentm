@@ -38,7 +38,7 @@ A memory arrives, and two things happen to it. The capture transaction writes th
 
 Dreaming runs the same enrichment code over anything still `unfiled`, and then does the work that is only possible with the whole corpus in view: deduplicating against everything, building entity rollups from their underlying facts, extracting cross-memory insights, detecting slop and drift, and reconciling files that violate the contract. One definition of well-filed, two triggers — eager and batch.
 
-Underneath both triggers is the thing being enforced: one flat memory namespace sharded by capture date, six types with a rule that stops them multiplying, two lifecycle classes (most memories are events, a few are living entities built from those events), a status ladder that ages a memory by rank rather than by moving it, and three derived indexes — chunks, backlinks and entity references — that are caches and never authoritative.
+Underneath both triggers is the thing being enforced, and the thing being enforced is a file you own. `standards/storage-rules.md` states where a memory goes and what shape it takes; the enrichment pass reads it at runtime and works from it. Change that file and filing behaviour changes on the next capture, with no code edit and no release. Everything else here — the memory classes, the type taxonomy, the status ladder, the derived indexes — is the structure those rules describe.
 
 The filing structure itself moves toward AgentKV's, with one deliberate difference. AgentKV reads intent from path segments: notes under `/meetings/` and `/cl_descriptions/` are dampened on general queries and boosted on matching ones, and canonical specifications get a flat lift. That works, and it is worth having. But agentm files memory by capture date precisely so that directories mean nothing and links can never break. So the same signal moves into indexed frontmatter, where it is more precise than a path — a note can sit on several axes at once, and nothing ever has to move.
 
@@ -65,39 +65,60 @@ Four guarantees hold across all of it. A capture is never lost, because the tran
 
 ### Detailed Design
 
+#### The rules are a file you own
+
+`standards/storage-rules.md` is authoritative for filing. The enrichment pass reads it at runtime and works from what it says, so changing where a domain routes, or what shape a memory of some kind should take, is an edit to a markdown file rather than a change to the daemon. No recompile, no release, no design amendment. The rules take effect on the next capture.
+
+This is the single most consequential decision in the design, and it inverts the usual arrangement. The contract stops being something a design document specifies and code implements, and becomes something you write and the system obeys. Two things follow. The design can be shorter and more durable, because it describes the *mechanism* that reads the rules rather than enumerating the rules themselves. And the rules can be wrong for a week without anyone shipping a fix, because correcting them is editing a file.
+
+The index keeps no authority. Destroy it and the scanner rebuilds every table, embedding and backlink from the markdown, which is what makes "every index is a deletable cache" true in practice rather than as a slogan.
+
+One deliberate divergence from the system this borrows from. That system keeps a companion `.agent_metadata.json` alongside the markdown. We do not, and the reason is on record: under files-are-truth, a note whose own frontmatter says `active` while an overlay says `deprecated` is a lying file, and that fork has already happened here three times in one week. Machine edits are line-surgical against the frontmatter itself — replace the one line, never round-trip the block through a serializer.
+
 #### The layout
 
 ```
-Agent/
-├── memory/
-│   ├── 2026/07/<slug>.md
-│   └── 2026/08/<slug>.md
+<vault>/
+├── Agent/
+│   ├── _dream/
+│   ├── _meta/
+│   ├── desk/
+│   │   ├── diagnostics/
+│   │   ├── tasks/<slug>/       the workbench for anything that isn't a project
+│   │   └── moc-tasks.md        a map of content over active tasks
+│   └── memory/
+│       ├── semantic/           facts, principles, learned tool behaviour
+│       ├── procedural/         recipes and protocols — how to do a thing
+│       ├── entities/           one living file per person, system, repo, org
+│       ├── crystallized/       lessons dreaming distilled from repetition
+│       └── episodic/           session traces
 │
-└── desk/
-    ├── projects/<slug>/          plans · roadmaps · progress · drafts
-    ├── briefs/                   daily digests
-    └── scratch/                  gitignored
+├── calendar/                   the episodic capture layer, by date
+├── projects/<slug>/            only you create these
+├── standards/                  the rules you author, including storage-rules.md
+├── personal/                   yours; excluded from search
+├── ideas.md                    shared, project ideas
+└── <index>                     the vault topology
 ```
 
-Memory is one flat namespace sharded by capture date, meaning the moment the daemon wrote the file rather than any claim about when the thing happened. Type changes, status changes, tags change, and a slug can be corrected; capture date cannot, because it records an event in the daemon's own life. Sharding on the one immutable property means the directory a memory is born into is the directory it dies in, which is what lets every other field be edited freely.
+`Agent/` is the agent's own space. The four directories beside it are yours, and the difference is who may create things there rather than who may read them.
 
-There is no inbox and no staging directory. An unfiled memory sits in `memory/`, indexed and searchable the instant capture commits, rank-penalized until filing promotes it. Rank-penalized is a very different condition from absent: the previous layout accumulated 9,786 items in a directory that recall excluded by default, which is how the majority of what the system captured became invisible to the system that captured it. A layout with no inbox cannot repeat that. The filing queue still exists — it is a query rather than a folder.
+#### Classes are directories; types are frontmatter
 
-`Agent/memory/` is excluded from Obsidian's index, because six thousand files nobody opens turn the graph view into static. `Agent/desk/` stays indexed. `scratch/` is gitignored and the daemon may delete anything in it without ceremony.
+The five directories under `Agent/memory/` encode **retrieval classes** — how a memory is structured and how it is found. They are not type tags. A class answers "what kind of knowing is this," and that rarely changes once written; a type answers "what shape is this note," and that changes freely.
 
-#### What a memory is — two lifecycle classes
+So the class is the directory and the type is a frontmatter field, which is what lets both "nothing moves" and "re-typing is cheap" be true at once. Re-typing edits one line. The file stays where it was born, its ID holds, and every link to it survives.
 
-Most memories are events. Some are entities, and the difference is structural.
+The six types map into the classes rather than competing with them:
 
-An **event memory** is written once at capture and never edited. It may later be superseded or expired by a status change, but its body is a record of a moment and stays that way. A distilled session insight, a fix, a research summary, a fact learned from an email — all events.
+| type | where it lives |
+|---|---|
+| `preference`, `convention` | `standards/` when it governs you; `memory/semantic/` when it is learned tool behaviour |
+| `reference` | `memory/semantic/`, or a project's own `docs/` |
+| `workflow`, `fix` | `memory/procedural/`, as recipes and protocols |
+| `idea` | staged in `Agent/desk/` or `projects/<slug>/desk/` as an active draft |
 
-An **entity memory** is one living file per thing, whose body accretes over time. A person is the clearest case: "sister, Austin, two kids, changed jobs in June" is not an event, and forcing it into the event model gives two bad options — rebuild-by-supersede on every new fact, which churns filenames and links, or scatter the person across two hundred fragments and re-synthesize on every lookup.
-
-Entity memories are materialized views. The atomic facts stay the source of truth, each with its own `source:` provenance; the entity file is maintained by dreaming, carries `derived_from:` listing the facts it was built from, and is rebuildable from them. In doctrine it is a cache, and deleting one loses nothing. It is persisted anyway because it is what recall should hit first when the question is "who is X." ID-stability is what makes an accreting body safe — `[[sarah-<surname>]]` never breaks no matter how much the content changes.
-
-#### Types, and the rule that stops them multiplying
-
-Six types, collapsed from the twenty-two currently live, of which seventeen exist in single digits.
+Six types, collapsed from the twenty-two currently live, seventeen of which exist in single digits:
 
 | type | absorbs | ≈count |
 |---|---|---:|
@@ -108,11 +129,54 @@ Six types, collapsed from the twenty-two currently live, of which seventeen exis
 | `convention` | convention, non-negotiable, design-call, decision | 36 |
 | `reference` | domain-reference, reference | 19 |
 
-The field is `type`, not `kind`, because `type` is the one field the Open Knowledge Format requires; renaming during the collapse costs nothing and makes the corpus portable.
+The field is `type`, not `kind`, because `type` is the one field the Open Knowledge Format requires; renaming during the collapse costs nothing and makes the corpus portable to any other reader of that format.
 
-**The growth rule: a type is added when a query class needs to rank by it, and not otherwise.** That is a warrant test — a term earns its place by demonstrated need rather than by seeming reasonable — and it is the brake the previous taxonomy never had. Fifty-five values accumulated because every addition was individually defensible and nothing ever asked whether the set as a whole was still coherent. `person` is reserved under this rule and lands the day email ingest does, because "who is X" is exactly such a query class. It is not created before there is anything to put in it.
+**The growth rule: a type is added when a query class needs to rank by it, and not otherwise.** That is a warrant test — a term earns its place by demonstrated need rather than by seeming reasonable — and it is the brake the old taxonomy never had. Fifty-five values accumulated because every addition was individually defensible and nothing ever asked whether the set as a whole still cohered. `person` is reserved under this rule and lands the day email ingest does, because "who is X" is exactly such a query class; it is not created before there is anything to put in it.
 
-The rule is enforced rather than stated. A change that adds a type must carry, in the same diff, the query class that needs it and the nearest existing type with a sentence on why that type does not fit. A deprecation table maps retired values to their replacements so the collapse is mechanical rather than a rewrite.
+The rule is enforced rather than stated. A change that adds a type carries, in the same diff, the query class that needs it and the nearest existing type with a sentence on why that one does not fit. A deprecation table maps retired values to replacements so the collapse is mechanical. The rule binds classes harder than types, because a new class is a new directory and a directory is close to permanent.
+
+**A gap worth naming.** Re-typing never moves a file, but re-*classing* would, and nothing in the source system says what happens when enrichment puts a memory in the wrong class. The rule proposed here: dreaming may move a memory between classes exactly once, only while it has no inbound links, and only through the revert log. After that the class is fixed and a mistake is corrected by superseding rather than moving. *Re-audit trigger: the first month in which class corrections exceed a handful.*
+
+#### What is searchable
+
+Search is governed by an exclude list rather than a root boundary. `standards/`, `projects/`, `calendar/` and `Agent/memory/` are all indexed and searchable by default. Private material is removed by explicit path patterns in configuration.
+
+This replaces the current arrangement, and the replacement is the point. Today the daemon indexes the whole vault while recall restricts results to `memory_root`, which draws the line at a directory boundary — so `calendar/`, `projects/` and `standards/` would all be invisible to an ordinary question. That boundary was drawn for a real reason, after personal notes leaked into technical results at 13% of hits, but it solves the leak by excluding everything outside one folder. A pattern list solves it by excluding the private material and nothing else.
+
+#### Projects, tasks, and the door between them
+
+**Only you create a project.** That is what makes the door meaningful: the agent can recognize which project a piece of work belongs to and file it there, because the folder's existence is your declaration that the project is real.
+
+Inside a declared project the permission is per-file-class rather than per-write, which keeps the door from becoming a stream of approvals:
+
+| location | permission |
+|---|---|
+| `projects/<slug>/desk/`, `decisions/`, `research/` | standing — the agent maintains these |
+| the master documents at the project root | explicit alignment, and capped at one to three |
+
+`Agent/desk/tasks/<slug>/` is the workbench for everything that is not a project — single-session investigations, follow-ups, anything with a progress log. A complex task can hold the same shape a project does. The difference is authorship of the container, not the contents.
+
+When a task matures into a project, the agent authors the project documents **fresh** rather than dragging the workbench across, and the original task directory is preserved as a completed execution log. Nothing moves here either, for the same reason it does not move anywhere else.
+
+`Agent/desk/moc-tasks.md` is a map of content over active tasks, linking each to its progress log.
+
+#### The calendar
+
+`calendar/YYYY/YYYY-MM-DD_<slug>.md` is the episodic capture layer, written automatically during session ingestion. It records what happened on a day and what was touched.
+
+It is also the answer to a question this arc opened with — the request for logs of what happened, indexed by entity, task or project. The calendar holds the trace; the entity index makes it addressable from the other direction, so "what happened involving X" is a lookup rather than a scan.
+
+Dreaming consolidates old calendar traces into crystallized cards. **The trace is never rewritten.** Consolidation writes a new card in `memory/crystallized/` carrying a `consolidated_from` edge back to the days it was built from, so the derived claim and its evidence both survive and either can be read.
+
+#### Events and entities
+
+Cutting across the five retrieval classes is a second distinction, about how a memory behaves over its life rather than how it is found. Most memories are events. Some are entities.
+
+An **event memory** is written once at capture and never edited. It may later be superseded or expired by a status change, but its body is a record of a moment and stays that way. A distilled session insight, a fix, a research summary, a fact learned from an email — all events.
+
+An **entity memory** is one living file per thing, whose body accretes over time. A person is the clearest case: "sister, Austin, two kids, changed jobs in June" is not an event, and forcing it into the event model gives two bad options — rebuild-by-supersede on every new fact, which churns filenames and links, or scatter the person across two hundred fragments and re-synthesize on every lookup.
+
+Entity memories are materialized views. The atomic facts stay the source of truth, each with its own `source:` provenance; the entity file is maintained by dreaming, carries `derived_from:` listing the facts it was built from, and is rebuildable from them. In doctrine it is a cache, and deleting one loses nothing. It is persisted anyway because it is what recall should hit first when the question is "who is X." ID-stability is what makes an accreting body safe — `[[sarah-<surname>]]` never breaks no matter how much the content changes.
 
 #### The contract
 
@@ -273,28 +337,27 @@ The daemon must be the thing that triggers enrichment, because it already owns t
 
 ## Migrations
 
-Nothing is swept before the work. Existing content moves onto the contract through hand passes as the parts land, and the two populations need different handling.
+Nothing is swept before the work. Existing content moves onto the contract through hand passes as the parts land, and every move below is a frontmatter edit or a copy — no file is rewritten in place and no ID changes.
 
-**The 9,786 notes under `status: inbox`** need re-statusing to `unfiled`. That is a frontmatter edit, so no link breaks and no ID changes. The measurement says this population is roughly ninety days of live churn rather than a stuck backlog — the oldest dated entry is 86 days against a 90-day expire window — so most of it drains on its own once the queue is a query instead of a folder. What matters is that nothing is invisible in the meantime, which the no-inbox layout guarantees.
-
-**The 2,821 already-searchable notes** are the ones that repay hand attention, because they are what recall returns today. Within them, `memory/2026`'s 197 notes are the sharpest case: not one carries a `kind:` field, so they sit outside the current validation contract entirely and the walkers either skip them or process them partially.
-
-The type collapse runs as a mapping rather than a rewrite:
-
-| retired value | becomes | note |
+| today | goes to | how |
 |---|---|---|
-| `preferences`, `feedback` | `preference` | plural/singular pair plus a near-synonym |
-| `workflow-pattern` | `workflow` | the pattern/instance split never earned its keep |
-| `insight` | `idea` | one holds a single note today |
-| `non-negotiable`, `design-call`, `decision` | `convention` | all four name a decided rule |
-| `domain-reference` | `reference` | |
-| `archive`, `capture` | — | never types at all; statuses in the wrong field |
-| the four `idea-incubator-*` variants | `idea` | four phases of one process |
-| the five `*-index` variants | `reference` at `canonical` altitude | navigational pages |
+| `memory/_opinions/` (1,155) | `Agent/memory/semantic/` | distilled into principle cards; the ones that govern *you* rather than the agent move to `standards/` |
+| `memory/_always-load/` (empty) | `personal/_always-load/` | kept as the universal-rules directory loaded every session |
+| `memory/_inbox/` (9,786) | see the open question below | |
+| `memory/2026/` (197) | `calendar/2026/` | normalized to `YYYY-MM-DD_<slug>.md`; this is also where their missing `kind:` gets supplied |
+| `memory/preferences/` (252) | `standards/user-preferences.md` | consolidated into operator standards |
+| `desk/scratch/` (2,208) | `Agent/desk/` or a project's own `desk/` | stays a working scratchpad, stays out of permanent memory |
+| `desk/projects/` (976) | `projects/<slug>/` at the vault root | only for projects you declare; the rest stays a task |
+| the 22 live types | the six | mapped by the absorb table above, applied as a frontmatter edit |
 
-Everything not in the table retires with the machinery that produced it, and a deprecation map records the pairing so the collapse can be applied mechanically and audited afterwards. Ordering matters: the contract and its deterministic extraction land first, so a re-typed note is validated against the new contract as it is touched rather than needing a second pass.
+Ordering matters. `standards/storage-rules.md` is written first, because it is what every later pass reads to decide where something goes. Then the contract and its deterministic extraction, so that a note being re-typed is validated against the new contract as it is touched. The class assignment comes last, because it is the one move that is close to permanent.
 
 ## Technical Debt & Risks
+
+**The inbox is an open disagreement, not a settled call.** The source system routes low-confidence extractions (below 0.65) to an `agent/inbox/` awaiting review. The rescope forbids an inbox in words that leave no room — a staging directory recall excluded by default is how the majority of captured material became invisible, and "a layout with no inbox cannot repeat that failure." Both are right about different things: theirs is a review queue, ours was a black hole. **The recommendation here is to take the mechanism and refuse the directory** — a low-confidence card lands in its class folder with `status: unfiled` and its confidence in frontmatter, and the review queue is the query over those. That keeps the card searchable from the instant it is written, which is the property whose absence caused the original failure. *This needs your ruling before the enrichment part is built.*
+
+**Class assignment is close to irreversible and is made by a model.** Enrichment picks the class at capture, and a directory is the one part of the layout that does not tolerate churn. The single-move-while-unlinked rule bounds the damage, but the deeper protection is that the storage rules are yours to correct — a class that is being assigned wrongly is a rules edit, not a code fix. *Re-audit trigger: the first month in which class corrections exceed a handful.*
+
 
 **Enrichment homogenizes the corpus.** This is the risk the design creates rather than inherits. If every note is written by one model with one prompt, the corpus converges on one voice and one shape, and the diversity that makes retrieval work erodes. The drift monitor is not optional for that reason. *Re-audit trigger: the first month the drift monitor moves in the wrong direction.*
 
@@ -382,4 +445,5 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-08-18 | Second revision, after the operator supplied the target vault's actual topology and its maintainers answered six architecture questions. The filing half is rebuilt: `standards/storage-rules.md` becomes the runtime-read source of truth for filing, memory files into five retrieval classes with type staying in frontmatter, search moves from a root boundary to an exclude list, and the project/task door, the calendar layer and the legacy mapping are all specified. Recorded two divergences held on purpose — no metadata overlay, and the inbox left as an open question with a recommendation. | draft |
 | 2026-08-18 | Initial draft, bootstrapped from the memory-ingestion research arc and reconciled against the rescope designs and AgentKV's architecture. Same-day revision after operator review found Detailed Design covered the enforcement mechanism but not the filing system it enforces: added the layout, the event/entity lifecycle split, the six types and their growth rule, entity resolution and its admission test, the three derived indexes, altitude, and the status-and-decay lifecycle. Migrations gained the 22→6 mapping; Launch Plans gained the per-part measurements. | draft |
