@@ -75,6 +75,10 @@ The index keeps no authority. Destroy it and the scanner rebuilds every table, e
 
 One deliberate divergence from the system this borrows from. That system keeps a companion `.agent_metadata.json` alongside the markdown. We do not, and the reason is on record: under files-are-truth, a note whose own frontmatter says `active` while an overlay says `deprecated` is a lying file, and that fork has already happened here three times in one week. Machine edits are line-surgical against the frontmatter itself — replace the one line, never round-trip the block through a serializer.
 
+A file carrying this much weight needs its own gate, because a typo in it would otherwise become the new silent-failure surface — a model reading a malformed rule does not stop, it improvises. So the rules file carries its machine-readable core in a fenced structured block — the class list, the type enum, the routing table, the thresholds — alongside the prose that explains it, and the daemon validates the block on every read. A block that fails validation halts enrichment instead of degrading it: notes wait as `unfiled`, the digest names the parse failure, and nothing files anywhere until the file parses again. Fail-closed is the point; the alternative is a model interpreting a typo creatively at three in the morning.
+
+The same block is the single source for every enum the system checks. The frontmatter validator reads the type list from it, the enrichment schema constrains against it, and lint checks it — so a type added to the rules exists everywhere at once, and a type absent from them exists nowhere. When the file's content hash changes, the next digest says what changed and how many memories now carry a stale `rules_hash`. A rules edit is loud by construction.
+
 #### The layout
 
 ```
@@ -103,6 +107,8 @@ One deliberate divergence from the system this borrows from. That system keeps a
 ```
 
 `Agent/` is the agent's own space. The four directories beside it are yours, and the difference is who may create things there rather than who may read them.
+
+Two files sit at the root beside the folders. `ideas.md` is shared — either of us may append a project idea, and the agent announces its additions. The index is generated: dreaming rebuilds it from the actual tree and the storage rules, so it describes the topology and can never quietly disagree with it. Authority stays with `storage-rules.md`; the index is a map, and editing a map moves no roads.
 
 #### Classes are directories; types are frontmatter
 
@@ -144,11 +150,13 @@ The rule is enforced rather than stated. A change that adds a type carries, in t
 
 **A gap worth naming.** Re-typing never moves a file, but re-*classing* would, and nothing in the source system says what happens when enrichment puts a memory in the wrong class. The rule proposed here: dreaming may move a memory between classes exactly once, only while it has no inbound links, and only through the revert log. After that the class is fixed and a mistake is corrected by superseding rather than moving. *Re-audit trigger: the first month in which class corrections exceed a handful.*
 
-#### What is searchable
+#### What is searchable — everything
 
-Search is governed by an exclude list rather than a root boundary. `standards/`, `projects/`, `calendar/` and `Agent/memory/` are all indexed and searchable by default. Private material is removed by explicit path patterns in configuration.
+Everything in the vault is searchable, `personal/` included. Scope is governed by rank treatment plus a small exclude list, and no space is invisible.
 
-This replaces the current arrangement, and the replacement is the point. Today the daemon indexes the whole vault while recall restricts results to `memory_root`, which draws the line at a directory boundary — so `calendar/`, `projects/` and `standards/` would all be invisible to an ordinary question. That boundary was drawn for a real reason, after personal notes leaked into technical results at 13% of hits, but it solves the leak by excluding everything outside one folder. A pattern list solves it by excluding the private material and nothing else.
+This replaces two older arrangements at once. Today the daemon indexes the whole vault while recall restricts results to `memory_root` — a directory boundary that would leave `calendar/`, `projects/`, `standards/` and `personal/` all invisible to an ordinary question. That boundary was drawn after a real leak, when personal notes surfaced in technical results at 13% of hits, but it cures the leak by amputation. The cure here is rank treatment: every space carries a dampening multiplier in configuration, and `personal/` is dampened on ordinary queries the way session artifacts are, so a strong distinctive match still surfaces while a weak cosine neighbour stays down. The `excludes` pattern list remains for material that should never surface at all, and it is the only mechanism that hides anything.
+
+`personal/` needs extra care, and the care is specified. Its files carry no frontmatter, so the indexer treats the space as contract-exempt: no type, no status, no altitude, and no validation findings — a missing contract is the expected state there, never an error. Nothing decays, because decay is a memory-lifecycle concept and these are not memories; the space multiplier does the ranking work alone. And one boundary is absolute: **background model passes never read `personal/`.** Enrichment skips it, dreaming never sends it to a model, no batch call includes it. Foreground recall may surface a personal note into the operator's own session — that is the operator using their own data. The machinery that runs unattended treats the space as opaque, and the boundary is a path rule in the eligibility gate rather than a convention.
 
 #### Projects, tasks, and the door between them
 
@@ -159,7 +167,9 @@ Inside a declared project the permission is per-file-class rather than per-write
 | location | permission |
 |---|---|
 | `projects/<slug>/desk/`, `decisions/`, `research/` | standing — the agent maintains these |
-| the master documents at the project root | explicit alignment, and capped at one to three |
+| documents at the project root | as many as the project needs — no cap — though modifying or replacing one takes explicit alignment |
+
+The root is the project's visible face: the documents that earn top-level placement live there, in whatever number the project genuinely needs, and the working bulk — plans, research, running drafts — goes into subfolders so the face stays legible. The convention is a shape to maintain; the alignment rule is the door. Below the root the agent adds and maintains freely, and it changes the root only in agreement.
 
 `Agent/desk/tasks/<slug>/` is the workbench for everything that is not a project — single-session investigations, follow-ups, anything with a progress log. A complex task can hold the same shape a project does. The difference is authorship of the container, not the contents.
 
@@ -200,11 +210,16 @@ aliases: [...]            # deterministic at capture; question-vocabulary later
 source: https://…         # provenance in
 derived_from: [<slug>…]   # provenance across
 altitude: canonical       # canonical | artifact
+summary: >                # 2–3 sentences, written by enrichment, grounded in the body
+  …
 enriched_by: sonnet-…     # which pass produced the judgment fields
 enriched_at: 2026-08-18T…
+rules_hash: 3f2a…         # content hash of storage-rules.md at judgment time
 ```
 
 `altitude` is the axis AgentKV's dampening actually rides. A convention that states a durable rule and a note distilled from one session's exhaust are both `type: workflow` today, and they should not rank alike on a general question. agentm already does a small version of this — `recall.py` carries an abstraction-altitude boost for `_index` and `_summary` anchor files — so this generalizes an idea already in the ranker rather than introducing one.
+
+`rules_hash` records which version of the storage rules the judgment was made under, which makes staleness a computation: when the rules change, every memory whose hash no longer matches is mechanically identifiable, and re-filing becomes a queue to drain instead of a guess. `summary` is capped short by schema and grounded by the post-write check — one indexed field among several, never a replacement for the body it summarizes.
 
 `enriched_by` and `enriched_at` exist so the first prompt we write is not permanent. A better model, or a corrected prompt, can re-run enrichment over anything stamped with an older version, and the pass is idempotent by construction so re-running is always safe.
 
@@ -279,7 +294,26 @@ All of it is deterministic, offline, and incapable of failing on a network. It b
 
 #### What the enrichment pass does
 
-It runs on a cheap model tier, immediately after the transaction commits, and again inside dreaming for anything still `unfiled`. Every judgment it makes is paired with something deterministic that enforces it.
+It runs immediately after the transaction commits, and again inside dreaming for anything still `unfiled`. Every model call sits between two deterministic walls, so the judgment is bounded before it happens and checked after.
+
+**Before the model sees anything:**
+
+1. Eligibility — `status: unfiled`, an observational class, never `personal/`, never `mocs/`. Path rules, no judgment.
+2. Privacy scrub — the model sees the same scrubbed text every other stage sees.
+3. Size ceiling — an oversized blob is split along its headers deterministically first, and the model judges fragments. No input exceeds the ceiling, because the dispatcher enforces it rather than the prompt requesting it.
+4. Idempotency — a note whose `enriched_by` matches the current pass version, whose `rules_hash` is current, and whose body fingerprint is unchanged is skipped without a call.
+5. Budget — the cycle carries a call-and-token budget from configuration. When it runs out, the remainder defers to the next cycle under the coverage ledger's cursor, and the digest reports what deferred.
+
+**After the model answers, before anything writes:**
+
+1. Schema validation — `type` against the enum, `altitude` against its pair, the summary against its length cap. A shape violation fails the call, and a failed call leaves the note `unfiled`.
+2. Extractive grounding on the summary — every claim traceable to the body. An ungrounded span drops.
+3. Alias derivation — an alias added at enrichment must derive from the note's own vocabulary: an expansion, an abbreviation, a decomposition. An alias whose content words appear nowhere in the body is the model paraphrasing the note, which is the measured −3.85 failure, and it is rejected mechanically. Capture-time aliases carrying the asker's own phrasing are a different, permitted channel — see the alias section.
+4. Class membership — the assigned class must be one of the three observational classes. Enrichment can never file into the derived three.
+5. Body integrity — the fingerprint of the capture body, taken before the pass, must match after it. Enrichment writes frontmatter and the marked footer region; a changed body byte reverts the write and trips the breaker.
+6. Revert-log routing — every enrichment write journals through the revert log, which today covers only the confirm-gated paths and extends to enrichment with this design.
+
+The judgments themselves, each paired with the guard that checks what schema cannot:
 
 | judgment | deterministic guard | on disagreement |
 |---|---|---|
@@ -290,7 +324,21 @@ It runs on a cheap model tier, immediately after the transaction commits, and ag
 | split a blob | size and concept ceiling measured deterministically | over-ceiling and unsplit is flagged, never silently admitted |
 | quality verdict | answerability-shaped rather than aesthetic | a failed verdict marks the note, it never deletes it |
 
+A split is additive. When a blob becomes twelve atomic memories, the fragments carry `derived_from` back to the original, the original flips to `status: superseded`, and its body stays exactly as captured — rank-penalized, never rewritten, never deleted.
+
 The quality verdict deserves a note, because it is the one that can go circular. A model asked whether its own output is good will say yes. The bar that is not circular is principle 3's: does this note contain what a future question would need to find it. So the verdict is answerability-shaped — could a fresh session, asking sideways, land here — rather than a judgment about prose.
+
+#### Homogenization, and the guards against it
+
+Enrichment makes notes better and makes them more alike, and only one of those is wanted. A corpus rewritten by one model under one prompt converges toward one voice — and lexical diversity is what the search index feeds on. When every note phrases things the same way, term statistics flatten, distinctive tokens stop being distinctive, and the paraphrase gap this design exists to close reopens from the other side.
+
+The first guard is structural, and it is the one that matters most: **the captured body is immutable.** Enrichment writes frontmatter and the fenced footer region, and the body-integrity check reverts anything else. The operator's own words and the session's actual vocabulary stay in the index verbatim; body and summary are both indexed, each with its own weight. Homogenization can only touch the derived layer, never the source.
+
+The second guard shrinks the surface. Almost everything enrichment writes is structured — an enum, a list, a hash — and structure has no voice to converge. The one free-text field is the summary, capped at a few sentences by schema. A small prose surface homogenizes slowly.
+
+The third guard measures. Each cycle, dreaming computes three numbers over the trailing window of enrichment output: lexical diversity of summaries against lexical diversity of their bodies, because the derived layer flattening while its source stays varied is the signature; concentration of the most common trigrams across recent summaries, because converging phrasing shows up there first; and divergence of the window's term distribution from a baseline frozen in the first month. The numbers ride the digest. Crossing the trip line pauses enrichment auto-apply — the same breaker shape the anomaly guard already uses — and the pass resumes once a human has looked.
+
+If drift trips persistently, the named lever is a second model in rotation for the summary field alone. It is a lever and never a default: it doubles the operational surface for one field's benefit, so it waits for the meter to demand it.
 
 #### What dreaming does
 
@@ -301,10 +349,33 @@ The rescope's five jobs, plus four that come from this arc and from AgentKV:
 3. Extract cross-memory insights, each carrying `derived_from`.
 4. Write tomorrow's brief.
 5. Propose changes to its own machinery, and never apply them.
-6. Inject backlink reference footers into notes.
-7. Synthesize stubs for referenced-but-missing targets, so a link points at something.
+6. Inject backlink reference footers — below the marker that fences the generated region; the body above it is untouchable.
+7. Synthesize stubs for referenced-but-missing targets, so a link points at something. A stub is a template fill from the link that demanded it — zero-token; giving it substance is a rollup job that queues.
 8. Reconcile the contract — find existing files that violate it, fix what is safe, surface what is not. This is the automated half of the hand passes.
 9. Detect slop and drift.
+10. Maintain the coverage ledger and drain the pending-work queues under their caps.
+
+#### Model tiers, and the audit that assigns them
+
+Dreaming is where the token weight lives, so dreaming is where tiering has to be disciplined. Three rules keep it honest.
+
+**Most stages cost nothing.** Fingerprint dedup, footer injection, MOC regeneration, stub creation, the meters, the ledger, the reconcile scan — all deterministic, all zero-token. The token-bearing stages are exactly six: classification of the unfiled, summaries, fuzzy merges, entity rollups, crystallization, and the slop detector's borderline band. Everything else runs on regex and arithmetic, and the cheapest model call is the one never made.
+
+**The audit assigns the tier, and the assignment is earned.** For each token-bearing job, the cheapest candidate tier runs shadow against the strong tier on a sample of real inputs, and the existing sampled-audit machinery measures agreement. A tier that meets the pre-registered bar is qualified for that job; one that misses it is not, whatever it costs. Qualification re-runs when the model version or the pass version changes, so the tier table is a set of measurements with an expiry date rather than a standing assumption. Three jobs are pinned to the strong tier without audit, because their consequences outlive a revert window: crystallization, because a bad lesson enters the decay-exempt layer; entity identity merges, because a wrong merge pollutes a hub recall hits first; and self-improvement proposals, because those change the machinery itself.
+
+**Volume runs through the batch API.** Dreaming is asynchronous by construction — a nightly cycle fits a day-long completion window with room to spare — so every dreaming model call goes through the batch API at half price, and the cycle's idempotency means a batch that misses its window rolls into the next cycle without harm. The per-cycle budget caps calls and tokens together; an overrun defers under the cursor instead of bursting.
+
+#### The coverage ledger, and how backfill works
+
+Dreaming needs to know what it has processed, what it has not, and what became stale — and the moment the operator declares a new entity type, that knowledge is the difference between a bounded backfill and a guess.
+
+For every corpus-walking stage, a ledger records one row per target: the input fingerprint the stage processed, the stage's version — its prompt version and the `rules_hash` it judged under — and when. "Has this been processed?" is a lookup. "What is pending?" is a query: never attempted, or fingerprint changed, or version stale. The ledger lives in the daemon's index database, and that is the right home because it is honestly a cache — destroying it costs a re-scan, and redoing work is an acceptable loss where losing data is not. The one stamp that lives in the note itself is `enriched_by` / `enriched_at` / `rules_hash`, because that is the durable record of a judgment written into the file it judged.
+
+Discovery is decoupled from repair. A stage that finds a gap another stage owns — an entity mentioned in forty notes with no entity file, a wikilink pointing at nothing, a rollup whose input set changed, a memory whose `rules_hash` went stale — enqueues a work item naming the owner and the reason, and moves on. Owners drain their queues under per-stage caps, oldest first, behind a persisted cursor. That is the shape the link backfill already proved, and the shape whose absence produced a starvation bug this codebase has paid for once — a capped batch drawn from a fixed sort, with no cursor, silently starves everything past the cap forever. An item that fails three times parks in a dead-letter state and surfaces in the digest; nothing retries silently forever, which is a second lesson already paid for.
+
+Staleness is computed, never judged. An entity rollup records the hash of its sorted input-fact fingerprints, and it is stale exactly when the current set hashes differently. A memory is re-enrichment-eligible exactly when its `rules_hash` differs from the current rules. No model call ever decides whether work needs doing; the model is spent on the work itself.
+
+The worked example is the one the operator named. Declaring `person` is an edit to the storage rules. The next cycle notices the hash change and reports it. The reconcile scan queries the entity-reference index for person-shaped URIs with no entity file and enqueues one rollup job each; memories the new rules would judge differently become re-enrichment candidates, drained oldest-stamp-first under the cycle budget. Two numbers per queue ride the dashboard — depth, and age of the oldest item — with thresholds on age, because fifty fresh items on a Tuesday is a Tuesday, and an item three days old means the drain has stalled. A coverage meter per stage — the share of the eligible population that is current — is allowed to fall when the rules change and expected to climb back as the queues drain. Every capped drain logs what it deferred. Nothing is silently partial.
 
 #### Aliases split three ways, and the split is measured
 
@@ -332,7 +403,11 @@ Two bands rather than one cutoff: a review band that surfaces through the existi
 
 **Reject low-quality notes at write time.** Rejected, and the distinction matters: enrichment improves a note, rejection discards one. An unvalidated rejection is unrecoverable at the moment it matters, and it breaks the never-silently-dropped contract. Deletion decisions stay reap-later; improvement decisions happen as early as possible.
 
-**Carry filing meaning in paths, as AgentKV does.** Rejected. It is where AgentKV's recall gains come from, but agentm shards by capture date specifically so directories carry no meaning and IDs stay stable. Frontmatter gets the same signal, allows several axes at once, and never requires a move.
+**Carry filing meaning in paths.** Split rather than imported wholesale. The class axis lives in directories, because epistemic class is stable enough to deserve one — that much of AgentKV's path-borne meaning survives here. Every volatile axis — type, altitude, status, intent — stays in frontmatter, where changing it is a one-line edit and no link breaks. The rejected version is the full import, where meetings and specs and working exhaust each get a folder and a re-judgment means a move.
+
+**Excluding `personal/` from search.** This draft's own first position, overruled by the operator. The leak that motivated exclusion was real, but exclusion cures it by making a whole space invisible — and invisible spaces are how this vault lost 9,786 notes once already. Space dampening keeps the leak closed and the space findable; the exclude list stays for the genuinely radioactive.
+
+**Per-note frontmatter stamps for every stage.** Rejected for all but enrichment. Six stages of timestamps in every note is churn the git history carries forever, recording machine state the index can rebuild by scanning. The ledger keeps stage state in the deletable cache where it belongs; the note keeps the one stamp that is a durable judgment about it.
 
 **Keep `kind` and add an orthogonal maturity field.** This was this arc's own earlier verdict and it loses to the rescope's answer. Collapsing twenty-two live types to six, with a growth rule that admits a type only when a query class needs to rank by it, is simpler and comes with its own brake. The three-axis diagnosis behind the original verdict still explains why the taxonomy grew to fifty-five; it just is not the fix.
 
@@ -366,7 +441,9 @@ Ordering matters. `standards/storage-rules.md` is written first, because it is w
 **Class assignment is close to irreversible and is made by a model.** Enrichment picks the class at capture, and a directory is the one part of the layout that does not tolerate churn. The single-move-while-unlinked rule bounds the damage, but the deeper protection is that the storage rules are yours to correct — a class that is being assigned wrongly is a rules edit, not a code fix. *Re-audit trigger: the first month in which class corrections exceed a handful.*
 
 
-**Enrichment homogenizes the corpus.** This is the risk the design creates rather than inherits. If every note is written by one model with one prompt, the corpus converges on one voice and one shape, and the diversity that makes retrieval work erodes. The drift monitor is not optional for that reason. *Re-audit trigger: the first month the drift monitor moves in the wrong direction.*
+**Enrichment homogenizes the corpus.** The risk this design creates rather than inherits, and it now carries three standing guards: the captured body is immutable and stays in the index verbatim, the free-text surface is one capped field, and the drift meters trip a breaker that pauses enrichment until a human looks. What stays open is calibration — the trip line is a constant nobody has measured, and the first month's frozen baseline is what makes the meters mean anything. *Re-audit trigger: the meters' first quarter of readings, and any month the summary layer's diversity falls while the body layer's holds.*
+
+**The rules file is load-bearing prose, and prose can break.** `storage-rules.md` steering the filing engine is the design's best property and its newest failure surface. The structured block and its fail-closed validator exist for exactly this: enrichment halts, notes wait as `unfiled`, and the digest names the parse failure. The residual risk is an edit that is valid and wrong, which no validator catches — the guard there is the loud hash-change announcement and the stale-count it prints beside it. *Re-audit trigger: the first rules edit that files a week of memories somewhere surprising.*
 
 **Derived memories may outrank the facts they came from.** Dreaming builds entity rollups and cross-memory insights carrying `derived_from`. If those systematically outrank their sources, the loop concentrates on its own output. The mechanism is structural and confirmed; its live magnitude is unmeasured. *Re-audit trigger: the generation-depth measurement, before the entity rollups ship.*
 
@@ -378,7 +455,7 @@ Ordering matters. `standards/storage-rules.md` is written first, because it is w
 
 ### Reliability
 
-The capture transaction cannot fail on model or network availability — that is the load-bearing property, and it is why enrichment is triggered rather than inlined. An enrichment failure leaves the note `unfiled`, which is a state the nightly pass already handles. The pass is idempotent, so a retry is always safe and a partial run leaves nothing inconsistent.
+The capture transaction cannot fail on model or network availability — that is the property everything else leans on, and it is why enrichment is triggered rather than inlined. An enrichment failure leaves the note `unfiled`, which is a state the nightly pass already handles. The pass is idempotent, so a retry is always safe and a partial run leaves nothing inconsistent.
 
 ### Data Integrity
 
@@ -386,7 +463,9 @@ Files are truth and every index rebuilds from them, so a corrupt or drifted cach
 
 ### Privacy
 
-Distill and discard already governs external material: raw email and crawled pages never enter the vault, facts carry message-id or URL provenance instead. Enrichment increases what a model reads, so the existing privacy scrubber runs before enrichment rather than after, and the cheap tier sees the same scrubbed text every other stage does.
+Distill and discard already governs external material: raw email and crawled pages never enter the vault, facts carry message-id or URL provenance instead. Enrichment increases what a model reads, so the existing privacy scrubber runs before enrichment, and every tier sees the same scrubbed text.
+
+With `personal/` searchable, the boundary that matters runs between foreground and background. Foreground recall may surface a personal note into the operator's own session — the operator reading their own files. Background passes never send `personal/` content to a model: no enrichment, no dreaming judgment, no batch call, enforced as a path rule in the eligibility gate rather than as a convention. The `excludes` list remains for material that should never surface anywhere.
 
 ### Latency
 
@@ -429,6 +508,8 @@ Each part ships behind a named measurement, written down before the build, on a 
 | enrichment pass | promotion yield before and after; the share of captures reaching `active`, measured on a fixed window |
 | dreaming extensions | the slop detector's precision and recall against a hand-labelled stratified sample of 150–200 notes, reported by type |
 | existing content | contract conformance across the searched corpus, and the round-trip probe holding steady through the collapse |
+| model tiering | per-job agreement between the cheap and strong tiers on a real sample, meeting the pre-registered bar before the cheap tier serves alone |
+| drift meters | a frozen first-month baseline, and a trip line calibrated against it before the breaker arms |
 
 Above all of them sits principle 3's own test, and it is the only one allowed to mark anything done: save a fact, start a fresh session, ask sideways, get it back — on the real corpus, on a schedule, as a number that can go down.
 
@@ -438,7 +519,7 @@ Two measurements run before any of it, because either can kill a recommendation.
 
 ### Monitoring and Alerting
 
-Two numbers with red thresholds, both age-dominant rather than size-dominant, because fifty fresh unfiled items on a Tuesday morning is ordinary and the oldest unfiled item being three days old means the pipeline has stalled. Alongside them: enrichment failure rate, the drift monitor's trailing diversity score, and the round-trip probe's own number, which is the one that is allowed to mark things done.
+Two numbers per work queue with red thresholds, both age-dominant rather than size-dominant, because fifty fresh unfiled items on a Tuesday morning is ordinary and the oldest being three days old means the pipeline has stalled. Alongside them: per-stage coverage — the share of the eligible population that is current — enrichment failure and dead-letter counts, the three drift meters, per-cycle model spend against budget, and the round-trip probe's own number, which is the one allowed to mark things done.
 
 ### Logging Plan
 
@@ -452,5 +533,6 @@ The revert log covers every automated mutation that routes through it, and git c
 
 | Date | Change | Status |
 |---|---|---|
+| 2026-08-18 | Third revision, a strengthening pass on six operator directives: everything searchable including a contract-exempt `personal/` (space-dampened, never read by background passes), the project-root cap removed in favour of a subfolder convention with the alignment door kept, a fail-closed validator and single-source enum block for `storage-rules.md`, the enrichment pass rebuilt as a deterministic sandwich (five pre-gates, six post-gates, additive splits, immutable bodies), homogenization given structural guards and breaker-wired meters, model tiers assigned by sampled-audit qualification with batch-API routing and three jobs pinned strong, and the coverage ledger plus pending-work queues specified for backfill, with the declare-`person` worked example. | draft |
 | 2026-08-18 | Second revision, after the operator supplied the target vault's actual topology and its maintainers answered six architecture questions. The filing half is rebuilt: `standards/storage-rules.md` becomes the runtime-read source of truth for filing, memory files into six retrieval classes with type staying in frontmatter, search moves from a root boundary to an exclude list, and the project/task door, the calendar layer and the legacy mapping are all specified. Recorded two divergences held on purpose — no metadata overlay, and the inbox left as an open question with a recommendation. | draft |
 | 2026-08-18 | Initial draft, bootstrapped from the memory-ingestion research arc and reconciled against the rescope designs and AgentKV's architecture. Same-day revision after operator review found Detailed Design covered the enforcement mechanism but not the filing system it enforces: added the layout, the event/entity lifecycle split, the six types and their growth rule, entity resolution and its admission test, the three derived indexes, altitude, and the status-and-decay lifecycle. Migrations gained the 22→6 mapping; Launch Plans gained the per-part measurements. | draft |
