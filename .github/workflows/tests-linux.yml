@@ -81,6 +81,12 @@ jobs:
         run: python3 scripts/check-governs-index.py
       - name: check-vendored-parity (hook-config mode — 4 hook _resolve_vault_path copies)
         run: bash scripts/check-vendored-parity.sh hook-config
+      - name: check-storage-rules (the filing contract parses + the taxonomy growth rule)
+        # Runs in full on CI: the packaged default is in the repo, so the parse
+        # assertion is real here, and the growth rule diffs the taxonomy against
+        # the merge base. Only the live vault instance is unreachable, and its
+        # absence is a documented skip rather than a silent pass.
+        run: python3 scripts/check-storage-rules.py
       - name: check-vault-frontmatter (self-test — the scanner's own defect classes)
         # The gate's scan mode walks the operator's vault, which a runner does
         # not have, so on CI it would skip and prove nothing. --self-test builds
