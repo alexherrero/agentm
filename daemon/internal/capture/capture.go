@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/extract"
 	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 )
@@ -191,6 +192,14 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		notes = append(notes, fmt.Sprintf("slug %q was taken; used %q", base, slug))
 	}
 
+	// Derived aliases, merged with whatever the caller supplied. Deterministic
+	// regex over the note's own text — acronyms in both directions and compound
+	// identifiers decomposed — so nothing here is invented, only surfaced in a
+	// form the indexes can match. The caller's own aliases come first, because a
+	// caller who named one meant it and the cap should never drop it in favour of
+	// a fragment.
+	aliases := mergeAliases(req.Aliases, extract.Aliases(title, text))
+
 	body := renderNote(noteData{
 		Type:     noteType,
 		Altitude: DefaultAltitude,
@@ -199,7 +208,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 		Slug:     slug,
 		Title:    title,
 		Tags:     req.Tags,
-		Aliases:  req.Aliases,
+		Aliases:  aliases,
 		Source:   strings.TrimSpace(req.Source),
 		Probe:    req.Probe,
 		Text:     text,
@@ -397,4 +406,37 @@ func firstSentence(text string) string {
 		words = words[:12]
 	}
 	return strings.Join(words, " ")
+}
+
+// mergeAliases merges the caller's aliases with the derived ones, deduped
+// case-insensitively and capped.
+//
+// The caller's come first, and that ordering is about *selection*, not display:
+// the emitted line is sorted alphabetically by `cleanList` on the way out, which
+// is what makes a frontmatter diff readable. What the ordering decides is who
+// survives the cap. A caller who passed an alias meant it, and losing it to a
+// decomposed fragment of some identifier would be the wrong trade every time.
+func mergeAliases(supplied, derived []string) []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(supplied)+len(derived))
+	push := func(list []string) {
+		for _, s := range list {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				continue
+			}
+			key := strings.ToLower(s)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, s)
+		}
+	}
+	push(supplied)
+	push(derived)
+	if len(out) > extract.MaxAliases {
+		out = out[:extract.MaxAliases]
+	}
+	return out
 }
