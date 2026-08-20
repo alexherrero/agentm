@@ -56,7 +56,7 @@ func TestMeasuredConstants(t *testing.T) {
 	}
 	// The status gate: a fragment-shaped note that filing promoted carries the
 	// class but no weight. Its presence in this map at all would demote 1,288
-	// notes, 229 of them in personal/preferences/.
+	// notes, 229 of them in what is now Agent/memory/preferences/.
 	if w, ok := note.Weights[note.ClassFragmentPromoted]; ok {
 		t.Errorf("fragment-promoted carries weight %v; the status gate requires it "+
 			"to be absent so filing overrides the miner's fingerprint", w)
@@ -263,15 +263,25 @@ never carbonate.
 }
 
 // TestRoundTrip_PromotedFragmentKeepsItsScore pins the status gate on the shape
-// rule. 229 of the 232 notes in personal/preferences/ are fragment-shaped *and*
+// rule. 229 of the 232 notes in Agent/memory/preferences/ are fragment-shaped *and*
 // filed, because the promotion pipeline promoted fragment bodies verbatim.
 // Filing overrides the miner's fingerprint; skipping this gate demotes them all.
+//
+// The fixture path was `personal/preferences/` until space dampening landed, and
+// the rename is not cosmetic. `personal/` was the agent's own memory root before
+// the four-space migration moved it to `Agent/memory/`, and `Personal/` is now
+// the operator's private space — a different tree that the contract dampens. The
+// old fixture path collided with the new space by name, so this test began
+// failing for a reason that had nothing to do with what it checks. Matching
+// stays case-insensitive on purpose: macOS treats `Personal/` and `personal/` as
+// one directory, and a case-sensitive rule here would be a hazard rather than a
+// fix.
 func TestRoundTrip_PromotedFragmentKeepsItsScore(t *testing.T) {
 	bin := buildDaemon(t)
 	env := newVault(t)
 
 	// Same body shape, same subject, same length. The only difference is status.
-	env.write(t, "personal/preferences/prefers-tabs-in-makefiles.md", `---
+	env.write(t, "Agent/memory/preferences/prefers-tabs-in-makefiles.md", `---
 type: preference
 status: active
 captured: 2026-08-04T10:00:00Z
@@ -295,7 +305,7 @@ syntax error somewhere else entirely.
 	defer d.kill(t)
 
 	hits := d.search(t, "Makefile hard tab", 5)
-	promoted := "personal/preferences/prefers-tabs-in-makefiles.md"
+	promoted := "Agent/memory/preferences/prefers-tabs-in-makefiles.md"
 	unfiled := "personal/_inbox/preference-makefiles-108.md"
 	pi, ui := hits.rank(promoted), hits.rank(unfiled)
 	if pi < 0 {

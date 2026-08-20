@@ -195,6 +195,18 @@ deprecations:
   insight: idea
   gap: idea
 
+# Spaces dampened on an ordinary question. Named by their top-level directory.
+#
+# Everything in the vault is searchable; this is what keeps a space findable
+# without letting it drift into every answer. A strong distinctive match still
+# clears the dampening, and a weak semantic neighbour does not.
+#
+# Which spaces, not by how much. The strength is fixed in the daemon because a
+# 125-point sweep found every value at or below 0.6 ranks identically — a number
+# here would be a setting that provably changes nothing.
+dampened_spaces:
+  - Personal
+
 warrants: {}
 
 thresholds:

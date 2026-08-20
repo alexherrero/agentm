@@ -78,14 +78,18 @@ type Warrant struct {
 
 // block is the parsed YAML, before validation.
 type block struct {
-	Classes      map[string]string  `yaml:"classes" json:"classes"`
-	MemoryTypes  []string           `yaml:"memory_types" json:"memory_types"`
-	DefaultType  string             `yaml:"default_type" json:"default_type"`
-	Routing      map[string]string  `yaml:"routing" json:"routing"`
-	RecordKinds  []string           `yaml:"record_kinds" json:"record_kinds"`
-	Deprecations map[string]string  `yaml:"deprecations" json:"deprecations"`
-	Warrants     map[string]Warrant `yaml:"warrants" json:"warrants"`
-	Thresholds   map[string]float64 `yaml:"thresholds" json:"thresholds"`
+	Classes      map[string]string `yaml:"classes" json:"classes"`
+	MemoryTypes  []string          `yaml:"memory_types" json:"memory_types"`
+	DefaultType  string            `yaml:"default_type" json:"default_type"`
+	Routing      map[string]string `yaml:"routing" json:"routing"`
+	RecordKinds  []string          `yaml:"record_kinds" json:"record_kinds"`
+	Deprecations map[string]string `yaml:"deprecations" json:"deprecations"`
+	// DampenedSpaces are top-level directories demoted on ordinary questions.
+	// Optional: a contract that names none dampens nothing, which is the old
+	// behaviour and a legitimate choice rather than a broken file.
+	DampenedSpaces []string           `yaml:"dampened_spaces" json:"dampened_spaces"`
+	Warrants       map[string]Warrant `yaml:"warrants" json:"warrants"`
+	Thresholds     map[string]float64 `yaml:"thresholds" json:"thresholds"`
 }
 
 // Rules is one parsed filing contract, plus where it came from.
