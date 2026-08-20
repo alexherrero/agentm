@@ -13,6 +13,36 @@ The same shape turns up twice more in this release, which is why it is worth nam
 
 Underneath: re-running `install.sh` deleted every plugin-namespaced key from `~/.claude/.agentm-config.json`. Two programs write that file — the installer and `agentm_config.py` — and `persist_install_state()` built its output from scratch, then conditionally re-added the five keys it knew about. Everything belonging to the other writer was destroyed on each run. Observed live on 2026-08-02 against a real config: six keys gone, of which `plugins.obsidian-vault.vault_path` and `storage.backend` self-healed because `harness_memory` re-derives them from the legacy top-level `vault_path` the rebuild happened to keep, and the four `plugins.autonomy.*` keys had no such path and stayed gone.
 
+### Added
+
+- **The filing contract** — `standards/storage-rules.md` is now the runtime-read source of truth for where a memory goes and what shape it takes. Changing where a type routes, retiring a value, or moving a threshold is an edit to a markdown file that takes effect on the next capture, with no recompile and no release.
+
+  The consequential part is what it replaces. The six types were a Go literal in `daemon/internal/config`, read by capture and by the MCP tool schema, and the taxonomy the batch layer checked against was a separate hardcoded set in Python. Both are gone. `daemon/internal/rules` is the only parser of that file, and everything else asks it — capture, the MCP schema, the frontmatter validator, lint, and the collapse migration, the Python side over `agentmd rules --json` once per run rather than once per note. A second parser would have been a second thing to drift, and the whole claim of the arrangement is that a type added to the rules exists everywhere at once.
+
+  **Absence falls through; corruption halts.** A rules file that is not there is not an error, and resolution moves on to the copy embedded in the binary — which is what keeps the taxonomy defined in a checkout with no vault. A rules file that *is* there and will not parse halts filing and never falls back, because falling back is exactly the failure the arrangement exists to prevent.
+
+  The halt is narrow, matched to what a broken contract actually endangers. Search does not read the taxonomy and keeps working; a capture that supplies no type lands untyped and `unfiled`, which is the state filing drains anyway. What stops is filing itself, a capture that *names* a type (validating the claim is precisely what is unavailable), and `agentmd gate corpus-write`, which refuses rather than let a job decide where thousands of memories belong by guessing.
+
+  Because the two loudest surfaces keep working, the halt would otherwise be invisible — so it reports in three places that are actually read: the `filing` line on `agentmd status`, the `check-storage-rules` gate, and the nightly dreaming digest. `agentmd status` also counts the typed captures the halt has refused since boot, which is what makes a client failing every write visible rather than silent. A fix is picked up on the next health pass without a restart; capture reads a held pointer and never parses, so it stays inside its sub-100ms budget.
+
+- **Two registers, not one.** `memory_types` holds the design's six values, carried in `type` by anything that *asserts* something. `record_kinds` holds the shapes carried in `kind` by anything that *records* something — nightly briefs, telemetry rows, session traces, the `*-index` family. A note carries one field or the other, never both.
+
+  This is the design's "generated pages carry no type at all" generalized from `mocs/` to the whole non-memory population its absorb table did not have in view. A frontmatter census of the live vault found 43 distinct values where the design enumerates 22, and forcing `brief` to become `reference` would have put a digest of Tuesday in the same taxonomy as a convention that has held for a year. Between the two registers and the deprecation map, every live value is accounted for.
+
+- **`check-storage-rules`** ([`check-storage-rules.py`](scripts/check-storage-rules.py)) — the contract parses, and a diff that adds a memory type carries its warrant in the same diff: the query class that needs it, the nearest existing type, and why that one does not fit. Fifty-odd values accumulated in the old taxonomy because every addition was individually defensible and nothing ever asked whether the set still cohered. Unlike `check-kind-taxonomy`, which stays advisory because the live corpus has known data-quality problems, this gate fails the battery.
+
+- **`agentmd rules`** — prints the contract, `--json` serves it, `--file` parses a specific one, and `--init` seeds a vault from the embedded copy without ever overwriting one.
+
+- **The six retrieval classes** — `Agent/memory/{semantic,procedural,episodic,entities,crystallized,mocs}`, each with an `_index.md` whose meaning is read from the contract rather than written beside it. Nothing moves into them yet; class assignment belongs to the enrichment pass.
+
+### Changed
+
+- **The frontmatter contract, on both writers.** `altitude` is emitted by every new entry and required by none — the default is what absence means, so a note written before the field existed is complete without it, and requiring it would have turned every note in the corpus into a lint error to make a point the default already makes.
+
+  The frontmatter validator's required-field set was the shape `save.py` happened to emit rather than the contract the design specifies, and the difference was not cosmetic: the daemon's capture path writes `captured` and no `group` at all, so every note the newer writer produced would have failed validation. The set is now the design's, with `created` accepted as the legacy spelling of `captured`. The vocabulary field is required conditionally, because an `unfiled` note legitimately carries neither name until filing runs.
+
+- **841 notes collapsed onto the contract.** One frontmatter line per note — the value where the rules retire it, the field name where the value is a memory type. No path, filename, slug or body byte changed, and the path set was identical across 15,212 files before and after. `_inbox` is deliberately out of scope, and it was 9,860 of the 10,700 a full pass would have touched: its notes carry statuses the contract does not define, which the lifecycle work owns, and enrichment rewrites every one of them when it drains the queue.
+
 ### Removed
 
 - **Page-length ceilings in `check-wiki.py`** ([`check-wiki.py`](scripts/check-wiki.py)) — rule (k)'s per-mode word caps (tutorial 1,200 / how-to 600 / explanation 2,000) and rule (p)'s 900-word prose cap on reference pages are gone, on the operator's ruling that the limit was not useful.
