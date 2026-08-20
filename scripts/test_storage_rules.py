@@ -160,9 +160,16 @@ class ClientTests(_Base):
         self.assertEqual(enum, sorted(enum))
         self.assertEqual(set(enum), storage_rules.memory_types())
 
-    def test_the_shipped_contract_resolves_with_no_vault(self) -> None:
+    def test_the_shipped_contract_resolves_when_nothing_else_does(self) -> None:
+        """The fallback that keeps the enums defined in a checkout with no vault.
+
+        Pointed at an empty directory on purpose. This assertion used to call
+        `load()` with no vault argument and pass — but only because the machine
+        it ran on had no rules file yet. The daemon resolves its own configured
+        vault, so once one was seeded the test started reading it, which is
+        neither what the name claimed nor a fallback at all."""
         os.environ.pop("AGENTM_STORAGE_RULES", None)
-        rules = storage_rules.load()
+        rules = storage_rules.load(vault_path=self.tmp / "no-vault-here")
         self.assertTrue(rules.is_packaged_default)
         self.assertEqual(len(rules.memory_types()), 6)
 
