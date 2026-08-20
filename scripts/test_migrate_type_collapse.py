@@ -106,8 +106,9 @@ class RewriteTests(_Base):
         self.note("memory/preferences/a.md", "kind: preferences\nstatus: active\n")
         notes, _, _ = self.plan()
         self.assertEqual(len(notes), 1)
-        self.assertEqual(notes[0].old_line, "kind: preferences")
-        self.assertEqual(notes[0].new_line, "type: preference")
+        self.assertEqual(len(notes[0].edits), 1)
+        self.assertEqual(notes[0].edits[0].old_line, "kind: preferences")
+        self.assertEqual(notes[0].edits[0].new_line, "type: preference")
 
     def test_nothing_but_the_one_line_is_rewritten(self) -> None:
         p = self.note(
@@ -142,6 +143,57 @@ class RewriteTests(_Base):
         notes, problems, _ = self.plan()
         self.assertEqual(notes, [])
         self.assertIn("neither register", problems[0][1])
+
+
+class StatusTests(_Base):
+    """The corpus carries four statuses the contract does not define, and a note
+    whose status no pass can reason about is a note no pass will touch."""
+
+    def test_every_legacy_status_maps(self) -> None:
+        cases = {
+            "inbox": "unfiled",
+            "promoted": "active",
+            "parked": "unfiled",
+            "evergreen": "active",
+        }
+        for old, want in cases.items():
+            p = self.note(f"memory/x/{old}.md", f"kind: workflow\nstatus: {old}\n")
+            self.run_migration()
+            self.assertIn(f"status: {want}\n", p.read_text(encoding="utf-8"),
+                          f"{old} did not map to {want}")
+
+    def test_the_four_contract_statuses_are_left_alone(self) -> None:
+        for status in ("unfiled", "active", "superseded", "expired"):
+            p = self.note(f"memory/y/{status}.md", f"type: workflow\nstatus: {status}\n")
+            before = p.read_text(encoding="utf-8")
+            self.run_migration()
+            self.assertEqual(p.read_text(encoding="utf-8"), before,
+                             f"{status} was rewritten and should not have been")
+
+    def test_an_unknown_status_is_left_alone_rather_than_guessed(self) -> None:
+        """A status nothing recognizes is not the same as one this pass knows how
+        to map. Guessing at it would be inventing lifecycle state."""
+        p = self.note("memory/x/a.md", "type: workflow\nstatus: something-else\n")
+        before = p.read_text(encoding="utf-8")
+        self.run_migration()
+        self.assertEqual(p.read_text(encoding="utf-8"), before)
+
+    def test_both_lines_change_in_one_pass(self) -> None:
+        p = self.note("memory/x/a.md",
+                      "kind: preferences\nstatus: inbox\nslug: a\n")
+        self.run_migration()
+        text = p.read_text(encoding="utf-8")
+        self.assertIn("type: preference\n", text)
+        self.assertIn("status: unfiled\n", text)
+        self.assertNotIn("kind:", text)
+        self.assertNotIn("status: inbox", text)
+
+    def test_a_second_run_over_both_fields_finds_nothing(self) -> None:
+        self.note("memory/x/a.md", "kind: preferences\nstatus: inbox\n")
+        self.run_migration()
+        notes, problems, _ = self.plan()
+        self.assertEqual(notes, [])
+        self.assertEqual(problems, [])
 
 
 class IdempotencyTests(_Base):
@@ -186,14 +238,30 @@ class NothingMovesTests(_Base):
 
 
 class ScopeTests(_Base):
-    def test_inbox_is_out_of_scope(self) -> None:
-        """9,860 of the 10,700 notes a full pass would touch. Excluded by
-        operator ruling: enrichment rewrites every one of them when it drains the
-        queue, and every linter already skips the directory."""
-        p = self.note("memory/_inbox/a.md", "kind: preferences\nstatus: inbox\n")
+    def test_inbox_is_now_in_scope(self) -> None:
+        """The deferral, redeemed.
+
+        `_inbox` was excluded from the vocabulary-only pass on the reasoning that
+        migrating it then meant rewriting the same note twice — once for its type
+        and again for its status. That reasoning only holds if the two rewrites
+        eventually combine, and this is the pass where they do. A note in there
+        needs both lines, and gets both in one edit."""
+        self.note("memory/_inbox/a.md", "kind: preferences\nstatus: inbox\n")
+        notes, problems, _ = self.plan()
+        self.assertEqual(problems, [])
+        self.assertEqual(len(notes), 1)
+        labels = sorted(e.label for e in notes[0].edits)
+        self.assertEqual(labels, [
+            "kind: preferences  ->  type: preference",
+            "status: inbox  ->  status: unfiled",
+        ])
+
+    def test_a_note_needing_only_a_status_change_is_planned(self) -> None:
+        self.note("memory/x/a.md", "kind: brief\nstatus: promoted\n")
         notes, _, _ = self.plan()
-        self.assertEqual(notes, [])
-        self.assertIn("kind: preferences", p.read_text(encoding="utf-8"))
+        self.assertEqual(len(notes), 1)
+        self.assertEqual([e.label for e in notes[0].edits],
+                         ["status: promoted  ->  status: active"])
 
     def test_harness_state_is_out_of_scope(self) -> None:
         self.note("desk/projects/x/_harness/PLAN.md", "kind: preferences\n")
