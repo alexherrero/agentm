@@ -43,6 +43,26 @@ Underneath: re-running `install.sh` deleted every plugin-namespaced key from `~/
 
 - **841 notes collapsed onto the contract.** One frontmatter line per note — the value where the rules retire it, the field name where the value is a memory type. No path, filename, slug or body byte changed, and the path set was identical across 15,212 files before and after. `_inbox` is deliberately out of scope, and it was 9,860 of the 10,700 a full pass would have touched: its notes carry statuses the contract does not define, which the lifecycle work owns, and enrichment rewrites every one of them when it drains the queue.
 
+### Added
+
+- **The three derived indexes** — chunks, links and entities, all built inside the capture transaction and all caches. They rebuild from the markdown, none is authoritative, and deleting any of them costs a reconcile pass rather than data. That claim is tested rather than asserted: one test deletes all three, rebuilds and compares, and a companion corrupts rows and proves the rebuild repairs them instead of preserving the damage. All three land additively, with no `SchemaVersion` bump — a bump discards the index file and the expensive half of rebuilding it is the re-embed, which none of this touches.
+
+  **Chunks** carry a `header_path`, so a match points at a section rather than a file — the fix for a 38KB design document taking all five top slots from a 1.1KB focused note. This composes with the window chunking that already existed rather than replacing it: `ChunkText` splits to the embedder's context window because 562 of 9,473 notes exceed it, and a long section blows that window whatever its headings say. Header first, then window-split anything still over budget, every row keeping its section's header path. A note with no headings — 94% of the corpus — produces exactly what `ChunkText` always produced.
+
+  **Links** are read in both wikilink and markdown form, because the corpus writes both and an extractor that read one would report half the graph, which is worse than none since it looks complete. Targets resolve by longest matching path suffix with proximity breaking a tie. An unresolved target is recorded rather than dropped: a dangling link is a fact about the corpus and it is what the stub synthesis reads later.
+
+  **Entities** key issue, repository, commit and changelist references by namespaced URI, which makes an entity timeline addressable before any `person` type exists — and registers no type, so the growth rule is untouched.
+
+- **Deterministic alias extraction at capture.** Acronyms in both directions, kept only when the expansion's initials actually spell the acronym; compound identifiers decomposed, so `idx_timestamp_desc` also indexes as its parts. Nothing is invented — a note with no structure to surface gets no aliases at all. Capped, because the alias column ranks above body and is scarce rather than free.
+
+- **A capture-latency gate**, with the bar written down before the first extraction landed: p95 under 100ms over 200 captures. Capture is the operation that must never fail for an interesting reason, and this property has been broken before by a synchronous embed-at-save change that had to be reverted. Measured cost of everything added in this release: **+0.64ms at p95**, from 5.25ms to 5.89ms.
+
+### Changed
+
+- **9,899 notes migrated onto the contract's lifecycle** — 19,068 lines, zero unplaceable, path set identical across 15,227 files before and after. The corpus carried four statuses the contract does not define: `inbox` became `unfiled`, `promoted` became `active`, `parked` became `unfiled` (a parked note is waiting for a judgment it never got), and `evergreen` became `active` (not expiring is a decay concern, not a lifecycle state). A status outside those is left alone rather than guessed at.
+
+  This pass also carries the `_inbox` vocabulary collapse the previous release deferred. That deferral was made on the reasoning that migrating then meant rewriting the same note twice; combining the two rewrites here is what makes it economy rather than postponement.
+
 ### Removed
 
 - **Page-length ceilings in `check-wiki.py`** ([`check-wiki.py`](scripts/check-wiki.py)) — rule (k)'s per-mode word caps (tutorial 1,200 / how-to 600 / explanation 2,000) and rule (p)'s 900-word prose cap on reference pages are gone, on the operator's ruling that the limit was not useful.
