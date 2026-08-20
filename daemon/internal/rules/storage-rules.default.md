@@ -187,6 +187,7 @@ deprecations:
   skill: reference
   evidence: reference
   archive: reference
+  voice-profile: reference
   workflow-pattern: workflow
   pattern: workflow
   runbook: workflow
