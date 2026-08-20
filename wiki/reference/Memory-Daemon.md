@@ -285,6 +285,104 @@ Rewording the prose around it therefore leaves every judgment in the corpus
 standing, while changing what the block says marks them stale — identifiable, and
 queued for a later re-filing pass rather than corrected on the spot.
 
+## The derived indexes
+
+Three tables come out of the capture transaction, and all three are caches. They
+rebuild from the markdown, none of them is authoritative, and deleting any of
+them costs a reconcile pass rather than data. That is not a slogan here: a test
+deletes all three, rebuilds, and compares — and a companion corrupts rows and
+proves the rebuild repairs them rather than preserving the damage.
+
+| index | key | carries | what it buys |
+|---|---|---|---|
+| `chunks` | `(doc_id, chunk_idx)` | `header_path`, content | a focused note stops losing to a long document on term-frequency mass |
+| `links` | `source_id` → `resolved` | link text, surrounding context | one-hop graph expansion in both directions at lookup cost |
+| `entities` | `(entity_uri, doc_id)` | — | every note mentioning an issue or repository, without a scan |
+
+All three were added additively, with no `SchemaVersion` bump. A bump discards
+the whole index file, and the expensive half of rebuilding it is the re-embed,
+which none of this touches.
+
+### Two kinds of chunking, and why both
+
+The tempting reading is that header chunking replaces the window chunking that
+came before it. It does not, and treating them as alternatives would regress a
+measured fix.
+
+`ChunkText` splits by byte budget with overlap, sized to the embedder's context
+window. It exists because 562 of 9,473 notes exceed that window and used to lose
+everything past their head. It is about what the model can read.
+
+Header chunking splits by markdown heading so a match points at a section rather
+than a file — the fix for a 38KB design document taking all five top slots from a
+1.1KB focused note. It is about what a person asked for.
+
+A long section blows the window whatever its headings say, so the second does not
+subsume the first. The split runs at two levels: header first, then window-split
+any section still over budget, with every resulting row carrying the header path
+of the section it came from. One table, one contiguous `chunk_idx` space. A note
+with no headings — 94% of this corpus — produces exactly what `ChunkText` has
+always produced, byte for byte.
+
+The chunk budget is fixed rather than read from the live embedder. The chunk
+table is a retrieval structure and has to stay stable across a model swap, or
+every swap silently re-cuts every note and a `<path>#<n>` reference stops meaning
+what it meant. The vector arm re-chunks to its own live window when it embeds;
+that is where model-specific sizing belongs.
+
+### Links, and what happens when one dangles
+
+Both forms are read, because the corpus writes both: Obsidian produces wikilinks
+and everything generated produces markdown links. Supporting one format would
+miss half the link graph while appearing complete, which is worse than supporting
+neither.
+
+A target resolves by longest matching path suffix, with proximity breaking a tie.
+A target written with more path than a bare name is more specific, and between two
+equally specific candidates a link far more often means the sibling than the
+far-away file with the same name.
+
+**An unresolved target is recorded, not dropped.** A dangling link is a fact about
+the corpus, and it is what the stub synthesis reads later; a table that discarded
+them would make that pass blind.
+
+Links inside fenced code are skipped. A link in a code block is a sample, and
+indexing it would connect a page to whatever its examples happen to mention.
+
+### Entities, before any `person` type exists
+
+Issue, qualified issue, repository, commit and changelist references are pulled
+out by regex and keyed by a namespaced URI, so `issue:owner/repo#123` can never
+collide with `repo:owner/repo`. This is what makes an entity timeline addressable
+today: every note mentioning something is one lookup away, and the rollup that
+eventually summarizes it is built from that set rather than from a directory scan.
+No type is registered, so the taxonomy's growth rule is untouched.
+
+Most of the work here is refusing false positives. `#1` is as often a list marker
+as a reference, so a bare issue needs two digits; `#todo` is a tag. `a/b` is a
+path far more often than a repository, so the host is required. An all-digit run
+is a date or a count rather than a commit, so a hash needs a hex letter, and
+seven characters is where git abbreviates.
+
+### Aliases
+
+Derived at capture from the note's own text, and nothing is invented. A model
+reading a note paraphrases the note, and the gap that hurts retrieval is between
+the note and a future question rather than between the note and a restatement of
+itself — model-written aliases measured −3.85 R@5 and are not used.
+
+Two channels. Acronyms are read in both directions and kept only when the
+expansion's word initials actually spell the acronym, so an ordinary
+parenthetical drags nothing in with it. Compound identifiers are decomposed, so
+`idx_timestamp_desc` also indexes as `idx`, `timestamp` and `desc` — the class of
+token an embedder mangles and a tokenizer splits differently from how a question
+asks for it. snake_case and camelCase are decomposed anywhere; kebab-case only
+inside a code span, because a hyphen is ordinary English punctuation.
+
+The list is capped, because the alias column ranks above body and is therefore
+scarce rather than free. Sorting happens before the cap, so which aliases survive
+is a property of the note rather than of the order the regexes ran in.
+
 ## The corpus-write gate
 
 ```bash
