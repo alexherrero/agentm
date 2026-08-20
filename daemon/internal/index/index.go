@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
+	"github.com/alexherrero/agentm/daemon/internal/extract"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite with FTS5 built in; no cgo.
@@ -186,6 +187,34 @@ func (x *Index) migrate() error {
 				content     TEXT NOT NULL,
 				PRIMARY KEY (doc_id, chunk_idx))`,
 		`CREATE INDEX IF NOT EXISTS chunks_header ON chunks(header_path)`,
+		// The link index. `resolved` is empty when nothing in the corpus matches
+		// the target, and that row is kept rather than dropped: a dangling link is
+		// a fact about the corpus, and it is what the stub synthesis reads. A table
+		// that silently discarded them would make that pass blind.
+		//
+		// No unique key. The same note may link to the same target twice under
+		// different display text, and those are two facts about the graph rather
+		// than one — the context differs, which is what a reader wants.
+		`CREATE TABLE IF NOT EXISTS links (
+				source_id INTEGER NOT NULL,
+				target    TEXT NOT NULL,
+				resolved  TEXT NOT NULL DEFAULT '',
+				text      TEXT NOT NULL DEFAULT '',
+				context   TEXT NOT NULL DEFAULT '',
+				wiki      INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE INDEX IF NOT EXISTS links_source ON links(source_id)`,
+		// The index that makes the backward direction cheap. Answering "what points
+		// at this note" from the files means reading every file, which is the whole
+		// reason this table exists.
+		`CREATE INDEX IF NOT EXISTS links_resolved ON links(resolved)`,
+
+		// The entity index. Keyed (entity_uri, doc_id) because one note mentioning
+		// an issue three times is one fact, not three.
+		`CREATE TABLE IF NOT EXISTS entities (
+				entity_uri TEXT NOT NULL,
+				doc_id     INTEGER NOT NULL,
+				PRIMARY KEY (entity_uri, doc_id))`,
+		`CREATE INDEX IF NOT EXISTS entities_doc ON entities(doc_id)`,
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
 	}
 	for _, s := range stmts {
@@ -297,6 +326,20 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	// a section should lose its rows — reconciling is how a stale chunk survives
 	// an edit that removed the text it holds.
 	if err := replaceChunksTx(tx, id, BuildChunks(n.Title, n.Body, chunkBudgetTokens)); err != nil {
+		return err
+	}
+	// Links resolve against every path the index already knows. Resolution is a
+	// point-in-time answer: a link written before its target existed resolves to
+	// nothing now and to the target on the next reconcile, which is why the
+	// unresolved row is kept rather than dropped.
+	known, err := x.pathsLocked(tx)
+	if err != nil {
+		return err
+	}
+	if err := replaceLinksTx(tx, id, BuildLinks(n.Rel, n.Body, known)); err != nil {
+		return err
+	}
+	if err := replaceEntitiesTx(tx, id, extract.Entities(n.Body)); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -690,5 +733,25 @@ func (x *Index) Paths() ([]string, error) {
 		out = append(out, p)
 	}
 	sort.Strings(out)
+	return out, rows.Err()
+}
+
+// pathsLocked lists every indexed path, for link resolution. Read inside the
+// caller's transaction so resolution sees the same corpus the write is joining.
+func (x *Index) pathsLocked(tx *sql.Tx) ([]string, error) {
+	rows, err := tx.Query(`SELECT path FROM docmeta`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
 	return out, rows.Err()
 }
