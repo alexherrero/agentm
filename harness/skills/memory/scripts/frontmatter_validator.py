@@ -27,6 +27,35 @@ from kind_registry import is_kebab, is_known, REQUIRED_UNIVERSAL_FIELDS  # noqa:
 # otherwise false-positive against.
 _DEFAULT_SCOPE_DIRS = ("memory", "desk/projects")
 
+# The lifecycle, and the ranking axis. Both enum-locked: a status or an altitude
+# nothing recognizes is a note no pass can reason about, and a validator that
+# waved either through would be leaving the taxonomy's brake off on two more
+# fields.
+STATUSES = ("unfiled", "active", "superseded", "expired")
+ALTITUDES = ("artifact", "canonical")
+
+# The contract every memory carries, from the filing design's own frontmatter
+# block. This replaces `kind_registry.REQUIRED_UNIVERSAL_FIELDS`, which describes
+# what `save.py` happened to emit rather than what the design requires — and the
+# difference is not cosmetic: the daemon's capture path writes `captured` and no
+# `group` at all, so the legacy set failed every note the new writer produced.
+#
+# Dropped from the legacy set, deliberately. `group` was a directory pointer, and
+# the layout it pointed into is the thing this rescope replaces — class is a
+# directory and everything else is frontmatter, so a group field is a second,
+# staler answer to a question the path already answers. `tags` is dropped from
+# *required* (it stays validated when present) because an untagged capture is a
+# real and ordinary thing, and a validator that refuses one pushes the writer
+# into emitting `tags: []` to satisfy a check rather than to say anything.
+#
+# The vocabulary field is not listed here: it is required conditionally, since an
+# `unfiled` note legitimately has neither `type` nor `kind` until filing runs.
+REQUIRED_CONTRACT_FIELDS = ("status", "captured", "updated", "slug")
+
+# Legacy spellings still accepted, because the corpus is mid-migration and a
+# validator that reports every unmigrated note is a validator nobody reads.
+LEGACY_EQUIVALENTS = {"captured": "created"}
+
 # Mirrors vault_lint.py's _EXCLUDE_DIRS exactly (DC-4): these subdirectories
 # carry non-memory-entry content (harness state, dev-loop infra, staging
 # areas, retired entries, opinion-supplement lanes) that was never meant to
@@ -89,14 +118,28 @@ def validate(note_path: Path | str) -> list[str]:
 
     violations: list[str] = []
     has_type = bool(str(fm.get("type") or "").strip())
-    for field_name in REQUIRED_UNIVERSAL_FIELDS:
-        # `type` and `kind` are the same slot under two names while the collapse
-        # runs. A note that carries `type` has been through it; requiring `kind`
-        # as well would fail exactly the notes the migration has fixed.
-        if field_name == "kind" and has_type:
+    status = str(fm.get("status") or "").strip()
+
+    for field_name in REQUIRED_CONTRACT_FIELDS:
+        if field_name in fm:
             continue
-        if field_name not in fm:
-            violations.append(f"missing required field `{field_name}`")
+        # Two fields have a legacy spelling that is still all over the corpus.
+        # Accepting either is what lets the validator run over a half-migrated
+        # vault without reporting every unmigrated note as broken.
+        if field_name in LEGACY_EQUIVALENTS and LEGACY_EQUIVALENTS[field_name] in fm:
+            continue
+        violations.append(f"missing required field `{field_name}`")
+
+    # The vocabulary is required — except while the note is `unfiled`, which is
+    # exactly the state a capture lands in before anything has judged it. Filing
+    # assigns the type, and the capture transaction never waits on a model, so a
+    # freshly captured note legitimately has neither field yet.
+    if not has_type and "kind" not in fm and status != "unfiled":
+        violations.append(
+            "no `type` or `kind` — a memory carries a `type` and a record carries "
+            "a `kind`; only an `unfiled` note, which nothing has judged yet, may "
+            "carry neither"
+        )
 
     # A note carries `type` or `kind`, never both: two fields that can disagree
     # about what a note is will eventually disagree.
@@ -117,15 +160,21 @@ def validate(note_path: Path | str) -> list[str]:
         elif not has_type and not is_known(value):
             violations.append(f"kind {value!r} is not a recognized kind (unrecognized, not rejected)")
 
-    # `type` names a memory, and a memory that has settled to `active` has been
-    # through a filing judgment. Before that it may legitimately carry none:
-    # enrichment assigns the type, and the capture transaction never waits on a
-    # model to do it.
-    status = str(fm.get("status") or "").strip()
-    if status == "active" and value is None:
+    # The lifecycle is enum-locked for the same reason the taxonomy is: a status
+    # nothing recognizes is a note no pass can reason about.
+    if status and status not in STATUSES:
         violations.append(
-            "an `active` memory carries a `type` — a memory reaches `active` by "
-            "being filed, and filing is what assigns it"
+            f"status {status!r} is not one of: {', '.join(STATUSES)}"
+        )
+
+    # Altitude is the axis ranking dampens on, and it is enum-locked rather than
+    # free text for the same reason `type` is: a value nothing recognizes ranks
+    # as nothing. Absent is legal — the default applies — but present-and-wrong
+    # is not.
+    altitude = str(fm.get("altitude") or "").strip()
+    if altitude and altitude not in ALTITUDES:
+        violations.append(
+            f"altitude {altitude!r} is not one of: {', '.join(ALTITUDES)}"
         )
 
     return violations

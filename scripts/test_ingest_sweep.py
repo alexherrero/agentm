@@ -151,7 +151,14 @@ class PromotionTests(unittest.TestCase):
         self.assertGreater(len(visible), 0, "the promoted batch must now be recall-visible with no special-cased lookup")
         fm, body = ingest_sweep._parse_frontmatter(self.path.read_text(encoding="utf-8"))
         self.assertEqual(fm["status"], "ingested")
-        self.assertIn("domain-reference", fm["derived_from"])
+        # `derived_from` names the notes the ingest produced. This used to assert
+        # on the substring "domain-reference", which only ever passed because the
+        # retired value was a path segment — a proxy for the real claim. The
+        # collapse moved those notes to `memory/reference/`, so the assertion now
+        # makes the claim directly.
+        self.assertIn("memory/reference/", fm["derived_from"])
+        self.assertNotIn("domain-reference", fm["derived_from"],
+                         "the retired value is still in a path the sweep wrote")
         self.assertNotIn(ingest_sweep._FETCHED_CONTENT_START, body, "the fetched-content scratch section is dropped once promoted")
 
     def test_rejected_candidate_never_promotes(self) -> None:

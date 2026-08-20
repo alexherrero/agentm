@@ -67,6 +67,12 @@ type Result struct {
 
 var slugScrubRe = regexp.MustCompile(`[^a-z0-9]+`)
 
+// Altitude is the axis ranking dampens on: `canonical` states something durable —
+// a convention, a decided rule, a reference fact — while `artifact` records a
+// moment. Capture always writes the default, because a note earns `canonical`
+// from a later judgment rather than by asserting it about itself.
+const DefaultAltitude = "artifact"
+
 // Statuses capture may land in. Deliberate capture lands `active` — a session the
 // operator directed produces memories he already approved by asking for them, and
 // routing those through triage would page him about a backlog that is not one.
@@ -187,6 +193,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 
 	body := renderNote(noteData{
 		Type:     noteType,
+		Altitude: DefaultAltitude,
 		Status:   status,
 		Captured: captured,
 		Slug:     slug,
@@ -285,6 +292,7 @@ func writeAtomic(abs, body string) error {
 
 type noteData struct {
 	Type     string
+	Altitude string
 	Status   string
 	Captured time.Time
 	Slug     string
@@ -305,6 +313,11 @@ func renderNote(d noteData) string {
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: %s\n", d.Type)
 	fmt.Fprintf(&b, "status: %s\n", d.Status)
+	// Written rather than left implied. `artifact` is what a note is until
+	// something judges otherwise, and a field that is present and default is a
+	// field a later pass can change in place — an absent one has to be
+	// distinguished from a deliberate one first.
+	fmt.Fprintf(&b, "altitude: %s\n", d.Altitude)
 	fmt.Fprintf(&b, "captured: %s\n", d.Captured.Format(index.CapturedFormat()))
 	fmt.Fprintf(&b, "updated: %s\n", d.Captured.Format(index.CapturedFormat()))
 	fmt.Fprintf(&b, "slug: %s\n", d.Slug)

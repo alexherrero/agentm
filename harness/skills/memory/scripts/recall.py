@@ -1169,6 +1169,14 @@ def _entry_matches_filter(fm: dict[str, str], criteria: dict[str, str]) -> bool:
         elif key == "project":
             if _derive_project(fm.get("group", "")) != value:
                 return False
+        elif key in ("kind", "type"):
+            # One slot, two field names, while the collapse runs. Asking for
+            # either spelling matches a note written in either — a filter that
+            # read only the field it was asked about would silently return half
+            # the corpus, and "half" is indistinguishable from "all there is".
+            written = fm.get("type") or fm.get("kind")
+            if written != value:
+                return False
         else:
             field = "group" if key == "group" else key
             if fm.get(field) != value:

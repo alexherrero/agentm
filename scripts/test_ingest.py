@@ -112,10 +112,15 @@ class FullDocumentNoteTests(unittest.TestCase):
         original = _MD_FIXTURE.read_text(encoding="utf-8")
         self.assertEqual(body.rstrip("\n") + "\n", original.rstrip("\n") + "\n")
 
-    def test_document_kind_is_domain_reference(self) -> None:
+    def test_document_is_typed_as_a_reference(self) -> None:
+        """Same intent this test always had — an ingested document is a
+        reference — against the collapsed taxonomy. `domain-reference` is retired
+        into `reference`, and a memory carries its value in `type`, not `kind`:
+        `kind` is for records, which an ingested document is not."""
         result = ingest.ingest(self.vault, str(_MD_FIXTURE), topic="typography")
         fm, _ = _frontmatter_and_body(result.document)
-        self.assertEqual(fm["kind"], "domain-reference")
+        self.assertEqual(fm["type"], "reference")
+        self.assertNotIn("kind", fm)
 
 
 class ChunkNoteTests(unittest.TestCase):
