@@ -68,6 +68,7 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `probe` | Run the round-trip self-probe now. Exits 3 on failure. |
 | `gate corpus-write` | Ask whether a corpus-wide write job may start. Exits 0 to pass, 3 to refuse, 1 when it could not decide. |
 | `classify` | Rank-penalty class counts over the live vault, printed beside the figures the measurement report established. |
+| `rules` | Print the filing contract. `--json` serves it to anything that needs the taxonomy, `--file` parses one specific file, `--init <path>` seeds a vault from the embedded copy without ever overwriting one. |
 | `retire` | Stop and archive the orphaned pre-daemon memory server. |
 
 Every subcommand accepts `--config`, `--vault`, `--index`, `--port`.
@@ -218,6 +219,71 @@ agentmd probe
 ```
 
 Runs it now, through the same code path as the daily schedule.
+
+## The filing contract
+
+`standards/storage-rules.md` decides where a memory goes and what shape it takes.
+The daemon reads this file at runtime instead of compiling it in. You write the
+contract in markdown, and the daemon follows it directly. Changing where a type
+routes, retiring a value, or moving a threshold is an edit to that file, and it
+takes effect on the next capture without a recompile or a release.
+
+**The daemon is the only thing that parses that file.** Capture validates a
+caller's type against it, the MCP tool schema publishes its enum, and the Python
+batch layer asks over `agentmd rules --json`, once per run rather than once per
+note. A second parser would be a second thing to drift, and the whole claim is
+that a type added to the rules exists everywhere at once.
+
+Resolution takes the first source that exists: `$AGENTM_STORAGE_RULES`, then the
+vault's own `standards/storage-rules.md`, then the copy embedded in the binary.
+The embedded copy is what keeps the taxonomy defined in a checkout with no vault
+— a fresh clone, a CI run, a unit test.
+
+### Absence falls through; corruption halts
+
+A missing rules file is not an error, so resolution moves on to the next source.
+A file that is present and will not parse halts filing and never falls back. The
+halt is what stops a model improvising around a malformed rule, which is how you
+get filing that looks fine and is wrong.
+
+The halt is deliberately narrow, matched to what a broken contract actually
+endangers:
+
+| Still works | Stops |
+|---|---|
+| Search — it does not read the taxonomy | Filing. Nothing is promoted, merged, expired or re-typed |
+| Capture with no type — it lands untyped and `unfiled`, which is the state filing drains anyway | Capture that *names* a type. Validating the claim is precisely what is unavailable, so it is refused with the parse error attached |
+| The index, the watcher, the committer, the probe | `agentmd gate corpus-write`, which refuses — a job that decides where thousands of memories belong should not decide it by guessing |
+
+Because search and untyped capture keep working, the halt would otherwise go
+unnoticed. It is reported in three places, each one a surface somebody reads: the
+`filing` line on `agentmd status`, shown red with the parse error and the remedy;
+the `check-storage-rules` CI gate; and the nightly dreaming digest. `agentmd
+status` also counts the typed captures the halt has refused since boot, which is
+what makes a client failing every write visible rather than silent.
+
+**A fix is picked up live.** The daemon re-reads the contract on each health
+pass, so correcting the file returns it to `OK` without a restart. Capture does
+not pay for that re-read: it reads a held pointer and never parses the file, which
+is what keeps it inside its sub-100ms budget.
+
+### What the block carries
+
+The machine-readable core is a fenced `storage-rules` block; the prose around it
+is what the enrichment prompt reads. Two registers divide the vocabulary. A note
+carries one field or the other, never both.
+
+| Register | Field | Holds |
+|---|---|---|
+| `memory_types` | `type` | The six values a memory carries. Something that *asserts* — a preference, a convention, a fact, a recipe, a fix, an idea. Growth is braked by the warrant rule. |
+| `record_kinds` | `kind` | Shapes a record carries. Something that *records* — a nightly brief, a telemetry row, a session trace, an index page. Not memories, so they carry no type at all. |
+
+`deprecations` maps each retired value to its replacement, which is what makes a
+collapse mechanical rather than a judgment repeated thousands of times.
+`rules_hash` is computed over the block's parsed content rather than its raw text.
+Rewording the prose around it therefore leaves every judgment in the corpus
+standing, while changing what the block says marks them stale — identifiable, and
+queued for a later re-filing pass rather than corrected on the spot.
 
 ## The corpus-write gate
 

@@ -37,10 +37,18 @@ class TestKnownKinds(unittest.TestCase):
     def test_unknown_kind_is_not_known(self):
         self.assertFalse(kr.is_known("totally-invented-kind"))
 
-    def test_near_duplicates_both_kept_distinct(self):
-        # The registry deliberately does not collapse near-synonyms.
+    def test_near_duplicates_are_retired_with_a_named_replacement(self):
+        # This assertion used to read the other way: the registry deliberately
+        # did NOT collapse near-synonyms, because deciding which spelling was
+        # canonical was an operator judgment call and this module refused to
+        # make it. The rules file is where that call is now made, so the pair
+        # resolves — but explicitly, not silently. `conventions` is retired with
+        # `convention` named as its replacement, which is what makes the collapse
+        # mechanical instead of a judgment repeated thousands of times.
         self.assertTrue(kr.is_known("convention"))
-        self.assertTrue(kr.is_known("conventions"))
+        self.assertFalse(kr.is_known("conventions"))
+        self.assertTrue(kr.is_retired("conventions"))
+        self.assertEqual(kr.replacement_for("conventions"), "convention")
 
     def test_is_known_is_case_sensitive(self):
         self.assertFalse(kr.is_known("Fix"))
@@ -88,7 +96,8 @@ class TestAudit(unittest.TestCase):
     def test_missing_vault_returns_empty_report(self):
         result = kr.audit("/nonexistent/path/xyz")
         self.assertEqual(result, {
-            "by_kind": {}, "malformed": [], "unrecognized": [], "total_files": 0,
+            "by_kind": {}, "malformed": [], "unrecognized": [], "retired": [],
+            "total_files": 0,
         })
 
     def test_audit_never_writes_to_the_vault(self):

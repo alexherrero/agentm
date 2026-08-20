@@ -460,6 +460,42 @@ def check_unattended_merge_gate(
     )
 
 
+def check_storage_rules() -> Check:
+    """The filing contract resolves and parses.
+
+    This is the operator-facing half of the fail-closed arrangement. When the
+    rules block will not parse, filing halts — notes wait as `unfiled` and
+    nothing files anywhere — and this row is where an operator sees why without
+    reading a nightly log. A vault with no rules file is not a failure: absence
+    falls through to the packaged default by design, and the row says so.
+    """
+    name = "storage-rules"
+    try:
+        sys.path.insert(0, str(repo_root() / "harness" / "skills" / "memory" / "scripts"))
+        import storage_rules as storage_rules_mod
+    except ImportError as exc:
+        return Check(name, "FAIL", f"the filing contract module will not import: {exc}")
+
+    try:
+        rules = storage_rules_mod.load()
+    except Exception as exc:
+        return Check(
+            name, "FAIL",
+            f"filing is halted — the rules block does not parse: {exc}. "
+            f"Notes stay `unfiled` until it does.",
+        )
+
+    where = "packaged default" if rules.is_packaged_default else str(rules.source)
+    status = "WARN" if rules.is_packaged_default else "OK"
+    detail = (
+        f"{len(rules.memory_types())} memory types, {len(rules.record_kinds())} record "
+        f"kinds, hash {rules.content_hash()} — from {where}"
+    )
+    if rules.is_packaged_default:
+        detail += " (no vault instance; edits to it will not take effect)"
+    return Check(name, status, detail)
+
+
 def check_crickets_sibling() -> Check:
     root = find_crickets_root()
     if root is None:
@@ -794,6 +830,7 @@ def run_inventory(
         checks.append(check_job_config(repo, job_name, keys_label, install_prefix=install_prefix))
     checks.append(check_unattended_merge_gate(repo))
     checks.append(check_memory_hook_interpreter(repo))
+    checks.append(check_storage_rules())
     for config_path, label in project_json_configs(repo):
         checks.append(check_project_json_pointers(config_path, label))
     crickets_check = check_crickets_sibling()

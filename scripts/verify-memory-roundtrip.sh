@@ -94,8 +94,11 @@ assert_contains "recall: saved entry surfaced by content" "$RECALL" "deploy-runb
 # filter already support this; nothing here was previously exercised as a
 # --jsonl-out record.) A second entry of a DIFFERENT kind, sharing the same
 # distinctive phrase, proves the filter narrows by kind rather than content.
-SECOND_BODY="This howto also mentions the deployment runbook staging gate procedure, but it is not the reference entry."
-printf '%s\n' "$SECOND_BODY" | mem save.py howto rotate-api-keys --tags "security" --body-file - >/dev/null 2>&1
+# `workflow`, not `howto`: `howto` is retired by the storage rules' deprecation
+# map (it collapses into `workflow`), and lint reports a retired value. Any two
+# distinct current values prove the same thing this check is after.
+SECOND_BODY="This recipe also mentions the deployment runbook staging gate procedure, but it is not the reference entry."
+printf '%s\n' "$SECOND_BODY" | mem save.py workflow rotate-api-keys --tags "security" --body-file - >/dev/null 2>&1
 KIND_FILTERED="$(mem recall.py query "deployment runbook staging gate" -k 5 --filter "kind=reference" 2>/dev/null)"
 if printf '%s' "$KIND_FILTERED" | grep -qF -- "deploy-runbook" && ! printf '%s' "$KIND_FILTERED" | grep -qF -- "rotate-api-keys"; then
   pass "recall: --filter kind=reference includes the matching kind and excludes the other kind"

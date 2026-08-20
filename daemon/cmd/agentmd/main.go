@@ -32,6 +32,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/mcpsrv"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/probe"
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 	"github.com/alexherrero/agentm/daemon/internal/vcs"
 	"github.com/alexherrero/agentm/daemon/internal/watch"
 )
@@ -52,6 +53,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd gate       ask whether a corpus-wide write job may start
   agentmd classify   report rank-penalty class counts over the live vault
   agentmd retire     retire the orphaned pre-daemon memory server
+  agentmd rules      print the filing contract, or seed a vault with one
 
 Run any subcommand with -h for its flags.
 `
@@ -83,6 +85,8 @@ func main() {
 		err = cmdClassify(os.Args[2:])
 	case "retire":
 		err = cmdRetire(os.Args[2:])
+	case "rules":
+		err = cmdRules(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmd", version)
 	case "help", "-h", "--help":
@@ -276,6 +280,7 @@ func cmdServe(args []string) error {
 			in.Probe, in.ProbeAt = probe.AsHealth(st, true)
 		}
 		in.Embedder = embedderHealth(embedder, idx, cfg)
+		in.Contract = contractHealth(cfg, cp)
 		return health.Evaluate(in)
 	}
 
@@ -466,7 +471,14 @@ func cmdCapture(args []string) error {
 	fs := newFlagSet("capture")
 	opts := bindCommon(fs)
 	title := fs.String("title", "", "short title")
-	noteType := fs.String("type", "", "one of: "+strings.Join(config.Types, ", "))
+	// The help text names the types the contract currently defines. Resolved
+	// leniently: a flag description is not worth failing a capture over, and the
+	// capture itself validates against the same contract a moment later.
+	knownTypes := "see `agentmd rules`"
+	if r, err := rules.Load(""); err == nil {
+		knownTypes = strings.Join(r.TypesSorted(), ", ")
+	}
+	noteType := fs.String("type", "", "one of: "+knownTypes)
 	status := fs.String("status", "", "active | unfiled")
 	tags := fs.String("tags", "", "comma-separated tags")
 	aliases := fs.String("aliases", "", "comma-separated alternate phrasings")

@@ -46,6 +46,19 @@ gate_skip() {
   RESULTS+=("  SKIP  $1 — $2")
 }
 
+# The filing contract is parsed by the daemon and asked for over `agentmd rules`
+# — one parser, in Go, so a type added to standards/storage-rules.md is live
+# everywhere at once. Several Python gates below read it, so the battery builds
+# the binary from THIS tree first and points them at it. Testing against whatever
+# `agentmd` happens to be installed would grade the last release, not this diff.
+AGENTMD_BUILD="$(mktemp -d)/agentmd"
+if command -v go >/dev/null 2>&1 && (cd "$REPO/daemon" && go build -o "$AGENTMD_BUILD" ./cmd/agentmd) 2>/dev/null; then
+  export AGENTMD="$AGENTMD_BUILD"
+  echo "check-all: built agentmd from this tree for the contract-reading gates" >&2
+else
+  echo "check-all: go unavailable — contract-reading gates will use whatever 'agentmd' is on PATH" >&2
+fi
+
 echo "check-all: running the local gate battery…" >&2
 
 gate "unit tests (scripts/test_*.py)"          bash -c "cd scripts && $PY -m unittest discover -p 'test_*.py'"
@@ -68,6 +81,7 @@ gate "check-opinion-honesty (no orphan Opinion references)" "$PY" scripts/check-
 gate "check-personas (requires ⊆ substrate + no-always-load)" "$PY" scripts/check-personas.py
 gate "check-governs-index (governs:/area: overlap + unknown-area)" "$PY" scripts/check-governs-index.py
 gate "check-no-hardcoded-vault-path (no absolute vault literals)" "$PY" scripts/check-no-hardcoded-vault-path.py
+gate "check-storage-rules (the filing contract parses + the taxonomy growth rule)" "$PY" scripts/check-storage-rules.py
 gate "check-vault-frontmatter (every note's frontmatter parses as YAML)" "$PY" scripts/check-vault-frontmatter.py
 gate "check-memory-root-consistency (daemon spaces sit beneath memory_root)" "$PY" scripts/check-memory-root-consistency.py
 gate "check-registry-hygiene (no throwaway temp path registered as a repo)" "$PY" scripts/check-registry-hygiene.py

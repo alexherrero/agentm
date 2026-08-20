@@ -62,4 +62,22 @@ run "no hardcoded vault literals" bash -c '
     echo "a vault path literal is embedded in daemon source"; exit 1
   fi'
 
+# `go mod tidy` is a no-op on a tidy module. CI has always checked this; the local
+# battery did not, so a dependency added with `go get` and left marked `// indirect`
+# passed here and failed there — which is exactly the round trip a local battery
+# exists to save. Restores the copy on the way out either way, so a failing run
+# never leaves the module edited.
+run "dependencies are tidy" bash -c '
+  cp go.mod go.mod.orig && cp go.sum go.sum.orig
+  go mod tidy >/dev/null 2>&1
+  rc=0
+  if ! diff -q go.mod go.mod.orig >/dev/null || ! diff -q go.sum go.sum.orig >/dev/null; then
+    echo "go mod tidy changed go.mod/go.sum — commit the tidied files:"
+    diff -u go.mod.orig go.mod || true
+    diff -u go.sum.orig go.sum || true
+    rc=1
+  fi
+  mv go.mod.orig go.mod && mv go.sum.orig go.sum
+  exit $rc'
+
 exit "$fail"

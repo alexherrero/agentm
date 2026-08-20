@@ -70,6 +70,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 from vault_lock import atomic_write  # noqa: E402
+import storage_rules  # noqa: E402
 
 __all__ = [
     "run_dream",
@@ -241,6 +242,57 @@ def _stage_corpus_stats(entries: list) -> dict:
     return {
         "entry_count": len(entries),
         "total_bytes": sum(p.stat().st_size for p in entries),
+    }
+
+
+# -----------------------------------------------------------------------------
+# Stage 0b — the filing contract (deterministic, zero-token)
+#
+# `standards/storage-rules.md` is authoritative for filing, and it is read at
+# runtime rather than compiled in. That makes it the one file whose corruption
+# would otherwise be silent: a model handed a malformed rule does not stop, it
+# improvises. So the pass reads the rules first and **fails closed** — a block
+# that will not parse halts every stage that would re-file a note, the digest
+# names the parse failure, and nothing files anywhere until the file parses
+# again. This is the digest half of the halt; the gate and the doctor row are
+# the other two readers.
+# -----------------------------------------------------------------------------
+
+def _stage_storage_rules(vault_path: Path, loaded: dict) -> dict:
+    """Read the filing contract. Returns stats; never raises.
+
+    On a parse failure the returned dict carries `storage_rules_ok: False` and
+    the failure text, and `run_dream` proposes nothing for the cycle.
+    """
+    try:
+        rules = storage_rules.load()
+    except storage_rules.StorageRulesError as exc:
+        return {"storage_rules_ok": False, "storage_rules_error": str(exc)}
+
+    watch = storage_rules.hash_watch(vault_path, current=rules.content_hash())
+
+    # Two different populations, and conflating them would misreport both. A
+    # memory whose `rules_hash` differs was judged under rules that have since
+    # changed and is re-filing work. A memory with no `rules_hash` at all has
+    # never been through a filing judgment — that is backlog, not staleness.
+    stale = 0
+    unjudged = 0
+    for fm, _body, _raw in loaded.values():
+        stamped = str(fm.get("rules_hash") or "").strip()
+        if not stamped:
+            unjudged += 1
+        elif stamped != rules.content_hash():
+            stale += 1
+
+    return {
+        "storage_rules_ok": True,
+        "storage_rules_source": str(rules.source),
+        "storage_rules_is_default": rules.is_packaged_default,
+        "storage_rules_hash": rules.content_hash(),
+        "storage_rules_hash_changed": watch["changed"],
+        "storage_rules_previous_hash": watch["previous"],
+        "storage_rules_stale_count": stale,
+        "storage_rules_unjudged_count": unjudged,
     }
 
 
@@ -1031,6 +1083,36 @@ def _render_digest(digest: DreamDigest, *, auto_applied=None, anomalies=None) ->
         "",
         f"Corpus: {digest.corpus_stats['entry_count']} entries, {digest.corpus_stats['total_bytes']} bytes.",
     ]
+    # The filing contract. Rendered before every other meter, because when it
+    # fails nothing else in this digest describes work that happened.
+    if digest.corpus_stats.get("storage_rules_ok") is False:
+        lines.append("")
+        lines.append(
+            "**Filing is halted.** The storage-rules block does not parse, so nothing "
+            "filed this cycle and every note stays where it was:"
+        )
+        lines.append("")
+        lines.append(f"> {digest.corpus_stats.get('storage_rules_error', 'unknown parse failure')}")
+        lines.append("")
+        lines.append(
+            "Fix the block and the next cycle picks up where this one stopped. Notes "
+            "wait as `unfiled`; none of them was filed under a guess."
+        )
+    elif "storage_rules_hash" in digest.corpus_stats:
+        source = ("the packaged default" if digest.corpus_stats.get("storage_rules_is_default")
+                  else digest.corpus_stats.get("storage_rules_source", "the vault"))
+        line = (f"Filing rules: hash `{digest.corpus_stats['storage_rules_hash']}` "
+                f"from {source}")
+        if digest.corpus_stats.get("storage_rules_hash_changed"):
+            line += (f" — **changed** since the last cycle (was "
+                     f"`{digest.corpus_stats.get('storage_rules_previous_hash')}`); "
+                     f"{digest.corpus_stats.get('storage_rules_stale_count', 0)} memory(ies) "
+                     f"now carry a stale `rules_hash`")
+        else:
+            line += f" · {digest.corpus_stats.get('storage_rules_stale_count', 0)} stale"
+        line += (f", {digest.corpus_stats.get('storage_rules_unjudged_count', 0)} never "
+                 f"judged.")
+        lines.append(line)
     # The connectivity meter (task 7) — rendered defensively via .get() so
     # a digest re-render against an older run's stats (pre-meter) never
     # crashes; both numbers land every cycle on any current run.
@@ -1235,7 +1317,25 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     corpus_stats = _stage_corpus_stats(entries)
     corpus_stats.update(_connectivity_meter(loaded))
     corpus_stats.update(_browse_surface_counts(vault_path, entries))
+    corpus_stats.update(_stage_storage_rules(vault_path, loaded))
     proposals = []
+
+    # Fail closed. Every stage below re-files something — a merge, an expiry, a
+    # shelving, a frontmatter repair — and every one of them decides *where* by
+    # the rules that just failed to parse. Running them anyway would file under
+    # a guess. The read-only meters above already ran, so the digest still
+    # reports the state of the corpus; it simply proposes nothing about it.
+    if not corpus_stats.get("storage_rules_ok", True):
+        digest = DreamDigest(
+            run_id=run_id,
+            corpus_stats=corpus_stats,
+            proposals=[],
+            insight_candidates=[],
+            tidying_previews=[],
+        )
+        digest.digest_path = _stage_digest_and_staging(vault_path, digest)
+        return digest
+
     # `_stage_lint` runs FIRST, before anything else in this pass touches
     # the graph snapshot: its own graph-snapshot cross-check (task 9) must
     # see whatever's persisted from BEFORE this cycle to catch genuine

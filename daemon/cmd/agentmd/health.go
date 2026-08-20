@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/health"
 	"github.com/alexherrero/agentm/daemon/internal/notify"
@@ -155,6 +156,22 @@ func renderReport(rep health.Report, cfg *config.Config) string {
 			"paraphrases and vocabulary gaps will miss\n")
 	}
 
+	fmt.Fprintf(&b, "  filing   %s\n", rep.Contract)
+	switch rep.Contract.State {
+	case health.ContractBroken:
+		// Same shape as the git and embedder lines: a degraded capability says
+		// what stops working, because the one-word state is a thing a reader has
+		// to go and interpret at exactly the moment they are least able to. This
+		// one needs it most — every other surface looks fine while it is true.
+		b.WriteString("           captures still land and searches still answer; nothing is " +
+			"being filed, and a capture that names a type is refused\n")
+		b.WriteString("           fix the block and the next health pass picks it up — " +
+			"no restart\n")
+	case health.ContractDefault:
+		b.WriteString("           `agentmd rules --init <vault>/standards/storage-rules.md` " +
+			"makes it yours to edit\n")
+	}
+
 	fmt.Fprintf(&b, "  probe    %s\n", describeProbe(rep))
 
 	if len(rep.Alerts) > 0 {
@@ -191,4 +208,40 @@ func describeProbe(rep health.Report) string {
 		}
 		return out
 	}
+}
+
+// contractHealth re-reads the filing contract and reports what it found.
+//
+// The re-read is the point. `config.Load` resolves the contract once at startup,
+// so without this a daemon that came up against a broken rules file would stay
+// halted after the operator fixed it — turning a pause into an outage, and making
+// "fix the block and the next cycle picks up where this one stopped" false for
+// the longest-running process in the system. Health already runs fresh on every
+// status read, for the same reason a cached queue number is worse than none, so
+// it is the right place to ask.
+//
+// Cheap enough to belong here: one small file read and a YAML parse, off the
+// capture path entirely — capture reads the held pointer and never parses.
+func contractHealth(cfg *config.Config, cp *capture.Capturer) health.Contract {
+	now := time.Now()
+	loaded, err := cfg.Rules.Refresh(now)
+
+	out := health.Contract{CheckedAt: now}
+	if cp != nil {
+		out.RefusedCaptures = cp.RefusedCaptures()
+	}
+	if err != nil {
+		out.State = health.ContractBroken
+		out.Detail = err.Error()
+		return out
+	}
+
+	out.Source = loaded.Source
+	out.Hash = loaded.Hash
+	if loaded.IsPackagedDefault {
+		out.State = health.ContractDefault
+		return out
+	}
+	out.State = health.ContractHealthy
+	return out
 }

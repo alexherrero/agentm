@@ -21,6 +21,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // protocolVersion is the MCP revision this surface implements.
@@ -224,7 +225,8 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 	case "ping":
 		resp.Result = map[string]any{}
 	case "tools/list":
-		resp.Result = map[string]any{"tools": toolSpecs()}
+		contract, _ := s.cfg.Rules.Get()
+		resp.Result = map[string]any{"tools": toolSpecs(contract)}
 	case "tools/call":
 		result, err := s.callTool(req.Params)
 		if err != nil {
@@ -367,7 +369,21 @@ func toolError(err error) any {
 // week-1 experiment found the two drivers split on search *behaviour* rather than
 // on index quality — persistent-but-credulous against calibrated-but-quick — and
 // the fix for that is a sentence in the tool description, not a system.
-func toolSpecs() []map[string]any {
+// The type enum is passed in rather than read from a constant: it comes from
+// the filing contract, so a type the operator adds to standards/storage-rules.md
+// is offered to the model on the next tools/list. A nil contract means it would
+// not parse, and the enum is omitted — the tool still takes a type, and capture
+// is what refuses an unvalidatable one, with the parse error attached.
+func toolSpecs(r *rules.Rules) []map[string]any {
+	typeSchema := map[string]any{
+		"type":        "string",
+		"description": "One of the six types.",
+	}
+	if r != nil {
+		typeSchema["enum"] = r.TypesSorted()
+		typeSchema["default"] = r.DefaultType
+	}
+
 	return []map[string]any{
 		{
 			"name": "memory_search",
@@ -436,10 +452,7 @@ func toolSpecs() []map[string]any {
 						"type":        "string",
 						"description": "Short title. Derived from the text when omitted; the title is weighted 4x in ranking, so a good one is worth writing.",
 					},
-					"type": map[string]any{
-						"type": "string", "enum": config.Types, "default": config.DefaultType,
-						"description": "One of the six types.",
-					},
+					"type": typeSchema,
 					"status": map[string]any{
 						"type": "string", "enum": []string{"unfiled", "active"}, "default": "unfiled",
 						"description": "\"active\" for a capture the operator asked for; \"unfiled\" for anything unattended.",

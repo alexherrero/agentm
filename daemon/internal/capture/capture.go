@@ -22,6 +22,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
@@ -64,16 +65,13 @@ type Result struct {
 	Note string `json:"note,omitempty"`
 }
 
-var (
-	slugScrubRe = regexp.MustCompile(`[^a-z0-9]+`)
-	validTypes  = func() map[string]bool {
-		m := map[string]bool{}
-		for _, t := range config.Types {
-			m[t] = true
-		}
-		return m
-	}()
-)
+var slugScrubRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Altitude is the axis ranking dampens on: `canonical` states something durable —
+// a convention, a decided rule, a reference fact — while `artifact` records a
+// moment. Capture always writes the default, because a note earns `canonical`
+// from a later judgment rather than by asserting it about itself.
+const DefaultAltitude = "artifact"
 
 // Statuses capture may land in. Deliberate capture lands `active` — a session the
 // operator directed produces memories he already approved by asking for them, and
@@ -87,7 +85,17 @@ var validStatuses = map[string]bool{"unfiled": true, "active": true}
 type Capturer struct {
 	cfg *config.Config
 	idx *index.Index
+
+	// refused counts captures rejected because the caller named a type and there
+	// was no contract to validate it against. Counted rather than only logged:
+	// a broken contract refusing one client's every write is the quietest way
+	// this system can be broken, and a number on the status surface is what
+	// makes it a fact instead of a hunch.
+	refused atomic.Int64
 }
+
+// RefusedCaptures is how many captures the missing contract has cost since boot.
+func (c *Capturer) RefusedCaptures() int64 { return c.refused.Load() }
 
 func New(cfg *config.Config, idx *index.Index) *Capturer {
 	return &Capturer{cfg: cfg, idx: idx}
@@ -105,16 +113,36 @@ func (c *Capturer) Do(req Request) (Result, error) {
 
 	var notes []string
 
+	// The taxonomy comes from the filing contract, not from a list in this
+	// binary — a type added to standards/storage-rules.md is accepted here on the
+	// next capture, with no release in between.
+	//
+	// When the contract will not parse, the two halves of this diverge on purpose.
+	// A caller who named a type is refused, because validating the claim is
+	// exactly what is unavailable and writing it unvalidated is the improvising
+	// the fail-closed rule exists to stop. A caller who named none is not: the
+	// note lands untyped and `unfiled`, which is the state filing drains anyway,
+	// and refusing it would lose a capture over a misplaced colon in a file the
+	// capture never needed.
+	contract, contractErr := c.cfg.Rules.Get()
 	noteType := strings.ToLower(strings.TrimSpace(req.Type))
 	if noteType == "" {
-		noteType = config.DefaultType
-		notes = append(notes, fmt.Sprintf(
-			"type defaulted to %q; re-typing later is a frontmatter edit with no file move",
-			config.DefaultType))
-	}
-	if !validTypes[noteType] {
+		if contractErr == nil {
+			noteType = contract.DefaultType
+			notes = append(notes, fmt.Sprintf(
+				"type defaulted to %q; re-typing later is a frontmatter edit with no file move",
+				noteType))
+		} else {
+			notes = append(notes, "filing is halted (the storage rules do not parse), so this "+
+				"landed untyped; the next pass over `unfiled` types it")
+		}
+	} else if contractErr != nil {
+		c.refused.Add(1)
+		return Result{}, fmt.Errorf("cannot validate type %q — filing is halted: %w",
+			noteType, contractErr)
+	} else if !contract.IsMemoryType(noteType) {
 		return Result{}, fmt.Errorf("type %q is not one of: %s",
-			noteType, strings.Join(config.Types, ", "))
+			noteType, strings.Join(contract.TypesSorted(), ", "))
 	}
 
 	status := strings.ToLower(strings.TrimSpace(req.Status))
@@ -165,6 +193,7 @@ func (c *Capturer) Do(req Request) (Result, error) {
 
 	body := renderNote(noteData{
 		Type:     noteType,
+		Altitude: DefaultAltitude,
 		Status:   status,
 		Captured: captured,
 		Slug:     slug,
@@ -263,6 +292,7 @@ func writeAtomic(abs, body string) error {
 
 type noteData struct {
 	Type     string
+	Altitude string
 	Status   string
 	Captured time.Time
 	Slug     string
@@ -283,6 +313,11 @@ func renderNote(d noteData) string {
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "type: %s\n", d.Type)
 	fmt.Fprintf(&b, "status: %s\n", d.Status)
+	// Written rather than left implied. `artifact` is what a note is until
+	// something judges otherwise, and a field that is present and default is a
+	// field a later pass can change in place — an absent one has to be
+	// distinguished from a deliberate one first.
+	fmt.Fprintf(&b, "altitude: %s\n", d.Altitude)
 	fmt.Fprintf(&b, "captured: %s\n", d.Captured.Format(index.CapturedFormat()))
 	fmt.Fprintf(&b, "updated: %s\n", d.Captured.Format(index.CapturedFormat()))
 	fmt.Fprintf(&b, "slug: %s\n", d.Slug)

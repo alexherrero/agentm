@@ -48,7 +48,12 @@ from save import save_entry  # noqa: E402
 
 _USER_AGENT = "agentm-ingest/1.0"
 _FETCH_TIMEOUT_SEC = 15
-_INGEST_KIND = "domain-reference"
+# `reference`, not `domain-reference`: the latter is retired by the storage
+# rules' deprecation map, and save_entry() would migrate it on every call. Naming
+# the current value here means the ingest path is not leaning on that migration
+# forever — and, since the value decides the target directory, it is also what
+# puts ingested notes in the same place the rest of the corpus keeps references.
+_INGEST_KIND = "reference"
 _URL_SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 
 

@@ -47,8 +47,16 @@ _GROUP_SEGMENT = re.compile(r"^[a-z0-9-]+(/[a-z0-9-]+)*$")
 # Locked frontmatter field order — the schema source of truth shared with
 # `vault_lint.py` (V4 #33 DC-2: the lint reuses this so the two can't drift).
 # `_build_frontmatter` below emits fields in this exact order; a test pins them.
+# `altitude` sits beside `status` because the two are the note's own account of
+# itself — what stage of life it is in, and how durable a claim it makes. Both
+# are always emitted; every field after them is caller-supplied or optional.
+#
+# The vocabulary field is spelled `kind` here and emitted as `type` for a memory
+# — one slot, and `_resolve_vocabulary` decides which name it takes. Listing both
+# would imply a note could carry both, which is the one thing the contract
+# forbids.
 FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
-    "kind", "status", "created", "updated", "tags", "arc", "group", "slug",
+    "kind", "status", "altitude", "created", "updated", "tags", "arc", "group", "slug",
     "source_url", "source_fetched",
     "fingerprint", "occurrences", "always_load", "supersedes", "lifecycle_tier",
     "derived_from", "heat_pin",
@@ -71,9 +79,13 @@ FRONTMATTER_FIELD_ORDER: tuple[str, ...] = (
 # names the temporal wave of work a decisions/designs entry belongs to (a
 # V5/V6/V7/V8 roadmap wave, architecture-governance, a lettered AG build wave,
 # …), validated against arc_registry.py. Optional: most entries carry no arc.
+# `altitude` is emitted on every new entry and REQUIRED on none. Those are not in
+# tension: the default is what absence means, so a note written before the field
+# existed is complete without it — and requiring it would have turned every note
+# in the corpus into a lint error to make a point the default already makes.
 _OPTIONAL_FIELDS = frozenset({
     "source_url", "source_fetched", "fingerprint", "occurrences", "supersedes",
-    "lifecycle_tier", "derived_from", "heat_pin", "arc",
+    "lifecycle_tier", "derived_from", "heat_pin", "arc", "altitude",
 })
 REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
     f for f in FRONTMATTER_FIELD_ORDER if f not in _OPTIONAL_FIELDS
@@ -83,6 +95,61 @@ REQUIRED_FRONTMATTER_FIELDS: tuple[str, ...] = tuple(
 def _today_iso() -> str:
     """Today's date in YYYY-MM-DD UTC."""
     return date.today().isoformat()
+
+
+# Altitude is the axis ranking dampens on: `canonical` states something durable,
+# `artifact` records a moment. The default is `artifact`, so a note earns
+# `canonical` rather than assuming it.
+ALTITUDES = ("artifact", "canonical")
+DEFAULT_ALTITUDE = "artifact"
+
+
+def _resolve_vocabulary(value: str) -> tuple:
+    """Decide whether `value` names a memory type or a record kind.
+
+    Returns `(field_name, resolved_value, note_or_None)` where `field_name` is
+    "type" or "kind". A note carries one or the other, never both: `type` for
+    something that asserts, `kind` for something that records.
+
+    A retired value is migrated to its replacement rather than refused. That is
+    what the deprecation map is for — the collapse is meant to be mechanical, and
+    a writer that rejected `domain-reference` would break the ingest path to make
+    a point the map already makes. The migration is reported back to the caller
+    so it shows up rather than happening quietly.
+
+    A value the contract does not carry at all is refused: it is neither a memory
+    type nor a record kind, and guessing which would be inventing vocabulary.
+    """
+    try:
+        import storage_rules
+    except ImportError:  # pragma: no cover - same-dir sibling
+        return "kind", value, None
+
+    try:
+        rules = storage_rules.rules()
+    except storage_rules.StorageRulesError as exc:
+        raise ValueError(
+            f"cannot file {value!r} — the filing contract is unavailable, so there "
+            f"is no vocabulary to check it against: {exc}"
+        ) from exc
+
+    note = None
+    replacement = rules.resolve_deprecated(value)
+    if replacement is not None:
+        note = f"{value!r} is retired; filed as {replacement!r}"
+        value = replacement
+
+    if value in rules.memory_types():
+        return "type", value, note
+    if value in rules.record_kinds():
+        return "kind", value, note
+
+    raise ValueError(
+        f"{value!r} is in neither register in the storage rules. Add it to "
+        f"`standards/storage-rules.md` — a memory type if it asserts something, a "
+        f"record kind if it records something — or use one of: "
+        f"{', '.join(sorted(rules.memory_types()))}"
+    )
 
 
 def _validate_kebab(value: str, arg_name: str) -> None:
@@ -115,6 +182,8 @@ def _build_frontmatter(
     *,
     kind: str,
     group: str,
+    vocabulary_field: str = "kind",
+    altitude: str = DEFAULT_ALTITUDE,
     slug: str,
     tags: list[str],
     always_load: bool,
@@ -160,8 +229,9 @@ def _build_frontmatter(
     tags_yaml = "[]" if not tags else "[" + ", ".join(tags) + "]"
     lines = [
         "---",
-        f"kind: {kind}",
+        f"{vocabulary_field}: {kind}",
         "status: active",
+        f"altitude: {altitude}",
         f"created: {today}",
         f"updated: {today}",
         f"tags: {tags_yaml}",
@@ -228,6 +298,12 @@ def save_entry(
         raise FileNotFoundError(f"vault path is not a directory: {vault}")
 
     _validate_kebab(kind, "kind")
+    # Resolved before anything reads it, because it decides two things at once:
+    # which frontmatter field the note carries, and — since the target path is
+    # vault/group/<value>/slug.md — where the note lands. A retired value
+    # migrating to its replacement therefore also moves where NEW notes of that
+    # value are written, which is the collapse working rather than a side effect.
+    vocabulary_field, kind, vocabulary_note = _resolve_vocabulary(kind)
     _validate_kebab(slug, "slug")
     _validate_group(group)
     tags = tags or []
@@ -296,6 +372,7 @@ def save_entry(
     # Build content.
     fm = _build_frontmatter(
         kind=kind,
+        vocabulary_field=vocabulary_field,
         group=group,
         slug=slug,
         tags=tags,

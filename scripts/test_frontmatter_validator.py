@@ -37,14 +37,51 @@ class TestValidateSingleNote(unittest.TestCase):
             self.assertEqual(fv.validate(note), [])
 
     def test_missing_required_field(self):
+        """Each missing contract field is reported by name.
+
+        The required set is the filing design's frontmatter block, not the shape
+        `save.py` happened to emit: `tags` and `group` are no longer required (see
+        the next test), and `created` is accepted as the legacy spelling of
+        `captured`."""
         with tempfile.TemporaryDirectory() as tmp:
             note = Path(tmp) / "a.md"
             _write(note, "---\nkind: fix\nstatus: active\ncreated: 2026-07-10\n---\n\nbody\n")
             violations = fv.validate(note)
             self.assertTrue(any("updated" in v for v in violations))
-            self.assertTrue(any("tags" in v for v in violations))
-            self.assertTrue(any("group" in v for v in violations))
             self.assertTrue(any("slug" in v for v in violations))
+            # `created` stands in for `captured`, so that one is not reported.
+            self.assertFalse(any("captured" in v for v in violations))
+
+    def test_tags_and_group_are_no_longer_required(self):
+        """Pinned so the drop is a decision rather than an omission.
+
+        `group` was a directory pointer into the layout this rescope replaces —
+        class is a directory and everything else is frontmatter, so it is a
+        second, staler answer to a question the path already answers. `tags` is
+        dropped from *required* because an untagged capture is ordinary, and a
+        validator that refuses one only teaches the writer to emit `tags: []`."""
+        with tempfile.TemporaryDirectory() as tmp:
+            note = Path(tmp) / "a.md"
+            _write(note, "---\nkind: fix\nstatus: active\ncaptured: 2026-07-10\n"
+                         "updated: 2026-07-10\nslug: a\n---\n\nbody\n")
+            self.assertEqual(fv.validate(note), [])
+
+    def test_an_unfiled_capture_needs_no_vocabulary_yet(self):
+        """Filing assigns the type, and capture never waits on a model — so a
+        freshly captured note legitimately carries neither field."""
+        with tempfile.TemporaryDirectory() as tmp:
+            note = Path(tmp) / "a.md"
+            _write(note, "---\nstatus: unfiled\ncaptured: 2026-07-10\n"
+                         "updated: 2026-07-10\nslug: a\n---\n\nbody\n")
+            self.assertEqual(fv.validate(note), [])
+
+    def test_a_filed_note_without_a_vocabulary_is_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            note = Path(tmp) / "a.md"
+            _write(note, "---\nstatus: active\ncaptured: 2026-07-10\n"
+                         "updated: 2026-07-10\nslug: a\n---\n\nbody\n")
+            violations = fv.validate(note)
+            self.assertTrue(any("`type` or `kind`" in v for v in violations), violations)
 
     def test_unknown_kind_is_flagged_not_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -50,6 +50,8 @@ if str(_HERE) not in sys.path:
 
 import save  # noqa: E402  (schema source of truth — same skill dir)
 import arc_registry  # noqa: E402  (2026-07-18 arc-as-metadata convention)
+import kind_registry  # noqa: E402  (the vocabulary registry, read from the storage rules)
+import storage_rules  # noqa: E402  (the filing contract, asked of the daemon)
 from kind_registry import is_known  # noqa: E402  (auto-organization part 3 task 7 — kind-taxonomy check)
 
 # Directories that are NOT memory-entry trees — skipped during the walk.
@@ -563,19 +565,38 @@ def check_dangling_supersession_status(entry: Entry, model: VaultModel) -> list:
 
 
 def check_kind_taxonomy(entry: Entry, model: VaultModel) -> list:
-    """`kind` isn't in the known-kinds registry (auto-organization part 3,
-    task 7). Reuses `kind_registry.is_known` directly rather than
-    reimplementing the registry check — narrowly scoped to just the
-    taxonomy question, not a duplicate of `check_kebab_case`'s
-    kebab-format check or `check_required_fields`'s presence check."""
-    kind = entry.frontmatter.get("kind", "").strip()
-    if kind and not is_known(kind):
+    """The note's vocabulary value is one the storage rules recognize.
+
+    Reuses `kind_registry` directly rather than reimplementing the lookup —
+    narrowly scoped to the taxonomy question, not a duplicate of
+    `check_kebab_case`'s format check or `check_required_fields`'s presence
+    check.
+
+    Three outcomes, not two. A **retired** value is one the collapse has a
+    replacement for and has not reached yet: that is a running migration, so it
+    reports at `info` and names the replacement. An **unrecognized** value is one
+    no register carries and no deprecation maps — that is the genuine "nobody
+    knows what this is" case, and it stays a `warn`. Collapsing the two would
+    have made every mid-migration note look like a taxonomy failure.
+    """
+    value = entry.frontmatter.get("type", "").strip() or entry.frontmatter.get("kind", "").strip()
+    if not value:
+        return []
+    if is_known(value):
+        return []
+    if kind_registry.is_retired(value):
         return [Finding(
-            "kind-taxonomy", "warn", entry.rel,
-            f"`kind: {kind}` is not in the known-kinds registry",
-            "use a registered kind, or add this one to kind_registry.py's KNOWN_KINDS if it's a genuine addition",
+            "kind-taxonomy", "info", entry.rel,
+            f"`{value}` is retired — the collapse replaces it with "
+            f"`{kind_registry.replacement_for(value)}`",
+            "the type-collapse migration rewrites this; nothing to do by hand",
         )]
-    return []
+    return [Finding(
+        "kind-taxonomy", "warn", entry.rel,
+        f"`{value}` is in neither register in the storage rules",
+        "use a registered value, or add it to `standards/storage-rules.md` — a "
+        "memory type if it asserts something, a record kind if it records something",
+    )]
 
 
 def check_arc_registry(entry: Entry, model: VaultModel) -> list:
@@ -631,7 +652,26 @@ def _parse_tags(raw: str) -> list:
 
 
 def lint_model(model: VaultModel) -> list:
-    """Run every check over every entry. Returns a flat list[Finding]."""
+    """Run every check over every entry. Returns a flat list[Finding].
+
+    The taxonomy check reads the filing contract, and when that is unavailable —
+    an unparseable rules file, a daemon that is not installed — there is no
+    vocabulary to check anything against. Reporting the rest of the findings and
+    quietly dropping that one would be the worst outcome: a lint that says
+    "clean" while the check most likely to catch a taxonomy problem never ran. So
+    the whole pass reports the contract failure as an error and stops.
+    """
+    try:
+        storage_rules.rules()
+    except storage_rules.StorageRulesError as exc:
+        return [Finding(
+            "storage-rules", "error", "<vault>",
+            f"the filing contract is unavailable, so the taxonomy cannot be "
+            f"checked: {exc}",
+            "fix `standards/storage-rules.md`, or make the daemon reachable — "
+            "lint reports nothing else until the vocabulary resolves",
+        )]
+
     findings = []
     for entry in model.entries:
         for chk in CHECKS:

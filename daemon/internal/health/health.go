@@ -39,6 +39,20 @@ const (
 	AlertIndexStale  = "index-stale"
 	AlertProbeFailed = "probe-failed"
 	AlertProbeStale  = "probe-stale"
+	AlertContract    = "filing-contract"
+)
+
+// Filing-contract states.
+const (
+	// ContractHealthy means the operator's own rules file resolved and parsed.
+	ContractHealthy = "healthy"
+	// ContractDefault means the binary's embedded copy is what runs, because no
+	// vault instance was found. A working install, and a warning sign on a
+	// machine that should have one.
+	ContractDefault = "default"
+	// ContractBroken means a rules file resolved and would not parse. Filing is
+	// halted and typed captures are refused until it does.
+	ContractBroken = "broken"
 )
 
 // Git states, in the vocabulary the status surface reports them in.
@@ -67,6 +81,61 @@ type Embedder struct {
 	Stale    int `json:"stale"`
 	Dim      int `json:"dim,omitempty"`
 	Restarts int `json:"restarts"`
+}
+
+// Contract reports whether the filing contract is readable.
+//
+// This component exists because the failure it describes is otherwise invisible.
+// When `standards/storage-rules.md` will not parse, the daemon keeps serving:
+// search does not read the taxonomy, and an ambient capture supplies no type, so
+// the two loudest surfaces both look fine. What has actually stopped is filing —
+// and a capture that names a type is being refused, one caller at a time, with
+// nothing counting it. A degradation that only shows up as "memories stopped
+// getting better" is one that gets found in a month.
+//
+// Same reasoning the embedder's `degraded` state carries: it has to be visible on
+// the status surface rather than inferred from bad results.
+type Contract struct {
+	// State is one of healthy / default / broken.
+	State  string `json:"state"`
+	Detail string `json:"detail,omitempty"`
+	// Source is the file that won resolution, so a surprising contract is
+	// diagnosable without re-deriving the resolution order by hand.
+	Source string `json:"source,omitempty"`
+	// Hash is the contract a filing judgment made right now would be stamped
+	// with — the same value a memory carries as `rules_hash`.
+	Hash string `json:"hash,omitempty"`
+	// RefusedCaptures counts captures rejected since boot because the caller
+	// named a type and there was no contract to validate it against. The
+	// quietest symptom of a broken contract, and the one that means a client is
+	// failing every write.
+	RefusedCaptures int64 `json:"refused_captures"`
+	// CheckedAt is when the contract was last re-read. A status is about now
+	// only if this is.
+	CheckedAt time.Time `json:"checked_at,omitempty"`
+}
+
+// Filing reports whether anything can be filed at all.
+func (c Contract) Filing() bool { return c.State != ContractBroken }
+
+// String is the status line's one-liner.
+func (c Contract) String() string {
+	switch c.State {
+	case ContractBroken:
+		s := "broken — filing is halted"
+		if c.Detail != "" {
+			s += ": " + c.Detail
+		}
+		if c.RefusedCaptures > 0 {
+			s += fmt.Sprintf(" (%d typed capture(s) refused since boot)", c.RefusedCaptures)
+		}
+		return s
+	case ContractDefault:
+		return "the binary's embedded default — no vault instance, so edits to one " +
+			"will not take effect"
+	default:
+		return fmt.Sprintf("%s (%s)", c.Source, c.Hash)
+	}
 }
 
 // Hybrid reports whether the vector arm can actually serve a search: a warm
@@ -203,6 +272,7 @@ type Report struct {
 	Index      Freshness  `json:"index"`
 	Git        Git        `json:"git"`
 	Embedder   Embedder   `json:"embedder"`
+	Contract   Contract   `json:"contract"`
 	Probe      ProbeState `json:"probe"`
 	Thresholds Thresholds `json:"thresholds"`
 }
@@ -252,6 +322,11 @@ type Input struct {
 	// is a second source of truth about neither.
 	Embedder Embedder
 
+	// Contract is passed through rather than derived, for the same reason the
+	// embedder is: the holder owns the resolution, and health is a second source
+	// of truth about neither.
+	Contract Contract
+
 	Probe      ProbeState
 	ProbeAt    time.Time
 	Thresholds Thresholds
@@ -278,6 +353,7 @@ func Evaluate(in Input) Report {
 		},
 		Git:      Git{State: GitHealthy},
 		Embedder: in.Embedder,
+		Contract: in.Contract,
 		Probe:    in.Probe,
 	}
 
@@ -363,6 +439,26 @@ func Evaluate(in Input) Report {
 						"every other one", short(age), short(in.Thresholds.ProbeStale)))
 			}
 		}
+	}
+
+	// --- the filing contract ------------------------------------------------
+	//
+	// Alerted, unlike git-degraded. Git being unavailable is a known, deliberate,
+	// operator-owned condition scheduled for later, and paging daily about a
+	// scheduled migration teaches a reader to delete the mail unread. A contract
+	// that stopped parsing is the opposite: nobody chose it, it happened just
+	// now, and it is silently holding up every filing decision in the system.
+	// That is what this channel is for.
+	if in.Contract.State == ContractBroken {
+		detail := "the filing contract does not parse, so nothing is being filed"
+		if in.Contract.Detail != "" {
+			detail += ": " + in.Contract.Detail
+		}
+		if in.Contract.RefusedCaptures > 0 {
+			detail += fmt.Sprintf(". %d capture(s) naming a type have been refused since boot",
+				in.Contract.RefusedCaptures)
+		}
+		r.add(AlertContract, detail)
 	}
 
 	if len(r.Alerts) > 0 {

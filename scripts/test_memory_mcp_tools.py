@@ -187,7 +187,7 @@ class TestMemoryAppendIdempotency(unittest.IsolatedAsyncioTestCase):
         """Written entry file is present and readable on disk."""
         transport = FastMCPTransport(_srv.mcp)
         async with Client(transport) as client:
-            res = await self._call_append(client, content="hello vault", kind="user", title="hello-test")
+            res = await self._call_append(client, content="hello vault", kind="preference", title="hello-test")
 
         entry_path = self._vault / res["id"]
         self.assertTrue(entry_path.is_file(), f"Entry file not found: {entry_path}")
@@ -820,7 +820,7 @@ class TestWriterTwoRouting(unittest.IsolatedAsyncioTestCase):
         async with Client(transport) as client:
             app = await client.call_tool("memory_append", {
                 "content": "atomic write proof",
-                "kind": "user",
+                "kind": "preference",
                 "title": "atomic-forget-test",
             })
             entry_id = app.data["id"]

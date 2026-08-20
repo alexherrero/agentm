@@ -34,8 +34,8 @@ import (
 	// `go test ./...` would serve cached e2e results after an internal/ change.
 	// A suite that can be served from cache while the behaviour under it changed is
 	// the same failure as a suite that never asked. These imports close that.
-	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/note"
+	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
 // TestMeasuredConstants pins the index's parameters to the literals in
@@ -72,8 +72,15 @@ func TestMeasuredConstants(t *testing.T) {
 	if got := note.Multiplier([]string{note.ClassFragmentPromoted}); got != 1.0 {
 		t.Errorf("promoted fragment multiplier = %v, want 1.0", got)
 	}
-	if len(config.Types) != 6 {
-		t.Errorf("%d types ship, the design collapses the taxonomy to 6", len(config.Types))
+	// The taxonomy now comes from the filing contract rather than a constant, so
+	// this asks the shipped contract the same question it used to ask the
+	// constant: six types ship, and the growth rule is what keeps it six.
+	shipped, err := rules.Load("")
+	if err != nil {
+		t.Fatalf("the shipped filing contract does not parse: %v", err)
+	}
+	if len(shipped.MemoryTypes) != 6 {
+		t.Errorf("%d types ship, the design collapses the taxonomy to 6", len(shipped.MemoryTypes))
 	}
 }
 
