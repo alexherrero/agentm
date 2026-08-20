@@ -170,6 +170,22 @@ func (x *Index) migrate() error {
 				vec        BLOB NOT NULL,
 				PRIMARY KEY (doc_id, chunk_idx))`,
 		`CREATE INDEX IF NOT EXISTS embeddings_model ON embeddings(model)`,
+		// The chunk index. Added ADDITIVELY, with no SchemaVersion bump: a bump
+		// discards the whole file, and the expensive half of rebuilding it is the
+		// re-embed, which nothing here touches. The schema's own note about
+		// version 3 says exactly this — a change that does not touch vectors is
+		// worth making additively.
+		//
+		// Keyed (doc_id, chunk_idx) like `embeddings`, and for the same reason:
+		// deleting a note's docmeta row takes its chunk rows with it. `header_path`
+		// is what makes a match point at a section rather than a file.
+		`CREATE TABLE IF NOT EXISTS chunks (
+				doc_id      INTEGER NOT NULL,
+				chunk_idx   INTEGER NOT NULL,
+				header_path TEXT NOT NULL DEFAULT '',
+				content     TEXT NOT NULL,
+				PRIMARY KEY (doc_id, chunk_idx))`,
+		`CREATE INDEX IF NOT EXISTS chunks_header ON chunks(header_path)`,
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
 	}
 	for _, s := range stmts {
@@ -272,6 +288,15 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	if _, err := tx.Exec(
 		`INSERT INTO docs(rowid, path, title, meta, body) VALUES(?, ?, ?, ?, ?)`,
 		id, n.Rel, n.Title, n.Meta, n.Body); err != nil {
+		return err
+	}
+
+	// The chunk rows ride the same transaction as the lexical row, so a note is
+	// never half-indexed: either both are there or neither is. Rebuilt from the
+	// body every time rather than reconciled row-by-row, because a note that lost
+	// a section should lose its rows — reconciling is how a stale chunk survives
+	// an edit that removed the text it holds.
+	if err := replaceChunksTx(tx, id, BuildChunks(n.Title, n.Body, chunkBudgetTokens)); err != nil {
 		return err
 	}
 	return tx.Commit()
