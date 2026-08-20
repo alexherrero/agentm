@@ -1,0 +1,431 @@
+{
+  "avg_rank_to_first_hit": 1.82,
+  "false_positives": 0,
+  "hits": 50,
+  "k": 5,
+  "negatives": 20,
+  "per_question": {
+    "dt01": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "dt02": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "dt03": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "dt04": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "dt05": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "dt06": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "dt07": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "dt08": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "dt09": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "dt10": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "dt11": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "dt12": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "ep01": {
+      "hit": true,
+      "negative": false,
+      "rank": 4
+    },
+    "ep02": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "ep03": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "ep04": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "ep05": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "ep06": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "ep07": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "ep08": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "ep09": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "ep10": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "ep11": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "ep12": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "ng01": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng02": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng03": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng04": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng05": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng06": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng07": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng08": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng09": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng10": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng11": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng12": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng13": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng14": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng15": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng16": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng17": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng18": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng19": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ng20": {
+      "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "pp01": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "pp02": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "pp03": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "pp04": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "pp05": {
+      "hit": true,
+      "negative": false,
+      "rank": 5
+    },
+    "pp06": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "pp07": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "pp08": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "pp09": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "pp10": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "pp11": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "pp12": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "pp13": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "pp14": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "pp15": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "pp16": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "pp17": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "pp18": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "rc01": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "rc02": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rc03": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "rc04": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "rc05": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rc06": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rc07": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rc08": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "rc09": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rc10": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "rc11": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rc12": {
+      "hit": true,
+      "negative": false,
+      "rank": 5
+    },
+    "rd01": {
+      "hit": false,
+      "negative": false,
+      "rank": null
+    },
+    "rd02": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rd03": {
+      "hit": true,
+      "negative": false,
+      "rank": 3
+    },
+    "rd04": {
+      "hit": true,
+      "negative": false,
+      "rank": 4
+    },
+    "rd05": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    },
+    "rd06": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rd07": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rd08": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rd09": {
+      "hit": true,
+      "negative": false,
+      "rank": 1
+    },
+    "rd10": {
+      "hit": true,
+      "negative": false,
+      "rank": 2
+    }
+  },
+  "r_at_k": 0.78125,
+  "scored": 64
+}

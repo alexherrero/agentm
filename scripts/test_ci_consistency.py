@@ -77,6 +77,11 @@ UNIT_WRAPPED = {
     "check-no-hardcoded-vault-path.py": "test_check_no_hardcoded_vault_path.py",
     "check-opinion-honesty.py": "test_check_opinion_honesty.py",
     "check-slop.py": "test_check_slop.py",
+    # Needs a daemon, a vault and a warm embedder, none of which a runner has,
+    # so the gate itself can only ever skip on CI. The wrapper covers everything
+    # it decides *with* — the comparison, the exact paired test, and the refusal
+    # to score an untrustworthy corpus — against fixtures.
+    "check-retrieval-regression.sh": "test_eval_retrieval_shipped.py",
     # Needs crickets' real plugin set as ground truth, so it graceful-skips
     # wherever the sibling checkout is absent — including CI. Same posture (and
     # same reason) as check-slop.py's delegation to the crickets-side scanner.
