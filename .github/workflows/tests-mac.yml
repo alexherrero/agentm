@@ -30,6 +30,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # macos-latest ships jq, python3, and pwsh 7+ preinstalled.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+      - name: Build agentmd (the filing contract's only parser)
+        # The daemon owns the storage-rules parser and the Python tests below ask
+        # it rather than parsing the file a second time, so every matrix needs a
+        # binary — not just the one where the parser was written.
+        run: |
+          go -C daemon build -o "$RUNNER_TEMP/agentmd" ./cmd/agentmd
+          echo "AGENTMD=$RUNNER_TEMP/agentmd" >> "$GITHUB_ENV"
       - name: Install Python deps (for validate script)
         # fastmcp lets verify-mcp-surface.py + the auto-discovered
         # test_memory_mcp_tools.py actually run instead of gracefully

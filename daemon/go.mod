@@ -8,7 +8,7 @@ require (
 	modernc.org/sqlite v1.56.0
 )
 
-require gopkg.in/yaml.v3 v3.0.1 // indirect
+require gopkg.in/yaml.v3 v3.0.1
 
 require (
 	dario.cat/mergo v1.0.0 // indirect

@@ -30,6 +30,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # windows-latest ships pwsh 7+ and Python preinstalled.
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: daemon/go.mod
+      - name: Build agentmd (the filing contract's only parser)
+        # Same reason as the other two matrices; the difference is only the
+        # executable suffix and how an env var is exported here.
+        shell: pwsh
+        run: |
+          go -C daemon build -o "$env:RUNNER_TEMP\agentmd.exe" ./cmd/agentmd
+          "AGENTMD=$env:RUNNER_TEMP\agentmd.exe" | Out-File -FilePath $env:GITHUB_ENV -Append
       - name: Install Python deps (for validate script)
         run: python -m pip install pyyaml
       - name: Run smoke-install (pwsh) + post-install integrity
