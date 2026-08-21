@@ -1236,6 +1236,7 @@ func cmdEnrich(args []string) error {
 	}
 	pass := enrich.NewPass(enrich.DefaultCaller(name), cfg.EnrichConcurrency)
 	pass.SetEnabled(true)
+	attachPreGates(pass, cfg, budget)
 
 	write := func(_ context.Context, rel, body string) error {
 		return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
@@ -1261,4 +1262,46 @@ func cmdEnrich(args []string) error {
 		fmt.Println("error:", e)
 	}
 	return nil
+}
+
+// attachPreGates registers the five deterministic checks, in order.
+//
+// Wired here rather than inside the enrich package because two of them need
+// things the package deliberately does not import: the filing contract, for
+// which spaces a background pass may read, and the rules hash that versions the
+// idempotency key. Passing them in keeps `enrich` a pass rather than a
+// dependency hub.
+func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget) {
+	// The contract decides which spaces a model may read. When it will not
+	// parse, nothing is readable — the safe direction, and the same one
+	// `applyDampenedSpaces` takes: dampening too little is a leak the operator
+	// can see, and sending `personal/` to a model is not.
+	mayRead := func(rel string) bool {
+		loaded, err := cfg.Rules.Get()
+		if err != nil {
+			return false
+		}
+		return loaded.MayReadWithModel(rel)
+	}
+
+	rulesHash := "unresolved"
+	if loaded, err := cfg.Rules.Get(); err == nil {
+		rulesHash = loaded.Hash
+	}
+
+	pass.AddPre(
+		enrich.DefaultEligibility(mayRead),
+		enrich.DefaultPrivacy(),
+		enrich.DefaultSize(),
+		&enrich.Fingerprint{
+			Version:   enrich.PassVersion,
+			RulesHash: rulesHash,
+			// No ledger yet — that is the dreaming part. Until then nothing is
+			// remembered between runs, so the gate is honest about costing a
+			// call it might not have needed rather than pretending to an
+			// idempotency it cannot yet provide.
+			Seen: nil,
+		},
+		enrich.NewCycleBudget(budget.MaxCalls, budget.MaxDuration),
+	)
 }
