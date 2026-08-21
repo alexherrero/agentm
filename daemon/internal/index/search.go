@@ -236,7 +236,8 @@ func (x *Index) andRanked(text string, k int, after, before string) (SearchOutco
 	out.Matched = len(rows)
 
 	decayLog, decayNow := x.decayClock()
-	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow)
+	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
+		note.QueryWantsArtifact(text))
 
 	// One expression won every row here, unlike fusion's per-subset map, but the
 	// shape is shared so both paths snippet through one function.
@@ -260,7 +261,7 @@ func (x *Index) andRanked(text string, k int, after, before string) (SearchOutco
 //
 // Roughly twenty lines, worth +3.75 points of R@5 at p = 0.0195.
 func penalizeAndRank(rows []Result, k int) []Result {
-	return penalizeRankAndDecay(rows, k, nil, time.Time{})
+	return penalizeRankAndDecay(rows, k, nil, time.Time{}, false)
 }
 
 // penalizeRankAndDecay is penalizeAndRank plus age.
@@ -274,9 +275,17 @@ func penalizeAndRank(rows []Result, k int) []Result {
 //
 // A nil log or a zero `now` disables it, which is what every caller that has no
 // vault to read an access record from passes.
-func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Time) []Result {
+func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Time,
+	wantArtifact bool) []Result {
 	for i := range rows {
 		flags := splitFlags(rows[i].Penalty)
+		// A question that asks for the artifact shape gets the artifact dampening
+		// lifted, which is the design's "boosted on a question that asks for it by
+		// name" expressed as the removal of a penalty. See note.QueryWantsArtifact
+		// for why it is removal and not a multiplier above 1.0.
+		if wantArtifact {
+			flags = withoutFlag(flags, note.ClassArtifact)
+		}
 		mult := note.Multiplier(flags)
 
 		// Age, folded into the same multiplier. Multiplicative for the reason the
@@ -436,7 +445,8 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3 bool
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
 	decayLog, decayNow := x.decayClock()
-	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow)
+	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
+		note.QueryWantsArtifact(text))
 
 	if len(out.Results) == 0 {
 		out.Note = "0 results. No two terms of this query appear together in any one note."
@@ -500,7 +510,8 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// have no effect at all — the penalized note would already have contributed
 	// its rank-1 reciprocal.
 	decayLog, decayNow := x.decayClock()
-	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow)
+	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
+		note.QueryWantsArtifact(text))
 
 	fused := fuseRRF(lexical.Results, dense)
 	out := SearchOutcome{Results: fused, Matched: len(fused)}
@@ -820,4 +831,17 @@ func normalizeBound(s string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%q is not a date I can read; use YYYY-MM-DD or RFC3339", s)
+}
+
+// withoutFlag returns flags with one class removed, leaving the input untouched.
+// The row keeps its recorded Penalty either way, so a lifted note still reports
+// what class it is — the lift changes its rank, not its identity.
+func withoutFlag(flags []string, drop string) []string {
+	out := make([]string, 0, len(flags))
+	for _, f := range flags {
+		if f != drop {
+			out = append(out, f)
+		}
+	}
+	return out
 }

@@ -50,6 +50,21 @@ const (
 	// spaces pay — changing what is durable does nothing until the affected notes
 	// are reindexed.
 	ClassDurable = "durable"
+	// ClassArtifact is a note that records a moment rather than stating
+	// something durable — session exhaust, a distilled meeting, a one-off
+	// observation. It is dampened on a general question and undampened when the
+	// question asks for that shape.
+	//
+	// Set only when the note says `altitude: artifact` in so many words. The
+	// design makes `artifact` the *default* so that `canonical` has to be earned,
+	// and that default belongs in enrichment, which assigns the field — not here,
+	// as a fallback for its absence. The difference matters right now: no note in
+	// this corpus carries `altitude` yet, and a ranker that treated every one of
+	// them as an artifact would apply a multiplier to every row. That is not the
+	// no-op it looks like, because the negative-IDF clamp below only fires on rows
+	// whose score went negative, so a uniform multiplier reorders exactly the
+	// rows it should leave alone.
+	ClassArtifact = "artifact"
 )
 
 // Weights are applied multiplicatively to the BM25 score.
@@ -77,6 +92,13 @@ var Weights = map[string]float64{
 	// below 0.6 ranks identically, so this number is not a tuning knob and there
 	// is nothing to gain by picking a different one.
 	ClassSpace: 0.30,
+	// Also 0.30, same reasoning. Note that this is the *dampened* case only — a
+	// canonical note carries no flag and so multiplies by 1.0, which is how the
+	// design's "canonical gets a flat lift" is expressed without any multiplier
+	// above 1.0. Nothing here may exceed 1.0: the clamp below assumes a penalty
+	// can only lower a score, and a genuine boost would make a negative-IDF row
+	// rank higher for being penalized.
+	ClassArtifact: 0.30,
 }
 
 // Overfetch is how deep to look before re-ranking. A penalty can only promote a
@@ -197,6 +219,12 @@ func classify(rel, head, body, status string) []string {
 
 	if isDurable(rel, head) {
 		flags = append(flags, ClassDurable)
+	}
+
+	if m := altitudeRe.FindStringSubmatch(head); m != nil {
+		if strings.ToLower(strings.Trim(strings.TrimSpace(m[1]), `'"`)) == ClassArtifact {
+			flags = append(flags, ClassArtifact)
+		}
 	}
 
 	shaped := false
@@ -365,4 +393,44 @@ func isDurable(rel, head string) bool {
 		}
 	}
 	return inDecayExemptSpace(rel)
+}
+
+// artifactAsks are the words that make a question a request for the artifact
+// shape rather than a general one.
+//
+// An explicit list rather than a learned signal, and short on purpose. There is
+// nothing to tune it against: no note in this corpus carries `altitude` yet, so
+// every candidate list scores identically and a longer one would only be a
+// longer guess. It grows when enrichment has populated the field and a measured
+// run says which words actually separate the two intents.
+var artifactAsks = map[string]bool{
+	"meeting":      true,
+	"meetings":     true,
+	"session":      true,
+	"sessions":     true,
+	"standup":      true,
+	"transcript":   true,
+	"transcripts":  true,
+	"conversation": true,
+	"discussed":    true,
+	"discussion":   true,
+	"exhaust":      true,
+}
+
+// QueryWantsArtifact reports whether a question asks for the artifact shape, in
+// which case the artifact dampening is suppressed for that query.
+//
+// Suppressed rather than reversed into a boost. Every multiplier in this ranker
+// is at or below 1.0, and the negative-IDF clamp in penalizeRankAndDecay depends
+// on it: a multiplier above 1.0 applied to a row whose score went negative would
+// move that row *up* for being boosted and *down* for being ordinary. Removing
+// the penalty gets the same ordering as adding a lift, without the trapdoor.
+func QueryWantsArtifact(text string) bool {
+	for _, w := range strings.Fields(strings.ToLower(text)) {
+		w = strings.Trim(w, ".,;:!?\"'()[]")
+		if artifactAsks[w] {
+			return true
+		}
+	}
+	return false
 }

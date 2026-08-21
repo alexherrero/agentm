@@ -21,6 +21,7 @@ var (
 	probeRe       = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
 	capturedRe    = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
 	updatedRe     = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
+	altitudeRe    = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
 	createdRe     = regexp.MustCompile(`(?m)^created:[ \t]*(.+?)[ \t\r]*$`)
 	// The two frontmatter routes into durability — see isDurable.
 	lifecycleTierRe = regexp.MustCompile(`(?m)^lifecycle_tier:[ \t]*(.+?)[ \t\r]*$`)
