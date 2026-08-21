@@ -49,9 +49,18 @@ import (
 //     path.
 //   - **The absolute budget, enforced where it can be met.** Measured on every
 //     machine and reported on every machine. Enforced only when the irreducible
-//     I/O floor leaves room for it — and when it does not, the skip says so
-//     loudly rather than passing quietly, because a gate that goes silent on the
+//     floor leaves room for it — and when it does not, the skip says so loudly
+//     rather than passing quietly, because a gate that goes silent on the
 //     machines it cannot measure is indistinguishable from one that passes.
+//
+// The floor took two attempts to specify, and the first one was wrong in a way
+// worth recording. It timed a bare `os.WriteFile`, on the assumption that file
+// I/O is what a capture spends its time on. A Windows runner then reported a
+// 2.1ms floor beside a 226ms capture p95: the file write was fast and the SQLite
+// commit was not. A floor that measures the wrong half of the transaction will
+// wave through exactly the machine it was meant to excuse, so it now measures a
+// real capture of a near-empty note — the same file write, the same index
+// commit, and nothing to extract.
 const (
 	captureBudgetP95 = 100 * time.Millisecond
 	captureSamples   = 200
@@ -140,43 +149,48 @@ func TestCaptureStaysUnderBudget(t *testing.T) {
 	p95 := samples[len(samples)*95/100]
 	worst := samples[len(samples)-1]
 
-	// The irreducible floor on this machine: write a file of the same size and
-	// commit an index row, with no extraction at all. Whatever this costs is what
-	// the disk costs, and the code cannot be judged below it.
+	// The irreducible floor on this machine: the same transaction with nothing to
+	// extract. Whatever this costs is what the machine costs, and the code cannot
+	// be judged below it.
 	floor := measureFloor(t)
 
-	t.Logf("capture over %d samples: p50 %v · p95 %v · max %v · io floor p95 %v "+
+	t.Logf("capture over %d samples: p50 %v · p95 %v · max %v · txn floor p95 %v "+
 		"(budget p95 < %v)",
 		len(samples), p50.Round(time.Microsecond), p95.Round(time.Microsecond),
 		worst.Round(time.Microsecond), floor.Round(time.Microsecond), captureBudgetP95)
 
 	if floor >= floorSkipThreshold {
-		t.Logf("SKIPPING the absolute budget: the I/O floor alone is %v, past the %v "+
-			"point where this assertion measures the disk rather than the code. The "+
+		t.Logf("SKIPPING the absolute budget: the transaction floor alone is %v, past the %v "+
+			"point where this assertion measures the machine rather than the code. The "+
 			"overhead ratio below still runs, and it is the assertion that catches a "+
 			"regression.", floor.Round(time.Millisecond), floorSkipThreshold)
 		return
 	}
 	if p95 >= captureBudgetP95 {
-		t.Errorf("capture p95 is %v, past the %v budget on a machine whose I/O floor "+
-			"is only %v. Something was added to the capture path that does not belong "+
-			"on it — capture writes the file and updates the index, and waits on "+
-			"nothing else.", p95, captureBudgetP95, floor.Round(time.Microsecond))
+		t.Errorf("capture p95 is %v, past the %v budget on a machine whose transaction "+
+			"floor is only %v. Something was added to the capture path that does not "+
+			"belong on it — capture writes the file and updates the index, and waits "+
+			"on nothing else.", p95, captureBudgetP95, floor.Round(time.Microsecond))
 	}
 }
 
-// measureFloor times the irreducible part of a capture — a file write and an
-// index row — so the absolute budget can tell a slow disk from a slow change.
+// measureFloor times the irreducible part of a capture, so the absolute budget
+// can tell a slow machine from a slow change.
+//
+// A real capture of a near-empty note: the same file write and the same index
+// commit an ordinary capture pays, with nothing to extract. Deliberately not a
+// bare `os.WriteFile` — that was the first version, and it reported 2.1ms on a
+// runner where capture cost 226ms, because the slow half was the database
+// commit and the floor never touched it.
 func measureFloor(t *testing.T) time.Duration {
 	t.Helper()
-	dir := t.TempDir()
+	cp := newHarness(t)
 	samples := make([]time.Duration, 0, 64)
 	for i := 0; i < 64; i++ {
-		path := filepath.Join(dir, fmt.Sprintf("floor-%03d.md", i))
-		content := []byte(body(i))
+		req := Request{Text: "x", Title: fmt.Sprintf("floor %d", i)}
 		start := time.Now()
-		if err := os.WriteFile(path, content, 0o644); err != nil {
-			t.Fatalf("floor write: %v", err)
+		if _, err := cp.Do(req); err != nil {
+			t.Fatalf("floor capture: %v", err)
 		}
 		samples = append(samples, time.Since(start))
 	}
