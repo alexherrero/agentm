@@ -16,9 +16,9 @@ keeps it honest on the days nobody runs the battery by hand.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -34,12 +34,26 @@ GATE = _REPO / "scripts" / "check-retrieval-regression.sh"
 class TheGateExists(unittest.TestCase):
     """The allowlist entry in test_ci_consistency.py points here, and an entry
     whose wrapper stopped mentioning its gate is exactly the silent rot that
-    contract exists to prevent."""
+    contract exists to prevent.
 
-    def test_the_gate_script_is_present_and_executable(self):
+    The two assertions that execute the script are POSIX-only, and the skip is
+    narrow rather than convenient: the gate is a bash script run from
+    `check-all.sh`, which is itself a bash battery Windows never runs. Asserting
+    an exec bit on a filesystem with no exec bit, about a file that platform
+    never executes, would be testing the test. Everything the gate *decides
+    with* — the comparison, the statistic, the refusal — runs on every platform
+    below, and that is the part a Windows runner can meaningfully check."""
+
+    def test_the_gate_script_is_present(self):
         self.assertTrue(GATE.is_file(), f"{GATE} is missing")
-        self.assertTrue(GATE.stat().st_mode & 0o111, "check-retrieval-regression.sh is not executable")
 
+    @unittest.skipIf(os.name == "nt", "POSIX exec bit; the gate is a bash script "
+                                      "run from a battery Windows does not run")
+    def test_the_gate_script_is_executable(self):
+        self.assertTrue(GATE.stat().st_mode & 0o111,
+                        "check-retrieval-regression.sh is not executable")
+
+    @unittest.skipIf(os.name == "nt", "runs the gate under bash with a POSIX PATH")
     def test_the_gate_skips_rather_than_passes_without_a_daemon(self):
         """A skip is never silent. A gate that went quiet on the machines it
         cannot measure would be indistinguishable from one that passes."""
