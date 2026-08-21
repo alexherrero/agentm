@@ -32,6 +32,8 @@ func cmdQueue(args []string) error {
 	add := fs.String("enqueue", "",
 		"record that --owner owes work on this target")
 	reason := fs.String("reason", "", "why the work is owed, for --enqueue")
+	revive := fs.Int64("revive", 0,
+		"put a parked item back in the queue by id, with a clean attempt count")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -57,6 +59,14 @@ func cmdQueue(args []string) error {
 	}
 	ctx := context.Background()
 
+	if *revive > 0 {
+		if err := q.Revive(ctx, *revive); err != nil {
+			return err
+		}
+		fmt.Printf("item %d is back in the queue with no attempts against it\n", *revive)
+		return nil
+	}
+
 	if *add != "" {
 		if *owner == "" {
 			return fmt.Errorf("--enqueue needs --owner: a work item that names no " +
@@ -73,6 +83,9 @@ func cmdQueue(args []string) error {
 		return nil
 	}
 
+	// Owners() lists anything with a row, parked included — an owner whose only
+	// items are parked must still appear, or the work vanishes from the report
+	// at exactly the moment somebody needs to see it.
 	owners := []ledger.Stage{}
 	if *owner != "" {
 		owners = append(owners, *owner)
@@ -86,6 +99,10 @@ func cmdQueue(args []string) error {
 		OldestAge string            `json:"oldest_age,omitempty"`
 		Cursor    int64             `json:"cursor"`
 		Items     []ledger.WorkItem `json:"items,omitempty"`
+		// Parked is listed rather than counted. "Three items are parked" tells
+		// nobody what stopped, and an item that failed three times and vanished
+		// into a number is the silent failure the retry cap exists to prevent.
+		Parked []ledger.WorkItem `json:"parked,omitempty"`
 	}
 	var views []view
 	for _, o := range owners {
@@ -101,7 +118,11 @@ func cmdQueue(args []string) error {
 		if err != nil {
 			return err
 		}
-		v := view{Owner: o, Depth: depth, Cursor: cursor, Items: items}
+		parked, err := q.Dead(ctx, o)
+		if err != nil {
+			return err
+		}
+		v := view{Owner: o, Depth: depth, Cursor: cursor, Items: items, Parked: parked}
 		if age > 0 {
 			v.OldestAge = age.Round(time.Second).String()
 		}
@@ -136,6 +157,14 @@ func cmdQueue(args []string) error {
 			// mentioning it reads as a queue of twenty.
 			fmt.Printf("  … and %d more (pass --limit 0 for all)\n",
 				v.Depth-len(v.Items))
+		}
+		for _, it := range v.Parked {
+			fmt.Printf("  PARKED %-4d %s — failed %dx: %s\n",
+				it.ID, it.Target, it.Attempts, it.LastErr)
+		}
+		if len(v.Parked) > 0 {
+			fmt.Printf("  %d item(s) parked and no longer retried; revive one with "+
+				"--revive <id> once the cause is fixed\n", len(v.Parked))
 		}
 	}
 	return nil

@@ -53,7 +53,19 @@ const (
 	StatePending State = "pending"
 	// StateDone means an owner finished it.
 	StateDone State = "done"
+	// StateDead means it failed too many times and is parked. Parked rather
+	// than deleted: the item is the record of what went wrong, and the whole
+	// point is that somebody can see it.
+	StateDead State = "dead"
 )
+
+// MaxAttempts is how many failures park an item.
+//
+// Three, from the design. The number matters less than the fact that there is
+// one — an item retried forever costs a model call per cycle for as long as
+// nobody notices, and nobody notices because a queue that is quietly failing
+// looks exactly like a queue that is quietly working.
+const MaxAttempts = 3
 
 // WorkItem is one piece of owed work.
 type WorkItem struct {
@@ -92,6 +104,25 @@ type Queue struct {
 	// test land in the same second, and an implementation that deliberately
 	// refreshed the clock would be indistinguishable from one that did not.
 	now func() time.Time
+
+	// maxAttempts is the retry cap. Zero means MaxAttempts.
+	//
+	// Settable so a test can hold parking still while it checks something else.
+	// The cursor's own tests need a queue where nothing ever leaves the pending
+	// set, and a cap of three quietly empties it for a reason that has nothing
+	// to do with the cursor — the test would pass while proving less than it
+	// says.
+	maxAttempts int
+}
+
+// SetMaxAttempts overrides the retry cap. Zero restores the default.
+func (q *Queue) SetMaxAttempts(n int) { q.maxAttempts = n }
+
+func (q *Queue) retryCap() int {
+	if q.maxAttempts > 0 {
+		return q.maxAttempts
+	}
+	return MaxAttempts
 }
 
 // SetClock replaces the queue's clock. For tests that need two enqueues to be
@@ -160,6 +191,14 @@ func (q *Queue) migrate() error {
 // An item already finished is re-opened, with its attempt count cleared. Being
 // discovered again after being done means the world changed, which is new work
 // rather than a continuation of the old failure.
+//
+// A parked item stays parked, and this is the load-bearing half. The reconcile
+// scan runs every cycle and re-discovers the same gaps; if that revived a
+// dead-lettered item, its attempt count would reset nightly, the cap would never
+// be reached twice, and "nothing retries forever" would be false in exactly the
+// way that is hardest to see — the queue would look healthy and the same broken
+// item would be paid for every night. Reviving is Revive, and nothing calls it
+// on a schedule.
 func (q *Queue) Enqueue(ctx context.Context, owner Stage, target, reason string) error {
 	if owner == "" || target == "" {
 		return fmt.Errorf("queue: a work item needs both an owner and a target, "+
@@ -171,9 +210,10 @@ func (q *Queue) Enqueue(ctx context.Context, owner Stage, target, reason string)
 		ON CONFLICT(owner, target) DO UPDATE SET
 			reason = excluded.reason,
 			attempts = CASE WHEN queue.state = ? THEN 0 ELSE queue.attempts END,
-			state = ?`,
+			state = CASE WHEN queue.state = ? THEN ? ELSE ? END`,
 		owner, target, reason, q.stamp().UTC().Format(stampFormat), string(StatePending),
-		string(StateDone), string(StatePending))
+		string(StateDone),
+		string(StateDead), string(StateDead), string(StatePending))
 	if err != nil {
 		return fmt.Errorf("queue: enqueueing %s/%s: %w", owner, target, err)
 	}
@@ -187,15 +227,57 @@ func (q *Queue) Complete(ctx context.Context, id int64) error {
 	return err
 }
 
-// Fail records an attempt that did not work.
+// Fail records an attempt that did not work, and parks the item once it has
+// failed MaxAttempts times.
 //
-// The item stays pending and is tried again on a later cycle. What stops that
-// being forever is the retry cap, which is task 4 and rides this same column.
-func (q *Queue) Fail(ctx context.Context, id int64, cause string) error {
-	_, err := q.db.ExecContext(ctx,
-		`UPDATE queue SET attempts = attempts + 1, last_error = ? WHERE id = ?`,
-		cause, id)
-	return err
+// The parking decision lives here rather than in the drain, so there is one
+// place the cap is applied and no way for a second caller of Fail to bypass it.
+// It returns whether this failure was the one that parked the item, because the
+// run that killed something should be the run that says so.
+func (q *Queue) Fail(ctx context.Context, id int64, cause string) (bool, error) {
+	_, err := q.db.ExecContext(ctx, `
+		UPDATE queue
+		SET attempts = attempts + 1,
+		    last_error = ?,
+		    state = CASE WHEN attempts + 1 >= ? THEN ? ELSE state END
+		WHERE id = ?`, cause, q.retryCap(), string(StateDead), id)
+	if err != nil {
+		return false, err
+	}
+	var state string
+	var attempts int
+	if err := q.db.QueryRowContext(ctx,
+		`SELECT state, attempts FROM queue WHERE id = ?`, id).Scan(&state, &attempts); err != nil {
+		return false, err
+	}
+	return State(state) == StateDead && attempts == q.retryCap(), nil
+}
+
+// Revive puts a parked item back in the queue with its attempt count cleared.
+//
+// Deliberate by construction: nothing calls this on a schedule, and re-discovery
+// explicitly does not. An item parks because something about it is broken, and a
+// revival that happened automatically would be the retry loop the cap exists to
+// stop, wearing a different name.
+func (q *Queue) Revive(ctx context.Context, id int64) error {
+	res, err := q.db.ExecContext(ctx,
+		`UPDATE queue SET state = ?, attempts = 0, last_error = '' WHERE id = ? AND state = ?`,
+		string(StatePending), id, string(StateDead))
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return fmt.Errorf("queue: item %d is not parked; only a dead-lettered "+
+			"item can be revived, and reviving a live one would reset a retry "+
+			"count that is still counting", id)
+	}
+	return nil
+}
+
+// Dead lists the parked items for one owner, which is what makes "nothing
+// retries silently forever" observable rather than merely true.
+func (q *Queue) Dead(ctx context.Context, owner Stage) ([]WorkItem, error) {
+	return q.byState(ctx, owner, StateDead)
 }
 
 // Cursor is where this owner's last drain stopped.
@@ -224,6 +306,10 @@ type DrainReport struct {
 	Attempted int `json:"attempted"`
 	Done      int `json:"done"`
 	Failed    int `json:"failed"`
+	// DeadLettered names the items this drain parked — the ones whose failure
+	// took them to MaxAttempts. Named rather than counted, because the digest
+	// has to be able to say which work stopped.
+	DeadLettered []string `json:"dead_lettered,omitempty"`
 	// Deferred says the cap stopped this drain before the queue ran out. It is
 	// reported rather than logged, because a drain that quietly stopped early
 	// and one that quietly finished look identical from outside — and every
@@ -236,7 +322,12 @@ type DrainReport struct {
 	// Tuesday is a Tuesday and one item three days old means the drain stalled.
 	Depth     int           `json:"depth"`
 	OldestAge time.Duration `json:"oldest_age"`
-	Elapsed   time.Duration `json:"elapsed"`
+	// Parked is how many of this owner's items are dead-lettered in total, not
+	// just this run's. A run that parked nothing over a queue with forty parked
+	// items is not a healthy run, and a report that showed only the delta would
+	// read as one.
+	Parked  int           `json:"parked"`
+	Elapsed time.Duration `json:"elapsed"`
 	// Errors carries the failures verbatim, capped, so a drain where everything
 	// failed says so once rather than once per item.
 	Errors []string `json:"errors,omitempty"`
@@ -308,8 +399,15 @@ func (q *Queue) Drain(ctx context.Context, owner Stage, limit int,
 					rep.Errors = append(rep.Errors,
 						fmt.Sprintf("%s: %v", item.Target, runErr))
 				}
-				if err := q.Fail(ctx, item.ID, runErr.Error()); err != nil {
+				parked, err := q.Fail(ctx, item.ID, runErr.Error())
+				if err != nil {
 					return rep, err
+				}
+				if parked {
+					// Named, not just counted. A number says work stopped; the
+					// name says what stopped, which is the only form anybody can
+					// act on.
+					rep.DeadLettered = append(rep.DeadLettered, item.Target)
 				}
 			} else {
 				rep.Done++
@@ -336,6 +434,9 @@ func (q *Queue) Drain(ctx context.Context, owner Stage, limit int,
 	if rep.Depth, rep.OldestAge, err = q.stats(ctx, owner, started); err != nil {
 		return rep, err
 	}
+	if rep.Parked, err = q.Parked(ctx, owner); err != nil {
+		return rep, err
+	}
 	// Deferred means one thing: the cap stopped this drain and work is still
 	// owed. A drain that spent its whole cap and emptied the queue has deferred
 	// nothing, and saying otherwise would leave a permanent "work outstanding"
@@ -360,7 +461,13 @@ func (q *Queue) pending(ctx context.Context, owner Stage, after int64, limit int
 		return nil, fmt.Errorf("queue: reading %s's queue: %w", owner, err)
 	}
 	defer rows.Close()
+	return scanItems(rows)
+}
 
+// scanItems reads work-item rows. Shared by every listing so the column order
+// and the timestamp parse live in one place — two readers of the same seven
+// columns is two things to keep in agreement.
+func scanItems(rows *sql.Rows) ([]WorkItem, error) {
 	var out []WorkItem
 	for rows.Next() {
 		var it WorkItem
@@ -384,6 +491,29 @@ func (q *Queue) Pending(ctx context.Context, owner Stage, limit int) ([]WorkItem
 		limit = 1 << 30
 	}
 	return q.pending(ctx, owner, 0, limit)
+}
+
+// byState lists one owner's items in a given state, oldest first.
+func (q *Queue) byState(ctx context.Context, owner Stage, state State) ([]WorkItem, error) {
+	rows, err := q.db.QueryContext(ctx, `
+		SELECT id, owner, target, reason, enqueued, attempts, state, last_error
+		FROM queue
+		WHERE owner = ? AND state = ?
+		ORDER BY id`, owner, string(state))
+	if err != nil {
+		return nil, fmt.Errorf("queue: reading %s's %s items: %w", owner, state, err)
+	}
+	defer rows.Close()
+	return scanItems(rows)
+}
+
+// Parked is how many of an owner's items are dead-lettered.
+func (q *Queue) Parked(ctx context.Context, owner Stage) (int, error) {
+	var n int
+	err := q.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM queue WHERE owner = ? AND state = ?`,
+		owner, string(StateDead)).Scan(&n)
+	return n, err
 }
 
 // stats is depth and the age of the oldest owed item.
