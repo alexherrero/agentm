@@ -100,7 +100,7 @@ func newHarness(t testing.TB) *Capturer {
 		Spaces:    map[string]string{"memory": "memory"},
 		Shard:     "date",
 	}
-	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath)
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
 	if err != nil {
 		t.Fatalf("index.Open: %v", err)
 	}

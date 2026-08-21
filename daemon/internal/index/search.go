@@ -22,10 +22,19 @@ type Result struct {
 	RawScore float64 `json:"raw_score"`
 	// Penalty lists the classes the note carries, including the classified-but-
 	// unpenalized `fragment-promoted`.
-	Penalty        string `json:"penalty,omitempty"`
-	Captured       string `json:"captured,omitempty"`
-	CapturedSource string `json:"captured_source,omitempty"`
-	Snippet        string `json:"snippet,omitempty"`
+	Penalty  string `json:"penalty,omitempty"`
+	Captured string `json:"captured,omitempty"`
+	// Updated is the note's own stamp, and the decay anchor after a genuine
+	// recall.
+	Updated string `json:"updated,omitempty"`
+	// Created is the anchor of last resort — see note.ElapsedDays.
+	Created string `json:"created,omitempty"`
+	// Decay is the multiplier age applied to this row, present for the same
+	// reason RawScore is: a demotion should be visible in the call log rather
+	// than inferred.
+	Decay          float64 `json:"decay,omitempty"`
+	CapturedSource string  `json:"captured_source,omitempty"`
+	Snippet        string  `json:"snippet,omitempty"`
 
 	// rowid keys the snippet pass back to this row. Unexported, so it stays out
 	// of the JSON the driver sees — it is an index-internal handle, not a fact
@@ -226,7 +235,9 @@ func (x *Index) andRanked(text string, k int, after, before string) (SearchOutco
 	out.Note = note1
 	out.Matched = len(rows)
 
-	out.Results = penalizeAndRank(rows, k)
+	decayLog, decayNow := x.decayClock()
+	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
+		note.QueryWantsArtifact(text))
 
 	// One expression won every row here, unlike fusion's per-subset map, but the
 	// shape is shared so both paths snippet through one function.
@@ -250,9 +261,50 @@ func (x *Index) andRanked(text string, k int, after, before string) (SearchOutco
 //
 // Roughly twenty lines, worth +3.75 points of R@5 at p = 0.0195.
 func penalizeAndRank(rows []Result, k int) []Result {
+	return penalizeRankAndDecay(rows, k, nil, time.Time{}, false)
+}
+
+// penalizeRankAndDecay is penalizeAndRank plus age.
+//
+// Decay was in Python until now, and that turned out to mean it almost never
+// ran: `lifecycle.compute_decay_score` is applied only inside `recall.query`,
+// the in-process engine the hook uses as a *fallback* for when this daemon is
+// absent or slow. A design that says "a decay score governs rank" was true of a
+// path that rarely executes, and scoring the curve against the gold set through
+// this daemon would have reported exactly zero effect.
+//
+// A nil log or a zero `now` disables it, which is what every caller that has no
+// vault to read an access record from passes.
+func penalizeRankAndDecay(rows []Result, k int, log *note.AccessLog, now time.Time,
+	wantArtifact bool) []Result {
 	for i := range rows {
 		flags := splitFlags(rows[i].Penalty)
+		// A question that asks for the artifact shape gets the artifact dampening
+		// lifted, which is the design's "boosted on a question that asks for it by
+		// name" expressed as the removal of a penalty. See note.QueryWantsArtifact
+		// for why it is removal and not a multiplier above 1.0.
+		if wantArtifact {
+			flags = withoutFlag(flags, note.ClassArtifact)
+		}
 		mult := note.Multiplier(flags)
+
+		// Age, folded into the same multiplier. Multiplicative for the reason the
+		// classes are: a note that is both stale and a fragment is demoted twice
+		// and still ranked, and nothing here can zero a score out.
+		if !now.IsZero() && !note.IsDecayExempt(flags) {
+			rel := rows[i].Path
+			if i := strings.LastIndexByte(rel, '/'); i >= 0 {
+				rel = rel[i+1:]
+			}
+			slug := strings.TrimSuffix(rel, ".md")
+			if days, ok := note.ElapsedDays(log, slug, rows[i].Updated, rows[i].Created,
+				rows[i].Captured, rows[i].CapturedSource, now); ok {
+				d := note.DecayScore(days)
+				rows[i].Decay = d
+				mult *= d
+			}
+		}
+
 		raw := rows[i].Score
 		adjusted := raw * mult
 		// A multiplier below 1.0 must only ever demote. BM25 scores are normally
@@ -392,7 +444,9 @@ func (x *Index) fusionRanked(text string, k int, after, before string, lex3 bool
 	}
 	// The penalty is a per-document constant, so applying it once after the max
 	// gives the same ordering as applying it to every sub-query and maxing those.
-	out.Results = penalizeAndRank(rows, k)
+	decayLog, decayNow := x.decayClock()
+	out.Results = penalizeRankAndDecay(rows, k, decayLog, decayNow,
+		note.QueryWantsArtifact(text))
 
 	if len(out.Results) == 0 {
 		out.Note = "0 results. No two terms of this query appear together in any one note."
@@ -455,7 +509,9 @@ func (x *Index) searchHybrid(text string, k int, after, before string, q Query) 
 	// reads positions, so a demotion that lands after the ranks are taken would
 	// have no effect at all — the penalized note would already have contributed
 	// its rank-1 reciprocal.
-	dense = penalizeAndRank(dense, rrfDepth)
+	decayLog, decayNow := x.decayClock()
+	dense = penalizeRankAndDecay(dense, rrfDepth, decayLog, decayNow,
+		note.QueryWantsArtifact(text))
 
 	fused := fuseRRF(lexical.Results, dense)
 	out := SearchOutcome{Results: fused, Matched: len(fused)}
@@ -638,7 +694,7 @@ func (x *Index) runMatch(match, after, before string, limit int) ([]Result, erro
 	sql := fmt.Sprintf(`
 		SELECT m.id, m.path,
 		       bm25(docs, %v, %v, %v, %v) AS s,
-		       m.flags, m.captured, m.captured_src
+		       m.flags, m.captured, m.captured_src, m.updated, m.created
 		FROM docs JOIN docmeta m ON m.id = docs.rowid
 		WHERE docs MATCH ?
 		  AND (? = '' OR m.captured >= ?)
@@ -657,14 +713,17 @@ func (x *Index) runMatch(match, after, before string, limit int) ([]Result, erro
 	for rows.Next() {
 		var r Result
 		var bm float64
-		var flags, captured, capturedSrc string
-		if err := rows.Scan(&r.rowid, &r.Path, &bm, &flags, &captured, &capturedSrc); err != nil {
+		var flags, captured, capturedSrc, updated, created string
+		if err := rows.Scan(&r.rowid, &r.Path, &bm, &flags, &captured, &capturedSrc,
+			&updated, &created); err != nil {
 			return nil, err
 		}
 		r.Score = -bm
 		r.Penalty = flags
 		r.Captured = captured
 		r.CapturedSource = capturedSrc
+		r.Updated = updated
+		r.Created = created
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -772,4 +831,17 @@ func normalizeBound(s string) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%q is not a date I can read; use YYYY-MM-DD or RFC3339", s)
+}
+
+// withoutFlag returns flags with one class removed, leaving the input untouched.
+// The row keeps its recorded Penalty either way, so a lifted note still reports
+// what class it is — the lift changes its rank, not its identity.
+func withoutFlag(flags []string, drop string) []string {
+	out := make([]string, 0, len(flags))
+	for _, f := range flags {
+		if f != drop {
+			out = append(out, f)
+		}
+	}
+	return out
 }

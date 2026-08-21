@@ -18,7 +18,7 @@ import (
 func testIndexWithNote(t *testing.T, rel, title, body string) *index.Index {
 	t.Helper()
 	dir := t.TempDir()
-	x, err := index.Open(filepath.Join(dir, "index.db"), dir)
+	x, err := index.Open(filepath.Join(dir, "index.db"), dir, "", false)
 	if err != nil {
 		t.Fatalf("opening index: %v", err)
 	}

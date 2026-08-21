@@ -20,10 +20,16 @@ var (
 	miningRe      = regexp.MustCompile(`(?m)^mining_confidence:`)
 	probeRe       = regexp.MustCompile(`(?m)^probe:[ \t]*(\S+)`)
 	capturedRe    = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
-	dateRe        = regexp.MustCompile(`(?m)^date:[ \t]*(.+?)[ \t\r]*$`)
-	proposalRe    = regexp.MustCompile(`\A#[ \t]*Proposal[ \t]+\d+[ \t]*:`)
-	metaScrubRe   = regexp.MustCompile(`[\[\],'"]`)
-	wsRe          = regexp.MustCompile(`\s+`)
+	updatedRe     = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
+	altitudeRe    = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
+	createdRe     = regexp.MustCompile(`(?m)^created:[ \t]*(.+?)[ \t\r]*$`)
+	// The two frontmatter routes into durability — see isDurable.
+	lifecycleTierRe = regexp.MustCompile(`(?m)^lifecycle_tier:[ \t]*(.+?)[ \t\r]*$`)
+	kindRe          = regexp.MustCompile(`(?m)^kind:[ \t]*(.+?)[ \t\r]*$`)
+	dateRe          = regexp.MustCompile(`(?m)^date:[ \t]*(.+?)[ \t\r]*$`)
+	proposalRe      = regexp.MustCompile(`\A#[ \t]*Proposal[ \t]+\d+[ \t]*:`)
+	metaScrubRe     = regexp.MustCompile(`[\[\],'"]`)
+	wsRe            = regexp.MustCompile(`\s+`)
 )
 
 // Note is one parsed vault file.
@@ -59,6 +65,30 @@ type Note struct {
 
 	// Flags are the rank-penalty classes this note falls into.
 	Flags []string
+
+	// Created is the note's own `created:` stamp — the decay anchor of last
+	// resort, and on this corpus the one that does nearly all the work: 69.7% of
+	// notes carry it, against 7.6% for `updated` and 1.3% for `captured`.
+	//
+	// It is a separate field from Captured rather than folded into it because
+	// Captured falls back to the filesystem, and decay cannot use a filesystem
+	// timestamp. Reading `created` through Captured would mean either accepting
+	// mtime as an age or refusing 98.7% of the corpus an anchor — the first is
+	// wrong on a corpus whose frontmatter was rewritten wholesale in an
+	// afternoon, and the second is what a first cut of this actually did.
+	Created string
+
+	// Updated is the note's own `updated:` stamp, and it is the decay anchor
+	// after a genuine recall.
+	//
+	// Not `captured`, and not mtime. `captured` would penalize a
+	// frequently-maintained reference for staleness it does not have — the
+	// cold-start bias the Python curve's own comment records as having silently
+	// demoted an accurate, same-day-edited hit out of the top five. And mtime is
+	// worse still on this corpus: the type-collapse migration rewrote 9,899
+	// notes' frontmatter, which would make every one of them look freshly
+	// updated to a curve reading the filesystem.
+	Updated string
 }
 
 // Parse turns one file's bytes into a Note. `rel` is the vault-relative POSIX
@@ -93,6 +123,12 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	n.Probe = parseProbe(head)
 	n.Captured, n.CapturedSource = parseCaptured(head, modTime)
 	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status)
+	if m := updatedRe.FindStringSubmatch(head); m != nil {
+		n.Updated = strings.TrimSpace(m[1])
+	}
+	if m := createdRe.FindStringSubmatch(head); m != nil {
+		n.Created = strings.TrimSpace(m[1])
+	}
 	return n
 }
 
