@@ -58,6 +58,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd retire     retire the orphaned pre-daemon memory server
   agentmd rules      print the filing contract, or seed a vault with one
   agentmd ledger     ask what dreaming has already done, and what is pending
+  agentmd queue      show the pending-work queues, or record work owed
 
 Run any subcommand with -h for its flags.
 `
@@ -95,6 +96,8 @@ func main() {
 		err = cmdRules(os.Args[2:])
 	case "ledger":
 		err = cmdLedger(os.Args[2:])
+	case "queue":
+		err = cmdQueue(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmd", version)
 	case "help", "-h", "--help":
