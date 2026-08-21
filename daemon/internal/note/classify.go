@@ -39,6 +39,17 @@ const (
 	// Dampening cures the same leak without the amputation. A strong distinctive
 	// match still clears the multiplier; a weak cosine neighbour does not.
 	ClassSpace = "space"
+	// ClassDurable marks a note that never ages. Like ClassFragmentPromoted it
+	// carries no weight — it is not a penalty, it is the record of a decision,
+	// and decay reads it where the weights do not.
+	//
+	// Computed here rather than at search time for the same reason every other
+	// class is: the four routes into it read frontmatter and the path, and
+	// re-deriving them per row per query would put a substring scan on the hot
+	// path to answer a question the index already knows. The cost is the same one
+	// spaces pay — changing what is durable does nothing until the affected notes
+	// are reindexed.
+	ClassDurable = "durable"
 )
 
 // Weights are applied multiplicatively to the BM25 score.
@@ -184,6 +195,10 @@ func classify(rel, head, body, status string) []string {
 		flags = append(flags, ClassSpace)
 	}
 
+	if isDurable(rel, head) {
+		flags = append(flags, ClassDurable)
+	}
+
 	shaped := false
 	for _, opener := range fragmentOpeners {
 		if strings.HasPrefix(body, opener) {
@@ -310,4 +325,44 @@ func Multiplier(flags []string) float64 {
 		}
 	}
 	return m
+}
+
+// durableKinds are the record kinds that never age.
+//
+// One value, because one is what the corpus actually distinguishes. The whole
+// worth of a failure incident is being there on the one day, years later, when
+// the same failure recurs — the case where a decay curve is exactly wrong.
+var durableKinds = map[string]bool{"failure-incident": true}
+
+// isDurable reports whether a note is exempt from ageing, by any of the four
+// routes ported from `lifecycle.is_decay_exempt` and its caller.
+//
+// Two of them are proxies rather than direct statements, and deliberately so.
+// There is no `kind: decision` in this corpus — the operator's ADRs retired into
+// living-design amendment logs — so architecture decisions are recognised by the
+// `decisions/` directory they have always lived in. And a space the filing
+// contract does not govern is exempt wholesale: decay models a *memory* going
+// cold because nobody has needed it, and those are documents. A 2016 lesson is
+// not less true for being ten years old.
+func isDurable(rel, head string) bool {
+	if m := lifecycleTierRe.FindStringSubmatch(head); m != nil {
+		if strings.ToLower(strings.Trim(strings.TrimSpace(m[1]), `'"`)) == "durable" {
+			return true
+		}
+	}
+	if m := kindRe.FindStringSubmatch(head); m != nil {
+		if durableKinds[strings.ToLower(strings.Trim(strings.TrimSpace(m[1]), `'"`))] {
+			return true
+		}
+	}
+	// Any `decisions/` segment, not just the first: these sit at
+	// `desk/projects/<name>/decisions/`, well below the top level that defines a
+	// space.
+	norm := strings.ReplaceAll(rel, "\\", "/")
+	for _, seg := range strings.Split(norm, "/") {
+		if strings.EqualFold(seg, "decisions") {
+			return true
+		}
+	}
+	return inDecayExemptSpace(rel)
 }

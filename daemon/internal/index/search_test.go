@@ -18,7 +18,7 @@ const probeQuery = "homelab server"
 func newTestIndex(tb testing.TB) *Index {
 	tb.Helper()
 	dir := tb.TempDir()
-	x, err := Open(filepath.Join(dir, "index.db"), dir)
+	x, err := Open(filepath.Join(dir, "index.db"), dir, "", false)
 	if err != nil {
 		tb.Fatalf("opening index: %v", err)
 	}

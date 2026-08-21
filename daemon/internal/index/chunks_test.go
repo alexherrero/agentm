@@ -9,7 +9,7 @@ import (
 func openScratch(t *testing.T) *Index {
 	t.Helper()
 	dir := t.TempDir()
-	idx, err := Open(filepath.Join(dir, "index.db"), filepath.Join(dir, "vault"))
+	idx, err := Open(filepath.Join(dir, "index.db"), filepath.Join(dir, "vault"), "", false)
 	if err != nil {
 		t.Fatalf("Open: %v", err)
 	}

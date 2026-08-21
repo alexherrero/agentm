@@ -50,7 +50,17 @@ const tokenizer = "porter unicode61"
 type Index struct {
 	db    *sql.DB
 	vault string
-	path  string
+
+	// access is the recall-access sidecar, used by decay. Lazily loaded: an Index
+	// opened for a one-shot command never reads it, and a long-lived one refreshes
+	// it when the file changes rather than on every search.
+	// memoryRoot is vault-relative; the sidecar sits under it, not under vault.
+	memoryRoot string
+	// decayEnabled gates age-based demotion at every ranking call site.
+	decayEnabled bool
+	access       *note.AccessLog
+	accessOnce   sync.Once
+	path         string
 
 	// SQLite serializes writers anyway, and a single resident process has no
 	// reason to fight itself over a lock. One connection removes a whole class of
@@ -78,7 +88,16 @@ func (x *Index) snippeted() int64 {
 // Open opens or creates the index at dbPath. A schema-version mismatch discards
 // the file and starts over: it is a cache, so a rebuild is the cheap correct
 // answer and a migration would be ceremony over a derived artifact.
-func Open(dbPath, vault string) (*Index, error) {
+// Open takes the memory root as well as the vault root because they are not the
+// same directory and the difference is invisible at the point of failure: the
+// recall-access sidecar lives at `<vault>/<memoryRoot>/.lifecycle.json`, and an
+// Index handed only the vault root reads no anchors, raises nothing, and ranks
+// the corpus off its fallback. Required rather than settable for the same
+// reason — a call site that forgets it produces a plausible wrong answer.
+// `memoryRoot` is vault-relative and may be empty for a flat layout. `decay`
+// turns age-based demotion on; see config.DecayEnabled for why it is off in the
+// shipped configuration, and why that is a measurement rather than caution.
+func Open(dbPath, vault, memoryRoot string, decay bool) (*Index, error) {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
 		return nil, fmt.Errorf("index directory: %w", err)
 	}
@@ -116,7 +135,9 @@ func Open(dbPath, vault string) (*Index, error) {
 		}
 	}
 
-	idx := &Index{db: db, vault: vault, path: dbPath}
+	idx := &Index{db: db, vault: vault,
+		memoryRoot:   memoryRoot,
+		decayEnabled: decay, path: dbPath}
 	if err := idx.migrate(); err != nil {
 		db.Close()
 		return nil, err
@@ -149,6 +170,7 @@ func (x *Index) migrate() error {
 			status        TEXT NOT NULL DEFAULT '',
 			captured      TEXT NOT NULL DEFAULT '',
 			captured_src  TEXT NOT NULL DEFAULT '',
+			updated       TEXT NOT NULL DEFAULT '',
 			mtime_ns      INTEGER NOT NULL DEFAULT 0,
 			size          INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE INDEX IF NOT EXISTS docmeta_captured ON docmeta(captured)`,
@@ -217,6 +239,16 @@ func (x *Index) migrate() error {
 		`CREATE INDEX IF NOT EXISTS entities_doc ON entities(doc_id)`,
 		`CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)`,
 	}
+	// Additive columns for indexes created before they existed. SQLite has no
+	// "ADD COLUMN IF NOT EXISTS", and a duplicate-column error here is the
+	// expected state on every run after the first — so it is tolerated rather
+	// than raised. No SchemaVersion bump: a bump discards the whole file and
+	// charges a full re-embed for a lexical column that never touches a vector.
+	migrations := []string{
+		`ALTER TABLE docmeta ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE docmeta ADD COLUMN created TEXT NOT NULL DEFAULT ''`,
+	}
+
 	for _, s := range stmts {
 		if _, err := x.db.Exec(s); err != nil {
 			if strings.Contains(err.Error(), "fts5") {
@@ -224,9 +256,20 @@ func (x *Index) migrate() error {
 					"this build has no FTS5 support, which should be impossible with "+
 						"modernc.org/sqlite: %w", err)
 			}
+
 			return fmt.Errorf("index schema: %w", err)
 		}
 	}
+	for _, s := range migrations {
+		// A column that is already there is the expected state on every run after
+		// the first, so a duplicate-column error is tolerated and anything else is
+		// not. Run after the CREATEs, because an ALTER on a table that does not
+		// exist yet would fail for a reason that is not about migration.
+		if _, err := x.db.Exec(s); err != nil && !strings.Contains(err.Error(), "duplicate column") {
+			return fmt.Errorf("migrating index: %w", err)
+		}
+	}
+
 	_, err := x.db.Exec(
 		`INSERT INTO meta(key, value) VALUES('schema_version', ?)
 		 ON CONFLICT(key) DO UPDATE SET value=excluded.value`, config.SchemaVersion)
@@ -268,11 +311,12 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		res, err := tx.Exec(
-			`INSERT INTO docmeta(path, flags, status, captured, captured_src, mtime_ns, size)
-			 VALUES(?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO docmeta(path, flags, status, captured, captured_src, updated,
+			         created, mtime_ns, size)
+			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			n.Rel, strings.Join(n.Flags, ","), n.Status,
 			n.Captured.UTC().Format(capturedFormat),
-			n.CapturedSource, mtimeNS, size)
+			n.CapturedSource, n.Updated, n.Created, mtimeNS, size)
 		if err != nil {
 			return err
 		}
@@ -303,10 +347,10 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 			}
 		}
 		if _, err := tx.Exec(
-			`UPDATE docmeta SET flags=?, status=?, captured=?, captured_src=?, mtime_ns=?, size=?
-			 WHERE id=?`,
-			strings.Join(n.Flags, ","), n.Status, captured, capturedSrc,
-			mtimeNS, size, id); err != nil {
+			`UPDATE docmeta SET flags=?, status=?, captured=?, captured_src=?, updated=?,
+			 created=?, mtime_ns=?, size=? WHERE id=?`,
+			strings.Join(n.Flags, ","), n.Status, captured, capturedSrc, n.Updated,
+			n.Created, mtimeNS, size, id); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM docs WHERE rowid = ?`, id); err != nil {
@@ -754,4 +798,24 @@ func (x *Index) pathsLocked(tx *sql.Tx) ([]string, error) {
 		out = append(out, p)
 	}
 	return out, rows.Err()
+}
+
+// accessLog returns the recall-access sidecar for this vault, loading it once.
+func (x *Index) accessLog() *note.AccessLog {
+	x.accessOnce.Do(func() {
+		x.access = note.NewAccessLog(filepath.Join(x.vault, filepath.FromSlash(x.memoryRoot)))
+	})
+	x.access.Refresh()
+	return x.access
+}
+
+// decayClock returns what the ranking pass needs to apply age, or the pair that
+// disables it. One helper rather than the condition repeated at three call
+// sites, because a demotion that fired on some search modes and not others would
+// make ranking depend on which arm surfaced the note.
+func (x *Index) decayClock() (*note.AccessLog, time.Time) {
+	if !x.decayEnabled {
+		return nil, time.Time{}
+	}
+	return x.accessLog(), time.Now()
 }

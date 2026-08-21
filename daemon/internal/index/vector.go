@@ -335,7 +335,8 @@ func (x *Index) VectorSearch(q []float32, model string, k int, after, before str
 	defer x.mu.Unlock()
 
 	rows, err := x.db.Query(`
-		SELECT m.id, m.path, m.flags, m.captured, m.captured_src, e.vec
+		SELECT m.id, m.path, m.flags, m.captured, m.captured_src, m.updated,
+		       m.created, e.vec
 		FROM embeddings e JOIN docmeta m ON m.id = e.doc_id
 		WHERE e.model = ? AND e.dim = ?
 		  AND (? = '' OR m.captured >= ?)
@@ -359,7 +360,8 @@ func (x *Index) VectorSearch(q []float32, model string, k int, after, before str
 	for rows.Next() {
 		var r Result
 		var blob []byte
-		if err := rows.Scan(&r.rowid, &r.Path, &r.Penalty, &r.Captured, &r.CapturedSource, &blob); err != nil {
+		if err := rows.Scan(&r.rowid, &r.Path, &r.Penalty, &r.Captured, &r.CapturedSource,
+			&r.Updated, &r.Created, &blob); err != nil {
 			return nil, err
 		}
 		if len(blob) != 4*len(q) {

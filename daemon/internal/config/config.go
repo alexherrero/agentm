@@ -148,6 +148,33 @@ type Config struct {
 	// See defaultEmbedScope for why it is three names and not the whole tree.
 	EmbedScope []string
 
+	// DecayEnabled turns age-based demotion on. It is off by default, and the
+	// default is a measurement rather than caution.
+	//
+	// Scored against the frozen gold set with decay as the only variable, on one
+	// corpus at one moment: R@5 fell from 0.781 to 0.750, two questions flipped to
+	// a miss and none to a hit. The mechanism is not at fault — the corpus is too
+	// young for it. 89% of notes are under a month old and the oldest in the
+	// memory layer is 93 days, against a first band at 182, so exactly five notes
+	// of 15,824 cross any band at all. Two of those five are the expected answers
+	// to a temporal question ("when did I switch to Claude"), where being old is
+	// what makes a note the right answer.
+	//
+	// Turn it on when the corpus has age spread and the eval says it helps. The
+	// curve, the anchors and the exemptions are all here and tested; what is
+	// missing is a corpus that can exercise them.
+	DecayEnabled bool
+
+	// MemoryRoot is the vault-relative directory the memory itself lives under —
+	// `Agent` in the shipped layout, and empty in a flat one.
+	//
+	// Kept rather than derived-and-discarded, because more than one thing needs
+	// it and the vault root is not a usable substitute for any of them. The
+	// recall-access sidecar sits at `<vault>/<memory_root>/.lifecycle.json`, and
+	// a reader handed the vault root instead finds nothing, reports no error, and
+	// silently ranks the whole corpus off its fallback anchor.
+	MemoryRoot string
+
 	// --- the reranker ---------------------------------------------------
 
 	// RerankEnabled is the off switch, mirroring EmbedEnabled: true by
@@ -233,8 +260,10 @@ func (c *Config) loadRules(now time.Time) {
 func (c *Config) applyDampenedSpaces() {
 	if loaded, err := c.Rules.Get(); err == nil {
 		note.SetDampenedSpaces(loaded.DampenedSpaces)
+		note.SetDecayExemptSpaces(loaded.ContractExemptSpaces)
 	} else {
 		note.SetDampenedSpaces(nil)
+		note.SetDecayExemptSpaces(nil)
 	}
 }
 
@@ -401,6 +430,13 @@ func Load(opts Options) (*Config, error) {
 		}
 	}
 
+	if b, ok := raw["daemon.decay_enabled"].(bool); ok {
+		c.DecayEnabled = b
+	}
+
+	c.MemoryRoot = strings.Trim(
+		filepath.ToSlash(strings.TrimSpace(strVal(raw, "plugins.obsidian-vault.memory_root"))), "/")
+
 	// --- the vector arm -----------------------------------------------------
 	c.EmbedModel = strVal(raw, "daemon.embed_model")
 	c.EmbedderURL = strVal(raw, "daemon.embedder_url")
@@ -415,7 +451,7 @@ func Load(opts Options) (*Config, error) {
 		}
 	}
 	if len(c.EmbedScope) == 0 {
-		c.EmbedScope = defaultEmbedScope(strVal(raw, "plugins.obsidian-vault.memory_root"))
+		c.EmbedScope = defaultEmbedScope(c.MemoryRoot)
 	}
 
 	// --- the reranker ---------------------------------------------------

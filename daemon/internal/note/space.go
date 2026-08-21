@@ -26,14 +26,7 @@ var dampened atomic.Pointer[[]string]
 // SetDampenedSpaces replaces the set, normalized to lower case. Called by the
 // daemon from the resolved filing contract.
 func SetDampenedSpaces(spaces []string) {
-	norm := make([]string, 0, len(spaces))
-	for _, s := range spaces {
-		s = strings.Trim(strings.TrimSpace(s), "/")
-		if s != "" {
-			norm = append(norm, strings.ToLower(s))
-		}
-	}
-	dampened.Store(&norm)
+	dampened.Store(normSpaces(spaces))
 }
 
 // DampenedSpaces is what is currently set, for the status surface and for tests.
@@ -49,7 +42,53 @@ func DampenedSpaces() []string {
 // and matching deeper would let a folder named `personal` anywhere in the tree
 // silently demote itself.
 func inDampenedSpace(rel string) bool {
-	p := dampened.Load()
+	return inSpaceSet(dampened.Load(), rel)
+}
+
+// The spaces the filing contract does not govern. Nothing in them decays.
+//
+// Held separately from `dampened` because the two lists answer different
+// questions and, in the shipped contract, name different directories. Dampening
+// asks whether a space should stay quiet on an ordinary question; exemption asks
+// whether the contract applies to it at all. A space can be either, both, or
+// neither.
+var decayExempt atomic.Pointer[[]string]
+
+// SetDecayExemptSpaces replaces the set, normalized to lower case. Called by the
+// daemon from the resolved filing contract, beside SetDampenedSpaces.
+func SetDecayExemptSpaces(spaces []string) {
+	decayExempt.Store(normSpaces(spaces))
+}
+
+// DecayExemptSpaces is what is currently set, for the status surface and tests.
+func DecayExemptSpaces() []string {
+	if p := decayExempt.Load(); p != nil {
+		return append([]string(nil), *p...)
+	}
+	return nil
+}
+
+// inDecayExemptSpace reports whether a vault-relative path sits in a space the
+// contract does not govern. First path segment, for the reason
+// inDampenedSpace matches there: a space is a top-level directory.
+func inDecayExemptSpace(rel string) bool {
+	return inSpaceSet(decayExempt.Load(), rel)
+}
+
+// normSpaces trims, drops empties, and lowercases.
+func normSpaces(spaces []string) *[]string {
+	norm := make([]string, 0, len(spaces))
+	for _, s := range spaces {
+		s = strings.Trim(strings.TrimSpace(s), "/")
+		if s != "" {
+			norm = append(norm, strings.ToLower(s))
+		}
+	}
+	return &norm
+}
+
+// inSpaceSet is the shared first-segment match.
+func inSpaceSet(p *[]string, rel string) bool {
 	if p == nil || len(*p) == 0 {
 		return false
 	}
