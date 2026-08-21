@@ -148,6 +148,24 @@ type Config struct {
 	// See defaultEmbedScope for why it is three names and not the whole tree.
 	EmbedScope []string
 
+	// AltitudeEnabled turns the `artifact` dampening on.
+	//
+	// Off by default for the length of the transition, and the reason is a
+	// defect this flag exists to hold shut. Capture writes `altitude: artifact`
+	// on every new note, and the ranker dampens only a note that says so — which
+	// was the right call for the clamp reason, but means a labelled note is
+	// dampened while an unlabelled one is not. On a corpus where 15,479 notes
+	// predate the field and every new capture carries it, that penalizes *having
+	// been captured recently* rather than *being an artifact*, and it grows
+	// quietly with every capture.
+	//
+	// The design's model is a labelled corpus, where `canonical` is earned and
+	// everything else is an artifact. Enrichment is what labels it. Until that
+	// has run over the corpus, dampening the labelled minority is backwards, so
+	// it stays off and turns on when the corpus is uniform and the eval can see
+	// the difference.
+	AltitudeEnabled bool
+
 	// DecayEnabled turns age-based demotion on. It is off by default, and the
 	// default is a measurement rather than caution.
 	//
@@ -261,9 +279,11 @@ func (c *Config) applyDampenedSpaces() {
 	if loaded, err := c.Rules.Get(); err == nil {
 		note.SetDampenedSpaces(loaded.DampenedSpaces)
 		note.SetDecayExemptSpaces(loaded.ContractExemptSpaces)
+		note.SetAltitudeDampening(c.AltitudeEnabled)
 	} else {
 		note.SetDampenedSpaces(nil)
 		note.SetDecayExemptSpaces(nil)
+		note.SetAltitudeDampening(c.AltitudeEnabled)
 	}
 }
 
@@ -432,6 +452,9 @@ func Load(opts Options) (*Config, error) {
 
 	if b, ok := raw["daemon.decay_enabled"].(bool); ok {
 		c.DecayEnabled = b
+	}
+	if b, ok := raw["daemon.altitude_enabled"].(bool); ok {
+		c.AltitudeEnabled = b
 	}
 
 	c.MemoryRoot = strings.Trim(
