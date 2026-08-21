@@ -317,12 +317,15 @@ func TestEnrichmentDoesNotReachCaptureLatency(t *testing.T) {
 		t.Skip("the stub is a shell script")
 	}
 
-	measure := func(cp *Capturer, n int) time.Duration {
+	// Both statistics from one pass, because the two assertions below are claims
+	// of different shapes and need different numbers. The maximum answers "did
+	// any capture wait"; the median answers "did every capture get slower".
+	measure := func(cp *Capturer, n int) (worst, median time.Duration) {
 		t.Helper()
 		if _, err := cp.Do(Request{Text: body(0), Title: "warm up"}); err != nil {
 			t.Fatalf("warm-up capture: %v", err)
 		}
-		var worst time.Duration
+		samples := make([]time.Duration, 0, n)
 		for i := 1; i <= n; i++ {
 			start := time.Now()
 			if _, err := cp.Do(Request{
@@ -330,15 +333,14 @@ func TestEnrichmentDoesNotReachCaptureLatency(t *testing.T) {
 			}); err != nil {
 				t.Fatalf("capture %d: %v", i, err)
 			}
-			if d := time.Since(start); d > worst {
-				worst = d
-			}
+			samples = append(samples, time.Since(start))
 		}
-		return worst
+		sort.Slice(samples, func(a, b int) bool { return samples[a] < samples[b] })
+		return samples[len(samples)-1], samples[len(samples)*50/100]
 	}
 
 	const n = 20
-	baseline := measure(newHarness(t), n)
+	baseWorst, baseMedian := measure(newHarness(t), n)
 
 	stubDir := t.TempDir()
 	stub := filepath.Join(stubDir, "slow-claude")
@@ -354,21 +356,44 @@ func TestEnrichmentDoesNotReachCaptureLatency(t *testing.T) {
 	cp := newHarness(t)
 	cp.SetEnrichPass(pass)
 	t.Cleanup(pass.Wait)
-	live := measure(cp, n)
+	liveWorst, liveMedian := measure(cp, n)
 
-	t.Logf("worst capture: %s without enrichment, %s with it", baseline, live)
+	t.Logf("capture without enrichment: median %v · max %v",
+		baseMedian.Round(time.Microsecond), baseWorst.Round(time.Microsecond))
+	t.Logf("capture with enrichment:    median %v · max %v",
+		liveMedian.Round(time.Microsecond), liveWorst.Round(time.Microsecond))
 
 	// Every one of those captures started a subprocess that sleeps a second. If
 	// any capture waited on one, the worst case is at least a second.
-	if live >= 900*time.Millisecond {
+	//
+	// A maximum, and it has to be: one blocked capture is a failure, and an
+	// average would hide it among nineteen that were fine. Machine-independent
+	// by construction — no runner makes a one-second sleep finish in 900ms — so
+	// this half needs no allowance for a slow one.
+	if liveWorst >= 900*time.Millisecond {
 		t.Errorf("the slowest capture took %s while enrichment was live — the "+
-			"capture path is waiting on the model", live)
+			"capture path is waiting on the model", liveWorst)
 	}
-	// And the difference is small. Generous, because these are worst-of-20
-	// samples on a shared runner and the comparison only has to catch enrichment
-	// entering the transaction, not ordinary scheduling noise.
-	if slack := live - baseline; slack > 50*time.Millisecond {
-		t.Errorf("enrichment added %s to the worst capture (%s -> %s), which is "+
-			"more than scheduling noise", slack, baseline, live)
+
+	// And nothing measurable was added to an ordinary capture.
+	//
+	// Medians rather than maxima, and that is the whole point of reading it this
+	// way. The claim here is about typical behaviour, so a worst-of-20 sample is
+	// the wrong instrument: it is the noisiest statistic available, taken on a
+	// shared runner, in the arm that additionally has eight subprocesses of its
+	// own running. On ubuntu-latest this same test has produced worst-case
+	// captures of 5ms and of 104ms — a twenty-fold spread that is scheduling
+	// rather than code, and which failed this comparison twice on numbers the
+	// change under test had nothing to do with.
+	//
+	// A median differential survives a slow machine without an allowance for
+	// one, because both arms pay the same filesystem floor and the subtraction
+	// cancels it. The bar is unchanged at 50ms; it was the statistic that was
+	// wrong, and moving the number instead is the rubber stamp the sibling gate
+	// in this file was split to avoid.
+	if slack := liveMedian - baseMedian; slack > 50*time.Millisecond {
+		t.Errorf("enrichment added %s to the median capture (%s -> %s), which is "+
+			"an ordinary capture getting slower rather than one unlucky sample",
+			slack, baseMedian, liveMedian)
 	}
 }
