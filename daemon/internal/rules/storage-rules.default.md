@@ -167,6 +167,8 @@ record_kinds:
   - roadmap-integration
   - skill-watchlist
   - skill-watchlist-entry
+  - content-refresh-watchlist
+  - debt
   - idea-incubator
   - idea-incubator-summary
   - idea-incubator-research
