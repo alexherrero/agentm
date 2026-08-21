@@ -108,6 +108,9 @@ Miner fragments are short and quote the operator's own words, so BM25 ranks them
 | `fragment-promoted` | *none* | the same shapes, on a note whose status shows filing promoted it |
 | `status` | 0.60 | status is `unfiled`, `inbox`, `superseded`, or `expired` |
 | `staging` | 0.30 | a dream-staging proposal, which quotes both notes it is about |
+| `space` | 0.30 | the note's first path segment is named in the contract's `dampened_spaces` |
+| `artifact` | 0.30 | the note says `altitude: artifact` — dampening lifted for a question that asks for that shape |
+| `durable` | *none* | the note never ages: `lifecycle_tier: durable`, `kind: failure-incident`, a `decisions/` path segment, or a contract-exempt space |
 
 Four properties are load-bearing:
 
@@ -115,6 +118,26 @@ Four properties are load-bearing:
 - **Multiply over an over-fetch.** 200 rows are fetched, each score multiplied by the product of its classes' weights, then re-sorted. Re-ranking only the top k cannot promote the note the fragments were hiding.
 - **Filing overrides shape.** `fragment-promoted` carries no weight, so a fragment-shaped note that filing promoted keeps its score. That protects 1,288 notes, including 229 of the 232 in `memory/preferences/` — the promotion pipeline promoted their bodies verbatim, so they look mined and are filed.
 - **Never exclude.** A penalized note that is the best thing the corpus has still comes back first. Exclusion is what left recall returning nothing for four months.
+
+### Space, altitude, and the two that are not penalties
+
+`space` replaces a directory boundary, and the replacement is the point. Recall used to restrict itself to the memory root, which cured a real leak by amputation: 13% of top-5 results across 20 prompts fell outside `Agent/`, and *"what should I work on next"* returned two Church notes. But a note that cannot be returned at all cannot be returned when it is the only answer — and an invisible space is how this vault lost 9,786 notes once already. Dampening cures the same leak without hiding anything: a strong distinctive match still clears the multiplier, and a weak cosine neighbor does not.
+
+`artifact` separates a note that states something durable from one that records a moment. A convention and a distilled meeting are both `type: workflow` and should not rank alike on a general question. When a question asks for the artifact shape, the dampening is **removed** rather than reversed into a boost. Every multiplier here is at or below 1.0 and the negative-IDF clamp depends on it, so a multiplier above 1.0 on a row whose score went negative would move that row up for being boosted.
+
+The design makes `artifact` the default so `canonical` has to be earned. That default lives in the enrichment pass, which assigns the field, rather than acting as a fallback here for its absence. No note in this corpus carries `altitude` yet, so reading an absent field as `artifact` would multiply all 15,824 rows. For the same clamp reason, that is not the no-op it looks like.
+
+`durable` carries no weight and is not a penalty. It is the record of a decision, read by decay where the weights are not.
+
+### Decay, and why it is off
+
+Age is the one demotion this daemon computes and does not apply. `daemon.decay_enabled` defaults to false.
+
+The curve is real and ported faithfully: full strength through six months of silence, half to a year, an eighth to three years, a sixteenth to five, and the sixteenth is a floor rather than a waypoint. The anchor is a genuine recall from `<memory root>/.lifecycle.json`, then `updated:`, then `created:`, then a `captured:` date the note claims itself. A filesystem timestamp never anchors. The type-collapse migration rewrote 9,899 notes' frontmatter in an afternoon, and an mtime-anchored curve would read the migrated corpus as brand new and the files it skipped as uniquely ancient.
+
+What is missing is a corpus that can carry it. 89% of notes are under a month old, the oldest in the memory layer is 93 days against a first band at 182, and exactly five notes of 15,824 cross any band. Scored with decay as the only variable, R@5 fell from 0.781 to 0.750 — two questions lost, none gained.
+
+One of those two is a precondition on ever turning it on: **for a temporal question, age is the signal rather than the noise.** *"When did I switch from Antigravity to Claude?"* is answered by a note written in February, and demoting it for being old is demoting it for being the answer. Nothing here reconciles a curve that ranks by staleness with a question class that ranks by antiquity.
 
 There is no OR query rewrite. It read as the largest available win on one run; replicated six times it is +1.25 points at p = 0.46 and costs 18.8 points of correct rejection, because a search that never returns empty hands the agent five plausible notes and it names one. When a query matches nothing, `memory_search` says so and suggests fewer or different terms instead.
 
