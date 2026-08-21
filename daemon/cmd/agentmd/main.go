@@ -1337,5 +1337,12 @@ func attachPostGates(pass *enrich.Pass, cfg *config.Config) {
 		}
 		return nil
 	}
-	pass.AddPost(enrich.DefaultSchema(isType, typesSorted))
+	pass.AddPost(
+		enrich.DefaultSchema(isType, typesSorted),
+		// Second, and deterministic. It is the completeness floor: the cheapest
+		// gate that catches the most damaging failure, so it runs on every note
+		// rather than on a sample. A sampled version would let through exactly
+		// the note whose identifier was dropped.
+		enrich.DefaultTokens(),
+	)
 }
