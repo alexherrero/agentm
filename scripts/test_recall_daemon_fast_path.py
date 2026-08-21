@@ -309,10 +309,35 @@ class PathTranslationTests(_VaultFixture):
 class ScopeTests(_VaultFixture):
     """The operator's own folders are indexed but not ordinarily recalled."""
 
-    def test_notes_outside_the_memory_root_are_dropped_by_default(self):
+    def test_notes_outside_the_memory_root_are_admitted_by_default(self):
+        """The default flipped, and the flip is the point.
+
+        This used to assert the opposite: a note outside the memory root was
+        dropped. That boundary was drawn after a real leak — 13% of top-5 results
+        across 20 prompts fell outside `Agent/`, and "what should I work on next"
+        returned two Church notes — but it cured the leak by amputation, and an
+        invisible space is how this vault lost 9,786 notes once already.
+
+        The cure is now rank dampening in the daemon rather than a filter in
+        recall: a strong distinctive match clears the multiplier and a weak
+        semantic neighbour does not. So recall admits everything and marks what
+        came from outside, which is what lets a personal note answer a question
+        only it can answer.
+        """
         out = self._run(_FakeDaemon(
             stdout=_payload("Church/talk.md", "Agent/memory/zorbulax.md")
         ))
+        self.assertEqual(len(out), 2, "a note outside the memory root was dropped")
+        self.assertTrue(out[0]["external"],
+                        "an admitted outside hit must be marked as external")
+
+    def test_the_memory_root_boundary_is_still_reachable(self):
+        """The way back. A default is a decision, not a one-way door, and this
+        one reverses a boundary that was drawn for a measured reason."""
+        out = self._run(
+            _FakeDaemon(stdout=_payload("Church/talk.md", "Agent/memory/zorbulax.md")),
+            scope="memory-root",
+        )
         self.assertEqual([r["path"] for r in out], ["memory/zorbulax.md"])
 
     def test_scope_vault_admits_them_and_marks_them_external(self):
@@ -414,9 +439,19 @@ class FallbackSignalTests(_VaultFixture):
         self.assertTrue(status["ran"])
 
     def test_everything_filtered_out_still_counts_as_searched(self):
+        """A full filter is a result, not a failure.
+
+        The fixture used to be `Church/talk.md`, filtered by the memory-root
+        scope. That boundary is gone — the daemon dampens an outside space rather
+        than recall hiding it — so the note is admitted now and the test would be
+        asserting nothing. `_inbox/` is one of the hygiene filters recall still
+        applies on its own side, which is the same shape of full filter the test
+        was always about."""
         status: dict = {}
-        out = self._run(_FakeDaemon(stdout=_payload("Church/talk.md")), status=status)
-        self.assertEqual(out, [])
+        out = self._run(
+            _FakeDaemon(stdout=_payload("Agent/memory/_inbox/mined-fragment.md")),
+            status=status)
+        self.assertEqual(out, [], "an _inbox note reached the caller")
         self.assertTrue(status["ran"], "a full filter is a result, not a failure")
 
 

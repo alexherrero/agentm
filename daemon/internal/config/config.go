@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 )
 
@@ -219,6 +220,22 @@ type Options struct {
 // field.
 func (c *Config) loadRules(now time.Time) {
 	c.Rules = rules.NewHolder(c.VaultPath, now)
+	c.applyDampenedSpaces()
+}
+
+// applyDampenedSpaces pushes the contract's space list into the classifier.
+//
+// Done here rather than threaded through note.Parse because four call sites
+// parse notes and one of them is the self-probe, which has no configuration.
+// When the contract will not parse, nothing is dampened: that is the safe
+// direction, since the failure mode of dampening too little is a leak the
+// operator can see, and of dampening too much is an answer that never arrives.
+func (c *Config) applyDampenedSpaces() {
+	if loaded, err := c.Rules.Get(); err == nil {
+		note.SetDampenedSpaces(loaded.DampenedSpaces)
+	} else {
+		note.SetDampenedSpaces(nil)
+	}
 }
 
 // defaultEmbedScope is the part of the vault the vector arm covers when the

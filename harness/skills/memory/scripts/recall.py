@@ -184,7 +184,15 @@ last week today yesterday tomorrow
 # into context at 13% of results overall. The daemon's rank penalty down-weights
 # the unfiled landfill; it does not separate the operator's life from his work.
 DAEMON_SCOPE_ENV = "RECALL_DAEMON_SCOPE"
-DAEMON_SCOPE_DEFAULT = "memory-root"
+# Flipped to `vault` (filing-contract part 3): the boundary is replaced by rank
+# dampening. The leak that motivated `memory-root` was real — 13% of top-5 across
+# 20 prompts fell outside `Agent/`, and "what should I work on next" returned two
+# Church notes — but it cured the leak by amputation, and an invisible space is
+# how this vault lost 9,786 notes once already. The daemon now demotes a dampened
+# space instead of recall hiding it, so a strong distinctive match still surfaces
+# and a weak semantic neighbour does not. `RECALL_DAEMON_SCOPE=memory-root` is
+# still the way back.
+DAEMON_SCOPE_DEFAULT = "vault"
 
 # V6-3 (PLAN-wave-e-v6-index task 5): Reciprocal Rank Fusion replaces the
 # weighted-sum merge above as the live ranking formula. RRF combines ranked

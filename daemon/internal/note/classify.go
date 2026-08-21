@@ -25,6 +25,20 @@ const (
 	ClassFragmentPromoted = "fragment-promoted"
 	ClassStatus           = "status"
 	ClassStaging          = "staging"
+	// ClassSpace is a note in a space the operator has asked to be dampened on
+	// ordinary questions — today that is `Personal/`.
+	//
+	// This replaces a directory boundary, and the replacement is the point. Recall
+	// used to restrict itself to the memory root, which cured a real leak by
+	// amputation: 13% of top-5 results across 20 prompts fell outside `Agent/`,
+	// and "what should I work on next" returned two Church notes. But an
+	// invisible space is how this vault lost 9,786 notes once already, and a note
+	// that cannot be returned at all cannot be returned when it is the only
+	// answer.
+	//
+	// Dampening cures the same leak without the amputation. A strong distinctive
+	// match still clears the multiplier; a weak cosine neighbour does not.
+	ClassSpace = "space"
 )
 
 // Weights are applied multiplicatively to the BM25 score.
@@ -47,6 +61,11 @@ var Weights = map[string]float64{
 	ClassFragment: 0.30,
 	ClassStatus:   0.60,
 	ClassStaging:  0.30,
+	// Same 0.30 as the other demoted classes, and for the reason the comment
+	// above gives rather than by analogy: the sweep found every setting at or
+	// below 0.6 ranks identically, so this number is not a tuning knob and there
+	// is nothing to gain by picking a different one.
+	ClassSpace: 0.30,
 }
 
 // Overfetch is how deep to look before re-ranking. A penalty can only promote a
@@ -160,6 +179,10 @@ func isAllDigits(s string) bool {
 // `body` must already have leading whitespace trimmed.
 func classify(rel, head, body, status string) []string {
 	var flags []string
+
+	if inDampenedSpace(rel) {
+		flags = append(flags, ClassSpace)
+	}
 
 	shaped := false
 	for _, opener := range fragmentOpeners {
