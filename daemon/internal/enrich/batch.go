@@ -71,6 +71,19 @@ type BatchReport struct {
 	// Errors carries the first few failures verbatim. Truncated, because a run
 	// where everything failed should say so once rather than 8,407 times.
 	Errors []string `json:"errors,omitempty"`
+
+	// Pairs is what the run actually rewrote — source and result per note, kept
+	// so the dispersion measurement runs over exactly what landed rather than
+	// over a re-read of the vault, which would pick up anything else that
+	// touched it in between.
+	Pairs []Pair `json:"-"`
+}
+
+// Pair is one note's before and after.
+type Pair struct {
+	Rel    string
+	Source string
+	Result string
 }
 
 // Budget bounds one batch run.
@@ -179,6 +192,9 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 					continue
 				}
 				rep.Enriched++
+				rep.Pairs = append(rep.Pairs, Pair{
+					Rel: cand.Rel, Source: cand.Raw, Result: out.Body,
+				})
 			}
 		}
 		if rep.Deferred {

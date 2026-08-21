@@ -1165,6 +1165,8 @@ func cmdEnrich(args []string) error {
 	dryRun := fs.Bool("dry-run", false,
 		"list what the queue would offer and stop, making no model calls")
 	asJSON := fs.Bool("json", false, "emit the report as JSON")
+	dumpDir := fs.String("dump", "",
+		"write before/after pairs into this directory for review")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1297,6 +1299,46 @@ func cmdEnrich(args []string) error {
 		return err
 	}
 
+	// The homogenization measurement, over exactly the pairs this run wrote.
+	//
+	// It runs before anything is reported, because a batch that flattened the
+	// corpus should say so in the same breath as saying how many notes it
+	// enriched — a run that reports "30 enriched" and buries the dispersion
+	// number is a run that reads as a success.
+	if len(rep.Pairs) >= 2 {
+		rels := make([]string, len(rep.Pairs))
+		sources := make([]string, len(rep.Pairs))
+		results := make([]string, len(rep.Pairs))
+		for i, p := range rep.Pairs {
+			rels[i], sources[i], results[i] = p.Rel, p.Source, p.Result
+		}
+		client := embed.NewClient(cfg.EmbedderURL, 60*time.Second)
+		disp, derr := enrich.Measure(context.Background(),
+			func(ctx context.Context, texts []string) ([][]float32, error) {
+				return client.Embed(ctx, texts)
+			}, rels, sources, results)
+		if derr != nil {
+			// Reported, not fatal. The notes are written and the run happened;
+			// a cold embedder means the measurement is missing, which is a
+			// different thing from the run having failed.
+			fmt.Fprintf(os.Stderr, "dispersion unavailable: %v\n", derr)
+		} else {
+			fmt.Println(disp.Report())
+			if disp.Homogenized() {
+				fmt.Println("\nthis batch made the corpus more alike. The notes are " +
+					"written and journalled; revert with the journal before running " +
+					"more.")
+			}
+		}
+	}
+
+	if *dumpDir != "" {
+		if err := dumpPairs(*dumpDir, rep.Pairs); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %d before/after pair(s) to %s\n", len(rep.Pairs), *dumpDir)
+	}
+
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(rep)
 	}
@@ -1406,4 +1448,36 @@ func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge,
 			OnCompleteness: onCompleteness,
 		},
 	)
+}
+
+// dumpPairs writes each note's before and after side by side.
+//
+// For a person to read, not for a diff tool. The whole point of the bounded
+// batch is that somebody looks at the prose and says whether it hit the mark,
+// and that judgment is the one thing the dispersion number cannot make.
+func dumpPairs(dir string, pairs []enrich.Pair) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for i, p := range pairs {
+		name := fmt.Sprintf("%02d-%s.md", i+1,
+			strings.TrimSuffix(filepath.Base(p.Rel), ".md"))
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s\n\n", p.Rel)
+		b.WriteString("## BEFORE\n\n```markdown\n")
+		b.WriteString(p.Source)
+		b.WriteString("\n```\n\n## AFTER\n\n```markdown\n")
+		// The rendered note rather than the raw JSON response: what the reader
+		// needs to judge is the note that landed, not the envelope it arrived in.
+		if r, err := enrich.ParseResponse(p.Result); err == nil {
+			b.WriteString(enrich.RenderNote(r))
+		} else {
+			b.WriteString(p.Result)
+		}
+		b.WriteString("\n```\n")
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(b.String()), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }
