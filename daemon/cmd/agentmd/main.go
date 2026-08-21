@@ -1357,6 +1357,16 @@ func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge,
 		// rather than on a sample. A sampled version would let through exactly
 		// the note whose identifier was dropped.
 		enrich.DefaultTokens(),
+		// Also deterministic, and it runs before the judge for the same reason
+		// the token gate does: an alias the note cannot account for is a
+		// mechanical fact, and paying a model to notice it would be paying for
+		// arithmetic.
+		enrich.DefaultAliases(),
+		// Also deterministic, and it runs before the judge for the same reason
+		// the token gate does: an alias the note cannot account for is a
+		// mechanical fact, and paying a model to notice it would be paying for
+		// arithmetic.
+		enrich.DefaultAliases(),
 		// Third, and the only one that costs a model call. It runs last among
 		// the deterministic-first three for exactly that reason: a response that
 		// fails a mechanical check never reaches a judge.
