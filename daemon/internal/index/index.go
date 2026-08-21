@@ -284,6 +284,21 @@ func (x *Index) Close() error { return x.db.Close() }
 // Path is the index file's location, for reporting.
 func (x *Index) Path() string { return x.path }
 
+// DB hands out the open handle, for the tables this package does not own.
+//
+// The coverage ledger and the source registry are tables in this database
+// without being part of this package: they answer questions about dreaming's
+// work rather than about the corpus, and folding them in here would make one
+// package own two unrelated jobs. They still belong in this file, because they
+// are caches with the same disposability the index has — a schema bump discards
+// all of it together, and that is correct for all of it.
+//
+// Sharing the handle rather than opening a second one is deliberate. Open sets
+// MaxOpenConns(1) so a single resident process never contends with itself over a
+// SQLite lock; a second handle on the same file would hand back the whole
+// "database is locked" flake class that decision bought off.
+func (x *Index) DB() *sql.DB { return x.db }
+
 // capturedFormat is stored so a lexicographic string compare is also a
 // chronological one, which is what makes the after:/before: bounds a plain
 // indexed range scan.

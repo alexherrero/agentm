@@ -32,7 +32,7 @@ func TestASplitSupersedesRatherThanDeletes(t *testing.T) {
 		"Agent/memory/semantic/blob.md",
 		v.files["Agent/memory/semantic/blob.md"],
 		plan(frag("first", "First", "one"), frag("second", "Second", "two")),
-		TriggerBatch)
+		TriggerBatch, Stamp{})
 	if err != nil {
 		t.Fatalf("ApplySplit: %v", err)
 	}
@@ -69,7 +69,7 @@ func TestEveryFragmentCarriesDerivedFrom(t *testing.T) {
 
 	written, err := a.ApplySplit(context.Background(), parent, v.files[parent],
 		plan(frag("a", "A", "one"), frag("b", "B", "two"), frag("c", "C", "three")),
-		TriggerBatch)
+		TriggerBatch, Stamp{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestFragmentsDoNotCrossLink(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	written, err := a.ApplySplit(context.Background(), parent, v.files[parent],
-		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch)
+		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch, Stamp{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,7 +120,7 @@ func TestFragmentsLandBeforeTheOriginalIsSuperseded(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	if _, err := a.ApplySplit(context.Background(), parent, v.files[parent],
-		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch); err != nil {
+		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch, Stamp{}); err != nil {
 		t.Fatal(err)
 	}
 	last := v.ops[len(v.ops)-1]
@@ -138,7 +138,7 @@ func TestASplitIsFullyJournalled(t *testing.T) {
 	a := applier(t, v, j, func(string) (bool, error) { return false, nil })
 
 	if _, err := a.ApplySplit(context.Background(), parent, v.files[parent],
-		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch); err != nil {
+		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch, Stamp{}); err != nil {
 		t.Fatal(err)
 	}
 	entries := j.all()
@@ -220,7 +220,7 @@ func TestAFragmentCannotCollideWithItsParent(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	_, err := a.ApplySplit(context.Background(), parent, v.files[parent],
-		plan(frag("blob", "A", "one"), frag("b", "B", "two")), TriggerBatch)
+		plan(frag("blob", "A", "one"), frag("b", "B", "two")), TriggerBatch, Stamp{})
 	if err == nil {
 		t.Fatal("a fragment overwrote the note it came from")
 	}
@@ -237,7 +237,7 @@ func TestASplitCannotWriteIntoADerivedClass(t *testing.T) {
 	a := applier(t, v, &recorder{}, func(string) (bool, error) { return false, nil })
 
 	if _, err := a.ApplySplit(context.Background(), parent, v.files[parent],
-		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch); err == nil {
+		plan(frag("a", "A", "one"), frag("b", "B", "two")), TriggerBatch, Stamp{}); err == nil {
 		t.Error("a split wrote into a derived class")
 	}
 }

@@ -312,6 +312,15 @@ func (g *CycleBudget) Spent() int64 { return g.calls.Load() }
 
 // --- shared -----------------------------------------------------------------
 
+// FrontmatterValue reads one scalar key out of a note's frontmatter block.
+//
+// Exported because the ledger's rebuild reads this package's own stamps back
+// out of the corpus, and a second parser of the same three fields is a second
+// thing to keep true. The rebuild has to agree with the writer about what
+// `enriched_by` means down to the whitespace, and the only way to guarantee that
+// is to use the writer's reader.
+func FrontmatterValue(raw, key string) string { return frontmatterValue(raw, key) }
+
 // frontmatterValue reads one scalar key out of a note's frontmatter block.
 //
 // Frontmatter only, not the body: a note whose prose contains the line

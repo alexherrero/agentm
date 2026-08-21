@@ -47,7 +47,7 @@ func TestARenderedNoteParsesAsYAML(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			out := RenderNote(tc.r)
+			out := RenderNote(tc.r, Stamp{})
 			head, _, ok := strings.Cut(strings.TrimPrefix(out, "---\n"), "---\n")
 			if !ok {
 				t.Fatalf("no frontmatter block:\n%s", out)
@@ -71,9 +71,9 @@ func TestFieldOrderIsStable(t *testing.T) {
 		Title: "T", Type: "fact", Altitude: "artifact", Body: "b",
 		Confidence: 0.9, Tags: []string{"a", "b"}, Aliases: []string{"c"},
 	}
-	first := RenderNote(r)
+	first := RenderNote(r, Stamp{})
 	for i := 0; i < 20; i++ {
-		if got := RenderNote(r); got != first {
+		if got := RenderNote(r, Stamp{}); got != first {
 			t.Fatalf("render %d differs from the first:\n%s\n---\n%s", i, first, got)
 		}
 	}
@@ -98,7 +98,7 @@ func TestFieldOrderIsStable(t *testing.T) {
 func TestLowConfidenceLandsUnfiledWithItsNumber(t *testing.T) {
 	low := RenderNote(Response{
 		Title: "T", Type: "fact", Altitude: "artifact", Body: "b", Confidence: 0.2,
-	})
+	}, Stamp{})
 	if !strings.Contains(low, "status: unfiled") {
 		t.Errorf("a low-confidence note was not filed for review:\n%s", low)
 	}
@@ -108,7 +108,7 @@ func TestLowConfidenceLandsUnfiledWithItsNumber(t *testing.T) {
 
 	high := RenderNote(Response{
 		Title: "T", Type: "fact", Altitude: "artifact", Body: "b", Confidence: 0.95,
-	})
+	}, Stamp{})
 	if !strings.Contains(high, "status: active") {
 		t.Errorf("a confident enrichment was queued for review anyway:\n%s", high)
 	}
@@ -128,7 +128,7 @@ func TestStatusForStraddlesTheFloor(t *testing.T) {
 func TestTheNoteRecordsWhichPassWroteIt(t *testing.T) {
 	out := RenderNote(Response{
 		Title: "T", Type: "fact", Altitude: "artifact", Body: "b", Confidence: 0.9,
-	})
+	}, Stamp{})
 	if !strings.Contains(out, PassVersion) {
 		t.Errorf("the note does not record the pass version:\n%s", out)
 	}
