@@ -68,8 +68,9 @@ type BatchReport struct {
 	Deferred bool `json:"deferred"`
 	// Elapsed is wall time.
 	Elapsed time.Duration `json:"elapsed"`
-	// Errors carries the first few failures verbatim. Truncated, because a run
-	// where everything failed should say so once rather than 8,407 times.
+	// Errors carries the failures verbatim, up to maxReportedErrors. Truncated,
+	// because a run where everything failed should say so once rather than 8,407
+	// times.
 	Errors []string `json:"errors,omitempty"`
 
 	// Pairs is what the run actually rewrote — source and result per note, kept
@@ -177,7 +178,7 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 			switch {
 			case err != nil:
 				rep.Failed++
-				if len(rep.Errors) < 5 {
+				if len(rep.Errors) < maxReportedErrors {
 					rep.Errors = append(rep.Errors, fmt.Sprintf("%s: %v", cand.Rel, err))
 				}
 			case out.Skipped:
@@ -185,7 +186,7 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 			case out.Enriched:
 				if err := write(ctx, cand.Rel, out.Body); err != nil {
 					rep.Failed++
-					if len(rep.Errors) < 5 {
+					if len(rep.Errors) < maxReportedErrors {
 						rep.Errors = append(rep.Errors,
 							fmt.Sprintf("%s: writing: %v", cand.Rel, err))
 					}
@@ -208,3 +209,11 @@ func (p *Pass) RunBatch(ctx context.Context, list Lister, write Writer,
 	rep.Elapsed = time.Since(started)
 	return rep, nil
 }
+
+// maxReportedErrors bounds the failures a report carries.
+//
+// Twenty rather than five. The cap exists so a drain over the whole queue does
+// not print a line per note, and the first bounded batch showed five is the
+// wrong number for the other case: 8 notes failed and only 5 were explained, so
+// three failures in a 30-note proof had no recorded reason at all.
+const maxReportedErrors = 20

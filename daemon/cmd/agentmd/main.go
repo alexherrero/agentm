@@ -1359,7 +1359,17 @@ func cmdEnrich(args []string) error {
 		for i, p := range rep.Pairs {
 			rels[i], sources[i], results[i] = p.Rel, p.Source, p.Result
 		}
-		client := embed.NewClient(cfg.EmbedderURL, 60*time.Second)
+		// `EmbedderURL` is only set when attaching to a server somebody else
+		// runs. The daemon spawns its own and binds it to the fixed loopback
+		// port, which is how every other one-shot command reaches it — the
+		// first run of this measurement used the config field, found it empty,
+		// and reported "unsupported protocol scheme" after the batch had
+		// already spent 30 model calls.
+		base := cfg.EmbedderURL
+		if base == "" {
+			base = fmt.Sprintf("http://127.0.0.1:%d", embed.DefaultAttachPort)
+		}
+		client := embed.NewClient(base, 60*time.Second)
 		disp, derr := enrich.Measure(context.Background(),
 			func(ctx context.Context, texts []string) ([][]float32, error) {
 				return client.Embed(ctx, texts)

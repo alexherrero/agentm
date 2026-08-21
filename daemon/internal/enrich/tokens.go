@@ -114,7 +114,13 @@ func capitalizedNames(text string) []string {
 		trimmed := strings.Trim(w, `.,;:!?()[]{}"'`+"`")
 		if trimmed != "" && !prevEndedSentence {
 			r := []rune(trimmed)
-			if unicode.IsUpper(r[0]) && len(r) > 1 && !allUpper(trimmed) {
+			// Three characters, not two. A two-letter capitalized word is
+			// almost never a name and very often ordinary English mid-sentence
+			// — the first live batch rejected a note for dropping `No`, from
+			// `**No "I'll fix this next session"**`. Acronyms are handled by the
+			// all-caps rule below and keep their two-character floor, because
+			// `AI` and `ML` genuinely are distinctive.
+			if unicode.IsUpper(r[0]) && len(r) > 2 && !allUpper(trimmed) {
 				out = append(out, trimmed)
 			}
 			// An all-caps word is an acronym wherever it sits, including at the
@@ -144,6 +150,68 @@ func allUpper(s string) bool {
 	return hasLetter
 }
 
+// metadataVocabulary is every token the source's frontmatter already carries.
+//
+// Frontmatter is excluded from the comparison because the rewrite *replaces* it.
+// The same has to be true of frontmatter values echoed into the body, and this
+// corpus echoes them constantly: a mined note repeats its own `type`,
+// `mining_confidence` and category inside a "## Mining metadata" block, so the
+// first live run of this gate rejected 26 of 30 notes for dropping `LOW`,
+// `Mining`, `Supporting`, `preferences` and `idea` — every one of them
+// scaffolding the rewrite was right to throw away.
+//
+// Matching is prefix-based in both directions so `preference` in the frontmatter
+// accounts for `preferences` in the body. A stemmer would be more precise and
+// would be a dependency earning its keep on one case.
+func metadataVocabulary(raw string) []string {
+	if !strings.HasPrefix(raw, "---") {
+		return nil
+	}
+	i := strings.Index(raw[3:], "\n---")
+	if i < 0 {
+		return nil
+	}
+	var out []string
+	for _, f := range strings.FieldsFunc(strings.ToLower(raw[3:3+i]),
+		func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+		}) {
+		if len(f) >= 3 {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// isMetadata reports whether a token is frontmatter vocabulary rather than
+// content.
+func isMetadata(tok string, vocab []string) bool {
+	low := strings.ToLower(tok)
+	for _, v := range vocab {
+		if strings.HasPrefix(low, v) || strings.HasPrefix(v, low) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripHeadings removes markdown heading lines from the text a comparison reads.
+//
+// A heading is a structural label rather than a claim, and enrichment
+// restructures — so requiring the words of "## Supporting excerpts" to survive
+// is requiring the rewrite to keep a section it was asked to absorb. The same
+// reasoning already excludes a sentence opener from counting as a name.
+func stripHeadings(text string) string {
+	var keep []string
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		keep = append(keep, line)
+	}
+	return strings.Join(keep, "\n")
+}
+
 // Check compares the source's distinctive tokens against the enriched body.
 func (g *Tokens) Check(_ context.Context, req Request, body string) error {
 	r, err := ParseResponse(body)
@@ -157,8 +225,12 @@ func (g *Tokens) Check(_ context.Context, req Request, body string) error {
 	hay := strings.Join(append([]string{r.Title, r.Body, r.Summary, r.Slug},
 		append(r.Tags, r.Aliases...)...), "\n")
 
+	vocab := metadataVocabulary(req.Raw)
 	var dropped []string
-	for _, tok := range Distinctive(sourceBody(req.Raw)) {
+	for _, tok := range Distinctive(stripHeadings(sourceBody(req.Raw))) {
+		if isMetadata(tok, vocab) {
+			continue
+		}
 		if !containsToken(hay, tok) {
 			dropped = append(dropped, tok)
 		}

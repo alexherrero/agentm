@@ -228,3 +228,117 @@ func TestTheGateRunsOnEveryNoteThroughThePass(t *testing.T) {
 		t.Errorf("the outcome does not say what was dropped: %q", out.Reason)
 	}
 }
+
+// The regression the first live batch found, pinned with the note that caused it.
+//
+// 26 of 30 notes were rejected for dropping `LOW`, `Mining`, `Supporting`,
+// `preferences` and `idea` — every one of them scaffolding rather than content.
+// A mined note repeats its own frontmatter inside a "## Mining metadata" block,
+// and the gate was demanding the rewrite carry that block's vocabulary forward
+// when throwing it away is precisely the job.
+func TestMiningScaffoldingIsNotDistinctiveContent(t *testing.T) {
+	// Copied from Agent/memory/_inbox/workflow-bash-479.md, which the first
+	// batch rejected.
+	source := "---\n" +
+		"type: workflow\n" +
+		"status: unfiled\n" +
+		"slug: workflow-bash-479\n" +
+		"mining_confidence: MEDIUM\n" +
+		"mining_rationale: \"tool_use frequency threshold (N>=3, observed 519)\"\n" +
+		"mining_occurrences: 519\n" +
+		"---\n\n" +
+		"The `Bash` tool was invoked 519 times during this session. If this " +
+		"represents a repeatable workflow, capture the sequence + when to use it.\n\n" +
+		"## Mining metadata\n\n" +
+		"- **Category**: `workflow`\n" +
+		"- **Confidence**: `MEDIUM`\n" +
+		"- **Rationale**: tool_use frequency threshold (N>=3, observed 519)\n" +
+		"- **Occurrences**: 519\n"
+
+	// What the model actually returned, which is a good rewrite: it keeps the
+	// numbers and the tool name, and drops the scaffolding.
+	good := respond(t, "A mining pass noted the `Bash` tool was invoked 519 "+
+		"times during this session, crossing the N>=3 frequency threshold. The "+
+		"note never captured the command sequence itself.")
+
+	if err := DefaultTokens().Check(context.Background(),
+		Request{Rel: "workflow-bash-479.md", Raw: source}, good); err != nil {
+		t.Errorf("a rewrite that kept every real token was rejected for dropping "+
+			"scaffolding: %v", err)
+	}
+}
+
+// And the gate still catches a real drop on the same note, or the fix above
+// would have been a way to make the gate stop working.
+func TestTheScaffoldingFixDoesNotDisarmTheGate(t *testing.T) {
+	source := "---\ntype: workflow\nmining_confidence: MEDIUM\n---\n\n" +
+		"The `Bash` tool was invoked 519 times, see `idx_timestamp_desc`.\n\n" +
+		"## Mining metadata\n\n- **Category**: `workflow`\n"
+
+	// Drops the identifier and the count — both real content.
+	bad := respond(t, "A mining pass noted the tool was invoked many times.")
+	err := DefaultTokens().Check(context.Background(),
+		Request{Rel: "x.md", Raw: source}, bad)
+	if err == nil {
+		t.Fatal("a rewrite that dropped an identifier and a count was accepted")
+	}
+	for _, want := range []string{"idx_timestamp_desc", "519"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the rejection does not name %q: %v", want, err)
+		}
+	}
+}
+
+// Frontmatter vocabulary is excluded by prefix in both directions, so a
+// frontmatter `preference` accounts for a body `preferences`.
+func TestFrontmatterVocabularyMatchesMorphologically(t *testing.T) {
+	vocab := metadataVocabulary("---\ntype: preference\nmining_confidence: LOW\n---\n\nbody\n")
+	for _, tok := range []string{"preferences", "preference", "LOW", "mining"} {
+		if !isMetadata(tok, vocab) {
+			t.Errorf("%q was not recognised as frontmatter vocabulary: %v", tok, vocab)
+		}
+	}
+	// And a real content word is not swallowed by the rule.
+	for _, tok := range []string{"idx_timestamp_desc", "Antigravity", "519"} {
+		if isMetadata(tok, vocab) {
+			t.Errorf("%q was wrongly treated as metadata", tok)
+		}
+	}
+}
+
+func TestHeadingsAreStructureNotContent(t *testing.T) {
+	got := stripHeadings("intro\n## Supporting excerpts\n> a quote\n### Deeper\nmore\n")
+	if strings.Contains(got, "Supporting") || strings.Contains(got, "Deeper") {
+		t.Errorf("heading text survived: %q", got)
+	}
+	if !strings.Contains(got, "a quote") || !strings.Contains(got, "intro") {
+		t.Errorf("stripHeadings ate the body: %q", got)
+	}
+}
+
+// The second live batch's one remaining false positive, pinned.
+//
+// `No` was extracted as a name from `**No "I'll fix this next session"**` — an
+// ordinary English word capitalized mid-sentence after bold markup. Two-letter
+// capitalized words are essentially never distinctive; acronyms are a separate
+// rule and keep their two-character floor.
+func TestTwoLetterCapitalizedWordsAreNotNames(t *testing.T) {
+	got := Distinctive("Green before the flip. **No \"I'll fix this next " +
+		"session\"** on failed gates. It is the rule.")
+	for _, tok := range got {
+		if tok == "No" || tok == "It" {
+			t.Errorf("%q was treated as a name: %v", tok, got)
+		}
+	}
+	// But a real two-letter acronym still counts, or the fix went too far.
+	acr := Distinctive("The ML pipeline reads the AI config.")
+	var found int
+	for _, tok := range acr {
+		if tok == "ML" || tok == "AI" {
+			found++
+		}
+	}
+	if found != 2 {
+		t.Errorf("two-letter acronyms were swept up by the name floor: %v", acr)
+	}
+}
