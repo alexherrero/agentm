@@ -207,6 +207,26 @@ deprecations:
 dampened_spaces:
   - Personal
 
+# Spaces no background model pass may read. This is a privacy boundary, not a
+# ranking one, and it is absolute: enrichment skips them, dreaming never sends
+# them to a model, no batch call includes them.
+#
+# Foreground recall is deliberately not covered. You reading your own notes in
+# your own session is you reading your own notes; what this bars is the
+# machinery that runs unattended.
+#
+# Kept separate from `dampened_spaces` because the two answer different
+# questions. A space can rank low and still be safe to summarize, and a space can
+# rank normally and still be nobody's business to send anywhere.
+model_exempt_spaces:
+  - Personal
+
+# Spaces exempt from the memory contract. Their files are documents rather than
+# memories: they carry frontmatter of their own shape, and expecting `type`,
+# `status` or `altitude` there would flag every one of them forever.
+contract_exempt_spaces:
+  - Personal
+
 warrants: {}
 
 thresholds:

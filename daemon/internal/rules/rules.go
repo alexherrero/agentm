@@ -87,9 +87,19 @@ type block struct {
 	// DampenedSpaces are top-level directories demoted on ordinary questions.
 	// Optional: a contract that names none dampens nothing, which is the old
 	// behaviour and a legitimate choice rather than a broken file.
-	DampenedSpaces []string           `yaml:"dampened_spaces" json:"dampened_spaces"`
-	Warrants       map[string]Warrant `yaml:"warrants" json:"warrants"`
-	Thresholds     map[string]float64 `yaml:"thresholds" json:"thresholds"`
+	DampenedSpaces []string `yaml:"dampened_spaces" json:"dampened_spaces"`
+	// ModelExemptSpaces are top-level directories no background model pass may
+	// read. A privacy boundary rather than a ranking one, and deliberately a
+	// separate list from DampenedSpaces: a space can rank low and still be safe
+	// to summarize, and a space can rank normally and still be nobody's business
+	// to send anywhere.
+	ModelExemptSpaces []string `yaml:"model_exempt_spaces" json:"model_exempt_spaces"`
+	// ContractExemptSpaces are top-level directories whose files are documents
+	// rather than memories. A missing `type` there is the expected state, not a
+	// finding.
+	ContractExemptSpaces []string           `yaml:"contract_exempt_spaces" json:"contract_exempt_spaces"`
+	Warrants             map[string]Warrant `yaml:"warrants" json:"warrants"`
+	Thresholds           map[string]float64 `yaml:"thresholds" json:"thresholds"`
 }
 
 // Rules is one parsed filing contract, plus where it came from.
@@ -389,4 +399,54 @@ func (r *Rules) TypesSorted() []string {
 	out := append([]string(nil), r.MemoryTypes...)
 	sort.Strings(out)
 	return out
+}
+
+// InSpace reports whether a vault-relative path sits in one of `spaces`.
+//
+// Matched on the first path segment, case-insensitively. A space is a top-level
+// directory: matching deeper would let a folder named `personal` anywhere in the
+// tree inherit a rule written about the operator's own, and macOS treats
+// `Personal/` and `personal/` as one directory, so a case-sensitive rule would
+// be a hazard rather than a precision.
+func InSpace(rel string, spaces []string) bool {
+	if len(spaces) == 0 {
+		return false
+	}
+	rel = strings.TrimPrefix(strings.ReplaceAll(rel, "\\", "/"), "./")
+	first := rel
+	if i := strings.IndexByte(rel, '/'); i >= 0 {
+		first = rel[:i]
+	}
+	first = strings.ToLower(first)
+	for _, s := range spaces {
+		if first == strings.ToLower(strings.Trim(strings.TrimSpace(s), "/")) {
+			return true
+		}
+	}
+	return false
+}
+
+// MayReadWithModel is the eligibility gate's path rule.
+//
+// The design states this one in the strongest terms it uses anywhere: background
+// model passes never read an exempt space. Enrichment skips it, dreaming never
+// sends it to a model, no batch call includes it — "enforced as a path rule in
+// the eligibility gate rather than as a convention."
+//
+// So it is a function that refuses, and it exists before the pass that would
+// violate it. This repo has already shipped a criterion whose reader never
+// arrived; a privacy boundary written after the thing it bounds is the same bet
+// with a worse loss.
+//
+// Foreground recall is deliberately not covered here. The operator reading their
+// own notes in their own session is the operator reading their own notes; what
+// this bars is the machinery that runs unattended.
+func (r *Rules) MayReadWithModel(rel string) bool {
+	return !InSpace(rel, r.ModelExemptSpaces)
+}
+
+// IsContractExempt reports whether a path's files are documents rather than
+// memories, so a missing `type` or `status` there is the expected state.
+func (r *Rules) IsContractExempt(rel string) bool {
+	return InSpace(rel, r.ContractExemptSpaces)
 }

@@ -114,6 +114,14 @@ class StorageRules:
         """`{retired_value: replacement}` — the collapse map, mechanical."""
         return dict(self._data.get("deprecations") or {})
 
+    def model_exempt_spaces(self) -> list:
+        """Spaces no background model pass may read."""
+        return list(self._data.get("model_exempt_spaces") or [])
+
+    def contract_exempt_spaces(self) -> list:
+        """Spaces whose files are documents rather than memories."""
+        return list(self._data.get("contract_exempt_spaces") or [])
+
     def warrants(self) -> dict:
         """`{memory_type: {query_class, nearest, why_not}}` — the growth rule's
         evidence. A type added to `memory_types` carries one; the gate checks it
@@ -295,6 +303,57 @@ def enrichment_schema_enum() -> list:
 
 def content_hash() -> str:
     return rules().content_hash()
+
+
+# ── the eligibility gate ───────────────────────────────────────────────────
+#
+# The design states this rule in the strongest terms it uses anywhere: background
+# model passes never read an exempt space. Enrichment skips it, dreaming never
+# sends it to a model, no batch call includes it — "enforced as a path rule in
+# the eligibility gate rather than as a convention."
+#
+# So it is a function that refuses, and it exists before the pass that would
+# violate it. This repo has already shipped a criterion whose reader never
+# arrived; a privacy boundary written after the thing it bounds is the same bet
+# with a much worse loss.
+#
+# The contract is parsed once, in Go, and asked for once per run. The check
+# itself is a path-prefix test applied locally, because a per-note subprocess for
+# a string comparison would be absurd — and `test_eligibility_parity.py` drives
+# the same table through both implementations so the two cannot drift.
+
+def in_space(rel, spaces) -> bool:
+    """Whether a vault-relative path sits in one of `spaces`.
+
+    Matched on the first path segment, case-insensitively. A space is a top-level
+    directory: matching deeper would let a folder named `personal` anywhere in
+    the tree inherit a rule written about the operator's own, and macOS treats
+    `Personal/` and `personal/` as one directory, so a case-sensitive rule would
+    be a hazard rather than a precision.
+    """
+    if not spaces:
+        return False
+    rel = str(rel).replace("\\", "/")
+    if rel.startswith("./"):
+        rel = rel[2:]
+    first = rel.split("/", 1)[0].lower()
+    return any(first == str(s).strip().strip("/").lower() for s in spaces)
+
+
+def may_read_with_model(rel) -> bool:
+    """The eligibility gate's path rule, for every background pass.
+
+    Foreground recall is deliberately not covered. The operator reading their own
+    notes in their own session is the operator reading their own notes; what this
+    bars is the machinery that runs unattended.
+    """
+    return not in_space(rel, rules().model_exempt_spaces())
+
+
+def is_contract_exempt(rel) -> bool:
+    """Whether a path's files are documents rather than memories, so a missing
+    `type` or `status` there is the expected state rather than a finding."""
+    return in_space(rel, rules().contract_exempt_spaces())
 
 
 # ── the hash watch ─────────────────────────────────────────────────────────
