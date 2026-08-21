@@ -1257,9 +1257,39 @@ func cmdEnrich(args []string) error {
 			strings.Join(missing, "; "))
 	})
 
-	write := func(_ context.Context, rel, body string) error {
-		return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
-			[]byte(body), 0o644)
+	// Writes go through the Applier, so class membership, the while-unlinked
+	// slug rule and the journal all engage. Writing bytes directly here would
+	// have been shorter and would have bypassed all three.
+	applier := &enrich.Applier{
+		Membership: enrich.DefaultMembership(),
+		Slug: &enrich.SlugRule{Linked: func(rel string) (bool, error) {
+			back, err := idx.Backlinks(rel)
+			return len(back) > 0, err
+		}},
+		Journal: enrich.NewFileJournal(filepath.Dir(cfg.IndexPath)),
+		Put: func(_ context.Context, rel, body string) error {
+			return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
+				[]byte(body), 0o644)
+		},
+		Move: func(_ context.Context, from, to string) error {
+			return os.Rename(
+				filepath.Join(cfg.VaultPath, filepath.FromSlash(from)),
+				filepath.Join(cfg.VaultPath, filepath.FromSlash(to)))
+		},
+	}
+
+	write := func(ctx context.Context, rel, body string) error {
+		r, err := enrich.ParseResponse(body)
+		if err != nil {
+			return err
+		}
+		previous, _ := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+		_, err = applier.Apply(ctx, enrich.WriteRequest{
+			Rel: rel, Previous: string(previous), Next: enrich.RenderNote(r),
+			NewSlug: r.Slug, Trigger: enrich.TriggerBatch,
+			Version: enrich.PassVersion,
+		})
+		return err
 	}
 
 	rep, err := pass.RunBatch(context.Background(), list, write, *after, budget)
