@@ -139,6 +139,7 @@ func TestTheWrapStopsWhereTheDrainBegan(t *testing.T) {
 func TestTheWrapStopsEvenWhenNothingSucceeds(t *testing.T) {
 	ctx := context.Background()
 	q := newQueue(t)
+	q.SetMaxAttempts(1000)
 	enqueueN(t, q, StageEnrich, 3)
 
 	counts := map[string]int{}
@@ -184,14 +185,18 @@ func TestCompletedWorkIsNotDrainedAgain(t *testing.T) {
 	}
 }
 
-// A failure counts once per attempt, which is what the retry cap will read.
+// A failure counts once per attempt, which is what the retry cap reads.
+//
+// Counted up to the cap rather than through it: the failure that reaches the cap
+// parks the item, which is task 4's contract and has its own tests. This one is
+// about the arithmetic that gets it there.
 func TestEachFailureCountsOnce(t *testing.T) {
 	ctx := context.Background()
 	q := newQueue(t)
 	if err := q.Enqueue(ctx, StageEnrich, "a.md", "why"); err != nil {
 		t.Fatal(err)
 	}
-	for i := 1; i <= 3; i++ {
+	for i := 1; i < MaxAttempts; i++ {
 		if _, err := q.Drain(ctx, StageEnrich, 1, func(context.Context, WorkItem) error {
 			return fmt.Errorf("attempt %d", i)
 		}); err != nil {
@@ -199,7 +204,8 @@ func TestEachFailureCountsOnce(t *testing.T) {
 		}
 		items, _ := q.Pending(ctx, StageEnrich, 0)
 		if len(items) != 1 {
-			t.Fatalf("after %d failures the item is gone", i)
+			t.Fatalf("after %d failures the item is gone, and the cap is %d",
+				i, MaxAttempts)
 		}
 		if items[0].Attempts != i {
 			t.Errorf("Attempts = %d after %d failures", items[0].Attempts, i)

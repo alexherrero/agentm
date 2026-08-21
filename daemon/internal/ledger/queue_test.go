@@ -102,6 +102,12 @@ func TestFinishedWorkLeavesTheQueue(t *testing.T) {
 func TestACappedDrainNeverStarvesItemsPastTheCap(t *testing.T) {
 	ctx := context.Background()
 	q := newQueue(t)
+	// Parking held out of the way. This test's premise is that nothing ever
+	// leaves the pending set, so completion cannot stand in for the cursor; the
+	// retry cap would quietly empty the queue part way through and the test
+	// would pass while proving less than it claims. Dead-lettering has its own
+	// tests.
+	q.SetMaxAttempts(1000)
 	want := enqueueN(t, q, StageEnrich, 10)
 
 	boom := errors.New("this one never works")
@@ -148,6 +154,7 @@ func TestACappedDrainNeverStarvesItemsPastTheCap(t *testing.T) {
 func TestOnePoisonItemDoesNotHoldTheQueue(t *testing.T) {
 	ctx := context.Background()
 	q := newQueue(t)
+	q.SetMaxAttempts(1000)
 	want := enqueueN(t, q, StageEnrich, 10)
 	poison := want[0]
 
@@ -201,6 +208,7 @@ func TestTheCursorIsPersistedPerItem(t *testing.T) {
 	q := newQueue(t)
 	enqueueN(t, q, StageEnrich, 5)
 
+	q.SetMaxAttempts(1000)
 	// A handler that gives up part way, standing in for a process that died.
 	stop := errors.New("stop here")
 	var handled int
@@ -678,6 +686,7 @@ func TestAFailureRecordsItsCause(t *testing.T) {
 func TestTheErrorListIsCapped(t *testing.T) {
 	ctx := context.Background()
 	q := newQueue(t)
+	q.SetMaxAttempts(1000)
 	enqueueN(t, q, StageEnrich, maxDrainErrors+10)
 
 	rep, err := q.Drain(ctx, StageEnrich, maxDrainErrors+10,
