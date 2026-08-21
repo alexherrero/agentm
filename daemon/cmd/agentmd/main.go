@@ -1167,6 +1167,12 @@ func cmdEnrich(args []string) error {
 	asJSON := fs.Bool("json", false, "emit the report as JSON")
 	dumpDir := fs.String("dump", "",
 		"write before/after pairs into this directory for review")
+	sample := fs.Int("sample", 0,
+		"draw this many notes at random from the whole queue instead of taking "+
+			"the next page in cursor order")
+	seed := fs.Int64("seed", 0, "seed for --sample (0 picks one and prints it)")
+	yes := fs.Bool("yes", false,
+		"run this one batch even though the eager trigger is off")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -1192,10 +1198,42 @@ func cmdEnrich(args []string) error {
 		budget.PageSize = *pageSize
 	}
 
+	// A random sample is drawn once, up front, and then served page by page.
+	//
+	// Drawn once rather than per page because a sample re-drawn on every call is
+	// not a sample of anything — the cursor would walk through a different
+	// population each time and the dispersion number would be over a set that
+	// never existed.
+	var sampled []string
+	if *sample > 0 {
+		if *seed == 0 {
+			*seed = time.Now().UnixNano()
+		}
+		var err error
+		sampled, err = idx.UnfiledSample(context.Background(), *sample, *seed)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("sampled %d of the unfiled queue at random (seed %d — pass "+
+			"--seed %d to draw the same notes again)\n", len(sampled), *seed, *seed)
+	}
+
 	// The lister reads the index for identity and the disk for content. The
 	// index holds a cache of the frontmatter; the pass needs the bytes.
 	list := func(ctx context.Context, cursor string, limit int) ([]enrich.Candidate, error) {
-		paths, err := idx.UnfiledPage(ctx, cursor, limit)
+		var paths []string
+		var err error
+		if sampled != nil {
+			// Serve the fixed sample in the same cursor-ordered way the queue is
+			// served, so resuming and deferring behave identically either way.
+			for _, p := range sampled {
+				if p > cursor && len(paths) < limit {
+					paths = append(paths, p)
+				}
+			}
+		} else {
+			paths, err = idx.UnfiledPage(ctx, cursor, limit)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -1227,9 +1265,18 @@ func cmdEnrich(args []string) error {
 		return nil
 	}
 
-	if !cfg.EnrichEnabled {
-		return fmt.Errorf("enrichment is off — set daemon.enrich_enabled to run it " +
-			"(this refuses rather than doing nothing quietly)")
+	// `daemon.enrich_enabled` governs the *eager trigger* — whether every
+	// capture fires a model call on the operator's machine. An explicit
+	// `agentmd enrich --yes` is already a deliberate act, so it does not need
+	// that switch thrown, and requiring it would mean turning on automatic
+	// enrichment in order to test enrichment once.
+	//
+	// The refusal stays the default, because "I ran the command and nothing
+	// happened" is a report this project has debugged too many times.
+	if !cfg.EnrichEnabled && !*yes {
+		return fmt.Errorf("enrichment is off — pass --yes to run this one batch, " +
+			"or set daemon.enrich_enabled to arm the eager trigger for every " +
+			"capture (this refuses rather than doing nothing quietly)")
 	}
 
 	name := cfg.EnrichModel
