@@ -121,6 +121,11 @@ type Pass struct {
 	pre    []Gate
 	post   []Gate
 
+	// types renders the contract's memory-type enum into the prompt. Supplied
+	// rather than imported: the enum is whatever the rules file says at the
+	// moment of the call, and this package has no business reading that file.
+	types func() []string
+
 	// enabled gates the whole pass. Off in the shipped configuration: the eager
 	// trigger fires on real captures, which is real spend on the operator's
 	// machine, so turning it on is a deliberate act rather than a consequence of
@@ -153,6 +158,11 @@ func NewPass(caller *Caller, concurrency int) *Pass {
 	}
 	return &Pass{caller: caller, inflight: make(chan struct{}, concurrency)}
 }
+
+// SetTypes supplies the contract's memory-type enum for the prompt. Without it
+// the prompt says the contract did not resolve, rather than offering nothing —
+// an empty list reads to a model as "any string will do".
+func (p *Pass) SetTypes(f func() []string) { p.types = f }
 
 // SetEnabled turns the pass on. See config.EnrichEnabled for why it ships off.
 func (p *Pass) SetEnabled(on bool) { p.enabled.Store(on) }
@@ -300,7 +310,11 @@ func (p *Pass) call(ctx context.Context, req Request) (string, error) {
 	if p.caller == nil {
 		return "", errors.New("enrich: no model caller configured")
 	}
-	return p.caller.Call(ctx, req.Raw)
+	var types []string
+	if p.types != nil {
+		types = p.types()
+	}
+	return p.caller.Call(ctx, BuildPrompt(req, types))
 }
 
 // unwrapReason strips the sentinel so a log line reads as a sentence rather than

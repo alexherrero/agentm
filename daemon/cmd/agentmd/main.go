@@ -1236,7 +1236,14 @@ func cmdEnrich(args []string) error {
 	}
 	pass := enrich.NewPass(enrich.DefaultCaller(name), cfg.EnrichConcurrency)
 	pass.SetEnabled(true)
+	pass.SetTypes(func() []string {
+		if loaded, err := cfg.Rules.Get(); err == nil {
+			return loaded.TypesSorted()
+		}
+		return nil
+	})
 	attachPreGates(pass, cfg, budget)
+	attachPostGates(pass, cfg)
 
 	write := func(_ context.Context, rel, body string) error {
 		return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
@@ -1304,4 +1311,31 @@ func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget)
 		},
 		enrich.NewCycleBudget(budget.MaxCalls, budget.MaxDuration),
 	)
+}
+
+// attachPostGates registers the checks that run on what the model returned.
+//
+// Schema first, for the same reason eligibility is first among the pre-gates:
+// it is the cheapest and it rejects the most. Every later post-gate reads
+// fields, and a response that will not parse has no fields to read.
+func attachPostGates(pass *enrich.Pass, cfg *config.Config) {
+	isType := func(v string) bool {
+		loaded, err := cfg.Rules.Get()
+		if err != nil {
+			// No contract, no way to validate a type against one. Refusing every
+			// type is the same direction capture takes when it refuses a
+			// caller-supplied type with the contract broken: the thing that
+			// depends on the contract stops, and the things that do not keep
+			// working.
+			return false
+		}
+		return loaded.IsMemoryType(v)
+	}
+	typesSorted := func() []string {
+		if loaded, err := cfg.Rules.Get(); err == nil {
+			return loaded.TypesSorted()
+		}
+		return nil
+	}
+	pass.AddPost(enrich.DefaultSchema(isType, typesSorted))
 }

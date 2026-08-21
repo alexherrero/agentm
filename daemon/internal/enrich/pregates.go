@@ -202,7 +202,7 @@ func headerSections(body string) []string {
 // voice change re-queues work" is a mechanism rather than an intention: the
 // version is in the idempotency key, so changing it invalidates the whole
 // corpus's keys at once.
-const PassVersion = "enrich/1+prompt/0"
+var PassVersion = "enrich/1+prompt/" + PromptHash()
 
 // --- 4. fingerprint ---------------------------------------------------------
 
