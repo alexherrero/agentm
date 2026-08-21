@@ -33,10 +33,7 @@ func (g *stubGate) calls() int {
 // passWith builds an enabled pass whose model returns a fixed body.
 func passWith(t *testing.T, response string) *Pass {
 	t.Helper()
-	stub := writeStub(t, fmt.Sprintf("#!/bin/sh\nprintf '%%s' '%s'\n", response))
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 2)
+	p := NewPass(newStubCaller(t, stubOpts{stdout: response}), 2)
 	p.SetEnabled(true)
 	return p
 }
@@ -95,10 +92,9 @@ func TestTheTriggerReachesTheGates(t *testing.T) {
 // FireEager must return before the work is done, or "never on the critical
 // path" is a budget rather than a guarantee.
 func TestFireEagerReturnsBeforeTheWorkFinishes(t *testing.T) {
-	stub := writeStub(t, "#!/bin/sh\nsleep 1\nprintf 'body'\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 2)
+	p := NewPass(newStubCaller(t, stubOpts{
+		stdout: "body", sleep: time.Second,
+	}), 2)
 	p.SetEnabled(true)
 
 	var done sync.WaitGroup
@@ -123,10 +119,9 @@ func TestFireEagerReturnsBeforeTheWorkFinishes(t *testing.T) {
 // 9,899 notes in an afternoon; unbounded, that is 9,899 concurrent `claude`
 // processes.
 func TestAConcurrencyLimitSkipsRatherThanQueues(t *testing.T) {
-	stub := writeStub(t, "#!/bin/sh\nsleep 1\nprintf 'body'\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 1)
+	p := NewPass(newStubCaller(t, stubOpts{
+		stdout: "body", sleep: time.Second,
+	}), 1)
 	p.SetEnabled(true)
 
 	outcomes := make(chan Outcome, 4)
@@ -160,10 +155,7 @@ func TestAConcurrencyLimitSkipsRatherThanQueues(t *testing.T) {
 // A model failure leaves the note alone. `unfiled` is not error handling bolted
 // on; it is the reason the status exists.
 func TestAModelFailureLeavesTheNoteUntouched(t *testing.T) {
-	stub := writeStub(t, "#!/bin/sh\necho 'usage limit' >&2\nexit 1\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 1)
+	p := NewPass(newStubCaller(t, stubOpts{stderr: "usage limit", exit: 1}), 1)
 	p.SetEnabled(true)
 
 	out, err := p.Run(context.Background(), Request{Rel: "x.md", Raw: "raw"})
@@ -289,10 +281,7 @@ func TestPreGatesSeeTheSourceAndPostGatesSeeTheResponse(t *testing.T) {
 // spend on the operator's machine, so turning it on is a deliberate act rather
 // than a consequence of updating the binary.
 func TestThePassIsOffUnlessAskedFor(t *testing.T) {
-	stub := writeStub(t, "#!/bin/sh\nprintf 'body'\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 1) // deliberately not enabled
+	p := NewPass(newStubCaller(t, stubOpts{stdout: "body"}), 1) // not enabled
 
 	if p.Enabled() {
 		t.Fatal("a fresh pass is enabled")

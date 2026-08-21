@@ -289,26 +289,56 @@ func BenchmarkCapture(b *testing.B) {
 	}
 }
 
-// The whole claim of "the model is never on the critical path", measured rather
-// than argued.
+// The whole claim of "the model is never on the critical path", measured as a
+// difference rather than against a clock.
 //
-// The eager trigger fires at the end of every capture. If it were synchronous —
-// or if it merely *contended* with the capture path — this is where it would
-// show, because the stub here takes a full second and the budget is a tenth of
-// that. A capture that waits for enrichment cannot pass this test; a capture
-// that hands the work off and returns does not notice it at all.
+// The first version of this asserted the same absolute 100ms budget
+// TestCaptureStaysUnderBudget owns — and failed on ubuntu-latest at 103.9ms,
+// because that test carries a runner-floor skip this one had copied nothing of.
+// The absolute budget was never this test's property to assert. What belongs
+// here is the *difference* enrichment makes, which is immune to how slow the
+// runner is: measure the same captures with the pass off and with it on, and
+// compare.
 //
-// The stub sleeps deliberately rather than returning instantly. A fast stub
-// would pass whether the call was synchronous or not, which is the shape of test
-// that looks like coverage and is not.
+// The stub sleeps a full second on purpose. A fast stub would pass whether the
+// call was synchronous or not, which is the shape of test that looks like
+// coverage and is not.
 func TestEnrichmentDoesNotReachCaptureLatency(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing test")
 	}
 	if runtime.GOOS == "windows" {
+		// The stub is a shell script. The portable-stub treatment the enrich
+		// package got is not worth duplicating here: FireEager's handoff is
+		// pure Go and is covered portably by
+		// TestFireEagerReturnsBeforeTheWorkFinishes; what this test adds is
+		// that the property survives the real capture path, and one platform
+		// demonstrating that is enough.
 		t.Skip("the stub is a shell script")
 	}
-	cp := newHarness(t)
+
+	measure := func(cp *Capturer, n int) time.Duration {
+		t.Helper()
+		if _, err := cp.Do(Request{Text: body(0), Title: "warm up"}); err != nil {
+			t.Fatalf("warm-up capture: %v", err)
+		}
+		var worst time.Duration
+		for i := 1; i <= n; i++ {
+			start := time.Now()
+			if _, err := cp.Do(Request{
+				Text: body(i), Title: fmt.Sprintf("note %d", i),
+			}); err != nil {
+				t.Fatalf("capture %d: %v", i, err)
+			}
+			if d := time.Since(start); d > worst {
+				worst = d
+			}
+		}
+		return worst
+	}
+
+	const n = 20
+	baseline := measure(newHarness(t), n)
 
 	stubDir := t.TempDir()
 	stub := filepath.Join(stubDir, "slow-claude")
@@ -320,33 +350,25 @@ func TestEnrichmentDoesNotReachCaptureLatency(t *testing.T) {
 	caller.Bin = stub
 	pass := enrich.NewPass(caller, 8)
 	pass.SetEnabled(true)
+
+	cp := newHarness(t)
 	cp.SetEnrichPass(pass)
 	t.Cleanup(pass.Wait)
+	live := measure(cp, n)
 
-	if _, err := cp.Do(Request{Text: body(0), Title: "warm up"}); err != nil {
-		t.Fatalf("warm-up capture: %v", err)
-	}
-
-	const n = 20
-	var worst time.Duration
-	for i := 1; i <= n; i++ {
-		start := time.Now()
-		if _, err := cp.Do(Request{Text: body(i), Title: fmt.Sprintf("note %d", i)}); err != nil {
-			t.Fatalf("capture %d: %v", i, err)
-		}
-		if d := time.Since(start); d > worst {
-			worst = d
-		}
-	}
+	t.Logf("worst capture: %s without enrichment, %s with it", baseline, live)
 
 	// Every one of those captures started a subprocess that sleeps a second. If
 	// any capture waited on one, the worst case is at least a second.
-	if worst >= 900*time.Millisecond {
+	if live >= 900*time.Millisecond {
 		t.Errorf("the slowest capture took %s while enrichment was live — the "+
-			"capture path is waiting on the model", worst)
+			"capture path is waiting on the model", live)
 	}
-	if worst > captureBudgetP95 {
-		t.Errorf("the slowest capture took %s, over the %s budget", worst,
-			captureBudgetP95)
+	// And the difference is small. Generous, because these are worst-of-20
+	// samples on a shared runner and the comparison only has to catch enrichment
+	// entering the transaction, not ordinary scheduling noise.
+	if slack := live - baseline; slack > 50*time.Millisecond {
+		t.Errorf("enrichment added %s to the worst capture (%s -> %s), which is "+
+			"more than scheduling noise", slack, baseline, live)
 	}
 }

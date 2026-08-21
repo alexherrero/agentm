@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -66,14 +65,7 @@ func TestTheCommandRunsFromANeutralDirectory(t *testing.T) {
 // Call has to actually create that directory, not just accept one. A neutral cwd
 // the caller forgot to supply is the same bug with an extra step.
 func TestCallCreatesItsOwnNeutralDirectoryWithNothingAboveIt(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the stub is a shell script")
-	}
-	stub := writeStub(t, `#!/bin/sh
-printf '{"cwd":"%s"}' "$PWD"
-`)
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
+	c := newStubCaller(t, stubOpts{cwd: true})
 
 	var got struct {
 		Cwd string `json:"cwd"`
@@ -130,15 +122,7 @@ func TestTheCommandBlocksEveryToolThatReachesDiskOrNetwork(t *testing.T) {
 // A non-zero exit with an empty stderr is how usage limits arrive. Reporting
 // only stderr produced 132 journal lines reading "failed: " in the Python pass.
 func TestAnEmptyStderrFailureStillSaysSomething(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the stub is a shell script")
-	}
-	stub := writeStub(t, `#!/bin/sh
-echo "usage limit reached"
-exit 1
-`)
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
+	c := newStubCaller(t, stubOpts{stdout: "usage limit reached", exit: 1})
 
 	_, err := c.Call(context.Background(), "prompt")
 	if err == nil {
@@ -152,12 +136,7 @@ exit 1
 // Empty output is an error, not an empty result. A caller that reads "no output"
 // as "nothing to change" writes the unenriched note and marks it done.
 func TestSilenceIsAnError(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the stub is a shell script")
-	}
-	stub := writeStub(t, "#!/bin/sh\nexit 0\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
+	c := newStubCaller(t, stubOpts{})
 
 	if _, err := c.Call(context.Background(), "prompt"); !errors.Is(err, ErrNoResponse) {
 		t.Errorf("empty output gave %v, want ErrNoResponse", err)
@@ -165,12 +144,7 @@ func TestSilenceIsAnError(t *testing.T) {
 }
 
 func TestATimeoutIsReportedAsOne(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the stub is a shell script")
-	}
-	stub := writeStub(t, "#!/bin/sh\nsleep 5\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
+	c := newStubCaller(t, stubOpts{sleep: 5 * time.Second})
 	c.Timeout = 200 * time.Millisecond
 
 	start := time.Now()
@@ -233,14 +207,4 @@ func TestUnparseableResponsesAreErrors(t *testing.T) {
 			t.Errorf("extractJSON(%q) returned no error", raw)
 		}
 	}
-}
-
-// writeStub drops an executable shell script standing in for `claude`.
-func writeStub(t *testing.T, body string) string {
-	t.Helper()
-	p := filepath.Join(t.TempDir(), "claude-stub")
-	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	return p
 }

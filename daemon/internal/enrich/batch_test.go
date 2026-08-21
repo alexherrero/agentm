@@ -114,10 +114,7 @@ func TestTheCursorResumesWithoutRepeating(t *testing.T) {
 func TestAFailingNoteDoesNotBlockTheQueueForever(t *testing.T) {
 	notes := fixture(4)
 	// The model fails on everything, so every note is a failure.
-	stub := writeStub(t, "#!/bin/sh\necho boom >&2\nexit 1\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 1)
+	p := NewPass(newStubCaller(t, stubOpts{stderr: "boom", exit: 1}), 1)
 	p.SetEnabled(true)
 	write, _ := collector()
 
@@ -182,10 +179,9 @@ func TestADrainedQueueDoesNotReportDeferred(t *testing.T) {
 
 // The time budget bounds a run whose notes are individually cheap but numerous.
 func TestATimeBudgetStopsTheRun(t *testing.T) {
-	stub := writeStub(t, "#!/bin/sh\nsleep 0.3\nprintf 'enriched'\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 1)
+	p := NewPass(newStubCaller(t, stubOpts{
+		stdout: "enriched", sleep: 300 * time.Millisecond,
+	}), 1)
 	p.SetEnabled(true)
 	write, _ := collector()
 
@@ -233,10 +229,7 @@ func TestAWriteFailureCountsAsAFailure(t *testing.T) {
 
 // A disabled pass costs nothing here either.
 func TestBatchIsOffUnlessThePassIs(t *testing.T) {
-	stub := writeStub(t, "#!/bin/sh\nprintf 'enriched'\n")
-	c := DefaultCaller("sonnet")
-	c.Bin = stub
-	p := NewPass(c, 1) // not enabled
+	p := NewPass(newStubCaller(t, stubOpts{stdout: "enriched"}), 1) // not enabled
 	write, written := collector()
 
 	rep, err := p.RunBatch(context.Background(), queue(fixture(5)), write, "",
