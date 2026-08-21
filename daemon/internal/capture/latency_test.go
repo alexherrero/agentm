@@ -2,8 +2,10 @@ package capture
 
 import (
 	"fmt"
+	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -284,5 +286,67 @@ func BenchmarkCapture(b *testing.B) {
 		if _, err := cp.Do(Request{Text: body(i), Title: fmt.Sprintf("bench %d", i)}); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// The whole claim of "the model is never on the critical path", measured rather
+// than argued.
+//
+// The eager trigger fires at the end of every capture. If it were synchronous —
+// or if it merely *contended* with the capture path — this is where it would
+// show, because the stub here takes a full second and the budget is a tenth of
+// that. A capture that waits for enrichment cannot pass this test; a capture
+// that hands the work off and returns does not notice it at all.
+//
+// The stub sleeps deliberately rather than returning instantly. A fast stub
+// would pass whether the call was synchronous or not, which is the shape of test
+// that looks like coverage and is not.
+func TestEnrichmentDoesNotReachCaptureLatency(t *testing.T) {
+	if testing.Short() {
+		t.Skip("timing test")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("the stub is a shell script")
+	}
+	cp := newHarness(t)
+
+	stubDir := t.TempDir()
+	stub := filepath.Join(stubDir, "slow-claude")
+	if err := os.WriteFile(stub, []byte("#!/bin/sh\nsleep 1\nprintf 'enriched'\n"),
+		0o755); err != nil {
+		t.Fatal(err)
+	}
+	caller := enrich.DefaultCaller("sonnet")
+	caller.Bin = stub
+	pass := enrich.NewPass(caller, 8)
+	pass.SetEnabled(true)
+	cp.SetEnrichPass(pass)
+	t.Cleanup(pass.Wait)
+
+	if _, err := cp.Do(Request{Text: body(0), Title: "warm up"}); err != nil {
+		t.Fatalf("warm-up capture: %v", err)
+	}
+
+	const n = 20
+	var worst time.Duration
+	for i := 1; i <= n; i++ {
+		start := time.Now()
+		if _, err := cp.Do(Request{Text: body(i), Title: fmt.Sprintf("note %d", i)}); err != nil {
+			t.Fatalf("capture %d: %v", i, err)
+		}
+		if d := time.Since(start); d > worst {
+			worst = d
+		}
+	}
+
+	// Every one of those captures started a subprocess that sleeps a second. If
+	// any capture waited on one, the worst case is at least a second.
+	if worst >= 900*time.Millisecond {
+		t.Errorf("the slowest capture took %s while enrichment was live — the "+
+			"capture path is waiting on the model", worst)
+	}
+	if worst > captureBudgetP95 {
+		t.Errorf("the slowest capture took %s, over the %s budget", worst,
+			captureBudgetP95)
 	}
 }

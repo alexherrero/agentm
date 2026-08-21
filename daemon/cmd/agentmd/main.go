@@ -26,6 +26,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/embed"
+	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/gate"
 	"github.com/alexherrero/agentm/daemon/internal/health"
 	"github.com/alexherrero/agentm/daemon/internal/index"
@@ -48,6 +49,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd capture    one-shot capture
   agentmd reindex    rebuild the index from the files
   agentmd embed      compute the vector arm's embeddings for in-scope notes
+  agentmd enrich     run the enrichment pass over the unfiled queue
   agentmd status     ask a running daemon how it is doing
   agentmd probe      run the round-trip self-probe now
   agentmd gate       ask whether a corpus-wide write job may start
@@ -75,6 +77,8 @@ func main() {
 		err = cmdReindex(os.Args[2:])
 	case "embed":
 		err = cmdEmbed(os.Args[2:])
+	case "enrich":
+		err = cmdEnrich(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
 	case "probe":
@@ -1134,4 +1138,127 @@ func splitList(s string) []string {
 		}
 	}
 	return out
+}
+
+// cmdEnrich drives the batch trigger.
+//
+// A command rather than only a scheduled job, because the batch pass is the half
+// of enrichment that spends real money over a long stretch, and the operator
+// should be able to run one bounded slice and look at what it did before
+// anything runs it unattended. The nightly schedule belongs to dreaming, which
+// is a later part; this is the thing that part will call.
+//
+// It refuses to run with enrichment disabled rather than silently doing nothing,
+// because "I ran the command and nothing happened" is the report this project
+// has had to debug too many times.
+func cmdEnrich(args []string) error {
+	fs := newFlagSet("enrich")
+	opts := bindCommon(fs)
+	maxCalls := fs.Int("max-calls", 0,
+		"stop after this many model calls (0 uses the default budget)")
+	maxMinutes := fs.Int("max-minutes", 0,
+		"stop after this many minutes (0 uses the default budget)")
+	pageSize := fs.Int("page-size", 0, "how many notes to fetch at a time")
+	after := fs.String("after", "",
+		"resume from this vault-relative path (a previous run's cursor)")
+	model := fs.String("model", "", "override the configured enrichment model")
+	dryRun := fs.Bool("dry-run", false,
+		"list what the queue would offer and stop, making no model calls")
+	asJSON := fs.Bool("json", false, "emit the report as JSON")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
+
+	budget := enrich.DefaultBudget()
+	if *maxCalls > 0 {
+		budget.MaxCalls = *maxCalls
+	}
+	if *maxMinutes > 0 {
+		budget.MaxDuration = time.Duration(*maxMinutes) * time.Minute
+	}
+	if *pageSize > 0 {
+		budget.PageSize = *pageSize
+	}
+
+	// The lister reads the index for identity and the disk for content. The
+	// index holds a cache of the frontmatter; the pass needs the bytes.
+	list := func(ctx context.Context, cursor string, limit int) ([]enrich.Candidate, error) {
+		paths, err := idx.UnfiledPage(ctx, cursor, limit)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]enrich.Candidate, 0, len(paths))
+		for _, rel := range paths {
+			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+			if err != nil {
+				// A note in the index and not on disk is a drifted index, which the
+				// reconcile pass fixes. Skipping it here is right — it is not this
+				// pass's job to repair, and failing the whole run over one missing
+				// file would make a drifted index look like a broken enrichment.
+				continue
+			}
+			out = append(out, enrich.Candidate{Rel: rel, Raw: string(raw)})
+		}
+		return out, nil
+	}
+
+	if *dryRun {
+		page, err := list(context.Background(), *after, budget.PageSize)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("dry run: %d note(s) the queue would offer next, budget %d call(s)\n",
+			len(page), budget.MaxCalls)
+		for _, c := range page {
+			fmt.Println("  ", c.Rel)
+		}
+		return nil
+	}
+
+	if !cfg.EnrichEnabled {
+		return fmt.Errorf("enrichment is off — set daemon.enrich_enabled to run it " +
+			"(this refuses rather than doing nothing quietly)")
+	}
+
+	name := cfg.EnrichModel
+	if *model != "" {
+		name = *model
+	}
+	pass := enrich.NewPass(enrich.DefaultCaller(name), cfg.EnrichConcurrency)
+	pass.SetEnabled(true)
+
+	write := func(_ context.Context, rel, body string) error {
+		return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
+			[]byte(body), 0o644)
+	}
+
+	rep, err := pass.RunBatch(context.Background(), list, write, *after, budget)
+	if err != nil {
+		return err
+	}
+
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(rep)
+	}
+	fmt.Printf("considered %d · enriched %d · skipped %d · failed %d · %d call(s) in %s\n",
+		rep.Considered, rep.Enriched, rep.Skipped, rep.Failed, rep.Calls,
+		rep.Elapsed.Round(time.Millisecond))
+	if rep.Deferred {
+		fmt.Printf("deferred: the budget stopped this run at %s — resume with "+
+			"--after %q\n", rep.Cursor, rep.Cursor)
+	}
+	for _, e := range rep.Errors {
+		fmt.Println("error:", e)
+	}
+	return nil
 }

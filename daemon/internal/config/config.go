@@ -148,6 +148,25 @@ type Config struct {
 	// See defaultEmbedScope for why it is three names and not the whole tree.
 	EmbedScope []string
 
+	// EnrichEnabled turns the enrichment pass on.
+	//
+	// Off in the shipped configuration, and for a different reason than the two
+	// ranking flags beside it: those are off because a measurement said so, and
+	// this one is off because it *spends*. The eager trigger fires on real
+	// captures, so switching it on with a binary update would start making model
+	// calls on the operator's machine without anyone deciding to.
+	EnrichEnabled bool
+
+	// EnrichModel is the model name enrichment passes to `claude -p`. A name,
+	// not a tier — tier qualification is earned by sampled audit against the
+	// strong tier, which is its own mechanism and not this pass's job.
+	EnrichModel string
+
+	// EnrichConcurrency bounds simultaneous eager runs. A capture burst would
+	// otherwise start one subprocess per note, and the type-collapse migration
+	// rewrote 9,899 notes in an afternoon.
+	EnrichConcurrency int
+
 	// AltitudeEnabled turns the `artifact` dampening on.
 	//
 	// Off by default for the length of the transition, and the reason is a
@@ -455,6 +474,21 @@ func Load(opts Options) (*Config, error) {
 	}
 	if b, ok := raw["daemon.altitude_enabled"].(bool); ok {
 		c.AltitudeEnabled = b
+	}
+	if b, ok := raw["daemon.enrich_enabled"].(bool); ok {
+		c.EnrichEnabled = b
+	}
+	if s := strVal(raw, "daemon.enrich_model"); s != "" {
+		c.EnrichModel = s
+	}
+	if f, ok := raw["daemon.enrich_concurrency"].(float64); ok && f >= 1 {
+		c.EnrichConcurrency = int(f)
+	}
+	if c.EnrichConcurrency == 0 {
+		// Two rather than one so a second capture during a slow call is not
+		// automatically deferred, and rather than many because each is a
+		// subprocess with a model behind it.
+		c.EnrichConcurrency = 2
 	}
 
 	c.MemoryRoot = strings.Trim(
