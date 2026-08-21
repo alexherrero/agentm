@@ -162,6 +162,10 @@ type Config struct {
 	// strong tier, which is its own mechanism and not this pass's job.
 	EnrichModel string
 
+	// EnrichSampleRate is one-in-n for the sampled completeness half. The
+	// faithfulness half is per note and does not consult it.
+	EnrichSampleRate int
+
 	// EnrichConcurrency bounds simultaneous eager runs. A capture burst would
 	// otherwise start one subprocess per note, and the type-collapse migration
 	// rewrote 9,899 notes in an afternoon.
@@ -483,6 +487,15 @@ func Load(opts Options) (*Config, error) {
 	}
 	if f, ok := raw["daemon.enrich_concurrency"].(float64); ok && f >= 1 {
 		c.EnrichConcurrency = int(f)
+	}
+	if f, ok := raw["daemon.enrich_sample_rate"].(float64); ok && f >= 0 {
+		c.EnrichSampleRate = int(f)
+	}
+	if c.EnrichSampleRate == 0 {
+		// One in twenty. Enough to move a scorecard number over a batch, few
+		// enough that the sampled half is a rounding error against the per-note
+		// faithfulness call it rides alongside.
+		c.EnrichSampleRate = 20
 	}
 	if c.EnrichConcurrency == 0 {
 		// Two rather than one so a second capture during a slow call is not

@@ -1243,7 +1243,19 @@ func cmdEnrich(args []string) error {
 		return nil
 	})
 	attachPreGates(pass, cfg, budget)
-	attachPostGates(pass, cfg)
+
+	// The judge is a second caller rather than the same one. They want
+	// different things: enrichment wants prose and a long answer is fine, while
+	// a judge wants a verdict and anything long is a sign it is reasoning its
+	// way out of a clear answer.
+	judge := enrich.NewJudge(enrich.DefaultCaller(name))
+	attachPostGates(pass, cfg, judge, func(rel string, missing []string) {
+		if len(missing) == 0 {
+			return
+		}
+		fmt.Fprintf(os.Stderr, "completeness: %s omits %s\n", rel,
+			strings.Join(missing, "; "))
+	})
 
 	write := func(_ context.Context, rel, body string) error {
 		return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
@@ -1318,7 +1330,8 @@ func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget)
 // Schema first, for the same reason eligibility is first among the pre-gates:
 // it is the cheapest and it rejects the most. Every later post-gate reads
 // fields, and a response that will not parse has no fields to read.
-func attachPostGates(pass *enrich.Pass, cfg *config.Config) {
+func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge,
+	onCompleteness func(string, []string)) {
 	isType := func(v string) bool {
 		loaded, err := cfg.Rules.Get()
 		if err != nil {
@@ -1344,5 +1357,13 @@ func attachPostGates(pass *enrich.Pass, cfg *config.Config) {
 		// rather than on a sample. A sampled version would let through exactly
 		// the note whose identifier was dropped.
 		enrich.DefaultTokens(),
+		// Third, and the only one that costs a model call. It runs last among
+		// the deterministic-first three for exactly that reason: a response that
+		// fails a mechanical check never reaches a judge.
+		&enrich.Grounding{
+			Judge:          judge,
+			Sample:         enrich.SampleEvery(cfg.EnrichSampleRate),
+			OnCompleteness: onCompleteness,
+		},
 	)
 }
