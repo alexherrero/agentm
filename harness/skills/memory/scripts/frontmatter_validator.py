@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -103,7 +104,51 @@ def _parse_frontmatter(text: str) -> dict | None:
     return fm
 
 
-def validate(note_path: Path | str) -> list[str]:
+def _is_contract_exempt(path: Path, vault: Path | None = None) -> bool:
+    """Whether this note lives in a space the contract does not govern.
+
+    A space is a *top-level* directory, so the check needs the path as the vault
+    sees it. Without a vault to relativize against there is no top level, and the
+    first version of this got that wrong in a way a test caught: it tested every
+    path segment, which made `Agent/desk/projects/x/personal/notes.md` exempt
+    because one of its directories happened to be called `personal`. A space is a
+    space, not a word.
+
+    Falls back to `$MEMORY_VAULT_PATH` and its parent — the split layout keeps
+    memory under `<vault>/Agent/` and the operator's spaces beside it, so the
+    exempt space is a sibling of the memory root rather than inside it.
+
+    Returns False when no vault can be determined. That direction is deliberate:
+    an unrecognized path gets validated, and a false finding is cheaper than a
+    file that silently stops being checked.
+    """
+    try:
+        exempt = storage_rules.rules().contract_exempt_spaces()
+    except storage_rules.StorageRulesError:
+        return False
+    if not exempt:
+        return False
+
+    candidates = []
+    if vault is not None:
+        candidates.append(Path(vault))
+    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
+    if env:
+        candidates.append(Path(env))
+        candidates.append(Path(env).parent)
+
+    resolved = Path(path).resolve()
+    for root in candidates:
+        try:
+            rel = resolved.relative_to(Path(root).resolve())
+        except (ValueError, OSError):
+            continue
+        if storage_rules.in_space(rel.as_posix(), exempt):
+            return True
+    return False
+
+
+def validate(note_path: Path | str, *, vault: Path | str | None = None) -> list[str]:
     """Check one note's frontmatter. Returns a list of violation strings
     (empty = clean). Never writes to `note_path`."""
     path = Path(note_path)
@@ -111,6 +156,26 @@ def validate(note_path: Path | str) -> list[str]:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         return [f"unreadable: {exc}"]
+
+    # Contract exemption, checked before anything else and stated rather than
+    # inherited from a scope list.
+    #
+    # `vault` is passed by validate_vault, which knows the root. A caller that
+    # does not know it falls back to $MEMORY_VAULT_PATH; a path under no known
+    # vault is validated rather than skipped.
+    #
+    # This was already true by accident: the scope dirs sit under the memory root
+    # and `Personal/` sits outside it, so nothing walked it. That is a fragile
+    # kind of correct — widen a scope and 385 documents become findings with no
+    # rule saying they should not. The rule now exists.
+    #
+    # Note the design's own wording is wrong here in a way worth recording: it
+    # says these files "carry no frontmatter". Every one of them has frontmatter,
+    # just of its own shape — `title`, `created`, `updated`, and nothing the
+    # memory contract asks for. A rule written against "no frontmatter" would
+    # have matched none of them.
+    if _is_contract_exempt(path, vault):
+        return []
 
     fm = _parse_frontmatter(text)
     if fm is None:
@@ -198,7 +263,7 @@ def validate_vault(vault_path: Path | str, *, scope_dirs=_DEFAULT_SCOPE_DIRS) ->
                 continue
             if md.name.startswith("PLAN.archive."):
                 continue
-            violations = validate(md)
+            violations = validate(md, vault=vault)
             if violations:
                 rel = str(md.relative_to(vault)).replace("\\", "/")
                 results[rel] = violations

@@ -50,6 +50,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import storage_rules  # noqa: E402  (the filing contract, for space exemptions)
+
 # Sidecar filename at vault root (hidden, not an Obsidian note — mirrors
 # heat_policy.py's HEAT_SIDECAR_NAME convention).
 LIFECYCLE_SIDECAR_NAME = ".lifecycle.json"
@@ -218,6 +220,21 @@ def days_since_last_genuine_access(
     return _resolve_elapsed_days(vault, slug, fm, now)
 
 
+def _in_contract_exempt_space(rel_path: str | Path) -> bool:
+    """Whether this note lives in a space the memory contract does not govern.
+
+    Nothing there decays. Decay is a memory-lifecycle concept — it models a fact
+    going cold because nobody has needed it — and these are documents. A 2016
+    lesson is not less true for being ten years old, and ranking it as though it
+    were would be applying a memory's physics to a thing that is not one.
+    """
+    try:
+        exempt = storage_rules.rules().contract_exempt_spaces()
+    except Exception:
+        return False
+    return storage_rules.in_space(str(rel_path), exempt)
+
+
 def compute_decay_score(
     vault: Path,
     slug: str,
@@ -244,7 +261,7 @@ def compute_decay_score(
 
     `now` is injectable for tests (ISO date string YYYY-MM-DD).
     """
-    if is_decay_exempt(fm, rel_path):
+    if is_decay_exempt(fm, rel_path) or _in_contract_exempt_space(rel_path):
         return 1.0
     if now is None:
         import datetime
@@ -331,7 +348,7 @@ def compute_decay_score_stepped(
     dreaming stage uses to compare it against the live curve without
     affecting ranking.
     """
-    if is_decay_exempt(fm, rel_path):
+    if is_decay_exempt(fm, rel_path) or _in_contract_exempt_space(rel_path):
         return 1.0
     if now is None:
         import datetime
