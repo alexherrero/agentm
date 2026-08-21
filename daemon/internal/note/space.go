@@ -105,3 +105,19 @@ func inSpaceSet(p *[]string, rel string) bool {
 	}
 	return false
 }
+
+// altitudeDampening gates the `artifact` class.
+//
+// Held here rather than checked at search time because the flag decides whether
+// the *flag on the row* is written at all, and the row is written at index time.
+// That makes turning it on a reindex rather than a restart, which is the same
+// cost every other index-time class already carries.
+var altitudeDampening atomic.Bool
+
+// SetAltitudeDampening turns the `artifact` class on. Called by the daemon from
+// its configuration; see config.AltitudeEnabled for why it ships off.
+func SetAltitudeDampening(on bool) { altitudeDampening.Store(on) }
+
+// AltitudeDampening reports the current setting, for the status surface and
+// tests.
+func AltitudeDampening() bool { return altitudeDampening.Load() }

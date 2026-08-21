@@ -247,6 +247,8 @@ func (x *Index) migrate() error {
 	migrations := []string{
 		`ALTER TABLE docmeta ADD COLUMN updated TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE docmeta ADD COLUMN created TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE docmeta ADD COLUMN confidence REAL NOT NULL DEFAULT 0`,
+		`ALTER TABLE docmeta ADD COLUMN confidence_set INTEGER NOT NULL DEFAULT 0`,
 	}
 
 	for _, s := range stmts {
@@ -312,11 +314,12 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	case errors.Is(err, sql.ErrNoRows):
 		res, err := tx.Exec(
 			`INSERT INTO docmeta(path, flags, status, captured, captured_src, updated,
-			         created, mtime_ns, size)
-			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			         created, confidence, confidence_set, mtime_ns, size)
+			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			n.Rel, strings.Join(n.Flags, ","), n.Status,
 			n.Captured.UTC().Format(capturedFormat),
-			n.CapturedSource, n.Updated, n.Created, mtimeNS, size)
+			n.CapturedSource, n.Updated, n.Created, n.Confidence,
+			boolToInt(n.ConfidenceSet), mtimeNS, size)
 		if err != nil {
 			return err
 		}
@@ -348,9 +351,10 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 		}
 		if _, err := tx.Exec(
 			`UPDATE docmeta SET flags=?, status=?, captured=?, captured_src=?, updated=?,
-			 created=?, mtime_ns=?, size=? WHERE id=?`,
+			 created=?, confidence=?, confidence_set=?, mtime_ns=?, size=? WHERE id=?`,
 			strings.Join(n.Flags, ","), n.Status, captured, capturedSrc, n.Updated,
-			n.Created, mtimeNS, size, id); err != nil {
+			n.Created, n.Confidence, boolToInt(n.ConfidenceSet),
+			mtimeNS, size, id); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM docs WHERE rowid = ?`, id); err != nil {
@@ -818,4 +822,12 @@ func (x *Index) decayClock() (*note.AccessLog, time.Time) {
 		return nil, time.Time{}
 	}
 	return x.accessLog(), time.Now()
+}
+
+// boolToInt is SQLite's idea of a boolean.
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

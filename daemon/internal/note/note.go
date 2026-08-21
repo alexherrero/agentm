@@ -9,6 +9,7 @@ package note
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -22,6 +23,7 @@ var (
 	capturedRe    = regexp.MustCompile(`(?m)^captured:[ \t]*(.+?)[ \t\r]*$`)
 	updatedRe     = regexp.MustCompile(`(?m)^updated:[ \t]*(.+?)[ \t\r]*$`)
 	altitudeRe    = regexp.MustCompile(`(?m)^altitude:[ \t]*(.+?)[ \t\r]*$`)
+	confidenceRe  = regexp.MustCompile(`(?m)^confidence:[ \t]*([0-9.]+)[ \t\r]*$`)
 	createdRe     = regexp.MustCompile(`(?m)^created:[ \t]*(.+?)[ \t\r]*$`)
 	// The two frontmatter routes into durability — see isDurable.
 	lifecycleTierRe = regexp.MustCompile(`(?m)^lifecycle_tier:[ \t]*(.+?)[ \t\r]*$`)
@@ -78,6 +80,17 @@ type Note struct {
 	// afternoon, and the second is what a first cut of this actually did.
 	Created string
 
+	// Confidence is the enrichment pass's own account of how sure it was, and
+	// ConfidenceSet distinguishes "scored zero" from "never scored".
+	//
+	// Two fields for one value because the difference is the whole point of the
+	// review queue: a note enrichment judged and doubted is work for a person,
+	// while a note enrichment has not reached is work for the batch pass. Read as
+	// one number they are indistinguishable, and the queue would put the
+	// unreached notes at the front of a list nobody can act on.
+	Confidence    float64
+	ConfidenceSet bool
+
 	// Updated is the note's own `updated:` stamp, and it is the decay anchor
 	// after a genuine recall.
 	//
@@ -128,6 +141,11 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	}
 	if m := createdRe.FindStringSubmatch(head); m != nil {
 		n.Created = strings.TrimSpace(m[1])
+	}
+	if m := confidenceRe.FindStringSubmatch(head); m != nil {
+		if f, err := strconv.ParseFloat(strings.TrimSpace(m[1]), 64); err == nil {
+			n.Confidence, n.ConfidenceSet = f, true
+		}
 	}
 	return n
 }

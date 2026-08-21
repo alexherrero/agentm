@@ -221,7 +221,7 @@ func classify(rel, head, body, status string) []string {
 		flags = append(flags, ClassDurable)
 	}
 
-	if m := altitudeRe.FindStringSubmatch(head); m != nil {
+	if m := altitudeRe.FindStringSubmatch(head); altitudeDampening.Load() && m != nil {
 		if strings.ToLower(strings.Trim(strings.TrimSpace(m[1]), `'"`)) == ClassArtifact {
 			flags = append(flags, ClassArtifact)
 		}

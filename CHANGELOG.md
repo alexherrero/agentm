@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+The enrichment pass, and the measurement that says whether it flattened the
+corpus. A raw capture is distilled into a memory by a model call wrapped in
+eleven deterministic gates — five before it, six after — and the whole thing
+ships off, because the eager trigger fires on real captures and that is real
+spend.
+
+### Added
+
+- **`daemon/internal/enrich`** — the pass, its two triggers and its gates. One
+  body of code fired eagerly after a capture commits and again in batch over the
+  standing `unfiled` queue; the trigger travels in the request rather than
+  branching at the top, because exactly one thing depends on it. "The model is
+  never on the critical path" is structural rather than budgeted: the capture
+  path hands work to a goroutine and returns. Measured at 20 captures each
+  firing a subprocess that sleeps a second, the worst capture was still under
+  the 100ms budget.
+- **`agentmd enrich`** — drives the batch trigger, with `--dry-run`, `--after`
+  for resuming from a cursor, `--sample N --seed S` for a reproducible random
+  draw, `--dump` for before/after pairs, and `--yes` to run one batch without
+  arming the eager trigger.
+- **The homogenization measurement.** `enrich.Measure` reports mean pairwise
+  cosine similarity among the sources and again among the rewrites. A positive
+  delta means the pass is making notes more alike. Per-note fidelity localizes the
+  same failure to a note somebody can open. Both thresholds are pre-registered
+  guesses — +0.05 and 0.55 — written down before the first run so the run could
+  not talk anyone into whatever it produced.
+- **The review queue as a query.** `Index.ReviewQueue` returns unfiled notes
+  least-confident-first. `confidence` and `confidence_set` are two columns for
+  one value, because "scored zero" and "never scored" are different facts.
+- **An enrichment journal.** Every write records the previous bytes rather than
+  a diff. Undoing from a diff requires the diff to still apply, which requires
+  that nothing else has touched the note — exactly when somebody wants to undo.
+  The entry is written before the new bytes are.
+
+### Changed
+
+- **`altitude` dampening is gated behind `daemon.altitude_enabled`, default
+  off.** Part 3 landed it on the finding that no note carried the field. That
+  was true of the corpus and false of the system, because capture writes
+  `altitude: artifact` on every new note. The live effect was to dampen
+  recently-captured notes against older unlabelled ones, penalizing recency
+  rather than artifact-ness. It turns on when enrichment has labelled the
+  corpus.
+
+### Internal
+
+- **Two live batches against the real vault**, thirty randomly-sampled unfiled
+  notes each. The dispersion delta came back **−0.1293** against a +0.05
+  ceiling: the pass made the notes more distinct. Twenty-two of thirty enriched;
+  the eight failures were gates working, including two grounding rejections
+  where the model asserted what the source did not contain.
+- **Three defects the runs found and the tests did not.** The measurement read
+  an embedder URL only populated for external servers. Token preservation
+  demanded mining-metadata scaffolding survive, rejecting 26 of 30 notes for
+  dropping words like `LOW` and `Mining`. And `No` was extracted as a name from
+  `**No "I'll fix this next session"**`. All three are pinned as fixtures.
+- **Ninety-one properties verified able to fail** by breaking each in turn. That
+  pass found four things the green tests did not: two token extractors covering
+  the same fixture token, three alias derivation routes with the same problem, a
+  fourth alias route that was unreachable and is deleted, and an untested rename
+  guard whose absence let a traversal slug walk a note into a derived class.
+
 The interesting part of this one is not the bug. It is that the daily notification and email jobs kept reporting `registered (live)` in `machinery_doctor.py` the whole time they were delivering nothing — because registration was the only question the doctor asked. A job that fires on schedule and no-ops is indistinguishable, from the outside, from a job that fires and works. So there was no day on which this became visible; it would have stayed quiet until someone noticed an email that never arrived and went looking.
 
 The same shape turns up twice more in this release, which is why it is worth naming rather than just fixing. The memory hooks had been running an interpreter that could not load `sqlite-vec` — for as long as the vector index has existed — and every caller read the resulting `None` as "index not built yet." Nothing was red there either. In all three cases the code did exactly what it was told, reported success honestly, and delivered nothing; the repair each time is a check that asks whether the thing *works*, not whether it is *installed*.

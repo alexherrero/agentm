@@ -26,6 +26,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/capture"
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/embed"
+	"github.com/alexherrero/agentm/daemon/internal/enrich"
 	"github.com/alexherrero/agentm/daemon/internal/gate"
 	"github.com/alexherrero/agentm/daemon/internal/health"
 	"github.com/alexherrero/agentm/daemon/internal/index"
@@ -48,6 +49,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd capture    one-shot capture
   agentmd reindex    rebuild the index from the files
   agentmd embed      compute the vector arm's embeddings for in-scope notes
+  agentmd enrich     run the enrichment pass over the unfiled queue
   agentmd status     ask a running daemon how it is doing
   agentmd probe      run the round-trip self-probe now
   agentmd gate       ask whether a corpus-wide write job may start
@@ -75,6 +77,8 @@ func main() {
 		err = cmdReindex(os.Args[2:])
 	case "embed":
 		err = cmdEmbed(os.Args[2:])
+	case "enrich":
+		err = cmdEnrich(os.Args[2:])
 	case "status":
 		err = cmdStatus(os.Args[2:])
 	case "probe":
@@ -1134,4 +1138,403 @@ func splitList(s string) []string {
 		}
 	}
 	return out
+}
+
+// cmdEnrich drives the batch trigger.
+//
+// A command rather than only a scheduled job, because the batch pass is the half
+// of enrichment that spends real money over a long stretch, and the operator
+// should be able to run one bounded slice and look at what it did before
+// anything runs it unattended. The nightly schedule belongs to dreaming, which
+// is a later part; this is the thing that part will call.
+//
+// It refuses to run with enrichment disabled rather than silently doing nothing,
+// because "I ran the command and nothing happened" is the report this project
+// has had to debug too many times.
+func cmdEnrich(args []string) error {
+	fs := newFlagSet("enrich")
+	opts := bindCommon(fs)
+	maxCalls := fs.Int("max-calls", 0,
+		"stop after this many model calls (0 uses the default budget)")
+	maxMinutes := fs.Int("max-minutes", 0,
+		"stop after this many minutes (0 uses the default budget)")
+	pageSize := fs.Int("page-size", 0, "how many notes to fetch at a time")
+	after := fs.String("after", "",
+		"resume from this vault-relative path (a previous run's cursor)")
+	model := fs.String("model", "", "override the configured enrichment model")
+	dryRun := fs.Bool("dry-run", false,
+		"list what the queue would offer and stop, making no model calls")
+	asJSON := fs.Bool("json", false, "emit the report as JSON")
+	dumpDir := fs.String("dump", "",
+		"write before/after pairs into this directory for review")
+	sample := fs.Int("sample", 0,
+		"draw this many notes at random from the whole queue instead of taking "+
+			"the next page in cursor order")
+	seed := fs.Int64("seed", 0, "seed for --sample (0 picks one and prints it)")
+	yes := fs.Bool("yes", false,
+		"run this one batch even though the eager trigger is off")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	cfg, err := config.Load(*opts)
+	if err != nil {
+		return err
+	}
+	idx, err := index.Open(cfg.IndexPath, cfg.VaultPath, cfg.MemoryRoot, cfg.DecayEnabled)
+	if err != nil {
+		return err
+	}
+	defer idx.Close()
+
+	budget := enrich.DefaultBudget()
+	if *maxCalls > 0 {
+		budget.MaxCalls = *maxCalls
+	}
+	if *maxMinutes > 0 {
+		budget.MaxDuration = time.Duration(*maxMinutes) * time.Minute
+	}
+	if *pageSize > 0 {
+		budget.PageSize = *pageSize
+	}
+
+	// A random sample is drawn once, up front, and then served page by page.
+	//
+	// Drawn once rather than per page because a sample re-drawn on every call is
+	// not a sample of anything — the cursor would walk through a different
+	// population each time and the dispersion number would be over a set that
+	// never existed.
+	var sampled []string
+	if *sample > 0 {
+		if *seed == 0 {
+			*seed = time.Now().UnixNano()
+		}
+		var err error
+		sampled, err = idx.UnfiledSample(context.Background(), *sample, *seed)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("sampled %d of the unfiled queue at random (seed %d — pass "+
+			"--seed %d to draw the same notes again)\n", len(sampled), *seed, *seed)
+	}
+
+	// The lister reads the index for identity and the disk for content. The
+	// index holds a cache of the frontmatter; the pass needs the bytes.
+	list := func(ctx context.Context, cursor string, limit int) ([]enrich.Candidate, error) {
+		var paths []string
+		var err error
+		if sampled != nil {
+			// Serve the fixed sample in the same cursor-ordered way the queue is
+			// served, so resuming and deferring behave identically either way.
+			for _, p := range sampled {
+				if p > cursor && len(paths) < limit {
+					paths = append(paths, p)
+				}
+			}
+		} else {
+			paths, err = idx.UnfiledPage(ctx, cursor, limit)
+		}
+		if err != nil {
+			return nil, err
+		}
+		out := make([]enrich.Candidate, 0, len(paths))
+		for _, rel := range paths {
+			raw, err := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+			if err != nil {
+				// A note in the index and not on disk is a drifted index, which the
+				// reconcile pass fixes. Skipping it here is right — it is not this
+				// pass's job to repair, and failing the whole run over one missing
+				// file would make a drifted index look like a broken enrichment.
+				continue
+			}
+			out = append(out, enrich.Candidate{Rel: rel, Raw: string(raw)})
+		}
+		return out, nil
+	}
+
+	if *dryRun {
+		page, err := list(context.Background(), *after, budget.PageSize)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("dry run: %d note(s) the queue would offer next, budget %d call(s)\n",
+			len(page), budget.MaxCalls)
+		for _, c := range page {
+			fmt.Println("  ", c.Rel)
+		}
+		return nil
+	}
+
+	// `daemon.enrich_enabled` governs the *eager trigger* — whether every
+	// capture fires a model call on the operator's machine. An explicit
+	// `agentmd enrich --yes` is already a deliberate act, so it does not need
+	// that switch thrown, and requiring it would mean turning on automatic
+	// enrichment in order to test enrichment once.
+	//
+	// The refusal stays the default, because "I ran the command and nothing
+	// happened" is a report this project has debugged too many times.
+	if !cfg.EnrichEnabled && !*yes {
+		return fmt.Errorf("enrichment is off — pass --yes to run this one batch, " +
+			"or set daemon.enrich_enabled to arm the eager trigger for every " +
+			"capture (this refuses rather than doing nothing quietly)")
+	}
+
+	name := cfg.EnrichModel
+	if *model != "" {
+		name = *model
+	}
+	pass := enrich.NewPass(enrich.DefaultCaller(name), cfg.EnrichConcurrency)
+	pass.SetEnabled(true)
+	pass.SetTypes(func() []string {
+		if loaded, err := cfg.Rules.Get(); err == nil {
+			return loaded.TypesSorted()
+		}
+		return nil
+	})
+	attachPreGates(pass, cfg, budget)
+
+	// The judge is a second caller rather than the same one. They want
+	// different things: enrichment wants prose and a long answer is fine, while
+	// a judge wants a verdict and anything long is a sign it is reasoning its
+	// way out of a clear answer.
+	judge := enrich.NewJudge(enrich.DefaultCaller(name))
+	attachPostGates(pass, cfg, judge, func(rel string, missing []string) {
+		if len(missing) == 0 {
+			return
+		}
+		fmt.Fprintf(os.Stderr, "completeness: %s omits %s\n", rel,
+			strings.Join(missing, "; "))
+	})
+
+	// Writes go through the Applier, so class membership, the while-unlinked
+	// slug rule and the journal all engage. Writing bytes directly here would
+	// have been shorter and would have bypassed all three.
+	applier := &enrich.Applier{
+		Membership: enrich.DefaultMembership(),
+		Slug: &enrich.SlugRule{Linked: func(rel string) (bool, error) {
+			back, err := idx.Backlinks(rel)
+			return len(back) > 0, err
+		}},
+		Journal: enrich.NewFileJournal(filepath.Dir(cfg.IndexPath)),
+		Put: func(_ context.Context, rel, body string) error {
+			return os.WriteFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)),
+				[]byte(body), 0o644)
+		},
+		Move: func(_ context.Context, from, to string) error {
+			return os.Rename(
+				filepath.Join(cfg.VaultPath, filepath.FromSlash(from)),
+				filepath.Join(cfg.VaultPath, filepath.FromSlash(to)))
+		},
+	}
+
+	write := func(ctx context.Context, rel, body string) error {
+		r, err := enrich.ParseResponse(body)
+		if err != nil {
+			return err
+		}
+		previous, _ := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
+		_, err = applier.Apply(ctx, enrich.WriteRequest{
+			Rel: rel, Previous: string(previous), Next: enrich.RenderNote(r),
+			NewSlug: r.Slug, Trigger: enrich.TriggerBatch,
+			Version: enrich.PassVersion,
+		})
+		return err
+	}
+
+	rep, err := pass.RunBatch(context.Background(), list, write, *after, budget)
+	if err != nil {
+		return err
+	}
+
+	// The homogenization measurement, over exactly the pairs this run wrote.
+	//
+	// It runs before anything is reported, because a batch that flattened the
+	// corpus should say so in the same breath as saying how many notes it
+	// enriched — a run that reports "30 enriched" and buries the dispersion
+	// number is a run that reads as a success.
+	if len(rep.Pairs) >= 2 {
+		rels := make([]string, len(rep.Pairs))
+		sources := make([]string, len(rep.Pairs))
+		results := make([]string, len(rep.Pairs))
+		for i, p := range rep.Pairs {
+			rels[i], sources[i], results[i] = p.Rel, p.Source, p.Result
+		}
+		// `EmbedderURL` is only set when attaching to a server somebody else
+		// runs. The daemon spawns its own and binds it to the fixed loopback
+		// port, which is how every other one-shot command reaches it — the
+		// first run of this measurement used the config field, found it empty,
+		// and reported "unsupported protocol scheme" after the batch had
+		// already spent 30 model calls.
+		base := cfg.EmbedderURL
+		if base == "" {
+			base = fmt.Sprintf("http://127.0.0.1:%d", embed.DefaultAttachPort)
+		}
+		client := embed.NewClient(base, 60*time.Second)
+		disp, derr := enrich.Measure(context.Background(),
+			func(ctx context.Context, texts []string) ([][]float32, error) {
+				return client.Embed(ctx, texts)
+			}, rels, sources, results)
+		if derr != nil {
+			// Reported, not fatal. The notes are written and the run happened;
+			// a cold embedder means the measurement is missing, which is a
+			// different thing from the run having failed.
+			fmt.Fprintf(os.Stderr, "dispersion unavailable: %v\n", derr)
+		} else {
+			fmt.Println(disp.Report())
+			if disp.Homogenized() {
+				fmt.Println("\nthis batch made the corpus more alike. The notes are " +
+					"written and journalled; revert with the journal before running " +
+					"more.")
+			}
+		}
+	}
+
+	if *dumpDir != "" {
+		if err := dumpPairs(*dumpDir, rep.Pairs); err != nil {
+			return err
+		}
+		fmt.Printf("wrote %d before/after pair(s) to %s\n", len(rep.Pairs), *dumpDir)
+	}
+
+	if *asJSON {
+		return json.NewEncoder(os.Stdout).Encode(rep)
+	}
+	fmt.Printf("considered %d · enriched %d · skipped %d · failed %d · %d call(s) in %s\n",
+		rep.Considered, rep.Enriched, rep.Skipped, rep.Failed, rep.Calls,
+		rep.Elapsed.Round(time.Millisecond))
+	if rep.Deferred {
+		fmt.Printf("deferred: the budget stopped this run at %s — resume with "+
+			"--after %q\n", rep.Cursor, rep.Cursor)
+	}
+	for _, e := range rep.Errors {
+		fmt.Println("error:", e)
+	}
+	return nil
+}
+
+// attachPreGates registers the five deterministic checks, in order.
+//
+// Wired here rather than inside the enrich package because two of them need
+// things the package deliberately does not import: the filing contract, for
+// which spaces a background pass may read, and the rules hash that versions the
+// idempotency key. Passing them in keeps `enrich` a pass rather than a
+// dependency hub.
+func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget) {
+	// The contract decides which spaces a model may read. When it will not
+	// parse, nothing is readable — the safe direction, and the same one
+	// `applyDampenedSpaces` takes: dampening too little is a leak the operator
+	// can see, and sending `personal/` to a model is not.
+	mayRead := func(rel string) bool {
+		loaded, err := cfg.Rules.Get()
+		if err != nil {
+			return false
+		}
+		return loaded.MayReadWithModel(rel)
+	}
+
+	rulesHash := "unresolved"
+	if loaded, err := cfg.Rules.Get(); err == nil {
+		rulesHash = loaded.Hash
+	}
+
+	pass.AddPre(
+		enrich.DefaultEligibility(mayRead),
+		enrich.DefaultPrivacy(),
+		enrich.DefaultSize(),
+		&enrich.Fingerprint{
+			Version:   enrich.PassVersion,
+			RulesHash: rulesHash,
+			// No ledger yet — that is the dreaming part. Until then nothing is
+			// remembered between runs, so the gate is honest about costing a
+			// call it might not have needed rather than pretending to an
+			// idempotency it cannot yet provide.
+			Seen: nil,
+		},
+		enrich.NewCycleBudget(budget.MaxCalls, budget.MaxDuration),
+	)
+}
+
+// attachPostGates registers the checks that run on what the model returned.
+//
+// Schema first, for the same reason eligibility is first among the pre-gates:
+// it is the cheapest and it rejects the most. Every later post-gate reads
+// fields, and a response that will not parse has no fields to read.
+func attachPostGates(pass *enrich.Pass, cfg *config.Config, judge enrich.Judge,
+	onCompleteness func(string, []string)) {
+	isType := func(v string) bool {
+		loaded, err := cfg.Rules.Get()
+		if err != nil {
+			// No contract, no way to validate a type against one. Refusing every
+			// type is the same direction capture takes when it refuses a
+			// caller-supplied type with the contract broken: the thing that
+			// depends on the contract stops, and the things that do not keep
+			// working.
+			return false
+		}
+		return loaded.IsMemoryType(v)
+	}
+	typesSorted := func() []string {
+		if loaded, err := cfg.Rules.Get(); err == nil {
+			return loaded.TypesSorted()
+		}
+		return nil
+	}
+	pass.AddPost(
+		enrich.DefaultSchema(isType, typesSorted),
+		// Second, and deterministic. It is the completeness floor: the cheapest
+		// gate that catches the most damaging failure, so it runs on every note
+		// rather than on a sample. A sampled version would let through exactly
+		// the note whose identifier was dropped.
+		enrich.DefaultTokens(),
+		// Also deterministic, and it runs before the judge for the same reason
+		// the token gate does: an alias the note cannot account for is a
+		// mechanical fact, and paying a model to notice it would be paying for
+		// arithmetic.
+		enrich.DefaultAliases(),
+		// Also deterministic, and it runs before the judge for the same reason
+		// the token gate does: an alias the note cannot account for is a
+		// mechanical fact, and paying a model to notice it would be paying for
+		// arithmetic.
+		enrich.DefaultAliases(),
+		// Third, and the only one that costs a model call. It runs last among
+		// the deterministic-first three for exactly that reason: a response that
+		// fails a mechanical check never reaches a judge.
+		&enrich.Grounding{
+			Judge:          judge,
+			Sample:         enrich.SampleEvery(cfg.EnrichSampleRate),
+			OnCompleteness: onCompleteness,
+		},
+	)
+}
+
+// dumpPairs writes each note's before and after side by side.
+//
+// For a person to read, not for a diff tool. The whole point of the bounded
+// batch is that somebody looks at the prose and says whether it hit the mark,
+// and that judgment is the one thing the dispersion number cannot make.
+func dumpPairs(dir string, pairs []enrich.Pair) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	for i, p := range pairs {
+		name := fmt.Sprintf("%02d-%s.md", i+1,
+			strings.TrimSuffix(filepath.Base(p.Rel), ".md"))
+		var b strings.Builder
+		fmt.Fprintf(&b, "# %s\n\n", p.Rel)
+		b.WriteString("## BEFORE\n\n```markdown\n")
+		b.WriteString(p.Source)
+		b.WriteString("\n```\n\n## AFTER\n\n```markdown\n")
+		// The rendered note rather than the raw JSON response: what the reader
+		// needs to judge is the note that landed, not the envelope it arrived in.
+		if r, err := enrich.ParseResponse(p.Result); err == nil {
+			b.WriteString(enrich.RenderNote(r))
+		} else {
+			b.WriteString(p.Result)
+		}
+		b.WriteString("\n```\n")
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(b.String()), 0o644); err != nil {
+			return err
+		}
+	}
+	return nil
 }

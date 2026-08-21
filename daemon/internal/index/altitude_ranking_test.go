@@ -17,6 +17,17 @@ import (
 // is not what dampening does to an artifact, but what it does to a corpus that
 // has never heard of altitude: nothing at all.
 
+// withAltitudeDampening turns the class on for a test and restores it after.
+// The shipped default is off — see config.AltitudeEnabled for the transitional
+// defect that keeps it there — so a test about what dampening does has to ask
+// for it, and TestTheDampeningIsOffUnlessAskedFor keeps the default honest.
+func withAltitudeDampening(t *testing.T) {
+	t.Helper()
+	before := note.AltitudeDampening()
+	note.SetAltitudeDampening(true)
+	t.Cleanup(func() { note.SetAltitudeDampening(before) })
+}
+
 func indexAltitude(t *testing.T, idx *Index, rel, title, altitude, body string) {
 	t.Helper()
 	raw := "---\ntitle: " + title + "\nstatus: active\n"
@@ -32,6 +43,8 @@ func indexAltitude(t *testing.T, idx *Index, rel, title, altitude, body string) 
 
 // The whole point: same words, different altitude, different rank.
 func TestAnArtifactRanksBelowACanonicalNoteWithTheSameWords(t *testing.T) {
+	withAltitudeDampening(t)
+
 	idx := openScratch(t)
 	body := "The staging gate runs before the deployment finishes.\n"
 	indexAltitude(t, idx, "Agent/memory/semantic/exhaust.md", "Gate", "artifact", body)
@@ -62,6 +75,8 @@ func TestAnArtifactRanksBelowACanonicalNoteWithTheSameWords(t *testing.T) {
 // *beats* the canonical note is BM25's business, and a test that demanded it
 // would be asserting something this change does not do.
 func TestAQuestionAskingForTheShapeUndampensIt(t *testing.T) {
+	withAltitudeDampening(t)
+
 	idx := openScratch(t)
 	body := "The staging gate runs before the deployment finishes in the meeting.\n"
 	indexAltitude(t, idx, "Agent/memory/episodic/exhaust.md", "Gate", "artifact", body)
@@ -158,5 +173,44 @@ func TestQueryWantsArtifact(t *testing.T) {
 		if got := note.QueryWantsArtifact(tc.text); got != tc.want {
 			t.Errorf("QueryWantsArtifact(%q) = %v, want %v", tc.text, got, tc.want)
 		}
+	}
+}
+
+// Off unless asked for, and the reason is a defect rather than caution.
+//
+// Capture writes `altitude: artifact` on every new note. The ranker dampens only
+// a note that says so — the right call for the clamp reason in
+// TestANoteWithNoAltitudeIsNotTreatedAsAnArtifact, but it means a labelled note
+// is dampened while an unlabelled one is not. On this corpus 15,479 notes predate
+// the field and every new capture carries it, so the live effect is to penalize
+// having been captured recently. Enrichment is what labels the corpus; until it
+// has, dampening the labelled minority is backwards.
+func TestTheDampeningIsOffUnlessAskedFor(t *testing.T) {
+	if note.AltitudeDampening() {
+		t.Fatal("altitude dampening is on by default")
+	}
+	idx := openScratch(t)
+	body := "The staging gate runs before the deployment finishes.\n"
+	indexAltitude(t, idx, "Agent/memory/semantic/exhaust.md", "Gate", "artifact", body)
+
+	var flags string
+	if err := idx.db.QueryRow(`SELECT flags FROM docmeta WHERE path = ?`,
+		"Agent/memory/semantic/exhaust.md").Scan(&flags); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(flags, note.ClassArtifact) {
+		t.Errorf("a note was classed an artifact with dampening off: %q", flags)
+	}
+
+	out, err := idx.Search(Query{Text: "staging gate deployment", K: 5})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(out.Results) != 1 {
+		t.Fatalf("expected the note, got %v", resultPaths(out.Results))
+	}
+	if r := out.Results[0]; r.Score != r.RawScore {
+		t.Errorf("the note was multiplied with dampening off: score %v, raw %v",
+			r.Score, r.RawScore)
 	}
 }

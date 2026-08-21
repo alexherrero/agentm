@@ -148,6 +148,47 @@ type Config struct {
 	// See defaultEmbedScope for why it is three names and not the whole tree.
 	EmbedScope []string
 
+	// EnrichEnabled turns the enrichment pass on.
+	//
+	// Off in the shipped configuration, and for a different reason than the two
+	// ranking flags beside it: those are off because a measurement said so, and
+	// this one is off because it *spends*. The eager trigger fires on real
+	// captures, so switching it on with a binary update would start making model
+	// calls on the operator's machine without anyone deciding to.
+	EnrichEnabled bool
+
+	// EnrichModel is the model name enrichment passes to `claude -p`. A name,
+	// not a tier — tier qualification is earned by sampled audit against the
+	// strong tier, which is its own mechanism and not this pass's job.
+	EnrichModel string
+
+	// EnrichSampleRate is one-in-n for the sampled completeness half. The
+	// faithfulness half is per note and does not consult it.
+	EnrichSampleRate int
+
+	// EnrichConcurrency bounds simultaneous eager runs. A capture burst would
+	// otherwise start one subprocess per note, and the type-collapse migration
+	// rewrote 9,899 notes in an afternoon.
+	EnrichConcurrency int
+
+	// AltitudeEnabled turns the `artifact` dampening on.
+	//
+	// Off by default for the length of the transition, and the reason is a
+	// defect this flag exists to hold shut. Capture writes `altitude: artifact`
+	// on every new note, and the ranker dampens only a note that says so — which
+	// was the right call for the clamp reason, but means a labelled note is
+	// dampened while an unlabelled one is not. On a corpus where 15,479 notes
+	// predate the field and every new capture carries it, that penalizes *having
+	// been captured recently* rather than *being an artifact*, and it grows
+	// quietly with every capture.
+	//
+	// The design's model is a labelled corpus, where `canonical` is earned and
+	// everything else is an artifact. Enrichment is what labels it. Until that
+	// has run over the corpus, dampening the labelled minority is backwards, so
+	// it stays off and turns on when the corpus is uniform and the eval can see
+	// the difference.
+	AltitudeEnabled bool
+
 	// DecayEnabled turns age-based demotion on. It is off by default, and the
 	// default is a measurement rather than caution.
 	//
@@ -261,9 +302,11 @@ func (c *Config) applyDampenedSpaces() {
 	if loaded, err := c.Rules.Get(); err == nil {
 		note.SetDampenedSpaces(loaded.DampenedSpaces)
 		note.SetDecayExemptSpaces(loaded.ContractExemptSpaces)
+		note.SetAltitudeDampening(c.AltitudeEnabled)
 	} else {
 		note.SetDampenedSpaces(nil)
 		note.SetDecayExemptSpaces(nil)
+		note.SetAltitudeDampening(c.AltitudeEnabled)
 	}
 }
 
@@ -432,6 +475,33 @@ func Load(opts Options) (*Config, error) {
 
 	if b, ok := raw["daemon.decay_enabled"].(bool); ok {
 		c.DecayEnabled = b
+	}
+	if b, ok := raw["daemon.altitude_enabled"].(bool); ok {
+		c.AltitudeEnabled = b
+	}
+	if b, ok := raw["daemon.enrich_enabled"].(bool); ok {
+		c.EnrichEnabled = b
+	}
+	if s := strVal(raw, "daemon.enrich_model"); s != "" {
+		c.EnrichModel = s
+	}
+	if f, ok := raw["daemon.enrich_concurrency"].(float64); ok && f >= 1 {
+		c.EnrichConcurrency = int(f)
+	}
+	if f, ok := raw["daemon.enrich_sample_rate"].(float64); ok && f >= 0 {
+		c.EnrichSampleRate = int(f)
+	}
+	if c.EnrichSampleRate == 0 {
+		// One in twenty. Enough to move a scorecard number over a batch, few
+		// enough that the sampled half is a rounding error against the per-note
+		// faithfulness call it rides alongside.
+		c.EnrichSampleRate = 20
+	}
+	if c.EnrichConcurrency == 0 {
+		// Two rather than one so a second capture during a slow call is not
+		// automatically deferred, and rather than many because each is a
+		// subprocess with a model behind it.
+		c.EnrichConcurrency = 2
 	}
 
 	c.MemoryRoot = strings.Trim(
