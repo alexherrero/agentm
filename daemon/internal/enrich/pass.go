@@ -142,6 +142,17 @@ type Pass struct {
 	skips    atomic.Int64
 	failures atomic.Int64
 
+	// observer, when set, is told what happened to every note the pass ran —
+	// both triggers, every outcome. It exists so the coverage ledger can be
+	// written without this package knowing a ledger exists: the pass reports,
+	// and whoever owns the record decides what to keep.
+	//
+	// It deliberately receives the Request as well as the Outcome. An observer
+	// that only saw the Outcome could not compute the key for the content that
+	// was read, and "what did this stage process" is the whole question a
+	// ledger row answers.
+	observer func(Request, Outcome, error)
+
 	// inflight bounds concurrent eager runs. A capture burst — the migration
 	// rewrote 9,899 notes in an afternoon — would otherwise start one
 	// subprocess per note and take the machine down. Bounded rather than
@@ -166,6 +177,13 @@ func (p *Pass) SetTypes(f func() []string) { p.types = f }
 
 // SetEnabled turns the pass on. See config.EnrichEnabled for why it ships off.
 func (p *Pass) SetEnabled(on bool) { p.enabled.Store(on) }
+
+// SetObserver registers a callback told the result of every run.
+//
+// One observer rather than a list. Two would raise the question of what happens
+// when the first one fails, and the only caller is the thing that writes the
+// coverage ledger.
+func (p *Pass) SetObserver(f func(Request, Outcome, error)) { p.observer = f }
 
 // Enabled reports whether the pass will do anything.
 func (p *Pass) Enabled() bool { return p.enabled.Load() }
@@ -198,6 +216,16 @@ func (p *Pass) Stats() Stats {
 // the Request rather than branched on at the top, so there is no second code
 // path to keep in agreement with the first.
 func (p *Pass) Run(ctx context.Context, req Request) (Outcome, error) {
+	out, err := p.run(ctx, req)
+	// Fired after the run rather than at each exit, so there is one place the
+	// observer is called from and no way for a future return path to forget it.
+	if p.observer != nil {
+		p.observer(req, out, err)
+	}
+	return out, err
+}
+
+func (p *Pass) run(ctx context.Context, req Request) (Outcome, error) {
 	started := time.Now()
 	out := Outcome{Rel: req.Rel}
 

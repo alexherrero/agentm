@@ -100,7 +100,8 @@ func ValidateSplit(p SplitPlan, schema *Schema) error {
 // The body is kept rather than replaced with a pointer. A superseded note whose
 // text was thrown away is a note that cannot answer the question "was the split
 // right", which is the only question anyone asks of one.
-func SupersededNote(previous string, plan SplitPlan, fragmentPaths []string) string {
+func SupersededNote(previous string, plan SplitPlan, fragmentPaths []string,
+	stamp Stamp) string {
 	body := sourceBody(previous)
 	var b strings.Builder
 	b.WriteString("---\n")
@@ -110,7 +111,15 @@ func SupersededNote(previous string, plan SplitPlan, fragmentPaths []string) str
 	if plan.Reason != "" {
 		writeScalar(&b, "superseded_reason", plan.Reason)
 	}
-	writeScalar(&b, "enriched_by", PassVersion)
+	version := stamp.Version
+	if version == "" {
+		version = PassVersion
+	}
+	writeScalar(&b, "enriched_by", version)
+	writeScalar(&b, "rules_hash", stamp.RulesHash)
+	if !stamp.At.IsZero() {
+		writeScalar(&b, "enriched_at", stamp.At.UTC().Format(StampFormat))
+	}
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimRight(body, "\n"))
 	b.WriteString("\n")
@@ -118,8 +127,8 @@ func SupersededNote(previous string, plan SplitPlan, fragmentPaths []string) str
 }
 
 // RenderFragment writes one fragment, carrying the edge back to its parent.
-func RenderFragment(f SplitFragment, parentRel string) string {
-	out := RenderNote(f.Response)
+func RenderFragment(f SplitFragment, parentRel string, stamp Stamp) string {
+	out := RenderNote(f.Response, stamp)
 	// Inserted into the existing frontmatter rather than appended after it: a
 	// second `---` block would make the note parse as prose containing YAML.
 	marker := "enriched_by:"
@@ -138,7 +147,7 @@ func RenderFragment(f SplitFragment, parentRel string) string {
 // exist, which is worse than the reverse — an un-superseded original beside its
 // fragments is merely duplicated, and the reconcile pass will index both.
 func (w *Applier) ApplySplit(ctx context.Context, parentRel, previous string,
-	plan SplitPlan, trigger Trigger) ([]string, error) {
+	plan SplitPlan, trigger Trigger, stamp Stamp) ([]string, error) {
 	if w.Membership != nil {
 		if err := w.Membership.Allows(parentRel); err != nil {
 			return nil, err
@@ -162,7 +171,7 @@ func (w *Applier) ApplySplit(ctx context.Context, parentRel, previous string,
 				return written, err
 			}
 		}
-		body := RenderFragment(f, parentRel)
+		body := RenderFragment(f, parentRel, stamp)
 		if _, err := w.Apply(ctx, WriteRequest{
 			Rel: dest, Previous: "", Next: body, Trigger: trigger,
 			Version: PassVersion,
@@ -174,7 +183,7 @@ func (w *Applier) ApplySplit(ctx context.Context, parentRel, previous string,
 
 	if _, err := w.Apply(ctx, WriteRequest{
 		Rel: parentRel, Previous: previous,
-		Next:    SupersededNote(previous, plan, written),
+		Next:    SupersededNote(previous, plan, written, stamp),
 		Trigger: trigger, Version: PassVersion,
 	}); err != nil {
 		return written, fmt.Errorf("superseding %s: %w", parentRel, err)

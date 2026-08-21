@@ -30,6 +30,7 @@ import (
 	"github.com/alexherrero/agentm/daemon/internal/gate"
 	"github.com/alexherrero/agentm/daemon/internal/health"
 	"github.com/alexherrero/agentm/daemon/internal/index"
+	"github.com/alexherrero/agentm/daemon/internal/ledger"
 	"github.com/alexherrero/agentm/daemon/internal/mcpsrv"
 	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/probe"
@@ -56,6 +57,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd classify   report rank-penalty class counts over the live vault
   agentmd retire     retire the orphaned pre-daemon memory server
   agentmd rules      print the filing contract, or seed a vault with one
+  agentmd ledger     ask what dreaming has already done, and what is pending
 
 Run any subcommand with -h for its flags.
 `
@@ -91,6 +93,8 @@ func main() {
 		err = cmdRetire(os.Args[2:])
 	case "rules":
 		err = cmdRules(os.Args[2:])
+	case "ledger":
+		err = cmdLedger(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmd", version)
 	case "help", "-h", "--help":
@@ -1187,6 +1191,16 @@ func cmdEnrich(args []string) error {
 	}
 	defer idx.Close()
 
+	// The coverage ledger, opened before anything is spent. Without it the
+	// fingerprint gate is inert and this run re-enriches everything a previous
+	// run already wrote — which on the live corpus means the notes that landed
+	// below the confidence floor, because those keep `status: unfiled` and are
+	// therefore offered by the queue again on every cycle.
+	led, err := ledger.Open(idx.DB())
+	if err != nil {
+		return err
+	}
+
 	budget := enrich.DefaultBudget()
 	if *maxCalls > 0 {
 		budget.MaxCalls = *maxCalls
@@ -1291,7 +1305,7 @@ func cmdEnrich(args []string) error {
 		}
 		return nil
 	})
-	attachPreGates(pass, cfg, budget)
+	attachPreGates(pass, cfg, budget, led)
 
 	// The judge is a second caller rather than the same one. They want
 	// different things: enrichment wants prose and a long answer is fine, while
@@ -1327,19 +1341,74 @@ func cmdEnrich(args []string) error {
 		},
 	}
 
+	// The keys the ledger stores are computed by the same gate that reads them
+	// back. Constructed once, from the same helper `attachPreGates` uses, because
+	// a key written under one version and looked up under another is a row that
+	// silently never matches.
+	keyer := enrichFingerprint(cfg, nil)
+
 	write := func(ctx context.Context, rel, body string) error {
 		r, err := enrich.ParseResponse(body)
 		if err != nil {
 			return err
 		}
 		previous, _ := os.ReadFile(filepath.Join(cfg.VaultPath, filepath.FromSlash(rel)))
-		_, err = applier.Apply(ctx, enrich.WriteRequest{
-			Rel: rel, Previous: string(previous), Next: enrich.RenderNote(r),
+		stamp := enrichStamp(cfg, time.Now())
+		next := enrich.RenderNote(r, stamp)
+		dest, err := applier.Apply(ctx, enrich.WriteRequest{
+			Rel: rel, Previous: string(previous), Next: next,
 			NewSlug: r.Slug, Trigger: enrich.TriggerBatch,
-			Version: enrich.PassVersion,
+			Version: stamp.Version,
 		})
-		return err
+		if err != nil {
+			// Recorded as a failure rather than left silent. A note that was
+			// enriched and then failed to land is a different state from one
+			// nothing ever reached, and the digest has to be able to tell them
+			// apart — the row is what makes that possible.
+			recordEnrich(ctx, led, ledger.Entry{
+				Stage: ledger.StageEnrich, Target: rel, Version: stamp.Version,
+				RulesHash: stamp.RulesHash, InputKey: keyer.Key(string(previous)),
+				Outcome: ledger.Failed, Reason: err.Error(), At: stamp.At,
+			})
+			return err
+		}
+		// Against the destination rather than the source: a slug correction moves
+		// the note, and a row filed under the path it no longer has would leave
+		// the path it does have looking untouched.
+		recordEnrich(ctx, led, ledger.Entry{
+			Stage: ledger.StageEnrich, Target: dest, Version: stamp.Version,
+			RulesHash: stamp.RulesHash,
+			InputKey:  keyer.Key(string(previous)),
+			// The bytes that actually landed. This is the half that stops a
+			// below-the-floor enrichment — which keeps `status: unfiled` and so
+			// stays in the queue — from being paid for again on every cycle.
+			OutputKey: keyer.Key(next),
+			Outcome:   ledger.Done, At: stamp.At,
+		})
+		return nil
 	}
+
+	// Skips and failures reach the ledger through the pass's observer, because
+	// they never get as far as a write. Successes deliberately do not: only the
+	// write knows the bytes that landed and the path they landed at.
+	pass.SetObserver(func(req enrich.Request, out enrich.Outcome, err error) {
+		if out.Enriched && err == nil {
+			return
+		}
+		outcome := ledger.Failed
+		if out.Skipped {
+			outcome = ledger.Skipped
+		}
+		reason := out.Reason
+		if reason == "" && err != nil {
+			reason = err.Error()
+		}
+		recordEnrich(context.Background(), led, ledger.Entry{
+			Stage: ledger.StageEnrich, Target: req.Rel,
+			Version: enrich.PassVersion, RulesHash: currentRulesHash(cfg),
+			InputKey: keyer.Key(req.Raw), Outcome: outcome, Reason: reason,
+		})
+	})
 
 	rep, err := pass.RunBatch(context.Background(), list, write, *after, budget)
 	if err != nil {
@@ -1419,7 +1488,8 @@ func cmdEnrich(args []string) error {
 // which spaces a background pass may read, and the rules hash that versions the
 // idempotency key. Passing them in keeps `enrich` a pass rather than a
 // dependency hub.
-func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget) {
+func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget,
+	led *ledger.Ledger) {
 	// The contract decides which spaces a model may read. When it will not
 	// parse, nothing is readable — the safe direction, and the same one
 	// `applyDampenedSpaces` takes: dampening too little is a leak the operator
@@ -1432,24 +1502,16 @@ func attachPreGates(pass *enrich.Pass, cfg *config.Config, budget enrich.Budget)
 		return loaded.MayReadWithModel(rel)
 	}
 
-	rulesHash := "unresolved"
-	if loaded, err := cfg.Rules.Get(); err == nil {
-		rulesHash = loaded.Hash
-	}
-
 	pass.AddPre(
 		enrich.DefaultEligibility(mayRead),
 		enrich.DefaultPrivacy(),
 		enrich.DefaultSize(),
-		&enrich.Fingerprint{
-			Version:   enrich.PassVersion,
-			RulesHash: rulesHash,
-			// No ledger yet — that is the dreaming part. Until then nothing is
-			// remembered between runs, so the gate is honest about costing a
-			// call it might not have needed rather than pretending to an
-			// idempotency it cannot yet provide.
-			Seen: nil,
-		},
+		// The fingerprint gate reads the coverage ledger, which is what turns
+		// its idempotency claim from a description into a mechanism. A nil
+		// ledger leaves it inert, which is honest — a gate with nothing to
+		// remember costs a call it might not have needed, rather than
+		// pretending to an idempotency it cannot provide.
+		enrichFingerprint(cfg, led),
 		enrich.NewCycleBudget(budget.MaxCalls, budget.MaxDuration),
 	)
 }
@@ -1527,7 +1589,10 @@ func dumpPairs(dir string, pairs []enrich.Pair) error {
 		// The rendered note rather than the raw JSON response: what the reader
 		// needs to judge is the note that landed, not the envelope it arrived in.
 		if r, err := enrich.ParseResponse(p.Result); err == nil {
-			b.WriteString(enrich.RenderNote(r))
+			// No stamp: this is a review artifact, not a note being filed, and
+			// stamping it would put a version and a timestamp on a file nothing
+			// ever reads back.
+			b.WriteString(enrich.RenderNote(r, enrich.Stamp{}))
 		} else {
 			b.WriteString(p.Result)
 		}

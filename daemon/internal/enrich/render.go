@@ -23,13 +23,49 @@ import (
 // never happens here.
 const ConfidenceFloor = 0.6
 
+// StampFormat is the layout `enriched_at` is written in.
+//
+// The same layout the index stores `captured` in, and for the same reason: a
+// lexicographic compare over these strings is also a chronological one, so a
+// query for "everything enriched before the prompt changed" is a plain range
+// scan rather than a parse of fifteen thousand values.
+const StampFormat = "2006-01-02T15:04:05Z"
+
+// Stamp is the durable record of a judgment, written into the note it judged.
+//
+// Three fields, and all three are load-bearing. The version says which pass
+// produced this body. The rules hash says which filing contract it was judged
+// under, so a contract edit can name exactly the population it invalidated
+// rather than the whole corpus. The time says when.
+//
+// This is the one stamp that lives in the file rather than in the coverage
+// ledger, and the reason is that it is a durable judgment about the note rather
+// than machine state about a queue. Everything else a stage knows is a cache and
+// belongs in one; this survives losing the cache, and it is what a rebuild reads
+// back.
+type Stamp struct {
+	// Version defaults to PassVersion when empty, because every real caller
+	// wants the current pass and a forgotten field should not produce a note
+	// that claims nothing wrote it.
+	Version string
+	// RulesHash is the filing contract this judgment was made under. Omitted
+	// from the note when empty rather than written as a blank, because an empty
+	// hash reads as "judged under no contract" and that is never true.
+	RulesHash string
+	// At is when. A zero time writes no `enriched_at` at all — a note that does
+	// not know when it was enriched should say nothing rather than guess, and
+	// leaving it out is what keeps a rendered note byte-identical across calls
+	// when a test needs it to be.
+	At time.Time
+}
+
 // RenderNote turns an enriched response into the bytes that go on disk.
 //
 // Frontmatter is written in a fixed field order rather than whatever order a map
 // iterates. Two enrichments of the same note that differed only in key order
 // would show up as a diff in git and as a change to anything hashing the file,
 // which would make every review of the corpus's history noisier for no reason.
-func RenderNote(r Response) string {
+func RenderNote(r Response, s Stamp) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	writeScalar(&b, "title", r.Title)
@@ -42,8 +78,23 @@ func RenderNote(r Response) string {
 	if r.Summary != "" {
 		writeScalar(&b, "summary", r.Summary)
 	}
-	writeScalar(&b, "updated", time.Now().UTC().Format("2006-01-02"))
-	writeScalar(&b, "enriched_by", PassVersion)
+	// `updated` takes the stamp's moment when there is one, so the date the note
+	// claims and the timestamp the ledger holds describe the same event rather
+	// than two clock reads a few microseconds apart.
+	when := s.At
+	if when.IsZero() {
+		when = time.Now()
+	}
+	writeScalar(&b, "updated", when.UTC().Format("2006-01-02"))
+	version := s.Version
+	if version == "" {
+		version = PassVersion
+	}
+	writeScalar(&b, "enriched_by", version)
+	writeScalar(&b, "rules_hash", s.RulesHash)
+	if !s.At.IsZero() {
+		writeScalar(&b, "enriched_at", s.At.UTC().Format(StampFormat))
+	}
 	b.WriteString("---\n\n")
 	b.WriteString(strings.TrimRight(r.Body, "\n"))
 	b.WriteString("\n")
