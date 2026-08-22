@@ -33,3 +33,28 @@ func TestSourceIsReadFromFrontmatter(t *testing.T) {
 		})
 	}
 }
+
+// The rest of the provenance: what the source contained when it was read, and
+// the pass that read it. These are what make the source registry rebuildable
+// from the corpus rather than being the only copy of what has been mined.
+func TestSourceProvenanceIsReadFromFrontmatter(t *testing.T) {
+	body := "---\ntitle: A\nsource: email:<abc@example.com>\n" +
+		"source_hash: abc123\nsource_version: ingest/1\n---\n\nbody\n"
+	n := Parse("a.md", body, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if n.SourceHash != "abc123" {
+		t.Errorf("SourceHash = %q; a rebuild would recover the name of this "+
+			"source and not whether it can be skipped", n.SourceHash)
+	}
+	if n.SourceVersion != "ingest/1" {
+		t.Errorf("SourceVersion = %q", n.SourceVersion)
+	}
+
+	// Absent is empty rather than invented. Most of the corpus predates these
+	// fields entirely.
+	bare := Parse("b.md", "---\nsource: email:<x@example.com>\n---\n\nb\n",
+		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if bare.SourceHash != "" || bare.SourceVersion != "" {
+		t.Errorf("a note predating these fields reports %q/%q",
+			bare.SourceHash, bare.SourceVersion)
+	}
+}

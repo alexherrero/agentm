@@ -497,6 +497,10 @@ func cmdCapture(args []string) error {
 	tags := fs.String("tags", "", "comma-separated tags")
 	aliases := fs.String("aliases", "", "comma-separated alternate phrasings")
 	source := fs.String("source", "", "URL or message-id")
+	sourceHash := fs.String("source-hash", "",
+		"content hash the source had when it was read")
+	sourceVersion := fs.String("source-version", "",
+		"the ingest pass version that read it")
 	space := fs.String("space", "", "which space to write into")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -524,7 +528,8 @@ func cmdCapture(args []string) error {
 	res, err := capture.New(cfg, idx).Do(capture.Request{
 		Text: text, Title: *title, Type: *noteType, Status: *status,
 		Tags: splitList(*tags), Aliases: splitList(*aliases),
-		Source: *source, Space: *space,
+		Source: *source, SourceHash: *sourceHash, SourceVersion: *sourceVersion,
+		Space: *space,
 	})
 	if err != nil {
 		return err

@@ -46,6 +46,10 @@ func cmdSources(args []string) error {
 	memories := fs.Bool("memories", false, "list the memories --id produced")
 	zeroYield := fs.Bool("zero-yield", false, "list sources that produced nothing")
 	forget := fs.Bool("forget", false, "drop --id's watermark so it is mined again")
+	rebuild := fs.Bool("rebuild", false,
+		"discard the registry and recover it from the corpus and the committed file")
+	save := fs.Bool("save", false,
+		"write the committed file: the half of the registry a corpus scan cannot rebuild")
 	supersede := fs.Bool("supersede", false,
 		"mark every memory --id already produced as replaced, before a re-ingest "+
 			"writes the new ones")
@@ -98,6 +102,53 @@ func cmdSources(args []string) error {
 	}
 
 	switch {
+	case *rebuild:
+		side, err := sources.LoadSidecar(metaDir(cfg))
+		if err != nil {
+			return err
+		}
+		rep, err := reg.Rebuild(ctx, func(c context.Context) ([]sources.Provenance, error) {
+			rows, err := idx.Provenance(c)
+			if err != nil {
+				return nil, err
+			}
+			out := make([]sources.Provenance, len(rows))
+			for i, r := range rows {
+				out[i] = sources.Provenance{
+					Source: r.Source, Hash: r.Hash, Version: r.Version,
+					Memories: r.Memories,
+				}
+			}
+			return out, nil
+		}, side)
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			return json.NewEncoder(os.Stdout).Encode(rep)
+		}
+		fmt.Printf("rebuilt the registry: dropped %d, recovered %d from the corpus "+
+			"and %d from the committed file, in %s\n",
+			rep.Dropped, rep.FromCorpus, rep.FromSidecar,
+			rep.Elapsed.Round(time.Millisecond))
+		for _, id := range rep.Unrecoverable {
+			fmt.Printf("  no provenance: %s — its memories name it without saying "+
+				"what it contained, so it will be read again\n", id)
+		}
+		return nil
+
+	case *save:
+		side, err := reg.SaveSidecar(ctx, metaDir(cfg), time.Now())
+		if err != nil {
+			return err
+		}
+		if *asJSON {
+			return json.NewEncoder(os.Stdout).Encode(side)
+		}
+		fmt.Printf("wrote %s: %d zero-yield record(s) and %d growing cursor(s)\n",
+			sources.SidecarPath(metaDir(cfg)), len(side.ZeroYield), len(side.Cursors))
+		return nil
+
 	case *seen:
 		ok, err := reg.Seen(ctx, parsed, *hash, *version)
 		if err != nil {
@@ -252,6 +303,16 @@ func cmdSources(args []string) error {
 		fmt.Printf("  … and %d more (pass --limit 0 for all)\n", stats.Total-len(recs))
 	}
 	return nil
+}
+
+// metaDir is where the committed file lives.
+//
+// Under the memory root rather than the vault root, because `_meta/` is a
+// memory-layer directory and the two roots are not the same — a path built from
+// the wrong one lands beside the operator's own folders and looks plausible
+// while being wrong.
+func metaDir(cfg *config.Config) string {
+	return filepath.Join(cfg.VaultPath, filepath.FromSlash(cfg.MemoryRoot), "_meta")
 }
 
 // sourceRewriter writes a note back through the vault, for supersession.
