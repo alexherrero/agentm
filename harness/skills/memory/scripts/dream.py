@@ -1317,6 +1317,28 @@ def _stage_digest_and_staging(vault_path: Path, digest: DreamDigest) -> Path:
 # The pass
 # -----------------------------------------------------------------------------
 
+def _stage_part5_jobs(vault_path: Path) -> list:
+    """The filing contract's remaining job list, run through the daemon's
+    ledger and queues.
+
+    Wrapped so a daemon that cannot be reached costs this pass nothing. The
+    stages each report their own unavailability, and this catches the case
+    where the module itself will not import — an install without the daemon
+    half, which is a supported shape rather than a broken one.
+    """
+    try:
+        import dream_stages
+    except ImportError:  # pragma: no cover - install-shape dependent
+        return []
+    try:
+        return dream_stages.run_new_stages(vault_path)
+    except Exception as exc:  # pragma: no cover - defensive
+        # Reported, never raised. These stages are additive; a failure in one
+        # must not cost the twelve that ran before it their digest.
+        return [dream_stages.StageResult(
+            stage="part5_jobs", unavailable=f"{type(exc).__name__}: {exc}")]
+
+
 def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     """Run the full thin `/dream` pass once against `vault_path`. Never
     mutates an existing entry — dedup/contradiction/compression stages only
@@ -1369,6 +1391,16 @@ def run_dream(vault_path: Path, *, run_id: str | None = None) -> DreamDigest:
     proposals.extend(tidying_proposals)
     proposals.extend(_stage_suffix_backlog_drain(vault_path, entries, loaded))
     proposals.extend(_stage_opinion_supplement(vault_path))
+
+    # The four stages part 5 adds: entity rollups, stub synthesis, backlink
+    # footers and the unfiled drain. Discovery-only apart from the footer, and
+    # each records what it did into the same digest as everything above.
+    #
+    # After the proposal stages so the queues they fill reflect this cycle's
+    # work, and before crystallization so the digest reports them together.
+    corpus_stats["part5_stages"] = [
+        r.as_dict() for r in _stage_part5_jobs(vault_path)
+    ]
 
     crystallized_summary = _stage_crystallization(corpus_stats, proposals)
     insight_candidates = _stage_insight_generation(vault_path, run_id, crystallized_summary, proposals)
