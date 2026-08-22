@@ -100,6 +100,7 @@ gate "verify-hook-resolution (dual-key vault_path read, 4 hooks)" bash scripts/v
 gate "verify-state-routing (backend x project-mode matrix, never-demote)" bash scripts/verify-state-routing.sh
 gate "verify-reflection (tri-lane routing, machine-source filter)" bash scripts/verify-reflection.sh
 gate "verify-dreaming (stage->confirm->revert-log e2e, no-silent-apply-on-timeout)" bash scripts/verify-dreaming.sh
+gate "verify-declare-a-type (contract edit -> coverage falls -> queue -> climbs, real binary)" bash scripts/verify-declare-a-type.sh
 gate "verify-auto-org-meters (connectivity + browse-surface e2e)" bash scripts/verify-auto-org-meters.sh
 gate "verify-opinion-supplements (accumulate loop Stages 2-3: recurrence gate, contradiction, confirm-gated compose e2e)" bash scripts/verify-opinion-supplements.sh
 gate "verify-mcp-surface (append/search/forget round-trip, dead-surface fate)" "$PY" scripts/verify-mcp-surface.py
