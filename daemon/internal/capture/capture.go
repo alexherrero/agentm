@@ -42,7 +42,13 @@ type Request struct {
 	Tags    []string `json:"tags,omitempty"`
 	Aliases []string `json:"aliases,omitempty"`
 	Source  string   `json:"source,omitempty"`
-	Space   string   `json:"space,omitempty"`
+	// SourceHash and SourceVersion are the rest of the provenance — what the
+	// source contained when it was read, and the pass that read it. Written into
+	// the note so the source registry can be rebuilt from the corpus rather than
+	// being the only copy of what has already been mined.
+	SourceHash    string `json:"source_hash,omitempty"`
+	SourceVersion string `json:"source_version,omitempty"`
+	Space         string `json:"space,omitempty"`
 
 	// Probe marks the note as the daemon's synthetic self-probe.
 	//
@@ -215,17 +221,19 @@ func (c *Capturer) Do(req Request) (Result, error) {
 	aliases := mergeAliases(req.Aliases, extract.Aliases(title, text))
 
 	body := renderNote(noteData{
-		Type:     noteType,
-		Altitude: DefaultAltitude,
-		Status:   status,
-		Captured: captured,
-		Slug:     slug,
-		Title:    title,
-		Tags:     req.Tags,
-		Aliases:  aliases,
-		Source:   strings.TrimSpace(req.Source),
-		Probe:    req.Probe,
-		Text:     text,
+		Type:          noteType,
+		Altitude:      DefaultAltitude,
+		Status:        status,
+		Captured:      captured,
+		Slug:          slug,
+		Title:         title,
+		Tags:          req.Tags,
+		Aliases:       aliases,
+		Source:        strings.TrimSpace(req.Source),
+		SourceHash:    strings.TrimSpace(req.SourceHash),
+		SourceVersion: strings.TrimSpace(req.SourceVersion),
+		Probe:         req.Probe,
+		Text:          text,
 	})
 
 	abs := filepath.Join(c.cfg.VaultPath, filepath.FromSlash(rel))
@@ -333,8 +341,14 @@ type noteData struct {
 	Tags     []string
 	Aliases  []string
 	Source   string
-	Probe    bool
-	Text     string
+	// SourceHash and SourceVersion complete the provenance: what the source
+	// contained when it was read, and the pass that read it. Cheap to write now
+	// and impossible to reconstruct later, which is what makes the source
+	// registry a cache rather than the only copy of what has been mined.
+	SourceHash    string
+	SourceVersion string
+	Probe         bool
+	Text          string
 }
 
 // renderNote writes the frontmatter contract from the memory design. `captured` is
@@ -365,6 +379,14 @@ func renderNote(d noteData) string {
 	}
 	if d.Source != "" {
 		fmt.Fprintf(&b, "source: %s\n", yamlScalar(d.Source))
+	}
+	// Only alongside a source. A hash with nothing to hash names no unit, and
+	// a rebuild reading one would recover a row keyed on nothing.
+	if d.Source != "" && d.SourceHash != "" {
+		fmt.Fprintf(&b, "source_hash: %s\n", yamlScalar(d.SourceHash))
+	}
+	if d.Source != "" && d.SourceVersion != "" {
+		fmt.Fprintf(&b, "source_version: %s\n", yamlScalar(d.SourceVersion))
 	}
 	// The probe marker. Written as a frontmatter field rather than expressed by
 	// where the note lives, because everything downstream that must not count a

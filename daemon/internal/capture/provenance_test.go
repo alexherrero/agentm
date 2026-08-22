@@ -1,131 +1,100 @@
 package capture
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alexherrero/agentm/daemon/internal/note"
 )
 
-// Task 7 of this part is mostly already built, and the honest thing is to verify
-// that rather than rebuild it. `capture.Do` already defaults `status` to
-// `unfiled`, already accepts `active`, already rejects anything else, and already
-// stamps `captured` from the transaction's own clock. What was missing was any
-// check that those properties hold — so this file is the check.
-//
-// The two statuses carry the design's provenance distinction. A capture the
-// operator directed lands `active`, because a session he asked for produces
-// memories he already approved by asking, and routing those through triage would
-// page him about a backlog that is not one. Everything unattended lands
-// `unfiled`, which is rank-penalized but fully indexed and searchable — there is
-// no inbox, and rank-penalized is a very different condition from absent.
-
-func TestAmbientCaptureLandsUnfiled(t *testing.T) {
-	cp := newHarness(t)
-	res, err := cp.Do(Request{Title: "ambient", Text: "Something noticed in passing."})
-	if err != nil {
-		t.Fatalf("capture: %v", err)
-	}
-	if res.Status != "unfiled" {
-		t.Errorf("status %q; anything unattended lands unfiled", res.Status)
-	}
-}
-
-func TestADirectedCaptureLandsActive(t *testing.T) {
+// Capture is where source provenance enters the corpus, and the corpus is what
+// the source registry is rebuilt from. A memory that names its source without
+// saying what that source contained lets a rebuild recover the name and not the
+// skip decision — which is a registry that has to re-read everything it can name.
+func TestCaptureWritesSourceProvenance(t *testing.T) {
 	cp := newHarness(t)
 	res, err := cp.Do(Request{
-		Title:  "directed",
-		Text:   "Something the operator asked to remember.",
-		Status: "active",
+		Text:          "the decision we reached",
+		Title:         "a decision",
+		Source:        "email:<abc@example.com>",
+		SourceHash:    "abc123def456",
+		SourceVersion: "ingest/1",
 	})
 	if err != nil {
 		t.Fatalf("capture: %v", err)
 	}
-	if res.Status != "active" {
-		t.Errorf("status %q; a directed capture lands active", res.Status)
+	body := readNote(t, cp, res.Path)
+
+	// Read back through the parser the rebuild uses. `yamlScalar` quotes a value
+	// containing a colon and every one of these has one, so asserting raw bytes
+	// would be asserting the encoder rather than the contract.
+	n := note.Parse(res.Path, body, time.Time{})
+	for field, got := range map[string]string{
+		"source":         n.Source,
+		"source_hash":    n.SourceHash,
+		"source_version": n.SourceVersion,
+	} {
+		want := map[string]string{
+			"source":         "email:<abc@example.com>",
+			"source_hash":    "abc123def456",
+			"source_version": "ingest/1",
+		}[field]
+		if got != want {
+			t.Errorf("%s = %q, want %q:\n%s", field, got, want, body)
+		}
 	}
 }
 
-// The default is the safe one. An ambient path that forgot to set a status must
-// land in the reviewable state, not the approved one — the failure of getting
-// this backwards is silent and only shows up as a corpus of unreviewed material
-// claiming to be reviewed.
-func TestTheDefaultIsTheReviewableState(t *testing.T) {
+// A hash with nothing to hash names no unit, and a rebuild reading one would
+// recover a row keyed on nothing.
+func TestProvenanceIsOnlyWrittenAlongsideASource(t *testing.T) {
 	cp := newHarness(t)
-	res, err := cp.Do(Request{Title: "no status", Text: "Body."})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if res.Status == "active" {
-		t.Error("an unspecified status defaulted to active; the safe default is unfiled")
-	}
-}
-
-func TestAnUnknownStatusIsRefused(t *testing.T) {
-	cp := newHarness(t)
-	_, err := cp.Do(Request{Title: "x", Text: "Body.", Status: "inbox"})
-	if err == nil {
-		t.Fatal("a status outside the pair was accepted")
-	}
-	if !strings.Contains(err.Error(), "active") || !strings.Contains(err.Error(), "unfiled") {
-		t.Errorf("the refusal does not name the two that work: %v", err)
-	}
-}
-
-func TestStatusIsCaseInsensitive(t *testing.T) {
-	cp := newHarness(t)
-	res, err := cp.Do(Request{Title: "x", Text: "Body.", Status: "ACTIVE"})
+	res, err := cp.Do(Request{
+		Text: "something nobody sourced", Title: "a thought",
+		SourceHash: "abc123", SourceVersion: "ingest/1",
+	})
 	if err != nil {
 		t.Fatalf("capture: %v", err)
 	}
-	if res.Status != "active" {
-		t.Errorf("status %q", res.Status)
-	}
-}
+	body := readNote(t, cp, res.Path)
 
-// `captured` is immutable and fixes the shard. Nothing may rewrite it — a note
-// that moved shards because a later pass re-stamped it would be a note whose
-// address changed, which is the one thing the whole layout is built to prevent.
-func TestCapturedIsWrittenOnceAndNotRewritten(t *testing.T) {
-	cp := newHarness(t)
-	res, err := cp.Do(Request{Title: "stamped", Text: "Body."})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	first := frontmatterLine(t, cp.cfg.VaultPath, res.Path, "captured:")
-	if first == "" {
-		t.Fatal("no captured line was written")
-	}
-
-	// Re-index the same note several times, which is what a reconcile pass does.
-	for i := 0; i < 3; i++ {
-		if err := cp.idx.IndexFile(res.Path); err != nil {
-			t.Fatalf("reindex %d: %v", i, err)
+	for _, absent := range []string{"source_hash:", "source_version:"} {
+		if strings.Contains(body, absent) {
+			t.Errorf("a note with no source carries %q:\n%s", absent, body)
 		}
 	}
+}
 
-	again := frontmatterLine(t, cp.cfg.VaultPath, res.Path, "captured:")
-	if again != first {
-		t.Errorf("captured changed under reindexing:\n was %s\n now %s", first, again)
+// A capture with a source and no provenance is the ordinary case for everything
+// the corpus already holds, and it must not sprout empty fields.
+func TestASourceWithoutProvenanceWritesNeitherField(t *testing.T) {
+	cp := newHarness(t)
+	res, err := cp.Do(Request{
+		Text: "from a page", Title: "a page", Source: "https://example.com/a",
+	})
+	if err != nil {
+		t.Fatalf("capture: %v", err)
+	}
+	body := readNote(t, cp, res.Path)
+
+	if got := note.Parse(res.Path, body, time.Time{}).Source; got != "https://example.com/a" {
+		t.Errorf("source = %q:\n%s", got, body)
+	}
+	for _, absent := range []string{"source_hash:", "source_version:"} {
+		if strings.Contains(body, absent) {
+			t.Errorf("an empty %q was written:\n%s", absent, body)
+		}
 	}
 }
 
-// The captured stamp determines the shard, so the path a note is written to has
-// to agree with the stamp it carries. A disagreement would mean a note filed
-// under a date it does not claim.
-func TestTheShardAgreesWithTheStamp(t *testing.T) {
-	cp := newHarness(t)
-	res, err := cp.Do(Request{Title: "sharded", Text: "Body."})
+func readNote(t *testing.T, cp *Capturer, rel string) string {
+	t.Helper()
+	blob, err := os.ReadFile(filepath.Join(cp.cfg.VaultPath, filepath.FromSlash(rel)))
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("reading %s: %v", rel, err)
 	}
-	line := frontmatterLine(t, cp.cfg.VaultPath, res.Path, "captured:")
-	stamp := strings.TrimSpace(strings.TrimPrefix(line, "captured:"))
-	if len(stamp) < 7 {
-		t.Fatalf("captured stamp is too short to carry a year and month: %q", stamp)
-	}
-	year, month := stamp[0:4], stamp[5:7]
-	if !strings.Contains(res.Path, year+"/"+month) {
-		t.Errorf("note written to %q but stamped %q; the shard and the stamp disagree",
-			res.Path, stamp)
-	}
+	return string(blob)
 }

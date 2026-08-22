@@ -250,6 +250,8 @@ func (x *Index) migrate() error {
 		`ALTER TABLE docmeta ADD COLUMN confidence REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE docmeta ADD COLUMN confidence_set INTEGER NOT NULL DEFAULT 0`,
 		`ALTER TABLE docmeta ADD COLUMN source TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE docmeta ADD COLUMN source_hash TEXT NOT NULL DEFAULT ''`,
+		`ALTER TABLE docmeta ADD COLUMN source_version TEXT NOT NULL DEFAULT ''`,
 		// Indexed here rather than with the other CREATE INDEX statements, which
 		// run before the ALTERs — on a fresh database that ordering would have
 		// pointed an index at a column that did not exist yet, and that loop
@@ -339,12 +341,14 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	case errors.Is(err, sql.ErrNoRows):
 		res, err := tx.Exec(
 			`INSERT INTO docmeta(path, flags, status, captured, captured_src, updated,
-			         created, confidence, confidence_set, source, mtime_ns, size)
-			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			         created, confidence, confidence_set, source, source_hash,
+			         source_version, mtime_ns, size)
+			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			n.Rel, strings.Join(n.Flags, ","), n.Status,
 			n.Captured.UTC().Format(capturedFormat),
 			n.CapturedSource, n.Updated, n.Created, n.Confidence,
-			boolToInt(n.ConfidenceSet), n.Source, mtimeNS, size)
+			boolToInt(n.ConfidenceSet), n.Source, n.SourceHash, n.SourceVersion,
+			mtimeNS, size)
 		if err != nil {
 			return err
 		}
@@ -376,11 +380,11 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 		}
 		if _, err := tx.Exec(
 			`UPDATE docmeta SET flags=?, status=?, captured=?, captured_src=?, updated=?,
-			 created=?, confidence=?, confidence_set=?, source=?, mtime_ns=?, size=?
-			 WHERE id=?`,
+			 created=?, confidence=?, confidence_set=?, source=?, source_hash=?,
+			 source_version=?, mtime_ns=?, size=? WHERE id=?`,
 			strings.Join(n.Flags, ","), n.Status, captured, capturedSrc, n.Updated,
 			n.Created, n.Confidence, boolToInt(n.ConfidenceSet), n.Source,
-			mtimeNS, size, id); err != nil {
+			n.SourceHash, n.SourceVersion, mtimeNS, size, id); err != nil {
 			return err
 		}
 		if _, err := tx.Exec(`DELETE FROM docs WHERE rowid = ?`, id); err != nil {

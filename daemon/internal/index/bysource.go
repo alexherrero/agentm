@@ -50,12 +50,57 @@ func (x *Index) BySource(ctx context.Context, source string) ([]string, error) {
 	return out, rows.Err()
 }
 
+// SourceProvenance is what the corpus records about one unit of source material.
+type SourceProvenance struct {
+	Source   string
+	Hash     string
+	Version  string
+	Memories int
+}
+
+// Provenance is the rebuild path's input.
+//
+// Every memory names the unit it came from, the content that unit had when it
+// was read, and the pass that read it — so scanning what the index already
+// caches recovers the registry without re-reading a single email.
+//
+// One row per source. The hash and version come from the newest memory the unit
+// produced, rather than from any of them: a source re-ingested at a better
+// version leaves memories from both passes for as long as the older ones are
+// superseded rather than deleted, and what the registry should report is where
+// that source stands now.
+func (x *Index) Provenance(ctx context.Context) ([]SourceProvenance, error) {
+	x.mu.Lock()
+	defer x.mu.Unlock()
+
+	// `max(id)` picks the newest row per source, and SQLite's bare-column rule
+	// makes the other selected columns come from that same row. Ordered by
+	// source so a rebuild over an unchanged corpus produces an identical report.
+	rows, err := x.db.QueryContext(ctx, `
+		SELECT source, source_hash, source_version, count(*), max(id)
+		FROM docmeta
+		WHERE source <> ''
+		GROUP BY source
+		ORDER BY source`)
+	if err != nil {
+		return nil, fmt.Errorf("index: reading source provenance: %w", err)
+	}
+	defer rows.Close()
+
+	var out []SourceProvenance
+	for rows.Next() {
+		var p SourceProvenance
+		var newest int64
+		if err := rows.Scan(&p.Source, &p.Hash, &p.Version, &p.Memories, &newest); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // Sources lists every distinct source the corpus records, with how many
 // memories each produced.
-//
-// The rebuild path's input: every memory names the unit it came from, so
-// scanning what the index already caches recovers the processed set without
-// re-reading fifteen thousand files.
 func (x *Index) Sources(ctx context.Context) (map[string]int, error) {
 	x.mu.Lock()
 	defer x.mu.Unlock()

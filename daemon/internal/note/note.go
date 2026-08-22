@@ -30,6 +30,8 @@ var (
 	kindRe          = regexp.MustCompile(`(?m)^kind:[ \t]*(.+?)[ \t\r]*$`)
 	dateRe          = regexp.MustCompile(`(?m)^date:[ \t]*(.+?)[ \t\r]*$`)
 	sourceRe        = regexp.MustCompile(`(?m)^source:[ \t]*(.+?)[ \t\r]*$`)
+	sourceHashRe    = regexp.MustCompile(`(?m)^source_hash:[ \t]*(.+?)[ \t\r]*$`)
+	sourceVersionRe = regexp.MustCompile(`(?m)^source_version:[ \t]*(.+?)[ \t\r]*$`)
 	proposalRe      = regexp.MustCompile(`\A#[ \t]*Proposal[ \t]+\d+[ \t]*:`)
 	metaScrubRe     = regexp.MustCompile(`[\[\],'"]`)
 	wsRe            = regexp.MustCompile(`\s+`)
@@ -75,6 +77,18 @@ type Note struct {
 	// It is what makes re-ingestion source-scoped. Without it, "supersede every
 	// memory this email produced" is a walk of the whole corpus.
 	Source string
+
+	// SourceHash and SourceVersion are the rest of the provenance: the content
+	// that unit had when it was read, and the pass that read it.
+	//
+	// They are what make the source registry rebuildable. With the id alone a
+	// corpus scan recovers which sources have been read and not whether they can
+	// be skipped, and a registry that has to re-read everything it can name is
+	// not saving anything. With all three, the only rows a scan cannot recover
+	// are the two the design names — a source that produced no memory, and a
+	// position in a growing log — because neither is a property of any note.
+	SourceHash    string
+	SourceVersion string
 
 	// Flags are the rank-penalty classes this note falls into.
 	Flags []string
@@ -149,6 +163,12 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status)
 	if m := sourceRe.FindStringSubmatch(head); m != nil {
 		n.Source = strings.Trim(strings.TrimSpace(m[1]), `'"`)
+	}
+	if m := sourceHashRe.FindStringSubmatch(head); m != nil {
+		n.SourceHash = strings.Trim(strings.TrimSpace(m[1]), `'"`)
+	}
+	if m := sourceVersionRe.FindStringSubmatch(head); m != nil {
+		n.SourceVersion = strings.Trim(strings.TrimSpace(m[1]), `'"`)
 	}
 	if m := updatedRe.FindStringSubmatch(head); m != nil {
 		n.Updated = strings.TrimSpace(m[1])
