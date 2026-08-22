@@ -6,6 +6,7 @@
 package index
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -408,8 +409,13 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	}
 	// Links resolve against every path the index already knows. Resolution is a
 	// point-in-time answer: a link written before its target existed resolves to
-	// nothing now and to the target on the next reconcile, which is why the
-	// unresolved row is kept rather than dropped.
+	// nothing now, which is why the unresolved row is kept rather than dropped.
+	//
+	// It does not fix itself here. This runs only when the *source* note is
+	// re-read, and Reconcile skips a file whose mtime and size have not moved —
+	// so a link whose target appeared later stayed dangling until something
+	// edited the note that wrote it. `ResolveDangling`, at the end of every
+	// reconcile, is what actually makes the next-pass claim true.
 	known, err := x.pathsLocked(tx)
 	if err != nil {
 		return err
@@ -493,6 +499,11 @@ type ReconcileReport struct {
 	// unreliable half on a cloud-sync mount, that is most of them.
 	Changed []string
 	Gone    []string
+	// Resolved counts links that pointed at nothing and now point at something,
+	// because their target has since been written. Reported rather than silent:
+	// a number here means the graph was wrong until this run, and a reader
+	// watching backlinks appear deserves to know why.
+	Resolved int
 }
 
 // Reconcile walks the vault and makes the index agree with it: new files added,
@@ -578,6 +589,19 @@ func (x *Index) Reconcile() (ReconcileReport, error) {
 			rep.Gone = append(rep.Gone, rel)
 		}
 	}
+
+	// Links written before their targets existed. Resolution happens at index
+	// time against the paths known then, and a note whose mtime has not moved is
+	// skipped above — so without this a link only ever re-resolves when its own
+	// source is edited, which on the ordinary write order is never.
+	//
+	// Last, so it resolves against the path set this reconcile leaves behind
+	// rather than one that is about to change.
+	resolved, err := x.ResolveDangling(context.Background())
+	if err != nil {
+		rep.Errors = append(rep.Errors, fmt.Sprintf("resolving dangling links: %v", err))
+	}
+	rep.Resolved = resolved
 
 	rep.Elapsed = time.Since(started)
 	return rep, nil
