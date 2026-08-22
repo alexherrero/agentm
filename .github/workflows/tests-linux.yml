@@ -164,6 +164,17 @@ jobs:
         # (no silent apply on timeout); the shipped job manifest
         # (templates/jobs/dream.yaml) parses and stays dry_run: true.
         run: bash scripts/verify-dreaming.sh
+      - name: verify-declare-a-type (contract edit -> coverage falls -> queue -> climbs)
+        # PLAN-dreaming-ledger-and-sources task 9, across the seam rather than
+        # inside it: a corpus enriched under one filing contract reads as fully
+        # covered; declaring a type changes the contract hash; coverage falls
+        # to zero over the same population with every item reading `stale`
+        # rather than `changed` and naming the contract; the discovery stages
+        # enqueue both re-enrichment and rollup work into the daemon's own
+        # queue under their budgets; and re-enrichment brings coverage back.
+        # Drives the built binary and the shipped harness scripts — a flag or
+        # JSON-field change breaks the harness without breaking a Go test.
+        run: bash scripts/verify-declare-a-type.sh
       - name: verify-auto-org-meters (connectivity + browse-surface e2e)
         # PLAN-auto-org-dedup-and-lint.md task 8: a fixture cycle with a
         # linked pair, an unlinked note, a shelved artifact, and an

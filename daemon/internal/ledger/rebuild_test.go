@@ -188,7 +188,8 @@ func TestARebuiltRowKeepsTheStampedVersion(t *testing.T) {
 		t.Errorf("the rebuilt row sits at %q, want the stamped v1", row.Version)
 	}
 
-	rep, err := l.Pending(ctx, StageEnrich, "v2", []Target{{Rel: "old.md", Key: "out-v1"}})
+	rep, err := l.Pending(ctx, StageEnrich, Version{Stage: "v2"},
+		[]Target{{Rel: "old.md", Key: "out-v1"}})
 	if err != nil {
 		t.Fatal(err)
 	}
