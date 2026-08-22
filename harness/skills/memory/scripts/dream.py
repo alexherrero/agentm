@@ -739,9 +739,11 @@ def _write_backfill_attempted(vault_path: Path, attempted: set) -> None:
     )
 
 
-def cheap_model_tier_available() -> bool:
-    """Whether a budget-capped cheap-model yes/no call is available for the
-    weekly sweep's ambiguous middle band. Always `False` today.
+def cheap_model_tier_available(job: str = "slop-borderline") -> bool:
+    """Whether the cheap tier is qualified for `job`.
+
+    The default names the weekly sweep's ambiguous middle band, which is
+    the caller this seam was written for.
 
     Confirmed by research before this stage was built: no synchronous
     "ask a cheap model X, get yes/no back, capped by a budget" primitive
@@ -758,15 +760,27 @@ def cheap_model_tier_available() -> bool:
     deterministic and deferring the LLM-judged pass, never by building a
     new primitive this codebase has consistently avoided.
 
-    This function is the seam a future build wires to a real budget +
-    call primitive. Until then it's a named, tracked gap (not silently
-    dropped): every ambiguous candidate the weekly sweep finds falls
-    through to "left unlinked," matching the design's own explicit
-    "budget exhausted / tier unavailable" fallback — unconditionally
-    today rather than conditionally on a budget that has nothing to
-    spend from yet.
+    That primitive now exists. The daemon's enrichment layer shells out
+    to `claude -p` synchronously, and a qualification table committed to
+    the vault decides which jobs may use the cheap tier. So this is no
+    longer unconditionally False — it is the question the table answers.
+
+    It is answered per job rather than globally, which is the correction
+    the original stub could not make: a cheap tier is not available or
+    unavailable in general. It is qualified for the jobs whose sampled
+    audit earned it, refused for the rest, and refused outright for the
+    three the design pins to the strong tier.
+
+    False when the daemon cannot be reached, which is the same fallback
+    the callers already handle — the ambiguous candidate is left
+    unlinked rather than judged by something nothing measured.
     """
-    return False
+    from model_tiers import TierUnavailable, cheap_tier_qualified
+
+    try:
+        return cheap_tier_qualified(job)
+    except TierUnavailable:
+        return False
 
 
 # The suffix-backlog drain's per-cycle batch bound (task 6): each weekly

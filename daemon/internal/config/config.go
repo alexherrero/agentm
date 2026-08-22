@@ -162,6 +162,15 @@ type Config struct {
 	// strong tier, which is its own mechanism and not this pass's job.
 	EnrichModel string
 
+	// CheapModel is the budget-tier candidate the qualifying audit compares
+	// against EnrichModel.
+	//
+	// A name here turns nothing on. A job runs on this model only if a sampled
+	// audit measured it agreeing with the strong tier at the pre-registered bar,
+	// and three jobs are pinned strong whatever it says. Unset simply means no
+	// comparison has ever been possible.
+	CheapModel string
+
 	// EnrichSampleRate is one-in-n for the sampled completeness half. The
 	// faithfulness half is per note and does not consult it.
 	EnrichSampleRate int
@@ -484,6 +493,9 @@ func Load(opts Options) (*Config, error) {
 	}
 	if s := strVal(raw, "daemon.enrich_model"); s != "" {
 		c.EnrichModel = s
+	}
+	if s := strVal(raw, "daemon.cheap_model"); s != "" {
+		c.CheapModel = s
 	}
 	if f, ok := raw["daemon.enrich_concurrency"].(float64); ok && f >= 1 {
 		c.EnrichConcurrency = int(f)
