@@ -59,6 +59,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd rules      print the filing contract, or seed a vault with one
   agentmd ledger     ask what dreaming has already done, and what is pending
   agentmd queue      show the pending-work queues, or record work owed
+  agentmd sources    ask whether a source has been mined, and watermark it
 
 Run any subcommand with -h for its flags.
 `
@@ -98,6 +99,8 @@ func main() {
 		err = cmdLedger(os.Args[2:])
 	case "queue":
 		err = cmdQueue(os.Args[2:])
+	case "sources":
+		err = cmdSources(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmd", version)
 	case "help", "-h", "--help":

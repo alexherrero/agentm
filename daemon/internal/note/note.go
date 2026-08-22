@@ -29,6 +29,7 @@ var (
 	lifecycleTierRe = regexp.MustCompile(`(?m)^lifecycle_tier:[ \t]*(.+?)[ \t\r]*$`)
 	kindRe          = regexp.MustCompile(`(?m)^kind:[ \t]*(.+?)[ \t\r]*$`)
 	dateRe          = regexp.MustCompile(`(?m)^date:[ \t]*(.+?)[ \t\r]*$`)
+	sourceRe        = regexp.MustCompile(`(?m)^source:[ \t]*(.+?)[ \t\r]*$`)
 	proposalRe      = regexp.MustCompile(`\A#[ \t]*Proposal[ \t]+\d+[ \t]*:`)
 	metaScrubRe     = regexp.MustCompile(`[\[\],'"]`)
 	wsRe            = regexp.MustCompile(`\s+`)
@@ -64,6 +65,16 @@ type Note struct {
 	// CapturedSource records which signal supplied it, so a bound that behaves
 	// oddly is diagnosable rather than mysterious.
 	CapturedSource string
+
+	// Source is the note's `source:` field — the unit of external material it
+	// was distilled from. Verbatim, not parsed into an identity: this package
+	// reads files and has no business deciding what counts as a source
+	// namespace, and a note whose source is a sentence rather than an identity
+	// should still round-trip the sentence.
+	//
+	// It is what makes re-ingestion source-scoped. Without it, "supersede every
+	// memory this email produced" is a walk of the whole corpus.
+	Source string
 
 	// Flags are the rank-penalty classes this note falls into.
 	Flags []string
@@ -136,6 +147,9 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	n.Probe = parseProbe(head)
 	n.Captured, n.CapturedSource = parseCaptured(head, modTime)
 	n.Flags = classify(rel, head, strings.TrimLeft(body, " \t\r\n"), n.Status)
+	if m := sourceRe.FindStringSubmatch(head); m != nil {
+		n.Source = strings.Trim(strings.TrimSpace(m[1]), `'"`)
+	}
 	if m := updatedRe.FindStringSubmatch(head); m != nil {
 		n.Updated = strings.TrimSpace(m[1])
 	}
