@@ -445,6 +445,36 @@ func (r *Rules) MayReadWithModel(rel string) bool {
 	return !InSpace(rel, r.ModelExemptSpaces)
 }
 
+// ClassFor names the class a note of this type is filed into.
+//
+// Derived from `routing` rather than from the note's path, because the path does
+// not say yet: filing is what creates the class folders and most of the corpus
+// has not been filed. A note with no type, or a type the contract does not know,
+// has no class — which is a fact about the corpus rather than a gap to fill in
+// with a guess.
+//
+// The second return distinguishes "no class" from a class literally named the
+// empty string, so a caller can label the difference instead of drawing both the
+// same way.
+func (r *Rules) ClassFor(noteType string) (string, bool) {
+	dest, ok := r.Routing[strings.TrimSpace(noteType)]
+	if !ok {
+		return "", false
+	}
+	// Routing destinations are vault-relative paths — `memory/semantic` for the
+	// observational classes, and other spaces such as `desk` for types that are
+	// not memories at all. Only the first kind names a class.
+	const prefix = "memory/"
+	if !strings.HasPrefix(dest, prefix) {
+		return "", false
+	}
+	class := strings.Trim(strings.TrimPrefix(dest, prefix), "/")
+	if class == "" || strings.Contains(class, "/") {
+		return "", false
+	}
+	return class, true
+}
+
 // IsContractExempt reports whether a path's files are documents rather than
 // memories, so a missing `type` or `status` there is the expected state.
 func (r *Rules) IsContractExempt(rel string) bool {
