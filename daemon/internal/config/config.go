@@ -349,12 +349,32 @@ func defaultEmbedScope(memoryRoot string) []string {
 	return out
 }
 
-func defaultSpaces() map[string]string {
-	// The current vault layout. After the migration this becomes
-	// {"memory": "Agent/memory", "desk": "Agent/desk"} in the config file.
+// defaultSpaces is where capture writes when the config does not say.
+//
+// Derived from `memory_root` for the reason defaultEmbedScope gives above, and
+// for a sharper one this function learned the hard way. It used to return
+// {"memory": "personal", "projects": "projects"} — the pre-migration layout,
+// written as a literal. The shipped contract declares `Personal` model-exempt,
+// which is the absolute privacy boundary: enrichment skips it, dreaming never
+// sends it to a model, no batch call includes it. So on a vault with no
+// `daemon.spaces` configured, every memory captured landed in the one directory
+// no background pass may read — and looked fine doing it, because the note is
+// written, the index finds it, and only the enrichment that never comes is
+// missing.
+//
+// A literal here cannot be right for long. The root has moved twice, and both
+// times this default kept pointing at where the vault used to be.
+func defaultSpaces(memoryRoot string) map[string]string {
+	root := strings.Trim(filepath.ToSlash(strings.TrimSpace(memoryRoot)), "/")
+	under := func(rest string) string {
+		if root == "" {
+			return rest
+		}
+		return root + "/" + rest
+	}
 	return map[string]string{
-		"memory":   "personal",
-		"projects": "projects",
+		"memory":   under("memory"),
+		"projects": under("desk/projects"),
 	}
 }
 
@@ -378,8 +398,9 @@ func Load(opts Options) (*Config, error) {
 	}
 
 	c := &Config{
-		ConfigPath:      cfgPath,
-		Spaces:          defaultSpaces(),
+		ConfigPath: cfgPath,
+		// Spaces is deliberately left empty here: its default derives from
+		// `memory_root`, which is not resolved until further down.
 		Shard:           "date",
 		EmbedEnabled:    true,
 		Port:            DefaultPort,
@@ -462,9 +483,9 @@ func Load(opts Options) (*Config, error) {
 				c.Spaces[k] = strings.Trim(filepath.ToSlash(s), "/")
 			}
 		}
-	}
-	if _, ok := c.Spaces["memory"]; !ok {
-		return nil, errors.New(`daemon.spaces must define "memory" — it is where capture writes`)
+		if _, ok := c.Spaces["memory"]; !ok {
+			return nil, errors.New(`daemon.spaces must define "memory" — it is where capture writes`)
+		}
 	}
 
 	if v := strVal(raw, "daemon.shard"); v != "" {
@@ -518,6 +539,12 @@ func Load(opts Options) (*Config, error) {
 
 	c.MemoryRoot = strings.Trim(
 		filepath.ToSlash(strings.TrimSpace(strVal(raw, "plugins.obsidian-vault.memory_root"))), "/")
+
+	// Now that the root is known, a config that named no spaces gets the ones
+	// derived from it.
+	if len(c.Spaces) == 0 {
+		c.Spaces = defaultSpaces(c.MemoryRoot)
+	}
 
 	// --- the vector arm -----------------------------------------------------
 	c.EmbedModel = strVal(raw, "daemon.embed_model")
@@ -601,8 +628,47 @@ func Load(opts Options) (*Config, error) {
 	}
 
 	c.loadRules(time.Now())
+	if err := c.checkMemorySpaceIsReadable(); err != nil {
+		return nil, err
+	}
 
 	return c, nil
+}
+
+// checkMemorySpaceIsReadable refuses a `memory` space the contract says no
+// background pass may read.
+//
+// Refusing rather than warning, because this is the same class of thing as
+// `daemon.spaces` naming no memory space at all, which already refuses: a
+// configuration that cannot do the job it is for. The difference is only that
+// this one still appears to work. Capture writes, the index finds it, search
+// returns it, and enrichment, dreaming and every rollup skip it forever without
+// a word — which is worse than a daemon that will not start, because a daemon
+// that will not start gets fixed today.
+//
+// Silent when the contract will not parse. That case belongs to
+// `health.Contract`, which reports it, and guessing at exemptions from a file
+// that would not load would take the whole memory down over a misplaced colon —
+// the exact trade `loadRules` refuses to make.
+func (c *Config) checkMemorySpaceIsReadable() error {
+	// A holder that could not parse the contract returns nil rules, which is the
+	// silent case this check wants: see the doc comment above.
+	loaded, _ := c.Rules.Get()
+	if loaded == nil {
+		return nil
+	}
+	dir := c.Spaces["memory"]
+	if dir == "" {
+		return nil
+	}
+	if !loaded.MayReadWithModel(dir) {
+		return fmt.Errorf("daemon.spaces names %q as the memory space, and the "+
+			"filing contract lists it under model_exempt_spaces — every memory "+
+			"captured there would be invisible to enrichment, dreaming and every "+
+			"rollup, silently. Point `memory` somewhere readable, or drop that "+
+			"space from model_exempt_spaces in %s", dir, loaded.Source)
+	}
+	return nil
 }
 
 // Threshold defaults, stated as named constants because they are the numbers the
