@@ -47,6 +47,12 @@ const (
 	ReasonChanged Reason = "changed"
 	// ReasonStale means the row sits at an older stage version — a prompt, a
 	// code change, or a filing-contract edit has moved on without it.
+	//
+	// The contract counts, and it counts as *version* rather than as content.
+	// The design defines a stage's version as its prompt version and the
+	// `rules_hash` it judged under, together, and a memory is re-enrichment
+	// eligible exactly when that hash differs. Reporting a contract edit as
+	// `changed` would say forty notes were edited when one rules file was.
 	ReasonStale Reason = "stale"
 	// ReasonRetry means the last attempt failed.
 	ReasonRetry Reason = "retry"
@@ -74,6 +80,9 @@ type Item struct {
 type Report struct {
 	Stage   Stage  `json:"stage"`
 	Version string `json:"version"`
+	// RulesHash is the filing contract the report was taken against, so a
+	// coverage number can be read back against the contract that produced it.
+	RulesHash string `json:"rules_hash,omitempty"`
 	// Eligible is how many targets the caller offered.
 	Eligible int `json:"eligible"`
 	// Current is how many of those the stage is finished with.
@@ -121,13 +130,39 @@ func (r Report) OldestPending(now time.Time) time.Duration {
 	return now.Sub(oldest)
 }
 
+// Version is what a stage is running as: its own version and the filing contract
+// it judges under, together.
+//
+// One type rather than two arguments because they are one thing. The design
+// says so — "the stage's version — its prompt version and the `rules_hash` it
+// judged under" — and splitting them at the call site is how the comparison came
+// to use only half of it.
+type Version struct {
+	Stage string
+	Rules string
+}
+
+// Matches reports whether a row was written under this version.
+func (v Version) Matches(rowStage, rowRules string) bool {
+	if v.Stage != "" && v.Stage != rowStage {
+		return false
+	}
+	// An empty rules hash means "do not judge on the contract", which is what a
+	// stage with no contract dependency needs. It must not silently mark every
+	// row stale.
+	if v.Rules != "" && v.Rules != rowRules {
+		return false
+	}
+	return true
+}
+
 // Pending reports which of the offered targets the stage is not current on.
 //
 // The whole stage is read into memory once rather than queried per target. A
 // stage's row count is bounded by the corpus — fifteen thousand rows at the
 // outside — and one scan beats fifteen thousand round trips by enough that the
 // alternative is not worth writing.
-func (l *Ledger) Pending(ctx context.Context, stage Stage, version string,
+func (l *Ledger) Pending(ctx context.Context, stage Stage, version Version,
 	targets []Target) (Report, error) {
 	rows, err := l.db.QueryContext(ctx, `
 		SELECT stage, target, version, rules_hash, input_key, output_key,
@@ -151,8 +186,8 @@ func (l *Ledger) Pending(ctx context.Context, stage Stage, version string,
 	}
 
 	rep := Report{
-		Stage: stage, Version: version, Eligible: len(targets),
-		Counts: map[Reason]int{},
+		Stage: stage, Version: version.Stage, RulesHash: version.Rules,
+		Eligible: len(targets), Counts: map[Reason]int{},
 	}
 	for _, t := range targets {
 		e, ok := known[t.Rel]
@@ -160,13 +195,14 @@ func (l *Ledger) Pending(ctx context.Context, stage Stage, version string,
 			rep.append(Item{Target: t.Rel, Reason: ReasonNever})
 			continue
 		}
-		// Version first. A stale row's key comparison is meaningless — the key
-		// folds the version in, so a row at an older version can never match a
-		// current key, and reporting that as "changed" would blame the note for
-		// a prompt edit.
-		if version != "" && e.Version != version {
+		// Version first, and the contract is part of it. A stale row's key
+		// comparison is meaningless — the key folds both in, so a row written
+		// under an older prompt or an older contract can never match a current
+		// key, and reporting either as "changed" blames the note for an edit
+		// somebody made to the machinery.
+		if !version.Matches(e.Version, e.RulesHash) {
 			rep.append(Item{Target: t.Rel, Reason: ReasonStale,
-				Since: e.At, Version: e.Version})
+				Since: e.At, Version: e.Version, Detail: staleBecause(version, e)})
 			continue
 		}
 		switch e.Outcome {
@@ -189,6 +225,28 @@ func (l *Ledger) Pending(ctx context.Context, stage Stage, version string,
 
 	sortPending(rep.Pending)
 	return rep, nil
+}
+
+// staleBecause names which half of the version moved, because "stale" alone
+// leaves the reader guessing between a prompt revision and a contract edit —
+// and those call for very different reactions.
+func staleBecause(want Version, e Entry) string {
+	switch {
+	case want.Stage != "" && want.Stage != e.Version && want.Rules != "" && want.Rules != e.RulesHash:
+		return "both the pass and the filing contract have moved on"
+	case want.Stage != "" && want.Stage != e.Version:
+		return "the pass has moved on from " + e.Version
+	case want.Rules != "" && want.Rules != e.RulesHash:
+		return "the filing contract has moved on from " + shortHash(e.RulesHash)
+	}
+	return ""
+}
+
+func shortHash(h string) string {
+	if len(h) <= 12 {
+		return h
+	}
+	return h[:12]
 }
 
 func (r *Report) append(it Item) {

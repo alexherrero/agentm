@@ -354,5 +354,10 @@ func pendingFor(ctx context.Context, stage string, cfg *config.Config,
 			break
 		}
 	}
-	return led.Pending(ctx, stage, enrich.PassVersion, targets)
+	// Both halves of the version, because the contract is part of it: a rules
+	// edit makes every enriched note re-enrichment eligible, and it should read
+	// as one contract edit rather than as a corpus that changed under you.
+	return led.Pending(ctx, stage, ledger.Version{
+		Stage: enrich.PassVersion, Rules: currentRulesHash(cfg),
+	}, targets)
 }

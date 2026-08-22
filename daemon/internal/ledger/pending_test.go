@@ -3,13 +3,21 @@ package ledger
 import (
 	"context"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
 
+// pendingReport asks about a stage version with no contract dependency, which is
+// what every case here that is not about the contract wants.
 func pendingReport(t *testing.T, l *Ledger, version string, targets []Target) Report {
 	t.Helper()
-	rep, err := l.Pending(context.Background(), StageEnrich, version, targets)
+	return pendingAt(t, l, Version{Stage: version}, targets)
+}
+
+func pendingAt(t *testing.T, l *Ledger, v Version, targets []Target) Report {
+	t.Helper()
+	rep, err := l.Pending(context.Background(), StageEnrich, v, targets)
 	if err != nil {
 		t.Fatalf("Pending: %v", err)
 	}
@@ -292,6 +300,89 @@ func TestATargetWithNoKeyIsPending(t *testing.T) {
 	}
 	if got := reasonFor(rep, "a.md"); got != ReasonChanged {
 		t.Errorf("reason %q, want %q", got, ReasonChanged)
+	}
+}
+
+// A contract edit is stale, not changed.
+//
+// The design defines a stage's version as its prompt version and the rules hash
+// together, and says a memory is re-enrichment eligible exactly when that hash
+// differs. Reported as `changed` it would say forty notes were edited when one
+// rules file was — and the worked example this whole part is built around is an
+// operator editing that file and the next cycle noticing.
+func TestAContractEditIsStaleRatherThanChanged(t *testing.T) {
+	l := newLedger(t)
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "enrich/1",
+		RulesHash: "rules-v1", InputKey: "key-under-v1", Outcome: Done,
+	})
+
+	// Same pass, edited contract. The key folds both in, so it moves too.
+	rep := pendingAt(t, l, Version{Stage: "enrich/1", Rules: "rules-v2"},
+		[]Target{{Rel: "a.md", Key: "key-under-v2"}})
+
+	if got := reasonFor(rep, "a.md"); got != ReasonStale {
+		t.Errorf("a contract edit reads as %q, want %q — nothing about the note "+
+			"changed", got, ReasonStale)
+	}
+	if !strings.Contains(rep.Pending[0].Detail, "filing contract") {
+		t.Errorf("the report does not say which half moved: %q",
+			rep.Pending[0].Detail)
+	}
+	// And the report carries the contract it was taken against, so a coverage
+	// number can be read back against the contract that produced it. Without it
+	// "83% covered" is a number with no date on it.
+	if rep.RulesHash != "rules-v2" {
+		t.Errorf("Report.RulesHash = %q, want the contract asked about", rep.RulesHash)
+	}
+}
+
+// When both halves moved, the report says both. Naming one would send the reader
+// to fix a prompt when the contract also changed under them.
+func TestWhenBothHalvesMovedTheReportSaysSo(t *testing.T) {
+	l := newLedger(t)
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "enrich/1",
+		RulesHash: "rules-v1", InputKey: "k", Outcome: Done,
+	})
+	rep := pendingAt(t, l, Version{Stage: "enrich/2", Rules: "rules-v2"},
+		[]Target{{Rel: "a.md", Key: "k2"}})
+
+	got := rep.Pending[0].Detail
+	if !strings.Contains(got, "pass") || !strings.Contains(got, "filing contract") {
+		t.Errorf("Detail = %q, want both halves named", got)
+	}
+}
+
+// And a prompt revision says so too, because "stale" alone leaves the reader
+// guessing between two things that call for different reactions.
+func TestAPromptRevisionSaysItWasThePass(t *testing.T) {
+	l := newLedger(t)
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "enrich/1",
+		RulesHash: "rules-v1", InputKey: "k", Outcome: Done,
+	})
+	rep := pendingAt(t, l, Version{Stage: "enrich/2", Rules: "rules-v1"},
+		[]Target{{Rel: "a.md", Key: "k2"}})
+
+	if !strings.Contains(rep.Pending[0].Detail, "the pass has moved on") {
+		t.Errorf("Detail = %q", rep.Pending[0].Detail)
+	}
+}
+
+// A stage with no contract dependency must not have every row marked stale by an
+// empty rules hash.
+func TestAnEmptyRulesHashDoesNotStaleEverything(t *testing.T) {
+	l := newLedger(t)
+	mustRecord(t, l, Entry{
+		Stage: StageEnrich, Target: "a.md", Version: "enrich/1",
+		RulesHash: "rules-v1", InputKey: "k", Outcome: Done,
+	})
+	rep := pendingAt(t, l, Version{Stage: "enrich/1"},
+		[]Target{{Rel: "a.md", Key: "k"}})
+	if rep.Current != 1 {
+		t.Errorf("Current = %d; a query that does not name a contract marked the "+
+			"row stale anyway", rep.Current)
 	}
 }
 

@@ -6,12 +6,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/enrich"
+	"github.com/alexherrero/agentm/daemon/internal/index"
 	"github.com/alexherrero/agentm/daemon/internal/ledger"
+	"github.com/alexherrero/agentm/daemon/internal/note"
 	"github.com/alexherrero/agentm/daemon/internal/rules"
 
 	_ "modernc.org/sqlite"
@@ -299,7 +302,8 @@ func TestTheRebuilderKeysUnderTheStampedVersion(t *testing.T) {
 
 	// And under the current one it is pending, as stale.
 	nowKey := (&enrich.Fingerprint{Version: enrich.PassVersion, RulesHash: "rh-now"}).Key(body)
-	rep, err := led.Pending(ctx, ledger.StageEnrich, enrich.PassVersion,
+	rep, err := led.Pending(ctx, ledger.StageEnrich,
+		ledger.Version{Stage: enrich.PassVersion},
 		[]ledger.Target{{Rel: "memory/old.md", Key: nowKey}})
 	if err != nil {
 		t.Fatal(err)
@@ -391,4 +395,142 @@ func TestANilLedgerLeavesTheGateInert(t *testing.T) {
 	if fp.Version != enrich.PassVersion {
 		t.Errorf("Version = %q, want the current pass version", fp.Version)
 	}
+}
+
+// The worked path, from the operator's side.
+//
+// Someone edits `standards/storage-rules.md` — declares a type, adds a warrant,
+// changes a threshold. The next coverage question has to notice, and has to say
+// it was the contract rather than the notes.
+//
+// Through `pendingFor` rather than the ledger directly, because the ledger was
+// already provably right about this and the command was the part that could
+// quietly ask under no contract at all. Handing it a contract it never used
+// would leave every ledger test green while the queue stayed empty.
+func TestEditingTheFilingContractRequeuesWhatItJudged(t *testing.T) {
+	ctx := context.Background()
+	vault := t.TempDir()
+	led := newTestLedger(t)
+
+	cfg := configOverRules(t, vault, "preference", "convention")
+	first := currentRulesHash(cfg)
+
+	// A note, enriched and recorded under that contract.
+	rel := "memory/a.md"
+	body := writeNote(t, vault, rel, response("a", 0.8),
+		enrich.Stamp{Version: enrich.PassVersion, RulesHash: first})
+	idx := indexOverVault(t, vault, rel, body)
+	if err := led.Record(ctx, ledger.Entry{
+		Stage: ledger.StageEnrich, Target: rel, Version: enrich.PassVersion,
+		RulesHash: first, OutputKey: enrichFingerprint(cfg, nil).Key(body),
+		Outcome: ledger.Done, At: time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing pending: coverage is complete under the contract that judged it.
+	rep, err := pendingFor(ctx, ledger.StageEnrich, cfg, idx, led)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The population is the control. Without this the "nothing pending" above and
+	// the "one pending" below are both true of an empty queue, and the test would
+	// pass whether or not the edit was ever noticed.
+	if rep.Eligible != 1 {
+		t.Fatalf("the eligible population is %d, want the one note — everything "+
+			"below is vacuous over an empty queue", rep.Eligible)
+	}
+	if len(rep.Pending) != 0 {
+		t.Fatalf("a note enriched under the current contract is pending: %+v",
+			rep.Pending)
+	}
+
+	// The operator declares a type.
+	writeRules(t, vault, "preference", "convention", "recipe")
+	if _, err := cfg.Rules.Refresh(time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	second := currentRulesHash(cfg)
+	if second == first {
+		t.Fatal("editing the contract did not change its hash, so this test " +
+			"cannot tell whether the queue noticed")
+	}
+
+	rep, err = pendingFor(ctx, ledger.StageEnrich, cfg, idx, led)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Pending) != 1 {
+		t.Fatalf("after a contract edit, pending = %+v, want the one note it "+
+			"judged", rep.Pending)
+	}
+	if rep.Pending[0].Reason != ledger.ReasonStale {
+		t.Errorf("the note reads as %q; nothing about it changed — the contract "+
+			"did", rep.Pending[0].Reason)
+	}
+	if !strings.Contains(rep.Pending[0].Detail, "filing contract") {
+		t.Errorf("Detail = %q, want the contract named", rep.Pending[0].Detail)
+	}
+	if rep.RulesHash != second {
+		t.Errorf("Report.RulesHash = %q, want the edited contract %q",
+			rep.RulesHash, second)
+	}
+}
+
+// writeRules writes a whole valid contract whose memory types are the ones
+// named. Declaring a type is the design's own worked example of an edit, and it
+// is the smallest real one: a single list entry, a different hash.
+func writeRules(t *testing.T, vault string, types ...string) {
+	t.Helper()
+	dir := filepath.Join(vault, "standards")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	routing := ""
+	for _, ty := range types {
+		routing += "  " + ty + ": memory/semantic\n"
+	}
+	body := "# Storage rules\n\n```storage-rules\n" +
+		"classes:\n  semantic: Facts.\n  procedural: How.\n  episodic: Traces.\n" +
+		"  entities: Referents.\n  crystallized: Lessons.\n  mocs: Maps.\n" +
+		"memory_types: [" + strings.Join(types, ", ") + "]\n" +
+		"default_type: " + types[0] + "\n" +
+		"routing:\n" + routing +
+		"record_kinds: [brief]\ndeprecations: {}\nwarrants: {}\n" +
+		"thresholds: {low_confidence: 0.65}\n```\n"
+	if err := os.WriteFile(filepath.Join(dir, "storage-rules.md"),
+		[]byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// configOverRules builds the smallest config `pendingFor` actually reads: a
+// vault path and a live contract.
+func configOverRules(t *testing.T, vault string, types ...string) *config.Config {
+	t.Helper()
+	t.Setenv("AGENTM_STORAGE_RULES", "")
+	os.Unsetenv("AGENTM_STORAGE_RULES")
+	writeRules(t, vault, types...)
+	cfg := &config.Config{VaultPath: vault}
+	cfg.Rules = rules.NewHolder(vault, time.Now())
+	if _, err := cfg.Rules.Get(); err != nil {
+		t.Fatalf("the test's own contract does not parse: %v", err)
+	}
+	return cfg
+}
+
+func indexOverVault(t *testing.T, vault, rel, body string) *index.Index {
+	t.Helper()
+	x, err := index.Open(filepath.Join(t.TempDir(), "index.db"), vault, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { x.Close() })
+	if err := x.Upsert(note.Note{
+		Rel: rel, Title: "a", Body: body, Status: "unfiled",
+		Captured: time.Date(2026, 8, 20, 9, 0, 0, 0, time.UTC), CapturedSource: "mtime",
+	}, 1, int64(len(body))); err != nil {
+		t.Fatal(err)
+	}
+	return x
 }
