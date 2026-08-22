@@ -249,6 +249,16 @@ func (x *Index) migrate() error {
 		`ALTER TABLE docmeta ADD COLUMN created TEXT NOT NULL DEFAULT ''`,
 		`ALTER TABLE docmeta ADD COLUMN confidence REAL NOT NULL DEFAULT 0`,
 		`ALTER TABLE docmeta ADD COLUMN confidence_set INTEGER NOT NULL DEFAULT 0`,
+		`ALTER TABLE docmeta ADD COLUMN source TEXT NOT NULL DEFAULT ''`,
+		// Indexed here rather than with the other CREATE INDEX statements, which
+		// run before the ALTERs — on a fresh database that ordering would have
+		// pointed an index at a column that did not exist yet, and that loop
+		// treats every error as fatal.
+		//
+		// Source-scoped supersession asks "which memories did this unit produce"
+		// once per re-ingested source, and the answer has to be a lookup rather
+		// than a walk of fifteen thousand files.
+		`CREATE INDEX IF NOT EXISTS docmeta_source ON docmeta(source)`,
 	}
 
 	for _, s := range stmts {
@@ -329,12 +339,12 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 	case errors.Is(err, sql.ErrNoRows):
 		res, err := tx.Exec(
 			`INSERT INTO docmeta(path, flags, status, captured, captured_src, updated,
-			         created, confidence, confidence_set, mtime_ns, size)
-			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			         created, confidence, confidence_set, source, mtime_ns, size)
+			 VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			n.Rel, strings.Join(n.Flags, ","), n.Status,
 			n.Captured.UTC().Format(capturedFormat),
 			n.CapturedSource, n.Updated, n.Created, n.Confidence,
-			boolToInt(n.ConfidenceSet), mtimeNS, size)
+			boolToInt(n.ConfidenceSet), n.Source, mtimeNS, size)
 		if err != nil {
 			return err
 		}
@@ -366,9 +376,10 @@ func (x *Index) upsertLocked(n note.Note, mtimeNS int64, size int64) error {
 		}
 		if _, err := tx.Exec(
 			`UPDATE docmeta SET flags=?, status=?, captured=?, captured_src=?, updated=?,
-			 created=?, confidence=?, confidence_set=?, mtime_ns=?, size=? WHERE id=?`,
+			 created=?, confidence=?, confidence_set=?, source=?, mtime_ns=?, size=?
+			 WHERE id=?`,
 			strings.Join(n.Flags, ","), n.Status, captured, capturedSrc, n.Updated,
-			n.Created, n.Confidence, boolToInt(n.ConfidenceSet),
+			n.Created, n.Confidence, boolToInt(n.ConfidenceSet), n.Source,
 			mtimeNS, size, id); err != nil {
 			return err
 		}
