@@ -135,6 +135,35 @@ bash scripts/check-all.sh
 
 The script deliberately omits the heavier `smoke-install` and `gitleaks` checks. CI runs those slower external tools on every push. Run them directly if you need them: `bash scripts/smoke-install-bash.sh` (POSIX) or `pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1` (Windows). The `check-all.sh` script acts as the maintained source of truth for the local battery. Add a `gate` line to it as the project grows.
 
+## `probe-round-trip.sh` — a probe, deliberately not a gate
+
+`scripts/probe-round-trip.sh` reads the memory system's end-to-end claim: save a
+fact, come back in a fresh process, ask sideways, get it back. It captures
+through the real `agentmd`, optionally runs one enrichment call, and asks three
+questions that share no content word with the note, against twelve distractors,
+with a control question that must not return the target.
+
+It is not in `check-all.sh` and should not be added. It needs a running embedder,
+and `--enrich` spends a model call. A gate with those dependencies is a gate
+somebody turns off, and the battery has to stay something you can run on any
+machine at any time.
+
+Three properties are worth knowing before you read a result from it. The dense
+arm is required — `fusion` is lexical only, asking sideways is the case the dense
+arm exists for, and a run without an embedder exits **2** (cannot run) rather
+than passing. Sideways is checked rather than asserted: a question reusing the
+note's own words is refused, because that proves the index can find a string, not
+that a memory can be recalled. And the rank the target achieves is reported but
+not gated, since ranking belongs to the retrieval track rather than to this
+check.
+
+```bash
+bash scripts/probe-round-trip.sh --embedder-url http://127.0.0.1:8901 --embed-model embeddinggemma-300M-Q8_0
+```
+
+Add `--enrich` for the whole arc. Exit codes: **0** every bar met, **1** a bar
+missed, **2** could not run.
+
 ## Related
 
 - [Releasing Conventions](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions) — CI must be green before you invoke `ship-release`.
