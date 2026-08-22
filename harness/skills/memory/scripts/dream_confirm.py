@@ -707,11 +707,23 @@ class SampledAuditResult:
 
 
 def higher_tier_model_available() -> bool:
-    """Whether a synchronous higher-tier-model agree/disagree verdict is
-    available for the sampled audit's sample. Always False today -- see
-    this section's own header comment for the full reasoning (identical
-    seam shape to `dream.cheap_model_tier_available()`)."""
-    return False
+    """Whether a synchronous higher-tier-model verdict is available for
+    the sampled audit's sample.
+
+    False since this was written, with a comment saying it was the seam a
+    future build would wire to a real call primitive. Part 4 built that
+    primitive; this asks the daemon whether it can be reached and names a
+    strong model.
+
+    Still False when it cannot, which is the case the caller already
+    handles: `run_sampled_audit` returns `sampled_count=0` and a `None`
+    rate rather than a `0.0` that would read as "everything agreed"."""
+    from model_tiers import TierUnavailable, strong_tier_available
+
+    try:
+        return strong_tier_available()
+    except TierUnavailable:
+        return False
 
 
 def judge_applied_mutation(summary: str) -> str:

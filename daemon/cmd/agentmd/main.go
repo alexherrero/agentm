@@ -60,6 +60,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd ledger     ask what dreaming has already done, and what is pending
   agentmd queue      show the pending-work queues, or record work owed
   agentmd sources    ask whether a source has been mined, and watermark it
+  agentmd tiers      ask which model tier a dreaming job may run on
 
 Run any subcommand with -h for its flags.
 `
@@ -101,6 +102,8 @@ func main() {
 		err = cmdQueue(os.Args[2:])
 	case "sources":
 		err = cmdSources(os.Args[2:])
+	case "tiers":
+		err = cmdTiers(os.Args[2:])
 	case "version", "-v", "--version":
 		fmt.Println("agentmd", version)
 	case "help", "-h", "--help":
