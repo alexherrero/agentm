@@ -52,8 +52,13 @@ class DaemonUnavailable(RuntimeError):
 def _agentmd(args: list) -> Any:
     argv = [DAEMON_BIN, args[0], "--json"] + args[1:]
     try:
+        # `encoding` named explicitly: `text=True` alone decodes the child's
+        # output with the *locale* encoding, which is cp1252 on Windows. The
+        # daemon writes UTF-8 and its own messages carry em-dashes — the meters'
+        # "no vectors to measure —" among them — so the default would mojibake
+        # the reason a report is about to print.
         proc = subprocess.run(argv, capture_output=True, text=True,
-                              timeout=_TIMEOUT_SECONDS)
+                              encoding="utf-8", timeout=_TIMEOUT_SECONDS)
     except FileNotFoundError as exc:
         raise DaemonUnavailable(
             f"{DAEMON_BIN} is not on PATH; set $AGENTMD to a built binary") from exc

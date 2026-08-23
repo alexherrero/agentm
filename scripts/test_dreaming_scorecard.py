@@ -140,8 +140,10 @@ class MovementTests(unittest.TestCase):
             stage_a_run(tmp)
             self.build(tmp, answers(**daemon()))
             stable = tmp / REL / ds.STABLE_NAME
-            stable.write_text(stable.read_text(encoding="utf-8").replace(
-                "readings: {", "readings: {oops"))
+            stable.write_text(
+                stable.read_text(encoding="utf-8").replace(
+                    "readings: {", "readings: {oops"),
+                encoding="utf-8")
             self.build(tmp, answers(**daemon()))
             body = self.read(tmp)
 
