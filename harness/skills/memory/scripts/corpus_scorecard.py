@@ -279,7 +279,7 @@ def section_retrieval(repo: Path) -> Section:
             "gold-set R@5", f"no pinned baseline at {pinned.name}"))
         return s
     try:
-        data = json.loads(pinned.read_text())
+        data = json.loads(pinned.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         s.readings.append(Reading.unavailable("gold-set R@5", str(exc)))
         return s
@@ -349,8 +349,8 @@ def section_graph(vault: Path, out_dir: Path) -> Section:
 
 # ── the report ──────────────────────────────────────────────────────────────
 
-def render(sections: list, *, now: datetime, vault: Path) -> str:
-    stamp = now.astimezone().strftime("%Y-%m-%d")
+def render(sections: list, *, now: datetime, vault: Path, tz=None) -> str:
+    stamp = now.astimezone(tz).strftime("%Y-%m-%d")
     out = [
         "---",
         "title: Corpus health scorecard",
@@ -380,8 +380,16 @@ def render(sections: list, *, now: datetime, vault: Path) -> str:
     return "\n".join(out)
 
 
-def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None) -> tuple:
-    """Assemble the scorecard and write both copies. Returns (dated, stable)."""
+def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
+          tz=None) -> tuple:
+    """Assemble the scorecard and write both copies. Returns (dated, stable).
+
+    `tz` is whose day the filename is named for; None means the machine's own.
+    An argument rather than ambient process state, because a test that has to
+    mutate the environment to ask this question cannot run on Windows — where
+    `time.tzset()` does not exist — and because a decision about whose day it is
+    belongs in the signature rather than in the environment.
+    """
     out_dir = vault / (rel if rel is not None else DIAGNOSTICS_DIR)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -393,12 +401,12 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None) -> tuple:
         section_coverage(),
         section_graph(vault, out_dir),
     ]
-    body = render(sections, now=now, vault=vault)
+    body = render(sections, now=now, vault=vault, tz=tz)
 
     # Local date in the name, UTC in the body. A nightly run late in the evening
     # is stamped tomorrow in UTC, and "last night's scorecard" should not be the
     # file dated the day after last night.
-    dated = out_dir / f"{now.astimezone().strftime('%Y-%m-%d')}-health-scorecard.md"
+    dated = out_dir / f"{now.astimezone(tz).strftime('%Y-%m-%d')}-health-scorecard.md"
     stable = out_dir / STABLE_NAME
     dated.write_text(body, encoding="utf-8")
     # A copy rather than a symlink: the vault syncs across machines and through

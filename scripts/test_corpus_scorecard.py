@@ -68,7 +68,8 @@ class ScorecardTests(unittest.TestCase):
             return sc.build(tmp, REPO, now=AT, rel=Path("desk/diagnostics"))
 
     def read(self, tmp: Path) -> str:
-        return (tmp / "desk/diagnostics" / sc.STABLE_NAME).read_text()
+        return (tmp / "desk/diagnostics" / sc.STABLE_NAME).read_text(
+            encoding="utf-8")
 
     # ── the rule ────────────────────────────────────────────────────────────
 
@@ -235,7 +236,8 @@ class ScorecardTests(unittest.TestCase):
 
             self.assertTrue(dated.exists(), "no dated scorecard")
             self.assertTrue(stable.exists(), "no stable copy for a brief to link")
-            self.assertEqual(dated.read_text(), stable.read_text())
+            self.assertEqual(dated.read_text(encoding="utf-8"),
+                             stable.read_text(encoding="utf-8"))
             self.assertIn("2026-08-22", dated.name)
             self.assertEqual(stable.name, sc.STABLE_NAME)
 
@@ -301,7 +303,7 @@ class ScorecardTests(unittest.TestCase):
         pinned = REPO / "scripts/health/fixtures/week1-gold/shipped-baseline.json"
         if not pinned.exists():
             self.skipTest("no pinned baseline in this checkout")
-        data = json.loads(pinned.read_text())
+        data = json.loads(pinned.read_text(encoding="utf-8"))
 
         import tempfile
 
@@ -367,37 +369,44 @@ class DaemonSeamTests(unittest.TestCase):
 class DateTests(unittest.TestCase):
     """The filename carries the reader's date, not UTC's.
 
-    Run under a forced timezone far from UTC, because a test written at a time
-    when the two dates agree cannot tell them apart — which is exactly what the
-    first version of this did.
+    The zone is passed in rather than forced onto the process. `time.tzset()`
+    does not exist on Windows, so the first version of this test could not run
+    on a third of the CI matrix — and a test that silently does not run is the
+    same as no test.
     """
 
-    def test_the_name_uses_the_local_date(self):
-        import os
+    def test_the_name_uses_the_readers_date(self):
         import tempfile
-        import time
+        from datetime import timedelta
 
-        was = os.environ.get("TZ")
         # UTC+14. 2026-08-22T20:00Z is already the 23rd there.
-        os.environ["TZ"] = "Pacific/Kiritimati"
-        time.tzset()
-        try:
-            evening = datetime(2026, 8, 22, 20, 0, tzinfo=timezone.utc)
-            with tempfile.TemporaryDirectory() as d:
-                tmp = Path(d)
-                with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
-                    dated, _ = sc.build(tmp, REPO, now=evening,
-                                        rel=Path("desk/diagnostics"))
-            self.assertIn("2026-08-23", dated.name,
-                          "the report is named for UTC's date rather than the "
-                          "reader's; a run late in the evening would be filed "
-                          "under the wrong day")
-        finally:
-            if was is None:
-                os.environ.pop("TZ", None)
-            else:
-                os.environ["TZ"] = was
-            time.tzset()
+        far_east = timezone(timedelta(hours=14))
+        evening = datetime(2026, 8, 22, 20, 0, tzinfo=timezone.utc)
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
+                dated, _ = sc.build(tmp, REPO, now=evening,
+                                    rel=Path("desk/diagnostics"), tz=far_east)
+        self.assertIn("2026-08-23", dated.name,
+                      "the report is named for UTC's date rather than the "
+                      "reader's; a run late in the evening would be filed under "
+                      "the wrong day")
+
+    def test_a_reader_behind_utc_gets_their_own_day_too(self):
+        """The other direction, so the test cannot pass by always adding a day."""
+        import tempfile
+        from datetime import timedelta
+
+        far_west = timezone(timedelta(hours=-11))
+        early = datetime(2026, 8, 22, 3, 0, tzinfo=timezone.utc)
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
+                dated, _ = sc.build(tmp, REPO, now=early,
+                                    rel=Path("desk/diagnostics"), tz=far_west)
+        self.assertIn("2026-08-21", dated.name)
 
 
 class RetrievalTests(unittest.TestCase):
@@ -429,7 +438,8 @@ class RetrievalTests(unittest.TestCase):
             repo = Path(d) / "repo"
             gold = repo / "scripts/health/fixtures/week1-gold"
             gold.mkdir(parents=True)
-            (gold / "shipped-baseline.json").write_text("{ not json")
+            (gold / "shipped-baseline.json").write_text(
+                "{ not json", encoding="utf-8")
             rendered = sc.section_retrieval(repo).render()
 
         self.assertIn("not measured:", rendered)
