@@ -1,0 +1,882 @@
+{
+  "seed": 20260822,
+  "drawn": "2026-08-22",
+  "rubric": "RUBRIC.md",
+  "notes": [
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/3fs.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/deepseek-ocr.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/deepseek-prover-v2.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/dreaming-better-memory-for-a-more-helpful-chatgpt.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/improving-instruction-hierarchy-in-frontier-llms.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/kimi-k2.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/08/deliberate-capture-lands-active-when-the-caller-says-so.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/08/stage-2-moved-the-agent-tree-into-memory-and-desk-on-2026-08-10.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/fix/yet-because-the-file-was-renamed.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/idea/also-seeds-v7-4-s-source.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/idea/ntent-result-send-all-results-back-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/idea/om-that-agent-s-own-config-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preference/use-them-instead-of-building.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/don-t-commit-gitignored-project.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/don-t-use-cream-make-it.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-a-structured-rollup-of.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-some-sort-of-console.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-the-exact-code-the.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-to-consider-rearchitecting-how.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-to-run-p13-now.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-you-to-extract-a.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-develop-this-skill.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-flag-there-are.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-front-load-as.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-move-to-a.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-you-to-be-aware.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-auto-4.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-happened-2.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-hardcode-vault-paths.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-re-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-re-4.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/prefer-delegating-to-the-real-resolver.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/use-edit-not-write.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/workflow/workflow-mcp-ccd-session-mgmt-search.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/nfd-regression-te\u0301st.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/preferences/i-want-to-push-on-the.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/trusted-sources.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/workflow/workflow-bash-673.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-because-it-makes-the-code-1.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-edit-or-delete-a-failing-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-fall-back-to-the-singleton-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-fan-out-parallel-implementers-2.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-runs-silently-without-that-authority-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-silently-longer-just-because-the-1.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-silently-satisfied-by-reads-recorded-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-stop-to-ask-approval-to-1.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-the-singleton-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-the-worker-1.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/no-handoff-pack-the-cap-is-1.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/a-near-autonomous-ai-chemist-improves-a-challenging-reaction-in-medicinal-chemistry.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/an-off-switch-for-dual-use-knowledge-in-ai-models-anthropic.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/anthropic-economic-index-report-cadences-anthropic.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/artificial-minds-human-disagreement-the-politics-of-ai-consciousness-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/bridging-the-scale-gap-augmenting-human-red-teaming-to-uncover-latent-risks-in-t2i-models-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/decoding-safety-feedback-from-diverse-raters-a-data-driven-lens-on-responsiveness-to-severity-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/deepmind-publications.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/deepseek-github.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/did-us-worker-retraining-reduce-participant-automation-exposure-google-deepmind.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/dynamic-reflections-probing-video-representations-with-text-alignment-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/going-places-participatory-localized-red-teaming-fortext-to-image-safety-in-the-global-south-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/how-canada-uses-claude-anthropic.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/how-claude-code-is-used-in-practice-anthropic.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/how-claude-s-values-vary-by-model-and-language-anthropic.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/hybrid-neural-cognitive-models-reveal-how-memory-shapes-human-reward-learning-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/kimi-help-center.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/openai-research.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/paving-the-way-for-ai-agents-in-biology-anthropic.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/proeval-proactive-failure-discovery-and-efficient-performance-estimation-for-generative-ai-evaluation-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/quantifying-the-salience-of-geo-cultural-values-for-pluralistic-safety-alignment-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/real-time-group-dynamics-with-llm-facilitation-evidence-from-a-charity-allocation-task-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/realistic-honeypot-evaluations-for-scheming-propensity-google-deepmind.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/separating-signal-from-noise-in-coding-evaluations.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/teaching-claude-why-anthropic.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/towards-structural-understanding-of-llm-overthinking-google-deepmind.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/always-on-memory-agent-stack-and-operational-shape.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/desk-documents-outrank-memory-notes-for-memory-questions.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/google-cloud-ships-a-memory-agent-with-no-vector-db-and-no-embeddings.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/read-all-versus-search-is-a-corpus-size-decision-not-a-quality-one.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/the-always-on-agent-reads-up-to-50-recent-memories-per-query-which-is-it.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/the-always-on-agent-s-consolidation-loop-is-dreaming-under-a-different-n.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/three-specialist-sub-agents-under-an-orchestrator-ingest-consolidate-que.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/vault-git-directory-sits-outside-the-drive-sync-set.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/changelog-shape.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/commit-conventional-format.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/commit-no-coauthor-trailer.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/coordinated-release-order.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/docs-soft-warning-tradeoff.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/github-claude-chip-resolved.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/phases-one-per-session.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/pii-guardrails-public-repo.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/plan-md-shape.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/state-on-disk.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/status-report-shape.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/subagents-read-only.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/verification-executable-first.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/wake-on-ci-pattern.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/worktrees-never-auto.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/06/design-artifacts-to-vault.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/06/read-js-rendered-sites.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/07/para-atomic-zettel-convention.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/07/voice-kernel.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/08/drive-upload-staging-churns-transient-files-inside-the-vault.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/08/never-bypass-hooks-with-no-verify.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/10-leaf-to-the-foundation-tree-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/an-out-of-scope-findings-anything-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/both-designs-sections-now-look-good-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/y-out-of-task-scope-findings-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/always-goes-through-67.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/always-goes-through-70.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/always-goes-through-98.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/never-anyone-2.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/never-the-singleton-62.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/worktree-rescue-superseded-by-pr-248.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-106.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-87.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-the-worker-42.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-the-worker-48.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-the-worker-75.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/no-handoff-pack-the-cap-is-51.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/no-handoff-pack-the-cap-is-62.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/no-handoff-pack-the-cap-is-7.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/no-handoff-pack-the-cap-is.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/don-t-use-no-verify-let-33.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/don-t-use-no-verify-let-60.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/don-t-use-no-verify-let-77.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-by-24.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-by-35.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-by-38.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-by-39.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-by-45.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-assume-19.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-assume-45.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-settled-1.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-settled-51.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-settled-54.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-settled-55.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-weaken-the-test-or-the.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/private/always-check-rows.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/recoverable/never-proceed-silently.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/recoverable/never-push-to-a-non.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/mocs/_index.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/04/obsidian-vault-paths.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/evaluator-inline-rubric.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/hld-evolution-update-on-major-release.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/managed-agents-architecture.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/nas-backup.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/network-topology.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/pre-approval-batch-pattern.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/scheduled-agentm-skills.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/sherwood-automated-bug-fixing.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/tests-are-sacred.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/agent-personas.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/agentm-git-backed-vault.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/anti-rationalization-every-skill-includes-a-table.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/code-review-and-quality.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/context-engineering.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/define-clarify-what-to-build.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/dismissed.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/doom-llm-npcs.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/doubt-driven-development.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/how-skills-work.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/incremental-implementation.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/log-analysis-at-scale.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/reference-checklists.md",
+      "labeller": "operator"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/security-domain.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/ship-deploy-with-confidence.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/stack-agentm.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/trusted-security-sources.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-3.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/_opinions/efficient/no-handoff-pack-the-cap-is-15.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/preferences/silent-source-influences.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/workflow-pattern/filter-branch-trailer-case-insensitive.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/workflow-pattern/renamed-cwd-breaks-resume.md",
+      "labeller": "agent"
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/workflow/workflow-agent-1.md",
+      "labeller": "agent"
+    }
+  ]
+}
