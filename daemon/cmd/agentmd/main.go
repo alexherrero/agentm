@@ -62,6 +62,7 @@ const usage = `agentmd — the agentm memory daemon
   agentmd sources    ask whether a source has been mined, and watermark it
   agentmd tiers      ask which model tier a dreaming job may run on
   agentmd graph      ask what the corpus mentions, links to, and lacks
+  agentmd meters     measure whether the corpus is converging on itself
   agentmd door       ask whether a write inside a project needs alignment
 
 Run any subcommand with -h for its flags.
@@ -108,6 +109,8 @@ func main() {
 		err = cmdTiers(os.Args[2:])
 	case "graph":
 		err = cmdGraph(os.Args[2:])
+	case "meters":
+		err = cmdMeters(os.Args[2:])
 	case "door":
 		err = cmdDoor(os.Args[2:])
 	case "version", "-v", "--version":
