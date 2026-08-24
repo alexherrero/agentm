@@ -69,6 +69,66 @@ class VaultCase(unittest.TestCase):
         self.v = Vault(self.stack)
 
 
+# ── the seam ───────────────────────────────────────────────────────────────
+
+class SeamTests(unittest.TestCase):
+    """Every other test here builds its clusters by hand.
+
+    That is fine for the decisions, and useless for the contract: rename a Go
+    struct tag and all fifty of them stay green while the shipped path reads
+    `None` for the field that decides whether a cluster gets rewritten. So the
+    field names are pinned against the Go source that emits them.
+    """
+
+    GO = (Path(__file__).resolve().parent.parent
+          / "daemon/internal/meters/clusters.go")
+    CMD = (Path(__file__).resolve().parent.parent
+           / "daemon/cmd/agentmd/clusters.go")
+
+    def tags(self, path):
+        import re
+        return set(re.findall(r'json:"([a-z_]+)', path.read_text(encoding="utf-8")))
+
+    def test_every_cluster_field_python_reads_is_one_go_emits(self):
+        emitted = self.tags(self.GO)
+        # Read in `plan_action`, `_reason_for`, `build_merge_proposal`,
+        # `redistill` and `digest_line`. Each one decides something.
+        for field in ("kind", "members", "max_sim", "provenance", "why"):
+            self.assertIn(field, emitted,
+                          f"correction.py reads cluster[{field!r}] and no Go "
+                          f"struct tag emits it; emitted = {sorted(emitted)}")
+
+    def test_every_report_field_python_reads_is_one_go_emits(self):
+        emitted = self.tags(self.CMD)
+        for field in ("clusters", "unavailable", "scope", "sample",
+                      "threshold", "from", "to"):
+            self.assertIn(field, emitted,
+                          f"correction.py reads report[{field!r}] and no Go "
+                          f"struct tag emits it; emitted = {sorted(emitted)}")
+
+    def test_the_kinds_python_branches_on_are_the_kinds_go_writes(self):
+        # `plan_action` sends `duplicate` to the merge arm and `collapsed` to the
+        # rewriting arm. A kind renamed on the Go side without this would fall
+        # through to `review_only` — silently correct-looking, and the corpus
+        # would simply stop being corrected.
+        go = self.GO.read_text(encoding="utf-8")
+        for kind in ("duplicate", "collapsed", "mixed", "unknown"):
+            self.assertIn(f'ClusterKind = "{kind}"', go,
+                          f"correction.py branches on {kind!r} and Go no longer "
+                          f"emits it")
+
+    def test_python_asks_the_daemon_for_the_threshold_rather_than_keeping_one(self):
+        # One number, one place. A default repeated on this side is a second
+        # place to change it and a silent disagreement the first time only one of
+        # them moves.
+        src = (Path(__file__).resolve().parent.parent
+               / "harness/skills/memory/scripts/correction.py"
+               ).read_text(encoding="utf-8")
+        self.assertNotIn("0.95", src,
+                         "correction.py has a copy of the cluster threshold; it "
+                         "belongs to the daemon, which measured it")
+
+
 # ── which arm a cluster goes to ────────────────────────────────────────────
 
 class PlanningTests(unittest.TestCase):
