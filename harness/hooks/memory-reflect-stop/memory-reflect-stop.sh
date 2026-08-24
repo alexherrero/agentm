@@ -247,7 +247,13 @@ printf '%s\n' "$REFLECT_OUT"
 # .harness/ wasn't initialized), this is a no-op.
 MARKER=".harness/session-id-${SESSION_ID}.start"
 if [[ -f "$MARKER" ]]; then
-    mv "$MARKER" "${MARKER%.start}.reflected" 2>/dev/null || true
+    # Stamped NOW after the rename: mv preserves the .start mtime, which records
+    # when the SESSION STARTED. The idle hook compares this marker against the
+    # transcript's mtime to decide whether a re-created .start has anything new
+    # behind it, and that comparison needs the time of the REFLECTION.
+    if mv "$MARKER" "${MARKER%.start}.reflected" 2>/dev/null; then
+        touch "${MARKER%.start}.reflected" 2>/dev/null || true
+    fi
 fi
 
 exit 0
