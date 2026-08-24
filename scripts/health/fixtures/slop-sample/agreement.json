@@ -1,7 +1,7 @@
 {
   "agent_labels_committed_at": "ced7dcb",
   "exact_agreement": 0.6,
-  "flagged_agreement": 0.6666666666666666,
+  "flagged_agreement": 0.6667,
   "held_out": 15,
   "kappa_exact": 0.1892,
   "kappa_flagged": 0.2991,
