@@ -93,8 +93,16 @@ class TestOpinionSupplementRouting(unittest.TestCase):
         self.assertEqual(stats["inboxed"], 0)
 
     def test_slug_collision_keeps_both(self):
-        c1 = _cand(**_STANDARD, slug="dupe")
-        c2 = _cand(**_STANDARD, slug="dupe")
+        # Two DIFFERENT supplements that happen to slug alike. The bodies were
+        # identical when this test was written, which the capture-dedup guard
+        # now (correctly) collapses to one file — see
+        # `test_reflect_capture_dedup.py`. Distinct bodies keep the case this
+        # test was always about: a collision is not a duplicate, and losing the
+        # second note would lose a real capture.
+        c1 = _cand(_STANDARD["title"], slug="dupe",
+                   body="Never commit without check-all.sh passing green first.")
+        c2 = _cand(_STANDARD["title"], slug="dupe",
+                   body="Never merge without check-all.sh passing green first.")
         stats = self._route([c1, c2])
         self.assertEqual(stats["opinion_supplements"], 2)
         lane = self.root / "memory" / "_opinions" / "done"

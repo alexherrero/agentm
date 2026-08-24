@@ -518,9 +518,84 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
 
+# ── Capture dedup ──────────────────────────────────────────────────────────
+# Returned in place of a Path when the candidate was already on disk, so nothing
+# was written. The caller has to tell three outcomes apart — wrote, already
+# there, failed — and a bare None could only ever carry two of them.
+ALREADY_CAPTURED = object()
+
+_MINING_METADATA_HEADING = "\n\n## Mining metadata\n\n"
+_NUMBERED_SIBLING = re.compile(r"-(\d+)\.md$")
+
+
+def _written_body(text: str) -> str:
+    """The candidate-derived prose of an already-written note.
+
+    Both writers lay a note out the same way: frontmatter, the candidate's body,
+    then a `## Mining metadata` block. Only the body is stable across re-mines.
+    The occurrence count rises and the excerpt list grows every time a longer
+    transcript is mined again, whereas the body is cut from the FIRST match and
+    so does not move — on the live vault
+    `never-fan-out-parallel-implementers` has 132 files, five distinct
+    occurrence counts, and two distinct bodies. Comparing bodies is what makes a
+    re-mine recognizable as one; comparing whole files never would.
+
+    Read back out of the file rather than stored as a fingerprint field, so the
+    guard also matches notes written before it existed. A stored field would
+    entitle every one of the existing clusters to one more copy first.
+    """
+    _, sep, after = text.partition("\n---\n")
+    body = after if sep else text
+    return body.partition(_MINING_METADATA_HEADING)[0].strip()
+
+
+def _written_sessions(text: str) -> str:
+    """The `sessions:` frontmatter value, or "" when the note carries none."""
+    for line in text.splitlines():
+        if line.startswith("sessions:"):
+            return line[len("sessions:"):].strip()
+    return ""
+
+
+def _existing_capture(
+    directory: Path, slug: str, body: str, *, sessions: str | None = None
+) -> Path | None:
+    """The already-written note this candidate would duplicate, if any.
+
+    Scans the `<slug>.md`, `<slug>-1.md`, … family the collision handler builds,
+    by listing rather than by counting upward from zero: once redundant copies
+    start being reaped the family stops being contiguous, and a walk that halted
+    at the first gap would start writing duplicates again exactly when the
+    cleanup ran.
+
+    `sessions` is compared only when the caller passes it. The opinion lane's
+    recurrence gate promotes on two DISTINCT session ids, so deduping across
+    sessions there would delete the signal it counts.
+    """
+    candidates = [directory / f"{slug}.md"]
+    try:
+        candidates += sorted(
+            p for p in directory.glob(f"{slug}-*.md")
+            if _NUMBERED_SIBLING.search(p.name)
+        )
+    except OSError:
+        pass
+    for p in candidates:
+        try:
+            text = p.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if _written_body(text) != body:
+            continue
+        if sessions is not None and _written_sessions(text) != sessions:
+            continue
+        return p
+    return None
+
+
 def _save_candidate_to_inbox(
     candidate: Candidate, vault: Path, *, source: str | None = None, stderr=sys.stderr
-) -> Path | None:
+) -> "Path | object | None":
     """Save a candidate to MemoryVault/personal/_inbox/<slug>.md.
 
     Returns the saved path on success, None on failure (e.g. slug collision —
@@ -563,10 +638,24 @@ def _save_candidate_to_inbox(
     # underscore, fails validation. Bypass via direct file write.
     inbox_dir = vault / "memory" / "_inbox"
     inbox_dir.mkdir(parents=True, exist_ok=True)
+
+    # Already captured? Reflection runs again over the same transcript often —
+    # the Stop hook fires per turn, the idle hook re-mines any `.start` marker
+    # older than an hour, and a resumed session gets a fresh marker — and each
+    # of those passes re-derives every candidate the transcript ever produced.
+    # Without this check the collision handler below turned each repeat into
+    # `<slug>-1`, `-2`, `-3` with no ceiling: one operator sentence about
+    # squash-merges reached thirteen files, and the inbox reached 11,535 notes
+    # of which 7,907 were redundant copies.
+    duplicate = _existing_capture(inbox_dir, candidate.slug, candidate.body.strip())
+    if duplicate is not None:
+        return ALREADY_CAPTURED  # type: ignore[return-value]
+
     target = inbox_dir / f"{candidate.slug}.md"
     if target.exists():
-        # Collision — append a numeric suffix to keep both. Inbox is a
-        # raw-capture surface; duplicates here are OK.
+        # A different capture that happens to slug the same — keep both. This
+        # is the case the suffix was always for, and suppressing it would lose
+        # a real note, which is a worse failure than the duplication above.
         n = 1
         while target.exists():
             target = inbox_dir / f"{candidate.slug}-{n}.md"
@@ -624,7 +713,7 @@ def _classify_standard_shaped(candidate: Candidate) -> str | None:
 def _save_candidate_to_opinions(
     candidate: Candidate, vault: Path, opinion: str, *,
     source: str | None = None, session_id: str | None = None, stderr=sys.stderr,
-) -> Path | None:
+) -> "Path | object | None":
     """Save a standard-shaped candidate to the opinion supplement lane.
 
     Accumulate loop, Stage 1 (schema extended for Stages 2-3, locked call
@@ -655,6 +744,20 @@ def _save_candidate_to_opinions(
     except OSError as e:
         print(f"[reflect.route] cannot create opinion lane {lane}: {e}", file=stderr)
         return None
+
+    # Already supplemented? Same guard as the inbox, scoped to the session.
+    # This lane duplicated harder than the inbox did — 1,446 files carrying 191
+    # distinct contents, 86.8% redundant — and it is the substrate the
+    # recurrence gate counts, so a repeat here is worse than wasted disk: it
+    # inflates a lane toward promotion on one session's re-mines. Scoping to
+    # `sessions` keeps the two-distinct-sessions signal the gate needs intact.
+    supplement_body = f"## {candidate.title}\n\n{candidate.body}".strip()
+    duplicate = _existing_capture(
+        lane, candidate.slug, supplement_body,
+        sessions=f"[{session_id}]" if session_id else "",
+    )
+    if duplicate is not None:
+        return ALREADY_CAPTURED  # type: ignore[return-value]
 
     target = lane / f"{candidate.slug}.md"
     if target.exists():
@@ -833,13 +936,15 @@ def route_candidates(
             "inboxed": N,          # LOW + auto-mode-MEDIUM + interactive-fallback
             "ideas_inboxed": N,    # all idea candidates → _inbox/idea/<slug>.md
             "capped": N,           # would-be inbox writes skipped past max_inbox
+            "deduped": N,          # already on disk from an earlier pass over
+                                   #   this transcript — skipped, not written
             "errors": N,           # save errors (e.g. slug collision)
         }
     """
     stats = {
         "auto_saved": 0, "approved": 0, "rejected": 0,
         "skipped": 0, "inboxed": 0, "ideas_inboxed": 0, "capped": 0, "errors": 0,
-        "opinion_supplements": 0,
+        "opinion_supplements": 0, "deduped": 0,
     }
     inbox_writes_so_far = 0
 
@@ -850,7 +955,14 @@ def route_candidates(
         if max_inbox is not None and inbox_writes_so_far >= max_inbox:
             stats["capped"] += 1
             return False
-        if _save_candidate_to_inbox(c, vault, source=source, stderr=stderr):
+        saved = _save_candidate_to_inbox(c, vault, source=source, stderr=stderr)
+        if saved is ALREADY_CAPTURED:
+            # Not a write and not a failure. Counted rather than folded into
+            # either, so a re-mine reads as a re-mine in the transparency line
+            # instead of looking like a session that mined nothing.
+            stats["deduped"] += 1
+            return False
+        if saved:
             inbox_writes_so_far += 1
             return True
         stats["errors"] += 1
@@ -875,9 +987,12 @@ def route_candidates(
         # falls through to the normal routing below, unchanged.
         opinion = _classify_standard_shaped(c)
         if opinion:
-            if _save_candidate_to_opinions(
+            saved = _save_candidate_to_opinions(
                 c, vault, opinion, source=source, session_id=session_id, stderr=stderr
-            ):
+            )
+            if saved is ALREADY_CAPTURED:
+                stats["deduped"] += 1
+            elif saved:
                 stats["opinion_supplements"] += 1
             else:
                 stats["errors"] += 1
