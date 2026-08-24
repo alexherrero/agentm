@@ -300,8 +300,13 @@ class ReportingTests(StageTestCase):
         self.install(FakeLedger(pending={"eligible": 0, "current": 0, "pending": []}))
         results = dream_stages.run_new_stages(Path("/nonexistent"))
         names = [r.stage for r in results]
+        # `breaker` joined the list when part 6 task 3 added it. It reports every
+        # cycle rather than only when it is open, so it belongs here with the
+        # rest — a stage that only appeared on the bad nights would leave the
+        # reader unable to tell "auto-apply is running" from "nobody checked".
         self.assertEqual(names,
-                         ["entity_rollups", "stub_synthesis", "unfiled_drain"])
+                         ["breaker", "entity_rollups", "stub_synthesis",
+                          "unfiled_drain"])
         for r in results:
             self.assertIn("stage", r.as_dict())
 

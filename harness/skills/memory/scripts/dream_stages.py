@@ -28,8 +28,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 try:  # pragma: no cover - import shape mirrors dream.py's own
+    import enrichment_breaker
     import work_ledger
 except ImportError:  # pragma: no cover
+    from . import enrichment_breaker  # type: ignore
     from . import work_ledger  # type: ignore
 
 
@@ -260,7 +262,24 @@ def stage_backlink_footers(vault_path, targets: list, *, write=None) -> StageRes
 
 # ── draining the unfiled queue ─────────────────────────────────────────────
 
-def stage_unfiled_drain(*, enabled: bool = False, budget: int = 0) -> StageResult:
+def stage_breaker_status(vault_path) -> StageResult:
+    """Report the breaker every cycle, open or closed.
+
+    Every cycle rather than only when it is open. A line that appeared solely on
+    the bad nights would leave the reader unable to tell "auto-apply is running"
+    from "nobody checked", which is the same absence-versus-zero confusion the
+    scorecards are built to avoid.
+    """
+    res = StageResult(stage="breaker")
+    st = enrichment_breaker.state(vault_path, OWNER_ENRICH)
+    res.notes.append(enrichment_breaker.digest_line(st))
+    if st.open:
+        res.skipped = 1
+    return res
+
+
+def stage_unfiled_drain(*, enabled: bool = False, budget: int = 0,
+                        vault_path=None) -> StageResult:
     """Enqueue re-enrichment for what the coverage ledger says is pending.
 
     Discovery only, and deliberately so. Part 4 built the drain itself — the
@@ -275,6 +294,18 @@ def stage_unfiled_drain(*, enabled: bool = False, budget: int = 0) -> StageResul
     read before anybody decides to turn it on.
     """
     res = StageResult(stage="unfiled_drain")
+
+    # The breaker first, because a paused pass should not spend a ledger query
+    # working out how much it is not allowed to do.
+    if vault_path is not None:
+        st = enrichment_breaker.state(vault_path, OWNER_ENRICH)
+        if not st.may_auto_apply():
+            res.unavailable = ""
+            res.notes.append(
+                f"paused: {st.reason}. Nothing is enqueued until somebody clears "
+                f"the breaker — it is a decision, not a timeout.")
+            return res
+
     if not enabled:
         res.notes.append(
             "off: enrichment spends per note and the standing queue is the "
@@ -320,10 +351,12 @@ def run_new_stages(vault_path, *, footer_targets=None, enrich_enabled=False) -> 
     it already writes instead of this module growing a second reporting surface.
     """
     results = [
+        stage_breaker_status(vault_path),
         stage_entity_rollups(),
         stage_stub_synthesis(),
     ]
     if footer_targets:
         results.append(stage_backlink_footers(vault_path, footer_targets))
-    results.append(stage_unfiled_drain(enabled=enrich_enabled))
+    results.append(stage_unfiled_drain(enabled=enrich_enabled,
+                                       vault_path=vault_path))
     return results
