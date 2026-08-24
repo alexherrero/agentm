@@ -1,47 +1,64 @@
 #!/usr/bin/env bash
-# check-integrity-bash.sh — post-install integrity check on a scratch dir.
+# check-integrity-bash.sh — post-install integrity check on a scratch install prefix.
 #
-# Called by smoke-install-bash.sh after the bash installer runs into
-# $SCRATCH. Verifies that the installed tree is actually usable on a
-# bash host: every hook command points at a file that exists, every
-# installed helper parses cleanly, and the settings.json uses the
-# bash-shell command strings (not pwsh).
+# Called by smoke-install-bash.sh after the bash installer runs into $PREFIX.
+# Verifies the installed tree is actually usable on a bash host: every hook
+# command points at a file that exists, every installed helper parses cleanly,
+# and settings.json uses bash command strings (not pwsh).
 #
-# Usage: bash scripts/check-integrity-bash.sh <SCRATCH_DIR>
+# Usage: bash scripts/check-integrity-bash.sh <install-prefix>
+#
+# The hook-path check matters MORE under a machine-wide install than it did
+# under the retired per-project one. Project-scope hooks were registered with
+# paths relative to the project root, so a wrong path was usually still a path
+# into a tree that existed. Machine-wide hooks are registered with absolute
+# paths into the install prefix, and a hook whose command points at a file that
+# is not there fails silently — the hook simply never fires, with nothing said.
 
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
-  echo "usage: $0 <scratch-dir>" >&2
+  echo "usage: $0 <install-prefix>" >&2
   exit 2
 fi
 
-SCRATCH="$1"
+PREFIX="$1"
 fail=0
 
-if [[ ! -d "$SCRATCH" ]]; then
-  echo "FAIL: scratch dir $SCRATCH does not exist" >&2
+if [[ ! -d "$PREFIX" ]]; then
+  echo "FAIL: install prefix $PREFIX does not exist" >&2
+  exit 1
+fi
+
+SETTINGS="$PREFIX/settings.json"
+if [[ ! -f "$SETTINGS" ]]; then
+  echo "FAIL: $SETTINGS missing" >&2
   exit 1
 fi
 
 # ── 1. Hook command strings reference files that exist ────────────────────
 echo "  [integrity] hook command paths resolve"
-python3 - "$SCRATCH/.claude/settings.json" "$SCRATCH" <<'PY' || fail=1
+python3 - "$SETTINGS" "$PREFIX" <<'PY' || fail=1
 import json, os, re, sys
-settings_path, scratch = sys.argv[1], sys.argv[2]
+settings_path, prefix = sys.argv[1], sys.argv[2]
 s = json.load(open(settings_path))
 missing = []
-# Scan every hook command for relative paths to .harness/... and verify existence.
-path_re = re.compile(r'(\.harness/[A-Za-z0-9_./-]+\.(?:sh|ps1))')
+# Machine-wide hooks are absolutized to <prefix>/hooks/<name>/<name>.sh at
+# merge time. Pull every .sh/.ps1 path out of each command and require it to
+# exist; a dangling one is a hook that will never fire.
+path_re = re.compile(r'(/[A-Za-z0-9_./-]+\.(?:sh|ps1))')
 for evt, lst in (s.get('hooks') or {}).items():
     for item in lst:
         for h in item.get('hooks', []):
             cmd = h.get('command', '')
             for m in path_re.finditer(cmd):
-                rel = m.group(1)
-                full = os.path.join(scratch, rel)
-                if not os.path.exists(full):
-                    missing.append(f'{evt}: {rel}')
+                p = m.group(1)
+                # Only police paths this install owns. An operator's own hook
+                # may legitimately point anywhere on their machine.
+                if not p.startswith(prefix.rstrip('/') + '/'):
+                    continue
+                if not os.path.exists(p):
+                    missing.append(f'{evt}: {p}')
 if missing:
     print('FAIL: hook commands reference missing files:')
     for m in missing:
@@ -52,7 +69,7 @@ PY
 
 # ── 2. Bash host invariant: no pwsh-prefixed commands in settings.json ────
 echo "  [integrity] bash-host shell invariant"
-python3 - "$SCRATCH/.claude/settings.json" <<'PY' || fail=1
+python3 - "$SETTINGS" <<'PY' || fail=1
 import json, sys
 s = json.load(open(sys.argv[1]))
 bad = []
@@ -60,9 +77,8 @@ for evt, lst in (s.get('hooks') or {}).items():
     for item in lst:
         for h in item.get('hooks', []):
             cmd = h.get('command', '')
-            # On a bash host, hook commands should invoke bash (or jq),
-            # never "pwsh -". That would indicate the wrong fragment was
-            # installed.
+            # On a bash host, hook commands invoke bash (or python3/jq), never
+            # "pwsh -". That would mean the wrong fragment was installed.
             if cmd.strip().startswith('pwsh '):
                 bad.append(f'{evt}: {cmd[:60]}')
 if bad:
@@ -73,7 +89,7 @@ if bad:
 print('    bash-host shell OK')
 PY
 
-# ── 3. Every installed .sh parses with bash -n (and at least one exists) ──
+# ── 3. Every installed .sh parses with bash -n (and enough of them exist) ──
 echo "  [integrity] .sh syntax"
 sh_count=0
 while IFS= read -r -d '' f; do
@@ -82,9 +98,9 @@ while IFS= read -r -d '' f; do
     fail=1
   fi
   sh_count=$((sh_count + 1))
-done < <(find "$SCRATCH" -type f -name '*.sh' -print0)
-# A bash install must ship verify.sh + hook .sh helpers. 0 would mean the
-# installer silently skipped the bash block.
+done < <(find "$PREFIX" -type f -name '*.sh' -print0)
+# The five memory/harness hooks each ship a .sh, plus scripts/telemetry.sh.
+# A count near zero means the installer silently skipped the bash surface.
 if [[ $sh_count -lt 5 ]]; then
   echo "FAIL: only $sh_count .sh files installed — bash helpers missing" >&2
   fail=1
@@ -95,40 +111,35 @@ echo "    $sh_count installed .sh files parse"
 # The phase-gated dev loop (plan/work/review/release/bugfix) + the review
 # sub-agents were slimmed out in the V5 unbundling (now provided by the crickets
 # development-lifecycle / code-review plugins), so they no longer install. The
-# surviving harness-vendored surface is: the memory-engine sub-agents, the
-# shared skill (doctor), and the Antigravity rules + Gemini settings.json. (The
-# four-mode diataxis-migration skill retired to crickets' wiki plugin in the V5
-# docs slim; the recent-wiki-changes utility command + the wiki-author skill
-# retired to that same plugin on 2026-08-12 — agentm now vendors no claude-code
-# command at all.)
+# surviving harness-vendored surface is the memory-engine sub-agents plus the
+# shared skills.
 required_non_empty=(
-  .claude/agents/adapt-evaluator.md
-  .claude/skills/doctor/SKILL.md
-  .agents/rules/harness.md
-  .agents/skills/doctor/SKILL.md
-  .gemini/settings.json
+  agents/adapt-evaluator.md
+  agents/memory-idea-researcher.md
+  skills/doctor/SKILL.md
+  skills/memory/SKILL.md
 )
 for p in "${required_non_empty[@]}"; do
-  full="$SCRATCH/$p"
-  if [[ ! -s "$full" ]]; then
+  if [[ ! -s "$PREFIX/$p" ]]; then
     echo "FAIL: $p is missing or empty" >&2
     fail=1
   fi
 done
 
-# ── 5. settings.json round-trips as valid JSON w/ expected hook schema ────
+# ── 5. settings.json round-trips as valid JSON w/ the expected hook schema ─
 echo "  [integrity] settings.json round-trip"
-python3 - "$SCRATCH/.claude/settings.json" <<'PY' || fail=1
+python3 - "$SETTINGS" <<'PY' || fail=1
 import json, sys
 s = json.load(open(sys.argv[1]))
-expected_events = {'PostToolUse', 'PreCompact', 'SessionStart'}
-got = set((s.get('hooks') or {}).keys())
-if not expected_events.issubset(got):
-    print(f'FAIL: settings.json hooks missing events: {expected_events - got}')
+hooks = s.get('hooks') or {}
+if not hooks:
+    print('FAIL: settings.json registers no hooks at all')
     sys.exit(1)
-# Each event must be a list with at least one entry that has matcher + hooks[0].command.
-for evt in expected_events:
-    v = s['hooks'][evt]
+# Assert the SHAPE of every registered event rather than a hardcoded event
+# list: which events the shipped hooks use is theirs to change, but each entry
+# must always be a non-empty array whose first item carries a matcher and at
+# least one command, or the host silently ignores it.
+for evt, v in hooks.items():
     if not isinstance(v, list) or not v:
         print(f'FAIL: hooks.{evt} is not a non-empty array')
         sys.exit(1)
@@ -138,24 +149,18 @@ for evt in expected_events:
     if not v[0]['hooks'][0].get('command'):
         print(f'FAIL: hooks.{evt}[0].hooks[0].command is empty')
         sys.exit(1)
-print('    settings.json schema OK')
+print(f'    settings.json schema OK ({len(hooks)} events)')
 PY
 
-# ── 6. .gemini/settings.json valid JSON ────────────────────────────────────
-echo "  [integrity] .gemini/settings.json"
-python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$SCRATCH/.gemini/settings.json" \
-  || { echo "FAIL: .gemini/settings.json is not valid JSON" >&2; fail=1; }
-
-# ── 7. .harness/features.json and .harness/PLAN.md present + parseable ────
-echo "  [integrity] .harness state files"
-python3 -c "import json,sys; d=json.load(open(sys.argv[1])); assert 'features' in d" \
-  "$SCRATCH/.harness/features.json" \
-  || { echo "FAIL: .harness/features.json invalid" >&2; fail=1; }
-
-if [[ ! -s "$SCRATCH/.harness/PLAN.md" ]]; then
-  echo "FAIL: .harness/PLAN.md empty or missing" >&2
-  fail=1
-fi
+# ── 6. install state is present and parseable ─────────────────────────────
+echo "  [integrity] install state"
+python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d.get('harness_version'), 'harness_version missing'
+assert d.get('installer_source'), 'installer_source missing'
+" "$PREFIX/.agentm-config.json" \
+  || { echo "FAIL: $PREFIX/.agentm-config.json invalid or incomplete" >&2; fail=1; }
 
 if [[ $fail -ne 0 ]]; then
   echo "check-integrity-bash: FAILED" >&2

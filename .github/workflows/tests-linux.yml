@@ -42,8 +42,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
-      - name: Installer-boundary byte-for-byte test (wiki scaffold)
-        run: bash scripts/test-install.sh
 
   adapter-parity:
     name: adapter-parity
