@@ -1,0 +1,883 @@
+{
+  "seed": 20260823,
+  "drawn": "2026-08-23",
+  "rubric": "RUBRIC.md",
+  "supersedes": "../slop-sample/sample.json",
+  "notes": [
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/branding-guide.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/deepseek-ocr-2.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/gpt-5-3-instant-system-card.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/2026/07/k2-vendor-verifier.md",
+      "calibration": true
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/fix/e-default-cache-or-use-the-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/idea/ill-referenced-from-harness-phases-05-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/idea/mber-respecting-the-scope-lock-s.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/idea/ps-mid-task-it-does-not-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preference/don-t-write-the-blog-until.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preference/i-like-this-closer-a-little.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/don-t-do-what-we-expected.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-like-adding-design-to-the.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-like-option-1-let-s.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-like-that-idea-lets-do.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-to-run-them-separately.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-need-to-understand-how-agentm.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-and-how-to-get.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-in-a-design-doc.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-machine-wide-removal-and.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-this-to-happen-as.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-come-up-with.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-create-the-vault.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-go-back-to.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-land-when-we.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-to-use-fable-for.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-you-to-run-work.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/i-want-you-to-run-you.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-board-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-change-the-session-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-hard-1.md",
+      "calibration": true
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-re-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-read-any-path-containing-1.md",
+      "calibration": true
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/never-time.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-typed",
+      "path": "Agent/memory/preferences/use-in-tests-does-not-register.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/nfd-regression-te\u0301st.md",
+      "calibration": true
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/preferences/i-want-to-push-on-the.md",
+      "calibration": false
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/trusted-sources.md",
+      "calibration": true
+    },
+    {
+      "stratum": "short-untyped",
+      "path": "Agent/memory/workflow/workflow-bash-673.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-because-it-makes-the-code-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-edit-or-delete-a-failing-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-fall-back-to-the-singleton-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-fan-out-parallel-implementers-2.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-runs-silently-without-that-authority-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-silently-longer-just-because-the-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-silently-satisfied-by-reads-recorded-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-stop-to-ask-approval-to-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-the-singleton-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/never-the-worker-1.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-preference",
+      "path": "Agent/memory/preferences/no-handoff-pack-the-cap-is-1.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/05/home-server.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/a-global-workspace-in-language-models-anthropic.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/an-off-switch-for-dual-use-knowledge-in-ai-models-anthropic.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/an-openai-model-has-disproved-a-central-conjecture-in-discrete-geometry.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/anthropic-research.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/artificial-minds-human-disagreement-the-politics-of-ai-consciousness-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/bridging-the-scale-gap-augmenting-human-red-teaming-to-uncover-latent-risks-in-t2i-models-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/deepseek-github.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/did-us-worker-retraining-reduce-participant-automation-exposure-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/extending-single-minus-amplitudes-to-gravitons.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/gram-assessing-sabotage-propensities-via-automated-alignment-auditing-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/how-canada-uses-claude-anthropic.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/hybrid-neural-cognitive-models-reveal-how-memory-shapes-human-reward-learning-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/kimi-help-center.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/moonshot-github.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/openai-research.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/project-fetch-phase-two-anthropic.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/quantifying-the-salience-of-geo-cultural-values-for-pluralistic-safety-alignment-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/real-time-group-dynamics-with-llm-facilitation-evidence-from-a-charity-allocation-task-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/realistic-honeypot-evaluations-for-scheming-propensity-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/reasoning-models-struggle-to-control-their-chains-of-thought-and-that-s-good.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/simplicity-and-complexity-in-combinatorial-optimization-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/solipsistic-superintelligence-is-unlikely-to-be-cooperative-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/strategic-tradeoffs-between-humans-and-ai-in-multi-agent-bargaining-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/the-abstraction-fallacy-why-ai-can-simulate-but-not-instantiate-consciousness-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/07/towards-structural-understanding-of-llm-overthinking-google-deepmind.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/agentm-self-probe-2026-08-23t06-18-13z.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/desk-documents-outrank-memory-notes-for-memory-questions.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/google-cloud-ships-a-memory-agent-with-no-vector-db-and-no-embeddings.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/the-always-on-agent-reads-up-to-50-recent-memories-per-query-which-is-it.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/the-stated-case-against-rag-here-is-passivity-not-accuracy.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/three-specialist-sub-agents-under-an-orchestrator-ingest-consolidate-que.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-reference",
+      "path": "Agent/memory/2026/08/vault-git-directory-sits-outside-the-drive-sync-set.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/changelog-shape.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/commit-conventional-format.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/commit-no-coauthor-trailer.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/coordinated-release-order.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/docs-soft-warning-tradeoff.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/github-claude-chip-resolved.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/phases-one-per-session.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/pii-guardrails-public-repo.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/plan-md-shape.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/state-on-disk.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/status-report-shape.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/subagents-read-only.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/verification-executable-first.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/wake-on-ci-pattern.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/05/worktrees-never-auto.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/06/design-artifacts-to-vault.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/06/read-js-rendered-sites.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/07/para-atomic-zettel-convention.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/07/voice-kernel.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/08/drive-upload-staging-churns-transient-files-inside-the-vault.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/2026/08/never-bypass-hooks-with-no-verify.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/10-leaf-to-the-foundation-tree-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/an-out-of-scope-findings-anything-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/both-designs-sections-now-look-good-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-other-typed",
+      "path": "Agent/memory/idea/y-out-of-task-scope-findings-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/always-goes-through-14.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/never-append-co-5.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/never-self-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/never-the-singleton-32.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/never-the-singleton-81.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/done/never-the-singleton-86.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/it-substrate-by-back-filling-from.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-below.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-57.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-8.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-94.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-95.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-the-worker-26.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/never-the-worker-3.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/no-handoff-pack-the-cap-is-38.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/efficient/no-handoff-pack-the-cap-is-42.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/always-lands-in-2.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/don-t-use-no-verify-let-13.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/don-t-use-no-verify-let-16.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/don-t-use-no-verify-let-73.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/don-t-use-no-verify-let-81.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-bump-on-a-worker-branch-3.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-by.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-changes-status-4.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/good/never-moved-2.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-assume-42.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-assume-70.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-rediscover-it-via-shell.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/how-we-engineer/never-settled-21.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/private/always-check-rows-15.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/private/always-check-rows-40.md",
+      "calibration": true
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/recoverable/never-proceed-silently-1.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/recoverable/never-the-guardrail-12.md",
+      "calibration": false
+    },
+    {
+      "stratum": "normal-untyped",
+      "path": "Agent/memory/_opinions/recoverable/never-the-guardrail-4.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/04/obsidian-vault-paths.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/agent-m-crickets-branding.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/docs-cover-ours-link-theirs.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/home-server-cluster.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/homelab-domain.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/kill-switch-alphabetically-first.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/nas-unraid.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/pre-approval-batch-pattern.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/self-hosted-photo-library-sync.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/sherwood-automated-bug-fixing.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/vault-as-canonical-context.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/05/visual-asset-style.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/agent-toolkit-supply-chain.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/anti-rationalization-every-skill-includes-a-table.md",
+      "calibration": true
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/api-and-interface-design.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/blog-author.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/context-engineering.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/dismissed.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/log-analysis-at-scale.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/performance-optimization.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/progressive-disclosure-the-skill-md-is-the-entry-p.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/stack-agentm.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/stack-crickets.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/stack-dev-setup.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/stack-sherwood.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/test-driven-development.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/trusted-security-sources.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/vault-internal-taxonomy.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/2026/06/verify-prove-it-works.md",
+      "calibration": true
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/_opinions/efficient/never-proceed-silently-3.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/workflow-pattern/big-audit-fan-out-schema-write-pacing.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/workflow-pattern/filter-branch-trailer-case-insensitive.md",
+      "calibration": false
+    },
+    {
+      "stratum": "long",
+      "path": "Agent/memory/workflow/workflow-agent-1.md",
+      "calibration": false
+    }
+  ]
+}

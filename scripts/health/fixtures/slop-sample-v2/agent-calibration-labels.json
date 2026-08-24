@@ -1,0 +1,89 @@
+{
+  "counts": {
+    "expire": 4,
+    "keep": 5,
+    "review": 6
+  },
+  "deciding_rule": {
+    "Agent/memory/2026/05/verification-executable-first.md": {
+      "rule": 6,
+      "why": "A claim, a why, four how-to-apply bullets, a source, related links."
+    },
+    "Agent/memory/2026/05/worktrees-never-auto.md": {
+      "rule": 6,
+      "why": "The rule, the why, how to apply it, and a dated per-project override with a pointer to the adjudication."
+    },
+    "Agent/memory/2026/06/anti-rationalization-every-skill-includes-a-table.md": {
+      "rule": 6,
+      "why": "States a pattern and an argument for it \u2014 that naming a rationalization at invocation time beats a convention learned once."
+    },
+    "Agent/memory/2026/06/verify-prove-it-works.md": {
+      "rule": 6,
+      "why": "Names the two bundled skills, argues which is stronger, and names the gap it fills against an MCP we already have installed."
+    },
+    "Agent/memory/2026/07/an-off-switch-for-dual-use-knowledge-in-ai-models-anthropic.md": {
+      "rule": 1,
+      "why": "Same shape as 05 \u2014 upstream prose truncated mid-sentence, unique content."
+    },
+    "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md": {
+      "rule": 1,
+      "why": "Body is the article's opening paragraph and nothing else, cut mid-word at 'We ran tests t'. Clipped but unique, so review rather than expire. Rule 7 would land in the same place."
+    },
+    "Agent/memory/2026/07/k2-vendor-verifier.md": {
+      "rule": 7,
+      "why": "Bookmark carrying upstream's tagline and a URL. Not clipped, not verbose \u2014 it simply states nothing in its own words, so it falls through to the new default. Under v1 this was a keep."
+    },
+    "Agent/memory/_opinions/efficient/it-substrate-by-back-filling-from.md": {
+      "rule": 1,
+      "why": "Title and body both start mid-word. status: expired is not a reason \u2014 aging is the lifecycle's job \u2014 but the clipping is."
+    },
+    "Agent/memory/_opinions/private/always-check-rows-40.md": {
+      "rule": 1,
+      "why": "Clipped mid-sentence and the excerpt appears twice inside the note. The '-40' suffix implies siblings, but mining_occurrences is 1 and each supplement carries a different excerpt \u2014 so this is a unique clipping, not one of a repeated set. Review."
+    },
+    "Agent/memory/nfd-regression-te\u0301st.md": {
+      "rule": 4,
+      "why": "'# NFD regression probe / Delete me.' \u2014 35 bytes with an NFD-composed filename. It states a checkable fact about normalization, which is exactly why v1's rule 1 would keep it."
+    },
+    "Agent/memory/preferences/never-hard-1.md": {
+      "rule": 1,
+      "why": "Body opens 'User stated: ...all back to direct push', mid-word in both directions. derived_from collapses six inbox clippings of the same directive, so the set is visible in the note itself. **This is the class v1 kept.**"
+    },
+    "Agent/memory/preferences/never-read-any-path-containing-1.md": {
+      "rule": 1,
+      "why": "Clipped mid-word ('...ths \u2014 never cache an absolute vault path'). Unlike 04 and 15, derived_from lists a single source, so the repetition the numbered title hints at is not visible here."
+    },
+    "Agent/memory/preferences/never-the-worker-1.md": {
+      "rule": 1,
+      "why": "'...djudication is /review's fresh-context' \u2014 mid-word both ends, and derived_from collapses seven clippings of one directive."
+    },
+    "Agent/memory/preferences/no-handoff-pack-the-cap-is-1.md": {
+      "rule": 1,
+      "why": "'User corrected the agent: ...gate. If token-audit is absent' \u2014 mid-word both ends, four derived_from siblings, numbered title."
+    },
+    "Agent/memory/trusted-sources.md": {
+      "rule": 6,
+      "why": "No frontmatter, but it is a live config the adapt-skills workflow reads. Nineteen org slugs are nineteen claims that could be wrong."
+    }
+  },
+  "labelled": "2026-08-23",
+  "labelled_before_operator_saw_worksheet": true,
+  "labels": {
+    "Agent/memory/2026/05/verification-executable-first.md": "keep",
+    "Agent/memory/2026/05/worktrees-never-auto.md": "keep",
+    "Agent/memory/2026/06/anti-rationalization-every-skill-includes-a-table.md": "keep",
+    "Agent/memory/2026/06/verify-prove-it-works.md": "keep",
+    "Agent/memory/2026/07/an-off-switch-for-dual-use-knowledge-in-ai-models-anthropic.md": "review",
+    "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md": "review",
+    "Agent/memory/2026/07/k2-vendor-verifier.md": "review",
+    "Agent/memory/_opinions/efficient/it-substrate-by-back-filling-from.md": "review",
+    "Agent/memory/_opinions/private/always-check-rows-40.md": "review",
+    "Agent/memory/nfd-regression-te\u0301st.md": "expire",
+    "Agent/memory/preferences/never-hard-1.md": "expire",
+    "Agent/memory/preferences/never-read-any-path-containing-1.md": "review",
+    "Agent/memory/preferences/never-the-worker-1.md": "expire",
+    "Agent/memory/preferences/no-handoff-pack-the-cap-is-1.md": "expire",
+    "Agent/memory/trusted-sources.md": "keep"
+  },
+  "rubric": "RUBRIC.md"
+}
