@@ -69,6 +69,9 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `gate corpus-write` | Ask whether a corpus-wide write job may start. Exits 0 to pass, 3 to refuse, 1 when it could not decide. |
 | `classify` | Rank-penalty class counts over the live vault, printed beside the figures the measurement report established. |
 | `rules` | Print the filing contract. `--json` serves it to anything that needs the taxonomy, `--file` parses one specific file, `--init <path>` seeds a vault from the embedded copy without ever overwriting one. |
+| `meters` | The four diversity meters over the filed memory corpus. `--sample`, `--trigram-top`, `--window`, `--json`. |
+| `graph` | The memory context graph, laid out deterministically and written as SVG. `--cap`, `--out`. |
+| `clusters` | Which notes are too similar to be independent memories, and what kind of too-similar. `--threshold`, `--sample`, `--json`. |
 | `retire` | Stop and archive the orphaned pre-daemon memory server. |
 
 Every subcommand accepts `--config`, `--vault`, `--index`, `--port`.
@@ -439,6 +442,115 @@ There is no override flag. What is being checked is whether an undo exists at al
 `revert` is exempt on purpose: gating the undo on there being an undo is the one arrangement that could strand the corpus.
 
 The call itself is [`corpus_gate.py`](https://github.com/alexherrero/agentm/blob/main/scripts/corpus_gate.py), which runs the binary and relays its verdict without re-deriving it — a second opinion in Python would be a second dialect of the gate. It fails closed on a refusal, on an undecidable answer, on a missing binary, and on a zero exit that does not name the gate (`agentmd` is a bare name on `PATH`, so an unrelated program exiting 0 must not read as permission). It is vendored byte-identically into `harness/skills/memory/scripts/` because the LC-8 bridge rule forbids kernel toolkit scripts importing back into `scripts/`; `check-vendored-parity.sh corpus-gate` keeps the two in step.
+
+## The meters, and what they measure
+
+Four numbers say whether the corpus is converging on itself. Enrichment rewrites
+every memory it touches, so the risk it carries is that a corpus of distinct
+memories slowly becomes a corpus of one voice saying similar things. These are how
+that would be noticed.
+
+| Meter | Bad direction | What it sees |
+|---|---|---|
+| trigram concentration | rising | the same phrases recurring across notes |
+| moving-average TTR | falling | vocabulary narrowing within a sliding window |
+| pairwise cosine similarity | rising | every note drifting toward every other |
+| nearest-neighbour dispersion | falling | clusters tightening before the average moves |
+
+The last one is the earliest signal. Convergence starts locally — a few notes
+tighten around each other while the corpus-wide average is still steady — so the
+nearest-neighbour distribution moves first.
+
+The two embedding meters **refuse to run** when the dense arm is absent, rather
+than returning zero. Zero dispersion is what a perfectly converged corpus looks
+like and zero similarity is what a perfectly diverse one looks like, so a missing
+embedder would report either "everything is fine" or "the corpus has collapsed"
+depending which number you read. Neither would be true, and refusing is the only
+answer that cannot be misread.
+
+### What they measure, and what they deliberately do not
+
+The population is the **filed live memory corpus**: the configured memory space,
+`status: active`, excluding `_inbox`, `_archive`, `scratch`, `_shelf` and
+`_opinions`. Two filters rather than one, because neither is sufficient alone.
+Status alone still admits hundreds of inbox notes carrying `active` from a mining
+pass that never reconciled them. Directory names alone still admit unfiled
+captures sitting in the memory space.
+
+This is narrower than the vector arm's scope, deliberately. `EmbedScope` covers
+`memory`, `desk` and `external` so that retrieval can reach the gold set's
+answers, which is a fact about scoring retrieval rather than about which notes
+enrichment writes. When the meters used it, their window was 79% raw captures and
+dreaming's own staged proposal files — and because the inbox accumulates
+near-identical mined clippings, the bias ran one way: similarity read high for a
+reason that had nothing to do with enrichment.
+
+The window is the most recent notes rather than the whole corpus, because the
+question is whether what is being written *now* is converging. A uniform sample
+across five years would mix a month of drift into sixty months of history and
+report that almost nothing had changed.
+
+## Clusters, and the correction they feed
+
+`meters` says how much the corpus is converging. `clusters` says **where**, which
+is what an action needs — the correction loop works in order of severity, and
+severity belongs to a specific cluster rather than to a corpus-wide number.
+
+Notes are grouped by single linkage above a cosine threshold, then classified from
+provenance alone. The classification is deterministic and involves no model call:
+whether two notes came from one source is a fact recorded in their frontmatter,
+and asking a model to guess at it would put a judgement call underneath an action
+that rewrites files.
+
+| Kind | Means | What may act on it |
+|---|---|---|
+| `duplicate` | every member shares a provenance unit | a merge, staged for a person |
+| `collapsed` | every member has provenance, no two share any | re-distillation from source |
+| `mixed` | some share, some do not | nothing |
+| `unknown` | a member records no provenance | nothing |
+
+Two of the four decline to answer, and that is the point. A `mixed` cluster has
+both problems and one fix for neither — re-distilling the shared pair from their
+common source produces two notes from one source, which the merge arm then finds
+again. An `unknown` cluster is a finding about metadata rather than about notes.
+
+**Provenance is compared exactly.** The live corpus's only two clusters are
+`DeepSeek-OCR` against `DeepSeek-OCR-2`, and `kimi-code` against `kimi-cli` — four
+upstream projects, two pairs. Any prefix or substring comparison calls each pair a
+single source, which makes them duplicates, which stages a merge, which supersedes
+one of two real memories. The cheaper-looking comparison is the one that deletes
+things.
+
+Single linkage means A and C can land in one cluster through a B close to both,
+even where A and C are not close to each other. That is right for reporting — five
+notes collapsed onto one pattern are one finding, not ten pair findings — and
+wrong if membership is read as "these are interchangeable". So every cluster
+carries `min_sim`, the loosest pair anywhere in it, and `chained` when that falls
+below the threshold.
+
+### The threshold
+
+`--threshold` defaults to 0.95, and the number was measured rather than chosen. On
+the filed corpus the pairwise distribution runs median 0.43, p90 0.60, maximum
+0.96 — so 0.95 sits at the extreme tail and selects a handful of notes. A number
+picked by intuition would have been 0.90, which on a wider population swept nine
+notes in ten into a cluster.
+
+It is a flag rather than a constant because a number that decides what gets
+rewritten belongs where a person can see it move.
+
+## The memory context graph
+
+`graph` walks the link graph and draws it, using d3-force's three forces with
+d3's own constants — so the picture is recognisably the one Obsidian would draw.
+Initialization is phyllotaxis rather than random, which makes "faithful to
+Obsidian" and "the same picture twice" the same implementation instead of two
+goals in tension.
+
+Two spellings of one link target produce two rows in the index, so edges are
+deduplicated before layout. `--cap` bounds the node count by keeping the
+highest-degree nodes, and the report says how many it dropped rather than quietly
+drawing a subset.
 
 ## Watching, and what actually guarantees correctness
 
