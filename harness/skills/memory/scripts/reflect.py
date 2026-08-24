@@ -190,6 +190,79 @@ def _extract_text(msg: dict) -> str:
     return ""
 
 
+# ── What the operator actually said ────────────────────────────────────────
+# Preferences, corrections and ideas are mined off user-role messages on the
+# premise that the user role is operator intent. In Claude Code it is not. The
+# same role carries slash-command expansions, sub-agent dispatch prompts,
+# hook-injected context and compaction summaries — so `AGENTS.md` writing
+# "never fan out parallel implementers" came back as a mined preference, and
+# agentm's own retrieval-gate prompt, which quotes vault notes into its text,
+# mined the vault back into itself.
+#
+# Measured over 400 transcripts: 1,452 of 1,490 preference matches came from
+# messages nobody typed. The ones that were typed ran to a median of 270
+# characters; everything else, 8,266.
+#
+# The filter is layered, precise signals first, heuristic last:
+#   1. `origin.kind` — the host's own attribution. Decides outright, in BOTH
+#      directions, when present. Only ~10% of transcripts carry it today.
+#   2. `isMeta` — Claude Code's flag for injected content. Precise, but set on
+#      only ~6% of the messages that produce matches.
+#   3. Envelope stripping — remove injected blocks from an otherwise real
+#      message, so a typed sentence with a reminder stapled to it still mines
+#      on the typed half rather than being thrown away whole.
+#   4. A length ceiling on what survives. This one IS a heuristic and is named
+#      as such: at 4,000 characters it keeps 99% of the human-attributed
+#      messages in the sample and drops 80% of the rest. It is the last resort,
+#      reached only when nothing above could say who was speaking.
+MAX_OPERATOR_UTTERANCE_CHARS = int(
+    os.environ.get("AGENTM_MAX_OPERATOR_UTTERANCE_CHARS", "").strip() or 4000
+)
+
+# Ordered: the terminated forms must match before the unterminated fallback,
+# which drops everything after an unclosed opener.
+_ENVELOPE_BLOCKS = [
+    re.compile(r"<system-reminder>.*?</system-reminder>", re.S),
+    re.compile(r"<local-command-[a-z-]+>.*?</local-command-[a-z-]+>", re.S),
+    re.compile(r"<command-(?:name|message|args)>.*?</command-(?:name|message|args)>", re.S),
+    re.compile(r"<persisted-output>.*?</persisted-output>", re.S),
+    re.compile(r"<user-prompt-submit-hook>.*?</user-prompt-submit-hook>", re.S),
+    re.compile(r"<!--\s*BEGIN\b.*?<!--\s*END\b[^>]*-->", re.S),
+    re.compile(r"<system-reminder>.*", re.S),
+    re.compile(r"<!--\s*BEGIN\b.*", re.S),
+]
+
+
+def _strip_envelopes(text: str) -> str:
+    """Remove injected blocks, leaving whatever the operator typed around them."""
+    for pat in _ENVELOPE_BLOCKS:
+        text = pat.sub(" ", text)
+    return text.strip()
+
+
+def _operator_text(msg: dict) -> str:
+    """The part of a user message worth mining as operator intent, or "".
+
+    Returns text rather than a bool so envelope stripping composes: a real
+    sentence with an injected block appended is still a real sentence, and
+    throwing the whole message away would lose it.
+    """
+    origin = msg.get("origin")
+    if isinstance(origin, dict) and origin.get("kind"):
+        # The host said who spoke. Believe it, both ways — a long message
+        # positively attributed to a person is a long message a person wrote,
+        # and the ceiling below must not override that.
+        if origin.get("kind") != "human":
+            return ""
+        return _strip_envelopes(_extract_text(msg))
+    if msg.get("isMeta"):
+        return ""
+    text = _strip_envelopes(_extract_text(msg))
+    if len(text) > MAX_OPERATOR_UTTERANCE_CHARS:
+        return ""
+    return text
+
+
 def _extract_tool_uses(msg: dict) -> list[str]:
     """Return the list of tool names used in an assistant message."""
     if msg.get("type") != "assistant":
@@ -314,6 +387,12 @@ def mine_transcript(transcript_path: Path) -> dict:
         text = _extract_text(msg)
         if not text:
             continue
+        if role == "user":
+            # Mine only what the operator plausibly said. The assistant side —
+            # tool tallies and workflow candidates — is untouched by this.
+            text = _operator_text(msg)
+            if not text:
+                continue
 
         # ── Preferences + corrections + ideas only apply to user messages.
         # User intent is the signal; agent outputs are derivative.

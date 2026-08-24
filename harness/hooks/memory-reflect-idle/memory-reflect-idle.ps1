@@ -49,6 +49,12 @@ $reflectedMarkers = @(Get-ChildItem -LiteralPath $HarnessDir -Filter 'session-id
 
 $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 $processedCount = 0
+# Stale .start markers cleared this pass: a session already reflected whose
+# transcript has not grown since. SessionStart rewrites .start whenever it is
+# absent, so a resumed session grows one beside the .reflected an earlier pass
+# left behind, and this loop used to mine the whole transcript again on the
+# strength of the .start alone.
+$staleCount = 0
 
 foreach ($marker in $markers) {
     $mtime = [DateTimeOffset]::new($marker.LastWriteTimeUtc).ToUnixTimeSeconds()
@@ -69,12 +75,35 @@ foreach ($marker in $markers) {
         continue
     }
 
+    # Already reflected, with nothing new since? Then this .start is a
+    # SessionStart re-creation, not pending work, and mining again would
+    # re-derive every candidate the transcript ever produced.
+    #
+    # Compared against the transcript's mtime rather than the marker's mere
+    # existence, because the skip cannot be unconditional: a resumed session
+    # keeps appending turns after its first reflection, and those turns are
+    # exactly what orphan recovery is for. Newer transcript -> mine it.
+    $reflectedSibling = $marker.FullName -replace '\.start$', '.reflected'
+    if (Test-Path -LiteralPath $reflectedSibling) {
+        $reflectedMtime = [DateTimeOffset]::new((Get-Item -LiteralPath $reflectedSibling).LastWriteTimeUtc).ToUnixTimeSeconds()
+        $transcriptMtime = [DateTimeOffset]::new((Get-Item -LiteralPath $transcript).LastWriteTimeUtc).ToUnixTimeSeconds()
+        if ($transcriptMtime -le $reflectedMtime) {
+            Remove-Item -LiteralPath $marker.FullName -Force -ErrorAction SilentlyContinue
+            $staleCount++
+            continue
+        }
+    }
+
     # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → _inbox/).
     & $Py $ReflectPy $transcript "--summary" "--route" 2>$null
     if ($LASTEXITCODE -eq 0) {
         $reflectedPath = $marker.FullName -replace '\.start$', '.reflected'
         try {
             Move-Item -LiteralPath $marker.FullName -Destination $reflectedPath -Force -ErrorAction Stop
+            # Stamped NOW: Move-Item preserves the .start mtime, which records
+            # when the SESSION STARTED, and the skip above needs the time of the
+            # REFLECTION.
+            (Get-Item -LiteralPath $reflectedPath).LastWriteTimeUtc = [DateTime]::UtcNow
             $processedCount++
         } catch {
             # Rename failed; marker stays for next pass.
@@ -96,7 +125,7 @@ foreach ($reflected in $reflectedMarkers) {
 }
 
 if ($markers.Count -gt 0 -or $gcCount -gt 0) {
-    [Console]::Error.WriteLine("[memory-reflect-idle] Scanned $($markers.Count) .start + $($reflectedMarkers.Count) .reflected markers; processed $processedCount orphans, GC'd $gcCount old markers (idle threshold: ${IdleThresholdSec}s)")
+    [Console]::Error.WriteLine("[memory-reflect-idle] Scanned $($markers.Count) .start + $($reflectedMarkers.Count) .reflected markers; processed $processedCount orphans, skipped $staleCount already-reflected, GC'd $gcCount old markers (idle threshold: ${IdleThresholdSec}s)")
 }
 
 # ── Idle orchestration chain (V4 #23 task 4) ──────────────────────────────

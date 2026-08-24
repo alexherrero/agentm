@@ -115,6 +115,60 @@ class TestMemoryReflectIdleHook(unittest.TestCase):
         self.assertTrue((self.hdir / "session-id-orphan1.reflected").is_file(),
                         "orphan not renamed to .reflected after reflection")
 
+    # ── skips: already reflected, nothing new ─────────────────────────────────
+
+    def _processed(self, r) -> int:
+        m = re.search(r"processed (\d+) orphans", r.stderr)
+        self.assertIsNotNone(m, f"no orphan summary in stderr: {r.stderr!r}")
+        return int(m.group(1))
+
+    def test_already_reflected_and_transcript_unchanged_does_not_re_mine(self) -> None:
+        # The re-mine loop. `SessionStart` rewrites `.start` whenever it is
+        # absent, so a resumed session gets a fresh marker beside the
+        # `.reflected` one an earlier pass left — and this hook used to mine the
+        # whole transcript again on the strength of the `.start` alone, without
+        # ever looking at its sibling. Thirteen passes over one transcript is
+        # how one operator sentence became thirteen inbox files.
+        tp = self._transcript()
+        self._make_marker("done1", tp, ".reflected", age_sec=10)
+        m = self._make_marker("done1", tp, ".start", age_sec=_IDLE + 1000)
+        # Transcript last written before the reflection → nothing new to mine.
+        old = time.time() - 5000
+        os.utime(tp, (old, old))
+        r = self._run_hook(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._processed(r), 0, "re-mined an already-reflected session")
+        self.assertFalse(m.exists(), "stale .start left behind to fire again next pass")
+
+    def test_already_reflected_but_transcript_grew_still_re_mines(self) -> None:
+        # The other half, and the reason the skip cannot be unconditional: a
+        # resumed session keeps appending turns after its first reflection, and
+        # those turns are exactly what orphan recovery exists to catch. Skipping
+        # on the marker alone would silently drop them.
+        tp = self._transcript()
+        self._make_marker("grew1", tp, ".reflected", age_sec=5000)
+        m = self._make_marker("grew1", tp, ".start", age_sec=_IDLE + 1000)
+        os.utime(tp, None)  # transcript touched now → newer than the reflection
+        r = self._run_hook(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self._processed(r), 1, "new turns after a resume went unmined")
+        self.assertFalse(m.exists())
+
+    def test_rename_stamps_the_reflected_marker_with_the_reflection_time(self) -> None:
+        # `mv` preserves mtime, so before this the `.reflected` marker carried
+        # the time the SESSION STARTED, not the time it was reflected — which
+        # makes it useless as the "have we already done this?" comparison the
+        # two tests above depend on.
+        tp = self._transcript()
+        m = self._make_marker("stamp1", tp, ".start", age_sec=_IDLE + 1000)
+        before = time.time() - 60
+        r = self._run_hook(self._env())
+        self.assertEqual(r.returncode, 0, r.stderr)
+        reflected = self.hdir / "session-id-stamp1.reflected"
+        self.assertTrue(reflected.is_file())
+        self.assertGreater(reflected.stat().st_mtime, before,
+                           "reflected marker still carries the .start mtime")
+
     def test_fresh_marker_is_left_alone(self) -> None:
         # Age 0 < 1h threshold → the session may still be active; don't reflect.
         m = self._make_marker("fresh1", self._transcript(), ".start", age_sec=0)

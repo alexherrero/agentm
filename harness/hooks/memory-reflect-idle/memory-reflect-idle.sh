@@ -140,6 +140,12 @@ processed_count=0
 # forever). Must be initialized: `set -u` is on, and bash errors on an unset
 # variable inside $(( )) rather than treating it as zero.
 dead_count=0
+# Stale .start markers cleared this pass: a session already reflected whose
+# transcript has not grown since. SessionStart rewrites .start whenever it is
+# absent, so a resumed session grows one beside the .reflected an earlier pass
+# left behind, and this loop used to mine the whole transcript again on the
+# strength of the .start alone.
+stale_count=0
 
 if (( no_orphan_work == 1 )); then
     # Skip the orphan + GC passes entirely; fall through to discover-skills.
@@ -178,12 +184,35 @@ for marker in "${markers[@]:-}"; do
         continue
     fi
 
+    # Already reflected, with nothing new since? Then this .start is a
+    # SessionStart re-creation, not pending work, and mining again would
+    # re-derive every candidate the transcript ever produced.
+    #
+    # Compared against the transcript's mtime rather than the marker's mere
+    # existence, because the skip cannot be unconditional: a resumed session
+    # keeps appending turns after its first reflection, and those turns are
+    # exactly what orphan recovery is for. Newer transcript → mine it.
+    reflected_sibling="${marker%.start}.reflected"
+    if [[ -f "$reflected_sibling" ]]; then
+        reflected_mtime=$(get_mtime "$reflected_sibling")
+        transcript_mtime=$(get_mtime "$transcript")
+        if (( transcript_mtime <= reflected_mtime )); then
+            rm -f "$marker" && stale_count=$((stale_count + 1))
+            continue
+        fi
+    fi
+
     # Run reflection with --route (HIGH → canonical / MEDIUM+LOW → _inbox/
     # via reflect.py's tri-modal routing). Requires MEMORY_VAULT_PATH; if
     # unset, --route fails non-zero + marker stays .start for next pass.
     if "$AGENTM_PY" "$REFLECT_PY" "$transcript" --summary --route 2>/dev/null; then
-        # Rename .start → .reflected on success.
-        mv "$marker" "${marker%.start}.reflected" 2>/dev/null && processed_count=$((processed_count + 1))
+        # Rename .start → .reflected on success, then stamp it NOW: mv keeps the
+        # original mtime, which is when the SESSION STARTED, and the skip above
+        # needs to know when it was last REFLECTED.
+        if mv "$marker" "${marker%.start}.reflected" 2>/dev/null; then
+            touch "${marker%.start}.reflected" 2>/dev/null || true
+            processed_count=$((processed_count + 1))
+        fi
     elif (( age_sec > GC_THRESHOLD_SEC )); then
         # Reflect keeps failing (an unconfigured vault at the time, a malformed
         # transcript) and the marker is past the same 30-day ceiling the
@@ -211,7 +240,7 @@ if (( ${#reflected_markers[@]} > 0 )); then
 fi
 
 if (( ${#markers[@]} > 0 || gc_count > 0 || dead_count > 0 )); then
-    echo "[memory-reflect-idle] Scanned ${#markers[@]} .start + ${#reflected_markers[@]} .reflected markers; processed $processed_count orphans, cleared $dead_count dead pointers, GC'd $gc_count old markers (idle threshold: ${IDLE_THRESHOLD_SEC}s)" >&2
+    echo "[memory-reflect-idle] Scanned ${#markers[@]} .start + ${#reflected_markers[@]} .reflected markers; processed $processed_count orphans, skipped $stale_count already-reflected, cleared $dead_count dead pointers, GC'd $gc_count old markers (idle threshold: ${IDLE_THRESHOLD_SEC}s)" >&2
 fi
 
 # ── Idle orchestration chain (V4 #23 task 4) ──────────────────────────────

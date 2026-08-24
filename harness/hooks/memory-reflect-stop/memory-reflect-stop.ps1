@@ -168,6 +168,13 @@ if (Test-Path $Marker) {
     $ReflectedMarker = $Marker -replace '\.start$', '.reflected'
     try {
         Move-Item -LiteralPath $Marker -Destination $ReflectedMarker -Force -ErrorAction SilentlyContinue
+        # Stamped NOW: Move-Item preserves the .start mtime, which records when
+        # the SESSION STARTED. The idle hook compares this marker against the
+        # transcript's mtime to decide whether a re-created .start has anything
+        # new behind it, and that needs the time of the REFLECTION.
+        if (Test-Path -LiteralPath $ReflectedMarker) {
+            (Get-Item -LiteralPath $ReflectedMarker).LastWriteTimeUtc = [DateTime]::UtcNow
+        }
     } catch {}
 }
 
