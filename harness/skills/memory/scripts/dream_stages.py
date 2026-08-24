@@ -344,7 +344,31 @@ def stage_unfiled_drain(*, enabled: bool = False, budget: int = 0,
     return res
 
 
-def run_new_stages(vault_path, *, footer_targets=None, enrich_enabled=False) -> list:
+def stage_correction(vault_path, *, revert_log=None, run_id: str = "",
+                     distiller=None, version: str = "",
+                     enrich_enabled: bool = False, trends=None) -> StageResult:
+    """The correction loop, forwarded.
+
+    Lives in `correction.py` — it is a few hundred lines with three arms and its
+    own refusals, and folding that into this module would make a file about
+    enqueueing work into a file about rewriting memories.
+
+    Forwarded rather than imported at module scope so a `dream_stages` import
+    still works on an install without it, which is the same shape every other
+    daemon-dependent stage here already has.
+    """
+    try:
+        import correction
+    except ImportError as exc:
+        return StageResult(stage="correction", unavailable=str(exc))
+    return correction.stage_correction(
+        vault_path, revert_log=revert_log, run_id=run_id, distiller=distiller,
+        version=version, enrich_enabled=enrich_enabled, trends=trends)
+
+
+def run_new_stages(vault_path, *, footer_targets=None, enrich_enabled=False,
+                   revert_log=None, run_id: str = "", distiller=None,
+                   version: str = "", trends=None) -> list:
     """Every stage this module adds, in the order the job list names them.
 
     Returned rather than printed, so `dream.py` folds them into the one digest
@@ -359,4 +383,10 @@ def run_new_stages(vault_path, *, footer_targets=None, enrich_enabled=False) -> 
         results.append(stage_backlink_footers(vault_path, footer_targets))
     results.append(stage_unfiled_drain(enabled=enrich_enabled,
                                        vault_path=vault_path))
+    # Last, and after the drain. Correction reads what the corpus currently
+    # looks like, so it should run over the state this cycle leaves behind
+    # rather than the state it started from.
+    results.append(stage_correction(
+        vault_path, revert_log=revert_log, run_id=run_id, distiller=distiller,
+        version=version, enrich_enabled=enrich_enabled, trends=trends))
     return results

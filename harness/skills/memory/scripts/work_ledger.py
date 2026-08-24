@@ -160,6 +160,26 @@ def backlinks(rel: str) -> list:
     return _json(["graph", "--backlinks", rel]) or []
 
 
+def clusters(threshold: float | None = None, sample: int | None = None) -> dict:
+    """Where the corpus is converging, and what kind of converging each one is.
+
+    Detection only — the daemon reads the vault and writes nothing. The three
+    actions live on this side of the seam because they are staging a proposal,
+    calling the enrichment pass, and writing a file for a person.
+
+    `threshold` is left to the daemon when it is None, which is how it should
+    normally be called. The number is measured against the corpus and lives in
+    exactly one place; a default repeated here would be a second place to change
+    it and a silent disagreement the first time only one of them moved.
+    """
+    args = ["clusters"]
+    if threshold is not None:
+        args += ["--threshold", str(threshold)]
+    if sample is not None:
+        args += ["--sample", str(sample)]
+    return _json(args) or {}
+
+
 def available() -> bool:
     """Whether the daemon can be reached at all.
 
