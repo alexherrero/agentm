@@ -3,6 +3,7 @@ package index
 import (
 	"context"
 	"fmt"
+	"strings"
 )
 
 // What the diversity meters read: the most recent memories, with their bodies
@@ -32,6 +33,59 @@ type MeterSample struct {
 	Vec []float32
 }
 
+// MeterStatus is the lifecycle state the meters measure.
+//
+// `active` is filed and live. It excludes `unfiled` — raw captures enrichment
+// has not run on, which are not its output — `proposed`, which is a mined
+// supplement awaiting the operator, and `superseded` / `expired`, which have
+// left the live corpus. It also excludes the long tail of ad-hoc statuses the
+// vault has accumulated (44 distinct values, 39 of them appearing once or
+// twice), which a status allowlist handles and a blocklist would not.
+const MeterStatus = "active"
+
+// MeterExcludedDirs are directory names dropped at any depth, because a note
+// under one of them is not a filed memory whatever its frontmatter claims.
+//
+// `_inbox` and `_archive` are here because `status: active` does not exclude
+// them — a mining pass writes `active` into the inbox and nothing reconciles it
+// on the way out. `scratch` is dreaming's own staging area, and leaving it in
+// meant the correction loop's first live run found two of dreaming's proposal
+// files 0.994 similar to each other and would have offered to correct them.
+// `_shelf` is a browse convention rather than a lifecycle state, but a shelved
+// note is deliberately out of the way and not part of what is being written now.
+//
+// `_opinions` is the one worth arguing about, because recall does search it and
+// 24 of its notes carry `status: active`. It is excluded because those notes are
+// not memories: they carry `kind: opinion-supplement` and no `type:`, so the
+// contract's enum does not cover them, and they hold `mining_confidence` /
+// `mining_occurrences` — they are `reflect.py`'s mined material awaiting
+// promotion into an opinion file, which is a different pipeline's inbox wearing a
+// different name.
+//
+// The measurement says the same thing. In the corrected window `_opinions` is 24
+// notes of 500, and 26 of the 28 notes in pairs above 0.95 — twenty-two copies of
+// one mined directive between 0.97 and 0.99, because a template filled twenty-two
+// times reads as converged whatever enrichment does. Leaving it in would have
+// reproduced the `_inbox` contamination at a twentieth of the size, which is the
+// harder version of the bug to notice.
+//
+// # The residual
+//
+// This is a blocklist, and blocklists rot. recall.py carries the scar: its own
+// comment records a migration that moved the scratch space one level down and
+// left a two-segment path here that silently matched nothing, letting dream
+// exhaust back into recall. The right rule is an allowlist of the contract's six
+// class directories — `semantic`, `procedural`, `episodic`, `entities`,
+// `crystallized`, `mocs` — which needs no maintenance because the contract
+// already validates it. It is not usable yet: the corpus has not moved, and today
+// those six hold three notes between them against 250 in `preferences` and 178 in
+// `2026`.
+//
+// *Re-audit trigger: when the collapse migration has moved the memory space into
+// the six class directories, this list is replaced by those six names and this
+// comment goes with it.*
+var MeterExcludedDirs = []string{"_inbox", "_archive", "scratch", "_shelf", "_opinions"}
+
 // RecentForMeters returns up to n recent notes from the given spaces.
 //
 // `scope` is the same space list the vector arm uses, so the meters measure the
@@ -55,12 +109,57 @@ type MeterSample struct {
 // chunk-0 vector. The caller passes false when there is no dense arm to wait
 // for, so the two lexical meters still run on a corpus that has never been
 // embedded.
+//
+// # Why the population is narrowed, and what it cost not to be
+//
+// The meters ask whether the memories enrichment writes are converging, so the
+// population has to be the memories. It was not. Measured on the live corpus,
+// the 500 most recent embedded notes in the vector arm's scope were 393
+// `_inbox`, 51 `_opinions`, 45 `desk/scratch`, and four filed memories — so the
+// meters were 79% about raw captures enrichment has never touched, plus
+// dreaming's own staged proposal files.
+//
+// The bias had a direction, which is what made it worse than dilution. `_inbox`
+// accumulates near-identical mined clippings — `no-handoff-pack-the-cap-is-94`
+// through `-98`, the same clipped directive filed five times — and that pushes
+// similarity up. The same night, over the same corpus:
+//
+//	                          scope as it was    filed memories
+//	pairwise median                     0.551             0.431
+//	pairwise p90                        0.745             0.600
+//	pairwise max                        0.994             0.956
+//	nearest-neighbour median            0.977             0.764
+//	pairs >= 0.985                         72                 0
+//
+// A convergence line set against the left-hand column would fire on the mining
+// pipeline's duplication and report it as enrichment homogenizing the corpus.
+//
+// The scope came from `config.EmbedScope`, which is three spaces for a reason
+// that belongs to a different question: the retrieval gold set's answers live in
+// `desk` and `external`, 65 of 90 expected paths, so the vector arm has to reach
+// them. Inheriting that scope inherited its reason.
+//
+// Two filters rather than one, because neither is sufficient. `status` alone
+// still admits 765 `_inbox` notes that carry `active` from a mining pass that
+// never reconciled them, and 263 in `_archive`. Directory names alone still
+// admit `unfiled` captures and `proposed` supplements sitting in the memory
+// space. Together they select what recall serves out of the memory space, which
+// is the population "is the corpus converging" is a question about.
 func (x *Index) RecentForMeters(ctx context.Context, n int, model string,
 	scope []string, withVectors bool) ([]MeterSample, error) {
 	if n < 1 {
 		return nil, nil
 	}
 	where, args := scopeClause(scope)
+	where += " AND m.status = ?"
+	args = append(args, MeterStatus)
+	for _, d := range MeterExcludedDirs {
+		// Escaped, because `_` is a LIKE wildcard and `_inbox` unescaped would
+		// also match `Xinbox`. The `%/` prefix is enough given every scope is
+		// itself a path prefix, so an excluded directory always has a parent.
+		where += ` AND m.path NOT LIKE ? ESCAPE '\'`
+		args = append(args, "%/"+escapeLike(strings.Trim(d, "/"))+"/%")
+	}
 	// An inner join rather than a filter in WHERE, so the window is the most
 	// recent *embedded* notes rather than the most recent notes of which few
 	// happen to be embedded.

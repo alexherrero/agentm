@@ -23,7 +23,8 @@ func sampleVault(t *testing.T) *Index {
 		{"memory/new-b.md", "2026-08-02T00:00:00Z"},
 	} {
 		writeVaultNote(t, vault, n.rel,
-			"---\ntitle: t\ncaptured: "+n.captured+"\n---\n\nSome words about a thing.\n")
+			"---\ntitle: t\nstatus: active\ncaptured: "+n.captured+
+				"\n---\n\nSome words about a thing.\n")
 	}
 	if _, err := x.Reconcile(); err != nil {
 		t.Fatal(err)
@@ -218,4 +219,166 @@ func TestAnotherModelsVectorsDoNotQualify(t *testing.T) {
 	if len(got) != 0 {
 		t.Errorf("window = %v under a model nothing was embedded with", rels(got))
 	}
+}
+
+// The population. Learned from the live corpus after the fact: the window was
+// 79% `_inbox` and dreaming's own staging files, and every number the meters
+// reported was mostly about them.
+
+// populationVault holds one filed memory and one of everything that looks like
+// one without being one.
+func populationVault(t *testing.T) *Index {
+	t.Helper()
+	x, vault := newVaultIndex(t)
+	for _, n := range []struct{ rel, status string }{
+		{"memory/filed.md", "active"},
+		// Statuses that are not the filed live corpus.
+		{"memory/raw.md", "unfiled"},
+		{"memory/mined.md", "proposed"},
+		{"memory/replaced.md", "superseded"},
+		{"memory/aged.md", "expired"},
+		{"memory/adhoc.md", "research-partial"},
+		{"memory/blank.md", ""},
+		// `active`, and still not filed memories — this is the half a status
+		// filter alone does not catch. Measured live: 765 `_inbox` notes and 263
+		// in `_archive` carry `active` from a pass that never reconciled them.
+		{"memory/_inbox/clipping.md", "active"},
+		{"memory/_archive/old.md", "active"},
+		{"desk/scratch/run-1/01-dedup-merge.proposal.md", "active"},
+		{"memory/_shelf/parked.md", "active"},
+		// `kind:` and no `type:` — the contract's enum does not cover it, and
+		// it is a mined supplement awaiting promotion, not a filed memory.
+		{"memory/_opinions/good/mined-supplement.md", "active"},
+		// A directory whose name merely resembles an excluded one. `_` is a LIKE
+		// wildcard, so an unescaped `_inbox` pattern matches this too.
+		{"memory/Xinbox/real.md", "active"},
+		// The name as a substring rather than a path segment. This repo really
+		// does hold notes about the inbox, and a pattern matching the name
+		// anywhere in the path would drop them.
+		{"memory/notes-on-_inbox-triage.md", "active"},
+		{"memory/scratchpad-conventions.md", "active"},
+	} {
+		writeVaultNote(t, vault, n.rel,
+			"---\ntitle: t\nstatus: "+n.status+
+				"\ncaptured: 2026-08-01T00:00:00Z\n---\n\nSome words about a thing.\n")
+	}
+	if _, err := x.Reconcile(); err != nil {
+		t.Fatal(err)
+	}
+	return x
+}
+
+func TestTheMetersMeasureTheFiledLiveCorpusOnly(t *testing.T) {
+	x := populationVault(t)
+	got := relsOf(t, x, 100, []string{"memory", "desk"}, false)
+	want := []string{
+		"memory/Xinbox/real.md", "memory/filed.md",
+		"memory/notes-on-_inbox-triage.md", "memory/scratchpad-conventions.md",
+	}
+	if !equalRels(got, want) {
+		t.Fatalf("window = %v, want %v", got, want)
+	}
+}
+
+func TestEveryStatusThatIsNotActiveIsOutOfThePopulation(t *testing.T) {
+	x := populationVault(t)
+	got := relsOf(t, x, 100, []string{"memory", "desk"}, false)
+	for _, rel := range []string{
+		"memory/raw.md", "memory/mined.md", "memory/replaced.md",
+		"memory/aged.md", "memory/adhoc.md", "memory/blank.md",
+	} {
+		if contains(got, rel) {
+			t.Errorf("%s is in the window and its status is not %q", rel, MeterStatus)
+		}
+	}
+}
+
+func TestAnActiveNoteInAnExcludedDirectoryIsStillExcluded(t *testing.T) {
+	x := populationVault(t)
+	got := relsOf(t, x, 100, []string{"memory", "desk"}, false)
+	// Every one of these is `status: active`, so only the directory rule can
+	// drop them. Without it the status filter passes all four.
+	for _, rel := range []string{
+		"memory/_inbox/clipping.md",
+		"memory/_archive/old.md",
+		"desk/scratch/run-1/01-dedup-merge.proposal.md",
+		"memory/_shelf/parked.md",
+		"memory/_opinions/good/mined-supplement.md",
+	} {
+		if contains(got, rel) {
+			t.Errorf("%s is in the window; %v should have dropped it",
+				rel, MeterExcludedDirs)
+		}
+	}
+}
+
+func TestTheExclusionMatchesADirectoryNameAndNotAWildcard(t *testing.T) {
+	x := populationVault(t)
+	got := relsOf(t, x, 100, []string{"memory", "desk"}, false)
+	// `_` is a LIKE single-character wildcard. An unescaped `%/_inbox/%` also
+	// matches `memory/Xinbox/real.md`, which is an ordinary filed memory.
+	if !contains(got, "memory/Xinbox/real.md") {
+		t.Fatalf("window = %v; Xinbox is not _inbox and belongs in it", got)
+	}
+	// And a path segment, not a substring. A note *about* the inbox is a filed
+	// memory; `%_inbox%` would drop it along with the directory.
+	for _, rel := range []string{
+		"memory/notes-on-_inbox-triage.md",
+		"memory/scratchpad-conventions.md",
+	} {
+		if !contains(got, rel) {
+			t.Errorf("%s is out of the window; the name appears in the filename, "+
+				"not as a directory", rel)
+		}
+	}
+}
+
+func TestTheExcludedNamesAreTheOnesRecallExcludes(t *testing.T) {
+	// recall.py excludes `scratch`, `_inbox` and `_archive` by directory name.
+	// The meters add `_shelf` and `_opinions`. Asserted as a list rather than inferred from a
+	// query, so a name added on one side and not the other is a red test rather
+	// than a slow divergence between what is searched and what is measured.
+	want := []string{"_inbox", "_archive", "scratch", "_shelf", "_opinions"}
+	if len(MeterExcludedDirs) != len(want) {
+		t.Fatalf("MeterExcludedDirs = %v, want %v", MeterExcludedDirs, want)
+	}
+	for i, w := range want {
+		if MeterExcludedDirs[i] != w {
+			t.Fatalf("MeterExcludedDirs = %v, want %v", MeterExcludedDirs, want)
+		}
+	}
+}
+
+func relsOf(t *testing.T, x *Index, n int, scope []string, withVectors bool) []string {
+	t.Helper()
+	rows, err := x.RecentForMeters(context.Background(), n, "m", scope, withVectors)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, r.Rel)
+	}
+	return out
+}
+
+func contains(hay []string, needle string) bool {
+	for _, h := range hay {
+		if h == needle {
+			return true
+		}
+	}
+	return false
+}
+
+func equalRels(got, want []string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	for _, w := range want {
+		if !contains(got, w) {
+			return false
+		}
+	}
+	return true
 }
