@@ -30,6 +30,7 @@ var (
 	kindRe          = regexp.MustCompile(`(?m)^kind:[ \t]*(.+?)[ \t\r]*$`)
 	dateRe          = regexp.MustCompile(`(?m)^date:[ \t]*(.+?)[ \t\r]*$`)
 	sourceRe        = regexp.MustCompile(`(?m)^source:[ \t]*(.+?)[ \t\r]*$`)
+	derivedFromRe   = regexp.MustCompile(`(?m)^derived_from:[ \t]*(.+?)[ \t\r]*$`)
 	sourceHashRe    = regexp.MustCompile(`(?m)^source_hash:[ \t]*(.+?)[ \t\r]*$`)
 	sourceVersionRe = regexp.MustCompile(`(?m)^source_version:[ \t]*(.+?)[ \t\r]*$`)
 	proposalRe      = regexp.MustCompile(`\A#[ \t]*Proposal[ \t]+\d+[ \t]*:`)
@@ -89,6 +90,17 @@ type Note struct {
 	// position in a growing log — because neither is a property of any note.
 	SourceHash    string
 	SourceVersion string
+
+	// DerivedFrom is the note's `derived_from:` list — the vault entries it was
+	// distilled or collapsed from. The other half of provenance, and on this
+	// corpus the half that is actually populated: `source` belongs to notes
+	// captured from outside, `derived_from` to notes built from other notes, and
+	// nothing carries both.
+	//
+	// A flow list on one line (`[a.md, b.md]`) or a single scalar, which is what
+	// the corpus holds; a block list is parsed as empty rather than wrongly, and
+	// an empty provenance is already a state the classifier reports honestly.
+	DerivedFrom []string
 
 	// Flags are the rank-penalty classes this note falls into.
 	Flags []string
@@ -164,6 +176,9 @@ func Parse(rel, raw string, modTime time.Time) Note {
 	if m := sourceRe.FindStringSubmatch(head); m != nil {
 		n.Source = strings.Trim(strings.TrimSpace(m[1]), `'"`)
 	}
+	if m := derivedFromRe.FindStringSubmatch(head); m != nil {
+		n.DerivedFrom = parseFlowList(m[1])
+	}
 	if m := sourceHashRe.FindStringSubmatch(head); m != nil {
 		n.SourceHash = strings.Trim(strings.TrimSpace(m[1]), `'"`)
 	}
@@ -182,6 +197,36 @@ func Parse(rel, raw string, modTime time.Time) Note {
 		}
 	}
 	return n
+}
+
+// parseFlowList reads a YAML flow sequence, or a bare scalar, into entries.
+//
+// Not a YAML parser: this package reads a regex-matched line, and a real parse
+// of the whole document is a different job with a different failure mode. What
+// it must not do is invent structure — a value it cannot read becomes no
+// entries, and the classifier already reports "no provenance" as its own answer
+// rather than folding it into a verdict.
+func parseFlowList(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	if strings.HasPrefix(raw, "[") && strings.HasSuffix(raw, "]") {
+		raw = raw[1 : len(raw)-1]
+	} else if strings.ContainsAny(raw, "[]") {
+		// A half-open bracket is a line this cannot read — a block list's first
+		// element, or a truncated flow list. Nothing, rather than a guess.
+		return nil
+	} else {
+		return []string{strings.Trim(raw, `'"`)}
+	}
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if v := strings.Trim(strings.TrimSpace(part), `'"`); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func parseStatus(head string) string {

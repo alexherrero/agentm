@@ -111,6 +111,8 @@ func main() {
 		err = cmdGraph(os.Args[2:])
 	case "meters":
 		err = cmdMeters(os.Args[2:])
+	case "clusters":
+		err = cmdClusters(os.Args[2:])
 	case "door":
 		err = cmdDoor(os.Args[2:])
 	case "version", "-v", "--version":
