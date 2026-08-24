@@ -1,19 +1,22 @@
 #!/usr/bin/env bash
-# agentm-update — global PATH launcher for refreshing the user-scope agentm install.
+# agentm-update — global PATH launcher for refreshing the agentm install.
 #
 # Per V4 #30 plan #22 task 5: this thin wrapper lets release-install operators
 # refresh their `~/.claude/` customizations with one command, without needing
 # to remember the path to install.sh.
 #
 # Source-mode operators (with `~/Antigravity/agentm/` clone) get live updates
-# via symlinks; this launcher invokes `--update` against the recorded installer
-# source for completeness (e.g. when a new skill is added to the clone but the
-# installer's manifest also changed).
+# via symlinks; this launcher re-runs the installer for completeness (e.g. when
+# a new skill is added to the clone but the installer's manifest also changed).
 #
 # Reads <install-prefix>/.agentm-config.json (or the legacy
 # `.agentm-install-state.json` if a pre-v4.5.1 install hasn't migrated yet)
 # to find the installer source path recorded at install time, then invokes:
-#     bash <installer_source> --update --scope user
+#     bash <installer_source>
+#
+# A bare re-run IS the refresh: there is one install scope, and the installer
+# is idempotent. It previously passed `--update --scope user`; both flags were
+# retired when the per-project install was, and passing either now fails.
 #
 # Falls back to a documented error if state file missing or installer source
 # unreachable.
@@ -62,5 +65,5 @@ if [[ ! -f "$INSTALLER_SOURCE" ]]; then
     exit 1
 fi
 
-# Pass through remaining args (e.g. --force-version-check, --rollback).
-exec bash "$INSTALLER_SOURCE" --update --scope user "$@"
+# Pass through remaining args (e.g. --no-daemon, --no-embedder, --local-state).
+exec bash "$INSTALLER_SOURCE" "$@"

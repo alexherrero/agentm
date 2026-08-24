@@ -1,9 +1,14 @@
-# agentm-update.ps1 — global PATH launcher for refreshing the user-scope agentm install.
+# agentm-update.ps1 — global PATH launcher for refreshing the agentm install.
 #
 # Per V4 #30 plan #22 task 5: Windows twin of templates/bin/agentm-update.
 # Reads <install-prefix>/.agentm-config.json (or legacy
-# `.agentm-install-state.json` on pre-v4.5.1 installs) + invokes the recorded
-# installer source with --update --scope user. Pass-through for extra args.
+# `.agentm-install-state.json` on pre-v4.5.1 installs) + re-runs the recorded
+# installer source. Pass-through for extra args.
+#
+# A bare re-run IS the refresh: there is one install scope, and the installer
+# is idempotent. It previously passed `-Update -Scope user`; both parameters
+# were retired when the per-project install was, and PowerShell now rejects
+# them at bind time.
 
 #Requires -Version 7.0
 $ErrorActionPreference = 'Stop'
@@ -42,5 +47,5 @@ if (-not (Test-Path $InstallerSource)) {
 }
 
 # Invoke installer with pass-through args (e.g. -ForceVersionCheck, -Rollback).
-& $InstallerSource -Update -Scope user @args
+& $InstallerSource @args
 exit $LASTEXITCODE
