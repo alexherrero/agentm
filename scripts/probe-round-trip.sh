@@ -41,12 +41,25 @@
 #      every query would pass every question above.
 #
 # Usage:
-#   bash scripts/probe-round-trip.sh                       # save and recall
-#   bash scripts/probe-round-trip.sh --enrich              # the whole arc; spends
+#   bash scripts/probe-round-trip.sh --embed-model NAME    # save and recall
+#   bash scripts/probe-round-trip.sh --embed-model NAME --enrich
+#                                                          # the whole arc; spends
 #                                                          # one model call
 #   bash scripts/probe-round-trip.sh --embedder-url URL --embed-model NAME
+#                                                          # attach to a server
+#                                                          # already running
+#
+# `--embed-model` is not optional in practice. Run bare on this machine
+# (2026-08-24) the spawned embedder produced no query vector, and the probe
+# exited 2 — correctly, since the dense arm is the whole point of asking
+# sideways. The configured model is `daemon.embed_model` in the kernel config;
+# `agentmd status` names it, and `agentmd meters` prints it beside its numbers.
 #
 # Exit: 0 every bar met · 1 a bar missed · 2 could not run.
+#
+# **Exit 2 is not a broken machine.** It is the probe refusing to report on half
+# the system. Read the line it prints: it names which question the dense arm
+# contributed nothing to, and relays the daemon's own reason.
 
 set -uo pipefail
 
