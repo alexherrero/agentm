@@ -47,7 +47,6 @@ finding about metadata rather than about notes.
 from __future__ import annotations
 
 import json
-import os
 import re
 import sys
 import time
@@ -493,7 +492,6 @@ def main(argv: list) -> int:
     log; a person wanting to see the state should be able to see it without
     acquiring either.
     """
-    vault = os.environ.get("MEMORY_VAULT_PATH", "")
     try:
         report = work_ledger.clusters()
     except work_ledger.LedgerUnavailable as exc:
@@ -505,7 +503,18 @@ def main(argv: list) -> int:
         out.append(Action(kind=arm, cluster_kind=cluster.get("kind", ""),
                           members=list(cluster.get("members", [])),
                           reason=_reason_for(cluster, arm)).as_dict())
-    print(json.dumps({"vault": vault, "would": out}, indent=2))
+    # The header comes from the daemon's report rather than from
+    # `$MEMORY_VAULT_PATH`, which is the per-invocation override and is unset on
+    # an ordinary machine — printing it would say "no vault" whenever the vault
+    # was resolved the normal way.
+    print(json.dumps({
+        "scope": report.get("scope", ""),
+        "sample": report.get("sample", 0),
+        "threshold": report.get("threshold", 0),
+        "window": [report.get("from", ""), report.get("to", "")],
+        "unavailable": report.get("unavailable") or [],
+        "would": out,
+    }, indent=2))
     return 0
 
 
