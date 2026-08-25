@@ -1,0 +1,22 @@
+{
+  "labelled": "2026-08-24",
+  "labelled_after_agent_labels_committed_at": "b3b9862",
+  "labels": {
+    "Agent/memory/2026/05/verification-executable-first.md": "keep",
+    "Agent/memory/2026/05/worktrees-never-auto.md": "keep",
+    "Agent/memory/2026/06/anti-rationalization-every-skill-includes-a-table.md": "keep",
+    "Agent/memory/2026/06/verify-prove-it-works.md": "keep",
+    "Agent/memory/2026/07/an-off-switch-for-dual-use-knowledge-in-ai-models-anthropic.md": "keep",
+    "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md": "keep",
+    "Agent/memory/2026/07/k2-vendor-verifier.md": "keep",
+    "Agent/memory/_opinions/efficient/it-substrate-by-back-filling-from.md": "keep",
+    "Agent/memory/_opinions/private/always-check-rows-40.md": "expire",
+    "Agent/memory/nfd-regression-te\u0301st.md": "expire",
+    "Agent/memory/preferences/never-hard-1.md": "expire",
+    "Agent/memory/preferences/never-read-any-path-containing-1.md": "keep",
+    "Agent/memory/preferences/never-the-worker-1.md": "expire",
+    "Agent/memory/preferences/no-handoff-pack-the-cap-is-1.md": "keep",
+    "Agent/memory/trusted-sources.md": "keep"
+  },
+  "rubric": "RUBRIC.md"
+}

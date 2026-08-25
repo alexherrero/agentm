@@ -1,0 +1,99 @@
+{
+  "bar": 0.6,
+  "exact_agreement": 0.5714,
+  "flagged_agreement": 0.5714,
+  "kappa_exact": 0.3488,
+  "kappa_flagged": 0.2632,
+  "of": 15,
+  "pairs": [
+    {
+      "agent": "review",
+      "agent_rule": 7,
+      "note": "Agent/memory/2026/07/k2-vendor-verifier.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 6,
+      "note": "Agent/memory/2026/06/verify-prove-it-works.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 6,
+      "note": "Agent/memory/2026/06/anti-rationalization-every-skill-includes-a-table.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "expire",
+      "agent_rule": 1,
+      "note": "Agent/memory/preferences/never-hard-1.md",
+      "operator": "expire"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 1,
+      "note": "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 6,
+      "note": "Agent/memory/trusted-sources.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 1,
+      "note": "Agent/memory/2026/07/an-off-switch-for-dual-use-knowledge-in-ai-models-anthropic.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 6,
+      "note": "Agent/memory/2026/05/verification-executable-first.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "expire",
+      "agent_rule": 4,
+      "note": "Agent/memory/nfd-regression-te\u0301st.md",
+      "operator": "expire"
+    },
+    {
+      "agent": "expire",
+      "agent_rule": 1,
+      "note": "Agent/memory/preferences/no-handoff-pack-the-cap-is-1.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 6,
+      "note": "Agent/memory/2026/05/worktrees-never-auto.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 1,
+      "note": "Agent/memory/preferences/never-read-any-path-containing-1.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 1,
+      "note": "Agent/memory/_opinions/efficient/it-substrate-by-back-filling-from.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "expire",
+      "agent_rule": 1,
+      "note": "Agent/memory/preferences/never-the-worker-1.md",
+      "operator": "expire"
+    }
+  ],
+  "proceeds": false,
+  "scored": 14,
+  "unscored_missing_from_vault": [
+    "Agent/memory/_opinions/private/always-check-rows-40.md"
+  ]
+}
