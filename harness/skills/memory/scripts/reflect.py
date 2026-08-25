@@ -288,25 +288,89 @@ def _slug_from_text(text: str, max_words: int = 6) -> str:
     return "-".join(words) or "candidate"
 
 
-def _excerpt_around(text: str, start: int, end: int, radius: int = 80) -> str:
-    """Extract a windowed excerpt around a regex match.
+# How far past `radius` the window may reach to find a word boundary.
+#
+# Bounded rather than unbounded because the thing being searched for is a space,
+# and a long unbroken run — a URL, a base64 blob, a hash — has none. Without a
+# limit those inputs would drag the window to the end of the text; with one, they
+# fall back to the character offset, which is the old behaviour and is correct for
+# a token that has no word boundaries to snap to.
+_BOUNDARY_SEARCH = 24
 
-    Returns the match plus up to `radius` chars on each side, with `...`
-    ellipses if the window doesn't cover the full text. Newlines flattened
-    to spaces so the excerpt is a single line (rationale + excerpts are
-    rendered in transparency lines + interactive review prompts; multi-line
-    excerpts would break that surface).
+
+def _excerpt_around(text: str, start: int, end: int, radius: int = 80) -> str:
+    """Extract a windowed excerpt around a regex match, on word boundaries.
+
+    Returns the match plus up to `radius` chars on each side, widened outward to
+    the nearest whitespace so the excerpt never begins or ends part-way through a
+    word. `...` ellipses mark a window that does not cover the full text. Newlines
+    are flattened to spaces so the excerpt is a single line.
+
+    # Why the boundary snapping is not cosmetic
+
+    This function was written for transparency lines and interactive review
+    prompts, where a ragged edge is ugly and harmless. It is also called to build
+    the *body* of a mined memory — `body=f"User stated: {excerpt}"` and three
+    siblings — and there a body opening `...all back to direct push` is a memory
+    nobody can read.
+
+    Measured on the live vault before the fix: 3,709 notes carried a mined-excerpt
+    body and 2,496 of them started mid-word, 239 of those in the filed memory
+    space rather than the inbox. The operator found it by reading fifteen of them
+    during a labelling calibration and saying they did not look like they were
+    supposed to be that way.
+
+    The window only ever widens. Narrowing to a boundary could clip the match
+    itself, which would drop the very words the pattern fired on.
     """
-    lo = max(0, start - radius)
-    hi = min(len(text), end + radius)
-    excerpt = text[lo:hi].replace("\n", " ").replace("\r", " ").strip()
-    # Collapse runs of whitespace to single spaces for readability.
-    excerpt = re.sub(r"\s+", " ", excerpt)
+    lo = _snap_back(text, max(0, start - radius))
+    hi = _snap_forward(text, min(len(text), end + radius))
+    # One collapse, not three. The `\s+` below already folds newlines and
+    # carriage returns into the same single space the explicit `.replace()` pair
+    # used to; removing them changes no output, which is why no mutation of them
+    # could turn a test red.
+    excerpt = re.sub(r"\s+", " ", text[lo:hi].strip())
     if lo > 0:
         excerpt = "..." + excerpt
     if hi < len(text):
         excerpt = excerpt + "..."
     return excerpt
+
+
+def _snap_back(text: str, lo: int) -> int:
+    """Move `lo` left to just after the nearest whitespace.
+
+    The start of the text counts as a boundary. A window landing one character
+    inside the first word finds no whitespace behind it, and returning `lo` there
+    produces exactly the ragged edge this exists to prevent — `...hen the gh CLI`
+    for a text beginning "When".
+
+    Falls back to `lo` only when the bounded search runs out without reaching
+    either a space or the start, which is the unbroken-token case where there is
+    no boundary to find.
+    """
+    if lo <= 0 or text[lo - 1].isspace():
+        return lo
+    limit = lo - 1 - _BOUNDARY_SEARCH
+    for i in range(lo - 1, max(-1, limit), -1):
+        if text[i].isspace():
+            return i + 1
+    return 0 if limit < 0 else lo
+
+
+def _snap_forward(text: str, hi: int) -> int:
+    """Move `hi` right to the nearest whitespace.
+
+    The end of the text counts as a boundary, for the reason `_snap_back` gives
+    about the start.
+    """
+    if hi >= len(text) or text[hi].isspace():
+        return hi
+    limit = hi + _BOUNDARY_SEARCH
+    for i in range(hi, min(len(text), limit)):
+        if text[i].isspace():
+            return i
+    return len(text) if limit >= len(text) else hi
 
 
 def load_messages(transcript_path: Path) -> list[dict]:
