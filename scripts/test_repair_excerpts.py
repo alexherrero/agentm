@@ -85,15 +85,17 @@ class RepairFromTranscriptTests(Case):
 
         f = self.scan().findings[0]
         self.assertEqual(f.outcome, "repaired", f.reason)
-        self.assertNotIn("...alls", f.new_body)
-        self.assertIn("falls", f.new_body,
+        self.assertEqual(len(f.repairs), 1, f.repairs)
+        got = next(iter(f.repairs.values()))
+        self.assertNotIn("...alls", got)
+        self.assertIn("falls", got,
                       "the recovered word came back from the transcript")
 
     def test_the_repaired_text_is_source_and_not_invention(self):
         self.transcript("proj", "abc", SOURCE)
         self.note("m/a.md", f"User stated: {MANGLED}", session="proj/abc")
         f = self.scan().findings[0]
-        core = f.new_body.strip(".").strip()
+        core = next(iter(f.repairs.values())).strip(".").strip()
         # Every word of the result appears in the source. A repair that added a
         # word would be a repair that made one up.
         for w in core.split():
@@ -109,7 +111,7 @@ class RepairFromTranscriptTests(Case):
         self.note("m/a.md", f"User stated: {MANGLED}", session="proj/abc")
         f = self.scan().findings[0]
         self.assertEqual(f.outcome, "repaired", f.reason)
-        self.assertIn("falls", f.new_body)
+        self.assertIn("falls", next(iter(f.repairs.values())))
 
     def test_a_near_miss_passage_does_not_match(self):
         # The reason the needle keeps its edges: precision. A transcript holding a
@@ -146,13 +148,112 @@ class RepairFromTranscriptTests(Case):
         f = self.scan().findings[0]
         self.assertEqual(f.reason, "no surviving transcript to re-cut from",
                          "the missing-transcript case was decided somewhere else")
-        self.assertEqual(f.new_body, "", "a re-cut was attempted with no transcript")
+        self.assertEqual(f.repairs, {}, "a re-cut was attempted with no transcript")
 
     def test_a_note_with_no_session_at_all_marks(self):
         # 80.6% of the real damaged corpus. The common case, not the edge one.
         self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
         f = self.scan().findings[0]
         self.assertEqual(f.outcome, "marked")
+
+
+class EveryExcerptTests(Case):
+    """A mined note carries more than one, and all of them were cut.
+
+    The body holds the passage the candidate was named for; a `## Supporting
+    excerpts` block lists the rest. Over the first twenty-five notes repaired on
+    the live vault, every one had a Supporting block holding a *different*
+    passage — so repairing the body left half of each note as it was.
+    """
+
+    SECOND = ("...ructure, parity, wiring. Live recall quality cannot be a unit "
+              "test, so it was never anyone's definition of don...")
+
+    def two_excerpt_note(self, rel="m/a.md", *, session="proj/abc"):
+        return self.note(
+            rel,
+            f"## never anyone\n\nUser stated: {MANGLED}\n\n"
+            f"## Supporting excerpts\n\n> {self.SECOND}\n",
+            session=session)
+
+    def test_both_excerpts_are_found(self):
+        raw = self.two_excerpt_note().read_text(encoding="utf-8")
+        self.assertEqual(len(rx.find_excerpts(raw)), 2, rx.find_excerpts(raw))
+
+    def test_a_repeated_excerpt_is_counted_once(self):
+        p = self.note("m/a.md",
+                      f"User stated: {MANGLED}\n\n## Supporting excerpts\n\n"
+                      f"> {MANGLED}\n")
+        self.assertEqual(len(rx.find_excerpts(p.read_text(encoding="utf-8"))), 1)
+
+    def test_both_are_repaired_when_both_are_in_the_transcript(self):
+        self.transcript("proj", "abc", SOURCE,
+                        "everything determinism could reach: structure, parity, "
+                        "wiring. Live recall quality cannot be a unit test, so it "
+                        "was never anyone's definition of done, and that mattered")
+        self.two_excerpt_note()
+        f = self.scan().findings[0]
+        self.assertEqual(f.outcome, "repaired", f.reason)
+        self.assertEqual(len(f.repairs), 2, f.repairs)
+
+    def test_the_supporting_block_is_actually_rewritten(self):
+        self.transcript("proj", "abc", SOURCE,
+                        "everything determinism could reach: structure, parity, "
+                        "wiring. Live recall quality cannot be a unit test, so it "
+                        "was never anyone's definition of done, and that mattered")
+        p = self.two_excerpt_note()
+        rx.apply(self.vault, self.scan(), self.log, "run-1")
+        after = p.read_text(encoding="utf-8")
+        self.assertNotIn(self.SECOND, after,
+                         "the Supporting excerpts block kept its damaged copy")
+
+    def test_one_repairable_and_one_not_is_reported_as_both(self):
+        # Only the body's passage is in the transcript. Calling the note
+        # "repaired" would overstate it and "marked" would understate it.
+        self.transcript("proj", "abc", SOURCE)
+        self.two_excerpt_note()
+        f = self.scan().findings[0]
+        self.assertEqual(f.outcome, "repaired-and-marked", f.reason)
+        self.assertEqual(len(f.repairs), 1)
+        self.assertEqual(f.unrepaired, 1)
+
+    def test_a_partly_repaired_note_is_also_marked_on_disk(self):
+        self.transcript("proj", "abc", SOURCE)
+        p = self.two_excerpt_note()
+        rx.apply(self.vault, self.scan(), self.log, "run-1")
+        after = p.read_text(encoding="utf-8")
+        self.assertIn(rx.MARKER, after, "the unverified half was not marked")
+        self.assertNotIn("...alls", after, "the repairable half was not repaired")
+
+    def test_a_partly_repaired_note_reverts_whole(self):
+        self.transcript("proj", "abc", SOURCE)
+        p = self.two_excerpt_note()
+        before = p.read_bytes()
+        entry = rx.apply(self.vault, self.scan(), self.log, "run-1")
+        self.log.revert("run-1", entry)
+        self.assertEqual(p.read_bytes(), before)
+
+    def test_only_marked_writes_no_repairs(self):
+        # The mirror, and it needs a *partly* repairable note. A fully repairable
+        # one is filtered out of an `--only marked` run entirely, so the write
+        # path is never reached and the assertion proves nothing.
+        self.transcript("proj", "abc", SOURCE)
+        p = self.two_excerpt_note()
+        rx.apply(self.vault, self.scan(), self.log, "run-1", only="marked")
+        after = p.read_text(encoding="utf-8")
+        self.assertIn(rx.MARKER, after)
+        self.assertIn("...alls", after,
+                      "a repair was written during a marking-only run")
+
+    def test_only_repaired_still_marks_nothing(self):
+        # `--only repaired` on a partly-repairable note writes the repair and
+        # leaves the marker off, so the two halves can still be landed apart.
+        self.transcript("proj", "abc", SOURCE)
+        p = self.two_excerpt_note()
+        rx.apply(self.vault, self.scan(), self.log, "run-1", only="repaired")
+        after = p.read_text(encoding="utf-8")
+        self.assertNotIn("...alls", after)
+        self.assertNotIn(rx.MARKER, after)
 
 
 class MarkingTests(Case):

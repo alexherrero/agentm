@@ -114,15 +114,24 @@ class Finding:
     excerpt: str
     elided_head: bool
     elided_tail: bool
+    # repairs maps a damaged excerpt to its re-cut form. A note can have several,
+    # and can have some repairable and some not — which is why the outcome below
+    # is not the whole story and `unrepaired` is reported alongside it.
+    repairs: dict = field(default_factory=dict)
+    unrepaired: int = 0
     # outcome is decided before anything is written, so a dry run and a real run
     # report the same thing.
-    outcome: str = "marked"  # "repaired" | "marked" | "already-marked" | "clean"
+    outcome: str = "marked"  # repaired | repaired-and-marked | marked | already-marked
     reason: str = ""
-    new_body: str = ""
 
     def as_dict(self) -> dict:
-        return {"rel": self.rel, "outcome": self.outcome, "reason": self.reason,
-                "elided_head": self.elided_head, "elided_tail": self.elided_tail}
+        out = {"rel": self.rel, "outcome": self.outcome, "reason": self.reason,
+               "elided_head": self.elided_head, "elided_tail": self.elided_tail}
+        if self.repairs:
+            out["repaired_excerpts"] = len(self.repairs)
+        if self.unrepaired:
+            out["unrepaired_excerpts"] = self.unrepaired
+        return out
 
 
 @dataclass
@@ -156,21 +165,51 @@ def is_mined_note(raw: str) -> bool:
                          body))
 
 
-def find_excerpt(raw: str) -> str:
-    """The excerpt line from a mined body, or empty."""
+def find_excerpts(raw: str) -> list:
+    """Every excerpt in a mined note, in the order they appear.
+
+    A note carries more than one. The body holds the passage the candidate was
+    named for; a `## Supporting excerpts` block lists the rest, one per line
+    behind a `>`. Over the first batch repaired, all twenty-five notes had a
+    Supporting block and in all twenty-five it held a *different* passage —
+    repairing only the body left half of each note as it was.
+
+    Deduplicated, because the two are sometimes the same string and replacing it
+    twice would be a no-op the second time and a confusing count the first.
+    """
     m = FRONTMATTER.match(raw)
     rest = raw[m.end():] if m else raw
+    out, seen = [], set()
+
+    def add(text: str) -> None:
+        text = text.strip()
+        if text and text not in seen:
+            seen.add(text)
+            out.append(text)
+
     for line in rest.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
+        stripped = line.strip()
+        if not stripped:
             continue
-        for prefix in ("User stated: ", "User corrected the agent: ", "Fix observed: "):
-            if line.startswith(prefix):
-                return line[len(prefix):].strip()
-        if line.startswith("..."):
-            return line
-        break
-    return ""
+        # The body line, behind one of the four prefixes reflect.py writes.
+        for prefix in ("User stated: ", "User corrected the agent: ",
+                       "Fix observed: "):
+            if stripped.startswith(prefix):
+                add(stripped[len(prefix):])
+                break
+        else:
+            # A Supporting-excerpts line, or a bare body excerpt with no prefix.
+            if stripped.startswith("> ..."):
+                add(stripped[2:])
+            elif stripped.startswith("..."):
+                add(stripped)
+    return out
+
+
+def find_excerpt(raw: str) -> str:
+    """The first excerpt, for callers that only need one."""
+    found = find_excerpts(raw)
+    return found[0] if found else ""
 
 
 def transcript_for(raw: str, transcripts: Path) -> Path | None:
@@ -280,31 +319,45 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
         if not is_mined_note(raw):
             rep.skipped_not_mined += 1
             continue
-        excerpt = find_excerpt(raw)
-        if not excerpt:
-            continue
-        head = bool(ELIDED_HEAD.match(excerpt))
-        tail = bool(ELIDED_TAIL.search(excerpt))
-        if not (head or tail):
+        excerpts = [e for e in find_excerpts(raw)
+                    if ELIDED_HEAD.match(e) or ELIDED_TAIL.search(e)]
+        if not excerpts:
             continue
 
         rel = str(path.relative_to(vault))
-        f = Finding(rel=rel, excerpt=excerpt, elided_head=head, elided_tail=tail)
-        m = FRONTMATTER.match(raw)
-        if m and MARKER_FM.search(m.group(1)):
-            f.outcome, f.reason = "already-marked", "seen by an earlier run"
-            rep.findings.append(f)
-            continue
+        first = excerpts[0]
+        f = Finding(rel=rel, excerpt=first,
+                    elided_head=bool(ELIDED_HEAD.match(first)),
+                    elided_tail=bool(ELIDED_TAIL.search(first)))
 
         t = transcript_for(raw, transcripts)
-        if t is None:
+        if t is not None:
+            for e in excerpts:
+                recut = recut_from(t, e)
+                if recut and recut != e:
+                    f.repairs[e] = recut
+        f.unrepaired = len(excerpts) - len(f.repairs)
+
+        m = FRONTMATTER.match(raw)
+        marked_already = bool(m and MARKER_FM.search(m.group(1)))
+
+        if f.repairs and not f.unrepaired:
+            f.outcome = "repaired"
+            f.reason = f"{len(f.repairs)} of {len(excerpts)} re-cut from {t.name}"
+        elif f.repairs:
+            # Both, and said as both. A note where one passage came back and
+            # another did not is not honestly described by either label alone.
+            f.outcome = "repaired-and-marked"
+            f.reason = (f"{len(f.repairs)} of {len(excerpts)} re-cut from "
+                        f"{t.name}; the rest are unverified")
+        elif marked_already:
+            f.outcome, f.reason = "already-marked", "seen by an earlier run"
+        elif t is None:
+            f.outcome = "marked"
             f.reason = "no surviving transcript to re-cut from"
         else:
-            recut = recut_from(t, excerpt)
-            if recut and recut != excerpt:
-                f.outcome, f.new_body, f.reason = "repaired", recut, f"re-cut from {t.name}"
-            else:
-                f.reason = f"{t.name} exists but does not contain the passage"
+            f.outcome = "marked"
+            f.reason = f"{t.name} exists but does not contain the passage"
         rep.findings.append(f)
         if limit and len(rep.findings) >= limit:
             break
@@ -328,13 +381,24 @@ def apply(vault: Path, rep: Report, revert_log, run_id: str, *,
     for f in rep.findings:
         if f.outcome == "already-marked":
             continue
-        if only and f.outcome != only:
-            continue
+        # No filter check here. `only` is honoured at the write below, and a
+        # note that ends up unchanged is dropped by the `body == raw` test — so a
+        # skip clause at this point is a second implementation of the same rule.
+        # Removing it changed no test, which is how it was found.
         raw = (vault / f.rel).read_text(encoding="utf-8")
-        if f.outcome == "repaired":
-            body = replace_body_excerpt(raw, f.excerpt, f.new_body)
-        else:
-            body = mark(raw)
+        body = raw
+        # The filter governs what gets written, not just which notes are visited.
+        # A note with one repairable passage and one that is not passes an
+        # `--only repaired` filter, and marking it there would land half the
+        # marking pass early — which is exactly what landing them separately was
+        # for.
+        if only != "marked":
+            for old, new in f.repairs.items():
+                body = replace_body_excerpt(body, old, new)
+        if f.unrepaired and only != "repaired":
+            body = mark(body)
+        if body == raw:
+            continue
         mutations.append((vault / f.rel, body))
         if len(mutations) >= batch:
             break
@@ -366,7 +430,7 @@ def main(argv: list) -> int:
     else:
         counts = rep.counts()
         print(f"scanned {rep.scanned} notes, {rep.skipped_not_mined} not mined")
-        for k in ("repaired", "marked", "already-marked"):
+        for k in ("repaired", "repaired-and-marked", "marked", "already-marked"):
             if counts.get(k):
                 print(f"  {k:<15} {counts[k]}")
         for f in rep.findings[:5]:
