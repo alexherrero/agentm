@@ -121,7 +121,8 @@ class Finding:
     unrepaired: int = 0
     # outcome is decided before anything is written, so a dry run and a real run
     # report the same thing.
-    outcome: str = "marked"  # repaired | repaired-and-marked | marked | already-marked
+    outcome: str = "marked"  # repaired | repaired-and-marked | verified |
+    #                                 marked | already-marked
     reason: str = ""
 
     def as_dict(self) -> dict:
@@ -242,8 +243,7 @@ def recut_from(transcript: Path, excerpt: str) -> str:
     session id is recorded per candidate and a note can carry the wrong one.
     """
     inner = excerpt.strip(".").strip()
-    words = inner.split()
-    if len(words) < 5:
+    if len(inner.split()) < 5:
         return ""
     # The whole interior, damaged edges included.
     #
@@ -282,9 +282,19 @@ def recut_from(transcript: Path, excerpt: str) -> str:
                 i = text.find(needle)
                 if i < 0:
                     continue
-                return reflect._excerpt_around(
-                    text, i, i + len(needle),
-                    radius=len(words[0]) + len(words[-1]) + 8)
+                # Radius zero, and the boundary snap does the rest.
+                #
+                # The window starts exactly at the passage the note already holds
+                # and widens only far enough to complete the words its edges were
+                # cut through — which is the whole repair, and nothing more.
+                #
+                # A radius derived from the excerpt's own edge words was tried
+                # first and is not idempotent: the edges grow with each repair, so
+                # the radius grows, so the window grows. Measured on one note
+                # across three runs, 362 characters became 419 became 470. A
+                # repair that produces a different answer every time it runs is
+                # not a repair, and nothing in the pass would ever have settled.
+                return reflect._excerpt_around(text, i, i + len(needle), radius=0)
     except OSError:
         return ""
     return ""
@@ -331,12 +341,21 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
                     elided_tail=bool(ELIDED_TAIL.search(first)))
 
         t = transcript_for(raw, transcripts)
+        verified = 0
         if t is not None:
             for e in excerpts:
                 recut = recut_from(t, e)
-                if recut and recut != e:
+                if not recut:
+                    continue
+                # Found in the transcript, so its edges are known either way.
+                verified += 1
+                if recut != e:
                     f.repairs[e] = recut
-        f.unrepaired = len(excerpts) - len(f.repairs)
+        # Unverified, not unchanged. An excerpt the transcript confirms needs no
+        # repair is *verified* — and counting it as unrepaired marked every note
+        # the pass had already fixed, on the very next run, for edges it had just
+        # checked against the source.
+        f.unrepaired = len(excerpts) - verified
 
         m = FRONTMATTER.match(raw)
         marked_already = bool(m and MARKER_FM.search(m.group(1)))
@@ -344,6 +363,12 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
         if f.repairs and not f.unrepaired:
             f.outcome = "repaired"
             f.reason = f"{len(f.repairs)} of {len(excerpts)} re-cut from {t.name}"
+        elif not f.repairs and not f.unrepaired:
+            # Every excerpt was found in the transcript and every one already
+            # matched. Nothing to do and nothing to flag: this is what a note
+            # looks like after the pass has been over it.
+            f.outcome = "verified"
+            f.reason = f"all {len(excerpts)} confirmed against {t.name}"
         elif f.repairs:
             # Both, and said as both. A note where one passage came back and
             # another did not is not honestly described by either label alone.
@@ -430,7 +455,8 @@ def main(argv: list) -> int:
     else:
         counts = rep.counts()
         print(f"scanned {rep.scanned} notes, {rep.skipped_not_mined} not mined")
-        for k in ("repaired", "repaired-and-marked", "marked", "already-marked"):
+        for k in ("repaired", "repaired-and-marked", "verified", "marked",
+                  "already-marked"):
             if counts.get(k):
                 print(f"  {k:<15} {counts[k]}")
         for f in rep.findings[:5]:

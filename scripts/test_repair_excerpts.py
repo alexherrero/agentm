@@ -256,6 +256,66 @@ class EveryExcerptTests(Case):
         self.assertNotIn(rx.MARKER, after)
 
 
+class IdempotenceTests(Case):
+    """Running the pass twice does the same thing as running it once.
+
+    Nothing checked this, and it was false. The re-cut took its radius from the
+    excerpt's own first and last words; repairing lengthens those words, so the
+    radius grew, so the window grew. One note went 362 characters to 419 to 470
+    across three runs and would never have settled.
+
+    A repair that gives a different answer each time it runs is not a repair, and
+    a pass over 2,300 notes will be run more than once.
+    """
+
+    def test_a_second_run_finds_nothing_left_to_repair(self):
+        self.transcript("proj", "abc", SOURCE)
+        self.note("m/a.md", f"User stated: {MANGLED}", session="proj/abc")
+        rx.apply(self.vault, self.scan(), self.log, "run-1")
+
+        second = self.scan()
+        self.assertEqual([f for f in second.findings if f.repairs], [],
+                         "the pass wants to repair what it already repaired")
+
+    def test_a_second_run_writes_nothing(self):
+        self.transcript("proj", "abc", SOURCE)
+        p = self.note("m/a.md", f"User stated: {MANGLED}", session="proj/abc")
+        rx.apply(self.vault, self.scan(), self.log, "run-1")
+        after_first = p.read_bytes()
+
+        entry = rx.apply(self.vault, self.scan(), self.log, "run-2")
+        self.assertEqual(entry, "", "a second run produced a revert-log entry")
+        self.assertEqual(p.read_bytes(), after_first)
+
+    def test_recutting_a_repaired_excerpt_returns_it_unchanged(self):
+        # The property underneath, stated on its own so a failure points at the
+        # re-cut rather than at the pass around it.
+        t = self.transcript("proj", "abc", SOURCE)
+        once = rx.recut_from(t, MANGLED)
+        self.assertTrue(once)
+        self.assertEqual(rx.recut_from(t, once), once,
+                         "the window moved on a second pass over the same text")
+
+    def test_the_window_does_not_grow_across_three_runs(self):
+        t = self.transcript("proj", "abc", SOURCE)
+        a = rx.recut_from(t, MANGLED)
+        b = rx.recut_from(t, a)
+        c = rx.recut_from(t, b)
+        self.assertEqual(len(a), len(b), f"{len(a)} then {len(b)}")
+        self.assertEqual(len(b), len(c), f"{len(b)} then {len(c)}")
+
+    def test_the_repair_recovers_the_words_and_not_more(self):
+        # Radius zero plus the boundary snap: exactly the characters the cut ate.
+        # A wider window would pull in text the note never held, which is a
+        # different note rather than a repaired one.
+        t = self.transcript("proj", "abc", SOURCE)
+        got = rx.recut_from(t, MANGLED)
+        self.assertIn("falls", got, "the truncated word did not come back")
+        self.assertIn("hard-stopped", got)
+        self.assertNotIn("by a missing tool", got,
+                         "the window reached past the words that were cut")
+
+
 class MarkingTests(Case):
     """Bar 2: marking changes the frontmatter and nothing else."""
 
