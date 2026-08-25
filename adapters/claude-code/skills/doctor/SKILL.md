@@ -21,7 +21,7 @@ You are running the `doctor` skill. Full canonical spec: `harness/skills/doctor.
 | **Antigravity** | `.agents/rules/` present, no `.claude/` | crickets-provided (`.agents/workflows/*.md` if paired) | `.agents/skills/*/` (memory agents; review agents crickets-provided) | `.agents/skills/*/` | none — skip |
 | **Gemini CLI** | `.gemini/settings.json` present, no `.claude/` | crickets-provided (`.gemini/commands/*.toml` if paired) | crickets-provided (`.gemini/agents/*.md` if paired) | `.agents/skills/*/` (shared delivery) | none — skip |
 
-- **Claude Code only — resolve install scope** before checking: project (`<project>/.claude/` populated), **user** (`~/.claude/` populated — default since v4.3.0), or mixed; use whichever holds the primitives as `$ROOT` and report it (`scope: user|project|mixed`).
+- **Resolve the install prefix** before checking: `$AGENTM_INSTALL_PREFIX` → `~/.claude`. That is the only place agentm installs; use it as `$ROOT`. A populated `<project>/.claude/` is residue from the retired per-project install — do not validate it, but if one exists alongside a healthy install, report `[WARN] legacy per-project tree at <project>/.claude/ — no longer used; safe to delete`.
 - **Antigravity** reads `.agents/` (the 2.0 default; `.agent/` singular is the pre-V4 #22 legacy path, migrated on `--update`). Its sub-agents *and* skills both live under `.agents/skills/`. Always-on rules: `.agents/rules/harness.md` + `.agents/rules/agentmemory-context.md`.
 - **No hook surface on Antigravity / Gemini** — skip the hook-wiring check (#6) and the hook/SessionStart probes (#6–#7); report them `[SKIP] no hook surface on <host>`, never FAIL.
 - **None detected** — abort: `doctor: no agentm install detected (.claude/, .agents/, or .gemini/) — run install.sh /path/to/project`.
@@ -53,7 +53,7 @@ Then:
    - **Legacy `.harness/`** — if the resolver returns nothing or the vault is unavailable, check `<project>/.harness/PLAN.md` + `<project>/.harness/progress.md`. Report `state files [OK] legacy .harness/` if both present.
    - FAIL only if neither path yields both files. An empty `.harness/` alongside a healthy vault resolution is the EXPECTED post-V4 #26 shape — not a fail.
    - Note: `scripts/telemetry.sh` is no longer a vault-resident state file (v4.6.2+). It's a user-scope helper — see check 4b below.
-4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. Report `[OK] telemetry.sh installed` if present. Report `[WARN] telemetry.sh not installed — re-run install.sh` if absent (graceful, never FAIL). The script roots across multiple projects (`--all` scans `~/Antigravity`, `~/Claude`, `~/Projects`), so it lives at user scope, not per-project.
+4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. Report `[OK] telemetry.sh installed` if present. Report `[WARN] telemetry.sh not installed — re-run install.sh` if absent (graceful, never FAIL). The script roots across multiple projects (`--all` scans `~/Antigravity`, `~/Claude`, `~/Projects`), so a single copy at the install prefix is the right shape for it.
 4c. **Storage-backend preview (V5-1).** Shell out to `python3 <agentm-repo>/scripts/backend_selection.py --doctor` — the same resolver the memory engine selects through, reusing the identical install-the-plugin message the fail-loud guard raises. It resolves the selected backend (explicit `storage.backend` → existing `vault_path` → fresh `device-local`), confirms that protocol's plugin is registered, and (for `device-local`) that its root is writable — read-only, never constructing a backend. Print its single status line and map: `[OK]` (exit 0) ready; `[WARN]` (exit 0) `device-local` root not writable — preventive, never FAIL; `[FAIL]` (exit 1) unregistered plugin (prints the verbatim install-the-plugin message), `vault` with no `vault_path`, or a corrupt / non-string config. **The one structural check that legitimately FAILs** — it's the fail-loud preview shown *before* the engine refuses.
 4d. **Memory MCP server (V5-9).** Shell out to `python3 <agentm-repo>/scripts/memory_mcp_doctor.py`. **Graceful-skip if absent** — `[SKIP] memory-server not installed (pre-V5-9)`, never FAIL. Default mode checks `liveness` + `token_env`; `--live` adds `origin_guard` + `index_root_safe`. Map each result:
    - `passed=True` → `[OK]  memory-server <name>: <msg>`
@@ -66,7 +66,7 @@ Then:
    - `origin_guard` (`--live`) — spoofed Origin expects 403; SKIP if daemon down.
    - `index_root_safe` (`--live`) — lock root outside synced/cloud path.
 5. `AGENTS.md` + `CLAUDE.md` exist at repo root.
-6. **Hook wiring (V4 #39 — a real check, not "absent block is fine"). _Claude Code only — on Antigravity/Gemini report `[SKIP] no hook surface` and move on._** Hooks install at user scope (`~/.claude/hooks/<name>/`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Resolve the prefix (`$AGENTM_INSTALL_PREFIX` → `~/.claude`) and apply this truth table against `<prefix>/hooks/` + `<prefix>/settings.json` (apply the same logic to a populated legacy project-scope `<project>/.claude/`):
+6. **Hook wiring (V4 #39 — a real check, not "absent block is fine"). _Claude Code only — on Antigravity/Gemini report `[SKIP] no hook surface` and move on._** Hooks install at `~/.claude/hooks/<name>/`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Resolve the prefix (`$AGENTM_INSTALL_PREFIX` → `~/.claude`) and apply this truth table against `<prefix>/hooks/` + `<prefix>/settings.json`:
 
    | Disk state | Report |
    |---|---|
@@ -75,7 +75,7 @@ Then:
    | `hooks/` populated + **no `hooks` block** | **`[FAIL] N hooks installed on disk but not wired in settings.json — install.sh fragment merge did not run. Re-run install.sh.`** ← the V4 #39 bug |
    | `hooks/` populated + `hooks` block + some `command` paths point at missing files | `[FAIL] X of N registered hook commands point at missing scripts: <list>` |
    | `hooks/` populated + `hooks` block + some installed hook dirs not registered | `[WARN] <list> installed but not registered — partial merge` |
-   | `<prefix>/.agentm-config.json` missing while user-scope primitives present | `[WARN] partial install — install-state file missing` |
+   | `<prefix>/.agentm-config.json` missing while primitives present | `[WARN] partial install — install-state file missing` |
 
    Also confirm bash-installed commands are bash-shell (not pwsh). The pre-V4 #39 behavior — treating an absent `hooks` block as "opt-in, OK" — was a **false-clean**: it masked the exact regression where hook dirs were installed but never registered.
 
@@ -160,7 +160,7 @@ Pass: `harness-context-session-start` emits a 2-path block matching the expected
 doctor: claude-code — <PASS|FAIL>     (host: claude-code | antigravity | gemini)
 
   host:               claude-code
-  scope:              user        (Claude Code only; or: project | mixed)
+  install prefix:     ~/.claude
   state mode:         vault-resident   (or: legacy .harness/)
 
   structural:

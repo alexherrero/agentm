@@ -18,15 +18,28 @@ Default is deliberately cheap so `/doctor` can be the reflex "did my install lan
 
 Before any checks run, `doctor` detects which adapter is installed by looking for the canonical directory layout:
 
-| Adapter | Project-scope marker | User-scope marker |
-|---|---|---|
-| Claude Code | `<project>/.claude/agents/` + `<project>/.claude/skills/` | `~/.claude/agents/` + `~/.claude/skills/` |
-| Antigravity | `<project>/.agents/rules/` + `<project>/.agents/skills/` | `~/.agents/rules/` + `~/.agents/skills/` |
-| Gemini | `<project>/.gemini/settings.json` + `<project>/.agents/skills/` | `~/.gemini/settings.json` + `~/.agents/skills/` |
+| Adapter | Install marker |
+|---|---|
+| Claude Code | `~/.claude/agents/` + `~/.claude/skills/` |
+| Antigravity | `~/.agents/rules/` + `~/.agents/skills/` |
+| Gemini | `~/.gemini/settings.json` + `~/.agents/skills/` |
 
 **Post-slim marker shift (V5 dev-loop slim).** The dev-loop primitives — phase commands (`.claude/commands/`, `.gemini/commands/`, `.agents/workflows/`) and the review sub-agents — are no longer agentm's install marker: they moved to the crickets development-lifecycle / code-review plugins and may or may not be present. agentm's *durable* surface is the memory-engine sub-agents (`.claude/agents/`), the shared skills (`.claude/skills/` + `.agents/skills/`), and the host wiring (Antigravity `.agents/rules/`, Gemini `.gemini/settings.json`). Detect on those. A crickets-installed `.agents/workflows/` or `.gemini/commands/` may coexist but does not, on its own, indicate an agentm install.
 
-**Install scope detection (V4 #30 v4.3.0+).** Since v4.3.0, `install.sh --scope user` is the default. When the project-scope path is empty or absent but the user-scope path has the expected primitives, doctor reports `scope: user` and runs the full structural battery against `~/.claude/` (or the host equivalent). When both scopes have primitives, doctor reports `scope: mixed` and validates each scope's set independently. When neither has primitives, abort with `doctor: no harness adapter found at project or user scope — run install.sh first`.
+**One install location.** agentm installs machine-wide and nowhere else: the
+prefix is `$AGENTM_INSTALL_PREFIX`, defaulting to `~/.claude/` (or the host
+equivalent). Run the full structural battery against it. When it has no
+primitives, abort with `doctor: no harness adapter found at
+$AGENTM_INSTALL_PREFIX — run install.sh first`.
+
+**A populated `<project>/.claude/` is residue, not an install.** The per-project
+install was retired, so a project-local tree can only be left over from an
+install predating that. Doctor no longer validates it — but if one is present
+alongside a healthy machine-wide install, say so once as
+`[WARN] legacy per-project tree at <project>/.claude/ — no longer used; safe to
+delete`. Reporting it beats ignoring it: the files still shadow nothing, but an
+operator who does not know they are dead will keep editing them and wonder why
+nothing changes.
 
 Multiple adapters may be present in the same project (the installer supports that). Run the full battery against each one found and report per-adapter.
 
@@ -39,7 +52,7 @@ For each detected adapter, verify the expected name set is present and each file
 - **Skills** (required, harness-shipped): `doctor`. Optional harness-shipped compound skills: `design, memory` — graceful-skip if absent (they may be deferred via `install.sh --no-compound-skills` or similar). Optional crickets-shipped skills: `dependabot-fixer, diataxis-author, pii-scrubber, ship-release, wiki-author` — graceful-skip if crickets is not paired (`diataxis-author` retired from agentm in the seven-section convergence and absorbs the old four-mode `migrate-to-diataxis` migration via `/diataxis migrate`; canonical in crickets' `wiki` plugin; `wiki-author` retired its agentm-local copy 2026-08-12 to that same plugin, which had already diverged ahead of it; `ship-release` retired its agentm-local copy 2026-07-01 and is now fully owned by crickets' `conventions` skill of the same name, covering both discipline and mechanics).
 
 For each expected item:
-1. The file exists at the adapter-specific path (project scope or user scope, whichever the install resolved to).
+1. The file exists at the adapter-specific path under the install prefix.
 2. The frontmatter YAML (markdown) or top-level TOML parses cleanly.
 3. **For surfaces that carry an explicit `name:` field**, the field matches the filename/dirname. Surfaces that carry `name:`: Claude Code sub-agents and skills, Antigravity skills (including sub-agents-as-skills), Gemini sub-agents. Surfaces *without* `name:` (name is implicit from filename): Claude Code phase commands, Antigravity workflows, Gemini TOML commands. Do **not** flag missing `name:` on those.
 
@@ -53,7 +66,7 @@ Then:
    - FAIL only if neither resolution path produces **any** plan file — no unnamed `PLAN.md`/`progress.md` pair AND no `PLAN-<name>.md`. A `.harness/` empty of state files alongside a healthy vault resolution is the EXPECTED V4 #26+ shape — not a fail; a named-only repo (named plans present, unnamed singleton absent) is likewise not a fail.
    - `telemetry.sh` (pre-v4.6.2 also checked here) moved to user scope in v4.6.2 — see "Helper scripts" below. Per-project vault copies of `scripts/telemetry.sh` are no longer expected.
 
-4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. PASS if present. WARN (graceful-skip, never FAIL) if absent — older installs predate the move. Reason for the move: `telemetry.sh` roots across multiple projects (its `--all` flag scans `~/Antigravity`, `~/Claude`, `~/Projects`), so a single user-scope copy is the right shape; per-project vault copies create N stale duplicates when the script changes.
+4b. **Helper scripts (user-scope; v4.6.2+).** Check `<prefix>/scripts/telemetry.sh` exists + is executable. PASS if present. WARN (graceful-skip, never FAIL) if absent — older installs predate the move. Reason for the move: `telemetry.sh` roots across multiple projects (its `--all` flag scans `~/Antigravity`, `~/Claude`, `~/Projects`), so a single copy at the install prefix is the right shape; the per-project vault copies it replaced created N stale duplicates whenever the script changed.
 4c. **Worktree slug-safety (V5-10).** Run `python3 <agentm>/scripts/vault_project.py check-worktree-slug <project>` — the same shared resolver the `check-worktree-slug` gate calls, so the probe and the gate can't drift. It compares the full-chain vault slug against the Tier-3 origin basename — the slug a fresh `git worktree` resolves to, since a worktree shares the parent's remotes but not the gitignored `.harness/` where a Tier-1/2 override would live. Map the exit code:
    - `0` → `[OK] worktree slug-safe — slug '<slug>' == origin basename`.
    - `1` → `[WARN] slug '<resolved>' != origin basename '<origin>' — a worker in a git worktree would resolve to '<origin>' and write under the wrong projects/<slug>/. Align the slug with the origin basename, or adopt the crickets worktree-spawn fallback that reproduces a divergent vault_project into the worktree.` **Never FAIL here:** exactly like the dangling active-plan marker above, `doctor` is the reporter and the `check-worktree-slug` gate (in `scripts/check-all.sh` / CI) is the loud, build-blocking enforcer.
@@ -76,7 +89,7 @@ Then:
    `python3 <agentm>/scripts/memory_mcp_doctor.py` targets the **retired** Python server and its `token_env` row fails by construction against the daemon. Do not run it as part of this check.
 
 5. **Host wiring file**: `AGENTS.md` exists at repo root. Adapter-specific overlay file exists (`CLAUDE.md` for Claude Code, `.gemini/settings.json` for Gemini pointing at `AGENTS.md`).
-6. **Hook wiring** (Claude Code; V4 #39 — a real check, not "absent block is fine"). Hooks install at user scope (`<prefix>/hooks/<name>/`, prefix = `$AGENTM_INSTALL_PREFIX` → `~/.claude`) under `--scope user`; the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Apply this truth table to `<prefix>/hooks/` + `<prefix>/settings.json` (and a populated legacy project-scope `<project>/.claude/` likewise):
+6. **Hook wiring** (Claude Code; V4 #39 — a real check, not "absent block is fine"). Hooks install at `<prefix>/hooks/<name>/` (prefix = `$AGENTM_INSTALL_PREFIX` → `~/.claude`); the installer MUST merge each hook's `settings-fragment-bash.json` into `<prefix>/settings.json` (V4 #39 task 1). Apply this truth table to `<prefix>/hooks/` + `<prefix>/settings.json`:
    - `hooks/` empty + no `hooks` block → `[OK] no hooks installed (clean)`.
    - `hooks/` populated + `hooks` block + **every** registered `command` resolves to an existing file + **every** installed hook dir has a registered fragment → `[OK] N hooks wired (<list>)`.
    - `hooks/` populated + **no `hooks` block** → **`[FAIL] N hooks installed on disk but not wired in settings.json — install.sh fragment merge did not run. Re-run install.sh.`** (the V4 #39 regression).
@@ -225,7 +238,7 @@ If an installed plugin happens to declare `"nonexistent-capability-doctor-probe"
 ```
 doctor: <adapter> — <PASS|FAIL>
 
-  scope:              user        (or: project | mixed)
+  install prefix:     ~/.claude
   state mode:         vault-resident   (or: legacy .harness/)
 
   structural:
