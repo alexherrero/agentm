@@ -167,6 +167,6 @@ missed, **2** could not run.
 ## Related
 
 - [Releasing Conventions](https://github.com/alexherrero/crickets/wiki/Releasing-Conventions) — CI must be green before you invoke `ship-release`.
-- [How to refresh an installed harness](Update-Installed-Harness) — what `--update` touches vs. leaves alone.
+- [How to refresh an installed harness](Update-Installed-Harness) — what a re-run touches vs. leaves alone.
 - [Vault write protocol](Vault-Write-Protocol) — the protocol the `check-vendored-parity` gate's `vault-lock` mode keeps byte-identical across its two copies.
 - [Foundations HLD](agentm-foundations-hld) — the installer-boundary rule the gates enforce.

@@ -6,31 +6,47 @@ This is your command-line reference for `install.sh` (POSIX) and `install.ps1` (
 
 | Task | Command |
 |---|---|
-| First install | `install.sh <target>` |
-| Install with verification hooks | `install.sh --hooks <target>` |
-| Refresh managed files | `install.sh --update <target>` |
-| Refresh + hook update | `install.sh --update --hooks <target>` |
-| Install in single-repo (vault-less) mode | `install.sh --local-state <target>` |
+| Install (or refresh — it is the same command) | `install.sh` |
+| Install in single-repo (vault-less) mode | `install.sh --local-state` |
+| Install the memory daemon as a launchd agent | `install.sh --daemon` |
+| Install without fetching the embedding model | `install.sh --no-embedder` |
 | Flip an existing install to vault-less mode | `agentm_config.py --state-mode local` |
 | Print help | `install.sh --help` |
 
 ## Synopsis
 
 ```
-install.sh [--hooks] [--update] [--scope user|project] [--local-state] [--mcp-server] <target-project-path>
-install.ps1 [-Hooks] [-Update] [-Scope user|project] [-LocalState] <target-project-path>
+install.sh [--local-state] [--daemon|--no-daemon] [--no-embedder]
+install.ps1 [-LocalState]
 ```
+
+There is no target path. AgentM installs to `$AGENTM_INSTALL_PREFIX`
+(default `~/.claude/`) and is then available in every project on the machine.
 
 ## Flags
 
 | Flag (bash) | Flag (pwsh) | Effect |
 |---|---|---|
-| `--hooks` | `-Hooks` | Copy hook scripts into `.harness/hooks/` and merge PostToolUse / PreCompact / SessionStart entries into `.claude/settings.json`. Requires `jq` on POSIX; pwsh uses native JSON cmdlets. |
-| `--update` | `-Update` | **True sync** (v1.0.0+): wipe the harness-authored dirs (`.claude/{commands,agents,skills,hooks}`, `.agents/{rules,workflows,skills}`, `.gemini/{commands,agents}`, `.harness/{scripts,hooks}`) and recreate from source. Orphan paths from older versions (e.g. the legacy `.agent/` tree, or `.codex/`) are auto-removed. Leaves user-owned files (`.harness/PLAN.md`, `progress.md`, `verify.sh`, `init.sh`, `known-migrations.md`, `AGENTS.md`, `CLAUDE.md`, `wiki/**`) alone. Writes `.harness/.version`. |
-| `--scope user\|project` | `-Scope user\|project` | Install scope (default `project`). `--scope user` installs customizations to `~/.claude/` (target path not required) and also merges the AgentMemory payload into `~/.gemini/GEMINI.md` when `~/.gemini/` exists — the Antigravity global channel, so the vault rule applies across every workspace. `--scope project` installs into `<target>/.claude/` as usual. |
 | `--local-state` | `-LocalState` | Opt this machine into single-repo (vault-less) state: writes `"state_mode": "local"` to the on-host `.agentm-config.json` and skips vault auto-detection, so every phase write lands under `<repo>/.harness/` with no vault required. Flip an existing install with `agentm_config.py --state-mode` (below). See [Single-repo state mode](Single-Repo-State-Mode). |
-| `--mcp-server` | *(bash only)* | Generate a launchd plist for the memory MCP daemon. macOS only. |
+| `--daemon` | *(bash only)* | Build the Go memory daemon and install it as a launchd agent so it survives a reboot. macOS only. Needed once — afterwards every install run rebuilds and reloads it automatically. |
+| `--no-daemon` | *(bash only)* | Skip that automatic refresh for this run. |
+| `--no-embedder` | *(bash only)* | Do not fetch the embedding model (~330MB). The daemon then runs lexical-only: hybrid retrieval is unavailable and every status surface says so. |
+| `--mcp-server` | *(bash only)* | **Retired.** Generated a launchd plist for the Python FastMCP memory server, which the Go daemon replaced on port 7821. The flag now refuses with exit 2 rather than installing a second agent to fight the real one for the port. Use `--daemon`. |
 | `-h`, `--help` | *(no pwsh equivalent)* | `install.sh -h`/`--help` prints the header comment block from the installer and exits. `install.ps1` has no help flag — passing one fails PowerShell parameter binding. |
+
+### Retired flags
+
+`--scope`, `--update` and `--hooks` (and their pwsh `-Scope` / `-Update` /
+`-Hooks` twins) were removed with the per-project install. They **fail** rather
+than being ignored, each naming its replacement — a stale script passing one is
+announcing an expectation the installer no longer meets, and a silent no-op
+would let that ride until something downstream broke.
+
+- `--scope` — there is one install scope.
+- `--update` — re-running the installer *is* the refresh. Source-mode installs
+  are symlinks that never go stale; release-mode installs re-copy every run.
+- `--hooks` — the harness hooks install automatically. The per-project
+  verification hook it used to wire up is being re-homed machine-wide.
 
 ## Config CLI — `agentm_config.py`
 
@@ -60,33 +76,39 @@ All four keys are now live. `--notify-enabled`: [`scripts/health/session_notify.
 | `bash` 4+ or `pwsh` 7+ | Host interpreter | Always |
 | `git` | Version discovery (`git describe`), state tracking | Always |
 | `python3` | Validation and integrity scripts | Always |
-| `jq` | JSON merge for hook settings | `--hooks` on POSIX only |
 | `gh` | GitHub CLI; used by `ship-release` and any PR/issue flow | Post-install, not by the installer itself |
 
 ## Installed tree
 
-| Tree | Owner | `--update` behavior |
-|---|---|---|
-| `.harness/PLAN.md`, `progress.md`, `features.json`, `init.sh`, `verify.{sh,ps1}`, `known-migrations.md` | User | Skip-if-exists; never overwritten |
-| `.harness/scripts/` (telemetry, cross-review) | Harness | Overwritten |
-| `.harness/hooks/` | Harness | Overwritten (only with `--hooks`) |
-| `.claude/commands/`, `.claude/agents/`, `.claude/skills/`, `.claude/hooks/` | Harness | Overwritten |
-| `.agents/` (Antigravity adapter tree) | Harness | Overwritten on `--update` (wipe-and-recreate from source — see Update-Installed-Harness) |
-| `.gemini/` (vestigial dropped-host adapter — Gemini CLI, dropped v2.4.0; still emitted pending reconciliation, see [Compatibility](Compatibility)) | Harness | Overwritten on `--update` |
-| `AGENTS.md`, `CLAUDE.md` | User (skip-if-exists) | Left alone |
-| `wiki/` scaffold | User | Per-file walk; missing files filled in, existing left alone |
-| `.github/workflows/wiki-sync.yml` | Harness | Overwritten |
+Everything lands under the install prefix (`$AGENTM_INSTALL_PREFIX`, default
+`~/.claude/`), except the update launcher, which needs to be on your `PATH`.
+
+| Path | Contents |
+|---|---|
+| `<prefix>/agents/` | The memory-engine sub-agents |
+| `<prefix>/skills/` | The shared skills (doctor, memory, console, design) |
+| `<prefix>/hooks/<name>/` | Each hook as a directory bundle, with its settings fragment merged into `<prefix>/settings.json` |
+| `<prefix>/scripts/` | Helper scripts that root across projects (e.g. `telemetry.sh`) |
+| `<prefix>/settings.json` | Hook registrations, merged idempotently — your own entries are preserved |
+| `<prefix>/.agentm-config.json` | Install state and on-host config |
+| `~/.local/bin/agentm-update` | Launcher that re-runs the recorded installer |
+| `~/.gemini/GEMINI.md` | The AgentMemory payload, merged as a managed section when `~/.gemini/` exists |
+
+Re-running is idempotent, and it is how you refresh: in source mode the
+customizations are symlinks into your clone, and in release mode they are
+re-copied each run.
 
 ## Phase commands
 
-The agentm installer does **not** ship the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`). You will find this loop in the crickets **development-lifecycle** plugin. You can read about the V5 unbundling in the [AgentM HLD](agentm-hld). The agentm repository no longer vendors the phase specs. Instead, the installer drops the state substrate (`.harness/`, `.claude/`, `.agents/`). Your phases run against this substrate.
+The agentm installer does **not** ship the phase loop (`/setup` `/plan` `/work` `/review` `/release` `/bugfix`). You will find this loop in the crickets **development-lifecycle** plugin. You can read about the V5 unbundling in the [AgentM HLD](agentm-hld). agentm installs the memory engine and its customizations machine-wide; the phases run against that, and `/setup` writes a project's own `.harness/` state when you start one.
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | Success |
-| `1` | Argument error (unknown flag, missing or duplicate target path) |
+| `1` | Argument error (unknown flag, a retired flag, or an unexpected positional argument) |
+| `2` | `--mcp-server` was passed — retired, see above |
 | non-zero | Boundary violation, file I/O error, or failed merge — inspect stderr for the exact message |
 
 ## Files
@@ -95,12 +117,12 @@ The agentm installer does **not** ship the phase loop (`/setup` `/plan` `/work` 
 |---|---|
 | [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh) | POSIX installer |
 | [`install.ps1`](https://github.com/alexherrero/agentm/blob/main/install.ps1) | Windows installer |
-| [`templates/`](https://github.com/alexherrero/agentm/tree/main/templates) | Scaffold copied into every target |
+| [`templates/`](https://github.com/alexherrero/agentm/tree/main/templates) | The update launcher, helper scripts, and hook templates |
 | [`adapters/`](https://github.com/alexherrero/agentm/tree/main/adapters) | Per-tool command / agent / skill trees |
 
 ## Related
 
 - [Tutorial 1: Your first harness install](01-First-Install) — Read this end-to-end walkthrough.
-- [How to install into an existing project](Install-Into-Project) — Follow this recipe for production use.
+- [Install AgentM machine-wide](Install-Machine-Wide) — Follow this recipe for production use.
 - [Foundations HLD](agentm-foundations-hld) — Learn why the installer boundary exists.
 - [Memory-storage seam — On-host state-mode config](memory-storage-seam) — Understand why `--local-state` / `--state-mode` write to `.agentm-config.json` and never to the vault.

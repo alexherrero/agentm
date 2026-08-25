@@ -10,11 +10,9 @@ Task-focused recipes for learning how to use the AgentM harness. For field-level
 | [Install machine-wide (recommended)](Install-Machine-Wide) | The recommended setup — user scope, hooks, Drive vault. |
 | [Your first install](01-First-Install) | Fresh clone to a working scratch project. |
 | [Your first Agent View dispatch](02-First-Agent-View-Dispatch) | The one-time auth setup a new machine needs before background dispatch works. |
-| [Install into a project](Install-Into-Project) | Add the harness scaffold to an existing repo. |
 | [Configure a new project](Configure-A-New-Project) | First-session detect, propose, approve, then persist. |
 | [Re-detect a configured project](Re-Detect-A-Configured-Project) | Re-scan a configured repo and diff against the stored config. |
-| [Update an installed harness](Update-Installed-Harness) | Pull a newer harness version into a project. |
-| [Use per-project install](Use-Per-Project-Install) | Scope the install to one project, not device-wide. |
+| [Update an installed harness](Update-Installed-Harness) | Pull a newer AgentM version onto your machine. |
 
 ## Configure your Vault
 

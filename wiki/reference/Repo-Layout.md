@@ -13,7 +13,7 @@ This page shows the top-level layout of agentm on disk. You can read [How the pi
 | Where does the test infra live? | [`scripts/`](https://github.com/alexherrero/agentm/tree/main/scripts) — **never propagated to target projects**. |
 | Where does this wiki get copied from on install? | Nowhere. Target projects get `templates/wiki/` (an empty scaffold), not this one — see the [Foundations HLD](agentm-foundations-hld). |
 | Where do personal customizations live? | [`crickets`](https://github.com/alexherrero/crickets) — the sibling toolkit repo (since v2.0.0 / [Foundations HLD](agentm-foundations-hld)). |
-| Where does the shared install plumbing live? | [`lib/install/`](https://github.com/alexherrero/agentm/tree/main/lib/install) — byte-identical to `crickets/lib/install/`; synced via `scripts/sync-lib.sh`, parity-gated in CI. |
+| Where does the shared install plumbing live? | [`lib/install/`](https://github.com/alexherrero/agentm/tree/main/lib/install) — the Python install primitives (`install_state.py`, `install_symlinks.py`, `install_copy.py`). Checksum-manifested via `scripts/sync-lib.sh`, parity-gated in CI. Once byte-shared with crickets, which no longer ships install primitives at all. |
 | Where does the vault-less mode signal live? | Two on-host layers — the device-level `state_mode` in `<install-prefix>/.agentm-config.json` and the higher-precedence per-repo `<repo>/.harness/.project-mode`. See [Single-repo state mode](Single-Repo-State-Mode). |
 
 ## Top-level layout

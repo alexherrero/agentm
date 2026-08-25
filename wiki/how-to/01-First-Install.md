@@ -1,119 +1,102 @@
-# Tutorial 1 — Your first harness install
+# Tutorial 1 — Your first AgentM install
 
 > [!NOTE]
-> **Goal:** Install the harness into a fresh scratch project, watch it scaffold the state files, and confirm the install is healthy.
+> **Goal:** Install AgentM into a throwaway location, look at exactly what lands, and learn to tell a clean install from a broken one — without touching your real setup.
 > **Time:** ~5 minutes.
-> **Prereqs:** `bash` 4+, `git`, `python3` available on your `PATH`. No agent required for this tutorial — we're only verifying the install works.
+> **Prereqs:** `bash` 4+, `git`, `python3` on your `PATH`. No agent required for this tutorial — we're only verifying the install works.
 
-By the end of this tutorial you'll have a real harness-installed project on disk, understand what files the installer drops, and know how to tell a clean install from a broken one. You'll use this muscle every time you onboard a new project.
+AgentM installs **once, for your whole machine**. There is no per-project install and no target path: the customizations land in one prefix and apply to every project you open. By the end of this tutorial you'll have run a real install, know which files it produces, and know how to check one.
 
-## Step 1 — Clone the harness
+We'll install into a scratch prefix rather than the real `~/.claude/`, so you can run every command here safely and delete the result afterwards.
 
-Pick a directory you'd be happy throwing away. For this tutorial we'll use `~/harness-playground`.
+## Step 1 — Clone AgentM
+
+Pick a directory you'd be happy throwing away. For this tutorial we'll use `~/agentm-playground`.
 
 ```bash
-mkdir -p ~/harness-playground && cd ~/harness-playground
+mkdir -p ~/agentm-playground && cd ~/agentm-playground
 git clone https://github.com/alexherrero/agentm.git
 ```
 
-You should see a new `agentm/` subdirectory. `ls agentm` should list `install.sh`, `install.ps1`, `harness/`, `adapters/`, `templates/`, and a few more.
+You should see a new `agentm/` subdirectory. `ls agentm` lists `install.sh`, `install.ps1`, `harness/`, `adapters/`, `templates/`, and a few more.
 
-## Step 2 — Create a scratch project to install into
+## Step 2 — Install into a scratch prefix
 
-A harness install needs a target project. It can be completely empty.
-
-```bash
-mkdir my-first-project
-cd my-first-project
-git init
-```
-
-`ls -A` should show exactly one thing: `.git/`.
-
-## Step 3 — Run the installer
-
-From inside the scratch project, run the installer with `../agentm` as the harness path.
+`AGENTM_INSTALL_PREFIX` decides where the customizations go. Unset, it means `~/.claude/` — your real setup. Point it somewhere disposable instead:
 
 ```bash
-../agentm/install.sh .
+export AGENTM_INSTALL_PREFIX=~/agentm-playground/prefix
+bash agentm/install.sh --no-daemon
 ```
+
+Notice there is no target path. `--no-daemon` keeps this tutorial from building and installing the memory daemon, which is a real background service and not something you want from a practice run.
 
 You should see output ending in something like:
 
 ```
-Installed agentm <version> into <path>
-Run the /setup command in your agent to scaffold project-specific files.
+==> done (agentm <version> installed to ~/agentm-playground/prefix).
 ```
 
-No errors, no "boundary violation" messages — if you see either, stop and check your paths.
+No errors and no boundary-violation messages. If you see either, stop and check your paths.
 
-## Step 4 — Look at what got installed
+## Step 3 — Look at what got installed
 
 ```bash
-ls -A
+ls -A ~/agentm-playground/prefix
 ```
 
-You should see these new entries:
+You should see:
 
-- `.harness/` — state files (`PLAN.md`, `progress.md`, `features.json`, `init.sh`, `verify.sh`, `known-migrations.md`).
-- `.claude/` — Claude Code commands, agents, and skills.
-- `.agents/` — the Antigravity adapter tree. (`.gemini/` is also emitted: the vestigial Gemini CLI adapter, a dropped host — see [Compatibility](Compatibility).)
-- `AGENTS.md` — universal agent entry point.
-- `CLAUDE.md` — Claude-Code-specific entry (points back at `AGENTS.md`).
-- `wiki/` — empty documentation scaffold.
-- `.github/workflows/wiki-sync.yml` — workflow that mirrors `wiki/**` to the GitHub Wiki.
+- `agents/` — the memory-engine sub-agents.
+- `skills/` — the shared skills (`doctor`, `memory`, `console`, `design`).
+- `hooks/<name>/` — each hook as its own directory bundle.
+- `scripts/` — helper scripts that root across projects, like `telemetry.sh`.
+- `settings.json` — where each hook registered itself.
+- `.agentm-config.json` — install state and on-host config.
 
-The `.harness/` and `wiki/` trees are yours to edit. Everything else is managed by the installer and gets refreshed on `--update`.
+Two things land outside the prefix by design: the `agentm-update` launcher goes to `~/.local/bin/` so it's on your `PATH`, and the AgentMemory rule is merged into `~/.gemini/GEMINI.md` if that file exists.
 
-## Step 5 — Confirm the install is healthy
+Nothing was written into any project. That is the whole point — a project gets AgentM by existing on a machine that has it.
 
-Run a quick structural sanity check that the installed tree is usable:
+## Step 4 — Confirm the install is healthy
+
+An installed hook is only useful if it actually fires, which takes two things: the script on disk, and a registration pointing at it. Check both.
 
 ```bash
-cat .harness/PLAN.md | head -5
+ls ~/agentm-playground/prefix/hooks/
+python3 -c "import json; s=json.load(open('$HOME/agentm-playground/prefix/settings.json')); print(len(s.get('hooks', {})), 'hook events registered')"
 ```
 
-You should see a real PLAN.md starter template, not an empty file. If the file is empty or missing, the install is broken.
+You should see five hook directories and a non-zero count of registered events. A tree with hook directories but an empty `settings.json` is the classic silent-broken install: the files are all there, and nothing ever runs. That specific failure is what `check-integrity-bash.sh` exists to catch.
+
+## Step 5 — Practice the refresh
+
+Re-running the installer *is* the refresh. There is no separate update flag.
 
 ```bash
-ls .claude/commands/
+bash agentm/install.sh --no-daemon
 ```
 
-You should see six files: `bugfix.md`, `plan.md`, `release.md`, `review.md`, `setup.md`, `work.md`. These are the six phase commands the harness ships with.
+It should succeed again, and `settings.json` should still register the same number of events — the merge is idempotent, so a refresh never duplicates its own entries, and never drops entries you added yourself.
 
-## Step 6 — Practice the refresh flow
-
-The installer is idempotent. Re-running it should be a no-op.
+## Step 6 — Clean up
 
 ```bash
-../agentm/install.sh .
+unset AGENTM_INSTALL_PREFIX
+rm -rf ~/agentm-playground
 ```
 
-No errors. The second run should only report files that were already present.
-
-Now practice the refresh:
-
-```bash
-../agentm/install.sh --update .
-```
-
-This overwrites harness-managed files (commands, agents, skills) with the current version, leaves your state files alone, and records the new version in `.harness/.version`.
-
-```bash
-cat .harness/.version
-```
-
-You should see the current harness version string (e.g. `v0.8.7`).
+That removes everything this tutorial created inside the prefix. If you want to keep the launcher it wrote to `~/.local/bin/agentm-update`, leave it; otherwise delete that too.
 
 ## What you learned
 
-- **The installer is a one-shot copy** — no daemon, no background process, no config parsing. It reads from the harness repo's `templates/` and `adapters/` trees and writes into your project.
-- **State vs. managed files are separated.** `.harness/` and `wiki/` are yours; `.claude/` and `.agents/` are managed and refreshed on `--update`.
-- **Idempotent re-runs are safe.** Run `install.sh` against the same project twice — it won't clobber your work.
-- **A clean install produces a specific tree.** If any of the expected files are missing after Step 4, the install is broken — don't try to work around it.
+- **One install, one location.** AgentM installs to `$AGENTM_INSTALL_PREFIX` (default `~/.claude/`) and applies everywhere. Projects don't get their own copy.
+- **`AGENTM_INSTALL_PREFIX` makes installs testable.** Pointing it at a scratch directory is how you try things without risking your setup.
+- **Re-running is the refresh, and it's idempotent.** No update flag, no clobbering.
+- **Installed ≠ wired up.** The hook files and their registrations in `settings.json` are separate things, and only the pair does anything useful.
 
 ## Next
 
-- **Use the harness on a real project:** [How to install into an existing project](Install-Into-Project).
+- **Set up your real install:** [Install AgentM](Install-Machine-Wide).
 - **Look up a specific flag:** [Installer CLI reference](Installer-CLI).
 - **Understand *why* the harness is shaped this way:** [Phase-gated workflow design](agentm-hld), [Documentation convention design](agentm-foundations-hld).

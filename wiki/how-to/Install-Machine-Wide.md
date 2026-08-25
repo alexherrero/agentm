@@ -1,10 +1,10 @@
-# How to install AgentM machine-wide (recommended)
+# How to install AgentM
 
 > [!NOTE]
-> **Goal:** Install AgentM the recommended way — once for every project on your machine — with the verification hooks and a Google Drive–backed vault, so your memory and customizations follow you across projects and devices.
+> **Goal:** Install AgentM once for every project on your machine, with a Google Drive–backed vault, so your memory and customizations follow you across projects and devices.
 > **Prereqs:** a coding agent (Claude Code or Antigravity) and a local clone of the [agentm repo](https://github.com/alexherrero/agentm). Optional but recommended: a Google Drive folder to hold the vault.
 
-This is the recommended setup. Under **user scope**, AgentM's customizations install into `~/.claude/` and apply to every project you open, rather than to a single repo — so you set it up once. Your memory vault lives in a Google Drive folder, so it syncs across your devices. For the exceptions where you'd deliberately scope the install to one project instead, see [Use per-project install](Use-Per-Project-Install).
+AgentM installs once, for your whole machine. Its customizations go into `~/.claude/` and apply to every project you open, so there is nothing to install per repo and nothing to keep in sync between them. Your memory vault lives in a Google Drive folder, so it follows you across devices.
 
 ## Prerequisites
 
@@ -20,15 +20,15 @@ This is the recommended setup. Under **user scope**, AgentM's customizations ins
    export MEMORY_VAULT_PATH="<your-google-drive>/Agent"
    ```
 
-   The user-scope install below persists this path into your config, so you only set it once. `$MEMORY_VAULT_PATH` also stays available afterward as a per-invocation override.
+   The install below persists this path into your config, so you only set it once. `$MEMORY_VAULT_PATH` also stays available afterward as a per-invocation override.
 
-2. **Install for every project, with hooks.** Run the installer in user scope:
+2. **Install.** Run the installer — it takes no target path:
 
    ```bash
-   bash ~/agentm/install.sh --hooks --scope user
+   bash ~/agentm/install.sh
    ```
 
-   `--scope user` installs the customizations into `~/.claude/`, so they apply to every project — no target path is needed. `--hooks` wires in the verification hooks (typecheck / lint / test on write).
+   The customizations land in `~/.claude/`, so they apply to every project. The harness hooks install and register themselves as part of this. Re-run the same command any time to refresh.
 
 3. **Add the crickets plugins.** AgentM pairs with the crickets toolkit — install its plugins for both hosts:
 
@@ -36,19 +36,18 @@ This is the recommended setup. Under **user scope**, AgentM's customizations ins
    curl -fsSL https://raw.githubusercontent.com/alexherrero/crickets/main/bootstrap.sh | bash
    ```
 
-4. **Open a fresh session and run the doctor.** Start a new session with your agent so the new user-scope config loads, then run the **doctor** to get a report of how everything's wired up — the vault path, the active backend, the hooks, and anything that needs attention. (For a deeper vault-only pass, see [audit the vault](Audit-The-Vault).)
+4. **Open a fresh session and run the doctor.** Start a new session with your agent so the new config loads, then run the **doctor** to get a report of how everything's wired up — the vault path, the active backend, the hooks, and anything that needs attention. (For a deeper vault-only pass, see [audit the vault](Audit-The-Vault).)
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| The vault path isn't picked up | Make sure `MEMORY_VAULT_PATH` points at the real Drive folder and that it exists. The install persists it during a `--scope user` run; if you set it afterward, re-run the install or set it with `agentm_config --vault-path <path>`. |
-| You want just one project, not the whole machine | That's the per-project exception — use `--scope project <target>` instead. See [Use per-project install](Use-Per-Project-Install). |
+| The vault path isn't picked up | Make sure `MEMORY_VAULT_PATH` points at the real Drive folder and that it exists. The install persists it; if you set it afterward, re-run the install or set it with `agentm_config --vault-path <path>`. |
+| You want AgentM in only one project | There is no per-project install any more. AgentM's customizations are machine-wide; what varies per project is its *state* (`PLAN.md`, `progress.md`), which lives in the vault under that project's slug — or in `<repo>/.harness/` if you set [single-repo state mode](Single-Repo-State-Mode). |
 
 ## Related
 
-- [Use per-project install](Use-Per-Project-Install) — the deliberate `--scope project` exception, and when to choose it.
 - [Back the vault with Google Drive](Back-The-Vault-With-Drive) — set up the Drive-synced vault the recommended install uses.
 - [Supported configurations](Supported-Configurations) — the full matrix of scope, storage, and state-mode choices.
-- [Update an installed harness](Update-Installed-Harness) — pull a newer version into an installed project.
+- [Update an installed harness](Update-Installed-Harness) — pull a newer version onto your machine.
 - [Compatibility](Compatibility) — supported hosts and the OS matrix.

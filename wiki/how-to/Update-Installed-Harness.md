@@ -1,69 +1,70 @@
 # How to refresh an installed harness
 
 > [!NOTE]
-> **Goal:** Pull a newer harness version into a project that already has an older one installed, without clobbering user edits.
-> **Prereqs:** The harness repo is cloned somewhere on your machine; the target project was installed from some prior version.
+> **Goal:** Pull a newer AgentM version onto a machine that already has one installed, without losing anything you configured.
+> **Prereqs:** AgentM installed (see [Install AgentM](Install-Machine-Wide)), and — for source installs — the agentm repo cloned on your machine.
 
-`install.sh --update` (POSIX) and `install.ps1 -Update` (Windows) refresh harness-authored files in place without touching user-authored ones.
+Re-running the installer **is** the refresh. There is no separate update flag: `--update` was retired along with the per-project install, and passing it now fails rather than being silently ignored.
 
 ## Steps
 
-1. Pull the latest harness:
+1. Pull the latest AgentM:
 
    ```bash
    git -C /path/to/agentm pull
    ```
 
-2. Run the installer against your project with `--update`:
+2. Re-run the installer. It takes no target path:
 
    ```bash
-   /path/to/agentm/install.sh --update /path/to/your-project
+   bash /path/to/agentm/install.sh
    ```
 
    Or on Windows:
 
    ```powershell
-   pwsh -NoProfile -File C:\path\to\agentm\install.ps1 -Update C:\path\to\your-project
+   pwsh -NoProfile -File C:\path\to\agentm\install.ps1
    ```
 
-3. Confirm the recorded version matches:
+   If you'd rather not remember where your clone is, the installer records that at install time and leaves you a launcher:
 
    ```bash
-   cat /path/to/your-project/.harness/.version
+   agentm-update
    ```
 
-## What gets touched
+   It reads `installer_source` from `<prefix>/.agentm-config.json` and re-runs it, passing through any flags you give it.
 
-| File | Owner | Touched by `--update`? |
-|---|---|---|
-| `PLAN.md`, `progress.md`, `features.json`, `init.sh`, `verify.{sh,ps1}`, `known-migrations.md` | User | No |
-| `AGENTS.md`, `CLAUDE.md` | User | No |
-| `wiki/` scaffold | User | Per-file walk — missing files filled in, existing files preserved |
-| `.harness/scripts/`, `.harness/hooks/` | Harness | Yes (wiped + recreated from source) |
-| `.claude/`, `.agents/` (the supported adapters) | Harness | Yes (wiped + recreated from source) |
-| `.gemini/` (vestigial dropped-host adapter — still emitted pending reconciliation, see [Compatibility](Compatibility)) | Harness | Yes (wiped + recreated from source) |
-| `.github/workflows/wiki-sync.yml` | Harness | Yes (overwritten) |
-| `.harness/.version` | Harness | Written after a successful update (so future runs can show a delta) |
+3. Confirm the recorded version:
 
-## Sync semantics on `--update` (v1.0.0+)
+   ```bash
+   python3 -c "import json,os; print(json.load(open(os.path.expanduser('~/.claude/.agentm-config.json')))['harness_version'])"
+   ```
 
-Starting with v1.0.0, `--update` is a **true sync** against the GitHub source-of-truth, not a refresh-current-set. Twelve fully-harness-authored subdirs are wiped before being recreated from source:
+## Why there is no update flag
 
-```
-.claude/commands  .agents/rules       .gemini/commands
-.claude/agents    .agents/workflows   .gemini/agents
-.claude/skills    .agents/skills      .harness/scripts
-.harness/hooks
-```
+How a refresh reaches you depends on which install mode you're in, and neither mode needs a flag:
 
-The Antigravity tree moved from `.agent/` (singular) to `.agents/` (plural) in V4 #22, matching Antigravity 2.0's default. Any orphaned harness-installed paths — the legacy `.agent/` tree, or `.codex/` from pre-v1.0.0 installs — are automatically removed — the installer reports them as `removed legacy <path>/` in the output. User state files at `.harness/` root (`PLAN.md`, `progress.md`, `features.json`, `init.sh`, `verify.{sh,ps1}`, `known-migrations.md`), merged `settings.json` files, `wiki/**`, and root-level `AGENTS.md` / `CLAUDE.md` are deliberately excluded from the wipe and survive untouched.
+- **Source mode** — you have a clone at `~/Antigravity/agentm`, and the customizations in your prefix are *symlinks into it*. `git pull` alone updates most of them; you re-run the installer to pick up newly added skills, agents or hooks, which need new symlinks.
+- **Release mode** — no clone, so the customizations were copied. Re-running re-copies them.
 
-This is what makes future host removals or skill rearrangements clean: local trees stay in lockstep with GitHub on every `--update`, no per-removal patches needed.
+Either way the answer is the same command, which is why the flag went.
+
+## What a refresh touches
+
+| Path | Behavior on re-run |
+|---|---|
+| `<prefix>/agents/`, `skills/`, `hooks/` | Refreshed from source (re-symlinked or re-copied) |
+| `<prefix>/scripts/` | Refreshed |
+| `<prefix>/settings.json` | **Merged, not overwritten.** Hook registrations are deduped by command, so a refresh adds nothing twice — and entries you wrote yourself are preserved |
+| `<prefix>/.agentm-config.json` | The installer updates only the keys it owns (`harness_version`, `mode`, `installed_at`, `installer_source`, `installed_shas`, `fragments`, `vault_path`, `state_mode`) and carries everything else forward — including every `plugins.*` key set via `agentm_config.py` |
+| `~/.local/bin/agentm-update` | Refreshed |
+| `~/.gemini/GEMINI.md` | Its managed AgentMemory section is refreshed; the rest of your file is untouched |
+| The memory daemon | Rebuilt and reloaded if already installed, so a harness refresh is also a daemon refresh. Skip it for one run with `--no-daemon` |
+
+Your project state — `PLAN.md`, `progress.md`, `features.json` — lives in the vault (or `<repo>/.harness/` under [single-repo state mode](Single-Repo-State-Mode)), not in the install prefix. A refresh never touches it.
 
 ## Verify
 
-Running a second `--update` back-to-back should be a no-op — the installer is idempotent.
+Running the installer twice back-to-back should be a no-op the second time: same exit code, and the same number of hook registrations in `settings.json`. If a second run keeps adding entries, the merge is broken — that's what `smoke-install-bash.sh` asserts on every CI run.
 
-**When in doubt about ownership**, see the `cp_managed` function and the `MANAGED_PARENTS` array in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh). Dirs listed in `MANAGED_PARENTS` are fully harness-authored and wiped-then-recreated on `--update`; anything outside that list is user-authored and preserved.
-
-See [Installer CLI reference](Installer-CLI) for all flags. See the [Foundations HLD](agentm-foundations-hld) for why the boundary exists.
+See [Installer CLI reference](Installer-CLI) for every flag. See the [Foundations HLD](agentm-foundations-hld) for why the installer boundary exists.

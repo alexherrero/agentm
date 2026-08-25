@@ -52,8 +52,8 @@ Install AgentM and crickets with the recommended configuration and a Google Driv
 # Point the vault at a Google Drive folder named "Agent" (the recommended default)
 export MEMORY_VAULT_PATH="<your-google-drive>/Agent"
 
-# Install AgentM for every project on this machine (user scope) + verification hooks
-bash ~/agentm/install.sh --hooks --scope user
+# Install AgentM for every project on this machine
+bash ~/agentm/install.sh
 
 # Add the crickets plugins (Claude Code + Antigravity)
 curl -fsSL https://raw.githubusercontent.com/alexherrero/crickets/main/bootstrap.sh | bash

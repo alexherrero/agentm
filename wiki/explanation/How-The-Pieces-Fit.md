@@ -50,7 +50,7 @@ This holds together because every adapter file is expected to cite either a cric
 
 They **never** read from `wiki/` (the dogfood docs for *this* repo), `scripts/` (this repo's test infra), or `.github/workflows/tests-*.yml` (this repo's CI). That boundary is what keeps the harness's own documentation from leaking into every project it installs into.
 
-The boundary is enforced in three layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh), the runtime `ensure_boundary_src` guard inside `cp_managed`, and the byte-for-byte assertions in [`scripts/test-install.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/test-install.sh) and [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh). The full rationale is in the [Foundations HLD](agentm-foundations-hld).
+The boundary is enforced in two layers: the top-of-file comment in [`install.sh`](https://github.com/alexherrero/agentm/blob/main/install.sh), and the leak assertions in [`scripts/smoke-install-bash.sh`](https://github.com/alexherrero/agentm/blob/main/scripts/smoke-install-bash.sh) and its pwsh twin, which fail if this repo's own tooling or wiki appears in a scratch install. (A third layer, the runtime `ensure_boundary_src` guard inside the `cp_managed` copy helper, retired with the per-project install those helpers served.) The full rationale is in the [Foundations HLD](agentm-foundations-hld).
 
 ## Verification runs before any agent
 
