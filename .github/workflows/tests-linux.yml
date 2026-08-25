@@ -105,8 +105,8 @@ jobs:
         run: python3 scripts/check-vault-frontmatter.py --self-test
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
-        # up without a workflow edit. Closes pre-v4.5.1 CI gap where
-        # test_install_migrate.py was invisible.
+        # up without a workflow edit, closing a pre-v4.5.1 CI gap where a
+        # newly added test file could sit unrun and unnoticed.
         # Subshell `cd` because scripts/ lacks __init__.py (regular package
         # required for discover from a non-cwd start dir).
         run: (cd scripts && python3 -m unittest discover -p 'test_*.py')

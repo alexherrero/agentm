@@ -68,8 +68,8 @@ jobs:
         run: bash scripts/check-vendored-parity.sh hook-config
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
-        # up without a workflow edit. Closes pre-v4.5.1 CI gap where
-        # test_install_migrate.py was invisible.
+        # up without a workflow edit, closing a pre-v4.5.1 CI gap where a
+        # newly added test file could sit unrun and unnoticed.
         run: (cd scripts && python3 -m unittest discover -p 'test_*.py')
       - name: V4 push-surface integration check (verify-v4.sh)
         # End-to-end check of the auto-orchestration surface against a throwaway
