@@ -4,7 +4,6 @@ description: "Stop-event hook that mines the just-ended session's transcript for
 kind: hook
 supported_hosts: [claude-code]
 version: 0.1.0
-install_scope: project
 ---
 
 # memory-reflect-stop — mine the just-ended session's transcript on Stop

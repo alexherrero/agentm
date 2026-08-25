@@ -4,7 +4,6 @@ description: "Idle-time / orphan-recovery hook that scans .harness/session-id-*.
 kind: hook
 supported_hosts: [claude-code]
 version: 0.1.0
-install_scope: project
 ---
 
 # memory-reflect-idle — orphan-recovery + idle reflection sweep

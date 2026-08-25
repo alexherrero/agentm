@@ -4,7 +4,6 @@ description: SessionStart hook that loads `MemoryVault/personal-private/_always-
 kind: hook
 supported_hosts: [claude-code]
 version: 0.1.0
-install_scope: project
 ---
 
 # memory-recall-session-start — load always-load MemoryVault entries on session boot

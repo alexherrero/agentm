@@ -4,7 +4,6 @@ description: Terminal-first (with an --html mode) report that composes agentm's 
 kind: skill
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
-install_scope: project
 ---
 
 # console — the unified observability report

@@ -4,7 +4,6 @@ description: File-based, agent-curated permanent memory layer that lives inside 
 kind: skill
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
-install_scope: project
 ---
 
 # memory — permanent agent memory via Obsidian-vault-folder + reflection sidecar

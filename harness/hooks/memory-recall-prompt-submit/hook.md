@@ -4,7 +4,6 @@ description: "UserPromptSubmit hook that injects query-relevant MemoryVault entr
 kind: hook
 supported_hosts: [claude-code]
 version: 0.1.0
-install_scope: project
 ---
 
 # memory-recall-prompt-submit — inject query-relevant MemoryVault entries on prompt submit
