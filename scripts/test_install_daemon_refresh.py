@@ -17,6 +17,13 @@ touches the machine it runs on:
                       the real launchd. The reload sequence it drives broke in
                       production once, which is the argument for being able to
                       test it at all.
+  daemon.port         a kernel config in the fake HOME naming a port this file
+                      owns, standing in for the daemon launchd would have
+                      started. Without it install.sh's health check probes the
+                      well-known 7821 and is answered by whatever holds it —
+                      on a developer machine, the operator's own running
+                      daemon, which passes the check for a daemon this test
+                      never started.
 
 The fake HOME is for install *paths*. Caches that also hang off $HOME are
 deliberately left pointing at the machine's own copies — see install_env(),
@@ -31,11 +38,14 @@ Run: python3 scripts/test_install_daemon_refresh.py
 from __future__ import annotations
 
 import os
+import http.server
+import json
 import platform
 import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -55,6 +65,22 @@ _REAL_HOME = Path(os.path.expanduser("~"))
 MODEL_REL = ".local/share/agentm/models/embeddinggemma-300M-Q8_0.gguf"
 
 _GO_ENV = None
+
+
+class _HealthHandler(http.server.BaseHTTPRequestHandler):
+    """Answers /health like the daemon does, and records what was asked for."""
+
+    def do_GET(self) -> None:
+        self.server.paths.append(self.path)
+        body = b'{"status":"ok"}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args) -> None:
+        pass  # keep the unittest output readable
 
 
 def real_go_env() -> dict:
@@ -122,8 +148,30 @@ class DaemonRefreshBase(unittest.TestCase):
             link.parent.mkdir(parents=True, exist_ok=True)
             link.symlink_to(model)
 
+        # A stand-in for the daemon a real launchd would have started, on a port
+        # the OS hands out rather than the well-known one. install.sh probes the
+        # port `daemon.port` names, so writing that config is what keeps the
+        # probe inside this test — otherwise it reaches 127.0.0.1:7821 and, on a
+        # machine where the operator's own daemon is running, gets a healthy
+        # answer for a daemon this test never started.
+        self.health = http.server.HTTPServer(("127.0.0.1", 0), _HealthHandler)
+        self.health.paths = []
+        self.health_port = self.health.server_address[1]
+        threading.Thread(target=self.health.serve_forever, daemon=True).start()
+
+        cfg_dir = self.home / ".claude"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        (cfg_dir / ".agentm-config.json").write_text(
+            json.dumps({"daemon.port": self.health_port}) + "\n"
+        )
+
     def tearDown(self) -> None:
+        self.health.shutdown()
+        self.health.server_close()
         self.tmp.cleanup()
+
+    def health_paths(self) -> list:
+        return list(self.health.paths)
 
     def install_env(self, **overrides: str) -> dict:
         """The environment install.sh runs under: fake install paths, real caches.
@@ -372,6 +420,55 @@ class TestTheMachinesCachesAreReused(DaemonRefreshBase):
             "embedding model already present and verified", r.stdout,
             "install.sh did not find the seeded model and fetched instead — "
             f"MODEL_REL is stale against install.sh's MODEL_DIR.\n{r.stdout}",
+        )
+
+
+class TestTheHealthCheckProbesTheConfiguredPort(DaemonRefreshBase):
+    """install.sh must verify the daemon it installed, not the port's occupant.
+
+    The check exists to catch a job launchd accepted that then died, so it has
+    to reach the daemon this run configured. Aimed at a fixed 7821 it instead
+    reached whatever held that port — on a developer machine the operator's own
+    running daemon — and reported healthy for a daemon that was never started.
+    The same fixed port failed in the other direction for an operator who moved
+    `daemon.port`: their daemon came up fine and their install died 45 seconds
+    later probing a port nothing was listening on.
+    """
+
+    @unittest.skipUnless(shutil.which("go"), "needs Go to build the daemon")
+    @unittest.skipUnless(platform.system() == "Darwin", "launchd is macOS-only")
+    def test_the_probe_reaches_the_configured_port(self) -> None:
+        self.preinstall_plist()
+        r = self.run_install()
+        self.assertEqual(r.returncode, 0, f"install failed:\n{r.stdout}\n{r.stderr}")
+        self.assertIn(
+            "/health", self.health_paths(),
+            "nothing reached the port `daemon.port` names, so install.sh probed "
+            "somewhere else — on this machine that is 127.0.0.1:7821, where the "
+            f"operator's own daemon answers for free.\n{r.stdout}",
+        )
+
+    @unittest.skipUnless(shutil.which("go"), "needs Go to build the daemon")
+    @unittest.skipUnless(platform.system() == "Darwin", "launchd is macOS-only")
+    def test_the_reported_url_names_the_configured_port(self) -> None:
+        """The message an operator reads has to match the port actually probed.
+
+        Second angle on the same fix: a run that had quietly fallen back to the
+        default would still satisfy the probe assertion above on a machine
+        where something answers 7821, and would give itself away here.
+        """
+        self.preinstall_plist()
+        r = self.run_install()
+        self.assertEqual(r.returncode, 0, f"install failed:\n{r.stdout}\n{r.stderr}")
+        self.assertIn(
+            f"http://127.0.0.1:{self.health_port}", r.stdout,
+            "the install reported a URL that is not the port it was configured "
+            f"to use ({self.health_port})\n{r.stdout}",
+        )
+        self.assertNotIn(
+            "127.0.0.1:7821", r.stdout,
+            "the install named the default port while configured for "
+            f"{self.health_port}\n{r.stdout}",
         )
 
 
