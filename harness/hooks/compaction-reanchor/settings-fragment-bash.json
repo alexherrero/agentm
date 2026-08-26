@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/compaction-reanchor.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

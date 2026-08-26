@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/compaction-reanchor.ps1",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

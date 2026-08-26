@@ -66,6 +66,8 @@ expected=(
   hooks/memory-reflect-idle/memory-reflect-idle.sh
   hooks/memory-reflect-stop/memory-reflect-stop.sh
   hooks/verify-dispatch/verify-dispatch.sh
+  hooks/compaction-marker/compaction-marker.sh
+  hooks/compaction-reanchor/compaction-reanchor.sh
 )
 for p in "${expected[@]}"; do
   if [[ ! -e "$PREFIX/$p" ]]; then
@@ -178,6 +180,8 @@ user_hooks=(
   memory-reflect-idle
   memory-reflect-stop
   verify-dispatch
+  compaction-marker
+  compaction-reanchor
 )
 python3 - "$PREFIX/settings.json" "${user_hooks[@]}" <<'PY' || fail=1
 import json, sys

@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/compaction-marker.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
