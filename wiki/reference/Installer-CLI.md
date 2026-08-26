@@ -45,8 +45,11 @@ would let that ride until something downstream broke.
 - `--scope` — there is one install scope.
 - `--update` — re-running the installer *is* the refresh. Source-mode installs
   are symlinks that never go stale; release-mode installs re-copy every run.
-- `--hooks` — the harness hooks install automatically. The per-project
-  verification hook it used to wire up is being re-homed machine-wide.
+- `--hooks` — the harness hooks install automatically, this one included. The
+  per-project verification hook it used to wire up is now the machine-wide
+  `verify-dispatch` hook: registered once, it resolves the *edited file's* own
+  project at fire time and runs that project's `.harness/verify.sh`. Authoring
+  one is still per project and still optional — copy `templates/verify.sh`.
 
 ## Config CLI — `agentm_config.py`
 

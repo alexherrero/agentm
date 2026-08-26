@@ -135,6 +135,50 @@ correctly and an install that failed forty-five seconds later — fatally, under
 
   **The test now owns the port it probes** ([`test_install_daemon_refresh.py`](scripts/test_install_daemon_refresh.py)) — each case starts a stub HTTP server on an OS-assigned port, writes that port to `daemon.port` in the fake `HOME`, and records what was requested, containing the probe the way `AGENTM_LAUNCHCTL` already contains launchd. Two tests pin it: one asserts the stub was the thing that received `/health`, one asserts the reported URL names the configured port and never the default. Both were mutation-checked — restoring the hardcoded port turns both red, the first with an empty request log, which is the defect stated as a failure.
 
+The three things the per-project install was quietly carrying, given a
+machine-wide home. Each was reachable only through `--scope project`, so each
+was already dead on this machine before v9.7.0 removed the path entirely.
+
+### Added
+
+- **`verify-dispatch`** — per-project verification, registered once for the
+  machine. On every Write/Edit it resolves the **edited file's own** project and
+  runs that project's `.harness/verify.sh`. The predecessor hardcoded a
+  cwd-relative path, which worked only because hook and project were installed
+  together; machine-wide, an agent editing `~/work/api/src/x.ts` from a session
+  opened in `~/work/tools` would have run the wrong project's script or, far
+  more often, silently none. Two behaviours changed on the way: a `verify.sh`
+  that exists but is not executable now **runs** rather than being skipped, and
+  a failing verify script now **fails** — the old command ended in `|| true`, so
+  a project's typecheck could fail on every edit and never once say so. The `jq`
+  dependency is gone with it.
+- **`compaction-marker`** — a `PreCompact` hook that appends a dated marker to
+  the active plan's progress log, so entries above it read as written before the
+  context was lost. It earns its keep on *automatic* compaction: a deliberate
+  `/compact` is a choice you remember making, an automatic one fires mid-task
+  with nothing said. Resolves the log through the process seam (vault or
+  repo-local, singleton or named plan) and writes via `write-state`, which routes
+  through `vault_lock.atomic_write` rather than appending past the lock.
+- **`compaction-reanchor`** — a `SessionStart` hook, matcher `compact`, that
+  tells the resuming session its conversation was discarded rather than paused
+  and points at the marker. Deliberately short: `harness-context-session-start`
+  fires on the same event and already names where state lives.
+
+### Internal
+
+- All three install and register through the existing hook-bundle mechanism, so
+  `install.sh` was not touched. Windows twins ship for each — the pwsh merge
+  requires both a `.ps1` and a pwsh fragment to register, so omitting them would
+  have meant these hooks silently never firing there.
+- **Host filtering was investigated and deliberately not built.** The premise —
+  that `supported_hosts` needs enforcing at install time — does not hold: the one
+  `[antigravity]`-only primitive lives in `harness/plugins/`, which no delivery
+  path touches, and the machine-wide install has no Antigravity primitives
+  destination at all. Filtering would deliver such a primitive *nowhere* rather
+  than correctly. Noted while there: `supported_hosts` is now read by nothing in
+  agentm, its only non-test occurrences being two writes in
+  `persona_compile.py`.
+
 
 ## [v9.7.0] — 2026-08-26
 
