@@ -202,7 +202,11 @@ def scan(vault: Path, *, transcripts: Path,
         if not rx.is_mined_note(raw):
             continue
         rep.scanned += 1
-        rel = str(path.relative_to(vault))
+        # POSIX, not the running platform's. This is the note's
+        # identity, it is compared against paths read out of
+        # frontmatter, and it is written into a retirement reason
+        # somebody may follow back later.
+        rel = path.relative_to(vault).as_posix()
 
         m = FRONTMATTER.match(raw)
         if m:
@@ -248,7 +252,15 @@ def retire(raw: str, reason: str) -> str:
     that deleted would make the evidence for its own decisions unavailable.
     """
     m = FRONTMATTER.match(raw)
-    line = f"{REASON_KEY}: {reason}"
+    # Quoted, because the reason contains a colon and YAML would read the words
+    # before it as a key. Unquoted, this wrote 2,066 notes whose frontmatter no
+    # longer parsed — caught by `check-vault-frontmatter`, which exists for
+    # exactly this and is the reason it was eight notes in the report rather than
+    # a silent corpus-wide break.
+    #
+    # Double quotes with the inner ones escaped, rather than single: the reasons
+    # carry apostrophes.
+    line = f'{REASON_KEY}: "{reason.replace(chr(92), chr(92)*2).replace(chr(34), chr(92) + chr(34))}"' 
     if not m:
         return f"---\nstatus: expired\n{line}\n---\n\n" + raw.lstrip("\n")
     head, rest = m.group(1), raw[m.end():]

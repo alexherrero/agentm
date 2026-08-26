@@ -114,6 +114,34 @@ class WholeMessageIsNeverSweptTests(Case):
         self.assertEqual(p.read_bytes(), before)
 
 
+class PathShapeTests(Case):
+    """A vault-relative path is POSIX on every platform.
+
+    This is only *falsifiable* on Windows — on a POSIX host `str(relative_to())`
+    and `as_posix()` return the same string, so no assertion here can tell a
+    correct implementation from the broken one. It is stated anyway, because the
+    Windows runner is where it fails and this is where somebody reads why.
+
+    It failed there: two failures and seven errors, and a retirement reason
+    reading `duplicate of m\\a.md` — a path that resolves nowhere if anyone
+    follows it back.
+    """
+
+    def test_a_nested_note_reports_a_forward_slash_path(self):
+        self.excerpt_note("m/sub/deep.md", INJECTED)
+        rels = [v.rel for v in self.scan().verdicts]
+        self.assertIn("m/sub/deep.md", rels, rels)
+        for rel in rels:
+            self.assertNotIn("\\", rel, f"{rel!r} carries a native separator")
+
+    def test_a_duplicate_reason_names_a_posix_path(self):
+        self.excerpt_note("m/sub/a.md", INJECTED)
+        self.excerpt_note("m/sub/a-1.md", INJECTED)
+        rc.apply(self.vault, self.scan(), self.log, "run-1")
+        copy = (self.vault / "m/sub/a-1.md").read_text(encoding="utf-8")
+        self.assertIn("duplicate of m/sub/a.md", copy)
+
+
 class ProvenVersusPresumedTests(Case):
     """Bar 2. Two words, because they are two different claims."""
 
@@ -157,6 +185,51 @@ class ProvenVersusPresumedTests(Case):
         p = self.excerpt_note("m/a.md", INJECTED, session="proj/gone")
         rc.apply(self.vault, self.scan(sweep_untestable=True), self.log, "run-1")
         self.assertIn("1,452 of 1,490", p.read_text(encoding="utf-8"))
+
+
+class FrontmatterStaysValidTests(Case):
+    """Whatever the reason says, the note still parses.
+
+    The first version wrote the reason unquoted, and every reason contains a
+    colon — `presumed injected: transcript gone` — so YAML read the words before
+    it as a key. 2,066 notes stopped parsing. `check-vault-frontmatter` caught it,
+    which is the difference between eight lines in a report and a corpus-wide
+    break nobody notices for a month.
+    """
+
+    def head(self, path):
+        import yaml
+        text = path.read_text(encoding="utf-8")
+        return yaml.safe_load(text.split("---\n")[1])
+
+    def test_a_retired_note_still_parses_as_yaml(self):
+        p = self.excerpt_note("m/a.md", INJECTED, session="proj/gone")
+        rc.apply(self.vault, self.scan(sweep_untestable=True), self.log, "run-1")
+        head = self.head(p)
+        self.assertEqual(head["status"], "expired")
+        self.assertIn("presumed injected", head[rc.REASON_KEY])
+
+    def test_a_duplicate_reason_still_parses(self):
+        self.excerpt_note("m/a.md", INJECTED)
+        self.excerpt_note("m/a-1.md", INJECTED)
+        rc.apply(self.vault, self.scan(), self.log, "run-1")
+        head = self.head(self.vault / "m/a-1.md")
+        self.assertEqual(head[rc.REASON_KEY], "duplicate of m/a.md")
+
+    def test_a_reason_carrying_quotes_still_parses(self):
+        # Not a case any current reason hits, and the next one might.
+        out = rc.retire("---\nstatus: active\n---\n\nbody\n",
+                        'he said "no": and meant it')
+        import yaml
+        head = yaml.safe_load(out.split("---\n")[1])
+        self.assertEqual(head[rc.REASON_KEY], 'he said "no": and meant it')
+
+    def test_the_other_frontmatter_survives(self):
+        p = self.excerpt_note("m/a.md", INJECTED, session="proj/gone")
+        rc.apply(self.vault, self.scan(sweep_untestable=True), self.log, "run-1")
+        head = self.head(p)
+        self.assertEqual(head["mining_confidence"], "LOW")
+        self.assertEqual(head["sessions"], ["proj/gone"])
 
 
 class SweepIsOptInTests(Case):

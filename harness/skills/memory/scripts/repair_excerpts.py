@@ -329,12 +329,25 @@ def scan(vault: Path, *, transcripts: Path, limit: int = 0) -> Report:
         if not is_mined_note(raw):
             rep.skipped_not_mined += 1
             continue
+        # A retired note is not worth marking. `retro_mining_cleanup` expires the
+        # ones the miner should never have written, and annotating the edges of a
+        # note that has left the live corpus is work nobody reads — it would have
+        # put `excerpt_edges_unverified` on 2,311 notes already carrying
+        # `status: expired` and a reason.
+        m = FRONTMATTER.match(raw)
+        if m and re.search(r"^status:\s*expired", m.group(1), re.M):
+            continue
+
         excerpts = [e for e in find_excerpts(raw)
                     if ELIDED_HEAD.match(e) or ELIDED_TAIL.search(e)]
         if not excerpts:
             continue
 
-        rel = str(path.relative_to(vault))
+        # POSIX, not the running platform's. This is the note's
+        # identity, it is compared against paths read out of
+        # frontmatter, and it is written into a retirement reason
+        # somebody may follow back later.
+        rel = path.relative_to(vault).as_posix()
         first = excerpts[0]
         f = Finding(rel=rel, excerpt=first,
                     elided_head=bool(ELIDED_HEAD.match(first)),

@@ -316,6 +316,36 @@ class IdempotenceTests(Case):
                          "the window reached past the words that were cut")
 
 
+class RetiredNotesTests(Case):
+    """A note that has left the live corpus is not worth annotating.
+
+    `retro_mining_cleanup` expires what the miner should never have written. This
+    pass ran after it and wanted to mark 2,311 notes that already carried
+    `status: expired` and a reason — noise on records nobody reads, and it hid the
+    23 live notes that genuinely still need a decision.
+    """
+
+    def test_an_expired_note_is_skipped(self):
+        p = self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
+        p.write_text(p.read_text(encoding="utf-8").replace(
+            "status: active", "status: expired"), encoding="utf-8")
+        self.assertEqual(self.scan().findings, [],
+                         "a retired note was queued for marking")
+
+    def test_an_expired_note_is_not_written_to(self):
+        p = self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
+        p.write_text(p.read_text(encoding="utf-8").replace(
+            "status: active", "status: expired"), encoding="utf-8")
+        before = p.read_bytes()
+        rx.apply(self.vault, self.scan(), self.log, "run-1")
+        self.assertEqual(p.read_bytes(), before)
+
+    def test_a_live_note_is_still_found(self):
+        # The other half, so the skip cannot widen into "skip everything".
+        self.note("m/a.md", f"User stated: {MANGLED}", mining=True)
+        self.assertEqual(len(self.scan().findings), 1)
+
+
 class MarkingTests(Case):
     """Bar 2: marking changes the frontmatter and nothing else."""
 
