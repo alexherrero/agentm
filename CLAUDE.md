@@ -5,7 +5,7 @@ This project uses [agentm](https://github.com/alexherrero/agentm). The universal
 ## Claude Code specifics
 
 - The phase loop (`/setup`, `/plan`, `/work`, `/review`, `/release`, `/bugfix`) is provided by the companion crickets **development-lifecycle** plugin — `agentm` no longer ships these commands or their specs (V5 unbundling).
-- Verification hooks (typecheck / lint / test on Write|Edit) are configured in [`.claude/settings.json`](.claude/settings.json) when `install.sh --hooks` (POSIX) or `install.ps1 -Hooks` (Windows/PowerShell 7+) is run.
+- The harness hooks register themselves in `<prefix>/settings.json` as part of a normal `install.sh` / `install.ps1` run — there is no `--hooks` flag any more. The per-project PostToolUse verification hook that flag used to wire up is being re-homed machine-wide; see `PLAN-user-scope-hook-gaps`.
 - Sub-agents in [`.claude/agents/`](.claude/agents/) are the memory-engine pair — `adapt-evaluator` and `memory-idea-researcher`. The review agents (`explorer`, `adversarial-reviewer`, `-cross`) come from the crickets code-review / development-lifecycle plugins.
 - **Commit messages: no `Co-Authored-By: Claude` trailer.** See [AGENTS.md § Conventions § Commit messages](AGENTS.md#commit-messages) — the rule is host-agnostic; this bullet is the Claude-specific reminder because Claude Code emits the trailer by default.
 

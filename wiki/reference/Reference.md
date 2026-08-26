@@ -9,7 +9,6 @@ Look up the exact details of the AgentM harness — the install flags, config sc
 |---|---|
 | [Installer CLI](Installer-CLI) | The flags and prerequisites for `install.sh` / `install.ps1`, and which files each owns. |
 | [Supported configurations](Supported-Configurations) | The install-scope, vault-storage, and state-mode choices, with a pointer to each. |
-| [Migration tool](Migration-Tool) | The tool that moves an older per-project install to user scope, and what it records. |
 | [Repo layout](Repo-Layout) | The top-level directory map, and how the host adapters line up. |
 | [Compatibility](Compatibility) | The supported hosts and operating systems. |
 

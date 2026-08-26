@@ -40,12 +40,11 @@ Best path: give Claude Desktop a **local filesystem MCP server** pointed at the 
 
 ## Antigravity
 
-Antigravity is a local filesystem agent; it loads [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19) as the installed `agentmemory-context` rule — no manual paste. There are **two install channels**, one per scope:
+Antigravity is a local filesystem agent; it loads [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19) as the installed `agentmemory-context` rule — no manual paste.
 
-- **Per-project (`--scope project`, default):** the rule lands in `<project>/.agents/rules/agentmemory-context.md`, scoped to that workspace. The installer dispatches it automatically (`install.sh` / `install.ps1` ship it on `--update`, refreshing alongside the other rules).
-- **Global (`--scope user`):** the installer merges the same payload into `~/.gemini/GEMINI.md` — Antigravity 2.0's global rules file, applied across **every** workspace — so Antigravity picks up the vault everywhere with no per-project install. It runs only when `~/.gemini/` already exists, preserves your own `GEMINI.md` content, and is idempotent. Only the `agentmemory-context` payload goes global; the per-project harness operating contract stays per-project.
+The installer merges the payload into `~/.gemini/GEMINI.md`, Antigravity's global rules file, which applies across **every** workspace — so Antigravity picks up the vault everywhere, with nothing installed per project. It runs only when `~/.gemini/` already exists, preserves your own `GEMINI.md` content, and is idempotent. (A second channel used to land the same rule per-workspace at `<project>/.agents/rules/`; it retired with the per-project install.)
 
-Unlike the read-only chat surfaces above, Antigravity is a **read-write working agent**: it may read *and* write the vault, following your entry conventions, exactly like Claude Code. Validated on **both the Antigravity CLI and the Antigravity IDE**: with `install.sh --scope user`, Antigravity resolved the vault via the global `~/.gemini/GEMINI.md` rule and recalled `_always-load/` entries correctly across multiple projects, with no per-project install. Dynamic session-start *recall* (vs. this static rule) is a future enhancement.
+Unlike the read-only chat surfaces above, Antigravity is a **read-write working agent**: it may read *and* write the vault, following your entry conventions, exactly like Claude Code. Validated on **both the Antigravity CLI and the Antigravity IDE**: Antigravity resolved the vault via the global `~/.gemini/GEMINI.md` rule and recalled `_always-load/` entries correctly across multiple projects. Dynamic session-start *recall* (vs. this static rule) is a future enhancement.
 
 ## Deferred surfaces *(post-FRIDAY — #28)*
 

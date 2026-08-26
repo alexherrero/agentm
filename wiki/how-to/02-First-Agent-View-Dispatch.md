@@ -77,4 +77,4 @@ Run `claude agents --json --all` to view the final status after completion — `
 ## Next
 
 - **Understand the design behind Agent View:** [Autonomy](agentm-autonomy).
-- **Install the harness into a real project:** [Install into a project](Install-Into-Project).
+- **Install AgentM on your machine:** [Install AgentM machine-wide](Install-Machine-Wide).

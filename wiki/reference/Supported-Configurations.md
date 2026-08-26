@@ -2,14 +2,18 @@
 
 This page maps the ways you can configure AgentM. You can read more about each choice here. The [recommended defaults](Home) fit most setups. These defaults use a user-scope install with a Google Drive vault.
 
-## Install scope
+## Where AgentM installs
 
-| Scope | What it does | When to use it |
-|---|---|---|
-| **user** *(recommended)* | Installs to `~/.claude/`, so AgentM is available in every project on the machine. | Almost always. |
-| **project** | Installs into `<project>/.claude/`. | Team dotfiles, or a project that pins its own config — see [Use per-project install](Use-Per-Project-Install). |
+There is one install location: `$AGENTM_INSTALL_PREFIX`, defaulting to
+`~/.claude/`. AgentM is available in every project on the machine, and there is
+nothing to install per repo.
 
-You can find the full flags in [Installer CLI](Installer-CLI). You can read about moving a project install to user scope in [Migration tool](Migration-Tool).
+A per-project install (`--scope project`) existed until it was retired. If you
+have a populated `<project>/.claude/` left over from one, it is inert — nothing
+reads it. Re-run the installer to get the current machine-wide install, and
+delete the old directory when you like.
+
+You can find the full flags in [Installer CLI](Installer-CLI).
 
 ## Vault storage & sync
 

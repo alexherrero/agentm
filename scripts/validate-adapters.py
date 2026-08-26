@@ -4,7 +4,7 @@
 Checks:
   - Markdown YAML frontmatter (antigravity/rules) parses; has the required keys.
   - SKILL.md files (claude-code/skills) have name + description frontmatter.
-  - JSON (templates/features.json, adapters/gemini/settings.json,
+  - JSON (adapters/gemini/settings.json,
     templates/hooks/settings-fragment-*.json) parses.
   - Every remaining skill maps to a canonical spec under harness/skills/.
 
@@ -146,7 +146,6 @@ def main() -> int:
     validate_skill_dirs("adapters/claude-code/skills")
 
     # JSON
-    check_json("templates/features.json", required_keys=["features"])
     check_json("adapters/gemini/settings.json")
     check_json("templates/hooks/settings-fragment-bash.json", required_keys=["hooks"])
     check_json("templates/hooks/settings-fragment-pwsh.json", required_keys=["hooks"])

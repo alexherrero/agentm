@@ -23,11 +23,9 @@ any entry whose `command` is already present in the existing array (idempotent).
 
 Other top-level keys in existing settings.json are preserved untouched.
 
-Why python3 (not jq): python3 is already a hard prereq of the toolkit installer
-(for pyyaml + manifest-info.py). Adding jq would be a new dependency; reusing
-python3 keeps the prereq surface flat. The harness's install.sh uses jq for
-the same logic via a different code path; both repos can converge in a future
-shared-lib extraction.
+Why python3 (not jq): python3 is already a hard prereq of the installer, which
+cannot run without it at all. Adding jq would be a new dependency; reusing
+python3 keeps the prereq surface flat.
 
 Usage:
   python3 merge-settings-fragment.py <settings_json_path> <fragment_json_path>

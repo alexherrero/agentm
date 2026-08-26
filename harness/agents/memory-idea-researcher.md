@@ -4,7 +4,6 @@ description: Read-only deep-research worker for MemoryVault idea-incubator entri
 kind: agent
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
-install_scope: either
 ---
 
 # memory-idea-researcher — deep-research worker for idea-incubator entries

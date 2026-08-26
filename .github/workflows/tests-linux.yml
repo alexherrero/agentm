@@ -42,8 +42,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y jq
       - name: Run smoke-install (bash) + post-install integrity
         run: bash scripts/smoke-install-bash.sh
-      - name: Installer-boundary byte-for-byte test (wiki scaffold)
-        run: bash scripts/test-install.sh
 
   adapter-parity:
     name: adapter-parity
@@ -107,8 +105,8 @@ jobs:
         run: python3 scripts/check-vault-frontmatter.py --self-test
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
-        # up without a workflow edit. Closes pre-v4.5.1 CI gap where
-        # test_install_migrate.py was invisible.
+        # up without a workflow edit, closing a pre-v4.5.1 CI gap where a
+        # newly added test file could sit unrun and unnoticed.
         # Subshell `cd` because scripts/ lacks __init__.py (regular package
         # required for discover from a non-cwd start dir).
         run: (cd scripts && python3 -m unittest discover -p 'test_*.py')
@@ -267,34 +265,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  dogfood-workflows:
-    # Source-repo invariant: every workflow the harness ships as a template
-    # must be active at the repo root, byte-identical to the template.
-    # Complements install-smoke (which validates the target-project
-    # propagation path — template -> scratch install). This job validates
-    # the self-consumption path — template -> this repo's own
-    # .github/workflows/.
-    name: dogfood-workflows
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' || inputs.full_battery
-    steps:
-      - uses: actions/checkout@v4
-      - name: Every templated workflow is active at repo root, byte-identical
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          missing=0
-          for tmpl in templates/.github/workflows/*.yml; do
-            name="$(basename "$tmpl")"
-            active=".github/workflows/$name"
-            if [[ ! -f "$active" ]]; then
-              echo "::error::$active is missing — $tmpl ships as a template but is not active at the repo root"
-              missing=1
-              continue
-            fi
-            if ! diff -u "$tmpl" "$active"; then
-              echo "::error::$active drifted from $tmpl"
-              missing=1
-            fi
-          done
-          exit "$missing"

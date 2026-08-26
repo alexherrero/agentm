@@ -44,6 +44,36 @@ spend.
 
 ### Changed
 
+- **BREAKING — the per-project install is retired. AgentM installs machine-wide
+  and nowhere else.** `install.sh --scope project` — the historical *default*,
+  which copied a `.claude/` / `.harness/` / `.agents/` tree into each target
+  repo — is gone, together with the code implementing it, the tests exercising
+  it, the templates it delivered, the CI gates guarding those templates, and the
+  docs describing it. `install.sh` drops 1336 → 764 lines; `install.ps1` drops
+  704 → 244. There is one install location, `$AGENTM_INSTALL_PREFIX` (default
+  `~/.claude/`), and the installer no longer takes a target path.
+- **`--update` retires with it: re-running the installer *is* the refresh.**
+  Source-mode installs are symlinks into your clone and never go stale;
+  release-mode installs re-copy every run. Both `agentm-update` launchers were
+  passing `--update --scope user` and now do a bare re-run — they are installed
+  by the surviving path itself, so this would have broken every operator's
+  update on first use.
+- **Retired flags fail rather than being ignored.** `--scope`, `--update` and
+  `--hooks` (and their pwsh twins) each error naming their replacement; a
+  positional path explains that there is no target any more. A stale caller
+  passing one is announcing an expectation this installer no longer meets, and a
+  silent no-op would let that ride until something downstream broke.
+- **A standing bug fixed as a side effect.** The `--mcp-server` refusal and the
+  entire Go-daemon/embedder section sat *below* the project-scope branch and had
+  never been reachable under `--scope user`. Removing that branch's terminating
+  `exit 0` makes them run for the first time, so `--daemon` / `--no-daemon` /
+  `--no-embedder` now work as documented.
+- **`doctor` resolves one install prefix instead of a scope.** Its three-way
+  `scope: user|project|mixed` detection is gone. A populated `<project>/.claude/`
+  left over from an older install is now reported once as
+  `[WARN] legacy per-project tree — no longer used; safe to delete` rather than
+  silently ignored: the files shadow nothing, so an operator who does not know
+  they are dead keeps editing them and wonders why nothing takes effect.
 - **`altitude` dampening is gated behind `daemon.altitude_enabled`, default
   off.** Part 3 landed it on the finding that no note carried the field. That
   was true of the corpus and false of the system, because capture writes
@@ -54,6 +84,35 @@ spend.
 
 ### Internal
 
+- **The install test suites were rewritten, not trimmed.** Every project-scope
+  assertion was folded into a machine-wide equivalent. Two needed translating
+  rather than renaming: the `--update` user-edit contract became a
+  `settings.json` test that injects an operator-authored hook entry, re-runs, and
+  asserts both that it survives and that the hook count is unchanged (a refresh
+  must not duplicate its own entries either); the log-grep idempotence check
+  became a structural one. New coverage the old suites could not have had: a
+  sweep asserting that `.harness/PLAN.md`, `.claude/settings.json`, `AGENTS.md`
+  and friends appear under neither the prefix nor `HOME`. Both suites are now
+  hermetic — scratch `HOME` as well as scratch prefix, because the installer keys
+  its launcher, the launchd plist and `~/.gemini/GEMINI.md` off `$HOME`.
+- **Each deleted template went in the same commit as the CI gate guarding it.**
+  `validate-adapters` and `check-references` `err()` on a missing file rather
+  than skipping, and `validate-adapters` runs as a direct step in all three OS
+  workflows. `check-vendored-parity`'s `workflow` mode was deliberately hardened
+  to hard-error on an empty template dir ("A parity gate that checks nothing is
+  not green"); the hand-rolled copy of that same check in `tests-linux.yml`'s
+  `dogfood-workflows` job has no such guard and would have gone vacuously green
+  while verifying nothing — the more dangerous of the two to leave, because
+  nothing would ever have said so.
+- **Removed:** `lib/install/{bash,pwsh}/primitives.*` and `CONTRACT.md` (the
+  per-project copy helpers; crickets deleted its byte-identical copy in v3.0, so
+  the pact had no counterparty), `scripts/migrate-to-user-scope.{sh,ps1}` +
+  `install_migrate.py` + `test_migrate_fixture.sh`, `scripts/manifest-info.py`
+  (the dispatcher's frontmatter reader, left with zero callers),
+  `scripts/test-install.{sh,ps1}`, and the `install_scope:` frontmatter field
+  from all 10 harness primitives. `lib/install/` is now three Python primitives
+  plus its checksum manifest — the `lib` parity mode was **kept**, since it
+  covers exactly the files the machine-wide install executes.
 - **Two live batches against the real vault**, thirty randomly-sampled unfiled
   notes each. The dispersion delta came back **−0.1293** against a +0.05
   ceiling: the pass made the notes more distinct. Twenty-two of thirty enriched;

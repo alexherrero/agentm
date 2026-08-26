@@ -29,24 +29,19 @@
 #                  not imported cross-tree).
 #   storage-seam — same DC-9 vendoring pattern, two pairs:
 #                  storage_seam.py + storage_device_local.py.
-#   wiki-publish-transform — scripts/wiki_publish_transform.py (agentm's own
-#                  dogfooded copy, invoked by .github/workflows/wiki-sync.yml)
-#                  is byte-identical to templates/scripts/wiki_publish_transform.py
-#                  (the copy install.sh vendors into every installed project,
-#                  alongside its templated wiki-sync.yml).
 #   hook-config  — the four memory hooks' `_resolve_vault_path() { ... }`
 #                  function bodies are byte-identical (extracted verbatim,
 #                  diffed against the first hook's copy).
-#   workflow     — every templated GitHub Actions workflow under
-#                  templates/.github/workflows/ is active at
-#                  .github/workflows/, byte-identical (the dogfood
-#                  self-consumption invariant). Accepts --root DIR so the
-#                  negative test can point at a fixture tree.
+#
+# Retired with the per-project install: the `wiki-publish-transform` and
+# `workflow` modes both guarded template copies that existed only to be
+# vendored into an installed project. agentm's own wiki-sync workflow and its
+# wiki_publish_transform.py are unaffected -- there is simply no second copy to
+# keep in step with any more.
 #
 # Usage:
-#   bash scripts/check-vendored-parity.sh                       # run all 5
-#   bash scripts/check-vendored-parity.sh lib                   # run just one
-#   bash scripts/check-vendored-parity.sh workflow --root DIR   # one mode, its own flags
+#   bash scripts/check-vendored-parity.sh              # run every mode
+#   bash scripts/check-vendored-parity.sh lib          # run just one
 #
 # Exit: 0  every requested mode is clean
 #       1  drift detected in at least one requested mode
@@ -56,7 +51,7 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-MODES=(lib vault-lock corpus-gate wiki-publish-transform storage-seam hook-config workflow)
+MODES=(lib vault-lock corpus-gate storage-seam hook-config)
 
 _sha_cmd() {
   # SHA-256 tool: prefer sha256sum (Linux/coreutils, Git Bash on Windows),
@@ -172,18 +167,6 @@ mode_vault_lock() {
   return "$rc"
 }
 
-# ── wiki-publish-transform: single canonical/vendored pair ──────────────────
-mode_wiki_publish_transform() {
-  local CANON="$REPO_ROOT/scripts/wiki_publish_transform.py"
-  local VENDORED="$REPO_ROOT/templates/scripts/wiki_publish_transform.py"
-  _pair_check "wiki-publish-transform" "$CANON" "$VENDORED"
-  local rc=$?
-  if [[ "$rc" -eq 0 ]]; then
-    echo "check-vendored-parity[wiki-publish-transform]: clean (both wiki_publish_transform.py copies are sha256-identical)"
-  fi
-  return "$rc"
-}
-
 # ── storage-seam: two canonical/vendored pairs ──────────────────────────────
 mode_storage_seam() {
   local pairs=(
@@ -273,58 +256,6 @@ mode_hook_config() {
 }
 
 # ── workflow: templated dir vs active dir, wildcard byte-compare ───────────
-mode_workflow() {
-  local ROOT="$REPO_ROOT"
-  while [ $# -gt 0 ]; do
-    case "$1" in
-      --root) ROOT="${2:?--root needs a value}"; shift 2 ;;
-      --root=*) ROOT="${1#--root=}"; shift ;;
-      *) echo "check-vendored-parity[workflow]: unknown arg: $1" >&2; return 2 ;;
-    esac
-  done
-
-  [ -d "$ROOT" ] || { echo "check-vendored-parity[workflow]: not a directory: $ROOT" >&2; return 2; }
-
-  local TEMPLATE_DIR="$ROOT/templates/.github/workflows"
-  local ACTIVE_DIR="$ROOT/.github/workflows"
-
-  local fail=0 checked=0 problems="" tmpl name active
-
-  shopt -s nullglob
-  for tmpl in "$TEMPLATE_DIR"/*.yml; do
-    name="$(basename "$tmpl")"
-    active="$ACTIVE_DIR/$name"
-    checked=$((checked+1))
-    if [ ! -f "$active" ]; then
-      problems+="  missing: .github/workflows/$name — shipped as a template but not active at the repo root"$'\n'
-      fail=1
-      continue
-    fi
-    if ! diff -u "$tmpl" "$active" >/dev/null 2>&1; then
-      problems+="  drifted: .github/workflows/$name differs from templates/.github/workflows/$name"$'\n'
-      fail=1
-    fi
-  done
-  shopt -u nullglob
-
-  if [ "$checked" -eq 0 ]; then
-    echo "check-vendored-parity[workflow]: no templated workflows found under templates/.github/workflows/ —" >&2
-    echo "  wrong --root, or the template surface vanished? A parity gate that checks nothing is not green." >&2
-    return 2
-  fi
-
-  if [ "$fail" -ne 0 ]; then
-    echo "check-vendored-parity[workflow]: templated workflow(s) out of sync with the active copy —" >&2
-    printf '%s' "$problems" >&2
-    echo "" >&2
-    echo "  Re-sync the twins so both carry the change, e.g.:" >&2
-    echo "    cp .github/workflows/<name> templates/.github/workflows/<name>   # (or the reverse)" >&2
-    return 1
-  fi
-
-  echo "check-vendored-parity[workflow]: clean — $checked templated workflow(s) active at root, byte-identical."
-  return 0
-}
 
 # ── dispatcher ───────────────────────────────────────────────────────────────
 
@@ -347,10 +278,8 @@ main() {
       lib)          mode_lib ;;
       vault-lock)   mode_vault_lock ;;
       corpus-gate)  mode_corpus_gate ;;
-      wiki-publish-transform) mode_wiki_publish_transform ;;
       storage-seam) mode_storage_seam ;;
       hook-config)  mode_hook_config ;;
-      workflow)     mode_workflow "$@" ;;
       # A mode named in MODES but missing an arm here reached this point
       # silently and passed, which is how a parity check reports clean on a
       # pair it never compared. Unknown modes are a setup error, not a pass.

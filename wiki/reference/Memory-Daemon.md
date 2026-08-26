@@ -35,7 +35,7 @@ cd daemon && CGO_ENABLED=0 go build -o ~/.local/bin/agentmd ./cmd/agentmd
 One flag does the build and the launchd agent together, on macOS:
 
 ```bash
-bash /path/to/agentm/install.sh --daemon <target-project>
+bash /path/to/agentm/install.sh --daemon
 ```
 
 It builds `~/.local/bin/agentmd`, writes `~/Library/LaunchAgents/com.agentm.daemon.plist`, loads it, and then **verifies the daemon answers `/health` before returning** — a job launchd accepted and that immediately died on a held port is indistinguishable from a working one in `launchctl list`, which is how the retired daemon stayed "healthy" and wired to nothing for months.

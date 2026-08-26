@@ -3,10 +3,18 @@
 #
 # Since the crickets clean break (crickets v3.0 #40 part 5), agentm and
 # crickets no longer share lib/install/: crickets ships NATIVE plugins and
-# keeps no install primitives. This script is now LOCAL-ONLY — it regenerates
+# keeps no install primitives. This script is LOCAL-ONLY — it regenerates
 # agentm's own lib/install/.checksums.txt (the manifest that
-# check-lib-parity.sh verifies on every push). It no longer copies into
-# ../crickets/ (the cross-repo byte-sync coupling is gone).
+# check-vendored-parity.sh's `lib` mode verifies on every push). It does not
+# copy into ../crickets/ (the cross-repo byte-sync coupling is gone).
+#
+# What lib/install/ still holds, after the per-project install was retired, is
+# the Python install primitives the machine-wide path runs on —
+# install_state.py, install_symlinks.py, install_copy.py. The bash/pwsh copy
+# helpers (cp_user, cp_managed, ensure_boundary_src and friends) served only
+# the retired --scope project path and are gone. The checksum manifest still
+# earns its keep over what remains: those three files are what an install
+# actually executes.
 #
 # Usage:
 #   bash scripts/sync-lib.sh             # regenerate .checksums.txt
@@ -48,7 +56,7 @@ fi
 # Sorted, LC_ALL=C byte-order output for deterministic cross-machine diffs.
 # LC_ALL=C forces case-sensitive byte ordering; without it macOS's default
 # locale collates case-insensitively, producing different line order than
-# Linux/CI. Same normalization as check-lib-parity.sh.
+# Linux/CI. Same normalization as check-vendored-parity.sh's lib mode.
 #
 # sha256sum output formats:
 #   text mode (Linux/Mac default): "<hash>  ./<file>"   (2 spaces)

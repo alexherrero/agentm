@@ -3,7 +3,7 @@
 
 `harness/skills/wiki-author/` and `adapters/claude-code/commands/recent-wiki-changes.md`
 were vendored copies of primitives crickets' `wiki` plugin already owns. Both
-installed into `~/.claude/` under `--scope user` as *bare-name* standalones —
+installed into `~/.claude/` as *bare-name* standalones —
 and a bare-name standalone is never superseded by a plugin, because Claude Code
 namespaces plugin primitives unconditionally (`/wiki:recent-wiki-changes`). So
 the stale copy kept serving its own aging content forever while the operator

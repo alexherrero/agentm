@@ -4,7 +4,6 @@ description: Human-facing design pipeline that walks the user through a locked 1
 kind: skill
 supported_hosts: [claude-code, antigravity]
 version: 0.1.0
-install_scope: project
 ---
 
 # design — human-facing design pipeline → agent execution handoff

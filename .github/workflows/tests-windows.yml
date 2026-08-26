@@ -45,9 +45,6 @@ jobs:
       - name: Run smoke-install (pwsh) + post-install integrity
         shell: pwsh
         run: pwsh -NoProfile -File scripts/smoke-install-pwsh.ps1
-      - name: Run test-install (pwsh) — installer-boundary guard
-        shell: pwsh
-        run: pwsh -NoProfile -File scripts/test-install.ps1
       - name: Validate adapter frontmatter / TOML / JSON (cross-platform)
         run: python scripts/validate-adapters.py
       - name: Check cross-references + hook-fragment schema parity
@@ -94,8 +91,8 @@ jobs:
       # access to verify against, not something to guess at further here.
       - name: Unit tests — auto-discover every scripts/test_*.py
         # v4.5.1 task 1: use unittest discover so new test files are picked
-        # up without a workflow edit. Closes pre-v4.5.1 CI gap where
-        # test_install_migrate.py was invisible.
+        # up without a workflow edit, closing a pre-v4.5.1 CI gap where a
+        # newly added test file could sit unrun and unnoticed.
         # PowerShell on windows-latest: cd is invocation-scoped via parens.
         shell: pwsh
         run: |

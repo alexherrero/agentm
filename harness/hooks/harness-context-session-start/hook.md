@@ -4,12 +4,11 @@ description: SessionStart hook that injects the project's vault-resident PLAN.md
 kind: hook
 supported_hosts: [claude-code]
 version: 0.1.0
-install_scope: user
 ---
 
 # harness-context-session-start — surface vault PLAN.md / progress.md on session boot
 
-A `SessionStart` event hook (universal, `install_scope: user` — fires in every project the operator works in). Post-V4 #26, a project's harness state (`PLAN.md`, `progress.md`) lives in the MemoryVault at `<vault>/projects/<slug>/_harness/`, not in the repo's `.harness/`. Nothing told the agent that at session boot — it had to *think* to call the resolver, and sometimes didn't (the gap that motivated V4 #39). This hook closes it: on every SessionStart it reads the event's `cwd`, resolves the active project's vault state paths via `harness_memory.py vault-state-path`, and — **only when both `PLAN.md` and `progress.md` resolve and exist on disk** — injects a 4-line context block telling the agent where they live and to read `PLAN.md` before plan-status questions or phase commands.
+A `SessionStart` event hook — installed machine-wide, so it fires in every project the operator works in. Post-V4 #26, a project's harness state (`PLAN.md`, `progress.md`) lives in the MemoryVault at `<vault>/projects/<slug>/_harness/`, not in the repo's `.harness/`. Nothing told the agent that at session boot — it had to *think* to call the resolver, and sometimes didn't (the gap that motivated V4 #39). This hook closes it: on every SessionStart it reads the event's `cwd`, resolves the active project's vault state paths via `harness_memory.py vault-state-path`, and — **only when both `PLAN.md` and `progress.md` resolve and exist on disk** — injects a 4-line context block telling the agent where they live and to read `PLAN.md` before plan-status questions or phase commands.
 
 ## Behavior
 

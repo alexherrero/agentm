@@ -46,8 +46,8 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: agentm version + OS + Claude Code version + install mode (--scope project | user)
-      placeholder: "agentm v4.10.0 · macOS 14.6 · Claude Code 1.x · --scope user"
+      description: agentm version + OS + Claude Code version + install mode (source clone | release)
+      placeholder: "agentm v9.6.0 · macOS 14.6 · Claude Code 1.x · source install"
     validations:
       required: false
 

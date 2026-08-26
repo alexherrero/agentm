@@ -7,7 +7,6 @@
 - [Detection rules](Detection-Rules)
 - [Project config](Project-Config)
 - [GitHub Projects sync](GitHub-Projects-Sync)
-- [Migration tool](Migration-Tool)
 - [CI gates](CI-Gates)
 - [PII Guardrail](PII)
 - [Repo layout](Repo-Layout)

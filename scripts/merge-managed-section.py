@@ -2,7 +2,7 @@
 """merge-managed-section.py — idempotently insert/replace a marker-delimited
 managed section in a text/markdown file, preserving everything outside the markers.
 
-Used by the `--scope user` installer to merge the AgentMemory vault-usage payload
+Used by the installer to merge the AgentMemory vault-usage payload
 into ~/.gemini/GEMINI.md (Antigravity's global rules file) so Antigravity picks up
 the vault in every workspace without a per-project install — without clobbering the
 operator's own global rules.
@@ -20,7 +20,7 @@ Behavior:
   Everything outside the markers is preserved byte-for-byte; re-running with the
   same content is a no-op ("kept").
 
-Why python3 (not sed/awk): python3 is already a hard prereq of `--scope user`
+Why python3 (not sed/awk): python3 is already a hard prereq of the installer
 (install.sh checks for it), and a multiline marker-bounded replace is fiddly in
 portable sed. Mirrors merge-settings-fragment.py's rationale.
 

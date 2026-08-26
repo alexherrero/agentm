@@ -87,8 +87,8 @@ class DaemonRefreshBase(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         self.home = self.root / "home"
-        self.target = self.root / "project"
-        for d in (self.home, self.target):
+        self.prefix = self.home / ".claude"
+        for d in (self.home, self.prefix):
             d.mkdir(parents=True)
 
         # A launchctl that always succeeds and records what it was asked to do.
@@ -149,17 +149,28 @@ class DaemonRefreshBase(unittest.TestCase):
         most of the module's wall clock plus a network dependency for tests
         that check neither Go's downloader nor curl. If you are here because a
         run wrote somewhere unexpected, the thing to move is an install path.
+
+        AGENTM_INSTALL_PREFIX is pinned inside the fake HOME for the opposite
+        reason to those caches: it IS an install path, so the disposable tree is
+        exactly where it belongs rather than the operator's real ~/.claude.
+
+        CI=true skips the interactive vault probe. The machine-wide install path
+        reaches that probe and the retired per-project path never did, so this
+        became necessary when the two scopes collapsed into one. Without it the
+        suite blocks on macOS waiting for input nobody is there to give.
         """
         env = dict(os.environ)
         env["HOME"] = str(self.home)
         env["AGENTM_LAUNCHCTL"] = str(self.stub)
+        env["AGENTM_INSTALL_PREFIX"] = str(self.prefix)
+        env["CI"] = "true"
         env.update(real_go_env())
         env.update(overrides)
         return env
 
     def run_install(self, *flags: str, env: dict | None = None):
         return subprocess.run(
-            ["bash", str(_INSTALL), *flags, str(self.target)],
+            ["bash", str(_INSTALL), *flags],
             capture_output=True, text=True,
             env=self.install_env() if env is None else env, timeout=900,
         )
@@ -245,11 +256,18 @@ class TestRefreshFailsLoudlyNotFatally(DaemonRefreshBase):
         # A PATH with no `go` on it, keeping the tools install.sh itself needs.
         bin_dir = self.root / "nogo-bin"
         bin_dir.mkdir()
+        # A normal machine, minus Go. Everything here is a POSIX tool the
+        # install legitimately uses; only the Go toolchain is withheld, since
+        # that is the one absence under test. `mktemp` joined the list when the
+        # per-project install was retired: the machine-wide path (now the only
+        # path) uses it for the hook-fragment records file, so a fixture without
+        # it models a machine that does not exist and fails for the wrong reason.
         for tool in ("bash", "sh", "env", "mkdir", "cp", "rm", "mv", "ln", "sed",
                      "grep", "awk", "cat", "chmod", "find", "date", "uname",
                      "dirname", "basename", "id", "seq", "curl", "python3",
                      "sort", "head", "tail", "tr", "wc", "diff", "touch",
-                     "printf", "test", "jq", "git", "xargs", "comm", "cut", "stat"):
+                     "printf", "test", "jq", "git", "xargs", "comm", "cut", "stat",
+                     "mktemp"):
             src = shutil.which(tool)
             if src:
                 (bin_dir / tool).symlink_to(src)

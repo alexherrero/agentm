@@ -40,4 +40,4 @@ When you open an unconfigured code project, the SessionStart hook emits a one-li
 - [Detection rules reference](Detection-Rules) — the 10 built-in rules and what each detects.
 - [Project config reference](Project-Config) — the `project.json` enablement-block schema this flow writes.
 - [Auto-detect + auto-configure](Auto-Detect-Configure) — why the flow proposes-then-approves and why config lives in `project.json`.
-- [Install into project](Install-Into-Project) — the install step that precedes first-session configuration.
+- [Install AgentM machine-wide](Install-Machine-Wide) — the one-time install that precedes first-session configuration.

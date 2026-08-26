@@ -75,15 +75,15 @@ def symlink_targets_for_clone(
     Returns [] for unknown slugs (defensive).
 
     **Single source of truth** for the install-prefix ↔ source-clone mapping
-    (V4 #30 plan 3 of 3 task 3). Consumed by:
-      - install_symlinks.symlink_customizations  — forward direction (create
-        symlinks under <install-prefix>/ pointing at source-clone paths).
-      - install_migrate.inverse_mapping_for_clones — inverse direction (given
-        a file at <target>/.claude/<rel>, find the source-clone canonical
-        path it should map to for SHA256 compare).
+    (V4 #30 plan 3 of 3 task 3). Consumed by
+    install_symlinks.symlink_customizations, which walks it in the forward
+    direction: create symlinks under <install-prefix>/ pointing at
+    source-clone paths.
 
-    Inversion happens at call time in install_migrate; no separate inverse
-    table is maintained. This guarantees the two directions can never drift.
+    It once had a second consumer reading it in reverse — the per-project →
+    user-scope migration tool, which needed to map an installed file back to
+    its canonical source to SHA256-compare them. That tool retired with the
+    per-project install itself, so the mapping is now walked one way only.
     """
     out: list[tuple[Path, str, bool]] = []
 
