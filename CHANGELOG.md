@@ -7,28 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [v9.7.1] — 2026-08-26
-
-A patch for one defect in v9.7.0's installer: the daemon health check probed a
-port spelled in as a literal rather than the one the daemon was configured to
-bind, so an operator who had moved `daemon.port` got a daemon that came up
-correctly and an install that failed forty-five seconds later — fatally, under
-`--daemon`. A default install is unaffected and behaves exactly as before.
-
-### Fixed
-
-- **The installer's daemon health check probes the port the daemon will actually bind** ([`install.sh`](install.sh)) — it spelled `127.0.0.1:7821` in as a literal while the daemon resolves its port from `daemon.port` in the kernel config, so the two were free to disagree. The check now reads the same key, through `agentm_config.py --get daemon.port`, and falls back to 7821 when it is unset, unreadable, or not a number — which is what the daemon itself does. The default install is unchanged.
-
-  **The fixed port was wrong in both directions.** An operator who moved `daemon.port` got a daemon that came up correctly and an install that failed 45 seconds later probing a port nothing was listening on — fatal under `--daemon`, a loud warning on a refresh. In the other direction, a probe aimed at a well-known port is answered by whoever holds it: in the installer's own tests the check reported a healthy daemon while `AGENTM_LAUNCHCTL` was a stub and nothing had been started at all, because the developer machine running them had a real daemon on 7821.
-
-  **The test now owns the port it probes** ([`test_install_daemon_refresh.py`](scripts/test_install_daemon_refresh.py)) — each case starts a stub HTTP server on an OS-assigned port, writes that port to `daemon.port` in the fake `HOME`, and records what was requested, containing the probe the way `AGENTM_LAUNCHCTL` already contains launchd. Two tests pin it: one asserts the stub was the thing that received `/health`, one asserts the reported URL names the configured port and never the default. Both were mutation-checked — restoring the hardcoded port turns both red, the first with an empty request log, which is the defect stated as a failure.
-
-
-## [v9.7.0] — 2026-08-26
-
-Two unrelated things land together, and the honest framing is that they simply
-finished in the same window.
-
 The meters that say whether a model-written corpus is going flat, the loop that
 acts on them, and the two nightly scorecards. Enrichment rewrites every memory it
 touches, so the risk it carries is a corpus of distinct memories slowly becoming
@@ -140,6 +118,28 @@ writing memories cut part-way through a word.
   corpus quietly stops being corrected while the digest reports a stage working
   normally.
 
+
+## [v9.7.1] — 2026-08-26
+
+A patch for one defect in v9.7.0's installer: the daemon health check probed a
+port spelled in as a literal rather than the one the daemon was configured to
+bind, so an operator who had moved `daemon.port` got a daemon that came up
+correctly and an install that failed forty-five seconds later — fatally, under
+`--daemon`. A default install is unaffected and behaves exactly as before.
+
+### Fixed
+
+- **The installer's daemon health check probes the port the daemon will actually bind** ([`install.sh`](install.sh)) — it spelled `127.0.0.1:7821` in as a literal while the daemon resolves its port from `daemon.port` in the kernel config, so the two were free to disagree. The check now reads the same key, through `agentm_config.py --get daemon.port`, and falls back to 7821 when it is unset, unreadable, or not a number — which is what the daemon itself does. The default install is unchanged.
+
+  **The fixed port was wrong in both directions.** An operator who moved `daemon.port` got a daemon that came up correctly and an install that failed 45 seconds later probing a port nothing was listening on — fatal under `--daemon`, a loud warning on a refresh. In the other direction, a probe aimed at a well-known port is answered by whoever holds it: in the installer's own tests the check reported a healthy daemon while `AGENTM_LAUNCHCTL` was a stub and nothing had been started at all, because the developer machine running them had a real daemon on 7821.
+
+  **The test now owns the port it probes** ([`test_install_daemon_refresh.py`](scripts/test_install_daemon_refresh.py)) — each case starts a stub HTTP server on an OS-assigned port, writes that port to `daemon.port` in the fake `HOME`, and records what was requested, containing the probe the way `AGENTM_LAUNCHCTL` already contains launchd. Two tests pin it: one asserts the stub was the thing that received `/health`, one asserts the reported URL names the configured port and never the default. Both were mutation-checked — restoring the hardcoded port turns both red, the first with an empty request log, which is the defect stated as a failure.
+
+
+## [v9.7.0] — 2026-08-26
+
+Two unrelated things land together, and the honest framing is that they simply
+finished in the same window.
 
 The enrichment pass, and the measurement that says whether it flattened the
 corpus. A raw capture is distilled into a memory by a model call wrapped in
