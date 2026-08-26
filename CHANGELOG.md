@@ -29,6 +29,118 @@ correctly and an install that failed forty-five seconds later — fatally, under
 Two unrelated things land together, and the honest framing is that they simply
 finished in the same window.
 
+The meters that say whether a model-written corpus is going flat, the loop that
+acts on them, and the two nightly scorecards. Enrichment rewrites every memory it
+touches, so the risk it carries is a corpus of distinct memories slowly becoming
+one voice saying similar things. This is how that gets noticed and what happens
+next.
+
+Two things found while building it turned out to matter more than the plan. The
+meters had been measuring the wrong corpus, and the mining pipeline had been
+writing memories cut part-way through a word.
+
+### Added
+
+- **Four diversity meters** (`agentmd meters`) — trigram concentration and
+  pairwise cosine similarity, which are bad rising; moving-average TTR and
+  nearest-neighbour dispersion, which are bad falling. The last moves first,
+  because convergence starts locally: clusters tighten while the corpus-wide
+  average is still steady. The two embedding meters **refuse** when the dense arm
+  is absent rather than returning zero — zero dispersion is a converged corpus and
+  zero similarity is a diverse one, so a missing embedder would report "fine" or
+  "collapsed" depending which number you read.
+- **Cluster detection** (`agentmd clusters`) — where the corpus is converging
+  rather than how much. Notes are grouped by single linkage above a cosine
+  threshold and classified from provenance alone, deterministically: whether two
+  notes came from one source is a fact in their frontmatter, and asking a model to
+  guess would put a judgement call underneath an action that rewrites files.
+  **Four kinds, and two of them decline to answer** — a `mixed` cluster has both
+  problems and one fix for neither, an `unknown` cluster is a finding about
+  metadata. Neither licenses an action.
+
+  The threshold is 0.95, measured before it was chosen: the filed corpus runs
+  median 0.4324, p90 0.6008, max 0.9557. Intuition said 0.90, which on the
+  pre-correction population swept 451 of 500 notes into a cluster.
+
+  Provenance is compared **exactly**. The corpus's only two clusters are
+  `DeepSeek-OCR` against `DeepSeek-OCR-2` and `kimi-code` against `kimi-cli` —
+  four upstream projects, two pairs. Any prefix or substring comparison calls each
+  pair one source, which makes them duplicates, which stages a merge, which
+  supersedes one of two real memories.
+- **The correction loop** (`correction.py`) — three severities, three amounts of
+  autonomy. Duplicates stage a proposal and change nothing, because `dedup` and
+  `promote` sit outside `AUTO_APPLY_STAGES` and that docstring says the set must
+  never grow without a fresh operator ruling. Collapsed clusters re-distill from
+  source behind the revert log, one entry per cluster, stamped with the new pass
+  version so the ledger sees the work land rather than repeat. A persistent trend
+  writes a proposal for a person and touches no memory — a pass that rewrites its
+  own prompt on the strength of its own output has no outside check left in it.
+- **The enrichment breaker** (`enrichment_breaker.py`) — a latch on top of
+  `check_stage_anomaly`, which decides whether *tonight* is anomalous but
+  recomputes every cycle. A latch rather than a nightly threshold because the
+  failure being guarded is a pass that has started writing something wrong: if the
+  wrongness is steady rather than spiking, tonight looks like last night and a
+  per-cycle check sees nothing. Resuming requires a name, because an anonymous
+  resume is a timeout wearing a person's clothes.
+- **Two nightly scorecards** — corpus health and dreaming. Every row is a number
+  with its source or a dash with the reason; `Reading.measured` and
+  `Reading.unavailable` are separate constructors so an absent number cannot be
+  rendered as a zero.
+- **The memory context graph** (`agentmd graph`) — d3-force's three forces with
+  d3's own constants, so the picture is recognisably Obsidian's. Phyllotaxis
+  initialization rather than random, which makes "faithful" and "the same picture
+  twice" one implementation instead of two goals in tension.
+- **Scorecard delivery** — `session_email.run()` returns `False` for both "not
+  configured" and "the relay refused". Three outcomes now: skipped (exit 0),
+  failed (exit 1), sent. Credentials never reach a log line.
+- **A repair pass for damaged excerpts** (`repair_excerpts.py`) — re-cuts what a
+  surviving transcript can confirm, marks what it cannot, and refuses to guess in
+  between. Dry-run by default, every write through the revert log.
+
+### Fixed
+
+- **The meters were measuring the wrong corpus.** `runMeters` passed
+  `config.EmbedScope` — three spaces chosen so the vector arm reaches the
+  retrieval gold set's answers, which is a fact about scoring retrieval rather
+  than about which notes enrichment writes. Measured live, that window was 393
+  `_inbox`, 51 `_opinions`, 45 `desk/scratch` and **four filed memories**.
+
+  The bias had a direction: `_inbox` accumulates near-identical mined clippings,
+  which pushes similarity up. Corrected, the nearest-neighbour median moved from
+  0.9770 to 0.7639 — a factor of ten on the meter the design names as the earliest
+  signature of convergence — and the "recent" window went from a day and a half to
+  four months. A trip line set from the old numbers would have fired on the mining
+  pipeline's duplication and reported it as enrichment homogenizing the corpus.
+- **Mined excerpts were cut part-way through a word.**
+  `reflect._excerpt_around` sliced at a raw character offset with no
+  boundary snapping, and that excerpt goes straight into a note body at four call
+  sites. **2,318 notes** carried bodies opening like `...all back to direct push`,
+  where the word was `fall`; 299 of them in the filed memory space. The function's
+  own docstring says it exists for transparency lines, where a ragged edge is
+  harmless; it was reused where the edge becomes the memory, and there was no test
+  file for it at all.
+
+  Found by an operator reading fifteen of them during a labelling calibration and
+  saying they did not look like they were supposed to be that way. Two rubrics had
+  already been written to classify these notes — one kept them, one flagged them —
+  and neither asked whether they were simply broken.
+- **A test-suite leak was hiding 219 failures.** Six modules built a temporary
+  `agentmd`, exported it, and deleted the directory without unsetting the
+  variable; every later module took its own early exit and shelled out to a binary
+  that was gone. Green all week, because nobody runs `unittest discover` while
+  developing.
+
+### Internal
+
+- `derived_from` joined the note parser. It is the half of provenance this corpus
+  actually populates: a reference note carries `source` and no `derived_from`, a
+  collapsed mining note carries the reverse.
+- The clusters seam pins its own field names against the Go that emits them. Rename
+  a kind constant and `plan_action` routes every cluster to `review_only` — the
+  corpus quietly stops being corrected while the digest reports a stage working
+  normally.
+
+
 The enrichment pass, and the measurement that says whether it flattened the
 corpus. A raw capture is distilled into a memory by a model call wrapped in
 eleven deterministic gates — five before it, six after — and the whole thing
