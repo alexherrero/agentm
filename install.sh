@@ -734,16 +734,34 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
   # launchd accepted and that then died on a held port looks identical to a
   # working one in 'launchctl list' — which is exactly how the retired daemon
   # stayed 'healthy' and wired to nothing for months.
+  #
+  # The port comes from the same kernel-config key the daemon itself reads
+  # (daemon.port, resolved by internal/config), not from the default spelled
+  # in again here. Resolving it rather than recalling it fixes two things a
+  # fixed 7821 got wrong in opposite directions: an operator who moved the
+  # port had a daemon that came up correctly and an install that failed 45
+  # seconds later probing a port nothing was on; and a probe aimed at a
+  # well-known port is answered by whatever holds it, which is how this check
+  # reported a healthy daemon in the installer's own tests while the daemon it
+  # claimed to verify had never been started.
+  DAEMON_PORT=""
+  if command -v python3 >/dev/null 2>&1; then
+    DAEMON_PORT="$(python3 "$HARNESS_ROOT/scripts/agentm_config.py" --get daemon.port 2>/dev/null || true)"
+  fi
+  # Unset, unreadable, or not a number all mean the daemon will take its own
+  # default, so probe that. Never a partially-parsed value.
+  [[ "$DAEMON_PORT" =~ ^[0-9]+$ ]] || DAEMON_PORT=7821
+
   DAEMON_UP=0
   for _ in $(seq 1 45); do
-    if curl -fsS -m 2 http://127.0.0.1:7821/health >/dev/null 2>&1; then DAEMON_UP=1; break; fi
+    if curl -fsS -m 2 "http://127.0.0.1:$DAEMON_PORT/health" >/dev/null 2>&1; then DAEMON_UP=1; break; fi
     sleep 1
   done
   if [[ $DAEMON_UP -eq 1 ]]; then
     if [[ "$DAEMON_MODE" == "refresh" ]]; then
-      echo "    memory daemon refreshed and answering on http://127.0.0.1:7821"
+      echo "    memory daemon refreshed and answering on http://127.0.0.1:$DAEMON_PORT"
     else
-      echo "==> Memory daemon installed and answering on http://127.0.0.1:7821"
+      echo "==> Memory daemon installed and answering on http://127.0.0.1:$DAEMON_PORT"
       echo "    It now starts at login, restarts if it dies, and refreshes on every"
       echo "    future install or --update run (opt out with --no-daemon)."
       echo "    Logs:      $DAEMON_LOG_DIR/daemon.log"
@@ -751,7 +769,7 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
       echo "    Uninstall: launchctl bootout gui/\$(id -u)/$DAEMON_LABEL && rm $DAEMON_PLIST"
     fi
   else
-    daemon_fail "the agent loaded but nothing answered /health within 45s — most likely something else holds port 7821 (check: lsof -nP -iTCP:7821 -sTCP:LISTEN; log: $DAEMON_LOG_DIR/daemon.log)"
+    daemon_fail "the agent loaded but nothing answered /health within 45s — most likely something else holds port $DAEMON_PORT (check: lsof -nP -iTCP:$DAEMON_PORT -sTCP:LISTEN; log: $DAEMON_LOG_DIR/daemon.log)"
   fi
 fi
 # ── done ────────────────────────────────────────────────────────────────────
