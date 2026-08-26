@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.7.0](https://github.com/alexherrero/agentm/releases/tag/v9.7.0).** AgentM stops installing per project — there is one install location and one command, and re-running the installer is the refresh. Alongside it, the enrichment pass that distils a raw capture into a memory, with the measurement that says whether it flattened the corpus.
+> **Latest release: [v9.7.1](https://github.com/alexherrero/agentm/releases/tag/v9.7.1).** A patch for v9.7.0's installer: the daemon health check now probes the port the daemon was configured to bind rather than a literal, so moving `daemon.port` no longer fails the install. [v9.7.0](https://github.com/alexherrero/agentm/releases/tag/v9.7.0) is the release it patches — AgentM stopped installing per project, alongside the enrichment pass that distils a raw capture into a memory.

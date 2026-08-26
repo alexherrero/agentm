@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v9.7.1] — 2026-08-26
+
+A patch for one defect in v9.7.0's installer: the daemon health check probed a
+port spelled in as a literal rather than the one the daemon was configured to
+bind, so an operator who had moved `daemon.port` got a daemon that came up
+correctly and an install that failed forty-five seconds later — fatally, under
+`--daemon`. A default install is unaffected and behaves exactly as before.
+
 ### Fixed
 
 - **The installer's daemon health check probes the port the daemon will actually bind** ([`install.sh`](install.sh)) — it spelled `127.0.0.1:7821` in as a literal while the daemon resolves its port from `daemon.port` in the kernel config, so the two were free to disagree. The check now reads the same key, through `agentm_config.py --get daemon.port`, and falls back to 7821 when it is unset, unreadable, or not a number — which is what the daemon itself does. The default install is unchanged.
