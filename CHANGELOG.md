@@ -7,12 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v9.7.0] — 2026-08-26
+
+Two unrelated things land together, and the honest framing is that they simply
+finished in the same window.
 
 The enrichment pass, and the measurement that says whether it flattened the
 corpus. A raw capture is distilled into a memory by a model call wrapped in
 eleven deterministic gates — five before it, six after — and the whole thing
 ships off, because the eager trigger fires on real captures and that is real
 spend.
+
+Alongside it, **AgentM stops installing per project.** There were two install
+scopes; the documented default was the one almost nobody wanted, and it carried
+the maintenance weight of a first-class mode — two delivery mechanisms with
+different on-disk shapes, a migration tool, a parity surface — to serve cases a
+machine-wide install plus per-project *state* already covers. Now there is one
+install location and one command, and `--update` goes too, because re-running
+the installer **is** the refresh. Removing that branch also fixed a standing
+bug for free: the Go daemon and the embedding-model fetch sat below it and had
+never once been reachable under `--scope user`.
 
 ### Added
 

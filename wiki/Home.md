@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.6.0](https://github.com/alexherrero/agentm/releases/tag/v9.6.0).** Every recall-history row names the vault directory a note lived in, and nothing ever removed one — rows now expire on a 90-day clock, swept from the same write path that creates them.
+> **Latest release: [v9.7.0](https://github.com/alexherrero/agentm/releases/tag/v9.7.0).** AgentM stops installing per project — there is one install location and one command, and re-running the installer is the refresh. Alongside it, the enrichment pass that distils a raw capture into a memory, with the measurement that says whether it flattened the corpus.
