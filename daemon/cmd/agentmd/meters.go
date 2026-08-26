@@ -120,24 +120,52 @@ func embedModelFor(cfg *config.Config, ef *embedderFlags) string {
 	return cfg.EmbedModel
 }
 
+// meterScope is the part of the vault the meters measure.
+//
+// The configured `memory` space, resolved rather than written down — the vault
+// root has moved twice and a literal would resolve to nothing, silently, since
+// an empty scope selects no notes and reads exactly like a cold index.
+//
+// Falls back to `EmbedScope` when the space is not configured. That is the wide
+// scope this function exists to narrow, so it is the wrong population — but a
+// meter reporting numbers over a named wider scope is recoverable, and one
+// reporting nothing at all looks like a corpus with no memories in it.
+func meterScope(cfg *config.Config) []string {
+	if cfg == nil {
+		return nil
+	}
+	if dir := strings.Trim(strings.TrimSpace(cfg.Spaces["memory"]), "/"); dir != "" {
+		return []string{dir}
+	}
+	return cfg.EmbedScope
+}
+
 func runMeters(ctx context.Context, cfg *config.Config, idx *index.Index,
 	sample, top, window int, model string) (meterReport, error) {
+	// The memory space, not the vector arm's scope.
+	//
+	// `EmbedScope` is three spaces because the retrieval gold set's answers live
+	// in `desk` and `external`, which is a fact about scoring retrieval and not
+	// about which notes enrichment writes. Passing it here made the meters 79%
+	// a measurement of `_inbox`; `RecentForMeters` documents what that cost.
+	scope := meterScope(cfg)
+
 	// Embedded notes first, because that is the only window the dense meters can
 	// run over. Falling back to everything when there are none keeps the two
 	// lexical meters working on a corpus that has never been embedded.
-	rows, err := idx.RecentForMeters(ctx, sample, model, cfg.EmbedScope, true)
+	rows, err := idx.RecentForMeters(ctx, sample, model, scope, true)
 	if err != nil {
 		return meterReport{}, err
 	}
 	if len(rows) == 0 {
-		if rows, err = idx.RecentForMeters(ctx, sample, model, cfg.EmbedScope, false); err != nil {
+		if rows, err = idx.RecentForMeters(ctx, sample, model, scope, false); err != nil {
 			return meterReport{}, err
 		}
 	}
 
 	rep := meterReport{
 		Sample: len(rows), Model: model,
-		Scope:         strings.Join(cfg.EmbedScope, ", "),
+		Scope:         strings.Join(scope, ", "),
 		TrigramTop:    top,
 		LexicalWindow: window,
 	}

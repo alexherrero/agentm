@@ -1,0 +1,85 @@
+{
+  "agent_labels_committed_at": "ced7dcb",
+  "exact_agreement": 0.6,
+  "flagged_agreement": 0.6667,
+  "held_out": 15,
+  "kappa_exact": 0.1892,
+  "kappa_flagged": 0.2991,
+  "pairs": [
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/05/evaluator-inline-rubric.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/07/separating-signal-from-noise-in-coding-evaluations.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/08/read-all-versus-search-is-a-corpus-size-decision-not-a-quality-one.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/07/deepseek-prover-v2.md",
+      "operator": "review"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/07/voice-kernel.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/05/coordinated-release-order.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "note": "Agent/memory/_opinions/how-we-engineer/never-settled-55.md",
+      "operator": "review"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/06/ship-deploy-with-confidence.md",
+      "operator": "review"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/05/hld-evolution-update-on-major-release.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/preferences/never-runs-silently-without-that-authority-1.md",
+      "operator": "review"
+    },
+    {
+      "agent": "review",
+      "note": "Agent/memory/_opinions/how-we-engineer/never-assume-45.md",
+      "operator": "expire"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/preferences/never-fall-back-to-the-singleton-1.md",
+      "operator": "review"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/preferences/never-fan-out-parallel-implementers-2.md",
+      "operator": "expire"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/05/commit-conventional-format.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "note": "Agent/memory/2026/07/3fs.md",
+      "operator": "keep"
+    }
+  ]
+}

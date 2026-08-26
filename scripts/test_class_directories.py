@@ -32,6 +32,11 @@ import storage_rules  # noqa: E402
 _BUILD_DIR = None
 
 
+# What `storage_rules` pointed at before this module touched it, so the
+# teardown restores a real value rather than a guess.
+_ORIGINAL_DAEMON_BIN = storage_rules.DAEMON_BIN
+
+
 def setUpModule() -> None:
     global _BUILD_DIR
     if os.environ.get("AGENTMD", "").strip():
@@ -48,8 +53,25 @@ def setUpModule() -> None:
 
 
 def tearDownModule() -> None:
-    if _BUILD_DIR is not None:
-        _BUILD_DIR.cleanup()
+    """Undo everything setUpModule did, not just the directory.
+
+    Deleting the build directory while leaving `$AGENTMD` pointing into it is
+    what made a full `unittest discover` run fail: every later module takes its
+    own `if os.environ.get("AGENTMD"): return` early exit, then shells out to a
+    binary that is no longer there.
+
+    Only what this module set. A module that inherited `$AGENTMD` from the
+    environment returned early and built nothing, so the variable is not its to
+    clear.
+    """
+    global _BUILD_DIR
+    if _BUILD_DIR is None:
+        return
+    _BUILD_DIR.cleanup()
+    _BUILD_DIR = None
+    os.environ.pop("AGENTMD", None)
+    storage_rules.DAEMON_BIN = _ORIGINAL_DAEMON_BIN
+    storage_rules._CACHE = None
 
 
 def memory_root() -> Path | None:

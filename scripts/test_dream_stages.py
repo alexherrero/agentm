@@ -300,10 +300,71 @@ class ReportingTests(StageTestCase):
         self.install(FakeLedger(pending={"eligible": 0, "current": 0, "pending": []}))
         results = dream_stages.run_new_stages(Path("/nonexistent"))
         names = [r.stage for r in results]
+        # `breaker` joined the list when part 6 task 3 added it. It reports every
+        # cycle rather than only when it is open, so it belongs here with the
+        # rest — a stage that only appeared on the bad nights would leave the
+        # reader unable to tell "auto-apply is running" from "nobody checked".
+        # `correction` joined it at task 4, last and after the drain: it reads
+        # what the corpus currently looks like, so it should see the state this
+        # cycle leaves rather than the state it started from.
         self.assertEqual(names,
-                         ["entity_rollups", "stub_synthesis", "unfiled_drain"])
+                         ["breaker", "entity_rollups", "stub_synthesis",
+                          "unfiled_drain", "correction"])
         for r in results:
             self.assertIn("stage", r.as_dict())
+
+    def test_correction_runs_after_the_drain(self):
+        # Stated as an ordering rather than left to the list above, because the
+        # list would still pass with the two swapped and the reason it is last is
+        # substantive: correction measures the corpus, and the drain changes it.
+        self.install(FakeLedger(pending={"eligible": 0, "current": 0, "pending": []}))
+        names = [r.stage for r in dream_stages.run_new_stages(Path("/nonexistent"))]
+        self.assertLess(names.index("unfiled_drain"), names.index("correction"))
+
+    def test_the_correction_stage_is_wired_in_and_not_merely_callable(self):
+        # The hole task 3 paid for: a test that calls a stage directly stays
+        # green when the caller stops calling it. This one goes through
+        # `run_new_stages`, which is the only path the nightly pass takes.
+        self.install(FakeLedger(pending={"eligible": 0, "current": 0, "pending": []}))
+        called = {}
+        original = dream_stages.stage_correction
+
+        def spy(vault_path, **kw):
+            called.update(kw)
+            called["vault_path"] = vault_path
+            return original(vault_path, **kw)
+
+        dream_stages.stage_correction = spy
+        self.addCleanup(lambda: setattr(dream_stages, "stage_correction",
+                                        original))
+        dream_stages.run_new_stages(Path("/nonexistent"), enrich_enabled=True,
+                                    run_id="r-1", version="v9")
+        self.assertTrue(called, "run_new_stages never reached stage_correction")
+
+    def test_the_stage_is_handed_what_the_caller_gave_run_new_stages(self):
+        # A stage wired in but handed nothing would report "deferred" every
+        # night, forever, and look exactly like a stage working correctly with
+        # enrichment off.
+        self.install(FakeLedger(pending={"eligible": 0, "current": 0, "pending": []}))
+        seen = {}
+        original = dream_stages.stage_correction
+
+        def spy(vault_path, **kw):
+            seen.update(kw)
+            return original(vault_path, **kw)
+
+        dream_stages.stage_correction = spy
+        self.addCleanup(lambda: setattr(dream_stages, "stage_correction",
+                                        original))
+        sentinel = object()
+        dream_stages.run_new_stages(Path("/nonexistent"), enrich_enabled=True,
+                                    run_id="r-2", version="v9",
+                                    revert_log=sentinel, distiller=sentinel)
+        self.assertEqual(seen.get("run_id"), "r-2")
+        self.assertEqual(seen.get("version"), "v9")
+        self.assertIs(seen.get("revert_log"), sentinel)
+        self.assertIs(seen.get("distiller"), sentinel)
+        self.assertTrue(seen.get("enrich_enabled"))
 
 
 if __name__ == "__main__":
