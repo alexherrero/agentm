@@ -113,6 +113,58 @@ gh run view <run-id> --log-failed             # drill into the failing step
 
 A red run on Windows but a green run on POSIX indicates a path-separator or pwsh-host assumption regression. A red run across all operating systems indicates a canonical-spec or adapter-parity drift. Try running `bash scripts/check-parity.sh` locally to verify.
 
+### A run that failed without running anything
+
+Not every red run is a failure. A run can be marked `failure` having dispatched
+no work at all, and it reads exactly like a broken build until you look closer.
+
+**The signature.** The run completed within a few seconds of being created, and
+its jobs sit at `status: queued` with an empty `steps` list — GitHub accepted the
+run and never assigned it a runner. A genuine failure has a job with
+`conclusion: failure` and a named failing step.
+
+```bash
+# created and updated seconds apart => suspect an orphan, not a failure
+gh api repos/<owner>/<repo>/actions/runs/<run-id> \
+  --jq '{created: .created_at, updated: .updated_at, attempt: .run_attempt}'
+
+# zero failed jobs on a "failed" run confirms it
+gh api repos/<owner>/<repo>/actions/runs/<run-id>/jobs \
+  --jq '[.jobs[] | select(.conclusion=="failure")] | length'
+```
+
+**Why it blocks the PR.** Those undispatched jobs stay pinned to the pull
+request as *pending forever*. They are not slow; nothing will ever report them.
+The PR sits `BLOCKED` on checks that cannot complete, and `ci-all` fails
+honestly, because from its side a run that never ran and a run that failed look
+identical.
+
+**Recovery, in order.**
+
+1. `gh run rerun <run-id>` — but **verify it took**. It can no-op silently; the
+   run should move to `run_attempt: 2`. A run still reporting `attempt=1` after a
+   rerun did not restart.
+2. If the rerun does not take, close and reopen the pull request. That fires
+   fresh `pull_request` events and produces new run IDs, which is the reliable
+   fix. Note it also **clears auto-merge**, so re-arm with `gh pr merge --auto`
+   afterwards.
+3. Re-run `ci-all` **last**, never alongside the OS workflows. It polls
+   `tests-linux`/`tests-mac`/`tests-windows` and requires `success` from each, so
+   starting it while they are queued makes it fail waiting on its own inputs.
+
+**Reading the aftermath.** GitHub keeps orphaned runs in the commit's history,
+so the PR page shows old red beside new green. Trust `gh pr checks` and
+`mergeStateStatus` over the run list — and compare run IDs: the fresh set shares
+a higher ID prefix than the abandoned one.
+
+*Why there is no `concurrency:` block anywhere, and why adding one would not help
+here:* the orphaned runs are the **current** head's, and `concurrency` only
+cancels *superseded* runs. It would not have prevented any of this. It would also
+turn every routine force-push into an `aggregate` failure, since a cancelled run
+is not `success` and that is the only value the poller accepts. The `push:`
+trigger is filtered to `branches: [main]`, so PR pushes do not double-fire
+either — there is no duplication to collapse.
+
 ## The nightly health tier (advisory, never a merge gate)
 
 The `[H] Health Nightly` workflow (`.github/workflows/health-nightly.yml`, R1.8 Task 4) runs daily at 06:00 UTC and on manual `workflow_dispatch`. It layers heavier checks on top of the fast tier this page documents. These heavier checks are too slow or dependency-heavy to run on every push. They include real-embedding recall (no stub mode), a live MCP daemon round-trip over real HTTP, a report of every `VERIFY_*_FAULT=1` mode's outcome, and a cold-install dogfood pass. The job renders the scorecard and uploads it (HTML and the raw JSONL records) as a build artifact named `health-scorecard-ubuntu` with a 14-day retention. It never commits or pushes. The V8 proving Lane S on 2026-07-13 retired the branch/PR/`workflow_dispatch`/`--admin` merge machinery this job used to run. The job acts purely as a clean-runner regression signal.
