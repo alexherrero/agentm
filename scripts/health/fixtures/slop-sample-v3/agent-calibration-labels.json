@@ -1,0 +1,119 @@
+{
+  "counts": {
+    "expire": 1,
+    "keep": 10,
+    "review": 4
+  },
+  "deciding_rule": {
+    "Agent/memory/2026/05/scheduled-agentm-skills.md": {
+      "flagged": false,
+      "novelty": 0.9524221453287197,
+      "rule": 5,
+      "why": "A substantial idea note with two named skills and a concrete pipeline."
+    },
+    "Agent/memory/2026/05/self-hosted-photo-library-sync.md": {
+      "flagged": false,
+      "novelty": 0.9598180439727066,
+      "rule": 5,
+      "why": "A substantial idea note \u2014 Immich as the canonical library, original-quality Google Photos ingest, a named sync topology. States plenty to be wrong about."
+    },
+    "Agent/memory/2026/07/branding-guide.md": {
+      "flagged": true,
+      "novelty": 0.5833333333333333,
+      "rule": 6,
+      "why": "Title and URL, empty description. Same class as 03."
+    },
+    "Agent/memory/2026/07/deepseek-github.md": {
+      "flagged": true,
+      "novelty": 0.6229508196721312,
+      "rule": 6,
+      "why": "The body is a truncated GitHub API JSON response. Not prose saying nothing \u2014 machine data that was never distilled into anything. v3 has no rule for that, which is itself worth knowing, so it lands on the fallthrough."
+    },
+    "Agent/memory/2026/07/deepseek-ocr-2.md": {
+      "flagged": true,
+      "novelty": 0.2777777777777778,
+      "rule": 5,
+      "why": "Title, 'Visual Causal Flow', source. Distinct from DeepSeek-OCR: two models, two memories."
+    },
+    "Agent/memory/2026/07/deepseek-ocr.md": {
+      "flagged": true,
+      "novelty": 0.2777777777777778,
+      "rule": 5,
+      "why": "Title, 'Contexts Optical Compression', source. A complete reference of its kind."
+    },
+    "Agent/memory/2026/07/deepseek-prover-v2.md": {
+      "flagged": true,
+      "novelty": 0.38888888888888884,
+      "rule": 6,
+      "why": "Title and URL with **no description at all**. Nothing states what DeepSeek-Prover-V2 is or why it was captured, so the reference carve-out does not reach it. Falls through to the default."
+    },
+    "Agent/memory/2026/07/dualpipe.md": {
+      "flagged": true,
+      "novelty": 0.6785714285714286,
+      "rule": 5,
+      "why": "A real sentence: bidirectional pipeline parallelism for computation-communication overlap."
+    },
+    "Agent/memory/2026/07/eplb.md": {
+      "flagged": true,
+      "novelty": 0.6097560975609756,
+      "rule": 5,
+      "why": "Title, the project's own one-line description, source URL. The rubric's carve-out: a bare reference is not slop if the note *is* the reference. v2 taught me this one \u2014 I said review, the operator said keep, and the operator was right."
+    },
+    "Agent/memory/2026/07/kimi-code.md": {
+      "flagged": true,
+      "novelty": 0.5714285714285714,
+      "rule": 5,
+      "why": "Carries the project's tagline, which says what it is."
+    },
+    "Agent/memory/2026/07/kosong.md": {
+      "flagged": true,
+      "novelty": 0.6428571428571428,
+      "rule": 5,
+      "why": "'The LLM abstraction layer for modern AI agent applications' \u2014 a real description."
+    },
+    "Agent/memory/2026/07/lplb.md": {
+      "flagged": true,
+      "novelty": 0.6923076923076923,
+      "rule": 5,
+      "why": "A real sentence describing what LPLB does and for what."
+    },
+    "Agent/memory/2026/07/profile-data.md": {
+      "flagged": true,
+      "novelty": 0.6304347826086957,
+      "rule": 5,
+      "why": "'Analyze computation-communication overlap in V3/R1' \u2014 a real description."
+    },
+    "Agent/memory/2026/07/zsh-kimi-cli.md": {
+      "flagged": true,
+      "novelty": 0.5681818181818181,
+      "rule": 6,
+      "why": "Title and URL, empty description. Same class as 03."
+    },
+    "Agent/memory/workflow/workflow-mcp-ccd-session-mgmt-search.md": {
+      "flagged": true,
+      "novelty": 0.49295774647887325,
+      "rule": 1,
+      "why": "The body is the miner's own prompt, never filled: 'If this represents a repeatable workflow, capture the sequence'. A template's prompt left in place is rule 1's own example, and it is one of a set of near-identical workflow tallies."
+    }
+  },
+  "labelled": "2026-08-26",
+  "labelled_before_operator_saw_worksheet": true,
+  "labels": {
+    "Agent/memory/2026/05/scheduled-agentm-skills.md": "keep",
+    "Agent/memory/2026/05/self-hosted-photo-library-sync.md": "keep",
+    "Agent/memory/2026/07/branding-guide.md": "review",
+    "Agent/memory/2026/07/deepseek-github.md": "review",
+    "Agent/memory/2026/07/deepseek-ocr-2.md": "keep",
+    "Agent/memory/2026/07/deepseek-ocr.md": "keep",
+    "Agent/memory/2026/07/deepseek-prover-v2.md": "review",
+    "Agent/memory/2026/07/dualpipe.md": "keep",
+    "Agent/memory/2026/07/eplb.md": "keep",
+    "Agent/memory/2026/07/kimi-code.md": "keep",
+    "Agent/memory/2026/07/kosong.md": "keep",
+    "Agent/memory/2026/07/lplb.md": "keep",
+    "Agent/memory/2026/07/profile-data.md": "keep",
+    "Agent/memory/2026/07/zsh-kimi-cli.md": "review",
+    "Agent/memory/workflow/workflow-mcp-ccd-session-mgmt-search.md": "expire"
+  },
+  "rubric": "RUBRIC.md"
+}
