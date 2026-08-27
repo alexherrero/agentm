@@ -682,6 +682,55 @@ class TestAutonomyDeliveryConfig(unittest.TestCase):
         self.assertEqual(out, "")
         self.assertEqual(err, "")
 
+    # -- --enrich-enabled ------------------------------------------------------
+
+    def test_enrich_enabled_absent_by_default(self) -> None:
+        # The daemon reads this key and ships without it, which is what keeps a
+        # fresh install from spending on every capture. A default that arrives
+        # by accident is the failure this asserts against.
+        rc, out, err = self._run("--get", "daemon.enrich_enabled")
+        self.assertEqual(rc, 1)
+        self.assertEqual(out, "")
+        self.assertEqual(err, "")
+
+    def test_set_enrich_enabled_true_writes_bool_rc0(self) -> None:
+        rc, out, err = self._run("--enrich-enabled", "true")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertIs(config[ac._DAEMON_ENRICH_ENABLED_KEY], True,
+                      "the daemon reads a bool; a string here reads as unset")
+        self.assertEqual(out.strip(), "daemon.enrich_enabled = True")
+
+    def test_set_enrich_enabled_false_writes_bool_rc0(self) -> None:
+        rc, out, err = self._run("--enrich-enabled", "false")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertIs(config[ac._DAEMON_ENRICH_ENABLED_KEY], False)
+
+    def test_set_enrich_enabled_rejects_invalid(self) -> None:
+        rc, _, err = self._run("--enrich-enabled", "yes")
+        self.assertEqual(rc, 2)
+        self.assertIn("not 'true' or 'false'", err)
+        self.assertFalse((self.prefix / ".agentm-config.json").exists(),
+                         "a refused value still wrote a config")
+
+    def test_set_enrich_enabled_idempotent_on_same_value(self) -> None:
+        self._run("--enrich-enabled", "true")
+        rc, out, _ = self._run("--enrich-enabled", "true")
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, "", "a no-op announced itself as a write")
+
+    def test_enrich_enabled_preserves_vault_path(self) -> None:
+        vault = Path(self.tmp) / "enrich-vault"
+        vault.mkdir()
+        self._run("--vault-path", str(vault))
+        rc, _, err = self._run("--enrich-enabled", "true")
+        self.assertEqual(rc, 0, err)
+        config = json.loads((self.prefix / ".agentm-config.json").read_text())
+        self.assertEqual(config[ac._PLUGIN_VAULT_PATH_KEY], str(vault.resolve()),
+                         "arming enrichment dropped the vault path")
+        self.assertIs(config[ac._DAEMON_ENRICH_ENABLED_KEY], True)
+
     # -- --notify-enabled ------------------------------------------------------
 
     def test_set_notify_enabled_true_writes_bool_rc0(self) -> None:

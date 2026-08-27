@@ -17,6 +17,8 @@ Operations:
                                             #   vault-less machine into repo-local state
     agentm_config.py --storage-backend <name>  # write storage.backend (the selected
                                             #   storage backend protocol name; V5-1 part 5)
+    agentm_config.py --enrich-enabled true # arm the eager enrichment trigger
+                                            #   (daemon.enrich_enabled; spends on every capture)
     agentm_config.py --notify-enabled true # opt in to the daily on-device notification
                                             #   (plugins.autonomy.notify_enabled; FRIDAY feature 1)
     agentm_config.py --email-to <address>  # opt in to the daily digest email
@@ -81,6 +83,7 @@ _PLUGIN_MEMORY_ROOT_KEY = "plugins.obsidian-vault.memory_root"
 #: Flat with dots, same namespacing convention as the vault-path key above.
 #: Absent by default: both channels graceful-skip until the operator opts in.
 _AUTONOMY_NOTIFY_ENABLED_KEY = "plugins.autonomy.notify_enabled"
+_DAEMON_ENRICH_ENABLED_KEY = "daemon.enrich_enabled"
 _AUTONOMY_EMAIL_TO_KEY = "plugins.autonomy.email_to"
 _AUTONOMY_EMAIL_SMTP_URL_KEY = "plugins.autonomy.email_smtp_url"
 #: Optional — the verified sending address for relays (e.g. Resend) that
@@ -274,6 +277,37 @@ def cmd_set_storage_backend(prefix: Path, name: str) -> int:
     config[_STORAGE_BACKEND_KEY] = backend
     written = _write_config(prefix, config)
     print(f"storage.backend = {backend}")
+    print(f"(written to {written})", file=sys.stderr)
+    return 0
+
+
+def cmd_set_enrich_enabled(prefix: Path, value: str) -> int:
+    """Arm or disarm the eager enrichment trigger (`daemon.enrich_enabled`).
+
+    Off in the shipped configuration for a reason the daemon's own comment
+    states plainly: this flag *spends*. Armed, every capture fires a
+    `claude -p` call on this machine, so it is set by an operator deciding for
+    their own install and never by a binary update.
+
+    `agentmd enrich --yes` runs one batch without this — the flag is for the
+    standing behaviour, not for trying it once. Idempotent: silent no-op when
+    unchanged.
+    """
+    normalized = value.strip().lower()
+    if normalized not in ("true", "false"):
+        print(
+            f"[agentm_config] refusing to set enrich_enabled: {value!r} is not "
+            "'true' or 'false'",
+            file=sys.stderr,
+        )
+        return 2
+    enabled = normalized == "true"
+    config = _read_config(prefix) or {}
+    if config.get(_DAEMON_ENRICH_ENABLED_KEY) == enabled:
+        return 0
+    config[_DAEMON_ENRICH_ENABLED_KEY] = enabled
+    written = _write_config(prefix, config)
+    print(f"{_DAEMON_ENRICH_ENABLED_KEY} = {enabled}")
     print(f"(written to {written})", file=sys.stderr)
     return 0
 
@@ -508,6 +542,9 @@ def _build_parser() -> argparse.ArgumentParser:
                     help="set storage.backend field (the selected storage backend protocol name)")
     op.add_argument("--notify-enabled", metavar="{true,false}",
                     help="set plugins.autonomy.notify_enabled — opt in/out of the daily on-device notification")
+    op.add_argument("--enrich-enabled", metavar="{true,false}",
+                    help="set daemon.enrich_enabled — arm the eager enrichment "
+                         "trigger, which fires a model call on every capture")
     op.add_argument("--email-to", metavar="ADDRESS",
                     help="set plugins.autonomy.email_to — opt in to the daily digest email")
     op.add_argument("--email-smtp-url", metavar="URL",
@@ -535,6 +572,8 @@ def main(argv: Optional[list[str]] = None) -> int:
         return cmd_set_storage_backend(prefix, args.storage_backend)
     if args.notify_enabled is not None:
         return cmd_set_notify_enabled(prefix, args.notify_enabled)
+    if args.enrich_enabled is not None:
+        return cmd_set_enrich_enabled(prefix, args.enrich_enabled)
     if args.email_to is not None:
         return cmd_set_email_to(prefix, args.email_to)
     if args.email_smtp_url is not None:
