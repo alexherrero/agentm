@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import sys
 import tempfile
+import socket
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -755,6 +756,116 @@ class CliTests(_ForwardLearningTestBase):
     def test_main_smoke_run_no_sources(self) -> None:
         rc = fl.main(["--vault-path", str(self.vault)])
         self.assertEqual(rc, 0)
+
+
+class ReadmeCaptureTests(unittest.TestCase):
+    """A reference holds what the thing says, not what it is filed under.
+
+    `_parse_github_api_repos` used to set the body to `repo["description"]` — one
+    line, and often empty. Measured on the live vault that left 37 of 150
+    reference notes unreadable without going back to the source, and the dense arm
+    with seven words to embed for `deepseek-ocr`.
+    """
+
+    REPOS = json.dumps([{
+        "name": "DeepSeek-OCR", "full_name": "deepseek-ai/DeepSeek-OCR",
+        "description": "Contexts Optical Compression",
+        "html_url": "https://github.com/deepseek-ai/DeepSeek-OCR",
+        "default_branch": "main",
+    }]).encode()
+
+    def source(self):
+        return fl.Source(slug="deepseek", kind="reference", type="github",
+                         url="https://api.github.com/orgs/deepseek-ai/repos")
+
+    def test_the_readme_becomes_the_body(self):
+        readme = ("# DeepSeek-OCR\n\nA vision-language model that compresses long "
+                  "documents into optical tokens, trading a little fidelity for a "
+                  "large reduction in context length.\n")
+        with mock.patch.object(fl, "_repo_readme", return_value=readme.strip()):
+            got = fl._parse_github_api_repos(self.REPOS, self.source())
+        self.assertEqual(len(got), 1)
+        self.assertIn("optical tokens", got[0].body)
+        self.assertGreater(len(got[0].body.split()), 12,
+                           "the body is still tagline-length")
+
+    def test_no_readme_falls_back_to_the_description(self):
+        # The behaviour that shipped before. The worst case of the new fetch is
+        # the old behaviour, never an empty note.
+        with mock.patch.object(fl, "_repo_readme", return_value=""):
+            got = fl._parse_github_api_repos(self.REPOS, self.source())
+        self.assertEqual(got[0].body, "Contexts Optical Compression")
+
+    def test_a_repo_with_neither_still_produces_a_candidate(self):
+        repos = json.dumps([{
+            "name": "Branding-Guide", "full_name": "MoonshotAI/Branding-Guide",
+            "description": "", "html_url": "https://github.com/MoonshotAI/Branding-Guide",
+        }]).encode()
+        with mock.patch.object(fl, "_repo_readme", return_value=""):
+            got = fl._parse_github_api_repos(repos, self.source())
+        self.assertEqual(len(got), 1, "the repo vanished rather than degrading")
+        self.assertEqual(got[0].body, "")
+
+    def test_a_fetch_failure_is_an_empty_string_not_an_exception(self):
+        # Every failure path: no README, a 404, a timeout, a refused connection.
+        # A scan must not fail because one repo is awkward.
+        for exc in (fl.URLError("refused"), socket.timeout(), OSError("boom")):
+            with self.subTest(exc=type(exc).__name__):
+                with mock.patch.object(fl, "urlopen", side_effect=exc):
+                    self.assertEqual(
+                        fl._repo_readme("owner/repo", "main"), "")
+
+    def test_a_repo_name_without_an_owner_is_not_fetched(self):
+        # A malformed `full_name` would build a URL with a missing path segment,
+        # which resolves to somebody else's file rather than to nothing.
+        called = []
+        with mock.patch.object(fl, "urlopen", side_effect=lambda *a, **k: called.append(a)):
+            self.assertEqual(fl._repo_readme("", "main"), "")
+            self.assertEqual(fl._repo_readme("noslash", "main"), "")
+        self.assertEqual(called, [], "a malformed name still hit the network")
+
+    def test_a_404_is_not_a_readme(self):
+        # raw.githubusercontent serves a 404 body, and a 404 body is text — so a
+        # status check that is skipped turns "this repo has no README.md" into a
+        # note whose summary is the string "404: Not Found".
+        class Resp:
+            status = 404
+            def read(self): return b"404: Not Found"
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        with mock.patch.object(fl, "urlopen", return_value=Resp()):
+            self.assertEqual(fl._repo_readme("owner/repo", "main"), "")
+
+    def test_a_markup_only_line_is_dropped(self):
+        # `<div align="center">` and its closing partner, which open most centred
+        # README headers and say nothing. Handled by the tag strip at the end
+        # rather than by a per-line skip — the skip was tried, and no mutation of
+        # it changed a result.
+        got = fl._readable_readme('<div align="center">\n</div>\n\nReal prose here.\n')
+        self.assertEqual(got, "Real prose here.")
+
+    def test_badges_are_not_a_body(self):
+        badges = ("[![build](https://img.shields.io/a)](https://x)\n"
+                  "[![license](https://img.shields.io/b)](https://y)\n")
+        self.assertEqual(fl._readable_readme(badges), "",
+                         "a README of nothing but shields became the summary")
+
+    def test_prose_after_badges_survives(self):
+        text = ("[![build](https://img.shields.io/a)](https://x)\n\n"
+                "# Thing\n\nIt does a real thing, and here is how.\n")
+        got = fl._readable_readme(text)
+        self.assertIn("does a real thing", got)
+        self.assertNotIn("shields.io", got)
+
+    def test_the_body_is_bounded(self):
+        got = fl._readable_readme("word " * 5000)
+        self.assertLessEqual(len(got), fl._README_CHARS)
+
+    def test_html_is_stripped(self):
+        got = fl._readable_readme("<p>Some prose inside a tag.</p>")
+        self.assertNotIn("<p>", got)
+        self.assertIn("Some prose", got)
 
 
 if __name__ == "__main__":

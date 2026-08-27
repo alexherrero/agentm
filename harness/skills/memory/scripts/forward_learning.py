@@ -636,8 +636,88 @@ def _parse_github_api_repos(body: bytes, source: Source) -> list:
         html_url = repo.get("html_url") or source.url
         if not name:
             continue
-        candidates.append(Candidate(slug=source.slug, title=name, body=description, url=html_url))
+        body = _repo_readme(repo.get("full_name") or "",
+                            repo.get("default_branch") or "HEAD") or description
+        candidates.append(Candidate(slug=source.slug, title=name, body=body,
+                                    url=html_url))
     return candidates
+
+
+# How much README to keep.
+#
+# `_write_watchlist_entry` truncates to 400 characters for its preview, but the
+# note body is what recall embeds and what a person reads instead of going to the
+# source — so the cap here is the useful-summary length rather than the preview
+# length. 2,000 characters is around 300 words, which sits at the live corpus's
+# 75th percentile for reference prose and comfortably above the twelve-word
+# taglines this replaces.
+_README_CHARS = 2000
+
+# `raw.githubusercontent.com`, not the API.
+#
+# Unauthenticated api.github.com allows sixty requests an hour, and a scan of one
+# org's twenty newest repos would spend a third of that on READMEs alone — so the
+# fix for thin notes would have introduced a rate-limit failure that produces more
+# of them. Raw file serving is not metered the same way.
+_RAW_HOST = "https://raw.githubusercontent.com"
+_README_NAMES = ("README.md", "readme.md", "README.rst", "README", "README.txt")
+
+
+def _repo_readme(full_name: str, branch: str) -> str:
+    """A repo's README as plain text, or "" if there is not one to be had.
+
+    Empty rather than raising, on every failure path: no README, a 404, a
+    timeout, a binary blob. The caller falls back to the description, which is
+    what shipped before this existed — so the worst case of this function is the
+    behaviour it replaces, never a scan that fails.
+    """
+    if not full_name or "/" not in full_name:
+        return ""
+    for name in _README_NAMES:
+        url = f"{_RAW_HOST}/{full_name}/{branch}/{name}"
+        try:
+            req = Request(url, headers={"User-Agent": _USER_AGENT})
+            with urlopen(req, timeout=_FETCH_TIMEOUT_SEC) as resp:
+                if getattr(resp, "status", 200) >= 400:
+                    continue
+                raw = resp.read()
+        except (HTTPError, URLError, socket.timeout, OSError):
+            continue
+        text = _readable_readme(raw.decode("utf-8", errors="replace"))
+        if text:
+            return text
+    return ""
+
+
+def _readable_readme(text: str) -> str:
+    """Strip a README down to the prose a person would actually read.
+
+    Badges first, because a modern README opens with a wall of them and they
+    carry no information a reader wants — a body of eight shield URLs is exactly
+    as unreadable as the tagline it would replace, and longer.
+    """
+    lines = []
+    for ln in text.split("\n"):
+        t = ln.strip()
+        if not t:
+            continue
+        if _BADGE_LINE.match(t):
+            continue
+        lines.append(t)
+        # A bound on work, not on output — the truncation below already bounds
+        # what comes back, and removing this changes no result any test can see.
+        # It is here because a 200KB README would otherwise be joined into one
+        # 200KB string to have 198KB of it thrown away. Kept and labelled rather
+        # than dressed up in a test that cannot fail.
+        if sum(len(x) for x in lines) > _README_CHARS:
+            break
+    out = _strip_html_tags(" ".join(lines))
+    return out[:_README_CHARS].strip()
+
+
+# A line that is nothing but shields/badges: one or more markdown images, often
+# wrapped in links, and nothing else.
+_BADGE_LINE = re.compile(r"^(?:\s*\[?!\[[^\]]*\]\([^)]*\)\]?(?:\([^)]*\))?)+\s*$")
 
 
 def default_fetcher(source: Source) -> list:
