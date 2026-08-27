@@ -75,6 +75,9 @@ try {
         'hooks/memory-recall-session-start/memory-recall-session-start.ps1'
         'hooks/memory-reflect-idle/memory-reflect-idle.ps1'
         'hooks/memory-reflect-stop/memory-reflect-stop.ps1'
+        'hooks/verify-dispatch/verify-dispatch.ps1'
+        'hooks/compaction-marker/compaction-marker.ps1'
+        'hooks/compaction-reanchor/compaction-reanchor.ps1'
     )
     foreach ($p in $expected) {
         if (-not (Test-Path -LiteralPath (Join-Path $prefix $p))) {
@@ -188,6 +191,9 @@ try {
         'memory-recall-session-start'
         'memory-reflect-idle'
         'memory-reflect-stop'
+        'verify-dispatch'
+        'compaction-marker'
+        'compaction-reanchor'
     )
     if (Test-Path -LiteralPath $settingsPath) {
         $settings = Get-Content -Raw -LiteralPath $settingsPath | ConvertFrom-Json

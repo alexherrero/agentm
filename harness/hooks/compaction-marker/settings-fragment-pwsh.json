@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "manual|auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/compaction-marker.ps1",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
