@@ -1,0 +1,118 @@
+{
+  "agent_labels_committed_at": "0c0fc8f",
+  "bar": 0.6,
+  "exact_agreement": 0.7333,
+  "flagged_agreement": 0.7333,
+  "kappa_exact": 0.2857,
+  "kappa_flagged": 0.25,
+  "pairs": [
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": false,
+      "note": "Agent/memory/2026/05/self-hosted-photo-library-sync.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/eplb.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 6,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/deepseek-prover-v2.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 6,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/deepseek-github.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/deepseek-ocr.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/lplb.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/dualpipe.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 6,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/branding-guide.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "review",
+      "agent_rule": 6,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/zsh-kimi-cli.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/kimi-code.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/kosong.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/profile-data.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": false,
+      "note": "Agent/memory/2026/05/scheduled-agentm-skills.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "keep",
+      "agent_rule": 5,
+      "flagged": true,
+      "note": "Agent/memory/2026/07/deepseek-ocr-2.md",
+      "operator": "keep"
+    },
+    {
+      "agent": "expire",
+      "agent_rule": 1,
+      "flagged": true,
+      "note": "Agent/memory/workflow/workflow-mcp-ccd-session-mgmt-search.md",
+      "operator": "expire"
+    }
+  ],
+  "precision_at_flag_threshold": 0.0769,
+  "proceeds": false,
+  "scored": 15
+}

@@ -1,0 +1,70 @@
+{
+  "seed": 20260827,
+  "drawn": "2026-08-27",
+  "bar": "8 of 10 agreement means the adjudicated standard held",
+  "standard": "A reference with a real description of what the thing is \u2192 keep.\nA reference with a title and a link and nothing else \u2192 review: it states nothing,\nand the fix is at capture rather than by deleting the note.\nA body that is machine output rather than prose \u2192 review.\nA substantial note that states something actionable \u2192 keep.\nA template's own prompt left unfilled, one of a set \u2192 expire.",
+  "notes": {
+    "1": "Agent/memory/2026/07/smallpond.md",
+    "2": "Agent/memory/idea/cts-the-harness-s-release-phase-1.md",
+    "3": "Agent/memory/2026/07/towards-structural-understanding-of-llm-overthinking-google-deepmind.md",
+    "4": "Agent/memory/2026/07/image-generators-are-generalist-vision-learners-google-deepmind.md",
+    "5": "Agent/memory/2026/07/kimi-agent-sdk.md",
+    "6": "Agent/memory/2026/05/docs-cover-ours-link-theirs.md",
+    "7": "Agent/memory/2026/07/flashkda.md",
+    "8": "Agent/memory/2026/06/reference-checklists.md",
+    "9": "Agent/memory/2026/07/attention-residuals.md",
+    "10": "Agent/memory/2026/07/walle.md"
+  },
+  "predictions": {
+    "1": {
+      "label": "keep",
+      "clause": "a real description of what the thing is",
+      "note": "'A lightweight data processing framework built on DuckDB and 3FS.'"
+    },
+    "2": {
+      "label": "review",
+      "clause": "states nothing / captured badly",
+      "note": "Opens mid-word \u2014 '...cts. The harness's /release phase' \u2014 a clipped mining excerpt. The directive inside may be real; the note as written is a fragment."
+    },
+    "3": {
+      "label": "keep",
+      "clause": "a real description of what the thing is",
+      "note": "Carries the paper's abstract. Readable without the link."
+    },
+    "4": {
+      "label": "keep",
+      "clause": "a real description of what the thing is",
+      "note": "Carries the paper's abstract."
+    },
+    "5": {
+      "label": "keep",
+      "clause": "a real description of what the thing is",
+      "note": "'provides a programmatic interface to interact with the Kimi CLI'."
+    },
+    "6": {
+      "label": "keep",
+      "clause": "states something actionable",
+      "note": "A full convention: a rule, a source, examples, re-audit triggers."
+    },
+    "7": {
+      "label": "keep",
+      "clause": "a real description of what the thing is",
+      "note": "'high-performance Kimi Delta Attention kernels'."
+    },
+    "8": {
+      "label": "keep",
+      "clause": "states something actionable",
+      "note": "A pattern write-up with an argument for adopting it."
+    },
+    "9": {
+      "label": "review",
+      "clause": "a title and a link and nothing else",
+      "note": "Empty description \u2014 the class the adjudication settled as review."
+    },
+    "10": {
+      "label": "review",
+      "clause": "a title and a link and nothing else",
+      "note": "Empty description. Same class as 09."
+    }
+  }
+}

@@ -1,0 +1,499 @@
+{
+  "seed": 20260826,
+  "drawn": "2026-08-26",
+  "flag_below_novelty": 0.7,
+  "flagged": 45,
+  "controls": 25,
+  "notes": [
+    {
+      "rel": "Agent/memory/2026/05/self-hosted-photo-library-sync.md",
+      "template_residual": 0.9487,
+      "novelty": 0.9598,
+      "nearest_rel": "Agent/memory/2026/05/scheduled-agentm-skills.md",
+      "words": 765
+    },
+    {
+      "rel": "Agent/memory/2026/07/eplb.md",
+      "template_residual": 1,
+      "novelty": 0.6098,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 36
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepseek-prover-v2.md",
+      "template_residual": 1,
+      "novelty": 0.3889,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-math-v2.md",
+      "words": 40
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepseek-github.md",
+      "template_residual": 1,
+      "novelty": 0.623,
+      "nearest_rel": "Agent/memory/2026/07/moonshot-github.md",
+      "words": 105
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepseek-ocr.md",
+      "template_residual": 1,
+      "novelty": 0.2778,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-ocr-2.md",
+      "words": 39
+    },
+    {
+      "rel": "Agent/memory/2026/07/lplb.md",
+      "template_residual": 1,
+      "novelty": 0.6923,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 47
+    },
+    {
+      "rel": "Agent/memory/2026/07/dualpipe.md",
+      "template_residual": 1,
+      "novelty": 0.6786,
+      "nearest_rel": "Agent/memory/2026/07/profile-data.md",
+      "words": 46
+    },
+    {
+      "rel": "Agent/memory/2026/07/branding-guide.md",
+      "template_residual": 1,
+      "novelty": 0.5833,
+      "nearest_rel": "Agent/memory/2026/07/walle.md",
+      "words": 34
+    },
+    {
+      "rel": "Agent/memory/2026/07/zsh-kimi-cli.md",
+      "template_residual": 1,
+      "novelty": 0.5682,
+      "nearest_rel": "Agent/memory/2026/07/kimi-cli.md",
+      "words": 38
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-code.md",
+      "template_residual": 1,
+      "novelty": 0.5714,
+      "nearest_rel": "Agent/memory/2026/07/kimi-code-zed-extension.md",
+      "words": 44
+    },
+    {
+      "rel": "Agent/memory/2026/07/kosong.md",
+      "template_residual": 1,
+      "novelty": 0.6429,
+      "nearest_rel": "Agent/memory/2026/07/walle.md",
+      "words": 39
+    },
+    {
+      "rel": "Agent/memory/2026/07/profile-data.md",
+      "template_residual": 1,
+      "novelty": 0.6304,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 43
+    },
+    {
+      "rel": "Agent/memory/2026/05/scheduled-agentm-skills.md",
+      "template_residual": 0.9216,
+      "novelty": 0.9524,
+      "nearest_rel": "Agent/memory/2026/05/sherwood-automated-bug-fixing.md",
+      "words": 647
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepseek-ocr-2.md",
+      "template_residual": 1,
+      "novelty": 0.2778,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-ocr.md",
+      "words": 39
+    },
+    {
+      "rel": "Agent/memory/workflow/workflow-mcp-ccd-session-mgmt-search.md",
+      "template_residual": 1,
+      "novelty": 0.493,
+      "nearest_rel": "Agent/memory/workflow/workflow-mcp-e096d181-2cb8-4b6f-b3e8-1.md",
+      "words": 58
+    },
+    {
+      "rel": "Agent/memory/2026/05/worktrees-never-auto.md",
+      "template_residual": 1,
+      "novelty": 0.9615,
+      "nearest_rel": "Agent/memory/2026/05/github-claude-chip-resolved.md",
+      "words": 204
+    },
+    {
+      "rel": "Agent/memory/2026/06/code-simplification.md",
+      "template_residual": 1,
+      "novelty": 0.8878,
+      "nearest_rel": "Agent/memory/2026/06/security-and-hardening.md",
+      "words": 295
+    },
+    {
+      "rel": "Agent/memory/idea/ntent-result-send-all-results-back-1.md",
+      "template_residual": 1,
+      "novelty": 0.6667,
+      "nearest_rel": "Agent/memory/idea/se-id-block-id-result-execute-1.md",
+      "words": 68
+    },
+    {
+      "rel": "Agent/memory/2026/07/how-claude-code-is-used-in-practice-anthropic.md",
+      "template_residual": 1,
+      "novelty": 0.8683,
+      "nearest_rel": "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md",
+      "words": 108
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepseek-math-v2.md",
+      "template_residual": 1,
+      "novelty": 0.3889,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-prover-v2.md",
+      "words": 40
+    },
+    {
+      "rel": "Agent/memory/2026/07/gpt-5-3-instant-system-card.md",
+      "template_residual": 1,
+      "novelty": 0.2941,
+      "nearest_rel": "Agent/memory/2026/07/gpt-5-4-thinking-system-card.md",
+      "words": 42
+    },
+    {
+      "rel": "Agent/memory/2026/07/attention-residuals.md",
+      "template_residual": 1,
+      "novelty": 0.5833,
+      "nearest_rel": "Agent/memory/2026/07/walle.md",
+      "words": 34
+    },
+    {
+      "rel": "Agent/memory/2026/07/engram.md",
+      "template_residual": 1,
+      "novelty": 0.6863,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 46
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-linear.md",
+      "template_residual": 1,
+      "novelty": 0.5385,
+      "nearest_rel": "Agent/memory/2026/07/kimi-vendor-verifier.md",
+      "words": 34
+    },
+    {
+      "rel": "Agent/memory/2026/07/smallpond.md",
+      "template_residual": 1,
+      "novelty": 0.6596,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 42
+    },
+    {
+      "rel": "Agent/memory/2026/07/how-claude-performs-on-robotics-tasks-anthropic.md",
+      "template_residual": 1,
+      "novelty": 0.8683,
+      "nearest_rel": "Agent/memory/2026/07/how-claude-code-is-used-in-practice-anthropic.md",
+      "words": 111
+    },
+    {
+      "rel": "Agent/memory/2026/07/walle.md",
+      "template_residual": 1,
+      "novelty": 0.5455,
+      "nearest_rel": "Agent/memory/2026/07/worldvqa.md",
+      "words": 30
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-agent-sdk.md",
+      "template_residual": 1,
+      "novelty": 0.6327,
+      "nearest_rel": "Agent/memory/2026/07/kimi-linear.md",
+      "words": 51
+    },
+    {
+      "rel": "Agent/memory/2026/05/verification-executable-first.md",
+      "template_residual": 1,
+      "novelty": 0.9629,
+      "nearest_rel": "Agent/memory/2026/05/work-single-task.md",
+      "words": 210
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-vendor-verifier.md",
+      "template_residual": 1,
+      "novelty": 0.5385,
+      "nearest_rel": "Agent/memory/2026/07/kimi-linear.md",
+      "words": 41
+    },
+    {
+      "rel": "Agent/memory/2026/07/moonshot-github.md",
+      "template_residual": 1,
+      "novelty": 0.623,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-github.md",
+      "words": 103
+    },
+    {
+      "rel": "Agent/memory/2026/07/tilekernels.md",
+      "template_residual": 1,
+      "novelty": 0.6279,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 38
+    },
+    {
+      "rel": "Agent/memory/2026/06/context-engineering.md",
+      "template_residual": 1,
+      "novelty": 0.9213,
+      "nearest_rel": "Agent/memory/2026/06/code-review-and-quality.md",
+      "words": 370
+    },
+    {
+      "rel": "Agent/memory/2026/07/flashmla.md",
+      "template_residual": 1,
+      "novelty": 0.6364,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 39
+    },
+    {
+      "rel": "Agent/memory/2026/07/flashkda.md",
+      "template_residual": 1,
+      "novelty": 0.625,
+      "nearest_rel": "Agent/memory/2026/07/walle.md",
+      "words": 37
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "template_residual": 1,
+      "novelty": 0.5,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-math-v2.md",
+      "words": 36
+    },
+    {
+      "rel": "Agent/memory/2026/05/state-on-disk.md",
+      "template_residual": 1,
+      "novelty": 0.9661,
+      "nearest_rel": "Agent/memory/2026/05/verification-executable-first.md",
+      "words": 238
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepseek-v3-2-exp.md",
+      "template_residual": 1,
+      "novelty": 0.5,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 40
+    },
+    {
+      "rel": "Agent/memory/2026/07/awesome-deepseek-agent.md",
+      "template_residual": 1,
+      "novelty": 0.6098,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 40
+    },
+    {
+      "rel": "Agent/memory/workflow-pattern/filter-branch-trailer-case-insensitive.md",
+      "template_residual": 1,
+      "novelty": 0.9684,
+      "nearest_rel": "Agent/memory/2026/05/github-claude-chip-resolved.md",
+      "words": 321
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-agent-rs.md",
+      "template_residual": 1,
+      "novelty": 0.6327,
+      "nearest_rel": "Agent/memory/2026/07/kimi-linear.md",
+      "words": 50
+    },
+    {
+      "rel": "Agent/memory/2026/05/tests-are-sacred.md",
+      "template_residual": 1,
+      "novelty": 0.9796,
+      "nearest_rel": "Agent/memory/2026/05/verification-executable-first.md",
+      "words": 573
+    },
+    {
+      "rel": "Agent/memory/2026/07/k2-vendor-verifier.md",
+      "template_residual": 1,
+      "novelty": 0.5957,
+      "nearest_rel": "Agent/memory/2026/07/kimi-vendor-verifier.md",
+      "words": 46
+    },
+    {
+      "rel": "Agent/memory/2026/05/idea-incubator-summary-doc.md",
+      "template_residual": 1,
+      "novelty": 0.9682,
+      "nearest_rel": "Agent/memory/2026/05/scheduled-agentm-skills.md",
+      "words": 390
+    },
+    {
+      "rel": "Agent/memory/workflow/workflow-mcp-e096d181-2cb8-4b6f-b3e8-1.md",
+      "template_residual": 1,
+      "novelty": 0.493,
+      "nearest_rel": "Agent/memory/workflow/workflow-mcp-ccd-session-mgmt-search.md",
+      "words": 95
+    },
+    {
+      "rel": "Agent/memory/2026/08/the-stated-case-against-rag-here-is-passivity-not-accuracy.md",
+      "template_residual": 1,
+      "novelty": 0.8683,
+      "nearest_rel": "Agent/memory/2026/08/three-specialist-sub-agents-under-an-orchestrator-ingest-consolidate-que.md",
+      "words": 156
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-k2.md",
+      "template_residual": 1,
+      "novelty": 0.4565,
+      "nearest_rel": "Agent/memory/2026/07/kimi-k2-5.md",
+      "words": 47
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-code-zed-extension.md",
+      "template_residual": 1,
+      "novelty": 0.5714,
+      "nearest_rel": "Agent/memory/2026/07/kimi-code.md",
+      "words": 46
+    },
+    {
+      "rel": "Agent/memory/2026/07/proeval-proactive-failure-discovery-and-efficient-performance-estimation-for-generative-ai-evaluation-google-deepmind.md",
+      "template_residual": 1,
+      "novelty": 0.8134,
+      "nearest_rel": "Agent/memory/2026/07/dynamic-reflections-probing-video-representations-with-text-alignment-google-deepmind.md",
+      "words": 107
+    },
+    {
+      "rel": "Agent/memory/2026/05/network-topology.md",
+      "template_residual": 0.9589,
+      "novelty": 0.9576,
+      "nearest_rel": "Agent/memory/2026/05/homelab-domain.md",
+      "words": 1752
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-k2-5.md",
+      "template_residual": 1,
+      "novelty": 0.4565,
+      "nearest_rel": "Agent/memory/2026/07/kimi-k2.md",
+      "words": 38
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepspec.md",
+      "template_residual": 1,
+      "novelty": 0.6735,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 44
+    },
+    {
+      "rel": "Agent/memory/2026/07/kimi-cli.md",
+      "template_residual": 1,
+      "novelty": 0.5682,
+      "nearest_rel": "Agent/memory/2026/07/zsh-kimi-cli.md",
+      "words": 42
+    },
+    {
+      "rel": "Agent/memory/2026/07/pykaos.md",
+      "template_residual": 1,
+      "novelty": 0.6341,
+      "nearest_rel": "Agent/memory/2026/07/walle.md",
+      "words": 38
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepgemm.md",
+      "template_residual": 1,
+      "novelty": 0.6522,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 41
+    },
+    {
+      "rel": "Agent/memory/2026/05/cwc-long-running-agents.md",
+      "template_residual": 0.9684,
+      "novelty": 0.9905,
+      "nearest_rel": "Agent/memory/2026/05/managed-agents-architecture.md",
+      "words": 842
+    },
+    {
+      "rel": "Agent/memory/2026/05/docs-soft-warning-tradeoff.md",
+      "template_residual": 1,
+      "novelty": 0.9668,
+      "nearest_rel": "Agent/memory/2026/05/coordinated-release-order.md",
+      "words": 229
+    },
+    {
+      "rel": "Agent/memory/2026/08/drive-upload-staging-churns-transient-files-inside-the-vault.md",
+      "template_residual": 1,
+      "novelty": 0.9539,
+      "nearest_rel": "Agent/memory/2026/08/deliberate-capture-lands-active-when-the-caller-says-so.md",
+      "words": 132
+    },
+    {
+      "rel": "Agent/memory/workflow-pattern/google-drive-connector-doc-export.md",
+      "template_residual": 1,
+      "novelty": 0.983,
+      "nearest_rel": "Agent/memory/feedback/x.md",
+      "words": 349
+    },
+    {
+      "rel": "Agent/memory/idea/se-id-block-id-result-execute-1.md",
+      "template_residual": 1,
+      "novelty": 0.6667,
+      "nearest_rel": "Agent/memory/idea/ntent-result-send-all-results-back-1.md",
+      "words": 68
+    },
+    {
+      "rel": "Agent/memory/2026/07/gpt-5-4-thinking-system-card.md",
+      "template_residual": 1,
+      "novelty": 0.2941,
+      "nearest_rel": "Agent/memory/2026/07/gpt-5-3-instant-system-card.md",
+      "words": 42
+    },
+    {
+      "rel": "Agent/memory/2026/08/the-always-on-agent-s-consolidation-loop-is-dreaming-under-a-different-n.md",
+      "template_residual": 1,
+      "novelty": 0.875,
+      "nearest_rel": "Agent/memory/2026/08/the-always-on-agent-reads-up-to-50-recent-memories-per-query-which-is-it.md",
+      "words": 167
+    },
+    {
+      "rel": "Agent/memory/2026/05/plan-md-shape.md",
+      "template_residual": 1,
+      "novelty": 0.9562,
+      "nearest_rel": "Agent/memory/2026/05/changelog-shape.md",
+      "words": 224
+    },
+    {
+      "rel": "Agent/memory/2026/07/deepep.md",
+      "template_residual": 1,
+      "novelty": 0.6364,
+      "nearest_rel": "Agent/memory/2026/07/deepseek-r1.md",
+      "words": 39
+    },
+    {
+      "rel": "Agent/memory/idea/an-out-of-scope-findings-anything-1.md",
+      "template_residual": 1,
+      "novelty": 0.8241,
+      "nearest_rel": "Agent/memory/idea/y-out-of-task-scope-findings-1.md",
+      "words": 159
+    },
+    {
+      "rel": "Agent/memory/2026/07/what-parameter-golf-taught-us-about-ai-assisted-research.md",
+      "template_residual": 1,
+      "novelty": 0.7917,
+      "nearest_rel": "Agent/memory/2026/07/gpt-5-3-instant-system-card.md",
+      "words": 78
+    },
+    {
+      "rel": "Agent/memory/2026/06/vault-internal-taxonomy.md",
+      "template_residual": 0.9524,
+      "novelty": 0.9779,
+      "nearest_rel": "Agent/memory/2026/04/obsidian-vault-paths.md",
+      "words": 421
+    },
+    {
+      "rel": "Agent/memory/2026/07/worldvqa.md",
+      "template_residual": 1,
+      "novelty": 0.5455,
+      "nearest_rel": "Agent/memory/2026/07/walle.md",
+      "words": 30
+    },
+    {
+      "rel": "Agent/memory/workflow/workflow-bash-673.md",
+      "template_residual": 1,
+      "novelty": 0.6286,
+      "nearest_rel": "Agent/memory/workflow/workflow-mcp-ccd-session-mgmt-search.md",
+      "words": 79
+    },
+    {
+      "rel": "Agent/memory/2026/07/strategic-tradeoffs-between-humans-and-ai-in-multi-agent-bargaining-google-deepmind.md",
+      "template_residual": 1,
+      "novelty": 0.8156,
+      "nearest_rel": "Agent/memory/2026/07/real-time-group-dynamics-with-llm-facilitation-evidence-from-a-charity-allocation-task-google-deepmind.md",
+      "words": 108
+    }
+  ]
+}

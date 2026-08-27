@@ -113,6 +113,8 @@ func main() {
 		err = cmdMeters(os.Args[2:])
 	case "clusters":
 		err = cmdClusters(os.Args[2:])
+	case "slop":
+		err = cmdSlop(os.Args[2:])
 	case "door":
 		err = cmdDoor(os.Args[2:])
 	case "version", "-v", "--version":
