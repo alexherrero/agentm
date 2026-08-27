@@ -200,15 +200,28 @@ def _default_fetch(repo: str) -> str:
     return ""
 
 
+def eligible(rep: Report) -> int:
+    """How many notes the scan found a better body for.
+
+    Separate from what a run writes, because the cap below means those are two
+    different numbers — and a run that printed only the first of them reported
+    thirty-two backfilled notes while writing twenty-five.
+    """
+    return sum(1 for f in rep.findings
+               if f.outcome == "backfilled" and f.new_body)
+
+
 def apply(vault: Path, rep: Report, revert_log, run_id: str, *,
           batch: int = DEFAULT_BATCH) -> str:
-    mutations = []
-    for f in rep.findings:
-        if f.outcome != "backfilled" or not f.new_body:
-            continue
-        mutations.append((vault / f.rel, f.new_body))
-        if len(mutations) >= batch:
-            break
+    """Write up to `batch` bodies, and return the revert-log entry covering them.
+
+    The cap is deliberate and shared with the dreaming pipeline's auto-apply
+    bound, so one run can only ever move a reviewable amount of the corpus. What
+    it does not do is announce itself — the caller reports the remainder, and a
+    re-run takes the next batch.
+    """
+    mutations = [(vault / f.rel, f.new_body) for f in rep.findings
+                 if f.outcome == "backfilled" and f.new_body][:batch]
     if not mutations:
         return ""
     return revert_log.record_and_apply(run_id, "backfill_reference_bodies",
@@ -247,7 +260,12 @@ def main(argv: list) -> int:
     import time
     run_id = f"refbody-{int(time.time())}"
     entry = apply(vault, rep, RevertLog(vault), run_id, batch=args.batch)
-    print(f"\napplied as {run_id} / {entry}")
+    found = eligible(rep)
+    written = min(found, args.batch)
+    print(f"\napplied as {run_id} / {entry} — {written} note(s) written")
+    if found > written:
+        print(f"{found - written} more await a re-run: one run writes at most "
+              f"{args.batch} (--batch), so the rest are deferred rather than lost.")
     print(f"undo with: RevertLog(vault).revert({run_id!r}, {entry!r})")
     return 0
 

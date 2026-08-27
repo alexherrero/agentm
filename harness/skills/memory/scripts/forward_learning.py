@@ -692,17 +692,53 @@ def _repo_readme(full_name: str, branch: str) -> str:
 def _readable_readme(text: str) -> str:
     """Strip a README down to the prose a person would actually read.
 
-    Badges first, because a modern README opens with a wall of them and they
-    carry no information a reader wants — a body of eight shield URLs is exactly
-    as unreadable as the tagline it would replace, and longer.
+    A modern README opens with a wall of badges and a bar of navigation links,
+    carries a changelog and a table of contents, and spends most of its length on
+    install commands. None of that says what the thing *is* — which is the one
+    question a reference note exists to answer — and all of it competes for the
+    same character budget as the sentence that does. Taking the first two
+    thousand characters unfiltered gets a note that opens
+    "📥 Model Download | 📄 Paper Link | 📄 Arxiv Paper Link", which is longer
+    than the tagline it replaced and no more informative.
+
+    So the passes below each drop one class of navigation, in the order their
+    syntax survives: fenced code, then sections that are never descriptive, then
+    lines that are nothing but links, then the URL half of the links that remain.
+    What is left is prose, and it is what both a reader and an embedding want.
+
+    Install and usage sections are deliberately kept. Their code goes with the
+    fences, but their prose says real things about what the thing needs, and a
+    reference note is better for having it.
     """
-    lines = []
+    lines: list[str] = []
+    in_fence = skipping = False
     for ln in text.split("\n"):
         t = ln.strip()
-        if not t:
+
+        if t.startswith("```") or t.startswith("~~~"):
+            in_fence = not in_fence
             continue
-        if _BADGE_LINE.match(t):
+        if in_fence or not t:
             continue
+
+        if heading := _HEADING.match(t):
+            title = heading.group(1).strip(" #")
+            skipping = bool(_SKIP_SECTION.match(title))
+            if skipping:
+                continue
+            t = title  # keep the words of a heading we are keeping, drop its marks
+        elif skipping:
+            continue
+
+        # Badges and anchor-only contents entries are recognised by their markdown,
+        # so they have to be caught before the links are unwrapped.
+        if _BADGE_LINE.match(t) or _TOC_ITEM.match(t):
+            continue
+
+        t = _unlink(_strip_html_tags(t)).strip()
+        if not t or _is_nav(t):
+            continue
+
         lines.append(t)
         # A bound on work, not on output — the truncation below already bounds
         # what comes back, and removing this changes no result any test can see.
@@ -711,13 +747,88 @@ def _readable_readme(text: str) -> str:
         # than dressed up in a test that cannot fail.
         if sum(len(x) for x in lines) > _README_CHARS:
             break
-    out = _strip_html_tags(" ".join(lines))
-    return out[:_README_CHARS].strip()
+    return " ".join(lines)[:_README_CHARS].strip()
+
+
+def _unlink(text: str) -> str:
+    """`[label](url)` becomes `label`; a bare `<url>` goes entirely.
+
+    The label is the part a reader and an embedding both want. The URL is on
+    average forty characters of the budget spent on a string no one reads and no
+    vocabulary matches, and the note already carries its real source on its own
+    `Source:` line.
+
+    Images go first and whole. A badge is usually a link wrapped around an image,
+    and unwrapping the outer link of `[![License](shields…)](LICENSE)` before the
+    image is gone leaves the inner half stranded as a literal `![License](LICENSE)`
+    — which is how that string ended up in a note.
+    """
+    text = _MD_IMAGE.sub("", text)
+    text = _MD_LINK.sub(r"\1", text)
+    text = _MD_REFLINK.sub(r"\1", text)
+    return _AUTOLINK.sub("", text)
+
+
+def _is_nav(text: str) -> bool:
+    """A bar of links across the top of a README, or a row of a table.
+
+    Recognised after unwrapping, by shape rather than by syntax: a pipe, and on
+    either side of it nothing longer than a label. That covers the
+    `Model Download | Paper Link` bar, the `English | 简体中文` language switcher,
+    and benchmark tables — which are numbers rather than description, and are the
+    one deliberate loss here.
+
+    One separator is enough, because the bar is usually written one entry to a
+    line with it trailing (`<a …>📥 Model Download</a> |`), and by the time the
+    tags are gone each line carries a single label. Requiring two segments read
+    past exactly the case this exists for.
+
+    A label is at most four words, which is what keeps a sentence that happens to
+    contain a pipe out of this. Six was tried first and swallowed
+    "The daemon reads the index | the writer never does, which matters." A second
+    clause excluding any line with a comma was tried alongside it and removed:
+    once the limit was four, no mutation of the comma rule changed a result, and
+    an untestable clause is worse than no clause.
+    """
+    if not _NAV_SEP.search(text):
+        return False
+    parts = [p for p in (p.strip(" *|·•") for p in _NAV_SEP.split(text)) if p]
+    if not parts:
+        return True  # a line of nothing but separators
+    return all(len(p.split()) <= 4 and "." not in p.rstrip(".") for p in parts)
 
 
 # A line that is nothing but shields/badges: one or more markdown images, often
 # wrapped in links, and nothing else.
 _BADGE_LINE = re.compile(r"^(?:\s*\[?!\[[^\]]*\]\([^)]*\)\]?(?:\([^)]*\))?)+\s*$")
+
+# An ATX heading — `## Introduction`. Setext headings (underlined with === or ---)
+# are not matched, and so are kept as the plain lines they already look like.
+_HEADING = re.compile(r"^#{1,6}\s+(.*)$")
+
+# Sections that are housekeeping in every README that has them. A changelog says
+# what changed rather than what the thing is; a contents list is pure navigation;
+# a citation block is BibTeX. Install and usage are pointedly absent — their
+# prose is descriptive even though their code is not, and the fence pass already
+# takes the code.
+_SKIP_SECTION = re.compile(
+    r"^(?:release|releases|news|updates?|change\s*log|changelog|what'?s\s+new"
+    r"|contents?|table\s+of\s+contents|toc|star\s+history"
+    r"|citations?|licen[cs]e|acknowledge?ments?|acknowledgments?"
+    r"|contributing|contributors)\b", re.I)
+
+# A contents entry: a list item that is one link to an anchor on the same page.
+_TOC_ITEM = re.compile(r"^[-*+]\s*\[[^\]]*\]\(#[^)]*\)\s*$")
+
+# The separators a link bar is built from: a pipe, or the interpunct and
+# bullet that a `Docs · Issues · 中文` bar uses instead. None of the three
+# carries meaning in a sentence, so splitting on them costs no prose.
+_NAV_SEP = re.compile(r"[|·•]")
+
+_MD_IMAGE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_MD_REFLINK = re.compile(r"\[([^\]]*)\]\[[^\]]*\]")
+_AUTOLINK = re.compile(r"<https?://[^>]*>")
 
 
 def default_fetcher(source: Source) -> list:

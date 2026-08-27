@@ -867,6 +867,90 @@ class ReadmeCaptureTests(unittest.TestCase):
         self.assertNotIn("<p>", got)
         self.assertIn("Some prose", got)
 
+    # The four navigation classes. Each one of these was found in a note the
+    # backfill had already written, so each fixture below is a shape that
+    # reached the vault rather than a shape imagined for a test.
+
+    def test_fenced_code_is_not_prose(self):
+        text = ("# Thing\n\nIt does a thing.\n\n"
+                "```bash\npip install thing\n```\n\nAnd then it runs.\n")
+        got = fl._readable_readme(text)
+        self.assertNotIn("pip install", got)
+        self.assertIn("And then it runs", got,
+                      "the fence swallowed the prose after it")
+
+    def test_a_changelog_is_not_a_description(self):
+        text = ("# Thing\n\nIt does a thing.\n\n"
+                "## Release\n\n- [2026/01/27] We shipped version two.\n\n"
+                "## Install\n\nRun the installer.\n")
+        got = fl._readable_readme(text)
+        self.assertNotIn("shipped version two", got)
+        self.assertIn("It does a thing", got)
+        self.assertIn("Run the installer", got,
+                      "the skip ran past its own section and ate the next one")
+
+    def test_a_contents_list_is_dropped(self):
+        text = ("# Thing\n\n## Contents\n\n- [Install](#install)\n"
+                "- [Usage](#usage)\n\n## About\n\nIt does a thing.\n")
+        self.assertEqual(fl._readable_readme(text), "Thing About It does a thing.")
+
+    def test_an_anchor_list_without_a_heading_is_dropped(self):
+        # The contents test above passes on the section skip alone, so it says
+        # nothing about the anchor-list rule. This is the shape that needs it: a
+        # jump list sitting under the title with no heading of its own to skip.
+        text = ("# Thing\n\n- [Install](#install)\n- [Usage](#usage)\n\n"
+                "It does a thing.\n")
+        self.assertEqual(fl._readable_readme(text), "Thing It does a thing.")
+
+    def test_install_prose_is_kept(self):
+        # Deliberate, and measured: skipping install too was tried against six
+        # real READMEs and changed the result for one of them, where it only
+        # swapped one boilerplate section for the next.
+        text = ("# Thing\n\nIt does a thing.\n\n"
+                "## Install\n\nRequires CUDA 11.8 and PyTorch 2.6.\n")
+        self.assertIn("Requires CUDA", fl._readable_readme(text))
+
+    def test_a_link_bar_is_not_a_description(self):
+        text = ('<p align="center">\n'
+                '  <a href="https://x"><b>📥 Model Download</b></a> |\n'
+                '  <a href="https://y"><b>📄 Paper Link</b></a> |\n'
+                "</p>\n\nIt compresses text into images.\n")
+        self.assertEqual(fl._readable_readme(text),
+                         "It compresses text into images.")
+
+    def test_an_interpunct_bar_is_a_link_bar_too(self):
+        text = "Documentation · Issues · 中文\n\nIt does a real thing here.\n"
+        got = fl._readable_readme(text)
+        self.assertNotIn("Issues", got)
+        self.assertIn("real thing", got)
+
+    def test_a_sentence_is_not_a_link_bar(self):
+        # The guard on the rule above: a pipe inside real prose has a sentence
+        # on one side of it, and a bar never does.
+        text = "The daemon reads the index | the writer never does, which matters.\n"
+        self.assertIn("the writer never does", fl._readable_readme(text))
+
+    def test_a_link_keeps_its_words_and_loses_its_url(self):
+        got = fl._readable_readme(
+            "It is supported in [vLLM](https://docs.vllm.ai/x) already.\n")
+        self.assertIn("supported in vLLM already", got)
+        self.assertNotIn("docs.vllm.ai", got)
+
+    def test_a_badge_wrapped_in_a_link_leaves_no_residue(self):
+        # `[![License](shields…)](LICENSE)` — unwrapping the outer link first
+        # stranded the inner half, and a literal `![License](LICENSE)` was
+        # written into a real note that way.
+        got = fl._readable_readme(
+            "[![License](https://img.shields.io/badge/l-MIT-blue)](LICENSE)"
+            " Real prose follows here.\n")
+        self.assertNotIn("![", got)
+        self.assertNotIn("](", got)
+        self.assertIn("Real prose follows here", got)
+
+    def test_a_heading_keeps_its_words_and_loses_its_marks(self):
+        self.assertEqual(fl._readable_readme("## Introduction\n\nIt does a thing.\n"),
+                         "Introduction It does a thing.")
+
 
 if __name__ == "__main__":
     unittest.main()

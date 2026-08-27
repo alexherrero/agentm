@@ -207,6 +207,19 @@ class BatchTests(Case):
                        encoding="utf-8"))
         self.assertEqual(done, 3)
 
+    def test_what_the_cap_defers_is_still_counted(self):
+        # The cap is deliberate; leaving the caller unable to tell that it fired
+        # is not. A run reported thirty-two backfilled notes, wrote twenty-five,
+        # and said nothing — so the remaining seven read as done and stayed thin.
+        for i in range(10):
+            self.note(f"m/n{i}.md")
+        rep = self.scan()
+        self.assertEqual(bb.eligible(rep), 10,
+                         "the scan lost track of what it found a body for")
+        bb.apply(self.vault, rep, self.log, "run-1", batch=3)
+        self.assertEqual(bb.eligible(rep), 10,
+                         "applying rewrote the count of what was found")
+
     def test_the_cap_matches_the_other_passes(self):
         import dream_confirm
         self.assertEqual(bb.DEFAULT_BATCH,
