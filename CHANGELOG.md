@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [v9.8.0] — 2026-08-27
+
+Two independent pieces, both about a system noticing things about itself.
+
 The meters that say whether a model-written corpus is going flat, the loop that
 acts on them, and the two nightly scorecards. Enrichment rewrites every memory it
 touches, so the risk it carries is a corpus of distinct memories slowly becoming

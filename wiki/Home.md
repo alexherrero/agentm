@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.7.1](https://github.com/alexherrero/agentm/releases/tag/v9.7.1).** A patch for v9.7.0's installer: the daemon health check now probes the port the daemon was configured to bind rather than a literal, so moving `daemon.port` no longer fails the install. [v9.7.0](https://github.com/alexherrero/agentm/releases/tag/v9.7.0) is the release it patches — AgentM stopped installing per project, alongside the enrichment pass that distils a raw capture into a memory.
+> **Latest release: [v9.8.0](https://github.com/alexherrero/agentm/releases/tag/v9.8.0).** Two ways the system notices things about itself: meters that say whether a model-written corpus is going flat, with the loop that acts on them and two nightly scorecards; and three hooks that give per-project verification and compaction-awareness a machine-wide home now that AgentM installs once.
