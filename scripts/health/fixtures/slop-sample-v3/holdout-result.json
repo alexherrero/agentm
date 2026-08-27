@@ -1,0 +1,68 @@
+{
+  "agreement": 9,
+  "bar": 8,
+  "held": true,
+  "pairs": [
+    {
+      "clause": "a real description of what the thing is",
+      "note": "Agent/memory/2026/07/smallpond.md",
+      "operator": "keep",
+      "predicted": "keep"
+    },
+    {
+      "clause": "states nothing / captured badly",
+      "note": "Agent/memory/idea/cts-the-harness-s-release-phase-1.md",
+      "operator": "expire",
+      "predicted": "review"
+    },
+    {
+      "clause": "a real description of what the thing is",
+      "note": "Agent/memory/2026/07/towards-structural-understanding-of-llm-overthinking-google-deepmind.md",
+      "operator": "keep",
+      "predicted": "keep"
+    },
+    {
+      "clause": "a real description of what the thing is",
+      "note": "Agent/memory/2026/07/image-generators-are-generalist-vision-learners-google-deepmind.md",
+      "operator": "keep",
+      "predicted": "keep"
+    },
+    {
+      "clause": "a real description of what the thing is",
+      "note": "Agent/memory/2026/07/kimi-agent-sdk.md",
+      "operator": "keep",
+      "predicted": "keep"
+    },
+    {
+      "clause": "states something actionable",
+      "note": "Agent/memory/2026/05/docs-cover-ours-link-theirs.md",
+      "operator": "keep",
+      "predicted": "keep"
+    },
+    {
+      "clause": "a real description of what the thing is",
+      "note": "Agent/memory/2026/07/flashkda.md",
+      "operator": "keep",
+      "predicted": "keep"
+    },
+    {
+      "clause": "states something actionable",
+      "note": "Agent/memory/2026/06/reference-checklists.md",
+      "operator": "keep",
+      "predicted": "keep"
+    },
+    {
+      "clause": "a title and a link and nothing else",
+      "note": "Agent/memory/2026/07/attention-residuals.md",
+      "operator": "review",
+      "predicted": "review"
+    },
+    {
+      "clause": "a title and a link and nothing else",
+      "note": "Agent/memory/2026/07/walle.md",
+      "operator": "review",
+      "predicted": "review"
+    }
+  ],
+  "scored": 10
+}
