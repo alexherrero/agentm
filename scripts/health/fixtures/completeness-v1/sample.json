@@ -1,0 +1,208 @@
+{
+  "drawn": "2026-08-27",
+  "notes": {
+    "1": {
+      "after_sha": "8e53-6420-1601-3ae2",
+      "before_sha": "e0ff-ba6d-c470-4976",
+      "rel": "Agent/memory/_inbox/workflow-bash-300.md",
+      "type": "workflow"
+    },
+    "10": {
+      "after_sha": "40ca-63e2-1c74-5d1b",
+      "before_sha": "e026-a80e-5b18-e561",
+      "rel": "Agent/memory/_inbox/delete-test-only-if-intent-is-wrong.md",
+      "type": "convention"
+    },
+    "11": {
+      "after_sha": "0ca5-dd36-d0e2-fea3",
+      "before_sha": "a933-96a1-3418-0b95",
+      "rel": "Agent/memory/_inbox/follow-up-for-later-how-do.md",
+      "type": "idea"
+    },
+    "12": {
+      "after_sha": "0f43-fa9d-17cc-3666",
+      "before_sha": "b545-6b0f-352e-9d6a",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-browser.md",
+      "type": "untyped"
+    },
+    "13": {
+      "after_sha": "cbf2-cb7b-905f-3daa",
+      "before_sha": "41fe-7750-6b15-0485",
+      "rel": "Agent/memory/_inbox/spring-clean-the-vault-s-agentm-1.md",
+      "type": "idea"
+    },
+    "14": {
+      "after_sha": "6236-2c43-1c67-e887",
+      "before_sha": "41c7-6d45-d926-55b8",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-navigate-4.md",
+      "type": "untyped"
+    },
+    "15": {
+      "after_sha": "4682-80c8-fcb8-3583",
+      "before_sha": "207e-0b76-aaab-794f",
+      "rel": "Agent/memory/_inbox/follow-up-batch-3-wait-for.md",
+      "type": "idea"
+    },
+    "16": {
+      "after_sha": "7515-8ed4-ed3c-8d41",
+      "before_sha": "0670-a5ad-0e2f-e4f4",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-get-2.md",
+      "type": "untyped"
+    },
+    "17": {
+      "after_sha": "4d5b-c526-36ef-7763",
+      "before_sha": "2798-096f-98bd-4b98",
+      "rel": "Agent/memory/_inbox/the-prompt-finished-in-the-follow.md",
+      "type": "idea"
+    },
+    "18": {
+      "after_sha": "22fa-24a5-93c5-1285",
+      "before_sha": "0250-9b50-c710-cf53",
+      "rel": "Agent/memory/_inbox/never-whether-1.md",
+      "type": "untyped"
+    },
+    "19": {
+      "after_sha": "07ba-faad-6e69-924b",
+      "before_sha": "afd8-b896-2a2d-0f78",
+      "rel": "Agent/memory/_inbox/gh-missing-fallback-direct-push.md",
+      "type": "convention"
+    },
+    "2": {
+      "after_sha": "22ff-3ebb-dce3-950e",
+      "before_sha": "276d-8cb5-bfde-ddad",
+      "rel": "Agent/memory/_inbox/follow-ups-batch-go-this-is.md",
+      "type": "idea"
+    },
+    "20": {
+      "after_sha": "ab37-0242-b73f-a069",
+      "before_sha": "ffc0-9799-efe1-08d0",
+      "rel": "Agent/memory/_inbox/workflow-read-241.md",
+      "type": "workflow"
+    },
+    "21": {
+      "after_sha": "c972-fc63-c388-e523",
+      "before_sha": "15fd-4482-5ce2-8083",
+      "rel": "Agent/memory/_inbox/never-tested-there-at-all-1.md",
+      "type": "untyped"
+    },
+    "22": {
+      "after_sha": "d224-4b0f-b8ec-efe2",
+      "before_sha": "1af3-70ee-98fe-02a7",
+      "rel": "Agent/memory/_inbox/004-fix-verification-grep-scope-too-broad.md",
+      "type": "fix"
+    },
+    "23": {
+      "after_sha": "8347-ebd6-30ba-7264",
+      "before_sha": "3f88-74db-fc51-1491",
+      "rel": "Agent/memory/_inbox/let-s-fix-that-test-small.md",
+      "type": "idea"
+    },
+    "24": {
+      "after_sha": "6563-979c-4d73-15c9",
+      "before_sha": "f61c-9902-7196-d6e3",
+      "rel": "Agent/memory/_inbox/workflow-bash-250.md",
+      "type": "workflow"
+    },
+    "25": {
+      "after_sha": "2e03-fb85-65c3-f406",
+      "before_sha": "400f-2c4d-b736-dd94",
+      "rel": "Agent/memory/_inbox/never-edit-or-delete-a-failing-test.md",
+      "type": "convention"
+    },
+    "26": {
+      "after_sha": "545e-ca30-220e-edce",
+      "before_sha": "80ef-0b3d-35c0-9e17",
+      "rel": "Agent/memory/_inbox/v5-6-de-vaulting-locator-not-path.md",
+      "type": "convention"
+    },
+    "27": {
+      "after_sha": "ebab-4caa-ea35-ec25",
+      "before_sha": "9183-c60d-44f9-89a6",
+      "rel": "Agent/memory/_inbox/for-those-three-follow-ups-provide.md",
+      "type": "untyped"
+    },
+    "28": {
+      "after_sha": "f981-65ac-e706-1eae",
+      "before_sha": "4268-a97e-0313-6e37",
+      "rel": "Agent/memory/_inbox/workflow-taskupdate-79.md",
+      "type": "workflow"
+    },
+    "29": {
+      "after_sha": "3326-2027-b12b-b8df",
+      "before_sha": "d408-5776-e7d0-cebc",
+      "rel": "Agent/memory/_inbox/workflow-bash-481.md",
+      "type": "workflow"
+    },
+    "3": {
+      "after_sha": "ca6d-cddc-0196-e96a",
+      "before_sha": "57ec-b749-7993-ce96",
+      "rel": "Agent/memory/_inbox/workflow-enterworktree-2.md",
+      "type": "workflow"
+    },
+    "30": {
+      "after_sha": "f821-c34d-4ad4-ef34",
+      "before_sha": "654f-32e1-d99b-1f44",
+      "rel": "Agent/memory/_inbox/workflow-taskcreate-37.md",
+      "type": "workflow"
+    },
+    "31": {
+      "after_sha": "cb1c-15ec-ffa2-fc3e",
+      "before_sha": "30b3-59a5-5f49-6475",
+      "rel": "Agent/memory/_inbox/i-don-t-see-where-the.md",
+      "type": "idea"
+    },
+    "32": {
+      "after_sha": "fdf3-cf2a-7c22-772d",
+      "before_sha": "c803-b779-ffd6-6d96",
+      "rel": "Agent/memory/_inbox/never-judged-by-a-model-1.md",
+      "type": "untyped"
+    },
+    "4": {
+      "after_sha": "5f55-e5af-21fc-bd41",
+      "before_sha": "eefa-d8da-988c-be5e",
+      "rel": "Agent/memory/_inbox/workflow-mcp-ccd-session-mgmt-search-1.md",
+      "type": "workflow"
+    },
+    "5": {
+      "after_sha": "a9eb-07fb-a6d2-4199",
+      "before_sha": "dde1-2148-99bc-6480",
+      "rel": "Agent/memory/_inbox/workflow-read-243.md",
+      "type": "workflow"
+    },
+    "6": {
+      "after_sha": "2953-4613-3475-2f3b",
+      "before_sha": "ab6d-0b86-622f-5b5d",
+      "rel": "Agent/memory/_inbox/gone-and-the-note-doesn-t.md",
+      "type": "untyped"
+    },
+    "7": {
+      "after_sha": "832b-1ac6-25d7-6c81",
+      "before_sha": "77e7-9c00-88ec-fbad",
+      "rel": "Agent/memory/_inbox/20260709-digest-daily.md",
+      "type": "untyped"
+    },
+    "8": {
+      "after_sha": "3e96-7894-c03d-a0e8",
+      "before_sha": "0ae1-324f-05e8-5638",
+      "rel": "Agent/memory/_inbox/check-whether-the-followups-md-verification.md",
+      "type": "idea"
+    },
+    "9": {
+      "after_sha": "d638-7e11-5039-e76e",
+      "before_sha": "69d1-2862-8907-c972",
+      "rel": "Agent/memory/_inbox/all-my-follow-ups-were-addressed.md",
+      "type": "idea"
+    }
+  },
+  "population": 314,
+  "population_by_type": {
+    "convention": 4,
+    "fix": 1,
+    "idea": 18,
+    "untyped": 10,
+    "workflow": 281
+  },
+  "rubric": "RUBRIC.md @ 740a215",
+  "seed": 20260828,
+  "stratified": "Round-robin across note types, so the by-class report has a cell for every class the corpus has. The sample is therefore NOT representative of the population \u2014 `workflow` is 281 of 314 pairs and 9 of 32 draws. Valid for testing whether the scorer agrees with a human; not valid as a corpus-wide completeness figure, which needs its own representative draw."
+}

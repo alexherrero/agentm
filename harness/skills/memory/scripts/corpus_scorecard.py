@@ -46,6 +46,18 @@ _TIMEOUT_SECONDS = 300
 # top-level directory beside it, which is what the first run of this file did.
 DIAGNOSTICS_DIR = Path("desk") / "diagnostics"
 STABLE_NAME = "latest_health_scorecard.md"
+COMPLETENESS_RESULT_NAME = "latest_completeness.json"
+
+
+def _cell(value) -> str:
+    """One table cell's text, with pipes escaped.
+
+    A `|` inside a cell ends the cell, so a reason that named a shell pipeline
+    silently truncated its own row and left the table a column short. Escaped
+    here rather than at each call site, because the next reason to contain one
+    will not remember to.
+    """
+    return str(value).replace("|", r"\|")
 
 
 @dataclass
@@ -78,14 +90,15 @@ class Reading:
 
     def render(self) -> str:
         if self.missing:
-            return f"| {self.label} | — | not measured: {self.missing} |"
+            return (f"| {_cell(self.label)} | — | "
+                    f"not measured: {_cell(self.missing)} |")
         shown = self.value
         if isinstance(shown, float):
             shown = f"{shown:.4f}"
         if self.unit:
             shown = f"{shown} {self.unit}"
         detail = self.note or f"`{self.source}`"
-        return f"| {self.label} | {shown} | {detail} |"
+        return f"| {_cell(self.label)} | {_cell(shown)} | {_cell(detail)} |"
 
 
 @dataclass
@@ -200,20 +213,71 @@ def section_corpus() -> Section:
     return s
 
 
-def section_completeness() -> Section:
+def section_completeness(out_dir: Path = None) -> Section:
     """Whether distillation kept what mattered.
 
-    Task 1 of this part builds the pass that produces this number, and it has not
-    been built. Named here rather than omitted: a scorecard silently missing its
-    headline number reads as a scorecard whose headline number is fine.
+    Read from the grading pass's last result rather than graded here. The number
+    costs one model call per sampled note, and a scorecard that spends money
+    every time somebody renders it is a scorecard nobody renders.
     """
     s = Section("Completeness", blurb=(
         "Whether enrichment kept what the source actually said, graded against "
         "the source claim by claim."))
-    s.readings.append(Reading.unavailable(
-        "claim-level coverage",
-        "the sampled grading pass is not built yet (part 6, task 1)"))
+    path = completeness_result_path(out_dir)
+    if path is None or not path.exists():
+        s.readings.append(Reading.unavailable(
+            "claim-level coverage",
+            "no grading run yet — `completeness_grade.py` writes one"))
+        return s
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        s.readings.append(Reading.unavailable("claim-level coverage", str(exc)))
+        return s
+
+    summary = data.get("summary") or {}
+    if summary.get("coverage") is None:
+        s.readings.append(Reading.unavailable(
+            "claim-level coverage",
+            f"the last run graded none of its {summary.get('notes', 0)} note(s)"))
+        return s
+
+    scored, notes = summary.get("scored", 0), summary.get("notes", 0)
+    s.readings.append(Reading.measured(
+        "claim-level coverage", summary["coverage"], source=path.name,
+        note=f"{scored} of {notes} sampled note(s), "
+             f"{summary.get('replicates', 1)} replicate(s) each"))
+    if summary.get("ungraded"):
+        # Said out loud rather than folded into the average, because a run the
+        # judge could not answer is a different fact from a corpus that lost
+        # its content.
+        s.readings.append(Reading.measured(
+            "notes the judge could not grade", summary["ungraded"],
+            source=path.name, note="excluded from the average, not scored zero"))
+    s.readings.append(Reading.measured(
+        "widest spread across replicates", summary.get("max_spread", 0.0),
+        source=path.name,
+        note="0 means every replicate of every note agreed"))
+
+    for cls, row in sorted((summary.get("by_class") or {}).items()):
+        s.readings.append(Reading.measured(
+            f"coverage · {cls}", row["coverage"], source=path.name,
+            note=f"n={row['n']}"))
     return s
+
+
+def completeness_result_path(out_dir: Path = None) -> Path:
+    """Where the grading pass leaves its last result.
+
+    Taken from the directory `build` already resolved, not rebuilt from a root.
+    The first version of this joined `desk/diagnostics` onto the vault path and
+    looked under `/…/Vault/desk/` while the file sat in `/…/Vault/Agent/desk/` —
+    the same vault-root-versus-memory-root confusion `diagnostics_dir` was
+    written to stop, arrived at by a different door.
+    """
+    if out_dir is None:
+        return None
+    return Path(out_dir) / COMPLETENESS_RESULT_NAME
 
 
 def section_meters() -> Section:
@@ -400,7 +464,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
 
     sections = [
         section_corpus(),
-        section_completeness(),
+        section_completeness(out_dir),
         section_meters(),
         section_retrieval(repo),
         section_coverage(),
