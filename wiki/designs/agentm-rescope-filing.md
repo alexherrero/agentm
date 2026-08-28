@@ -4,7 +4,7 @@ status: final
 visibility: published
 kind: design
 scope: arc
-area: agentm
+area: agentm/memory
 author: alexherrero
 contributors: []
 created: 2026-08-18
