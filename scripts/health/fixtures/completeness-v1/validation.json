@@ -1,0 +1,325 @@
+{
+  "bar": {
+    "p": 0.05,
+    "rho": 0.5,
+    "separation": 0.2
+  },
+  "grade_counts": {
+    "complete": 18,
+    "major": 2,
+    "minor": 12
+  },
+  "graded": 32,
+  "held": false,
+  "median_complete": 1.0,
+  "median_major": 1.0,
+  "median_minor": 1.0,
+  "notes": [
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 0.6667,
+      "idx": "1",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-bash-300.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 4,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "2",
+      "operator": "major",
+      "rel": "Agent/memory/_inbox/follow-ups-batch-excludes-287-288.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "3",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/enterworktree-frequent-use-uncaptured.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "4",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/mcp-ccd-session-mgmt-search-session-transcripts-frequency.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "5",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-read-243.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 6,
+      "class": "fix",
+      "coverage": 1.0,
+      "idx": "6",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/partial-word-trim-over-trims.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 6,
+      "class": "reference",
+      "coverage": 1.0,
+      "idx": "7",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/20260709-digest-daily.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 6,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "8",
+      "operator": "major",
+      "rel": "Agent/memory/_inbox/check-whether-the-followups-md-verification.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 4,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "9",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/all-my-follow-ups-were-addressed.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 4,
+      "class": "convention",
+      "coverage": 1.0,
+      "idx": "10",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/delete-test-only-if-intent-is-wrong.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 2,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "11",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/follow-up-for-later-how-do.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "12",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-browser.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 4,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "13",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/spring-clean-agentm-followups.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "14",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/claude-in-chrome-navigate-tool-usage.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 2,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "15",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/follow-up-batch-3-wait-for.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "16",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-get-2.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 2,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "17",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/check-follow-up-batch-2-session.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 12,
+      "class": "convention",
+      "coverage": 0.9167,
+      "idx": "18",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/design-final-refine-how-never-whether.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "convention",
+      "coverage": 1.0,
+      "idx": "19",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/gh-missing-fallback-direct-push.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "20",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/workflow-read-241.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 5,
+      "class": "fix",
+      "coverage": 0.8,
+      "idx": "21",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/never-tested-there-at-all-1.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "fix",
+      "coverage": 1.0,
+      "idx": "22",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/004-fix-verification-grep-scope-too-broad.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 2,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "23",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/let-s-fix-that-test-small.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "24",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-bash-220.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 5,
+      "class": "convention",
+      "coverage": 1.0,
+      "idx": "25",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/never-edit-or-delete-a-failing-test.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 2,
+      "class": "convention",
+      "coverage": 1.0,
+      "idx": "26",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/v5-6-de-vaulting-locator-not-path.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 2,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "27",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/three-follow-ups-crickets-agentm-prompts.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "28",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-taskupdate-79.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "29",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-bash-481.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 3,
+      "class": "workflow",
+      "coverage": 1.0,
+      "idx": "30",
+      "operator": "complete",
+      "rel": "Agent/memory/_inbox/workflow-taskcreate-37.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 2,
+      "class": "idea",
+      "coverage": 1.0,
+      "idx": "31",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/i-don-t-see-where-the.md",
+      "spread": 0.0
+    },
+    {
+      "claims": 5,
+      "class": "convention",
+      "coverage": 1.0,
+      "idx": "32",
+      "operator": "minor",
+      "rel": "Agent/memory/_inbox/never-judged-by-a-model-1.md",
+      "spread": 0.0
+    }
+  ],
+  "p_met": false,
+  "p_value": 0.56868,
+  "pairing": "Matched on a hash of the graded source text, not on path. An earlier run matched by path and was contaminated: enrichment renames notes, so seven were missed, and the journal holds up to three writes per note, so several were counted more than once. That run's rho is withdrawn.",
+  "permutation": {
+    "method": "Monte Carlo",
+    "note": "RUBRIC.md says exact; the exact test here is 245,157,000 arrangements, so this is a Monte Carlo approximation reported as one.",
+    "resamples": 200000,
+    "standard_error": 0.001107
+  },
+  "replicates": 3,
+  "rho": 0.1065,
+  "rho_met": false,
+  "sample": 32,
+  "scored": 32,
+  "separation": 0.0,
+  "separation_met": false,
+  "shortfall": "32 of 32 pairs were graded; the task asks for >=30, so this validation is below its own floor and is reported as such.",
+  "task_floor": 30
+}

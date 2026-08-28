@@ -102,6 +102,54 @@ func TestTheOrderIsPreserved(t *testing.T) {
 	}
 }
 
+func TestAStructuredLineIsAClaimBelowTheWordFloor(t *testing.T) {
+	// The v1 defect. A mining-metadata block is four assertions, each under the
+	// word floor, so all four were dropped before the judge saw them — and the
+	// notes whose rewrites lost exactly these were the ones the operator graded
+	// down. See fixtures/completeness-v1/DIAGNOSIS.md.
+	body := "- **Category**: `idea`\n- **Confidence**: `LOW`\n" +
+		"- **Occurrences**: 5\n- **Rationale**: follow-up marker\n"
+	got := Claims(body)
+	if len(got) != 4 {
+		t.Fatalf("got %d claims, want 4: %q", len(got), got)
+	}
+	for _, want := range []string{"Confidence", "LOW", "Occurrences", "5"} {
+		if !strings.Contains(strings.Join(got, " "), want) {
+			t.Fatalf("%q was dropped: %q", want, got)
+		}
+	}
+}
+
+func TestAPlainKeyValueLineIsAClaim(t *testing.T) {
+	got := Claims("Status: done\n")
+	if len(got) != 1 {
+		t.Fatalf("got %d claims, want 1: %q", len(got), got)
+	}
+}
+
+func TestAStructuredValueIsNotSplitAtItsPeriods(t *testing.T) {
+	// `**Version**: 1.2. See below.` is one assertion; sentence-splitting it
+	// would file half a version number as a claim of its own.
+	got := Claims("- **Model**: claude-opus-4. Something else entirely here.\n")
+	if len(got) != 1 {
+		t.Fatalf("a structured line was split: %q", got)
+	}
+	// On content, not on the count: splitting this line also yields one claim,
+	// because the structured half then falls under the word floor and only the
+	// trailing sentence survives. Counting alone could not tell the two apart.
+	if !strings.Contains(got[0], "Model") || !strings.Contains(got[0], "opus-4") {
+		t.Fatalf("the structured half was dropped: %q", got)
+	}
+}
+
+func TestAHeadingWithAColonIsStillNotAClaim(t *testing.T) {
+	// The exemption requires a value. Admitting a bare `## Contents:` would
+	// readmit exactly the headings the word floor exists to exclude.
+	if got := Claims("## Contents:\n\nNote:\n"); len(got) != 0 {
+		t.Fatalf("a valueless heading became a claim: %q", got)
+	}
+}
+
 func TestAnEmptyBodyHasNoClaims(t *testing.T) {
 	if got := Claims("   \n\n  "); len(got) != 0 {
 		t.Fatalf("got %q, want none", got)
