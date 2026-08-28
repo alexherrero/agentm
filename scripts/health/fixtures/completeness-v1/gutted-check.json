@@ -1,0 +1,51 @@
+{
+  "bar": {
+    "faithful_min": 0.8,
+    "gutted_max": 0.5
+  },
+  "construction": "The faithful arm is the real enrichment rewrite; the gutted arm is the note's first claim alone. An earlier construction cut the rewrite at its first sentence and failed the bar \u2014 reading the texts showed the judge had been right, because that sentence still carried every claim. The construction was fixed; the bar was not.",
+  "faithful_above_floor": true,
+  "gutted_below_ceiling": true,
+  "held": true,
+  "min_claims": 3,
+  "notes": [
+    {
+      "claims": 3,
+      "faithful": 1.0,
+      "faithful_spread": 0.0,
+      "gutted": 0.3333,
+      "gutted_expected": 0.3333,
+      "gutted_spread": 0.0,
+      "rel": "Agent/memory/_inbox/edit-tool-59-invocations-session.md"
+    },
+    {
+      "claims": 3,
+      "faithful": 1.0,
+      "faithful_spread": 0.0,
+      "gutted": 0.3333,
+      "gutted_expected": 0.3333,
+      "gutted_spread": 0.0,
+      "rel": "Agent/memory/_inbox/workflow-bash-552.md"
+    },
+    {
+      "claims": 3,
+      "faithful": 1.0,
+      "faithful_spread": 0.3333,
+      "gutted": 0.3333,
+      "gutted_expected": 0.3333,
+      "gutted_spread": 0.0,
+      "rel": "Agent/memory/_inbox/workflow-edit-409.md"
+    },
+    {
+      "claims": 3,
+      "faithful": 1.0,
+      "faithful_spread": 0.0,
+      "gutted": 0.3333,
+      "gutted_expected": 0.3333,
+      "gutted_spread": 0.0,
+      "rel": "Agent/memory/_inbox/workflow-bash-220.md"
+    }
+  ],
+  "ordered_per_note": true,
+  "replicates": 3
+}

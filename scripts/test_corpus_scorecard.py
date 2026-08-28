@@ -11,6 +11,7 @@ to say and reading what it says anyway.
 from __future__ import annotations
 
 import json
+import re
 import sys
 import unittest
 from datetime import datetime, timezone
@@ -164,11 +165,13 @@ class ScorecardTests(unittest.TestCase):
         self.assertIn("| 40 |", row,
                       f"the queue row did not carry the daemon's number: {row}")
 
-    def test_the_completeness_row_says_it_is_not_built(self):
-        """The headline number this part has not built yet.
+    def test_the_completeness_row_is_named_even_with_no_run(self):
+        """The headline number, when nobody has graded anything yet.
 
         Named rather than omitted: a scorecard silently missing its headline
-        number reads as a scorecard whose headline number is fine.
+        number reads as a scorecard whose headline number is fine. This used to
+        assert the reason was "not built yet"; the pass is built now, so the
+        reason changed and the rule it is here to protect did not.
         """
         import tempfile
 
@@ -178,7 +181,66 @@ class ScorecardTests(unittest.TestCase):
             body = self.read(tmp)
 
         self.assertIn("claim-level coverage", body)
-        self.assertIn("not built yet", body)
+        self.assertIn("not measured:", body)
+        self.assertNotIn("| claim-level coverage | 0", body,
+                         "an ungraded corpus reported as zero coverage")
+
+    def test_a_graded_run_is_reported_by_class(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            out = tmp / "desk/diagnostics"
+            out.mkdir(parents=True)
+            (out / sc.COMPLETENESS_RESULT_NAME).write_text(json.dumps({
+                "summary": {"notes": 6, "scored": 5, "ungraded": 1,
+                            "coverage": 0.9333, "max_spread": 0.3333,
+                            "replicates": 3,
+                            "by_class": {"workflow": {"n": 3, "coverage": 1.0},
+                                         "fact": {"n": 2, "coverage": 0.8333}}},
+            }), encoding="utf-8")
+            self.build(answers(**HEALTHY), tmp)
+            body = self.read(tmp)
+
+        self.assertIn("| claim-level coverage | 0.9333 |", body)
+        self.assertIn("coverage · workflow", body)
+        self.assertIn("coverage · fact", body)
+        self.assertIn("widest spread across replicates", body)
+        self.assertIn("notes the judge could not grade", body,
+                      "a note nobody could grade vanished from the report")
+
+    def test_a_run_that_graded_nothing_is_not_zero_coverage(self):
+        # The whole point of the file this lives in: an outage and a corpus that
+        # lost its content must not render the same.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            tmp = Path(d)
+            out = tmp / "desk/diagnostics"
+            out.mkdir(parents=True)
+            (out / sc.COMPLETENESS_RESULT_NAME).write_text(json.dumps({
+                "summary": {"notes": 4, "scored": 0, "ungraded": 4,
+                            "coverage": None, "by_class": {}},
+            }), encoding="utf-8")
+            self.build(answers(**HEALTHY), tmp)
+            body = self.read(tmp)
+
+        self.assertIn("not measured:", body)
+        self.assertNotIn("| claim-level coverage | 0.0000 |", body)
+
+    def test_a_pipe_in_a_reason_does_not_break_the_table(self):
+        # A reason naming a shell pipeline ended its own cell and left the row a
+        # column short, which reads as a rendering glitch rather than a lost
+        # number.
+        r = sc.Reading.unavailable("x", "run `a --json | b --json` first")
+        row = r.render()
+        # Count the delimiters, not the escapes: `\|` is a literal pipe inside a
+        # cell and does not end it, so counting every `|` character would fail on
+        # correct output.
+        delimiters = len(re.findall(r"(?<!\\)\|", row))
+        self.assertEqual(delimiters, 4,
+                         f"the cell was split by its own text: {row}")
+        self.assertIn(r"\|", row, "the pipe was dropped instead of escaped")
 
     def test_a_partial_daemon_reports_what_it_has(self):
         """One command down does not take the rest of the report with it."""

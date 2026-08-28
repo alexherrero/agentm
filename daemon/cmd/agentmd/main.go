@@ -63,6 +63,9 @@ const usage = `agentmd — the agentm memory daemon
   agentmd tiers      ask which model tier a dreaming job may run on
   agentmd graph      ask what the corpus mentions, links to, and lacks
   agentmd meters     measure whether the corpus is converging on itself
+  agentmd clusters   group notes that say the same thing, and say which kind
+  agentmd slop       score every filed memory for template residue and novelty
+  agentmd completeness  sample enriched notes and split their sources into claims
   agentmd door       ask whether a write inside a project needs alignment
 
 Run any subcommand with -h for its flags.
@@ -115,6 +118,8 @@ func main() {
 		err = cmdClusters(os.Args[2:])
 	case "slop":
 		err = cmdSlop(os.Args[2:])
+	case "completeness":
+		err = cmdCompleteness(os.Args[2:])
 	case "door":
 		err = cmdDoor(os.Args[2:])
 	case "version", "-v", "--version":
