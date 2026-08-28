@@ -72,6 +72,15 @@ launchctl bootout gui/$(id -u)/com.agentm.daemon && rm ~/Library/LaunchAgents/co
 | `meters` | The four diversity meters over the filed memory corpus. `--sample`, `--trigram-top`, `--window`, `--json`. |
 | `graph` | The memory context graph, laid out deterministically and written as SVG. `--cap`, `--out`. |
 | `clusters` | Which notes are too similar to be independent memories, and what kind of too-similar. `--threshold`, `--sample`, `--json`. |
+| `embed` | Compute the vector arm's embeddings for in-scope notes. |
+| `enrich` | Run the enrichment pass over the unfiled queue. `--sample N --seed S` draws a reproducible random batch, `--dump` writes before/after pairs, `--yes` runs one batch without arming the eager trigger. |
+| `ledger` | Ask what dreaming has already done, and what is pending. |
+| `queue` | Show the pending-work queues, or record work owed. |
+| `sources` | Ask whether a source has been mined, and watermark it. |
+| `tiers` | Ask which model tier a dreaming job may run on. |
+| `door` | Ask whether a write inside a project needs alignment. |
+| `slop` | Score notes for template residue and novelty. `--threshold`, `--json`. |
+| `completeness` | Sample enriched notes and split them into claims for grading. `--sample`, `--replicates`, `--json`. |
 | `retire` | Stop and archive the orphaned pre-daemon memory server. |
 
 Every subcommand accepts `--config`, `--vault`, `--index`, `--port`.
@@ -551,6 +560,48 @@ Two spellings of one link target produce two rows in the index, so edges are
 deduplicated before layout. `--cap` bounds the node count by keeping the
 highest-degree nodes, and the report says how many it dropped rather than quietly
 drawing a subset.
+
+## The slop detector, and the question it does not ask
+
+`agentmd slop` scores a note for template residue and novelty. It exists because
+enrichment writes prose, and prose written to a template reads fine one note at a
+time.
+
+**It does not ask whether a note is worth keeping.** Three rubrics in this arc
+asked exactly that and all three failed their own calibration — κ = 0.189, then
+0.349, then 0.286 — and the reason is the same each time. Whether a note earns
+its place turns on what the operator wants their vault to hold, which is private
+to them and not recoverable from the text. Two graders cannot converge on a
+question only one of them can answer.
+
+So the detector scores what is visible in the note: how much of it is boilerplate
+the template supplied, and how far its language sits from everything else. A low
+score is a note worth *looking at*, not a note to delete. The narrow auto-expire
+band stays confirm-gated.
+
+The length floor is an AND-gate, never a rule on its own. A short note is not
+slop — this corpus is full of short dense references that are exactly what a
+memory should be — so shortness only ever compounds another signal.
+
+## Completeness, and why it survived where the others did not
+
+`agentmd completeness` samples enriched notes, splits each into claims, and hands
+the pairs to a grader that asks one question: **did the rewrite drop something the
+source said?**
+
+That question is answerable by two people looking at the same two pieces of text,
+which is the whole reason it survived calibration where "is this worth keeping?"
+did not. The rubric is frozen before the sample is drawn, and it lives at
+`scripts/health/fixtures/completeness-v1/RUBRIC.md`.
+
+One rule is worth naming because an earlier rubric lacked it: grade against what
+the source *actually says*. A rewrite that faithfully reports a truncated source
+has not lost anything, and a grader that does not know this marks every damaged
+note as an enrichment failure.
+
+The check that needs no human at all is the gutted-note fixture: a note with
+material deliberately removed must score lower than its source, asserted in both
+directions. That one runs in CI.
 
 ## Watching, and what actually guarantees correctness
 

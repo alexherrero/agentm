@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+
+Part 6 closes the memory-ingestion arc: the meters that say whether the corpus is
+converging on itself, the detectors that find the notes worth a second look, and
+the two nightly scorecards that put the numbers somewhere a person will see them.
+
+### Added
+
+- **Four diversity meters** (`agentmd meters`) over the filed memory corpus.
+  Trigram concentration, moving-average TTR, pairwise cosine similarity and
+  nearest-neighbour dispersion. The last moves earliest: convergence starts
+  locally, so a few notes tighten around each other while the corpus-wide average
+  is still flat. **The two embedding meters refuse to run without the dense arm
+  rather than returning zero** — zero dispersion is what a converged corpus looks
+  like and zero similarity is what a diverse one looks like, so a missing embedder
+  would report either "everything is fine" or "the corpus has collapsed" depending
+  which row you read.
+- **The slop detector** (`agentmd slop`) — template residue and two-stage novelty,
+  with the length floor as an AND-gate that never fires alone.
+- **The completeness score** (`agentmd completeness`) — sampled claim-level
+  coverage of an enriched note against its source, reported by class.
+- **Clusters** (`agentmd clusters`) and **the memory context graph**
+  (`agentmd graph`), rendered deterministically as SVG.
+- **Two nightly scorecards** — corpus health and dreaming — with a how-to for
+  reading them, because a dashboard nobody knows how to read is a dashboard nobody
+  reads.
+- `agentm_config --enrich-enabled` writes the arming key, so turning enrichment on
+  no longer means hand-editing JSON the next install will overwrite.
+
+### Changed
+
+- **The meters read the filed memory corpus, not the whole vault.** They were
+  measuring everything when the question is whether *enrichment* is converging.
+  Figures from before this correction are not comparable to figures after it.
+
+### Fixed
+
+- **Excerpts were sliced at a raw character offset**, so mined notes carried
+  bodies cut part-way through a word. Fixed at capture; the notes already written
+  are *marked* rather than trimmed, because a correctly-cut elision and a broken
+  one are indistinguishable from outside and trimming would silently eat complete
+  words. 41 notes carry `excerpt_edges_unverified`; 2,183 more had already been
+  expired by the retro cleanup and were left alone.
+- **Reference notes whose body was their own description** — what the thing was
+  filed under rather than what it says. 32 notes carried a twelve-word tagline or
+  nothing; median body went from 7 words to 274 after the backfill.
+
+### Internal
+
+- **Four rubrics, three withdrawn.** Rubrics asking "is this note worth keeping?"
+  failed their own pre-registered calibration three times — κ = 0.189, 0.349,
+  0.286 — and every disagreement ran agent-flagged / operator-kept. The question
+  turns on what the operator wants their vault to hold, which is private to them
+  and not recoverable from the text. What replaced blind labelling is
+  calibration-first adjudication, with the resulting standard tested against
+  held-out notes and the bar written down first. The completeness rubric survived
+  because it asks something both graders can check: did the rewrite drop something
+  the source said?
+- Each withdrawal is recorded with what it cost — 175 labels, then 15 — rather
+  than folded into the version that worked.
+
 ## [v9.8.0] — 2026-08-27
 
 Two independent pieces, both about a system noticing things about itself.

@@ -23,6 +23,7 @@
 - [Capture from your phone](Capture-From-Your-Phone)
 - [Archive a finished project](Archive-A-Finished-Project)
 - [Tune the archive](Tune-The-Archive)
+- [Read the nightly scorecards](Read-The-Nightly-Scorecards)
 ### 📖 [Reference](Reference)
 ### 🏛️ [Architecture](Architecture)
 ### 🧩 [Designs](Designs)
