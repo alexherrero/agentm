@@ -24,7 +24,27 @@ import (
 // capture bug cut in half. Counting those as claims would put a stack of
 // unanswerable fragments in front of the judge and score every note that has
 // them as incomplete — which measures the capture bug, not the rewrite.
+//
+// Structured lines are exempt; see keyValueRe. The floor applied to them too in
+// v1, and that is the whole reason the first validation failed: a mining-metadata
+// block of `**Confidence**: LOW` and `**Occurrences**: 5` is four assertions that
+// are each under four words, so the splitter dropped them and the judge was never
+// asked about the only thing the operator was grading. Seventeen of eighteen
+// notes graded `complete` had lost none of these; every note graded down had lost
+// at least one. See scripts/health/fixtures/completeness-v1/DIAGNOSIS.md.
 const MinClaimWords = 4
+
+// keyValueRe matches a structured metadata line: `- **Key**: value`, `Key: value`.
+//
+// A line like this is a complete assertion at any length, so the word floor does
+// not apply to it. It is also exactly the shape the rubric's rule 5 is about —
+// a name, flag, number or level is what someone searches for later, and the
+// sentence around it is not.
+//
+// A value is required. `## Contents:` and a bare `Note:` assert nothing, and
+// admitting them would readmit the headings the floor exists to exclude.
+var keyValueRe = regexp.MustCompile(
+	`^\s*(?:[-*+]\s*)?(?:\*\*|__)?[A-Za-z][\w ./-]{0,40}(?:\*\*|__)?\s*:\s*\S+`)
 
 var (
 	// A fenced block. Code is not a prose claim, and a rewrite is not expected
@@ -63,6 +83,12 @@ func Claims(body string) []string {
 		line = leadRe.ReplaceAllString(line, "")
 		line = strings.TrimSpace(line)
 		if line == "" {
+			continue
+		}
+		// A structured line is one assertion, not a sentence to be split: a
+		// value containing a period would otherwise be cut in half.
+		if keyValueRe.MatchString(line) {
+			out = append(out, strings.TrimSpace(spaceRe.ReplaceAllString(line, " ")))
 			continue
 		}
 		for _, s := range sentences(line) {
