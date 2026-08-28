@@ -1,0 +1,208 @@
+{
+  "drawn": "2026-08-27",
+  "notes": {
+    "1": {
+      "after_sha": "8e53642016013ae2",
+      "before_sha": "e0ffba6dc4704976",
+      "rel": "Agent/memory/_inbox/workflow-bash-300.md",
+      "type": "workflow"
+    },
+    "10": {
+      "after_sha": "40ca63e21c745d1b",
+      "before_sha": "e026a80e5b18e561",
+      "rel": "Agent/memory/_inbox/delete-test-only-if-intent-is-wrong.md",
+      "type": "convention"
+    },
+    "11": {
+      "after_sha": "0ca5dd36d0e2fea3",
+      "before_sha": "a93396a134180b95",
+      "rel": "Agent/memory/_inbox/follow-up-for-later-how-do.md",
+      "type": "idea"
+    },
+    "12": {
+      "after_sha": "0f43fa9d17cc3666",
+      "before_sha": "b5456b0f352e9d6a",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-browser.md",
+      "type": "untyped"
+    },
+    "13": {
+      "after_sha": "cbf2cb7b905f3daa",
+      "before_sha": "41fe77506b150485",
+      "rel": "Agent/memory/_inbox/spring-clean-the-vault-s-agentm-1.md",
+      "type": "idea"
+    },
+    "14": {
+      "after_sha": "62362c431c67e887",
+      "before_sha": "41c76d45d92655b8",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-navigate-4.md",
+      "type": "untyped"
+    },
+    "15": {
+      "after_sha": "468280c8fcb83583",
+      "before_sha": "207e0b76aaab794f",
+      "rel": "Agent/memory/_inbox/follow-up-batch-3-wait-for.md",
+      "type": "idea"
+    },
+    "16": {
+      "after_sha": "75158ed4ed3c8d41",
+      "before_sha": "0670a5ad0e2fe4f4",
+      "rel": "Agent/memory/_inbox/workflow-mcp-claude-in-chrome-get-2.md",
+      "type": "untyped"
+    },
+    "17": {
+      "after_sha": "4d5bc52636ef7763",
+      "before_sha": "2798096f98bd4b98",
+      "rel": "Agent/memory/_inbox/the-prompt-finished-in-the-follow.md",
+      "type": "idea"
+    },
+    "18": {
+      "after_sha": "22fa24a593c51285",
+      "before_sha": "02509b50c710cf53",
+      "rel": "Agent/memory/_inbox/never-whether-1.md",
+      "type": "untyped"
+    },
+    "19": {
+      "after_sha": "07bafaad6e69924b",
+      "before_sha": "afd8b8962a2d0f78",
+      "rel": "Agent/memory/_inbox/gh-missing-fallback-direct-push.md",
+      "type": "convention"
+    },
+    "2": {
+      "after_sha": "22ff3ebbdce3950e",
+      "before_sha": "276d8cb5bfdeddad",
+      "rel": "Agent/memory/_inbox/follow-ups-batch-go-this-is.md",
+      "type": "idea"
+    },
+    "20": {
+      "after_sha": "ab370242b73fa069",
+      "before_sha": "ffc09799efe108d0",
+      "rel": "Agent/memory/_inbox/workflow-read-241.md",
+      "type": "workflow"
+    },
+    "21": {
+      "after_sha": "c972fc63c388e523",
+      "before_sha": "15fd44825ce28083",
+      "rel": "Agent/memory/_inbox/never-tested-there-at-all-1.md",
+      "type": "untyped"
+    },
+    "22": {
+      "after_sha": "d2244b0fb8ecefe2",
+      "before_sha": "1af370ee98fe02a7",
+      "rel": "Agent/memory/_inbox/004-fix-verification-grep-scope-too-broad.md",
+      "type": "fix"
+    },
+    "23": {
+      "after_sha": "8347ebd630ba7264",
+      "before_sha": "3f8874dbfc511491",
+      "rel": "Agent/memory/_inbox/let-s-fix-that-test-small.md",
+      "type": "idea"
+    },
+    "24": {
+      "after_sha": "6563979c4d7315c9",
+      "before_sha": "f61c99027196d6e3",
+      "rel": "Agent/memory/_inbox/workflow-bash-250.md",
+      "type": "workflow"
+    },
+    "25": {
+      "after_sha": "2e03fb8565c3f406",
+      "before_sha": "400f2c4db736dd94",
+      "rel": "Agent/memory/_inbox/never-edit-or-delete-a-failing-test.md",
+      "type": "convention"
+    },
+    "26": {
+      "after_sha": "545eca30220eedce",
+      "before_sha": "80ef0b3d35c09e17",
+      "rel": "Agent/memory/_inbox/v5-6-de-vaulting-locator-not-path.md",
+      "type": "convention"
+    },
+    "27": {
+      "after_sha": "ebab4caaea35ec25",
+      "before_sha": "9183c60d44f989a6",
+      "rel": "Agent/memory/_inbox/for-those-three-follow-ups-provide.md",
+      "type": "untyped"
+    },
+    "28": {
+      "after_sha": "f98165ace7061eae",
+      "before_sha": "4268a97e03136e37",
+      "rel": "Agent/memory/_inbox/workflow-taskupdate-79.md",
+      "type": "workflow"
+    },
+    "29": {
+      "after_sha": "33262027b12bb8df",
+      "before_sha": "d4085776e7d0cebc",
+      "rel": "Agent/memory/_inbox/workflow-bash-481.md",
+      "type": "workflow"
+    },
+    "3": {
+      "after_sha": "ca6dcddc0196e96a",
+      "before_sha": "57ecb7497993ce96",
+      "rel": "Agent/memory/_inbox/workflow-enterworktree-2.md",
+      "type": "workflow"
+    },
+    "30": {
+      "after_sha": "f821c34d4ad4ef34",
+      "before_sha": "654f32e1d99b1f44",
+      "rel": "Agent/memory/_inbox/workflow-taskcreate-37.md",
+      "type": "workflow"
+    },
+    "31": {
+      "after_sha": "cb1c15ecffa2fc3e",
+      "before_sha": "30b359a55f496475",
+      "rel": "Agent/memory/_inbox/i-don-t-see-where-the.md",
+      "type": "idea"
+    },
+    "32": {
+      "after_sha": "fdf3cf2a7c22772d",
+      "before_sha": "c803b779ffd66d96",
+      "rel": "Agent/memory/_inbox/never-judged-by-a-model-1.md",
+      "type": "untyped"
+    },
+    "4": {
+      "after_sha": "5f55e5af21fcbd41",
+      "before_sha": "eefad8da988cbe5e",
+      "rel": "Agent/memory/_inbox/workflow-mcp-ccd-session-mgmt-search-1.md",
+      "type": "workflow"
+    },
+    "5": {
+      "after_sha": "a9eb07fba6d24199",
+      "before_sha": "dde1214899bc6480",
+      "rel": "Agent/memory/_inbox/workflow-read-243.md",
+      "type": "workflow"
+    },
+    "6": {
+      "after_sha": "2953461334752f3b",
+      "before_sha": "ab6d0b86622f5b5d",
+      "rel": "Agent/memory/_inbox/gone-and-the-note-doesn-t.md",
+      "type": "untyped"
+    },
+    "7": {
+      "after_sha": "832b1ac625d76c81",
+      "before_sha": "77e79c0088ecfbad",
+      "rel": "Agent/memory/_inbox/20260709-digest-daily.md",
+      "type": "untyped"
+    },
+    "8": {
+      "after_sha": "3e967894c03da0e8",
+      "before_sha": "0ae1324f05e85638",
+      "rel": "Agent/memory/_inbox/check-whether-the-followups-md-verification.md",
+      "type": "idea"
+    },
+    "9": {
+      "after_sha": "d6387e115039e76e",
+      "before_sha": "69d128628907c972",
+      "rel": "Agent/memory/_inbox/all-my-follow-ups-were-addressed.md",
+      "type": "idea"
+    }
+  },
+  "population": 314,
+  "population_by_type": {
+    "convention": 4,
+    "fix": 1,
+    "idea": 18,
+    "untyped": 10,
+    "workflow": 281
+  },
+  "rubric": "RUBRIC.md @ 740a215",
+  "seed": 20260828,
+  "stratified": "Round-robin across note types, so the by-class report has a cell for every class the corpus has. The sample is therefore NOT representative of the population \u2014 `workflow` is 281 of 314 pairs and 9 of 32 draws. Valid for testing whether the scorer agrees with a human; not valid as a corpus-wide completeness figure, which needs its own representative draw."
+}
