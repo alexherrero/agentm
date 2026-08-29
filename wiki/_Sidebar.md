@@ -30,6 +30,7 @@
 - [Project config](Project-Config)
 - [GitHub Projects sync](GitHub-Projects-Sync)
 - [CI gates](CI-Gates)
+- [Retrieval eval contract](Retrieval-Eval-Contract)
 - [PII Guardrail](PII)
 - [Repo layout](Repo-Layout)
 - [Vault lint checks](Vault-Lint-Checks)

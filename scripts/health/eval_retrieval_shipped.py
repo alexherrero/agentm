@@ -454,6 +454,22 @@ def wilson_ci(hits: int, n: int, z: float = 1.96) -> tuple:
     return (max(0.0, center - half), min(1.0, center + half))
 
 
+def coin_pass_probability(bar: int, n: int) -> float:
+    """P(a fair coin clears `bar` of `n`) — the pre-registration power check.
+
+    A probe bar a coin passes half the time is not a bar; it is a coin with
+    paperwork. Both of this arc's pre-flight bars — floorless rerank's ≥5 of 9
+    and fusion's ≥3 of 5 — sit at exactly 0.5 by this arithmetic, which is why
+    one refutation is withdrawn and the other stands only on its deterministic
+    per-question trace. The contract page requires ≤ 0.05 before a bar may be
+    registered, and this function is what a RULE file quotes.
+    """
+    from math import comb
+    if n <= 0:
+        return 1.0
+    return sum(comb(n, k) for k in range(max(0, bar), n + 1)) / (2 ** n)
+
+
 def min_detectable_flips(alpha: float = 0.05) -> int:
     """The smallest all-one-way flip count the exact paired test can call.
 

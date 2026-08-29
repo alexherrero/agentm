@@ -429,6 +429,29 @@ class TheInstrumentControls(unittest.TestCase):
         self.assertIn("instrument control fired", proc.stdout + proc.stderr)
 
 
+class ThePowerCheck(unittest.TestCase):
+    """coin_pass_probability is the pre-registration gate for probe bars, and
+    both of the arc's real bars fail it at exactly 0.50 — which is why one
+    refutation is withdrawn and the other stands only on its trace."""
+
+    def test_both_historical_bars_are_coins(self):
+        self.assertAlmostEqual(ev.coin_pass_probability(5, 9), 0.5)
+        self.assertAlmostEqual(ev.coin_pass_probability(3, 5), 0.5)
+
+    def test_a_power_checked_bar_clears_the_rule(self):
+        self.assertLessEqual(ev.coin_pass_probability(8, 9), 0.05)
+        self.assertLessEqual(ev.coin_pass_probability(6, 6), 0.05)
+
+    def test_the_arithmetic_is_the_exact_tail(self):
+        # ≥8 of 9 under a coin: (C(9,8)+C(9,9))/512 = 10/512.
+        self.assertAlmostEqual(ev.coin_pass_probability(8, 9), 10 / 512)
+
+    def test_degenerate_inputs_do_not_flatter(self):
+        self.assertEqual(ev.coin_pass_probability(0, 5), 1.0,
+                         "a bar of zero passes always and must say so")
+        self.assertEqual(ev.coin_pass_probability(3, 0), 1.0)
+
+
 class RAtOne(unittest.TestCase):
     """The informational ordering metric. R@5 stays the product metric — the
     hook injects five — and the gate never reads R@1; it exists because the
