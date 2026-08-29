@@ -106,7 +106,7 @@ class ScorecardTests(unittest.TestCase):
                 continue
             if section not in daemon_sections:
                 continue
-            self.assertIn(" — ", line,
+            self.assertIn("| — |", line,
                           f"a silent daemon produced a number in {section!r}, "
                           f"which reads as a measurement: {line}")
 
@@ -119,7 +119,10 @@ class ScorecardTests(unittest.TestCase):
             body = self.read(tmp)
 
         for line in body.splitlines():
-            if line.startswith("|") and " — " in line:
+            # Absence is the value cell being a bare dash — `| — |` — not any
+            # em-dash anywhere in the row; the notes column writes prose, and
+            # prose in this repo uses em-dashes freely.
+            if line.startswith("|") and "| — |" in line:
                 self.assertIn("not measured:", line,
                               f"a dash with no reason: {line}")
                 reason = line.split("not measured:", 1)[1].strip(" |")
@@ -492,6 +495,40 @@ class RetrievalTests(unittest.TestCase):
         for forbidden in ("| 0 |", "| 0.0000 |"):
             self.assertNotIn(forbidden, rendered,
                              "a missing baseline produced a number")
+
+    def test_r_at_1_renders_from_the_pinned_baseline(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d) / "repo"
+            gold = repo / "scripts/health/fixtures/week1-gold"
+            gold.mkdir(parents=True)
+            (gold / "shipped-baseline.json").write_text(json.dumps({
+                "k": 5, "r_at_k": 0.7344, "hits": 47, "scored": 64,
+                "r_at_1": 0.375, "hits_at_1": 24,
+            }), encoding="utf-8")
+            rendered = sc.section_retrieval(repo).render()
+
+        self.assertIn("gold-set R@1", rendered)
+        self.assertIn("0.3750", rendered)
+        self.assertIn("24 first-slot hits", rendered)
+
+    def test_a_baseline_without_r_at_1_omits_the_row_not_the_section(self):
+        # An older pin predates the field; the row must vanish rather than
+        # render a fabricated zero — the file's one rule.
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            repo = Path(d) / "repo"
+            gold = repo / "scripts/health/fixtures/week1-gold"
+            gold.mkdir(parents=True)
+            (gold / "shipped-baseline.json").write_text(json.dumps({
+                "k": 5, "r_at_k": 0.7344, "hits": 47, "scored": 64,
+            }), encoding="utf-8")
+            rendered = sc.section_retrieval(repo).render()
+
+        self.assertIn("gold-set R@5", rendered)
+        self.assertNotIn("gold-set R@1", rendered)
 
     def test_an_unreadable_baseline_is_a_dash_too(self):
         import tempfile

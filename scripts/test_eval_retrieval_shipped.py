@@ -429,6 +429,50 @@ class TheInstrumentControls(unittest.TestCase):
         self.assertIn("instrument control fired", proc.stdout + proc.stderr)
 
 
+class RAtOne(unittest.TestCase):
+    """The informational ordering metric. R@5 stays the product metric — the
+    hook injects five — and the gate never reads R@1; it exists because the
+    audited baseline holds 31 questions of ordering headroom at rank 1 against
+    9 at rank 5, and ordering work needs a number without a new harness."""
+
+    def _daemon(self, rows):
+        import unittest.mock as mock
+
+        def fake_run(argv, *a, **kw):
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=json.dumps({"results": rows}), stderr="")
+        return mock.patch.object(subprocess, "run", side_effect=fake_run)
+
+    def test_a_rank_2_hit_counts_for_r5_and_not_r1(self):
+        entries = [{"id": "q0", "question": "a question with words here",
+                    "stratum": "pure-paraphrase",
+                    "expected_note_paths": ["Agent/memory/target.md"]}]
+        rows = [{"path": "Agent/memory/decoy.md", "score": 9.0},
+                {"path": "Agent/memory/target.md", "score": 5.0}]
+        with self._daemon(rows):
+            got = ev.score("agentmd", entries, 5)
+        self.assertEqual(got["hits"], 1)
+        self.assertEqual(got["hits_at_1"], 0,
+                         "a rank-2 hit was counted as a first-slot hit")
+        self.assertEqual(got["r_at_1"], 0.0)
+
+    def test_a_rank_1_hit_counts_for_both(self):
+        entries = [{"id": "q0", "question": "a question with words here",
+                    "stratum": "pure-paraphrase",
+                    "expected_note_paths": ["Agent/memory/target.md"]}]
+        rows = [{"path": "Agent/memory/target.md", "score": 9.0},
+                {"path": "Agent/memory/decoy.md", "score": 5.0}]
+        with self._daemon(rows):
+            got = ev.score("agentmd", entries, 5)
+        self.assertEqual((got["hits"], got["hits_at_1"]), (1, 1))
+
+    def test_the_report_prints_the_line(self):
+        r = result({})
+        r.update(scored=64, hits=47, r_at_k=0.7344, r_at_1=0.375, hits_at_1=24)
+        out = ev.render(r, "test corpus")
+        self.assertIn("R@1 (informational): 0.375", out)
+
+
 class TheHardNegatives(unittest.TestCase):
     """The FP dial, made real. The original twenty negatives carry empty banned
     lists, so `false_positives` was structurally zero — unfalsifiable, not
