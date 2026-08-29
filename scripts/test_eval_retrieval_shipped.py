@@ -282,6 +282,63 @@ class TheSearchMatchesTheHook(unittest.TestCase):
         self.assertNotIn("-before", argv)
 
 
+class TheReportStatesItsResolution(unittest.TestCase):
+    """Every report prints its own CI and MDE, so a bar below the instrument's
+    resolution cannot be pre-registered by someone who never saw the number.
+    Two of this arc's probe bars were exactly that."""
+
+    def test_the_wilson_interval_matches_the_audited_value(self):
+        # 50/64 is the old baseline, and [0.666, 0.865] is the width the harness
+        # audit computed independently — pinned here so the formula can't drift.
+        lo, hi = ev.wilson_ci(50, 64)
+        self.assertAlmostEqual(lo, 0.666, places=3)
+        self.assertAlmostEqual(hi, 0.865, places=3)
+
+    def test_an_empty_run_has_no_interval_rather_than_a_fake_one(self):
+        self.assertEqual(ev.wilson_ci(0, 0), (0.0, 0.0))
+
+    def test_the_mde_is_derived_from_the_test_not_hardcoded(self):
+        # Six at alpha 0.05 — and a stricter alpha must move it, or the function
+        # is a constant wearing a derivation's clothes.
+        self.assertEqual(ev.min_detectable_flips(), 6)
+        self.assertEqual(ev.min_detectable_flips(alpha=0.01), 8)
+
+    def test_the_report_prints_both_lines(self):
+        out = ev.render(result({f"q{i}": {"hit": True, "negative": False, "rank": 1}
+                                for i in range(64)}), "test corpus")
+        self.assertIn("Wilson 95% CI", out)
+        self.assertIn("6 flips one way (+9.4%)", out)
+
+    def test_six_one_way_flips_is_an_improvement(self):
+        before = result({f"q{i}": {"hit": i >= 6, "negative": False,
+                                   "rank": None if i < 6 else 1} for i in range(64)})
+        after = result({f"q{i}": {"hit": True, "negative": False, "rank": 1}
+                        for i in range(64)})
+        cmp = ev.compare(before, after)
+        self.assertEqual(cmp["flips_for"], 6)
+        self.assertTrue(cmp["improved"])
+        self.assertFalse(cmp["regressed"])
+
+    def test_three_one_way_flips_is_not(self):
+        # p = 0.25 — direction without significance is a story, not a verdict.
+        before = result({f"q{i}": {"hit": i >= 3, "negative": False,
+                                   "rank": None if i < 3 else 1} for i in range(64)})
+        after = result({f"q{i}": {"hit": True, "negative": False, "rank": 1}
+                        for i in range(64)})
+        cmp = ev.compare(before, after)
+        self.assertEqual(cmp["flips_for"], 3)
+        self.assertFalse(cmp["improved"])
+
+    def test_improvement_never_fires_alongside_regression(self):
+        before = result({f"q{i}": {"hit": i < 6, "negative": False,
+                                   "rank": 1 if i < 6 else None} for i in range(64)})
+        after = result({f"q{i}": {"hit": False, "negative": False, "rank": None}
+                        for i in range(64)})
+        cmp = ev.compare(before, after)
+        self.assertTrue(cmp["regressed"])
+        self.assertFalse(cmp["improved"])
+
+
 class TheCorpusFingerprint(unittest.TestCase):
     """No number without its provenance, and no comparison across corpora.
 

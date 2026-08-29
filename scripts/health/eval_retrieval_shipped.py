@@ -328,6 +328,40 @@ def score(binary: str, entries: list, k: int) -> dict:
     }
 
 
+def wilson_ci(hits: int, n: int, z: float = 1.96) -> tuple:
+    """Wilson 95% interval on a proportion.
+
+    Wilson rather than normal approximation because n is 64 and the score sits
+    near 0.75, where the normal interval overshoots 1.0 and undercovers. This is
+    the interval the report prints so a reader sees the number's width — on the
+    current baseline it is about twenty points wide, which is the honest context
+    for any single-run comparison of two rankers.
+    """
+    if n == 0:
+        return (0.0, 0.0)
+    p = hits / n
+    denom = 1 + z * z / n
+    center = (p + z * z / (2 * n)) / denom
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / denom
+    return (max(0.0, center - half), min(1.0, center + half))
+
+
+def min_detectable_flips(alpha: float = 0.05) -> int:
+    """The smallest all-one-way flip count the exact paired test can call.
+
+    Derived from the test itself rather than hardcoded: the two-sided exact
+    binomial p for k flips all in one direction is 2 * (1/2)^k, so this walks k
+    upward until that clears alpha. At alpha 0.05 the answer is six — which is
+    why every report prints it: a pre-registered bar smaller than this is a bar
+    the instrument cannot resolve, and two of this arc's probe bars were exactly
+    that.
+    """
+    k = 1
+    while mcnemar_exact(0, k) >= alpha:
+        k += 1
+    return k
+
+
 def mcnemar_exact(flips_for: int, flips_against: int) -> float:
     """Two-sided exact binomial p for a paired hit/miss comparison.
 
@@ -365,6 +399,11 @@ def compare(baseline: dict, current: dict) -> dict:
         "r_at_k_before": baseline["r_at_k"],
         "r_at_k_after": current["r_at_k"],
         "regressed": len(against) > len(for_current) and p < 0.05,
+        # Symmetric with `regressed`, because a gate that can only ever say "not
+        # worse" leaves an intervention worth +5 questions exiting identically to
+        # one worth nothing — which is how improvements went unreadable for the
+        # whole goldv2 arc.
+        "improved": len(for_current) > len(against) and p < 0.05,
     }
 
 
@@ -374,6 +413,16 @@ def render(result: dict, provenance: str) -> str:
         f"scored {result['scored']} question(s) at k={result['k']}",
         f"  R@{result['k']}              : {result['r_at_k']:.3f} ({result['hits']} hits)",
     ]
+    n = result["scored"]
+    if n:
+        lo, hi = wilson_ci(result["hits"], n)
+        flips = min_detectable_flips()
+        # The report states its own resolution, every run, so a bar below it
+        # cannot be pre-registered by someone who never saw the number.
+        lines.append(f"  Wilson 95% CI      : [{lo:.3f}, {hi:.3f}] "
+                     f"({(hi - lo) * 100:.1f}pp wide)")
+        lines.append(f"  smallest clean gain: {flips} flips one way "
+                     f"(+{flips / n:.1%}) — smaller true effects are invisible here")
     if result["avg_rank_to_first_hit"] is not None:
         lines.append(f"  rank to first hit  : {result['avg_rank_to_first_hit']:.2f}")
     lines.append(f"  negatives          : {result['negatives']}, "
@@ -453,7 +502,11 @@ def main(argv: list) -> int:
             print("\nREGRESSION: more questions got worse than better, and the flip "
                   "count is unlikely under chance. The bar is not met.", file=sys.stderr)
             return 1
-        print("\nno significant regression")
+        if cmp["improved"]:
+            print("\nIMPROVEMENT: more questions got better than worse, and the "
+                  "flip count is unlikely under chance. Worth re-pinning.")
+        else:
+            print("\nno significant regression")
 
     return 0
 
