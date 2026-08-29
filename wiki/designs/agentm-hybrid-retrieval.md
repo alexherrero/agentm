@@ -191,6 +191,14 @@ changes what an AND leaves standing.
 | 3 | `+rerank+floor` | rejection ≥70% while R@5 ≥ `+chunking` (56.2%) | **refuted** — jina (the bake-off winner) 39.1% R@5 / 40% rejection; bge 32.8% / 10%. Both floored `ep05` recovered, `rc08` did not. Neither ships. Post-mortem (2026-08-14): partly a query-format test artifact, structurally a similarity≠answerhood interleave — see the amendment log. |
 | 3.5 | `+question` | the daemon accepts the natural question alongside the terms; the dense arm embeds the question, the lexical arms keep the terms. **Rule:** overall R@5 ≥ 62.5% (40/64), pure-paraphrase holds ≥50% (≥9/18), no stratum regresses by more than one question, and the per-question gain/loss diff is published with the column | **met, well past the floor** — 75.0% (48/64), pure-paraphrase 61.1% (11/18), every stratum improved and none regressed (12 gained / 0 lost). 11 of the 16 diagnosed dense-top-5 candidates converted. |
 | 4 | `+lex3` | overall R@5 ≥ 51/64 (79.7%), no stratum regresses by more than one, per-question diff published | **refuted** — 76.6% (49/64), net +1 against a required net +3. Regression clause held (no stratum lost more than one); the overall floor did not. 3 of the 7 diagnosed candidates converted (`dt07`, `dt10`, `rc03`); 2 unrelated losses (`pp02`, `rd04`) to reciprocal-rank displacement. Code kept, quarantined behind `-lex3` — see the amendment log. |
+**Where the ladder ends (2026-08-28).** The rungs below rung 5 were followed
+by twelve read-side refutations and one write-side null, and the recall-verdict
+plan closed the climb at its measured plateau: hook-true 73.4% R@5 on a
+provenance-pinned baseline, residue characterized as a gold-blind-irreducible
+vocabulary gap, instrument trusted. The amendment log's 2026-08-28 verdict
+entry carries the numbers and the priced re-audit triggers; the ladder is a
+record now, not a queue.
+
 | 5 | `hook e2e` | p50/p90 <300ms warm through the *installed* hook; each stratum within one question of `+question` (75.0%); inject-with-metadata, no manufactured empty | **met, both clauses** — p50/p90 213.8ms/222.4ms end-to-end through the installed hook (n=84); every stratum within one question of `+question` (73.4% overall, 47/64). Honest-empty on the 20 negatives: 0/20 genuine. See NOTES.md for the per-question diff and the latency-cliff finding it also surfaced. |
 | 5.5 | `+temporal` | *(re-scoped, moved after the cutover)* no stratum regresses at all against `hook e2e`; the 14 at-risk date-phrase questions enumerated with before/after ranks | **met** — 73.4% (47/64), byte-identical to `hook e2e` on all 84 rows. The extractor never fires on this gold set (0 questions match), so the "14 at-risk" estimate does not hold up — see the amendment log. Shipped wired. |
 | 6 | `agent layer` | week-1 driver rerun, n≥6, ≥0.725 — non-regression | **refuted** — mean 0.6799 across 6 replicates (0.661, 0.683, 0.700, 0.679, 0.617, 0.740; only one clears the bar). Concentrated in negative rejection, 87.5% → 62.5% against the 2026-08-06 baseline; answerable-question recall through the tool is flat-to-improved (78.1% answerable-only, ahead of every retrieval-layer column). Does not implicate the hook, which is deterministic and was measured separately in step 5. |
@@ -300,6 +308,38 @@ it.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-28 · The verdict: the ladder closes at its plateau, and the
+  plateau is the deliverable (recall-verdict plan, operator-ratified scope).**
+  The instrument was repaired before the number was believed: the eval now
+  runs the hook's exact query shape (over-fetch, admissibility, temporal
+  bounds — the old baseline counted three `hook_reachable: false` questions
+  as hits), baselines carry a corpus fingerprint and refuse comparison across
+  corpora, three liveness controls abort rather than print (the canary's
+  first fire caught the desk-outranks-memory fusion competition within
+  minutes of existing), every report states its own resolution (MDE 6 flips /
+  +9.4pp at n=64, Wilson CI printed), and the gate runs nightly with its
+  verdict and *age* on the corpus scorecard. **Hook-true baseline: R@5 47/64
+  (73.4%), R@1 24/64 (0.375), avg rank to first hit 1.79; negatives 20 easy
+  (0 FP — structurally quiet, banned lists empty by construction, now
+  documented) + 10 near-miss (10/10 served their banned note, exactly as
+  pre-registered: nothing shipped knows when it doesn't know).** The residue
+  is closed as measured: four gold-blind write-side families — three alias
+  strategies and grounded re-distillation (`RULE-enrichment-vocab.md`, NULL
+  0 of 5 with 5 of 8 targets refused by enrichment's own grounding gates) —
+  produced identical zero movement, so the vocabulary gap is **irreducible
+  without gold leakage**; the oracle's +10.9pp stands as the ceiling and the
+  proof the instrument always worked. Read-side rungs are closed as a family
+  (twelve refutations). **Re-audit triggers, priced:** (1) an embedder-tier
+  change — the one never-run lever (#459) — costs an index rebuild, latency
+  re-measurement, and this machine's long-window Metal fault constraint;
+  before funding it, re-run the oracle-bounded targets as its pre-flight;
+  (2) the enrichment-vocab probe re-runs nearly free if memory-lane coverage
+  of miss answers grows past 5 of 17 (12 currently answer into desk/ and
+  external/, out of the mechanism's lane); (3) the floorless ordering probe
+  at ≥8 of 9 only if R@1 ever becomes a product metric (2026-08-28 entry
+  below). Contract page: `wiki/reference/Retrieval-Eval-Contract.md`. Recall
+  testing is **done**.
 
 - **2026-08-28 · The floorless-rerank refutation is withdrawn as unproven —
   its probe bar was a coin.** The recall-verdict arc's instrument audit
