@@ -8,6 +8,7 @@ never silence. That is the whole difference from the CI SKIP this replaces.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -23,35 +24,42 @@ import corpus_scorecard as sc  # noqa: E402
 import retrieval_gate_job as job  # noqa: E402
 
 
-def stub_gate(tmp: Path, script: str) -> Path:
-    p = tmp / "gate.sh"
-    p.write_text(script, encoding="utf-8")
-    p.chmod(0o755)
-    return p
-
-
 class TheWrapperVerdicts(unittest.TestCase):
-    def _run(self, script: str) -> dict:
-        with tempfile.TemporaryDirectory() as d:
-            with mock.patch.object(job, "GATE", stub_gate(Path(d), script)):
-                return job.run_gate()
+    """The verdict mapping, with subprocess mocked rather than a bash stub —
+    the first version shelled real scripts and failed on the Windows runner,
+    which has no bash on this job's PATH. The logic is what needs coverage
+    everywhere; the wrapper itself only ever runs on the Mac the runner
+    schedules it on."""
+
+    def _run(self, *, exit_code: int, stdout: str = "") -> dict:
+        done = subprocess.CompletedProcess([], exit_code, stdout=stdout, stderr="")
+        with mock.patch.object(job.subprocess, "run", return_value=done):
+            return job.run_gate()
 
     def test_a_clean_pass_is_a_pass(self):
-        got = self._run("#!/bin/sh\necho 'check-retrieval-regression: clean'\nexit 0\n")
+        got = self._run(exit_code=0, stdout="check-retrieval-regression: clean\n")
         self.assertEqual(got["verdict"], "PASS")
 
     def test_a_skip_is_named_skip_not_pass(self):
         # The two share exit 0 and must not share a label — a skip counted as a
         # pass is the silent-tripwire failure all over again.
-        got = self._run("#!/bin/sh\necho 'check-retrieval-regression: SKIP — no daemon'\nexit 0\n")
+        got = self._run(exit_code=0,
+                        stdout="check-retrieval-regression: SKIP — no daemon\n")
         self.assertEqual(got["verdict"], "SKIP")
 
     def test_a_regression_is_fail(self):
-        got = self._run("#!/bin/sh\necho regressed\nexit 1\n")
+        got = self._run(exit_code=1, stdout="regressed\n")
         self.assertEqual(got["verdict"], "FAIL")
 
+    def test_an_exit_the_gate_never_produces_reads_as_could_not_run(self):
+        # 127 is command-not-found: a statement about the environment, and it
+        # must not masquerade as a ranker verdict.
+        got = self._run(exit_code=127)
+        self.assertIn("could not run", got["verdict"])
+
     def test_a_gate_that_cannot_run_is_a_reading_not_a_crash(self):
-        with mock.patch.object(job, "GATE", Path("/nonexistent/gate.sh")):
+        with mock.patch.object(job.subprocess, "run",
+                               side_effect=OSError("no bash")):
             got = job.run_gate()
         self.assertIn("could not run", got["verdict"])
 
