@@ -42,7 +42,11 @@ if [ ! -f "$BASELINE" ]; then
   exit 0
 fi
 
-out="$("$PY" "$REPO/scripts/health/eval_retrieval_shipped.py" --compare "$BASELINE" 2>&1)"
+# --drifted-ok: this gate is the standing tripwire against the live vault, so
+# corpus drift is expected and printed beside the verdict rather than refused.
+# Experiments comparing two code paths call the eval directly and get the
+# refusal default.
+out="$("$PY" "$REPO/scripts/health/eval_retrieval_shipped.py" --compare "$BASELINE" --drifted-ok 2>&1)"
 rc=$?
 echo "$out"
 
@@ -51,6 +55,10 @@ case "$rc" in
   2) echo "check-retrieval-regression: SKIP — the environment cannot produce a"
      echo "  trustworthy measurement (see the reason above). Not a pass."
      exit 0 ;;
+  3) echo "check-retrieval-regression: FAIL — the comparison was refused (no"
+     echo "  provenance, or a different gold set). With --drifted-ok passed, this"
+     echo "  is a configuration defect, not drift: someone must re-pin."
+     exit 1 ;;
   *) echo "check-retrieval-regression: FAIL — the ranker regressed against the"
      echo "  pinned baseline on the frozen gold set."
      exit 1 ;;

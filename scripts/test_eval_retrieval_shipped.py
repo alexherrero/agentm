@@ -27,6 +27,7 @@ sys.path.insert(0, str(_REPO / "scripts" / "health"))
 sys.path.insert(0, str(_REPO / "harness" / "skills" / "memory" / "scripts"))
 
 import eval_retrieval_shipped as ev  # noqa: E402
+import recall  # noqa: E402
 
 GATE = _REPO / "scripts" / "check-retrieval-regression.sh"
 
@@ -196,6 +197,181 @@ class RefusalToMeasure(unittest.TestCase):
         with self._fake_status({"health": {"embedder": {
                 "state": "warm", "vectors": 15000, "in_scope": 15100, "stale": 100}}}):
             ev.require_warm_embedder("agentmd")
+
+
+class TheSearchMatchesTheHook(unittest.TestCase):
+    """The eval must issue the query the hook issues, and do what the hook does
+    with the answer.
+
+    It did neither for a long time, and the gap was worth about five points: the
+    old `search()` asked for exactly `k`, kept whatever came back, and never
+    passed a temporal bound. The gold set marks `dt01`, `ep10` and `ep12`
+    `hook_reachable: false`; the baseline counted all three as hits.
+
+    Each test below constructs the case where the two behaviours actually
+    differ. A test that only asserts "same arguments" would pass against a copy
+    of the bug.
+    """
+
+    def _daemon_returning(self, paths: list):
+        """A fake daemon that answers with these paths, and records the argv."""
+        import unittest.mock as mock
+        seen = {}
+
+        def fake_run(argv, *a, **kw):
+            seen["argv"] = argv
+            payload = {"results": [{"path": p} for p in paths]}
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload),
+                                               stderr="")
+        return mock.patch.object(subprocess, "run", side_effect=fake_run), seen
+
+    def test_an_inadmissible_hit_is_replaced_from_deeper_in_the_ranking(self):
+        # The differing case, and the reason over-fetch and filtering have to
+        # arrive together: with k=2 the old code asked for 2 rows, got two
+        # `_inbox` paths, and would now return an empty list. The hook asks for
+        # 4, drops the two, and still fills both slots.
+        patcher, _seen = self._daemon_returning([
+            "Agent/memory/_inbox/noise-one.md",
+            "Agent/memory/_inbox/noise-two.md",
+            "Agent/memory/2026/08/real-one.md",
+            "Agent/memory/2026/08/real-two.md",
+        ])
+        with patcher:
+            got = ev.search("agentmd", "what did we decide about the ranker", k=2)
+        self.assertEqual(got, ["Agent/memory/2026/08/real-one.md",
+                               "Agent/memory/2026/08/real-two.md"],
+                         "an inadmissible path was kept, or its slot was lost")
+
+    def test_the_overfetch_multiplier_is_the_hook_s(self):
+        patcher, seen = self._daemon_returning(["Agent/memory/2026/08/a.md"])
+        with patcher:
+            ev.search("agentmd", "what did we decide about the ranker", k=5)
+        argv = seen["argv"]
+        self.assertEqual(argv[argv.index("-k") + 1],
+                         str(5 * recall.DAEMON_OVERFETCH))
+
+    def test_the_result_is_still_truncated_to_k(self):
+        patcher, _ = self._daemon_returning(
+            [f"Agent/memory/2026/08/n{i}.md" for i in range(10)])
+        with patcher:
+            got = ev.search("agentmd", "what did we decide about the ranker", k=3)
+        self.assertEqual(len(got), 3, "over-fetch leaked past k into the result")
+
+    def test_a_dated_question_carries_the_temporal_bound(self):
+        # The episodic-temporal stratum is twelve of sixty-four questions, and
+        # the hook adds these flags unconditionally where the eval never did.
+        question = "what did we change in July 2026"
+        bound = recall._extract_temporal_bound(question)
+        if bound is None:
+            self.skipTest("this phrasing carries no bound for the extractor")
+        patcher, seen = self._daemon_returning(["Agent/memory/2026/07/a.md"])
+        with patcher:
+            ev.search("agentmd", question, k=5)
+        argv = seen["argv"]
+        self.assertTrue("-after" in argv or "-before" in argv,
+                        f"no temporal flag passed for a dated question: {argv}")
+
+    def test_an_undated_question_carries_no_temporal_bound(self):
+        # The guard on the rule above: passing a bound unconditionally would
+        # silently narrow every other question in the set.
+        patcher, seen = self._daemon_returning(["Agent/memory/2026/08/a.md"])
+        with patcher:
+            ev.search("agentmd", "how does the ranker weight titles", k=5)
+        argv = seen["argv"]
+        self.assertNotIn("-after", argv)
+        self.assertNotIn("-before", argv)
+
+
+class TheCorpusFingerprint(unittest.TestCase):
+    """No number without its provenance, and no comparison across corpora.
+
+    The old baseline recorded seven scores and nothing else, and the corpus
+    halved underneath it — six of nine flips in the task-1 re-run were drift the
+    file had no way to even report. These tests pin the refusal semantics.
+    """
+
+    FP = {"documents": 7400, "embedded_in_scope": 7350, "gold_sha": "aa-bb-cc"}
+
+    def test_a_baseline_without_provenance_is_refused(self):
+        with self.assertRaises(ev.Refused) as caught:
+            ev.check_comparable({"per_question": {}}, self.FP, drifted_ok=False)
+        self.assertIn("no corpus fingerprint", str(caught.exception))
+
+    def test_a_moved_corpus_is_refused_by_default(self):
+        pinned = {"corpus": {**self.FP, "documents": 15029}}
+        with self.assertRaises(ev.Refused) as caught:
+            ev.check_comparable(pinned, self.FP, drifted_ok=False)
+        msg = str(caught.exception)
+        self.assertIn("15029", msg)
+        self.assertIn("7400", msg, "the refusal must show both sides of the drift")
+
+    def test_drifted_ok_compares_and_reports_the_drift(self):
+        pinned = {"corpus": {**self.FP, "documents": 15029}}
+        note = ev.check_comparable(pinned, self.FP, drifted_ok=True)
+        self.assertIsNotNone(note)
+        self.assertIn("15029", note)
+        self.assertIn("7400", note)
+
+    def test_a_different_gold_set_is_never_comparable(self):
+        # Two gold sets are two question papers. `--drifted-ok` must not turn
+        # their scores into one experiment.
+        pinned = {"corpus": {**self.FP, "gold_sha": "dd-ee-ff"}}
+        with self.assertRaises(ev.Refused):
+            ev.check_comparable(pinned, self.FP, drifted_ok=True)
+
+    def test_matching_fingerprints_compare_silently(self):
+        self.assertIsNone(ev.check_comparable({"corpus": dict(self.FP)},
+                                              self.FP, drifted_ok=False))
+
+    def test_the_written_baseline_carries_the_fingerprint(self):
+        # End-to-end through main(): the daemon is faked, the baseline file is
+        # real, and the fingerprint must land in it — a pure-function test on
+        # check_comparable says nothing about whether --baseline ever writes one.
+        import tempfile
+        import unittest.mock as mock
+
+        status = {"health": {"embedder": {"state": "warm", "vectors": 100,
+                                          "in_scope": 100, "stale": 0}},
+                  "index_detail": {"documents": 4321}}
+        search = {"results": []}
+
+        def fake_run(argv, *a, **kw):
+            payload = status if "status" in argv else search
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload),
+                                               stderr="")
+
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "pin.json"
+            with mock.patch.object(subprocess, "run", side_effect=fake_run):
+                rc = ev.main(["--baseline", str(out)])
+            self.assertEqual(rc, 0)
+            pinned = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(pinned["corpus"]["documents"], 4321)
+        self.assertEqual(pinned["corpus"]["gold_sha"], ev.gold_sha())
+        self.assertIn("pinned", pinned["corpus"])
+
+    def test_a_refused_comparison_exits_3_not_2(self):
+        # Exit 2 is the gate's SKIP. A refusal that shared it would let the
+        # tripwire die silently on the first drifted day.
+        import tempfile
+        import unittest.mock as mock
+
+        status = {"health": {"embedder": {"state": "warm", "vectors": 100,
+                                          "in_scope": 100, "stale": 0}},
+                  "index_detail": {"documents": 4321}}
+
+        def fake_run(argv, *a, **kw):
+            payload = status if "status" in argv else {"results": []}
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload),
+                                               stderr="")
+
+        with tempfile.TemporaryDirectory() as d:
+            stale = Path(d) / "no-provenance.json"
+            stale.write_text(json.dumps({"per_question": {}, "r_at_k": 0.5}),
+                             encoding="utf-8")
+            with mock.patch.object(subprocess, "run", side_effect=fake_run):
+                rc = ev.main(["--compare", str(stale)])
+        self.assertEqual(rc, 3)
 
 
 class TheFixtureField(unittest.TestCase):

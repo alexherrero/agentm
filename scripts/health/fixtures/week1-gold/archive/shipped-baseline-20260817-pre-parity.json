@@ -1,20 +1,14 @@
 {
-  "avg_rank_to_first_hit": 1.7872,
-  "corpus": {
-    "documents": 7926,
-    "embedded_in_scope": 7412,
-    "gold_sha": "86a9-46cb-75f8",
-    "pinned": "2026-08-28"
-  },
+  "avg_rank_to_first_hit": 1.82,
   "false_positives": 0,
-  "hits": 47,
+  "hits": 50,
   "k": 5,
   "negatives": 20,
   "per_question": {
     "dt01": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 1
     },
     "dt02": {
       "hit": false,
@@ -34,7 +28,7 @@
     "dt05": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "dt06": {
       "hit": true,
@@ -57,9 +51,9 @@
       "rank": 1
     },
     "dt10": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 4
+      "rank": null
     },
     "dt11": {
       "hit": true,
@@ -69,7 +63,7 @@
     "dt12": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 3
     },
     "ep01": {
       "hit": true,
@@ -84,12 +78,12 @@
     "ep03": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "ep04": {
-      "hit": true,
+      "hit": false,
       "negative": false,
-      "rank": 2
+      "rank": null
     },
     "ep05": {
       "hit": true,
@@ -117,9 +111,9 @@
       "rank": null
     },
     "ep10": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 2
     },
     "ep11": {
       "hit": true,
@@ -127,9 +121,9 @@
       "rank": 2
     },
     "ep12": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 1
     },
     "ng01": {
       "hit": true,
@@ -234,7 +228,7 @@
     "pp01": {
       "hit": true,
       "negative": false,
-      "rank": 3
+      "rank": 2
     },
     "pp02": {
       "hit": false,
@@ -244,7 +238,7 @@
     "pp03": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "pp04": {
       "hit": true,
@@ -252,14 +246,14 @@
       "rank": 1
     },
     "pp05": {
+      "hit": true,
+      "negative": false,
+      "rank": 5
+    },
+    "pp06": {
       "hit": false,
       "negative": false,
       "rank": null
-    },
-    "pp06": {
-      "hit": true,
-      "negative": false,
-      "rank": 4
     },
     "pp07": {
       "hit": false,
@@ -277,19 +271,19 @@
       "rank": null
     },
     "pp10": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 1
     },
     "pp11": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 3
     },
     "pp12": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "pp13": {
       "hit": true,
@@ -299,7 +293,7 @@
     "pp14": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "pp15": {
       "hit": false,
@@ -319,7 +313,7 @@
     "pp18": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 3
     },
     "rc01": {
       "hit": false,
@@ -359,7 +353,7 @@
     "rc08": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 3
     },
     "rc09": {
       "hit": true,
@@ -369,7 +363,7 @@
     "rc10": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "rc11": {
       "hit": true,
@@ -377,9 +371,9 @@
       "rank": 1
     },
     "rc12": {
-      "hit": false,
+      "hit": true,
       "negative": false,
-      "rank": null
+      "rank": 5
     },
     "rd01": {
       "hit": false,
@@ -394,27 +388,27 @@
     "rd03": {
       "hit": true,
       "negative": false,
-      "rank": 4
+      "rank": 3
     },
     "rd04": {
       "hit": true,
       "negative": false,
-      "rank": 3
+      "rank": 4
     },
     "rd05": {
       "hit": true,
       "negative": false,
-      "rank": 1
+      "rank": 2
     },
     "rd06": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "rd07": {
       "hit": true,
       "negative": false,
-      "rank": 2
+      "rank": 1
     },
     "rd08": {
       "hit": true,
@@ -429,9 +423,9 @@
     "rd10": {
       "hit": true,
       "negative": false,
-      "rank": 3
+      "rank": 2
     }
   },
-  "r_at_k": 0.7344,
+  "r_at_k": 0.78125,
   "scored": 64
 }
