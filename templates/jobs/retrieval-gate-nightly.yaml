@@ -1,0 +1,23 @@
+# retrieval-gate-nightly.yaml — the retrieval regression gate, on a schedule
+# (recall-verdict task 8; contract at wiki/reference/Retrieval-Eval-Contract.md).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored; register by copying this template to
+# .harness/jobs/retrieval-gate-nightly.yaml.
+#
+# Why a local job and not CI: the gate needs the daemon, the live vault and a
+# warm embedder, none of which a CI runner has — in CI it prints an annotated
+# SKIP, and the eval's decision logic is covered per-PR by unit tests instead.
+# This job is where the measurement actually happens. The wrapper writes
+# `latest_retrieval_gate.json` into the vault's diagnostics directory, and the
+# corpus scorecard renders the verdict WITH ITS AGE — a job that stops running
+# surfaces as staleness on the page somebody reads, never as silence.
+schedule: daily
+lookback: 24h
+command: python3 -m health.retrieval_gate_job
+
+# T1 — machine-facing measurement; nothing operator-interruptive. The verdict
+# reaches the operator through the scorecard and the observability digests.
+tier: T1
+
+dry_run: false

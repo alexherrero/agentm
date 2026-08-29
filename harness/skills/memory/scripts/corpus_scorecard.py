@@ -374,6 +374,42 @@ def section_retrieval(repo: Path) -> Section:
     return s
 
 
+GATE_ARTIFACT_NAME = "latest_retrieval_gate.json"
+GATE_STALE_HOURS = 48
+
+
+def gate_reading(out_dir) -> "Reading":
+    """The regression gate's last verdict, with its age.
+
+    Read from the artifact `retrieval_gate_job.py` writes, so a gate that
+    stops running surfaces as staleness rather than silence — the exact
+    failure the CI SKIP had: a tripwire nobody could tell was dead.
+    """
+    import datetime as _dt
+    path = Path(out_dir) / GATE_ARTIFACT_NAME
+    if not path.exists():
+        return Reading.unavailable(
+            "regression gate, last run",
+            "no artifact yet — copy templates/jobs/retrieval-gate-nightly.yaml "
+            "into .harness/jobs/ so the runner writes one nightly")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        at = _dt.datetime.strptime(data["at"], "%Y-%m-%dT%H:%M:%SZ").replace(
+            tzinfo=_dt.timezone.utc)
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        return Reading.unavailable("regression gate, last run", str(exc))
+    age_h = (_dt.datetime.now(_dt.timezone.utc) - at).total_seconds() / 3600
+    verdict = data.get("verdict", "?")
+    note = f"{age_h:.0f}h ago"
+    if verdict == "FAIL":
+        note += " — REGRESSION: the ranker got worse against the pinned baseline"
+    if age_h > GATE_STALE_HOURS:
+        note += (f" — STALE (>{GATE_STALE_HOURS}h): the nightly job has stopped "
+                 "running, which is its own finding")
+    return Reading.measured("regression gate, last run", verdict,
+                            source=GATE_ARTIFACT_NAME, note=note)
+
+
 def section_coverage() -> Section:
     """How much of the corpus each stage has actually processed."""
     s = Section("Coverage", blurb=(
@@ -423,6 +459,11 @@ def section_graph(vault: Path, out_dir: Path) -> Section:
 
 # ── the report ──────────────────────────────────────────────────────────────
 
+def _with_gate(section: Section, out_dir) -> Section:
+    section.readings.append(gate_reading(out_dir))
+    return section
+
+
 def render(sections: list, *, now: datetime, vault: Path, tz=None) -> str:
     stamp = now.astimezone(tz).strftime("%Y-%m-%d")
     out = [
@@ -471,7 +512,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
         section_corpus(),
         section_completeness(out_dir),
         section_meters(),
-        section_retrieval(repo),
+        _with_gate(section_retrieval(repo), out_dir),
         section_coverage(),
         section_graph(vault, out_dir),
     ]
