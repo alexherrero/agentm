@@ -33,7 +33,9 @@ Usage:
 Exit:
   0  the run completed (and, with --compare, cleared its bar)
   1  the comparison failed its bar, or determinism did not hold
-  2  setup error — no daemon, no gold set, or a cold embedder
+  2  setup error — no daemon, no gold set, or a cold embedder (gates SKIP)
+  3  comparison refused — no provenance, moved corpus, or a different gold set
+  4  instrument control fired — empty expectations, dead canary, or flat scores
 """
 from __future__ import annotations
 
@@ -106,6 +108,28 @@ def require_warm_embedder(binary: str) -> str:
             f"({stale / in_scope:.0%}). Scoring now measures a half-embedded "
             f"corpus rather than the ranker. Run `agentmd embed` first.")
     return f"{vectors}/{in_scope} embedded, {stale} stale"
+
+
+class Control(Exception):
+    """An instrument-liveness control fired — the number must not print.
+
+    Distinct from Setup (exit 2, the environment cannot measure → gates SKIP)
+    and from Refused (exit 3, the sides are not comparable). A control firing
+    means the environment looked fine and the instrument itself is broken: the
+    gold set parsed into empty expectations, the planted canary did not come
+    back, or every score came back identical. Exit 4, and the gate maps it to
+    FAIL — this arc produced two clean false nulls from exactly these states,
+    each indistinguishable from a real refutation until someone added the
+    control by hand.
+    """
+
+
+# The canary: a note planted in the live corpus whose token appears nowhere
+# else. A query for it that does not return it at rank 1 means the index is
+# dead or detached, which is the state that produced the arc's "clean 0 of 5"
+# false null. Checked before any question is scored.
+CANARY_QUERY = "canary-eval-liveness-q7g3xz"
+CANARY_PATH = "Agent/memory/2026/08/eval-canary.md"
 
 
 class Refused(Exception):
@@ -198,10 +222,49 @@ def load_gold() -> list:
     entries = json.loads(GOLD_SET.read_text(encoding="utf-8")).get("entries") or []
     if not entries:
         raise Setup("the gold set carries no entries")
+    # The schema control. A scored entry whose expected set parses empty is the
+    # field-name bug class — `expected` read where the fixture says
+    # `expected_note_paths` — which produced two false nulls in this arc, each a
+    # clean-looking "0 of N" that was really N comparisons against an empty
+    # list. Named per entry, so a partial hole is as loud as a total one.
+    for e in entries:
+        if e.get("stratum") == NEGATIVE_STRATUM:
+            continue
+        if not [p for p in (e.get(EXPECTED_FIELD) or []) if p]:
+            raise Control(
+                f"entry {e.get('id')!r} parsed with an empty {EXPECTED_FIELD!r}"
+                + (" (it carries only expected_note_prefixes, which this eval "
+                   "does not score)" if e.get("expected_note_prefixes") else
+                   " — the field-name bug class; check the fixture's key names")
+            )
     return entries
 
 
-def search(binary: str, question: str, k: int) -> list:
+def check_canary(binary: str) -> None:
+    """The planted note must come back at rank 1, or nothing gets scored.
+
+    Probed through the lexical arm, deliberately. The first live fire of this
+    control found the hybrid competition burying the canary at rank 6 under four
+    archive PLAN documents — fusion normalization drowning a one-token exact
+    match under long-document dense mass, which is the corpus's known
+    desk-outranks-memory behaviour, not an instrument fault. Liveness needs a
+    deterministic answer: a unique token through FTS is rank 1 whenever the
+    index is alive and attached, full stop. The dense arm's liveness is
+    require_warm_embedder's job, and the hybrid path's sanity is the spread
+    control's.
+    """
+    got = [path for path, _ in _search_rows(binary, CANARY_QUERY, 3,
+                                            mode="and")]
+    if not got or got[0] != CANARY_PATH:
+        raise Control(
+            f"the canary query returned {got[:2] or 'nothing'} instead of "
+            f"{CANARY_PATH} at rank 1 — the index is dead, detached, or serving "
+            "a corpus without the planted note. No number from this state is "
+            "a measurement.")
+
+
+def _search_rows(binary: str, question: str, k: int,
+                 mode: str = None) -> list:
     """One query, as the recall hook issues it — including what it does after.
 
     Same mode, same `-question` for the dense arm, same extracted terms for the
@@ -235,7 +298,8 @@ def search(binary: str, question: str, k: int) -> list:
 
     argv = [binary, "search", "-json",
             "-k", str(max(1, k) * recall.DAEMON_OVERFETCH),
-            "-mode", recall.DAEMON_SEARCH_MODE, "-question", question]
+            "-mode", mode or recall.DAEMON_SEARCH_MODE,
+            "-question", question]
     temporal = recall._extract_temporal_bound(question)
     if temporal is not None:
         after, before = temporal
@@ -265,8 +329,13 @@ def search(binary: str, question: str, k: int) -> list:
             path, include_inbox=False, include_archive=False
         ):
             continue
-        out.append(path)
+        out.append((path, row.get("score")))
     return out
+
+
+def search(binary: str, question: str, k: int) -> list:
+    """The hook-shaped query, as paths. Scores stay internal to the controls."""
+    return [path for path, _score in _search_rows(binary, question, k)]
 
 
 def score(binary: str, entries: list, k: int) -> dict:
@@ -279,10 +348,13 @@ def score(binary: str, entries: list, k: int) -> dict:
     false_positives = 0
     negatives = 0
 
+    all_scores = []
     for e in entries:
         question = e["question"]
         expected = [p for p in (e.get(EXPECTED_FIELD) or []) if p]
-        got = search(binary, question, k)
+        rows = _search_rows(binary, question, k)
+        got = [path for path, _score in rows]
+        all_scores.extend(s for _path, s in rows if s is not None)
 
         if e.get("stratum") == NEGATIVE_STRATUM:
             negatives += 1
@@ -316,6 +388,16 @@ def score(binary: str, entries: list, k: int) -> dict:
     # Rounded at the source, not for taste: a full-precision float carries a
     # ten-digit decimal run, and the PII gate reads that as a US phone number.
     # Fourth occurrence in this arc; the writer is where it stays fixed.
+    # The spread control. A run whose every returned score is identical is a
+    # flat or misattached scorer, not a ranking — the floorless-rerank rule
+    # named this exact state as "what a dead or misattached reranker produces,
+    # not a verdict", and checked it by hand. Now the eval checks it every run.
+    if len(all_scores) >= 2 and min(all_scores) == max(all_scores):
+        raise Control(
+            f"all {len(all_scores)} returned scores are identical "
+            f"({all_scores[0]}) — a flat scorer is not ranking anything, and "
+            "hit/miss counts read off it are noise wearing a metric's clothes.")
+
     return {
         "k": k,
         "scored": scored,
@@ -448,15 +530,22 @@ def main(argv: list) -> int:
     try:
         provenance = require_warm_embedder(binary)
         entries = load_gold()
+        check_canary(binary)
     except Setup as exc:
         print(f"eval-retrieval-shipped: {exc}", file=sys.stderr)
         return 2
+    except Control as exc:
+        print(f"\nINSTRUMENT CONTROL FIRED: {exc}", file=sys.stderr)
+        return 4
 
     try:
         first = score(binary, entries, args.k)
     except Setup as exc:
         print(f"eval-retrieval-shipped: {exc}", file=sys.stderr)
         return 2
+    except Control as exc:
+        print(f"\nINSTRUMENT CONTROL FIRED: {exc}", file=sys.stderr)
+        return 4
 
     print(render(first, provenance))
 

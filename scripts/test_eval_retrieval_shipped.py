@@ -282,6 +282,153 @@ class TheSearchMatchesTheHook(unittest.TestCase):
         self.assertNotIn("-before", argv)
 
 
+class TheInstrumentControls(unittest.TestCase):
+    """The three states that produced this arc's false nulls, now hard aborts.
+
+    Each control is demonstrated firing, because a control nobody has seen fire
+    is the thing it exists to replace. Exit 4 everywhere — never 2, because the
+    gate maps 2 to SKIP and a dead instrument reporting quiet is how false
+    nulls ship.
+    """
+
+    def _gold(self, entries):
+        import tempfile
+        import unittest.mock as mock
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        f = Path(d.name) / "gold.json"
+        f.write_text(json.dumps({"entries": entries}), encoding="utf-8")
+        return mock.patch.object(ev, "GOLD_SET", f)
+
+    def test_an_empty_expected_set_aborts_naming_the_entry(self):
+        # The field-name bug class: `expected` read where the fixture says
+        # `expected_note_paths` parses every entry to an empty list, and a
+        # "clean 0 of N" ships as a finding. Twice, in this arc.
+        with self._gold([{"id": "pp99", "question": "q", "stratum": "pure-paraphrase",
+                          "expected": ["Agent/memory/a.md"]}]):
+            with self.assertRaises(ev.Control) as caught:
+                ev.load_gold()
+        self.assertIn("pp99", str(caught.exception))
+        self.assertIn(ev.EXPECTED_FIELD, str(caught.exception))
+
+    def test_a_prefix_only_entry_gets_the_specific_message(self):
+        with self._gold([{"id": "pp09", "question": "q", "stratum": "pure-paraphrase",
+                          "expected_note_prefixes": ["Agent/external/x/"]}]):
+            with self.assertRaises(ev.Control) as caught:
+                ev.load_gold()
+        self.assertIn("expected_note_prefixes", str(caught.exception))
+
+    def test_a_negative_with_no_expected_paths_is_fine(self):
+        with self._gold([{"id": "n1", "question": "q", "stratum": "negative"}]):
+            self.assertEqual(len(ev.load_gold()), 1)
+
+    def _daemon(self, rows):
+        import unittest.mock as mock
+
+        def fake_run(argv, *a, **kw):
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=json.dumps({"results": rows}), stderr="")
+        return mock.patch.object(subprocess, "run", side_effect=fake_run)
+
+    def test_a_dead_index_fails_the_canary(self):
+        with self._daemon([]):
+            with self.assertRaises(ev.Control) as caught:
+                ev.check_canary("agentmd")
+        self.assertIn("canary", str(caught.exception))
+
+    def test_the_wrong_note_at_rank_1_fails_the_canary(self):
+        with self._daemon([{"path": "Agent/memory/2026/08/not-the-canary.md",
+                            "score": 9.9}]):
+            with self.assertRaises(ev.Control):
+                ev.check_canary("agentmd")
+
+    def test_the_canary_at_rank_1_passes(self):
+        with self._daemon([{"path": ev.CANARY_PATH, "score": 9.9}]):
+            ev.check_canary("agentmd")  # no raise
+
+    def test_the_canary_probes_the_lexical_arm(self):
+        # Liveness must be deterministic. The control's first live fire found
+        # hybrid fusion burying the unique token at rank 6 under archive PLAN
+        # documents — a corpus behaviour, not an instrument fault — so the
+        # canary asks the one arm where rank 1 is guaranteed while the index
+        # lives.
+        import unittest.mock as mock
+        seen = {}
+
+        def fake_run(argv, *a, **kw):
+            seen["argv"] = argv
+            return subprocess.CompletedProcess(
+                argv, 0,
+                stdout=json.dumps({"results": [{"path": ev.CANARY_PATH,
+                                                "score": 1.0}]}), stderr="")
+
+        with mock.patch.object(subprocess, "run", side_effect=fake_run):
+            ev.check_canary("agentmd")
+        argv = seen["argv"]
+        self.assertEqual(argv[argv.index("-mode") + 1], "and")
+
+    def test_flat_scores_abort_instead_of_scoring(self):
+        entries = [{"id": f"q{i}", "question": f"question number {i} here",
+                    "stratum": "pure-paraphrase",
+                    "expected_note_paths": ["Agent/memory/a.md"]}
+                   for i in range(3)]
+        rows = [{"path": "Agent/memory/a.md", "score": 7.0},
+                {"path": "Agent/memory/b.md", "score": 7.0}]
+        with self._daemon(rows):
+            with self.assertRaises(ev.Control) as caught:
+                ev.score("agentmd", entries, 5)
+        self.assertIn("identical", str(caught.exception))
+
+    def test_distinct_scores_score_normally(self):
+        entries = [{"id": "q0", "question": "question zero here now",
+                    "stratum": "pure-paraphrase",
+                    "expected_note_paths": ["Agent/memory/a.md"]}]
+        rows = [{"path": "Agent/memory/a.md", "score": 7.0},
+                {"path": "Agent/memory/b.md", "score": 3.2}]
+        with self._daemon(rows):
+            got = ev.score("agentmd", entries, 5)
+        self.assertEqual(got["hits"], 1)
+
+    def test_a_fired_control_exits_4(self):
+        # Wired through main(), not just raised: the exit code is the contract
+        # the gate reads, and 4 must never collapse into SKIP's 2.
+        import unittest.mock as mock
+
+        status = {"health": {"embedder": {"state": "warm", "vectors": 10,
+                                          "in_scope": 10, "stale": 0}},
+                  "index_detail": {"documents": 10}}
+
+        def fake_run(argv, *a, **kw):
+            payload = status if "status" in argv else {"results": []}
+            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload),
+                                               stderr="")
+
+        with mock.patch.object(subprocess, "run", side_effect=fake_run):
+            rc = ev.main([])
+        self.assertEqual(rc, 4, "a dead canary did not exit 4")
+
+    @unittest.skipIf(os.name == "nt", "runs the gate under bash")
+    def test_the_gate_fails_loud_on_a_fired_control(self):
+        # The gate's case table, exercised with a stub eval that exits 4. A
+        # missing case would fall to the wildcard FAIL — same exit, wrong
+        # message — so the assertion pins the control-specific text.
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            stub = Path(d) / "python3"
+            stub.write_text("#!/bin/sh\necho 'INSTRUMENT CONTROL FIRED: test' >&2\nexit 4\n")
+            stub.chmod(0o755)
+            fake_agentmd = Path(d) / "agentmd"
+            fake_agentmd.write_text("#!/bin/sh\nexit 0\n")
+            fake_agentmd.chmod(0o755)
+            proc = subprocess.run(
+                ["bash", str(GATE)], capture_output=True, text=True,
+                env={"PATH": f"{d}:/usr/bin:/bin", "PYTHON": str(stub),
+                     "AGENTMD": str(fake_agentmd)},
+                timeout=120)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("instrument control fired", proc.stdout + proc.stderr)
+
+
 class TheReportStatesItsResolution(unittest.TestCase):
     """Every report prints its own CI and MDE, so a bar below the instrument's
     resolution cannot be pre-registered by someone who never saw the number.
@@ -390,7 +537,11 @@ class TheCorpusFingerprint(unittest.TestCase):
         status = {"health": {"embedder": {"state": "warm", "vectors": 100,
                                           "in_scope": 100, "stale": 0}},
                   "index_detail": {"documents": 4321}}
-        search = {"results": []}
+        # The canary at rank 1 with a distinct second score: a run now carries
+        # the task-3 controls, and a fake that returns nothing is a dead
+        # instrument by the eval's own (correct) reading.
+        search = {"results": [{"path": ev.CANARY_PATH, "score": 9.9},
+                              {"path": "Agent/memory/other.md", "score": 3.3}]}
 
         def fake_run(argv, *a, **kw):
             payload = status if "status" in argv else search
@@ -417,8 +568,11 @@ class TheCorpusFingerprint(unittest.TestCase):
                                           "in_scope": 100, "stale": 0}},
                   "index_detail": {"documents": 4321}}
 
+        search = {"results": [{"path": ev.CANARY_PATH, "score": 9.9},
+                              {"path": "Agent/memory/other.md", "score": 3.3}]}
+
         def fake_run(argv, *a, **kw):
-            payload = status if "status" in argv else {"results": []}
+            payload = status if "status" in argv else search
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps(payload),
                                                stderr="")
 

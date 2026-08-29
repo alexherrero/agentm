@@ -323,3 +323,20 @@ tripwire against the live vault, and prints the drift beside the verdict so a
 regression on a moved corpus is never attributed to code by default. The old
 baseline is archived beside the new one, unchanged, with this entry as its
 obituary: its number was true when measured and unprovable ever after.
+
+## The canary's first live fire caught the fusion competition, not a dead index
+
+Worth its own paragraph because it happened within minutes of the control
+existing. The canary was planted, verified at rank 1 by a bare `agentmd search`,
+and the eval's first full run aborted: through the *shipped* query shape —
+hybrid mode, term extraction splitting the token to `canary eval liveness
+q7g3xz` — the planted note ranked **sixth**, fused score 0.016 against 0.029,
+under four `desk/` archive PLAN documents. The unique token still made the
+lexical arm rank it first; fusion normalization drowned that under
+long-document dense mass. That is the corpus's known desk-outranks-memory
+competition demonstrating itself on a nonsense token, and it is exactly the
+distinction the control has to respect: liveness must be a deterministic
+question. The canary now probes the lexical arm alone — a unique token through
+FTS is rank 1 whenever the index is alive — while the dense arm's liveness
+stays `require_warm_embedder`'s job and the hybrid path's sanity is the spread
+control's.

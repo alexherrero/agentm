@@ -59,6 +59,10 @@ case "$rc" in
      echo "  provenance, or a different gold set). With --drifted-ok passed, this"
      echo "  is a configuration defect, not drift: someone must re-pin."
      exit 1 ;;
+  4) echo "check-retrieval-regression: FAIL — an instrument control fired (see"
+     echo "  above). The index or the fixture is broken; this is never a SKIP,"
+     echo "  because a dead instrument reporting quiet is how false nulls ship."
+     exit 1 ;;
   *) echo "check-retrieval-regression: FAIL — the ranker regressed against the"
      echo "  pinned baseline on the frozen gold set."
      exit 1 ;;
