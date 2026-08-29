@@ -78,9 +78,24 @@ def check_control(binary: str, note_rel: str, terms: str) -> None:
 
 
 def pick_control(binary: str) -> tuple:
-    """Find a note and a term-set drawn from it, for the control."""
-    vault = pathlib.Path(os.environ.get("MEMORY_VAULT_PATH")
-                         or "/Users/alex/Vault/Agent")
+    """Find a note and a term-set drawn from it, for the control.
+
+    The vault is resolved, never recalled. An absolute path baked in here would
+    encode this machine's username and mount point, go wrong silently on any
+    other install, and — as the PII gate pointed out when this file first tried
+    to push — is exactly the literal AGENTS.md forbids.
+    """
+    sys.path.insert(0, str(_REPO / "scripts"))
+    import harness_memory
+
+    resolved = os.environ.get("MEMORY_VAULT_PATH") or harness_memory.vault_path()
+    if not resolved:
+        raise ProbeError(
+            "no vault resolved — set MEMORY_VAULT_PATH or point the kernel "
+            "config at one; the probe will not guess a path")
+    vault = pathlib.Path(resolved)
+    if vault.name != "Agent" and (vault / "Agent").is_dir():
+        vault = vault / "Agent"
     for p in sorted((vault / "memory").rglob("*.md"))[:400]:
         rel = f"Agent/{p.relative_to(vault).as_posix()}"
         words = [w for w in p.read_text(encoding="utf-8", errors="replace").split()
