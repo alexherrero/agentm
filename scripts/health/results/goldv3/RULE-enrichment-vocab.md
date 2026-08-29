@@ -81,6 +81,33 @@ irreducible without gold leakage or a model-level change.
 
 Filled by the run, below, as a per-question table — never a net total.
 
-## Outcome
+| question | pre | post | moved | note |
+|---|---|---|---|---|
+| `pp02` | >50 | >50 | no | its note refused: token-preservation |
+| `pp10` | >50 | >50 | no | all three notes refused: grounding ×2, token-preservation |
+| `rc01` | >50 | >50 | no | **enriched**, and still no movement |
+| `rc03` | >50 | >50 | no | one sibling enriched, one refused; no movement |
+| `rc12` | >50 | >50 | no | **enriched**, and still no movement |
 
-Filled after the run.
+## Outcome — NULL, 0 of 5, exactly as predicted (run 2026-08-28)
+
+Positive control: the oracle injection moved `pp05`'s note to **rank 1**
+before anything else ran — the instrument was alive, so this zero is a
+measurement.
+
+The mechanism refused more than it rewrote: 5 of 8 target notes were blocked
+by enrichment's own post-gates — grounding ("the rewrite asserts what the
+source does not") and token-preservation — which is the prediction's reasoning
+executing as code: a grounded rewriter *cannot* introduce vocabulary its
+source never contained, because the gate that makes it trustworthy is the gate
+that makes it vocabulary-preserving. The three notes that did enrich produced
+fuller grounded prose and moved their questions' ranks by exactly nothing.
+
+**The vocabulary thread closes.** Four gold-blind write-side families —
+content-prompt aliases, structural aliases, outcome-filtered aliases, and now
+grounded re-distillation — have produced the same zero movement on
+overlapping targets. The residue is written down as irreducible without gold
+leakage (the oracle's +10.9pp stands as the ceiling and the proof it was
+never the instrument) or a model-level change (the embedder tier, priced in
+the design's re-audit triggers). Per the consequence registered above, no
+full column existed to buy either way.

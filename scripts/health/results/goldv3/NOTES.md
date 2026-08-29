@@ -360,3 +360,28 @@ two closures is the whole lesson, and it is now a requirement:
 computed by the eval's own function and quoted in the RULE file. Contract:
 `wiki/reference/Retrieval-Eval-Contract.md`; template:
 `scripts/health/results/RULE-TEMPLATE.md`.
+
+# Enrichment as a vocabulary bridge — NULL at the probe, and the thread closes
+
+The last untried gold-blind write-side mechanism, run under
+`RULE-enrichment-vocab.md` (pre-registered at a5e3444, population 5 questions
+/ 8 memory-lane notes, prediction 0 of 5, positive control mandatory). The
+control — a gold-informed oracle alias on an out-of-population target — moved
+its note to rank 1 before the probe ran; the zero that followed is therefore a
+measurement, not a dead instrument.
+
+Outcome: **0 of 5 moved**, and the mechanism's own gates wrote the diagnosis.
+Five of eight target notes were refused by enrichment's grounding and
+token-preservation post-gates — a grounded rewriter cannot add vocabulary its
+source never held, because the gate that makes it safe is the gate that makes
+it vocabulary-preserving. The three notes that did enrich gained fuller
+grounded prose and moved nothing.
+
+That makes four families with the same zero: three alias strategies and
+grounded re-distillation. The vocabulary residue is now closed as
+**irreducible gold-blind** — what remains is the oracle's ceiling (+10.9pp,
+gold-informed by construction) and the model-level lever (embedder tier),
+both parked as priced re-audit triggers in the design. Registered before the
+run and worth repeating after it: even a perfect probe was +5 flips against
+an MDE of 6, so no significant column existed to buy. The thread ends on
+mechanism, with the arithmetic having foreclosed the number in advance.
