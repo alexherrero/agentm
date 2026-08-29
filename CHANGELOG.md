@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+The recall-verdict arc: the retrieval instrument becomes worth trusting, and
+the recall ladder closes at its measured plateau. Hook-true baseline 47/64
+(73.4%) R@5 with provenance; the residue closed as a gold-blind-irreducible
+vocabulary gap after the fourth write-side family produced the same zero;
+done means trust plus a characterized plateau, operator-ratified.
+
+### Added
+
+- Corpus fingerprints on retrieval baselines, with `--compare` refusing across
+  corpora (`--drifted-ok` for the standing tripwire; gold-set hash mismatches
+  are never overridable) and an archived-baseline history file.
+- Three standing instrument controls in the eval — schema assertion, planted
+  canary, score-spread — each a false-null class from the arc's own record,
+  each aborting with exit 4 (the gate maps it to FAIL, never SKIP).
+- Wilson 95% CI and the minimum detectable effect on every eval report;
+  `improved` verdicts symmetric with `regressed`; `coin_pass_probability()`
+  as the pre-registration power check; R@1 beside R@5.
+- Ten near-miss hard negatives with authoring evidence embedded
+  (`RULE-hard-negatives.md`), making the false-positive dial falsifiable —
+  it read 10/10 served, exactly as pre-registered.
+- The measurement contract page (`wiki/reference/Retrieval-Eval-Contract.md`),
+  the RULE template, and the nightly gate job
+  (`retrieval_gate_job.py` + `templates/jobs/retrieval-gate-nightly.yaml`)
+  whose verdict renders on the corpus scorecard with its age.
+
+### Changed
+
+- The eval's `search()` now issues the recall hook's exact query shape —
+  over-fetch, `_daemon_admissible`, temporal bounds — and the baseline
+  re-pinned at the honest 47/64 (three `hook_reachable: false` questions no
+  longer count as hits; six further flips attributed to corpus drift by a
+  controlled same-corpus pair).
+- The floorless-rerank refutation is withdrawn as unproven (its bar was a
+  coin at 0.50); the fusion refutation stands on its deterministic trace.
+- `agentm_config.py --enrich-enabled` arms the eager enrichment trigger as a
+  config key rather than a hand-edited JSON field (shipped default untouched).
+
+### Internal
+
+- The enrichment-vocab probe (`RULE-enrichment-vocab.md`): NULL 0 of 5,
+  exactly as predicted, positive control at rank 1 first — five of eight
+  targets refused by enrichment's own grounding gates. The vocabulary thread
+  closes across four gold-blind families.
+- Mutation discipline hardened: runners set `PYTHONDONTWRITEBYTECODE=1` and
+  purge Apple's central pycache, after an equal-length swap restored within
+  one mtime second served mutated bytecode past every source-level check.
+
 
 Part 6 closes the memory-ingestion arc: the meters that say whether the corpus is
 converging on itself, the detectors that find the notes worth a second look, and
