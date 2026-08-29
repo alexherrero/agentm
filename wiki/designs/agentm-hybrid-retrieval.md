@@ -118,17 +118,20 @@ negatives interleave on cross-encoder score in *either* query format (measured
 on the deliberate path is therefore **load-bearing**, and the fast path ships
 with no rejection gate at all.
 
-**Sharpened 2026-08-17 (see the amendment log): "similarity is not
-answerhood" holds for ordering too, not only for thresholding.** A
-reorder-only pass — no floor, cannot evict a candidate already in the
-pool — was tested against the strictly weaker property a floor never
-needed: within one question's own pool, does the cross-encoder rank the
-labeled answer above its competitors. On the 9 reachable misses closest to
-the top of that test, it does on 4 — short of the ≥5 the rule required.
-The mechanism is bounded-safe (a permutation cannot make a reachable
-question unreachable) but not accurate enough to buy its own
-implementation. No reordering mechanism ships on the fast path as of this
-amendment.
+**Sharpened 2026-08-17, then corrected 2026-08-28 (see the amendment log):
+the ordering half of "similarity is not answerhood" is unproven, not
+refuted.** A reorder-only pass — no floor, cannot evict a candidate already
+in the pool — was probed on within-question ordering and scored 4 of 9
+against a pre-registered bar of ≥5. The recall-verdict instrument audit then
+computed what nobody had: a fair coin clears that bar half the time, so the
+probe could not distinguish the mechanism from chance in either direction.
+The refutation is **withdrawn as unproven** — not overturned; 4/9 is also
+exactly what a coin does. The thresholding half stands on its own
+measurement (negatives outscored answerables in the floor sweep). No
+reordering mechanism ships on the fast path, now for want of evidence rather
+than by verdict; re-running the probe with a power-checked bar is a named
+re-audit trigger, not scheduled work — the R@5 residue is vocabulary-shaped,
+and ordering only pays at R@1.
 
 **What the fast path does instead, decided 2026-08-14: inject with metadata.**
 The hook returns its top-k labelled — each hit's score, its space, and an
@@ -297,6 +300,24 @@ it.
 ## Amendment log
 
 *Newest first.*
+
+- **2026-08-28 · The floorless-rerank refutation is withdrawn as unproven —
+  its probe bar was a coin.** The recall-verdict arc's instrument audit
+  computed the coin-pass probability of every pre-flight bar:
+  floorless-rerank's ≥5-of-9 sits at exactly 0.50 (as does fusion's ≥3-of-5,
+  whose refutation instead stands on its deterministic per-question trace —
+  four of five rare terms retrieve nothing, a fact no bar was needed for).
+  A 4/9 score against a coin-flip bar distinguishes nothing in either
+  direction, so the 2026-08-17 "ordering too" sharpening above is downgraded
+  in place: unproven, not refuted, with the body reconciled. Pre-registration
+  now requires `coin_pass_probability(bar, n) ≤ 0.05`, computed by the eval
+  itself and quoted in the RULE file — the contract lives at
+  `wiki/reference/Retrieval-Eval-Contract.md`. **Re-audit trigger:** an
+  ordering rung matters only if R@1 becomes a product metric; if it does,
+  re-probe with a power-checked bar (e.g. ≥8 of 9, coin-pass 0.020) before
+  any implementation is bought. Why not re-run now: the R@5 residue is
+  measured as vocabulary-shaped, and the plan's operator-ratified scope is
+  trust plus a characterized plateau, not number-chasing.
 
 - **2026-08-17 · Fusion rare-term selection refuted at its pre-flight probe —
   and the `pp09` diagnosis it rested on is corrected to a one-case result.**

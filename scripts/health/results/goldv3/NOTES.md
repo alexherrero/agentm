@@ -340,3 +340,23 @@ question. The canary now probes the lexical arm alone — a unique token through
 FTS is rank 1 whenever the index is alive — while the dense arm's liveness
 stays `require_warm_embedder`'s job and the hybrid path's sanity is the spread
 control's.
+
+## Floorless rerank: refutation withdrawn as unproven (recall-verdict task 6)
+
+The entry above records 4 of 9 against a bar of ≥5 and closes the rung
+refuted. The instrument audit computed what that rule never did: a fair coin
+clears ≥5-of-9 with probability exactly 0.50, and a 60%-effective mechanism
+fails it 27% of the time. A result one short of a coin-flip bar distinguishes
+nothing in either direction, so the verdict is corrected in place:
+**withdrawn as unproven, not overturned** — 4/9 is also exactly what a coin
+does, and no one should read this withdrawal as evidence the mechanism works.
+
+Fusion's Gate A (≥3 of 5) fails the same arithmetic — 0.50 — and its
+refutation stands anyway, because it never rested on the bar: four of the
+five eligible rare terms retrieve the answer note nowhere in their entire
+FTS match set, a deterministic fact per target. The difference between those
+two closures is the whole lesson, and it is now a requirement:
+`coin_pass_probability(bar, n) ≤ 0.05` before a bar may be registered,
+computed by the eval's own function and quoted in the RULE file. Contract:
+`wiki/reference/Retrieval-Eval-Contract.md`; template:
+`scripts/health/results/RULE-TEMPLATE.md`.
