@@ -429,6 +429,75 @@ class TheInstrumentControls(unittest.TestCase):
         self.assertIn("instrument control fired", proc.stdout + proc.stderr)
 
 
+class TheHardNegatives(unittest.TestCase):
+    """The FP dial, made real. The original twenty negatives carry empty banned
+    lists, so `false_positives` was structurally zero — unfalsifiable, not
+    impressive. The near-miss ten ban the ranker's own top hit, and the split
+    keeps their line separate from the structurally quiet one."""
+
+    def _entries(self):
+        return [
+            {"id": "ng01", "question": "an easy negative question here",
+             "stratum": "negative", "expected_note_paths": []},
+            {"id": "ngh01", "question": "a hard negative question here",
+             "stratum": "negative", "hardness": "near-miss",
+             "expected_note_paths": ["Agent/memory/banned.md"]},
+        ]
+
+    def _daemon(self, rows):
+        import unittest.mock as mock
+
+        def fake_run(argv, *a, **kw):
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=json.dumps({"results": rows}), stderr="")
+        return mock.patch.object(subprocess, "run", side_effect=fake_run)
+
+    def test_a_served_banned_note_counts_as_a_hard_fp(self):
+        rows = [{"path": "Agent/memory/banned.md", "score": 5.0},
+                {"path": "Agent/memory/other.md", "score": 2.0}]
+        with self._daemon(rows):
+            got = ev.score("agentmd", self._entries(), 5)
+        self.assertEqual(got["negatives_hard"], 1)
+        self.assertEqual(got["false_positives_hard"], 1)
+        self.assertEqual(got["false_positives_easy"], 0,
+                         "the hard FP leaked into the easy line")
+        self.assertEqual(got["false_positives"], 1)
+
+    def test_a_withheld_banned_note_is_a_clean_hard_negative(self):
+        # The future-floor direction: the day something knows when it doesn't
+        # know, this is the case that lets the dial move down.
+        rows = [{"path": "Agent/memory/other.md", "score": 5.0},
+                {"path": "Agent/memory/third.md", "score": 2.0}]
+        with self._daemon(rows):
+            got = ev.score("agentmd", self._entries(), 5)
+        self.assertEqual(got["false_positives_hard"], 0)
+        self.assertEqual(got["negatives_hard"], 1)
+
+    def test_the_report_keeps_the_two_lines_apart(self):
+        r = result({})
+        r.update(negatives=30, false_positives=10, negatives_hard=10,
+                 false_positives_hard=10, negatives_easy=20,
+                 false_positives_easy=0, scored=0)
+        out = ev.render(r, "test corpus")
+        self.assertIn("negatives (easy)   : 20, 0", out)
+        self.assertIn("negatives (hard)   : 10, 10", out)
+
+    def test_the_fixture_negatives_all_pass_their_own_bar(self):
+        # The authored entries carry their authoring evidence; this pins that
+        # every near-miss entry in the shipped fixture has a banned path and a
+        # measured overlap, so a hand-added one cannot skip the bar silently.
+        entries = json.loads(ev.GOLD_SET.read_text(encoding="utf-8"))["entries"]
+        hard = [e for e in entries if e.get("hardness") == "near-miss"]
+        self.assertEqual(len(hard), 10)
+        for e in hard:
+            self.assertTrue(e.get("expected_note_paths"),
+                            f"{e['id']} has no banned path")
+            auth = e.get("authoring") or {}
+            self.assertEqual(auth.get("entity_hits"), 0, e["id"])
+            self.assertGreaterEqual(len(auth.get("shared_terms") or []), 2,
+                                    e["id"])
+
+
 class TheReportStatesItsResolution(unittest.TestCase):
     """Every report prints its own CI and MDE, so a bar below the instrument's
     resolution cannot be pre-registered by someone who never saw the number.

@@ -347,6 +347,8 @@ def score(binary: str, entries: list, k: int) -> dict:
     ranked = 0
     false_positives = 0
     negatives = 0
+    negatives_hard = 0
+    false_positives_hard = 0
 
     all_scores = []
     for e in entries:
@@ -358,14 +360,24 @@ def score(binary: str, entries: list, k: int) -> dict:
 
         if e.get("stratum") == NEGATIVE_STRATUM:
             negatives += 1
-            # A negative is answered correctly by returning nothing the fixture
-            # named. With no expected paths, any confident hit is the failure.
+            hard = e.get("hardness") == "near-miss"
+            if hard:
+                negatives_hard += 1
+            # A negative is answered correctly by not returning what the fixture
+            # named. The original twenty carry empty banned lists, which made
+            # `false_positives` structurally zero — a dial painted on, found and
+            # documented in RULE-hard-negatives.md. The near-miss ten each ban
+            # the ranker's own top hit at authoring, so this branch finally has
+            # something to count.
             hit = False
             if expected:
                 hit = any(p in got for p in expected)
                 if hit:
                     false_positives += 1
-            per_question[e["id"]] = {"hit": not hit, "negative": True, "rank": None}
+                    if hard:
+                        false_positives_hard += 1
+            per_question[e["id"]] = {"hit": not hit, "negative": True,
+                                     "rank": None, "hard": hard}
             continue
 
         if not expected:
@@ -406,6 +418,10 @@ def score(binary: str, entries: list, k: int) -> dict:
         "avg_rank_to_first_hit": round(rank_sum / ranked, 4) if ranked else None,
         "negatives": negatives,
         "false_positives": false_positives,
+        "negatives_hard": negatives_hard,
+        "false_positives_hard": false_positives_hard,
+        "negatives_easy": negatives - negatives_hard,
+        "false_positives_easy": false_positives - false_positives_hard,
         "per_question": per_question,
     }
 
@@ -507,8 +523,18 @@ def render(result: dict, provenance: str) -> str:
                      f"(+{flips / n:.1%}) — smaller true effects are invisible here")
     if result["avg_rank_to_first_hit"] is not None:
         lines.append(f"  rank to first hit  : {result['avg_rank_to_first_hit']:.2f}")
-    lines.append(f"  negatives          : {result['negatives']}, "
-                 f"{result['false_positives']} answered wrongly")
+    if result.get("negatives_hard"):
+        lines.append(
+            f"  negatives (easy)   : {result['negatives_easy']}, "
+            f"{result['false_positives_easy']} answered wrongly — empty banned "
+            f"lists; structurally quiet")
+        lines.append(
+            f"  negatives (hard)   : {result['negatives_hard']}, "
+            f"{result['false_positives_hard']} served their banned note — the "
+            f"line a rejection floor would move")
+    else:
+        lines.append(f"  negatives          : {result['negatives']}, "
+                     f"{result['false_positives']} answered wrongly")
     return "\n".join(lines)
 
 
