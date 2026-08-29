@@ -265,3 +265,61 @@ machine exhaust, an indexing-policy question) and was reported but never
 targeted here. The **answerhood-reranker** rung
 (`_harness/BRIEF-answerhood-reranker.md`) is a sibling lever at a different
 layer, untouched by this result. Neither was built.
+
+# Hook parity, and the drift the baseline could not see (task 1, recall-verdict)
+
+The eval's `search()` docstring claimed "one query, exactly as the recall hook
+issues it," and the function did none of three things the hook does: no ×2
+over-fetch before filtering, no `_daemon_admissible` post-filter, and no
+temporal bound from `_extract_temporal_bound`. The three questions the gold set
+marks `hook_reachable: false` (`dt01`, `ep10`, `ep12`) were counted as hits in
+`shipped-baseline.json` because of exactly that gap. This entry lands the fix
+and re-pins the baseline; the number drops and the drop is honesty.
+
+## The re-run, and a split that had to be earned
+
+Against today's live corpus the fixed eval scores **47/64 (73.4%)** where the
+pinned baseline said 50/64 (78.1%). Nine questions flipped — six of them ones
+the parity fix does not predict. Each of the nine was then run as a controlled
+pair on the *same corpus at the same moment*: once through the old code path
+reproduced verbatim, once through the new one. That separates the two causes
+cleanly, because a parity-caused flip reproduces under the code change alone
+and a drifted question disagrees with the old baseline before the new code is
+even involved.
+
+| question | baseline | old code, today | new code, today | verdict |
+|---|---|---|---|---|
+| `dt01` | hit | hit | miss | parity — dropped `_index.md`, 3× `digest.md` from the old top-5 |
+| `ep10` | hit | hit | miss | parity — dropped 2 inadmissible paths |
+| `ep12` | hit | hit | miss | parity — dropped 1 |
+| `pp05` `pp10` `rc12` | hit | **miss** | miss | drift — lost before the new code runs |
+| `dt10` `ep04` `pp06` | miss | **hit** | hit | drift — gained before the new code runs |
+
+Exactly the three predicted questions are parity-caused, and nothing else is.
+The other six are the corpus moving underneath the instrument: since the
+baseline was pinned this arc retired 2,633 notes, rewrote 311 through
+enrichment and 32 through the reference backfill, and the daemon's in-scope
+count halved (15,029 documents at the goldv3 changeover, 7,412 at this run).
+Three losses and three gains, symmetric — drift is not a regression, it is
+noise the baseline had no way to even report.
+
+A correction recorded rather than smoothed over: mid-investigation I claimed a
+flip *to* a hit could not be the parity change's doing. Backwards — dropping an
+`_inbox` path out of the top-5 promotes a deeper admissible note, so
+parity-caused gains are expected wherever mining noise sat above the answer.
+The controlled pair shows the three gains here happen to be drift instead, but
+the claim was wrong before it was tested, and the table is what settled it.
+
+## What the baseline learns from this
+
+`shipped-baseline.json` recorded seven numbers and no provenance — no corpus
+size, no embedder state, no gold-set identity, no date. Two baselines from two
+different corpora were therefore silently comparable, which is how 0.781 → 0.734
+nearly got read as a code regression. The re-pinned baseline now carries a
+corpus fingerprint (document count, embedded-in-scope count, gold-set content
+hash, pin date), and `--compare` **refuses** a baseline whose fingerprint does
+not match the corpus being scored — `--drifted-ok` overrides for the standing
+tripwire against the live vault, and prints the drift beside the verdict so a
+regression on a moved corpus is never attributed to code by default. The old
+baseline is archived beside the new one, unchanged, with this entry as its
+obituary: its number was true when measured and unprovable ever after.

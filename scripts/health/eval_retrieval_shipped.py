@@ -38,9 +38,11 @@ Exit:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -106,6 +108,90 @@ def require_warm_embedder(binary: str) -> str:
     return f"{vectors}/{in_scope} embedded, {stale} stale"
 
 
+class Refused(Exception):
+    """A comparison that must not happen — distinct from a Setup skip.
+
+    Setup means the environment cannot measure (exit 2, gates SKIP). Refused
+    means the environment measured fine and the two sides are not comparable
+    (exit 3): the baseline carries no provenance, names a different gold set, or
+    was pinned on a corpus that has since moved. Sharing exit 2 would let the
+    regression gate silently SKIP forever after the first drifted day — a
+    tripwire that dies quietly the moment it matters.
+    """
+
+
+def gold_sha() -> str:
+    """A content hash of the gold set, grouped so no ten-digit run survives.
+
+    Grouped because the PII gate reads a long hex digest's digit runs as a US
+    phone number — the third time this arc has hit that, so the format is now
+    the habit rather than the retrofit.
+    """
+    h = hashlib.sha256(GOLD_SET.read_bytes()).hexdigest()[:12]
+    return "-".join(h[i:i + 4] for i in range(0, 12, 4))
+
+
+def corpus_fingerprint(binary: str) -> dict:
+    """What corpus this measurement is about.
+
+    The old baseline recorded seven scores and nothing else, which made two
+    baselines from two different corpora silently comparable — 0.781 → 0.734
+    nearly got read as a code regression when six of its nine flips were the
+    corpus halving underneath the instrument (see goldv3/NOTES.md, task 1).
+    """
+    proc = subprocess.run([binary, "status", "--json"], capture_output=True, text=True)
+    if proc.returncode not in (0, 3):
+        raise Setup(f"{binary} status failed: {(proc.stderr or '').strip()[:200]}")
+    try:
+        payload = json.loads(proc.stdout or "{}")
+    except ValueError as exc:
+        raise Setup(f"{binary} status was not JSON: {exc}") from exc
+    emb = (payload.get("health") or {}).get("embedder") or {}
+    return {
+        "documents": (payload.get("index_detail") or {}).get("documents"),
+        "embedded_in_scope": emb.get("in_scope"),
+        "gold_sha": gold_sha(),
+    }
+
+
+def check_comparable(baseline: dict, current: dict, drifted_ok: bool):
+    """Refuse a comparison the fingerprints cannot support; describe one they can.
+
+    Returns None when the fingerprints match, or a drift description to print
+    when they differ and the caller said `--drifted-ok`. Raises Refused
+    otherwise. The gold-set check is never overridable: two gold sets are two
+    different question papers, and no flag makes their scores one experiment.
+    """
+    pinned = baseline.get("corpus")
+    if not pinned:
+        raise Refused(
+            "the baseline carries no corpus fingerprint, so nothing can say "
+            "whether it was measured on this corpus or a different one. Re-pin "
+            "with --baseline; comparing across unknown corpora is how a corpus "
+            "change gets read as a code regression.")
+    if pinned.get("gold_sha") != current.get("gold_sha"):
+        raise Refused(
+            f"the baseline was pinned against gold set {pinned.get('gold_sha')} "
+            f"and this run scores {current.get('gold_sha')} — different question "
+            "papers. No override exists for this one.")
+    drift = [
+        f"{name}: {pinned.get(name)} -> {current.get(name)}"
+        for name in ("documents", "embedded_in_scope")
+        if pinned.get(name) != current.get(name)
+    ]
+    if not drift:
+        return None
+    if not drifted_ok:
+        raise Refused(
+            "the corpus moved since the baseline was pinned ("
+            + "; ".join(drift) +
+            "). Flips on a moved corpus may be drift rather than code — pass "
+            "--drifted-ok to compare anyway with the drift printed beside the "
+            "verdict, or re-pin with --baseline.")
+    return ("corpus drift since the baseline was pinned: " + "; ".join(drift) +
+            " — flips below may be drift, not code")
+
+
 def load_gold() -> list:
     if not GOLD_SET.is_file():
         raise Setup(f"the frozen gold set is missing: {GOLD_SET}")
@@ -116,22 +202,71 @@ def load_gold() -> list:
 
 
 def search(binary: str, question: str, k: int) -> list:
-    """One query, exactly as the recall hook issues it.
+    """One query, as the recall hook issues it — including what it does after.
 
     Same mode, same `-question` for the dense arm, same extracted terms for the
-    lexical arm. Reproducing the shape is the entire point of this harness.
+    lexical arm, and the same three things the hook does around the call that
+    this function used to skip:
+
+    * **Over-fetch then filter.** The hook asks for `k * DAEMON_OVERFETCH` and
+      truncates to `k` *after* filtering, so a rejected path is replaced from
+      deeper in the ranking rather than leaving a hole. Asking for `k` directly
+      measured a shorter list than the hook ever shows.
+    * **Admissibility.** `_daemon_admissible` applies recall's directory rules
+      to what the daemon returns. The daemon indexes `_inbox`, `scratch` and
+      `_archive` by design and only rank-penalizes them; the hook drops them.
+    * **Temporal bounds.** `_extract_temporal_bound` adds `-after` / `-before`
+      when the question carries a date range, which the twelve-question
+      episodic-temporal stratum exists to exercise.
+
+    Reproducing the shape is the entire point of this harness, and for three
+    questions (`dt01`, `ep10`, `ep12`) the difference was the whole result: the
+    gold set marks them `hook_reachable: false` and the old baseline counted
+    them as hits.
+
+    Imported from `recall` rather than reimplemented. The module is already a
+    dependency here for `_daemon_query_terms` and `DAEMON_SEARCH_MODE`, so this
+    adds no new direction — and a second copy of the admissibility rules is a
+    second thing to drift.
     """
     terms = recall._daemon_query_terms(question)
     if not terms:
         return []
-    argv = [binary, "search", "-json", "-k", str(k),
-            "-mode", recall.DAEMON_SEARCH_MODE, "-question", question, terms]
+
+    argv = [binary, "search", "-json",
+            "-k", str(max(1, k) * recall.DAEMON_OVERFETCH),
+            "-mode", recall.DAEMON_SEARCH_MODE, "-question", question]
+    temporal = recall._extract_temporal_bound(question)
+    if temporal is not None:
+        after, before = temporal
+        if after:
+            argv += ["-after", after]
+        if before:
+            argv += ["-before", before]
+    argv.append(terms)
+
     proc = subprocess.run(argv, capture_output=True, text=True, timeout=120)
     if proc.returncode != 0:
         raise Setup(f"search failed for {question[:60]!r}: "
                     f"{(proc.stderr or '').strip()[:200]}")
     payload = json.loads(proc.stdout or "{}")
-    return [r.get("path", "") for r in (payload.get("results") or [])]
+
+    # `include_inbox` / `include_archive` are False here because that is what a
+    # prompt-submit recall passes. A measurement run that admitted more than the
+    # hook does would be scoring a system nobody uses.
+    out = []
+    for row in (payload.get("results") or []):
+        if len(out) >= k:
+            break
+        path = row.get("path", "")
+        if not path:
+            continue
+        if not recall._daemon_admissible(
+            path, include_inbox=False, include_archive=False
+        ):
+            continue
+        out.append(path)
+    return out
 
 
 def score(binary: str, entries: list, k: int) -> dict:
@@ -178,12 +313,15 @@ def score(binary: str, entries: list, k: int) -> dict:
             ranked += 1
         per_question[e["id"]] = {"hit": rank is not None, "negative": False, "rank": rank}
 
+    # Rounded at the source, not for taste: a full-precision float carries a
+    # ten-digit decimal run, and the PII gate reads that as a US phone number.
+    # Fourth occurrence in this arc; the writer is where it stays fixed.
     return {
         "k": k,
         "scored": scored,
         "hits": hits,
-        "r_at_k": (hits / scored) if scored else 0.0,
-        "avg_rank_to_first_hit": (rank_sum / ranked) if ranked else None,
+        "r_at_k": round(hits / scored, 4) if scored else 0.0,
+        "avg_rank_to_first_hit": round(rank_sum / ranked, 4) if ranked else None,
         "negatives": negatives,
         "false_positives": false_positives,
         "per_question": per_question,
@@ -249,6 +387,11 @@ def main(argv: list) -> int:
     ap.add_argument("--compare", metavar="BASELINE", help="score and compare against this")
     ap.add_argument("--verify-determinism", action="store_true",
                     help="run twice and assert the two runs agree")
+    ap.add_argument("--drifted-ok", action="store_true",
+                    help="compare even though the corpus moved since the "
+                         "baseline was pinned; the drift is printed beside the "
+                         "verdict (the standing tripwire's mode — experiments "
+                         "should re-pin instead)")
     ap.add_argument("-k", type=int, default=DEFAULT_K)
     args = ap.parse_args(argv)
 
@@ -282,12 +425,24 @@ def main(argv: list) -> int:
               f"{len(first['per_question'])} question(s)")
 
     if args.baseline:
-        Path(args.baseline).write_text(json.dumps(first, indent=2, sort_keys=True) + "\n",
+        pinned = dict(first)
+        pinned["corpus"] = {**corpus_fingerprint(binary),
+                            "pinned": date.today().isoformat()}
+        Path(args.baseline).write_text(json.dumps(pinned, indent=2, sort_keys=True) + "\n",
                                        encoding="utf-8")
-        print(f"\nbaseline written to {args.baseline}")
+        print(f"\nbaseline written to {args.baseline} "
+              f"(corpus: {pinned['corpus']['documents']} documents)")
 
     if args.compare:
         baseline = json.loads(Path(args.compare).read_text(encoding="utf-8"))
+        try:
+            drift = check_comparable(baseline, corpus_fingerprint(binary),
+                                     args.drifted_ok)
+        except Refused as exc:
+            print(f"\nCOMPARISON REFUSED: {exc}", file=sys.stderr)
+            return 3
+        if drift:
+            print(f"\n{drift}")
         cmp = compare(baseline, first)
         print(f"\npaired comparison over {cmp['compared']} question(s):")
         print(f"  R@{args.k}            : {cmp['r_at_k_before']:.3f} -> {cmp['r_at_k_after']:.3f}")
