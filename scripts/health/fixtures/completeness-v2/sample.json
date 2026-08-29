@@ -1,0 +1,442 @@
+{
+  "disjointness": "Excluded 16 of 200 pool pairs whose rel matched a v1 draw. Residual risk, stated rather than hidden: 10 of v1's 32 rels no longer exist at their recorded path, so a renamed v1 note could recur here undetected. v1's sha recipe was never committed, so content-matching against it is not possible.",
+  "drawn": "2026-08-28",
+  "drawn_n": 60,
+  "hash_recipe": "sha256(utf-8) of the text, first 16 hex chars, grouped 4-4-4-4. source_sha hashes the newline-joined claim list; rewrite_sha hashes the rewrite body. v1's shas used an uncommitted recipe and cannot be compared against these \u2014 recorded here so v3 never has this problem.",
+  "notes": {
+    "1": {
+      "at": "2026-08-27T15:02:12.342207Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-517.md",
+      "rewrite_sha": "ce30-a15d-7074-419e",
+      "source_sha": "4e40-ca4e-6c27-78dc"
+    },
+    "10": {
+      "at": "2026-08-27T15:01:00.650989Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-512.md",
+      "rewrite_sha": "9ff2-fe3d-23a8-04a2",
+      "source_sha": "1955-9d39-c4e0-6039"
+    },
+    "11": {
+      "at": "2026-08-27T15:31:53.129657Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-edit-232.md",
+      "rewrite_sha": "fc21-a138-388b-d3fe",
+      "source_sha": "68e1-8501-e88d-18b1"
+    },
+    "12": {
+      "at": "2026-08-27T14:29:04.467494Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-296.md",
+      "rewrite_sha": "c2ef-4805-3c5c-7f3b",
+      "source_sha": "67ef-14e0-3337-2961"
+    },
+    "13": {
+      "at": "2026-08-27T15:03:13.464717Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-522.md",
+      "rewrite_sha": "1706-23d1-7b93-6049",
+      "source_sha": "2ccf-15ea-9f5b-e691"
+    },
+    "14": {
+      "at": "2026-08-27T14:17:41.32546Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-190.md",
+      "rewrite_sha": "5b5d-635a-c3fd-2070",
+      "source_sha": "f2e4-da91-4ad4-9ff6"
+    },
+    "15": {
+      "at": "2026-08-27T16:07:35.83847Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-read-120.md",
+      "rewrite_sha": "0bbe-5b5b-cf86-4b21",
+      "source_sha": "0dea-a38d-48a9-3732"
+    },
+    "16": {
+      "at": "2026-08-21T15:36:15.821447Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-read-598.md",
+      "rewrite_sha": "7891-f2f1-aba8-9689",
+      "source_sha": "f880-31b6-d19a-aae9"
+    },
+    "17": {
+      "at": "2026-08-27T15:05:26.686672Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-530.md",
+      "rewrite_sha": "3118-a2d2-658e-1570",
+      "source_sha": "b9f9-ee6a-5362-924d"
+    },
+    "18": {
+      "at": "2026-08-27T13:53:11.330347Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/follow-ups-batch-excludes-287-288.md",
+      "rewrite_sha": "e477-c0ca-62cf-4e93",
+      "source_sha": "49ea-05ff-d55c-44c6"
+    },
+    "19": {
+      "at": "2026-08-27T14:39:54.046859Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-374.md",
+      "rewrite_sha": "9003-84a6-e6fa-0e63",
+      "source_sha": "b587-f6b3-e744-f083"
+    },
+    "2": {
+      "at": "2026-08-27T16:21:24.127814Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/schedulewakeup-56x-unlabeled.md",
+      "rewrite_sha": "755a-d1d2-97b3-9853",
+      "source_sha": "e84c-34c1-0d9f-1c0b"
+    },
+    "20": {
+      "at": "2026-08-27T16:32:48.18316Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-taskoutput.md",
+      "rewrite_sha": "9865-bd7c-70d5-8290",
+      "source_sha": "6927-eed3-9b99-e001"
+    },
+    "21": {
+      "at": "2026-08-21T15:33:29.369618Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-362.md",
+      "rewrite_sha": "51ba-9bea-879c-f32e",
+      "source_sha": "f6e6-dca2-4b10-dff2"
+    },
+    "22": {
+      "at": "2026-08-27T15:54:03.245858Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/workflow-mcp-ccd-session-mgmt-search-21.md",
+      "rewrite_sha": "6436-0d9f-b6b9-60a2",
+      "source_sha": "1414-5e41-08e6-3820"
+    },
+    "23": {
+      "at": "2026-08-27T16:05:17.509351Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-monitor-25.md",
+      "rewrite_sha": "d294-233e-da1a-a85b",
+      "source_sha": "2297-8190-c285-e0b2"
+    },
+    "24": {
+      "at": "2026-08-27T14:36:31.490837Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-332.md",
+      "rewrite_sha": "788e-aa24-c275-81c8",
+      "source_sha": "b4be-90be-3ea8-6182"
+    },
+    "25": {
+      "at": "2026-08-27T13:52:49.203342Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/follow-up-batch-2-and-n1-tcc-retest-execution-status-check.md",
+      "rewrite_sha": "7be9-6ad1-c3c0-6e83",
+      "source_sha": "0338-ecb4-f8ee-6cf3"
+    },
+    "26": {
+      "at": "2026-08-27T15:15:22.10027Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-575.md",
+      "rewrite_sha": "0d2e-ddfc-0ea5-e955",
+      "source_sha": "24dd-1ff6-e519-7749"
+    },
+    "27": {
+      "at": "2026-08-27T14:24:33.738422Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/bash-invoked-67-times-session.md",
+      "rewrite_sha": "a060-c341-bd68-7155",
+      "source_sha": "6cdf-5372-746c-4e5c"
+    },
+    "28": {
+      "at": "2026-08-27T14:17:16.173604Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-187.md",
+      "rewrite_sha": "6719-8988-d4e7-a5bd",
+      "source_sha": "aa0e-d6ec-ec9d-a425"
+    },
+    "29": {
+      "at": "2026-08-27T16:35:28.693107Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-taskupdate-30.md",
+      "rewrite_sha": "ec97-fb74-85bc-3630",
+      "source_sha": "c654-a668-0937-060b"
+    },
+    "3": {
+      "at": "2026-08-27T16:47:23.134119Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-write-299.md",
+      "rewrite_sha": "4c2d-8eb5-57d2-67e7",
+      "source_sha": "bf8f-8936-7ae6-79d1"
+    },
+    "30": {
+      "at": "2026-08-27T13:47:17.657582Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/review-crickets-explainability-vs-agentm.md",
+      "rewrite_sha": "4676-5556-0f6b-c380",
+      "source_sha": "4512-be92-be2b-feb3"
+    },
+    "31": {
+      "at": "2026-08-27T16:46:43.701848Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-write-295.md",
+      "rewrite_sha": "8138-a3da-38c4-7486",
+      "source_sha": "4f30-df78-31a1-4da5"
+    },
+    "32": {
+      "at": "2026-08-21T15:33:45.210749Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-479.md",
+      "rewrite_sha": "2701-8591-25ad-d807",
+      "source_sha": "ba53-e3ab-1a16-2b6e"
+    },
+    "33": {
+      "at": "2026-08-27T16:53:18.781843Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/spawn-chips-agentm-release-g6-prompt-train.md",
+      "rewrite_sha": "1be0-401b-3e72-44da",
+      "source_sha": "9a46-dab7-8af2-9cda"
+    },
+    "34": {
+      "at": "2026-08-27T15:29:59.830407Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/edit-tool-95-invocations-session.md",
+      "rewrite_sha": "98aa-b2ee-8a5b-473c",
+      "source_sha": "fce2-65e7-e6d6-4d68"
+    },
+    "35": {
+      "at": "2026-08-21T15:52:24.717304Z",
+      "class": "reference",
+      "rel": "Agent/memory/2026/08/rescope-stage-1-life-area-directories-under-wrapper.md",
+      "rewrite_sha": "3825-b0a7-88aa-4e15",
+      "source_sha": "5c12-2508-8725-c379"
+    },
+    "36": {
+      "at": "2026-08-21T15:26:56.12632Z",
+      "class": "preference",
+      "rel": "Agent/memory/_inbox/ab-probe-battery-advisory-only-not-blocking-gate.md",
+      "rewrite_sha": "58e9-a5c4-7ff5-3cb8",
+      "source_sha": "84af-28b1-fb9b-875d"
+    },
+    "37": {
+      "at": "2026-08-27T14:00:31.270572Z",
+      "class": "convention",
+      "rel": "Agent/memory/_inbox/design-final-refine-how-never-whether.md",
+      "rewrite_sha": "3aa0-0d56-f6f6-6298",
+      "source_sha": "417f-e04f-6997-feef"
+    },
+    "38": {
+      "at": "2026-08-27T14:02:55.351085Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/spring-clean-agentm-followups.md",
+      "rewrite_sha": "ba73-4000-9cab-5ea2",
+      "source_sha": "d5c3-af5d-865c-08c4"
+    },
+    "39": {
+      "at": "2026-08-27T13:46:10.561372Z",
+      "class": "preference",
+      "rel": "Agent/memory/_inbox/ab-probe-battery-advisory-only-not-blocking-gate.md",
+      "rewrite_sha": "58e9-a5c4-7ff5-3cb8",
+      "source_sha": "a0a0-d4c9-c7a7-e360"
+    },
+    "4": {
+      "at": "2026-08-27T14:53:42.461921Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-470.md",
+      "rewrite_sha": "d674-fb9b-2c9a-6300",
+      "source_sha": "a231-e37f-44ac-bf7c"
+    },
+    "40": {
+      "at": "2026-08-27T13:46:32.136358Z",
+      "class": "convention",
+      "rel": "Agent/memory/_inbox/agentm-step-9-6-post-work-reflection-exit-0.md",
+      "rewrite_sha": "65e5-0060-ae74-f7be",
+      "source_sha": "7ec8-a894-bf30-0692"
+    },
+    "41": {
+      "at": "2026-08-27T15:38:33.381514Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-edit-409.md",
+      "rewrite_sha": "6649-d9a7-4d8f-6688",
+      "source_sha": "2b2e-6d3a-052c-bbdd"
+    },
+    "42": {
+      "at": "2026-08-27T15:26:47.176967Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-edit-124.md",
+      "rewrite_sha": "aa69-fcd8-acc9-ea5d",
+      "source_sha": "2e40-7869-f20a-4aa7"
+    },
+    "43": {
+      "at": "2026-08-21T15:24:13.389198Z",
+      "class": "convention",
+      "rel": "Agent/memory/_inbox/agentm-step-9-6-post-work-reflection-exit-0.md",
+      "rewrite_sha": "65e5-0060-ae74-f7be",
+      "source_sha": "fcee-e478-a62a-d40c"
+    },
+    "44": {
+      "at": "2026-08-27T16:45:00.517057Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-write-269.md",
+      "rewrite_sha": "f585-c3c4-38e8-9e55",
+      "source_sha": "8768-603d-fb74-2b0c"
+    },
+    "45": {
+      "at": "2026-08-27T16:26:06.921577Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-sendmessage-3.md",
+      "rewrite_sha": "9890-9c90-3d8e-3584",
+      "source_sha": "bb11-0c20-8977-deb7"
+    },
+    "46": {
+      "at": "2026-08-27T16:47:08.62907Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/write-tool-44-invocations.md",
+      "rewrite_sha": "faed-9753-8f60-c4f3",
+      "source_sha": "4ccb-e946-6937-f5d6"
+    },
+    "47": {
+      "at": "2026-08-27T15:27:26.801726Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-edit-131.md",
+      "rewrite_sha": "49e5-e7ab-13d6-5dad",
+      "source_sha": "afb4-5a4e-b9b0-68f6"
+    },
+    "48": {
+      "at": "2026-08-27T14:03:38.698671Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/check-follow-up-batch-2-session.md",
+      "rewrite_sha": "8e48-0198-bd8c-5d1b",
+      "source_sha": "a48f-e830-bfd8-5e67"
+    },
+    "49": {
+      "at": "2026-08-27T15:08:28.657082Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-547.md",
+      "rewrite_sha": "2bee-d35d-69da-9072",
+      "source_sha": "6641-7c1d-429e-fa67"
+    },
+    "5": {
+      "at": "2026-08-27T13:57:13.2044Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/let-s-file-a-follow-up.md",
+      "rewrite_sha": "645f-f4da-aaf9-d681",
+      "source_sha": "1cdc-89d0-070e-7dc1"
+    },
+    "50": {
+      "at": "2026-08-27T16:13:29.514269Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-read-187.md",
+      "rewrite_sha": "ae36-6c98-3e6a-f7a0",
+      "source_sha": "74c2-c2ef-1169-f179"
+    },
+    "51": {
+      "at": "2026-08-27T14:19:59.95985Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-235.md",
+      "rewrite_sha": "9972-d9f9-6a2b-8ab7",
+      "source_sha": "2fb9-e335-73c2-df67"
+    },
+    "52": {
+      "at": "2026-08-27T15:40:27.398744Z",
+      "class": "reference",
+      "rel": "Agent/memory/_inbox/workflow-edit-505.md",
+      "rewrite_sha": "4027-a684-5ba7-3452",
+      "source_sha": "e678-e466-40f0-1e3c"
+    },
+    "53": {
+      "at": "2026-08-21T15:28:59.432227Z",
+      "class": "preference",
+      "rel": "Agent/memory/_inbox/never-edit-a-failing-test-to-pass.md",
+      "rewrite_sha": "80d6-df9b-75b2-49f6",
+      "source_sha": "6221-432e-cd0b-23ce"
+    },
+    "54": {
+      "at": "2026-08-27T13:55:53.934868Z",
+      "class": "fix",
+      "rel": "Agent/memory/_inbox/partial-word-trim-over-trims.md",
+      "rewrite_sha": "792e-93c0-7dee-2541",
+      "source_sha": "85e9-a315-5a5b-db72"
+    },
+    "55": {
+      "at": "2026-08-21T15:32:58.56911Z",
+      "class": "preference",
+      "rel": "Agent/memory/_inbox/personal-notes-never-touched-without-explicit-ask.md",
+      "rewrite_sha": "87e8-d923-ab3f-2031",
+      "source_sha": "ad0d-321d-dd50-d611"
+    },
+    "56": {
+      "at": "2026-08-27T14:20:55.564381Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-247.md",
+      "rewrite_sha": "0cda-d7dc-86a2-0182",
+      "source_sha": "b78a-2d9c-7604-4b0b"
+    },
+    "57": {
+      "at": "2026-08-27T15:11:12.212506Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-559.md",
+      "rewrite_sha": "19e5-784c-5cc3-6851",
+      "source_sha": "d8ea-9ea5-fbe2-cf75"
+    },
+    "58": {
+      "at": "2026-08-27T16:24:20.328895Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-sendmessage-13.md",
+      "rewrite_sha": "db1d-0cd5-c1cb-0a4a",
+      "source_sha": "d4a4-57cb-dd4e-0458"
+    },
+    "59": {
+      "at": "2026-08-27T15:19:36.701227Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-635.md",
+      "rewrite_sha": "cc5d-89c7-efbd-6052",
+      "source_sha": "dcf0-089a-fd35-fb5d"
+    },
+    "6": {
+      "at": "2026-08-27T14:15:55.618332Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-166.md",
+      "rewrite_sha": "bda0-8e45-b63f-496a",
+      "source_sha": "439b-5390-b0aa-542d"
+    },
+    "60": {
+      "at": "2026-08-27T15:29:31.901396Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-edit-145.md",
+      "rewrite_sha": "e66c-f439-05ff-3d5c",
+      "source_sha": "610e-9268-c798-e180"
+    },
+    "7": {
+      "at": "2026-08-27T15:39:28.823411Z",
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/edit-tool-frequency-mining-flag.md",
+      "rewrite_sha": "245a-32fb-a5a3-080f",
+      "source_sha": "4f88-3d3f-c64b-59b4"
+    },
+    "8": {
+      "at": "2026-08-27T16:35:48.048581Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-taskupdate-31.md",
+      "rewrite_sha": "8aa8-0ee0-e7da-4a09",
+      "source_sha": "032c-2663-57bb-44e0"
+    },
+    "9": {
+      "at": "2026-08-27T16:18:25.210564Z",
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-read-541.md",
+      "rewrite_sha": "b9ba-086f-ad53-439a",
+      "source_sha": "4292-9ef3-19da-7854"
+    }
+  },
+  "pool_sampled": 200,
+  "population": 350,
+  "population_by_class": {
+    "convention": 7,
+    "fix": 2,
+    "idea": 12,
+    "preference": 5,
+    "reference": 3,
+    "workflow": 171
+  },
+  "presentation_order": "Randomised. Grading a prefix is therefore still a random sample: stop at any n and the analysis is valid on those n.",
+  "rubric": "completeness-v1/RUBRIC.md \u2014 reused verbatim, unchanged. See RUBRIC.md here.",
+  "seed": 20260901,
+  "stratified": "Round-robin across classes so every class the corpus has gets a cell, then shuffled. NOT representative of the population (workflow dominates), and not valid as a corpus-wide completeness figure \u2014 valid only for testing whether the scorer agrees with a human."
+}
