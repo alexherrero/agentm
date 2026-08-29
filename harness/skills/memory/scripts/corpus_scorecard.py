@@ -357,6 +357,11 @@ def section_retrieval(repo: Path) -> Section:
     s.readings.append(Reading.measured(
         f"gold-set R@{k}", data.get("r_at_k"), source=pinned.name,
         note=f"{data.get('hits')} of {data.get('scored')} scored questions"))
+    if data.get("r_at_1") is not None:
+        s.readings.append(Reading.measured(
+            "gold-set R@1", data.get("r_at_1"), source=pinned.name,
+            note=f"{data.get('hits_at_1')} first-slot hits — informational; "
+                 f"the ordering headroom lives here"))
     if data.get("avg_rank_to_first_hit") is not None:
         s.readings.append(Reading.measured(
             "average rank of the first hit", data["avg_rank_to_first_hit"],

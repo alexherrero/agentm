@@ -10,6 +10,7 @@
   "false_positives_easy": 0,
   "false_positives_hard": 10,
   "hits": 47,
+  "hits_at_1": 24,
   "k": 5,
   "negatives": 30,
   "negatives_easy": 20,
@@ -516,6 +517,7 @@
       "rank": 3
     }
   },
+  "r_at_1": 0.375,
   "r_at_k": 0.7344,
   "scored": 64
 }

@@ -342,6 +342,7 @@ def score(binary: str, entries: list, k: int) -> dict:
     """Run every question and return the per-question outcomes plus the summary."""
     per_question = {}
     hits = 0
+    hits_at_1 = 0
     scored = 0
     rank_sum = 0
     ranked = 0
@@ -395,6 +396,8 @@ def score(binary: str, entries: list, k: int) -> dict:
             hits += 1
             rank_sum += rank
             ranked += 1
+            if rank == 1:
+                hits_at_1 += 1
         per_question[e["id"]] = {"hit": rank is not None, "negative": False, "rank": rank}
 
     # Rounded at the source, not for taste: a full-precision float carries a
@@ -415,6 +418,13 @@ def score(binary: str, entries: list, k: int) -> dict:
         "scored": scored,
         "hits": hits,
         "r_at_k": round(hits / scored, 4) if scored else 0.0,
+        # Informational, deliberately: R@5 stays the product metric because the
+        # hook injects five, and the gate compares on hit/miss at k. R@1 is the
+        # sensitive ordering instrument — 31 questions of headroom against 9 at
+        # R@5 on the audited baseline — reported so ordering work has a number
+        # to read without a new harness.
+        "hits_at_1": hits_at_1,
+        "r_at_1": round(hits_at_1 / scored, 4) if scored else 0.0,
         "avg_rank_to_first_hit": round(rank_sum / ranked, 4) if ranked else None,
         "negatives": negatives,
         "false_positives": false_positives,
@@ -511,6 +521,9 @@ def render(result: dict, provenance: str) -> str:
         f"scored {result['scored']} question(s) at k={result['k']}",
         f"  R@{result['k']}              : {result['r_at_k']:.3f} ({result['hits']} hits)",
     ]
+    if "r_at_1" in result:
+        lines.append(f"  R@1 (informational): {result['r_at_1']:.3f} "
+                     f"({result['hits_at_1']} first-slot hits)")
     n = result["scored"]
     if n:
         lo, hi = wilson_ci(result["hits"], n)
