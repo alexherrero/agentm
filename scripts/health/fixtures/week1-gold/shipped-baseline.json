@@ -1,15 +1,19 @@
 {
   "avg_rank_to_first_hit": 1.7872,
   "corpus": {
-    "documents": 7926,
-    "embedded_in_scope": 7412,
-    "gold_sha": "86a9-46cb-75f8",
+    "documents": 7928,
+    "embedded_in_scope": 7414,
+    "gold_sha": "1aa1-c96d-39d1",
     "pinned": "2026-08-28"
   },
-  "false_positives": 0,
+  "false_positives": 10,
+  "false_positives_easy": 0,
+  "false_positives_hard": 10,
   "hits": 47,
   "k": 5,
-  "negatives": 20,
+  "negatives": 30,
+  "negatives_easy": 20,
+  "negatives_hard": 10,
   "per_question": {
     "dt01": {
       "hit": false,
@@ -132,102 +136,182 @@
       "rank": null
     },
     "ng01": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng02": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng03": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng04": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng05": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng06": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng07": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng08": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng09": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng10": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng11": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng12": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng13": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng14": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng15": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng16": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng17": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng18": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng19": {
+      "hard": false,
       "hit": true,
       "negative": true,
       "rank": null
     },
     "ng20": {
+      "hard": false,
       "hit": true,
+      "negative": true,
+      "rank": null
+    },
+    "ngh01": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh02": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh03": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh04": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh05": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh06": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh07": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh08": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh09": {
+      "hard": true,
+      "hit": false,
+      "negative": true,
+      "rank": null
+    },
+    "ngh10": {
+      "hard": true,
+      "hit": false,
       "negative": true,
       "rank": null
     },

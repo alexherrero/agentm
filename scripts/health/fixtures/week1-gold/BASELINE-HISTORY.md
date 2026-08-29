@@ -15,3 +15,11 @@ retirements, 343 rewrites, in-scope halved). Full attribution table:
 `scripts/health/results/goldv3/NOTES.md`, "Hook parity" entry. Baselines now
 carry a corpus fingerprint, and `--compare` refuses across fingerprints unless
 `--drifted-ok` says the drift is understood.
+
+**2026-08-28 — hard-negatives re-pin (same day, second pin).** The gold set
+grew ten near-miss negatives (`ngh01`–`ngh10`, RULE-hard-negatives.md), so the
+gold-set hash moved and the baseline re-pinned under provenance rules. Scored
+questions unchanged at 64 / 47 hits; new lines: easy negatives 20 with 0 FP
+(structurally quiet — empty banned lists, documented), hard negatives 10 with
+10 serving their banned note, exactly as pre-registered. The canary from task 3
+also sits in the corpus now (documents 7,926 → 7,928 across the two pins).
