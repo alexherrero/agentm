@@ -216,9 +216,37 @@ func SampleEvery(n int) func(string) bool {
 		return func(string) bool { return true }
 	}
 	return func(rel string) bool {
-		h := fnv1a(rel)
-		return h%uint32(n) == 0
+		return mix(fnv1a(rel))%uint32(n) == 0
 	}
+}
+
+// mix finalizes a hash before a small modulus.
+//
+// FNV-1a's lowest bit is close to the parity of its input bytes, so `h % n` for
+// any even `n` inherits that structure instead of spreading over it. Half the
+// residue classes come out unreachable: on keys shaped `s0:t0, s1:t1, …` the
+// residues mod 10 are `[794 0 770 0 774 0 842 0 820 0]`, so a one-in-ten sample
+// takes one in five. At the daemon's default rate of 20 it took 704 of 4000
+// such keys rather than 200, and a one-in-two sample of them takes all 4000.
+//
+// Note-path shapes measured clean without this, so the daemon's own sampling
+// was probably not skewed in practice — numbered, sequential, and dated paths
+// all reached every residue class on the raw hash. But which shapes escape is a
+// property of how the keys happen to look rather than of anything this code
+// controls, and a sampler whose bias depends on its input's shape is not one.
+// The `s0:t0` shape that fails here is the Python side's turn key.
+//
+// This is Murmur3's fmix32, which measured flat on every key shape tried. The
+// constants are hex for the same reason FNV's are: the repository's PII scanner
+// reads the decimal forms as phone numbers. Mirrors `_mix` in
+// `scripts/health/sufficient_context.py`, where the same bias was found first.
+func mix(h uint32) uint32 {
+	h ^= h >> 16
+	h *= 0x85EBCA6B
+	h ^= h >> 13
+	h *= 0xC2B2AE35
+	h ^= h >> 16
+	return h
 }
 
 // fnv1a is a small non-cryptographic hash. The sampler only needs an even

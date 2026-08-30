@@ -176,8 +176,11 @@ def _mix(h: int) -> int:
     measured flat on every key shape tried: worst drift 0.02–0.10 against
     2.52 for the raw hash.
 
-    NOTE: `enrich.SampleEvery` in the daemon takes `h % n` with no finalizer and
-    carries the same latent bias on note paths.
+    `enrich.SampleEvery` in the daemon carried the same unfinalized modulus and
+    now applies this finalizer too, as `mix`. Its note-path shapes measured
+    clean beforehand — numbered, sequential and dated paths all reached every
+    residue class on the raw hash — so the bias there was latent rather than
+    biting; the shape that fails is this module's own `session:ts` turn key.
     """
     h = (h ^ (h >> 16)) & _M32
     h = (h * 0x85EBCA6B) & _M32
