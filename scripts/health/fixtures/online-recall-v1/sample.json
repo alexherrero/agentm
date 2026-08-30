@@ -1,5 +1,7 @@
 {
   "seed": 20260830,
+  "population": "human-typed prompts only",
+  "machine_prompts_dropped": 49,
   "note": "one shuffled pool, drawn uniformly from the corpus. Any prefix of this order is itself a random sample, so a partially labelled worksheet is still unbiased and whatever is left over is the unlabelled pool PPI uses.",
   "turns_not_recoverable": 0,
   "items": [
@@ -16,61 +18,13 @@
       "n_notes": 3
     },
     {
-      "id": "fed7-a8d9-9ece-f4e2",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "f9eb-e07e-9108-caa5",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "af60-94ca-d12e-5386",
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
     },
     {
-      "id": "98c0-f8b1-2f40-2f0f",
-      "stratum": "full/insufficient",
-      "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "c79a-535e-996c-a9a0",
-      "stratum": "full/sufficient",
-      "judge": "sufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "eaa7-ba30-1830-3bf5",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "6c6d-5762-b076-b26b",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "66a4-72c9-f01e-27a5",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "d1ab-a6dc-da1c-d147",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "fe23-59eb-c830-a675",
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
@@ -130,12 +84,6 @@
       "n_notes": 5
     },
     {
-      "id": "3f2c-d447-0de2-fdbf",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "995c-564a-7275-e45f",
       "stratum": "mid/insufficient",
       "judge": "insufficient",
@@ -154,24 +102,6 @@
       "n_notes": 5
     },
     {
-      "id": "58d8-b47f-2519-a884",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "3681-ab4e-984b-f132",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "706a-32d3-f245-f7e9",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "d236-9370-2449-d231",
       "stratum": "full/n/a",
       "judge": "n/a",
@@ -179,12 +109,6 @@
     },
     {
       "id": "8361-2e76-d251-dead",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "1ff9-2e9b-1330-836f",
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
@@ -202,43 +126,13 @@
       "n_notes": 5
     },
     {
-      "id": "80e8-ef93-e414-38cc",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "a3f4-c8d6-8e24-fc7b",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "6ea4-e4ce-4dc5-873a",
       "stratum": "thin/insufficient",
       "judge": "insufficient",
       "n_notes": 1
     },
     {
-      "id": "24d8-ee62-b0d7-9aa5",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "9f92-61c7-75a6-fc5d",
-      "stratum": "mid/n/a",
-      "judge": "n/a",
-      "n_notes": 4
-    },
-    {
       "id": "75e8-edbf-a9a9-7fdf",
-      "stratum": "full/insufficient",
-      "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "5e23-15cc-8f94-cd73",
       "stratum": "full/insufficient",
       "judge": "insufficient",
       "n_notes": 5
@@ -272,18 +166,6 @@
       "stratum": "mid/insufficient",
       "judge": "insufficient",
       "n_notes": 4
-    },
-    {
-      "id": "d5e9-4c6f-2922-d3e4",
-      "stratum": "full/insufficient",
-      "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "b72b-997c-3358-e9e9",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
     },
     {
       "id": "71c9-46de-e115-145d",
@@ -322,24 +204,6 @@
       "n_notes": 2
     },
     {
-      "id": "b2d3-a635-b522-2f39",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "3fc7-6a83-b780-be93",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "df0b-6e52-02af-3567",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "ae1b-4274-cc68-ce35",
       "stratum": "full/insufficient",
       "judge": "insufficient",
@@ -350,12 +214,6 @@
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
-    },
-    {
-      "id": "8262-53be-433b-1657",
-      "stratum": "mid/insufficient",
-      "judge": "insufficient",
-      "n_notes": 2
     },
     {
       "id": "7f7d-4335-233f-aa12",
@@ -382,12 +240,6 @@
       "n_notes": 5
     },
     {
-      "id": "edc2-6999-a8f5-56ad",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "c45a-4fc0-d7c7-9379",
       "stratum": "full/sufficient",
       "judge": "sufficient",
@@ -400,33 +252,15 @@
       "n_notes": 5
     },
     {
-      "id": "66a4-72c9-f01e-27a5",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "e7bf-b6cd-e6dc-e8f9",
       "stratum": "full/insufficient",
       "judge": "insufficient",
       "n_notes": 5
     },
     {
-      "id": "cb2a-72f3-92e8-7dad",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "0d5c-c908-dcfa-4d3c",
       "stratum": "full/insufficient",
       "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "353c-d568-9f69-6aba",
-      "stratum": "full/n/a",
-      "judge": "n/a",
       "n_notes": 5
     },
     {
@@ -460,12 +294,6 @@
       "n_notes": 3
     },
     {
-      "id": "d15b-be50-b5aa-ba03",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "b6e1-b723-0039-1bd2",
       "stratum": "full/insufficient",
       "judge": "insufficient",
@@ -484,37 +312,13 @@
       "n_notes": 1
     },
     {
-      "id": "a3f5-491d-b525-8f34",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "06b2-9bb3-1881-4108",
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
     },
     {
-      "id": "75b9-01c6-6b1e-8bdf",
-      "stratum": "full/insufficient",
-      "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
       "id": "be3c-3024-0ae0-c58b",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "6695-86c6-9129-186d",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "6ed8-d533-cb6b-5e54",
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
@@ -539,18 +343,6 @@
     },
     {
       "id": "7aa6-3a7b-3b04-8a6a",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "54ac-ec85-a598-24bc",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "5a73-e626-2e97-d04b",
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
@@ -598,22 +390,10 @@
       "n_notes": 5
     },
     {
-      "id": "a45e-f30b-e996-a2f1",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "38fa-77bc-da5c-e35c",
       "stratum": "mid/n/a",
       "judge": "n/a",
       "n_notes": 3
-    },
-    {
-      "id": "338b-c3ea-90cc-b361",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
     },
     {
       "id": "edd0-b32c-cb48-22de",
@@ -631,12 +411,6 @@
       "id": "a509-8e85-7aba-d9e2",
       "stratum": "full/insufficient",
       "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "f8be-8aa0-e84e-f4e2",
-      "stratum": "full/n/a",
-      "judge": "n/a",
       "n_notes": 5
     },
     {
@@ -659,12 +433,6 @@
     },
     {
       "id": "e16e-0501-d4fa-767c",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "2a58-980f-81e0-ef8f",
       "stratum": "full/n/a",
       "judge": "n/a",
       "n_notes": 5
@@ -694,12 +462,6 @@
       "n_notes": 5
     },
     {
-      "id": "d18a-f836-f27e-50e7",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "84a0-dad1-b632-ce2b",
       "stratum": "full/n/a",
       "judge": "n/a",
@@ -707,42 +469,6 @@
     },
     {
       "id": "b654-37b2-7367-3245",
-      "stratum": "full/insufficient",
-      "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "d604-75c2-d4c8-b46f",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "2abd-88a9-f4e2-2f9b",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "2e55-c191-bfb2-52bd",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "a59d-e24a-354b-d873",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "8fc7-276f-c8f3-8494",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
-      "id": "2ab8-c2e9-ffba-467b",
       "stratum": "full/insufficient",
       "judge": "insufficient",
       "n_notes": 5
@@ -760,33 +486,15 @@
       "n_notes": 2
     },
     {
-      "id": "b914-e52d-f9c1-f9a0",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "515d-b6ff-ed77-ebd7",
       "stratum": "full/insufficient",
       "judge": "insufficient",
       "n_notes": 5
     },
     {
-      "id": "8964-c505-3358-f122",
-      "stratum": "full/n/a",
-      "judge": "n/a",
-      "n_notes": 5
-    },
-    {
       "id": "e097-061f-3203-73b1",
       "stratum": "full/insufficient",
       "judge": "insufficient",
-      "n_notes": 5
-    },
-    {
-      "id": "5c52-c8cc-ebf9-35dc",
-      "stratum": "full/n/a",
-      "judge": "n/a",
       "n_notes": 5
     },
     {

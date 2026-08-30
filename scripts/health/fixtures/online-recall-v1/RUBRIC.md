@@ -18,6 +18,43 @@ of the "no note could have answered this" flag below, which I added after
 noticing that class of turn. Recording it here rather than claiming a clean
 room.
 
+## Amendment, 2026-08-30 — the population narrowed after the draw
+
+**What changed.** The sample is now **human-typed prompts only**, down from
+every prompt the recall hook fired on. 49 of the 139 drawn turns were dropped;
+90 remain.
+
+**Why.** The operator, partway through batch one, asked why so many entries did
+not read like questions. They were right. The hook fires on records the *system*
+injects — `<task-notification>` when a background job reports, and
+`<system-reminder>` blocks — and runs a full retrieval against text like
+`pass: 15 | skipping: 2`. That is **233 of 688 injections, 33.9% of all
+retrievals**, pulling 14,797,695 characters of notes into context for prompts
+nobody wrote. It is a defect in recall, filed separately.
+
+**Why this does not bias the labels.** No label for this sample existed when the
+change was made — the operator had not written any that survived — and the
+filter is a property of the prompt's own shape, decided without reference to the
+judge's verdict or to any label. Checked both ways: dropped turns were 86.3%
+`n/a` by the judge, kept turns 56.2%, and the sufficiency rate across the whole
+judged set barely moved, 12.5% to 12.2%.
+
+**What it does change** is what the result describes: *recall on prompts a
+person actually typed*, which is the population worth knowing about. Any figure
+from this sample carries that qualifier.
+
+**The filter matches a tag at the start of the prompt, not anywhere in it.**
+This repository's sessions discuss `<task-notification>` constantly — the
+message that prompted this amendment did — and a substring rule would drop real
+prompts as machine noise. Over the corpus the two rules differ on one turn, and
+that turn is machine-generated too.
+
+**A consequence to state plainly:** 90 labelled turns is below the measured
+100-label floor for a PPI interval. κ, raw agreement, per-stratum agreement and
+a labels-only population estimate with a Wilson interval are all unaffected and
+will be reported. PPI will produce a point estimate and no interval, and will
+say so.
+
 ## The question you are answering
 
 For each turn you will see **the request** made to the coding assistant and

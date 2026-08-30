@@ -92,6 +92,28 @@ def order(pool: list, *, seed: int = SEED) -> list:
     return out
 
 
+# Prompts the system injects rather than a person typing. The recall hook fires
+# on these too — 233 of 688 injections, a third of all retrievals, pulling
+# 14.8M characters of notes into context for text nobody wrote — and the judge
+# rightly calls 86.3% of them "not an information need".
+#
+# Matched on a *leading* tag, not a substring anywhere. This repository's own
+# sessions discuss `<task-notification>` constantly, and an anywhere-rule would
+# quietly drop real prompts that quote one. Measured over the corpus the two
+# rules differ on a single turn, and that turn is machine-generated too — an
+# autonomous-loop timer invocation, matched separately below.
+_MACHINE_TAGS = ("task-notification", "system-reminder", "local-command-stdout",
+                 "command-name", "command-message", "command-args")
+_MACHINE = re.compile(
+    r"^\s*(?:<(?:" + "|".join(_MACHINE_TAGS) + r")>"
+    r"|# Autonomous loop check)")
+
+
+def is_machine_prompt(prompt: str) -> bool:
+    """Was this prompt injected by the system rather than typed?"""
+    return bool(_MACHINE.match(prompt or ""))
+
+
 BATCH = 20
 # How much of each injected note to show. The question is whether the right
 # material was retrieved, which its opening almost always settles; the full note
@@ -203,6 +225,9 @@ def main(argv=None) -> int:
     ap.add_argument("--fixture", type=pathlib.Path, required=True,
                     help="repo path for the hash/stratum/verdict record")
     ap.add_argument("--rubric-link", default="RUBRIC.md")
+    ap.add_argument("--human-only", action="store_true",
+                    help="drop prompts the system injected — a third of the "
+                         "traffic, which no note could ever answer")
     args = ap.parse_args(argv)
 
     pool = json.loads(args.pool.read_text(encoding="utf-8"))["rows"]
@@ -215,11 +240,14 @@ def main(argv=None) -> int:
         h = sufficient_context.grouped_hash(t.get("prompt_hash"))
         turns.setdefault(h, t)
 
-    items, missing = [], 0
+    items, missing, machine = [], 0, 0
     for r in picked:
         t = turns.get(r["turn"])
         if t is None:
             missing += 1
+            continue
+        if args.human_only and is_machine_prompt(t.get("_prompt")):
+            machine += 1
             continue
         n_notes = r.get("n_notes")
         if n_notes is None:
@@ -242,6 +270,9 @@ def main(argv=None) -> int:
     args.fixture.parent.mkdir(parents=True, exist_ok=True)
     args.fixture.write_text(json.dumps({
         "seed": SEED,
+        "population": ("human-typed prompts only" if args.human_only
+                       else "every prompt the recall hook fired on"),
+        "machine_prompts_dropped": machine,
         "note": ("one shuffled pool, drawn uniformly from the corpus. Any "
                  "prefix of this order is itself a random sample, so a "
                  "partially labelled worksheet is still unbiased and whatever "
@@ -256,6 +287,9 @@ def main(argv=None) -> int:
     print(f"fixture   : {args.fixture}")
     if missing:
         print(f"  {missing} pool rows had no recoverable turn and were dropped")
+    if machine:
+        print(f"  {machine} machine-generated prompts dropped "
+              f"(task notifications, system reminders)")
     strata: dict = {}
     for it in items:
         strata[it["stratum"]] = strata.get(it["stratum"], 0) + 1

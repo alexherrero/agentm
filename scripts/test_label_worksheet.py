@@ -44,6 +44,29 @@ class TheBands(unittest.TestCase):
         self.assertEqual(bw.band(9), "full")
 
 
+class TheMachinePromptFilter(unittest.TestCase):
+    def test_it_catches_what_the_system_injects(self):
+        for p in ("<task-notification> <task-id>abc</task-id>",
+                  "<system-reminder>\nThe user started a task",
+                  "  <local-command-stdout>out</local-command-stdout>",
+                  "<command-name>/work</command-name>",
+                  "# Autonomous loop check\nkeep going"):
+            self.assertTrue(bw.is_machine_prompt(p), p[:40])
+
+    def test_a_human_prompt_quoting_a_tag_is_still_human(self):
+        # This repository's sessions discuss these tags constantly — the
+        # message that started this investigation did. A substring rule would
+        # drop real prompts as machine noise.
+        for p in ("why did <task-notification> entries get recall hits?",
+                  "many entries look like <system-reminder> blocks, why?",
+                  "explain the <command-name> record shape"):
+            self.assertFalse(bw.is_machine_prompt(p), p[:40])
+
+    def test_ordinary_prompts_pass(self):
+        for p in ("where does the vault live", "retry", "yes", "", None):
+            self.assertFalse(bw.is_machine_prompt(p), repr(p))
+
+
 class TheStratum(unittest.TestCase):
     def test_it_reads_the_note_count_the_judge_recorded(self):
         self.assertEqual(
