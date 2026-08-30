@@ -43,6 +43,16 @@ done means trust plus a characterized plateau, operator-ratified.
   coin at 0.50); the fusion refutation stands on its deterministic trace.
 - `agentm_config.py --enrich-enabled` arms the eager enrichment trigger as a
   config key rather than a hand-edited JSON field (shipped default untouched).
+- **Recall no longer runs for prompts nobody typed.** The UserPromptSubmit hook
+  fires on every record the host submits, and a third of them were the host
+  talking to itself — background-task notifications, system reminders,
+  slash-command envelopes. Replayed over the transcripts, 233 of 691 injections
+  (33.7%) now skip, and the ~14.8M characters they pulled into context (roughly
+  3.7M tokens) are not retrieved at all. The markers are matched only as an
+  opening tag at the *start* of the prompt: 2 real prompts in the same
+  population quote a marker mid-sentence and are still served. A skip announces
+  itself on stderr and names its marker, so it never reads as a retrieval that
+  came back empty.
 
 ### Internal
 
