@@ -92,6 +92,54 @@ no gaps named is not an answer. Do not explain outside the JSON."""
 
 SYSTEM = "You judge whether retrieved context is sufficient. Answer only with JSON."
 
+# The second axis. Sufficiency asks whether the context *could* answer; this
+# asks whether the reply *did* draw on it. They fail independently, and the
+# crossing is the only thing that separates bad retrieval from good context the
+# model ignored.
+#
+# Asked in its own call. Folding both questions into one response would let the
+# first answer prime the second — a model that has just called the context
+# insufficient is set up to say the reply ignored it — and two axes that move
+# together measure one axis at twice the confidence.
+USE_PROMPT = """You are judging whether a reply drew on some material it was given.
+
+You are shown CONTEXT that was automatically retrieved from someone's notes and
+placed in front of a coding assistant, and the REPLY the assistant then wrote.
+
+Answer one question: did the REPLY draw on the CONTEXT?
+
+Drawing on it counts whether or not the context is named. A reply that uses a
+fact, a decision, a path, a constraint or a piece of history that appears in the
+context has drawn on it. A reply that merely happens to be about the same
+subject has not — the question is whether this material shaped it, not whether
+the topics overlap.
+
+Use "n/a" only when the REPLY contains no prose at all — it is empty, or it is
+nothing but a tool call. A reply that says it cannot answer, or that answers
+badly, or that goes off and does something else, is still prose: judge it used
+or unused. "n/a" is for having nothing to read, not for a reply you find
+unsatisfying.
+
+Return a single JSON object and nothing else:
+
+  {"verdict": "used", "drew_on": ["what it took from the context"]}
+
+or:
+
+  {"verdict": "unused"}
+
+or:
+
+  {"verdict": "n/a"}
+
+If the verdict is used you must say what was drawn on. A claim of use with
+nothing named is not an answer — it is the same failure as a rejection that
+names no gap. Do not explain outside the JSON."""
+
+USE_SYSTEM = "You judge whether a reply drew on given material. Answer only with JSON."
+
+USE_VERDICTS = ("used", "unused", "n/a")
+
 _JSON = re.compile(r"\{.*\}", re.S)
 VERDICTS = ("sufficient", "insufficient", "n/a")
 
@@ -197,6 +245,138 @@ def parse_verdict(text: str) -> Optional[dict]:
     return {"verdict": verdict, "missing": [str(x) for x in missing]}
 
 
+def parse_use(text: str) -> Optional[dict]:
+    """The utilization answer, or None if the judge did not give one.
+
+    Mirrors `parse_verdict`, including the demand that a positive claim names
+    what it rests on. "Used" with nothing drawn on is a judge asserting a
+    conclusion, and those are exactly the ones worth dropping.
+    """
+    m = _JSON.search(text or "")
+    if not m:
+        return None
+    try:
+        obj = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(obj, dict):
+        return None
+    verdict = obj.get("verdict")
+    if verdict not in USE_VERDICTS:
+        return None
+    drew = obj.get("drew_on") or []
+    if not isinstance(drew, list):
+        return None
+    if verdict == "used" and not drew:
+        return None
+    return {"verdict": verdict, "drew_on": [str(x) for x in drew]}
+
+
+def judge_use(turn: dict, *, replicates: int = 1, caller: Callable = None,
+              model: str = MODEL) -> dict:
+    """Did the reply draw on what was injected?
+
+    Defaults to a single replicate. The sufficiency pass characterised this
+    judge's self-agreement at 86.1%; spending three times over to re-establish
+    that on a second question buys precision on a per-turn verdict that the
+    crossing does not use — the quadrant is a rate over many turns.
+    """
+    caller = caller or completeness_grade._call_claude_json
+    prompt = "\n".join([USE_PROMPT, "", "CONTEXT:", "",
+                         turn.get("_injected", ""), "", "REPLY:", "",
+                         turn.get("_answer", "")])
+    answers, failures, cost = [], 0, 0.0
+    for _ in range(max(1, replicates)):
+        envelope = caller(prompt, model=model, system=USE_SYSTEM)
+        if isinstance(envelope, str):
+            envelope = {"result": envelope}
+        cost += float(envelope.get("total_cost_usd") or 0.0)
+        parsed = parse_use(envelope.get("result", ""))
+        if parsed is None:
+            failures += 1
+        else:
+            answers.append(parsed)
+    if not answers:
+        return {"use_verdict": None, "use_failures": failures,
+                "use_cost_usd": round(cost, 4)}
+    verdicts = [a["verdict"] for a in answers]
+    top = max(set(verdicts), key=verdicts.count)
+    return {
+        "use_verdict": top,
+        "use_unanimous": len(set(verdicts)) == 1,
+        "use_failures": failures,
+        "use_cost_usd": round(cost, 4),
+        "_drew_on": [d for a in answers if a["verdict"] == top
+                     for d in a["drew_on"]],
+    }
+
+
+# The quadrant. Both axes have to be decided for a turn to land in one; a turn
+# missing either is named as undecided rather than assigned a corner.
+QUADRANTS = {
+    ("sufficient", "used"): "served",
+    ("sufficient", "unused"): "ignored",
+    ("insufficient", "used"): "salvaged",
+    ("insufficient", "unused"): "missed",
+}
+
+
+def quadrant(sufficiency, use) -> Optional[str]:
+    """Which corner a turn lands in, or None if either axis is undecided.
+
+    The names are the point. `ignored` is good retrieval the model did not use,
+    and `missed` is retrieval that failed — collapsing those two into one
+    "context did not help" number is the confound this crossing exists to
+    break.
+    """
+    return QUADRANTS.get((sufficiency, use))
+
+
+def cross(rows: list) -> dict:
+    """The quadrant counts, and the two utilization signals side by side.
+
+    The judged and deterministic signals are never merged. The deterministic
+    one fires when a note's name appears in the reply and nothing else, which
+    happened for 7 of 3,004 injected notes — it is a floor with almost no
+    reach, so a disagreement is overwhelmingly the floor failing to see use
+    rather than the judge inventing it. Reporting one number for both would
+    bury that.
+    """
+    out = {"turns": len(rows)}
+    corners = {}
+    undecided = 0
+    for r in rows:
+        c = quadrant(r.get("verdict"), r.get("use_verdict"))
+        if c is None:
+            undecided += 1
+        else:
+            corners[c] = corners.get(c, 0) + 1
+    out["quadrants"] = {k: corners.get(k, 0) for k in QUADRANTS.values()}
+    out["undecided"] = undecided
+    placed = sum(corners.values())
+    if placed:
+        out["quadrant_rates"] = {k: round(v / placed, 4)
+                                 for k, v in out["quadrants"].items()}
+
+    both = [r for r in rows if r.get("use_verdict") in ("used", "unused")
+            and r.get("deterministic_used") is not None]
+    if both:
+        judged_used = sum(1 for r in both if r["use_verdict"] == "used")
+        det_used = sum(1 for r in both if r["deterministic_used"])
+        disagree = sum(1 for r in both
+                       if (r["use_verdict"] == "used") != r["deterministic_used"])
+        out["utilization_judged"] = round(judged_used / len(both), 4)
+        out["utilization_deterministic"] = round(det_used / len(both), 4)
+        out["utilization_disagreement"] = round(disagree / len(both), 4)
+        out["utilization_note"] = (
+            "two signals, reported apart. The deterministic one only fires "
+            "when a note's name appears verbatim in the reply — 7 of 3,004 "
+            "injected notes did that — so it is a floor with almost no reach, "
+            "and the disagreement is mostly the floor missing use rather than "
+            "the judge inventing it. Merging them would hide which is which.")
+    return out
+
+
 def judge_turn(turn: dict, *, replicates: int = REPLICATES,
                caller: Callable = None, model: str = MODEL) -> dict:
     """Judge one turn `replicates` times and report what came back.
@@ -285,7 +465,10 @@ def aggregate(rows: list) -> dict:
         "excluded_not_an_information_need": len(na),
         "excluded_judge_failed": len(failed),
     }
-    spent = round(sum(float(r.get("cost_usd") or 0) for r in rows), 2)
+    # Both axes. Summing only the sufficiency call made a $15 run report $1.75
+    # next to the cap that had just stopped it.
+    spent = round(sum(float(r.get("cost_usd") or 0)
+                      + float(r.get("use_cost_usd") or 0) for r in rows), 2)
     if spent:
         out["cost_usd"] = spent
         out["cost_per_turn_usd"] = round(spent / max(1, len(rows)), 3)
@@ -300,18 +483,44 @@ def aggregate(rows: list) -> dict:
     # Measured over scored turns alone it drops the ones where the judge is
     # least stable — a calibration run had 2 of 3 n/a turns split.
     decided = [r for r in rows if r.get("unanimous") is not None]
-    if decided:
-        agree = sum(1 for r in decided if r["unanimous"])
-        out["unanimity_rate"] = round(agree / len(decided), 4)
+    # One replicate cannot disagree with itself: `unanimous` is True by
+    # construction, and reporting 100% there puts a statistic that cannot fail
+    # exactly where a reader looks for evidence of stability.
+    replicated = [r for r in decided if (r.get("replicates") or 1) > 1]
+    if replicated:
+        agree = sum(1 for r in replicated if r["unanimous"])
+        out["unanimity_rate"] = round(agree / len(replicated), 4)
+        out["unanimity_over"] = len(replicated)
         out["stability_note"] = (
             "measured, not assumed: `claude -p` exposes no temperature or seed "
             "flag, so this rate is the only evidence the judge is repeatable")
         # The instability that actually moves the headline: replicates
         # disagreeing about whether a turn is scoreable at all change the
         # denominator of `sufficient_rate`, not just one row's verdict.
-        boundary = sum(1 for r in decided if r.get("scoreable_split"))
-        out["scoreability_split_rate"] = round(boundary / len(decided), 4)
+        boundary = sum(1 for r in replicated if r.get("scoreable_split"))
+        out["scoreability_split_rate"] = round(boundary / len(replicated), 4)
+    elif decided:
+        out["stability_note"] = (
+            "not measured in this run — one replicate per turn cannot disagree "
+            "with itself. The judge's self-agreement was 86.1% (95% CI "
+            "[76.3%, 92.3%]) when measured at three replicates")
     return out
+
+
+def corpus_stamp(injections: list) -> dict:
+    """What corpus this run read, so two runs are not mistaken for a series.
+
+    Live traffic grows while it is being measured. Without a stamp, a rate that
+    moved between runs reads as the system changing when the corpus changed —
+    the same failure the offline eval's fingerprint exists to refuse.
+    """
+    stamps = sorted(i.get("ts") or "" for i in injections)
+    return {
+        "injections": len(injections),
+        "first_ts": stamps[0] if stamps else "",
+        "last_ts": stamps[-1] if stamps else "",
+        "sessions": len({i.get("session") for i in injections}),
+    }
 
 
 def main(argv: list = None) -> int:
@@ -326,12 +535,23 @@ def main(argv: list = None) -> int:
                     help="write per-turn verdicts (hashes and counts only)")
     ap.add_argument("--max-spend", type=float, default=5.0,
                     help="stop once the run has cost this much (USD)")
+    ap.add_argument("--utilization", action="store_true",
+                    help="also ask whether the reply drew on the context, and "
+                         "cross the two axes")
+    ap.add_argument("--use-replicates", type=int, default=1,
+                    help="replicates for the utilization question (the "
+                         "crossing is a rate over turns, not a per-turn call)")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
 
     keep = sample_every(args.sample_every)
-    turns = [t for t in recall_traffic.iter_injections(with_text=True)
-             if t.get("_prompt") and t.get("_injected") and keep(turn_key(t))]
+    everything = [t for t in recall_traffic.iter_injections(with_text=True)
+                  if t.get("_prompt") and t.get("_injected")]
+    # Rarity is a property of the whole corpus, not of the sample — calibrating
+    # it on a tenth of the traffic would call names rare that are merely absent
+    # from the tenth.
+    rare = recall_traffic.rare_evidence(everything) if args.utilization else set()
+    turns = [t for t in everything if keep(turn_key(t))]
     if args.limit:
         turns = turns[:args.limit]
 
@@ -348,14 +568,32 @@ def main(argv: list = None) -> int:
             break
         row = judge_turn(t, replicates=args.replicates, model=args.model)
         spent += float(row.get("cost_usd") or 0)
+        if args.utilization:
+            row.update(judge_use(t, replicates=args.use_replicates,
+                                 model=args.model))
+            spent += float(row.get("use_cost_usd") or 0)
+            # The deterministic floor on the same turn, for the side-by-side.
+            # `rare` comes from the whole traffic rather than the sample, so
+            # the floor is judged against the corpus it was calibrated on.
+            row["deterministic_used"] = bool(
+                recall_traffic.used_slugs(t.get("slugs") or [],
+                                          t.get("_answer") or "", rare))
         rows.append(row)
         if not args.json:
             gaps = "; ".join(row.get("_missing", [])[:2])
+            corner = quadrant(row.get("verdict"), row.get("use_verdict"))
+            tag = f"{corner:9s} " if corner else ""
             print(f"  {n:4d}/{len(turns)}  {str(row['verdict']):13s} "
-                  f"{'' if row.get('unanimous', True) else '(split) '}{gaps}",
-                  flush=True)
+                  f"{tag}{'' if row.get('unanimous', True) else '(split) '}"
+                  f"{gaps[:90]}", flush=True)
 
     out = aggregate(rows)
+    out["corpus"] = corpus_stamp(everything)
+    out["corpus_note"] = ("live traffic grows while it is measured; two runs "
+                          "with different stamps are two instruments, not two "
+                          "points on one line")
+    if args.utilization:
+        out["crossing"] = cross(rows)
     if stopped_early:
         # Named, not silent. A truncated sweep that reports only its rate reads
         # as a sweep of everything.
@@ -374,8 +612,13 @@ def main(argv: list = None) -> int:
     if "sufficient_rate" in out:
         print(f"  sufficient         : {out['sufficient']} "
               f"({out['sufficient_rate']:.1%})")
-        print(f"  judge agrees with itself: {out.get('unanimity_rate', 0):.1%} "
-              f"of turns, across {args.replicates} replicates")
+        if "unanimity_rate" in out:
+            print(f"  judge agrees with itself: {out['unanimity_rate']:.1%} "
+                  f"of {out['unanimity_over']} turns, "
+                  f"{args.replicates} replicates each")
+        else:
+            print(f"  judge self-agreement    : not measured here "
+                  f"({args.replicates} replicate; 86.1% when measured at 3)")
     else:
         print(f"  {out.get('note', '')}")
     print(f"  excluded, not a question : "
@@ -387,6 +630,29 @@ def main(argv: list = None) -> int:
     if stopped_early:
         print(f"  STOPPED at the ${args.max_spend:.2f} cap — "
               f"{stopped_early} sampled turns were not judged")
+    x = out.get("crossing") or {}
+    if x.get("quadrants"):
+        print(f"\nsufficiency x utilization "
+              f"({sum(x['quadrants'].values())} placed, "
+              f"{x['undecided']} undecided)")
+        for name, label in (("served", "context had it, reply used it"),
+                            ("ignored", "context had it, reply did not"),
+                            ("salvaged", "context lacked it, reply used it"),
+                            ("missed", "context lacked it, reply did not")):
+            n_ = x["quadrants"][name]
+            r_ = (x.get("quadrant_rates") or {}).get(name, 0)
+            print(f"  {name:9s} {n_:4d} ({r_:5.1%})  {label}")
+        if "utilization_disagreement" in x:
+            print(f"\n  utilization, judged        : "
+                  f"{x['utilization_judged']:.1%}")
+            print(f"  utilization, deterministic : "
+                  f"{x['utilization_deterministic']:.1%}")
+            print(f"  they disagree on           : "
+                  f"{x['utilization_disagreement']:.1%} of turns")
+            print(f"  Not merged. The deterministic signal fires only on a "
+                  f"note's name appearing\n  verbatim — 7 of 3,004 injected "
+                  f"notes — so most disagreement is the floor\n  missing use, "
+                  f"not the judge inventing it.")
     return 0
 
 

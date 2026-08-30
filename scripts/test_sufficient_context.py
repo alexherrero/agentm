@@ -188,21 +188,28 @@ class TheCostAccounting(unittest.TestCase):
         self.assertEqual(got["cost_usd"], 0.10)
 
     def test_the_run_total_is_reported(self):
-        got = sc.aggregate([{"verdict": "sufficient", "unanimous": True,
-                             "cost_usd": 0.15},
-                            {"verdict": "n/a", "unanimous": True,
-                             "cost_usd": 0.05}])
+        got = sc.aggregate([{"verdict": "sufficient", "replicates": 3,
+                             "unanimous": True, "cost_usd": 0.15},
+                            {"verdict": "n/a", "replicates": 3,
+                             "unanimous": True, "cost_usd": 0.05}])
         self.assertEqual(got["cost_usd"], 0.20)
         self.assertEqual(got["cost_per_turn_usd"], 0.1)
+
+    def test_both_axes_are_in_the_total(self):
+        # A live run summed only the sufficiency call and printed "$1.75" on
+        # the same screen as "STOPPED at the $15.00 cap".
+        got = sc.aggregate([{"verdict": "sufficient", "replicates": 1,
+                             "cost_usd": 0.10, "use_cost_usd": 0.09}])
+        self.assertEqual(got["cost_usd"], 0.19)
 
 
 class TheArithmetic(unittest.TestCase):
     def test_excluded_turns_are_not_in_the_denominator(self):
         rows = [
-            {"verdict": "sufficient", "unanimous": True},
-            {"verdict": "insufficient", "unanimous": True},
-            {"verdict": "n/a", "unanimous": True},
-            {"verdict": None, "unanimous": None},
+            {"verdict": "sufficient", "replicates": 3, "unanimous": True},
+            {"verdict": "insufficient", "replicates": 3, "unanimous": True},
+            {"verdict": "n/a", "replicates": 3, "unanimous": True},
+            {"verdict": None, "replicates": 3, "unanimous": None},
         ]
         got = sc.aggregate(rows)
         self.assertEqual(got["turns_seen"], 4)
@@ -212,16 +219,16 @@ class TheArithmetic(unittest.TestCase):
         self.assertEqual(got["excluded_judge_failed"], 1)
 
     def test_nothing_scored_is_a_note_not_a_zero(self):
-        got = sc.aggregate([{"verdict": None, "unanimous": None},
-                            {"verdict": "n/a", "unanimous": True}])
+        got = sc.aggregate([{"verdict": None, "replicates": 3, "unanimous": None},
+                            {"verdict": "n/a", "replicates": 3, "unanimous": True}])
         self.assertNotIn("sufficient_rate", got)
         self.assertIn("note", got)
 
     def test_unanimity_is_reported_over_turns_that_produced_a_verdict(self):
         rows = [
-            {"verdict": "sufficient", "unanimous": True},
-            {"verdict": "sufficient", "unanimous": False},
-            {"verdict": None, "unanimous": None},
+            {"verdict": "sufficient", "replicates": 3, "unanimous": True},
+            {"verdict": "sufficient", "replicates": 3, "unanimous": False},
+            {"verdict": None, "replicates": 3, "unanimous": None},
         ]
         got = sc.aggregate(rows)
         self.assertEqual(got["unanimity_rate"], 0.5)
@@ -232,9 +239,9 @@ class TheArithmetic(unittest.TestCase):
         # two thirds of what it saw. A calibration run had exactly this shape —
         # 2 of 3 n/a turns split.
         rows = [
-            {"verdict": "sufficient", "unanimous": True, "scoreable_split": False},
-            {"verdict": "n/a", "unanimous": False, "scoreable_split": True},
-            {"verdict": "n/a", "unanimous": False, "scoreable_split": True},
+            {"verdict": "sufficient", "replicates": 3, "unanimous": True, "scoreable_split": False},
+            {"verdict": "n/a", "replicates": 3, "unanimous": False, "scoreable_split": True},
+            {"verdict": "n/a", "replicates": 3, "unanimous": False, "scoreable_split": True},
         ]
         got = sc.aggregate(rows)
         self.assertEqual(got["unanimity_rate"], round(1 / 3, 4))
@@ -244,10 +251,10 @@ class TheArithmetic(unittest.TestCase):
         # row wobbling — it moves that turn in or out of the denominator of
         # sufficient_rate, so it gets its own number.
         rows = [
-            {"verdict": "sufficient", "unanimous": True, "scoreable_split": False},
-            {"verdict": "insufficient", "unanimous": False,
+            {"verdict": "sufficient", "replicates": 3, "unanimous": True, "scoreable_split": False},
+            {"verdict": "insufficient", "replicates": 3, "unanimous": False,
              "scoreable_split": False},
-            {"verdict": "n/a", "unanimous": False, "scoreable_split": True},
+            {"verdict": "n/a", "replicates": 3, "unanimous": False, "scoreable_split": True},
         ]
         got = sc.aggregate(rows)
         self.assertEqual(got["scoreability_split_rate"], round(1 / 3, 4))
@@ -277,8 +284,26 @@ class TheArithmetic(unittest.TestCase):
     def test_stability_is_labelled_as_measured(self):
         # `claude -p` has no temperature flag, so a reader must not take the
         # judge for deterministic just because it is a judge.
-        got = sc.aggregate([{"verdict": "sufficient", "unanimous": True}])
+        got = sc.aggregate([{"verdict": "sufficient", "replicates": 3,
+                             "unanimous": True}])
         self.assertIn("measured, not assumed", got["stability_note"])
+
+    def test_one_replicate_reports_no_unanimity_at_all(self):
+        # A single verdict cannot disagree with itself, so `unanimous` is True
+        # by construction. A live run printed "judge agrees with itself: 100.0%
+        # of turns, across 1 replicates" — a statistic that cannot fail, in the
+        # place a reader looks for evidence of stability.
+        got = sc.aggregate([{"verdict": "sufficient", "replicates": 1,
+                             "unanimous": True},
+                            {"verdict": "insufficient", "replicates": 1,
+                             "unanimous": True}])
+        self.assertNotIn("unanimity_rate", got)
+        self.assertNotIn("scoreability_split_rate", got)
+        self.assertIn("cannot disagree with itself", got["stability_note"])
+
+    def test_a_missing_replicate_count_is_treated_as_one(self):
+        got = sc.aggregate([{"verdict": "sufficient", "unanimous": True}])
+        self.assertNotIn("unanimity_rate", got)
 
 
 class TheWriter(unittest.TestCase):
@@ -365,6 +390,171 @@ class TheSpendCap(unittest.TestCase):
                          "--max-spend", "0"], self._turns(4))
         self.assertIn("measured not estimated", out)
         self.assertIn("$0.40", out)
+
+
+class TheUseParser(unittest.TestCase):
+    def test_a_claim_of_use_must_say_what_it_drew_on(self):
+        # Symmetric with the sufficiency judge's rule. "Used" with nothing
+        # named is a judge asserting a conclusion.
+        self.assertIsNone(sc.parse_use('{"verdict": "used"}'))
+        self.assertIsNone(sc.parse_use('{"verdict": "used", "drew_on": []}'))
+        self.assertIsNotNone(
+            sc.parse_use('{"verdict": "used", "drew_on": ["the vault path"]}'))
+
+    def test_unused_needs_nothing(self):
+        self.assertEqual(sc.parse_use('{"verdict": "unused"}'),
+                         {"verdict": "unused", "drew_on": []})
+
+    def test_a_sufficiency_verdict_is_not_a_use_verdict(self):
+        # The two axes have disjoint vocabularies on purpose; a judge answering
+        # the wrong question must not be silently accepted by the wrong parser.
+        self.assertIsNone(sc.parse_use('{"verdict": "sufficient"}'))
+        self.assertIsNone(sc.parse_verdict('{"verdict": "used"}'))
+
+    def test_junk_is_none(self):
+        for junk in ("", "yes it used it", "{oops", None):
+            self.assertIsNone(sc.parse_use(junk), junk)
+
+
+class TheUseJudge(unittest.TestCase):
+    def test_it_asks_a_different_question_than_sufficiency(self):
+        # The whole reason for a second call: if the utilization prompt
+        # mentioned sufficiency, one answer would prime the other and the
+        # crossing would measure one axis twice.
+        seen = {}
+
+        def spy(prompt, **_kw):
+            seen["prompt"] = prompt
+            return {"result": '{"verdict": "unused"}'}
+
+        sc.judge_use({"_injected": "ctx", "_answer": "reply"}, caller=spy)
+        self.assertNotIn("sufficient", seen["prompt"].lower())
+        self.assertIn("REPLY:", seen["prompt"])
+        self.assertIn("CONTEXT:", seen["prompt"])
+
+    def test_a_failed_call_leaves_no_verdict(self):
+        got = sc.judge_use({"_injected": "c", "_answer": "a"},
+                           caller=lambda _p, **_kw: {"result": "junk"})
+        self.assertIsNone(got["use_verdict"])
+        self.assertEqual(got["use_failures"], 1)
+
+    def test_it_carries_its_own_cost(self):
+        got = sc.judge_use({"_injected": "c", "_answer": "a"}, replicates=2,
+                           caller=lambda _p, **_kw: {
+                               "result": '{"verdict": "unused"}',
+                               "total_cost_usd": 0.04})
+        self.assertEqual(got["use_cost_usd"], 0.08)
+
+    def test_what_it_drew_on_stays_out_of_the_persisted_fields(self):
+        got = sc.judge_use({"_injected": "c", "_answer": "a"},
+                           caller=lambda _p, **_kw: {"result": json.dumps(
+                               {"verdict": "used",
+                                "drew_on": ["the operator's vault path"]})})
+        self.assertNotIn("vault path", repr(sc.persist_rows([got])))
+
+
+class TheQuadrant(unittest.TestCase):
+    def test_all_four_corners_are_reachable(self):
+        # The verification the plan asks for: each corner populates.
+        self.assertEqual(sc.quadrant("sufficient", "used"), "served")
+        self.assertEqual(sc.quadrant("sufficient", "unused"), "ignored")
+        self.assertEqual(sc.quadrant("insufficient", "used"), "salvaged")
+        self.assertEqual(sc.quadrant("insufficient", "unused"), "missed")
+
+    def test_good_context_ignored_is_not_the_same_corner_as_bad_retrieval(self):
+        # The confound this crossing exists to break. If these collapsed, a
+        # model that ignores perfect context would read as a retrieval failure.
+        self.assertNotEqual(sc.quadrant("sufficient", "unused"),
+                            sc.quadrant("insufficient", "unused"))
+
+    def test_an_undecided_axis_lands_nowhere(self):
+        for pair in (("n/a", "used"), ("sufficient", "n/a"),
+                     (None, "used"), ("sufficient", None)):
+            self.assertIsNone(sc.quadrant(*pair), pair)
+
+    def test_undecided_turns_are_counted_not_dropped(self):
+        rows = [
+            {"verdict": "sufficient", "use_verdict": "used"},
+            {"verdict": "n/a", "use_verdict": "used"},
+            {"verdict": "insufficient", "use_verdict": None},
+        ]
+        got = sc.cross(rows)
+        self.assertEqual(got["turns"], 3)
+        self.assertEqual(got["quadrants"]["served"], 1)
+        self.assertEqual(got["undecided"], 2)
+
+    def test_rates_are_over_placed_turns_not_all_turns(self):
+        rows = [{"verdict": "sufficient", "use_verdict": "used"},
+                {"verdict": "insufficient", "use_verdict": "unused"},
+                {"verdict": "n/a", "use_verdict": "n/a"}]
+        got = sc.cross(rows)
+        self.assertEqual(got["quadrant_rates"]["served"], 0.5)
+        self.assertEqual(got["quadrant_rates"]["missed"], 0.5)
+
+
+class TheTwoUtilizationSignals(unittest.TestCase):
+    def test_they_are_reported_apart_with_their_disagreement(self):
+        # Never silently merged — the plan's own requirement.
+        rows = [
+            {"use_verdict": "used", "deterministic_used": True},
+            {"use_verdict": "used", "deterministic_used": False},
+            {"use_verdict": "unused", "deterministic_used": False},
+            {"use_verdict": "used", "deterministic_used": False},
+        ]
+        got = sc.cross(rows)
+        self.assertEqual(got["utilization_judged"], 0.75)
+        self.assertEqual(got["utilization_deterministic"], 0.25)
+        self.assertEqual(got["utilization_disagreement"], 0.5)
+
+    def test_the_note_says_which_signal_is_the_floor(self):
+        # A reader meeting a large disagreement must not conclude the judge is
+        # wrong: the deterministic signal fired for 7 of 3,004 notes.
+        got = sc.cross([{"use_verdict": "used", "deterministic_used": False}])
+        note = got["utilization_note"]
+        # The phrase that carries the meaning, not just the word "floor" —
+        # which appears twice, so a mutation removing one left the assertion
+        # satisfied by the other.
+        self.assertIn("almost no reach", note)
+        self.assertIn("7 of 3,004", note)
+        self.assertNotIn("second opinion", note)
+
+    def test_a_turn_missing_either_signal_is_not_compared(self):
+        rows = [{"use_verdict": "used", "deterministic_used": None},
+                {"use_verdict": "n/a", "deterministic_used": True}]
+        got = sc.cross(rows)
+        self.assertNotIn("utilization_disagreement", got)
+
+
+class TheCorpusStamp(unittest.TestCase):
+    def _inj(self, n, session="s", start=1):
+        return [{"session": session, "ts": f"2026-08-{start + i:02d}T00:00:00Z"}
+                for i in range(n)]
+
+    def test_it_reports_the_span_it_read(self):
+        got = sc.corpus_stamp(self._inj(3))
+        self.assertEqual(got["injections"], 3)
+        self.assertEqual(got["first_ts"], "2026-08-01T00:00:00Z")
+        self.assertEqual(got["last_ts"], "2026-08-03T00:00:00Z")
+        self.assertEqual(got["sessions"], 1)
+
+    def test_a_grown_corpus_stamps_differently(self):
+        # The whole point: live traffic grows while it is measured, and two
+        # runs over different corpora must not read as two points on one line.
+        before = sc.corpus_stamp(self._inj(3))
+        after = sc.corpus_stamp(self._inj(4))
+        self.assertNotEqual(before, after)
+        # Specifically by the count. "The stamps differ" would still pass if
+        # only the timestamps moved, which is not what a reader leans on it for.
+        self.assertNotEqual(before["injections"], after["injections"])
+
+    def test_it_counts_distinct_sessions(self):
+        got = sc.corpus_stamp(self._inj(2, "a") + self._inj(2, "b"))
+        self.assertEqual(got["sessions"], 2)
+
+    def test_an_empty_corpus_does_not_crash(self):
+        got = sc.corpus_stamp([])
+        self.assertEqual(got["injections"], 0)
+        self.assertEqual(got["first_ts"], "")
 
 
 class TheCallShape(unittest.TestCase):
