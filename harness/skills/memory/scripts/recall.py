@@ -79,6 +79,37 @@ QUERY_CLI_BUDGET_MS = 10_000
 # Default top-K per locked design call (plan #7a part 2 recall-loop).
 DEFAULT_K = 5
 
+# Prompts nobody typed. The UserPromptSubmit hook fires on every record the host
+# submits, and a third of them are the host talking to itself: background jobs
+# reporting `pass: 15 | skipping: 2`, slash-command envelopes, the boilerplate
+# caveat wrapped around local command output. No vault note can be relevant to
+# any of them, and the sufficiency autorater agrees — it scores 86.3% of
+# machine-generated turns `n/a` ("not an information need") against 56.2% of
+# human-typed ones.
+#
+# Tags, matched as an opening tag at the start of the prompt (see
+# `_machine_prompt_marker` for why position, not presence, is the test).
+# `local-command-caveat` is not one the brief named: it turned up in the traffic
+# survey as 89 prompts that are byte-identical 245-character boilerplate with
+# nothing after the closing tag, which is the same class as the rest.
+_MACHINE_PROMPT_TAGS: tuple[str, ...] = (
+    "task-notification",
+    "system-reminder",
+    "local-command-stdout",
+    "local-command-caveat",
+    "command-name",
+    "command-message",
+    "command-args",
+)
+
+# Machine markers that are plain text rather than a tag. This banner prefixes a
+# `<task-notification>` instead of leading with it, so the tag rule alone would
+# serve the 20 prompts carrying it. Matched as a leading literal for the same
+# reason the tags are: a human discussing the banner writes it mid-sentence.
+_MACHINE_PROMPT_LITERALS: tuple[str, ...] = (
+    "[SYSTEM NOTIFICATION - NOT USER INPUT]",
+)
+
 # Default per-recall token budget (≈10% of a 200k Claude context).
 # 0 = unlimited. Override via --token-budget CLI arg or RECALL_TOKEN_BUDGET env.
 DEFAULT_TOKEN_BUDGET = 20_000
@@ -737,6 +768,32 @@ def _read_prompt_from_stdin(stdin=sys.stdin) -> str | None:
     if not isinstance(prompt, str):
         return None
     return prompt
+
+
+def _machine_prompt_marker(prompt: str) -> str | None:
+    """Return the marker naming `prompt` as machine-generated, or None.
+
+    The UserPromptSubmit hook fires on every record the host submits, not only
+    the ones a person typed. Matched at the START of the prompt only — never as
+    a substring — because these markers are ordinary subject matter in a repo
+    whose sessions discuss its own hooks; the brief for this very change quotes
+    every tag below. A substring rule would drop recall for exactly the prompts
+    most likely to need it, and it would do so silently.
+
+    Measured over the operator's transcripts before this landed: of 9,107
+    prompts, 704 led with one of these markers, while 233 carried one only
+    mid-prompt — and every one of those 233 was a genuine information need (the
+    sufficiency autorater's judge prompts, which quote real transcript traffic
+    verbatim, plus the brief for this change). Position is what separates them.
+    """
+    head = prompt.lstrip()
+    for tag in _MACHINE_PROMPT_TAGS:
+        if head.startswith(f"<{tag}>") or head.startswith(f"<{tag} "):
+            return f"<{tag}>"
+    for literal in _MACHINE_PROMPT_LITERALS:
+        if head.startswith(literal):
+            return literal
+    return None
 
 
 def _collect_always_load_paths(vault: Path) -> set[str]:
@@ -2139,6 +2196,30 @@ def prompt_submit(
     if prompt is None:
         print(
             "[memory-recall-prompt-submit] no prompt on stdin (skipping)",
+            file=stderr,
+        )
+        return 0
+
+    # A recall costs the same whether or not a person is on the other end. Over
+    # 688 real injections in the operator's transcripts, 233 (33.9%) were
+    # machine-generated, and the notes they pulled into context came to
+    # 14,797,695 characters — roughly 3.7M tokens spent matching the vault
+    # against text nobody wrote. Checked before the vault is touched, so a skip
+    # costs a string comparison and nothing else.
+    #
+    # Deliberately not recorded in the recall ledger, though `record_recall`
+    # would take it: that ledger's row is a recall event, and `count_since()`
+    # reports every row as one. Writing skips there would quietly redefine its
+    # "total recall calls" as "total hook fires" — the same conflation of "found
+    # nothing" with "never searched" that GH #92 was made of. The stderr line
+    # below is the durable signal instead, and `scripts/health/recall_traffic.py`
+    # parses it into a `skipped` field, which is where the traffic arc already
+    # asks how often something fires.
+    machine_marker = _machine_prompt_marker(prompt)
+    if machine_marker is not None:
+        print(
+            f"[memory-recall-prompt-submit] skipped: {machine_marker} prompt is "
+            "machine-generated, not an information need — no recall run",
             file=stderr,
         )
         return 0

@@ -73,6 +73,12 @@ _BUDGET = re.compile(r"(\d+) entries excerpted to fit(?:, (\d+) entries omitted)
 # `top 3 by daemon lexical rank` — the arm that actually ranked, which is how a
 # silent degrade from hybrid to lexical becomes visible.
 _ARM = re.compile(r"top \d+ by (?:daemon )?(\w+)(?: rank)?")
+# `skipped: <task-notification> prompt is machine-generated, …`. The hook still
+# fires on these and still writes an attachment, so without this they would read
+# as ordinary injections that happened to load nothing — the "found nothing"
+# versus "never searched" conflation this module exists to keep visible. The
+# marker is captured so a reader can count the reasons apart.
+_SKIPPED = re.compile(r"skipped: (\S+) prompt is machine-generated")
 
 
 class JoinError(Exception):
@@ -179,6 +185,8 @@ def parse_stderr(line: str) -> dict:
     if m := _BUDGET.search(line):
         out["excerpted"] = int(m.group(1))
         out["omitted"] = int(m.group(2) or 0)
+    if m := _SKIPPED.search(line):
+        out["skipped"] = m.group(1)
     return out
 
 
