@@ -71,6 +71,7 @@ def _hash_query(query_text: str) -> str:
 
 def record_recall(query_text: str, hit_slugs: list[str], *,
                    hits: "list[dict] | None" = None,
+                   drops: "dict | None" = None,
                    now: "datetime | None" = None,
                    history_path: "Path | None" = None) -> dict:
     """Append one recall event. Best-effort: a write failure never raises --
@@ -97,6 +98,14 @@ def record_recall(query_text: str, hit_slugs: list[str], *,
     }
     if hits is not None:
         row["hits"] = list(hits)
+    if drops:
+        # Why an empty recall was empty (online-recall task 3). `hit_count: 0`
+        # with `hits: []` cannot separate a retrieval miss from over-filtering,
+        # and those have opposite fixes. Integers only — how many rows the
+        # daemon returned, and how many each stage dropped. Deliberately *not*
+        # the extracted terms: those are prompt vocabulary, and this file's
+        # contract is a hashed query, never raw text.
+        row["drops"] = {k: int(v) for k, v in sorted(drops.items())}
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "a", encoding="utf-8") as fh:

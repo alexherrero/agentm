@@ -68,3 +68,48 @@ counter is mutated in turn and its test confirmed red.
 ## Outcome
 
 Filled after the first real rows accumulate.
+
+## The proof-condition, corrected
+
+This RULE stated the constraint as: *the recall path's existing tests stay
+green without being edited.* Two did not — `test_recall_token_budget.py`'s
+`_capture` doubles stub `record_recall` with the signature
+`(prompt, slugs, hits=None)` and rejected the new optional `drops` keyword.
+
+**The letter of the rule was broken and the substance was not**, and the
+difference is worth writing down rather than smoothing over. The condition as
+written cannot distinguish *behaviour changed* from *a test double is narrower
+than the function it doubles* — only the second happened. The fix widened the
+two stubs to `**_kw` and touched no assertion: the diff on that file is two
+`def` lines and their explanatory comments, and the checks about what reaches
+the ledger are byte-identical.
+
+**The proof-condition should have been:** no assertion in the recall path's
+tests changes, and every stub of `record_recall` tolerates its optional
+keywords. That is what actually holds, and it is the form a future
+instrumentation task should register.
+
+## Live verification
+
+A real prompt through the patched hook, against the live corpus:
+
+```
+keys : ['drops', 'hit_count', 'hit_slugs', 'hits', 'query_hash', 'ts']
+hits : 5   drops: {'returned': 10, 'inadmissible': 0, 'deduped': 0,
+                   'malformed': 0, 'out_of_scope': 0, 'unrooted': 0}
+no prompt text in row: True
+```
+
+`returned: 10` is the hook's ×2 over-fetch; five survived to injection, none
+were dropped. The privacy assertion is checked in the test suite as well as
+here: the row carries a hashed query and no prompt vocabulary.
+
+## A fourth category, found by a failing test
+
+A test written to check the malformed counter failed for an instructive
+reason: the query text it used carried no content words, so the extractor
+produced no terms and `_daemon_search` returned **before the daemon was asked
+anything**. The sink stays empty and the ledger writes no `drops` key — and
+that absence is itself a diagnosis, distinct from both a retrieval miss and
+over-filtering: the query never happened. Some share of the 36% is likely
+this, and it is now a named, testable category rather than a surprise.
