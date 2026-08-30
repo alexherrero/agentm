@@ -71,9 +71,24 @@ def build_prompt(pair: dict) -> str:
     return "\n".join(lines)
 
 
-def _call_claude(prompt: str, *, model: str = MODEL,
-                 timeout: int = TIMEOUT_SEC) -> str:
-    """One `claude -p` call, returning its text or "" on any failure.
+SYSTEM = "You compare two texts and answer only with JSON."
+
+
+def _call_claude(prompt: str, **kw) -> str:
+    """One `claude -p` call, returning its text or "" on any failure."""
+    return _call_claude_json(prompt, **kw).get("result", "")
+
+
+def _call_claude_json(prompt: str, *, model: str = MODEL,
+                      timeout: int = TIMEOUT_SEC, system: str = SYSTEM) -> dict:
+    """One `claude -p` call, returning the whole response envelope.
+
+    The envelope carries `total_cost_usd` alongside the text, and a judging loop
+    that guesses its own cost from token estimates will be wrong — a call with
+    an empty prompt bills about $0.14 here, because the CLI ships a large system
+    prompt even with `--tools none`. Measured beats estimated.
+
+    An empty dict is any failure: timeout, non-zero exit, or a launch error.
 
     MCP is stripped and hooks are disabled for the same two reasons the
     answerhood labeller gives: the servers cost roughly a minute of startup per
@@ -86,20 +101,21 @@ def _call_claude(prompt: str, *, model: str = MODEL,
         "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
         "--settings", '{"disableAllHooks":true}',
         "--output-format", "json",
-        "--system-prompt", "You compare two texts and answer only with JSON.",
+        "--system-prompt", system,
         "--tools", "none",
     ]
     try:
         proc = subprocess.run(cmd, input=prompt, capture_output=True,
                               text=True, timeout=timeout)
     except (OSError, subprocess.TimeoutExpired):
-        return ""
+        return {}
     if proc.returncode != 0:
-        return ""
+        return {}
     try:
-        return json.loads(proc.stdout).get("result", "")
-    except (json.JSONDecodeError, AttributeError):
-        return proc.stdout
+        obj = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return {"result": proc.stdout}
+    return obj if isinstance(obj, dict) else {"result": proc.stdout}
 
 
 def parse_kept(text: str, n_claims: int) -> Optional[set]:
