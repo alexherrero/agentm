@@ -126,6 +126,74 @@ class TheNoteSplit(unittest.TestCase):
         self.assertEqual(len(bw.split_notes("")), 1)
 
 
+class TheInventory(unittest.TestCase):
+    def test_it_types_notes_from_their_slug(self):
+        self.assertEqual(bw.note_type("PLAN.archive.20260627-x", "unknown", ""),
+                         "archived plan")
+        self.assertEqual(bw.note_type("PLAN-online-recall", "unknown", ""),
+                         "active plan")
+        self.assertEqual(bw.note_type("progress-hybrid", "unknown", ""),
+                         "progress log")
+        self.assertEqual(bw.note_type("RULE-zero-hit", "unknown", ""),
+                         "frozen rule")
+
+    def test_a_declared_kind_wins_over_guessing(self):
+        self.assertEqual(bw.note_type("whatever", "design", ""), "design")
+        self.assertEqual(bw.note_type("whatever", "handoff-artifact", ""),
+                         "handoff artifact")
+
+    def test_tags_carry_the_type_when_kind_says_unknown(self):
+        # Three quarters of retrieved notes declare kind "unknown", so the
+        # header's own tags are the next best evidence.
+        self.assertEqual(
+            bw.note_type("blog-author", "unknown", "# Blog-author",
+                         tags=["idea-incubator-graduate"]), "idea")
+
+    def test_a_captured_preference_is_recognised(self):
+        self.assertEqual(
+            bw.note_type("i-want-to-x", "unknown", "User stated: ..."),
+            "captured preference")
+
+    def test_the_title_is_the_notes_own_heading(self):
+        # Derived, never written by a model — a wrong gist would make the
+        # operator's label wrong with nothing on the page to show it.
+        self.assertEqual(
+            bw.note_title("# R3 — Memory-eval benchmarks\n\nbody here"),
+            "R3 — Memory-eval benchmarks")
+
+    def test_a_note_with_no_heading_falls_back_to_its_first_sentence(self):
+        self.assertEqual(bw.note_title("\n> quoted\n\nthe real opening line"),
+                         "the real opening line")
+
+    def test_status_comes_from_the_notes_own_status_line(self):
+        self.assertEqual(bw.note_status("**Status:** done *(started 2026)*"),
+                         "done")
+        self.assertEqual(bw.note_status("no status here"), "")
+
+    def test_the_inventory_counts_and_pluralises(self):
+        notes = [
+            {"slug": "PLAN.archive.a", "kind": "unknown", "body": "", "tags": []},
+            {"slug": "PLAN.archive.b", "kind": "unknown", "body": "", "tags": []},
+            {"slug": "x", "kind": "design", "body": "", "tags": []},
+        ]
+        self.assertEqual(bw.inventory(notes), "2 archived plans, 1 design")
+
+    def test_the_header_carries_space_and_tags_through(self):
+        block = ("### blog-author (kind: unknown, score=0.03 daemon-hybrid, "
+                 "space: memory, tags: [idea-incubator-graduate])\n\n"
+                 "# Blog-author\n")
+        got = bw.split_notes(block)[0]
+        self.assertEqual(got["space"], "memory")
+        self.assertEqual(got["tags"], ["idea-incubator-graduate"])
+
+    def test_the_body_still_starts_after_the_whole_header(self):
+        # The header now captures a trailing group for space/tags; the body
+        # must not inherit any of it.
+        block = ("### a-note (kind: unknown, score=0.03 daemon-hybrid, "
+                 "space: desk)\n\n# Title\n\nbody\n")
+        self.assertTrue(bw.split_notes(block)[0]["body"].startswith("# Title"))
+
+
 class TheOrder(unittest.TestCase):
     def test_it_keeps_every_turn(self):
         # Nothing is held back. An earlier design reserved 30 turns to enrich

@@ -124,7 +124,9 @@ NOTE_CHARS = 1100
 # the score left the rest of the header — "daemon-hybrid, space: desk)" — as the
 # first line of every note body.
 _NOTE_HEAD = re.compile(
-    r"^### (\S+) \(kind: ([^,]+), score=([^ )]+)[^)\n]*\)[ \t]*\n?", re.M)
+    r"^### (\S+) \(kind: ([^,]+), score=([^ )]+)([^)\n]*)\)[ \t]*\n?", re.M)
+_SPACE = re.compile(r"space:\s*([A-Za-z0-9_-]+)")
+_TAGS = re.compile(r"tags:\s*\[([^\]]*)\]")
 
 
 def split_notes(block: str) -> list:
@@ -137,34 +139,145 @@ def split_notes(block: str) -> list:
     heads = list(_NOTE_HEAD.finditer(block or ""))
     if not heads:
         return [{"slug": None, "kind": None, "score": None,
+                 "space": None, "tags": [],
                  "body": (block or "").strip()}]
     out = []
     for i, m in enumerate(heads):
         end = heads[i + 1].start() if i + 1 < len(heads) else len(block)
+        tail = m.group(4) or ""
+        sp = _SPACE.search(tail)
+        tg = _TAGS.search(tail)
         out.append({"slug": m.group(1), "kind": m.group(2),
                     "score": m.group(3),
+                    "space": sp.group(1) if sp else None,
+                    "tags": [t.strip() for t in tg.group(1).split(",")
+                             if t.strip()] if tg else [],
                     "body": block[m.end():end].strip()})
     return out
 
 
+_HEADING = re.compile(r"^#\s+(.+)$", re.M)
+_STATUS = re.compile(r"\*\*Status:\*\*\s*\**\s*([^\n*(]{1,40})")
+_USER_STATED = re.compile(r"^\s*User stated:", re.M)
+_RESEARCH_ID = re.compile(r"^#\s+R\d+\b", re.M)
+
+
+def note_status(body: str) -> str:
+    """The note's own Status line, when it has one."""
+    m = _STATUS.search(body or "")
+    if not m:
+        return ""
+    return " ".join(m.group(1).split()).strip(" .—-")[:24]
+
+
+def note_title(body: str) -> str:
+    """The note's first heading, or its opening sentence.
+
+    Its own words either way. This is the one field most likely to tell the
+    operator whether the retrieval was on-topic at a glance.
+    """
+    m = _HEADING.search(body or "")
+    if m:
+        return " ".join(m.group(1).split())[:90]
+    for line in (body or "").splitlines():
+        t = line.strip()
+        if t and not t.startswith(("#", ">", "-", "*", "|", "```")):
+            return " ".join(t.split())[:90]
+    return ""
+
+
+def note_type(slug: str, kind: str, body: str, tags: list = None) -> str:
+    """What kind of thing this note is, from its slug, kind and shape.
+
+    Ordered most specific first. The declared `kind` is right when it is not
+    "unknown", which it is for about three quarters of retrieved notes — the
+    slug conventions carry the rest.
+    """
+    slug = slug or ""
+    body = body or ""
+    if slug.startswith("PLAN.archive"):
+        return "archived plan"
+    if slug == "PLAN" or slug.startswith(("PLAN-", "PLAN.")):
+        return "active plan"
+    if slug.startswith("progress"):
+        return "progress log"
+    if slug.startswith("RULE"):
+        return "frozen rule"
+    if slug.startswith(("DIAGNOSIS", "VERDICT", "PROMPT-")):
+        return "working note"
+    if kind and kind != "unknown":
+        return {"idea-incubator-research": "idea (research)",
+                "opinion-supplement": "opinion supplement",
+                "handoff-artifact": "handoff artifact"}.get(kind, kind)
+    if _USER_STATED.search(body):
+        return "captured preference"
+    # The recall header's own tags, when kind said nothing. `idea-incubator-*`
+    # and `design-*` are the ones that carry real meaning here.
+    for t in (tags or []):
+        if "idea-incubator" in t:
+            return "idea"
+        if t.startswith("design"):
+            return "design"
+    if _RESEARCH_ID.search(body) or slug.startswith("research"):
+        return "research note"
+    if slug.startswith("agentm-"):
+        return "design"
+    return "note"
+
+
+def _plural(word: str, n: int) -> str:
+    return word if n == 1 else word + "s"
+
+
+def inventory(notes: list) -> str:
+    """One line naming the shape of the retrieval."""
+    counts: dict = {}
+    for note in notes:
+        t = note_type(note["slug"], note["kind"], note["body"],
+                      note.get("tags"))
+        counts[t] = counts.get(t, 0) + 1
+    parts = [f"{n} {_plural(t, n)}"
+             for t, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+    return ", ".join(parts)
+
+
 def render_turn(n: int, item: dict) -> list:
+    notes = split_notes(item.get("context") or "")
     lines = [f"## {n}. `{item['id']}`", "", "**LABEL: ?**", "",
              "### The request", "", "```",
              (item["prompt"] or "").strip()[:3000], "```", "",
-             f"### What was retrieved ({item['n_notes']} notes)", ""]
-    for note in split_notes(item.get("context") or ""):
+             f"### What was retrieved — {item['n_notes']} notes",
+             "", f"*{inventory(notes)}*", "",
+             "| # | note | what it is | its own title |",
+             "|---|---|---|---|"]
+    for i, note in enumerate(notes, start=1):
+        slug = note["slug"] or "(unnamed block)"
+        link = f"[[{note['slug']}]]" if note["slug"] else slug
+        kind = note_type(note["slug"], note["kind"], note["body"],
+                         note.get("tags"))
+        if kind == "note" and note.get("space"):
+            kind = f"note in {note['space']}"
+        st = note_status(note["body"])
+        if st:
+            kind = f"{kind} · {st}"
+        title = note_title(note["body"]).replace("|", "\\|")
+        lines.append(f"| {i} | {link} | {kind} | {title} |")
+    lines += ["",
+              "<details>",
+              "<summary>the retrieved text — open when the table does not "
+              "settle it</summary>",
+              ""]
+    for note in notes:
         if note["slug"]:
-            lines.append(f"**[[{note['slug']}]]**  ·  {note['kind']}  ·  "
-                         f"score {note['score']}")
+            lines.append(f"**{note['slug']}**")
         body = note["body"]
         clipped = body[:NOTE_CHARS]
         lines += ["", "> " + "\n> ".join(clipped.splitlines()[:22])]
         if len(body) > len(clipped):
-            lines.append(f">")
-            lines.append(f"> *… {len(body) - len(clipped):,} more characters — "
-                         f"open the note if the opening does not settle it.*")
+            lines += [">", f"> *… {len(body) - len(clipped):,} more characters "
+                           f"— open the note itself if you need them.*"]
         lines.append("")
-    lines += ["---", ""]
+    lines += ["</details>", "", "---", ""]
     return lines
 
 
@@ -187,10 +300,16 @@ def worksheet(items: list, rubric_path: str, *, batch: int = None,
         "That is deliberate: a good reply makes thin context look sufficient, "
         "and the judge's answer is the thing being measured against you.",
         "",
-        "Each note is shown from the top, cut after about a thousand "
-        "characters. The question is whether the right material was retrieved, "
-        "which the opening usually settles — the full note is one click away "
-        "when it does not.",
+        "Each turn leads with a table of **what** was retrieved — the kind "
+        "of note, its status, and its own title. That is usually enough to say "
+        "whether the right material came back. The retrieved text is folded "
+        "underneath for when it is not, and each note links to itself for when "
+        "*that* is not enough either.",
+        "",
+        "Every field in the table comes from the note's own bytes — its "
+        "declared kind, its slug, its first heading, its Status line. Nothing "
+        "there was written by a model; a summary that was wrong would make "
+        "your label wrong with nothing on the page to show it.",
         "",
         "**Stop whenever you like, including between batches.** The order is a "
         "fixed shuffle of a sample already drawn evenly from the corpus, so any "
