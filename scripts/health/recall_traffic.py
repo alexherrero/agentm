@@ -89,6 +89,72 @@ def _text(rec: dict) -> str:
     return ""
 
 
+def _assistant_text(rec: dict) -> str:
+    """Prose *and* reasoning from one assistant record.
+
+    Thinking counts. It is where a model works over injected material, and a
+    definition that excluded it would undercount use to keep the notion tidy —
+    408 of 676 immediate children are thinking blocks, so excluding them was
+    most of why the first pass saw so little.
+    """
+    c = (rec.get("message") or {}).get("content")
+    if isinstance(c, str):
+        return c
+    if not isinstance(c, list):
+        return ""
+    out = []
+    for b in c:
+        if not isinstance(b, dict):
+            continue
+        if b.get("type") == "text":
+            out.append(b.get("text") or "")
+        elif b.get("type") == "thinking":
+            out.append(b.get("thinking") or "")
+    return "\n".join(out)
+
+
+def _is_typed_prompt(rec: dict) -> bool:
+    """A prompt the operator typed, as opposed to a tool result.
+
+    Claude Code writes tool results as `user` records too, so "the next user
+    record" is not the end of a response — it is usually the middle of one.
+    A typed prompt carries plain string content and no tool payload.
+    """
+    if rec.get("type") != "user":
+        return False
+    if rec.get("toolUseResult") is not None:
+        return False
+    c = (rec.get("message") or {}).get("content")
+    if isinstance(c, str):
+        return bool(c.strip())
+    if isinstance(c, list):
+        return not any(isinstance(b, dict) and b.get("type") == "tool_result"
+                       for b in c)
+    return False
+
+
+def _response_span(start_uuid: str, recs: list, order: dict) -> str:
+    """Every assistant word between an injection and the next typed prompt.
+
+    Walked in file order rather than by parentUuid: the uuid chain threads
+    through tool results and sidechains, and following it stops early at the
+    first tool call. File order is what "what happened next" means here.
+    """
+    i = order.get(start_uuid)
+    if i is None:
+        return ""
+    out = []
+    for rec in recs[i + 1:]:
+        if _is_typed_prompt(rec):
+            break
+        att = rec.get("attachment") or {}
+        if att.get("hookName") == HOOK_NAME:
+            break  # the next prompt's own injection
+        if rec.get("type") == "assistant" and not rec.get("isSidechain"):
+            out.append(_assistant_text(rec))
+    return "\n".join(t for t in out if t)
+
+
 def query_hash(prompt: str) -> str:
     """The ledger's key. Kept identical to `recall_counter.record_recall`."""
     return hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
@@ -124,7 +190,8 @@ def parse_stdout(payload: str) -> dict:
     return out
 
 
-def iter_injections(projects: pathlib.Path = None, include_synthetic: bool = False):
+def iter_injections(projects: pathlib.Path = None, include_synthetic: bool = False,
+                    with_text: bool = False):
     """Every recall injection found in the transcripts, with its turn.
 
     Yields dicts carrying the hook's own fields plus `prompt_hash` (never the
@@ -147,6 +214,7 @@ def iter_injections(projects: pathlib.Path = None, include_synthetic: bool = Fal
             except ValueError:
                 continue
         by_uuid = {r["uuid"]: r for r in recs if r.get("uuid")}
+        order = {r["uuid"]: n for n, r in enumerate(recs) if r.get("uuid")}
         kids = collections.defaultdict(list)
         for r in recs:
             if r.get("parentUuid"):
@@ -168,9 +236,11 @@ def iter_injections(projects: pathlib.Path = None, include_synthetic: bool = Fal
                 node = by_uuid.get(node.get("parentUuid"))
                 guard += 1
 
-            # Down to the answer: the attachment's child, not the next record.
-            answer = next((_text(k) for k in kids.get(rec.get("uuid"), [])
-                           if k.get("type") == "assistant"), None)
+            # The response span, not the single child: 408 of 676 immediate
+            # children are thinking blocks and 192 are tool calls, so reading
+            # only the child found prose on 11% of turns and called the rest
+            # answerless.
+            answer = _response_span(rec.get("uuid"), recs, order) or None
 
             row = {
                 "session": f.stem,
@@ -182,9 +252,178 @@ def iter_injections(projects: pathlib.Path = None, include_synthetic: bool = Fal
                 "answer_chars": len(answer) if answer else 0,
                 "has_answer": answer is not None,
             }
+            if with_text:
+                # In memory, for the caller's own pass. Never persisted and
+                # never printed — the module's contract is no prompt or answer
+                # text on disk, and the overlap signal only needs to count.
+                row["_answer"] = answer or ""
             row.update(parse_stderr(att.get("stderr") or ""))
             row.update(parse_stdout(att.get("stdout") or ""))
             yield row
+
+
+# ── the deterministic signal ────────────────────────────────────────────────
+#
+# Did the turn that followed an injection visibly use any of it? This is the
+# comparator any judge has to beat before it earns its cost: on human-labeled
+# data, RAGChecker found plain BLEU and ROUGE-L beating three published LLM
+# judges by three to five times, so a cheap string check is not a strawman.
+#
+# It is a **floor, not a measure**. ContextCite's finding is that what a model
+# cites and what it actually used diverge, and slug matching is weaker than
+# citation: a turn can lean entirely on an injected note while naming none of
+# it, and will be scored here as unused. Read the number as "at least this
+# often the context was demonstrably used", never as utilisation.
+
+_SLUG_SPLIT = re.compile(r"[-_]+")
+
+# A single word counts as evidence only if it is rare in the corpus of answers.
+# The first version used a hand-written stoplist and a length floor; a
+# hand-check of six real turns showed why that cannot work. "carry header_path,
+# content, and embedding together" scored a hit for the note
+# `i-want-to-put-together-to`, and 88.8% of all `used` verdicts rested on one
+# word — led by `progress`, which names 86 notes in the vault. A stoplist would
+# have to enumerate English to catch that.
+#
+# Rarity in what a model actually writes covers both ways a single word lies:
+# words that name many notes cannot say which one was read, and ordinary words
+# appear whether or not anything was read. Both are common in the corpus.
+#
+# The 1% bar follows from a contamination budget rather than tuning. Traffic
+# carries ~4.5 injected notes per turn, so at background rate p the expected
+# false positives are 4.5 * turns * p; holding that under a tenth of the
+# verdicts observed puts p near 0.014, rounded down to 0.01 for strictness.
+# See results/online-v1/RULE-single-word-evidence.md.
+RARE_MAX_TURN_SHARE = 0.01
+
+
+def _candidates(slug: str) -> list:
+    """The note's name, verbatim and with separators as spaces.
+
+    Only the whole name. Reading every surviving verdict by hand showed that
+    fragments were the entire source of contamination: `observability` matched
+    inside an unrelated `observability-email-daily.yaml`, `20260813` inside a
+    different timestamp, and `notifications` is simply an English word. A
+    fragment of a name is not the name, and it never was evidence.
+
+    Which of these two forms means anything is not decided here; rarity is
+    decided by measurement in `rare_evidence`.
+    """
+    out = [slug, slug.replace("-", " ").replace("_", " ")]
+    return sorted({o for o in out if len(o) > 6})
+
+
+# The smallest non-zero share a corpus of n turns can express is 1/n, so below
+# 1/RARE_MAX_TURN_SHARE turns nothing can qualify as rare and every run reports
+# zero. That reads as a finding about the system when it is a fact about the
+# corpus, so a short run is refused rather than answered.
+MIN_TURNS_FOR_RARITY = int(1 / RARE_MAX_TURN_SHARE) + 1
+
+
+def background_rates(answers: list, candidates) -> dict:
+    """Share of turns whose answer contains each candidate.
+
+    Measured by substring, the same way the match itself is made — a rate
+    computed by tokenizing would not describe the test being applied. Measured
+    over turns rather than occurrences, because a name written ten times in one
+    answer is still evidence from one turn.
+    """
+    lows = [(a or "").lower() for a in answers]
+    n = len(lows)
+    if not n:
+        return {}
+    return {c: sum(1 for a in lows if c in a) / n
+            for c in {x.lower() for x in candidates}}
+
+
+def rare_evidence(injections: list) -> set:
+    """Which candidate strings this corpus rarely produces on its own.
+
+    Rates are measured only for candidates that matched somewhere. One that
+    matches nowhere yields no verdict either way, so its rate cannot change an
+    answer — and skipping them turns a scan of every name against every answer
+    into a scan of a few hundred.
+    """
+    answers = [i.get("_answer") or "" for i in injections]
+    # No guard for a short corpus here, deliberately. A candidate reaches this
+    # set only by matching somewhere, so its share is at least 1/n, and below
+    # MIN_TURNS_FOR_RARITY that is already above the bar — the arithmetic does
+    # the excluding, and a guard restating it could never change an answer.
+    # `overlap_summary` is where a short run gets refused, because there the
+    # difference between "nothing qualified" and "the corpus cannot say" is
+    # visible to a reader.
+    seen = set()
+    for i, low in zip(injections, (a.lower() for a in answers)):
+        for slug in (i.get("slugs") or []):
+            seen.update(c.lower() for c in _candidates(slug) if c.lower() in low)
+    rates = background_rates(answers, seen)
+    return {c for c, r in rates.items() if r < RARE_MAX_TURN_SHARE}
+
+
+def slug_evidence(slug: str, rare: set = None) -> list:
+    """The strings whose presence would show *this* note was used.
+
+    Every candidate is held to the same bar, including the slug itself. The
+    earlier version exempted the slug and its spaced form as "identifiers, not
+    words", which is true of `agentm-auto-organization` and false of
+    `design-doc` — the phrase "design doc" appears in 1.5% of answers and
+    earned that note ten of the twenty-six verdicts then standing.
+
+    With no corpus (`rare=None`) there is no evidence at all. Rarity is the
+    whole of the test, and a single turn cannot estimate it; a floor computed
+    without the means to check should come out too low rather than too high.
+    """
+    if rare is None:
+        return []
+    return [c for c in _candidates(slug) if c.lower() in rare]
+
+
+def used_slugs(slugs: list, answer: str, rare: set = None) -> list:
+    """Which injected slugs left a visible trace in the answer."""
+    low = (answer or "").lower()
+    return [s for s in slugs
+            if any(ev.lower() in low for ev in slug_evidence(s, rare))]
+
+
+def overlap_summary(injections: list) -> dict:
+    """Injected-vs-used, over turns that carry both an injection and an answer."""
+    rows = [i for i in injections
+            if i.get("slugs") and i.get("has_answer") and i.get("_answer")]
+    if not rows:
+        return {"turns": 0, "note": "no joined turns carried both an injection "
+                                    "and an answer"}
+    if len(rows) < MIN_TURNS_FOR_RARITY:
+        return {"turns": len(rows),
+                "note": f"a corpus of {len(rows)} turns cannot tell a rare "
+                        f"note name from a common one — the smallest share it "
+                        f"can express is {1/len(rows):.1%}, above the "
+                        f"{RARE_MAX_TURN_SHARE:.0%} bar. Needs "
+                        f"{MIN_TURNS_FOR_RARITY}."}
+    rare = rare_evidence(rows)
+    per_turn, injected, used_total = [], 0, 0
+    for i in rows:
+        hit = used_slugs(i["slugs"], i["_answer"], rare)
+        injected += len(i["slugs"])
+        used_total += len(hit)
+        per_turn.append(len(hit))
+    wasted = sum(1 for n in per_turn if n == 0)
+    return {
+        "turns": len(rows),
+        "notes_injected": injected,
+        "notes_visibly_named": used_total,
+        "note_named_rate": round(used_total / injected, 4) if injected else None,
+        "turns_naming_no_note": wasted,
+        "turns_naming_no_note_rate": round(wasted / len(rows), 4),
+        "median_named_per_turn": statistics.median(per_turn),
+        "rare_evidence_strings": len(rare),
+        "rare_max_turn_share": RARE_MAX_TURN_SHARE,
+        "floor_caveat": "this counts naming, not use. A turn that leaned "
+                        "entirely on an injected note without writing its name "
+                        "scores zero here. The plan calls the second figure a "
+                        "wasted-injection rate; it is not one — models rarely "
+                        "cite context they use, and the gap between naming and "
+                        "using is what the judge exists to measure.",
+    }
 
 
 def iter_ledger(path: pathlib.Path = None):
@@ -268,13 +507,15 @@ def main(argv: list = None) -> int:
 
     try:
         ledger_rows = list(iter_ledger())
-        injections = list(iter_injections(include_synthetic=args.include_synthetic))
+        injections = list(iter_injections(
+            include_synthetic=args.include_synthetic, with_text=True))
         join = verify_join(ledger_rows, injections)
     except JoinError as exc:
         print(f"recall-traffic: {exc}", file=sys.stderr)
         return 2
 
-    out = {"summary": summarize(ledger_rows, injections), "join": join}
+    out = {"summary": summarize(ledger_rows, injections), "join": join,
+           "overlap": overlap_summary(injections)}
     if args.json:
         print(json.dumps(out, indent=2, sort_keys=True))
         return 0
@@ -297,6 +538,20 @@ def main(argv: list = None) -> int:
     print(f"  daemon latency     : median {s['daemon_ms_median']}ms")
     print(f"  budget dropped some: {s['budget_omitted_turns']} turn(s)")
     print(f"  non-zero exits     : {s['nonzero_exit']}")
+    ov = out.get("overlap") or {}
+    if ov.get("turns"):
+        print(f"\ninjected-vs-named ({ov['turns']} turns, deterministic floor)")
+        print(f"  notes injected     : {ov['notes_injected']}")
+        print(f"  named in the reply : {ov['notes_visibly_named']} "
+              f"({ov['note_named_rate']:.1%})")
+        print(f"  turns naming none  : {ov['turns_naming_no_note']} "
+              f"({ov['turns_naming_no_note_rate']:.1%})")
+        print(f"  evidence strings   : {ov['rare_evidence_strings']} note names "
+              f"rare enough to mean anything (<{ov['rare_max_turn_share']:.0%} "
+              f"of turns)")
+        print(f"  This counts naming, not use — the second figure is not a "
+              f"wasted-injection rate.")
+
     print(f"\nthe join")
     print(f"  prompts recoverable: {j['injections_with_prompt']} of {j['injections']}")
     print(f"  matched the ledger : {j['matched']} ({j['match_rate']:.1%})")
