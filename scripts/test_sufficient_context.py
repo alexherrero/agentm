@@ -525,6 +525,63 @@ class TheTwoUtilizationSignals(unittest.TestCase):
         self.assertNotIn("utilization_disagreement", got)
 
 
+class TheTruncatedRun(unittest.TestCase):
+    def _turns(self, n_sessions, per_session):
+        return [{"session": f"s{s}", "ts": f"t{i}", "prompt_hash": f"h{s}-{i}",
+                 "_prompt": "q", "_injected": "c"}
+                for s in range(n_sessions) for i in range(per_session)]
+
+    def _run(self, argv, turns, per_call=0.10):
+        import recall_traffic
+        real_iter = recall_traffic.iter_injections
+        real_call = sc.completeness_grade._call_claude_json
+        seen = []
+
+        def spy(prompt, **_kw):
+            seen.append(prompt)
+            return {"result": '{"verdict": "n/a"}', "total_cost_usd": per_call}
+
+        recall_traffic.iter_injections = lambda **_kw: iter(turns)
+        sc.completeness_grade._call_claude_json = spy
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                sc.main(argv)
+        finally:
+            recall_traffic.iter_injections = real_iter
+            sc.completeness_grade._call_claude_json = real_call
+        return seen
+
+    def test_a_capped_run_spreads_across_sessions(self):
+        # Turns arrive grouped by session. Judging in arrival order and letting
+        # the cap stop the loop takes the first few sessions entire and never
+        # reaches the rest — which is what produced a 110-turn "pool" drawn
+        # from 10 of 36 sessions.
+        turns = self._turns(n_sessions=20, per_session=10)
+        # $0.30/turn against a $6 cap judges about 20 of the 200.
+        self._run(["--sample-every", "1", "--replicates", "3",
+                   "--max-spend", "6.0"], turns)
+        # Recover which turns were judged from the order the module built.
+        keep = sc.sample_every(1)
+        ordered = [t for t in turns if keep(sc.turn_key(t))]
+        import random as _r
+        _r.Random(sc.SHUFFLE_SEED).shuffle(ordered)
+        judged = ordered[:20]
+        sessions = {t["session"] for t in judged}
+        self.assertGreater(len(sessions), 8,
+                           f"only {len(sessions)} sessions in a 20-turn cut")
+
+    def test_the_order_is_fixed_so_a_capped_run_is_reproducible(self):
+        turns = self._turns(6, 6)
+        import random as _r
+        first = list(turns)
+        _r.Random(sc.SHUFFLE_SEED).shuffle(first)
+        second = list(turns)
+        _r.Random(sc.SHUFFLE_SEED).shuffle(second)
+        self.assertEqual([t["prompt_hash"] for t in first],
+                         [t["prompt_hash"] for t in second])
+
+
 class TheCorpusStamp(unittest.TestCase):
     def _inj(self, n, session="s", start=1):
         return [{"session": session, "ts": f"2026-08-{start + i:02d}T00:00:00Z"}

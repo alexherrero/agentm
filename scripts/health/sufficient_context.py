@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import random
 import re
 import sys
 from typing import Callable, Optional
@@ -52,6 +53,8 @@ import recall_traffic  # noqa: E402
 
 MODEL = "sonnet"
 REPLICATES = 3
+# Fixed, so a truncated run is reproducible as well as unbiased.
+SHUFFLE_SEED = 20260830
 
 # The autorater's question. Three shapes of answer, and a rejection has to name
 # what is missing — `grounding.go` makes the same demand of its faithfulness
@@ -405,6 +408,7 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
     if not answers:
         return {"turn": turn.get("prompt_hash"), "verdict": None,
                 "failures": failures, "unanimous": None,
+                "n_notes": len(turn.get("slugs") or []),
                 "cost_usd": round(cost, 4)}
     verdicts = [a["verdict"] for a in answers]
     top = max(set(verdicts), key=verdicts.count)
@@ -415,6 +419,10 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
         "verdict": top,
         "unanimous": len(set(verdicts)) == 1,
         "scoreable_split": len(scoreable) > 1,
+        # How many notes were in front of the judge. Without it the pool file
+        # cannot be stratified by hit count, and a downstream reader silently
+        # gets zero for every turn.
+        "n_notes": len(turn.get("slugs") or []),
         "replicates": len(answers),
         "failures": failures,
         "cost_usd": round(cost, 4),
@@ -555,6 +563,12 @@ def main(argv: list = None) -> int:
     # from the tenth.
     rare = recall_traffic.rare_evidence(everything) if args.utilization else set()
     turns = [t for t in everything if keep(turn_key(t))]
+    # Shuffled before judging, deterministically. The spend cap stops the loop
+    # partway, and in file order that leaves a *prefix* rather than a sample —
+    # the first run of this hit its cap at 110 turns drawn from 10 of 36
+    # sessions, three of which supplied 102 of them. Shuffling first means a
+    # truncated run is still a random subset of what was selected.
+    random.Random(SHUFFLE_SEED).shuffle(turns)
     if args.limit:
         turns = turns[:args.limit]
 
