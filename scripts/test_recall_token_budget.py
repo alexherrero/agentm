@@ -848,7 +848,11 @@ class TestPromptSubmitOversizedEntries(unittest.TestCase):
         import tempfile
         recorded: dict = {}
 
-        def _capture(prompt, slugs, hits=None):
+        # `**_kw` so the double tolerates the real function's optional
+        # keywords (it gained `drops` in online-recall task 3). The
+        # assertions below are untouched — this widens a stub, it does
+        # not relax a check.
+        def _capture(prompt, slugs, hits=None, **_kw):
             recorded["hits"] = hits or []
             return {}
 
@@ -870,7 +874,11 @@ class TestPromptSubmitOversizedEntries(unittest.TestCase):
         import tempfile
         recorded: dict = {}
 
-        def _capture(prompt, slugs, hits=None):
+        # `**_kw` so the double tolerates the real function's optional
+        # keywords (it gained `drops` in online-recall task 3). The
+        # assertions below are untouched — this widens a stub, it does
+        # not relax a check.
+        def _capture(prompt, slugs, hits=None, **_kw):
             recorded["hits"] = hits or []
             return {}
 

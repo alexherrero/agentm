@@ -1882,6 +1882,7 @@ def _daemon_search(
     status: dict | None = None,
     daemon_vault: str | None = None,
     daemon_index: str | None = None,
+    drops: dict | None = None,
 ) -> list[dict] | None:
     """Ask the agentm daemon for the top-k entries relevant to `query_text`.
 
@@ -1998,21 +1999,40 @@ def _daemon_search(
     root: Path | None = None
     seen: set[str] = set()
     out: list[dict] = []
+    # Why a recall came back empty (online-recall task 3). `hits: []` alone
+    # cannot tell a retrieval miss from over-filtering, and those have opposite
+    # fixes. Counting only — every branch below already existed, and none is
+    # added, removed or reordered here.
+    if drops is not None:
+        drops.setdefault("returned", 0)
+        drops["returned"] += len(raw)
+        for _reason in ("malformed", "inadmissible", "unrooted",
+                        "out_of_scope", "deduped"):
+            drops.setdefault(_reason, 0)
+
+    def _drop(reason: str) -> None:
+        if drops is not None:
+            drops[reason] += 1
+
     for item in raw:
         if len(out) >= k:
             break
         if not isinstance(item, dict):
+            _drop("malformed")
             continue
         rel_daemon = item.get("path")
         if not isinstance(rel_daemon, str) or not rel_daemon:
+            _drop("malformed")
             continue
         if not _daemon_admissible(
             rel_daemon, include_inbox=include_inbox, include_archive=include_archive
         ):
+            _drop("inadmissible")
             continue
         if root is None:
             root = _daemon_root_for(vault, rel_daemon)
             if root is None:
+                _drop("unrooted")
                 continue
         abs_path = root / rel_daemon
         external = False
@@ -2021,10 +2041,12 @@ def _daemon_search(
         except ValueError:
             # Outside the memory root — one of the operator's own folders.
             if scope != "vault":
+                _drop("out_of_scope")
                 continue
             rel = os.path.relpath(abs_path, vault).replace(os.sep, "/")
             external = True
         if rel in dedup_paths or rel in seen:
+            _drop("deduped")
             continue
         seen.add(rel)
         try:
@@ -2128,6 +2150,10 @@ def prompt_submit(
     # exercise the degraded-graceful path without depending on machine speed.
     recall_status: dict = {}
     daemon_status: dict = {}
+    # Why an empty recall was empty (task 3). A plain dict, filled by
+    # `_daemon_search` and handed to the ledger; nothing reads it in the
+    # prompt path, so it cannot affect what gets injected.
+    daemon_drops: dict = {}
     results: list[dict] = []
     if budget_ms > 0:
         # Ask the daemon first. On a daemon-backed machine it is the only engine
@@ -2149,6 +2175,7 @@ def prompt_submit(
                     include_archive=include_archive,
                     budget_ms=min(DAEMON_BUDGET_MS, remaining_ms),
                     status=daemon_status,
+                    drops=daemon_drops,
                 )
             except Exception as e:  # noqa: BLE001 — never block the prompt
                 daemon_status.update(
@@ -2315,7 +2342,8 @@ def prompt_submit(
     # evidence alongside, for the `memory-recall trace` reader.
     try:
         from recall_counter import record_recall as _record_recall_event  # type: ignore
-        _record_recall_event(prompt, loaded_slugs, hits=kept_hits)
+        _record_recall_event(prompt, loaded_slugs, hits=kept_hits,
+                             drops=daemon_drops or None)
     except ImportError:
         pass
 
