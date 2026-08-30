@@ -253,10 +253,13 @@ def iter_injections(projects: pathlib.Path = None, include_synthetic: bool = Fal
                 "has_answer": answer is not None,
             }
             if with_text:
-                # In memory, for the caller's own pass. Never persisted and
-                # never printed — the module's contract is no prompt or answer
-                # text on disk, and the overlap signal only needs to count.
+                # In memory, for the caller's own pass. Never persisted — the
+                # module's contract is no prompt or answer text on disk. A
+                # judge needs all three: the query it is judging, the block
+                # that was injected, and what came back.
                 row["_answer"] = answer or ""
+                row["_prompt"] = prompt or ""
+                row["_injected"] = att.get("stdout") or ""
             row.update(parse_stderr(att.get("stderr") or ""))
             row.update(parse_stdout(att.get("stdout") or ""))
             yield row
