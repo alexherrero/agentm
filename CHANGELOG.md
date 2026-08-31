@@ -54,6 +54,37 @@ done means trust plus a characterized plateau, operator-ratified.
   itself on stderr and names its marker, so it never reads as a retrieval that
   came back empty.
 
+### Fixed
+
+- **A daemon refresh could leave the machine with no memory daemon and report
+  that it still had one** ([`install.sh`](install.sh)). `RunAtLoad` asks launchd
+  to spawn a job when it is bootstrapped; it does not oblige launchd to do it
+  now. With the `gui/<uid>` domain in on-demand-only mode the spawn is parked
+  instead — launchd notes `pending spawn, domain in on-demand-only mode` in its
+  own log and moves on — while `bootstrap` still returns success and the label
+  still appears in `launchctl list`, with no pid beside it. `KeepAlive` does not
+  cover the gap, because there is no process to keep alive. So a refresh booted
+  the running daemon out, loaded the new job, spent 45 seconds probing `/health`
+  against a daemon launchd had never started, and signed off with "It keeps
+  running whatever binary it already has" about a machine that was now running
+  none. Recall's daemon path is the only engine that fits the UserPromptSubmit
+  budget on a production-sized vault, so every recall came back empty from then
+  on — the [#92](https://github.com/alexherrero/agentm/issues/92) signature, a
+  broken recall reporting itself as an empty vault, reintroduced at the install
+  layer. The reload now issues an explicit `launchctl kickstart` after the
+  bootstrap, and retries once with `-k` when `/health` is still silent and the
+  job is not running.
+- **The installer's daemon warnings now describe the state they measure**
+  ([`install.sh`](install.sh)). The old message asserted port contention on
+  every health failure — "most likely something else holds port 7821" — and on
+  the run that was reported nothing held the port at all, so the one concrete
+  lead it offered pointed at a process that did not exist. The failure path now
+  looks and names what it finds: the daemon running but not answering, the port
+  held and by which process, or — the case that used to read as reassurance —
+  `STOPPED`, with the command to start it again. The "it keeps running" sentence
+  survives only where it is true, on a failure that happens before the reload
+  and so stops nothing.
+
 ### Internal
 
 - The enrichment-vocab probe (`RULE-enrichment-vocab.md`): NULL 0 of 5,

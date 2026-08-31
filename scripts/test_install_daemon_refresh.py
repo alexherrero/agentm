@@ -68,10 +68,23 @@ _GO_ENV = None
 
 
 class _HealthHandler(http.server.BaseHTTPRequestHandler):
-    """Answers /health like the daemon does, and records what was asked for."""
+    """Answers /health like the daemon does, and records what was asked for.
+
+    `server.gate` is how a test says the daemon is not up yet. None — the
+    default — is the old unconditional behavior. A Path answers only once that
+    file exists, which is how the launchctl stub models launchd: bootstrapping
+    a job loads it, and only a spawn makes anything listen. A gate pointing at
+    a file nothing ever creates is a daemon that cannot come up at all.
+    """
 
     def do_GET(self) -> None:
         self.server.paths.append(self.path)
+        gate = getattr(self.server, "gate", None)
+        if gate is not None and not gate.exists():
+            self.send_response(503)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         body = b'{"status":"ok"}'
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -119,6 +132,7 @@ class DaemonRefreshBase(unittest.TestCase):
 
         # A launchctl that always succeeds and records what it was asked to do.
         self.calls = self.root / "launchctl-calls.txt"
+        self.started = self.root / "job-started"
         self.stub = self.root / "launchctl-stub"
         self.stub.write_text(
             "#!/usr/bin/env bash\n"
@@ -128,6 +142,13 @@ class DaemonRefreshBase(unittest.TestCase):
             'if [[ "$1" == "print" ]]; then\n'
             f'  grep -q "^bootstrap" {self.calls} 2>/dev/null && exit 0\n'
             "  exit 1\n"
+            "fi\n"
+            # The distinction the production bug turned on: bootstrap LOADS a
+            # job, kickstart STARTS it. Only the second one makes anything
+            # listen. Recorded here as a marker file so a test can gate the
+            # health server on it and see which of the two install.sh relies on.
+            'if [[ "$1" == "kickstart" ]]; then\n'
+            f'  : > {self.started}\n'
             "fi\n"
             "exit 0\n"
         )
@@ -156,6 +177,7 @@ class DaemonRefreshBase(unittest.TestCase):
         # answer for a daemon this test never started.
         self.health = http.server.HTTPServer(("127.0.0.1", 0), _HealthHandler)
         self.health.paths = []
+        self.health.gate = None  # unconditionally healthy; see _HealthHandler
         self.health_port = self.health.server_address[1]
         threading.Thread(target=self.health.serve_forever, daemon=True).start()
 
@@ -335,6 +357,15 @@ class TestRefreshFailsLoudlyNotFatally(DaemonRefreshBase):
         )
         self.assertIn("brew install go", combined,
                       "the warning does not name the fix")
+        # The other half of the two-state message. This failure happens before
+        # anything is stopped, so "it keeps running" is true here — and here is
+        # the only kind of place it is. Asserted so the sentence stays where it
+        # belongs rather than being deleted along with the case it was wrong in.
+        self.assertIn(
+            "keeps running whatever binary it already has", combined,
+            "a refresh that failed before touching launchd no longer says the "
+            f"daemon it left alone is still running.\n{combined}",
+        )
 
 
 class TestTheMachinesCachesAreReused(DaemonRefreshBase):
@@ -469,6 +500,183 @@ class TestTheHealthCheckProbesTheConfiguredPort(DaemonRefreshBase):
             "127.0.0.1:7821", r.stdout,
             "the install named the default port while configured for "
             f"{self.health_port}\n{r.stdout}",
+        )
+
+
+class TestTheReloadStartsTheJobItLoaded(DaemonRefreshBase):
+    """A bootstrapped job is loaded, not started, and the difference is silent.
+
+    `RunAtLoad` asks launchd to spawn a job when it is bootstrapped; it does not
+    oblige launchd to do it now. With the gui/<uid> domain in on-demand-only
+    mode the spawn is parked — launchd logs `pending spawn, domain in
+    on-demand-only mode` and moves on — while `bootstrap` still returns success
+    and the label still shows in `launchctl list` with no pid beside it.
+    `KeepAlive` does not cover it either: there is no process to keep alive.
+
+    That is not hypothetical. A refresh booted the running daemon out, loaded
+    the new job, waited out its /health probe against a daemon launchd had
+    never started, and left the machine with no memory daemon at all — every
+    recall silently empty from then on.
+
+    The fixture models exactly that split: the health server answers only once
+    the stub has seen a `kickstart`, so an install that relies on bootstrap
+    alone gets the same 45 seconds of nothing it got in production.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.health.gate = self.started
+
+    @unittest.skipUnless(shutil.which("go"), "needs Go to build the daemon")
+    @unittest.skipUnless(platform.system() == "Darwin", "launchd is macOS-only")
+    def test_the_refresh_leaves_a_live_health_endpoint(self) -> None:
+        self.preinstall_plist()
+        r = self.run_install()
+
+        self.assertEqual(r.returncode, 0, f"install failed:\n{r.stdout}\n{r.stderr}")
+        combined = r.stdout + r.stderr
+        self.assertIn(
+            "answering on", r.stdout,
+            "the refresh finished without a daemon answering /health: it loaded "
+            "the job and never started it, which is the parked-spawn failure "
+            f"that leaves recall silently empty.\n{combined}",
+        )
+        self.assertNotIn(
+            "did not come back up", combined,
+            f"the daemon never came up after the reload\n{combined}",
+        )
+
+        calls = self.launchctl_calls().splitlines()
+        kick = [i for i, c in enumerate(calls) if c.split()[:1] == ["kickstart"]]
+        boot = [i for i, c in enumerate(calls) if c.split()[:1] == ["bootstrap"]]
+        self.assertTrue(
+            kick,
+            "the reload never issued a kickstart, so the job it bootstrapped "
+            f"was only ever loaded: {calls!r}",
+        )
+        self.assertTrue(boot, f"the agent was never bootstrapped: {calls!r}")
+        self.assertGreater(
+            kick[0], boot[0],
+            "the kickstart came before the bootstrap, so it started whatever "
+            f"was loaded beforehand rather than the job just installed: {calls!r}",
+        )
+
+
+class TheDaemonCannotComeUp(DaemonRefreshBase):
+    """Base for the two failure-message tests: a daemon that never answers.
+
+    The gate points at a file nothing creates, so /health stays down through
+    both the first probe and the kickstart retry. AGENTM_DAEMON_HEALTH_TIMEOUT
+    keeps that from costing 90 seconds of wall clock; it bounds the wait only,
+    never which branch install.sh takes or what it prints.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.health.gate = self.root / "nothing-ever-creates-this"
+
+    def run_failing_install(self):
+        self.preinstall_plist()
+        return self.run_install(
+            env=self.install_env(AGENTM_DAEMON_HEALTH_TIMEOUT="2")
+        )
+
+
+class TestTheFailureMessageMatchesTheRealState(TheDaemonCannotComeUp):
+    """A reload that fails must not describe a daemon that is still running.
+
+    The message this pins replaced one that said "It keeps running whatever
+    binary it already has" on every failure. After a bootout that sentence is
+    false, and false in the reassuring direction: the operator read a caveat
+    about a possibly-stale daemon while the machine actually had none, and
+    every recall returned nothing until they noticed by hand.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        # Free the port so nothing is listening on it — the state that was
+        # reported as port contention when the real answer was "not started".
+        # Done after super().setUp() wrote the config, so the port install.sh
+        # probes is still the one this test owns; it is simply now vacant.
+        self.health.shutdown()
+        self.health.server_close()
+        self.health_closed = True
+
+    def tearDown(self) -> None:
+        if not getattr(self, "health_closed", False):
+            self.health.shutdown()
+            self.health.server_close()
+        self.tmp.cleanup()
+
+    @unittest.skipUnless(shutil.which("go"), "needs Go to build the daemon")
+    @unittest.skipUnless(platform.system() == "Darwin", "launchd is macOS-only")
+    def test_a_stopped_daemon_is_reported_as_stopped(self) -> None:
+        r = self.run_failing_install()
+
+        self.assertEqual(
+            r.returncode, 0,
+            "a daemon that would not come back up aborted the whole install\n"
+            f"{r.stdout}\n{r.stderr}",
+        )
+        combined = r.stdout + r.stderr
+        self.assertIn(
+            "STOPPED", combined,
+            "the install left the machine with no running daemon and did not "
+            f"say so.\n{combined}",
+        )
+        self.assertNotIn(
+            "keeps running whatever binary it already has", combined,
+            "the install claimed the daemon kept running after it had booted "
+            "it out and failed to bring it back — the machine has none, and "
+            f"this sentence is why that went unnoticed.\n{combined}",
+        )
+
+    @unittest.skipUnless(shutil.which("go"), "needs Go to build the daemon")
+    @unittest.skipUnless(platform.system() == "Darwin", "launchd is macOS-only")
+    def test_an_unheld_port_is_not_blamed_for_the_failure(self) -> None:
+        """Second angle: the diagnosis has to be measured, not assumed.
+
+        The old message asserted "most likely something else holds port N" on
+        every health failure. Nothing held it in the case that was reported —
+        `lsof` came back empty — so the one concrete lead the operator was
+        given pointed at a process that did not exist.
+        """
+        r = self.run_failing_install()
+        combined = r.stdout + r.stderr
+        self.assertNotIn(
+            "something else holds port", combined,
+            "the install blamed port contention for a port nothing is "
+            f"listening on.\n{combined}",
+        )
+        self.assertIn(
+            "nothing is listening", combined,
+            "the install did not report what it found on the port it could not "
+            f"reach.\n{combined}",
+        )
+
+
+class TestAHeldPortIsNamed(TheDaemonCannotComeUp):
+    """When the port IS held, say so — and say what holds it.
+
+    The mirror of the test above. Port contention is a real failure mode and
+    the message should name it; the bug was asserting it unconditionally. Here
+    the fixture's own health server holds the port and refuses to answer, so
+    `lsof` has something true to find.
+    """
+
+    @unittest.skipUnless(shutil.which("go"), "needs Go to build the daemon")
+    @unittest.skipUnless(platform.system() == "Darwin", "launchd is macOS-only")
+    def test_the_port_holder_is_identified(self) -> None:
+        r = self.run_failing_install()
+        combined = r.stdout + r.stderr
+        self.assertIn(
+            f"port {self.health_port} is held by", combined,
+            "something was listening on the port the daemon needed and the "
+            f"install did not name it.\n{combined}",
+        )
+        self.assertIn(
+            "STOPPED", combined,
+            f"a daemon that could not bind its port was not reported as down.\n{combined}",
         )
 
 
