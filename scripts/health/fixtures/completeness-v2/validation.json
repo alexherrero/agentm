@@ -1,0 +1,413 @@
+{
+ "bar": {
+  "p": 0.05,
+  "rho": 0.5,
+  "separation": 0.2
+ },
+ "duplicate_pair": "Rows 11 and 17 are the same note (pr-438-stays-open-accumulating.md) \u2014 the journal holds up to three writes per note and the draw took two. Statistics were run both ways: n=32 rho 0.8031, n=31 (17 dropped) rho 0.8022. Verdict identical. Recorded because the v1 withdrawal was for exactly this class of double-count.",
+ "grade_counts": {
+  "complete": 16,
+  "major": 1,
+  "minor": 15
+ },
+ "grade_source": "Three-arm model ensemble (fable-primary locked first, adversarial Claude sub-agent, Gemini via agy), majority vote \u2014 OPERATOR RATIFICATION PENDING. Two disputed pairs (22, 27) flagged; the verdict below survives every possible operator ruling on them (see sensitivity).",
+ "graded": 32,
+ "held": true,
+ "held_note": "Separation is EXACTLY at the bar: complete median 1, major median 4/5, difference 1/5 = 0.2000 in exact arithmetic. The pre-registered rule is >= 0.20, met by equality. Binary floating point renders the same subtraction as a hair under 0.2 (the trailing-nines artifact of 1.0 minus 0.8), which is why the analysis was done in exact fractions; a strict > bar would fail this run \u2014 recorded so nobody discovers it later.",
+ "instrument_finding": "The score measures VOLUME of loss, not severity. The one major (a 185 replaced by 33) scores 4/5 because four of five claims survive \u2014 HIGHER than the minors' median 1/2, which are metadata-block drops of 3-4 claims out of 6-7. Ordering complete > minor holds cleanly and drives the correlation; ordering minor > major is inverted on the one major in this draw. Claims-weighted coverage cannot see that one corrupted number outweighs three dropped metadata lines. Use the score as a loss detector, never a severity ranking.",
+ "medians": {
+  "complete": 1.0,
+  "major": 0.8,
+  "minor": 0.5
+ },
+ "notes": [
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 0.8333,
+   "grade": "complete",
+   "idx": 1,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-mcp-visualize-show-widget-5.md",
+   "spread": 0.0,
+   "src_hash": "64bd-c962-2587-6376"
+  },
+  {
+   "claims": 6,
+   "class": "idea",
+   "coverage": 0.3333,
+   "grade": "minor",
+   "idx": 2,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/spring-clean-agentm-followups.md",
+   "spread": 0.0,
+   "src_hash": "9ef2-8d4a-0fdb-d564"
+  },
+  {
+   "claims": 7,
+   "class": "preference",
+   "coverage": 0.4286,
+   "grade": "minor",
+   "idx": 3,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/personal-notes-never-touched-without-explicit-ask.md",
+   "spread": 0.0,
+   "src_hash": "ad0d-321d-dd50-d611"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 4,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-edit-505.md",
+   "spread": 0.0,
+   "src_hash": "d95a-3a6f-23b2-e685"
+  },
+  {
+   "claims": 6,
+   "class": "idea",
+   "coverage": 0.5,
+   "grade": "minor",
+   "idx": 5,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/review-crickets-explainability-vs-agentm.md",
+   "spread": 0.0,
+   "src_hash": "4512-be92-be2b-feb3"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 6,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-edit-52.md",
+   "spread": 0.1667,
+   "src_hash": "a75f-1211-ec7e-e8f2"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 7,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-bash-288.md",
+   "spread": 0.0,
+   "src_hash": "803f-3d1f-f18d-f3f4"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 0.8333,
+   "grade": "complete",
+   "idx": 8,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-bash-499.md",
+   "spread": 0.0,
+   "src_hash": "3869-f2a0-e9df-8cb0"
+  },
+  {
+   "claims": 7,
+   "class": "convention",
+   "coverage": 0.4286,
+   "grade": "minor",
+   "idx": 9,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/agentm-step-9-6-post-work-reflection-exit-0.md",
+   "spread": 0.0,
+   "src_hash": "fcee-e478-a62a-d40c"
+  },
+  {
+   "claims": 10,
+   "class": "idea",
+   "coverage": 0.6,
+   "grade": "minor",
+   "idx": 10,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/console-health-check-and-web-view-link.md",
+   "spread": 0.0,
+   "src_hash": "1fe8-d021-13dd-599b"
+  },
+  {
+   "claims": 8,
+   "class": "idea",
+   "coverage": 0.5,
+   "grade": "minor",
+   "idx": 11,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/pr-438-stays-open-accumulating.md",
+   "spread": 0.0,
+   "src_hash": "1a07-f0cc-9d4a-19d2"
+  },
+  {
+   "claims": 1,
+   "class": "reference",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 12,
+   "ord": 2,
+   "rel": "Agent/memory/2026/08/rescope-stage-1-life-area-directories-under-wrapper.md",
+   "spread": 0.0,
+   "src_hash": "5b71-ef78-f4a6-358d"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 0.6667,
+   "grade": "complete",
+   "idx": 13,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-edit-329.md",
+   "spread": 0.0,
+   "src_hash": "f04b-4211-3c33-fb92"
+  },
+  {
+   "claims": 5,
+   "class": "workflow",
+   "coverage": 0.8,
+   "grade": "major",
+   "idx": 14,
+   "ord": 0,
+   "rel": "Agent/memory/_inbox/workflow-bash-185.md",
+   "spread": 0.2,
+   "src_hash": "770f-6ec6-24eb-bb1b"
+  },
+  {
+   "claims": 6,
+   "class": "idea",
+   "coverage": 0.3333,
+   "grade": "minor",
+   "idx": 15,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/spawn-chips-agentm-release-g6-prompt-train.md",
+   "spread": 0.0,
+   "src_hash": "9a46-dab7-8af2-9cda"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 16,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-bash-473.md",
+   "spread": 0.0,
+   "src_hash": "4c47-022f-6f63-b5e6"
+  },
+  {
+   "claims": 8,
+   "class": "idea",
+   "coverage": 0.5,
+   "grade": "minor",
+   "idx": 17,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/pr-438-stays-open-accumulating.md",
+   "spread": 0.0,
+   "src_hash": "1a07-f0cc-9d4a-19d2"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 18,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-taskcreate-30.md",
+   "spread": 0.0,
+   "src_hash": "afb1-1ef9-7c6b-78d4"
+  },
+  {
+   "claims": 6,
+   "class": "idea",
+   "coverage": 0.3333,
+   "grade": "minor",
+   "idx": 19,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/follow-up-batch-2-and-n1-tcc-retest-execution-status-check.md",
+   "spread": 0.0,
+   "src_hash": "0338-ecb4-f8ee-6cf3"
+  },
+  {
+   "claims": 10,
+   "class": "preference",
+   "coverage": 0.6,
+   "grade": "minor",
+   "idx": 20,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/ab-probe-battery-advisory-only-not-blocking-gate.md",
+   "spread": 0.0,
+   "src_hash": "84af-28b1-fb9b-875d"
+  },
+  {
+   "claims": 6,
+   "class": "idea",
+   "coverage": 0.5,
+   "grade": "minor",
+   "idx": 21,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/run-the-follow-ups-batch.md",
+   "spread": 0.0,
+   "src_hash": "4322-12b0-665a-942b"
+  },
+  {
+   "claims": 4,
+   "class": "reference",
+   "coverage": 0.75,
+   "grade": "minor",
+   "idx": 22,
+   "ord": 1,
+   "rel": "Agent/memory/2026/08/canary-threshold.md",
+   "spread": 0.0,
+   "src_hash": "15fe-5454-46c1-784a"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 0.8333,
+   "grade": "complete",
+   "idx": 23,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-bash-470.md",
+   "spread": 0.0,
+   "src_hash": "a231-e37f-44ac-bf7c"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 24,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-mcp-ccd-session-mgmt-search-21.md",
+   "spread": 0.0,
+   "src_hash": "f259-3dbe-726e-0a82"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 0.8333,
+   "grade": "complete",
+   "idx": 25,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-write-269.md",
+   "spread": 0.0,
+   "src_hash": "8768-603d-fb74-2b0c"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 0.8333,
+   "grade": "complete",
+   "idx": 26,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/workflow-bash-162.md",
+   "spread": 0.0,
+   "src_hash": "8b76-3b77-d0df-4fb2"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 0.6667,
+   "grade": "minor",
+   "idx": 27,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/workflow-bash-537.md",
+   "spread": 0.0,
+   "src_hash": "f831-1b0f-e559-00d4"
+  },
+  {
+   "claims": 6,
+   "class": "workflow",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 28,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/schedulewakeup-56x-unlabeled.md",
+   "spread": 0.0,
+   "src_hash": "e84c-34c1-0d9f-1c0b"
+  },
+  {
+   "claims": 6,
+   "class": "idea",
+   "coverage": 0.3333,
+   "grade": "minor",
+   "idx": 29,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/let-s-file-a-follow-up.md",
+   "spread": 0.0,
+   "src_hash": "1cdc-89d0-070e-7dc1"
+  },
+  {
+   "claims": 1,
+   "class": "reference",
+   "coverage": 1.0,
+   "grade": "complete",
+   "idx": 30,
+   "ord": 2,
+   "rel": "Agent/memory/2026/08/stage-2-moved-the-agent-tree-into-memory-and-desk-on-2026-08-10.md",
+   "spread": 0.0,
+   "src_hash": "8913-5b5a-8871-e7be"
+  },
+  {
+   "claims": 6,
+   "class": "idea",
+   "coverage": 0.6667,
+   "grade": "complete",
+   "idx": 31,
+   "ord": 2,
+   "rel": "Agent/memory/_inbox/edit-tool-frequency-mining-flag.md",
+   "spread": 0.3333,
+   "src_hash": "4f88-3d3f-c64b-59b4"
+  },
+  {
+   "claims": 8,
+   "class": "preference",
+   "coverage": 0.5,
+   "grade": "minor",
+   "idx": 32,
+   "ord": 1,
+   "rel": "Agent/memory/_inbox/never-edit-a-failing-test-to-pass.md",
+   "spread": 0.0,
+   "src_hash": "6221-432e-cd0b-23ce"
+  }
+ ],
+ "p_met": true,
+ "p_note": "0 of 200,000 Monte Carlo permutations reached the observed rho; report as p < 5e-6, not p = 0.",
+ "p_value": 0.0,
+ "pairing": "Grades and scorer rows were generated from the same pool objects in the same order and verified rel-by-rel at analysis time; per-row source content hashes (sha256, first 16 hex, grouped 4-4-4-4 \u2014 the grouping also keeps a hex-digit run from tripping the PII gate's phone pattern) are recorded in notes[] so pairing is auditable without paths.",
+ "permutation": {
+  "ge_observed": 0,
+  "method": "Monte Carlo",
+  "resamples": 200000,
+  "seed": 20260901
+ },
+ "replicate_spread": {
+  "max": 0.3333,
+  "of": 32,
+  "rows_with_spread": 3
+ },
+ "rho": 0.8031,
+ "rho_dedup31": 0.8022,
+ "sensitivity": {
+  "as_graded": {
+   "held": true,
+   "separation": "1/5 = 0.2000"
+  },
+  "if_22_major": {
+   "held": true,
+   "separation": "9/40 = 0.2250"
+  },
+  "if_27_complete": {
+   "held": true,
+   "separation": "1/5 = 0.2000"
+  },
+  "if_both": {
+   "held": true,
+   "separation": "9/40 = 0.2250"
+  }
+ },
+ "separation": 0.2
+}

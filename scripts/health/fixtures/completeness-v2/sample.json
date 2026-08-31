@@ -1,0 +1,243 @@
+{
+  "bar": "unchanged: rho >= 0.50, p < 0.05, separation >= 0.20",
+  "disjoint_from_v1": true,
+  "drawn": "2026-08-28",
+  "notes": {
+    "1": {
+      "at": "2026-08-27T16:02:54.270091Z",
+      "before_sha": "58a2-8759-ba80-2ba1",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-mcp-visualize-show-widget-5.md"
+    },
+    "10": {
+      "at": "2026-08-27T13:52:16.741354Z",
+      "before_sha": "763f-c6dd-5665-ba82",
+      "claims": 10,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/console-health-check-and-web-view-link.md"
+    },
+    "11": {
+      "at": "2026-08-27T14:02:02.168373Z",
+      "before_sha": "d773-0763-54f1-c928",
+      "claims": 5,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/pr-438-stays-open-accumulating.md"
+    },
+    "12": {
+      "at": "2026-08-21T15:52:24.717304Z",
+      "before_sha": "60e8-bbb8-1c92-43e0",
+      "claims": 1,
+      "class": "reference",
+      "rel": "Agent/memory/2026/08/rescope-stage-1-life-area-directories-under-wrapper.md"
+    },
+    "13": {
+      "at": "2026-08-27T15:34:19.794271Z",
+      "before_sha": "9db6-a457-f4e5-7d28",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-edit-329.md"
+    },
+    "14": {
+      "at": "2026-08-27T14:13:29.960518Z",
+      "before_sha": "6b07-0cb0-cb0e-0417",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/workflow-bash-185.md"
+    },
+    "15": {
+      "at": "2026-08-27T16:53:18.781843Z",
+      "before_sha": "e705-0813-3238-57d3",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/spawn-chips-agentm-release-g6-prompt-train.md"
+    },
+    "16": {
+      "at": "2026-08-27T14:54:35.514147Z",
+      "before_sha": "a7f8-dcd6-3f86-cb05",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-473.md"
+    },
+    "17": {
+      "at": "2026-08-21T15:25:40.730124Z",
+      "before_sha": "221f-0ee4-c483-3c11",
+      "claims": 8,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/pr-438-stays-open-accumulating.md"
+    },
+    "18": {
+      "at": "2026-08-27T16:29:17.015336Z",
+      "before_sha": "3cb1-4c2d-81f0-9f66",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-taskcreate-30.md"
+    },
+    "19": {
+      "at": "2026-08-27T13:52:49.203342Z",
+      "before_sha": "f4fa-135b-050e-12b3",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/follow-up-batch-2-and-n1-tcc-retest-execution-status-check.md"
+    },
+    "2": {
+      "at": "2026-08-27T14:03:21.491192Z",
+      "before_sha": "b253-a9df-2630-cfa0",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/spring-clean-agentm-followups.md"
+    },
+    "20": {
+      "at": "2026-08-21T15:26:56.12632Z",
+      "before_sha": "743b-786e-dc2b-748e",
+      "claims": 10,
+      "class": "preference",
+      "rel": "Agent/memory/_inbox/ab-probe-battery-advisory-only-not-blocking-gate.md"
+    },
+    "21": {
+      "at": "2026-08-27T14:02:34.309119Z",
+      "before_sha": "f8f5-1302-f629-10f0",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/run-the-follow-ups-batch.md"
+    },
+    "22": {
+      "at": "2026-08-21T15:51:59.141516Z",
+      "before_sha": "8068-f3cd-83bb-121e",
+      "claims": 4,
+      "class": "reference",
+      "rel": "Agent/memory/2026/08/canary-threshold.md"
+    },
+    "23": {
+      "at": "2026-08-27T14:53:42.461921Z",
+      "before_sha": "1945-35c6-6c21-fab9",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-470.md"
+    },
+    "24": {
+      "at": "2026-08-27T15:54:03.245858Z",
+      "before_sha": "365e-b05c-4f0b-2e88",
+      "claims": 3,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/workflow-mcp-ccd-session-mgmt-search-21.md"
+    },
+    "25": {
+      "at": "2026-08-27T16:45:00.517057Z",
+      "before_sha": "e7d9-95a0-8032-dec9",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-write-269.md"
+    },
+    "26": {
+      "at": "2026-08-27T14:15:27.375699Z",
+      "before_sha": "820d-d0d0-1611-8ae3",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-162.md"
+    },
+    "27": {
+      "at": "2026-08-27T15:06:24.566984Z",
+      "before_sha": "599e-2086-eec6-56b4",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-537.md"
+    },
+    "28": {
+      "at": "2026-08-27T16:21:24.127814Z",
+      "before_sha": "dbae-c150-6d4b-4c0b",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/schedulewakeup-56x-unlabeled.md"
+    },
+    "29": {
+      "at": "2026-08-27T13:57:13.2044Z",
+      "before_sha": "fd4e-fb7c-e984-3849",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/let-s-file-a-follow-up.md"
+    },
+    "3": {
+      "at": "2026-08-21T15:32:58.56911Z",
+      "before_sha": "a65c-3969-7351-d3e0",
+      "claims": 7,
+      "class": "preference",
+      "rel": "Agent/memory/_inbox/personal-notes-never-touched-without-explicit-ask.md"
+    },
+    "30": {
+      "at": "2026-08-21T15:51:08.765651Z",
+      "before_sha": "4e3c-070f-ae14-5876",
+      "claims": 1,
+      "class": "reference",
+      "rel": "Agent/memory/2026/08/stage-2-moved-the-agent-tree-into-memory-and-desk-on-2026-08-10.md"
+    },
+    "31": {
+      "at": "2026-08-27T15:39:28.823411Z",
+      "before_sha": "7170-b71f-5250-bedc",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/edit-tool-frequency-mining-flag.md"
+    },
+    "32": {
+      "at": "2026-08-21T15:28:59.432227Z",
+      "before_sha": "8d74-33be-6c4c-60ca",
+      "claims": 8,
+      "class": "preference",
+      "rel": "Agent/memory/_inbox/never-edit-a-failing-test-to-pass.md"
+    },
+    "4": {
+      "at": "2026-08-27T15:40:27.398744Z",
+      "before_sha": "65d9-80d2-2648-93a9",
+      "claims": 4,
+      "class": "reference",
+      "rel": "Agent/memory/_inbox/workflow-edit-505.md"
+    },
+    "5": {
+      "at": "2026-08-27T13:47:17.657582Z",
+      "before_sha": "df10-38d1-5636-f6da",
+      "claims": 6,
+      "class": "idea",
+      "rel": "Agent/memory/_inbox/review-crickets-explainability-vs-agentm.md"
+    },
+    "6": {
+      "at": "2026-08-27T15:40:59.752508Z",
+      "before_sha": "2624-7931-cff1-5da1",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-edit-52.md"
+    },
+    "7": {
+      "at": "2026-08-27T14:27:23.033423Z",
+      "before_sha": "b961-e8ca-9a8a-5467",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-288.md"
+    },
+    "8": {
+      "at": "2026-08-27T14:58:49.96644Z",
+      "before_sha": "9691-7fed-809d-6acf",
+      "claims": 6,
+      "class": "workflow",
+      "rel": "Agent/memory/_inbox/workflow-bash-499.md"
+    },
+    "9": {
+      "at": "2026-08-21T15:24:13.389198Z",
+      "before_sha": "80dc-dc7f-f1fd-e858",
+      "claims": 7,
+      "class": "convention",
+      "rel": "Agent/memory/_inbox/agentm-step-9-6-post-work-reflection-exit-0.md"
+    }
+  },
+  "population": 304,
+  "population_by_class": {
+    "convention": 1,
+    "idea": 13,
+    "preference": 3,
+    "reference": 4,
+    "workflow": 283
+  },
+  "rubric": "../completeness-v1/RUBRIC.md @ 740a215 \u2014 unchanged",
+  "seed": 20260829,
+  "stratified": "Round-robin across classes, as v1 was, so the by-class report has a cell per class. The sample is therefore not representative of the population and is not a corpus-wide figure.",
+  "supersedes": "completeness-v1, which failed the bar at rho 0.1065"
+}

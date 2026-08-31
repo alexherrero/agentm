@@ -1,0 +1,31 @@
+{
+ "bar": {
+  "faithful_min": 0.8,
+  "gutted_max": 0.5
+ },
+ "construction": "v1's construction reused: the faithful arm is the real enrichment rewrite; the gutted arm is the note's first claim alone standing in as the rewrite. Two v2 notes, both ensemble-graded complete, 6 claims each.",
+ "faithful_above_floor": true,
+ "gutted_below_ceiling": true,
+ "held": true,
+ "min_claims": 3,
+ "notes": [
+  {
+   "claims": 6,
+   "faithful": 0.8333,
+   "faithful_spread": 0.0,
+   "gutted": 0.3333,
+   "gutted_expected": 0.1667,
+   "gutted_spread": 0.1667,
+   "rel": "Agent/memory/_inbox/workflow-mcp-visualize-show-widget-5.md"
+  },
+  {
+   "claims": 6,
+   "faithful": 1.0,
+   "faithful_spread": 0.0,
+   "gutted": 0.3333,
+   "gutted_expected": 0.1667,
+   "gutted_spread": 0.0,
+   "rel": "Agent/memory/_inbox/workflow-bash-473.md"
+  }
+ ]
+}
