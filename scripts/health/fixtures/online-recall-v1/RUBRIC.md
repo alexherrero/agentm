@@ -55,16 +55,121 @@ a labels-only population estimate with a Wilson interval are all unaffected and
 will be reported. PPI will produce a point estimate and no interval, and will
 say so.
 
+## Amendment, 2026-08-30 (second) — two questions, because one was doing the work of both
+
+**What happened.** The operator labelled twenty turns and agreement with the
+judges came out at **κ = 0.008** against Claude and **0.017** against Gemini —
+zero, with the disagreement running one way on 17 of 20. Asked which reading
+they had applied, they confirmed: *was the retrieval reasonable and on-topic*,
+not *could these notes alone answer it*.
+
+**That is not a mistake, and the labels were not discarded.** The two questions
+catch different failures, and the pair says more than either:
+
+| | fails when |
+|---|---|
+| **relevant** | recall returned the wrong area entirely — a coverage or vocabulary failure |
+| **sufficient** *while relevant passes* | recall found the right area but not the note that answers it — a **ranking** failure |
+
+Task 6 found the `ignored` corner empty: the model is not discarding good
+context. So if most retrievals are relevant while few are sufficient, the
+diagnosis is precision rather than coverage, and those have different fixes.
+The twenty labels already written are kept as **relevance** judgements.
+
+**The wording that failed, and why it kept failing.** Three disagreements in
+this task have now come from the same omission: the rubric never said *what the
+reader is assumed to know*. "Could the notes alone answer the request" reads
+one way if the reader is you — carrying the conversation, the repo and the
+month's history — and another if the reader knows nothing. Both readings are
+reasonable; only one was intended. It is stated below rather than implied.
+
+**Where the judge is also wrong.** On one turn — "are we in any arc right now
+in the blog?" with the archived June arc plan retrieved — the judge demanded
+"current status as of today" and marked it insufficient. This rubric says
+inference from what is there counts, and a reader holding "the last arc closed
+2026-06-27" can answer that question. The judge is stricter than its own
+instructions on exactly this move, and that is a defect on its side, not the
+operator's.
+
+## Amendment, 2026-08-30 (third) — adjudication, and what it gives up
+
+**The operator overruled the blind design, with a better argument than the one
+I made for it.** On the "close the june plan" turn they had marked `sufficient`
+without noticing that no June-dated plan was among the three retrieved — May
+24, May 28, July 24. Their point: an unaided label made in ignorance of that
+fact is not ground truth, it is a mistake, and κ against a mistake measures
+nothing. My reasoning had assumed unaided labelling produces *correct* labels.
+It produces *independent* ones, which is not the same thing.
+
+**So the worksheet now shows the machine's verdict and its reasoning, and the
+operator rules on it.** Their ruling is final and is what the judge is measured
+against.
+
+**What that forfeits, stated plainly.** Agreement measured after the operator
+has seen a verdict is not chance-corrected independent agreement, and κ over
+these labels is never reported as if it were. The one honest blind number this
+task will ever have is the twenty labels already written: κ = 0.008 against
+Claude, 0.017 against Gemini, with the disagreement running one way on 17 of 20.
+That stands as the unaided figure and is reported as such — noisy at n=20, and
+collected under the relevance reading rather than this one, both of which are
+said wherever it appears.
+
+**What it buys.** An adjudicated gold set: labels where a careful reader checked
+the reasoning and ruled. That is how most evaluation sets are actually built,
+and it is more accurate per item than anything unaided. The judge is then
+measured as accuracy against those rulings, which is a real number with a
+different name.
+
+**Two guards against the obvious failure**, which is the operator deferring to a
+machine that sounds confident:
+
+1. **Both models are shown when they disagree.** Where Claude and Gemini differ
+   the sheet says so and gives both. A reader cannot defer to consensus that
+   does not exist, and the models differ on roughly a fifth of turns.
+2. **The facts are shown separately from the verdict.** Every word of the
+   request is checked against everything retrieved, and both the found and the
+   missing lists are printed in full — uniformly, every turn, chosen by nobody.
+   That is the fact the operator missed on the June turn (`june` appears
+   nowhere in three retrieved plans) and it is stated without a verdict
+   attached, so it supports a judgement rather than replacing one.
+
 ## The question you are answering
 
 For each turn you will see **the request** made to the coding assistant and
 **the notes that were automatically injected** alongside it.
 
-> **Could the injected notes alone have answered the request?**
+**Two ticks per turn.** They are separate questions and a turn can pass one and
+fail the other — that combination is the most informative outcome there is.
+
+> **RELEVANT — did recall return material in the right area?**
+>
+> Yes if the notes are about the thing being asked about, even when they do not
+> settle it. No if they are about something else. This is a judgement about
+> whether retrieval aimed correctly.
+
+> **SUFFICIENT — could these notes *alone* answer the request?**
+>
+> **Assume a reader who knows nothing but what is on the page.** Not you: not
+> the conversation above, not the repo, not what happened last month. If that
+> reader would have to go and find something else before they could act, the
+> answer is no — even when the notes are plainly relevant, and even when *you*
+> could act on them easily.
+>
+> Inference still counts. Notes saying "the last arc closed on 27 June" answer
+> "are we in an arc now?" without saying so in those words. What does not count
+> is knowledge the reader would have to bring.
 
 You are judging the *notes*, not the assistant's reply, and not whether the
 assistant did well. You will not be shown the reply — deliberately, so a good
 answer cannot make thin context look sufficient.
+
+### Worked, from the operator's own turns
+
+| request | retrieved | relevant | sufficient | why |
+|---|---|---|---|---|
+| "are we in any arc right now in the blog?" | the archived June arc plan, closed | **yes** | **yes** | a reader knowing nothing can infer "no arc" from the close |
+| "close the june plan with Task 4 obsoleted" | plans from May 24, May 28, July 24 | **yes** | **no** | right kind of material, but no June plan is present to act on |
+| "draft a brief for both" | routing verdicts, prompt packs | **yes** | **no** | "both" refers to the conversation; no note can supply it — tick `no_note_possible` |
 
 ## The three labels
 

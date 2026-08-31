@@ -36,11 +36,28 @@ class TheParser(unittest.TestCase):
     def test_a_rejection_must_name_the_gap(self):
         # Borrowed from grounding.go: a rejection with nothing named is a judge
         # that disliked the context, not one that found a problem.
-        self.assertIsNone(sc.parse_verdict('{"verdict": "insufficient"}'))
-        self.assertIsNone(
-            sc.parse_verdict('{"verdict": "insufficient", "missing": []}'))
-        self.assertIsNotNone(
-            sc.parse_verdict('{"verdict": "insufficient", "missing": ["a date"]}'))
+        #
+        # Still not a verdict — it now records what it would have been, because
+        # this demand applies to `insufficient` alone, so anything that makes
+        # the judge terser drops those selectively and pushes the rate toward
+        # "sufficient".
+        for bad in ('{"verdict": "insufficient"}',
+                    '{"verdict": "insufficient", "missing": []}'):
+            got = sc.parse_verdict(bad)
+            self.assertIsNone(got["verdict"], bad)
+            self.assertEqual(got["dropped_as"], "insufficient")
+        good = sc.parse_verdict(
+            '{"verdict": "insufficient", "missing": ["a date"]}')
+        self.assertEqual(good["verdict"], "insufficient")
+
+    def test_a_dropped_verdict_never_counts_as_an_answer(self):
+        got = sc.judge_turn({"prompt_hash": "abc", "_prompt": "q",
+                             "_injected": "c"}, replicates=2,
+                            caller=lambda _p, **_kw: {
+                                "result": '{"verdict": "insufficient"}'})
+        self.assertIsNone(got["verdict"])
+        self.assertEqual(got["failures"], 2)
+        self.assertEqual(got["failed_as"], ["insufficient"])
 
     def test_an_unknown_verdict_is_not_a_verdict(self):
         self.assertIsNone(sc.parse_verdict('{"verdict": "maybe"}'))
@@ -115,6 +132,49 @@ class TheJudgeLoop(unittest.TestCase):
     def _caller(self, *answers):
         it = iter(answers)
         return lambda _p, **_kw: next(it)
+
+    def test_use_unanimity_is_absent_at_one_replicate(self):
+        # The same defect already fixed on the sufficiency axis: one answer
+        # cannot disagree with itself, so True there is a statistic that
+        # cannot fail, sitting where stability is looked for.
+        got = sc.judge_use({"_injected": "c", "_answer": "a"}, replicates=1,
+                           caller=lambda _p, **_kw: {
+                               "result": '{"verdict": "unused"}'})
+        self.assertNotIn("use_unanimous", got)
+        two = sc.judge_use({"_injected": "c", "_answer": "a"}, replicates=2,
+                           caller=lambda _p, **_kw: {
+                               "result": '{"verdict": "unused"}'})
+        self.assertTrue(two["use_unanimous"])
+
+    def test_a_row_carries_the_samplers_own_key(self):
+        # Keyed on the prompt hash alone, a verdict and a label can be joined
+        # across two different retrievals: 32 hashes cover 83 turns here.
+        a = sc.judge_turn({"prompt_hash": "same", "session": "s1", "ts": "t1",
+                           "_prompt": "q", "_injected": "c"}, replicates=1,
+                          caller=lambda _p, **_kw: {
+                              "result": '{"verdict": "n/a"}'})
+        b = sc.judge_turn({"prompt_hash": "same", "session": "s2", "ts": "t2",
+                           "_prompt": "q", "_injected": "c"}, replicates=1,
+                          caller=lambda _p, **_kw: {
+                              "result": '{"verdict": "n/a"}'})
+        self.assertEqual(a["turn"], b["turn"])
+        self.assertNotEqual(a["turn_key"], b["turn_key"])
+
+    def test_a_floor_that_never_fires_reports_no_disagreement(self):
+        # With the floor at zero the disagreement equals the judged rate
+        # exactly, and printing all three reads as a cross-check between two
+        # signals when there is one signal and a constant.
+        rows = [{"use_verdict": "used", "deterministic_used": False},
+                {"use_verdict": "unused", "deterministic_used": False}]
+        got = sc.cross(rows)
+        self.assertNotIn("utilization_disagreement", got)
+        self.assertIn("cannot corroborate", got["utilization_disagreement_note"])
+
+    def test_a_floor_that_fires_does_report_disagreement(self):
+        rows = [{"use_verdict": "used", "deterministic_used": True},
+                {"use_verdict": "used", "deterministic_used": False}]
+        got = sc.cross(rows)
+        self.assertEqual(got["utilization_disagreement"], 0.5)
 
     def test_it_reports_unanimity_when_replicates_agree(self):
         got = sc.judge_turn({"prompt_hash": "abc", "_prompt": "q",
@@ -396,10 +456,11 @@ class TheUseParser(unittest.TestCase):
     def test_a_claim_of_use_must_say_what_it_drew_on(self):
         # Symmetric with the sufficiency judge's rule. "Used" with nothing
         # named is a judge asserting a conclusion.
-        self.assertIsNone(sc.parse_use('{"verdict": "used"}'))
-        self.assertIsNone(sc.parse_use('{"verdict": "used", "drew_on": []}'))
-        self.assertIsNotNone(
-            sc.parse_use('{"verdict": "used", "drew_on": ["the vault path"]}'))
+        for bad in ('{"verdict": "used"}', '{"verdict": "used", "drew_on": []}'):
+            self.assertIsNone(sc.parse_use(bad)["verdict"], bad)
+        self.assertEqual(
+            sc.parse_use('{"verdict": "used", "drew_on": ["the vault path"]}'
+                         )["verdict"], "used")
 
     def test_unused_needs_nothing(self):
         self.assertEqual(sc.parse_use('{"verdict": "unused"}'),

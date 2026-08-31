@@ -189,6 +189,94 @@ Two turns of 90 lost a verdict from one model or the other and are excluded and
 counted rather than scored, per the failure rule above. Claude's half cost
 $21.92; `agy` reports no cost and none is invented for it.
 
+## The adversarial review, and what it cost the headline
+
+An adversarial reviewer was pointed at the instrument rather than at the labels,
+because every significant failure in this arc has been an instrument failure.
+It returned sixteen findings. Five of the top six verified against the
+artefacts; the numbers below are mine, not its.
+
+### The precision floor, which bounds everything else here
+
+The same judge, same prompt, same 90 turns, run three times:
+
+| run | sufficient | |
+|---|---|---|
+| 1 | 6/75 | **8.0%** |
+| 2 | 10/77 | **13.0%** |
+| 3 | 9/74 | **12.2%** |
+
+**A 5.0-point spread from re-running alone**, test-retest κ 0.73–0.78 across all
+three pairings. Two consequences, both load-bearing.
+
+First, the "model dependence" this file diagnosed and then certified as fixed —
+Claude 6.8% against Gemini 16.7% — is *substantially one model's own variance*.
+The sharpened wording did close a real ambiguity, but the residual gap it was
+measured against was never as solid as the table above it implied.
+
+Second, **every confidence interval in this arc covers sampling error only.**
+None of them include run-to-run drift, and the drift is comparable to the
+widths being quoted. Nothing here can resolve a difference smaller than about
+five points, and no claim in this arc should be finer than that.
+
+The test-retest κ is also a ceiling: an agreement measure between two raters
+cannot meaningfully exceed the reliability of either, so the cross-model κ of
+0.52–0.59 sits close to the most the instrument could ever show.
+
+### What the headline should have been
+
+Applied one at a time, so each correction's size is visible:
+
+| | sufficient | 95% CI |
+|---|---|---|
+| as published | 13/79 = 16.5% | [9.9%, 26.2%] |
+| minus gaps no note could hold (−33) | 11/47 = 23.4% | [13.6%, 37.2%] |
+| and hybrid arm only (−9 lexical) | 11/43 = **25.6%** | [14.9%, 40.2%] |
+
+Half of the judge's own insufficiency verdicts — 33 of 67 — named an
+unresolved referent from the conversation, "what 'both' refers to" and its
+kind. This file recorded that confound and never measured it; counting those as
+retrieval failures was the single largest error in the published figure.
+
+### What the sample actually describes
+
+**72 of the 90 turns, 80%, come from the memory system's own repository.**
+Seven projects are represented, but four turns in five are agentm talking about
+itself — a repository that discusses recall constantly and therefore asks it
+unusually well-aimed questions. This measures how recall performs while the
+operator works *on recall*. Nothing here is evidence about the rest of their
+work, and `corpus_stamp` does not record the project mix.
+
+Session clustering is real but small: ICC 0.064 on the panel labels, design
+effect 1.15, so intervals widen about 7%. The review put it at 0.179; that did
+not reproduce.
+
+### A statistic that could not fail, and one that now can
+
+`production_judge_matches_panel = 0.90` had a floor of 0.822 by construction —
+the panel's label is a majority containing the judge's own vote, so whenever the
+other two agreed a match was guaranteed before the third grader was asked. A
+leave-one-out panel, with the judge excluded from the label it is scored
+against, gives **89.2% [80.7%, 94.2%]**: nearly the same point, on a statistic
+that could have come out otherwise.
+
+### Two review claims that did not survive checking
+
+The "perfectly nested" 2×2 — zero cells where Claude says sufficient and Gemini
+says insufficient — has three such cells. And the ICC above. Both came from run
+1 where mine came from run 2, which is the drift finding reaching the reviewer
+too.
+
+### The κ interval was wrong, and the correction crosses a pre-registered line
+
+`cohen_kappa` used σ₀², the variance under H₀: κ = 0 — correct for a
+significance test, wrong for an interval around an observed κ, and citing the
+right authors for the wrong formula made it invisible to reading. Against a
+5,000-resample bootstrap the null form was off by 0.047 and 0.127 in width and
+the non-null form by 0.005 and 0.018. Corrected, and the cross-model
+both-scored interval now reaches **below 0.2** — the line this file
+pre-registers as "the judge is not usable". It no longer excludes that.
+
 ## Privacy, restated because it is easy to lose in a judging loop
 
 The judge runs locally via `claude -p`. Only the query hash, the verdict, and

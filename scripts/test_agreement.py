@@ -76,6 +76,63 @@ class TheKappa(unittest.TestCase):
             ag.cohen_kappa(["s", "i"], ["s"])
 
 
+class TheKappaInterval(unittest.TestCase):
+    """The interval's width, against a resampling ground truth.
+
+    The shipped formula was σ₀² — the variance under H₀: κ = 0 — which is
+    correct for a significance test and wrong for an interval around an
+    observed κ. It read as right and cited the right authors, so only a
+    bootstrap could catch it.
+    """
+
+    def _bootstrap(self, a, b, draws=1500, seed=7):
+        rng = random.Random(seed)
+        ks = []
+        for _ in range(draws):
+            idx = [rng.randrange(len(a)) for _ in a]
+            got = ag.cohen_kappa([a[i] for i in idx], [b[i] for i in idx])
+            if got.get("kappa") is not None:
+                ks.append(got["kappa"])
+        ks.sort()
+        return ks[int(0.025 * len(ks))], ks[int(0.975 * len(ks))]
+
+    def _labels(self, n_agree, n_swap):
+        # A realistic skewed 3-category set: mostly one category, some
+        # disagreement — the shape every label set in this arc has.
+        a = ["n/a"] * n_agree + ["insufficient"] * n_swap + ["sufficient"] * 8
+        b = ["n/a"] * n_agree + ["sufficient"] * n_swap + ["sufficient"] * 8
+        return a, b
+
+    def test_the_interval_width_tracks_a_bootstrap(self):
+        a, b = self._labels(60, 12)
+        got = ag.cohen_kappa(a, b)
+        lo, hi = got["kappa_ci"]
+        blo, bhi = self._bootstrap(a, b)
+        # Within a quarter of the bootstrap's own width. The null-variance
+        # version missed by more than half on this shape.
+        self.assertLess(abs((hi - lo) - (bhi - blo)), 0.25 * (bhi - blo))
+
+    def test_it_is_not_the_null_variance(self):
+        # σ₀² does not depend on the joint distribution beyond the marginals,
+        # so two label sets with identical marginals and different agreement
+        # would share an SE under it. They must not here.
+        a1 = ["n/a"] * 40 + ["sufficient"] * 40
+        b1 = ["n/a"] * 40 + ["sufficient"] * 40
+        a2 = ["n/a"] * 40 + ["sufficient"] * 40
+        b2 = ["n/a"] * 20 + ["sufficient"] * 20 + ["n/a"] * 20 + \
+             ["sufficient"] * 20
+        k1 = ag.cohen_kappa(a1, b1)
+        k2 = ag.cohen_kappa(a2, b2)
+        self.assertEqual(k1["marginals"]["a"], k2["marginals"]["a"])
+        self.assertNotEqual(k1["kappa_se"], k2["kappa_se"])
+
+    def test_perfect_agreement_has_a_vanishing_interval(self):
+        a = ["n/a"] * 30 + ["sufficient"] * 30
+        got = ag.cohen_kappa(a, list(a))
+        self.assertEqual(got["kappa"], 1.0)
+        self.assertLess(got["kappa_se"], 0.01)
+
+
 class ThePPIEstimator(unittest.TestCase):
     """Populations whose true mean is known before the estimator runs."""
 

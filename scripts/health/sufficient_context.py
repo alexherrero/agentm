@@ -56,6 +56,9 @@ MODEL = "sonnet"
 REPLICATES = 3
 # Fixed, so a truncated run is reproducible as well as unbiased.
 SHUFFLE_SEED = 20260830
+# Measured, and used only to make `--max-spend` mean something for a judge that
+# reports no cost of its own. Not a claim about what `agy` bills.
+CLAUDE_RATE_USD = 0.203
 
 # The autorater's question. Three shapes of answer, and a rejection has to name
 # what is missing — `grounding.go` makes the same demand of its faithfulness
@@ -298,7 +301,14 @@ def parse_verdict(text: str) -> Optional[dict]:
     if verdict == "insufficient" and not missing:
         # The rejection names nothing, so there is nothing to check and no way
         # to tell a found gap from a dislike. Not an answer.
-        return None
+        #
+        # This demand applies to `insufficient` and not to the other two, so
+        # the drop probability depends on the answer: anything that makes the
+        # judge terser removes insufficiency verdicts selectively and pushes
+        # the rate toward "sufficient". The attempted verdict is recorded so
+        # a lopsided failure set is visible rather than hiding inside one
+        # `excluded_judge_failed` count.
+        return {"verdict": None, "dropped_as": verdict}
     return {"verdict": verdict, "missing": [str(x) for x in missing]}
 
 
@@ -325,7 +335,7 @@ def parse_use(text: str) -> Optional[dict]:
     if not isinstance(drew, list):
         return None
     if verdict == "used" and not drew:
-        return None
+        return {"verdict": None, "dropped_as": verdict}
     return {"verdict": verdict, "drew_on": [str(x) for x in drew]}
 
 
@@ -349,7 +359,7 @@ def judge_use(turn: dict, *, replicates: int = 1, caller: Callable = None,
             envelope = {"result": envelope}
         cost += float(envelope.get("total_cost_usd") or 0.0)
         parsed = parse_use(envelope.get("result", ""))
-        if parsed is None:
+        if parsed is None or parsed.get("verdict") is None:
             failures += 1
         else:
             answers.append(parsed)
@@ -358,14 +368,20 @@ def judge_use(turn: dict, *, replicates: int = 1, caller: Callable = None,
                 "use_cost_usd": round(cost, 4)}
     verdicts = [a["verdict"] for a in answers]
     top = max(set(verdicts), key=verdicts.count)
-    return {
+    out = {
         "use_verdict": top,
-        "use_unanimous": len(set(verdicts)) == 1,
         "use_failures": failures,
         "use_cost_usd": round(cost, 4),
         "_drew_on": [d for a in answers if a["verdict"] == top
                      for d in a["drew_on"]],
     }
+    # Only when there were replicates to disagree. One answer cannot differ
+    # from itself, and reporting True there puts a statistic that cannot fail
+    # where a reader looks for evidence of stability — the same defect already
+    # fixed on the sufficiency axis.
+    if len(answers) > 1:
+        out["use_unanimous"] = len(set(verdicts)) == 1
+    return out
 
 
 # The quadrant. Both axes have to be decided for a turn to land in one; a turn
@@ -424,7 +440,16 @@ def cross(rows: list) -> dict:
                        if (r["use_verdict"] == "used") != r["deterministic_used"])
         out["utilization_judged"] = round(judged_used / len(both), 4)
         out["utilization_deterministic"] = round(det_used / len(both), 4)
-        out["utilization_disagreement"] = round(disagree / len(both), 4)
+        if det_used:
+            out["utilization_disagreement"] = round(disagree / len(both), 4)
+        else:
+            # With the floor at zero the disagreement equals the judged rate
+            # exactly, and printing it beside them reads as a cross-check
+            # between two signals when there is one signal and a constant.
+            out["utilization_disagreement_note"] = (
+                "not reported: the deterministic floor fired on no turn, so "
+                "any disagreement figure would be the judged rate restated. A "
+                "floor that never fires cannot corroborate anything.")
         out["utilization_note"] = (
             "two signals, reported apart. The deterministic one only fires "
             "when a note's name appears verbatim in the reply — 7 of 3,004 "
@@ -445,6 +470,7 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
     prompt = build_prompt(turn.get("_prompt", ""), turn.get("_injected", ""))
     answers = []
     failures = 0
+    dropped: list = []
     cost = 0.0
     for _ in range(max(1, replicates)):
         envelope = caller(prompt, model=model, system=SYSTEM)
@@ -452,13 +478,17 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
             envelope = {"result": envelope}
         cost += float(envelope.get("total_cost_usd") or 0.0)
         parsed = parse_verdict(envelope.get("result", ""))
-        if parsed is None:
+        if parsed is None or parsed.get("verdict") is None:
             failures += 1
+            if isinstance(parsed, dict) and parsed.get("dropped_as"):
+                dropped.append(parsed["dropped_as"])
         else:
             answers.append(parsed)
     if not answers:
-        return {"turn": turn.get("prompt_hash"), "verdict": None,
-                "failures": failures, "unanimous": None,
+        return {"turn": turn.get("prompt_hash"),
+                "turn_key": turn_key(turn), "verdict": None,
+                "failures": failures, "failed_as": sorted(set(dropped)) or None,
+                "unanimous": None,
                 "n_notes": len(turn.get("slugs") or []),
                 "cost_usd": round(cost, 4)}
     verdicts = [a["verdict"] for a in answers]
@@ -467,6 +497,12 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
     scoreable = {v != "n/a" for v in verdicts}
     return {
         "turn": turn.get("prompt_hash"),
+        # The sampler keys on session+timestamp because the same prompt asked
+        # twice is two turns with two contexts. The row keyed only on the
+        # prompt hash, so a verdict and a label could be joined across two
+        # different retrievals: 32 hashes cover 83 turns in this corpus and 7
+        # of those groups carry different retrieved text.
+        "turn_key": turn_key(turn),
         "verdict": top,
         "unanimous": len(set(verdicts)) == 1,
         "scoreable_split": len(scoreable) > 1,
@@ -476,6 +512,7 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
         "n_notes": len(turn.get("slugs") or []),
         "replicates": len(answers),
         "failures": failures,
+        "failed_as": sorted(set(dropped)) or None,
         "cost_usd": round(cost, 4),
         # Counted, never quoted: the judge's wording of a gap restates the
         # query, and the query does not go to disk.
@@ -640,6 +677,13 @@ def main(argv: list = None) -> int:
         row = judge_turn(t, replicates=args.replicates, model=args.model,
                          caller=caller_for(args.judge))
         row["judge_model"] = args.judge
+        if args.judge != "claude":
+            # `agy` reports no cost, and the loop reads that same field, so
+            # the cap never fired under a Gemini judge — inoperative for
+            # exactly the unattended three-figure run it exists to stop.
+            # Counted in turns instead, at the Claude rate, so the budget
+            # still means something.
+            spent += CLAUDE_RATE_USD * max(1, args.replicates)
         spent += float(row.get("cost_usd") or 0)
         if args.utilization:
             row.update(judge_use(t, replicates=args.use_replicates,

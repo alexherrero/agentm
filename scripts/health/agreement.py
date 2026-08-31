@@ -99,9 +99,26 @@ def cohen_kappa(a: Sequence, b: Sequence) -> dict:
                         "is 1.0 and kappa is undefined, not perfect"}
 
     kappa = (p_o - p_e) / (1 - p_e)
-    # Fleiss et al.'s large-sample standard error.
-    term = sum(ma[c] * mb[c] * (ma[c] + mb[c]) for c in cats)
-    var = (p_e + p_e ** 2 - term) / (n * (1 - p_e) ** 2)
+    # Fleiss' **non-null** asymptotic variance — the one for an interval around
+    # an observed κ.
+    #
+    # The first version used σ₀², the variance under H₀: κ = 0. That is the
+    # right quantity for testing whether κ differs from chance and the wrong
+    # one for saying how precise an observed κ is, and the docstring cited the
+    # correct authors for the incorrect formula, which made it invisible.
+    # Checked against a 5,000-resample bootstrap on the real label sets: the
+    # null form was off by 0.047 and 0.127 in width, this one by 0.005 and
+    # 0.018. The correction *widens* the interval, and on the cross-model
+    # both-scored set it widens it past the 0.2 line the rubric pre-registers
+    # as "not usable".
+    pij = {(x, y): c / n for (x, y), c in confusion(a, b).items()}
+    t1 = sum(pij.get((c, c), 0.0) * (1 - (ma[c] + mb[c]) * (1 - kappa)) ** 2
+             for c in cats)
+    t2 = (1 - kappa) ** 2 * sum(
+        pij.get((i, j), 0.0) * (mb[i] + ma[j]) ** 2
+        for i in cats for j in cats if i != j)
+    t3 = (kappa - p_e * (1 - kappa)) ** 2
+    var = (t1 + t2 - t3) / (n * (1 - p_e) ** 2)
     se = math.sqrt(max(var, 0.0))
     return {
         "kappa": round(kappa, 4),

@@ -270,10 +270,66 @@ def balance_fences(excerpt: str) -> str:
     return (excerpt or "") + "\n```"
 
 
+_WORD = re.compile(r"[A-Za-z][A-Za-z0-9_.-]{2,}")
+# Words too ordinary to mean anything when they match or when they do not.
+_COMMON = {"the", "and", "for", "with", "from", "into", "this", "that", "what",
+           "when", "why", "how", "you", "your", "our", "can", "will", "would",
+           "should", "have", "has", "had", "was", "were", "are", "not", "but",
+           "all", "any", "then", "than", "there", "here", "these", "those",
+           "get", "got", "let", "lets", "make", "made", "need", "want", "like",
+           "just", "now", "one", "two", "also", "some", "more", "most", "out",
+           "about", "over", "before", "after", "which", "who", "its", "it's",
+           "please", "okay", "yes", "sure", "good", "great", "thanks"}
+
+
+def request_terms(prompt: str) -> list:
+    """The words in a request that would mean something if they were missing."""
+    seen, out = set(), []
+    for m in _WORD.finditer(prompt or ""):
+        w = m.group(0)
+        low = w.lower()
+        if low in _COMMON or low in seen:
+            continue
+        seen.add(low)
+        out.append(w)
+    return out
+
+
+def term_coverage(prompt: str, context: str) -> dict:
+    """Which of the request's own words appear anywhere in what came back.
+
+    Deterministic and uniform — every term is checked and every term is shown,
+    so nothing is being selected for the reader. This is the fact the operator
+    missed on the "close the june plan" turn: `june` appears nowhere in three
+    retrieved plans dated May, May and July. Stating that is not a verdict; a
+    reader can look at it and still decide the retrieval was fine.
+    """
+    low = (context or "").lower()
+    found, missing = [], []
+    for w in request_terms(prompt):
+        (found if w.lower() in low else missing).append(w)
+    return {"found": found, "missing": missing}
+
+
 def render_turn(n: int, item: dict) -> list:
     notes = split_notes(item.get("context") or "")
     label = item.get("label") or "?"
-    lines = [f"## {n}. `{item['id']}`", "", f"**LABEL: {label}**", ""]
+    lines = [f"## {n}. `{item['id']}`", ""]
+    if item.get("judge"):
+        # Adjudication mode: the machine's answer and its reasoning are shown,
+        # and the operator rules on it. This forfeits blind agreement — kappa
+        # computed over these is not chance-corrected independent agreement and
+        # is never reported as if it were. What it buys is accuracy: an
+        # unaided labeller missed that no June-dated plan was among three
+        # retrieved plans, and a label made without noticing that is not ground
+        # truth either.
+        lines += [f"> **Machine says: {item['judge']}**", ">"]
+        for why in (item.get("judge_why") or [])[:4]:
+            lines.append(f"> - {why}")
+        lines += [">", "> *Agree, or replace the label below with your own. "
+                       "Your ruling is final and is what everything downstream "
+                       "is measured against.*", ""]
+    lines += [f"**LABEL: {label}**", ""]
     if item.get("flag"):
         lines += [f"FLAG: {item['flag']}", ""]
     lines += [
@@ -297,6 +353,21 @@ def render_turn(n: int, item: dict) -> list:
             kind = f"{kind} · {st}"
         title = note_title(note["body"]).replace("|", "\\|")
         lines.append(f"| {i} | {link} | {kind} | {title} |")
+    cov = term_coverage(item.get("prompt"), item.get("context"))
+    if cov["missing"] or cov["found"]:
+        lines += ["", "**Words from your request, and whether they appear "
+                      "anywhere in what came back:**", ""]
+        if cov["missing"]:
+            lines.append("- **not in any retrieved note:** "
+                         + ", ".join(f"`{w}`" for w in cov["missing"][:25]))
+        if cov["found"]:
+            lines.append("- present: "
+                         + ", ".join(f"`{w}`" for w in cov["found"][:25]))
+        lines.append("")
+        lines.append("*Every word is checked and every word is listed — this "
+                     "is a fact about the text, not a hint about the answer. A "
+                     "missing word can be fine and a present one can be "
+                     "irrelevant.*")
     lines += ["",
               "<details>",
               "<summary>the retrieved text — open when the table does not "
@@ -367,7 +438,8 @@ def fixture_rows(items: list) -> list:
     gets hashes, strata and counts.
     """
     return [{k: v for k, v in it.items()
-             if k not in ("prompt", "context", "label", "flag")}
+             if k not in ("prompt", "context", "label", "flag",
+                          "judge_why")}
             for it in items]
 
 
@@ -380,6 +452,10 @@ def main(argv=None) -> int:
     ap.add_argument("--fixture", type=pathlib.Path, required=True,
                     help="repo path for the hash/stratum/verdict record")
     ap.add_argument("--rubric-link", default="RUBRIC.md")
+    ap.add_argument("--reasons", type=pathlib.Path,
+                    help="judge verdicts with their reasoning, to show for "
+                         "adjudication. Forfeits blind agreement by design — "
+                         "see the rubric's second amendment.")
     ap.add_argument("--carry-labels", type=pathlib.Path,
                     help="a labels JSON rescued from a previous worksheet; "
                          "labels are restored by turn id, so a reordered or "
@@ -399,6 +475,10 @@ def main(argv=None) -> int:
         h = sufficient_context.grouped_hash(t.get("prompt_hash"))
         turns.setdefault(h, t)
 
+    reasons = {}
+    if args.reasons and args.reasons.exists():
+        reasons = json.loads(args.reasons.read_text(encoding="utf-8"))
+
     carried = {}
     if args.carry_labels and args.carry_labels.exists():
         carried = json.loads(args.carry_labels.read_text(encoding="utf-8"))
@@ -416,9 +496,11 @@ def main(argv=None) -> int:
         if n_notes is None:
             n_notes = len(t.get("slugs") or [])
         prev = carried.get(r["turn"], {})
+        why = reasons.get(r["turn"], {})
         items.append({
             "id": r["turn"], "stratum": stratum(r, n_notes),
-            "judge": r.get("verdict"), "n_notes": n_notes,
+            "judge": why.get("verdict") if reasons else None,
+            "judge_why": why.get("why"), "n_notes": n_notes,
             "label": prev.get("label"), "flag": prev.get("flag"),
             "prompt": t.get("_prompt"), "context": t.get("_injected"),
         })

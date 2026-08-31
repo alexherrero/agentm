@@ -324,21 +324,42 @@ class TheWorksheet(unittest.TestCase):
                  "prompt": "where does the vault live",
                  "context": "### obsidian-vault-paths\nthe root is ..."}]
 
-    def test_the_judge_verdict_cannot_be_read_off_the_worksheet(self):
-        # The single most important property: the operator is measured against
-        # the judge, so seeing its answer destroys the measurement.
-        #
-        # Asserted differentially. Checking that the word "insufficient" is
-        # absent proves nothing — it is one of the three labels the operator is
-        # told to choose from, and appears in the instructions by design. Two
-        # turns alike but for the verdict must render identically.
+    def test_blind_mode_still_hides_the_verdict(self):
+        # Without reasoning supplied the sheet is blind, and blind is the only
+        # state that yields chance-corrected agreement. Asserted differentially:
+        # checking that the word "insufficient" is absent proves nothing, since
+        # it is one of the three labels the instructions offer.
         a = self._items()
         b = self._items()
-        b[0]["judge"] = "sufficient"
+        a[0].pop("judge", None)
+        b[0].pop("judge", None)
+        b[0]["stratum"] = "thin/sufficient"
         self.assertEqual(bw.worksheet(a, "RUBRIC.md"),
                          bw.worksheet(b, "RUBRIC.md"))
         self.assertIn("where does the vault live",
                       bw.worksheet(a, "RUBRIC.md"))
+
+    def test_adjudication_mode_shows_the_verdict_and_why(self):
+        # The operator asked for this after an unaided label missed that no
+        # June-dated plan was among three retrieved plans. A label made without
+        # noticing that is not ground truth either.
+        item = dict(self._items()[0])
+        item["judge"] = "insufficient"
+        item["judge_why"] = ["no June-dated plan is present",
+                             "Task 4's contents are not in the context"]
+        text = "\n".join(bw.render_turn(1, item))
+        self.assertIn("Machine says: insufficient", text)
+        self.assertIn("no June-dated plan is present", text)
+        self.assertIn("Your ruling is final", text)
+
+    def test_the_reasoning_never_reaches_the_repo_fixture(self):
+        # It quotes the operator's own request and notes by construction.
+        rows = bw.fixture_rows([{"id": "x", "stratum": "full/n/a",
+                                 "judge": "insufficient",
+                                 "judge_why": ["quotes THE REQUEST verbatim"],
+                                 "n_notes": 5, "prompt": "p", "context": "c"}])
+        import json as _j
+        self.assertNotIn("THE REQUEST", _j.dumps(rows))
 
     def test_the_assistant_reply_cannot_be_read_off_it_either(self):
         a = self._items()
@@ -347,14 +368,11 @@ class TheWorksheet(unittest.TestCase):
         self.assertEqual(bw.worksheet(a, "RUBRIC.md"),
                          bw.worksheet(b, "RUBRIC.md"))
 
-    def test_which_set_a_turn_came_from_cannot_be_read_off_it(self):
-        # Knowing a turn came from the enriched set is a hint about the verdict.
+    def test_the_stratum_is_never_shown(self):
+        # It encodes the judge's verdict, so in blind mode it would leak one.
         a = self._items()
-        b = self._items()
-        b[0]["set"] = "b"
-        b[0]["stratum"] = "thin/sufficient"
-        self.assertEqual(bw.worksheet(a, "RUBRIC.md"),
-                         bw.worksheet(b, "RUBRIC.md"))
+        a[0].pop("judge", None)
+        self.assertNotIn("stratum", bw.worksheet(a, "RUBRIC.md").lower())
 
     def test_it_carries_a_slot_for_every_turn(self):
         # The bolded slot, not the bare string — the instructions quote
