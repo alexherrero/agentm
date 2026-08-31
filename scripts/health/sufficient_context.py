@@ -43,6 +43,7 @@ import json
 import pathlib
 import random
 import re
+import subprocess
 import sys
 from typing import Callable, Optional
 
@@ -73,10 +74,18 @@ Judge only sufficiency. Not whether the context is well written, not whether it
 is the best possible context, not whether you would have retrieved something
 else. Only whether what is there covers what was asked.
 
-If the REQUEST is not an information need — a command to run something, a
-"continue", a "yes", an approval, an instruction to act — then no context could
-be sufficient or insufficient, and the honest answer is "n/a". Use it. Do not
-guess a verdict for a request that has no answer to look up.
+Use "n/a" only when the REQUEST needs no information at all to act on: a bare
+approval ("yes", "go ahead"), a bare retry, or a command whose meaning is
+complete on its own ("run the tests", "continue").
+
+An instruction still counts as an information need when it names something a
+reader would have to *know* in order to act — "close the june plan", "fix the
+vault drafts", "move step 2 after the pixel move". Those presuppose specific
+knowledge, so ask the same question of them: would the CONTEXT alone let someone
+carry that out? Phrasing something as a command does not make it "n/a".
+
+This seam is where two independent judges disagreed on 23% of turns, so it is
+spelled out rather than left to reading.
 
 Return a single JSON object and nothing else:
 
@@ -148,6 +157,48 @@ VERDICTS = ("sufficient", "insufficient", "n/a")
 
 
 _M32 = 0xFFFFFFFF
+
+
+AGY_TIMEOUT_SEC = 240
+
+
+def _call_agy(prompt: str, *, model: str = None, timeout: int = AGY_TIMEOUT_SEC,
+              system: str = None) -> dict:
+    """One `agy -p` call to Antigravity's Gemini, in the caller shape.
+
+    The prompt goes as an argument rather than on stdin — `agy` closes its own
+    stdin, which the crickets cross-review script found the hard way — and the
+    system prompt is folded into the text, since `agy` has no equivalent flag.
+    That is a real difference from the Claude caller and it is stated rather
+    than smoothed over: the two judges get the same question, not byte-identical
+    invocations.
+
+    Returns the same envelope shape as `_call_claude_json` so a caller can be
+    swapped without the loop knowing which model answered. Cost is not reported
+    by `agy`, so `total_cost_usd` is absent rather than zero — a zero would read
+    as "this was free" instead of "this was not measured".
+    """
+    text = f"{system}\n\n{prompt}" if system else prompt
+    cmd = ["agy", "-p", text, "--print-timeout", f"{timeout}s"]
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True,
+                              timeout=timeout + 30)
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if proc.returncode != 0:
+        return {}
+    return {"result": proc.stdout}
+
+
+JUDGES = {"claude": None, "gemini": _call_agy}
+
+
+def caller_for(name: str):
+    """The caller for a judge name; None means the default Claude one."""
+    if name not in JUDGES:
+        raise ValueError(f"unknown judge {name!r}; have {sorted(JUDGES)}")
+    return JUDGES[name]
 
 
 def fnv1a(s: str) -> int:
@@ -542,6 +593,9 @@ def main(argv: list = None) -> int:
                     help="stop after N judged turns (0 = no limit)")
     ap.add_argument("--replicates", type=int, default=REPLICATES)
     ap.add_argument("--model", default=MODEL)
+    ap.add_argument("--judge", default="claude", choices=sorted(JUDGES),
+                    help="which model answers. The question is identical; only "
+                         "the caller changes.")
     ap.add_argument("--out", type=pathlib.Path,
                     help="write per-turn verdicts (hashes and counts only)")
     ap.add_argument("--max-spend", type=float, default=5.0,
@@ -583,11 +637,14 @@ def main(argv: list = None) -> int:
             # run, and the cap is what keeps a scheduled job from becoming one.
             stopped_early = len(turns) - n + 1
             break
-        row = judge_turn(t, replicates=args.replicates, model=args.model)
+        row = judge_turn(t, replicates=args.replicates, model=args.model,
+                         caller=caller_for(args.judge))
+        row["judge_model"] = args.judge
         spent += float(row.get("cost_usd") or 0)
         if args.utilization:
             row.update(judge_use(t, replicates=args.use_replicates,
-                                 model=args.model))
+                                 model=args.model,
+                                 caller=caller_for(args.judge)))
             spent += float(row.get("use_cost_usd") or 0)
             # The deterministic floor on the same turn, for the side-by-side.
             # `rare` comes from the whole traffic rather than the sample, so

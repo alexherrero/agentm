@@ -109,6 +109,86 @@ is what task 6's utilisation signal and task 7's operator labels exist to do.
 Recorded here so the limitation is on the record before the number is, rather
 than discovered afterwards by someone reading the rate.
 
+## The cross-model check, and what sharpening the n/a seam has to achieve
+
+**Frozen 2026-08-30, before the re-run.**
+
+Asking a second model the identical question turned out to be the cheapest
+useful thing in this task, because it runs before the operator's hours rather
+than after. Gemini, via `agy`, on the same 90 turns, blind to Claude's answers:
+
+| | turns | share |
+|---|---|---|
+| agree outright | 61 | 67.8% |
+| differ on whether it is a question at all | 21 | **23.3%** |
+| both say question, differ on sufficiency | 8 | 8.9% |
+
+κ = 0.4134, 95% CI [0.2551, 0.5716]. Restricted to the 26 turns both call a
+question, κ = 0.1938 with CI [−0.1124, 0.50] — imprecise, but not reassuring.
+
+**The finding that matters: the headline was model-dependent.** Sufficiency came
+out 14.0% under Claude and 30.0% under Gemini. A number that moves by more than
+two-fold with the judge is a fact about the judge, and it was on its way into a
+report as a fact about recall.
+
+Reading all 21 boundary disagreements showed a single cause: instructions that
+presuppose knowledge — "close the june plan", "fix the vault drafts". Claude
+read them as information needs, Gemini as commands to act. The rubric's own
+wording ("instructions to act") backed Gemini. Both judges were following it;
+it was ambiguous. The operator ruled that such instructions *are* information
+needs, since most real work is instructions.
+
+**What the sharpened wording has to achieve, written before the re-run:**
+
+1. **Boundary disagreement falls well below 23.3%.** If it does not move
+   materially, the seam was never definitional and no wording fixes it — the
+   honest conclusion then is that this question cannot be asked of a model at
+   this precision, and the task says so.
+2. **The two models' sufficiency rates converge.** 14.0% against 30.0% is the
+   defect; if they still differ by more than roughly ten points, no single
+   number can be published, whatever κ says.
+3. **κ over all turns rises.** Predicted 0.5–0.6 — the boundary cases were most
+   of the disagreement, so removing them should move it. Below 0.45 would mean
+   the sharpening did not take.
+
+I am *less* confident about the inner κ of 0.19. Sharpening the n/a wording
+does not touch how sufficiency itself is judged, so that number may not move at
+all; what should change is how many turns reach it. If the inner κ stays near
+0.2 on a larger inner set, that is the real limit of this instrument, and it
+belongs in the write-up rather than being averaged away.
+
+### What the re-run gave, against those bars
+
+| bar | predicted | outcome | |
+|---|---|---|---|
+| boundary disagreement | well below 23.3% | **11.4%** | met |
+| sufficiency rates | within ~10 points | **9.9 points** (6.8% vs 16.7%) | met by a hair |
+| κ overall | 0.5–0.6 | **0.5229** [0.3668, 0.679] | met |
+| inner κ | *"may not move at all"* | **0.1938 → 0.4516**, 26 → 68 turns | **prediction wrong** |
+
+**The prediction I got wrong is worth more than the ones I got right.** I wrote
+that sharpening the n/a wording could not touch how sufficiency itself is
+judged. It did, because the inner set changed composition: the
+knowledge-presupposing instructions the operator's ruling admitted are *easier*
+to agree about than the turns that were there before. The ceiling I warned might
+be this instrument's real limit was not where I thought it was.
+
+**Bar 2 is not a clean pass and is not recorded as one.** 9.9 points sits inside
+a ten-point line I drew myself, which is too close to lean on, and the *ratio*
+got worse — 2.14× before, 2.45× after. What is actually informative is that the
+intervals overlap: Claude [2.9%, 14.9%] against Gemini [9.8%, 26.9%]. The two
+estimates are not statistically distinguishable at this n, and a single
+published number still waits on the operator's labels to arbitrate.
+
+**The substantive movement.** Both models now score about 83% of turns as real
+information needs, up from 48% and 33%, and sufficiency fell for both — Claude
+14.0% to 6.8%, Gemini 30.0% to 16.7% — because the newly admitted instruction
+turns are mostly insufficient. Memory rarely knows which june plan was meant.
+
+Two turns of 90 lost a verdict from one model or the other and are excluded and
+counted rather than scored, per the failure rule above. Claude's half cost
+$21.92; `agy` reports no cost and none is invented for it.
+
 ## Privacy, restated because it is easy to lose in a judging loop
 
 The judge runs locally via `claude -p`. Only the query hash, the verdict, and

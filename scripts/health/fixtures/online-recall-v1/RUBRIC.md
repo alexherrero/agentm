@@ -76,9 +76,23 @@ all count; the notes do not have to state the answer in the request's words.
 **`insufficient`** — the notes leave a real gap. Someone holding only these
 would have to go and find something else before they could respond.
 
-**`n/a`** — the request is not an information need at all. Commands ("run task
-5"), approvals ("yes", "go ahead"), and instructions to act have no answer for
-notes to contain, so neither label above can be true of them.
+**`n/a`** — the request needs no information at all to act on. A bare approval
+("yes", "go ahead"), a bare retry, or a command whose meaning is complete on its
+own ("run the tests", "continue").
+
+**An instruction is still an information need when it names something you would
+have to know to act.** "Close the june plan", "fix the vault drafts", "move step
+2 after the pixel move" — each presupposes specific knowledge, so ask the same
+question of them: could the notes alone let someone carry that out? Phrasing
+something as a command does not make it `n/a`.
+
+*This sentence was sharpened on 2026-08-30, and the reason is measured. Two
+independent judges — Claude and Gemini, asked the identical question — disagreed
+about exactly this seam on 23.3% of turns, which was most of their total
+disagreement and drove the headline sufficiency rate to 14.0% under one and
+30.0% under the other. The operator ruled that a knowledge-presupposing
+instruction is an information need, on the grounds that most real work is
+instructions and the narrow reading would measure a small slice of it.*
 
 Pick exactly one. If you are torn between `sufficient` and `insufficient`,
 choose `insufficient` — the whole arc is calibrated to under-claim rather than
