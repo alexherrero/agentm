@@ -19,8 +19,11 @@
 #   --daemon   Build the Go memory daemon and install it as a launchd agent
 #              (macOS only) so it survives a reboot. Builds ~/.local/bin/agentmd
 #              with CGO_ENABLED=0, writes ~/Library/LaunchAgents/
-#              com.agentm.daemon.plist, loads it, and verifies it answers on
-#              /health before returning.
+#              com.agentm.daemon.plist, loads AND starts it, and verifies it
+#              answers on /health before returning. Loading is not starting: a
+#              bootstrapped job whose spawn launchd has parked is a daemon that
+#              never runs, so the start is issued explicitly rather than left
+#              to RunAtLoad.
 #
 #              Only needed ONCE. After the agent exists, every install run
 #              rebuilds and reloads it automatically, so a refresh of the
@@ -530,18 +533,54 @@ if [[ "$DAEMON_MODE" != "none" && "$(uname -s)" != "Darwin" ]]; then
 fi
 
 if [[ "$DAEMON_MODE" != "none" ]]; then
-  # daemon_fail <message> — hard error when installing, loud warning when
-  # refreshing. Never silent in either case.
+  # daemon_fail <message> [<state-line>…] — hard error when installing, loud
+  # warning when refreshing. Never silent in either case.
+  #
+  # The lines after the message say what the operator is left with, and they
+  # are arguments rather than a fixed sentence because the two classes of
+  # failure leave opposite states behind. A missing toolchain or a failed build
+  # happens before the reload, so the old daemon is untouched and still
+  # serving. A reload failure happens after the bootout, so there is no daemon
+  # at all. One constant claiming "it keeps running whatever binary it already
+  # has" covered both, and was false in exactly the case that mattered: the
+  # machine left with no memory daemon, which is every recall returning
+  # nothing, reported as a caveat on an otherwise successful install.
   daemon_fail() {
+    local msg="$1"; shift
+    local line
     if [[ "$DAEMON_MODE" == "install" ]]; then
-      echo "Error: --daemon: $1" >&2
+      echo "Error: --daemon: $msg" >&2
+      for line in "$@"; do echo "    $line" >&2; done
       exit 1
     fi
-    echo "==> WARNING: the memory daemon was NOT refreshed: $1" >&2
-    echo "    It keeps running whatever binary it already has, which may now be" >&2
-    echo "    older than daemon/. Re-run with --daemon once the cause is fixed." >&2
+    echo "==> WARNING: the memory daemon was NOT refreshed: $msg" >&2
+    for line in "$@"; do echo "    $line" >&2; done
+    echo "    Re-run with --daemon once the cause is fixed." >&2
     DAEMON_MODE=none
   }
+
+  # daemon_reload_fail <message> <state-line>… — the post-bootout sibling of
+  # daemon_fail. Same install-is-fatal / refresh-is-loud split, different
+  # headline: by the time these fire the binary HAS been rebuilt and the old
+  # agent HAS been booted out, so "was NOT refreshed" tells the wrong story.
+  # What failed is bringing the daemon back up, and the caller measures the
+  # state it is reporting instead of asserting one.
+  daemon_reload_fail() {
+    local msg="$1"; shift
+    local line
+    if [[ "$DAEMON_MODE" == "install" ]]; then
+      echo "Error: --daemon: $msg" >&2
+      for line in "$@"; do echo "    $line" >&2; done
+      exit 1
+    fi
+    echo "==> WARNING: the memory daemon did not come back up: $msg" >&2
+    for line in "$@"; do echo "    $line" >&2; done
+    DAEMON_MODE=none
+  }
+
+  # The residual state for every failure that happens before the reload:
+  # nothing has been stopped yet, so the resident daemon is still the old one.
+  DAEMON_STILL_RESIDENT="It keeps running whatever binary it already has, which may now be older than daemon/."
 
   DAEMON_SRC="$HARNESS_ROOT/daemon"
   DAEMON_BIN_DIR="$HOME/.local/bin"
@@ -549,12 +588,13 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
   DAEMON_LOG_DIR="$HOME/Library/Logs/agentm"
 
   if [[ ! -d "$DAEMON_SRC" ]]; then
-    daemon_fail "no daemon/ directory at $DAEMON_SRC"
+    daemon_fail "no daemon/ directory at $DAEMON_SRC" "$DAEMON_STILL_RESIDENT"
   fi
 fi
 
 if [[ "$DAEMON_MODE" != "none" ]] && ! command -v go >/dev/null 2>&1; then
-  daemon_fail "Go is not installed, and the daemon is built from source rather than vendored (fix: brew install go)"
+  daemon_fail "Go is not installed, and the daemon is built from source rather than vendored (fix: brew install go)" \
+    "$DAEMON_STILL_RESIDENT"
 fi
 
 if [[ "$DAEMON_MODE" != "none" ]]; then
@@ -574,7 +614,7 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
     echo "    built $DAEMON_BIN"
   else
     rm -f "$DAEMON_BIN.new"
-    daemon_fail "the daemon build failed; the existing binary was left in place"
+    daemon_fail "the daemon build failed; the existing binary was left in place" "$DAEMON_STILL_RESIDENT"
   fi
 fi
 
@@ -725,7 +765,32 @@ PLISTEOF
     sleep 2
   done
   if [[ $DAEMON_LOADED -eq 0 ]]; then
-    daemon_fail "launchctl bootstrap failed for $DAEMON_PLIST (try: launchctl bootstrap gui/\$(id -u) $DAEMON_PLIST; log: $DAEMON_LOG_DIR/daemon.log)"
+    daemon_reload_fail "launchctl bootstrap failed for $DAEMON_PLIST" \
+      "The old agent was booted out first, so this machine now has NO memory daemon." \
+      "Recall's daemon path is the only one that fits its budget on a real vault," \
+      "so until the agent loads again every recall comes back empty." \
+      "Start it with: launchctl bootstrap gui/\$(id -u) $DAEMON_PLIST" \
+      "Log:           $DAEMON_LOG_DIR/daemon.log"
+  else
+    # Loaded is not started. RunAtLoad asks launchd to spawn the job when it is
+    # bootstrapped; it does not oblige launchd to do it now. When the gui/<uid>
+    # domain is in on-demand-only mode the spawn is parked instead, and launchd
+    # says so only in its own log:
+    #
+    #   [com.agentm.daemon:] This service is defined to be constantly running…
+    #   [gui/501:] pending spawn, domain in on-demand-only mode: com.agentm.daemon
+    #
+    # bootstrap still returns success, and the label still appears in `launchctl
+    # list` — with no pid beside it. KeepAlive does not rescue it either, because
+    # there is no process to keep alive. Seen in production: a refresh booted the
+    # old daemon out, bootstrapped the new job, waited 45 seconds for a /health
+    # that could never come, and left the machine with no daemon at all.
+    #
+    # kickstart is the imperative form — start this now — and is a no-op
+    # against a job that is already running, so it costs nothing on the runs
+    # where launchd had already obliged. Its exit status is not the verdict;
+    # the /health probe below is.
+    "$LAUNCHCTL" kickstart "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || true
   fi
 fi
 
@@ -752,11 +817,54 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
   # default, so probe that. Never a partially-parsed value.
   [[ "$DAEMON_PORT" =~ ^[0-9]+$ ]] || DAEMON_PORT=7821
 
+  # Seconds to wait for /health. A seam for the same reason AGENTM_LAUNCHCTL is
+  # one: the failure path below is the part that broke in production, and a test
+  # that has to burn the real timeout to reach it is a test nobody runs. It
+  # bounds the wait only — never which branch is taken, or what it reports.
+  DAEMON_HEALTH_TIMEOUT="${AGENTM_DAEMON_HEALTH_TIMEOUT:-45}"
+
+  # The pid launchd holds for the job, or empty when it is not running.
+  # `launchctl print` emits a `pid = N` line only while a job is actually
+  # running; a job that is loaded but has never spawned prints `state = not
+  # running` and no pid at all, which is precisely the state this block exists
+  # to stop reporting as a daemon that kept running.
+  daemon_pid() {
+    "$LAUNCHCTL" print "gui/$(id -u)/$DAEMON_LABEL" 2>/dev/null \
+      | awk -F' = ' '$1 ~ /^[[:space:]]*pid$/ { print $2; exit }' || true
+  }
+
+  # Whoever is listening on DAEMON_PORT, as "cmd (pid N)", or empty when the
+  # port is free. Measured, not assumed: the message this replaces blamed port
+  # contention on every failure, and on the one that was reported nothing held
+  # the port at all — so it sent the operator to look at the wrong thing.
+  port_holder() {
+    command -v lsof >/dev/null 2>&1 || return 0
+    lsof -nP -iTCP:"$DAEMON_PORT" -sTCP:LISTEN 2>/dev/null \
+      | awk 'NR > 1 { print $1 " (pid " $2 ")"; exit }' || true
+  }
+
+  daemon_health_probe() {
+    local _i
+    for _i in $(seq 1 "$1"); do
+      if curl -fsS -m 2 "http://127.0.0.1:$DAEMON_PORT/health" >/dev/null 2>&1; then return 0; fi
+      sleep 1
+    done
+    return 1
+  }
+
   DAEMON_UP=0
-  for _ in $(seq 1 45); do
-    if curl -fsS -m 2 "http://127.0.0.1:$DAEMON_PORT/health" >/dev/null 2>&1; then DAEMON_UP=1; break; fi
-    sleep 1
-  done
+  if daemon_health_probe "$DAEMON_HEALTH_TIMEOUT"; then
+    DAEMON_UP=1
+  elif [[ -z "$(daemon_pid)" ]]; then
+    # Loaded but never spawned — the parked-spawn case again. The kickstart
+    # above should have prevented it; this is a second attempt, not the first,
+    # and -k forces a restart in case the job spawned and wedged in between.
+    # Guarded on the job not running, so it can never kill a healthy daemon
+    # that is merely slow to answer.
+    echo "    /health did not answer in ${DAEMON_HEALTH_TIMEOUT}s and the job is not running — starting it…" >&2
+    "$LAUNCHCTL" kickstart -k "gui/$(id -u)/$DAEMON_LABEL" >/dev/null 2>&1 || true
+    if daemon_health_probe "$DAEMON_HEALTH_TIMEOUT"; then DAEMON_UP=1; fi
+  fi
   if [[ $DAEMON_UP -eq 1 ]]; then
     if [[ "$DAEMON_MODE" == "refresh" ]]; then
       echo "    memory daemon refreshed and answering on http://127.0.0.1:$DAEMON_PORT"
@@ -769,7 +877,31 @@ if [[ "$DAEMON_MODE" != "none" ]]; then
       echo "    Uninstall: launchctl bootout gui/\$(id -u)/$DAEMON_LABEL && rm $DAEMON_PLIST"
     fi
   else
-    daemon_fail "the agent loaded but nothing answered /health within 45s — most likely something else holds port $DAEMON_PORT (check: lsof -nP -iTCP:$DAEMON_PORT -sTCP:LISTEN; log: $DAEMON_LOG_DIR/daemon.log)"
+    # What the operator is actually left with, measured here rather than
+    # asserted. Three states are possible and they call for different words:
+    # the daemon running but mute, something else holding the port, or — the
+    # one that used to be reported as "it keeps running" — no daemon at all.
+    DAEMON_PID_NOW="$(daemon_pid)"
+    PORT_HOLDER_NOW="$(port_holder)"
+    if [[ -n "$DAEMON_PID_NOW" ]]; then
+      daemon_reload_fail "the daemon is running but did not answer /health within ${DAEMON_HEALTH_TIMEOUT}s" \
+        "It is RUNNING as pid $DAEMON_PID_NOW and not serving. Recall will not use it," \
+        "so until it answers, every recall comes back empty." \
+        "Log: $DAEMON_LOG_DIR/daemon.log"
+    elif [[ -n "$PORT_HOLDER_NOW" ]]; then
+      daemon_reload_fail "the agent loaded but nothing answered /health within ${DAEMON_HEALTH_TIMEOUT}s" \
+        "The daemon is now STOPPED, and port $DAEMON_PORT is held by $PORT_HOLDER_NOW," \
+        "so it could not bind. Until that port is free and the daemon is up," \
+        "every recall comes back empty." \
+        "Free the port, then: launchctl kickstart -k gui/\$(id -u)/$DAEMON_LABEL" \
+        "Log:                $DAEMON_LOG_DIR/daemon.log"
+    else
+      daemon_reload_fail "the agent loaded but nothing answered /health within ${DAEMON_HEALTH_TIMEOUT}s" \
+        "The daemon is now STOPPED: no process is running and nothing is listening" \
+        "on port $DAEMON_PORT. Until it is started, every recall comes back empty." \
+        "Start it with: launchctl kickstart -k gui/\$(id -u)/$DAEMON_LABEL" \
+        "Log:           $DAEMON_LOG_DIR/daemon.log"
+    fi
   fi
 fi
 # ── done ────────────────────────────────────────────────────────────────────
