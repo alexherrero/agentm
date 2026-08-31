@@ -241,11 +241,46 @@ def inventory(notes: list) -> str:
     return ", ".join(parts)
 
 
+_FENCE_LINE = re.compile(r"^\s*(`{3,}|~{3,})", re.M)
+
+
+def fence_for(text: str) -> str:
+    """A fence long enough that `text` cannot break out of it.
+
+    CommonMark closes a fenced block only on a run at least as long as the one
+    that opened it, so one backtick more than the longest run inside is always
+    safe.
+    """
+    longest = 0
+    for m in re.finditer(r"`+", text or ""):
+        longest = max(longest, len(m.group(0)))
+    return "`" * max(3, longest + 1)
+
+
+def balance_fences(excerpt: str) -> str:
+    """Close any fence the clip left open.
+
+    An excerpt cut at a fixed length lands mid-block often enough that this is
+    the normal case, not an edge one. An unclosed fence does not degrade the
+    page it is on — it consumes every page after it.
+    """
+    opens = _FENCE_LINE.findall(excerpt or "")
+    if len(opens) % 2 == 0:
+        return excerpt
+    return (excerpt or "") + "\n```"
+
+
 def render_turn(n: int, item: dict) -> list:
     notes = split_notes(item.get("context") or "")
-    lines = [f"## {n}. `{item['id']}`", "", "**LABEL: ?**", "",
-             "### The request", "", "```",
-             (item["prompt"] or "").strip()[:3000], "```", "",
+    label = item.get("label") or "?"
+    lines = [f"## {n}. `{item['id']}`", "", f"**LABEL: {label}**", ""]
+    if item.get("flag"):
+        lines += [f"FLAG: {item['flag']}", ""]
+    lines += [
+             "### The request", ""]
+    prompt = (item["prompt"] or "").strip()[:3000]
+    pf = fence_for(prompt)
+    lines += [pf, prompt, pf, "",
              f"### What was retrieved — {item['n_notes']} notes",
              "", f"*{inventory(notes)}*", "",
              "| # | note | what it is | its own title |",
@@ -271,8 +306,8 @@ def render_turn(n: int, item: dict) -> list:
         if note["slug"]:
             lines.append(f"**{note['slug']}**")
         body = note["body"]
-        clipped = body[:NOTE_CHARS]
-        lines += ["", "> " + "\n> ".join(clipped.splitlines()[:22])]
+        clipped = balance_fences("\n".join(body[:NOTE_CHARS].splitlines()[:22]))
+        lines += ["", "> " + "\n> ".join(clipped.splitlines())]
         if len(body) > len(clipped):
             lines += [">", f"> *… {len(body) - len(clipped):,} more characters "
                            f"— open the note itself if you need them.*"]
@@ -331,7 +366,8 @@ def fixture_rows(items: list) -> list:
     prompt and the injected notes stay in the operator's vault, and the repo
     gets hashes, strata and counts.
     """
-    return [{k: v for k, v in it.items() if k not in ("prompt", "context")}
+    return [{k: v for k, v in it.items()
+             if k not in ("prompt", "context", "label", "flag")}
             for it in items]
 
 
@@ -344,6 +380,10 @@ def main(argv=None) -> int:
     ap.add_argument("--fixture", type=pathlib.Path, required=True,
                     help="repo path for the hash/stratum/verdict record")
     ap.add_argument("--rubric-link", default="RUBRIC.md")
+    ap.add_argument("--carry-labels", type=pathlib.Path,
+                    help="a labels JSON rescued from a previous worksheet; "
+                         "labels are restored by turn id, so a reordered or "
+                         "renumbered sheet still keeps them on the right turn")
     ap.add_argument("--human-only", action="store_true",
                     help="drop prompts the system injected — a third of the "
                          "traffic, which no note could ever answer")
@@ -359,6 +399,10 @@ def main(argv=None) -> int:
         h = sufficient_context.grouped_hash(t.get("prompt_hash"))
         turns.setdefault(h, t)
 
+    carried = {}
+    if args.carry_labels and args.carry_labels.exists():
+        carried = json.loads(args.carry_labels.read_text(encoding="utf-8"))
+
     items, missing, machine = [], 0, 0
     for r in picked:
         t = turns.get(r["turn"])
@@ -371,9 +415,11 @@ def main(argv=None) -> int:
         n_notes = r.get("n_notes")
         if n_notes is None:
             n_notes = len(t.get("slugs") or [])
+        prev = carried.get(r["turn"], {})
         items.append({
             "id": r["turn"], "stratum": stratum(r, n_notes),
             "judge": r.get("verdict"), "n_notes": n_notes,
+            "label": prev.get("label"), "flag": prev.get("flag"),
             "prompt": t.get("_prompt"), "context": t.get("_injected"),
         })
 
@@ -402,7 +448,10 @@ def main(argv=None) -> int:
 
     for f in written:
         print(f"  {f.name}  ({f.stat().st_size // 1024} KB)")
+    kept = sum(1 for it in items if it.get("label"))
     print(f"worksheet : {len(written)} batches, {len(items)} turns total")
+    if carried:
+        print(f"  {kept} of {len(carried)} rescued labels restored by turn id")
     print(f"fixture   : {args.fixture}")
     if missing:
         print(f"  {missing} pool rows had no recoverable turn and were dropped")

@@ -67,6 +67,81 @@ class TheMachinePromptFilter(unittest.TestCase):
             self.assertFalse(bw.is_machine_prompt(p), repr(p))
 
 
+class TheFencing(unittest.TestCase):
+    def test_a_fence_long_enough_to_contain_the_text(self):
+        self.assertEqual(bw.fence_for("plain"), "```")
+        self.assertEqual(bw.fence_for("has ``` inside"), "````")
+        self.assertEqual(bw.fence_for("has ````` inside"), "``````")
+
+    def test_a_clipped_excerpt_closes_what_it_opened(self):
+        # The clip lands mid-block often enough that this is the normal case.
+        self.assertEqual(bw.balance_fences("a\n```\nb").count("```"), 2)
+        self.assertEqual(bw.balance_fences("a\n```\nb\n```").count("```"), 2)
+
+    def test_a_prompt_quoting_a_fence_cannot_break_out(self):
+        item = {"id": "x", "n_notes": 0, "context": "",
+                "prompt": "why does\n```\ncode\n```\nbreak?"}
+        text = "\n".join(bw.render_turn(1, item))
+        # The wrapper must be longer than anything inside it.
+        self.assertIn("````", text)
+
+    def test_a_note_body_carrying_a_fence_leaves_the_page_balanced(self):
+        # The real failure: 41 fences in one batch, so everything after the
+        # last unclosed one rendered inside a code block.
+        block = ("### a-note (kind: unknown, score=0.03 daemon-hybrid, "
+                 "space: desk)\n\n# Title\n\n```python\nx = 1\n")
+        item = {"id": "x", "n_notes": 1, "prompt": "q", "context": block}
+        text = "\n".join(bw.render_turn(1, item))
+        fences = sum(1 for l in text.splitlines()
+                     if l.lstrip("> ").startswith("```"))
+        self.assertEqual(fences % 2, 0, f"{fences} fences left the page open")
+
+    def test_every_rendered_turn_leaves_the_page_balanced(self):
+        blocks = [
+            "### n (kind: unknown, score=0.1 x, space: desk)\n\n```\nopen",
+            "### n (kind: unknown, score=0.1 x, space: desk)\n\n``` a ```\nb",
+            "### n (kind: unknown, score=0.1 x, space: desk)\n\nplain",
+        ]
+        for b in blocks:
+            item = {"id": "x", "n_notes": 1, "prompt": "q ``` q", "context": b}
+            text = "\n".join(bw.render_turn(1, item))
+            fences = sum(1 for l in text.splitlines()
+                         if l.lstrip("> ").startswith("```"))
+            self.assertEqual(fences % 2, 0, b[:40])
+
+
+class TheCarriedLabels(unittest.TestCase):
+    def test_a_carried_label_replaces_the_empty_slot(self):
+        item = {"id": "x", "n_notes": 0, "prompt": "q", "context": "",
+                "label": "sufficient"}
+        text = "\n".join(bw.render_turn(1, item))
+        self.assertIn("**LABEL: sufficient**", text)
+        self.assertNotIn("**LABEL: ?**", text)
+
+    def test_a_carried_flag_is_restored_too(self):
+        item = {"id": "x", "n_notes": 0, "prompt": "q", "context": "",
+                "label": "insufficient", "flag": "no_note_possible"}
+        text = "\n".join(bw.render_turn(1, item))
+        self.assertIn("FLAG: no_note_possible", text)
+
+    def test_an_unlabelled_turn_still_gets_an_empty_slot(self):
+        item = {"id": "x", "n_notes": 0, "prompt": "q", "context": ""}
+        self.assertIn("**LABEL: ?**", "\n".join(bw.render_turn(1, item)))
+
+    def test_a_label_never_reaches_the_repo_fixture(self):
+        # The operator's answer is data about them, and it is also the thing
+        # the judge is measured against — it belongs in the vault, not the repo.
+        rows = bw.fixture_rows([{"id": "x", "stratum": "full/n/a", "judge": "n/a",
+                                 "n_notes": 5, "label": "sufficient",
+                                 "flag": "no_note_possible",
+                                 "prompt": "p", "context": "c"}])
+        import json as _j
+        text = _j.dumps(rows)
+        self.assertNotIn("sufficient", text)
+        self.assertNotIn("no_note_possible", text)
+        self.assertIn("full/n/a", text)
+
+
 class TheStratum(unittest.TestCase):
     def test_it_reads_the_note_count_the_judge_recorded(self):
         self.assertEqual(
