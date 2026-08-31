@@ -1,0 +1,44 @@
+# online-recall-nightly.yaml — measure recall against real work, a little each
+# night (online-recall task 9; contract at
+# wiki/reference/Retrieval-Eval-Contract.md).
+#
+# Per agentm-runner.md's job-manifest contract (scripts/runner/manifest.py).
+# .harness/jobs/ is gitignored; register by copying this template to
+# .harness/jobs/online-recall-nightly.yaml.
+#
+# WHAT IT DOES. Judges turns nobody has judged yet — "did the notes recall
+# injected actually contain what this request needed?" — and appends them to a
+# growing pool. It never re-judges and never deletes.
+#
+# WHY IT ACCUMULATES. At the sample this shipped with, the always-valid
+# interval spans more than ±0.25 and excludes nothing. About 45 judged turns
+# clear that bar, 126 reach ±0.15, and 274 reach ±0.10. Re-measuring the same
+# turns nightly would spend money to learn nothing; growing the sample is the
+# only thing that makes the number worth reading.
+#
+# WHY IT IS CAPPED. Judging bills about $0.20 a turn against a corpus that
+# grows daily, so uncapped this is a three-figure monthly bill for a number
+# nobody reads daily. The $2 default buys roughly ten turns a night and reaches
+# a ±0.10 interval in about a month. Raising it buys the number sooner and
+# nothing else.
+#
+# WHY A LOCAL JOB AND NOT CI. It reads the operator's own transcripts and their
+# vault, and it calls a model. None of that belongs in CI, and none of it works
+# there. The pool lands in the vault and the health scorecard renders it WITH
+# ITS AGE — a job that stops running surfaces as staleness on the page somebody
+# reads, never as silence.
+#
+# WHAT IT WILL NOT TELL YOU. The judge drifts about five points between
+# identical runs, so this detects large changes and not small ones. It has no
+# independent human validation and the scorecard row says UNVALIDATED on every
+# render. And the traffic it reads is mostly this repository's own, so it
+# describes recall while working on recall.
+schedule: daily
+lookback: 24h
+command: python3 -m health.online_recall_job --max-spend 2.00
+
+# T1 — machine-facing measurement, nothing operator-interruptive. The number
+# reaches the operator through the scorecard, never as a notification.
+tier: T1
+
+dry_run: false

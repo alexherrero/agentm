@@ -236,6 +236,52 @@ the fused top-20) was a property of the terms-shaped candidate pool, not of
 the corpus: the step-3.5 reach diagnosis found 22 of the 28 remaining misses
 reachable once the dense arm is queried with the natural question.
 
+## Online measurement: a second instrument, and what it cannot do
+
+The offline verdict stands. Nothing below revises it — the gold-set ladder is
+still how a retrieval change is accepted or refused, and this section adds a
+second instrument beside it rather than a replacement for it.
+
+**What it measures.** For each turn of real work where recall injected
+something, one question: could those notes alone have answered what was asked?
+It is Google's sufficient-context autorater (Joren et al., ICLR 2025), binary
+and reference-free, which is what makes it usable on traffic where no gold
+answer exists. A second axis asks whether the reply drew on the context, and
+crossing the two separates bad retrieval from good context the model ignored.
+
+**What it found.** Recall supplied sufficient context on roughly a quarter of
+turns that needed information, once turns whose gap lived in the conversation
+rather than in any note are set aside. The `ignored` corner of the crossing was
+empty: where the right material comes back, the model uses it. So the failure
+this instrument sees is retrieval precision rather than model inattention.
+
+**Its resolution, which is coarse.** The judge gives 8.0%, 13.0% and 12.2% on
+three runs over the identical turns — a five-point spread from re-running
+alone, test-retest κ 0.73–0.78. Nothing smaller than about ten points is
+detectable, and every interval it reports covers sampling error while omitting
+that drift, which is reported separately.
+
+**It is unvalidated, and will stay so on this data.** The plan expected κ
+against ~150 operator labels. Unaided labelling proved error-prone — a turn was
+marked sufficient without noticing that no June-dated plan was among three
+retrieved plans — and once the judge's reasoning is shown to fix that, the
+labels are no longer independent. What exists is a machine panel (Sonnet,
+Gemini, Fable) whose labels the operator reviewed and accepted, with two of
+three graders sharing the judge's model family. The scorecard row says
+UNVALIDATED on every render for that reason.
+
+**Whose traffic it describes.** Four turns in five come from this repository,
+which discusses recall constantly and therefore asks it unusually well-aimed
+questions. This measures recall while working on recall.
+
+**Re-audit triggers.** Re-measure the drift when the judge's model, its prompt,
+or its replicate count changes — the five-point figure is a property of that
+arrangement, not a constant. Re-examine the sample's project mix when the
+scorecard is used to justify a change aimed at work outside this repository.
+And revisit the `ignored` corner once enough turns score `sufficient` to
+populate it: it came out zero from a cell that could not have held more than
+one.
+
 ## Distribution
 
 `install.sh --daemon` grows the model leg: fetch the pinned embedding GGUF into
@@ -306,7 +352,16 @@ it.
   — the cross-system findings this design absorbs and corrects.
 
 ## Amendment log
-
+- **2026-08-30 — online measurement added as a second instrument.** The offline
+  ladder is unchanged and still governs acceptance. Added because algorithm
+  changes were not moving the offline numbers and nobody could say whether that
+  was the algorithm or the ruler. Why not extend the offline eval instead: it
+  has no access to what real requests ask for, and the gap this found — a third
+  of retrievals firing on machine-generated prompts, and half of apparent
+  failures being conversational referents no note could hold — is invisible to
+  a gold set. Re-audit when the judge's model or prompt changes (the drift
+  figure is arrangement-specific), or when the row is used to justify work
+  outside this repository (four turns in five are its own traffic).
 *Newest first.*
 
 - **2026-08-28 · The verdict: the ladder closes at its plateau, and the
