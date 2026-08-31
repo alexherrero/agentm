@@ -36,11 +36,28 @@ class TheParser(unittest.TestCase):
     def test_a_rejection_must_name_the_gap(self):
         # Borrowed from grounding.go: a rejection with nothing named is a judge
         # that disliked the context, not one that found a problem.
-        self.assertIsNone(sc.parse_verdict('{"verdict": "insufficient"}'))
-        self.assertIsNone(
-            sc.parse_verdict('{"verdict": "insufficient", "missing": []}'))
-        self.assertIsNotNone(
-            sc.parse_verdict('{"verdict": "insufficient", "missing": ["a date"]}'))
+        #
+        # Still not a verdict — it now records what it would have been, because
+        # this demand applies to `insufficient` alone, so anything that makes
+        # the judge terser drops those selectively and pushes the rate toward
+        # "sufficient".
+        for bad in ('{"verdict": "insufficient"}',
+                    '{"verdict": "insufficient", "missing": []}'):
+            got = sc.parse_verdict(bad)
+            self.assertIsNone(got["verdict"], bad)
+            self.assertEqual(got["dropped_as"], "insufficient")
+        good = sc.parse_verdict(
+            '{"verdict": "insufficient", "missing": ["a date"]}')
+        self.assertEqual(good["verdict"], "insufficient")
+
+    def test_a_dropped_verdict_never_counts_as_an_answer(self):
+        got = sc.judge_turn({"prompt_hash": "abc", "_prompt": "q",
+                             "_injected": "c"}, replicates=2,
+                            caller=lambda _p, **_kw: {
+                                "result": '{"verdict": "insufficient"}'})
+        self.assertIsNone(got["verdict"])
+        self.assertEqual(got["failures"], 2)
+        self.assertEqual(got["failed_as"], ["insufficient"])
 
     def test_an_unknown_verdict_is_not_a_verdict(self):
         self.assertIsNone(sc.parse_verdict('{"verdict": "maybe"}'))
@@ -115,6 +132,49 @@ class TheJudgeLoop(unittest.TestCase):
     def _caller(self, *answers):
         it = iter(answers)
         return lambda _p, **_kw: next(it)
+
+    def test_use_unanimity_is_absent_at_one_replicate(self):
+        # The same defect already fixed on the sufficiency axis: one answer
+        # cannot disagree with itself, so True there is a statistic that
+        # cannot fail, sitting where stability is looked for.
+        got = sc.judge_use({"_injected": "c", "_answer": "a"}, replicates=1,
+                           caller=lambda _p, **_kw: {
+                               "result": '{"verdict": "unused"}'})
+        self.assertNotIn("use_unanimous", got)
+        two = sc.judge_use({"_injected": "c", "_answer": "a"}, replicates=2,
+                           caller=lambda _p, **_kw: {
+                               "result": '{"verdict": "unused"}'})
+        self.assertTrue(two["use_unanimous"])
+
+    def test_a_row_carries_the_samplers_own_key(self):
+        # Keyed on the prompt hash alone, a verdict and a label can be joined
+        # across two different retrievals: 32 hashes cover 83 turns here.
+        a = sc.judge_turn({"prompt_hash": "same", "session": "s1", "ts": "t1",
+                           "_prompt": "q", "_injected": "c"}, replicates=1,
+                          caller=lambda _p, **_kw: {
+                              "result": '{"verdict": "n/a"}'})
+        b = sc.judge_turn({"prompt_hash": "same", "session": "s2", "ts": "t2",
+                           "_prompt": "q", "_injected": "c"}, replicates=1,
+                          caller=lambda _p, **_kw: {
+                              "result": '{"verdict": "n/a"}'})
+        self.assertEqual(a["turn"], b["turn"])
+        self.assertNotEqual(a["turn_key"], b["turn_key"])
+
+    def test_a_floor_that_never_fires_reports_no_disagreement(self):
+        # With the floor at zero the disagreement equals the judged rate
+        # exactly, and printing all three reads as a cross-check between two
+        # signals when there is one signal and a constant.
+        rows = [{"use_verdict": "used", "deterministic_used": False},
+                {"use_verdict": "unused", "deterministic_used": False}]
+        got = sc.cross(rows)
+        self.assertNotIn("utilization_disagreement", got)
+        self.assertIn("cannot corroborate", got["utilization_disagreement_note"])
+
+    def test_a_floor_that_fires_does_report_disagreement(self):
+        rows = [{"use_verdict": "used", "deterministic_used": True},
+                {"use_verdict": "used", "deterministic_used": False}]
+        got = sc.cross(rows)
+        self.assertEqual(got["utilization_disagreement"], 0.5)
 
     def test_it_reports_unanimity_when_replicates_agree(self):
         got = sc.judge_turn({"prompt_hash": "abc", "_prompt": "q",
@@ -396,10 +456,11 @@ class TheUseParser(unittest.TestCase):
     def test_a_claim_of_use_must_say_what_it_drew_on(self):
         # Symmetric with the sufficiency judge's rule. "Used" with nothing
         # named is a judge asserting a conclusion.
-        self.assertIsNone(sc.parse_use('{"verdict": "used"}'))
-        self.assertIsNone(sc.parse_use('{"verdict": "used", "drew_on": []}'))
-        self.assertIsNotNone(
-            sc.parse_use('{"verdict": "used", "drew_on": ["the vault path"]}'))
+        for bad in ('{"verdict": "used"}', '{"verdict": "used", "drew_on": []}'):
+            self.assertIsNone(sc.parse_use(bad)["verdict"], bad)
+        self.assertEqual(
+            sc.parse_use('{"verdict": "used", "drew_on": ["the vault path"]}'
+                         )["verdict"], "used")
 
     def test_unused_needs_nothing(self):
         self.assertEqual(sc.parse_use('{"verdict": "unused"}'),
@@ -523,6 +584,63 @@ class TheTwoUtilizationSignals(unittest.TestCase):
                 {"use_verdict": "n/a", "deterministic_used": True}]
         got = sc.cross(rows)
         self.assertNotIn("utilization_disagreement", got)
+
+
+class TheTruncatedRun(unittest.TestCase):
+    def _turns(self, n_sessions, per_session):
+        return [{"session": f"s{s}", "ts": f"t{i}", "prompt_hash": f"h{s}-{i}",
+                 "_prompt": "q", "_injected": "c"}
+                for s in range(n_sessions) for i in range(per_session)]
+
+    def _run(self, argv, turns, per_call=0.10):
+        import recall_traffic
+        real_iter = recall_traffic.iter_injections
+        real_call = sc.completeness_grade._call_claude_json
+        seen = []
+
+        def spy(prompt, **_kw):
+            seen.append(prompt)
+            return {"result": '{"verdict": "n/a"}', "total_cost_usd": per_call}
+
+        recall_traffic.iter_injections = lambda **_kw: iter(turns)
+        sc.completeness_grade._call_claude_json = spy
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                sc.main(argv)
+        finally:
+            recall_traffic.iter_injections = real_iter
+            sc.completeness_grade._call_claude_json = real_call
+        return seen
+
+    def test_a_capped_run_spreads_across_sessions(self):
+        # Turns arrive grouped by session. Judging in arrival order and letting
+        # the cap stop the loop takes the first few sessions entire and never
+        # reaches the rest — which is what produced a 110-turn "pool" drawn
+        # from 10 of 36 sessions.
+        turns = self._turns(n_sessions=20, per_session=10)
+        # $0.30/turn against a $6 cap judges about 20 of the 200.
+        self._run(["--sample-every", "1", "--replicates", "3",
+                   "--max-spend", "6.0"], turns)
+        # Recover which turns were judged from the order the module built.
+        keep = sc.sample_every(1)
+        ordered = [t for t in turns if keep(sc.turn_key(t))]
+        import random as _r
+        _r.Random(sc.SHUFFLE_SEED).shuffle(ordered)
+        judged = ordered[:20]
+        sessions = {t["session"] for t in judged}
+        self.assertGreater(len(sessions), 8,
+                           f"only {len(sessions)} sessions in a 20-turn cut")
+
+    def test_the_order_is_fixed_so_a_capped_run_is_reproducible(self):
+        turns = self._turns(6, 6)
+        import random as _r
+        first = list(turns)
+        _r.Random(sc.SHUFFLE_SEED).shuffle(first)
+        second = list(turns)
+        _r.Random(sc.SHUFFLE_SEED).shuffle(second)
+        self.assertEqual([t["prompt_hash"] for t in first],
+                         [t["prompt_hash"] for t in second])
 
 
 class TheCorpusStamp(unittest.TestCase):

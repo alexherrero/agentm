@@ -78,6 +78,26 @@ standing reason: its gutted-note check was green in both directions while it
 agreed with the operator at ρ = 0.11, because the check exercised a stage
 downstream of the defect.
 
+## The online metric's own rules
+
+The rules above govern the offline gold-set ladder. Live traffic adds these.
+Each one exists because breaking it produced a wrong number once.
+
+| rule | why | breaking it cost |
+|---|---|---|
+| **No raw prompt text on disk** | the judge's account of a gap quotes the request by construction | a repository holding the operator's prompts |
+| **Deterministic comparator runs and is reported apart** | it fired on 7 of 3,004 injected notes — showing that is the point | a floor mistaken for a second opinion |
+| **Suppress the comparison when the floor never fires** | the disagreement then equals the judged rate exactly | one number printed twice as though two signals agreed |
+| **No rate without the instrument's resolution beside it** | the judge drifts ~5 points across identical runs | a precision claim the instrument cannot support |
+| **Always-valid interval, not fixed-horizon** | the number is read whenever someone wonders | over 800 peeked streams, a Wald interval was wrong on 43–46% against a sequence's 0.0% |
+| **A sample too small says so** | ~45 judged turns clear the bar, 274 reach ±0.10 | `[0%, 54%]` rendered as if it were a range |
+
+**κ before publication does not apply here**, and the exemption is recorded
+rather than waived. No independent human labels are obtainable from this data —
+unaided ones proved error-prone, aided ones are not independent — so the online
+row carries a permanent `UNVALIDATED` marker with its reason attached, instead
+of a κ it cannot compute.
+
 ## Related
 
 [CI-Gates](CI-Gates) · the gate script `scripts/check-retrieval-regression.sh`

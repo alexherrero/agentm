@@ -233,6 +233,36 @@ def _regression_headline(scorecard: dict, baseline: dict | None) -> str:
     return "green"
 
 
+def online_recall_section() -> list:
+    """The Online recall block, or nothing at all.
+
+    Absent artifacts, an absent module, or a broken read all render as silence
+    rather than as a zero. The scorecard is read by people who were not here,
+    and a fabricated row is worse than a missing one.
+    """
+    try:
+        import online_recall_row
+    except Exception:
+        return []
+    try:
+        vault = _default_vault_path_fn()
+    except Exception:
+        vault = None
+    if vault is None:
+        return []
+    lab = Path(vault) / "desk" / "labelling"
+    panel_path = lab / "recall-sufficiency-v1-panel.json"
+    if not panel_path.exists():
+        return []
+    try:
+        section = online_recall_row.compute(
+            panel_path,
+            reasons_path=lab / "recall-sufficiency-v1-reasons.json")
+        return [""] + online_recall_row.render(section)
+    except Exception:
+        return []
+
+
 def render_markdown(scorecard: dict, *, headline: str = "green", ablation_records: list[dict] | None = None) -> str:
     lines = []
     live_total = scorecard.get("live_total")
@@ -299,6 +329,7 @@ def render_markdown(scorecard: dict, *, headline: str = "green", ablation_record
                 f"{a['score_off']:.2f} | {a['uplift']:.2f} |"
             )
     lines.append("")
+    lines += online_recall_section()
     return "\n".join(lines) + "\n"
 
 

@@ -1,0 +1,549 @@
+{
+  "seed": 20260830,
+  "population": "human-typed prompts only",
+  "machine_prompts_dropped": 49,
+  "note": "one shuffled pool, drawn uniformly from the corpus. Any prefix of this order is itself a random sample, so a partially labelled worksheet is still unbiased and whatever is left over is the unlabelled pool PPI uses.",
+  "turns_not_recoverable": 0,
+  "items": [
+    {
+      "id": "4eca-0fb3-d5ca-a69b",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "5c32-e52d-aaf6-de92",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 3
+    },
+    {
+      "id": "af60-94ca-d12e-5386",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "d1ab-a6dc-da1c-d147",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "b163-2005-1560-1e08",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "2dbb-0919-c832-ba9a",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "195b-d6cb-c25a-2c12",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "5c65-f1aa-6a58-941d",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "337f-4fb0-09f8-bad4",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "5945-b1e0-345f-6e05",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "bd05-0e44-eda1-c0ce",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "1c1d-2bd4-0f2d-3ed4",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "7494-5a2c-3ea3-bb6f",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "995c-564a-7275-e45f",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 4
+    },
+    {
+      "id": "d258-d956-58eb-26f9",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "500c-d3ec-ef5e-a30f",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "d236-9370-2449-d231",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "8361-2e76-d251-dead",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "06e4-5e53-44c3-3ea9",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "89b2-9064-4588-8244",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "6ea4-e4ce-4dc5-873a",
+      "stratum": "thin/insufficient",
+      "judge": "insufficient",
+      "n_notes": 1
+    },
+    {
+      "id": "75e8-edbf-a9a9-7fdf",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "7ad7-72a1-0dca-b343",
+      "stratum": "thin/insufficient",
+      "judge": "insufficient",
+      "n_notes": 1
+    },
+    {
+      "id": "519d-8980-3130-193e",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "10ee-dae3-8ffb-0b9f",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "338e-8db8-b28a-d0e5",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 3
+    },
+    {
+      "id": "8d71-dcc1-46db-e157",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 4
+    },
+    {
+      "id": "71c9-46de-e115-145d",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 4
+    },
+    {
+      "id": "acc7-1087-3c3b-29c2",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "82f0-9bd4-04ed-384d",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "9cc7-37f5-bf0e-0dca",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 2
+    },
+    {
+      "id": "a01d-9b2c-2389-a21e",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "4fd1-9ac9-e842-7137",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 2
+    },
+    {
+      "id": "ae1b-4274-cc68-ce35",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "5dac-2aef-f0e8-8a89",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "7f7d-4335-233f-aa12",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 4
+    },
+    {
+      "id": "e845-5c80-c15a-7f0f",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "b703-7a4d-e7f8-6233",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 3
+    },
+    {
+      "id": "3ebe-bf50-cf51-dbdc",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "c45a-4fc0-d7c7-9379",
+      "stratum": "full/sufficient",
+      "judge": "sufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "d8b8-392e-2c54-2950",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "e7bf-b6cd-e6dc-e8f9",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "0d5c-c908-dcfa-4d3c",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "2380-1316-da7d-f42e",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "5500-3852-4525-b5a4",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "9e60-a076-3fc5-e0c0",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 3
+    },
+    {
+      "id": "a64d-e37b-7209-43cf",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "40c9-5449-1b50-79a3",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 3
+    },
+    {
+      "id": "b6e1-b723-0039-1bd2",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "33a2-8666-aa8a-37d5",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 3
+    },
+    {
+      "id": "0554-f752-19f0-c1cd",
+      "stratum": "thin/insufficient",
+      "judge": "insufficient",
+      "n_notes": 1
+    },
+    {
+      "id": "06b2-9bb3-1881-4108",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "be3c-3024-0ae0-c58b",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "095a-8a9a-e436-d802",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "b877-88f2-9c6f-dfd8",
+      "stratum": "mid/sufficient",
+      "judge": "sufficient",
+      "n_notes": 2
+    },
+    {
+      "id": "14c7-e5d2-e0af-667a",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "7aa6-3a7b-3b04-8a6a",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "5df1-337c-14f8-6366",
+      "stratum": "full/sufficient",
+      "judge": "sufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "24f3-068b-86cd-771d",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "6e37-349b-8ce7-8c5f",
+      "stratum": "mid/insufficient",
+      "judge": "insufficient",
+      "n_notes": 4
+    },
+    {
+      "id": "3a3e-c0b8-d3a3-769f",
+      "stratum": "thin/insufficient",
+      "judge": "insufficient",
+      "n_notes": 1
+    },
+    {
+      "id": "fdd0-9aae-2aa2-ecdf",
+      "stratum": "mid/sufficient",
+      "judge": "sufficient",
+      "n_notes": 3
+    },
+    {
+      "id": "d44f-cf73-1c17-b28d",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "5668-7ef1-e71d-8b87",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "38fa-77bc-da5c-e35c",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 3
+    },
+    {
+      "id": "edd0-b32c-cb48-22de",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 3
+    },
+    {
+      "id": "1197-9213-6aa2-4c12",
+      "stratum": "thin/n/a",
+      "judge": "n/a",
+      "n_notes": 1
+    },
+    {
+      "id": "a509-8e85-7aba-d9e2",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "e1ad-2c7f-df9a-c0ec",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 4
+    },
+    {
+      "id": "4b64-3a72-4797-f917",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "3857-ba9e-4892-4b4e",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "e16e-0501-d4fa-767c",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "4f07-47bc-4b46-58c1",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "e63f-a33f-0635-b36e",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 4
+    },
+    {
+      "id": "392e-8d85-0964-f0e3",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "4b0a-4b1c-f81f-d369",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "84a0-dad1-b632-ce2b",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "b654-37b2-7367-3245",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "4ca3-91c1-9446-14a0",
+      "stratum": "full/sufficient",
+      "judge": "sufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "74e2-1680-eac7-385c",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 2
+    },
+    {
+      "id": "515d-b6ff-ed77-ebd7",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "e097-061f-3203-73b1",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "1234-54c7-a234-9b35",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "852c-8773-e97e-7650",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 4
+    },
+    {
+      "id": "775b-5b50-e44d-6046",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 2
+    },
+    {
+      "id": "136c-d111-2e9a-9b18",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "34b3-e1ab-cd97-fd93",
+      "stratum": "full/n/a",
+      "judge": "n/a",
+      "n_notes": 5
+    },
+    {
+      "id": "d23b-1a37-3574-300a",
+      "stratum": "full/insufficient",
+      "judge": "insufficient",
+      "n_notes": 5
+    },
+    {
+      "id": "60d2-4266-b191-c6a4",
+      "stratum": "mid/n/a",
+      "judge": "n/a",
+      "n_notes": 3
+    },
+    {
+      "id": "2499-3f3a-163a-646b",
+      "stratum": "mid/sufficient",
+      "judge": "sufficient",
+      "n_notes": 4
+    }
+  ]
+}

@@ -41,7 +41,9 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import random
 import re
+import subprocess
 import sys
 from typing import Callable, Optional
 
@@ -52,6 +54,11 @@ import recall_traffic  # noqa: E402
 
 MODEL = "sonnet"
 REPLICATES = 3
+# Fixed, so a truncated run is reproducible as well as unbiased.
+SHUFFLE_SEED = 20260830
+# Measured, and used only to make `--max-spend` mean something for a judge that
+# reports no cost of its own. Not a claim about what `agy` bills.
+CLAUDE_RATE_USD = 0.203
 
 # The autorater's question. Three shapes of answer, and a rejection has to name
 # what is missing — `grounding.go` makes the same demand of its faithfulness
@@ -70,10 +77,18 @@ Judge only sufficiency. Not whether the context is well written, not whether it
 is the best possible context, not whether you would have retrieved something
 else. Only whether what is there covers what was asked.
 
-If the REQUEST is not an information need — a command to run something, a
-"continue", a "yes", an approval, an instruction to act — then no context could
-be sufficient or insufficient, and the honest answer is "n/a". Use it. Do not
-guess a verdict for a request that has no answer to look up.
+Use "n/a" only when the REQUEST needs no information at all to act on: a bare
+approval ("yes", "go ahead"), a bare retry, or a command whose meaning is
+complete on its own ("run the tests", "continue").
+
+An instruction still counts as an information need when it names something a
+reader would have to *know* in order to act — "close the june plan", "fix the
+vault drafts", "move step 2 after the pixel move". Those presuppose specific
+knowledge, so ask the same question of them: would the CONTEXT alone let someone
+carry that out? Phrasing something as a command does not make it "n/a".
+
+This seam is where two independent judges disagreed on 23% of turns, so it is
+spelled out rather than left to reading.
 
 Return a single JSON object and nothing else:
 
@@ -145,6 +160,48 @@ VERDICTS = ("sufficient", "insufficient", "n/a")
 
 
 _M32 = 0xFFFFFFFF
+
+
+AGY_TIMEOUT_SEC = 240
+
+
+def _call_agy(prompt: str, *, model: str = None, timeout: int = AGY_TIMEOUT_SEC,
+              system: str = None) -> dict:
+    """One `agy -p` call to Antigravity's Gemini, in the caller shape.
+
+    The prompt goes as an argument rather than on stdin — `agy` closes its own
+    stdin, which the crickets cross-review script found the hard way — and the
+    system prompt is folded into the text, since `agy` has no equivalent flag.
+    That is a real difference from the Claude caller and it is stated rather
+    than smoothed over: the two judges get the same question, not byte-identical
+    invocations.
+
+    Returns the same envelope shape as `_call_claude_json` so a caller can be
+    swapped without the loop knowing which model answered. Cost is not reported
+    by `agy`, so `total_cost_usd` is absent rather than zero — a zero would read
+    as "this was free" instead of "this was not measured".
+    """
+    text = f"{system}\n\n{prompt}" if system else prompt
+    cmd = ["agy", "-p", text, "--print-timeout", f"{timeout}s"]
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True,
+                              timeout=timeout + 30)
+    except (OSError, subprocess.TimeoutExpired):
+        return {}
+    if proc.returncode != 0:
+        return {}
+    return {"result": proc.stdout}
+
+
+JUDGES = {"claude": None, "gemini": _call_agy}
+
+
+def caller_for(name: str):
+    """The caller for a judge name; None means the default Claude one."""
+    if name not in JUDGES:
+        raise ValueError(f"unknown judge {name!r}; have {sorted(JUDGES)}")
+    return JUDGES[name]
 
 
 def fnv1a(s: str) -> int:
@@ -244,7 +301,14 @@ def parse_verdict(text: str) -> Optional[dict]:
     if verdict == "insufficient" and not missing:
         # The rejection names nothing, so there is nothing to check and no way
         # to tell a found gap from a dislike. Not an answer.
-        return None
+        #
+        # This demand applies to `insufficient` and not to the other two, so
+        # the drop probability depends on the answer: anything that makes the
+        # judge terser removes insufficiency verdicts selectively and pushes
+        # the rate toward "sufficient". The attempted verdict is recorded so
+        # a lopsided failure set is visible rather than hiding inside one
+        # `excluded_judge_failed` count.
+        return {"verdict": None, "dropped_as": verdict}
     return {"verdict": verdict, "missing": [str(x) for x in missing]}
 
 
@@ -271,7 +335,7 @@ def parse_use(text: str) -> Optional[dict]:
     if not isinstance(drew, list):
         return None
     if verdict == "used" and not drew:
-        return None
+        return {"verdict": None, "dropped_as": verdict}
     return {"verdict": verdict, "drew_on": [str(x) for x in drew]}
 
 
@@ -295,7 +359,7 @@ def judge_use(turn: dict, *, replicates: int = 1, caller: Callable = None,
             envelope = {"result": envelope}
         cost += float(envelope.get("total_cost_usd") or 0.0)
         parsed = parse_use(envelope.get("result", ""))
-        if parsed is None:
+        if parsed is None or parsed.get("verdict") is None:
             failures += 1
         else:
             answers.append(parsed)
@@ -304,14 +368,20 @@ def judge_use(turn: dict, *, replicates: int = 1, caller: Callable = None,
                 "use_cost_usd": round(cost, 4)}
     verdicts = [a["verdict"] for a in answers]
     top = max(set(verdicts), key=verdicts.count)
-    return {
+    out = {
         "use_verdict": top,
-        "use_unanimous": len(set(verdicts)) == 1,
         "use_failures": failures,
         "use_cost_usd": round(cost, 4),
         "_drew_on": [d for a in answers if a["verdict"] == top
                      for d in a["drew_on"]],
     }
+    # Only when there were replicates to disagree. One answer cannot differ
+    # from itself, and reporting True there puts a statistic that cannot fail
+    # where a reader looks for evidence of stability — the same defect already
+    # fixed on the sufficiency axis.
+    if len(answers) > 1:
+        out["use_unanimous"] = len(set(verdicts)) == 1
+    return out
 
 
 # The quadrant. Both axes have to be decided for a turn to land in one; a turn
@@ -370,7 +440,16 @@ def cross(rows: list) -> dict:
                        if (r["use_verdict"] == "used") != r["deterministic_used"])
         out["utilization_judged"] = round(judged_used / len(both), 4)
         out["utilization_deterministic"] = round(det_used / len(both), 4)
-        out["utilization_disagreement"] = round(disagree / len(both), 4)
+        if det_used:
+            out["utilization_disagreement"] = round(disagree / len(both), 4)
+        else:
+            # With the floor at zero the disagreement equals the judged rate
+            # exactly, and printing it beside them reads as a cross-check
+            # between two signals when there is one signal and a constant.
+            out["utilization_disagreement_note"] = (
+                "not reported: the deterministic floor fired on no turn, so "
+                "any disagreement figure would be the judged rate restated. A "
+                "floor that never fires cannot corroborate anything.")
         out["utilization_note"] = (
             "two signals, reported apart. The deterministic one only fires "
             "when a note's name appears verbatim in the reply — 7 of 3,004 "
@@ -391,6 +470,7 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
     prompt = build_prompt(turn.get("_prompt", ""), turn.get("_injected", ""))
     answers = []
     failures = 0
+    dropped: list = []
     cost = 0.0
     for _ in range(max(1, replicates)):
         envelope = caller(prompt, model=model, system=SYSTEM)
@@ -398,13 +478,18 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
             envelope = {"result": envelope}
         cost += float(envelope.get("total_cost_usd") or 0.0)
         parsed = parse_verdict(envelope.get("result", ""))
-        if parsed is None:
+        if parsed is None or parsed.get("verdict") is None:
             failures += 1
+            if isinstance(parsed, dict) and parsed.get("dropped_as"):
+                dropped.append(parsed["dropped_as"])
         else:
             answers.append(parsed)
     if not answers:
-        return {"turn": turn.get("prompt_hash"), "verdict": None,
-                "failures": failures, "unanimous": None,
+        return {"turn": turn.get("prompt_hash"),
+                "turn_key": turn_key(turn), "verdict": None,
+                "failures": failures, "failed_as": sorted(set(dropped)) or None,
+                "unanimous": None,
+                "n_notes": len(turn.get("slugs") or []),
                 "cost_usd": round(cost, 4)}
     verdicts = [a["verdict"] for a in answers]
     top = max(set(verdicts), key=verdicts.count)
@@ -412,11 +497,22 @@ def judge_turn(turn: dict, *, replicates: int = REPLICATES,
     scoreable = {v != "n/a" for v in verdicts}
     return {
         "turn": turn.get("prompt_hash"),
+        # The sampler keys on session+timestamp because the same prompt asked
+        # twice is two turns with two contexts. The row keyed only on the
+        # prompt hash, so a verdict and a label could be joined across two
+        # different retrievals: 32 hashes cover 83 turns in this corpus and 7
+        # of those groups carry different retrieved text.
+        "turn_key": turn_key(turn),
         "verdict": top,
         "unanimous": len(set(verdicts)) == 1,
         "scoreable_split": len(scoreable) > 1,
+        # How many notes were in front of the judge. Without it the pool file
+        # cannot be stratified by hit count, and a downstream reader silently
+        # gets zero for every turn.
+        "n_notes": len(turn.get("slugs") or []),
         "replicates": len(answers),
         "failures": failures,
+        "failed_as": sorted(set(dropped)) or None,
         "cost_usd": round(cost, 4),
         # Counted, never quoted: the judge's wording of a gap restates the
         # query, and the query does not go to disk.
@@ -534,6 +630,9 @@ def main(argv: list = None) -> int:
                     help="stop after N judged turns (0 = no limit)")
     ap.add_argument("--replicates", type=int, default=REPLICATES)
     ap.add_argument("--model", default=MODEL)
+    ap.add_argument("--judge", default="claude", choices=sorted(JUDGES),
+                    help="which model answers. The question is identical; only "
+                         "the caller changes.")
     ap.add_argument("--out", type=pathlib.Path,
                     help="write per-turn verdicts (hashes and counts only)")
     ap.add_argument("--max-spend", type=float, default=5.0,
@@ -555,6 +654,12 @@ def main(argv: list = None) -> int:
     # from the tenth.
     rare = recall_traffic.rare_evidence(everything) if args.utilization else set()
     turns = [t for t in everything if keep(turn_key(t))]
+    # Shuffled before judging, deterministically. The spend cap stops the loop
+    # partway, and in file order that leaves a *prefix* rather than a sample —
+    # the first run of this hit its cap at 110 turns drawn from 10 of 36
+    # sessions, three of which supplied 102 of them. Shuffling first means a
+    # truncated run is still a random subset of what was selected.
+    random.Random(SHUFFLE_SEED).shuffle(turns)
     if args.limit:
         turns = turns[:args.limit]
 
@@ -569,11 +674,21 @@ def main(argv: list = None) -> int:
             # run, and the cap is what keeps a scheduled job from becoming one.
             stopped_early = len(turns) - n + 1
             break
-        row = judge_turn(t, replicates=args.replicates, model=args.model)
+        row = judge_turn(t, replicates=args.replicates, model=args.model,
+                         caller=caller_for(args.judge))
+        row["judge_model"] = args.judge
+        if args.judge != "claude":
+            # `agy` reports no cost, and the loop reads that same field, so
+            # the cap never fired under a Gemini judge — inoperative for
+            # exactly the unattended three-figure run it exists to stop.
+            # Counted in turns instead, at the Claude rate, so the budget
+            # still means something.
+            spent += CLAUDE_RATE_USD * max(1, args.replicates)
         spent += float(row.get("cost_usd") or 0)
         if args.utilization:
             row.update(judge_use(t, replicates=args.use_replicates,
-                                 model=args.model))
+                                 model=args.model,
+                                 caller=caller_for(args.judge)))
             spent += float(row.get("use_cost_usd") or 0)
             # The deterministic floor on the same turn, for the side-by-side.
             # `rare` comes from the whole traffic rather than the sample, so
