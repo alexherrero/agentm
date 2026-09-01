@@ -90,6 +90,7 @@ Each one exists because breaking it produced a wrong number once.
 | **Suppress the comparison when the floor never fires** | the disagreement then equals the judged rate exactly | one number printed twice as though two signals agreed |
 | **No rate without the instrument's resolution beside it** | the judge drifts ~5 points across identical runs | a precision claim the instrument cannot support |
 | **Always-valid interval, not fixed-horizon** | the number is read whenever someone wonders | over 800 peeked streams, a Wald interval was wrong on 43–46% against a sequence's 0.0% |
+| **Measure at the change, paired and interleaved** | the judge's ~5-point drift is common-mode and cancels in a difference | two rates a month apart, each carrying the full drift |
 | **A sample too small says so** | ~45 judged turns clear the bar, 274 reach ±0.10 | `[0%, 54%]` rendered as if it were a range |
 
 **κ before publication does not apply here**, and the exemption is recorded

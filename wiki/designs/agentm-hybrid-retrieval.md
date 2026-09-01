@@ -274,6 +274,17 @@ UNVALIDATED on every render for that reason.
 which discusses recall constantly and therefore asks it unusually well-aimed
 questions. This measures recall while working on recall.
 
+**How it is taken: at the change, not continuously.** Standing nightly
+measurement was priced and declined — $120–180 a month for a ten-point
+instrument watching a system with no active retrieval work, against an offline
+ladder that already governs every change. Instead, when retrieval changes,
+turns from either side are judged in one interleaved run. That is cheaper and
+better resolved: the judge's five-point drift is common-mode, so it largely
+cancels in a paired difference, where it does not cancel between two rates
+measured a month apart. The interval is reported on the difference rather than
+on each rate, because two overlapping rate intervals can still be a real
+change.
+
 **Re-audit triggers.** Re-measure the drift when the judge's model, its prompt,
 or its replicate count changes — the five-point figure is a property of that
 arrangement, not a constant. Re-examine the sample's project mix when the

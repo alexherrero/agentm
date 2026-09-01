@@ -33,6 +33,25 @@
 # independent human validation and the scorecard row says UNVALIDATED on every
 # render. And the traffic it reads is mostly this repository's own, so it
 # describes recall while working on recall.
+# ─────────────────────────────────────────────────────────────────────────
+# NOT INSTALLED, DELIBERATELY (operator decision, 2026-08-31).
+#
+# Standing nightly measurement was priced and declined. At the cadence needed to
+# clear the interval's own floor it runs $120-180 a month, and what it buys is a
+# ten-point instrument watching a system with no active retrieval work — while
+# the offline gold-set ladder already governs every retrieval change.
+#
+# The replacement is `health/online_recall_ab.py`: when retrieval actually
+# changes, judge turns from either side of the change in one interleaved run.
+# That is cheaper (~$20 a change) and *better resolved*, because the judge's
+# five-point drift is common-mode and largely cancels in a paired difference —
+# which it does not for two rates measured a month apart.
+#
+# This template is kept, not deleted. It is correct, and if continuous
+# monitoring is ever wanted the arithmetic above is what to re-check first:
+# ~10 judged turns a night at the $2 cap, of which ~88% score, and 45 scored
+# turns is where the interval stops spanning everything.
+# ─────────────────────────────────────────────────────────────────────────
 schedule: daily
 lookback: 24h
 command: python3 -m health.online_recall_job --max-spend 2.00
