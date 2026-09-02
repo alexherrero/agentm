@@ -25,7 +25,10 @@ import dreaming_scorecard as ds  # noqa: E402
 
 AT = datetime(2026, 8, 22, 9, 30, tzinfo=timezone.utc)
 REL = Path("diagnostics/dreaming")
-STAGE = Path("desk/scratch")
+# Staging is engine-side and absolute now (filing-v2 2a); the fixture
+# stages under the tmp vault and passes the absolute root explicitly.
+def STAGE_AT(root):
+    return Path(root) / "stage-fixture"
 
 
 def answers(**by_command):
@@ -53,7 +56,7 @@ def daemon(*, unfiled=100, current=40, eligible=200, enrich_depth=7):
 
 def stage_a_run(vault: Path, run_id="run-1", staged_at=1000.0, proposals=None,
                 stages=None):
-    d = vault / STAGE / run_id
+    d = STAGE_AT(vault) / run_id
     d.mkdir(parents=True, exist_ok=True)
     body = {"run_id": run_id, "staged_at": staged_at,
             "proposals": proposals if proposals is not None else []}
@@ -66,7 +69,7 @@ def stage_a_run(vault: Path, run_id="run-1", staged_at=1000.0, proposals=None,
 class MovementTests(unittest.TestCase):
     def build(self, tmp, fake, *, now=AT):
         with mock.patch.object(ds, "_agentmd", side_effect=fake):
-            return ds.build(tmp, now=now, rel=REL, staging=STAGE)
+            return ds.build(tmp, now=now, rel=REL, staging=STAGE_AT(tmp))
 
     def read(self, tmp):
         return (tmp / REL / ds.STABLE_NAME).read_text(encoding="utf-8")
@@ -153,7 +156,7 @@ class MovementTests(unittest.TestCase):
 class StageTests(unittest.TestCase):
     def build(self, tmp, fake):
         with mock.patch.object(ds, "_agentmd", side_effect=fake):
-            return ds.build(tmp, now=AT, rel=REL, staging=STAGE)
+            return ds.build(tmp, now=AT, rel=REL, staging=STAGE_AT(tmp))
 
     def read(self, tmp):
         return (tmp / REL / ds.STABLE_NAME).read_text(encoding="utf-8")
@@ -228,7 +231,7 @@ class LatestRunTests(unittest.TestCase):
             # And the older one is made to look newest on disk.
             os.utime(older / "proposals.json", (time.time(), time.time()))
 
-            run = ds.latest_run(tmp, STAGE)
+            run = ds.latest_run(tmp, STAGE_AT(tmp))
         self.assertEqual(run["run_id"], "a-newest",
                          "the run was chosen by something other than the "
                          "timestamp it recorded for itself")
@@ -237,16 +240,16 @@ class LatestRunTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
             stage_a_run(tmp, "run-good", staged_at=100.0)
-            bad = tmp / STAGE / "run-bad"
+            bad = STAGE_AT(tmp) / "run-bad"
             bad.mkdir(parents=True)
             (bad / "proposals.json").write_text("{ not json", encoding="utf-8")
 
-            run = ds.latest_run(tmp, STAGE)
+            run = ds.latest_run(tmp, STAGE_AT(tmp))
         self.assertEqual(run["run_id"], "run-good")
 
     def test_no_staging_directory_is_none_rather_than_an_error(self):
         with tempfile.TemporaryDirectory() as d:
-            self.assertIsNone(ds.latest_run(Path(d), STAGE))
+            self.assertIsNone(ds.latest_run(Path(d), STAGE_AT(d)))
 
 
 class FileTests(unittest.TestCase):
@@ -255,7 +258,7 @@ class FileTests(unittest.TestCase):
             tmp = Path(d)
             stage_a_run(tmp)
             with mock.patch.object(ds, "_agentmd", side_effect=answers(**daemon())):
-                dated, stable = ds.build(tmp, now=AT, rel=REL, staging=STAGE)
+                dated, stable = ds.build(tmp, now=AT, rel=REL, staging=STAGE_AT(tmp))
 
             self.assertTrue(dated.exists())
             self.assertTrue(stable.exists())
@@ -271,7 +274,7 @@ class FileTests(unittest.TestCase):
             tmp = Path(d)
             stage_a_run(tmp)
             with mock.patch.object(ds, "_agentmd", side_effect=answers()):
-                ds.build(tmp, now=AT, rel=REL, staging=STAGE)
+                ds.build(tmp, now=AT, rel=REL, staging=STAGE_AT(tmp))
             body = (tmp / REL / ds.STABLE_NAME).read_text(encoding="utf-8")
 
         self.assertIn("not measured:", body)

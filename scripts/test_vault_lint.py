@@ -495,12 +495,12 @@ class TestAuditReport(unittest.TestCase):
             after = {p: p.read_bytes() for p in v.rglob("*.md")}
             self.assertEqual(before, after)
 
-    def test_audit_default_path_under_meta(self):
+    def test_audit_default_path_under_diagnostics_lint(self):
         with _Vault() as v:
             _write(v, "memory/_always-load/a.md", _clean("a"))
             rc = vl.main(["--audit", "--vault", str(v)])
             self.assertEqual(rc, 0)
-            reports = list((v / "_meta").glob("vault-lint-*.md"))
+            reports = list((v / "diagnostics" / "lint").glob("vault-lint-*.md"))
             self.assertEqual(len(reports), 1)
 
 

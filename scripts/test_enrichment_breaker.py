@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sys
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -55,10 +56,14 @@ class TripTests(unittest.TestCase):
         """A falling meter and a rising one are both 'bad' in opposite
         directions, and a breaker that only understood one would sit silent
         through the other."""
-        with tempfile.TemporaryDirectory() as d:
+        # Breaker state is per-machine engine state now (filing-v2 2a); a
+        # fresh context means a fresh $AGENTM_STATE_DIR, not a fresh vault.
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as s:
+            os.environ["AGENTM_STATE_DIR"] = s
             self.assertFalse(
                 eb.consider(Path(d), "a", falling(0.01), now=AT).may_auto_apply())
-        with tempfile.TemporaryDirectory() as d:
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as s:
+            os.environ["AGENTM_STATE_DIR"] = s
             self.assertTrue(
                 eb.consider(Path(d), "a", falling(0.05), now=AT).may_auto_apply())
 
@@ -186,7 +191,7 @@ class DurabilityTests(unittest.TestCase):
             vault = Path(d)
             eb.consider(vault, "enrich", rising(0.71), now=AT)
             self.assertFalse(eb.state(vault, "enrich").may_auto_apply())
-            self.assertTrue((vault / "_meta/enrich-breaker.json").is_file())
+            self.assertTrue((eb.engine_state.engine_state_dir() / "enrich-breaker.json").is_file())
 
     def test_an_unreadable_file_fails_open(self):
         """This guards a convenience. A breaker that jammed shut over a
@@ -194,8 +199,8 @@ class DurabilityTests(unittest.TestCase):
         failing open costs one more cycle before somebody notices."""
         with tempfile.TemporaryDirectory() as d:
             vault = Path(d)
-            p = vault / "_meta/enrich-breaker.json"
-            p.parent.mkdir(parents=True)
+            p = eb.engine_state.engine_state_dir() / "enrich-breaker.json"
+            p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text("{ truncated", encoding="utf-8")
             self.assertTrue(eb.state(vault, "enrich").may_auto_apply())
 
@@ -203,7 +208,7 @@ class DurabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             vault = Path(d)
             eb.consider(vault, "enrich", rising(0.71), now=AT)
-            data = json.loads((vault / "_meta/enrich-breaker.json")
+            data = json.loads((eb.engine_state.engine_state_dir() / "enrich-breaker.json")
                               .read_text(encoding="utf-8"))
         self.assertTrue(data["open"])
         self.assertEqual(data["trip"]["meter"], "pairwise-similarity")

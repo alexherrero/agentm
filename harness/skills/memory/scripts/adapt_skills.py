@@ -50,6 +50,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import engine_state  # noqa: E402
+
 
 _FETCH_TIMEOUT_SEC = 10
 _USER_AGENT = "crickets-adapt-skills/0.1 (+local; stdlib-urllib)"
@@ -91,7 +93,8 @@ def _resolve_vault_path(arg_path: str | None) -> Path:
 
 
 def _cache_root(vault: Path) -> Path:
-    return vault / "_meta" / "skill-discovery-cache"
+    del vault  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / "skill-discovery-cache"
 
 
 def _adapt_state_root(vault: Path) -> Path:
@@ -668,7 +671,10 @@ def adapt_skills(
                     "confidence": cand["rubric_confidence"],
                     "score": cand["rubric_score"],
                     "rules_fired": cand["rubric_rules_fired"],
-                    "json_path": str(target.relative_to(vault)),
+                    # Absolute now: the staged file is engine-side (filing-v2
+                    # 2a), no longer inside the vault this used to relativize
+                    # against.
+                    "json_path": str(target),
                 })
             else:
                 summary["candidates"].append({

@@ -129,7 +129,10 @@ class CountCrystallizeCandidatesTests(unittest.TestCase):
         self.assertEqual(sb.count_crystallize_candidates(self.vault), 0)
 
     def test_counts_staged_candidates(self):
-        staging = self.vault / "_crystallize-staging"
+        # Staging left the vault for the engine state dir (filing-v2 2a); the
+        # suite conftest points $AGENTM_STATE_DIR at a tmp dir, so the reader
+        # and this fixture meet there.
+        staging = sb._engine_state_dir() / "crystallize-staging"
         staging.mkdir(parents=True)
         (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
         (staging / "post-release-b.json").write_text("{}", encoding="utf-8")
@@ -222,7 +225,7 @@ class BuildBriefTests(unittest.TestCase):
 
     def test_crystallize_clause_appended(self):
         _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=1.0, events=1)
-        staging = self.vault / "_crystallize-staging"
+        staging = sb._engine_state_dir() / "crystallize-staging"
         staging.mkdir(parents=True)
         (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
         b = self._brief()

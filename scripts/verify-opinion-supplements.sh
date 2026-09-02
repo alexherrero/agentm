@@ -65,6 +65,11 @@ assert_eq() {
 
 # ── scratch vault (isolated; auto-removed) ──────────────────────────────────
 SCRATCH="$(mktemp -d)"
+# Hermetic engine state (filing-v2 part 2a): machine state lives at
+# $AGENTM_STATE_DIR now, so the scratch run gets its own.
+export AGENTM_STATE_DIR="$SCRATCH/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
+
 SV="$SCRATCH/vault"
 mkdir -p "$SV"
 cleanup() { rm -rf "$SCRATCH"; }
@@ -87,7 +92,7 @@ else
 fi
 assert_contains "A. dream run's own output mentions a proposal" "$DREAM_OUT" "proposal(s)"
 
-MANIFEST="$SV/desk/scratch/verify-run/proposals.json"
+MANIFEST="$AGENTM_STATE_DIR/dream-runs/verify-run/proposals.json"
 OP_INDEX_OUT="$("$PY" -c "
 import json
 data = json.load(open('$MANIFEST'))
@@ -188,6 +193,9 @@ sys.path.insert(0, '$S')
 from pathlib import Path
 import dream, opinion_supplement
 
+# This phase gets its own engine state: pre-2a the per-vault _meta kept
+# $SV and $SV2's health pointers apart; the state dir does that now.
+__import__('os').environ['AGENTM_STATE_DIR'] = '$SCRATCH/engine-state-sv2'
 fake_root = Path('$SCRATCH/fake-repo')
 (fake_root / 'opinions').mkdir(parents=True)
 (fake_root / 'opinions' / 'recoverable.md').write_text(
@@ -201,12 +209,12 @@ served = Path('$SV2') / 'personal' / '_opinions' / 'recoverable.md'
 print('SERVED_EXISTS=' + str(served.is_file()))
 
 import json
-base_proposals = json.loads((Path('$SV2') / '_meta' / 'opinion-base-proposals.json').read_text())
+base_proposals = json.loads((Path('$SCRATCH/engine-state-sv2') / 'opinion-base-proposals.json').read_text())
 hits = [p for p in base_proposals if p.get('opinion') == 'recoverable']
 print('BASE_PROPOSAL_COUNT=' + str(len(hits)))
 " 2>&1)"
 assert_contains "E. a base-contradicting group is never served" "$CONTRADICTION_OUT" "SERVED_EXISTS=False"
-assert_contains "E. the contradiction is recorded in _meta/opinion-base-proposals.json" "$CONTRADICTION_OUT" "BASE_PROPOSAL_COUNT=1"
+assert_contains "E. the contradiction is recorded in the engine-state opinion-base-proposals.json" "$CONTRADICTION_OUT" "BASE_PROPOSAL_COUNT=1"
 
 # ── F. the health pointer + console section render without raising ─────────
 HEALTH_OUT="$("$PY" -c "
@@ -216,7 +224,7 @@ sys.path.insert(0, '$CONSOLE')
 import console
 
 vault = Path('$SV')
-health = json.loads((vault / '_meta' / 'opinion-supplement-health-latest.json').read_text())
+health = json.loads((Path(__import__('os').environ['AGENTM_STATE_DIR']) / 'opinion-supplement-health-latest.json').read_text())
 print('GOOD_LANE_DEPTH=' + str(health['opinions'].get('good', {}).get('lane_depth', -1)))
 section = console.section_opinion_supplements(vault)
 print('SECTION_HAS_GOOD=' + str('good:' in section))

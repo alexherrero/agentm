@@ -249,7 +249,7 @@ class HashWatchTests(_Base):
         watch = storage_rules.hash_watch(self.vault, current="abc123")
         self.assertTrue(watch["first_run"])
         self.assertFalse(watch["changed"])
-        self.assertTrue((self.vault / "_meta" / "storage-rules-state.json").is_file())
+        self.assertTrue((storage_rules.engine_state.engine_state_dir() / "storage-rules-state.json").is_file())
 
     def test_an_unchanged_second_run_reports_no_change(self) -> None:
         storage_rules.hash_watch(self.vault, current="abc123")
@@ -265,7 +265,7 @@ class HashWatchTests(_Base):
 
     def test_record_false_leaves_no_trace(self) -> None:
         storage_rules.hash_watch(self.vault, current="abc123", record=False)
-        self.assertFalse((self.vault / "_meta" / "storage-rules-state.json").exists())
+        self.assertFalse((storage_rules.engine_state.engine_state_dir() / "storage-rules-state.json").exists())
 
     def test_a_corrupt_watch_file_loses_the_comparison_but_never_halts(self) -> None:
         """Bookkeeping, not the contract. A broken watch file costs one cycle's

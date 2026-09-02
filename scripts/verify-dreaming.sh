@@ -60,6 +60,11 @@ assert_eq() {
 # ── scratch vault + a sibling scratch dir for revert-log state and byte-exact
 #    pre-image backups (isolated; auto-removed) ─────────────────────────────
 SCRATCH="$(mktemp -d)"
+# Hermetic engine state (filing-v2 part 2a): machine state lives at
+# $AGENTM_STATE_DIR now, so the scratch run gets its own.
+export AGENTM_STATE_DIR="$SCRATCH/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
+
 SV="$SCRATCH/vault"
 BACKUPS="$SCRATCH/backups"
 mkdir -p "$SV" "$BACKUPS"
@@ -80,7 +85,7 @@ cp "$SV/a.md" "$BACKUPS/a-orig.md"
 # ── A/B/C. a manual /dream run stages a dedup proposal, mutates nothing,
 #          and writes a status: candidate insight ─────────────────────────
 DREAM_OUT="$("$PY" "$S/dream.py" --vault-path "$SV" --run-id verify-run 2>&1)"
-DIGEST="$SV/desk/scratch/verify-run/digest.md"
+DIGEST="$AGENTM_STATE_DIR/dream-runs/verify-run/digest.md"
 
 assert_eq "A. dream run exits describing the dedup proposal" \
   "$(printf '%s' "$DREAM_OUT" | grep -c 'proposal(s)')" "1"
@@ -132,7 +137,7 @@ import dream_confirm as dc
 
 vault = '$SV'
 rl = RevertLog(vault, log_root='$SCRATCH/rl-log2', lock_root='$SCRATCH/rl-lock2')
-staged_at = __import__('json').load(open(vault + '/desk/scratch/verify-expire/proposals.json'))['staged_at']
+staged_at = __import__('json').load(open(__import__('os').environ['AGENTM_STATE_DIR'] + '/dream-runs/verify-expire/proposals.json'))['staged_at']
 far_future = staged_at + (dc.DEFAULT_TTL_DAYS + 1) * 86400
 try:
     dc.confirm(vault, 'verify-expire', 1, rl, now=far_future)

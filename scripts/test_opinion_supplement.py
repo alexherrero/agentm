@@ -289,8 +289,8 @@ class HealthAndBaseProposalsTests(_SupplementTestBase):
         self.assertEqual(osup.read_base_proposals(self.vault), [])
 
     def test_lane_health_counts_only_this_opinions_base_proposals(self) -> None:
-        meta = self.vault / "_meta"
-        meta.mkdir(parents=True)
+        meta = osup.engine_state.engine_state_dir()
+        meta.mkdir(parents=True, exist_ok=True)
         (meta / osup.BASE_PROPOSALS_FILENAME).write_text(json.dumps([
             {"opinion": "recoverable", "entry": "x"},
             {"opinion": "recoverable", "entry": "y"},

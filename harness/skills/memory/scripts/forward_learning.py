@@ -88,6 +88,8 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
+import engine_state  # noqa: E402
 from typing import Callable, Optional
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
@@ -122,8 +124,12 @@ __all__ = [
 _USER_AGENT = "agentm-forward-learning/1.0"
 _FETCH_TIMEOUT_SEC = 10
 
-SOURCES_CONFIG_REL = Path("_meta") / "forward-learning-sources.json"
-STATE_REL = Path("_meta") / "forward-learning-cache" / "state.json"
+# The sources whitelist is the operator's to edit — an operator-owned config
+# file, so it lives in standards/ (filing-v2 part 2a), not in machine state.
+SOURCES_CONFIG_REL = Path("standards") / "forward-learning-sources.json"
+# The watermark cache is machine state; joined onto the engine state dir by
+# its readers, not onto the vault.
+STATE_NAME = Path("forward-learning-cache") / "state.json"
 WATCHLIST_REL = Path("memory") / "_watchlist"
 
 VALID_KINDS = ("idea", "pattern", "reference")
@@ -202,7 +208,12 @@ class ScanResult:
 # -----------------------------------------------------------------------------
 
 def load_sources(vault_path: Path) -> list:
-    path = Path(vault_path) / SOURCES_CONFIG_REL
+    # `vault_path` here is the memory root; standards/ sits at the vault root
+    # beside it. Probe the sibling first (the split layout), then flat — the
+    # same two-probe order the rules loader uses for the same file family.
+    sibling = Path(vault_path).parent / SOURCES_CONFIG_REL
+    flat = Path(vault_path) / SOURCES_CONFIG_REL
+    path = sibling if sibling.is_file() or not flat.is_file() else flat
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -228,7 +239,8 @@ def load_sources(vault_path: Path) -> list:
 
 
 def _state_path(vault_path: Path) -> Path:
-    return Path(vault_path) / STATE_REL
+    del vault_path  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / STATE_NAME
 
 
 def _load_state(vault_path: Path) -> dict:

@@ -53,3 +53,24 @@ if [[ -z "${MEMORY_VAULT_PATH:-}" ]]; then
 fi
 
 python3 -m runner.cli "$@" --jobs-dir "$REPO_ROOT/.harness/jobs" --harness-dir "$REPO_ROOT/.harness"
+_runner_exit=$?
+
+# Commit the engine state repo, if it is one (filing-v2 part 2a). Machine
+# state left the vault for $AGENTM_STATE_DIR / ~/.local/state/agentm, and its
+# durability property — history — moved with it: the 2a migration initializes
+# that directory as a git repository, and this is the cadence that commits it,
+# beside the vault commits the daemon already makes per write. Best-effort by
+# design: a machine whose state dir was never migrated (no .git) skips
+# silently, and a commit failure never fails the runner — the jobs above are
+# the runner's contract, this is bookkeeping.
+_state_dir="${AGENTM_STATE_DIR:-$HOME/.local/state/agentm}"
+if [[ -d "$_state_dir/.git" ]]; then
+    if ! git -C "$_state_dir" diff --quiet HEAD 2>/dev/null \
+        || [[ -n "$(git -C "$_state_dir" ls-files --others --exclude-standard 2>/dev/null | head -1)" ]]; then
+        git -C "$_state_dir" add -A 2>/dev/null \
+            && git -C "$_state_dir" commit -q -m "engine state: runner cadence commit" 2>/dev/null \
+            || echo "agentm-runner: engine-state commit failed (non-fatal)" >&2
+    fi
+fi
+
+exit "$_runner_exit"

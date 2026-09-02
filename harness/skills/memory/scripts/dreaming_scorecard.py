@@ -41,8 +41,12 @@ _TIMEOUT_SECONDS = 300
 
 STABLE_NAME = "latest_dreaming_scorecard.md"
 DIAGNOSTICS_DIR = Path("diagnostics") / "dreaming"
+
+import engine_state  # noqa: E402
 # Where `dream.py` stages each run. One directory per run id.
-STAGING_DIR = Path("desk") / "scratch"
+# Per-run dream staging left the vault for the engine state dir
+# (filing-v2 part 2a); `staging=` overrides are absolute paths now.
+STAGING_DIR = Path("dream-runs")
 
 
 class DaemonUnavailable(RuntimeError):
@@ -148,7 +152,8 @@ def latest_run(vault: Path, staging: Path = None) -> Optional[dict]:
     scorecard that reported the wrong night's run would be worse than one that
     reported none.
     """
-    root = vault / (staging if staging is not None else STAGING_DIR)
+    root = Path(staging) if staging is not None else engine_state.engine_state_dir() / STAGING_DIR
+    del vault  # staging is engine-side; the vault no longer locates it
     if not root.is_dir():
         return None
     best = None
@@ -356,12 +361,8 @@ def staging_dir() -> Path:
         spaces = (_agentmd(["status"]) or {}).get("spaces") or {}
     except DaemonUnavailable:
         spaces = {}
-    projects = str(spaces.get("projects") or "").strip("/")
-    if projects:
-        desk = Path(projects).parent
-        if str(desk) not in (".", "/"):
-            return desk / "scratch"
-    return STAGING_DIR
+    del spaces  # staging is engine-side (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / STAGING_DIR
 
 
 def vault_from_daemon() -> str:

@@ -116,7 +116,7 @@ jobs:
         # newly added test file could sit unrun and unnoticed.
         # Subshell `cd` because scripts/ lacks __init__.py (regular package
         # required for discover from a non-cwd start dir).
-        run: (cd scripts && python3 -m unittest discover -p 'test_*.py')
+        run: (cd scripts && python3 run_unit_suite.py)
       - name: V4 push-surface integration check (verify-v4.sh)
         # End-to-end check of the auto-orchestration surface (briefing · idle ·
         # phase-dispatch · nudges · config/state) against a throwaway scratch

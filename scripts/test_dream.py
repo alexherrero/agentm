@@ -263,15 +263,15 @@ class OpinionSupplementStageTests(_DreamTestBase):
     def test_meta_pointer_files_written_every_cycle(self) -> None:
         self._write_lane_pair()
         dream.run_dream(self.vault, run_id="run-opinion-meta")
-        self.assertTrue((self.vault / "_meta" / "opinion-base-proposals.json").is_file())
-        self.assertTrue((self.vault / "_meta" / "opinion-supplement-health-latest.json").is_file())
+        self.assertTrue((dream.engine_state.engine_state_dir() / "opinion-base-proposals.json").is_file())
+        self.assertTrue((dream.engine_state.engine_state_dir() / "opinion-supplement-health-latest.json").is_file())
 
     def test_no_opinions_dir_at_all_proposes_nothing_and_still_writes_pointers(self) -> None:
         # A vault where Stage 1 has never mined a single standard yet.
         self._write("ordinary.md", "---\nkind: workflow\n---\nUnrelated.\n")
         digest = dream.run_dream(self.vault, run_id="run-no-opinions")
         self.assertEqual([p for p in digest.proposals if p.stage == "opinion_promote"], [])
-        self.assertTrue((self.vault / "_meta" / "opinion-base-proposals.json").is_file())
+        self.assertTrue((dream.engine_state.engine_state_dir() / "opinion-base-proposals.json").is_file())
 
 
 class EmptyRunTests(_DreamTestBase):
@@ -288,7 +288,7 @@ class CliTests(_DreamTestBase):
         self._write("a.md", "---\nkind: workflow\n---\nJust one file.\n")
         rc = dream.main(["--vault-path", str(self.vault), "--run-id", "cli-run"])
         self.assertEqual(rc, 0)
-        self.assertTrue((self.vault / "desk/scratch" / "cli-run" / "digest.md").exists())
+        self.assertTrue((dream.engine_state.engine_state_dir() / "dream-runs" / "cli-run" / "digest.md").exists())
 
     def test_main_no_vault_path_errors(self) -> None:
         import os
@@ -321,12 +321,12 @@ class CliTests(_DreamTestBase):
         ])
         self.assertEqual(rc, 0)
 
-        digest_text = (self.vault / "desk/scratch" / "cli-auto-run" / "digest.md").read_text(encoding="utf-8")
+        digest_text = (dream.engine_state.engine_state_dir() / "dream-runs" / "cli-auto-run" / "digest.md").read_text(encoding="utf-8")
         self.assertIn("Auto-expired this run", digest_text)
         self.assertIn("AUTO-APPLIED", digest_text)
 
         auto_expired = json.loads(
-            (self.vault / "desk/scratch" / "cli-auto-run" / "auto-expired.json").read_text(encoding="utf-8")
+            (dream.engine_state.engine_state_dir() / "dream-runs" / "cli-auto-run" / "auto-expired.json").read_text(encoding="utf-8")
         )
         self.assertEqual(auto_expired["count"], 1)
         # "stages" reports the full AUTO_APPLY_STAGES watched set for this
@@ -341,7 +341,7 @@ class CliTests(_DreamTestBase):
         )
 
         latest = json.loads(
-            (self.vault / "_meta" / "dream-auto-expired-latest.json").read_text(encoding="utf-8")
+            (dream.engine_state.engine_state_dir() / "dream-auto-expired-latest.json").read_text(encoding="utf-8")
         )
         self.assertEqual(latest, auto_expired)
 
@@ -358,8 +358,8 @@ class CliTests(_DreamTestBase):
             "--vault-path", str(self.vault), "--run-id", "cli-no-auto-run", "--no-auto-apply",
         ])
         self.assertEqual(rc, 0)
-        self.assertFalse((self.vault / "desk/scratch" / "cli-no-auto-run" / "auto-expired.json").exists())
-        digest_text = (self.vault / "desk/scratch" / "cli-no-auto-run" / "digest.md").read_text(encoding="utf-8")
+        self.assertFalse((dream.engine_state.engine_state_dir() / "dream-runs" / "cli-no-auto-run" / "auto-expired.json").exists())
+        digest_text = (dream.engine_state.engine_state_dir() / "dream-runs" / "cli-no-auto-run" / "digest.md").read_text(encoding="utf-8")
         self.assertNotIn("AUTO-APPLIED", digest_text)
         self.assertIn("staged — NOT applied; operator confirmation required", digest_text)
 
@@ -425,7 +425,7 @@ class RunDreamAndAutoApplyTests(_DreamTestBase):
             self.vault, run_id="run-wrapper-empty", revert_log=self.revert_log,
         )
         self.assertEqual(batch.items, [])
-        latest_path = self.vault / "_meta" / "dream-auto-expired-latest.json"
+        latest_path = dream.engine_state.engine_state_dir() / "dream-auto-expired-latest.json"
         self.assertTrue(latest_path.exists())
         payload = json.loads(latest_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["run_id"], "run-wrapper-empty")
@@ -844,7 +844,7 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
         # dream-anomaly-latest.json is now a LIST of tripped stages (task 9
         # generalized the breaker beyond tidying-only) -- exactly one
         # entry here since only tidying tripped this cycle.
-        anomaly_flag_path = self.vault / "_meta" / "dream-anomaly-latest.json"
+        anomaly_flag_path = dream.engine_state.engine_state_dir() / "dream-anomaly-latest.json"
         self.assertTrue(anomaly_flag_path.exists())
         payload = json.loads(anomaly_flag_path.read_text(encoding="utf-8"))
         self.assertEqual(len(payload), 1)
@@ -867,7 +867,7 @@ class TidyingAnomalyBreakerIntegrationTests(_DreamTestBase):
 
         digest_text = digest.digest_path.read_text(encoding="utf-8")
         self.assertNotIn("ANOMALY BREAKER TRIPPED", digest_text)
-        self.assertFalse((self.vault / "_meta" / "dream-anomaly-latest.json").exists())
+        self.assertFalse((dream.engine_state.engine_state_dir() / "dream-anomaly-latest.json").exists())
 
     def test_compression_still_auto_applies_when_tidying_is_suppressed(self) -> None:
         # Each watched stage's breaker is independent -- compression isn't
@@ -945,7 +945,7 @@ class MultiStageAnomalyBreakerIntegrationTests(_DreamTestBase):
         digest_text = digest.digest_path.read_text(encoding="utf-8")
         self.assertIn("ANOMALY BREAKER TRIPPED — suffix_backlog_drain", digest_text)
 
-        payload = json.loads((self.vault / "_meta" / "dream-anomaly-latest.json").read_text(encoding="utf-8"))
+        payload = json.loads((dream.engine_state.engine_state_dir() / "dream-anomaly-latest.json").read_text(encoding="utf-8"))
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]["stage"], "suffix_backlog_drain")
         self.assertEqual(payload[0]["current_count"], 6)

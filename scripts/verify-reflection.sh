@@ -142,6 +142,10 @@ elif [ "$ABLATE" = "1" ]; then
   # expected ablated behavior, same convention as VERIFY_REFLECTION_FAULT).
   for mode in auto silent interactive; do
     V="$(mktemp -d)"
+    # Hermetic engine state (filing-v2 2a): reflect's seen-state is
+    # machine-global now; each lane run gets its own.
+    export AGENTM_STATE_DIR="$V.engine-state"
+    mkdir -p "$AGENTM_STATE_DIR"
     CORPUS_OUT="$(env MEMORY_VAULT_PATH="$V" "$PY" "$S/reflect.py" corpus \
       --projects-root "$ROOT" --vault-path "$V" --route-mode "$mode" 2>&1)"
     TOTAL="$("$PY" -c "
@@ -189,6 +193,10 @@ print(len(hits))
   # ── 2. source filter, all three route modes ──────────────────────────────
   for mode in auto silent interactive; do
     V="$(mktemp -d)"
+    # Hermetic engine state (filing-v2 2a): reflect's seen-state is
+    # machine-global now; each lane run gets its own.
+    export AGENTM_STATE_DIR="$V.engine-state"
+    mkdir -p "$AGENTM_STATE_DIR"
     CORPUS_OUT="$(env MEMORY_VAULT_PATH="$V" "$PY" "$S/reflect.py" corpus \
       --projects-root "$ROOT" --vault-path "$V" --execute --route-mode "$mode" 2>&1)"
     TOTAL="$("$PY" -c "

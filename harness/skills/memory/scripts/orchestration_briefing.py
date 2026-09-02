@@ -38,6 +38,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import engine_state  # noqa: E402
+
 # sibling import (same scripts dir; Python puts the script dir on sys.path[0],
 # and tests insert it explicitly)
 import auto_orchestration as ao
@@ -244,7 +246,7 @@ def count_staged_adapt(vault: Path) -> int:
     candidates means the count clears as the operator evaluates. Never raises → 0.
     (The sibling root-level `evaluated.json` is a file, not a source dir, so the
     `is_dir()` guard skips it.)"""
-    root = Path(vault) / "_meta" / "skill-discovery-cache" / "adapt-state"
+    root = engine_state.engine_state_dir() / "skill-discovery-cache" / "adapt-state"
     if not root.is_dir():
         return 0
     wl_root = Path(vault) / "memory" / "_skill-watchlist"

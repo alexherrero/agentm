@@ -511,8 +511,8 @@ class VaultLintSectionTests(unittest.TestCase):
         self.assertIn("vault-lint.yaml", out)
 
     def test_picks_latest_report_and_extracts_summary(self):
-        meta = self.vault / "_meta"
-        meta.mkdir()
+        meta = self.vault / "diagnostics" / "lint"
+        meta.mkdir(parents=True)
         (meta / "vault-lint-2026-07-01.md").write_text(
             "# MemoryVault lint audit -- 2026-07-01\n\n**Summary:** 1 error across 5 entries.\n",
             encoding="utf-8",
@@ -565,13 +565,13 @@ class DreamExpireSectionTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name)
-        (self.vault / "_meta").mkdir()
+        c._engine_state_dir().mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def _write_pointer(self, **fields):
-        (self.vault / "_meta" / "dream-auto-expired-latest.json").write_text(json.dumps(fields), encoding="utf-8")
+        (c._engine_state_dir() / "dream-auto-expired-latest.json").write_text(json.dumps(fields), encoding="utf-8")
 
     def test_none_vault(self):
         self.assertIn("n/a", c.section_dream_expire(None))
@@ -605,7 +605,7 @@ class DreamExpireSectionTests(unittest.TestCase):
         self.assertNotIn("dark", out)
 
     def test_malformed_pointer_degrades_gracefully(self):
-        (self.vault / "_meta" / "dream-auto-expired-latest.json").write_text("not json", encoding="utf-8")
+        (c._engine_state_dir() / "dream-auto-expired-latest.json").write_text("not json", encoding="utf-8")
         out = c.section_dream_expire(self.vault)
         self.assertIn("n/a", out)
 
@@ -614,13 +614,13 @@ class OpinionSupplementsSectionTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.vault = Path(self._tmp.name)
-        (self.vault / "_meta").mkdir()
+        c._engine_state_dir().mkdir(parents=True, exist_ok=True)
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def _write_pointer(self, opinions: dict) -> None:
-        (self.vault / "_meta" / "opinion-supplement-health-latest.json").write_text(
+        (c._engine_state_dir() / "opinion-supplement-health-latest.json").write_text(
             json.dumps({"opinions": opinions}), encoding="utf-8"
         )
 
@@ -665,7 +665,7 @@ class OpinionSupplementsSectionTests(unittest.TestCase):
         self.assertNotIn("⚠", out)
 
     def test_malformed_pointer_degrades_gracefully(self):
-        (self.vault / "_meta" / "opinion-supplement-health-latest.json").write_text(
+        (c._engine_state_dir() / "opinion-supplement-health-latest.json").write_text(
             "not json", encoding="utf-8"
         )
         out = c.section_opinion_supplements(self.vault)

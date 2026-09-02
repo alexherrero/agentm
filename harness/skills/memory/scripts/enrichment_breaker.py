@@ -36,10 +36,12 @@ import json
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
+
+import engine_state  # noqa: E402
 from typing import Optional
 
-# The pause is per-stage, beside the per-stage history the detector keeps.
-BREAKER_DIR = Path("_meta")
+# The pause records are per-stage machine state; they live in the engine
+# state directory (filing-v2 part 2a), joined at the one call site below.
 
 
 @dataclass
@@ -92,7 +94,8 @@ class BreakerState:
 
 
 def _path(vault_path: Path, stage: str) -> Path:
-    return Path(vault_path) / BREAKER_DIR / f"{stage}-breaker.json"
+    del vault_path  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / f"{stage}-breaker.json"
 
 
 def _read(vault_path: Path, stage: str) -> dict:

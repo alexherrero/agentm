@@ -53,6 +53,10 @@ assert_equals() {
 
 # ── scratch vault (isolated; auto-removed) ──────────────────────────────────
 SV="$(mktemp -d)"
+# Hermetic engine state (filing-v2 part 2a).
+export AGENTM_STATE_DIR="$SV/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
+
 cleanup() { rm -rf "$SV"; }
 trap cleanup EXIT
 
@@ -90,10 +94,10 @@ EMIT1="$("$PY" "$S/orchestration_briefing.py" --vault-path "$SV" 2>/dev/null)"
 assert_contains "emit: first run emits the briefing block"      "$EMIT1" "MemoryVault — pending"
 EMIT2="$("$PY" "$S/orchestration_briefing.py" --vault-path "$SV" 2>/dev/null)"
 assert_equals  "emit: second run (cooldown/unchanged) is silent" "$EMIT2" ""
-[ -f "$SV/_meta/auto-orchestration-state.json" ] \
+[ -f "$AGENTM_STATE_DIR/auto-orchestration-state.json" ] \
   && pass "state: emit records the state file" \
   || fail "state: emit records the state file" "no file created"
-TMPS="$(find "$SV/_meta" -maxdepth 1 -name '*.tmp' 2>/dev/null | wc -l | tr -d ' ')"
+TMPS="$(find "$AGENTM_STATE_DIR" -maxdepth 1 -name '*.tmp' 2>/dev/null | wc -l | tr -d ' ')"
 assert_equals  "state: atomic write leaves no .tmp artifact"    "$TMPS" "0"
 # V5-5 [LC-2] single-writer: save_state is defined only in auto_orchestration.py;
 # sibling scripts (orchestration_{phase,idle,briefing}) call ao.save_state() — they

@@ -63,6 +63,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import engine_state  # noqa: E402
 from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
@@ -705,7 +707,7 @@ def _stage_tidying(vault_path: Path, entries: list, loaded: dict, *, now: str | 
 _LINK_IMPROVEMENT_BATCH_CAP = 25
 
 
-_LINK_SWEEP_CURSOR_REL = "_meta/link-sweep-cursor.json"
+_LINK_SWEEP_CURSOR_NAME = "link-sweep-cursor.json"  # under the engine state dir
 
 # The backfill's per-cycle batch bound (task 6): each weekly cycle attempts
 # at most this many of the vault's unlinked (orphan) notes — 25, matching
@@ -714,7 +716,7 @@ _LINK_SWEEP_CURSOR_REL = "_meta/link-sweep-cursor.json"
 # pool drains.
 _LINK_BACKFILL_BATCH_CAP = 25
 
-_LINK_BACKFILL_STATE_REL = "_meta/link-backfill-state.json"
+_LINK_BACKFILL_STATE_NAME = "link-backfill-state.json"  # under the engine state dir
 
 
 def _read_backfill_attempted(vault_path: Path) -> set:
@@ -726,7 +728,7 @@ def _read_backfill_attempted(vault_path: Path) -> set:
     (including previously-unmatched notes, which may match newer content
     by then) gets a fresh chance."""
     try:
-        data = json.loads((vault_path / _LINK_BACKFILL_STATE_REL).read_text(encoding="utf-8"))
+        data = json.loads((engine_state.engine_state_dir() / _LINK_BACKFILL_STATE_NAME).read_text(encoding="utf-8"))
         return set(data.get("attempted", []))
     except (OSError, ValueError, TypeError):
         return set()
@@ -734,7 +736,7 @@ def _read_backfill_attempted(vault_path: Path) -> set:
 
 def _write_backfill_attempted(vault_path: Path, attempted: set) -> None:
     atomic_write(
-        vault_path / _LINK_BACKFILL_STATE_REL,
+        engine_state.engine_state_dir() / _LINK_BACKFILL_STATE_NAME,
         json.dumps({"attempted": sorted(attempted)}),
     )
 
@@ -1002,11 +1004,11 @@ def _stage_opinion_supplement(vault_path: Path, *, now: str | None = None) -> li
         health_by_opinion[opinion] = opinion_supplement.lane_health(vault_path, opinion)
 
     atomic_write(
-        vault_path / "_meta" / opinion_supplement.BASE_PROPOSALS_FILENAME,
+        engine_state.engine_state_dir() / opinion_supplement.BASE_PROPOSALS_FILENAME,
         json.dumps(all_base_proposals, indent=2),
     )
     atomic_write(
-        vault_path / "_meta" / _OPINION_SUPPLEMENT_HEALTH_LATEST_NAME,
+        engine_state.engine_state_dir() / _OPINION_SUPPLEMENT_HEALTH_LATEST_NAME,
         json.dumps({"opinions": health_by_opinion}, indent=2),
     )
     return proposals
@@ -1301,7 +1303,9 @@ def _render_manifest(digest: DreamDigest, staged_at: float) -> str:
 
 
 def _stage_digest_and_staging(vault_path: Path, digest: DreamDigest) -> Path:
-    staging_dir = vault_path / "desk/scratch" / digest.run_id
+    # Per-run staging left the vault (filing-v2 part 2a) — engine working
+    # files until the operator confirms, not corpus.
+    staging_dir = engine_state.engine_state_dir() / "dream-runs" / digest.run_id
     digest_path = staging_dir / "digest.md"
     atomic_write(digest_path, _render_digest(digest))
     atomic_write(staging_dir / "proposals.json", _render_manifest(digest, time.time()))
@@ -1563,11 +1567,14 @@ def run_dream_and_auto_apply(
     # "never goes stale" convention as dream-auto-expired-latest.json —
     # what a console/dashboard surface reads without knowing the run id.
     atomic_write(
-        vault_path / "_meta" / "sampled-audit-latest.json",
+        engine_state.engine_state_dir() / "sampled-audit-latest.json",
         json.dumps({"run_id": digest.run_id, **digest.sampled_audit}, indent=2),
     )
 
-    staging_dir = vault_path / "desk/scratch" / digest.run_id
+    # Per-run staging left the vault with the rest of the machine state
+    # (filing-v2 part 2a): a run's digest and revert bundle are engine
+    # working files until the operator confirms them, not corpus.
+    staging_dir = engine_state.engine_state_dir() / "dream-runs" / digest.run_id
     atomic_write(
         staging_dir / "digest.md",
         _render_digest(digest, auto_applied=batch, anomalies=anomalies),
@@ -1575,12 +1582,12 @@ def run_dream_and_auto_apply(
 
     payload = dream_confirm.render_auto_applied_json(batch)
     atomic_write(staging_dir / "auto-expired.json", payload)
-    atomic_write(vault_path / "_meta" / "dream-auto-expired-latest.json", payload)
+    atomic_write(engine_state.engine_state_dir() / "dream-auto-expired-latest.json", payload)
 
     tripped_stages = sorted(stage for stage, r in anomalies.items() if r.tripped)
     if tripped_stages:
         atomic_write(
-            vault_path / "_meta" / "dream-anomaly-latest.json",
+            engine_state.engine_state_dir() / "dream-anomaly-latest.json",
             json.dumps([
                 {
                     "run_id": digest.run_id,

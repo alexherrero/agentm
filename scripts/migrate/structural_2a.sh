@@ -92,6 +92,87 @@ elif [[ ! -e "$MOC" ]]; then
   say "would: seed $MOC"
 fi
 
+echo "== task 5: the engine state dir — init, then the machine files =="
+STATE="${AGENTM_STATE_DIR:-$HOME/.local/state/agentm}"
+run mkdir -p "$STATE"
+if [[ ! -d "$STATE/.git" ]]; then
+  if [[ $APPLY -eq 1 ]]; then
+    git -C "$STATE" init -q
+    printf 'dream-runs/\nscratch-sweep-*/\n*.tar.gz\n' > "$STATE/.gitignore"
+    git -C "$STATE" add -A && git -C "$STATE" commit -q -m "engine state: initialized by the 2a migration" 2>/dev/null || true
+    say "initialized git repo at $STATE (durability = history, replacing the vault's)"
+  else
+    say "would: git init $STATE + seed .gitignore (dream-runs/, scratch sweeps, tarballs)"
+  fi
+fi
+
+OLD_META="$VAULT/_meta"
+if [[ -d "$OLD_META" ]]; then
+  # Everything machine goes; the one carve-out stays: repos.json is owned by
+  # the storage seam's final design and moves only with that design's own
+  # amendment (see the repoint map).
+  for f in "$OLD_META"/*; do
+    base_f="$(basename "$f")"
+    [[ "$base_f" == "Icon"* ]] && continue
+    [[ "$base_f" == "repos.json" ]] && { say "carve-out stays: _meta/repos.json (storage-seam owned)"; continue; }
+    if [[ "$base_f" == "health" && -d "$f" ]]; then
+      run mkdir -p "$STATE/health"
+      for h in "$f"/*; do move_into "$h" "$STATE/health"; done
+      [[ $APPLY -eq 1 ]] && rmdir "$f" 2>/dev/null
+      continue
+    fi
+    move_into "$f" "$STATE"
+  done
+fi
+
+echo "== task 5: dreaming staging + insights leave the vault =="
+run mkdir -p "$STATE/crystallize-staging" "$STATE/dream-runs"
+if [[ -d "$VAULT/_crystallize-staging" ]]; then
+  for f in "$VAULT/_crystallize-staging"/*; do move_into "$f" "$STATE/crystallize-staging"; done
+  [[ $APPLY -eq 1 ]] && rmdir "$VAULT/_crystallize-staging" 2>/dev/null
+fi
+if [[ -d "$VAULT/_dream" ]]; then
+  run mkdir -p "$STATE/dream-insights"
+  for f in "$VAULT/_dream"/*; do
+    if [[ -d "$f" ]]; then
+      for g in "$f"/*; do move_into "$g" "$STATE/dream-insights"; done
+      [[ $APPLY -eq 1 ]] && rmdir "$f" 2>/dev/null
+    else
+      move_into "$f" "$STATE/dream-insights"
+    fi
+  done
+  [[ $APPLY -eq 1 ]] && rmdir "$VAULT/_dream" 2>/dev/null
+fi
+
+echo "== task 5: the forward-learning sources whitelist becomes a standard =="
+FL_SRC="$STATE/forward-learning-sources.json"   # just moved with the _meta sweep
+STANDARDS="$(dirname "$VAULT")/standards"
+[[ -d "$STANDARDS" ]] || STANDARDS="$VAULT/standards"
+if [[ -e "$FL_SRC" && -d "$STANDARDS" ]]; then
+  move_into "$FL_SRC" "$STANDARDS"
+fi
+
+echo "== task 3: the scratch sweep — out of the vault, kept, unsynced =="
+if [[ -d "$VAULT/desk/scratch" ]]; then
+  SWEEP="$STATE/scratch-sweep-20260902"
+  run mkdir -p "$SWEEP"
+  if [[ $APPLY -eq 1 ]]; then
+    # One directory move, not per-file: 2,324 files, structure preserved.
+    for f in "$VAULT/desk/scratch"/*; do
+      base_f="$(basename "$f")"
+      [[ "$base_f" == "Icon"* ]] && continue
+      mv "$f" "$SWEEP/$base_f" && moved=$((moved+1))
+    done
+    rmdir "$VAULT/desk/scratch" 2>/dev/null || say "note: desk/scratch not empty, left in place"
+  else
+    n_scratch="$(find "$VAULT/desk/scratch" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    say "would: sweep $n_scratch scratch files to $SWEEP (gitignored, unsynced)"
+  fi
+fi
+
+echo "== task 3: desk/tasks — the workbench convention =="
+run mkdir -p "$VAULT/desk/tasks"
+
 echo "== summary: moved=$moved skipped=$skipped apply=$APPLY =="
 [[ $APPLY -eq 0 ]] && echo "(dry run — re-run with --apply after quiescing the daemon and runner)"
 exit 0

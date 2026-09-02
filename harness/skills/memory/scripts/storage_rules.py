@@ -46,6 +46,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import engine_state  # noqa: E402
+
 # The daemon binary, resolved the same way `recall.py` resolves it for the search
 # fast path: a bare name on PATH, overridable. `AGENTMD` is the override a test
 # or a CI step points at a freshly built binary.
@@ -381,21 +383,24 @@ def is_contract_exempt(rel) -> bool:
 # pass says the rules changed, and says how many memories were judged under the
 # old ones. That turns re-filing from a guess into a queue with a length.
 
-_WATCH_RELATIVE = "_meta/storage-rules-state.json"
+_WATCH_FILENAME = "storage-rules-state.json"
 
 
-def hash_watch(memory_root, *, current=None, record: bool = True) -> dict:
+def hash_watch(memory_root=None, *, current=None, record: bool = True) -> dict:
     """Compare the current rules hash against the last one seen, and record it.
 
     Returns `{"current", "previous", "changed", "first_run"}`. The state file
-    lives under the memory root's `_meta/` rather than in the index, because it
-    is one of the few things a corpus rescan cannot rebuild — no note records
-    which rules version the *previous* run read.
+    lives in the engine state directory (filing-v2 part 2a — machine state
+    left the vault; the directory is a git repository, so "a corpus rescan
+    cannot rebuild this" keeps its history-durability answer). The
+    `memory_root` parameter is accepted and ignored for the callers that
+    still pass it; it stops meaning anything once every caller drops it.
 
     `record=False` reads without writing, which is what a dry run wants.
     """
+    del memory_root  # accepted for caller compatibility; the engine dir decides
     current = current or rules().content_hash()
-    state_path = Path(memory_root) / _WATCH_RELATIVE
+    state_path = engine_state.engine_state_dir() / _WATCH_FILENAME
 
     previous = None
     if state_path.is_file():

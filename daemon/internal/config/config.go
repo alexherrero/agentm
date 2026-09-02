@@ -123,6 +123,18 @@ type Config struct {
 	// the same sense: losing it costs one duplicate alert and one probe.
 	StateDir string
 
+	// EngineStateDir holds the machine state that is *not* a deletable cache —
+	// the source-registry sidecar, the tier table, cursors, journals: files
+	// whose loss costs memories or judgment, not a re-scan. Filing-v2 part 2a
+	// moved these out of the vault (the vault is the knowledge surface both
+	// audiences read); their durability property — history — moves with them,
+	// because this directory is a git repository the migration initializes and
+	// the runner commits on the same cadence as the vault. `$AGENTM_STATE_DIR`
+	// is the per-invocation override tests use; the default is the design's
+	// named path on every platform, deliberately not the index cache's
+	// platform-native home — the two directories hold different bargains.
+	EngineStateDir string
+
 	// Email is the alert channel, read from the same plugins.autonomy.* keys the
 	// existing digest email uses. Zero value means unconfigured, which is a
 	// silent skip rather than an error.
@@ -619,6 +631,13 @@ func Load(opts Options) (*Config, error) {
 	}
 
 	c.StateDir = filepath.Dir(c.IndexPath)
+	if v := strings.TrimSpace(os.Getenv("AGENTM_STATE_DIR")); v != "" {
+		if c.EngineStateDir, err = filepath.Abs(expandHome(v)); err != nil {
+			return nil, fmt.Errorf("engine state dir: %w", err)
+		}
+	} else if home, herr := os.UserHomeDir(); herr == nil {
+		c.EngineStateDir = filepath.Join(home, ".local", "state", "agentm")
+	}
 	if opts.StateDir != "" {
 		if c.StateDir, err = filepath.Abs(expandHome(opts.StateDir)); err != nil {
 			return nil, fmt.Errorf("state dir: %w", err)

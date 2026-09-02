@@ -39,6 +39,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import engine_state  # noqa: E402
+
 # sibling import (same scripts dir; Python puts the script dir on sys.path[0],
 # and tests insert it explicitly)
 import auto_orchestration as ao
@@ -122,7 +124,8 @@ def _count_staged(vault: Path) -> int:
     Lives under <vault>/_meta/skill-discovery-cache/adapt-state/<source>/*.json
     (the sibling `evaluated.json` bookkeeping file sits at the root and is a
     file, not a source dir, so it's skipped). Never raises → 0 on any error."""
-    root = vault / "_meta" / "skill-discovery-cache" / "adapt-state"
+    del vault  # engine state left the vault (filing-v2 part 2a)
+    root = engine_state.engine_state_dir() / "skill-discovery-cache" / "adapt-state"
     if not root.is_dir():
         return 0
     n = 0

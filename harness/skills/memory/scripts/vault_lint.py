@@ -768,7 +768,9 @@ def build_report(model: VaultModel, findings: list, *, today: str) -> str:
 
 
 def default_report_path(vault: Path, today: str) -> Path:
-    return vault / "_meta" / f"vault-lint-{today}.md"
+    # An operator-review report is a diagnostics record, not machine state —
+    # it lives where the human reads health surfaces (filing-v2 part 2a).
+    return vault / "diagnostics" / "lint" / f"vault-lint-{today}.md"
 
 
 # -----------------------------------------------------------------------------

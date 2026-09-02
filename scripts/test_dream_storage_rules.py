@@ -164,7 +164,7 @@ class HashWatchTests(_Base):
         watch = storage_rules.hash_watch(self.vault)
         self.assertTrue(watch["first_run"])
         self.assertFalse(watch["changed"])
-        self.assertTrue((self.vault / "_meta" / "storage-rules-state.json").is_file())
+        self.assertTrue((storage_rules.engine_state.engine_state_dir() / "storage-rules-state.json").is_file())
 
     def test_an_unchanged_second_run_reports_no_change(self) -> None:
         self._rules(VALID_RULES)

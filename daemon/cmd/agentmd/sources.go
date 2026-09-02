@@ -305,14 +305,14 @@ func cmdSources(args []string) error {
 	return nil
 }
 
-// metaDir is where the committed file lives.
-//
-// Under the memory root rather than the vault root, because `_meta/` is a
-// memory-layer directory and the two roots are not the same — a path built from
-// the wrong one lands beside the operator's own folders and looks plausible
-// while being wrong.
+// metaDir is where the sidecar lives — the engine state directory, per
+// filing-v2 part 2a. The file's durability used to come from the vault's git
+// history; it now comes from the engine state dir being a git repository the
+// runner commits on the same cadence, which keeps "losing that file costs
+// memories" answered while taking machine state out of the surface both
+// audiences browse.
 func metaDir(cfg *config.Config) string {
-	return filepath.Join(cfg.VaultPath, filepath.FromSlash(cfg.MemoryRoot), "_meta")
+	return cfg.EngineStateDir
 }
 
 // sourceRewriter writes a note back through the vault, for supersession.

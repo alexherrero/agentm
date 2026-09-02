@@ -37,12 +37,12 @@ class TestSectionCrystallizeCandidates(unittest.TestCase):
         self.assertIn("none staged", out)
 
     def test_empty_staging_dir(self) -> None:
-        (self.vault / "_crystallize-staging").mkdir()
+        console._engine_state_dir().joinpath("crystallize-staging").mkdir(parents=True)
         out = console.section_crystallize_candidates(self.vault)
         self.assertIn("none staged", out)
 
     def test_counts_candidates(self) -> None:
-        staging = self.vault / "_crystallize-staging"
+        staging = console._engine_state_dir() / "crystallize-staging"
         staging.mkdir()
         (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
         (staging / "post-release-b.json").write_text("{}", encoding="utf-8")

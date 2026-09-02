@@ -449,7 +449,7 @@ class AutoApplyExpireTests(_DreamConfirmTestBase):
 def _read_manifest_staged_at(vault_path: Path, run_id: str) -> float:
     import json
 
-    manifest_path = vault_path / "desk/scratch" / run_id / "proposals.json"
+    manifest_path = dc.engine_state.engine_state_dir() / "dream-runs" / run_id / "proposals.json"
     return json.loads(manifest_path.read_text(encoding="utf-8"))["staged_at"]
 
 
@@ -526,7 +526,7 @@ class CleanupAppliedBatchesTests(_DreamConfirmTestBase):
         self.assertFalse(staging_dir.exists())
 
     def test_malformed_staging_dir_is_skipped_not_raised(self) -> None:
-        bogus = self.vault / "desk/scratch" / "not-a-real-run"
+        bogus = dc.engine_state.engine_state_dir() / "dream-runs" / "not-a-real-run"
         bogus.mkdir(parents=True)
         removed = dc.cleanup_applied_batches(self.vault, now=1e12)
         self.assertEqual(removed, [])
@@ -663,7 +663,7 @@ class SampledAuditTests(_DreamConfirmTestBase):
         self.assertEqual(result.sampled_count, 10)
         self.assertAlmostEqual(result.disagreement_rate, 0.1)
         self.assertFalse(result.narrowed)
-        self.assertFalse((self.vault / "_meta" / "link-band-narrowing.json").exists())
+        self.assertFalse((dc.engine_state.engine_state_dir() / "link-band-narrowing.json").exists())
 
     def test_high_disagreement_rate_is_measured_but_narrows_nothing(self) -> None:
         """This asserted the opposite until the vector stack was removed. The

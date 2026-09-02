@@ -382,6 +382,28 @@ def _read_config_spaces(install_prefix: Optional[Path] = None) -> dict:
     return out
 
 
+def engine_state_dir() -> Path:
+    """Where machine state lives — caches, cursors, snapshots, journals.
+
+    Filing-v2 part 2a moved this out of the vault: the vault is the knowledge
+    surface both audiences read, and opaque engine state serves neither
+    audience in Obsidian while costing Drive sync. The field's own pattern
+    (R1, the research bundle) requires durable *disk*, not the vault
+    specifically — so this is the XDG state directory, beside the models the
+    install already keeps under `~/.local/share/agentm`.
+
+    `$AGENTM_STATE_DIR` is the per-invocation override tests and CI use to
+    point at a scratch directory — the same contract `$MEMORY_VAULT_PATH`
+    holds for the vault. Always returns a path (state has a home whether or
+    not a vault resolves); creation is the caller's mkdir, not this
+    resolver's side effect.
+    """
+    override = os.environ.get("AGENTM_STATE_DIR", "").strip()
+    if override:
+        return Path(override)
+    return Path.home() / ".local" / "state" / "agentm"
+
+
 def space(name: str) -> str:
     """Return the memory-root-relative path of a named space.
 

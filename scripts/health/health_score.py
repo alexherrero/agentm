@@ -98,26 +98,19 @@ def _default_vault_path_fn() -> "Path | None":
 
 
 def resolve_history_path(*, vault_path_fn=None) -> Path:
-    """Where the health-history ledger lives: `<vault>/_meta/health/
-    history.jsonl` when a vault resolves, else a device-local fallback for
-    vault-less installs (V8 proving Lane S, 2026-07-13 — the ledger stops
-    being a tracked repo file so a CI runner never has to commit it back).
-    `vault_path_fn` is injectable for hermetic tests; defaults to the real
-    `harness_memory.vault_path()`.
+    """Where the health-history ledger lives: the engine state directory
+    (filing-v2 part 2a — machine state left the vault), which also retires
+    this function's old three-way home split. One resolver, one home,
+    `$AGENTM_STATE_DIR`-overridable. `vault_path_fn` is accepted and unused
+    so hermetic tests that inject one keep working while they migrate.
     """
-    vault_path_fn = vault_path_fn if vault_path_fn is not None else _default_vault_path_fn
-    try:
-        vault = vault_path_fn()
-    except Exception:
-        vault = None
-    if vault is not None:
-        return Path(vault) / "_meta" / "health" / "history.jsonl"
-    env = os.environ.get("MEMORY_VAULT_PATH", "").strip()
-    if env:
-        p = Path(env).expanduser()
-        if p.is_dir():
-            return p / "_meta" / "health" / "history.jsonl"
-    return Path.home() / ".cache" / "agentm" / "telemetry" / "health-history.jsonl"
+    del vault_path_fn
+    scripts_dir = HERE.parent
+    if str(scripts_dir) not in sys.path:
+        sys.path.insert(0, str(scripts_dir))
+    import harness_memory as hm  # type: ignore
+
+    return hm.engine_state_dir() / "health" / "history.jsonl"
 
 
 def default_html_output_path() -> Path:
