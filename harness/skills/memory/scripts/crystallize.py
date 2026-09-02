@@ -81,6 +81,8 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+import engine_state  # noqa: E402
 from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
@@ -118,7 +120,7 @@ DIGEST_FIELDS = ("question", "investigation", "findings", "lessons", "open_threa
 # WHICH session to stage (it owns `.harness/` marker discovery); this module
 # owns WHERE staged candidates live in the vault and how they're managed.
 
-STAGING_DIRNAME = "_crystallize-staging"
+STAGING_DIRNAME = "crystallize-staging"  # under the engine state dir (filing-v2 2a)
 # Calibration-era cap (call 5) — no measured pending volume behind it yet. A
 # cap that trips is evidence the pickup surface isn't being read, not a bound
 # to raise reflexively.
@@ -126,7 +128,10 @@ _MAX_PENDING_CANDIDATES = 50
 
 
 def _staging_dir(vault_path: Path | str) -> Path:
-    return Path(vault_path) / STAGING_DIRNAME
+    del vault_path  # staging left the vault with the machine state (2a);
+    # the stage→confirm→revert contract itself is untouched — part 6 owns
+    # retiring it into the dreaming binary.
+    return engine_state.engine_state_dir() / STAGING_DIRNAME
 
 
 def _candidate_path(vault_path: Path | str, phase: str, session_id: str) -> Path:

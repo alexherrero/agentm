@@ -48,6 +48,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+
+import engine_state  # noqa: E402
 from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
@@ -471,7 +473,8 @@ def discover(vault: Path, *, min_score: float = _DEFAULT_MIN_SCORE,
 def default_embed_index_path(vault: Path) -> Path:
     """`<vault>/_meta/notes-embeddings.json` — the personal-notes embedding cache,
     deliberately separate from AgentMemory's `vec-index.db` (DC-2)."""
-    return Path(vault) / "_meta" / "notes-embeddings.json"
+    del vault  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / "notes-embeddings.json"
 
 
 def _embed_input(note: "Note") -> str:
@@ -764,7 +767,9 @@ def default_report_path(vault: Path, today: str) -> Path:
     vault_lint's `vault-lint-<date>.md`. `vault` is the AgentMemory root
     (MEMORY_VAULT_PATH); the personal-notes corpus is the Obsidian parent, but the
     report lands inside the agent's own vault, never beside a personal note."""
-    return Path(vault) / "_meta" / f"notes-links-{today}.md"
+    # An operator-review report is a diagnostics record (filing-v2 part 2a),
+    # beside vault_lint's own, never beside a personal note.
+    return Path(vault) / "diagnostics" / "lint" / f"notes-links-{today}.md"
 
 
 def is_safe_report_path(out_path: Path, vault: Path, note_paths: set) -> bool:
@@ -850,7 +855,7 @@ def backup_corpus(notes: list, vault: Path, *, today: str) -> Path:
     """Tar.gz every personal note (text) to `<vault>/_meta/notes-backup-<date>.tar.gz`
     so an apply is fully reversible. Returns the backup path."""
     root = vault_lint._obsidian_root(Path(vault))
-    path = Path(vault) / "_meta" / f"notes-backup-{today}.tar.gz"
+    path = engine_state.engine_state_dir() / f"notes-backup-{today}.tar.gz"
     path.parent.mkdir(parents=True, exist_ok=True)
     with tarfile.open(path, "w:gz") as tar:
         for n in notes:

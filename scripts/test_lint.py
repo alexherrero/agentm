@@ -171,7 +171,7 @@ class GraphSnapshotCrossCheckTests(_LintFixtureTestBase):
         for _ in range(3):  # ceil(31 / 25) = 2 cycles needed; generous headroom
             lint.run_lint(self.vault)
             attempted = json.loads(
-                (self.vault / "_meta" / "graph-snapshot-cross-check-state.json").read_text(encoding="utf-8")
+                (lint.engine_state.engine_state_dir() / "graph-snapshot-cross-check-state.json").read_text(encoding="utf-8")
             )["attempted"]
             if "memory/reference/zzz-last.md" in attempted:
                 reached = True
@@ -221,7 +221,7 @@ class GraphSnapshotCrossCheckTests(_LintFixtureTestBase):
         second = lint.run_lint(self.vault)  # drains the remaining 5
         self.assertIsNotNone(second)
         attempted_after_second = json.loads(
-            (self.vault / "_meta" / "graph-snapshot-cross-check-state.json").read_text(encoding="utf-8")
+            (lint.engine_state.engine_state_dir() / "graph-snapshot-cross-check-state.json").read_text(encoding="utf-8")
         )["attempted"]
         # After exactly 2 cycles the whole 30-entry corpus has had a turn.
         self.assertEqual(len(attempted_after_second), 30)

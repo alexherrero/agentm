@@ -53,6 +53,8 @@ _SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
+import engine_state  # noqa: E402
+
 
 # Default source whitelist seed — operator-specified order: cookbook,
 # awesome-claude-code, awesome-mcp-servers, awesome-llm-apps. README.md
@@ -116,7 +118,8 @@ def _whitelist_path(vault: Path) -> Path:
 
 
 def _cache_root(vault: Path) -> Path:
-    return vault / "_meta" / "skill-discovery-cache"
+    del vault  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / "skill-discovery-cache"
 
 
 def _state_path(vault: Path) -> Path:

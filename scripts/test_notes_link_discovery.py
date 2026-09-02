@@ -320,9 +320,9 @@ class TestReport(unittest.TestCase):
             self.assertNotIn("[21 Feb 2016]]]", report)
             self.assertIn("link via Obsidian's `[[` picker", report)
 
-    def test_default_report_path_is_meta(self):
+    def test_default_report_path_is_diagnostics_lint(self):
         p = nld.default_report_path(Path("/tmp/AgentMemory"), "2026-05-29")
-        self.assertEqual(p, Path("/tmp/AgentMemory/_meta/notes-links-2026-05-29.md"))
+        self.assertEqual(p, Path("/tmp/AgentMemory/diagnostics/lint/notes-links-2026-05-29.md"))
 
     def test_report_out_refuses_personal_note(self):
         # Adversarial review: `--out <personal note>` must be REFUSED, never
@@ -358,7 +358,7 @@ class TestReport(unittest.TestCase):
 
     def test_is_safe_report_path_unit(self):
         vault = Path("/tmp/AgentMemory")
-        ok = vault / "_meta" / "notes-links-2026-05-29.md"
+        ok = vault / "diagnostics" / "lint" / "notes-links-2026-05-29.md"
         self.assertTrue(nld.is_safe_report_path(ok, vault, set()))
         outside = Path("/tmp/Obsidian/Church/note.md")
         self.assertFalse(nld.is_safe_report_path(outside, vault, set()))
@@ -366,7 +366,7 @@ class TestReport(unittest.TestCase):
         note = vault / "memory" / "note.md"
         self.assertFalse(nld.is_safe_report_path(note, vault, {note.resolve()}))
 
-    def test_report_cli_writes_only_to_meta(self):
+    def test_report_cli_writes_only_to_diagnostics_lint(self):
         # The --report run writes exactly one file under _meta/ and leaves every
         # personal note byte-identical (read-only guarantee, the one write).
         with _Vault() as v:
@@ -381,15 +381,15 @@ class TestReport(unittest.TestCase):
             with redirect_stdout(buf):
                 rc = nld.main(["--vault", str(v), "--report", "--min-score", "0.05"])
             self.assertEqual(rc, 0)
-            report_path = v / "_meta" / f"notes-links-{date.today().isoformat()}.md"
-            self.assertTrue(report_path.exists(), "report not written to _meta/")
+            report_path = v / "diagnostics" / "lint" / f"notes-links-{date.today().isoformat()}.md"
+            self.assertTrue(report_path.exists(), "report not written to diagnostics/lint/")
             self.assertIn(str(report_path), buf.getvalue())
             for p in paths:
                 self.assertEqual(p.read_bytes(), before[p],
                                  f"--report modified a personal note: {p}")
             # No stray files outside _meta/ and the two fixtures.
             md_files = sorted(q.relative_to(v).as_posix() for q in v.rglob("*.md"))
-            self.assertIn("_meta/" + report_path.name, md_files)
+            self.assertIn("diagnostics/lint/" + report_path.name, md_files)
 
 
 class TestEmbeddingSignal(unittest.TestCase):
@@ -456,7 +456,7 @@ class TestEmbeddingSignal(unittest.TestCase):
             _write(v, "Home/a.md", "Apricot marmalade canning jars.")
             _write(v, "Home/b.md", "Bicycle derailleur cassette tuning.")
             notes = nld.build_corpus(v)
-            cache = v / "_meta" / "notes-embeddings.json"
+            cache = nld.engine_state.engine_state_dir() / "notes-embeddings.json"
             calls = {"n": 0}
             orig = embed_mod.embed_text
             try:
@@ -488,7 +488,7 @@ class TestEmbeddingSignal(unittest.TestCase):
             _write(v, "Home/a.md", "alpha content one")
             _write(v, "Home/b.md", "beta content two")
             notes = nld.build_corpus(v)
-            cache = v / "_meta" / "notes-embeddings.json"
+            cache = nld.engine_state.engine_state_dir() / "notes-embeddings.json"
             orig = embed_mod.embed_text
             try:
                 # Run 1: OLD model emits 3-d vectors -> cache holds 3-d.
@@ -511,7 +511,7 @@ class TestEmbeddingSignal(unittest.TestCase):
 
     def test_embed_index_path_is_separate_from_the_agentmemory_index(self):
         p = nld.default_embed_index_path(Path("/tmp/AgentMemory"))
-        self.assertEqual(p, Path("/tmp/AgentMemory/_meta/notes-embeddings.json"))
+        self.assertEqual(p, nld.engine_state.engine_state_dir() / "notes-embeddings.json")
         self.assertNotEqual(p.name, "vec-index.db")
 
     def test_report_dual_signal_sections(self):
@@ -590,7 +590,7 @@ class TestApplyMode(unittest.TestCase):
             with redirect_stdout(buf):
                 rc = nld.main(["--vault", str(v), "--apply", "--min-score", "0.05"])
             self.assertEqual(rc, 0)
-            self.assertEqual(len(list((v / "_meta").glob("notes-backup-*.tar.gz"))), 1,
+            self.assertEqual(len(list(nld.engine_state.engine_state_dir().glob("notes-backup-*.tar.gz"))), 1,
                              "no backup written before apply")
             self.assertIn(nld._APPLY_MARKER, a.read_text(encoding="utf-8"))
             self.assertIn("[[confirmation]]", a.read_text(encoding="utf-8"))

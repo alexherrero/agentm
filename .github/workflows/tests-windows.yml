@@ -97,5 +97,5 @@ jobs:
         shell: pwsh
         run: |
           Push-Location scripts
-          python -m unittest discover -p 'test_*.py'
+          python run_unit_suite.py
           Pop-Location

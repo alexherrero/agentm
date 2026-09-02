@@ -145,7 +145,7 @@ class TestSpaces(MemoryRootBase):
         self.write_config(**{"plugins.obsidian-vault.memory_root": "Agent"})
         self.assertEqual(hm.space("memory"), "memory")
         self.assertEqual(hm.space("projects"), "desk/projects")
-        self.assertEqual(hm.space("briefs"), "desk/briefs")
+        self.assertEqual(hm.space("briefs"), "diagnostics/digests")
         self.assertEqual(hm.space("scratch"), "desk/scratch")
 
     def test_config_overrides_a_single_space(self):

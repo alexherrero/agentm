@@ -114,6 +114,9 @@ count_files() {
 }
 
 SCRATCH="$(mktemp -d)"
+# Per-vault engine state (filing-v2 2a): each phase vault gets a sibling
+# state dir, restoring the isolation the per-vault _meta used to provide.
+state_for() { echo "$1.engine-state"; }
 cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT
 echo "verify-idle-chain: scratch root = $SCRATCH"
@@ -130,7 +133,7 @@ SESSION_KEY="session-a/transcript"
 # seed_vault <vault-dir> — a scratch vault primed for a hermetic chain run.
 seed_vault() {
   local v="$1"
-  mkdir -p "$v/memory" "$v/_meta/skill-discovery-cache/fixture-source"
+  mkdir -p "$v/memory" "$(state_for "$v")/skill-discovery-cache/fixture-source"
   # Comments-only whitelist: discover_skills.py seeds its 4 network sources only
   # when this file is absent, so writing it first is what keeps the run offline.
   printf '# Skill-discovery sources\n# verify-idle-chain fixture: intentionally no URLs.\n' \
@@ -142,12 +145,12 @@ seed_vault() {
 import json, datetime
 from pathlib import Path
 now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
-Path('$v/_meta/skill-discovery-cache/state.json').write_text(
+Path('$(state_for "$v")/skill-discovery-cache/state.json').write_text(
     json.dumps({'schema_version': 1, 'last_scan': now, 'sources': {}}), encoding='utf-8')
 "
   # Two adapt candidates, no GitHub links anywhere → Pass-1 stages both without
   # touching api.github.com. Headings drive the staged filenames asserted below.
-  cat > "$v/_meta/skill-discovery-cache/fixture-source/diff-2026-01-01.md" <<'EOF'
+  cat > "$(state_for "$v")/skill-discovery-cache/fixture-source/diff-2026-01-01.md" <<'EOF'
 ## Scratch Fixture Pattern Alpha
 A local-only fixture candidate carrying no external links whatsoever.
 ## Scratch Fixture Pattern Beta
@@ -173,23 +176,23 @@ Path('$dir/transcript.jsonl').write_text(
 echo "verify-idle-chain: ── A. non-dry-run chain ──"
 A_VAULT="$SCRATCH/a-vault"; A_TR="$SCRATCH/a-transcripts"
 seed_vault "$A_VAULT"; seed_transcripts "$A_TR"
-A_ADAPT="$A_VAULT/_meta/skill-discovery-cache/adapt-state/fixture-source"
+A_ADAPT="$(state_for "$A_VAULT")/skill-discovery-cache/adapt-state/fixture-source"
 
 A_OUT="$(env MEMORY_VAULT_PATH="$A_VAULT" MEMORY_TRANSCRIPT_ROOT="$A_TR" \
-  "$PY" "$S/orchestration_idle.py" --vault-path "$A_VAULT" ${DRY_FLAG[@]+"${DRY_FLAG[@]}"} 2>/dev/null)"
+  AGENTM_STATE_DIR="$(state_for "$A_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$A_VAULT" ${DRY_FLAG[@]+"${DRY_FLAG[@]}"} 2>/dev/null)"
 
 assert_equals "A. chain reports it ran (not a plan)" "$(jfield "$A_OUT" status)" "ran"
 
 # reflect-corpus really mined the fixture and saved the operator's preference.
 assert_in_tree "A. reflect: the operator preference landed in the vault" "$A_VAULT" "$PREF_NEEDLE"
-assert_exists  "A. reflect: seen-state file written" "$A_VAULT/_meta/transcript-reflection-state.json"
+assert_exists  "A. reflect: seen-state file written" "$(state_for "$A_VAULT")/transcript-reflection-state.json"
 # Hermeticity: MEMORY_TRANSCRIPT_ROOT is honored, so exactly the fixture session
 # was processed. If the env var stopped reaching the subprocess this would be
 # the operator's whole transcript history instead.
 A_SESSIONS="$("$PY" -c "
 import json
 from pathlib import Path
-p = Path('$A_VAULT/_meta/transcript-reflection-state.json')
+p = Path('$(state_for "$A_VAULT")/transcript-reflection-state.json')
 try:
     print(','.join(sorted(json.loads(p.read_text())['sessions'])))
 except Exception:
@@ -204,7 +207,7 @@ assert_equals "A. discover: step reports throttled" "$(step_outcome "$A_OUT" dis
 # fixture headings imply.
 assert_exists "A. adapt: alpha candidate staged" "$A_ADAPT/scratch-fixture-pattern-alpha.json"
 assert_exists "A. adapt: beta candidate staged"  "$A_ADAPT/scratch-fixture-pattern-beta.json"
-A_STAGED_ON_DISK="$(count_files "$A_VAULT/_meta/skill-discovery-cache/adapt-state/fixture-source" '*.json')"
+A_STAGED_ON_DISK="$(count_files "$(state_for "$A_VAULT")/skill-discovery-cache/adapt-state/fixture-source" '*.json')"
 assert_equals "A. adapt: exactly 2 candidates on disk" "$A_STAGED_ON_DISK" "2"
 # The count the chain REPORTS must match the files that actually exist.
 assert_equals "A. adapt: reported staged_candidates matches the files on disk" \
@@ -214,7 +217,7 @@ assert_equals "A. adapt: reported staged_candidates matches the files on disk" \
 A_FIRE="$("$PY" -c "
 import json
 from pathlib import Path
-p = Path('$A_VAULT/_meta/auto-orchestration-state.json')
+p = Path('$(state_for "$A_VAULT")/auto-orchestration-state.json')
 try:
     print('yes' if json.loads(p.read_text())['last_fire']['idle_chain'] else 'no')
 except Exception:
@@ -227,11 +230,11 @@ assert_equals "A. state: last_fire recorded for idle_chain" "$A_FIRE" "yes"
 if [ "$FAULT" != "dry-run" ]; then
   echo "verify-idle-chain: ── B. cooldown gates run 2 ──"
   B_OUT="$(env MEMORY_VAULT_PATH="$A_VAULT" MEMORY_TRANSCRIPT_ROOT="$A_TR" \
-    "$PY" "$S/orchestration_idle.py" --vault-path "$A_VAULT" 2>/dev/null)"
+    AGENTM_STATE_DIR="$(state_for "$A_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$A_VAULT" 2>/dev/null)"
   assert_equals "B. second run inside the window is a cooldown no-op" \
     "$(jfield "$B_OUT" status)" "cooldown"
   assert_equals "B. cooldown run stages nothing new" \
-    "$(count_files "$A_VAULT/_meta/skill-discovery-cache/adapt-state/fixture-source" '*.json')" "2"
+    "$(count_files "$(state_for "$A_VAULT")/skill-discovery-cache/adapt-state/fixture-source" '*.json')" "2"
 fi
 
 # ── C. the disable toggle really stops the chain ────────────────────────────
@@ -249,11 +252,11 @@ if n != 1:
 p.write_text(text, encoding='utf-8')
 " || fail "C. fixture: could not flip enable_idle_chain in the seeded config" "see stderr"
 C_OUT="$(env MEMORY_VAULT_PATH="$C_VAULT" MEMORY_TRANSCRIPT_ROOT="$C_TR" \
-  "$PY" "$S/orchestration_idle.py" --vault-path "$C_VAULT" 2>/dev/null)"
+  AGENTM_STATE_DIR="$(state_for "$C_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$C_VAULT" 2>/dev/null)"
 assert_equals "C. disabled chain reports disabled" "$(jfield "$C_OUT" status)" "disabled"
-assert_absent "C. disabled chain mines no transcripts" "$C_VAULT/_meta/transcript-reflection-state.json"
+assert_absent "C. disabled chain mines no transcripts" "$(state_for "$C_VAULT")/transcript-reflection-state.json"
 assert_equals "C. disabled chain stages no candidates" \
-  "$(count_files "$C_VAULT/_meta/skill-discovery-cache/adapt-state" '*.json')" "0"
+  "$(count_files "$(state_for "$C_VAULT")/skill-discovery-cache/adapt-state" '*.json')" "0"
 
 # ── D. the discover-skills outcome label tells the truth ────────────────────
 # Regression guard for the label bug this gate found: the outcome was derived by
@@ -266,9 +269,9 @@ assert_equals "C. disabled chain stages no candidates" \
 echo "verify-idle-chain: ── D. discover outcome is not hardcoded ──"
 D_VAULT="$SCRATCH/d-vault"; D_TR="$SCRATCH/d-transcripts"
 seed_vault "$D_VAULT"; seed_transcripts "$D_TR"
-rm -f "$D_VAULT/_meta/skill-discovery-cache/state.json"
+rm -f "$(state_for "$D_VAULT")/skill-discovery-cache/state.json"
 D_OUT="$(env MEMORY_VAULT_PATH="$D_VAULT" MEMORY_TRANSCRIPT_ROOT="$D_TR" \
-  "$PY" "$S/orchestration_idle.py" --vault-path "$D_VAULT" 2>/dev/null)"
+  AGENTM_STATE_DIR="$(state_for "$D_VAULT")" "$PY" "$S/orchestration_idle.py" --vault-path "$D_VAULT" 2>/dev/null)"
 D_DISCOVER="$(step_outcome "$D_OUT" discover-skills)"
 if [ -n "$D_DISCOVER" ] && [ "$D_DISCOVER" != "throttled" ]; then
   pass "D. an un-throttled discover step is not labelled throttled"
@@ -300,7 +303,7 @@ EOF
 # crystallization step reads <project-root>/.harness/, so leaving it unset would
 # have this gate reading the repo it is running inside.
 E_PROJ="$SCRATCH/e-proj"; mkdir -p "$E_PROJ/.harness"
-E_OUT="$(env MEMORY_VAULT_PATH="$E_VAULT" MEMORY_SKILL_PATHS="$SCRATCH/e-skills" \
+E_OUT="$(env MEMORY_VAULT_PATH="$E_VAULT" MEMORY_SKILL_PATHS="$SCRATCH/e-skills" AGENTM_STATE_DIR="$(state_for "$E_VAULT")" \
   "$PY" "$S/orchestration_phase.py" --vault-path "$E_VAULT" --project-root "$E_PROJ" \
   post-release 2>/dev/null)"
 assert_equals "E. post-release reports it ran" "$(jfield "$E_OUT" status)" "ran"

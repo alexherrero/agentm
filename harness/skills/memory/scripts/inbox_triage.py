@@ -121,11 +121,14 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+
 from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
+
+import engine_state  # noqa: E402
 
 import dream  # noqa: E402  (reuse _stage_dedup's difflib comparison + merge shape)
 import dream_confirm  # noqa: E402  (reuse list_pending/confirm/auto_apply_batch/render_auto_applied_json)
@@ -201,7 +204,8 @@ BACKLOG_EXPIRE_STAGE = "inbox_expire_backlog"    # pre-existing-backlog expire (
 # model verdict (see _build_merge_and_promote_clusters).
 ALL_AUTO_APPLY_STAGES = frozenset({PROMOTE_STAGE, MERGE_STAGE, COLLAPSE_STAGE, AUTO_APPLY_ELIGIBLE_STAGE, BACKLOG_EXPIRE_STAGE})
 
-_META_DIR_NAME = "_meta"
+# The triage's own state files are machine state; they live in the engine
+# state directory (filing-v2 part 2a), joined at the three call sites below.
 _CUTOVER_MARKER_NAME = "inbox-triage-cutover.json"
 _AUTO_EXPIRED_LATEST_NAME = "inbox-triage-auto-expired-latest.json"
 # The needs-your-eye list (auto-org part 3 tasks 3+5): ambiguous dedup/merge
@@ -253,7 +257,8 @@ class InboxTriageDigest:
 # -----------------------------------------------------------------------------
 
 def _cutover_marker_path(vault_path: Path) -> Path:
-    return Path(vault_path) / _META_DIR_NAME / _CUTOVER_MARKER_NAME
+    del vault_path  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / _CUTOVER_MARKER_NAME
 
 
 def ensure_cutover_marker(vault_path: Path, *, now: float | None = None) -> str:
@@ -784,7 +789,8 @@ def run_inbox_triage(
 
 
 def _needs_your_eye_path(vault_path: Path) -> Path:
-    return Path(vault_path) / _META_DIR_NAME / _NEEDS_YOUR_EYE_NAME
+    del vault_path  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / _NEEDS_YOUR_EYE_NAME
 
 
 def _write_needs_your_eye(vault_path: Path, items: list, *, run_id: str, now: float | None) -> None:
@@ -808,7 +814,8 @@ def _write_needs_your_eye(vault_path: Path, items: list, *, run_id: str, now: fl
 # -----------------------------------------------------------------------------
 
 def _staging_dir(vault_path: Path, run_id: str) -> Path:
-    return Path(vault_path) / "desk/scratch" / run_id
+    del vault_path  # per-run staging left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / "dream-runs" / run_id
 
 
 def _render_digest(digest: InboxTriageDigest, *, auto_applied=None) -> str:
@@ -993,7 +1000,7 @@ def run_inbox_triage_and_auto_apply(
 
     payload = dream_confirm.render_auto_applied_json(batch)
     atomic_write(staging_dir / "auto-expired.json", payload)
-    atomic_write(vault_path / _META_DIR_NAME / _AUTO_EXPIRED_LATEST_NAME, payload)
+    atomic_write(engine_state.engine_state_dir() / _AUTO_EXPIRED_LATEST_NAME, payload)
 
     return digest, batch
 
@@ -1118,7 +1125,8 @@ def _resolve_vault_path(arg_vault_path: str | None) -> Path | None:
 
 
 def _most_recent_run_id(vault_path: Path) -> str | None:
-    staging_root = Path(vault_path) / "desk/scratch"
+    del vault_path  # per-run staging is engine-side (filing-v2 2a)
+    staging_root = engine_state.engine_state_dir() / "dream-runs"
     if not staging_root.exists():
         return None
     candidates = sorted(p.name for p in staging_root.iterdir() if p.is_dir() and p.name.startswith("inbox-"))

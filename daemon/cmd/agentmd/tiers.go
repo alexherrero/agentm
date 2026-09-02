@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
@@ -99,10 +98,11 @@ func cmdTiers(args []string) error {
 	return nil
 }
 
-// tierMetaDir is where the committed tier table lives — under the memory root,
-// beside the source registry's own committed file, for the same reason: the two
-// roots are not the same directory and a path built from the wrong one lands
-// beside the operator's own folders looking plausible.
+// tierMetaDir is where the durable tier table lives — the engine state
+// directory, beside the source registry's sidecar, per filing-v2 part 2a:
+// machine state left the vault, and its durability property (history) moved
+// with it, because the engine state dir is a git repository the runner
+// commits on the vault's own cadence.
 func tierMetaDir(cfg *config.Config) string {
-	return filepath.Join(cfg.VaultPath, filepath.FromSlash(cfg.MemoryRoot), "_meta")
+	return cfg.EngineStateDir
 }

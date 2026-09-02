@@ -123,7 +123,7 @@ class TestCounters(unittest.TestCase):
     def test_staged_adapt_counts_only_unevaluated(self) -> None:
         # v4.13.1: staged Pass-1 candidates WITHOUT a watchlist entry = awaiting
         # Pass-2; ones with an entry (Pass-2 done) clear from the count.
-        cache = self.vault / "_meta" / "skill-discovery-cache" / "adapt-state"
+        cache = ob.engine_state.engine_state_dir() / "skill-discovery-cache" / "adapt-state"
         (cache / "src").mkdir(parents=True)
         (cache / "src" / "p1.json").write_text("{}", encoding="utf-8")   # no entry → counts
         (cache / "src" / "p2.json").write_text("{}", encoding="utf-8")   # entry exists → not
@@ -351,7 +351,7 @@ class TestEmit(unittest.TestCase):
     def test_staged_adapt_rides_briefing(self) -> None:
         # The idle chain stages a Pass-1 candidate; the briefing must surface it
         # so the operator runs Pass-2 (closes the discover→adapt→evaluate loop).
-        cache = self.vault / "_meta" / "skill-discovery-cache" / "adapt-state" / "src"
+        cache = ob.engine_state.engine_state_dir() / "skill-discovery-cache" / "adapt-state" / "src"
         cache.mkdir(parents=True)
         (cache / "newpat.json").write_text("{}", encoding="utf-8")
         out = ob.emit_briefing(self.vault, _NOW)

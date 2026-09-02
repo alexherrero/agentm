@@ -39,6 +39,8 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import engine_state  # noqa: E402
+
 # ── defaults ────────────────────────────────────────────────────────────────
 # Each key's type here is also the coercion target when parsing the config md.
 DEFAULT_CONFIG: dict[str, object] = {
@@ -81,7 +83,8 @@ def _resolve_vault_path(arg_path: str | None = None) -> Path:
 
 
 def state_path(vault: Path) -> Path:
-    return Path(vault) / "_meta" / _STATE_FILENAME
+    del vault  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / _STATE_FILENAME
 
 
 def config_path(vault: Path) -> Path:

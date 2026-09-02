@@ -58,6 +58,7 @@ if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
 import opinion_routing  # noqa: E402  (reuse _WORK_DOMAIN's vocabulary as the contradiction check's shared-anchor test)
+import engine_state  # noqa: E402
 
 __all__ = [
     "RECURRENCE_SIMILARITY_THRESHOLD",
@@ -576,7 +577,8 @@ def read_base_proposals(vault_path: Path) -> list:
     """Every currently-recorded base-change proposal, across every opinion —
     `[]` on a missing or unreadable file (fail-safe, never raises; a fresh
     vault or one that predates this stage simply has none yet)."""
-    path = Path(vault_path) / "_meta" / BASE_PROPOSALS_FILENAME
+    del vault_path  # engine state left the vault (filing-v2 part 2a)
+    path = engine_state.engine_state_dir() / BASE_PROPOSALS_FILENAME
     if not path.is_file():
         return []
     try:

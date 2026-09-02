@@ -58,6 +58,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import engine_state  # noqa: E402
+
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
@@ -222,7 +224,7 @@ def _quality_score(vault_path: Path, entry, orphan_rels: set, *, now=None) -> fl
     )
 
 
-_GRAPH_SNAPSHOT_CROSS_CHECK_STATE_REL = "_meta/graph-snapshot-cross-check-state.json"
+_GRAPH_SNAPSHOT_CROSS_CHECK_STATE_NAME = "graph-snapshot-cross-check-state.json"  # engine state (filing-v2 2a)
 
 
 def _read_cross_check_attempted(vault_path: Path) -> set:
@@ -235,7 +237,7 @@ def _read_cross_check_attempted(vault_path: Path) -> set:
     never actually delivered. Mirrors `dream._read_backfill_attempted`'s
     identical pool-rotation shape."""
     try:
-        data = json.loads((Path(vault_path) / _GRAPH_SNAPSHOT_CROSS_CHECK_STATE_REL).read_text(encoding="utf-8"))
+        data = json.loads((engine_state.engine_state_dir() / _GRAPH_SNAPSHOT_CROSS_CHECK_STATE_NAME).read_text(encoding="utf-8"))
         return set(data.get("attempted", []))
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return set()
@@ -243,7 +245,7 @@ def _read_cross_check_attempted(vault_path: Path) -> set:
 
 def _write_cross_check_attempted(vault_path: Path, attempted: set) -> None:
     atomic_write(
-        Path(vault_path) / _GRAPH_SNAPSHOT_CROSS_CHECK_STATE_REL,
+        engine_state.engine_state_dir() / _GRAPH_SNAPSHOT_CROSS_CHECK_STATE_NAME,
         json.dumps({"attempted": sorted(attempted)}),
     )
 

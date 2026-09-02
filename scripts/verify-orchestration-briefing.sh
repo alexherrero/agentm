@@ -50,6 +50,9 @@ assert_absent() {
 
 # ── scratch vault (isolated; auto-removed) ──────────────────────────────────
 SV="$(mktemp -d)"
+# Hermetic engine state (filing-v2 part 2a).
+export AGENTM_STATE_DIR="$SV/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
 cleanup() { rm -rf "$SV"; }
 trap cleanup EXIT
 # Isolate the Ideas surface (otherwise the idea counters read ~/Obsidian/Ideas.md).
@@ -86,9 +89,9 @@ mkdir -p "$SV/_idea-incubator/an-idea"
 assert_contains "briefing: incubator idea surfaces"             "$(render)" "1 incubator idea"
 
 # ── C. staged-adapt signal (v4.13.1) surfaces + clears on evaluation ────────
-mkdir -p "$SV/_meta/skill-discovery-cache/adapt-state/src"
-printf '{}' > "$SV/_meta/skill-discovery-cache/adapt-state/src/newpat.json"
-printf '{}' > "$SV/_meta/skill-discovery-cache/adapt-state/evaluated.json"   # root file: must be skipped
+mkdir -p "$AGENTM_STATE_DIR/skill-discovery-cache/adapt-state/src"
+printf '{}' > "$AGENTM_STATE_DIR/skill-discovery-cache/adapt-state/src/newpat.json"
+printf '{}' > "$AGENTM_STATE_DIR/skill-discovery-cache/adapt-state/evaluated.json"   # root file: must be skipped
 assert_contains "briefing: staged adapt candidate surfaces"     "$(render)" "1 skill candidate staged for adapt-evaluation"
 printf -- '---\nstatus: pending-review\n---\nb\n' \
   > "$SV/memory/_skill-watchlist/src/newpat.md"   # Pass-2 verdict exists → clears

@@ -71,6 +71,11 @@ assert_absent() {
 
 # ── scratch root (isolated; auto-removed) ───────────────────────────────────
 SCRATCH="$(mktemp -d)"
+# Hermetic engine state (filing-v2 part 2a): machine state lives at
+# $AGENTM_STATE_DIR now, so the scratch run gets its own.
+export AGENTM_STATE_DIR="$SCRATCH/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
+
 cleanup() { rm -rf "$SCRATCH"; }
 trap cleanup EXIT
 echo "verify-phases: scratch root = $SCRATCH"
@@ -251,7 +256,7 @@ CZ_R1="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
 assert_equals "crystallize: single live marker -> staged" \
   "$(cz_field "$CZ_R1" crystallization.status)" "staged"
 assert_exists "crystallize: candidate file written" \
-  "$CZ_VAULT/_crystallize-staging/post-work-cz-s1.json"
+  "$AGENTM_STATE_DIR/crystallize-staging/post-work-cz-s1.json"
 
 # Staging runs BEFORE reflect, so that first dispatch staged while the .start
 # marker still existed — and reflect then renamed it. Confirm the ordering
@@ -270,7 +275,7 @@ CZ_R2="$(cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" 2>/dev/null)"
 assert_equals "crystallize: later task commits skip (no .start left)" \
   "$(cz_field "$CZ_R2" crystallization.status)" "no-session"
 assert_equals "crystallize: still exactly one candidate for the session" \
-  "$(ls "$CZ_VAULT/_crystallize-staging/" | wc -l | tr -d ' ')" "1"
+  "$(ls "$AGENTM_STATE_DIR/crystallize-staging/" | wc -l | tr -d ' ')" "1"
 
 # The regression test for the defect that shipped: a realistic repo carries
 # many .reflected markers from past sessions, every one with a live transcript.
@@ -290,7 +295,7 @@ assert_equals "crystallize: post-release stages too (call 1 — both events)" \
 assert_equals "crystallize: 11 .reflected markers do not block the live session" \
   "$(cz_field "$CZ_R3" crystallization.session_id)" "cz-s2"
 assert_exists "crystallize: post-release candidate lands under its own name" \
-  "$CZ_VAULT/_crystallize-staging/post-release-cz-s2.json"
+  "$AGENTM_STATE_DIR/crystallize-staging/post-release-cz-s2.json"
 
 # A dead .start marker (transcript gone) beside a live one must not manufacture
 # false ambiguity (call 9's live-transcript filter), end-to-end through the CLI.
@@ -301,9 +306,9 @@ assert_equals "crystallize: dead marker beside a live one still resolves the liv
   "$(cz_field "$CZ_R4" crystallization.session_id)" "cz-s2"
 
 # dry-run stages nothing.
-CZ_BEFORE="$(ls "$CZ_VAULT/_crystallize-staging/" | wc -l | tr -d ' ')"
+CZ_BEFORE="$(ls "$AGENTM_STATE_DIR/crystallize-staging/" | wc -l | tr -d ' ')"
 cz_hm phase-dispatch post-work --project-root "$CZ_PROJ" --dry-run >/dev/null 2>&1
-CZ_AFTER="$(ls "$CZ_VAULT/_crystallize-staging/" | wc -l | tr -d ' ')"
+CZ_AFTER="$(ls "$AGENTM_STATE_DIR/crystallize-staging/" | wc -l | tr -d ' ')"
 assert_equals "crystallize: dry-run stages nothing" "$CZ_AFTER" "$CZ_BEFORE"
 
 # ── report ──────────────────────────────────────────────────────────────────

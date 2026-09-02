@@ -66,12 +66,14 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+
 from typing import Optional
 
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+import engine_state  # noqa: E402
 from revert_log import RevertLog  # noqa: E402
 from vault_lock import atomic_write, vault_mutex  # noqa: E402
 
@@ -258,7 +260,8 @@ class AutoAppliedBatch:
 
 
 def _staging_dir(vault_path: Path, run_id: str) -> Path:
-    return Path(vault_path) / "desk/scratch" / run_id
+    del vault_path  # per-run staging left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / "dream-runs" / run_id
 
 
 def _manifest_path(vault_path: Path, run_id: str) -> Path:
@@ -599,7 +602,8 @@ class AnomalyCheckResult:
 
 
 def _anomaly_history_path(vault_path: Path, stage: str) -> Path:
-    return Path(vault_path) / "_meta" / f"{stage}-cycle-history.json"
+    del vault_path  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / f"{stage}-cycle-history.json"
 
 
 def _load_anomaly_history(vault_path: Path, stage: str) -> list:
@@ -738,7 +742,8 @@ def judge_applied_mutation(summary: str) -> str:
 
 
 def _sampled_audit_history_path(vault_path: Path) -> Path:
-    return Path(vault_path) / "_meta" / "sampled-audit-history.json"
+    del vault_path  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / "sampled-audit-history.json"
 
 
 def _load_sampled_audit_history(vault_path: Path) -> list:
@@ -839,7 +844,7 @@ def cleanup_applied_batches(
     or concurrently-touched staging dir never blocks cleanup of the rest.
     """
     now = now if now is not None else time.time()
-    staging_root = Path(vault_path) / "desk/scratch"
+    staging_root = engine_state.engine_state_dir() / "dream-runs"
     if not staging_root.is_dir():
         return []
 

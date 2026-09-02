@@ -52,13 +52,13 @@ class LatestDigestTests(unittest.TestCase):
         self.assertIsNone(sb.latest_digest(self.vault))
 
     def test_none_when_only_park_notes(self):
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         briefs.mkdir(parents=True)
         (briefs / "20260717-park-myplan.md").write_text("# Run parked\n", encoding="utf-8")
         self.assertIsNone(sb.latest_digest(self.vault))
 
     def test_picks_newest_date(self):
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         _write_digest(briefs, "20260710", "daily", spend=10.0, events=1)
         _write_digest(briefs, "20260717", "daily", spend=284.8171, events=25)
         d = sb.latest_digest(self.vault)
@@ -67,21 +67,21 @@ class LatestDigestTests(unittest.TestCase):
         self.assertEqual(d["events"], 25)
 
     def test_same_date_prefers_daily_over_weekly(self):
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         _write_digest(briefs, "20260717", "weekly", spend=999.0, events=99)
         _write_digest(briefs, "20260717", "daily", spend=1.0, events=1)
         d = sb.latest_digest(self.vault)
         self.assertEqual(d["cadence"], "daily")
 
     def test_headline_formats_spend_and_events(self):
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         _write_digest(briefs, "20260717", "daily", spend=2428.18, events=84)
         d = sb.latest_digest(self.vault)
         self.assertIn("$2,428.18", d["headline"])
         self.assertIn("84 events", d["headline"])
 
     def test_monthly_headline(self):
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         _write_digest(briefs, "20260717", "monthly", monthly_total=5000.5)
         d = sb.latest_digest(self.vault)
         self.assertEqual(d["cadence"], "monthly")
@@ -89,7 +89,7 @@ class LatestDigestTests(unittest.TestCase):
         self.assertIn("30 days", d["headline"])
 
     def test_headline_falls_back_to_h1_when_body_unparseable(self):
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         briefs.mkdir(parents=True)
         (briefs / "20260717-digest-daily.md").write_text(
             "---\nkind: brief\n---\n\n# Some other shape\n\nno spend line here\n", encoding="utf-8"
@@ -129,7 +129,10 @@ class CountCrystallizeCandidatesTests(unittest.TestCase):
         self.assertEqual(sb.count_crystallize_candidates(self.vault), 0)
 
     def test_counts_staged_candidates(self):
-        staging = self.vault / "_crystallize-staging"
+        # Staging left the vault for the engine state dir (filing-v2 2a); the
+        # suite conftest points $AGENTM_STATE_DIR at a tmp dir, so the reader
+        # and this fixture meet there.
+        staging = sb._engine_state_dir() / "crystallize-staging"
         staging.mkdir(parents=True)
         (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
         (staging / "post-release-b.json").write_text("{}", encoding="utf-8")
@@ -181,7 +184,7 @@ class BuildBriefTests(unittest.TestCase):
         self.assertIsNone(self._brief())
 
     def test_fresh_digest_shows_headline_no_warning(self):
-        _write_digest(self.vault / "desk/briefs", "20260717", "daily", spend=284.82, events=25)
+        _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=284.82, events=25)
         b = self._brief()
         self.assertNotIn("⚠", b["line"])
         self.assertIn("daily digest: $284.82", b["line"])
@@ -190,7 +193,7 @@ class BuildBriefTests(unittest.TestCase):
 
     def test_deadman_when_note_is_stale(self):
         # newest note 4 days before _NOW (2026-07-13), default deadman 2 days.
-        _write_digest(self.vault / "desk/briefs", "20260713", "daily", spend=284.82, events=25)
+        _write_digest(self.vault / "diagnostics/digests", "20260713", "daily", spend=284.82, events=25)
         b = self._brief()
         self.assertIn("⚠", b["line"])
         self.assertIn("no digest in 4 days", b["line"])
@@ -200,7 +203,7 @@ class BuildBriefTests(unittest.TestCase):
     def test_deadman_composes_with_history_when_computed_but_not_delivered(self):
         # The real 2026-07-17 stall shape: note stuck at 07-13, ladder computed
         # through 07-17 in the history ledger but no note reached _briefs/.
-        _write_digest(self.vault / "desk/briefs", "20260713", "daily", spend=284.82, events=25)
+        _write_digest(self.vault / "diagnostics/digests", "20260713", "daily", spend=284.82, events=25)
         self.hist.write_text(json.dumps({"cadence": "daily", "date": "2026-07-17"}) + "\n", encoding="utf-8")
         b = self._brief()
         self.assertIn("no digest in 4 days", b["line"])
@@ -214,22 +217,22 @@ class BuildBriefTests(unittest.TestCase):
         self.assertTrue(b["signature"].startswith("deadman-nonote|"))
 
     def test_parked_clause_appended(self):
-        _write_digest(self.vault / "desk/briefs", "20260717", "daily", spend=1.0, events=1)
+        _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=1.0, events=1)
         self.park.mkdir(parents=True)
         (self.park / "myplan-park-state.json").write_text("{}", encoding="utf-8")
         b = self._brief()
         self.assertIn("1 run parked, awaiting resume", b["line"])
 
     def test_crystallize_clause_appended(self):
-        _write_digest(self.vault / "desk/briefs", "20260717", "daily", spend=1.0, events=1)
-        staging = self.vault / "_crystallize-staging"
+        _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=1.0, events=1)
+        staging = sb._engine_state_dir() / "crystallize-staging"
         staging.mkdir(parents=True)
         (staging / "post-work-a.json").write_text("{}", encoding="utf-8")
         b = self._brief()
         self.assertIn("1 session awaiting crystallization", b["line"])
 
     def test_deadman_threshold_is_configurable(self):
-        _write_digest(self.vault / "desk/briefs", "20260716", "daily", spend=1.0, events=1)  # 1 day old
+        _write_digest(self.vault / "diagnostics/digests", "20260716", "daily", spend=1.0, events=1)  # 1 day old
         self.assertIsNone(None)  # sanity
         self.assertNotIn("⚠", self._brief()["line"])          # default 2 → fresh
         self.assertIn("⚠", self._brief(deadman_days=1)["line"])  # threshold 1 → deadman
@@ -290,7 +293,7 @@ class EmitEndToEndTests(unittest.TestCase):
         self.assertEqual(sb.emit(vault=None, now=_NOW, state_path=self.state), "")
 
     def test_emits_then_suppresses_repeat_within_cooldown(self):
-        _write_digest(self.vault / "desk/briefs", "20260717", "daily", spend=1.0, events=1)
+        _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=1.0, events=1)
         first = self._emit(_NOW)
         self.assertTrue(first)
         self.assertTrue(self.state.is_file())
@@ -298,7 +301,7 @@ class EmitEndToEndTests(unittest.TestCase):
         self.assertEqual(again, "")
 
     def test_reshows_after_cooldown(self):
-        _write_digest(self.vault / "desk/briefs", "20260717", "daily", spend=1.0, events=1)
+        _write_digest(self.vault / "diagnostics/digests", "20260717", "daily", spend=1.0, events=1)
         self._emit(_NOW)
         again = self._emit(datetime(2026, 7, 18, 0, 0, 0, tzinfo=timezone.utc))  # +6h
         self.assertTrue(again)

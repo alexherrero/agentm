@@ -200,26 +200,33 @@ class TestMechanicalUpliftRendering(unittest.TestCase):
 
 
 class TestResolveHistoryPath(unittest.TestCase):
-    """V8 proving Lane S, 2026-07-13: the ledger stops being a tracked repo
-    file — resolve_history_path() picks the vault when one resolves, else a
-    device-local fallback, mirroring console.py's resolve_vault_path()."""
+    """Filing-v2 part 2a: the ledger is machine state with one home — the
+    engine state directory — retiring the old vault/device-cache split. The
+    contract this class now pins: one resolver, `$AGENTM_STATE_DIR`
+    overridable, and vault resolution is irrelevant to it (a vault-less
+    install and a full one write the same ledger path)."""
 
-    def test_uses_vault_when_resolved(self):
+    def test_one_home_regardless_of_vault(self):
+        import os
         import tempfile
         with tempfile.TemporaryDirectory() as td:
             vault = Path(td)
             got = health_score.resolve_history_path(vault_path_fn=lambda: vault)
-            self.assertEqual(got, vault / "_meta" / "health" / "history.jsonl")
+            expected = Path(os.environ["AGENTM_STATE_DIR"]) / "health" / "history.jsonl"
+            self.assertEqual(got, expected)
 
-    def test_falls_back_to_device_cache_when_no_vault(self):
+    def test_no_vault_is_the_same_home(self):
+        import os
         got = health_score.resolve_history_path(vault_path_fn=lambda: None)
-        self.assertEqual(got, Path.home() / ".cache" / "agentm" / "telemetry" / "health-history.jsonl")
+        self.assertEqual(got, Path(os.environ["AGENTM_STATE_DIR"]) / "health" / "history.jsonl")
 
-    def test_falls_back_when_resolver_raises(self):
+    def test_a_raising_resolver_is_irrelevant_to_the_ledger(self):
+        import os
+
         def _boom():
             raise RuntimeError("no vault configured")
         got = health_score.resolve_history_path(vault_path_fn=_boom)
-        self.assertEqual(got, Path.home() / ".cache" / "agentm" / "telemetry" / "health-history.jsonl")
+        self.assertEqual(got, Path(os.environ["AGENTM_STATE_DIR"]) / "health" / "history.jsonl")
 
     def test_append_and_read_round_trip_through_the_resolver(self):
         import tempfile

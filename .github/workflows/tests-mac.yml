@@ -70,7 +70,7 @@ jobs:
         # v4.5.1 task 1: use unittest discover so new test files are picked
         # up without a workflow edit, closing a pre-v4.5.1 CI gap where a
         # newly added test file could sit unrun and unnoticed.
-        run: (cd scripts && python3 -m unittest discover -p 'test_*.py')
+        run: (cd scripts && python3 run_unit_suite.py)
       - name: V4 push-surface integration check (verify-v4.sh)
         # End-to-end check of the auto-orchestration surface against a throwaway
         # scratch vault (bash-native; Windows skips, like the other .sh gates).

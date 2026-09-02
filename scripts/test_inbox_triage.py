@@ -138,7 +138,7 @@ class CutoverMarkerTests(_InboxTriageTestBase):
     def test_first_call_stamps_marker_and_later_calls_never_overwrite_it(self) -> None:
         now0 = 1_000_000.0
         first = it.ensure_cutover_marker(self.vault, now=now0)
-        self.assertTrue((self.vault / "_meta" / "inbox-triage-cutover.json").exists())
+        self.assertTrue((it.engine_state.engine_state_dir() / "inbox-triage-cutover.json").exists())
 
         later = it.ensure_cutover_marker(self.vault, now=now0 + 999_999.0)
         self.assertEqual(first, later, "the cutover stamp must never move once set")
@@ -511,7 +511,7 @@ class ReviewFlowTests(_InboxTriageTestBase):
         canonical = self.vault / "memory" / "workflow" / "h.md"
         self.assertTrue(canonical.exists())
 
-        state = json.loads((self.vault / "desk/scratch" / digest.run_id / "state.json").read_text(encoding="utf-8"))
+        state = json.loads((it.engine_state.engine_state_dir() / "dream-runs" / digest.run_id / "state.json").read_text(encoding="utf-8"))
         entry_id = state["1"]["entry_id"]
         self.revert_log.revert(digest.run_id, entry_id)
 
@@ -600,7 +600,7 @@ class NoAutoApplyStillProposesOnlyTests(_InboxTriageTestBase):
         self.assertEqual(self._status(self._inbox_dir() / "h.md"), "inbox")
         self.assertEqual(self._status(self._inbox_dir() / "z.md"), "inbox")
 
-        digest_text = (self.vault / "desk/scratch" / run_id / "digest.md").read_text(encoding="utf-8")
+        digest_text = (it.engine_state.engine_state_dir() / "dream-runs" / run_id / "digest.md").read_text(encoding="utf-8")
         self.assertNotIn("AUTO-APPLIED", digest_text)
 
 

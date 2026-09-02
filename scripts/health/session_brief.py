@@ -35,6 +35,18 @@ Contract, mirroring every other hook-invoked script here:
 from __future__ import annotations
 
 import argparse
+import os as _os_engine
+from pathlib import Path as _P_engine
+
+
+def _engine_state_dir():
+    """The engine state directory (filing-v2 part 2a). A deliberate tiny copy
+    of the family resolver — this is a hook-context script and stays
+    hermetic — pinned equal to the others by
+    `scripts/test_engine_state_parity.py`."""
+    override = _os_engine.environ.get("AGENTM_STATE_DIR", "").strip()
+    return _P_engine(override) if override else _P_engine.home() / ".local" / "state" / "agentm"
+
 import json
 import os
 import re
@@ -119,7 +131,7 @@ def latest_digest(vault: Path) -> "dict | None":
     Newest by slug date; ties (same date, multiple cadences) resolve to the
     finest cadence — "the day's headline" is the daily digest when one landed.
     Returns {date, cadence, slug, path, mtime, spend, events, headline}."""
-    d = Path(vault) / "desk/briefs"
+    d = Path(vault) / "diagnostics/digests"
     if not d.is_dir():
         return None
     best = None  # (date, -cadence_priority_inverted) tuple for max()
@@ -217,7 +229,7 @@ def count_needs_your_eye(vault: Path) -> int:
     design promised: the brief's needs-your-eye count now reads BOTH the
     observability signal (parked runs, above) and this list. Best-effort
     zero on any edge — never raises (the hook contract)."""
-    pointer = Path(vault) / "_meta" / "needs-your-eye.json"
+    pointer = _engine_state_dir() / "needs-your-eye.json"
     try:
         data = json.loads(pointer.read_text(encoding="utf-8"))
         items = data.get("items")
@@ -234,7 +246,7 @@ def count_crystallize_candidates(vault: Path) -> int:
     which `inbox_triage.py` overwrites wholesale every cycle and would
     silently lose an appended item. Best-effort zero on any edge — never
     raises (the hook contract)."""
-    staging_dir = Path(vault) / "_crystallize-staging"
+    staging_dir = _engine_state_dir() / "crystallize-staging"
     if not staging_dir.is_dir():
         return 0
     try:

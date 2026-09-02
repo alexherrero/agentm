@@ -47,7 +47,8 @@ def answers(**by_command):
 
 HEALTHY = {
     "status": {
-        "spaces": {"memory": "Agent/memory", "projects": "Agent/desk/projects"},
+        "spaces": {"memory": "Agent/memory", "projects": "Agent/desk/projects",
+                   "diagnostics": "Agent/diagnostics"},
         "index_detail": {"documents": 1200},
         "health": {"queue": {"unfiled": 40, "oldest_age": "2d1h"}},
     },
@@ -66,10 +67,10 @@ HEALTHY = {
 class ScorecardTests(unittest.TestCase):
     def build(self, fake, tmp: Path):
         with mock.patch.object(sc, "_agentmd", side_effect=fake):
-            return sc.build(tmp, REPO, now=AT, rel=Path("desk/diagnostics"))
+            return sc.build(tmp, REPO, now=AT, rel=Path("diagnostics/health"))
 
     def read(self, tmp: Path) -> str:
-        return (tmp / "desk/diagnostics" / sc.STABLE_NAME).read_text(
+        return (tmp / "diagnostics/health" / sc.STABLE_NAME).read_text(
             encoding="utf-8")
 
     # ── the rule ────────────────────────────────────────────────────────────
@@ -193,7 +194,7 @@ class ScorecardTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
-            out = tmp / "desk/diagnostics"
+            out = tmp / "diagnostics/health"
             out.mkdir(parents=True)
             (out / sc.COMPLETENESS_RESULT_NAME).write_text(json.dumps({
                 "summary": {"notes": 6, "scored": 5, "ungraded": 1,
@@ -219,7 +220,7 @@ class ScorecardTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as d:
             tmp = Path(d)
-            out = tmp / "desk/diagnostics"
+            out = tmp / "diagnostics/health"
             out.mkdir(parents=True)
             (out / sc.COMPLETENESS_RESULT_NAME).write_text(json.dumps({
                 "summary": {"notes": 4, "scored": 0, "ungraded": 4,
@@ -323,7 +324,7 @@ class ScorecardTests(unittest.TestCase):
             tmp = Path(d)
             self.assertFalse((tmp / "desk").exists())
             self.build(answers(**HEALTHY), tmp)
-            self.assertTrue((tmp / "desk/diagnostics").is_dir())
+            self.assertTrue((tmp / "diagnostics/health").is_dir())
 
     def test_a_rerun_replaces_rather_than_appends(self):
         import tempfile
@@ -347,14 +348,14 @@ class ScorecardTests(unittest.TestCase):
         """
         with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
             self.assertEqual(sc.diagnostics_dir(),
-                             Path("Agent/desk/diagnostics"))
+                             Path("Agent/diagnostics/health"))
 
     def test_a_flat_layout_keeps_desk_at_the_top(self):
         flat = dict(HEALTHY)
         flat["status"] = dict(HEALTHY["status"])
         flat["status"]["spaces"] = {"memory": "memory", "projects": "desk/projects"}
         with mock.patch.object(sc, "_agentmd", side_effect=answers(**flat)):
-            self.assertEqual(sc.diagnostics_dir(), Path("desk/diagnostics"))
+            self.assertEqual(sc.diagnostics_dir(), Path("diagnostics/health"))
 
     def test_an_unreachable_daemon_falls_back_rather_than_failing(self):
         with mock.patch.object(sc, "_agentmd", side_effect=answers()):
@@ -452,7 +453,7 @@ class DateTests(unittest.TestCase):
             tmp = Path(d)
             with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
                 dated, _ = sc.build(tmp, REPO, now=evening,
-                                    rel=Path("desk/diagnostics"), tz=far_east)
+                                    rel=Path("diagnostics/health"), tz=far_east)
         self.assertIn("2026-08-23", dated.name,
                       "the report is named for UTC's date rather than the "
                       "reader's; a run late in the evening would be filed under "
@@ -470,7 +471,7 @@ class DateTests(unittest.TestCase):
             tmp = Path(d)
             with mock.patch.object(sc, "_agentmd", side_effect=answers(**HEALTHY)):
                 dated, _ = sc.build(tmp, REPO, now=early,
-                                    rel=Path("desk/diagnostics"), tz=far_west)
+                                    rel=Path("diagnostics/health"), tz=far_west)
         self.assertIn("2026-08-21", dated.name)
 
 

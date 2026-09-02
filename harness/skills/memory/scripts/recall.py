@@ -607,21 +607,40 @@ def session_start(
         )
         return 0
 
+    # Filing-v2 part 2a: `standards/` is the always-load surface — the
+    # operator-owned rule files every session starts from — with the legacy
+    # `memory/_always-load/` read in union while it still holds anything
+    # (today it is the holding pen for `lifecycle: pinned` saves until part
+    # 6's pinned loader lands). Standards sit at the vault root beside the
+    # memory root, so the sibling probe comes first, the flat layout second —
+    # the same two-probe order the rules loader uses.
     always_load_dir = vault / _ALWAYS_LOAD_REL
-    if not always_load_dir.exists() or not always_load_dir.is_dir():
-        # Vault exists but no always-load entries yet.
+    standards_dir = vault.parent / "standards"
+    if not standards_dir.is_dir():
+        standards_dir = vault / "standards"
+
+    candidates = []
+    if standards_dir.is_dir():
+        # Generated navigation (moc-*) carries no standing instruction and
+        # would spend the token budget on links; skip it.
+        candidates.extend(
+            p for p in sorted(standards_dir.glob("*.md"))
+            if not p.stem.startswith("moc-")
+        )
+    if always_load_dir.is_dir():
+        candidates.extend(sorted(always_load_dir.glob("*.md")))
+
+    if not candidates:
         print(
-            "[memory-recall-session-start] Loaded 0 MemoryVault always-load entries",
+            "[memory-recall-session-start] Loaded 0 always-load entries "
+            "(no standards/ files and no legacy _always-load/ entries)",
             file=stderr,
         )
         return 0
 
-    # Glob *.md (top-level only; _always-load/ is flat by convention — see
-    # save.py's --always-load routing comment). This alphabetical order is
-    # only the READ order for the time-budget walk below; the order entries
-    # are token-budgeted in is priority-first (R0.8 / voice#0) — see the
-    # sort after the read loop.
-    candidates = sorted(always_load_dir.glob("*.md"))
+    # This alphabetical-per-dir order is only the READ order for the
+    # time-budget walk below; the order entries are token-budgeted in is
+    # priority-first (R0.8 / voice#0) — see the sort after the read loop.
 
     parsed_entries: list[tuple[str, dict[str, str], str]] = []  # (slug, fm, body)
     # A non-positive budget is interpreted as "deadline already exceeded".

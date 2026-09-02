@@ -25,8 +25,15 @@ from __future__ import annotations
 
 import re
 import sys
+import os
 import tempfile
 import unittest
+
+
+def dj_engine():
+    import os as _o
+    from pathlib import Path as _P
+    return _P(_o.environ["AGENTM_STATE_DIR"])  # conftest guarantees it
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -85,6 +92,7 @@ class StaysInDryRunTests(unittest.TestCase):
             jobs_dir.mkdir()
             (jobs_dir / "dream.yaml").write_text(_TEMPLATE_PATH.read_text(encoding="utf-8"), encoding="utf-8")
 
+            os.environ["AGENTM_STATE_DIR"] = str(root / "job-state")
             report = cycle.run_cycle(jobs_dir, now=1_000_000.0, state_root=root / "state", report_path=root / "digest.jsonl")
 
             self.assertEqual(len(report.outcomes), 1)
@@ -93,7 +101,7 @@ class StaysInDryRunTests(unittest.TestCase):
             self.assertFalse(outcome.ran)
             # The command was never executed at all — proves dry_run truly
             # short-circuits before subprocess.run, not just "ran quietly".
-            self.assertFalse((vault / "desk/scratch").exists())
+            self.assertFalse(any(dj_engine().glob("dream-runs/*")))
 
 
 class SameShapeAsManualRunTests(unittest.TestCase):
@@ -134,6 +142,9 @@ class SameShapeAsManualRunTests(unittest.TestCase):
                 manual_vault, log_root=root / "manual-scratch" / "revert-log",
                 lock_root=root / "manual-scratch" / "locks",
             )
+            # The two halves used to isolate by vault; staging is engine-side
+            # now (filing-v2 2a), so each half gets its own state dir.
+            os.environ["AGENTM_STATE_DIR"] = str(root / "manual-state")
             manual_digest, _manual_batch = dream.run_dream_and_auto_apply(
                 manual_vault, run_id="manual-run", revert_log=manual_revert_log,
             )
@@ -157,6 +168,7 @@ class SameShapeAsManualRunTests(unittest.TestCase):
             )
             (jobs_dir / "dream.yaml").write_text(live_manifest, encoding="utf-8")
 
+            os.environ["AGENTM_STATE_DIR"] = str(root / "job-state")
             report = cycle.run_cycle(jobs_dir, now=1_000_000.0, state_root=root / "state", report_path=root / "digest.jsonl")
 
             self.assertEqual(len(report.outcomes), 1)
@@ -164,7 +176,7 @@ class SameShapeAsManualRunTests(unittest.TestCase):
             self.assertTrue(outcome.ran)
             self.assertEqual(outcome.exit_code, 0)
 
-            staging_runs = list((job_vault / "desk/scratch").iterdir())
+            staging_runs = list((dj_engine() / "dream-runs").iterdir())
             # A weekly cycle now stages TWO runs -- dream's own plus the
             # folded inbox-triage sub-run (auto-org part 3 task 4). This
             # test's intent is the DREAM digest's shape parity; select it

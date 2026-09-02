@@ -603,14 +603,24 @@ def _extract_vault_lint_summary(path: Path) -> str:
     return m.group(1).strip() if m else "(summary line not found in report)"
 
 
+def _engine_state_dir() -> "Path":
+    """The engine state directory (filing-v2 part 2a) — machine state left
+    the vault. A deliberate tiny copy of the family resolver, pinned equal to
+    the others by `scripts/test_engine_state_parity.py`."""
+    import os
+    from pathlib import Path as _P
+    override = os.environ.get("AGENTM_STATE_DIR", "").strip()
+    return _P(override) if override else _P.home() / ".local" / "state" / "agentm"
+
+
 def section_vault_lint(vault: "Path | None", *, now: "float | None" = None) -> str:
     if vault is None:
         return "Vault lint: n/a (no vault resolved)"
-    meta_dir = vault / "_meta"
-    reports = sorted(meta_dir.glob("vault-lint-*.md")) if meta_dir.is_dir() else []
+    lint_dir = vault / "diagnostics" / "lint"
+    reports = sorted(lint_dir.glob("vault-lint-*.md")) if lint_dir.is_dir() else []
     if not reports:
         return (
-            "Vault lint: dark -- no vault-lint-*.md report under _meta/ yet "
+            "Vault lint: dark -- no vault-lint-*.md report under diagnostics/lint/ yet "
             "(the weekly job may not be registered on this machine or has never fired; "
             "see templates/jobs/vault-lint.yaml)"
         )
@@ -637,10 +647,10 @@ def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
     seen, not one more entry a triage pass could bury."""
     if vault is None:
         return "Latest brief: n/a (no vault resolved)"
-    briefs_dir = vault / "desk/briefs"
+    briefs_dir = vault / "diagnostics/digests"
     briefs = sorted(briefs_dir.glob("*.md")) if briefs_dir.is_dir() else []
     if not briefs:
-        return "Latest brief: dark -- no desk/briefs/*.md yet (no digest or park job has fired on this machine)"
+        return "Latest brief: dark -- no diagnostics/digests/*.md yet (no digest or park job has fired on this machine)"
     latest = briefs[-1]
     try:
         text = latest.read_text(encoding="utf-8")
@@ -665,10 +675,10 @@ def section_dream_expire(vault: "Path | None", *, now: "float | None" = None) ->
     omitting the line or raising."""
     if vault is None:
         return "Dreaming auto-expire: n/a (no vault resolved)"
-    pointer = vault / "_meta" / "dream-auto-expired-latest.json"
+    pointer = _engine_state_dir() / "dream-auto-expired-latest.json"
     if not pointer.is_file():
         return (
-            "Dreaming auto-expire: dark -- no _meta/dream-auto-expired-latest.json yet "
+            "Dreaming auto-expire: dark -- no dream-auto-expired-latest.json in the engine state dir yet "
             "(the dreaming job may not be registered on this machine or has never fired; "
             "see templates/jobs/dream.yaml)"
         )
@@ -700,10 +710,10 @@ def section_needs_your_eye(vault: "Path | None") -> str:
     convention as every section here."""
     if vault is None:
         return "Needs your eye: n/a (no vault resolved)"
-    pointer = vault / "_meta" / "needs-your-eye.json"
+    pointer = _engine_state_dir() / "needs-your-eye.json"
     if not pointer.is_file():
         return (
-            "Needs your eye: dark -- no _meta/needs-your-eye.json yet "
+            "Needs your eye: dark -- no needs-your-eye.json in the engine state dir yet "
             "(the weekly triage cycle hasn't run on this machine since the "
             "ambiguous-candidate list shipped)"
         )
@@ -732,14 +742,14 @@ def section_crystallize_candidates(vault: "Path | None") -> str:
     staged from a completed `/work` or `/release`, awaiting a five-field
     digest or an explicit dismissal. Globbed directly from the staging
     directory — the same clobber-proof shape `section_needs_your_eye` avoids
-    needing, since `_meta/needs-your-eye.json` is overwritten wholesale every
+    needing, since the engine-state `needs-your-eye.json` is overwritten wholesale every
     dreaming cycle and an appended item there would be silently lost. Honest-
     dark on every edge, same convention as every section here."""
     if vault is None:
         return "Crystallization candidates: n/a (no vault resolved)"
-    staging_dir = vault / "_crystallize-staging"
+    staging_dir = _engine_state_dir() / "crystallize-staging"
     if not staging_dir.is_dir():
-        return "Crystallization candidates: none staged (no _crystallize-staging/ yet)"
+        return "Crystallization candidates: none staged (no crystallize-staging/ in the engine state dir yet)"
     try:
         count = sum(1 for p in staging_dir.glob("*.json") if p.is_file())
     except OSError as e:
@@ -800,10 +810,10 @@ def section_opinion_supplements(vault: "Path | None") -> str:
     / `section_needs_your_eye` already use. Honest-dark on every edge."""
     if vault is None:
         return "Opinion supplements: n/a (no vault resolved)"
-    pointer = vault / "_meta" / "opinion-supplement-health-latest.json"
+    pointer = _engine_state_dir() / "opinion-supplement-health-latest.json"
     if not pointer.is_file():
         return (
-            "Opinion supplements: dark -- no _meta/opinion-supplement-health-latest.json "
+            "Opinion supplements: dark -- no opinion-supplement-health-latest.json in the engine state dir "
             "yet (the weekly dreaming cycle hasn't run on this machine since Stages 2-3 shipped, "
             "or no standard has been mined into an opinion lane yet)"
         )

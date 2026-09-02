@@ -199,7 +199,7 @@ class TestIdleChain(unittest.TestCase):
 
     # ── staged-candidate surfacing ──────────────────────────────────────────
     def test_staged_candidates_counted(self) -> None:
-        adapt = self.vault / "_meta" / "skill-discovery-cache" / "adapt-state"
+        adapt = oi.engine_state.engine_state_dir() / "skill-discovery-cache" / "adapt-state"
         (adapt / "src-a").mkdir(parents=True)
         (adapt / "src-a" / "p1.json").write_text("{}", encoding="utf-8")
         (adapt / "src-a" / "p2.json").write_text("{}", encoding="utf-8")

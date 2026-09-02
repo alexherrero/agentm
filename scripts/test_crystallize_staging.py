@@ -105,7 +105,7 @@ class TestStageCandidate(unittest.TestCase):
         self.assertTrue(crystallize.drop_candidate(self.vault, "post-work", "sid-1"))
         self.assertEqual(crystallize.list_candidates(self.vault), [])
         # No archive directory of any kind — only the staging dir itself, empty.
-        self.assertEqual(list((self.vault / crystallize.STAGING_DIRNAME).iterdir()), [])
+        self.assertEqual(list(crystallize._staging_dir(self.vault).iterdir()), [])
 
     def test_drop_missing_candidate_returns_false(self) -> None:
         self.assertFalse(crystallize.drop_candidate(self.vault, "post-work", "nope"))
@@ -118,7 +118,7 @@ class TestStageCandidate(unittest.TestCase):
 
     def test_list_candidates_skips_malformed_file(self) -> None:
         staging = self.vault / crystallize.STAGING_DIRNAME
-        staging.mkdir(parents=True)
+        staging.mkdir(parents=True, exist_ok=True)
         (staging / "post-work-bad.json").write_text("not json", encoding="utf-8")
         crystallize.stage_candidate(self.vault, "post-work", "sid-good", "/tmp/t.jsonl")
         candidates = crystallize.list_candidates(self.vault)

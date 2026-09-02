@@ -44,6 +44,8 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+import engine_state  # noqa: E402
+
 # save_entry / evolve_entry live in this same scripts/ dir; lazy-imported
 # inside route_candidates() so reflect.py's mining-only path doesn't pay
 # the import cost (sys.path is augmented at module load below).
@@ -1257,7 +1259,8 @@ def _discover_transcripts(projects_root: Path) -> list[Path]:
 
 
 def _state_file_path(vault: Path) -> Path:
-    return vault / "_meta" / "transcript-reflection-state.json"
+    del vault  # engine state left the vault (filing-v2 part 2a)
+    return engine_state.engine_state_dir() / "transcript-reflection-state.json"
 
 
 def load_state(vault: Path) -> dict:
