@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/alexherrero/agentm/daemon/internal/config"
 	"github.com/alexherrero/agentm/daemon/internal/door"
@@ -27,16 +28,25 @@ func cmdDoor(args []string) error {
 	opts := bindCommon(fs)
 	asJSON := fs.Bool("json", false, "emit the decision as JSON")
 	path := fs.String("path", "", "the vault-relative path to be written")
+	atVault := fs.Bool("at-vault-root", false,
+		"judge against the vault-level authority table (five spaces + session "+
+			"grants) instead of the memory-root project door")
+	var grants grantFlags
+	fs.Var(&grants, "grant",
+		"a project slug this session holds a grant for (repeatable; vault-root mode only)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if extra := fs.Args(); len(extra) > 0 {
-		return fmt.Errorf("unexpected argument %q; usage: agentmd door --path REL [--json]",
-			extra[0])
+		return fmt.Errorf("unexpected argument %q; usage: agentmd door --path REL "+
+			"[--at-vault-root] [--grant SLUG] [--json]", extra[0])
 	}
 	if *path == "" {
 		return fmt.Errorf("agentmd door needs --path: it answers about one place, " +
 			"and a door with no path is not a question")
+	}
+	if len(grants) > 0 && !*atVault {
+		return fmt.Errorf("--grant is a vault-level concept; pass --at-vault-root with it")
 	}
 
 	cfg, err := config.Load(*opts)
@@ -48,13 +58,22 @@ func cmdDoor(args []string) error {
 	// — which a project may have as many of as it needs — and changing one,
 	// which takes alignment. Resolved here rather than asked of the caller,
 	// because a caller that answered it wrongly would get a standing verdict for
-	// a write that needed agreement.
-	abs := filepath.Join(cfg.VaultPath, filepath.FromSlash(cfg.MemoryRoot),
-		filepath.FromSlash(*path))
+	// a write that needed agreement. Vault-root mode resolves against the vault
+	// itself; the classic mode keeps its memory-root anchor.
+	base := filepath.Join(cfg.VaultPath, filepath.FromSlash(cfg.MemoryRoot))
+	if *atVault {
+		base = cfg.VaultPath
+	}
+	abs := filepath.Join(base, filepath.FromSlash(*path))
 	_, statErr := os.Stat(abs)
 	exists := statErr == nil
 
-	d := door.DefaultRoots().Judge(*path, exists)
+	var d door.Decision
+	if *atVault {
+		d = door.DefaultAuthority().JudgeSpace(*path, exists, door.NewGrants(grants...))
+	} else {
+		d = door.DefaultRoots().Judge(*path, exists)
+	}
 	if *asJSON {
 		if err := json.NewEncoder(os.Stdout).Encode(d); err != nil {
 			return err
@@ -74,4 +93,13 @@ func cmdDoor(args []string) error {
 		return &exitError{code: 3, quiet: true,
 			err: fmt.Errorf("%s is outside the project door", d.Path)}
 	}
+}
+
+// grantFlags collects repeated --grant values.
+type grantFlags []string
+
+func (g *grantFlags) String() string { return strings.Join(*g, ",") }
+func (g *grantFlags) Set(v string) error {
+	*g = append(*g, v)
+	return nil
 }
