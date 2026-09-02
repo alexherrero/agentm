@@ -23,11 +23,18 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 _SCRIPT = Path(__file__).resolve().parent / "migrate" / "structural_2a.sh"
+
+# The migration is a POSIX operator-machine artifact (bash, mv, rmdir); the
+# Windows runner's `bash` is the WSL stub with no distribution installed —
+# there is no production execution path to test there.
+if sys.platform == "win32":
+    raise unittest.SkipTest("structural_2a.sh is POSIX-only; no bash on Windows CI")
 
 
 def _build_fixture(root: Path) -> tuple[Path, Path]:
