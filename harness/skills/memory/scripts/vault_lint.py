@@ -819,7 +819,7 @@ def main(argv: Optional[list] = None) -> int:
     p.add_argument("--format", choices=("json", "text"), default="text")
     p.add_argument("--scope", choices=tuple(_SCOPE_DIRS), default="all")
     p.add_argument("--audit", action="store_true",
-                   help="write a grouped operator-review report (to --out or <vault>/_meta/vault-lint-<date>.md)")
+                   help="write a grouped operator-review report (to --out or <vault>/diagnostics/lint/vault-lint-<date>.md)")
     p.add_argument("--out", default=None, help="audit report output path (with --audit)")
     args = p.parse_args(argv)
     try:

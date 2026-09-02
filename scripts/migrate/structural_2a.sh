@@ -33,13 +33,28 @@ run() {
 move_into() { # move_into <src-file-or-glob-expanded path> <dest-dir>
   local src="$1" dest="$2"
   [[ -e "$src" ]] || { skipped=$((skipped+1)); return 0; }
-  local base; base="$(basename "$src")"
-  if [[ -e "$dest/$base" ]]; then
+  local base e; base="$(basename "$src")"
+  if [[ -d "$src" && -d "$dest/$base" && ! -L "$src" && ! -L "$dest/$base" ]]; then
+    # Both sides are directories: `mv -f` would NEST the vault dir inside
+    # the destination one, burying the production copy where no reader
+    # looks. Merge per-entry instead — vault-wins at the file level — then
+    # drop the emptied shell.
+    say "merge (both directories): $base"
+    for e in "$src"/*; do move_into "$e" "$dest/$base"; done
+    [[ $APPLY -eq 1 ]] && rmdir "$src" 2>/dev/null || true
+    return 0
+  fi
+  if [[ -e "$dest/$base" || -L "$dest/$base" ]]; then
     # Vault wins collisions: the script's precondition is a quiesced daemon
     # and runner, so the vault copy is the last production write. Anything
     # already at the destination predates the migration (typically scratch
     # leakage from verify runs) — and the engine dir's git history keeps it.
     say "collision: vault copy replaces destination copy: $base"
+    if [[ ! -f "$src" || ! -f "$dest/$base" ]]; then
+      # Mixed types (file over dir, dir over file): mv -f cannot replace —
+      # clear the destination first, still vault-wins.
+      run rm -rf "$dest/$base"
+    fi
   fi
   run mv -f "$src" "$dest/$base"
   moved=$((moved+1))
@@ -118,6 +133,14 @@ if [[ -d "$OLD_META" ]]; then
     base_f="$(basename "$f")"
     [[ "$base_f" == "Icon"* ]] && continue
     [[ "$base_f" == "repos.json" ]] && { say "carve-out stays: _meta/repos.json (storage-seam owned)"; continue; }
+    if [[ "$base_f" == vault-lint-*.md || "$base_f" == notes-links-*.md ]]; then
+      # Report history is operator diagnostics, not machine state — the same
+      # landing reclassified the writers to diagnostics/lint; the archive
+      # follows them, or the console reads "dark" over a history that exists.
+      run mkdir -p "$VAULT/diagnostics/lint"
+      move_into "$f" "$VAULT/diagnostics/lint"
+      continue
+    fi
     if [[ "$base_f" == "health" && -d "$f" ]]; then
       run mkdir -p "$STATE/health"
       for h in "$f"/*; do move_into "$h" "$STATE/health"; done
@@ -148,10 +171,18 @@ if [[ -d "$VAULT/_dream" ]]; then
 fi
 
 echo "== task 5: the forward-learning sources whitelist becomes a standard =="
-FL_SRC="$STATE/forward-learning-sources.json"   # just moved with the _meta sweep
+FL_SRC="$STATE/forward-learning-sources.json"   # after an applied _meta sweep
+# In a dry run nothing has been swept yet — read the file where it still
+# sits, or the dry run omits this hop entirely and reviews an untruthful
+# final home for the whitelist.
+[[ -e "$FL_SRC" ]] || FL_SRC="$VAULT/_meta/forward-learning-sources.json"
 STANDARDS="$(dirname "$VAULT")/standards"
 [[ -d "$STANDARDS" ]] || STANDARDS="$VAULT/standards"
-if [[ -e "$FL_SRC" && -d "$STANDARDS" ]]; then
+if [[ -e "$FL_SRC" ]]; then
+  # Creating the flat fallback is required, not courtesy: load_sources()
+  # probes only <vault-parent>/standards and <vault>/standards — a whitelist
+  # left in $STATE is silently empty to every consumer.
+  run mkdir -p "$STANDARDS"
   move_into "$FL_SRC" "$STANDARDS"
 fi
 
@@ -164,11 +195,21 @@ if [[ -d "$VAULT/desk/scratch" ]]; then
     for f in "$VAULT/desk/scratch"/*; do
       base_f="$(basename "$f")"
       [[ "$base_f" == "Icon"* ]] && continue
+      if [[ -e "$f/proposals.json" ]]; then
+        # A staged dream/inbox run, not scratch: confirm, revert, and
+        # cleanup all address $STATE/dream-runs/<run-id> — swept into a
+        # gitignored sweep folder it would exist but answer to nothing.
+        mkdir -p "$STATE/dream-runs"
+        move_into "$f" "$STATE/dream-runs"
+        continue
+      fi
       mv "$f" "$SWEEP/$base_f" && moved=$((moved+1))
     done
     rmdir "$VAULT/desk/scratch" 2>/dev/null || say "note: desk/scratch not empty, left in place"
   else
     n_scratch="$(find "$VAULT/desk/scratch" -name '*.md' 2>/dev/null | wc -l | tr -d ' ')"
+    n_runs="$(find "$VAULT/desk/scratch" -maxdepth 2 -name proposals.json 2>/dev/null | wc -l | tr -d ' ')"
+    [[ "$n_runs" != "0" ]] && say "would: route $n_runs staged run dir(s) to $STATE/dream-runs (confirm/revert address them there)"
     say "would: sweep $n_scratch scratch files to $SWEEP (gitignored, unsynced)"
   fi
 fi

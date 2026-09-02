@@ -630,6 +630,21 @@ def session_start(
     if always_load_dir.is_dir():
         candidates.extend(sorted(always_load_dir.glob("*.md")))
 
+    # One injection per slug: the same stem on both surfaces means the pen
+    # still holds a copy of something standards/ now owns (the normal
+    # transition state while `save --always-load` targets the pen).
+    # Standards is the surface of record and was appended first — first
+    # occurrence wins, so a stale pen copy never rides along, and the
+    # truncation NOTE's omitted-slug accounting stays truthful.
+    seen_stems: set[str] = set()
+    deduped = []
+    for p in candidates:
+        if p.stem in seen_stems:
+            continue
+        seen_stems.add(p.stem)
+        deduped.append(p)
+    candidates = deduped
+
     if not candidates:
         print(
             "[memory-recall-session-start] Loaded 0 always-load entries "

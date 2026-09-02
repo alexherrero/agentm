@@ -28,5 +28,5 @@ from pathlib import Path
 def engine_state_dir() -> Path:
     override = os.environ.get("AGENTM_STATE_DIR", "").strip()
     if override:
-        return Path(override)
+        return Path(override).expanduser()
     return Path.home() / ".local" / "state" / "agentm"

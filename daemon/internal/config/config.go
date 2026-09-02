@@ -349,7 +349,10 @@ func (c *Config) applyDampenedSpaces() {
 // that is the case a chunking policy exists for, and there is no chunking policy.
 func defaultEmbedScope(memoryRoot string) []string {
 	root := strings.Trim(filepath.ToSlash(strings.TrimSpace(memoryRoot)), "/")
-	names := []string{"memory", "desk", "external"}
+	// `diagnostics` joins in filing-v2 2a: the digests and scorecards it now
+	// holds lived under `desk` before the move and were dense-retrievable —
+	// dropping them from the scope would be a silent regression, not a call.
+	names := []string{"memory", "desk", "external", "diagnostics"}
 	out := make([]string, 0, len(names))
 	for _, n := range names {
 		if root == "" {
