@@ -11,9 +11,11 @@ The vault is a directory tree, not a database. Entries live under a few well-kno
 
 | Region | Holds | Loaded |
 |---|---|---|
-| `personal/_always-load/` | standing preferences, conventions, durable fixes | every session start |
-| `projects/<name>/` | per-project goals, plans, progress | on demand, by project |
-| `_meta/` | audit reports, embeddings cache, orchestration state | by the tooling, not the agent |
+| `standards/` (∪ the legacy `memory/_always-load/` pen) | standing preferences, conventions, durable fixes | every session start |
+| `desk/projects/<name>/` | per-project goals, plans, progress | on demand, by project |
+| `diagnostics/` | health scorecards, dreaming reports, digests, dated audits | by the tooling, not the agent |
+
+Machine state — caches, cursors, orchestration state — is not a vault region at all: it lives outside the vault in the engine state directory (`~/.local/state/agentm/`, its own git repo the runner commits), so the vault stays the knowledge surface both audiences read.
 
 Access is **asymmetric by surface**: the filesystem working agents you run directly (Claude Code, Antigravity) read *and* write the vault following your entry conventions; chat surfaces (Claude.ai, Claude Desktop) read and *suggest* entries but never write. A read-only vault lint and a personal-notes link-discovery audit keep the corpus on-spec — both surface fixes for you to apply, never editing an entry themselves.
 

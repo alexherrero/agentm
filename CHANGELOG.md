@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.10.0] - 2026-09-02
+
+Filing v2 part 2a — the structural moves ([#521](https://github.com/alexherrero/agentm/pull/521),
+[#522](https://github.com/alexherrero/agentm/pull/522)). The vault trims
+toward its knowledge surface: machine state exits to a git-backed engine
+directory, diagnostics becomes a first-class space, scratch leaves the
+vault, and `standards/` becomes the always-load surface. Applied live —
+this release's migration has already run on the operator's vault under a
+quiesced daemon, and the deploy itself hardened the script (both fixes are
+in this release). The Projects merge split out as part 2b (`projects-merge`,
+queued) — it requires a paired crickets release this repo cannot ship alone.
+
+### Added
+
+- **The engine-state seam.** Machine state (caches, cursors, staging,
+  journals) lives at `~/.local/state/agentm/`, override `$AGENTM_STATE_DIR`
+  — four parity-pinned Python resolvers plus the daemon's
+  `Config.EngineStateDir`. The directory is a git repository: the migration
+  initializes it and the runner commits on cadence, so the history-durability
+  those files had from the vault's repo survives the exit.
+- **`diagnostics/` as a first-class vault space** (`health/`, `dreaming/`,
+  `digests/`) — the daemon's default spaces gain it, and the scorecard and
+  digest writers resolve it from the daemon rather than deriving paths.
+- **`standards/` as the always-load surface**: session start reads
+  `standards/` (sibling-probed, generated MOCs skipped) in union with the
+  legacy `memory/_always-load` pen, under the existing priority-first token
+  budget; `save --always-load` stamps `lifecycle: pinned` for part 6's
+  query-based retirement of the pen.
+- **`scripts/migrate/structural_2a.sh`** — the one-shot vault migration:
+  dry-run by default, idempotent, quiesce-preconditioned, vault-wins on
+  collisions.
+- **Hermetic test harnesses**: a pytest `conftest.py` and a unittest
+  runner (`run_unit_suite.py`) rotate a fresh `AGENTM_STATE_DIR` per test;
+  every `verify-*` script exports a scratch engine dir script-wide.
+
+### Changed
+
+- Roughly thirty runtime consumers repointed from the vault's `_meta/`,
+  `_dream/`, `_crystallize-staging/`, `desk/briefs/`, and
+  `desk/diagnostics/` to the engine directory and the diagnostics space.
+- Vault-lint reports land in `diagnostics/lint/`; the health-score history
+  has one home (`<engine>/health/history.jsonl`); the forward-learning
+  sources whitelist is a standard (`standards/forward-learning-sources.json`).
+- `desk/scratch` retired from the vault; existing files sweep to a local
+  non-synced folder under the engine directory.
+
+### Fixed
+
+- `adapt_skills` crashed on the first out-of-vault staging path
+  (`relative_to(vault)`), silently aborting Pass-1 after one candidate.
+- The engine-state parity test compared path renderings, not directories,
+  failing on Windows separators while the resolvers agreed.
+- The migration's apply died silently under `set -e` when a directory kept
+  its Icon Drive artifact (naked `&& rmdir` AND-lists), and skip-on-collision
+  stranded live production state behind scratch leakage — collisions now
+  resolve vault-wins under the quiesce precondition.
+- Four verify scripts (`auto-org-meters`, `hook-resolution`,
+  `memory-roundtrip`, `state-routing`) invoked repointed writers bare,
+  leaking scratch engine-state into the real machine directory on every
+  battery run.
+- Six defects from the pre-tag adversarial review: directory collisions in
+  the migration nested the vault copy inside the destination instead of
+  merging (burying production watermarks); the forward-learning whitelist
+  could strand silently in the engine dir where `load_sources()` never
+  probes, and the dry run omitted its standards hop; a slug present in both
+  `standards/` and the legacy pen double-injected at session start (now
+  deduped, standards wins, with a pinning test); `diagnostics/` was missing
+  from the daemon's default embed scope, silently dropping the digests and
+  scorecards from the dense arm after their move; the four Python
+  engine-state resolvers didn't tilde-expand overrides (launchd
+  EnvironmentVariables blocks don't either — the parity test now covers the
+  branch); and historical `vault-lint-*.md` reports migrated into machine
+  state instead of `diagnostics/lint/`. Staged dream/inbox run dirs are now
+  routed to `dream-runs/` instead of the scratch sweep, and the migration
+  script gained its own apply-semantics test suite.
+
+### Internal
+
+- The Windows CI unit run joined the hermetic suite (`run_unit_suite.py`).
+- The part-2 plan split 2a/2b at build time (operator ruling, logged as a
+  plan gap: the cross-repo crickets dependency was never named at
+  sequencing); `projects-merge` queued with the paired-release order locked.
+- The governing design reconciled in this landing: 2a/2b split, engine-repo
+  durability decision, per-family diagnostics naming, vault-wins doctrine.
+
 ## [9.9.0] - 2026-09-01
 
 Two arcs meet in this release. Filing v2 opens: the whole-vault convergence

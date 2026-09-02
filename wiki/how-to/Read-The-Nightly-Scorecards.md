@@ -6,11 +6,13 @@
 
 ## Where they are
 
-Both land under `desk/diagnostics/` in the vault, one file per day plus a stable
-pointer at the newest:
+Both land under `diagnostics/` in the vault, one file per day plus a stable
+pointer at the newest — the corpus card under `diagnostics/health/`, the
+dreaming card under `diagnostics/dreaming/`. Diagnostics became a first-class
+vault space in filing-v2 part 2a; the old `desk/diagnostics/` location is gone.
 
 ```bash
-ls ~/Vault/Agent/desk/diagnostics/latest_*_scorecard.md
+ls ~/Vault/Agent/diagnostics/{health,dreaming}/latest_*_scorecard.md
 ```
 
 `latest_health_scorecard.md` is about the corpus — what is in it and whether it is

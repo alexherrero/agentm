@@ -1,13 +1,13 @@
 # Auto-orchestration config reference
 
-Two files drive the memory push-surface. You tune the config at `<vault>/personal/auto-orchestration-config.md`. It holds toggles, thresholds, and cooldowns. It auto-seeds with defaults. Re-seeding never clobbers your edits. The system stores runtime state at `<vault>/_meta/auto-orchestration-state.json`. This state holds last-fire-per-chain timestamps. It also holds the last-shown snapshot for the shifted-since-last-shown check. All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). See [Auto-orchestration](Auto-Orchestration) for the why. See [Tune auto-orchestration](Tune-Auto-Orchestration) to edit the config.
+Two files drive the memory push-surface. You tune the config at `<vault>/memory/auto-orchestration-config.md`. It holds toggles, thresholds, and cooldowns. It auto-seeds with defaults. Re-seeding never clobbers your edits. The system stores runtime state at `~/.local/state/agentm/auto-orchestration-state.json` — the engine state directory (`$AGENTM_STATE_DIR` overrides it; machine state left the vault in filing-v2 part 2a). This state holds last-fire-per-chain timestamps. It also holds the last-shown snapshot for the shifted-since-last-shown check. All keys live in `DEFAULT_CONFIG` in [`auto_orchestration.py`](https://github.com/alexherrero/agentm/blob/main/harness/skills/memory/scripts/auto_orchestration.py). See [Auto-orchestration](Auto-Orchestration) for the why. See [Tune auto-orchestration](Tune-Auto-Orchestration) to edit the config.
 
 ## ⚡ Quick Reference
 
 | Question | Answer |
 |---|---|
-| Where is the operator config? | `<vault>/personal/auto-orchestration-config.md` — auto-seeded, operator-editable. |
-| Where is the runtime state? | `<vault>/_meta/auto-orchestration-state.json` — `last_fire` timestamps + `last_shown` snapshot. |
+| Where is the operator config? | `<vault>/memory/auto-orchestration-config.md` — auto-seeded, operator-editable. |
+| Where is the runtime state? | `~/.local/state/agentm/auto-orchestration-state.json` (engine state directory; `$AGENTM_STATE_DIR` overrides) — `last_fire` timestamps + `last_shown` snapshot. |
 | Does a re-seed overwrite my edits? | No. `seed_config` is idempotent and never clobbers an existing file. |
 | What are the four config groups? | Emission toggles · briefing thresholds · nudge thresholds · chain cooldowns. |
 | What does the state file gate? | Cooldown windows (`should_fire(chain, now)`) and the shifted-since-last-shown briefing check. |
@@ -71,7 +71,7 @@ The idle chain runs these bounded steps in order. The `enable_idle_chain` toggle
 
 ## State file shape
 
-`auto_orchestration.py:save_state()` writes `<vault>/_meta/auto-orchestration-state.json` exclusively. This enforces the V5-5 LC-2 single-writer invariant. No other script writes this file directly. Sibling orchestration scripts call through `ao.save_state()` instead. Git does not track it. It holds JSON with two top-level objects.
+`auto_orchestration.py:save_state()` writes `<engine-state-dir>/auto-orchestration-state.json` exclusively (default `~/.local/state/agentm/`; `$AGENTM_STATE_DIR` overrides). This enforces the V5-5 LC-2 single-writer invariant. No other script writes this file directly. Sibling orchestration scripts call through `ao.save_state()` instead. The vault's git never carried it; since filing-v2 part 2a it lives in the engine state directory, its own git repo the runner commits on cadence. It holds JSON with two top-level objects.
 
 | Field | Type | Meaning |
 |---|---|---|

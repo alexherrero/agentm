@@ -19,9 +19,11 @@ and neither commits anything back to this repo:
   machine) runs the `health-pass` job daily
   (`templates/jobs/health-pass.yaml`): the fast tier feeds
   `scripts/health/health_score.py --history --html`, which appends one row
-  to the health-history ledger — the vault, when one resolves
-  (`<vault>/_meta/health/history.jsonl`), else a device-local fallback for
-  vault-less installs — and renders the HTML report to a fixed device path.
+  to the health-history ledger in the engine state directory
+  (`~/.local/state/agentm/health/history.jsonl`; `$AGENTM_STATE_DIR`
+  overrides it — machine state left the vault in filing-v2 part 2a, and the
+  directory is a git repo the runner commits, so history-as-durability moved
+  with it) — and renders the HTML report to a fixed device path.
   `/console` and the morning brief link it.
 - **`.github/workflows/health-nightly.yml`** runs both the fast and heavy
   tiers on a schedule as the clean-runner regression signal, renders the

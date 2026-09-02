@@ -165,8 +165,9 @@ entirely — its notes carry no required frontmatter. `Filing.md` and
 #### The structural moves
 
 `Agent/` trims to `desk/`, `diagnostics/`, `memory/` (plus `Home.md`).
-Diagnostics is promoted to first-class: per-system directories
-(`agentmd-health/`, `vault-health/`, `recall-health/`) each holding
+Diagnostics is promoted to first-class: per-family directories (`health/`,
+`dreaming/`, `digests/` — as built in 2a; the drafted per-system trio
+regrouped to match how the writers actually emit) holding dated
 `scorecard-YYYY-MM-DD.md` files with a `latest-scorecard.md` pointer, dated
 one-off audits beside them, and a generated `moc-diagnostics.md`. It absorbs
 `desk/diagnostics`, `desk/briefs` (a daily digest is a scorecard), and the
@@ -176,12 +177,22 @@ generated `moc-tasks.md`; `desk/scratch` retires from the vault (ruled) —
 existing files sweep to a local non-synced folder, future scratch lives in
 session scratchpads and task directories.
 
-`Projects/` at the root becomes the only projects folder: the working trees
-under `desk/projects/<slug>/` move there wholesale, `_harness/` state
-intact, and every tool path that resolves harness state is inventoried and
-repointed. Machine state leaves the vault for `~/.local/state/agentm/`
-(ruled): corpus snapshots, learning caches, skill-discovery cache,
-`storage-rules-state.json`, and the dreaming binary's journals. `_dream/`
+This part split at build time (ruled 2026-09-02): everything self-contained
+in this repo shipped as **2a**; the Projects merge became the queued **2b**
+(`projects-merge`), because moving `desk/projects/` requires the crickets
+development-lifecycle plugin's own repoint (resolve_plan, queue-status, the
+worker-spawn flow all navigate that path) in a coordinated paired release
+this repo cannot ship alone — a cross-repo dependency the sequencing never
+named, logged as a plan gap. In 2b, `Projects/` at the root becomes the
+only projects folder: the working trees under `desk/projects/<slug>/` move
+there wholesale, `_harness/` state intact, and every tool path that
+resolves harness state is inventoried and repointed. Machine state leaves
+the vault for `~/.local/state/agentm/` (ruled): corpus snapshots, learning
+caches, skill-discovery cache, `storage-rules-state.json`, and the dreaming
+binary's journals. The engine directory is itself a git repository — the
+migration initializes it and the runner commits on cadence — so the
+history-durability those files had from the vault's repo survives the exit
+rather than being traded away for sync hygiene. `_dream/`
 and `_crystallize-staging/` retire — dreaming enriches in place, its
 in-flight state journaled in the engine directory. `memory/_always-load`
 folds into `standards/` (the always-load surface is standards, as at work),
@@ -375,7 +386,12 @@ executes only after the manifest is written and the operator has seen the
 count one final time. Path repoints (hooks, daemon config, scripts
 referencing `_meta`, `_inbox`, `desk/projects`, `_opinions`) ship in the
 same change as the move they track, inventoried by grep before any file
-moves. Rollback for every phase except the purge is `git revert` in the
+moves. Migration runs execute under a quiesced daemon and runner, and that
+precondition sets the collision doctrine (learned in the 2a apply): when a
+move finds its destination already occupied, the vault copy wins — it is by
+definition the last production write, whatever sits at the destination
+predates the migration, and the engine repository's history preserves what
+gets replaced. Rollback for every phase except the purge is `git revert` in the
 vault repository plus replaying the path repoints; the purge is
 non-rollbackable by design and bounded by its manifest. The Python dreaming
 layer is not retired until the Go binary's parity fixtures pass; the two
@@ -539,3 +555,4 @@ layer, which is not retired until parity fixtures pass.
 | Date | Change | Status |
 |---|---|---|
 | 2026-09-01 | Initial draft created via `/design author`, drafted from the decided filing-v2 synthesis (six research lanes, vault census, and operator rulings — see `desk/projects/agentm/_harness/research-filing-v2/`); review pass ran the same session — all sections and quality attributes approved unrevised — and the operator approved as final. Translated to 6 parts via `/design translate` (operator-approved split): rules-and-authority, structural-moves, corpus-migration, write-path, calendar, lifecycle-dreaming — part files at the vault's `_harness/designs/agentm-filing-v2/parts/`. Sequenced into 6 draft plans via `/design sequence`: `PLAN-rules-and-authority.md` active (named-plan mode, beside the unrelated online-recall plan), five queued at `_harness/designs/agentm-filing-v2/queued-plans/`. | final |
+| 2026-09-02 | Part 2 reconciled to what shipped (v9.10.0, PRs #521/#522). Three amendments: (1) structural-moves **split 2a/2b** — the Projects merge needs the crickets development-lifecycle repoint in a paired release this repo cannot ship alone (why not ship it here: a one-repo move would strand every plan-resolution path; re-audit when 2b lands — fold this paragraph back to one part). (2) The engine state dir is a **git repository** (migration inits, runner commits on cadence) — why not plain files: the exit from the vault would silently trade away the history-durability those files had from the vault's repo; re-audit if the runner's commit cadence ever stalls (a dirty engine repo older than a week is the tell). (3) Diagnostics directories are **per-family** (`health/dreaming/digests`), not the drafted per-system trio — why: the writers emit by family, and the drafted names would have forced a router nothing needed; plus the Migrations section gains the **vault-wins collision doctrine** learned in the live apply (quiesce makes the vault copy the last production write; skip-on-collision stranded real state behind scratch leakage). | final |

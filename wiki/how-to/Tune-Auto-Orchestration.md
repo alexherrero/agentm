@@ -72,7 +72,7 @@ The tunables live in `<vault>/personal/auto-orchestration-config.md`, auto-seede
    python3 harness/skills/memory/scripts/orchestration_briefing.py --vault-path "$MEMORY_VAULT_PATH"
    ```
 
-   To see when each chain last fired, inspect the `last_fire` timestamps in `<vault>/_meta/auto-orchestration-state.json`.
+   To see when each chain last fired, inspect the `last_fire` timestamps in `~/.local/state/agentm/auto-orchestration-state.json` (the engine state directory; `$AGENTM_STATE_DIR` overrides it).
 
 ## See also
 

@@ -26,7 +26,7 @@ Prereq for the Google-Drive surfaces: the vault is synced to Google Drive, and y
 2. **Paste [the context payload](https://github.com/alexherrero/agentm/blob/main/templates/agentmemory-context.md#L19)** into Settings → Custom Instructions (applies to every chat) or a Claude **Project's** instructions.
 3. **Dogfood** (see below).
 
-*More reliable recall:* search-at-query-time depends on Claude choosing to search. To ground it, create a **Claude Project**, put **the context payload** in the Project instructions, and add the `personal/_always-load/` entries to the Project's knowledge.
+*More reliable recall:* search-at-query-time depends on Claude choosing to search. To ground it, create a **Claude Project**, put **the context payload** in the Project instructions, and add the always-load entries — the `standards/` files at the vault root, plus anything still in the legacy `memory/_always-load/` pen — to the Project's knowledge.
 
 ## Claude Desktop
 
@@ -56,7 +56,7 @@ Open a **fresh** chat/session and ask — with no priming:
 
 > what's our commit-message convention?
 
-It passes when the agent reaches the vault — a Drive search on Claude.ai, a filesystem read on Claude Desktop or Antigravity — and answers from `personal/_always-load/` (for example, *"no `Co-Authored-By` trailer"* and Conventional Commits) instead of general knowledge. It fails when you get a generic answer or "can't see the vault": on Claude.ai, confirm you're signed into the vault-owning Google account and try the Project approach above; on Claude Desktop, confirm the filesystem MCP server's vault path.
+It passes when the agent reaches the vault — a Drive search on Claude.ai, a filesystem read on Claude Desktop or Antigravity — and answers from the always-load surface (`standards/` at the vault root; for example, *"no `Co-Authored-By` trailer"* and Conventional Commits) instead of general knowledge. It fails when you get a generic answer or "can't see the vault": on Claude.ai, confirm you're signed into the vault-owning Google account and try the Project approach above; on Claude Desktop, confirm the filesystem MCP server's vault path.
 
 ## Related
 
