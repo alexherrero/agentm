@@ -145,8 +145,16 @@ func (a Authority) JudgeSpace(rel string, exists bool, grants Grants) Decision {
 			return d
 		}
 		// Granted: the per-file-class rule takes over, judged against the
-		// vault-level projects root.
-		inner := a.ProjectRoots.Judge(clean, exists)
+		// vault-level projects root — on a canonicalized path. The space
+		// matched case-insensitively (macOS treats the cases as one
+		// directory), and the inner judgment's prefix match is
+		// case-sensitive, so handing it the caller's own casing let
+		// `projects/...` fall through to Outside — a weaker answer than the
+		// Alignment the table promises. Rebuilding the path from the root's
+		// own casing closes that seam. (Caught by adversarial review; the
+		// matrix pins both casings through this branch now.)
+		inner := a.ProjectRoots.Judge(a.ProjectRoots.Projects+"/"+rest, exists)
+		inner.Path = clean
 		inner.Space = first
 		inner.Level = level
 		inner.Why = fmt.Sprintf("session grant for %s held; %s", slug, inner.Why)
