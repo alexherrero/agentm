@@ -35,10 +35,13 @@ move_into() { # move_into <src-file-or-glob-expanded path> <dest-dir>
   [[ -e "$src" ]] || { skipped=$((skipped+1)); return 0; }
   local base; base="$(basename "$src")"
   if [[ -e "$dest/$base" ]]; then
-    say "skip (exists at destination): $base"
-    skipped=$((skipped+1)); return 0
+    # Vault wins collisions: the script's precondition is a quiesced daemon
+    # and runner, so the vault copy is the last production write. Anything
+    # already at the destination predates the migration (typically scratch
+    # leakage from verify runs) — and the engine dir's git history keeps it.
+    say "collision: vault copy replaces destination copy: $base"
   fi
-  run mv "$src" "$dest/$base"
+  run mv -f "$src" "$dest/$base"
   moved=$((moved+1))
 }
 
@@ -118,7 +121,7 @@ if [[ -d "$OLD_META" ]]; then
     if [[ "$base_f" == "health" && -d "$f" ]]; then
       run mkdir -p "$STATE/health"
       for h in "$f"/*; do move_into "$h" "$STATE/health"; done
-      [[ $APPLY -eq 1 ]] && rmdir "$f" 2>/dev/null
+      [[ $APPLY -eq 1 ]] && rmdir "$f" 2>/dev/null || true
       continue
     fi
     move_into "$f" "$STATE"
@@ -129,19 +132,19 @@ echo "== task 5: dreaming staging + insights leave the vault =="
 run mkdir -p "$STATE/crystallize-staging" "$STATE/dream-runs"
 if [[ -d "$VAULT/_crystallize-staging" ]]; then
   for f in "$VAULT/_crystallize-staging"/*; do move_into "$f" "$STATE/crystallize-staging"; done
-  [[ $APPLY -eq 1 ]] && rmdir "$VAULT/_crystallize-staging" 2>/dev/null
+  [[ $APPLY -eq 1 ]] && rmdir "$VAULT/_crystallize-staging" 2>/dev/null || true
 fi
 if [[ -d "$VAULT/_dream" ]]; then
   run mkdir -p "$STATE/dream-insights"
   for f in "$VAULT/_dream"/*; do
     if [[ -d "$f" ]]; then
       for g in "$f"/*; do move_into "$g" "$STATE/dream-insights"; done
-      [[ $APPLY -eq 1 ]] && rmdir "$f" 2>/dev/null
+      [[ $APPLY -eq 1 ]] && rmdir "$f" 2>/dev/null || true
     else
       move_into "$f" "$STATE/dream-insights"
     fi
   done
-  [[ $APPLY -eq 1 ]] && rmdir "$VAULT/_dream" 2>/dev/null
+  [[ $APPLY -eq 1 ]] && rmdir "$VAULT/_dream" 2>/dev/null || true
 fi
 
 echo "== task 5: the forward-learning sources whitelist becomes a standard =="

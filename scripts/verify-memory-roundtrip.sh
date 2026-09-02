@@ -57,6 +57,12 @@ assert_exists() {
 
 # ── scratch vault (isolated; auto-removed) ──────────────────────────────────
 V="$(mktemp -d)"
+# Engine state is machine-scoped (filing-v2 2a): without this export a
+# scratch-vault run writes the REAL ~/.local/state/agentm. Hermetic by
+# default; phases needing distinct state override per-invocation.
+export AGENTM_STATE_DIR="$V/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
+
 cleanup() { rm -rf "$V"; }
 trap cleanup EXIT
 export MEMORY_VAULT_PATH="$V"

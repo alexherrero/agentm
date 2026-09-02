@@ -71,6 +71,12 @@ assert_contains() {
 FAULT="${VERIFY_STATE_ROUTING_FAULT:-}"
 
 SCRATCH="$(mktemp -d)"
+# Engine state is machine-scoped (filing-v2 2a): without this export a
+# scratch-vault run writes the REAL ~/.local/state/agentm. Hermetic by
+# default; phases needing distinct state override per-invocation.
+export AGENTM_STATE_DIR="$SCRATCH/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
+
 cleanup() { rm -rf "$SCRATCH" 2>/dev/null; rm -rf "$SCRATCH" 2>/dev/null || true; }
 trap cleanup EXIT
 echo "verify-state-routing: scratch root = $SCRATCH"
