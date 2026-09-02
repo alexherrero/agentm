@@ -121,5 +121,53 @@ class TestAlwaysLoadPriorityOrdering(unittest.TestCase):
             self.assertIn("dropped-entry", out)
 
 
+class StandardsUnionTests(unittest.TestCase):
+    """Filing-v2 part 2a: standards/ is the always-load surface, read in
+    union with the legacy holding pen, generated MOCs skipped."""
+
+    def test_standards_files_load_beside_legacy_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "Agent"
+            _write_entry(vault, "legacy-entry", "the legacy pen still loads")
+            standards = root / "standards"
+            standards.mkdir(parents=True)
+            (standards / "storage-rules.md").write_text(
+                "---\ntitle: Storage rules\n---\n\nthe contract prose loads\n",
+                encoding="utf-8")
+            stdout = io.StringIO()
+            recall.session_start(vault=vault, stdout=stdout, stderr=io.StringIO())
+            out = stdout.getvalue()
+            self.assertIn("the contract prose loads", out)
+            self.assertIn("the legacy pen still loads", out)
+
+    def test_generated_mocs_are_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "Agent"
+            vault.mkdir(parents=True)
+            standards = root / "standards"
+            standards.mkdir(parents=True)
+            (standards / "moc-standards.md").write_text(
+                "---\nkind: moc\n---\n\nnavigation links only\n", encoding="utf-8")
+            (standards / "user-preferences.md").write_text(
+                "---\ntitle: prefs\n---\n\na real standing rule\n", encoding="utf-8")
+            stdout = io.StringIO()
+            recall.session_start(vault=vault, stdout=stdout, stderr=io.StringIO())
+            out = stdout.getvalue()
+            self.assertIn("a real standing rule", out)
+            self.assertNotIn("navigation links only", out)
+
+    def test_flat_layout_probe_finds_standards_inside_the_vault(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td)  # flat: standards inside the memory root's parentless vault
+            (vault / "standards").mkdir(parents=True)
+            (vault / "standards" / "rules.md").write_text(
+                "---\ntitle: r\n---\n\nflat-layout rule\n", encoding="utf-8")
+            stdout = io.StringIO()
+            recall.session_start(vault=vault, stdout=stdout, stderr=io.StringIO())
+            self.assertIn("flat-layout rule", stdout.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

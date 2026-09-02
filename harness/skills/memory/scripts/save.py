@@ -245,6 +245,12 @@ def _build_frontmatter(
     if fingerprint:
         lines.append(f"fingerprint: {fingerprint}")
     lines.append(f"always_load: {'true' if always_load else 'false'}")
+    if always_load:
+        # The v2 lifecycle axis (filing-v2 part 1): always-load is what
+        # `pinned` means — never decays, loads every session. Stamped here so
+        # part 6's pinned loader retires the holding pen with a query, not a
+        # migration.
+        lines.append("lifecycle: pinned")
     if supersedes:
         lines.append(f"supersedes: {supersedes}")
     if lifecycle_tier:
@@ -352,8 +358,12 @@ def save_entry(
     if dedup_info is not None:
         dedup_info["deduplicated"] = False
 
-    # Compute target path. --always-load overrides --group: routes to
-    # personal/_always-load/<slug>.md regardless of group.
+    # Compute target path. --always-load overrides --group and still routes
+    # to the legacy holding pen — deliberately, as a filing-v2 transition
+    # state: the session-start loader reads standards/ ∪ this directory, and
+    # part 6's lifecycle loader is what retires the pen by loading
+    # `lifecycle: pinned` entries from their classes. The stamp below is
+    # what makes that retirement a pure frontmatter query, not a move.
     if always_load:
         target = vault / "memory" / "_always-load" / f"{slug}.md"
     else:
