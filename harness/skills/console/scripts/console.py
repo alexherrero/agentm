@@ -610,7 +610,7 @@ def _engine_state_dir() -> "Path":
     import os
     from pathlib import Path as _P
     override = os.environ.get("AGENTM_STATE_DIR", "").strip()
-    return _P(override) if override else _P.home() / ".local" / "state" / "agentm"
+    return _P(override).expanduser() if override else _P.home() / ".local" / "state" / "agentm"
 
 
 def section_vault_lint(vault: "Path | None", *, now: "float | None" = None) -> str:

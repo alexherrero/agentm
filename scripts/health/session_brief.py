@@ -45,7 +45,7 @@ def _engine_state_dir():
     hermetic — pinned equal to the others by
     `scripts/test_engine_state_parity.py`."""
     override = _os_engine.environ.get("AGENTM_STATE_DIR", "").strip()
-    return _P_engine(override) if override else _P_engine.home() / ".local" / "state" / "agentm"
+    return _P_engine(override).expanduser() if override else _P_engine.home() / ".local" / "state" / "agentm"
 
 import json
 import os

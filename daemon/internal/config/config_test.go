@@ -11,7 +11,7 @@ import (
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 	got := defaultEmbedScope("Agent")
-	want := []string{"Agent/memory", "Agent/desk", "Agent/external"}
+	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,11 +23,23 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external"
+		want := "memory,desk,external,diagnostics"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
 	}
+}
+
+// `diagnostics` is deliberately IN the default scope (filing-v2 2a): the daily
+// digests and scorecards it holds lived under `desk` before the move and were
+// dense-retrievable; the move must not silently drop them from the vector arm.
+func TestDefaultEmbedScopeIncludesDiagnostics(t *testing.T) {
+	for _, s := range defaultEmbedScope("Agent") {
+		if s == "Agent/diagnostics" {
+			return
+		}
+	}
+	t.Fatalf("diagnostics missing from default embed scope: %v", defaultEmbedScope("Agent"))
 }
 
 // `_meta` must never be in the default scope. Its notes run to 200,000 tokens and

@@ -48,6 +48,19 @@ class EngineStateParity(unittest.TestCase):
         finally:
             del os.environ["AGENTM_STATE_DIR"]
 
+    def test_tilde_override_expands_everywhere(self):
+        """launchd EnvironmentVariables blocks don't tilde-expand — and
+        launchd runs this machine's daemon and runner. Every resolver must
+        expand `~` itself (the Go side's expandHome already does)."""
+        os.environ["AGENTM_STATE_DIR"] = "~/parity-tilde-check"
+        try:
+            answers = {Path(fn()) for fn in _ALL_RESOLVERS}
+            self.assertEqual(answers, {Path.home() / "parity-tilde-check"},
+                             "a literal ~/ override must never become a "
+                             "cwd-relative './~' directory")
+        finally:
+            del os.environ["AGENTM_STATE_DIR"]
+
     def test_default_branch_agrees(self):
         saved = os.environ.pop("AGENTM_STATE_DIR", None)
         try:

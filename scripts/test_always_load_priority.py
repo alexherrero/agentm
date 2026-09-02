@@ -158,6 +158,26 @@ class StandardsUnionTests(unittest.TestCase):
             self.assertIn("a real standing rule", out)
             self.assertNotIn("navigation links only", out)
 
+    def test_duplicate_slug_injects_once_standards_wins(self) -> None:
+        """A slug present on both surfaces (the normal transition while the
+        pen is still the `--always-load` save target) must inject exactly
+        once, and the standards copy is the one that loads."""
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            vault = root / "Agent"
+            _write_entry(vault, "token-discipline", "STALE pen copy")
+            standards = root / "standards"
+            standards.mkdir(parents=True)
+            (standards / "token-discipline.md").write_text(
+                "---\ntitle: Token discipline\n---\n\nCURRENT standards copy\n",
+                encoding="utf-8")
+            stdout = io.StringIO()
+            recall.session_start(vault=vault, stdout=stdout, stderr=io.StringIO())
+            out = stdout.getvalue()
+            self.assertIn("CURRENT standards copy", out)
+            self.assertNotIn("STALE pen copy", out)
+            self.assertEqual(out.count("### token-discipline"), 1)
+
     def test_flat_layout_probe_finds_standards_inside_the_vault(self) -> None:
         with tempfile.TemporaryDirectory() as td:
             vault = Path(td)  # flat: standards inside the memory root's parentless vault
