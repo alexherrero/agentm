@@ -341,7 +341,10 @@ _PLUGIN_SPACES_KEY = "plugins.obsidian-vault.spaces"
 _DEFAULT_SPACES = {
     "memory": "memory",
     "projects": "desk/projects",
-    "briefs": "desk/briefs",
+    # Filing-v2 part 2a: diagnostics is first-class under the memory root, and
+    # the daily digests live inside it — records in the area they serve.
+    "briefs": "diagnostics/digests",
+    "diagnostics": "diagnostics",
     "scratch": "desk/scratch",
 }
 

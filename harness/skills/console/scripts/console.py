@@ -637,10 +637,10 @@ def section_brief(vault: "Path | None", *, now: "float | None" = None) -> str:
     seen, not one more entry a triage pass could bury."""
     if vault is None:
         return "Latest brief: n/a (no vault resolved)"
-    briefs_dir = vault / "desk/briefs"
+    briefs_dir = vault / "diagnostics/digests"
     briefs = sorted(briefs_dir.glob("*.md")) if briefs_dir.is_dir() else []
     if not briefs:
-        return "Latest brief: dark -- no desk/briefs/*.md yet (no digest or park job has fired on this machine)"
+        return "Latest brief: dark -- no diagnostics/digests/*.md yet (no digest or park job has fired on this machine)"
     latest = briefs[-1]
     try:
         text = latest.read_text(encoding="utf-8")

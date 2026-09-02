@@ -96,7 +96,7 @@ class NeedsYourEyeThreeSurfacesTests(unittest.TestCase):
         from datetime import datetime, timezone
 
         # Minimal digest note so build_brief has a headline to anchor on.
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         briefs.mkdir(parents=True)
         (briefs / "20260719-digest-daily.md").write_text(
             "# Daily digest — all quiet\n\nNothing notable.\n", encoding="utf-8"

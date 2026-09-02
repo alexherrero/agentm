@@ -24,7 +24,7 @@ import dreaming_scorecard as ds  # noqa: E402
 
 
 AT = datetime(2026, 8, 22, 9, 30, tzinfo=timezone.utc)
-REL = Path("desk/diagnostics")
+REL = Path("diagnostics/dreaming")
 STAGE = Path("desk/scratch")
 
 

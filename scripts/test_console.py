@@ -542,10 +542,10 @@ class BriefSectionTests(unittest.TestCase):
     def test_dark_when_no_briefs(self):
         out = c.section_brief(self.vault)
         self.assertIn("dark", out)
-        self.assertIn("desk/briefs", out)
+        self.assertIn("diagnostics/digests", out)
 
     def test_picks_latest_by_filename_and_extracts_title(self):
-        briefs = self.vault / "desk/briefs"
+        briefs = self.vault / "diagnostics/digests"
         briefs.mkdir(parents=True)
         (briefs / "20260711-digest-daily.md").write_text(
             "---\nkind: brief\n---\n\n# Observability digest — daily (spend and run summary)\n",

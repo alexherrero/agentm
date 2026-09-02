@@ -40,7 +40,7 @@ DAEMON_BIN = os.environ.get("AGENTMD", "agentmd")
 _TIMEOUT_SECONDS = 300
 
 STABLE_NAME = "latest_dreaming_scorecard.md"
-DIAGNOSTICS_DIR = Path("desk") / "diagnostics"
+DIAGNOSTICS_DIR = Path("diagnostics") / "dreaming"
 # Where `dream.py` stages each run. One directory per run id.
 STAGING_DIR = Path("desk") / "scratch"
 
@@ -344,11 +344,9 @@ def diagnostics_dir() -> Path:
         spaces = (_agentmd(["status"]) or {}).get("spaces") or {}
     except DaemonUnavailable:
         spaces = {}
-    projects = str(spaces.get("projects") or "").strip("/")
-    if projects:
-        desk = Path(projects).parent
-        if str(desk) not in (".", "/"):
-            return desk / "diagnostics"
+    configured = str(spaces.get("diagnostics") or "").strip("/")
+    if configured:
+        return Path(configured) / "dreaming"
     return DIAGNOSTICS_DIR
 
 

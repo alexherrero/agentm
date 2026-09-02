@@ -40,11 +40,12 @@ from typing import Any, Optional
 DAEMON_BIN = os.environ.get("AGENTMD", "agentmd")
 _TIMEOUT_SECONDS = 300
 
-# Where the two scorecards live, relative to the *memory root* rather than the
-# vault root. The design writes them to `Agent/desk/diagnostics/`, and `Agent` is
-# the memory root — joining this onto the vault path instead produces a new
-# top-level directory beside it, which is what the first run of this file did.
-DIAGNOSTICS_DIR = Path("desk") / "diagnostics"
+# Where the health scorecards live, relative to the *memory root* rather than
+# the vault root — joining onto the vault path instead produces a new top-level
+# directory beside it, which is what the first run of this file did. Filing-v2
+# part 2a promoted diagnostics out of the desk: per-system subdirectories under
+# `Agent/diagnostics/`, this writer's being `health/`.
+DIAGNOSTICS_DIR = Path("diagnostics") / "health"
 STABLE_NAME = "latest_health_scorecard.md"
 COMPLETENESS_RESULT_NAME = "latest_completeness.json"
 
@@ -547,12 +548,10 @@ def diagnostics_dir() -> Path:
         spaces = (_agentmd(["status"]) or {}).get("spaces") or {}
     except DaemonUnavailable:
         spaces = {}
-    projects = str(spaces.get("projects") or "").strip("/")
-    if projects:
-        desk = Path(projects).parent
-        if str(desk) not in (".", "/"):
-            return desk / "diagnostics"
-    # No configured projects space: the flat layout, where desk is top level.
+    configured = str(spaces.get("diagnostics") or "").strip("/")
+    if configured:
+        return Path(configured) / "health"
+    # No configured diagnostics space: the shipped default layout.
     return DIAGNOSTICS_DIR
 
 

@@ -119,7 +119,7 @@ def latest_digest(vault: Path) -> "dict | None":
     Newest by slug date; ties (same date, multiple cadences) resolve to the
     finest cadence — "the day's headline" is the daily digest when one landed.
     Returns {date, cadence, slug, path, mtime, spend, events, headline}."""
-    d = Path(vault) / "desk/briefs"
+    d = Path(vault) / "diagnostics/digests"
     if not d.is_dir():
         return None
     best = None  # (date, -cadence_priority_inverted) tuple for max()

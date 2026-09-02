@@ -375,6 +375,10 @@ func defaultSpaces(memoryRoot string) map[string]string {
 	return map[string]string{
 		"memory":   under("memory"),
 		"projects": under("desk/projects"),
+		// Diagnostics is first-class under the memory root as of filing-v2
+		// part 2a: scorecards, digests, and dated audits — records living in
+		// the area they serve, not in a desk drawer.
+		"diagnostics": under("diagnostics"),
 	}
 }
 

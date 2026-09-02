@@ -22,7 +22,7 @@ _NOW = datetime(2026, 7, 17, 18, 0, 0, tzinfo=timezone.utc)
 
 
 def _write_digest(vault: Path, date: str, cadence: str, *, spend=None, events=None):
-    briefs = vault / "desk/briefs"
+    briefs = vault / "diagnostics/digests"
     briefs.mkdir(parents=True, exist_ok=True)
     slug = f"{date}-digest-{cadence}"
     lines = ["---", "kind: brief", "status: active", f"slug: {slug}",
