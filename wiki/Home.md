@@ -69,4 +69,4 @@ Any other sub-agent you see named — such as `explorer`, `adversarial-reviewer`
 ---
 
 > [!NOTE]
-> **Latest release: [v9.8.0](https://github.com/alexherrero/agentm/releases/tag/v9.8.0).** Two ways the system notices things about itself: meters that say whether a model-written corpus is going flat, with the loop that acts on them and two nightly scorecards; and three hooks that give per-project verification and compaction-awareness a machine-wide home now that AgentM installs once.
+> **Latest release: [v9.9.0](https://github.com/alexherrero/agentm/releases/tag/v9.9.0).** Filing v2 opens: the whole-vault convergence design goes final and its first part lands — the contract's v2 vocabularies (lifecycle · sources · facets), an enforced write-authority table with session grants, and the vocabulary ratchet that closes the census's missing gate. Beside it, the recall-verdict arc closes at its measured, trusted plateau.

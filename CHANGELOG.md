@@ -7,13 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The recall-verdict arc: the retrieval instrument becomes worth trusting, and
-the recall ladder closes at its measured plateau. Hook-true baseline 47/64
+## [9.9.0] - 2026-09-01
+
+Two arcs meet in this release. Filing v2 opens: the whole-vault convergence
+design goes final and its first part ships — the contract gains its v2
+vocabularies, the vault gets an enforced write-authority table, and the
+vocabulary gate closes the one enforcement the census showed missing. And the
+recall-verdict arc closes as authored: the retrieval instrument becomes worth
+trusting, and the recall ladder closes at its measured plateau. Hook-true baseline 47/64
 (73.4%) R@5 with provenance; the residue closed as a gold-blind-irreducible
 vocabulary gap after the fourth write-side family produced the same zero;
 done means trust plus a characterized plateau, operator-ratified.
 
 ### Added
+
+- The v2 contract vocabularies in `standards/storage-rules.md` and the shipped
+  default: `lifecycle` (pinned · active · dormant · archived · superseded, with
+  `default_lifecycle`), `sources` (four transports mapped to a closed two-tier
+  trust set — trust is a property of the transport, never the content), and
+  `facets` (the calendar's four) — validated fail-closed in the contract's one
+  parser, flowing to Python through `agentmd rules --json` accessors; the
+  calendar record kinds registered; `idea` now routes to `memory/semantic`.
+- `check-vocabulary-membership`: enum membership on `type:`/`kind:` with
+  set-ratchet semantics — a recorded baseline of tolerated legacy offenders
+  that only ever shrinks, anything new failing the battery immediately, and
+  `--strict` as the post-migration flip — plus a fixture self-test proving the
+  collision rule and the membership rule fire. Wired into `check-all.sh` and
+  the pull-request CI per the both-places rule.
+- The vault-level write-authority table (`door.Authority`): five spaces with
+  explicit levels, session grants ("open the files for project `<slug>`"),
+  deny-by-default for root files and undeclared spaces, composing with the
+  per-file-class judgment so the face rule survives a grant. CLI:
+  `agentmd door --at-vault-root [--grant SLUG]`.
+- [`wiki/designs/agentm-filing-v2.md`](wiki/designs/agentm-filing-v2.md) — the
+  whole-vault convergence design (`Status: final`), its six parts and draft
+  plans sequenced vault-side, evidenced by the six-lane research bundle.
 
 - Corpus fingerprints on retrieval baselines, with `--compare` refusing across
   corpora (`--drifted-ok` for the standing tripwire; gold-set hash mismatches
@@ -56,6 +84,16 @@ done means trust plus a characterized plateau, operator-ratified.
 
 ### Fixed
 
+- Pre-v2 contracts hash identically across the binary upgrade (`omitempty` on
+  the four new block fields) — upgrading the daemon alone no longer re-hashes
+  an unchanged contract and stales every ledger row. Caught by the post-merge
+  adversarial review, before the v2 binary ever ran.
+- Grant composition canonicalizes the space's casing before the per-file-class
+  judgment — `projects/…` in non-canonical casing answered `outside` (weaker)
+  instead of the promised `alignment`.
+- The vocabulary ratchet's baseline follows the house doctrine: corruption
+  halts loudly where absence falls through — a corrupt state file can no
+  longer silently re-baseline the corpus.
 - **A daemon refresh could leave the machine with no memory daemon and report
   that it still had one** ([`install.sh`](install.sh)). `RunAtLoad` asks launchd
   to spawn a job when it is bootstrapped; it does not oblige launchd to do it
