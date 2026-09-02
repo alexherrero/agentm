@@ -95,6 +95,12 @@ assert_absent() {
 
 # ── scratch HOME + vault (isolated; auto-removed) ───────────────────────────
 SCRATCH_HOME="$(mktemp -d)"
+# Engine state is machine-scoped (filing-v2 2a): without this export a
+# scratch-vault run writes the REAL ~/.local/state/agentm. Hermetic by
+# default; phases needing distinct state override per-invocation.
+export AGENTM_STATE_DIR="$SCRATCH_HOME/engine-state"
+mkdir -p "$AGENTM_STATE_DIR"
+
 SV="$(mktemp -d)"
 PROJ="$(mktemp -d)"
 # reflect-idle backgrounds a detached (reparented) orchestration_idle.py job
