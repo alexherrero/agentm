@@ -40,8 +40,10 @@ class EngineStateParity(unittest.TestCase):
     def test_override_branch_agrees(self):
         os.environ["AGENTM_STATE_DIR"] = "/tmp/parity-check-state"
         try:
-            answers = {str(fn()) for fn in _ALL_RESOLVERS}
-            self.assertEqual(answers, {"/tmp/parity-check-state"},
+            # Compare as Paths, not strings — Windows renders the same
+            # directory with backslashes, and the contract is "one directory".
+            answers = {Path(fn()) for fn in _ALL_RESOLVERS}
+            self.assertEqual(answers, {Path("/tmp/parity-check-state")},
                              "every vendored resolver honors the override identically")
         finally:
             del os.environ["AGENTM_STATE_DIR"]
@@ -49,10 +51,10 @@ class EngineStateParity(unittest.TestCase):
     def test_default_branch_agrees(self):
         saved = os.environ.pop("AGENTM_STATE_DIR", None)
         try:
-            answers = {str(fn()) for fn in _ALL_RESOLVERS}
+            answers = {Path(fn()) for fn in _ALL_RESOLVERS}
             self.assertEqual(len(answers), 1,
                              f"the vendored resolvers disagree: {answers}")
-            self.assertTrue(answers.pop().endswith(".local/state/agentm"))
+            self.assertEqual(answers.pop().parts[-3:], (".local", "state", "agentm"))
         finally:
             if saved is not None:
                 os.environ["AGENTM_STATE_DIR"] = saved
