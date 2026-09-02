@@ -123,6 +123,18 @@ class RatchetSemantics(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("bad2.md", out)
 
+    def test_a_corrupt_baseline_halts_instead_of_rebaselining(self):
+        (self.notes / "legacy.md").write_text(_note("kind: analysis"), encoding="utf-8")
+        self._run()  # record a real baseline
+        self.baseline.write_text("{not valid json", encoding="utf-8")
+        (self.notes / "flood.md").write_text(_note("kind: report"), encoding="utf-8")
+        with self.assertRaises(gate.BaselineCorrupt) as ctx:
+            gate.run_corpus_check(self.vault, self.baseline, strict=False)
+        self.assertIn(str(self.baseline), str(ctx.exception))
+        # The corrupt file must not have been overwritten by a fresh baseline —
+        # silently swallowing the flood is the exact inversion of the ratchet.
+        self.assertEqual(self.baseline.read_text(encoding="utf-8"), "{not valid json")
+
     def test_strict_ignores_the_baseline(self):
         (self.notes / "legacy.md").write_text(_note("kind: analysis"), encoding="utf-8")
         self._run()  # tolerated by ratchet

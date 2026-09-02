@@ -50,6 +50,12 @@ func TestAuthorityMatrix(t *testing.T) {
 			"Attic/box.md", false, none, Alignment, "not in the declared address space"},
 		{"matching is case-insensitive, because macOS treats the cases as one directory",
 			"personal/Home/x.md", false, none, Alignment, "per-task instruction"},
+		{"case-insensitivity survives the grant composition — the working bulk",
+			"projects/agentm/_harness/notes.md", false, agentm, Standing, "maintains freely"},
+		{"case-insensitivity survives the grant composition — the face rule",
+			"PROJECTS/agentm/README.md", true, agentm, Alignment, "visible face"},
+		{"a lowercase project write without a grant still names the grant phrase",
+			"projects/agentm/x.md", false, none, Alignment, "open the files for project agentm"},
 		{"an unreadable path asks",
 			"Projects/../standards/storage-rules.md", true, agentm, Alignment, "unreadable"},
 	}

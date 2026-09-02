@@ -99,16 +99,29 @@ def _offenders(audit: dict) -> set:
            {(path, value) for path, value in audit["malformed"]}
 
 
+class BaselineCorrupt(Exception):
+    """The recorded baseline exists but cannot be read.
+
+    Absence falls through (a genuine first run records); corruption halts —
+    the same doctrine the rules parser holds, for the same reason. Treating a
+    corrupt baseline as a first run would silently re-baseline whatever the
+    corpus holds at that moment, which is exactly the adversarial shape the
+    ratchet exists to catch: new violations landing at the same time the
+    state file goes unreadable. (Caught by adversarial review.)
+    """
+
+
 def _load_baseline(path: Path) -> set | None:
     if not path.is_file():
         return None
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
         return {(str(p), str(v)) for p, v in raw.get("offenders", [])}
-    except (OSError, ValueError):
-        # A corrupt baseline loses the ratchet for one run; treated as first
-        # run rather than a failure — this file is bookkeeping, not the rule.
-        return None
+    except (OSError, ValueError, TypeError) as exc:
+        raise BaselineCorrupt(
+            f"{path}: {exc}. The ratchet's guarantee rests on this file — "
+            f"restore it from the vault repo's history, or delete it "
+            f"deliberately to accept a fresh baseline, then re-run.") from exc
 
 
 def _write_baseline(path: Path, offenders: set) -> None:
@@ -219,6 +232,10 @@ def main(argv: list) -> int:
             return 0
         baseline = Path(os.environ.get("AGENTM_VOCAB_BASELINE", "").strip() or _DEFAULT_BASELINE)
         return run_corpus_check(Path(vault), baseline, strict=args.strict)
+    except BaselineCorrupt as exc:
+        print(f"check-vocabulary-membership: HALT — the baseline is corrupt, and "
+              f"corruption halts where absence falls through: {exc}", file=sys.stderr)
+        return 2
     except StorageRulesError as exc:
         print(f"check-vocabulary-membership: SETUP — the filing contract is unavailable: {exc}",
               file=sys.stderr)

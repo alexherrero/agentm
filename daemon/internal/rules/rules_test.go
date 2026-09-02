@@ -1,6 +1,7 @@
 package rules
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -306,6 +307,38 @@ func TestContentHash(t *testing.T) {
 		if other.Hash == base.Hash {
 			t.Error("a list order change should be visible; the hash is over parsed content, " +
 				"and a slice preserves order")
+		}
+	})
+
+	t.Run("a pre-v2 block marshals with no v2 keys at all", func(t *testing.T) {
+		// The upgrade-boundary guarantee: a contract that predates the v2
+		// vocabulary must serialize — and therefore hash — exactly as it did
+		// before the fields existed. A binary upgrade alone must never mark
+		// every ledger row stale. `omitempty` on all four fields is what
+		// holds this; this test is what notices it slipping.
+		preV2 := validBlock
+		for _, line := range []string{
+			"lifecycle: [pinned, active, dormant, archived, superseded]\n",
+			"default_lifecycle: active\n",
+			"sources: {operator-direct: trusted, external-fetch: untrusted}\n",
+			"facets: [meetings, diary]\n",
+		} {
+			preV2 = strings.Replace(preV2, line, "", 1)
+		}
+		r, err := LoadFile(writeRules(t, t.TempDir(), preV2))
+		if err != nil {
+			t.Fatalf("a pre-v2 contract must stay valid while the migration runs: %v", err)
+		}
+		canonical, err := json.Marshal(r.block)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, key := range []string{"lifecycle", "default_lifecycle", "sources", "facets"} {
+			if strings.Contains(string(canonical), `"`+key+`"`) {
+				t.Errorf("pre-v2 block's canonical form carries %q — the hash has moved "+
+					"for text whose meaning is unchanged, and a binary upgrade would "+
+					"invalidate every judgment in the corpus", key)
+			}
 		}
 	})
 

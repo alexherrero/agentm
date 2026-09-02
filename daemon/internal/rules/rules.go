@@ -107,24 +107,30 @@ type block struct {
 	// migration runs: a contract that names none has no lifecycle vocabulary,
 	// which is the pre-v2 state, not a broken file. The shipped default carries
 	// the five.
-	Lifecycles []string `yaml:"lifecycle" json:"lifecycle"`
+	// All four v2 fields carry `omitempty`, and that is load-bearing rather
+	// than cosmetic: contentHash marshals this struct, and a pre-v2 block that
+	// names none of these must hash exactly as it did before the fields
+	// existed — a binary upgrade alone must never invalidate every judgment
+	// in the corpus. (Caught by adversarial review before the v2 binary ever
+	// shipped; the upgrade-boundary test in rules_test.go pins it now.)
+	Lifecycles []string `yaml:"lifecycle" json:"lifecycle,omitempty"`
 	// DefaultLifecycle is what a freshly filed memory carries. Required the
 	// moment `lifecycle` names any values, for the same reason `default_type`
 	// is required: a write path is never blocked on a caller getting an enum
 	// right, so every stamp needs a value to land on.
-	DefaultLifecycle string `yaml:"default_lifecycle" json:"default_lifecycle"`
+	DefaultLifecycle string `yaml:"default_lifecycle" json:"default_lifecycle,omitempty"`
 	// Sources is the closed transport vocabulary provenance stamps from —
 	// `source:` in a memory's frontmatter — mapped to the trust tier filing
 	// treats it as. Trust is a property of the transport, not the content: a
 	// fetched page is untrusted however plausible it reads, because write-time
 	// screening measurably cannot tell a well-written false claim from a true
 	// one.
-	Sources map[string]string `yaml:"sources" json:"sources"`
+	Sources map[string]string `yaml:"sources" json:"sources,omitempty"`
 	// Facets is the calendar's registry — the standing per-day surfaces the
 	// daily register files under. A facet earns its place by recurrence, and
 	// adding one is an edit here, never a mkdir: the registry is what keeps
 	// "the agent decides what mattered" from quietly growing new categories.
-	Facets []string `yaml:"facets" json:"facets"`
+	Facets []string `yaml:"facets" json:"facets,omitempty"`
 }
 
 // SourceTiers are the values `sources` may map a transport to. Two, on
