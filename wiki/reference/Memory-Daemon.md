@@ -320,6 +320,54 @@ Rewording the prose around it therefore leaves every judgment in the corpus
 standing, while changing what the block says marks them stale — identifiable, and
 queued for a later re-filing pass rather than corrected on the spot.
 
+### Lifecycle, sources, and facets
+
+The AgentM Filing v2 edit (`wiki/designs/agentm-filing-v2.md`, landing via
+[PR #518](https://github.com/alexherrero/agentm/pull/518)) adds three
+vocabularies to the block
+(`daemon/internal/rules/storage-rules.default.md:258-287`). You declare
+each one; the daemon validates it exactly like `memory_types` and
+`record_kinds` above — a malformed value halts filing, by name. None of the
+three has a runtime reader yet: this table is what the contract *names*, not
+what the daemon *does* with it.
+
+| Key | Field | Values | Holds |
+|---|---|---|---|
+| `lifecycle` | `lifecycle` | `pinned`, `active`, `dormant`, `archived`, `superseded` | The aging axis a memory declares in frontmatter. `default_lifecycle` (`active`) becomes required the moment `lifecycle` names any value — the same rationale as the unconditionally-required `default_type`, on a narrower trigger. |
+| `sources` | `source` | `operator-direct`, `conversation` → trusted; `external-fetch`, `email` → untrusted | The provenance vocabulary, stamped in a memory's `source:` field. Trust is a property of the transport, never the content. |
+| `facets` | — | `meetings`, `correspondence`, `docs`, `diary` | The calendar's standing per-day registry. Declared; no writer reads it yet. |
+
+The `lifecycle` field is a different key from the pre-existing
+`lifecycle_tier: durable` marker in [the rank penalty](#the-rank-penalty)
+above — a different field for a different, already-wired purpose (decay
+exemption).
+
+`record_kinds` also gained three calendar values in the same edit —
+`calendar-facet`, `day-index`, `calendar-review`
+(`storage-rules.default.md:210-212`) — and `routing` now sends `idea` to
+`memory/semantic`, previously `desk` (`storage-rules.default.md:175`).
+Capture never reads `routing`, so no file moves because of this change.
+`ClassFor` (`rules.go:563`) does read it, and only names a class for a
+`memory/`-prefixed destination (`rules.go:572`) — so `agentmd graph` now
+classifies every `type: idea` note as `semantic`, alongside preference and
+convention, instead of leaving it with no class at all. That reclassification
+is the only behavioral effect this task shipped; the write path and the
+idea-incubator's own read path ship later in the same arc.
+
+Validation sits beside the existing checks in `validate()`
+(`daemon/internal/rules/rules.go:381-423`): kebab-case and no duplicates for
+each list, `default_lifecycle` checked against `lifecycle`'s own values, and
+`sources` checked against a closed, deliberately two-value tier set
+(`SourceTiers`, `rules.go:134`) — a finer trust ladder would be precision a
+write-time check cannot honestly deliver. `Rules` exposes the read side as
+`IsLifecycle`, `SourceTier`, `IsFacet` (`rules.go:465`, `:477`, `:483`), with
+no caller yet; `StorageRules` mirrors it in Python as `lifecycles()`,
+`default_lifecycle()`, `sources()`, `facets()`
+(`harness/skills/memory/scripts/storage_rules.py:117`, `:122`, `:126`,
+`:131`). All four keys are optional-when-absent, so a pre-v2 rules file keeps
+parsing while the migration runs — the "absence falls through" rule this
+section already names.
+
 ## The derived indexes
 
 Three tables come out of the capture transaction, and all three are caches. They

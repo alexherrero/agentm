@@ -53,7 +53,11 @@ type Decision struct {
 	// Project is the slug the path belongs to, when it belongs to one.
 	Project string `json:"project,omitempty"`
 	// Task is the workbench slug, for a path under `tasks/`.
-	Task       string     `json:"task,omitempty"`
+	Task string `json:"task,omitempty"`
+	// Space is the vault top-level space, when the vault-level half judged.
+	Space string `json:"space,omitempty"`
+	// Level is the space's authority level, when the vault-level half judged.
+	Level      Level      `json:"level,omitempty"`
 	Permission Permission `json:"permission"`
 	// Why says how the answer was reached, in the words somebody about to be
 	// asked for alignment needs. A door that says no without saying why is one

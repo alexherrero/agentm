@@ -96,6 +96,13 @@ jobs:
         # the merge base. Only the live vault instance is unreachable, and its
         # absence is a documented skip rather than a silent pass.
         run: python3 scripts/check-storage-rules.py
+      - name: "check-vocabulary-membership (set-ratchet self-test — collision + membership fire)"
+        # A runner has no vault, so the corpus ratchet half skips itself with a
+        # named line; what runs in full here is the self-test — the collision
+        # fixture the daemon must refuse and the scratch-vault unregistered
+        # value the audit must catch. The ratchet half runs on the operator's
+        # machine through check-all, where the corpus actually is.
+        run: python3 scripts/check-vocabulary-membership.py
       - name: check-vault-frontmatter (self-test — the scanner's own defect classes)
         # The gate's scan mode walks the operator's vault, which a runner does
         # not have, so on CI it would skip and prove nothing. --self-test builds

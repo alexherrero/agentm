@@ -100,7 +100,38 @@ type block struct {
 	ContractExemptSpaces []string           `yaml:"contract_exempt_spaces" json:"contract_exempt_spaces"`
 	Warrants             map[string]Warrant `yaml:"warrants" json:"warrants"`
 	Thresholds           map[string]float64 `yaml:"thresholds" json:"thresholds"`
+	// Lifecycles is the aging axis a memory carries in `lifecycle:` — the
+	// graduated scale ranking reads as a demotion curve. Filing stamps
+	// DefaultLifecycle; policy and the operator move a memory along the scale by
+	// editing the field, never by moving the file. Optional while the v2
+	// migration runs: a contract that names none has no lifecycle vocabulary,
+	// which is the pre-v2 state, not a broken file. The shipped default carries
+	// the five.
+	Lifecycles []string `yaml:"lifecycle" json:"lifecycle"`
+	// DefaultLifecycle is what a freshly filed memory carries. Required the
+	// moment `lifecycle` names any values, for the same reason `default_type`
+	// is required: a write path is never blocked on a caller getting an enum
+	// right, so every stamp needs a value to land on.
+	DefaultLifecycle string `yaml:"default_lifecycle" json:"default_lifecycle"`
+	// Sources is the closed transport vocabulary provenance stamps from —
+	// `source:` in a memory's frontmatter — mapped to the trust tier filing
+	// treats it as. Trust is a property of the transport, not the content: a
+	// fetched page is untrusted however plausible it reads, because write-time
+	// screening measurably cannot tell a well-written false claim from a true
+	// one.
+	Sources map[string]string `yaml:"sources" json:"sources"`
+	// Facets is the calendar's registry — the standing per-day surfaces the
+	// daily register files under. A facet earns its place by recurrence, and
+	// adding one is an edit here, never a mkdir: the registry is what keeps
+	// "the agent decides what mattered" from quietly growing new categories.
+	Facets []string `yaml:"facets" json:"facets"`
 }
+
+// SourceTiers are the values `sources` may map a transport to. Two, on
+// purpose: a finer trust ladder would be precision the write path cannot
+// honestly deliver — the evidence says screening cannot grade plausible
+// content, so the only defensible distinction is where it came from.
+var SourceTiers = []string{"trusted", "untrusted"}
 
 // Rules is one parsed filing contract, plus where it came from.
 type Rules struct {
@@ -347,6 +378,51 @@ func (b block) validate(source string) error {
 		}
 	}
 
+	lifecycles := map[string]bool{}
+	for _, v := range b.Lifecycles {
+		if !kebabRe.MatchString(v) {
+			return fail("`lifecycle` entry %q is not kebab-case", v)
+		}
+		if lifecycles[v] {
+			return fail("`lifecycle` contains %q twice", v)
+		}
+		lifecycles[v] = true
+	}
+	if len(b.Lifecycles) > 0 && b.DefaultLifecycle == "" {
+		return fail("`lifecycle` names values but `default_lifecycle` is missing — a " +
+			"write path is never blocked on a caller getting an enum right, so every " +
+			"stamp needs a value to land on")
+	}
+	if b.DefaultLifecycle != "" && !lifecycles[b.DefaultLifecycle] {
+		return fail("`default_lifecycle` is %q, which `lifecycle` does not name", b.DefaultLifecycle)
+	}
+
+	tiers := map[string]bool{}
+	for _, tier := range SourceTiers {
+		tiers[tier] = true
+	}
+	for name, tier := range b.Sources {
+		if !kebabRe.MatchString(name) {
+			return fail("`sources` entry %q is not kebab-case", name)
+		}
+		if !tiers[tier] {
+			return fail("`sources` maps %q to tier %q; a tier is one of %s — trust is a "+
+				"property of the transport, and two tiers is all the write path can "+
+				"honestly distinguish", name, tier, strings.Join(SourceTiers, ", "))
+		}
+	}
+
+	facets := map[string]bool{}
+	for _, f := range b.Facets {
+		if !kebabRe.MatchString(f) {
+			return fail("`facets` entry %q is not kebab-case", f)
+		}
+		if facets[f] {
+			return fail("`facets` contains %q twice", f)
+		}
+		facets[f] = true
+	}
+
 	for name, w := range b.Warrants {
 		if strings.TrimSpace(w.QueryClass) == "" {
 			return fail("warrant for %q is missing `query_class`", name)
@@ -384,6 +460,34 @@ func (r *Rules) IsRecordKind(v string) bool {
 
 // Known reports whether either register carries v.
 func (r *Rules) Known(v string) bool { return r.IsMemoryType(v) || r.IsRecordKind(v) }
+
+// IsLifecycle reports whether v is a value the `lifecycle:` axis carries.
+func (r *Rules) IsLifecycle(v string) bool {
+	for _, l := range r.Lifecycles {
+		if l == v {
+			return true
+		}
+	}
+	return false
+}
+
+// SourceTier returns the trust tier for a provenance transport, and whether the
+// vocabulary names it at all. An unnamed transport is not a tier — the caller
+// decides whether that halts a stamp or falls back, and it must not guess here.
+func (r *Rules) SourceTier(v string) (string, bool) {
+	tier, ok := r.Sources[strings.TrimSpace(v)]
+	return tier, ok
+}
+
+// IsFacet reports whether v is a standing calendar facet.
+func (r *Rules) IsFacet(v string) bool {
+	for _, f := range r.Facets {
+		if f == v {
+			return true
+		}
+	}
+	return false
+}
 
 // ReplacementFor returns the value that replaces a retired one, and whether it
 // was retired at all.

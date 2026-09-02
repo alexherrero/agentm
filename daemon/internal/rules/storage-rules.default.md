@@ -111,6 +111,40 @@ it, so the collapse is mechanical rather than a judgment call repeated thousands
 of times. A value in that map is retired: nothing writes it, and a note still
 carrying it is a note the migration has not reached yet.
 
+## The lifecycle axis
+
+A memory ages on one frontmatter axis, `lifecycle`, and never by moving.
+`pinned` never decays; `active` is what filing stamps; `dormant` ranks below
+its active twin; `archived` leaves everyday search while staying on disk;
+`superseded` points at its successor. Ranking reads the axis as a demotion
+curve on top of the `decay_*` schedule below — the schedule is what moves a
+silent memory along, the axis is what makes the state legible and editable.
+
+Who moves a value is tiered by how hard it is to undo. Demotion runs
+automatic, logged, and summarized in a weekly digest of what quietly sank.
+Entering `archived` is conspicuous — confirmed, or at minimum surfaced for
+review. Deletion is not on this axis at all: a purge is an operator act that
+writes a manifest first, and no policy outcome ever deletes a memory.
+
+## Provenance
+
+Every filed memory records how it arrived — `source:` in frontmatter, from
+the closed transport vocabulary in the block. The tier is about the
+transport, never the content: material from an untrusted transport files
+normally, ranks normally, and is simply never treated as instructions, and
+no write-time judgment is asked to decide whether a plausible claim from
+outside is true. That is a boundary screening measurably cannot hold, so the
+contract does not pretend it holds it.
+
+## The calendar facets
+
+The daily register files one note per day per facet, and `facets` is the
+whole list of facets that exist. A facet file is created only on a day that
+had content for it; the diary facet is the zero-bar catch-all; and a pattern
+recurring three or more times in diary entries is the trigger to propose a
+new facet — an edit here, confirmed by the operator, never a directory the
+machinery invents.
+
 ## The block
 
 ```storage-rules
@@ -138,7 +172,7 @@ routing:
   reference: memory/semantic
   workflow: memory/procedural
   fix: memory/procedural
-  idea: desk
+  idea: memory/semantic
 
 record_kinds:
   - brief
@@ -173,6 +207,9 @@ record_kinds:
   - idea-incubator-summary
   - idea-incubator-research
   - idea-incubator-runbook
+  - calendar-facet
+  - day-index
+  - calendar-review
 
 deprecations:
   preferences: preference
@@ -206,6 +243,49 @@ deprecations:
 # Which spaces, not by how much. The strength is fixed in the daemon because a
 # 125-point sweep found every value at or below 0.6 ranks identically — a number
 # here would be a setting that provably changes nothing.
+# The aging axis a memory carries in `lifecycle:` — read by ranking as a
+# demotion curve, moved by policy and the operator, never expressed as a file
+# move. `pinned` never decays. `active` is the default every fresh filing
+# stamps. `dormant` ranks below its active twin. `archived` leaves everyday
+# search while staying on disk and answering an explicit archive query.
+# `superseded` points at its successor and never competes with it.
+#
+# `expired` is deliberately not here: it was a data-quality artifact of the
+# retired auto-miner, not a lifecycle state, and the migration maps it away.
+# Demotion along the scale is automatic and logged; entering `archived` is
+# conspicuous; deletion is not on this axis at all — a purge is an operator
+# act with a manifest, never a policy outcome.
+lifecycle:
+  - pinned
+  - active
+  - dormant
+  - archived
+  - superseded
+
+default_lifecycle: active
+
+# The provenance vocabulary — `source:` in a memory's frontmatter, stamped at
+# write time. Trust is a property of the transport, not the content: a fetched
+# page is untrusted however plausible it reads, because write-time screening
+# measurably cannot tell a well-written false claim from a true one. Untrusted
+# content files normally and is never treated as instructions.
+sources:
+  operator-direct: trusted
+  conversation: trusted
+  external-fetch: untrusted
+  email: untrusted
+
+# The calendar's standing facets — the per-day surfaces of the daily register.
+# A facet file exists only on a day that had content for it. A pattern
+# recurring three or more times in diary entries is the promotion trigger for
+# a new facet, and the promotion is an edit here, proposed to the operator,
+# never a mkdir.
+facets:
+  - meetings
+  - correspondence
+  - docs
+  - diary
+
 dampened_spaces:
   - Personal
 

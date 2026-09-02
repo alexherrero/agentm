@@ -29,6 +29,10 @@ record_kinds: [brief, telemetry]
 deprecations: {preferences: preference, insight: idea}
 warrants: {}
 thresholds: {low_confidence: 0.65}
+lifecycle: [pinned, active, dormant, archived, superseded]
+default_lifecycle: active
+sources: {operator-direct: trusted, external-fetch: untrusted}
+facets: [meetings, diary]
 `
 
 func rulesFile(block string) string {
@@ -75,6 +79,21 @@ func TestValidBlockRoundTrips(t *testing.T) {
 	}
 	if r.DefaultType != "preference" {
 		t.Errorf("default type = %q", r.DefaultType)
+	}
+	if !r.IsLifecycle("dormant") || r.IsLifecycle("expired") {
+		t.Error("IsLifecycle does not carry the v2 axis (or resurrects a retired value)")
+	}
+	if r.DefaultLifecycle != "active" {
+		t.Errorf("default lifecycle = %q", r.DefaultLifecycle)
+	}
+	if tier, ok := r.SourceTier("external-fetch"); !ok || tier != "untrusted" {
+		t.Errorf("SourceTier(external-fetch) = %q, %v; want untrusted, true", tier, ok)
+	}
+	if _, ok := r.SourceTier("carrier-pigeon"); ok {
+		t.Error("an unnamed transport reported a tier — the caller must see absence, not a guess")
+	}
+	if !r.IsFacet("diary") || r.IsFacet("interrupts") {
+		t.Error("IsFacet does not read the registry")
 	}
 }
 
@@ -123,6 +142,21 @@ func TestShapeValidation(t *testing.T) {
 			strings.Replace(validBlock, "warrants: {}",
 				"warrants:\n  person:\n    query_class: who is X\n    nearest: reference", 1),
 			"why_not"},
+		{"a lifecycle vocabulary with no default",
+			strings.Replace(validBlock, "default_lifecycle: active\n", "", 1),
+			"default_lifecycle"},
+		{"a default lifecycle the axis does not name",
+			strings.Replace(validBlock, "default_lifecycle: active", "default_lifecycle: expired", 1),
+			"does not name"},
+		{"a non-kebab lifecycle value",
+			strings.Replace(validBlock, "lifecycle: [pinned,", "lifecycle: [Pinned,", 1),
+			"kebab-case"},
+		{"a source mapped to an unknown tier",
+			strings.Replace(validBlock, "external-fetch: untrusted", "external-fetch: dubious", 1),
+			"tier"},
+		{"a duplicate facet",
+			strings.Replace(validBlock, "facets: [meetings, diary]", "facets: [diary, diary]", 1),
+			"twice"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -318,5 +352,50 @@ func TestPackagedDefault(t *testing.T) {
 	}
 	if len(r.Deprecations) == 0 {
 		t.Error("the shipped contract retires nothing, so the collapse has no map to run from")
+	}
+
+	// The v2 vocabulary is optional in an arbitrary contract (absence is the
+	// pre-v2 state, tolerated while the migration runs) but required in the one
+	// the repo ships — a fresh install starts on the current design, not the
+	// previous one.
+	wantLifecycle := []string{"pinned", "active", "dormant", "archived", "superseded"}
+	if len(r.Lifecycles) != len(wantLifecycle) {
+		t.Errorf("shipped lifecycle axis = %v, want the design's five", r.Lifecycles)
+	}
+	for _, v := range wantLifecycle {
+		if !r.IsLifecycle(v) {
+			t.Errorf("shipped contract is missing lifecycle value %q", v)
+		}
+	}
+	if r.IsLifecycle("expired") {
+		t.Error("`expired` survived into the shipped lifecycle axis; it was retired as a data-quality artifact")
+	}
+	if r.DefaultLifecycle != "active" {
+		t.Errorf("shipped default lifecycle = %q, want active", r.DefaultLifecycle)
+	}
+	for _, transport := range []string{"operator-direct", "conversation", "external-fetch", "email"} {
+		if _, ok := r.SourceTier(transport); !ok {
+			t.Errorf("shipped contract is missing source transport %q", transport)
+		}
+	}
+	if tier, _ := r.SourceTier("external-fetch"); tier != "untrusted" {
+		t.Error("external-fetch must ship untrusted — screening cannot grade plausible content")
+	}
+	wantFacets := []string{"meetings", "correspondence", "docs", "diary"}
+	if len(r.Facets) != len(wantFacets) {
+		t.Errorf("shipped facets = %v, want the ruled four", r.Facets)
+	}
+	for _, f := range wantFacets {
+		if !r.IsFacet(f) {
+			t.Errorf("shipped contract is missing facet %q", f)
+		}
+	}
+	if class, ok := r.ClassFor("idea"); !ok || class != "semantic" {
+		t.Errorf("ClassFor(idea) = %q, %v; the v2 contract routes idea to memory/semantic", class, ok)
+	}
+	for _, kind := range []string{"calendar-facet", "day-index", "calendar-review"} {
+		if !r.IsRecordKind(kind) {
+			t.Errorf("shipped contract is missing calendar record kind %q", kind)
+		}
 	}
 }

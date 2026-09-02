@@ -114,6 +114,24 @@ class StorageRules:
         """`{retired_value: replacement}` — the collapse map, mechanical."""
         return dict(self._data.get("deprecations") or {})
 
+    def lifecycles(self) -> frozenset:
+        """The aging axis a memory carries in `lifecycle:` — the graduated scale
+        ranking reads as a demotion curve. Empty on a pre-v2 contract."""
+        return frozenset(self._data.get("lifecycle") or ())
+
+    def default_lifecycle(self) -> str:
+        """What a freshly filed memory carries. Empty on a pre-v2 contract."""
+        return self._data.get("default_lifecycle") or ""
+
+    def sources(self) -> dict:
+        """`{transport: trust_tier}` — the closed provenance vocabulary `source:`
+        stamps from. Trust is a property of the transport, not the content."""
+        return dict(self._data.get("sources") or {})
+
+    def facets(self) -> tuple:
+        """The calendar's standing per-day facets, in registry order."""
+        return tuple(self._data.get("facets") or ())
+
     def model_exempt_spaces(self) -> list:
         """Spaces no background model pass may read."""
         return list(self._data.get("model_exempt_spaces") or [])
