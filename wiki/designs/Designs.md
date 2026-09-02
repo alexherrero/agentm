@@ -18,6 +18,7 @@ The [Architecture](Architecture) page lists those designs that have been impleme
 | [Memory System](agentm-memory-system)                                           | The engine end to end — how memory is stored, written, and recalled                                  |  Final   |
 | &nbsp;&nbsp;↳ [Capture](agentm-capture)                                         | Getting a thought or article into memory from your phone, browser, or a chat — the staging front door |  Final   |
 | &nbsp;&nbsp;↳ [Auto-Organization](agentm-auto-organization)                     | Keeping the vault tidy on its own — write-time linking, tidying by age, dedup, and lint                |  Final   |
+| &nbsp;&nbsp;↳ [Filing v2](agentm-filing-v2)                                     | The whole-vault convergence — layout, write authority, the calendar, memory lifecycle, and the dreaming binary |  Final   |
 | [Memory↔Storage Seam](memory-storage-seam)                                      | The contract memory uses to reach storage, so the backend can change without touching the engine     |  Final   |
 | &nbsp;&nbsp;↳ [Vault Storage & Presentation](agentm-vault-storage-presentation) | Where the vault lives and how it syncs to your devices                                               | Proposed |
 | [Memory index](agentm-memory-index)                                             | The metadata table behind fast, hybrid recall                                                        |  Final   |
