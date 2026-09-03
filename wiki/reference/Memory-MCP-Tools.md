@@ -54,7 +54,7 @@ You can write a new memory entry. This operation is idempotent on `idempotency_k
 |---|---|---|---|
 | `content` | `str` | required | Memory content (Markdown) |
 | `kind` | `str` | required | Entry kind |
-| `project` | `str \| null` | `null` | Groups the entry under `projects/<project>` instead of `personal` |
+| `project` | `str \| null` | `null` | Groups the entry under the project's own space — the vault-root `Projects/<project>` when it holds the project (filing-v2 part 2b), else `desk/projects/<project>` — instead of `memory` |
 | `title` | `str \| null` | `null` | Falls back to a slug of `content[:60]` when omitted — there is no separate `body` param, `content` is the whole entry |
 | `tags` | `list[str] \| null` | `null` | Optional labels |
 | `idempotency_key` | `str \| null` | `null` | Deduplicates concurrent writes; stored as a hashed tag |

@@ -8,7 +8,7 @@ area: agentm/vault
 author: alexherrero
 contributors: []
 created: 2026-09-01
-updated: 2026-09-01
+updated: 2026-09-03
 last_major_revision: 2026-09-01
 prd:
 project:
@@ -183,10 +183,21 @@ in this repo shipped as **2a**; the Projects merge became the queued **2b**
 development-lifecycle plugin's own repoint (resolve_plan, queue-status, the
 worker-spawn flow all navigate that path) in a coordinated paired release
 this repo cannot ship alone — a cross-repo dependency the sequencing never
-named, logged as a plan gap. In 2b, `Projects/` at the root becomes the
-only projects folder: the working trees under `desk/projects/<slug>/` move
-there wholesale, `_harness/` state intact, and every tool path that
-resolves harness state is inventoried and repointed. Machine state leaves
+named, logged as a plan gap. 2b shipped as v9.11.0, paired with crickets
+development-lifecycle v3.37.0 (which shipped first, as the locked order
+required): `Projects/` at the vault root is the only projects folder — the
+working trees under `desk/projects/<slug>/` moved there wholesale as
+`git mv`, basenames preserved and `_harness/` state intact, `desk/labelling`
+folded into `Projects/agentm/labelling`, and every path that resolves
+harness state was inventoried and repointed. The root space sits above the
+memory root, so the storage seam reaches it through a second backend
+instance rooted one level up rather than a `..` Locator — offered only under
+the Obsidian witness (`.obsidian/` at the parent, none at the memory root),
+never on a bare parent directory (the storage-seam design carries that
+decision); readers keep `desk/projects/` as a documented
+older probe rung — "discovered, never conjured": nothing creates the root
+space, and create-when-absent defaults stay inside the memory root until
+the space exists. Machine state leaves
 the vault for `~/.local/state/agentm/` (ruled): corpus snapshots, learning
 caches, skill-discovery cache, `storage-rules-state.json`, and the dreaming
 binary's journals. The engine directory is itself a git repository — the
@@ -372,7 +383,7 @@ and both launchd jobs; the crickets development-lifecycle plugin for the
 part plans this design sequences into; Obsidian's name-based wikilink
 resolution (load-bearing for the migration invariant) and the Google Drive
 sync path; and the research bundle at
-`desk/projects/agentm/_harness/research-filing-v2/` as the evidence record —
+`Projects/agentm/_harness/research-filing-v2/` (moved with the tree in 2b) as the evidence record —
 including its evidence-versus-judgment ledger, which this design treats as
 binding on how confidently each choice is stated.
 
@@ -391,7 +402,11 @@ precondition sets the collision doctrine (learned in the 2a apply): when a
 move finds its destination already occupied, the vault copy wins — it is by
 definition the last production write, whatever sits at the destination
 predates the migration, and the engine repository's history preserves what
-gets replaced. Rollback for every phase except the purge is `git revert` in the
+gets replaced. A bulk move also re-keys every moved note for the dense arm,
+and the daemon re-walks the tree without backfilling those vectors, so a
+move's run order ends with `agentmd embed` (learned in the 2b apply: the
+retrieval gate read 0.734 → 0.438 until the backfill restored it exactly).
+Rollback for every phase except the purge is `git revert` in the
 vault repository plus replaying the path repoints; the purge is
 non-rollbackable by design and bounded by its manifest. The Python dreaming
 layer is not retired until the Go binary's parity fixtures pass; the two
@@ -556,3 +571,4 @@ layer, which is not retired until parity fixtures pass.
 |---|---|---|
 | 2026-09-01 | Initial draft created via `/design author`, drafted from the decided filing-v2 synthesis (six research lanes, vault census, and operator rulings — see `desk/projects/agentm/_harness/research-filing-v2/`); review pass ran the same session — all sections and quality attributes approved unrevised — and the operator approved as final. Translated to 6 parts via `/design translate` (operator-approved split): rules-and-authority, structural-moves, corpus-migration, write-path, calendar, lifecycle-dreaming — part files at the vault's `_harness/designs/agentm-filing-v2/parts/`. Sequenced into 6 draft plans via `/design sequence`: `PLAN-rules-and-authority.md` active (named-plan mode, beside the unrelated online-recall plan), five queued at `_harness/designs/agentm-filing-v2/queued-plans/`. | final |
 | 2026-09-02 | Part 2 reconciled to what shipped (v9.10.0, PRs #521/#522). Three amendments: (1) structural-moves **split 2a/2b** — the Projects merge needs the crickets development-lifecycle repoint in a paired release this repo cannot ship alone (why not ship it here: a one-repo move would strand every plan-resolution path; re-audit when 2b lands — fold this paragraph back to one part). (2) The engine state dir is a **git repository** (migration inits, runner commits on cadence) — why not plain files: the exit from the vault would silently trade away the history-durability those files had from the vault's repo; re-audit if the runner's commit cadence ever stalls (a dirty engine repo older than a week is the tell). (3) Diagnostics directories are **per-family** (`health/dreaming/digests`), not the drafted per-system trio — why: the writers emit by family, and the drafted names would have forced a router nothing needed; plus the Migrations section gains the **vault-wins collision doctrine** learned in the live apply (quiesce makes the vault copy the last production write; skip-on-collision stranded real state behind scratch leakage). | final |
+| 2026-09-03 | Part 2b (projects-merge) reconciled to what shipped (v9.11.0, PRs #528/#529; crickets development-lifecycle v3.37.0 first, the paired order as locked). Body: the structural-moves paragraph folds 2a/2b back to one shipped part. Two decisions recorded: (1) the vault-root `Projects/` space is reached through a **second seam backend instance** rooted at the vault root — why not a `..` Locator: Locators are root-confined by construction, and a relative escape would silently mis-root every later join onto the memory root (the storage-seam design carries the mechanism and its re-audit triggers) — the pre-tag review added the **Obsidian witness**: the sibling counts only when the memory root is nested inside a vault (`.obsidian/` at the parent, none at the memory root), because a flat vault's parent is the operator's home, where a `Projects/` is common, and the flat generation `<memory-root>/Projects` now reaches every walker and writer; (2) readers keep `desk/projects/` as a documented older probe rung — why not drop it: "discovered, never conjured" needs the rung for a vault that has not moved, and it costs one `is_dir`; re-audit when part 3 retires the last desk-era path, then drop the rung. Migrations gains the **embed backfill invariant** (a move re-keys the dense arm; `agentmd embed` closes the run) — learned in the 2b apply. Dependencies now names the moved research bundle. | final |

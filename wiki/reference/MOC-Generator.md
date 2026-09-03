@@ -15,7 +15,7 @@
 | What generates the MOCs? | `harness/skills/memory/scripts/moc_generator.py` — `build_kind_groups(vault_path)` (`moc_generator.py:89`) + `generate(vault_path)` (`moc_generator.py:136`). |
 | How do I run it? | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path>` (CLI-invokable; no hook or scheduling wiring in this plan). |
 | Where do the generated pages live? | `<vault>/_moc/<kind>.md` — one page per distinct `kind` (`_OUTPUT_DIRNAME`, `moc_generator.py:30`). |
-| Does it read the whole vault, or something narrower? | A read-only walk over `personal/`, `projects/`, `_idea-incubator/` (`_WALK_SUBDIRS`, `moc_generator.py:28`) — the same three roots `graph_snapshot.py` walks. Deliberately wider than `frontmatter_validator.py`'s DC-4-exempt walk (task 2) — MOCs should cover every kind the vault holds, incubator included. |
+| Does it read the whole vault, or something narrower? | A read-only walk over `memory/`, `desk/projects/`, `_idea-incubator/` (`_WALK_SUBDIRS`, `moc_generator.py:28`) — the same roots `graph_snapshot.py` walks — plus the vault-root `Projects/` as of filing-v2 part 2b, unioned with `desk/projects/` for the duration of the merge window. Deliberately wider than `frontmatter_validator.py`'s DC-4-exempt walk (task 2) — MOCs should cover every kind the vault holds, incubator included. |
 | Is it safe to re-run? | Yes — idempotent. Regenerating overwrites only the `_moc/*.md` pages it owns; it never touches source notes. Confirmed byte-identical by `test_idempotent_regeneration_is_byte_identical` and never-mutates-sources by `test_never_touches_source_notes` (`scripts/test_moc_generator.py`). |
 | What order are entries listed in? | Newest-first by `created`, within each kind group. |
 | Does it label unrecognized kinds? | Yes, via the [kind-taxonomy registry](Kind-Taxonomy-Registry)'s `is_known()` — an unrecognized kind's page header reads `<kind> (unrecognized kind)`. |
@@ -86,11 +86,11 @@ This prints a summary line (`wrote N MOC page(s) under <vault>/_moc`). This is f
 
 ## Arc-index pages (`--arcs`)
 
-The `--arcs` flag additionally (re)generates one `kind: arc-index` page per `(project, arc)` pair at `<vault>/projects/<project>/arcs/<arc-slug>.md`, for every entry under `projects/` carrying an `arc:` frontmatter field (the 2026-07-18 arc-as-metadata convention — see [AgentM Memory System § Arcs](../designs/agentm-memory-system#arcs--temporal-grouping-as-metadata-not-folders)).
+The `--arcs` flag additionally (re)generates one `kind: arc-index` page per `(project, arc)` pair at that project's own tree — the vault-root `Projects/<project>/arcs/<arc-slug>.md` when that space holds the project (filing-v2 part 2b), else `<vault>/desk/projects/<project>/arcs/<arc-slug>.md` — for every entry under either project space carrying an `arc:` frontmatter field (the 2026-07-18 arc-as-metadata convention — see [AgentM Memory System § Arcs](../designs/agentm-memory-system#arcs--temporal-grouping-as-metadata-not-folders)).
 
 | Function | Signature | Purpose |
 |---|---|---|
-| `build_arc_groups(vault_path)` | `build_arc_groups(vault_path: Path \| str) -> dict[tuple[str, str], list[tuple[str, str, dict]]]` (`moc_generator.py`) | Read-only scan of `projects/` for entries carrying `arc:`. Returns `{(project, arc): [(rel_path_str, created, fm), ...]}`, newest-first by `created`. |
+| `build_arc_groups(vault_path)` | `build_arc_groups(vault_path: Path \| str) -> dict[tuple[str, str], list[tuple[str, str, dict]]]` (`moc_generator.py`) | Read-only scan of `desk/projects/` and the vault-root `Projects/` (unioned) for entries carrying `arc:`. Returns `{(project, arc): [(rel_path_str, created, fm), ...]}`, newest-first by `created`. |
 | `generate_arc_indexes(vault_path, *, today)` | `generate_arc_indexes(vault_path: Path \| str, *, today: str) -> list[str]` | Writes/updates each `(project, arc)` page. Returns the `project/arc` keys written. |
 | CLI | `python3 harness/skills/memory/scripts/moc_generator.py --vault <path> --arcs` | Runs `generate()` as normal, then also runs `generate_arc_indexes()`. |
 

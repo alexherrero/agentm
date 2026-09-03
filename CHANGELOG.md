@@ -7,6 +7,111 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [9.11.0] - 2026-09-03
+
+Filing v2 part 2b — the projects merge ([#528](https://github.com/alexherrero/agentm/pull/528),
+[#529](https://github.com/alexherrero/agentm/pull/529)). The vault's project
+trees live at the root `Projects/<slug>/`, sibling of the memory root, and
+`Agent/desk/projects/` is gone — the one tree per project the design named.
+This is the paired half of a cross-repo release: the crickets
+development-lifecycle plugin shipped first, as
+[v3.37.0](https://github.com/alexherrero/crickets/releases/tag/v3.37.0),
+so every plan-resolution path in that plugin knew the root generation before
+anything moved. Applied live — ten entries moved as `git mv` under a quiesced
+daemon and runner, then the embed backfill that a bulk move turns out to need
+(recorded below as a migration invariant).
+
+### Added
+
+- **Root-space resolution through the storage seam.** The vault-root
+  `Projects/` space sits above the memory root, out of reach of a root-confined
+  `Locator`, so `resolve_project` reaches it through a second instance of the
+  same backend class rooted one level up — derived from the backend's own
+  root, never from global config, and only when the sibling directory exists
+  (`layout: "root"`). Readers keep `desk/projects/` as a documented older
+  rung: "discovered, never conjured" — nothing creates the root space, and
+  create-when-absent defaults stay inside the memory root.
+- **Writers follow the tree.** A root-space note carries
+  `group: projects/<slug>/…` and `save.py` maps it onto `Projects/`; MCP
+  capture, `promote`, `ideas_promote`, the MOC arcs index, offer-save, and
+  new-project resolution all land in the root space when it exists.
+- **`scripts/migrate/projects_merge_2b.sh`** — dry-run by default, `git mv`
+  for tracked entries, directory-into-directory merge with the source winning,
+  `desk/labelling` folded into `Projects/agentm/labelling`; its run order ends
+  with `agentmd embed`.
+- **Tests:** `test_projects_merge_layouts.py` (resolution across the flat,
+  nested, window, and root generations; walker unions; group derivation;
+  writer targets; recall corpus; the consistency gate) and
+  `test_skill_modules_file_loadable.py` (every memory-skill module loads by
+  file path with a pristine `sys.path`).
+
+### Changed
+
+- **Walkers union both spaces** — `arc_registry`, `kind_registry`,
+  `moc_generator`, `vault_lint`, `frontmatter_validator`, `graph_snapshot`
+  (its slug now derives after the prefix), `migrate_arcs`,
+  `machinery_doctor`, and `migrate-harness-to-vault.sh` probe the root space
+  first and fall back to desk.
+- **Recall reaches the root space.** `_derive_project` derives the slug on
+  either prefix; the Python corpus walk crosses into the sibling (keys
+  `../Projects/<slug>/…`, joinable onto the vault); session-start dedups by
+  stem with `standards/` winning.
+- **Daemon:** root `Projects` joins the default embed scope and
+  `spaces.projects` defaults to `Projects` (the same place the Python side
+  spells `../Projects`, from its own root — a test pins both).
+- **Instruments:** `eval_v6_retrieval` and `eval_retrieval_shipped` remap
+  pinned `desk/projects` paths at score time; `check-memory-root-consistency`
+  allows the one designed sibling.
+- `ideas_promote` wrote to a pre-four-space `memory/projects` target; it now
+  resolves the project home like every other writer.
+
+### Fixed
+
+Pre-tag adversarial review, five confirmed defects, all fixed with pins in
+[#530](https://github.com/alexherrero/agentm/pull/530):
+
+- **The sibling probe had no vault anchor.** Every root-space reader and
+  writer tested `<memory-root>/../Projects` bare, so a flat vault — the memory
+  root at the top of its own vault, whose parent is the operator's home —
+  would adopt the operator's own `~/Projects` as the vault's project space
+  and resolve, walk, and write into it. One predicate now governs every
+  site: the flat generation `<memory-root>/Projects`, or the sibling only
+  when the memory root is nested inside an Obsidian vault (`.obsidian/` at
+  the parent, none at the memory root) — and both rungs match the
+  directory's exact case, because on a case-insensitive disk `Projects/`
+  answers for the V4-era `projects/` rung. Vendored per skill script and
+  pinned byte-identical by test.
+- **`migrate_arcs` crashed on a root-space project** — its plans keyed paths
+  with `relative_to(memory root)`; root-space rows are now keyed relative to
+  the vault root and re-rooted on apply, and the link sweep reads the
+  sibling too.
+- **Five walkers saw only the nested sibling**, never a flat vault's
+  `<memory-root>/Projects`; `promote` had the same gap.
+- **The move script's type-clash branch `rm -rf`'d a destination
+  directory** when a same-named file arrived; it now refuses with both copies
+  in place, and refuses outright on a flat vault. New end-to-end suite
+  (`test_projects_merge_migration.py`, POSIX-gated).
+- `migrate-harness-to-vault.sh` conjured `../Projects` for an empty vault;
+  a new project now lands on the memory-root layout, as `resolve_project`
+  already did.
+
+### Internal
+
+- Eleven memory-skill modules imported the vendored `engine_state` before
+  bootstrapping their own directory onto `sys.path`, so loading one by file
+  path (as a foreign host does) raised `ModuleNotFoundError`; the guard now
+  precedes every sibling import.
+- The macOS CI runner image ships a system PyYAML without a `RECORD`, so
+  `pip install` fails to uninstall it; the install-smoke and Mac test jobs
+  pass `--ignore-installed`.
+- `verify-state-routing.sh` gains the nested-root end-to-end case (memory root
+  under a vault root with a sibling `Projects/<slug>/`): harness state lands
+  in `<vault>/Projects/<slug>/_harness/`.
+- **Migration invariant, learned in the apply:** a bulk move re-keys every
+  moved note for the dense arm and the daemon does not backfill them — the
+  retrieval gate read 0.734 → 0.438 until `agentmd embed` (1,294 notes)
+  restored it exactly. The move script's run order records the step.
+
 ## [9.10.0] - 2026-09-02
 
 Filing v2 part 2a — the structural moves ([#521](https://github.com/alexherrero/agentm/pull/521),

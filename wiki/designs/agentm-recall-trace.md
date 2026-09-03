@@ -297,7 +297,7 @@ code dependency).
   gaining the doc pointer
 - [memory index](agentm-memory-index.md) · [memory system](agentm-memory-system.md) —
   sibling designs `query()`'s hybrid-recall + lifecycle machinery live under
-- `<vault>/projects/agentm/_harness/designs/loose-ends/SWEEP-INVENTORY.md` —
+- `<vault>/Projects/agentm/_harness/designs/loose-ends/SWEEP-INVENTORY.md` —
   the row this design resolves ("Recall-trace substrate")
 
 ## Amendment log

@@ -108,7 +108,7 @@ Hybrid search is optional and additive: the daemon is still pure Go (`CGO_ENABLE
 
 Liveness comes from the work, not from `/health`: a wedged `llama-server` answers `/health` with 200 while failing every real embedding, so three consecutive failed embeddings — not an HTTP code — condemn the child and trigger a restart with exponential backoff. `agentmd status` reports `embedder ok (warm) · <model> · N/M embedded` or `DEGRADED — hybrid off` with the reason; the same detail is on `/status` as `health.embedder`.
 
-Notes longer than the window are split into overlapping chunks (the model's own byte budget, 1/10 overlap) rather than truncated — a note scores by its single best-matching chunk. The vector arm is scoped to `Agent/memory`, `Agent/desk`, `Agent/external`, and `Agent/diagnostics` (the diagnostics space joined in filing-v2 part 2a — the digests and scorecards it holds lived under `desk` before the move and were already dense-retrievable); `_vault-archive/` and the residual `_meta/` are never embedded.
+Notes longer than the window are split into overlapping chunks (the model's own byte budget, 1/10 overlap) rather than truncated — a note scores by its single best-matching chunk. The vector arm is scoped to `Agent/memory`, `Agent/desk`, `Agent/external`, `Agent/diagnostics` (the diagnostics space joined in filing-v2 part 2a — the digests and scorecards it holds lived under `desk` before the move and were already dense-retrievable), and the vault-root `Projects/` (joined in filing-v2 part 2b — the project trees lived under `desk` before that merge and were already dense-retrievable too, so the move must not silently drop them from the vector arm); `_vault-archive/` and the residual `_meta/` are never embedded.
 
 ## The rank penalty
 
@@ -191,7 +191,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 | Key | Default | Notes |
 |---|---|---|
 | `plugins.obsidian-vault.vault_path` | — | Required. `$MEMORY_VAULT_PATH` overrides it. |
-| `daemon.spaces` | derived from `memory_root`: `{"memory": "<root>/memory", "projects": "<root>/desk/projects", "diagnostics": "<root>/diagnostics"}` | Space name to vault-relative directory. `diagnostics` joined the defaults in filing-v2 part 2a. |
+| `daemon.spaces` | derived from `memory_root`: `{"memory": "<root>/memory", "projects": "Projects", "diagnostics": "<root>/diagnostics"}` | Space name to vault-relative directory. `diagnostics` joined the defaults in filing-v2 part 2a. `projects` points at the vault-root sibling `Projects/` as of filing-v2 part 2b — unprefixed, since it sits beside `<root>` (previously `<root>/desk/projects`). |
 | `daemon.shard` | `date` | `date` writes `<space>/<YYYY>/<MM>/<slug>.md`; `flat` writes `<space>/<slug>.md`. |
 | `daemon.phone_paths` | `[]` | Vault-relative prefixes whose changes are attributed to the phone. |
 | `daemon.reconcile_every` | `5m` | How often to re-walk the vault. |
@@ -207,7 +207,7 @@ Read from `~/.claude/.agentm-config.json`, overridable per-invocation by flags.
 | `plugins.autonomy.email_smtp_url` | — | `smtp://[user[:password]@]host[:port]`. Both keys required, or the channel skips. |
 | `plugins.autonomy.email_from` | `email_to` | For relays that need a domain-verified sender. |
 
-`daemon.spaces` and `daemon.shard` are the seam the `Agent/memory` + `Agent/desk` migration turned on. Moving to that layout was an edit to these two keys, not a rewrite — which is why the defaults derive from `memory_root` instead of naming directories as literals.
+`daemon.spaces` and `daemon.shard` are the seam the `Agent/memory` + `Agent/desk` migration turned on. Moving to that layout was an edit to these two keys, not a rewrite — which is why the defaults derive from `memory_root` instead of naming directories as literals, with one deliberate exception: `projects` is now the unprefixed literal `Projects`, the vault-root sibling filing-v2 part 2b moved it to (the Python stack names the same sibling as `../Projects`, relative to its own root).
 
 ## The loud queue
 

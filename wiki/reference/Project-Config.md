@@ -8,7 +8,7 @@ You configure each project in `.harness/project.json`. This file holds `vault_pr
 |---|---|
 | Where does enablement config live? | `.harness/project.json` — NOT `features.json` (locked DC-1). |
 | Who writes it? | [`scripts/project_config.py`](https://github.com/alexherrero/agentm/blob/main/scripts/project_config.py) — `register()` calls `merge_enablement()`, which preserves every other key (`vault_project` / `github` / `env`) and overwrites only the enablement keys. |
-| Where does the file resolve to? | Vault-resident post-V4 #26: `<vault>/projects/<slug>/_harness/project.json`. The writer routes through `harness_memory.write_state_file` (`.project-mode`-aware — routes to the repo-local home `<repo>/.harness/` for local-mode projects, which `write_state_file` now writes with no vault configured; distinct from the migrate-nagging legacy fallback). |
+| Where does the file resolve to? | Vault-resident post-V4 #26, at the vault-root `Projects/<slug>/_harness/project.json` as of filing-v2 part 2b (`desk/projects/<slug>/_harness/` is the older fallback rung). The writer routes through `harness_memory.write_state_file` (`.project-mode`-aware — routes to the repo-local home `<repo>/.harness/` for local-mode projects, which `write_state_file` now writes with no vault configured; distinct from the migrate-nagging legacy fallback). |
 | What counts as "registered"? | `is_registered()` = `project.json` carries a non-empty `skills` block **OR** the repo has a `repo_registry` entry. |
 | What's the default `type`? | `"coding"` (the type taxonomy is deferred to V5). |
 | Related pages | [Detection rules](Detection-Rules), [Configure a new project](Configure-A-New-Project), [Repo layout](Repo-Layout) |

@@ -12,7 +12,7 @@ The vault is a directory tree, not a database. Entries live under a few well-kno
 | Region | Holds | Loaded |
 |---|---|---|
 | `standards/` (∪ the legacy `memory/_always-load/` pen) | standing preferences, conventions, durable fixes | every session start |
-| `desk/projects/<name>/` | per-project goals, plans, progress | on demand, by project |
+| `Projects/<name>/` | per-project goals, plans, progress | on demand, by project |
 | `diagnostics/` | health scorecards, dreaming reports, digests, dated audits | by the tooling, not the agent |
 
 Machine state — caches, cursors, orchestration state — is not a vault region at all: it lives outside the vault in the engine state directory (`~/.local/state/agentm/`, its own git repo the runner commits), so the vault stays the knowledge surface both audiences read.

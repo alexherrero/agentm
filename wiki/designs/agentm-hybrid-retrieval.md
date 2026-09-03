@@ -359,10 +359,12 @@ it.
   conditional is now exercised.
 - `scripts/health/results/goldv2/NOTES.md` — every measurement cited above.
 - The AgentKV reciprocal handoff
-  (`<vault>/Agent/desk/projects/agentm/_harness/agentkv-reciprocal-handoff.md`)
+  (`<vault>/Projects/agentm/_harness/agentkv-reciprocal-handoff.md`)
   — the cross-system findings this design absorbs and corrects.
 
 ## Amendment log
+- **2026-09-03 — the AgentKV reciprocal-handoff citation is repointed to the vault-root `Projects/` (filing-v2 part 2b).** The Related section's link named `<vault>/Agent/desk/projects/agentm/_harness/...`, which no longer resolves; project trees now live at `<vault>/Projects/<slug>/`, a sibling of the memory root. Mechanical fix, no measurement or verdict changes. Dated amendment-log citations elsewhere in this file are left as written — they record what was true when measured.
+
 - **2026-08-30 — online measurement added as a second instrument.** The offline
   ladder is unchanged and still governs acceptance. Added because algorithm
   changes were not moving the offline numbers and nobody could say whether that
