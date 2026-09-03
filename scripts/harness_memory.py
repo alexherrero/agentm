@@ -593,17 +593,48 @@ _VAULT_PROJECTS_REL_LEGACY = "personal-projects"
 _VAULT_ROOT_PROJECTS_REL = "Projects"
 
 
+def _root_projects_dir(vault):
+    """The vault-root `Projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
+    parent and none at the memory root itself: the sibling
+    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    sibling, whatever directory named `Projects` sits beside it (its parent
+    is the operator's home or a sync folder, where one is common and is not
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
+    vault = Path(vault)
+    flat = vault / "Projects"
+    if _is_dir_exact(flat):
+        return flat
+    parent = vault.parent
+    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        sibling = parent / "Projects"
+        if _is_dir_exact(sibling):
+            return sibling
+    return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
+
+
 def _project_group_segment(vault: Path, project: str) -> str:
     """The group segment a writer stamps for `project`, from where it lives:
     `projects` (the vault-root space, which save.py maps onto Projects/) when
     that space holds it or exists with nothing older holding it;
     `desk/projects` when desk holds it; else the legacy name."""
-    root = Path(vault).parent / _VAULT_ROOT_PROJECTS_REL
-    if (root / project).is_dir():
+    root = _root_projects_dir(vault)
+    if root is not None and (root / project).is_dir():
         return "projects"
     if (Path(vault) / _VAULT_PROJECTS_REL_NEW / project).is_dir():
         return _VAULT_PROJECTS_REL_NEW
-    if root.is_dir():
+    if root is not None:
         return "projects"
     if (Path(vault) / _VAULT_PROJECTS_REL_NEW).is_dir():
         return _VAULT_PROJECTS_REL_NEW
@@ -618,16 +649,31 @@ def _root_projects_candidates(backend: "StorageBackend") -> list:
     Flat layout: `<backend-root>/Projects` on the primary backend. Nested
     layout (the designed one — memory root `Agent/` beside `Projects/`): a
     second instance of the same synced backend class rooted one level up.
-    Never raises; a probe that cannot be built is simply absent.
+    The sibling is offered only in the nested layout, witnessed by `.obsidian/`
+    at the parent and none at the root itself: a flat vault's parent is the
+    operator's home or a sync folder, where a directory named `Projects` is
+    common and is not the vault's — probing it would resolve every project
+    into the operator's own tree. Never raises; a probe that cannot be built
+    is simply absent.
     """
-    out = [(backend, (_VAULT_ROOT_PROJECTS_REL,))]
+    out = []
     try:
-        if not bool(backend.capabilities.sync):
-            return out
         broot = Path(getattr(backend, "root"))
     except Exception:
         return out
-    if not (broot.parent / _VAULT_ROOT_PROJECTS_REL).is_dir():
+    # The flat rung, only when the directory exists with exactly that name —
+    # a case-insensitive filesystem would otherwise answer for the V4-era
+    # `projects/` rung and resolve every legacy project as root-space.
+    if _is_dir_exact(broot / _VAULT_ROOT_PROJECTS_REL):
+        out.append((backend, (_VAULT_ROOT_PROJECTS_REL,)))
+    try:
+        if not bool(backend.capabilities.sync):
+            return out
+    except Exception:
+        return out
+    if (broot / ".obsidian").is_dir() or not (broot.parent / ".obsidian").is_dir():
+        return out
+    if not _is_dir_exact(broot.parent / _VAULT_ROOT_PROJECTS_REL):
         return out
     try:
         try:

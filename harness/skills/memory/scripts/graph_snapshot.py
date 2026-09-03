@@ -84,6 +84,37 @@ def _vault_rel(path: Path, vault: Path) -> str:
     return str(rel).replace("\\", "/")
 
 
+def _root_projects_dir(vault):
+    """The vault-root `Projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
+    parent and none at the memory root itself: the sibling
+    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    sibling, whatever directory named `Projects` sits beside it (its parent
+    is the operator's home or a sync folder, where one is common and is not
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
+    vault = Path(vault)
+    flat = vault / "Projects"
+    if _is_dir_exact(flat):
+        return flat
+    parent = vault.parent
+    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        sibling = parent / "Projects"
+        if _is_dir_exact(sibling):
+            return sibling
+    return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
+
+
 def _vault_projects_dir(vault: Path) -> Path:
     """Return <vault>/projects/ (post-V4 #26 canonical) if present, else
     <vault>/personal-projects/ (legacy fallback). Mirrors the same helper
@@ -218,8 +249,8 @@ def _walk_vault_paths(vault: Path) -> list[str]:
         walk_roots.append(private)
     # Filing-v2 2b: the vault-root `Projects/` generation is a SIBLING of the
     # memory root; during the merge window both spaces may hold projects.
-    for projects in (_vault_projects_dir(vault), vault.parent / "Projects"):
-        if projects.is_dir():
+    for projects in (_vault_projects_dir(vault), _root_projects_dir(vault)):
+        if projects is not None and _is_dir_exact(projects) and projects not in walk_roots:
             walk_roots.append(projects)
     incubator = vault / "_idea-incubator"
     if incubator.is_dir():

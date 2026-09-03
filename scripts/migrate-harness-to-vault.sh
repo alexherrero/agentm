@@ -124,7 +124,15 @@ fi
 # stage-2 four-space migration (2026-08-10) had moved the space down a level to
 # desk/projects/; V4 #26 had already renamed personal-projects/ to projects/. A
 # vault that has not been migrated keeps working on its own rung.
-if [[ -d "$VAULT_PATH/../Projects/$SLUG" ]]; then
+# The root space is discovered, never conjured: flat `<memory-root>/Projects`,
+# or the sibling `<vault-root>/Projects` only when the memory root is nested
+# inside an Obsidian vault (`.obsidian/` at the parent, none at the memory
+# root) — a flat vault's parent is the operator's home, where a `Projects/`
+# is common and is not the vault's.
+if [[ -d "$VAULT_PATH/Projects/$SLUG" ]]; then
+    PROJECT_DIR="$VAULT_PATH/Projects/$SLUG"
+    PROJECTS_SEGMENT="Projects"
+elif [[ -d "$VAULT_PATH/../Projects/$SLUG" && -d "$VAULT_PATH/../.obsidian" && ! -d "$VAULT_PATH/.obsidian" ]]; then
     PROJECT_DIR="$VAULT_PATH/../Projects/$SLUG"
     PROJECTS_SEGMENT="../Projects"
 elif [[ -d "$VAULT_PATH/desk/projects" ]]; then
@@ -137,9 +145,10 @@ elif [[ -d "$VAULT_PATH/personal-projects" ]]; then
     PROJECT_DIR="$VAULT_PATH/personal-projects/$SLUG"
     PROJECTS_SEGMENT="personal-projects"
 else
-    # Empty vault — assume the current layout: the vault-root Projects/.
-    PROJECT_DIR="$VAULT_PATH/../Projects/$SLUG"
-    PROJECTS_SEGMENT="../Projects"
+    # Empty vault — a new project is created on the memory-root layout; the
+    # root space is never conjured (resolve_project makes the same call).
+    PROJECT_DIR="$VAULT_PATH/desk/projects/$SLUG"
+    PROJECTS_SEGMENT="desk/projects"
 fi
 HARNESS_DIR="$PROJECT_DIR/_harness"
 MARKER="$HARNESS_DIR/.migrated-from-pre-v4.1"

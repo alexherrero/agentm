@@ -120,7 +120,7 @@ if [ "$FAULT" != "1" ]; then
   # ── A2. the vault-root Projects/ generation (filing-v2 2b): a project that
   #        already lives beside the memory root resolves there, through a
   #        sibling-rooted backend, and state lands in its own _harness/ ─────────
-  R_ROOT="$SCRATCH/Vault"; R_VAULT="$R_ROOT/Agent"; mkdir -p "$R_VAULT/memory" "$R_ROOT/Projects/$SLUG"
+  R_ROOT="$SCRATCH/Vault"; R_VAULT="$R_ROOT/Agent"; mkdir -p "$R_VAULT/memory" "$R_ROOT/Projects/$SLUG" "$R_ROOT/.obsidian"
   R_PROJ="$SCRATCH/proj-root"; seed_project "$R_PROJ"
   MODE_ENV=("MEMORY_VAULT_PATH=$R_VAULT")
   printf '%s' "$PLAN_BODY" | hm write-state --project-root "$R_PROJ" PLAN.md >/dev/null

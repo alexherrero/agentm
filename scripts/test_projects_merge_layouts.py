@@ -65,6 +65,7 @@ class ResolveProjectAcrossGenerations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             memory_root = tmp / "Vault" / "Agent"
+            (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
             memory_root.mkdir(parents=True)
             (tmp / "Vault" / "Projects" / "fixture" / "_harness").mkdir(parents=True)
             res = self._resolve(VaultBackend(root=memory_root), _project_root(tmp))
@@ -77,6 +78,7 @@ class ResolveProjectAcrossGenerations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             memory_root = tmp / "Vault" / "Agent"
+            (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
             (memory_root / "desk" / "projects" / "fixture" / "_harness").mkdir(parents=True)
             (tmp / "Vault" / "Projects").mkdir(parents=True)
             (tmp / "Vault" / "Projects" / "index.md").write_text("# Projects\n", encoding="utf-8")
@@ -89,6 +91,7 @@ class ResolveProjectAcrossGenerations(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             memory_root = tmp / "Vault" / "Agent"
+            (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
             (memory_root / "desk" / "projects" / "fixture").mkdir(parents=True)
             (tmp / "Vault" / "Projects" / "fixture").mkdir(parents=True)
             res = self._resolve(VaultBackend(root=memory_root), _project_root(tmp))
@@ -100,6 +103,7 @@ class WalkersUnionBothSpaces(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             memory_root = tmp / "Vault" / "Agent"
+            (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
             desk_note = memory_root / "desk" / "projects" / "p" / "decisions" / "a.md"
             root_note = tmp / "Vault" / "Projects" / "q" / "decisions" / "b.md"
             for note in (desk_note, root_note):
@@ -116,6 +120,7 @@ class WalkersUnionBothSpaces(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             memory_root = tmp / "Vault" / "Agent"
+            (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
             (memory_root / "desk" / "projects").mkdir(parents=True)
             (memory_root / "memory").mkdir(parents=True)
             (tmp / "Vault" / "Projects").mkdir(parents=True)
@@ -131,6 +136,7 @@ class WalkersUnionBothSpaces(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             tmp = Path(td)
             memory_root = tmp / "Vault" / "Agent"
+            (tmp / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
             memory_root.mkdir(parents=True)
             self.assertEqual(migrate_arcs._project_root(memory_root, "p"),
                              memory_root / "desk/projects" / "p")
@@ -158,6 +164,7 @@ class WritersFollowTheTree(unittest.TestCase):
 
     def _nested(self, td: Path, *, project: str | None = None) -> Path:
         memory_root = td / "Vault" / "Agent"
+        (td / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
         (memory_root / "memory").mkdir(parents=True)
         (td / "Vault" / "Projects").mkdir(parents=True)
         if project:
@@ -267,6 +274,7 @@ class RecallCorpusReachesTheRootSpace(unittest.TestCase):
 
     def _vault(self, td: Path) -> Path:
         memory_root = td / "Vault" / "Agent"
+        (td / "Vault" / ".obsidian").mkdir(parents=True, exist_ok=True)
         (memory_root / "memory" / "semantic").mkdir(parents=True)
         (memory_root / "memory" / "semantic" / "inside.md").write_text(
             "---\nkind: reference\nstatus: active\ncreated: 2026-09-01\n"
@@ -309,6 +317,199 @@ class RecallCorpusReachesTheRootSpace(unittest.TestCase):
             self.assertTrue(ev._expected_exists(memory_root, "memory/semantic/inside.md"))
             self.assertFalse(ev._expected_exists(memory_root, "../Projects/agentm/decisions/gone.md"))
 
+
+
+class RootSpaceNeedsTheVaultWitness(unittest.TestCase):
+    """A directory named `Projects` beside the memory root is the vault's only
+    when the memory root is nested inside an Obsidian vault — `.obsidian/` at
+    the parent, none at the memory root. A flat vault's parent is the
+    operator's home, where `Projects/` is common; it is never probed (2b
+    review, defect 1)."""
+
+    def _flat_home(self, tmp: Path) -> tuple:
+        home = tmp / "home"
+        vault = home / "Vault"
+        (vault / ".obsidian").mkdir(parents=True)  # the vault root IS the memory root
+        (vault / "memory").mkdir()
+        (home / "Projects" / "agentm" / "_harness").mkdir(parents=True)  # the operator's own repos
+        return home, vault
+
+    def test_resolve_project_never_probes_above_a_flat_vault(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home, vault = self._flat_home(tmp)
+            with mock.patch("backend_selection.select_backend", return_value=VaultBackend(root=vault)):
+                res = hm.resolve_project({"cwd": _project_root(tmp, "agentm")})
+            self.assertNotEqual(res["layout"], "root")
+            self.assertEqual(Path(res["backend"].root), vault)
+            self.assertNotEqual(hm._project_group_segment(vault, "agentm"), "projects")
+
+    def test_writers_and_walkers_ignore_the_operators_projects_dir(self):
+        import kind_registry
+        import moc_generator
+        import promote
+        import recall
+        import save
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            home, vault = self._flat_home(tmp)
+            self.assertIsNone(hm._root_projects_dir(vault))
+            self.assertEqual(save.root_space_dir(vault), vault / "Projects")
+            self.assertEqual(promote.project_dir_for(vault, "w"), ("desk/projects/w", "desk/projects/w"))
+            self.assertEqual(migrate_arcs._project_root(vault, "agentm"), vault / "desk/projects" / "agentm")
+            self.assertEqual(moc_generator._project_home(vault, "agentm"), vault / "desk/projects" / "agentm")
+            for roots in (arc_registry._walk_roots(vault), kind_registry._walk_roots(vault),
+                          moc_generator._walk_roots(vault),
+                          frontmatter_validator._scope_roots(vault, ("memory", "desk/projects")),
+                          vault_lint._scope_roots(vault, ["memory", "desk/projects"])):
+                self.assertNotIn(home / "Projects", roots)
+            self.assertFalse(recall._under_root_projects(home / "Projects" / "agentm" / "x.md", vault))
+
+    def test_a_nested_root_without_the_witness_is_not_a_sibling(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            memory_root = tmp / "Vault" / "Agent"
+            memory_root.mkdir(parents=True)
+            (tmp / "Vault" / "Projects" / "p").mkdir(parents=True)  # no .obsidian anywhere
+            self.assertIsNone(hm._root_projects_dir(memory_root))
+            self.assertNotIn(tmp / "Vault" / "Projects", arc_registry._walk_roots(memory_root))
+
+
+class FlatRootSpaceIsDiscoveredEverywhere(unittest.TestCase):
+    """`<memory-root>/Projects` — a flat vault's root space — is a generation
+    every reader and writer sees, not only the nested sibling (2b review,
+    defects 3 and 5)."""
+
+    def _flat(self, tmp: Path) -> Path:
+        vault = tmp / "vault"
+        (vault / ".obsidian").mkdir(parents=True)
+        (vault / "memory").mkdir()
+        note = vault / "Projects" / "agentm" / "decisions" / "x.md"
+        note.parent.mkdir(parents=True)
+        note.write_text("---\narc: some-arc\nkind: decision\n---\n\nbody\n", encoding="utf-8")
+        return vault
+
+    def test_walkers_and_writers_see_the_flat_root_space(self):
+        import kind_registry
+        import moc_generator
+        import promote
+        import save
+        with tempfile.TemporaryDirectory() as td:
+            vault = self._flat(Path(td))
+            self.assertEqual(hm._root_projects_dir(vault), vault / "Projects")
+            self.assertEqual(hm._project_group_segment(vault, "agentm"), "projects")
+            self.assertEqual(save.root_space_dir(vault), vault / "Projects")
+            self.assertEqual(promote.project_dir_for(vault, "w"), ("Projects/w", "Projects/w"))
+            self.assertEqual(migrate_arcs._project_root(vault, "agentm"), vault / "Projects" / "agentm")
+            self.assertEqual(moc_generator._project_group(vault, "agentm"), "projects")
+            for roots in (arc_registry._walk_roots(vault), kind_registry._walk_roots(vault),
+                          moc_generator._walk_roots(vault),
+                          frontmatter_validator._scope_roots(vault, ("memory", "desk/projects")),
+                          vault_lint._scope_roots(vault, ["memory", "desk/projects"])):
+                self.assertIn(vault / "Projects", roots)
+            with mock.patch.object(arc_registry, "known_arcs", return_value=frozenset({"some-arc"})):
+                self.assertEqual(arc_registry.audit(vault)["total_stamped"], 1)
+
+
+class MigrateArcsOnARootSpaceProject(unittest.TestCase):
+    """migrate_arcs keys root-space paths relative to the vault root and
+    re-roots them through the sibling on apply (2b review, defect 2)."""
+
+    def _nested(self, tmp: Path) -> tuple:
+        memory_root = tmp / "Vault" / "Agent"
+        (memory_root / "memory").mkdir(parents=True)
+        (tmp / "Vault" / ".obsidian").mkdir()
+        proj = tmp / "Vault" / "Projects" / "agentm"
+        (proj / "decisions").mkdir(parents=True)
+        (proj / "decisions" / "d1.md").write_text("---\narc: some-arc\n---\n\nbody\n", encoding="utf-8")
+        (proj / "_harness" / "archive").mkdir(parents=True)
+        (proj / "_harness" / "archive" / "PLAN.archive.20260101-widget.md").write_text("# plan\n", encoding="utf-8")
+        (proj / "_harness" / "designs" / "some-arc").mkdir(parents=True)
+        (proj / "_harness" / "designs" / "some-arc" / "d.md").write_text(
+            "see _harness/designs/some-arc/d.md\n", encoding="utf-8")
+        (memory_root / "memory" / "ref.md").write_text("link: _harness/designs/some-arc/d.md\n", encoding="utf-8")
+        return memory_root, proj
+
+    def test_plan_stamp_keys_root_space_rows_relative_to_the_vault_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            memory_root, proj = self._nested(Path(td))
+            plan = migrate_arcs.plan_stamp(memory_root, "agentm")
+            self.assertEqual(plan.errors, [])
+            self.assertEqual([r.path for r in plan.rows], ["Projects/agentm/decisions/d1.md"])
+            self.assertEqual(migrate_arcs._vault_base(memory_root, plan.rows[0].path), memory_root.parent)
+
+    def test_apply_stamp_re_roots_a_root_space_row(self):
+        with tempfile.TemporaryDirectory() as td:
+            memory_root, proj = self._nested(Path(td))
+            note = proj / "decisions" / "d2.md"
+            note.write_text("---\ntags: [x]\n---\n\nbody\n", encoding="utf-8")
+            plan = migrate_arcs.Plan()
+            plan.rows.append(migrate_arcs.MappingRow("Projects/agentm/decisions/d2.md", "", "some-arc", "HIGH"))
+            migrate_arcs.apply_stamp(memory_root, plan)
+            self.assertIn("arc: some-arc", note.read_text(encoding="utf-8"))
+
+    def test_archive_group_and_designs_move_work_on_a_root_space_project(self):
+        with tempfile.TemporaryDirectory() as td:
+            memory_root, proj = self._nested(Path(td))
+            with mock.patch.object(migrate_arcs.arc_registry, "known_arcs", return_value=frozenset({"widget"})):
+                plan = migrate_arcs.plan_archive_group(memory_root, "agentm")
+            self.assertEqual(plan.errors, [])
+            self.assertEqual(plan.rows[0].path, "Projects/agentm/_harness/archive/PLAN.archive.20260101-widget.md")
+            migrate_arcs.apply_archive_group(memory_root, plan)
+            self.assertTrue((proj / "_harness" / "archive" / "widget" / "PLAN.archive.20260101-widget.md").is_file())
+
+            plan = migrate_arcs.plan_designs_move(memory_root, "agentm", "some-arc")
+            self.assertEqual(plan.errors, [])
+            paths = [r.path for r in plan.rows]
+            self.assertEqual(paths[0], "Projects/agentm/_harness/designs/some-arc")
+            self.assertIn("memory/ref.md", paths)
+            self.assertIn("Projects/agentm/_harness/designs/some-arc/d.md", paths)
+            migrate_arcs.apply_designs_move(memory_root, "agentm", "some-arc", plan)
+            moved = proj / "_harness" / "archive" / "designs" / "some-arc" / "d.md"
+            self.assertTrue(moved.is_file())
+            self.assertIn("_harness/archive/designs/some-arc/", moved.read_text(encoding="utf-8"))
+            self.assertIn("_harness/archive/designs/some-arc/",
+                          (memory_root / "memory" / "ref.md").read_text(encoding="utf-8"))
+
+
+class RootSpaceHelperCopiesAgree(unittest.TestCase):
+    """The one predicate is vendored per file (the skill scripts stay
+    self-contained); the copies must not drift."""
+
+    FILES = ("scripts/harness_memory.py",) + tuple(
+        f"harness/skills/memory/scripts/{n}" for n in (
+            "save.py", "promote.py", "ideas_promote.py", "moc_generator.py", "arc_registry.py",
+            "kind_registry.py", "frontmatter_validator.py", "vault_lint.py", "graph_snapshot.py",
+            "recall.py", "migrate_arcs.py"))
+
+    def test_every_copy_is_byte_identical(self):
+        import re
+        bodies = {}
+        for rel in self.FILES:
+            text = (_HERE.parent / rel).read_text(encoding="utf-8")
+            m = re.search(r"^def _root_projects_dir\(vault\):\n(?:    .*\n|\n)*?    return None\n", text, re.M)
+            m2 = re.search(r"^def _is_dir_exact\(path\):\n(?:    .*\n|\n)*?        return False\n", text, re.M)
+            self.assertIsNotNone(m, rel)
+            self.assertIsNotNone(m2, rel)
+            bodies[rel] = m.group(0) + m2.group(0)
+        self.assertEqual(len(set(bodies.values())), 1, sorted(bodies))
+
+    def test_the_flat_rung_matches_the_directorys_exact_case(self):
+        """A V4-era `projects/` rung is not the flat root space, whatever the
+        filesystem's case rules say."""
+        with tempfile.TemporaryDirectory() as td:
+            vault = Path(td) / "vault"
+            (vault / ".obsidian").mkdir(parents=True)
+            (vault / "projects" / "legacy" / "_harness").mkdir(parents=True)
+            self.assertIsNone(hm._root_projects_dir(vault))
+            with mock.patch("backend_selection.select_backend", return_value=VaultBackend(root=vault)):
+                res = hm.resolve_project({"cwd": _project_root(Path(td), "legacy")})
+            self.assertNotEqual(res["layout"], "root")
+            self.assertNotEqual(res["project_locator"].key.split("/")[0], "Projects")
+            self.assertNotEqual(hm._project_group_segment(vault, "legacy"), "projects")
+            for roots in (arc_registry._walk_roots(vault), frontmatter_validator._scope_roots(vault, ("desk/projects",)),
+                          vault_lint._scope_roots(vault, ["desk/projects"])):
+                self.assertNotIn(vault / "Projects", roots)
 
 if __name__ == "__main__":
     unittest.main()

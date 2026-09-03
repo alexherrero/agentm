@@ -29,6 +29,16 @@ ROOT="$(cd "$VAULT/.." && pwd)"          # the vault root (…/Vault)
 DEST="$ROOT/Projects"
 SRC="$VAULT/desk/projects"
 
+# The merge targets the vault-root sibling, which exists only in the nested
+# layout: the memory root inside an Obsidian vault (`.obsidian/` at the
+# parent, none at the memory root). A flat vault keeps `Projects/` inside the
+# memory root and has nothing to merge upward — refuse rather than move the
+# tree into whatever `Projects/` sits beside the vault.
+if [[ -d "$VAULT/.obsidian" || ! -d "$ROOT/.obsidian" ]]; then
+  echo "projects_merge_2b: $VAULT is not nested inside an Obsidian vault (no $ROOT/.obsidian, or the memory root is the vault itself) — nothing to merge" >&2
+  exit 2
+fi
+
 APPLY=0
 [[ "${1:-}" == "--apply" ]] && APPLY=1
 
@@ -67,6 +77,13 @@ move_entry() { # move_entry <src-entry> <dest-dir>
       for e in "$src"/* "$src"/.[!.]*; do [[ -e "$e" ]] && move_entry "$e" "$dest/$base"; done
       [[ $APPLY -eq 1 ]] && rmdir "$src" 2>/dev/null || true
       return 0
+    fi
+    if [[ -d "$src" || -d "$dest/$base" ]]; then
+      # One side is a directory and the other is not: replacing would delete
+      # a whole subtree, or bury a file under a directory. Refuse — a type
+      # clash is resolved by hand, with both copies still in place.
+      echo "projects_merge_2b: refusing type clash at $dest/$base ($([[ -d "$src" ]] && echo directory || echo file) arriving on a $([[ -d "$dest/$base" ]] && echo directory || echo file)) — resolve by hand and re-run" >&2
+      exit 3
     fi
     say "collision: source replaces destination copy: $base"
     run rm -rf "$dest/$base"

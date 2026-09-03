@@ -54,11 +54,42 @@ _ROOT_SPACE_GROUP = "projects"
 _ROOT_SPACE_DIRNAME = "Projects"
 
 
+def _root_projects_dir(vault):
+    """The vault-root `Projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
+    parent and none at the memory root itself: the sibling
+    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    sibling, whatever directory named `Projects` sits beside it (its parent
+    is the operator's home or a sync folder, where one is common and is not
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
+    vault = Path(vault)
+    flat = vault / "Projects"
+    if _is_dir_exact(flat):
+        return flat
+    parent = vault.parent
+    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        sibling = parent / "Projects"
+        if _is_dir_exact(sibling):
+            return sibling
+    return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
+
+
 def root_space_dir(vault: Path) -> Path:
     """Where `projects/…` groups land: the vault-root sibling when present,
     else `<vault>/Projects` (flat layout)."""
-    sibling = vault.parent / _ROOT_SPACE_DIRNAME
-    return sibling if sibling.is_dir() else vault / _ROOT_SPACE_DIRNAME
+    root = _root_projects_dir(vault)
+    return root if root is not None else vault / _ROOT_SPACE_DIRNAME
 
 
 def group_target_dir(vault: Path, group: str) -> Path:

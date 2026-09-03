@@ -115,12 +115,12 @@ def _replace_frontmatter(content: str, new_fm: dict) -> str:
 def _project_group_segment(vault: Path, project: str) -> str:
     """`projects` when the vault-root space holds the project (or exists and
     nothing older holds it), `desk/projects` when desk does, else legacy."""
-    root = vault.parent / "Projects"
-    if (root / project).is_dir():
+    root = harness_memory._root_projects_dir(vault)
+    if root is not None and (root / project).is_dir():
         return "projects"
     if (vault / "desk/projects" / project).is_dir():
         return "desk/projects"
-    if root.is_dir():
+    if root is not None:
         return "projects"
     return "desk/projects" if (vault / "desk/projects").is_dir() else "personal-projects"
 

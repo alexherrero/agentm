@@ -218,6 +218,37 @@ def _annotate_ideas_md_section(
     return True
 
 
+def _root_projects_dir(vault):
+    """The vault-root `Projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
+    parent and none at the memory root itself: the sibling
+    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    sibling, whatever directory named `Projects` sits beside it (its parent
+    is the operator's home or a sync folder, where one is common and is not
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
+    vault = Path(vault)
+    flat = vault / "Projects"
+    if _is_dir_exact(flat):
+        return flat
+    parent = vault.parent
+    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        sibling = parent / "Projects"
+        if _is_dir_exact(sibling):
+            return sibling
+    return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
+
+
 def promote_idea(
     slug: str,
     *,
@@ -257,9 +288,9 @@ def promote_idea(
     # Filing-v2 2b: the project space is the vault-root Projects/ (a sibling
     # of the memory root); a flat vault keeps it inside. (The previous target,
     # memory/projects/, was a pre-four-space path nothing read.)
-    space = vault.parent / "Projects"
-    if not space.is_dir():
-        space = vault / "Projects" if (vault / "Projects").is_dir() else vault / "desk/projects"
+    space = _root_projects_dir(vault)
+    if space is None:
+        space = vault / "desk/projects"
     project_dir = space / slug
     if project_dir.exists():
         raise FileExistsError(

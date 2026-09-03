@@ -184,13 +184,71 @@ def _infer_arc_from_tags(tags: list[str]) -> tuple[str, str, str] | None:
     return None
 
 
+def _root_projects_dir(vault):
+    """The vault-root `Projects/` space, discovered never conjured (filing-v2
+    2b). Flat layout: `<memory-root>/Projects`. Nested layout — the memory
+    root sits inside an Obsidian vault, witnessed by `.obsidian/` at the
+    parent and none at the memory root itself: the sibling
+    `<vault-root>/Projects`. A memory root at the top of its own vault has no
+    sibling, whatever directory named `Projects` sits beside it (its parent
+    is the operator's home or a sync folder, where one is common and is not
+    the vault's). None when no root space exists. Both rungs match the
+    directory's exact case."""
+    vault = Path(vault)
+    flat = vault / "Projects"
+    if _is_dir_exact(flat):
+        return flat
+    parent = vault.parent
+    if (parent / ".obsidian").is_dir() and not (vault / ".obsidian").is_dir():
+        sibling = parent / "Projects"
+        if _is_dir_exact(sibling):
+            return sibling
+    return None
+
+
+def _is_dir_exact(path):
+    """`path` is a directory whose name matches exactly — on a case-insensitive
+    filesystem `Projects/` would otherwise answer for the V4-era `projects/`."""
+    try:
+        return path.is_dir() and any(p.name == path.name for p in path.parent.iterdir())
+    except OSError:
+        return False
+
+
 def _project_root(vault: Path, project: str) -> Path:
     """The project's tree on whichever generation holds it: the vault-root
     `Projects/` sibling first (filing-v2 2b), else `desk/projects/`."""
-    root = vault.parent / "Projects" / project
-    if root.is_dir():
-        return root
+    space = _root_projects_dir(vault)
+    if space is not None and (space / project).is_dir():
+        return space / project
     return vault / "desk/projects" / project
+
+
+def _vault_rel(path: Path, vault: Path) -> str:
+    """Memory-root-relative key; a root-space path (the `Projects/` sibling
+    of the memory root) is keyed relative to the vault root instead."""
+    try:
+        return path.relative_to(vault).as_posix()
+    except ValueError:
+        return path.relative_to(vault.parent).as_posix()
+
+
+def _vault_base(vault: Path, rel: str) -> Path:
+    """The base `_vault_rel` keyed `rel` against: the memory root, or its
+    parent for a root-space (sibling) key that exists only there."""
+    if not (vault / rel).exists() and (vault.parent / rel).exists():
+        return vault.parent
+    return vault
+
+
+def _sweep_files(vault: Path):
+    """Every markdown file a link sweep must read: the memory root, plus the
+    root-space sibling when the vault is nested (a flat root space is inside
+    the memory root already)."""
+    yield from vault.rglob("*.md")
+    space = _root_projects_dir(vault)
+    if space is not None and space.parent != vault:
+        yield from space.rglob("*.md")
 
 
 def plan_stamp(vault: Path, project: str) -> Plan:
@@ -201,7 +259,7 @@ def plan_stamp(vault: Path, project: str) -> Plan:
         if not root.is_dir():
             continue
         for md in sorted(root.rglob("*.md")):
-            rel = md.relative_to(vault).as_posix()
+            rel = _vault_rel(md, vault)
             try:
                 text = md.read_text(encoding="utf-8")
             except (OSError, UnicodeDecodeError) as e:
@@ -228,7 +286,7 @@ def apply_stamp(vault: Path, plan: Plan) -> None:
     for row in plan.rows:
         if row.confidence not in ("HIGH", "MEDIUM"):
             continue
-        p = vault / row.path
+        p = _vault_base(vault, row.path) / row.path
         text = p.read_text(encoding="utf-8")
         p.write_text(_insert_arc_line(text, row.proposed), encoding="utf-8")
 
@@ -260,7 +318,7 @@ def plan_archive_group(vault: Path, project: str) -> Plan:
     for f in sorted(archive_root.iterdir()):
         if not f.is_file() or not f.name.startswith("PLAN.archive."):
             continue
-        rel = f.relative_to(vault).as_posix()
+        rel = _vault_rel(f, vault)
         stem = f.name[len("PLAN.archive."):-len(".md")] if f.name.endswith(".md") else f.name[len("PLAN.archive."):]
         slug = _DATE_PREFIX_RE.sub("", stem).strip("-")
         if not slug:
@@ -270,7 +328,7 @@ def plan_archive_group(vault: Path, project: str) -> Plan:
         if arc is None:
             plan.rows.append(MappingRow(rel, f"slug={slug!r}", "", "UNMATCHED"))
             continue
-        dest = (archive_root / arc / f.name).relative_to(vault).as_posix()
+        dest = _vault_rel(archive_root / arc / f.name, vault)
         plan.rows.append(MappingRow(rel, f"slug={slug!r} -> arc `{arc}`", dest, "HIGH"))
     return plan
 
@@ -279,8 +337,9 @@ def apply_archive_group(vault: Path, plan: Plan) -> None:
     for row in plan.rows:
         if row.confidence not in ("HIGH", "MEDIUM"):
             continue
-        src = vault / row.path
-        dest = vault / row.proposed
+        base = _vault_base(vault, row.path)
+        src = base / row.path
+        dest = base / row.proposed
         dest.parent.mkdir(parents=True, exist_ok=True)
         src.rename(dest)
 
@@ -294,19 +353,19 @@ def plan_designs_move(vault: Path, project: str, arc: str) -> Plan:
     src = _project_root(vault, project) / "_harness" / "designs" / arc
     dest = _project_root(vault, project) / "_harness" / "archive" / "designs" / arc
     if not src.is_dir():
-        plan.errors.append(f"no such design folder: {src.relative_to(vault)}")
+        plan.errors.append(f"no such design folder: {_vault_rel(src, vault)}")
         return plan
     if dest.exists():
-        plan.errors.append(f"destination already exists: {dest.relative_to(vault)}")
+        plan.errors.append(f"destination already exists: {_vault_rel(dest, vault)}")
         return plan
     plan.rows.append(MappingRow(
-        src.relative_to(vault).as_posix(), "operator-named closed arc",
-        dest.relative_to(vault).as_posix(), "HIGH",
+        _vault_rel(src, vault), "operator-named closed arc",
+        _vault_rel(dest, vault), "HIGH",
     ))
     # Vault-wide link sweep: any markdown/wikilink reference to the old path.
     old_needle = f"_harness/designs/{arc}/"
     new_needle = f"_harness/archive/designs/{arc}/"
-    for md in sorted(vault.rglob("*.md")):
+    for md in sorted(_sweep_files(vault)):
         if any(p == "_archive" for p in md.parts):
             continue
         try:
@@ -315,7 +374,7 @@ def plan_designs_move(vault: Path, project: str, arc: str) -> Plan:
             continue
         count = text.count(old_needle)
         if count:
-            rel = md.relative_to(vault).as_posix()
+            rel = _vault_rel(md, vault)
             plan.rows.append(MappingRow(
                 rel, f"{count} reference(s) to `{old_needle}`", new_needle, "HIGH",
             ))
@@ -326,7 +385,7 @@ def apply_designs_move(vault: Path, project: str, arc: str, plan: Plan) -> None:
     src = _project_root(vault, project) / "_harness" / "designs" / arc
     dest = _project_root(vault, project) / "_harness" / "archive" / "designs" / arc
     dest.parent.mkdir(parents=True, exist_ok=True)
-    src_rel = src.relative_to(vault).as_posix()
+    src_rel = _vault_rel(src, vault)
     src.rename(dest)
     old_needle = f"_harness/designs/{arc}/"
     new_needle = f"_harness/archive/designs/{arc}/"
@@ -339,7 +398,7 @@ def apply_designs_move(vault: Path, project: str, arc: str, plan: Plan) -> None:
         if row.path.startswith(src_rel + "/"):
             md = dest / row.path[len(src_rel) + 1:]
         else:
-            md = vault / row.path
+            md = _vault_base(vault, row.path) / row.path
         if not md.is_file():
             continue
         text = md.read_text(encoding="utf-8")
