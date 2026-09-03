@@ -1240,6 +1240,10 @@ def parse_filter(expr: str | None) -> dict[str, str]:
 
 
 _PROJECTS_GROUP_PREFIX = "desk/projects/"
+# Filing-v2 2b: notes written into the vault-root `Projects/` space carry a
+# vault-root-relative group; notes moved from desk/projects keep the group
+# they were stamped with (moves never rewrite frontmatter). Both derive.
+_ROOT_PROJECTS_GROUP_PREFIX = "Projects/"
 
 
 def _derive_project(group_value: str) -> str | None:
@@ -1251,11 +1255,13 @@ def _derive_project(group_value: str) -> str | None:
     literal "projects" for `desk/projects/<slug>` — a filter that matches
     nothing rather than one that errors.
     """
-    if not group_value or not group_value.startswith(_PROJECTS_GROUP_PREFIX):
+    if not group_value:
         return None
-    rest = group_value[len(_PROJECTS_GROUP_PREFIX):]
-    slug = rest.split("/", 1)[0]
-    return slug or None
+    for prefix in (_PROJECTS_GROUP_PREFIX, _ROOT_PROJECTS_GROUP_PREFIX):
+        if group_value.startswith(prefix):
+            slug = group_value[len(prefix):].split("/", 1)[0]
+            return slug or None
+    return None
 
 
 def _entry_matches_filter(fm: dict[str, str], criteria: dict[str, str]) -> bool:

@@ -206,12 +206,30 @@ def parse_frontmatter(text: str) -> tuple[Optional[dict], list, str]:
 # Corpus build
 # -----------------------------------------------------------------------------
 
+# Filing-v2 2b: the vault-root `Projects/` generation is a SIBLING of the memory
+# root; whenever a scope names the project space, the root sibling joins the
+# walk (union across the merge window). Root-space entries are keyed relative
+# to the vault root.
+_ROOT_PROJECTS_DIRNAME = "Projects"
+
+
+def _scope_roots(vault: Path, roots) -> list:
+    out = [vault / r for r in roots]
+    if "desk/projects" in roots:
+        out.append(vault.parent / _ROOT_PROJECTS_DIRNAME)
+    return [r for r in out if r.is_dir()]
+
+
+def _vault_rel(path: Path, vault: Path) -> str:
+    try:
+        return path.relative_to(vault).as_posix()
+    except ValueError:
+        return path.relative_to(vault.parent).as_posix()
+
+
 def _iter_md_files(vault: Path, scope: str):
     roots = _SCOPE_DIRS.get(scope, _SCOPE_DIRS["all"])
-    for root_rel in roots:
-        root = vault / root_rel
-        if not root.is_dir():
-            continue
+    for root in _scope_roots(vault, roots):
         for dirpath, dirnames, filenames in os.walk(root):
             # Prune excluded dirs in-place so os.walk doesn't descend.
             dirnames[:] = [d for d in dirnames if d not in _EXCLUDE_DIRS]
@@ -288,7 +306,7 @@ def build_model(vault: Path, scope: str = "all") -> VaultModel:
         if not fm or not all(k in fm for k in _CORE_TRIO):
             model.skipped += 1
             continue
-        rel = path.relative_to(vault).as_posix()
+        rel = _vault_rel(path, vault)
         entry = Entry(path=path, rel=rel, frontmatter=fm, fm_keys=order, body=body)
         model.entries.append(entry)
         slug = fm.get("slug", "").strip() or path.stem

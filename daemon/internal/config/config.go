@@ -361,6 +361,11 @@ func defaultEmbedScope(memoryRoot string) []string {
 		}
 		out = append(out, root+"/"+n)
 	}
+	// The vault-root `Projects/` space (filing-v2 2b) is a SIBLING of the
+	// memory root, so it is named unprefixed. The project trees lived under
+	// `desk` before the merge and were dense-retrievable; the move must not
+	// silently drop them from the vector arm.
+	out = append(out, "Projects")
 	return out
 }
 
@@ -388,7 +393,10 @@ func defaultSpaces(memoryRoot string) map[string]string {
 		return root + "/" + rest
 	}
 	return map[string]string{
-		"memory":   under("memory"),
+		"memory": under("memory"),
+		// Filing-v2 2b: captures keep landing on the memory-root layout until
+		// the tree moves to the vault-root `Projects/` (task 3 flips this to the
+		// unprefixed sibling); readers already resolve both generations.
 		"projects": under("desk/projects"),
 		// Diagnostics is first-class under the memory root as of filing-v2
 		// part 2a: scorecards, digests, and dated audits — records living in

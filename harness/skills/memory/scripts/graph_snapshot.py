@@ -74,6 +74,16 @@ def _local_index_dir(vault: Path) -> Path:
     return _LOCAL_INDEX_ROOT / key
 
 
+def _vault_rel(path: Path, vault: Path) -> str:
+    """Vault-relative key; a root-space path (the `Projects/` sibling of the
+    memory root) is keyed relative to the vault root instead."""
+    try:
+        rel = path.relative_to(vault)
+    except ValueError:
+        rel = path.relative_to(vault.parent)
+    return str(rel).replace("\\", "/")
+
+
 def _vault_projects_dir(vault: Path) -> Path:
     """Return <vault>/projects/ (post-V4 #26 canonical) if present, else
     <vault>/personal-projects/ (legacy fallback). Mirrors the same helper
@@ -142,9 +152,14 @@ def _extract_meta_from_file(file_path: Path) -> dict:
 
     meta["group_name"] = group_value
     meta["tags"] = json.dumps(tags)
-    if group_value and group_value.startswith("desk/projects/"):
-        parts = group_value.split("/")
-        meta["project"] = parts[1] if len(parts) >= 2 and parts[1] else None
+    # The slug is the first segment AFTER the projects space, on either
+    # generation. (The previous fixed index returned the literal "projects"
+    # for `desk/projects/<slug>` — the same miss recall.py fixed earlier.)
+    for prefix in ("desk/projects/", "Projects/"):
+        if group_value and group_value.startswith(prefix):
+            slug = group_value[len(prefix):].split("/", 1)[0]
+            meta["project"] = slug or None
+            break
     return meta
 
 # A path that's staged-not-reviewed (_inbox) or historical
@@ -201,9 +216,11 @@ def _walk_vault_paths(vault: Path) -> list[str]:
     private = vault / "memory"
     if private.is_dir():
         walk_roots.append(private)
-    projects = _vault_projects_dir(vault)
-    if projects.is_dir():
-        walk_roots.append(projects)
+    # Filing-v2 2b: the vault-root `Projects/` generation is a SIBLING of the
+    # memory root; during the merge window both spaces may hold projects.
+    for projects in (_vault_projects_dir(vault), vault.parent / "Projects"):
+        if projects.is_dir():
+            walk_roots.append(projects)
     incubator = vault / "_idea-incubator"
     if incubator.is_dir():
         walk_roots.append(incubator)
@@ -215,7 +232,7 @@ def _walk_vault_paths(vault: Path) -> list[str]:
                 continue
             if md.name.startswith("PLAN.archive."):
                 continue
-            out.append(str(md.relative_to(vault)).replace("\\", "/"))
+            out.append(_vault_rel(md, vault))
     return out
 
 

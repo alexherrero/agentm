@@ -117,11 +117,17 @@ if [[ -z "$SLUG" ]]; then
     exit 1
 fi
 
-# Newest layout first, then each older one it might still be sitting in. The
-# stage-2 four-space migration (2026-08-10) moved the projects space down a
-# level to desk/projects/; V4 #26 had already renamed personal-projects/ to
-# projects/. A vault that has not been migrated keeps working on its own rung.
-if [[ -d "$VAULT_PATH/desk/projects" ]]; then
+# Newest layout first, then each older one it might still be sitting in.
+# Filing-v2 2b lifts the projects space to the vault-root Projects/ — a SIBLING
+# of the memory root this script is handed — probed per slug, so a project
+# already living there is found and one not yet moved keeps its desk home. The
+# stage-2 four-space migration (2026-08-10) had moved the space down a level to
+# desk/projects/; V4 #26 had already renamed personal-projects/ to projects/. A
+# vault that has not been migrated keeps working on its own rung.
+if [[ -d "$VAULT_PATH/../Projects/$SLUG" ]]; then
+    PROJECT_DIR="$VAULT_PATH/../Projects/$SLUG"
+    PROJECTS_SEGMENT="../Projects"
+elif [[ -d "$VAULT_PATH/desk/projects" ]]; then
     PROJECT_DIR="$VAULT_PATH/desk/projects/$SLUG"
     PROJECTS_SEGMENT="desk/projects"
 elif [[ -d "$VAULT_PATH/projects" ]]; then

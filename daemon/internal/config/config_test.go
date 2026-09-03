@@ -11,7 +11,7 @@ import (
 // notes and a vector arm with no vectors looks exactly like one that is cold.
 func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 	got := defaultEmbedScope("Agent")
-	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics"}
+	want := []string{"Agent/memory", "Agent/desk", "Agent/external", "Agent/diagnostics", "Projects"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -23,7 +23,7 @@ func TestDefaultEmbedScopeFollowsMemoryRoot(t *testing.T) {
 func TestDefaultEmbedScopeWithoutMemoryRoot(t *testing.T) {
 	for _, root := range []string{"", "  ", "/"} {
 		got := defaultEmbedScope(root)
-		want := "memory,desk,external,diagnostics"
+		want := "memory,desk,external,diagnostics,Projects"
 		if strings.Join(got, ",") != want {
 			t.Errorf("memory_root %q gave %v, want %s", root, got, want)
 		}
@@ -40,6 +40,18 @@ func TestDefaultEmbedScopeIncludesDiagnostics(t *testing.T) {
 		}
 	}
 	t.Fatalf("diagnostics missing from default embed scope: %v", defaultEmbedScope("Agent"))
+}
+
+// The vault-root `Projects/` space is IN the default scope, unprefixed (filing-v2
+// 2b): it is a sibling of the memory root, not under it, and the project trees
+// were dense-retrievable under `desk` before the merge.
+func TestDefaultEmbedScopeIncludesRootProjects(t *testing.T) {
+	for _, s := range defaultEmbedScope("Agent") {
+		if s == "Projects" {
+			return
+		}
+	}
+	t.Fatalf("root Projects missing from default embed scope: %v", defaultEmbedScope("Agent"))
 }
 
 // `_meta` must never be in the default scope. Its notes run to 200,000 tokens and

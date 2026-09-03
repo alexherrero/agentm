@@ -800,9 +800,15 @@ def project_json_configs(repo: Path, *, mem_root: Optional[Path] = None) -> list
         return found
     if mem_root is None:
         return found
-    vault_cfg = Path(mem_root).joinpath(*projects_rel.split("/"), slug, "_harness", "project.json")
-    if vault_cfg.is_file():
-        found.append((vault_cfg, "vault"))
+    # Filing-v2 2b: the vault-root `Projects/` sibling is the newest generation;
+    # probe it first, then the memory-root layout the constant names.
+    for vault_cfg in (
+        Path(mem_root).parent / "Projects" / slug / "_harness" / "project.json",
+        Path(mem_root).joinpath(*projects_rel.split("/"), slug, "_harness", "project.json"),
+    ):
+        if vault_cfg.is_file():
+            found.append((vault_cfg, "vault"))
+            break
     return found
 
 

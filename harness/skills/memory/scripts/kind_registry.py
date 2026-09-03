@@ -67,6 +67,28 @@ REQUIRED_UNIVERSAL_FIELDS: tuple = (
 _WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
 
+# Filing-v2 2b: the newest project-space generation is the vault-root
+# `Projects/`, a SIBLING of the memory root this module is handed. During the
+# merge window both it and `desk/projects/` exist and either may hold projects,
+# so walkers take the union. A root-space path cannot be keyed relative to the
+# memory root; it is keyed relative to the vault root ("Projects/<slug>/…").
+_ROOT_PROJECTS_DIRNAME = "Projects"
+
+
+def _walk_roots(vault: Path) -> list:
+    roots = [vault / d for d in _WALK_SUBDIRS]
+    roots.append(vault.parent / _ROOT_PROJECTS_DIRNAME)
+    return [r for r in roots if r.is_dir()]
+
+
+def _vault_rel(path: Path, vault: Path) -> str:
+    try:
+        rel = path.relative_to(vault)
+    except ValueError:
+        rel = path.relative_to(vault.parent)
+    return str(rel).replace("\\", "/")
+
+
 def __getattr__(name: str):
     """`KNOWN_KINDS` resolves lazily, against the rules file.
 
@@ -166,7 +188,7 @@ def audit(vault_path: Path | str) -> dict:
     known = storage_rules.known_values()
     deprecations = storage_rules.rules().deprecations()
 
-    walk_roots = [vault / d for d in _WALK_SUBDIRS if (vault / d).is_dir()]
+    walk_roots = _walk_roots(vault)
     for root in walk_roots:
         for md in sorted(root.rglob("*.md")):
             if any(p == "_archive" for p in md.parts):
@@ -181,7 +203,7 @@ def audit(vault_path: Path | str) -> dict:
             raw = note_kind(content)
             if raw is None:
                 continue
-            rel = str(md.relative_to(vault)).replace("\\", "/")
+            rel = _vault_rel(md, vault)
             if not is_kebab(raw):
                 malformed.append((rel, raw))
                 continue

@@ -27,6 +27,44 @@ from kind_registry import is_kebab, is_known  # noqa: E402
 # incubator included.
 _WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
+
+# Filing-v2 2b: the newest project-space generation is the vault-root
+# `Projects/`, a SIBLING of the memory root this module is handed. During the
+# merge window both it and `desk/projects/` exist and either may hold projects,
+# so walkers take the union. A root-space path cannot be keyed relative to the
+# memory root; it is keyed relative to the vault root ("Projects/<slug>/…").
+_ROOT_PROJECTS_DIRNAME = "Projects"
+
+
+def _walk_roots(vault: Path) -> list:
+    roots = [vault / d for d in _WALK_SUBDIRS]
+    roots.append(vault.parent / _ROOT_PROJECTS_DIRNAME)
+    return [r for r in roots if r.is_dir()]
+
+
+def _vault_rel(path: Path, vault: Path) -> str:
+    try:
+        rel = path.relative_to(vault)
+    except ValueError:
+        rel = path.relative_to(vault.parent)
+    return str(rel).replace("\\", "/")
+
+
+def _vault_rel_path(path: Path, vault: Path) -> Path:
+    try:
+        return path.relative_to(vault)
+    except ValueError:
+        return path.relative_to(vault.parent)
+
+
+def _project_space_notes(vault: Path):
+    """Yield (space_root, note) across every project space this vault has."""
+    for root in (vault / "desk/projects", vault.parent / _ROOT_PROJECTS_DIRNAME):
+        if not root.is_dir():
+            continue
+        for md in sorted(root.rglob("*.md")):
+            yield root, md
+
 _OUTPUT_DIRNAME = "_moc"
 
 
@@ -57,10 +95,7 @@ def _walk_notes(vault: Path):
     """Yield (rel_path, frontmatter dict) for every walkable note. Never
     yields anything under the output dir this module owns, so a
     regeneration never tries to fold its own prior output back in."""
-    for subdir in _WALK_SUBDIRS:
-        root = vault / subdir
-        if not root.is_dir():
-            continue
+    for root in _walk_roots(vault):
         for md in sorted(root.rglob("*.md")):
             if any(p == "_archive" or p == _OUTPUT_DIRNAME for p in md.parts):
                 continue
@@ -73,7 +108,7 @@ def _walk_notes(vault: Path):
             fm = _parse_frontmatter(text)
             if fm is None or "kind" not in fm:
                 continue
-            rel = md.relative_to(vault)
+            rel = _vault_rel_path(md, vault)
             yield rel, fm
 
 
@@ -177,10 +212,7 @@ def build_arc_groups(vault_path: Path | str) -> dict[tuple[str, str], list[tuple
     _idea-incubator/ content, so this walks `projects/` alone."""
     vault = Path(vault_path)
     groups: dict[tuple[str, str], list[tuple[str, str, dict]]] = {}
-    root = vault / "desk/projects"
-    if not root.is_dir():
-        return groups
-    for md in sorted(root.rglob("*.md")):
+    for root, md in _project_space_notes(vault):
         if any(p == "_archive" or p == _OUTPUT_DIRNAME or p == "_harness" for p in md.parts):
             continue
         try:
