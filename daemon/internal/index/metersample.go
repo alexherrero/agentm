@@ -86,6 +86,13 @@ const MeterStatus = "active"
 // comment goes with it.*
 var MeterExcludedDirs = []string{"_inbox", "_archive", "scratch", "_shelf", "_opinions"}
 
+// MeterExcludedNested names directories whose SUBDIRECTORIES are out of the
+// population while their own files are in it. Filing-v2 part 3 folds the
+// accumulate loop's lanes into `memory/crystallized/<opinion>/` — mined
+// supplements awaiting promotion, beside the crystallized memories, which are
+// filed and live and stay in.
+var MeterExcludedNested = []string{"crystallized"}
+
 // RecentForMeters returns up to n recent notes from the given spaces.
 //
 // `scope` is the same space list the vector arm uses, so the meters measure the
@@ -159,6 +166,12 @@ func (x *Index) RecentForMeters(ctx context.Context, n int, model string,
 		// itself a path prefix, so an excluded directory always has a parent.
 		where += ` AND m.path NOT LIKE ? ESCAPE '\'`
 		args = append(args, "%/"+escapeLike(strings.Trim(d, "/"))+"/%")
+	}
+	for _, d := range MeterExcludedNested {
+		// One more segment than a file directly in the directory: a lane entry
+		// is `<dir>/<opinion>/<slug>.md`, a crystallized memory `<dir>/<slug>.md`.
+		where += ` AND m.path NOT LIKE ? ESCAPE '\'`
+		args = append(args, "%/"+escapeLike(strings.Trim(d, "/"))+"/%/%")
 	}
 	// An inner join rather than a filter in WHERE, so the window is the most
 	// recent *embedded* notes rather than the most recent notes of which few

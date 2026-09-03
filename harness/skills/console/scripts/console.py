@@ -457,6 +457,23 @@ def watchlist_summary(vault: "Path | None") -> str:
     return f"Watchlist: {len(entries)} entries ({len(pending)} pending, {high_pending} HIGH)"
 
 
+def _is_supplement_home(p: Path, rel: Path) -> bool:
+    """Filing-v2 part 3: the accumulate loop's lanes live under
+    `crystallized/<opinion>/` and their served files beside the crystallized
+    memories — supplements, not curated entries (the flat files are told by
+    their kind)."""
+    if tuple(rel.parts[:1]) != ("crystallized",):
+        return False
+    if len(rel.parts) > 2:
+        return True
+    try:
+        with p.open(encoding="utf-8") as fh:
+            head = fh.read(1024)
+    except OSError:
+        return False
+    return "kind: opinion-supplement" in head.split("\n---", 1)[0]
+
+
 def newest_curated_entries(vault: Path, n: int = 5) -> list:
     personal = vault / "memory"
     if not personal.is_dir():
@@ -471,6 +488,8 @@ def newest_curated_entries(vault: Path, n: int = 5) -> list:
             except ValueError:
                 continue
             if rel.parts and rel.parts[0] in _CURATED_SKIP_DIRS:
+                continue
+            if _is_supplement_home(p, rel):
                 continue
             try:
                 mtime = p.stat().st_mtime

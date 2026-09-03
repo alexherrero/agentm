@@ -41,6 +41,7 @@ Usage:
   corpus_migration_3.py --apply --phase archive  # _archive + _opinions
   corpus_migration_3.py --apply --phase purge --confirm-count 2194
   corpus_migration_3.py --purge-scope inbox    # the design's literal cohort, for the comparison count
+  corpus_migration_3.py --purge-scope all-expired  # every expired note, the opinion supplements included
 
 Exit: 0 ran (held notes are reported, not failed); 1 with --strict when the
 contract cannot place some notes; 2 setup error; the purge refuses (non-zero)
@@ -241,9 +242,17 @@ def decide(row: Row, rules, *, purge_scope: str, targets: set) -> None:
         return
 
     # The expired cohort. `inbox` is the design's literal cohort; `mined` adds
-    # the same auto-miner retirements that sit in the legacy dirs and _archive.
-    if status == "expired" and row.population != "opinions":
-        in_scope = row.population == "inbox" or (purge_scope == "mined" and mined)
+    # the same auto-miner retirements that sit in the legacy dirs and _archive
+    # (never the opinion supplements — dreaming's records); `all-expired` takes
+    # every `status: expired` note, supplements included. The operator rules
+    # at the purge gate; the report carries every figure.
+    if status == "expired":
+        if row.population == "inbox" or purge_scope == "all-expired":
+            in_scope = True
+        elif purge_scope == "mined":
+            in_scope = mined and row.population != "opinions"
+        else:
+            in_scope = False
         if in_scope:
             row.disposition, row.reason = "purge", "expired auto-miner output (manifested)"
             return
@@ -267,8 +276,11 @@ def decide(row: Row, rules, *, purge_scope: str, targets: set) -> None:
 
     if kind_or_type == "kind":
         if new_value == OPINION_KIND:
+            # The accumulate loop's lanes keep their shape: `<opinion>/<slug>.md`
+            # and the served `<opinion>.md` beside it, now under crystallized/.
+            inside = row.rel[len(OPINIONS) + 1:] if row.rel.startswith(OPINIONS + "/") else row.path.name
             row.disposition = "route"
-            row.dest = f"{CRYSTALLIZED}/{row.path.name}"
+            row.dest = f"{CRYSTALLIZED}/{inside}"
             row.kind_after = new_value
             row.lifecycle = "archived" if (status == "expired" or row.population == "archive") else rules.default_lifecycle()
             row.status_after = status
@@ -376,6 +388,7 @@ def summarize(rows: list, *, purge_scope: str) -> dict:
     by_dest_dir = Counter(os.path.dirname(r.dest) for r in rows if r.disposition == "route")
     flags = Counter(f for r in rows for f in r.flags)
     inbox_expired = sum(1 for r in rows if r.population == "inbox" and r.status_before == "expired")
+    all_expired = sum(1 for r in rows if r.status_before == "expired")
     return {
         "notes": len(rows),
         "purge_scope": purge_scope,
@@ -386,6 +399,7 @@ def summarize(rows: list, *, purge_scope: str) -> dict:
         "flags": dict(sorted(flags.items())),
         "purge_count": by_disp.get("purge", 0),
         "purge_count_inbox_only": inbox_expired,
+        "purge_count_all_expired": all_expired,
         "holds": [(r.rel, r.reason) for r in rows if r.disposition == "hold"],
     }
 
@@ -406,7 +420,8 @@ def render_summary(s: dict, *, run_id: str, vault: Path, applied: str = "") -> s
     out += ["", "## Flags", "", "| flag | notes |", "|---|---|"]
     out += [f"| {f} | {n} |" for f, n in s["flags"].items()]
     out += ["", f"## Purge cohort: **{s['purge_count']}** notes (scope `{s['purge_scope']}`; "
-                f"the design's inbox-only figure would be {s['purge_count_inbox_only']})", ""]
+                f"the design's inbox-only figure would be {s['purge_count_inbox_only']}; "
+                f"every `status: expired` note, supplements included, would be {s['purge_count_all_expired']})", ""]
     if s["holds"]:
         out += ["## Held (never moved blind)", ""]
         reasons = Counter(reason for _, reason in s["holds"])
@@ -619,8 +634,9 @@ def main(argv=None) -> int:
     ap.add_argument("--apply", action="store_true", help="perform --phase; without it, dry run")
     ap.add_argument("--phase", choices=PHASES, help="which phase to apply")
     ap.add_argument("--confirm-count", type=int, default=None, help="the purge cohort size the operator confirmed")
-    ap.add_argument("--purge-scope", choices=("inbox", "mined"), default="mined",
-                    help="`inbox`: the design's literal cohort; `mined`: every auto-miner-retired expired note (default)")
+    ap.add_argument("--purge-scope", choices=("inbox", "mined", "all-expired"), default="mined",
+                    help="`inbox`: the design's literal cohort; `mined`: every auto-miner-retired expired note "
+                         "outside the opinion lanes (default); `all-expired`: every expired note, supplements included")
     ap.add_argument("--report-dir", help="where the report lands (default: engine state; vault diagnostics on apply)")
     ap.add_argument("--strict", action="store_true",
                     help="exit 1 when a note carries a value the contract cannot place (the close-out battery's setting)")

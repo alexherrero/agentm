@@ -67,7 +67,7 @@ class _Base(unittest.TestCase):
         return sorted(p.name for p in d.glob("*.md")) if d.is_dir() else []
 
     def _lane_files(self, opinion="done"):
-        d = self.root / "memory" / "_opinions" / opinion
+        d = self.root / "memory" / "crystallized" / opinion
         return sorted(p.name for p in d.glob("*.md")) if d.is_dir() else []
 
 

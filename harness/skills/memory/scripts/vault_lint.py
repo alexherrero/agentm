@@ -335,6 +335,13 @@ def build_model(vault: Path, scope: str = "all") -> VaultModel:
         except (OSError, UnicodeDecodeError):
             continue
         fm, order, body = parse_frontmatter(text)
+        # Filing-v2 part 3: the accumulate loop's supplements live under
+        # `memory/crystallized/` now (lanes as subdirectories, served files
+        # beside the memories) — the bespoke shape `_opinions`'s exclusion kept
+        # out of the lint is told by its kind rather than its directory.
+        if fm and str(fm.get("kind", "")).strip() == "opinion-supplement":
+            model.skipped += 1
+            continue
         # Agent-entry gate (DC-3): require the core trio.
         if not fm or not all(k in fm for k in _CORE_TRIO):
             model.skipped += 1

@@ -252,7 +252,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--supplement-dir", default=None,
         help="directory holding learned supplements (<name>.md). The caller "
-             "resolves this — typically <vault>/personal/_opinions — because "
+             "resolves this — <vault>/memory/crystallized since filing-v2 part 3, "
+             "<vault>/memory/_opinions before it — because "
              "this module is held to stdlib-only imports and cannot reach the "
              "storage seam itself. Omit for base-only resolution.",
     )

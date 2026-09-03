@@ -891,7 +891,8 @@ def _save_candidate_to_opinions(
     permanently reads as zero sessions and can only ever contribute to,
     never complete, a recurrence group on its own.
     """
-    lane = vault / "memory" / "_opinions" / opinion
+    import opinion_supplement  # noqa: E402  (lazy; the leaf module is the one place the lane root is spelled)
+    lane = opinion_supplement.lane_base(vault) / opinion
     try:
         lane.mkdir(parents=True, exist_ok=True)
     except OSError as e:

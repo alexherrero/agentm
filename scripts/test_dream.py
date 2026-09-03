@@ -181,6 +181,18 @@ class OpinionsDirExclusionTests(_DreamTestBase):
         rels = {p.relative_to(self.vault) for p in entries}
         self.assertEqual(rels, {Path("ordinary.md")})
 
+    def test_iter_entries_skips_crystallized_lanes_and_served_supplements(self) -> None:
+        """Filing-v2 part 3: the lanes fold into memory/crystallized/ and the
+        same hazard follows them; a crystallized memory beside them stays in
+        the general corpus."""
+        (self.vault / "memory" / "crystallized" / "done").mkdir(parents=True)
+        self._write("memory/crystallized/done/lesson.md", "---\nkind: opinion-supplement\n---\nAlways X.\n")
+        self._write("memory/crystallized/done.md", "---\nkind: opinion-supplement\nstatus: promoted\n---\nServed.\n")
+        self._write("memory/crystallized/distilled.md", "---\ntype: workflow\nstatus: active\n---\nA lesson.\n")
+        entries = dream._iter_entries(self.vault)
+        rels = {p.relative_to(self.vault) for p in entries}
+        self.assertEqual(rels, {Path("memory/crystallized/distilled.md")})
+
     def test_run_dream_never_proposes_a_general_stage_merge_inside_the_opinions_lane(self) -> None:
         (self.vault / "memory" / "_opinions" / "done").mkdir(parents=True)
         # A near-verbatim pair that would trip dedup's own 0.92 threshold if

@@ -61,6 +61,26 @@ class _SupplementTestBase(unittest.TestCase):
         return osup.process_lane(self.vault, opinion, now=now, root=self.repo_root)
 
 
+class LaneBaseFollowsTheMigration(_SupplementTestBase):
+    """Filing-v2 part 3: the lanes fold into memory/crystallized/. The base is
+    discovered — the pre-migration directory while it exists, the class
+    directory once it has gone — so a writer never splits a lane."""
+
+    def test_legacy_root_wins_while_it_exists(self) -> None:
+        (self.vault / "memory" / "_opinions").mkdir(parents=True)
+        (self.vault / "memory" / "crystallized").mkdir(parents=True)
+        self.assertEqual(osup.lane_base(self.vault), self.vault / "memory" / "_opinions")
+
+    def test_crystallized_is_the_home_after_the_move(self) -> None:
+        (self.vault / "memory" / "crystallized" / "good").mkdir(parents=True)
+        self.assertEqual(osup.lane_base(self.vault), self.vault / "memory" / "crystallized")
+        self.assertEqual(osup.lane_dirs(self.vault), [self.vault / "memory" / "crystallized" / "good"])
+
+    def test_a_fresh_vault_gets_the_current_home(self) -> None:
+        self.assertEqual(osup.lane_base(self.vault), self.vault / "memory" / "crystallized")
+        self.assertEqual(osup.lane_dirs(self.vault), [])
+
+
 class RecurrenceGateTests(_SupplementTestBase):
     def test_single_occurrence_parks_never_promotes(self) -> None:
         self._write_base("good", "Always write a test for new behavior.")
@@ -314,6 +334,28 @@ class LaneDirsTests(_SupplementTestBase):
 
     def test_lane_dirs_on_missing_opinions_dir_is_empty(self) -> None:
         self.assertEqual(osup.lane_dirs(self.vault), [])
+
+
+
+class LaneCycleUnderCrystallized(_SupplementTestBase):
+    """Filing-v2 part 3: a lane under memory/crystallized/<opinion>/ runs the
+    same cycle and serves beside the crystallized memories."""
+
+    def test_promotion_serves_beside_the_crystallized_memories(self) -> None:
+        self._write_base("good", "Always write a test for new behavior.")
+        lane = self.vault / "memory" / "crystallized" / "good"
+        lane.mkdir(parents=True)
+        for slug, created, sess in (("a1", "2026-01-01T00:00:00+00:00", "proj/s1"),
+                                    ("a2", "2026-01-02T00:00:00+00:00", "proj/s2")):
+            (lane / f"{slug}.md").write_text(_ENTRY_TEMPLATE.format(
+                created=created, slug=slug, opinion="good", sessions_line=f"sessions: [{sess}]\n",
+                title="Rule", body="Always run the linter before committing."), encoding="utf-8")
+        result = self._process("good")
+        self.assertIsNotNone(result)
+        patched = dict(result.mutations)
+        self.assertIn(self.vault / "memory" / "crystallized" / "good.md", patched)
+        self.assertIn("status: promoted", patched[lane / "a1.md"])
+        self.assertFalse((self.vault / "memory" / "_opinions").exists())
 
 
 if __name__ == "__main__":

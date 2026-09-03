@@ -130,6 +130,27 @@ class TestGateAndParse(unittest.TestCase):
             self.assertEqual(findings, [], _ids(findings))
 
 
+class TestSupplementsUnderCrystallized(unittest.TestCase):
+    def test_supplements_under_crystallized_skipped(self):
+        # Filing-v2 part 3 folds the lanes into memory/crystallized/; the
+        # exclusion follows the kind, and a crystallized memory beside them lints.
+        with _Vault() as v:
+            _write(v, "memory/crystallized/plain-english/lane-entry.md", [
+                "kind: opinion-supplement",
+                "status: proposed",
+                "created: 2026-07-25T10:00:00+00:00",
+                "slug: lane-entry",
+                "opinion: plain-english",
+            ])
+            (v / "memory" / "crystallized" / "plain-english.md").write_text(
+                "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nServed.\n",
+                encoding="utf-8")
+            _write(v, "memory/crystallized/distilled.md", _clean("distilled"))
+            model, findings = _lint(v)
+            self.assertEqual([e.rel for e in model.entries], ["memory/crystallized/distilled.md"])
+            self.assertEqual(findings, [], _ids(findings))
+
+
 class TestExcludeDirsParity(unittest.TestCase):
     """The three vault walkers keep deliberate standalone copies of the
     exclude set (same-dir convention — see moc_generator.py's precedent

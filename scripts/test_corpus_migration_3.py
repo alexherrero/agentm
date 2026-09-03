@@ -179,9 +179,9 @@ class DispositionsFollowTheDesign(unittest.TestCase):
             # opinions are never purged: expired supplements are archived, kind kept
             op = rows["memory/_opinions/good/op-exp.md"]
             self.assertEqual((op.disposition, op.dest, op.kind_after, op.lifecycle, op.status_after),
-                             ("route", "memory/crystallized/op-exp.md", "opinion-supplement", "archived", "expired"))
+                             ("route", "memory/crystallized/good/op-exp.md", "opinion-supplement", "archived", "expired"))
             live_op = rows["memory/_opinions/good/op-live.md"]
-            self.assertEqual((live_op.dest, live_op.lifecycle), ("memory/crystallized/op-live.md", "active"))
+            self.assertEqual((live_op.dest, live_op.lifecycle), ("memory/crystallized/good/op-live.md", "active"))
             # kind-as-type drift collapses onto `type:`; status map; confidence from the miner
             wf = rows["memory/_inbox/wf-unfiled.md"]
             self.assertEqual((wf.disposition, wf.dest, wf.field_before, wf.type_after, wf.status_after,
@@ -225,6 +225,14 @@ class DispositionsFollowTheDesign(unittest.TestCase):
             leg = rows["memory/preferences/legacy-exp.md"]
             self.assertEqual((leg.disposition, leg.lifecycle, leg.status_after), ("route", "archived", "expired"))
             self.assertIn("expired-out-of-scope", leg.flags)
+
+    def test_all_expired_scope_takes_the_supplements_too(self):
+        with tempfile.TemporaryDirectory() as td:
+            vault = _build(Path(td))
+            rows = _rows(vault, purge_scope="all-expired")
+            self.assertEqual(rows["memory/_opinions/good/op-exp.md"].disposition, "purge")
+            self.assertEqual(rows["memory/_opinions/good/op-live.md"].disposition, "route")
+            self.assertEqual(rows["memory/preferences/legacy-exp.md"].disposition, "purge")
 
     def test_twins_are_marked_and_basename_clashes_renamed(self):
         with tempfile.TemporaryDirectory() as td:
@@ -276,9 +284,9 @@ class ApplyPhases(unittest.TestCase):
 
             r = _run(vault, "--apply", "--phase", "archive", report=report)
             self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
-            self.assertTrue((vault / "memory/crystallized/op-exp.md").is_file())
-            self.assertIn("lifecycle: archived\n", (vault / "memory/crystallized/op-exp.md").read_text(encoding="utf-8"))
-            self.assertIn("kind: opinion-supplement\n", (vault / "memory/crystallized/op-live.md").read_text(encoding="utf-8"))
+            self.assertTrue((vault / "memory/crystallized/good/op-exp.md").is_file())
+            self.assertIn("lifecycle: archived\n", (vault / "memory/crystallized/good/op-exp.md").read_text(encoding="utf-8"))
+            self.assertIn("kind: opinion-supplement\n", (vault / "memory/crystallized/good/op-live.md").read_text(encoding="utf-8"))
             self.assertIn("lifecycle: archived\n", (vault / "memory/semantic/arch-live.md").read_text(encoding="utf-8"))
             self.assertFalse((vault / "memory/_opinions").exists())
             self.assertTrue((vault / "memory/_archive/preferences/arch-exp.md").is_file())  # purge cohort waits
