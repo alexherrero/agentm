@@ -81,6 +81,34 @@ def _remap_merged(path: str) -> str:
             return new + path[len(old):]
     return path
 
+
+# Filing-v2 part 3 (2026-09-03): the corpus migration routed every memory out
+# of the inbox, the legacy type-named dirs, the 2026/ month buckets, _archive
+# and _opinions into the six class directories — by type, with basenames
+# preserved (the migration's own invariant, so name-resolved wikilinks
+# survive). The gold set keeps its pinned pre-migration paths; a pinned path
+# and a class path that share a basename are the same note, so both sides are
+# compared in a canonical form that folds the migrated populations and the
+# six classes onto `Agent/memory/<basename>`. Anything outside those
+# directories compares exactly, as before.
+_MIGRATED_POPULATIONS = ("_inbox", "_archive", "_opinions", "2026", "preferences", "preference",
+                         "idea", "fix", "workflow", "workflow-pattern", "insight", "feedback",
+                         "conventions", "domains")
+_CLASS_DIRS = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
+_MEMORY_PREFIX = "Agent/memory/"
+
+
+def _canon(path: str) -> str:
+    """The comparison form: `Agent/memory/<basename>` for a note in a migrated
+    population or a class directory; the path itself otherwise."""
+    if not path.startswith(_MEMORY_PREFIX):
+        return path
+    rest = path[len(_MEMORY_PREFIX):]
+    head, sep, _tail = rest.partition("/")
+    if sep and head in _MIGRATED_POPULATIONS + _CLASS_DIRS:
+        return _MEMORY_PREFIX + rest.rsplit("/", 1)[-1]
+    return path
+
 # `negative` entries are questions the corpus is not supposed to answer. They are
 # scored separately: counting them in R@5 would reward a ranker for finding
 # nothing, and hiding them would lose the only check on false confidence.
@@ -273,7 +301,7 @@ def check_canary(binary: str) -> None:
     """
     got = [path for path, _ in _search_rows(binary, CANARY_QUERY, 3,
                                             mode="and")]
-    if not got or got[0] != CANARY_PATH:
+    if not got or _canon(got[0]) != _canon(CANARY_PATH):
         raise Control(
             f"the canary query returned {got[:2] or 'nothing'} instead of "
             f"{CANARY_PATH} at rank 1 — the index is dead, detached, or serving "
@@ -372,9 +400,9 @@ def score(binary: str, entries: list, k: int) -> dict:
     all_scores = []
     for e in entries:
         question = e["question"]
-        expected = [_remap_merged(p) for p in (e.get(EXPECTED_FIELD) or []) if p]
+        expected = [_canon(_remap_merged(p)) for p in (e.get(EXPECTED_FIELD) or []) if p]
         rows = _search_rows(binary, question, k)
-        got = [path for path, _score in rows]
+        got = [_canon(path) for path, _score in rows]
         all_scores.extend(s for _path, s in rows if s is not None)
 
         if e.get("stratum") == NEGATIVE_STRATUM:
