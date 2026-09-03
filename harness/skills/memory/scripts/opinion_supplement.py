@@ -238,10 +238,29 @@ def _read_coded_base(opinion: str, *, root: Optional[Path] = None) -> Optional[s
 # Lane discovery + loading
 # -----------------------------------------------------------------------------
 
+LEGACY_LANE_ROOT = "_opinions"
+CURRENT_LANE_ROOT = "crystallized"
+
+
+def lane_base(vault_path) -> Path:
+    """Where the accumulate loop's lanes and served supplements live.
+
+    Filing-v2 part 3 folds `memory/_opinions/` into `memory/crystallized/` —
+    the design's home for supplements, kind kept, each opinion's lane a
+    subdirectory and the served `<name>.md` beside the crystallized memories.
+    Discovered, never conjured: while the pre-migration directory still exists
+    it is the base, so no writer splits a lane across two roots; once the
+    migration has moved it, the class directory is. A fresh vault with neither
+    gets the current home."""
+    mem = Path(vault_path) / "memory"
+    legacy = mem / LEGACY_LANE_ROOT
+    return legacy if legacy.is_dir() else mem / CURRENT_LANE_ROOT
+
+
 def lane_dirs(vault_path: Path) -> list:
-    """Every per-opinion lane directory, `<vault>/personal/_opinions/<name>/`
-    — NOT the composed `<name>.md` served files, which sit beside them."""
-    base = Path(vault_path) / "memory" / "_opinions"
+    """Every per-opinion lane directory, `<lane base>/<name>/` — NOT the
+    composed `<name>.md` served files, which sit beside them."""
+    base = lane_base(vault_path)
     if not base.is_dir():
         return []
     return sorted(p for p in base.iterdir() if p.is_dir())
@@ -424,7 +443,7 @@ def process_lane(
     current promoted set) — the same "only propose on an actual change"
     convention every other dreaming stage follows."""
     vault_path = Path(vault_path)
-    lane_dir = vault_path / "memory" / "_opinions" / opinion
+    lane_dir = lane_base(vault_path) / opinion
     if not lane_dir.is_dir():
         return None
     loaded = _load_lane(lane_dir)
@@ -531,7 +550,7 @@ def process_lane(
     # is exactly what keeps a single opinion's whole cycle safe to bundle
     # as one proposal (see LaneCycleResult's own docstring).
     all_promoted = [(loaded[p][0], loaded[p][1]) for p in already_promoted] + newly_promoted
-    served_path = vault_path / "memory" / "_opinions" / f"{opinion}.md"
+    served_path = lane_base(vault_path) / f"{opinion}.md"
 
     if all_promoted:
         new_served_content = _compose_served_file(opinion, all_promoted)
@@ -596,7 +615,7 @@ def lane_health(vault_path: Path, opinion: str) -> dict:
     base_proposal_count = sum(
         1 for p in read_base_proposals(vault_path) if p.get("opinion") == opinion
     )
-    lane_dir = vault_path / "memory" / "_opinions" / opinion
+    lane_dir = lane_base(vault_path) / opinion
     if not lane_dir.is_dir():
         return {
             "opinion": opinion, "lane_depth": 0, "promoted_count": 0,

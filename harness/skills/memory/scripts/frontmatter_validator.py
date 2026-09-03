@@ -235,6 +235,12 @@ def validate(note_path: Path | str, *, vault: Path | str | None = None) -> list[
     if fm is None:
         return ["no frontmatter block found"]
 
+    # Filing-v2 part 3: a supplement of the accumulate loop keeps its bespoke
+    # shape wherever it lives — the lanes sit under `memory/crystallized/`
+    # now — so the exemption follows the kind, not the directory.
+    if str(fm.get("kind") or "").strip() == "opinion-supplement":
+        return []
+
     violations: list[str] = []
     has_type = bool(str(fm.get("type") or "").strip())
     status = str(fm.get("status") or "").strip()

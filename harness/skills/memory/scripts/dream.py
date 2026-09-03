@@ -224,11 +224,37 @@ def _patch_frontmatter(content: str, updates: dict) -> str:
 # Corpus reading
 # -----------------------------------------------------------------------------
 
+_CRYSTALLIZED_PARTS = ("memory", "crystallized")
+_SUPPLEMENT_KIND_LINE = "kind: opinion-supplement"
+
+
+def _is_supplement_home(p: Path, rel_parts: tuple) -> bool:
+    """Filing-v2 part 3 folds the accumulate loop's lanes into
+    `memory/crystallized/`: each opinion's lane is a subdirectory there and
+    its served supplement sits beside the crystallized memories. The hazard
+    `_opinions`'s exclusion answers (locked call 6) follows them — the lane
+    stage owns them, and no general stage may merge, shelve or annotate a
+    supplement. A lane is any subdirectory of the class; a served file is
+    told by its kind, read from the head of the file for notes directly there."""
+    if tuple(rel_parts[:2]) != _CRYSTALLIZED_PARTS:
+        return False
+    if len(rel_parts) > 2:
+        return True
+    try:
+        with p.open(encoding="utf-8") as fh:
+            head = fh.read(1024)
+    except OSError:
+        return False
+    return _SUPPLEMENT_KIND_LINE in head.split("\n---", 1)[0]
+
+
 def _iter_entries(vault_path: Path) -> list:
     entries = []
     for p in sorted(vault_path.rglob("*.md")):
         rel_parts = p.relative_to(vault_path).parts[:-1]
         if any(part in _EXCLUDE_DIRS for part in rel_parts):
+            continue
+        if _is_supplement_home(p, rel_parts):
             continue
         entries.append(p)
     return entries

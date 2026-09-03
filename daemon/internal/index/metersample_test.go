@@ -249,6 +249,10 @@ func populationVault(t *testing.T) *Index {
 		// `kind:` and no `type:` — the contract's enum does not cover it, and
 		// it is a mined supplement awaiting promotion, not a filed memory.
 		{"memory/_opinions/good/mined-supplement.md", "active"},
+		// Filing-v2 part 3: the lanes live under crystallized/<opinion>/ and
+		// stay out; a crystallized memory beside them is filed and live.
+		{"memory/crystallized/good/lane-supplement.md", "active"},
+		{"memory/crystallized/lesson.md", "active"},
 		// A directory whose name merely resembles an excluded one. `_` is a LIKE
 		// wildcard, so an unescaped `_inbox` pattern matches this too.
 		{"memory/Xinbox/real.md", "active"},
@@ -272,7 +276,7 @@ func TestTheMetersMeasureTheFiledLiveCorpusOnly(t *testing.T) {
 	x := populationVault(t)
 	got := relsOf(t, x, 100, []string{"memory", "desk"}, false)
 	want := []string{
-		"memory/Xinbox/real.md", "memory/filed.md",
+		"memory/Xinbox/real.md", "memory/crystallized/lesson.md", "memory/filed.md",
 		"memory/notes-on-_inbox-triage.md", "memory/scratchpad-conventions.md",
 	}
 	if !equalRels(got, want) {
@@ -309,6 +313,18 @@ func TestAnActiveNoteInAnExcludedDirectoryIsStillExcluded(t *testing.T) {
 			t.Errorf("%s is in the window; %v should have dropped it",
 				rel, MeterExcludedDirs)
 		}
+	}
+}
+
+func TestACrystallizedLaneIsOutWhileTheClassIsIn(t *testing.T) {
+	x := populationVault(t)
+	got := relsOf(t, x, 100, []string{"memory", "desk"}, false)
+	if contains(got, "memory/crystallized/good/lane-supplement.md") {
+		t.Errorf("a lane entry under crystallized/ is in the window; %v should have dropped it",
+			MeterExcludedNested)
+	}
+	if !contains(got, "memory/crystallized/lesson.md") {
+		t.Errorf("a crystallized memory is out of the window; only the lanes beneath the class are excluded")
 	}
 }
 

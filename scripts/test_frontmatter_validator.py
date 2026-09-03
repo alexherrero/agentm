@@ -176,6 +176,18 @@ class TestValidateVault(unittest.TestCase):
                    "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nServed.\n")
             self.assertEqual(fv.validate_vault(vault), {})
 
+    def test_supplements_under_crystallized_are_exempt_by_kind(self):
+        # Filing-v2 part 3: the lanes live under memory/crystallized/ now; the
+        # bespoke shape is exempt by its kind, wherever it sits.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            _write(vault / "memory" / "crystallized" / "plain-english" / "lane-entry.md",
+                   "---\nkind: opinion-supplement\nstatus: proposed\n"
+                   "created: 2026-07-25T10:00:00+00:00\nslug: lane-entry\n---\n\nbody\n")
+            _write(vault / "memory" / "crystallized" / "plain-english.md",
+                   "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nServed.\n")
+            self.assertEqual(fv.validate_vault(vault), {})
+
     def test_excludes_archive_dir_and_plan_archive_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)

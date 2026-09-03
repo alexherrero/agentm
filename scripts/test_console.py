@@ -316,6 +316,21 @@ class MemoryActivityTests(unittest.TestCase):
         names = c.newest_curated_entries(self.vault)
         self.assertTrue(all("_opinions" not in n for n in names))
 
+    def test_newest_curated_entries_excludes_crystallized_lanes_and_served_files(self) -> None:
+        # Filing-v2 part 3: the lanes live under crystallized/<opinion>/ and the
+        # served file beside the crystallized memories; the memory is a curated
+        # entry, the supplements are not.
+        personal = self.vault / "memory"
+        (personal / "crystallized" / "good").mkdir(parents=True)
+        (personal / "crystallized" / "good" / "lesson.md").write_text("x", encoding="utf-8")
+        (personal / "crystallized" / "good.md").write_text(
+            "---\nkind: opinion-supplement\nstatus: promoted\n---\n\nserved\n", encoding="utf-8")
+        (personal / "crystallized" / "distilled.md").write_text("---\ntype: workflow\n---\n\nx\n", encoding="utf-8")
+        names = c.newest_curated_entries(self.vault)
+        self.assertIn("crystallized/distilled.md", names)
+        self.assertNotIn("crystallized/good/lesson.md", names)
+        self.assertNotIn("crystallized/good.md", names)
+
     def test_heat_policy_report_never_raises_on_empty_vault(self):
         out = c.heat_policy_report(self.vault)
         self.assertTrue(out.startswith("Heat-policy"))
