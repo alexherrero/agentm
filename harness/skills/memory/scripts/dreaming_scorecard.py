@@ -42,6 +42,14 @@ _TIMEOUT_SECONDS = 300
 STABLE_NAME = "latest_dreaming_scorecard.md"
 DIAGNOSTICS_DIR = Path("diagnostics") / "dreaming"
 
+# Bootstrap this directory before any sibling import: a foreign loader
+# (crickets' bridges file-path-load memory-skill modules) has none of it on
+# sys.path, and a bare sibling import only ever worked when the hooks ran the
+# file as a script. Pinned by scripts/test_skill_modules_file_loadable.py.
+import sys
+from pathlib import Path
+if str(Path(__file__).resolve().parent) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
 import engine_state  # noqa: E402
 # Where `dream.py` stages each run. One directory per run id.
 # Per-run dream staging left the vault for the engine state dir
