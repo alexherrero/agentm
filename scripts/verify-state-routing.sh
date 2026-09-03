@@ -117,6 +117,19 @@ if [ "$FAULT" != "1" ]; then
   assert_absent "A. vault backend: repo-local .harness/ carries no kernel state" \
     "$V_PROJ/.harness/PLAN.md"
 
+  # ── A2. the vault-root Projects/ generation (filing-v2 2b): a project that
+  #        already lives beside the memory root resolves there, through a
+  #        sibling-rooted backend, and state lands in its own _harness/ ─────────
+  R_ROOT="$SCRATCH/Vault"; R_VAULT="$R_ROOT/Agent"; mkdir -p "$R_VAULT/memory" "$R_ROOT/Projects/$SLUG"
+  R_PROJ="$SCRATCH/proj-root"; seed_project "$R_PROJ"
+  MODE_ENV=("MEMORY_VAULT_PATH=$R_VAULT")
+  printf '%s' "$PLAN_BODY" | hm write-state --project-root "$R_PROJ" PLAN.md >/dev/null
+  assert_exists "A2. root generation: state lands in <vault-root>/Projects/<slug>/_harness/" \
+    "$R_ROOT/Projects/$SLUG/_harness/PLAN.md"
+  assert_absent "A2. root generation: nothing written under the memory root's desk/projects" \
+    "$R_VAULT/desk/projects/$SLUG/_harness/PLAN.md"
+  MODE_ENV=("MEMORY_VAULT_PATH=$V_VAULT")
+
   # ── B. .project-mode=local opts out even with a vault configured ───────────
   L_PROJ="$SCRATCH/proj-local-override"; seed_project "$L_PROJ"
   echo "local" > "$L_PROJ/.harness/.project-mode"

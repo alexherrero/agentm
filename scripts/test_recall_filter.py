@@ -55,6 +55,9 @@ class TestParseFilter(unittest.TestCase):
 class TestDeriveProject(unittest.TestCase):
     def test_projects_group_yields_slug(self):
         self.assertEqual(recall._derive_project("desk/projects/agentm/decisions"), "agentm")
+        # Filing-v2 2b: the vault-root generation's group value derives the same slug.
+        self.assertEqual(recall._derive_project("Projects/agentm/decisions"), "agentm")
+        self.assertIsNone(recall._derive_project("Projects/"))
 
     def test_non_project_group_yields_none(self):
         self.assertIsNone(recall._derive_project("memory/reference"))

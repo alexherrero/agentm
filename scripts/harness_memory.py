@@ -584,6 +584,41 @@ def is_available() -> bool:
 # remains as a fallback — see `_vault_projects_dir()` below.
 _VAULT_PROJECTS_REL_NEW = "desk/projects"
 _VAULT_PROJECTS_REL_LEGACY = "personal-projects"
+# Filing-v2 2b: the newest generation is the vault-ROOT `Projects/`, a sibling
+# of the memory root. It is outside the memory-root backend (Locators are
+# root-confined), so it resolves on a backend rooted at the vault root — the
+# same backend when the layout is flat (memory root == vault root).
+_VAULT_ROOT_PROJECTS_REL = "Projects"
+
+
+def _root_projects_candidates(backend: "StorageBackend") -> list:
+    """(backend, locator-parts) pairs where the root `Projects/` space may sit,
+    derived from the BACKEND's own root — never from global config — so a
+    test fixture probes its own tree and the live machine probes the vault.
+
+    Flat layout: `<backend-root>/Projects` on the primary backend. Nested
+    layout (the designed one — memory root `Agent/` beside `Projects/`): a
+    second instance of the same synced backend class rooted one level up.
+    Never raises; a probe that cannot be built is simply absent.
+    """
+    out = [(backend, (_VAULT_ROOT_PROJECTS_REL,))]
+    try:
+        if not bool(backend.capabilities.sync):
+            return out
+        broot = Path(getattr(backend, "root"))
+    except Exception:
+        return out
+    if not (broot.parent / _VAULT_ROOT_PROJECTS_REL).is_dir():
+        return out
+    try:
+        try:
+            sibling = type(backend)(broot.parent, lock_root=getattr(backend, "_lock_root", None))
+        except TypeError:
+            sibling = type(backend)(broot.parent)
+    except Exception:
+        return out
+    out.append((sibling, (_VAULT_ROOT_PROJECTS_REL,)))
+    return out
 
 
 def _vault_projects_dir(backend: "StorageBackend") -> "Locator":
@@ -624,7 +659,8 @@ def resolve_project(context: Optional[dict] = None) -> dict:
                            (or legacy fallback), or None if unavailable.
       - `backend`: the active StorageBackend instance, or None if unavailable.
       - `project_root`: Path to the cwd / context-provided project root.
-      - `layout`: "new" | "legacy" | "none" — which namespace layout was used.
+      - `layout`: "root" | "new" | "legacy" | "none" — which namespace layout
+                  was used ("root" = the vault-root `Projects/` generation).
 
     Pure function; no side effects. Safe to call from any phase / hook.
 
@@ -680,6 +716,17 @@ def resolve_project(context: Optional[dict] = None) -> dict:
             "project_root": project_root,
             "layout": "none",
         }
+
+    for root_backend, parts in _root_projects_candidates(backend):
+        root_loc = root_backend.resolve(*parts, slug)
+        if root_backend.exists(root_loc):
+            return {
+                "slug": slug,
+                "project_locator": root_loc,
+                "backend": root_backend,
+                "project_root": project_root,
+                "layout": "root",
+            }
 
     new_loc = backend.resolve(_VAULT_PROJECTS_REL_NEW, slug)
     if backend.exists(new_loc):

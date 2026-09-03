@@ -88,8 +88,6 @@ import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-
-import engine_state  # noqa: E402
 from typing import Callable, Optional
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
@@ -100,6 +98,11 @@ _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
+# Sibling imports come AFTER the bootstrap above: a foreign loader (crickets'
+# research bridge file-path-loads this module) has none of this directory on
+# sys.path, and a bare import placed earlier only ever worked when the hooks
+# ran the file as a script.
+import engine_state  # noqa: E402
 from vault_lock import atomic_write  # noqa: E402
 
 # Optional dependency (NOT in requirements.txt's default install — see

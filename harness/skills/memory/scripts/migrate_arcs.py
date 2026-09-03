@@ -184,9 +184,18 @@ def _infer_arc_from_tags(tags: list[str]) -> tuple[str, str, str] | None:
     return None
 
 
+def _project_root(vault: Path, project: str) -> Path:
+    """The project's tree on whichever generation holds it: the vault-root
+    `Projects/` sibling first (filing-v2 2b), else `desk/projects/`."""
+    root = vault.parent / "Projects" / project
+    if root.is_dir():
+        return root
+    return vault / "desk/projects" / project
+
+
 def plan_stamp(vault: Path, project: str) -> Plan:
     plan = Plan()
-    proj_root = vault / "desk/projects" / project
+    proj_root = _project_root(vault, project)
     for sub in ("decisions", "designs"):
         root = proj_root / sub
         if not root.is_dir():
@@ -244,7 +253,7 @@ def _match_registry_prefix(slug: str) -> str | None:
 
 def plan_archive_group(vault: Path, project: str) -> Plan:
     plan = Plan()
-    archive_root = vault / "desk/projects" / project / "_harness" / "archive"
+    archive_root = _project_root(vault, project) / "_harness" / "archive"
     if not archive_root.is_dir():
         plan.errors.append(f"no archive dir: {archive_root}")
         return plan
@@ -282,8 +291,8 @@ def apply_archive_group(vault: Path, plan: Plan) -> None:
 
 def plan_designs_move(vault: Path, project: str, arc: str) -> Plan:
     plan = Plan()
-    src = vault / "desk/projects" / project / "_harness" / "designs" / arc
-    dest = vault / "desk/projects" / project / "_harness" / "archive" / "designs" / arc
+    src = _project_root(vault, project) / "_harness" / "designs" / arc
+    dest = _project_root(vault, project) / "_harness" / "archive" / "designs" / arc
     if not src.is_dir():
         plan.errors.append(f"no such design folder: {src.relative_to(vault)}")
         return plan
@@ -314,8 +323,8 @@ def plan_designs_move(vault: Path, project: str, arc: str) -> Plan:
 
 
 def apply_designs_move(vault: Path, project: str, arc: str, plan: Plan) -> None:
-    src = vault / "desk/projects" / project / "_harness" / "designs" / arc
-    dest = vault / "desk/projects" / project / "_harness" / "archive" / "designs" / arc
+    src = _project_root(vault, project) / "_harness" / "designs" / arc
+    dest = _project_root(vault, project) / "_harness" / "archive" / "designs" / arc
     dest.parent.mkdir(parents=True, exist_ok=True)
     src_rel = src.relative_to(vault).as_posix()
     src.rename(dest)

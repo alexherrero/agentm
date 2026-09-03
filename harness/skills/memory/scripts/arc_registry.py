@@ -103,6 +103,28 @@ def _frontmatter_value(content: str, field: str) -> str | None:
 _WALK_SUBDIRS = ("memory", "desk/projects", "_idea-incubator")
 
 
+# Filing-v2 2b: the newest project-space generation is the vault-root
+# `Projects/`, a SIBLING of the memory root this module is handed. During the
+# merge window both it and `desk/projects/` exist and either may hold projects,
+# so walkers take the union. A root-space path cannot be keyed relative to the
+# memory root; it is keyed relative to the vault root ("Projects/<slug>/…").
+_ROOT_PROJECTS_DIRNAME = "Projects"
+
+
+def _walk_roots(vault: Path) -> list:
+    roots = [vault / d for d in _WALK_SUBDIRS]
+    roots.append(vault.parent / _ROOT_PROJECTS_DIRNAME)
+    return [r for r in roots if r.is_dir()]
+
+
+def _vault_rel(path: Path, vault: Path) -> str:
+    try:
+        rel = path.relative_to(vault)
+    except ValueError:
+        rel = path.relative_to(vault.parent)
+    return str(rel).replace("\\", "/")
+
+
 def audit(vault_path: Path | str) -> dict:
     """Read-only scan of the vault's `arc:` values. Never writes anything.
 
@@ -122,7 +144,7 @@ def audit(vault_path: Path | str) -> dict:
     if not vault.is_dir():
         return {"by_arc": {}, "malformed": [], "unrecognized": [], "total_stamped": 0}
 
-    walk_roots = [vault / d for d in _WALK_SUBDIRS if (vault / d).is_dir()]
+    walk_roots = _walk_roots(vault)
     for root in walk_roots:
         for md in sorted(root.rglob("*.md")):
             if any(p == "_archive" for p in md.parts):
@@ -137,7 +159,7 @@ def audit(vault_path: Path | str) -> dict:
             if raw_arc is None:
                 continue
             total_stamped += 1
-            rel = str(md.relative_to(vault)).replace("\\", "/")
+            rel = _vault_rel(md, vault)
             if not is_kebab(raw_arc):
                 malformed.append((rel, raw_arc))
                 continue

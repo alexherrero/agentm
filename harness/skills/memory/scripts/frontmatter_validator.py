@@ -28,6 +28,27 @@ from kind_registry import is_kebab, is_known, REQUIRED_UNIVERSAL_FIELDS  # noqa:
 # otherwise false-positive against.
 _DEFAULT_SCOPE_DIRS = ("memory", "desk/projects")
 
+# Filing-v2 2b: the vault-root `Projects/` generation is a SIBLING of the memory
+# root; when the scope names the project space, the root sibling joins the walk
+# (union across the merge window). Root-space entries are keyed relative to
+# the vault root.
+_ROOT_PROJECTS_DIRNAME = "Projects"
+
+
+def _scope_roots(vault: Path, scope_dirs) -> list:
+    out = [vault / d for d in scope_dirs]
+    if "desk/projects" in scope_dirs:
+        out.append(vault.parent / _ROOT_PROJECTS_DIRNAME)
+    return [r for r in out if r.is_dir()]
+
+
+def _vault_rel(path: Path, vault: Path) -> str:
+    try:
+        rel = path.relative_to(vault)
+    except ValueError:
+        rel = path.relative_to(vault.parent)
+    return str(rel).replace("\\", "/")
+
 # The lifecycle, and the ranking axis. Both enum-locked: a status or an altitude
 # nothing recognizes is a note no pass can reason about, and a validator that
 # waved either through would be leaving the taxonomy's brake off on two more
@@ -254,10 +275,7 @@ def validate_vault(vault_path: Path | str, *, scope_dirs=_DEFAULT_SCOPE_DIRS) ->
         return {}
 
     results: dict[str, list[str]] = {}
-    for scope_dir in scope_dirs:
-        root = vault / scope_dir
-        if not root.is_dir():
-            continue
+    for root in _scope_roots(vault, scope_dirs):
         for md in sorted(root.rglob("*.md")):
             if any(p in _EXCLUDE_DIRS for p in md.parts):
                 continue
@@ -265,7 +283,7 @@ def validate_vault(vault_path: Path | str, *, scope_dirs=_DEFAULT_SCOPE_DIRS) ->
                 continue
             violations = validate(md, vault=vault)
             if violations:
-                rel = str(md.relative_to(vault)).replace("\\", "/")
+                rel = _vault_rel(md, vault)
                 results[rel] = violations
     return results
 
