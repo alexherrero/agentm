@@ -374,6 +374,36 @@ def dedupe(rows: list) -> None:
             loser.flags.append("basename-clash")
 
 
+def settle_against_existing(rows: list, vault: Path) -> None:
+    """A routed note whose destination already holds a file — a re-capture of
+    a memory an earlier pass filed, or a genuine namesake — is never an
+    overwrite. Identical body: the arriving note is the twin, filed superseded
+    by the note already home; different body: a basename clash, filed as
+    `<stem>~dup.md`. Either way it is flagged for review, and a later pass
+    over a corpus the daemon kept writing into stays resumable."""
+    for r in rows:
+        if r.disposition != "route":
+            continue
+        dest = vault / r.dest
+        if not dest.exists() or dest.resolve() == r.path.resolve():
+            continue
+        try:
+            existing = body_fingerprint(*read_note(dest)[:2])
+        except Exception:
+            existing = ""
+        if existing and existing == r.fingerprint:
+            r.lifecycle = "superseded"
+            r.superseded_by = r.dest
+            r.flags.append("exact-twin")
+        else:
+            r.flags.append("basename-clash")
+        stem, ext = os.path.splitext(r.dest)
+        n = 1
+        while (vault / f"{stem}~dup{'' if n == 1 else n}{ext}").exists():
+            n += 1
+        r.dest = f"{stem}~dup{'' if n == 1 else n}{ext}"
+
+
 def existing_targets(vault: Path) -> set:
     """Every current memory-root-relative note path, for `promoted_to` checks."""
     out = set()
@@ -392,6 +422,7 @@ def plan(vault: Path, rules, *, purge_scope: str) -> list:
         decide(row, rules, purge_scope=purge_scope, targets=targets)
         rows.append(row)
     dedupe(rows)
+    settle_against_existing(rows, vault)
     # A promotion target that is itself routed moves too: point at where it lands.
     lands = {r.rel: r.dest for r in rows if r.disposition == "route"}
     for r in rows:

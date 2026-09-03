@@ -166,10 +166,56 @@ def _agentmd(args: list) -> Any:
 
 # ── the sections ────────────────────────────────────────────────────────────
 
-def section_corpus() -> Section:
+CLASS_DIRS = ("semantic", "procedural", "episodic", "entities", "crystallized", "mocs")
+
+
+def class_populations(vault: Path) -> "dict | None":
+    """Memories per class directory, or None when the vault has no memory/.
+
+    Filing-v2 part 3: the empty-shell failure — six class directories built
+    and never populated while the corpus lived in a staging area — was
+    invisible for months because nothing counted the classes. Each count is
+    the flat `.md` files directly in the class (its generated `_index.md`
+    aside); files in a subdirectory are the accumulate loop's supplement
+    lanes, reported apart so a class that holds only lanes does not read as
+    populated."""
+    mem = Path(vault) / "memory"
+    if not mem.is_dir():
+        return None
+    out = {}
+    for cls in CLASS_DIRS:
+        d = mem / cls
+        flat = lanes = 0
+        if d.is_dir():
+            for p in d.rglob("*.md"):
+                if p.name == "_index.md" or p.name.startswith("Icon"):
+                    continue
+                if p.parent == d:
+                    flat += 1
+                else:
+                    lanes += 1
+        out[cls] = (flat, lanes)
+    return out
+
+
+def _class_reading(vault) -> Reading:
+    pops = class_populations(vault) if vault is not None else None
+    if pops is None:
+        return Reading.unavailable("class populations", "no memory/ under the vault",
+                                   source="memory/<class>/ walk")
+    total = sum(flat for flat, _ in pops.values())
+    parts = []
+    for cls, (flat, lanes) in pops.items():
+        parts.append(f"{cls} {flat}" + (f" (+{lanes} in lanes)" if lanes else ""))
+    return Reading.measured("class populations", total, source="memory/<class>/ walk",
+                            note=" · ".join(parts))
+
+
+def section_corpus(vault: "Path | None" = None) -> Section:
     """How much memory there is, and how much of it is waiting."""
     s = Section("The corpus", blurb=(
         "How much there is, and how much of it is still waiting to be filed."))
+    s.readings.append(_class_reading(vault))
     try:
         status = _agentmd(["status"])
     except DaemonUnavailable as exc:
@@ -510,7 +556,7 @@ def build(vault: Path, repo: Path, *, now: datetime, rel: Path = None,
     out_dir.mkdir(parents=True, exist_ok=True)
 
     sections = [
-        section_corpus(),
+        section_corpus(vault),
         section_completeness(out_dir),
         section_meters(),
         _with_gate(section_retrieval(repo), out_dir),

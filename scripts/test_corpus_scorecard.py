@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -381,6 +382,39 @@ class ScorecardTests(unittest.TestCase):
         self.assertIn(f"gold-set R@{data.get('k', 5)}", body)
         self.assertIn(f"{data['r_at_k']:.4f}", body)
 
+
+
+class ClassPopulationTests(ScorecardTests):
+    """Filing-v2 part 3: the scorecard counts the six classes, so the
+    empty-shell failure (classes built, corpus elsewhere) can never be
+    invisible again. Flat files count as memories; a class's subdirectories
+    are the accumulate loop's supplement lanes, reported apart."""
+
+    def test_the_classes_are_counted_and_lanes_reported_apart(self):
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td)
+            mem = tmp / "memory"
+            for cls in sc.CLASS_DIRS:
+                (mem / cls).mkdir(parents=True)
+                (mem / cls / "_index.md").write_text("# index\n", encoding="utf-8")
+            (mem / "semantic" / "a.md").write_text("---\ntype: reference\n---\n\na\n", encoding="utf-8")
+            (mem / "semantic" / "b.md").write_text("---\ntype: reference\n---\n\nb\n", encoding="utf-8")
+            (mem / "crystallized" / "good").mkdir()
+            (mem / "crystallized" / "good" / "x.md").write_text("---\nkind: opinion-supplement\n---\n\nx\n", encoding="utf-8")
+            self.build(answers(**HEALTHY), tmp)
+            text = self.read(tmp)
+            row = next(l for l in text.splitlines() if "class populations" in l)
+            self.assertIn("| 2 |", row)
+            self.assertIn("semantic 2", row)
+            self.assertIn("procedural 0", row)
+            self.assertIn("crystallized 0 (+1 in lanes)", row)
+            self.assertIn("mocs 0", row)
+
+    def test_a_vault_without_a_memory_root_says_so(self):
+        with tempfile.TemporaryDirectory() as td:
+            self.build(answers(**HEALTHY), Path(td))
+            row = next(l for l in self.read(Path(td)).splitlines() if "class populations" in l)
+            self.assertIn("not measured: no memory/ under the vault", row)
 
 if __name__ == "__main__":
     unittest.main()
